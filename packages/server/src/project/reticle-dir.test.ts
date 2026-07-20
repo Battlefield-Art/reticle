@@ -7,8 +7,12 @@ import {
   baselinePath,
   ensureReticleDir,
   flowPath,
+  isValidSessionId,
+  journalActionsPath,
+  journalEventsPath,
   reticleDirPaths,
   readContract,
+  sessionDirPath,
   writeContract,
 } from './reticle-dir.js';
 import { createNodeFileSystem, type FileSystemPort } from './fs-port.js';
@@ -140,6 +144,21 @@ describe('reticle-dir — temp-dir filesystem, never touches the repo', () => {
     expect(baselinePath(root, 'home').endsWith(join('.reticle', 'baselines', 'home.json'))).toBe(
       true,
     );
+  });
+
+  it('15: journal paths compose under sessions/<id> and guard the id', () => {
+    expect(reticleDirPaths(root).sessions.endsWith(join('.reticle', 'sessions'))).toBe(true);
+    expect(sessionDirPath(root, 'demo').endsWith(join('.reticle', 'sessions', 'demo'))).toBe(true);
+    expect(
+      journalEventsPath(root, 'demo').endsWith(join('sessions', 'demo', 'events.jsonl')),
+    ).toBe(true);
+    expect(
+      journalActionsPath(root, 'demo').endsWith(join('sessions', 'demo', 'actions.jsonl')),
+    ).toBe(true);
+    expect(isValidSessionId('unique-123')).toBe(true);
+    expect(isValidSessionId('alianpost')).toBe(true);
+    expect(isValidSessionId('../escape')).toBe(false);
+    expect(isValidSessionId('a/b')).toBe(false);
   });
 
   // ---- INVALID ----

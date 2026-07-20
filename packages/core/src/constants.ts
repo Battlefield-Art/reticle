@@ -112,6 +112,12 @@ export const ReticleDir = {
   VISUAL_SUBDIR: 'visual',
   /** verification-run artifacts — .reticle/runs/<runId>.json (the OEM/CI-consumable verdict). */
   RUNS_SUBDIR: 'runs',
+  /** durable causal journal — .reticle/sessions/<id>/{events,actions}.jsonl (the substrate). */
+  SESSIONS_SUBDIR: 'sessions',
+  /** append-only event ledger inside a session dir (one ReticleEvent per line). */
+  JOURNAL_EVENTS_FILE: 'events.jsonl',
+  /** append-only action ledger inside a session dir (one JournalAction per line). */
+  JOURNAL_ACTIONS_FILE: 'actions.jsonl',
   /**
    * Auto-provisioned bridge pairing token, stored at ~/.reticle/pairing-token (mode 0600). Written by
    * the daemon, read Node-side by the build plugins to inject into connect(). A browser sandbox cannot

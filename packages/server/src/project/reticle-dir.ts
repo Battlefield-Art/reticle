@@ -27,6 +27,8 @@ export interface ReticleDirPaths {
   visual: string;
   /** .../.reticle/runs (verification-run artifacts) */
   runs: string;
+  /** .../.reticle/sessions (durable causal journal, one dir per session) */
+  sessions: string;
 }
 
 export function reticleDirPaths(root: string): ReticleDirPaths {
@@ -38,12 +40,37 @@ export function reticleDirPaths(root: string): ReticleDirPaths {
     project: join(root, ReticleDir.PROJECT_FILE),
     visual: join(root, ReticleDir.VISUAL_SUBDIR),
     runs: join(root, ReticleDir.RUNS_SUBDIR),
+    sessions: join(root, ReticleDir.SESSIONS_SUBDIR),
   };
 }
 
 /** The verification-run artifact path for `runId` (.reticle/runs/<runId>.json). */
 export function runPath(root: string, runId: string): string {
   return join(root, ReticleDir.RUNS_SUBDIR, `${runId}.json`);
+}
+
+/** The journal directory for `sessionId` (.reticle/sessions/<id>). Guard the id first. */
+export function sessionDirPath(root: string, sessionId: string): string {
+  return join(root, ReticleDir.SESSIONS_SUBDIR, sessionId);
+}
+
+/** The append-only event ledger path for a session (.reticle/sessions/<id>/events.jsonl). */
+export function journalEventsPath(root: string, sessionId: string): string {
+  return join(sessionDirPath(root, sessionId), ReticleDir.JOURNAL_EVENTS_FILE);
+}
+
+/** The append-only action ledger path for a session (.reticle/sessions/<id>/actions.jsonl). */
+export function journalActionsPath(root: string, sessionId: string): string {
+  return join(sessionDirPath(root, sessionId), ReticleDir.JOURNAL_ACTIONS_FILE);
+}
+
+/**
+ * A sessionId must be a single safe path segment before it is joined into a disk path — same guard as
+ * run/flow ids (rejects '../', slashes, absolute, dotfiles). Session labels are user/tab-supplied, so
+ * this guard runs before any journal write.
+ */
+export function isValidSessionId(sessionId: string): boolean {
+  return FLOW_NAME_PATTERN.test(sessionId) && !sessionId.includes('..');
 }
 
 /**
