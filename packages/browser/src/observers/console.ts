@@ -21,6 +21,22 @@ function stringifyArgs(args: unknown[]): string {
     .join(' ');
 }
 
+/** Stacks can be long; cap so a deep async trace never blows the event budget. */
+const MAX_STACK_LEN = 4000;
+
+function capStack(stack: string | undefined): string | undefined {
+  if (stack === undefined || stack.length === 0) return undefined;
+  return stack.length > MAX_STACK_LEN ? stack.slice(0, MAX_STACK_LEN) : stack;
+}
+
+/** The stack of the first Error argument, if any — the single biggest diagnosis upgrade, near-zero cost. */
+function firstErrorStack(args: unknown[]): string | undefined {
+  for (const arg of args) {
+    if (arg instanceof Error) return capStack(arg.stack);
+  }
+  return undefined;
+}
+
 /** Patch console.{log,warn,error} and window error events. Reversible. */
 export function installConsole(emit: Emit): Teardown {
   const methods: ConsoleMethod[] = ['log', 'warn', 'error'];
@@ -32,23 +48,32 @@ export function installConsole(emit: Emit): Teardown {
     originals.set(method, original);
     const callOriginal = original.bind(console);
     console[method] = (...args: unknown[]): void => {
-      emit(METHOD_EVENT[method], { message: stringifyArgs(args) });
+      // Only console.error carries a stack — the diagnosis case; log/warn stay lean.
+      const stack = method === 'error' ? firstErrorStack(args) : undefined;
+      emit(METHOD_EVENT[method], {
+        message: stringifyArgs(args),
+        ...(stack === undefined ? {} : { stack }),
+      });
       callOriginal(...args);
     };
   }
 
   const onError = (event: ErrorEvent): void => {
+    const stack = capStack(event.error instanceof Error ? event.error.stack : undefined);
     emit(EventType.ERROR_UNCAUGHT, {
       message: event.message,
       source: event.filename,
       line: event.lineno,
+      ...(stack === undefined ? {} : { stack }),
     });
   };
   const onRejection = (event: PromiseRejectionEvent): void => {
     const reason: unknown = event.reason;
+    const stack = capStack(reason instanceof Error ? reason.stack : undefined);
     emit(EventType.ERROR_UNCAUGHT, {
       message: reason instanceof Error ? reason.message : String(reason),
       kind: 'unhandledrejection',
+      ...(stack === undefined ? {} : { stack }),
     });
   };
   window.addEventListener('error', onError);

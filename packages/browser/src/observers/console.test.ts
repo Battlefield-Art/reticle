@@ -35,6 +35,26 @@ describe('installConsole', () => {
     expect(events[0]?.data.message).toBe('boom 42');
   });
 
+  it('captures the stack of an Error argument to console.error', () => {
+    const { emit, events } = collect();
+    teardown = installConsole(emit);
+
+    console.error('failed:', new Error('kaboom'));
+
+    expect(events[0]?.type).toBe(EventType.CONSOLE_ERROR);
+    expect(typeof events[0]?.data['stack']).toBe('string');
+    expect(events[0]?.data['stack']).toContain('kaboom');
+  });
+
+  it('does not attach a stack when console.error has no Error argument', () => {
+    const { emit, events } = collect();
+    teardown = installConsole(emit);
+
+    console.error('just a string');
+
+    expect(events[0]?.data['stack']).toBeUndefined();
+  });
+
   it('restores the original console methods (identity) on teardown', () => {
     /* eslint-disable no-console -- asserting console.log identity, not logging */
     const beforeLog = console.log;
