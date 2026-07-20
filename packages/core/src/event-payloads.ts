@@ -103,6 +103,11 @@ export const EVENT_PAYLOAD_SCHEMAS = {
   [EventType.PAGE_HEALTH]: z
     .object({ hidden: z.boolean(), focused: z.boolean(), reason: z.string().optional() })
     .passthrough(),
+  [EventType.FOCUS_CHANGE]: z.object({
+    to: z.string().optional(),
+    from: z.string().optional(),
+    toBody: z.boolean(),
+  }),
   [EventType.FLOW_RECORDED]: z.object({ name: z.string(), flow: z.unknown() }),
   [EventType.TRANSPORT_OVERFLOW]: z.object({ dropped: z.number() }),
   [EventType.TRUNCATED]: z.object({ channel: z.string(), dropped: z.number() }),
