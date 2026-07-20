@@ -12,6 +12,7 @@ export const CLI_USAGE = `usage:
   reticle status [--port N]
   reticle open  [url] [--port N]                        (show the app: reuse the connected tab, else open one)
   reticle verify <url> [--headed] [--timeout N] [--storage-state <file>]  (one-shot: drive the URL, verify saved flows, exit 0=pass)
+  reticle affected <file...>                           (which saved flows must re-verify for these changed files)
   reticle drive <url> [--headed]                       (foreground mode — for debugging)
   reticle mcp   [--port N] [--drive <url>] [--headed]  (MCP stdio proxy — auto-starts daemon if needed)
   reticle license                                      (show enterprise license status: active | eval | missing)`;
