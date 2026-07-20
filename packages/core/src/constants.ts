@@ -214,7 +214,6 @@ export const EventType = {
   CONSOLE_ERROR: 'console.error',
   ERROR_UNCAUGHT: 'error.uncaught',
   VISIBLE_SHOWN: 'visible.shown',
-  VISIBLE_HIDDEN: 'visible.hidden',
   ANIM_START: 'anim.start',
   ANIM_END: 'anim.end',
   SCROLL_POSITION: 'scroll.position',
@@ -241,6 +240,18 @@ export const EventType = {
   HUMAN_MARK: 'human.mark',
 } as const;
 export type EventType = (typeof EventType)[keyof typeof EventType];
+
+/**
+ * How an event was linked to the action it is attributed to. `window` means the SDK stamped the
+ * currently-active action's id onto every event observed between that action's dispatch and its
+ * settle — a time-window heuristic, not proven dataflow. It is the only tier available until
+ * commit-stream linking upgrades it; the label stays on so a chain is never presented as dataflow
+ * truth (see plan risk register).
+ */
+export const EventAttribution = {
+  WINDOW: 'window',
+} as const;
+export type EventAttribution = (typeof EventAttribution)[keyof typeof EventAttribution];
 
 /** The web-perf metrics carried in an EventType.PERF event's `metric` field. */
 export const PerfMetric = {

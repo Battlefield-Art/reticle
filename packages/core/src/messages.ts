@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { EventType, RETICLE_PROTOCOL_VERSION, MessageKind, TRANSPORT_LIMITS } from './constants.js';
+import {
+  EventAttribution,
+  EventType,
+  RETICLE_PROTOCOL_VERSION,
+  MessageKind,
+  TRANSPORT_LIMITS,
+} from './constants.js';
 import { HumanControlKind, MarkAnchorStrategy } from './session-constants.js';
 
 const sessionIdSchema = z.string().min(1).max(TRANSPORT_LIMITS.MAX_SESSION_ID_LENGTH);
@@ -54,6 +60,19 @@ export const ReticleEventSchema = z.object({
   sessionId: sessionIdSchema,
   /** Stable element reference this event concerns, when applicable (e.g. "e7"). */
   ref: refSchema.optional(),
+  /**
+   * Monotonic per-session sequence number stamped by the SDK. Gives events a total order independent
+   * of `t` (which can tie at millisecond resolution). Optional for back-compat with pre-2.2 SDKs.
+   */
+  seq: z.number().int().min(0).optional(),
+  /**
+   * The action this event is attributed to, when one was active at observation time. Set together with
+   * `attribution` (the tier of that link). Optional: ambient events observed outside any action window
+   * carry neither.
+   */
+  actionId: refSchema.optional(),
+  /** How `actionId` was derived. Present iff `actionId` is. */
+  attribution: z.nativeEnum(EventAttribution).optional(),
   /** Event-type-specific payload. Kept open here; refined per observer at the edges. */
   data: z.record(z.unknown()).default({}),
 });
