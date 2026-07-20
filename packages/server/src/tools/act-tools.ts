@@ -21,6 +21,8 @@ import { leanActResult } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
 import { causalSummary } from '../capsule/causal-summary.js';
+import { buildDivergenceCapsule } from '../capsule/capsule.js';
+import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
 import { pausedShortCircuit, withControl } from '../session/control-envelope.js';
@@ -367,6 +369,12 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           'Bounded causal summary: net {total,errors,headline}, consoleErrors, statePathsChanged, storageKeysChanged, route, signals, layoutShift, longTasks — the diffs the trace counts miss.',
         ),
+      capsule: z
+        .unknown()
+        .optional()
+        .describe(
+          'Present only on a FAILED verdict: the divergence capsule { summary, firstDivergence (declared vs observed), blastRadius (undeclared side effects) } — the fault, located, no re-exploration needed.',
+        ),
       since: z
         .number()
         .describe(
@@ -417,11 +425,17 @@ export const ACT_TOOLS: ToolDef[] = [
         );
         // The bounded W5 Tier-1 causal summary — net/console/state/storage diffs the trace's counts miss.
         // ponytail: Layer B (W1) validation of this result-shape change is pending — additive + bounded.
+        // On RED only, attach the Tier-2 divergence capsule (first-divergence + blast radius). Red-only,
+        // so the common green path — what the loop optimizes — is unchanged; on red, diagnosis is the point.
+        const capsule = verdict.pass
+          ? undefined
+          : buildDivergenceCapsule(predicateToExpectedLinks(until), windowEvents);
         return withControl(session, {
           effect: leanActResult(actResult.result),
           verdict,
           trace,
           summary: causalSummary(windowEvents),
+          ...(capsule === undefined ? {} : { capsule }),
           since,
           ...healthEnvelope(session),
         });
