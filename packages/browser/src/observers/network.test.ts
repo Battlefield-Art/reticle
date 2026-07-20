@@ -121,6 +121,42 @@ describe('firstAppFrame (initiator stack parsing)', () => {
   });
 });
 
+describe('installNetwork (sendBeacon)', () => {
+  let teardown: Teardown | undefined;
+  const navProto = Object.getPrototypeOf(navigator) as Navigator;
+  const hadBeacon = Object.getOwnPropertyDescriptor(navProto, 'sendBeacon');
+
+  function setBeacon(fn: (url: string | URL, data?: BodyInit | null) => boolean): void {
+    Object.defineProperty(navProto, 'sendBeacon', { value: fn, configurable: true, writable: true });
+  }
+
+  afterEach(() => {
+    teardown?.();
+    teardown = undefined;
+    if (hadBeacon !== undefined) Object.defineProperty(navProto, 'sendBeacon', hadBeacon);
+    else Reflect.deleteProperty(navProto, 'sendBeacon');
+  });
+
+  it('emits a completed NET_REQUEST for a beacon and preserves its boolean result', () => {
+    setBeacon(() => true);
+    const { emit, events } = collect();
+    teardown = installNetwork(emit);
+    const result = navigator.sendBeacon('http://localhost:8787/analytics', 'event=checkout');
+    expect(result).toBe(true);
+    const request = events.find((e) => e.type === EventType.NET_REQUEST);
+    expect(request?.data).toMatchObject({ method: 'POST', initiator: 'beacon', status: 200, ok: true });
+  });
+
+  it('reports ok:false when the beacon is rejected (queue full)', () => {
+    setBeacon(() => false);
+    const { emit, events } = collect();
+    teardown = installNetwork(emit);
+    navigator.sendBeacon('http://localhost:8787/analytics');
+    const request = events.find((e) => e.type === EventType.NET_REQUEST);
+    expect(request?.data).toMatchObject({ ok: false, status: 0 });
+  });
+});
+
 describe('installNetwork (fetch)', () => {
   let teardown: Teardown | undefined;
   const origFetch = window.fetch;

@@ -502,11 +502,48 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     };
   }
 
+  // navigator.sendBeacon — fire-and-forget analytics/telemetry, invisible to fetch/XHR wrapping. A page
+  // that beacons a "checkout completed" event should show it. Patch the instance's prototype (via
+  // getPrototypeOf, robust whether or not the Navigator global exists); the descriptor read avoids an
+  // unbound-method access; the send is synchronous so we emit one completed NET_REQUEST with its result.
+  const navProto = (
+    typeof navigator !== 'undefined' ? Object.getPrototypeOf(navigator) : null
+  ) as Navigator | null;
+  const origBeacon = (
+    navProto === null ? undefined : Object.getOwnPropertyDescriptor(navProto, 'sendBeacon')?.value
+  ) as BeaconFn | undefined;
+  if (navProto !== null && origBeacon !== undefined) {
+    navProto.sendBeacon = function patchedBeacon(
+      this: Navigator,
+      url: string | URL,
+      data?: BodyInit | null,
+    ): boolean {
+      const id = nextId();
+      const redacted = redactUrl(String(url));
+      const initiatorStack = initiatorFrame();
+      const sent = origBeacon.call(this, url, data);
+      emit(EventType.NET_REQUEST, {
+        id,
+        method: 'POST',
+        url: redacted,
+        status: sent ? 200 : 0,
+        ok: sent,
+        durationMs: 0,
+        initiator: 'beacon',
+        ...(initiatorStack === undefined ? {} : { initiatorStack }),
+      });
+      return sent;
+    };
+  }
+
   return () => {
     window.fetch = origFetch;
     proto.open = origOpen;
     proto.send = origSend;
     window.EventSource = origEventSource;
     window.WebSocket = origWebSocket;
+    if (navProto !== null && origBeacon !== undefined) navProto.sendBeacon = origBeacon;
   };
 }
+
+type BeaconFn = (this: Navigator, url: string | URL, data?: BodyInit | null) => boolean;
