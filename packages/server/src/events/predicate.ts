@@ -7,6 +7,7 @@ import {
   type MatchResult,
 } from '@reticlehq/core';
 import { selectPath, capDepth } from '../session/state-select.js';
+import { isAmbient, type AmbientCounts } from '../journal/ambient.js';
 import {
   PredicateSchema,
   matchValue,
@@ -30,6 +31,12 @@ export interface PredicateSession {
   onEvent(listener: (event: ReticleEvent) => void): () => void;
   /** Milliseconds since connect — the same clock that stamps event `t` (injected, testable). */
   elapsed(): number;
+  /**
+   * Learned per-ref ambient-churn counts (real-time regions that churn with no action driving them).
+   * The settle oracle drops events on learned-ambient refs so a chat/ticker page can still go quiet.
+   * Optional: a session without ambient learning simply omits it and settle behaves as before.
+   */
+  ambientCounts?(): AmbientCounts;
 }
 
 async function matchOnce(
@@ -161,8 +168,15 @@ export async function evaluatePredicate(
       return evalSignal(events, predicate);
     case 'state':
       return evalState(session, predicate);
-    case 'settled':
-      return evalSettled(events, predicate, session.elapsed());
+    case 'settled': {
+      // Drop events on learned-ambient regions (chat/ticker churn) before the settle check — by ref
+      // alone, NOT by attribution: window-attribution ("happened during the action window") is a time
+      // heuristic, never causation, so a chat message arriving mid-window must not hold settle open.
+      const counts = session.ambientCounts?.();
+      const settleEvents =
+        counts === undefined ? events : events.filter((e) => !isAmbient(counts, e.ref));
+      return evalSettled(settleEvents, predicate, session.elapsed());
+    }
     case 'allOf': {
       const results = await Promise.all(
         predicate.predicates.map((p) => evaluatePredicate(session, p, since)),

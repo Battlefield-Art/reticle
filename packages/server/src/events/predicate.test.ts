@@ -19,10 +19,15 @@ class FakeSession implements PredicateSession {
       elements: [],
     }),
     private readonly nowMs = 0,
+    private readonly ambient: Record<string, number> = {},
   ) {}
 
   elapsed(): number {
     return this.nowMs;
+  }
+
+  ambientCounts(): Record<string, number> {
+    return this.ambient;
   }
 
   command(name: string, args: Record<string, unknown> = {}): Promise<CommandResult> {
@@ -43,8 +48,8 @@ class FakeSession implements PredicateSession {
   }
 }
 
-function ev(type: EventType, data: Record<string, unknown>, t = 1): ReticleEvent {
-  return { t, type, sessionId: 's', data };
+function ev(type: EventType, data: Record<string, unknown>, t = 1, ref?: string): ReticleEvent {
+  return { t, type, sessionId: 's', data, ...(ref !== undefined ? { ref } : {}) };
 }
 
 describe('predicate engine', () => {
@@ -312,6 +317,35 @@ describe('settled predicate (deterministic waiting)', () => {
     );
     const r = await evaluatePredicate(session, { kind: 'settled', quietMs: 200 }, 0);
     expect(r.pass).toBe(true); // settled despite very recent text/anim churn
+  });
+
+  it('excludes learned-ambient regions so a churning chat page still settles', async () => {
+    // A real-time chat adds a DOM node every frame on ref "chat-log". Very recent (t=990, 10ms ago),
+    // so without ambient learning the page would never go quiet. Once the ref is learned-ambient
+    // (>= threshold unattributed churns), its structural churn must not hold `settled` open.
+    const churn = [
+      ev(EventType.DOM_ADDED, {}, 985, 'chat-log'),
+      ev(EventType.DOM_ADDED, {}, 990, 'chat-log'),
+    ];
+    const notLearned = new FakeSession(churn, undefined, 1000);
+    expect((await evaluatePredicate(notLearned, { kind: 'settled', quietMs: 200 }, 0)).pass).toBe(
+      false,
+    );
+    const learned = new FakeSession(churn, undefined, 1000, { 'chat-log': 25 });
+    const r = await evaluatePredicate(learned, { kind: 'settled', quietMs: 200 }, 0);
+    expect(r.pass).toBe(true); // settled: chat-log churn is ambient, excluded from the settle oracle
+  });
+
+  it('keeps a non-ambient structural change even while an ambient region churns', async () => {
+    // The chat churns (ambient) AND a real modal mounts on a different ref → still NOT settled.
+    const session = new FakeSession(
+      [ev(EventType.DOM_ADDED, {}, 990, 'chat-log'), ev(EventType.DOM_ADDED, {}, 992, 'modal-root')],
+      undefined,
+      1000,
+      { 'chat-log': 25 },
+    );
+    const r = await evaluatePredicate(session, { kind: 'settled', quietMs: 200 }, 0);
+    expect(r.pass).toBe(false); // modal-root is real work, holds settle open
   });
 
   it('respects the since floor: activity before the floor does not count', async () => {

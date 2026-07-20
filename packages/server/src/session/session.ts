@@ -19,6 +19,7 @@ import {
 import { RingBuffer } from '../events/ring-buffer.js';
 import type { JournalReader, JournalRecorder } from '../journal/journal-recorder.js';
 import { filterEvents, mergeEventsBySeq, type EventQueryOptions } from '../journal/journal-query.js';
+import type { AmbientCounts } from '../journal/ambient.js';
 import { ReviewStore, type ReviewMark } from './review-store.js';
 import { buildSessionRecommendation } from './session-recommendation.js';
 import { buildPresenterArgs } from './presenter-args.js';
@@ -121,6 +122,9 @@ export class Session {
   #journal: JournalRecorder | undefined;
   /** Read side of the journal, for queries that must survive ring-buffer eviction. */
   #journalReader: JournalReader | undefined;
+  /** Learned per-ref ambient-churn counts (unattributed real-time regions), accumulated in-session and
+   *  seeded from the persisted map. The settle oracle reads these to let a churning page still go quiet. */
+  #ambient: AmbientCounts = {};
 
   constructor(hello: HelloMessage, socket: WebSocket, clock: Clock) {
     this.id = hello.sessionId;
@@ -239,8 +243,23 @@ export class Session {
     // The recorder attributes the event to the in-flight action (if any) and journals it durably; the
     // returned event carries actionId/attribution so the buffer + all queries see the same causal link.
     const attributed = this.#journal?.observe(stamped) ?? stamped;
+    // Learn ambient churn: an unattributed, ref-bearing event is background motion (chat/ticker), not
+    // action-caused work. Counting only unattributed events keeps genuine action effects out of the map.
+    if (attributed.actionId === undefined && attributed.ref !== undefined) {
+      this.#ambient[attributed.ref] = (this.#ambient[attributed.ref] ?? 0) + 1;
+    }
     this.#buffer.push(attributed, t, byteSize);
     for (const listener of this.#listeners) listener(attributed);
+  }
+
+  /** Learned ambient-churn counts (PredicateSession hook the settle oracle reads). */
+  ambientCounts(): AmbientCounts {
+    return this.#ambient;
+  }
+
+  /** Seed the ambient map from the persisted per-app `.reticle/ambient.json` (sharpens across sessions). */
+  seedAmbient(counts: AmbientCounts): void {
+    this.#ambient = { ...counts, ...this.#ambient };
   }
 
   /**
