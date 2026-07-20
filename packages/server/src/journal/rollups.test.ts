@@ -53,6 +53,15 @@ describe('computeSegments', () => {
     expect(seg?.durationMs).toBe(30); // 40 - 10
   });
 
+  it('counts WS/SSE stream frames by direction, omitting the field when there are none', () => {
+    const stream = (direction: string): ReticleEvent =>
+      e(EventType.NET_STREAM, { data: { transport: 'ws', direction, url: '/ws' } });
+    const segs = computeSegments([stream('open'), stream('in'), stream('in'), stream('out')]);
+    expect(segs[0]?.streams).toEqual({ frames: 4, opened: 1, in: 2, out: 1 });
+    // a segment with no stream activity omits the field entirely
+    expect(computeSegments([e(EventType.DOM_ADDED)])[0]?.streams).toBeUndefined();
+  });
+
   it('returns no segments for an empty stream', () => {
     expect(computeSegments([])).toEqual([]);
   });

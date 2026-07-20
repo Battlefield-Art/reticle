@@ -22,6 +22,18 @@ export interface SegmentRollup {
   consoleErrors: number;
   /** Unique state-change paths touched, in first-seen order. */
   statePathsChanged: string[];
+  /**
+   * WS/SSE frame activity in the segment — on a stream-first app the network story IS the stream story.
+   * Directions: opens (connections), in (server→client), out (client→server). Absent when no streams.
+   */
+  streams?: { frames: number; opened: number; in: number; out: number };
+}
+
+interface StreamAcc {
+  frames: number;
+  opened: number;
+  in: number;
+  out: number;
 }
 
 interface SegmentAcc {
@@ -33,6 +45,7 @@ interface SegmentAcc {
   netErrors: number;
   consoleErrors: number;
   statePaths: string[];
+  streams: StreamAcc;
 }
 
 function finalize(acc: SegmentAcc): SegmentRollup {
@@ -45,6 +58,7 @@ function finalize(acc: SegmentAcc): SegmentRollup {
     net: { total: acc.netTotal, errors: acc.netErrors },
     consoleErrors: acc.consoleErrors,
     statePathsChanged: acc.statePaths,
+    ...(acc.streams.frames === 0 ? {} : { streams: acc.streams }),
   };
 }
 
@@ -70,6 +84,7 @@ export function computeSegments(events: readonly ReticleEvent[]): SegmentRollup[
     netErrors: 0,
     consoleErrors: 0,
     statePaths: [],
+    streams: { frames: 0, opened: 0, in: 0, out: 0 },
   });
 
   for (const event of events) {
@@ -92,6 +107,13 @@ export function computeSegments(events: readonly ReticleEvent[]): SegmentRollup[
     if (event.type === EventType.STATE_CHANGE) {
       const name = event.data['name'];
       if (typeof name === 'string' && !acc.statePaths.includes(name)) acc.statePaths.push(name);
+    }
+    if (event.type === EventType.NET_STREAM) {
+      acc.streams.frames += 1;
+      const direction = event.data['direction'];
+      if (direction === 'open') acc.streams.opened += 1;
+      else if (direction === 'in') acc.streams.in += 1;
+      else if (direction === 'out') acc.streams.out += 1;
     }
   }
   if (acc !== undefined) segments.push(finalize(acc));
