@@ -103,6 +103,7 @@ export const EVENT_PAYLOAD_SCHEMAS = {
   [EventType.PAGE_HEALTH]: z
     .object({ hidden: z.boolean(), focused: z.boolean(), reason: z.string().optional() })
     .passthrough(),
+  [EventType.RENDER_COMMIT]: z.object({ commits: z.number() }),
   [EventType.FOCUS_CHANGE]: z.object({
     to: z.string().optional(),
     from: z.string().optional(),

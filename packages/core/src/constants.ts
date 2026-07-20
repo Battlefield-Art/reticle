@@ -238,6 +238,9 @@ export const EventType = {
   STORAGE_CHANGE: 'storage.change',
   /** page-level visibility/focus health (distinct from element-level VISIBLE_*). */
   PAGE_HEALTH: 'page.health',
+  /** aggregated React commits over a throttle window (dev builds) — `data: { commits }`. Commit storms /
+   * wasted re-renders show up here without a per-render flood. */
+  RENDER_COMMIT: 'render.commit',
   /** element focus moved — `data: { to, from, toBody }`. Focus dropping to body after an act is a regression. */
   FOCUS_CHANGE: 'focus.change',
   /** browser → bridge: a human recording compiled in-page. */

@@ -404,6 +404,15 @@ export class Reticle {
     this.#emit(EventType.STATE_CHANGE, { name, value });
   }
 
+  /**
+   * Report an aggregated count of React commits (the @reticlehq/react render meter calls this on a
+   * throttle). Emits a single RENDER_COMMIT event per window so commit storms are observable without a
+   * per-render flood. Dev-only, like the whole SDK.
+   */
+  renderCommit(commits: number): void {
+    if (commits > 0) this.#emit(EventType.RENDER_COMMIT, { commits });
+  }
+
   /** Advertise the app's testable surface so the agent learns it without reading source. */
   describe(input: CapabilitiesInput): void {
     registerCapabilities(input);

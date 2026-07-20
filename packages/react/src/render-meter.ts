@@ -18,6 +18,7 @@
  */
 import { registerStore } from '@reticlehq/browser';
 import { HYDRATION_COMPLETE_SIGNAL, createHydrationTracker } from './hydration.js';
+import { createCommitAggregator } from './commit-aggregator.js';
 
 const HOOK_KEY = '__REACT_DEVTOOLS_GLOBAL_HOOK__';
 const RENDER_STORE = '__reticle_renders';
@@ -30,10 +31,26 @@ const hydration = createHydrationTracker(() => {
   instance?.signal?.(HYDRATION_COMPLETE_SIGNAL);
 });
 
-/** One React commit: bump the counter and let the hydration tracker fire on the first. */
+// Access the SDK instance structurally (avoids importing the whole Reticle type into this tooling module).
+function reticleInstance(): { renderCommit?: (n: number) => void } | undefined {
+  return (globalThis as { __reticleInstance?: { renderCommit?: (n: number) => void } }).__reticleInstance;
+}
+
+// Emit the render stream as aggregated RENDER_COMMIT events, throttled to one flush per frame so a commit
+// storm is one event of magnitude N, never a per-render flood. requestAnimationFrame when available.
+const commitStream = createCommitAggregator({
+  schedule: (fn) => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => fn());
+    else setTimeout(fn, 16);
+  },
+  flush: (n) => reticleInstance()?.renderCommit?.(n),
+});
+
+/** One React commit: bump the counter, fire hydration on the first, and feed the throttled stream. */
 function onReactCommit(): void {
   commits += 1;
   hydration.onCommit();
+  commitStream.onCommit();
 }
 
 interface DevtoolsHook {

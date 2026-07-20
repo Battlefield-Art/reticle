@@ -233,6 +233,7 @@ export {
 } from './render-meter.js';
 export { HYDRATION_COMPLETE_SIGNAL, createHydrationTracker, type HydrationTracker } from './hydration.js';
 export { buildErrorBoundaryData, reticleOnCaughtError, type ErrorBoundaryData } from './error-boundary.js';
+export { createCommitAggregator, type CommitAggregator } from './commit-aggregator.js';
 
 // This package IS the React kit: one install gives an app dev the full browser-side surface
 // (the `reticle` instance + all sensing) plus this React adapter. Re-exporting the sensor here is
