@@ -226,7 +226,7 @@ export const ACT_TOOLS: ToolDef[] = [
       }
 
       // Open the journal's action-attribution window: events until finishAction attribute to this act.
-      session.beginAction(ReticleCommand.ACT, asRecord(args));
+      session.beginAction(ReticleTool.ACT, asRecord(args));
       let settledOutcome: boolean | undefined;
       try {
         const result = await session.command(ReticleCommand.ACT, {
@@ -290,18 +290,24 @@ export const ACT_TOOLS: ToolDef[] = [
       if (paused !== undefined) return paused;
       const since = session.elapsed();
       session.markActCursor(since); // honesty: a later wait_for/assert floors at this cursor
-      const result = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: args['steps'] });
-      if (!result.ok) throw new Error(result.error ?? 'act_sequence failed');
-      if (deps.recordings.active().length > 0) {
-        deps.recordings.capture(compileSequenceStep(args, result.result));
+      session.beginAction(ReticleTool.ACT_SEQUENCE, asRecord(args));
+      try {
+        const result = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: args['steps'] });
+        if (!result.ok) throw new Error(result.error ?? 'act_sequence failed');
+        if (deps.recordings.active().length > 0) {
+          deps.recordings.capture(compileSequenceStep(args, result.result));
+        }
+        const r = asRecord(result.result); // per-step settle status lives in result.steps[]
+        return withControl(session, {
+          since,
+          dispatched: r['count'] !== undefined,
+          result: leanActResult(result.result),
+          ...healthEnvelope(session),
+        });
+      } finally {
+        // Per-step settle lives in steps[]; the sequence action records without a single settle bool.
+        session.finishAction();
       }
-      const r = asRecord(result.result); // per-step settle status lives in result.steps[]
-      return withControl(session, {
-        since,
-        dispatched: r['count'] !== undefined,
-        result: leanActResult(result.result),
-        ...healthEnvelope(session),
-      });
     },
   },
   {
@@ -379,29 +385,43 @@ export const ACT_TOOLS: ToolDef[] = [
 
       const since = session.elapsed();
       session.markActCursor(since);
-      const actResult = await session.command(ReticleCommand.ACT, {
-        ref: args['ref'],
-        action: args['action'],
-        args: args['args'] ?? {},
-      });
-      if (!actResult.ok) throw new Error(actResult.error ?? 'act failed');
+      // The attribution window stays open across the settle wait below, so post-dispatch async events
+      // (the whole point of act_and_wait) attribute to this action. finishAction fires after the wait.
+      session.beginAction(ReticleTool.ACT_AND_WAIT, asRecord(args));
+      let settledOutcome: boolean | undefined;
+      try {
+        const actResult = await session.command(ReticleCommand.ACT, {
+          ref: args['ref'],
+          action: args['action'],
+          args: args['args'] ?? {},
+        });
+        if (!actResult.ok) throw new Error(actResult.error ?? 'act failed');
 
-      // Honesty: floor the predicate at this act's cursor so a stale buffered event can't satisfy it.
-      const verdict =
-        timeout > 0
-          ? await waitForPredicate(session, until, timeout, since)
-          : await evaluatePredicate(session, until, since);
+        // Honesty: floor the predicate at this act's cursor so a stale buffered event can't satisfy it.
+        const verdict =
+          timeout > 0
+            ? await waitForPredicate(session, until, timeout, since)
+            : await evaluatePredicate(session, until, since);
 
-      const trace = summarizeReaction(
-        buildReactionReport(session.eventsSince(since), session.elapsed() - since),
-      );
-      return withControl(session, {
-        effect: leanActResult(actResult.result),
-        verdict,
-        trace,
-        since,
-        ...healthEnvelope(session),
-      });
+        const r = asRecord(actResult.result);
+        if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
+        const trace = summarizeReaction(
+          buildReactionReport(session.eventsSince(since), session.elapsed() - since),
+        );
+        return withControl(session, {
+          effect: leanActResult(actResult.result),
+          verdict,
+          trace,
+          since,
+          ...healthEnvelope(session),
+        });
+      } finally {
+        session.finishAction(
+          undefined,
+          settledOutcome,
+          settledOutcome === true ? session.elapsed() - since : undefined,
+        );
+      }
     },
   },
 ];

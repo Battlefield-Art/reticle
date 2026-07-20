@@ -22,17 +22,25 @@ export const BROWSER_TOOLS: ToolDef[] = [
     handler: async (deps, args) => {
       const url = asString(args['url']);
       if (url === undefined || url.length === 0) return { ok: false, reason: 'url required' };
-      const result = (await commandOrThrow(
-        deps,
-        asString(args['sessionId']),
-        ReticleCommand.NAVIGATE,
-        { url },
-      )) as { ok?: unknown; url?: unknown; reason?: unknown };
-      return {
-        ok: result.ok === true,
-        ...(typeof result.url === 'string' ? { url: result.url } : {}),
-        ...(typeof result.reason === 'string' ? { reason: result.reason } : {}),
-      };
+      // Record navigate as an action. Its window is usually empty (the page unloads and the SDK
+      // reconnects), but the action record itself — "navigated to X" — is the causal fact worth keeping.
+      const session = deps.sessions.resolve(asString(args['sessionId']));
+      session.beginAction(ReticleTool.NAVIGATE, { url });
+      try {
+        const result = (await commandOrThrow(
+          deps,
+          asString(args['sessionId']),
+          ReticleCommand.NAVIGATE,
+          { url },
+        )) as { ok?: unknown; url?: unknown; reason?: unknown };
+        return {
+          ok: result.ok === true,
+          ...(typeof result.url === 'string' ? { url: result.url } : {}),
+          ...(typeof result.reason === 'string' ? { reason: result.reason } : {}),
+        };
+      } finally {
+        session.finishAction();
+      }
     },
   },
   {
