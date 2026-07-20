@@ -13,6 +13,7 @@ export const CLI_USAGE = `usage:
   reticle open  [url] [--port N]                        (show the app: reuse the connected tab, else open one)
   reticle verify <url> [--headed] [--timeout N] [--storage-state <file>]  (one-shot: drive the URL, verify saved flows, exit 0=pass)
   reticle affected <file...>                           (which saved flows must re-verify for these changed files)
+  reticle gate <file...>                               (exit non-zero unless passing artifacts cover the affected flows)
   reticle drive <url> [--headed]                       (foreground mode — for debugging)
   reticle mcp   [--port N] [--drive <url>] [--headed]  (MCP stdio proxy — auto-starts daemon if needed)
   reticle license                                      (show enterprise license status: active | eval | missing)`;
@@ -25,6 +26,7 @@ const OPEN_COMMAND = 'open';
 const DRIVE_COMMAND = 'drive';
 const VERIFY_COMMAND = 'verify';
 const AFFECTED_COMMAND = 'affected';
+const GATE_COMMAND = 'gate';
 const MCP_COMMAND = 'mcp';
 const LICENSE_COMMAND = 'license';
 const VERSION_COMMAND = 'version';
@@ -72,6 +74,7 @@ export type CliResult =
   | { kind: 'drive'; port: number; driveUrl: string; headless: boolean }
   | { kind: 'verify'; url: string; headless: boolean; timeoutMs?: number; storageState?: string }
   | { kind: 'affected'; files: string[] }
+  | { kind: 'gate'; files: string[] }
   | { kind: 'mcp'; port: number; driveUrl?: string; headless: boolean }
   | { kind: 'error'; message: string };
 
@@ -337,6 +340,14 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
         return { kind: 'error', message: 'usage: reticle affected <file> [file...]' };
       }
       return { kind: 'affected', files };
+    }
+    case GATE_COMMAND: {
+      // `reticle gate <file...>` — exit non-zero unless passing artifacts cover the affected flows.
+      const files = rest.filter((arg) => !arg.startsWith('-'));
+      if (files.length === 0) {
+        return { kind: 'error', message: 'usage: reticle gate <file> [file...]' };
+      }
+      return { kind: 'gate', files };
     }
     case MCP_COMMAND: {
       const r = parseServeFlags(rest, defaultPort);

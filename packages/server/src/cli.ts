@@ -2,10 +2,13 @@
 import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
-import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv } from '@reticlehq/core';
+import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv, RunFlowStatus } from '@reticlehq/core';
 import { FlowStore } from './flows/flows.js';
-import { createNodeFileSystem } from './project/fs-port.js';
+import { RunStore } from './runs/run-store.js';
+import { createNodeFileSystem, type FileSystemPort } from './project/fs-port.js';
 import { affectedSavedFlows, type NamedFlow } from './flows/flow-sources.js';
+import { gateDecision } from './flows/gate.js';
+import { FlakeStore } from './flows/flake-store.js';
 import { start, startDaemon } from './index.js';
 import { SERVER_VERSION } from './server-version.js';
 import { log } from './log.js';
@@ -150,14 +153,7 @@ async function handleAffected(files: string[]): Promise<void> {
   try {
     const fs = createNodeFileSystem();
     const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
-    const projectId = readProjectId(process.cwd());
-    const store = new FlowStore(fs, reticleRoot, { now: () => Date.now() });
-    const flows: NamedFlow[] = [];
-    for (const name of await store.list(projectId)) {
-      const loaded = await store.load(name, projectId);
-      if (loaded.ok) flows.push({ name: loaded.value.name, steps: loaded.value.steps });
-    }
-    const result = affectedSavedFlows(flows, files);
+    const result = affectedSavedFlows(await loadNamedFlows(fs, reticleRoot), files);
     log('reticle_affected', {
       changedFiles: files,
       affected: result.affected,
@@ -165,6 +161,46 @@ async function handleAffected(files: string[]): Promise<void> {
     });
   } catch (error) {
     log('reticle_affected_failed', { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+/** Load the {name, steps} of every saved flow for the active project. */
+async function loadNamedFlows(fs: FileSystemPort, reticleRoot: string): Promise<NamedFlow[]> {
+  const projectId = readProjectId(process.cwd());
+  const store = new FlowStore(fs, reticleRoot, { now: () => Date.now() });
+  const flows: NamedFlow[] = [];
+  for (const name of await store.list(projectId)) {
+    const loaded = await store.load(name, projectId);
+    if (loaded.ok) flows.push({ name: loaded.value.name, steps: loaded.value.steps });
+  }
+  return flows;
+}
+
+/**
+ * `reticle gate <file...>` — exit non-zero unless passing artifacts cover the flows affected by the
+ * changed files. Flaky flows are quarantined (surfaced, not blocking). The environment-side enforcement
+ * that makes verification unavoidable. Never throws; a fault fails closed (exit 1).
+ */
+async function handleGate(files: string[]): Promise<void> {
+  try {
+    const fs = createNodeFileSystem();
+    const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
+    const affected = affectedSavedFlows(await loadNamedFlows(fs, reticleRoot), files).affected;
+    const latest = await new RunStore(fs, reticleRoot).latest();
+    const passing = (latest?.flows ?? [])
+      .filter((f) => f.status === RunFlowStatus.PASS || f.status === RunFlowStatus.HEALED)
+      .map((f) => f.name);
+    const flaky = await new FlakeStore(fs, reticleRoot).flakyFlows();
+    const result = gateDecision({ affected, passing, flaky });
+    log('reticle_gate', {
+      pass: result.pass,
+      uncovered: result.uncovered,
+      quarantined: result.quarantined,
+    });
+    if (!result.pass) process.exitCode = 1;
+  } catch (error) {
+    log('reticle_gate_failed', { error: error instanceof Error ? error.message : String(error) });
+    process.exitCode = 1;
   }
 }
 
@@ -389,6 +425,9 @@ function main(): void {
       break;
     case 'affected':
       void handleAffected(parsed.files);
+      break;
+    case 'gate':
+      void handleGate(parsed.files);
       break;
     case 'mcp':
       handleMcp(parsed);

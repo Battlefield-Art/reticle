@@ -71,6 +71,14 @@ describe('parseCliArgs', () => {
     expect(parseCliArgs(['affected'], PORT).kind).toBe('error');
   });
 
+  it('parses `gate <file...>` into the changed-file list', () => {
+    expect(parseCliArgs(['gate', 'src/a.ts'], PORT)).toEqual({ kind: 'gate', files: ['src/a.ts'] });
+  });
+
+  it('rejects `gate` with no files', () => {
+    expect(parseCliArgs(['gate'], PORT).kind).toBe('error');
+  });
+
   it('serve with no flags uses the default port', () => {
     expect(parseCliArgs(['serve'], PORT)).toEqual({
       kind: 'serve',
