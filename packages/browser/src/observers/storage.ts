@@ -81,31 +81,39 @@ function redactFor(key: string, value: string | null): string | undefined {
   return isSensitiveKey(key) ? REDACTED_VALUE : value;
 }
 
+type SetItemFn = (this: Storage, key: string, value: string) => void;
+type RemoveItemFn = (this: Storage, key: string) => void;
+
 /**
  * Observe storage WRITES (not just reads): patch Storage.setItem/removeItem so a token persisted, a
  * cart updated, or a session cleared emits a STORAGE_CHANGE {area, key, old?, new?} diff — the "before"
- * the pull path can never see. Fully reversible; localStorage and sessionStorage share one prototype,
- * so `this` identifies the area. Values are redacted by the same credential rule as the read path.
+ * the pull path can never see. localStorage and sessionStorage share one prototype, so `this` inside the
+ * patch identifies the area. The native originals are read off the prototype descriptor (not a bare
+ * method access) and re-dispatched via `.call(this)`. Fully reversible; values redacted like the reads.
  */
 export function installStorage(emit: Emit): Teardown {
   if (typeof Storage === 'undefined') return () => undefined;
   const proto = Storage.prototype;
-  /* eslint-disable @typescript-eslint/unbound-method -- captured to re-invoke via .call(this) */
-  const origSetItem = proto.setItem;
-  const origRemoveItem = proto.removeItem;
-  /* eslint-enable @typescript-eslint/unbound-method */
+  const origSet = Object.getOwnPropertyDescriptor(proto, 'setItem')?.value as SetItemFn | undefined;
+  const origRemove = Object.getOwnPropertyDescriptor(proto, 'removeItem')?.value as
+    | RemoveItemFn
+    | undefined;
+  if (origSet === undefined || origRemove === undefined) return () => undefined;
 
+  const session = safeArea(() => window.sessionStorage);
   const areaOf = (storage: Storage): 'local' | 'session' =>
-    storage === safeArea(() => window.sessionStorage) ? 'session' : 'local';
+    storage === session ? 'session' : 'local';
+  const readOld = (storage: Storage, key: string): string | null => {
+    try {
+      return storage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
 
   proto.setItem = function patchedSetItem(this: Storage, key: string, value: string): void {
-    let old: string | null = null;
-    try {
-      old = this.getItem(key);
-    } catch {
-      /* unreadable — omit the old value */
-    }
-    origSetItem.call(this, key, value);
+    const old = readOld(this, key);
+    origSet.call(this, key, value);
     emit(EventType.STORAGE_CHANGE, {
       area: areaOf(this),
       key,
@@ -115,13 +123,8 @@ export function installStorage(emit: Emit): Teardown {
   };
 
   proto.removeItem = function patchedRemoveItem(this: Storage, key: string): void {
-    let old: string | null = null;
-    try {
-      old = this.getItem(key);
-    } catch {
-      /* unreadable */
-    }
-    origRemoveItem.call(this, key);
+    const old = readOld(this, key);
+    origRemove.call(this, key);
     // No `new` field ⇒ the key was removed.
     emit(EventType.STORAGE_CHANGE, {
       area: areaOf(this),
@@ -131,7 +134,7 @@ export function installStorage(emit: Emit): Teardown {
   };
 
   return () => {
-    proto.setItem = origSetItem;
-    proto.removeItem = origRemoveItem;
+    proto.setItem = origSet;
+    proto.removeItem = origRemove;
   };
 }
