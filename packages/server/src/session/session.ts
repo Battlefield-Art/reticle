@@ -17,7 +17,8 @@ import {
   type ReticleEvent,
 } from '@reticlehq/core';
 import { RingBuffer } from '../events/ring-buffer.js';
-import type { JournalRecorder } from '../journal/journal-recorder.js';
+import type { JournalReader, JournalRecorder } from '../journal/journal-recorder.js';
+import { filterEvents, mergeEventsBySeq, type EventQueryOptions } from '../journal/journal-query.js';
 import { ReviewStore, type ReviewMark } from './review-store.js';
 import { buildSessionRecommendation } from './session-recommendation.js';
 import { buildPresenterArgs } from './presenter-args.js';
@@ -118,6 +119,8 @@ export class Session {
   #firstCommandDone = false;
   /** Durable causal-journal recorder; undefined when journaling is off (opt-out or not yet attached). */
   #journal: JournalRecorder | undefined;
+  /** Read side of the journal, for queries that must survive ring-buffer eviction. */
+  #journalReader: JournalReader | undefined;
 
   constructor(hello: HelloMessage, socket: WebSocket, clock: Clock) {
     this.id = hello.sessionId;
@@ -240,9 +243,27 @@ export class Session {
     for (const listener of this.#listeners) listener(attributed);
   }
 
-  /** Attach the durable causal-journal recorder (off by default; wired at session creation). */
-  setJournal(recorder: JournalRecorder): void {
+  /**
+   * Attach the durable causal-journal recorder (off by default; wired at session creation). The optional
+   * reader is the query fall-through source — pass it to make `queryEvents` survive buffer eviction.
+   */
+  setJournal(recorder: JournalRecorder, reader?: JournalReader): void {
     this.#journal = recorder;
+    this.#journalReader = reader;
+  }
+
+  /**
+   * Journal-backed event query: the ring buffer's events, merged with the durable journal **only when
+   * the buffer has evicted** (so a healthy session pays no disk cost), then filtered by since/until/
+   * actionId. This is how "what did action N cause" is answered after the buffer has dropped the
+   * evidence — the substrate's whole point. The sync `eventsSince`/`window` stay for the hot path.
+   */
+  async queryEvents(options: EventQueryOptions): Promise<ReticleEvent[]> {
+    if (this.#journalReader !== undefined && this.#buffer.bufferHealth().dropped > 0) {
+      const durable = await this.#journalReader.readEvents();
+      return filterEvents(mergeEventsBySeq(durable, this.#buffer.since(0)), options);
+    }
+    return filterEvents(this.#buffer.since(options.since ?? 0), options);
   }
 
   /**

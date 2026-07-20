@@ -11,6 +11,11 @@ export interface JournalSink {
   appendAction(action: JournalAction): Promise<void>;
 }
 
+/** Read side of the durable journal — the fall-through source when the ring buffer has evicted. */
+export interface JournalReader {
+  readEvents(): Promise<ReticleEvent[]>;
+}
+
 export interface JournalRecorderOptions {
   /** Injected elapsed-ms clock (never read from Date here — the clock-injection rule). */
   now: () => number;
