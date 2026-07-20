@@ -33,6 +33,8 @@ export interface ReticleDirPaths {
   envelopes: string;
   /** .../.reticle/ambient.json (learned ambient-churn region map) */
   ambient: string;
+  /** .../.reticle/flake.json (per-flow flake ledger) */
+  flake: string;
 }
 
 export function reticleDirPaths(root: string): ReticleDirPaths {
@@ -47,6 +49,7 @@ export function reticleDirPaths(root: string): ReticleDirPaths {
     sessions: join(root, ReticleDir.SESSIONS_SUBDIR),
     envelopes: join(root, ReticleDir.ENVELOPES_FILE),
     ambient: join(root, ReticleDir.AMBIENT_FILE),
+    flake: join(root, ReticleDir.FLAKE_FILE),
   };
 }
 

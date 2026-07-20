@@ -124,6 +124,8 @@ export const ReticleDir = {
   ENVELOPES_FILE: 'envelopes.json',
   /** learned ambient (action-less churn) region map — excluded from settle/summaries/envelopes. */
   AMBIENT_FILE: 'ambient.json',
+  /** per-flow flake ledger — replay outcomes that decide intermittent-failure quarantine. */
+  FLAKE_FILE: 'flake.json',
   /**
    * Auto-provisioned bridge pairing token, stored at ~/.reticle/pairing-token (mode 0600). Written by
    * the daemon, read Node-side by the build plugins to inject into connect(). A browser sandbox cannot
