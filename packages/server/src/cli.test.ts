@@ -88,6 +88,11 @@ describe('parseCliArgs', () => {
     expect(parseCliArgs(['gate'], PORT).kind).toBe('error');
   });
 
+  it('parses `watch [url]` with and without a url', () => {
+    expect(parseCliArgs(['watch', 'http://localhost:3000'], PORT)).toEqual({ kind: 'watch', url: 'http://localhost:3000' });
+    expect(parseCliArgs(['watch'], PORT)).toEqual({ kind: 'watch' });
+  });
+
   it('serve with no flags uses the default port', () => {
     expect(parseCliArgs(['serve'], PORT)).toEqual({
       kind: 'serve',

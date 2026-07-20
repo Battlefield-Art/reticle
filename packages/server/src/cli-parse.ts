@@ -14,6 +14,7 @@ export const CLI_USAGE = `usage:
   reticle verify <url> [--headed] [--timeout N] [--storage-state <file>]  (one-shot: drive the URL, verify saved flows, exit 0=pass)
   reticle affected [--since <ref>] [file...]           (which saved flows must re-verify for the changed files)
   reticle gate [--since <ref>] [file...]               (exit non-zero unless passing artifacts cover the affected flows)
+  reticle watch [url]                                  (on save, report which saved flows must re-verify)
   reticle drive <url> [--headed]                       (foreground mode — for debugging)
   reticle mcp   [--port N] [--drive <url>] [--headed]  (MCP stdio proxy — auto-starts daemon if needed)
   reticle license                                      (show enterprise license status: active | eval | missing)`;
@@ -27,6 +28,7 @@ const DRIVE_COMMAND = 'drive';
 const VERIFY_COMMAND = 'verify';
 const AFFECTED_COMMAND = 'affected';
 const GATE_COMMAND = 'gate';
+const WATCH_COMMAND = 'watch';
 const MCP_COMMAND = 'mcp';
 const LICENSE_COMMAND = 'license';
 const VERSION_COMMAND = 'version';
@@ -75,6 +77,7 @@ export type CliResult =
   | { kind: 'verify'; url: string; headless: boolean; timeoutMs?: number; storageState?: string }
   | { kind: 'affected'; files: string[]; since?: string }
   | { kind: 'gate'; files: string[]; since?: string }
+  | { kind: 'watch'; url?: string }
   | { kind: 'mcp'; port: number; driveUrl?: string; headless: boolean }
   | { kind: 'error'; message: string };
 
@@ -364,6 +367,11 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
         return { kind: 'error', message: 'usage: reticle gate [--since <ref>] [file...]' };
       }
       return { kind: 'gate', files: t.files, ...(t.since === undefined ? {} : { since: t.since }) };
+    }
+    case WATCH_COMMAND: {
+      // `reticle watch [url]` — on file save, report which saved flows must re-verify.
+      const url = rest.find((arg) => !arg.startsWith('-'));
+      return url === undefined ? { kind: 'watch' } : { kind: 'watch', url };
     }
     case MCP_COMMAND: {
       const r = parseServeFlags(rest, defaultPort);

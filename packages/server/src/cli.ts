@@ -10,6 +10,8 @@ import { affectedSavedFlows, type NamedFlow } from './flows/flow-sources.js';
 import { gateDecision } from './flows/gate.js';
 import { FlakeStore } from './flows/flake-store.js';
 import { changedFilesSince } from './flows/git-changed.js';
+import { createWatchBatcher } from './flows/watch-batcher.js';
+import { watch } from 'node:fs';
 import { start, startDaemon } from './index.js';
 import { SERVER_VERSION } from './server-version.js';
 import { log } from './log.js';
@@ -182,6 +184,42 @@ async function loadNamedFlows(fs: FileSystemPort, reticleRoot: string): Promise<
     if (loaded.ok) flows.push({ name: loaded.value.name, steps: loaded.value.steps });
   }
   return flows;
+}
+
+/** File-change extensions worth reacting to (skip node_modules churn, dotfiles, build output). */
+const WATCHED_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte)$/;
+const WATCH_DEBOUNCE_MS = 200;
+
+/**
+ * `reticle watch [url]` — on every save, report which saved flows must re-verify (the affected set).
+ * Environment-side (costs the agent nothing per turn); the buddy loop. This v1 detects + reports on
+ * change; auto-replaying the affected flows against the app is the next increment. Long-running.
+ */
+function handleWatch(): void {
+  const fs = createNodeFileSystem();
+  const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
+  const batcher = createWatchBatcher({
+    debounceMs: WATCH_DEBOUNCE_MS,
+    schedule: (fn, ms) => {
+      setTimeout(fn, ms).unref();
+    },
+    onFlush: (files) => {
+      void loadNamedFlows(fs, reticleRoot)
+        .then((flows) => {
+          const result = affectedSavedFlows(flows, files);
+          if (result.affected.length > 0) {
+            log('reticle_watch_affected', { changed: files, affected: result.affected });
+          }
+        })
+        .catch((error) => {
+          log('reticle_watch_failed', { error: error instanceof Error ? error.message : String(error) });
+        });
+    },
+  });
+  log('reticle_watch_started', { cwd: process.cwd() });
+  watch(process.cwd(), { recursive: true }, (_event, filename) => {
+    if (typeof filename === 'string' && WATCHED_EXTENSIONS.test(filename)) batcher.onChange(filename);
+  });
 }
 
 /**
@@ -437,6 +475,9 @@ function main(): void {
       break;
     case 'gate':
       void handleGate(parsed.files, parsed.since);
+      break;
+    case 'watch':
+      handleWatch();
       break;
     case 'mcp':
       handleMcp(parsed);
