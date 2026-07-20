@@ -279,6 +279,8 @@ export const PhenomenonType = {
   HIDDEN_500: 'hidden-500',
   /** A request started and never completed within the window — a hung/in-flight request. */
   HUNG_REQUEST: 'hung-request',
+  /** A React error boundary caught and swallowed — a fine-looking fallback over a broken feature. */
+  SWALLOWED_ERROR: 'swallowed-error',
 } as const;
 export type PhenomenonType = (typeof PhenomenonType)[keyof typeof PhenomenonType];
 

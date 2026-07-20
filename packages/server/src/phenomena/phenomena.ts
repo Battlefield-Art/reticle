@@ -1,6 +1,7 @@
 import {
   EventType,
   PhenomenonType,
+  RETICLE_ERROR_BOUNDARY_SIGNAL,
   RETICLE_HYDRATION_SIGNAL,
   type JournalAction,
   type ReticleEvent,
@@ -94,6 +95,21 @@ export function detectPreHydrationClicks(
     }));
 }
 
+/** A React error boundary that caught and swallowed — surfaced on the signal channel by the adapter. */
+export function detectSwallowedErrors(events: readonly ReticleEvent[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const event of events) {
+    if (event.type === EventType.SIGNAL && event.data['name'] === RETICLE_ERROR_BOUNDARY_SIGNAL) {
+      const detail = event.data['data'];
+      findings.push({
+        phenomenon: PhenomenonType.SWALLOWED_ERROR,
+        evidence: typeof detail === 'object' && detail !== null ? (detail as Record<string, unknown>) : {},
+      });
+    }
+  }
+  return findings;
+}
+
 /** Run every journal-only matcher over a session's events + actions. */
 export function detectPhenomena(
   events: readonly ReticleEvent[],
@@ -104,5 +120,6 @@ export function detectPhenomena(
     ...detectHidden500(events),
     ...detectDeadClicks(actions),
     ...detectPreHydrationClicks(events, actions),
+    ...detectSwallowedErrors(events),
   ];
 }

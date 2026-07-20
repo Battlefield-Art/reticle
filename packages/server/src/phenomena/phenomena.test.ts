@@ -12,8 +12,9 @@ import {
   detectHungRequests,
   detectPhenomena,
   detectPreHydrationClicks,
+  detectSwallowedErrors,
 } from './phenomena.js';
-import { RETICLE_HYDRATION_SIGNAL } from '@reticlehq/core';
+import { RETICLE_ERROR_BOUNDARY_SIGNAL, RETICLE_HYDRATION_SIGNAL } from '@reticlehq/core';
 
 let seq = 0;
 function e(type: EventType, data: Record<string, unknown>): ReticleEvent {
@@ -85,6 +86,21 @@ describe('detectPreHydrationClicks', () => {
   it('does not guess when there is no hydration signal (not a React app)', () => {
     const actions = [action({ actionId: 'a1', tool: 'reticle_act', tRange: { from: 10, to: 15 } })];
     expect(detectPreHydrationClicks([], actions)).toEqual([]);
+  });
+});
+
+describe('detectSwallowedErrors', () => {
+  it('flags an error-boundary signal, carrying its detail as evidence', () => {
+    const events = [
+      e(EventType.SIGNAL, { name: RETICLE_ERROR_BOUNDARY_SIGNAL, data: { message: 'render blew up' } }),
+    ];
+    const findings = detectSwallowedErrors(events);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ phenomenon: PhenomenonType.SWALLOWED_ERROR, evidence: { message: 'render blew up' } });
+  });
+
+  it('ignores ordinary app signals', () => {
+    expect(detectSwallowedErrors([e(EventType.SIGNAL, { name: 'order:placed' })])).toEqual([]);
   });
 });
 
