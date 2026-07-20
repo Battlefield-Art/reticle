@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { EventType, ReticleCommand, REPLAY_PROGRAM_VERSION, SnapshotMode } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
+import { proposeConsequences } from '../oracles/propose-consequences.js';
 import type { CompiledProgram } from '../flows/recordings.js';
 import { replayProgram } from '../flows/replay.js';
 import { diffLines } from '../project/baselines.js';
@@ -129,6 +130,12 @@ export const READ_TOOLS: ToolDef[] = [
       recordingName: z.string(),
       program: z.unknown(),
       warning: z.string().optional(),
+      proposedConsequences: z
+        .array(z.unknown())
+        .optional()
+        .describe(
+          'Ranked mustHold proposals derived from the recorded window (signal > net/state/route > presence, weak flagged) — accept one as a flow success/until to turn the recording into a real oracle.',
+        ),
     },
     handler: (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -144,6 +151,8 @@ export const READ_TOOLS: ToolDef[] = [
       deps.recordings.saveCompiled(program);
       const unstable = rec.steps.filter((s) => !s.stable).length;
       const report = buildReactionReport(events, session.elapsed() - rec.cursor);
+      // Self-generating oracles: propose ranked mustHold from what the recorded window actually did.
+      const proposedConsequences = proposeConsequences(events);
       return Promise.resolve({
         recordingName: name,
         program,
@@ -152,6 +161,7 @@ export const READ_TOOLS: ToolDef[] = [
               warning: `${String(unstable)} step(s) not bound to a testid; replay may be brittle (in-session only)`,
             }
           : {}),
+        ...(proposedConsequences.length > 0 ? { proposedConsequences } : {}),
         ...report,
         cost: costHint(report, events.length),
       });
