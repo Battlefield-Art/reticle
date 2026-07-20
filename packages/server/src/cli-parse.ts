@@ -23,6 +23,7 @@ const STATUS_COMMAND = 'status';
 const OPEN_COMMAND = 'open';
 const DRIVE_COMMAND = 'drive';
 const VERIFY_COMMAND = 'verify';
+const AFFECTED_COMMAND = 'affected';
 const MCP_COMMAND = 'mcp';
 const LICENSE_COMMAND = 'license';
 const VERSION_COMMAND = 'version';
@@ -69,6 +70,7 @@ export type CliResult =
     }
   | { kind: 'drive'; port: number; driveUrl: string; headless: boolean }
   | { kind: 'verify'; url: string; headless: boolean; timeoutMs?: number; storageState?: string }
+  | { kind: 'affected'; files: string[] }
   | { kind: 'mcp'; port: number; driveUrl?: string; headless: boolean }
   | { kind: 'error'; message: string };
 
@@ -326,6 +328,14 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
         ...(r.timeoutMs !== undefined ? { timeoutMs: r.timeoutMs } : {}),
         ...(r.storageState !== undefined ? { storageState: r.storageState } : {}),
       };
+    }
+    case AFFECTED_COMMAND: {
+      // `reticle affected <file...>` — which saved flows must re-verify for these changed files.
+      const files = rest.filter((arg) => !arg.startsWith('-'));
+      if (files.length === 0) {
+        return { kind: 'error', message: 'usage: reticle affected <file> [file...]' };
+      }
+      return { kind: 'affected', files };
     }
     case MCP_COMMAND: {
       const r = parseServeFlags(rest, defaultPort);

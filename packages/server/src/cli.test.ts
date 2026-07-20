@@ -60,6 +60,17 @@ describe('parseCliArgs', () => {
     });
   });
 
+  it('parses `affected <file...>` into the changed-file list', () => {
+    expect(parseCliArgs(['affected', 'src/a.ts', 'src/b.tsx'], PORT)).toEqual({
+      kind: 'affected',
+      files: ['src/a.ts', 'src/b.tsx'],
+    });
+  });
+
+  it('rejects `affected` with no files', () => {
+    expect(parseCliArgs(['affected'], PORT).kind).toBe('error');
+  });
+
   it('serve with no flags uses the default port', () => {
     expect(parseCliArgs(['serve'], PORT)).toEqual({
       kind: 'serve',

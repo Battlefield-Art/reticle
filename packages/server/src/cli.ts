@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
-import { RETICLE_DEFAULT_PORT, ReticleEnv } from '@reticlehq/core';
+import { join } from 'node:path';
+import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv } from '@reticlehq/core';
+import { FlowStore } from './flows/flows.js';
+import { createNodeFileSystem } from './project/fs-port.js';
+import { affectedSavedFlows, type NamedFlow } from './flows/flow-sources.js';
 import { start, startDaemon } from './index.js';
 import { SERVER_VERSION } from './server-version.js';
 import { log } from './log.js';
@@ -135,6 +139,33 @@ function handleVersion(): void {
 
 function handleLicense(): void {
   log('reticle_license', { ...describeLicense(Date.now()) });
+}
+
+/**
+ * `reticle affected <file...>` — print which saved flows must re-verify for the given changed files.
+ * Environment-side (costs the agent nothing per turn); the foundation of watch/gate. Never throws:
+ * a load error is logged, not fatal.
+ */
+async function handleAffected(files: string[]): Promise<void> {
+  try {
+    const fs = createNodeFileSystem();
+    const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
+    const projectId = readProjectId(process.cwd());
+    const store = new FlowStore(fs, reticleRoot, { now: () => Date.now() });
+    const flows: NamedFlow[] = [];
+    for (const name of await store.list(projectId)) {
+      const loaded = await store.load(name, projectId);
+      if (loaded.ok) flows.push({ name: loaded.value.name, steps: loaded.value.steps });
+    }
+    const result = affectedSavedFlows(flows, files);
+    log('reticle_affected', {
+      changedFiles: files,
+      affected: result.affected,
+      unknownProvenance: result.unknownProvenance,
+    });
+  } catch (error) {
+    log('reticle_affected_failed', { error: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 /** Ensure a daemon is reachable on `port` (probe the real port; spawn + wait only if nothing's there). */
@@ -355,6 +386,9 @@ function main(): void {
       break;
     case 'verify':
       handleVerify(parsed);
+      break;
+    case 'affected':
+      void handleAffected(parsed.files);
       break;
     case 'mcp':
       handleMcp(parsed);
