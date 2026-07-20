@@ -29,6 +29,8 @@ export interface ReticleDirPaths {
   runs: string;
   /** .../.reticle/sessions (durable causal journal, one dir per session) */
   sessions: string;
+  /** .../.reticle/envelopes.json (learned per-route expected envelopes) */
+  envelopes: string;
 }
 
 export function reticleDirPaths(root: string): ReticleDirPaths {
@@ -41,6 +43,7 @@ export function reticleDirPaths(root: string): ReticleDirPaths {
     visual: join(root, ReticleDir.VISUAL_SUBDIR),
     runs: join(root, ReticleDir.RUNS_SUBDIR),
     sessions: join(root, ReticleDir.SESSIONS_SUBDIR),
+    envelopes: join(root, ReticleDir.ENVELOPES_FILE),
   };
 }
 

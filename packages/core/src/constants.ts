@@ -120,6 +120,8 @@ export const ReticleDir = {
   JOURNAL_EVENTS_FILE: 'events.jsonl',
   /** append-only action ledger inside a session dir (one JournalAction per line). */
   JOURNAL_ACTIONS_FILE: 'actions.jsonl',
+  /** learned expected-envelopes per route, accumulated across runs (the deviation-report baseline). */
+  ENVELOPES_FILE: 'envelopes.json',
   /**
    * Auto-provisioned bridge pairing token, stored at ~/.reticle/pairing-token (mode 0600). Written by
    * the daemon, read Node-side by the build plugins to inject into connect(). A browser sandbox cannot

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { SegmentRollup } from './rollups.js';
 
 /**
@@ -55,6 +56,25 @@ export const MIN_ENVELOPE_SAMPLES = 3;
 
 /** Default flag threshold in stddevs. The number is a placeholder for fleet-calibrated priors. */
 export const DEFAULT_Z_THRESHOLD = 3;
+
+const MetricStatsSchema = z.object({
+  count: z.number(),
+  mean: z.number(),
+  m2: z.number(),
+  max: z.number(),
+});
+
+/** Persisted shape of a route envelope. Validated on load; a bad file degrades to no envelope. */
+export const RouteEnvelopeSchema = z.object({
+  route: z.string(),
+  samples: z.number().int().min(0),
+  stats: z.object({
+    durationMs: MetricStatsSchema,
+    net: MetricStatsSchema,
+    netErrors: MetricStatsSchema,
+    consoleErrors: MetricStatsSchema,
+  }),
+});
 
 export function emptyEnvelope(route: string): RouteEnvelope {
   return {
