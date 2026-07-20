@@ -297,6 +297,15 @@ export const RETICLE_HYDRATION_SIGNAL = 'reticle:hydration-complete';
  */
 export const RETICLE_ERROR_BOUNDARY_SIGNAL = 'reticle:error-boundary';
 
+/**
+ * Signal the React adapter fires on a hydration mismatch — server-rendered markup that disagrees with the
+ * client's first render. React reports these as *recoverable* errors (`hydrateRoot(el, App,
+ * { onRecoverableError })`); a mismatch silently discards the SSR DOM and re-renders on the client, so the
+ * page "looks fine" while event handlers, form state, or scroll position were lost — invisible to DOM/
+ * network/console. `data: { message, stack?, componentStack? }`.
+ */
+export const RETICLE_HYDRATION_ERROR_SIGNAL = 'reticle:hydration-error';
+
 /** The observation channel a TRUNCATED event names, so downstream knows WHICH data is incomplete. */
 export const TruncationChannel = {
   DOM: 'dom',
