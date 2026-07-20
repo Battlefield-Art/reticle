@@ -48,9 +48,9 @@ export const EVENT_PAYLOAD_SCHEMAS = {
   [EventType.DOM_ADDED]: elementLabel,
   [EventType.DOM_REMOVED]: elementLabel,
   [EventType.DOM_ATTR]: z
-    .object({ name: z.string(), value: z.string().optional(), old: z.string().optional() })
+    .object({ attr: z.string(), value: z.string().optional(), old: z.string().optional() })
     .passthrough(),
-  [EventType.DOM_TEXT]: z.object({ text: z.string() }),
+  [EventType.DOM_TEXT]: z.object({ text: z.string(), old: z.string().optional() }),
   [EventType.NET_REQUEST]: netRequestSchema,
   [EventType.NET_PENDING]: z.object({
     id: z.string(),

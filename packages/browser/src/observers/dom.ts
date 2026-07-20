@@ -14,7 +14,20 @@ const WATCHED_ATTRS = [
   'aria-selected',
   'aria-checked',
   'data-state',
+  // Widened (W3): visual + resource + form-value attributes. Values are capped (they can be long).
+  'style',
+  'src',
+  'href',
+  'value',
 ];
+
+/** Attribute/text values are capped per event — style/src can be huge and would bloat the ledger. */
+const MAX_ATTR_VALUE_LEN = 120;
+
+function capValue(value: string | null): string | undefined {
+  if (value === null) return undefined;
+  return value.length > MAX_ATTR_VALUE_LEN ? `${value.slice(0, MAX_ATTR_VALUE_LEN)}…` : value;
+}
 
 const DIALOG_ROLES = new Set(['dialog', 'alertdialog']);
 const LIVE_ROLES = new Set(['alert', 'status']);
@@ -45,9 +58,16 @@ export function installDom(emit: Emit): Teardown {
             continue;
           }
           changed += 1;
+          // Old value (attributeOldValue) + capped new value — a diff, not just a reading.
+          const value = capValue(target.getAttribute(record.attributeName));
+          const old = capValue(record.oldValue);
           emit(
             EventType.DOM_ATTR,
-            { attr: record.attributeName, value: target.getAttribute(record.attributeName) },
+            {
+              attr: record.attributeName,
+              ...(value === undefined ? {} : { value }),
+              ...(old === undefined ? {} : { old }),
+            },
             refs.refFor(target),
           );
         }
@@ -64,7 +84,12 @@ export function installDom(emit: Emit): Teardown {
           }
           changed += 1;
           const text = (record.target.textContent ?? '').trim().slice(0, 80);
-          emit(EventType.DOM_TEXT, { text }, refs.refFor(parent));
+          const old = capValue(record.oldValue?.trim() ?? null);
+          emit(
+            EventType.DOM_TEXT,
+            { text, ...(old === undefined ? {} : { old }) },
+            refs.refFor(parent),
+          );
         }
         continue;
       }
@@ -112,7 +137,9 @@ export function installDom(emit: Emit): Teardown {
     childList: true,
     attributes: true,
     attributeFilter: WATCHED_ATTRS,
+    attributeOldValue: true,
     characterData: true,
+    characterDataOldValue: true,
   });
 
   return () => {
