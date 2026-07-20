@@ -75,6 +75,15 @@ describe('parseCliArgs', () => {
     expect(parseCliArgs(['gate', 'src/a.ts'], PORT)).toEqual({ kind: 'gate', files: ['src/a.ts'] });
   });
 
+  it('parses `--since <ref>` on affected/gate (with or without explicit files)', () => {
+    expect(parseCliArgs(['gate', '--since', 'main'], PORT)).toEqual({ kind: 'gate', files: [], since: 'main' });
+    expect(parseCliArgs(['affected', '--since', 'HEAD~1', 'src/a.ts'], PORT)).toEqual({
+      kind: 'affected',
+      files: ['src/a.ts'],
+      since: 'HEAD~1',
+    });
+  });
+
   it('rejects `gate` with no files', () => {
     expect(parseCliArgs(['gate'], PORT).kind).toBe('error');
   });

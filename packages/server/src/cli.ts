@@ -9,6 +9,7 @@ import { createNodeFileSystem, type FileSystemPort } from './project/fs-port.js'
 import { affectedSavedFlows, type NamedFlow } from './flows/flow-sources.js';
 import { gateDecision } from './flows/gate.js';
 import { FlakeStore } from './flows/flake-store.js';
+import { changedFilesSince } from './flows/git-changed.js';
 import { start, startDaemon } from './index.js';
 import { SERVER_VERSION } from './server-version.js';
 import { log } from './log.js';
@@ -149,13 +150,20 @@ function handleLicense(): void {
  * Environment-side (costs the agent nothing per turn); the foundation of watch/gate. Never throws:
  * a load error is logged, not fatal.
  */
-async function handleAffected(files: string[]): Promise<void> {
+/** Explicit files plus, when --since is given, the git-changed files since that ref. */
+async function resolveChangedFiles(files: string[], since: string | undefined): Promise<string[]> {
+  if (since === undefined) return files;
+  return [...new Set([...files, ...(await changedFilesSince(since, process.cwd()))])];
+}
+
+async function handleAffected(files: string[], since: string | undefined): Promise<void> {
   try {
     const fs = createNodeFileSystem();
     const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
-    const result = affectedSavedFlows(await loadNamedFlows(fs, reticleRoot), files);
+    const changed = await resolveChangedFiles(files, since);
+    const result = affectedSavedFlows(await loadNamedFlows(fs, reticleRoot), changed);
     log('reticle_affected', {
-      changedFiles: files,
+      changedFiles: changed,
       affected: result.affected,
       unknownProvenance: result.unknownProvenance,
     });
@@ -181,11 +189,12 @@ async function loadNamedFlows(fs: FileSystemPort, reticleRoot: string): Promise<
  * changed files. Flaky flows are quarantined (surfaced, not blocking). The environment-side enforcement
  * that makes verification unavoidable. Never throws; a fault fails closed (exit 1).
  */
-async function handleGate(files: string[]): Promise<void> {
+async function handleGate(files: string[], since: string | undefined): Promise<void> {
   try {
     const fs = createNodeFileSystem();
     const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
-    const affected = affectedSavedFlows(await loadNamedFlows(fs, reticleRoot), files).affected;
+    const changed = await resolveChangedFiles(files, since);
+    const affected = affectedSavedFlows(await loadNamedFlows(fs, reticleRoot), changed).affected;
     const latest = await new RunStore(fs, reticleRoot).latest();
     const passing = (latest?.flows ?? [])
       .filter((f) => f.status === RunFlowStatus.PASS || f.status === RunFlowStatus.HEALED)
@@ -424,10 +433,10 @@ function main(): void {
       handleVerify(parsed);
       break;
     case 'affected':
-      void handleAffected(parsed.files);
+      void handleAffected(parsed.files, parsed.since);
       break;
     case 'gate':
-      void handleGate(parsed.files);
+      void handleGate(parsed.files, parsed.since);
       break;
     case 'mcp':
       handleMcp(parsed);

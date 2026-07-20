@@ -12,8 +12,8 @@ export const CLI_USAGE = `usage:
   reticle status [--port N]
   reticle open  [url] [--port N]                        (show the app: reuse the connected tab, else open one)
   reticle verify <url> [--headed] [--timeout N] [--storage-state <file>]  (one-shot: drive the URL, verify saved flows, exit 0=pass)
-  reticle affected <file...>                           (which saved flows must re-verify for these changed files)
-  reticle gate <file...>                               (exit non-zero unless passing artifacts cover the affected flows)
+  reticle affected [--since <ref>] [file...]           (which saved flows must re-verify for the changed files)
+  reticle gate [--since <ref>] [file...]               (exit non-zero unless passing artifacts cover the affected flows)
   reticle drive <url> [--headed]                       (foreground mode — for debugging)
   reticle mcp   [--port N] [--drive <url>] [--headed]  (MCP stdio proxy — auto-starts daemon if needed)
   reticle license                                      (show enterprise license status: active | eval | missing)`;
@@ -73,8 +73,8 @@ export type CliResult =
     }
   | { kind: 'drive'; port: number; driveUrl: string; headless: boolean }
   | { kind: 'verify'; url: string; headless: boolean; timeoutMs?: number; storageState?: string }
-  | { kind: 'affected'; files: string[] }
-  | { kind: 'gate'; files: string[] }
+  | { kind: 'affected'; files: string[]; since?: string }
+  | { kind: 'gate'; files: string[]; since?: string }
   | { kind: 'mcp'; port: number; driveUrl?: string; headless: boolean }
   | { kind: 'error'; message: string };
 
@@ -259,6 +259,24 @@ function parseInitFlags(args: string[]): InitFlags {
 }
 
 /** Pure CLI arg parser — exported for unit tests. argv = process.argv.slice(2). */
+const SINCE_FLAG = '--since';
+
+/** Parse `[--since <ref>] [file...]` shared by `affected` and `gate`. */
+function parseTargetArgs(rest: string[]): { files: string[]; since?: string } {
+  const files: string[] = [];
+  let since: string | undefined;
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    if (arg === SINCE_FLAG) {
+      since = rest[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg !== undefined && !arg.startsWith('-')) files.push(arg);
+  }
+  return since === undefined ? { files } : { files, since };
+}
+
 export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
   if (argv.length === 0) return { kind: 'serve', port: defaultPort, headless: true, http: false };
 
@@ -334,20 +352,18 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
       };
     }
     case AFFECTED_COMMAND: {
-      // `reticle affected <file...>` — which saved flows must re-verify for these changed files.
-      const files = rest.filter((arg) => !arg.startsWith('-'));
-      if (files.length === 0) {
-        return { kind: 'error', message: 'usage: reticle affected <file> [file...]' };
+      const t = parseTargetArgs(rest);
+      if (t.files.length === 0 && t.since === undefined) {
+        return { kind: 'error', message: 'usage: reticle affected [--since <ref>] [file...]' };
       }
-      return { kind: 'affected', files };
+      return { kind: 'affected', files: t.files, ...(t.since === undefined ? {} : { since: t.since }) };
     }
     case GATE_COMMAND: {
-      // `reticle gate <file...>` — exit non-zero unless passing artifacts cover the affected flows.
-      const files = rest.filter((arg) => !arg.startsWith('-'));
-      if (files.length === 0) {
-        return { kind: 'error', message: 'usage: reticle gate <file> [file...]' };
+      const t = parseTargetArgs(rest);
+      if (t.files.length === 0 && t.since === undefined) {
+        return { kind: 'error', message: 'usage: reticle gate [--since <ref>] [file...]' };
       }
-      return { kind: 'gate', files };
+      return { kind: 'gate', files: t.files, ...(t.since === undefined ? {} : { since: t.since }) };
     }
     case MCP_COMMAND: {
       const r = parseServeFlags(rest, defaultPort);
