@@ -17,6 +17,7 @@ import {
   type ReticleEvent,
 } from '@reticlehq/core';
 import { RingBuffer } from '../events/ring-buffer.js';
+import type { JournalRecorder } from '../journal/journal-recorder.js';
 import { ReviewStore, type ReviewMark } from './review-store.js';
 import { buildSessionRecommendation } from './session-recommendation.js';
 import { buildPresenterArgs } from './presenter-args.js';
@@ -111,6 +112,8 @@ export class Session {
   readonly #review = new ReviewStore();
   /** Whether the session_lease has already been returned (fire-once per session). */
   #firstCommandDone = false;
+  /** Durable causal-journal recorder; undefined when journaling is off (opt-out or not yet attached). */
+  #journal: JournalRecorder | undefined;
 
   constructor(hello: HelloMessage, socket: WebSocket, clock: Clock) {
     this.id = hello.sessionId;
@@ -226,8 +229,31 @@ export class Session {
     }
     const t = this.elapsed();
     const stamped: ReticleEvent = { ...event, t, sessionId: this.id };
-    this.#buffer.push(stamped, t, byteSize);
-    for (const listener of this.#listeners) listener(stamped);
+    // The recorder attributes the event to the in-flight action (if any) and journals it durably; the
+    // returned event carries actionId/attribution so the buffer + all queries see the same causal link.
+    const attributed = this.#journal?.observe(stamped) ?? stamped;
+    this.#buffer.push(attributed, t, byteSize);
+    for (const listener of this.#listeners) listener(attributed);
+  }
+
+  /** Attach the durable causal-journal recorder (off by default; wired at session creation). */
+  setJournal(recorder: JournalRecorder): void {
+    this.#journal = recorder;
+  }
+
+  /** Open an action-attribution window: events observed until finishAction attribute to this action. */
+  beginAction(actionId: string, tool: string, args: Record<string, unknown>): void {
+    this.#journal?.beginAction(actionId, tool, args);
+  }
+
+  /** Close the active action window, persisting its action record with the settle outcome. */
+  finishAction(effect?: unknown, settled?: boolean, settledInMs?: number): void {
+    this.#journal?.finishAction(effect, settled, settledInMs);
+  }
+
+  /** Flush any buffered journal events to disk (call on session end). */
+  async flushJournal(): Promise<void> {
+    await this.#journal?.flush();
   }
 
   eventsSince(cursor: number): ReticleEvent[] {
