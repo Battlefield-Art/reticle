@@ -13,6 +13,7 @@ function sessionWith(events: ReticleEvent[]): Session {
   const stub: Partial<Session> = {
     id: 'demo',
     eventsSince: () => events,
+    queryEvents: () => Promise.resolve(events),
     health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
     bufferHealth: () => ({ total: events.length, dropped: 0 }),
     getState: () => undefined as never,
@@ -133,6 +134,7 @@ describe('buffer honesty — a negative result after eviction is not silent', ()
     const stub: Partial<Session> = {
       id: 'demo',
       eventsSince: () => events,
+    queryEvents: () => Promise.resolve(events),
       eventsInWindow: () => events,
       health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
       bufferHealth: () => ({ total: events.length, dropped }),

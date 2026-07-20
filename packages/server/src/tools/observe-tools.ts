@@ -53,6 +53,14 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Cursor from a prior reticle_act or reticle_observe call. Scopes the event window to exactly that span.',
         ),
+      until: z
+        .number()
+        .optional()
+        .describe('Upper cursor bound. With `since`, returns the span "between action A and B".'),
+      actionId: z
+        .string()
+        .optional()
+        .describe('Keep only events attributed to this action — answers "what did action N cause".'),
       filters: z
         .array(z.string())
         .optional()
@@ -96,12 +104,17 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .optional(),
       ...bufferOutputShape,
     },
-    handler: (deps, args) => {
+    handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      const since = asNumber(args['since']);
+      const explicitSince = asNumber(args['since']);
       const windowMs = asNumber(args['window_ms']) ?? 2000;
-      const events =
-        since !== undefined ? session.eventsSince(since) : session.eventsInWindow(windowMs);
+      // Explicit since wins; else look back one window. Journal-backed so it survives buffer eviction.
+      const since = explicitSince ?? Math.max(0, session.elapsed() - windowMs);
+      const events = await session.queryEvents({
+        since,
+        until: asNumber(args['until']),
+        actionId: asString(args['actionId']),
+      });
       const filters = Array.isArray(args['filters']) ? (args['filters'] as string[]) : undefined;
       const filtered =
         filters === undefined ? events : events.filter((e) => filters.includes(e.type));
@@ -112,14 +125,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       );
       const report = buildReactionReport(budgeted, windowMs);
       // carry session health — a throttled tab means the observed timeline may be incomplete.
-      return Promise.resolve(
-        withControl(session, {
-          ...report,
-          cost: costHint(report, budgeted.length, droppedOldest),
-          ...healthEnvelope(session),
-          ...bufferEnvelope(session),
-        }),
-      );
+      return withControl(session, {
+        ...report,
+        cost: costHint(report, budgeted.length, droppedOldest),
+        ...healthEnvelope(session),
+        ...bufferEnvelope(session),
+      });
     },
   },
   {
@@ -222,6 +233,11 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Cursor from a prior reticle_act — scopes the query to requests fired after that act.',
         ),
+      until: z.number().optional().describe('Upper cursor bound — with `since`, the span between two acts.'),
+      actionId: z
+        .string()
+        .optional()
+        .describe('Keep only requests attributed to this action — "what did action N request".'),
       method: z
         .string()
         .optional()
@@ -247,7 +263,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       cost: z.object({ bytes: z.number(), tokens: z.number() }).optional(),
       ...bufferOutputShape,
     },
-    handler: (deps, args) => {
+    handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
       const since = asNumber(args['since']) ?? 0;
       const method = asString(args['method']);
@@ -256,22 +272,24 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const limit = asNumber(args['limit']);
       const buffer = bufferEnvelope(session);
       // Completed calls + unresolved in-flight requests (a hung request shows as pending).
-      const allNet = reconcileNet(session.eventsSince(since));
+      const allNet = reconcileNet(
+        await session.queryEvents({
+          since,
+          until: asNumber(args['until']),
+          actionId: asString(args['actionId']),
+        }),
+      );
       const matched = allNet.filter((e) => matchNet(e, method, urlContains, status));
       // zero-match filter returns what DID fire, not a bare [].
       if (matched.length === 0 && allNet.length > 0) {
-        return Promise.resolve(
-          withSizeCost({ calls: matched, hint: netEmptyHint(allNet), ...buffer }),
-        );
+        return withSizeCost({ calls: matched, hint: netEmptyHint(allNet), ...buffer });
       }
       const { events: budgeted, droppedOldest } = applyEventBudget(matched, limit);
       const calls = budgeted.map(projectNetCall);
-      return Promise.resolve(
-        withSizeCost(
-          droppedOldest > 0
-            ? { calls, total: matched.length, droppedOldest, ...buffer }
-            : { calls, ...buffer },
-        ),
+      return withSizeCost(
+        droppedOldest > 0
+          ? { calls, total: matched.length, droppedOldest, ...buffer }
+          : { calls, ...buffer },
       );
     },
   },
@@ -290,6 +308,11 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Cursor from a prior reticle_act — scopes the query to log entries after that act.',
         ),
+      until: z.number().optional().describe('Upper cursor bound — with `since`, the span between two acts.'),
+      actionId: z
+        .string()
+        .optional()
+        .describe('Keep only log entries attributed to this action — "what did action N log".'),
       limit: z
         .number()
         .optional()
@@ -309,28 +332,30 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       cost: z.object({ bytes: z.number(), tokens: z.number() }).optional(),
       ...bufferOutputShape,
     },
-    handler: (deps, args) => {
+    handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
       const since = asNumber(args['since']) ?? 0;
       const level = asString(args['level']);
       const limit = asNumber(args['limit']);
       const buffer = bufferEnvelope(session);
-      const allConsole = session.eventsSince(since).filter(isConsoleEvent);
+      const allConsole = (
+        await session.queryEvents({
+          since,
+          until: asNumber(args['until']),
+          actionId: asString(args['actionId']),
+        })
+      ).filter(isConsoleEvent);
       const matched = allConsole.filter((e) => matchConsole(e, level));
       // zero matches at this level → report what levels ARE present (not a bare []).
       if (matched.length === 0 && allConsole.length > 0) {
-        return Promise.resolve(
-          withSizeCost({ logs: matched, hint: consoleEmptyHint(allConsole), ...buffer }),
-        );
+        return withSizeCost({ logs: matched, hint: consoleEmptyHint(allConsole), ...buffer });
       }
       const { events: budgeted, droppedOldest } = applyEventBudget(matched, limit);
       const logs = budgeted.map(projectConsoleLog);
-      return Promise.resolve(
-        withSizeCost(
-          droppedOldest > 0
-            ? { logs, total: matched.length, droppedOldest, ...buffer }
-            : { logs, ...buffer },
-        ),
+      return withSizeCost(
+        droppedOldest > 0
+          ? { logs, total: matched.length, droppedOldest, ...buffer }
+          : { logs, ...buffer },
       );
     },
   },

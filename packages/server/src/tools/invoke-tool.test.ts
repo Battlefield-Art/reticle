@@ -22,6 +22,7 @@ function throttledSession(overrides: Partial<Session> = {}): Session {
     url: 'http://localhost:5173/app',
     command: () => Promise.resolve({ kind: 'command_result', id: 'c', ok: true, result: {} }),
     eventsSince: () => [],
+    queryEvents: () => Promise.resolve([]),
     bufferHealth: () => ({ total: 0, dropped: 0 }),
     health: () => ({
       lastSeenMs: 99_999,

@@ -39,6 +39,7 @@ function fakeSession(throttled: boolean): Session {
     finishAction: () => undefined,
     lastActCursor: () => undefined,
     eventsSince: () => [],
+    queryEvents: () => Promise.resolve([]),
     eventsInWindow: () => [],
     onEvent: () => () => undefined,
     command,

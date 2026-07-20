@@ -3,11 +3,11 @@ import type { ReticleEvent } from '@reticlehq/core';
 /** Filter bounds for a journal-backed event query. All optional; omitted = unbounded on that axis. */
 export interface EventQueryOptions {
   /** Lower time bound (inclusive), elapsed ms — the act cursor semantics of `eventsSince`. */
-  since?: number;
+  since?: number | undefined;
   /** Upper time bound (inclusive), elapsed ms — the new `until` param. */
-  until?: number;
+  until?: number | undefined;
   /** Keep only events attributed to this action id — answers "what did action N cause". */
-  actionId?: string;
+  actionId?: string | undefined;
 }
 
 /**

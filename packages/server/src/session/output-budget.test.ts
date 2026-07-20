@@ -109,8 +109,10 @@ describe('sizeCost / withSizeCost', () => {
 function fakeDeps(events: ReticleEvent[]): ToolDeps {
   const stub: Partial<Session> = {
     id: 'demo',
+    elapsed: () => 0,
     eventsInWindow: () => events,
     eventsSince: () => events,
+    queryEvents: () => Promise.resolve(events),
     health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
     bufferHealth: () => ({ total: events.length, dropped: 0 }),
     getState: () => SessionState.ACTIVE,
