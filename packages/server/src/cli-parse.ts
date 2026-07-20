@@ -17,6 +17,8 @@ export const CLI_USAGE = `usage:
   reticle watch [url]                                  (on save, report which saved flows must re-verify)
   reticle drive <url> [--headed]                       (foreground mode — for debugging)
   reticle mcp   [--port N] [--drive <url>] [--headed]  (MCP stdio proxy — auto-starts daemon if needed)
+  reticle update                                       (install the latest server version and restart)
+  reticle rollback                                     (restore the previous server version and restart)
   reticle license                                      (show enterprise license status: active | eval | missing)`;
 
 const INIT_COMMAND = 'init';
@@ -29,6 +31,8 @@ const VERIFY_COMMAND = 'verify';
 const AFFECTED_COMMAND = 'affected';
 const GATE_COMMAND = 'gate';
 const WATCH_COMMAND = 'watch';
+const UPDATE_COMMAND = 'update';
+const ROLLBACK_COMMAND = 'rollback';
 const MCP_COMMAND = 'mcp';
 const LICENSE_COMMAND = 'license';
 const VERSION_COMMAND = 'version';
@@ -78,6 +82,8 @@ export type CliResult =
   | { kind: 'affected'; files: string[]; since?: string }
   | { kind: 'gate'; files: string[]; since?: string }
   | { kind: 'watch'; url?: string }
+  | { kind: 'update' }
+  | { kind: 'rollback' }
   | { kind: 'mcp'; port: number; driveUrl?: string; headless: boolean }
   | { kind: 'error'; message: string };
 
@@ -373,6 +379,10 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
       const url = rest.find((arg) => !arg.startsWith('-'));
       return url === undefined ? { kind: 'watch' } : { kind: 'watch', url };
     }
+    case UPDATE_COMMAND:
+      return { kind: 'update' };
+    case ROLLBACK_COMMAND:
+      return { kind: 'rollback' };
     case MCP_COMMAND: {
       const r = parseServeFlags(rest, defaultPort);
       if (r.kind === 'error') return r;

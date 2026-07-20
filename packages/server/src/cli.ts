@@ -11,6 +11,8 @@ import { gateDecision } from './flows/gate.js';
 import { FlakeStore } from './flows/flake-store.js';
 import { computeCoverage } from './flows/coverage.js';
 import { changedFilesSince } from './flows/git-changed.js';
+import { checkForUpdate } from './update/update-checker.js';
+import { applyUpdate, rollback } from './update/updater.js';
 import { createWatchBatcher } from './flows/watch-batcher.js';
 import { watch } from 'node:fs';
 import { start, startDaemon } from './index.js';
@@ -259,6 +261,32 @@ async function handleGate(files: string[], since: string | undefined): Promise<v
   }
 }
 
+/** `reticle update` — install the latest server version and restart (moved off the MCP surface). */
+async function handleUpdate(): Promise<void> {
+  try {
+    const manifest = await checkForUpdate(SERVER_VERSION, () => Date.now());
+    if (!manifest.updateAvailable || manifest.latestVersion === undefined) {
+      log('reticle_update', { ok: false, message: 'already on the latest version', version: SERVER_VERSION });
+      return;
+    }
+    log('reticle_update', { ok: true, from: SERVER_VERSION, to: manifest.latestVersion });
+    await applyUpdate(manifest.latestVersion); // calls process.exit; Claude Code restarts
+  } catch (error) {
+    log('reticle_update_failed', { error: error instanceof Error ? error.message : String(error) });
+    process.exitCode = 1;
+  }
+}
+
+/** `reticle rollback` — restore the previous server version and restart. */
+async function handleRollback(): Promise<void> {
+  try {
+    await rollback(); // calls process.exit
+  } catch (error) {
+    log('reticle_rollback_failed', { error: error instanceof Error ? error.message : String(error) });
+    process.exitCode = 1;
+  }
+}
+
 /** Ensure a daemon is reachable on `port` (probe the real port; spawn + wait only if nothing's there). */
 function ensureDaemon(port: number): Promise<void> {
   return probeDaemon(port).then((listening) => {
@@ -486,6 +514,12 @@ function main(): void {
       break;
     case 'watch':
       handleWatch();
+      break;
+    case 'update':
+      void handleUpdate();
+      break;
+    case 'rollback':
+      void handleRollback();
       break;
     case 'mcp':
       handleMcp(parsed);

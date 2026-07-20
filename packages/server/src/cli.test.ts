@@ -88,6 +88,11 @@ describe('parseCliArgs', () => {
     expect(parseCliArgs(['gate'], PORT).kind).toBe('error');
   });
 
+  it('parses the lifecycle commands moved to the CLI', () => {
+    expect(parseCliArgs(['update'], PORT)).toEqual({ kind: 'update' });
+    expect(parseCliArgs(['rollback'], PORT)).toEqual({ kind: 'rollback' });
+  });
+
   it('parses `watch [url]` with and without a url', () => {
     expect(parseCliArgs(['watch', 'http://localhost:3000'], PORT)).toEqual({ kind: 'watch', url: 'http://localhost:3000' });
     expect(parseCliArgs(['watch'], PORT)).toEqual({ kind: 'watch' });
