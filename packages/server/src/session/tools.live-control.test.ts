@@ -48,6 +48,7 @@ function fakeSession(opts: { state?: SessionState; inbox?: string[] }): FakeSess
     markActCursor: () => undefined,
     beginAction: () => 'a1',
     finishAction: () => undefined,
+    bufferHealth: () => ({ total: 0, dropped: 0 }),
     lastActCursor: () => undefined,
     eventsSince: () => [],
     onEvent: () => () => undefined,

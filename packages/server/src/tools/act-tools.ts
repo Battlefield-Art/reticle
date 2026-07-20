@@ -23,11 +23,21 @@ import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
 import { causalSummary } from '../capsule/causal-summary.js';
 import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
+import { HonestyGrade, buildHonestyBlock } from '../honesty/honesty.js';
+import type { ExpectedLink } from '../capsule/divergence.js';
 import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
 import { pausedShortCircuit, withControl } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord } from './tools-helpers.js';
 import { type ToolDef, type ToolDeps, sessionIdShape, commandOrThrow } from './tool-kit.js';
+
+/** The strongest consequence grade a set of expected links proves (signal > net > state > presence). */
+function gradeOf(links: readonly ExpectedLink[]): HonestyGrade {
+  if (links.some((l) => l.kind === 'signal')) return HonestyGrade.SIGNAL;
+  if (links.some((l) => l.kind === 'net')) return HonestyGrade.NET;
+  if (links.some((l) => l.kind === 'state')) return HonestyGrade.STATE;
+  return HonestyGrade.PRESENCE;
+}
 
 /** Narrow an INSPECT result's `box` into a positive-area ElementBox (else undefined). */
 function asBox(value: unknown): ElementBox | undefined {
@@ -375,6 +385,11 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           'Present only on a FAILED verdict: the divergence capsule { summary, firstDivergence (declared vs observed), blastRadius (undeclared side effects) } — the fault, located, no re-exploration needed.',
         ),
+      honesty: z
+        .unknown()
+        .describe(
+          'The verdict trust block { grade, attribution, envelope, coverage, integrity } — a green never looks stronger than this. Gate on it (grade ≥ net, integrity clean).',
+        ),
       since: z
         .number()
         .describe(
@@ -427,14 +442,21 @@ export const ACT_TOOLS: ToolDef[] = [
         // ponytail: Layer B (W1) validation of this result-shape change is pending — additive + bounded.
         // On RED only, attach the Tier-2 divergence capsule (first-divergence + blast radius). Red-only,
         // so the common green path — what the loop optimizes — is unchanged; on red, diagnosis is the point.
-        const capsule = verdict.pass
-          ? undefined
-          : buildDivergenceCapsule(predicateToExpectedLinks(until), windowEvents);
+        const links = predicateToExpectedLinks(until);
+        const capsule = verdict.pass ? undefined : buildDivergenceCapsule(links, windowEvents);
+        // Honesty: the grade this verdict actually proved + capture integrity — a green never looks
+        // stronger than this block. Grade from the strongest asserted consequence; integrity from evictions.
+        const honesty = buildHonestyBlock({
+          grade: gradeOf(links),
+          attribution: 'window',
+          truncated: session.bufferHealth().dropped > 0,
+        });
         return withControl(session, {
           effect: leanActResult(actResult.result),
           verdict,
           trace,
           summary: causalSummary(windowEvents),
+          honesty,
           ...(capsule === undefined ? {} : { capsule }),
           since,
           ...healthEnvelope(session),
