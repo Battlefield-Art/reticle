@@ -9,6 +9,7 @@ import { createNodeFileSystem, type FileSystemPort } from './project/fs-port.js'
 import { affectedSavedFlows, type NamedFlow } from './flows/flow-sources.js';
 import { gateDecision } from './flows/gate.js';
 import { FlakeStore } from './flows/flake-store.js';
+import { computeCoverage } from './flows/coverage.js';
 import { changedFilesSince } from './flows/git-changed.js';
 import { createWatchBatcher } from './flows/watch-batcher.js';
 import { watch } from 'node:fs';
@@ -232,17 +233,24 @@ async function handleGate(files: string[], since: string | undefined): Promise<v
     const fs = createNodeFileSystem();
     const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
     const changed = await resolveChangedFiles(files, since);
-    const affected = affectedSavedFlows(await loadNamedFlows(fs, reticleRoot), changed).affected;
+    const allFlows = await loadNamedFlows(fs, reticleRoot);
+    const affected = affectedSavedFlows(allFlows, changed).affected;
     const latest = await new RunStore(fs, reticleRoot).latest();
     const passing = (latest?.flows ?? [])
       .filter((f) => f.status === RunFlowStatus.PASS || f.status === RunFlowStatus.HEALED)
       .map((f) => f.name);
     const flaky = await new FlakeStore(fs, reticleRoot).flakyFlows();
     const result = gateDecision({ affected, passing, flaky });
+    // Verified-surface coverage over flows: how much of the saved suite this run actually exercised.
+    const coverage = computeCoverage(
+      { testids: [], signals: [], flows: allFlows.map((f) => f.name) },
+      { testids: [], signals: [], flows: passing },
+    );
     log('reticle_gate', {
       pass: result.pass,
       uncovered: result.uncovered,
       quarantined: result.quarantined,
+      coverage: { pct: coverage.flows.pct, covered: coverage.flows.covered, total: coverage.flows.total },
     });
     if (!result.pass) process.exitCode = 1;
   } catch (error) {
