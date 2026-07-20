@@ -29,6 +29,10 @@ function memoryFs(files: Record<string, string>): FileSystemPort {
       store.set(path, data);
       return Promise.resolve();
     },
+    appendFile: (path, data) => {
+      store.set(path, (store.get(path) ?? '') + data);
+      return Promise.resolve();
+    },
     readFileBytes: (path) => {
       const v = store.get(path);
       if (v === undefined)

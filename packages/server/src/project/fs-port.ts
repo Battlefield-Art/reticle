@@ -1,4 +1,4 @@
-import { access, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 
 /**
  * The injectable filesystem seam. Server logic depends on this interface, never on node:fs
@@ -8,6 +8,8 @@ export interface FileSystemPort {
   /** Read a UTF-8 file. Rejects (ENOENT) if absent. */
   readFile(path: string): Promise<string>;
   writeFile(path: string, data: string): Promise<void>;
+  /** Append UTF-8 text, creating the file if absent — for the append-only JSONL journal. */
+  appendFile(path: string, data: string): Promise<void>;
   /** Read raw bytes (PNG baselines). Rejects (ENOENT) if absent. */
   readFileBytes(path: string): Promise<Uint8Array>;
   /** Write raw bytes (PNG screenshots/diffs). */
@@ -30,6 +32,7 @@ export function createNodeFileSystem(): FileSystemPort {
   return {
     readFile: (path) => readFile(path, 'utf8'),
     writeFile: (path, data) => writeFile(path, data, 'utf8'),
+    appendFile: (path, data) => appendFile(path, data, 'utf8'),
     readFileBytes: async (path) => {
       const buf = await readFile(path);
       return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
