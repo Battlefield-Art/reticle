@@ -20,6 +20,7 @@ import { isPointerAction } from '../input/real-input.js';
 import { leanActResult } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
+import { causalSummary } from '../capsule/causal-summary.js';
 import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
 import { pausedShortCircuit, withControl } from '../session/control-envelope.js';
@@ -361,6 +362,11 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           'Reaction digest: { window_ms, summary } of what the app did (DOM/network/route/console/signal counts). The full per-event timeline is one reticle_observe { since } away.',
         ),
+      summary: z
+        .unknown()
+        .describe(
+          'Bounded causal summary: net {total,errors,headline}, consoleErrors, statePathsChanged, storageKeysChanged, route, signals, layoutShift, longTasks — the diffs the trace counts miss.',
+        ),
       since: z
         .number()
         .describe(
@@ -405,13 +411,17 @@ export const ACT_TOOLS: ToolDef[] = [
 
         const r = asRecord(actResult.result);
         if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
+        const windowEvents = session.eventsSince(since);
         const trace = summarizeReaction(
-          buildReactionReport(session.eventsSince(since), session.elapsed() - since),
+          buildReactionReport(windowEvents, session.elapsed() - since),
         );
+        // The bounded W5 Tier-1 causal summary — net/console/state/storage diffs the trace's counts miss.
+        // ponytail: Layer B (W1) validation of this result-shape change is pending — additive + bounded.
         return withControl(session, {
           effect: leanActResult(actResult.result),
           verdict,
           trace,
+          summary: causalSummary(windowEvents),
           since,
           ...healthEnvelope(session),
         });
