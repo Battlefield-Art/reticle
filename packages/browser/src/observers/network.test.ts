@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventType } from '@reticlehq/core';
-import { firstAppFrame, installNetwork, redactUrl } from './network.js';
+import { extractTiming, firstAppFrame, installNetwork, redactUrl } from './network.js';
 import type { Emit, Teardown } from './types.js';
 
 interface Emitted {
@@ -71,6 +71,26 @@ describe('redactUrl', () => {
       'ya29SECRETVAL',
     );
     expect(redactUrl('https://app.com/page#section-two')).toBe('https://app.com/page#section-two');
+  });
+});
+
+describe('extractTiming (PerformanceResourceTiming → TTFB/transferSize)', () => {
+  const entry = (over: Partial<PerformanceResourceTiming>): PerformanceResourceTiming =>
+    ({ requestStart: 0, responseStart: 0, transferSize: 0, ...over }) as PerformanceResourceTiming;
+
+  it('computes TTFB from responseStart - requestStart', () => {
+    expect(extractTiming(entry({ requestStart: 100, responseStart: 250, transferSize: 1024 }))).toEqual({
+      ttfbMs: 150,
+      transferSize: 1024,
+    });
+  });
+
+  it('omits TTFB for a cross-origin entry that zeroes the timings (no bogus 0)', () => {
+    expect(extractTiming(entry({ requestStart: 0, responseStart: 0, transferSize: 0 }))).toEqual({});
+  });
+
+  it('returns empty for a missing entry', () => {
+    expect(extractTiming(undefined)).toEqual({});
   });
 });
 

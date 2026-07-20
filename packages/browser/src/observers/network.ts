@@ -209,6 +209,7 @@ interface XhrMeta {
   method: string;
   url: string;
   start: number;
+  rawUrl: string;
   initiatorStack?: string | undefined;
   reqBody?: Document | XMLHttpRequestBodyInit | null;
 }
@@ -269,6 +270,37 @@ function initiatorFrame(): string | undefined {
   return firstAppFrame(new Error().stack);
 }
 
+/** The timing fields we lift from a resource entry — TTFB is the perf signal a duration alone hides. */
+export interface NetTiming {
+  ttfbMs?: number;
+  transferSize?: number;
+}
+
+/**
+ * Pure: derive TTFB + transfer size from a PerformanceResourceTiming entry. TTFB = responseStart -
+ * requestStart; cross-origin responses zero those (Timing-Allow-Origin), so we omit rather than report a
+ * bogus 0. Exported for unit testing (jsdom doesn't post real resource entries).
+ */
+export function extractTiming(entry: PerformanceResourceTiming | undefined): NetTiming {
+  if (entry === undefined) return {};
+  const timing: NetTiming = {};
+  if (entry.responseStart > 0 && entry.requestStart > 0) {
+    timing.ttfbMs = Math.round(entry.responseStart - entry.requestStart);
+  }
+  if (entry.transferSize > 0) timing.transferSize = entry.transferSize;
+  return timing;
+}
+
+/** Best-effort lookup of the most-recent resource-timing entry for a URL. */
+function resourceTiming(rawUrl: string): NetTiming {
+  try {
+    const entries = performance.getEntriesByName(rawUrl, 'resource');
+    return extractTiming(entries[entries.length - 1] as PerformanceResourceTiming | undefined);
+  } catch {
+    return {};
+  }
+}
+
 /** Patch fetch + XMLHttpRequest to emit net.request events. Fully reversible. */
 export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown {
   const captureBodies = opts.captureBodies === true;
@@ -288,7 +320,8 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     const id = nextId();
     const start = performance.now();
     const method = methodOf(input, init);
-    const url = redactUrl(urlOf(input));
+    const rawUrl = urlOf(input);
+    const url = redactUrl(rawUrl);
     const initiatorStack = initiatorFrame();
     const initiatorFields = initiatorStack === undefined ? {} : { initiatorStack };
     emit(EventType.NET_PENDING, { id, method, url, initiator: 'fetch', ...initiatorFields });
@@ -317,6 +350,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
         durationMs: Math.round(performance.now() - start),
         initiator: 'fetch',
         ...initiatorFields,
+        ...resourceTiming(rawUrl),
         ...netResponseMeta(res.statusText, contentType, res.headers.get('content-length')),
         ...projectRequestBody(init?.body, captureBodies),
         ...responseBodyFields,
@@ -356,6 +390,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
       id: nextId(),
       method: method.toUpperCase(),
       url: redactUrl(String(url)),
+      rawUrl: String(url),
       start: 0,
     });
     callOpen.call(this, method, url, ...rest);
@@ -404,6 +439,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
             durationMs: Math.round(performance.now() - cur.start),
             initiator: 'xhr',
             ...(cur.initiatorStack === undefined ? {} : { initiatorStack: cur.initiatorStack }),
+            ...resourceTiming(cur.rawUrl),
             ...netResponseMeta(
               this.statusText,
               xhrContentType,
