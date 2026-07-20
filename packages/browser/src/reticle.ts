@@ -24,6 +24,7 @@ import {
 } from './registry/capabilities.js';
 import { installDom } from './observers/dom.js';
 import { installStorage } from './observers/storage.js';
+import { installStoreState } from './observers/state.js';
 import { installNetwork } from './observers/network.js';
 import { installPerf } from './observers/perf.js';
 import { installRoute } from './observers/route.js';
@@ -330,6 +331,7 @@ export class Reticle {
       installScroll(emit),
       installDom(emit),
       installStorage(emit), // storage WRITES → STORAGE_CHANGE diffs (pull remains the fallback)
+      installStoreState(emit), // subscribed-store mutations → STATE_CHANGE path diffs
       installHealth(emit), // page visibility/focus health + heartbeat
     ];
 
