@@ -31,6 +31,8 @@ export interface ReticleDirPaths {
   sessions: string;
   /** .../.reticle/envelopes.json (learned per-route expected envelopes) */
   envelopes: string;
+  /** .../.reticle/ambient.json (learned ambient-churn region map) */
+  ambient: string;
 }
 
 export function reticleDirPaths(root: string): ReticleDirPaths {
@@ -44,6 +46,7 @@ export function reticleDirPaths(root: string): ReticleDirPaths {
     runs: join(root, ReticleDir.RUNS_SUBDIR),
     sessions: join(root, ReticleDir.SESSIONS_SUBDIR),
     envelopes: join(root, ReticleDir.ENVELOPES_FILE),
+    ambient: join(root, ReticleDir.AMBIENT_FILE),
   };
 }
 

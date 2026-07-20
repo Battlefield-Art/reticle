@@ -122,6 +122,8 @@ export const ReticleDir = {
   JOURNAL_ACTIONS_FILE: 'actions.jsonl',
   /** learned expected-envelopes per route, accumulated across runs (the deviation-report baseline). */
   ENVELOPES_FILE: 'envelopes.json',
+  /** learned ambient (action-less churn) region map — excluded from settle/summaries/envelopes. */
+  AMBIENT_FILE: 'ambient.json',
   /**
    * Auto-provisioned bridge pairing token, stored at ~/.reticle/pairing-token (mode 0600). Written by
    * the daemon, read Node-side by the build plugins to inject into connect(). A browser sandbox cannot
