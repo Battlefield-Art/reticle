@@ -209,6 +209,7 @@ interface XhrMeta {
   method: string;
   url: string;
   start: number;
+  initiatorStack?: string | undefined;
   reqBody?: Document | XMLHttpRequestBodyInit | null;
 }
 
@@ -243,6 +244,31 @@ function methodOf(input: RequestInfo | URL, init: RequestInit | undefined): stri
   return 'GET';
 }
 
+/**
+ * The first app-code frame that fired a request — the in-page answer to a CDP initiator, as file:line.
+ * Captured from a fresh Error().stack at call time, skipping Reticle's own wrapper frames. Feeds the
+ * causal chain (which code path made this request). Capped; undefined when no stack is available.
+ * ponytail: one stack unwind per request — cheap next to fetch itself; revisit only if a profiler flags it.
+ */
+/** Frames to skip: Reticle's own wrappers + engine-internal frames with no app source location. */
+const NON_APP_FRAME = /reticle|network\.ts|@reticlehq|<anonymous>|new Promise|node:internal/i;
+
+/** Pure: the first real app-code frame in a stack string, capped. Exported for unit testing. */
+export function firstAppFrame(stack: string | undefined): string | undefined {
+  if (stack === undefined) return undefined;
+  for (const line of stack.split('\n').slice(1)) {
+    if (NON_APP_FRAME.test(line)) continue;
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    return trimmed.slice(0, 300);
+  }
+  return undefined;
+}
+
+function initiatorFrame(): string | undefined {
+  return firstAppFrame(new Error().stack);
+}
+
 /** Patch fetch + XMLHttpRequest to emit net.request events. Fully reversible. */
 export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown {
   const captureBodies = opts.captureBodies === true;
@@ -263,7 +289,9 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     const start = performance.now();
     const method = methodOf(input, init);
     const url = redactUrl(urlOf(input));
-    emit(EventType.NET_PENDING, { id, method, url, initiator: 'fetch' });
+    const initiatorStack = initiatorFrame();
+    const initiatorFields = initiatorStack === undefined ? {} : { initiatorStack };
+    emit(EventType.NET_PENDING, { id, method, url, initiator: 'fetch', ...initiatorFields });
     try {
       const res = await callFetch(input, init);
       const contentType = res.headers.get('content-type');
@@ -288,6 +316,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
         ok: res.ok,
         durationMs: Math.round(performance.now() - start),
         initiator: 'fetch',
+        ...initiatorFields,
         ...netResponseMeta(res.statusText, contentType, res.headers.get('content-length')),
         ...projectRequestBody(init?.body, captureBodies),
         ...responseBodyFields,
@@ -303,6 +332,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
         error: error instanceof Error ? error.message : String(error),
         durationMs: Math.round(performance.now() - start),
         initiator: 'fetch',
+        ...initiatorFields,
       });
       throw error;
     }
@@ -343,7 +373,9 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     if (m !== undefined) {
       m.start = performance.now();
       m.reqBody = body ?? null;
-      emit(EventType.NET_PENDING, { id: m.id, method: m.method, url: m.url, initiator: 'xhr' });
+      m.initiatorStack = initiatorFrame(); // the app's xhr.send() call site
+      const initiatorFields = m.initiatorStack === undefined ? {} : { initiatorStack: m.initiatorStack };
+      emit(EventType.NET_PENDING, { id: m.id, method: m.method, url: m.url, initiator: 'xhr', ...initiatorFields });
       if (!listenerAttached.has(this)) {
         listenerAttached.add(this);
         this.addEventListener('loadend', () => {
@@ -371,6 +403,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
             ok: this.status >= 200 && this.status < 400,
             durationMs: Math.round(performance.now() - cur.start),
             initiator: 'xhr',
+            ...(cur.initiatorStack === undefined ? {} : { initiatorStack: cur.initiatorStack }),
             ...netResponseMeta(
               this.statusText,
               xhrContentType,

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventType } from '@reticlehq/core';
-import { installNetwork, redactUrl } from './network.js';
+import { firstAppFrame, installNetwork, redactUrl } from './network.js';
 import type { Emit, Teardown } from './types.js';
 
 interface Emitted {
@@ -71,6 +71,33 @@ describe('redactUrl', () => {
       'ya29SECRETVAL',
     );
     expect(redactUrl('https://app.com/page#section-two')).toBe('https://app.com/page#section-two');
+  });
+});
+
+describe('firstAppFrame (initiator stack parsing)', () => {
+  it('returns the first app frame, skipping Reticle wrappers and engine-internal frames', () => {
+    const stack = [
+      'Error',
+      '    at initiatorFrame (/pkg/browser/src/observers/network.ts:250:20)',
+      '    at new Promise (<anonymous>)',
+      '    at handleCheckout (/app/src/Checkout.tsx:114:9)',
+      '    at onClick (/app/src/Button.tsx:20:3)',
+    ].join('\n');
+    expect(firstAppFrame(stack)).toBe('at handleCheckout (/app/src/Checkout.tsx:114:9)');
+  });
+
+  it('returns undefined when every frame is a wrapper or engine frame', () => {
+    const stack = ['Error', '    at fetch (/pkg/@reticlehq/browser/network.ts:5:1)', '    at <anonymous>'].join('\n');
+    expect(firstAppFrame(stack)).toBeUndefined();
+  });
+
+  it('returns undefined for a missing stack', () => {
+    expect(firstAppFrame(undefined)).toBeUndefined();
+  });
+
+  it('caps a very long frame', () => {
+    const stack = `Error\n    at fn (/app/${'x'.repeat(500)}.ts:1:1)`;
+    expect((firstAppFrame(stack) as string).length).toBeLessThanOrEqual(300);
   });
 });
 
