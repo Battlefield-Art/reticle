@@ -23,6 +23,7 @@ import {
   type CapabilitiesInput,
 } from './registry/capabilities.js';
 import { installDom } from './observers/dom.js';
+import { installStorage } from './observers/storage.js';
 import { installNetwork } from './observers/network.js';
 import { installPerf } from './observers/perf.js';
 import { installRoute } from './observers/route.js';
@@ -328,6 +329,7 @@ export class Reticle {
       installAnimation(emit),
       installScroll(emit),
       installDom(emit),
+      installStorage(emit), // storage WRITES → STORAGE_CHANGE diffs (pull remains the fallback)
       installHealth(emit), // page visibility/focus health + heartbeat
     ];
 

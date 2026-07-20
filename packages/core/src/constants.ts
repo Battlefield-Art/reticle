@@ -232,6 +232,8 @@ export const EventType = {
   REVEAL_SHOWN: 'reveal.shown',
   SIGNAL: 'signal',
   STATE_CHANGE: 'state.change',
+  /** a write to localStorage/sessionStorage/cookies — `data: { area, key, old?, new? }` (values redacted). */
+  STORAGE_CHANGE: 'storage.change',
   /** page-level visibility/focus health (distinct from element-level VISIBLE_*). */
   PAGE_HEALTH: 'page.health',
   /** browser → bridge: a human recording compiled in-page. */

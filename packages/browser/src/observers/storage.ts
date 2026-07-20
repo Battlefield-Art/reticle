@@ -1,5 +1,6 @@
-import { REDACTED_VALUE } from '@reticlehq/core';
+import { EventType, REDACTED_VALUE } from '@reticlehq/core';
 import { isSensitiveKey } from '../security/serialization.js';
+import type { Emit, Teardown } from './types.js';
 
 /** The three readable client-side storage areas. httpOnly cookies are invisible to JS by design. */
 export interface StorageSnapshot {
@@ -71,5 +72,66 @@ export function readStorage(area?: string): StorageSnapshot | Record<string, str
     local: readArea(safeArea(() => window.localStorage)),
     session: readArea(safeArea(() => window.sessionStorage)),
     cookies: readCookies(),
+  };
+}
+
+/** Redact a value when its key is credential-bearing — the same rule the pull path applies. */
+function redactFor(key: string, value: string | null): string | undefined {
+  if (value === null) return undefined;
+  return isSensitiveKey(key) ? REDACTED_VALUE : value;
+}
+
+/**
+ * Observe storage WRITES (not just reads): patch Storage.setItem/removeItem so a token persisted, a
+ * cart updated, or a session cleared emits a STORAGE_CHANGE {area, key, old?, new?} diff — the "before"
+ * the pull path can never see. Fully reversible; localStorage and sessionStorage share one prototype,
+ * so `this` identifies the area. Values are redacted by the same credential rule as the read path.
+ */
+export function installStorage(emit: Emit): Teardown {
+  if (typeof Storage === 'undefined') return () => undefined;
+  const proto = Storage.prototype;
+  /* eslint-disable @typescript-eslint/unbound-method -- captured to re-invoke via .call(this) */
+  const origSetItem = proto.setItem;
+  const origRemoveItem = proto.removeItem;
+  /* eslint-enable @typescript-eslint/unbound-method */
+
+  const areaOf = (storage: Storage): 'local' | 'session' =>
+    storage === safeArea(() => window.sessionStorage) ? 'session' : 'local';
+
+  proto.setItem = function patchedSetItem(this: Storage, key: string, value: string): void {
+    let old: string | null = null;
+    try {
+      old = this.getItem(key);
+    } catch {
+      /* unreadable — omit the old value */
+    }
+    origSetItem.call(this, key, value);
+    emit(EventType.STORAGE_CHANGE, {
+      area: areaOf(this),
+      key,
+      ...(redactFor(key, old) === undefined ? {} : { old: redactFor(key, old) }),
+      new: redactFor(key, value) ?? REDACTED_VALUE,
+    });
+  };
+
+  proto.removeItem = function patchedRemoveItem(this: Storage, key: string): void {
+    let old: string | null = null;
+    try {
+      old = this.getItem(key);
+    } catch {
+      /* unreadable */
+    }
+    origRemoveItem.call(this, key);
+    // No `new` field ⇒ the key was removed.
+    emit(EventType.STORAGE_CHANGE, {
+      area: areaOf(this),
+      key,
+      ...(redactFor(key, old) === undefined ? {} : { old: redactFor(key, old) }),
+    });
+  };
+
+  return () => {
+    proto.setItem = origSetItem;
+    proto.removeItem = origRemoveItem;
   };
 }

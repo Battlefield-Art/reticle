@@ -94,6 +94,12 @@ export const EVENT_PAYLOAD_SCHEMAS = {
   [EventType.REVEAL_SHOWN]: elementLabel.passthrough(),
   [EventType.SIGNAL]: z.object({ name: z.string(), data: z.unknown().optional() }),
   [EventType.STATE_CHANGE]: z.object({ name: z.string(), value: z.unknown() }).passthrough(),
+  [EventType.STORAGE_CHANGE]: z.object({
+    area: z.enum(['local', 'session', 'cookie']),
+    key: z.string(),
+    old: z.string().optional(),
+    new: z.string().optional(),
+  }),
   [EventType.PAGE_HEALTH]: z
     .object({ hidden: z.boolean(), focused: z.boolean(), reason: z.string().optional() })
     .passthrough(),
