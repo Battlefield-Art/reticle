@@ -48,6 +48,29 @@ export function readProjectId(cwd: string): string | undefined {
 }
 
 /**
+ * Whether the durable causal journal is enabled. On by default (the journal IS the loop); off only via
+ * explicit opt-out — `.reticle.json` `"journal": false`, or `RETICLE_JOURNAL` set to `0`/`false`. The env
+ * wins so CI/tests can force it off without editing the project file.
+ */
+export function readJournalEnabled(cwd: string, env: string | undefined): boolean {
+  if (env !== undefined) {
+    const v = env.trim().toLowerCase();
+    if (v === '0' || v === 'false' || v === 'off') return false;
+    if (v === '1' || v === 'true' || v === 'on') return true;
+  }
+  try {
+    const raw = readFileSync(`${cwd}/.reticle.json`, 'utf8');
+    const config: unknown = JSON.parse(raw);
+    if (typeof config === 'object' && config !== null) {
+      if ((config as Record<string, unknown>)['journal'] === false) return false;
+    }
+  } catch {
+    // .reticle.json absent or unreadable — journaling stays on by default
+  }
+  return true;
+}
+
+/**
  * Resolve the daemon port from all available sources in priority order.
  * Pass `portFlag` when the user explicitly supplied --port; pass `undefined` to fall through.
  */

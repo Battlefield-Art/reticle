@@ -118,6 +118,7 @@ export class Bridge {
   #pendingConnections = 0;
   #onReplay: ReplayRequestHandler | undefined;
   #onSessionReady: SessionReadyHandler | undefined;
+  #onSessionCreate: ((session: Session) => void) | undefined;
 
   constructor(options: BridgeOptions) {
     const host = options.host ?? LOOPBACK_HOST;
@@ -276,6 +277,7 @@ export class Bridge {
         clearTimeout(helloTimer);
         releasePending();
         session = new Session(parsed, socket, this.#clock);
+        this.#onSessionCreate?.(session); // attach the durable journal before any events stream in
         const replaced = this.sessions.add(session);
         replaced?.disconnect('session replaced by a newer connection');
         log('session_connected', { sessionId: session.id, url: session.url });
@@ -346,6 +348,11 @@ export class Bridge {
   /** Register a callback fired when a browser session connects (to push it the replayable flows). */
   attachSessionReady(handler: SessionReadyHandler): void {
     this.#onSessionReady = handler;
+  }
+
+  /** Register a callback fired the instant a session is created — used to attach the durable journal. */
+  attachSessionCreate(handler: (session: Session) => void): void {
+    this.#onSessionCreate = handler;
   }
 
   close(): Promise<void> {

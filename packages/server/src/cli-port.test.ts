@@ -2,8 +2,33 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readProjectId, readProjectPort, resolvePort } from './cli-port.js';
+import { readJournalEnabled, readProjectId, readProjectPort, resolvePort } from './cli-port.js';
 import { RETICLE_DEFAULT_PORT } from '@reticlehq/core';
+
+describe('readJournalEnabled', () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'reticle-journal-cfg-'));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('defaults to on when no config and no env', () => {
+    expect(readJournalEnabled(dir, undefined)).toBe(true);
+  });
+
+  it('turns off via .reticle.json journal:false', async () => {
+    await writeFile(join(dir, '.reticle.json'), JSON.stringify({ journal: false }), 'utf8');
+    expect(readJournalEnabled(dir, undefined)).toBe(false);
+  });
+
+  it('env overrides config in both directions', async () => {
+    await writeFile(join(dir, '.reticle.json'), JSON.stringify({ journal: false }), 'utf8');
+    expect(readJournalEnabled(dir, '1')).toBe(true);
+    expect(readJournalEnabled(dir, 'off')).toBe(false);
+  });
+});
 
 // ─── readProjectPort ─────────────────────────────────────────────────────────
 

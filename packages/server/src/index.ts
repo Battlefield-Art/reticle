@@ -34,7 +34,8 @@ import { cpus } from 'node:os';
 import { BrowserPool } from './pool/browser-pool.js';
 import { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launcher.js';
 import { LeaseReaper } from './pool/lease-reaper.js';
-import { readProjectId } from './cli-port.js';
+import { readJournalEnabled, readProjectId } from './cli-port.js';
+import { makeJournalAttach } from './journal/attach-journal.js';
 import type {
   OwnedRealInputProvider,
   RealInputProvider,
@@ -296,6 +297,8 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
     const fs = createNodeFileSystem();
     const reticleRoot = options.reticleRoot ?? join(process.cwd(), ReticleDir.ROOT);
     const now = options.now ?? ((): number => Date.now());
+    const journalEnabled = readJournalEnabled(process.cwd(), process.env[ReticleEnv.JOURNAL]);
+    bridge.attachSessionCreate(makeJournalAttach({ fs, reticleRoot, enabled: journalEnabled }));
     const flows = new FlowStore(fs, reticleRoot, { now });
     const project = new ProjectStore(fs, reticleRoot, { now });
     const annotations = new AnnotationStore();
@@ -390,6 +393,8 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   const fs = createNodeFileSystem();
   const reticleRoot = options.reticleRoot ?? join(process.cwd(), ReticleDir.ROOT);
   const now = options.now ?? ((): number => Date.now());
+  const journalEnabled = readJournalEnabled(process.cwd(), process.env[ReticleEnv.JOURNAL]);
+  bridge.attachSessionCreate(makeJournalAttach({ fs, reticleRoot, enabled: journalEnabled }));
   const flows = new FlowStore(fs, reticleRoot, { now });
   const project = new ProjectStore(fs, reticleRoot, { now });
   const annotations = new AnnotationStore();

@@ -61,6 +61,8 @@ export const ReticleEnv = {
   IDLE_SHUTDOWN: 'RETICLE_IDLE_SHUTDOWN_MS',
   /** Directory holding the auto-provisioned pairing token. Defaults to ~/.reticle; relocatable for CI. */
   PAIRING_TOKEN_DIR: 'RETICLE_PAIRING_TOKEN_DIR',
+  /** Force the durable causal journal off (`0`/`false`/`off`) or on (`1`/`true`/`on`); default on. */
+  JOURNAL: 'RETICLE_JOURNAL',
 } as const;
 
 /** Hard transport bounds shared by the browser and bridge. */
