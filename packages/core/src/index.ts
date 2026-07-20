@@ -3,6 +3,7 @@ export * from './daemon-registry.js';
 export * from './session-constants.js';
 export * from './notices.js';
 export * from './messages.js';
+export * from './event-payloads.js';
 export * from './security.js';
 export * from './state-select.js';
 export * from './brand.js';
