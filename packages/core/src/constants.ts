@@ -261,6 +261,23 @@ export const EventType = {
 } as const;
 export type EventType = (typeof EventType)[keyof typeof EventType];
 
+/**
+ * Named phenomena the perception layer detects deterministically over the journal — capsules and
+ * deviation reports lead with these names, not raw events. The library grows in later releases; the
+ * mechanism (versioned matchers + evidence templates) lands now.
+ */
+export const PhenomenonType = {
+  /** An act dispatched but the app did nothing — no DOM/net/route/signal in its window. */
+  DEAD_CLICK: 'dead-click',
+  /** A click landed before hydration attached handlers — a silent no-op. */
+  PRE_HYDRATION_CLICK: 'pre-hydration-click',
+  /** A 5xx response that occurred while the page was hidden — looks fine, isn't. */
+  HIDDEN_500: 'hidden-500',
+  /** A request started and never completed within the window — a hung/in-flight request. */
+  HUNG_REQUEST: 'hung-request',
+} as const;
+export type PhenomenonType = (typeof PhenomenonType)[keyof typeof PhenomenonType];
+
 /** The observation channel a TRUNCATED event names, so downstream knows WHICH data is incomplete. */
 export const TruncationChannel = {
   DOM: 'dom',
