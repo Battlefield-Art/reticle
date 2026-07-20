@@ -27,6 +27,12 @@ export interface SegmentRollup {
    * Directions: opens (connections), in (server→client), out (client→server). Absent when no streams.
    */
   streams?: { frames: number; opened: number; in: number; out: number };
+  /**
+   * True when a cap dropped events in this segment (a TRUNCATED or transport-overflow event landed in
+   * it). The segment's counts UNDERSTATE reality — the deviation judge must not read a nominal count as
+   * proof, and the envelope should not learn from a truncated sample.
+   */
+  truncated?: boolean;
 }
 
 interface StreamAcc {
@@ -46,6 +52,7 @@ interface SegmentAcc {
   consoleErrors: number;
   statePaths: string[];
   streams: StreamAcc;
+  truncated: boolean;
 }
 
 function finalize(acc: SegmentAcc): SegmentRollup {
@@ -59,6 +66,7 @@ function finalize(acc: SegmentAcc): SegmentRollup {
     consoleErrors: acc.consoleErrors,
     statePathsChanged: acc.statePaths,
     ...(acc.streams.frames === 0 ? {} : { streams: acc.streams }),
+    ...(acc.truncated ? { truncated: true } : {}),
   };
 }
 
@@ -85,6 +93,7 @@ export function computeSegments(events: readonly ReticleEvent[]): SegmentRollup[
     consoleErrors: 0,
     statePaths: [],
     streams: { frames: 0, opened: 0, in: 0, out: 0 },
+    truncated: false,
   });
 
   for (const event of events) {
@@ -114,6 +123,9 @@ export function computeSegments(events: readonly ReticleEvent[]): SegmentRollup[
       if (direction === 'open') acc.streams.opened += 1;
       else if (direction === 'in') acc.streams.in += 1;
       else if (direction === 'out') acc.streams.out += 1;
+    }
+    if (event.type === EventType.TRUNCATED || event.type === EventType.TRANSPORT_OVERFLOW) {
+      acc.truncated = true;
     }
   }
   if (acc !== undefined) segments.push(finalize(acc));

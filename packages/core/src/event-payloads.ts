@@ -99,6 +99,7 @@ export const EVENT_PAYLOAD_SCHEMAS = {
     .passthrough(),
   [EventType.FLOW_RECORDED]: z.object({ name: z.string(), flow: z.unknown() }),
   [EventType.TRANSPORT_OVERFLOW]: z.object({ dropped: z.number() }),
+  [EventType.TRUNCATED]: z.object({ channel: z.string(), dropped: z.number() }),
   [EventType.HUMAN_CONTROL]: HumanControlDataSchema,
   [EventType.HUMAN_MARK]: HumanMarkDataSchema,
 } satisfies Record<EventType, z.ZodTypeAny>;

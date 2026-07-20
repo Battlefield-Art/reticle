@@ -14,6 +14,8 @@ export interface DeviationReport {
   nominalSegments: number;
   /** Segments whose envelope was mature enough to judge. */
   judgedSegments: number;
+  /** Segments skipped because a cap truncated them — counts understate, so they are not judged. */
+  truncatedSegments: number;
   /** True when nothing could be judged — the caller shows the causal summary instead. */
   insufficientSamples: boolean;
   /** One-line human/agent headline. */
@@ -21,15 +23,18 @@ export interface DeviationReport {
 }
 
 function headlineFor(report: Omit<DeviationReport, 'headline'>): string {
+  const truncNote =
+    report.truncatedSegments > 0 ? ` (${String(report.truncatedSegments)} truncated — counts partial)` : '';
   if (report.insufficientSamples) {
-    return `envelope too new (need ${String(MIN_ENVELOPE_SAMPLES)} runs) — see causal summary`;
+    return `envelope too new (need ${String(MIN_ENVELOPE_SAMPLES)} runs) — see causal summary${truncNote}`;
   }
   if (report.deviations.length === 0) {
-    return `${String(report.nominalSegments)} segment${report.nominalSegments === 1 ? '' : 's'} nominal`;
+    const s = report.nominalSegments === 1 ? '' : 's';
+    return `${String(report.nominalSegments)} segment${s} nominal${truncNote}`;
   }
   const routes = [...new Set(report.deviations.map((d) => d.route))].join(', ');
   const n = report.deviations.length;
-  return `${String(n)} deviation${n === 1 ? '' : 's'}: ${routes}`;
+  return `${String(n)} deviation${n === 1 ? '' : 's'}: ${routes}${truncNote}`;
 }
 
 /**
@@ -44,8 +49,14 @@ export function buildDeviationReport(
   const deviations: Deviation[] = [];
   let judged = 0;
   let nominal = 0;
+  let truncated = 0;
   for (const segment of segments) {
     if (segment.route === undefined) continue;
+    // A truncated segment's counts understate reality — judging it could read a false "nominal".
+    if (segment.truncated === true) {
+      truncated += 1;
+      continue;
+    }
     const envelope = envelopes.get(segment.route);
     if (envelope === undefined || envelope.samples < MIN_ENVELOPE_SAMPLES) continue;
     judged += 1;
@@ -58,6 +69,7 @@ export function buildDeviationReport(
     deviations,
     nominalSegments: nominal,
     judgedSegments: judged,
+    truncatedSegments: truncated,
     insufficientSamples: judged === 0,
   };
   return { ...base, headline: headlineFor(base) };

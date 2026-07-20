@@ -44,6 +44,14 @@ describe('reportAndAccumulate — the push-default loop', () => {
     expect(regressed.headline).toContain('/checkout');
   });
 
+  it('never learns from a truncated segment (its understated counts would poison the baseline)', async () => {
+    for (const d of [100, 110, 95]) await reportAndAccumulate(store, [seg('/a', d)]);
+    // A truncated run (understated counts) must not fold into the envelope.
+    await reportAndAccumulate(store, [{ ...seg('/a', 0), truncated: true }]);
+    const loaded = await store.load();
+    expect(loaded.get('/a')?.samples).toBe(3); // still 3 — the truncated run was not learned
+  });
+
   it('persists the accumulated baseline across separate store instances (run to run)', async () => {
     for (const d of [100, 110, 95, 105]) await reportAndAccumulate(store, [seg('/a', d)]);
     const fresh = new EnvelopeStore(fs, root); // a later daemon run

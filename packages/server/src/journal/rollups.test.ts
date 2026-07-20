@@ -62,6 +62,14 @@ describe('computeSegments', () => {
     expect(computeSegments([e(EventType.DOM_ADDED)])[0]?.streams).toBeUndefined();
   });
 
+  it('marks a segment truncated when a cap dropped events in it', () => {
+    const truncated = e(EventType.TRUNCATED, { data: { channel: 'dom', dropped: 500 } });
+    const segs = computeSegments([e(EventType.DOM_ADDED), truncated]);
+    expect(segs[0]?.truncated).toBe(true);
+    // a clean segment omits the flag
+    expect(computeSegments([e(EventType.DOM_ADDED)])[0]?.truncated).toBeUndefined();
+  });
+
   it('returns no segments for an empty stream', () => {
     expect(computeSegments([])).toEqual([]);
   });

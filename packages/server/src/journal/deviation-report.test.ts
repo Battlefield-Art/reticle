@@ -52,6 +52,15 @@ describe('buildDeviationReport', () => {
     expect(report.headline).toContain('causal summary');
   });
 
+  it('does not judge a truncated segment as nominal — counts it separately and notes it', () => {
+    const envelopes = new Map([['/a', trained('/a', [100, 110, 95, 105, 100])]]);
+    const report = buildDeviationReport(envelopes, [{ ...seg('/a', 100), truncated: true }]);
+    expect(report.judgedSegments).toBe(0);
+    expect(report.truncatedSegments).toBe(1);
+    expect(report.nominalSegments).toBe(0);
+    expect(report.headline).toContain('truncated');
+  });
+
   it('skips segments with no route and unknown routes without crashing', () => {
     const envelopes = new Map([['/a', trained('/a', [100, 110, 95, 105, 100])]]);
     const { route: _omit, ...noRoute } = seg('/unknown', 100);

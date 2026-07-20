@@ -19,6 +19,8 @@ export async function reportAndAccumulate(
   const report = buildDeviationReport(envelopes, segments, zThreshold);
   for (const segment of segments) {
     if (segment.route === undefined) continue;
+    // Never learn from a truncated sample — its understated counts would poison the baseline.
+    if (segment.truncated === true) continue;
     const current = envelopes.get(segment.route) ?? emptyEnvelope(segment.route);
     envelopes.set(segment.route, addSegmentToEnvelope(current, segment));
   }

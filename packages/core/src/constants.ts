@@ -237,6 +237,12 @@ export const EventType = {
   /** synthetic: browser transport queue overflowed; events were dropped. `data: { dropped: number }`. */
   TRANSPORT_OVERFLOW: 'transport.overflow',
   /**
+   * synthetic: a per-channel cap truncated a batch (e.g. a DOM mutation flood). `data: { channel, dropped }`.
+   * Marks downstream rollups/envelopes as built on incomplete data — a ledger that lies at scale is worse
+   * than no ledger, so truncation is never silent.
+   */
+  TRUNCATED: 'truncated',
+  /**
    * Live-control: browser → bridge. A human acted on the presenter panel.
    * `data: { kind: HumanControlKind; text?: string }`. Rides the existing EventMessage.
    */
