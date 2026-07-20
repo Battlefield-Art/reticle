@@ -11,7 +11,9 @@ import {
   detectHidden500,
   detectHungRequests,
   detectPhenomena,
+  detectPreHydrationClicks,
 } from './phenomena.js';
+import { RETICLE_HYDRATION_SIGNAL } from '@reticlehq/core';
 
 let seq = 0;
 function e(type: EventType, data: Record<string, unknown>): ReticleEvent {
@@ -60,6 +62,29 @@ describe('detectDeadClicks', () => {
     const findings = detectDeadClicks(actions);
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ phenomenon: PhenomenonType.DEAD_CLICK, evidence: { actionId: 'a2' } });
+  });
+});
+
+describe('detectPreHydrationClicks', () => {
+  const hydrationAt = (t: number): ReticleEvent => {
+    seq += 1;
+    return { t, seq, type: EventType.SIGNAL, sessionId: 'demo', data: { name: RETICLE_HYDRATION_SIGNAL } };
+  };
+
+  it('flags a click dispatched before the hydration-complete signal', () => {
+    const events = [hydrationAt(100)];
+    const actions = [
+      action({ actionId: 'a1', tool: 'reticle_act', tRange: { from: 40, to: 45 } }), // before hydration
+      action({ actionId: 'a2', tool: 'reticle_act', tRange: { from: 150, to: 155 } }), // after hydration
+    ];
+    const findings = detectPreHydrationClicks(events, actions);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ phenomenon: PhenomenonType.PRE_HYDRATION_CLICK, evidence: { actionId: 'a1' } });
+  });
+
+  it('does not guess when there is no hydration signal (not a React app)', () => {
+    const actions = [action({ actionId: 'a1', tool: 'reticle_act', tRange: { from: 10, to: 15 } })];
+    expect(detectPreHydrationClicks([], actions)).toEqual([]);
   });
 });
 

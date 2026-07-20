@@ -7,8 +7,10 @@
  * clicking into the void. Pure tracker; the commit hook drives it, the SDK emits the signal.
  */
 
+import { RETICLE_HYDRATION_SIGNAL } from '@reticlehq/core';
+
 /** The signal fired once React has committed its first render (handlers attached). */
-export const HYDRATION_COMPLETE_SIGNAL = 'reticle:hydration-complete';
+export const HYDRATION_COMPLETE_SIGNAL = RETICLE_HYDRATION_SIGNAL;
 
 export interface HydrationTracker {
   /** Call on every React commit; fires `onHydrated` exactly once, on the first. */

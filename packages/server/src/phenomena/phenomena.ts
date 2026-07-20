@@ -1,6 +1,7 @@
 import {
   EventType,
   PhenomenonType,
+  RETICLE_HYDRATION_SIGNAL,
   type JournalAction,
   type ReticleEvent,
 } from '@reticlehq/core';
@@ -72,6 +73,27 @@ export function detectDeadClicks(actions: readonly JournalAction[]): Finding[] {
   return findings;
 }
 
+/**
+ * A click that landed BEFORE React hydration attached handlers — a silent no-op. Detectable only in-app:
+ * the hydration-complete signal's time vs the click action's dispatch. No signal ⇒ can't tell (not a
+ * React app, or hydration never completed), so we don't guess.
+ */
+export function detectPreHydrationClicks(
+  events: readonly ReticleEvent[],
+  actions: readonly JournalAction[],
+): Finding[] {
+  const hydration = events.find(
+    (e) => e.type === EventType.SIGNAL && e.data['name'] === RETICLE_HYDRATION_SIGNAL,
+  );
+  if (hydration === undefined) return [];
+  return actions
+    .filter((a) => CLICK_TOOLS.has(a.tool) && a.tRange.from < hydration.t)
+    .map((a) => ({
+      phenomenon: PhenomenonType.PRE_HYDRATION_CLICK,
+      evidence: { actionId: a.actionId, clickedAt: a.tRange.from, hydratedAt: hydration.t },
+    }));
+}
+
 /** Run every journal-only matcher over a session's events + actions. */
 export function detectPhenomena(
   events: readonly ReticleEvent[],
@@ -81,5 +103,6 @@ export function detectPhenomena(
     ...detectHungRequests(events),
     ...detectHidden500(events),
     ...detectDeadClicks(actions),
+    ...detectPreHydrationClicks(events, actions),
   ];
 }

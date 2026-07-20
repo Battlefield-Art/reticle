@@ -282,6 +282,9 @@ export const PhenomenonType = {
 } as const;
 export type PhenomenonType = (typeof PhenomenonType)[keyof typeof PhenomenonType];
 
+/** Signal the React adapter fires once hydration commits (handlers attached). Shared browser↔server. */
+export const RETICLE_HYDRATION_SIGNAL = 'reticle:hydration-complete';
+
 /** The observation channel a TRUNCATED event names, so downstream knows WHICH data is incomplete. */
 export const TruncationChannel = {
   DOM: 'dom',
