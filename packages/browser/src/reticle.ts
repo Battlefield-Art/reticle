@@ -207,6 +207,29 @@ export function resolveConnectIdentity(
 }
 
 /**
+ * Assemble an event envelope. Pure: `seq` (monotonic per session) and `t` (elapsed clock) are
+ * injected, never read here — so it is unit-testable and honors the clock-injection rule. The
+ * causing action's id is attributed server-side by the settle window, so it is not stamped here.
+ */
+export function buildEvent(args: {
+  seq: number;
+  t: number;
+  type: EventType;
+  sessionId: string;
+  data: Record<string, unknown>;
+  ref?: string | undefined;
+}): ReticleEvent {
+  return {
+    t: args.t,
+    seq: args.seq,
+    type: args.type,
+    sessionId: args.sessionId,
+    ref: args.ref,
+    data: args.data,
+  };
+}
+
+/**
  * The browser-side orchestrator. Wires observers -> events -> bridge, and bridge
  * commands -> handlers. Embedded in the host app (dev only).
  */
@@ -405,13 +428,14 @@ export class Reticle {
   }
 
   readonly #emit = (type: EventType, data: Record<string, unknown>, ref?: string): void => {
-    const event: ReticleEvent = {
+    const event = buildEvent({
+      seq: this.#eventCount,
       t: Math.round(performance.now() - this.#start),
       type,
       sessionId: this.#session,
-      ref,
       data,
-    };
+      ref,
+    });
     this.#transport?.sendEvent(event);
     this.#eventCount += 1;
     this.#overlay?.update({ connected: true, events: this.#eventCount });
