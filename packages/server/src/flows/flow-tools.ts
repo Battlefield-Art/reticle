@@ -218,6 +218,12 @@ export const FLOW_TOOLS: ToolDef[] = [
       status: z.string().describe('ok | drift | error'),
       steps: z.array(z.unknown()),
       proposals: z.array(z.unknown()).optional(),
+      deviation: z
+        .unknown()
+        .optional()
+        .describe(
+          'Push-default deviation report over the replay segments: ranked deviations vs the learned envelope + a nominal count, or a fall-back note below 3 runs.',
+        ),
       error: z.object({ code: z.string(), message: z.string() }).optional(),
       decision: z
         .object({

@@ -242,6 +242,11 @@ export interface FlowReplayResult {
    * optional — present only when at least one drifted step has a confident nearest match).
    */
   proposals?: HealProposal[];
+  /**
+   * The push-default deviation report over this replay's route segments (ranked deviations vs the learned
+   * envelope, or a fall-back note below N=3 runs). Additive; present when segments were observed.
+   */
+  deviation?: unknown;
 }
 
 /**

@@ -16,6 +16,10 @@ import { replayFlow } from './flow-replay.js';
 import { assertSuccess, dynamicTestids, successLabel, SUCCESS_STEP_TOOL } from './flow-success.js';
 import { buildDecision } from './decision.js';
 import { waitForPredicate } from '../events/predicate.js';
+import { computeSegments } from '../journal/rollups.js';
+import { reportAndAccumulate } from '../journal/deviation-service.js';
+import { EnvelopeStore } from '../journal/envelope-store.js';
+import type { DeviationReport } from '../journal/deviation-report.js';
 import type { ToolDeps } from '../tools/tools.js';
 
 export function latestRecordedFlow(
@@ -166,6 +170,8 @@ export async function replayNamedFlow(
   const allOk = steps.every((s) => s.ok);
   const status = driftSteps > 0 ? ReplayStatus.DRIFT : allOk ? ReplayStatus.OK : ReplayStatus.ERROR;
   await recordReplayRun(deps, name, status, driftSteps, deps.now() - startedAt);
+  // Push-default: the deviation report over this drive's segments, learned across runs. Best-effort.
+  const deviation = await computeReplayDeviation(deps, session, replayFloor);
   const failed = steps.find((step) => !step.ok && step.drift === undefined);
   if (failed !== undefined) {
     const errored: FlowReplayResult = {
@@ -176,12 +182,32 @@ export async function replayNamedFlow(
     };
     errored.decision = buildDecision(errored, loaded.value);
     applyStartPathHint(errored, startPathHint);
+    if (deviation !== undefined) errored.deviation = deviation;
     return errored;
   }
   const result: FlowReplayResult = { name, status, steps };
   if (status !== ReplayStatus.OK) result.decision = buildDecision(result, loaded.value);
   applyStartPathHint(result, startPathHint);
+  if (deviation !== undefined) result.deviation = deviation;
   return result;
+}
+
+/**
+ * The deviation report over a replay's route segments — compared against the learned envelope, which is
+ * then updated. Best-effort: any failure (disk, empty window) yields undefined, never breaking the replay.
+ */
+async function computeReplayDeviation(
+  deps: ToolDeps,
+  session: { eventsSince(cursor: number): ReticleEvent[] },
+  floor: number,
+): Promise<DeviationReport | undefined> {
+  try {
+    const segments = computeSegments(session.eventsSince(floor));
+    if (segments.length === 0) return undefined;
+    return await reportAndAccumulate(new EnvelopeStore(deps.fs, deps.reticleRoot), segments);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Fold a start-page-mismatch hint onto a non-passing replay's decision (the actionable next move). */
