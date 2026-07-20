@@ -285,6 +285,13 @@ export type PhenomenonType = (typeof PhenomenonType)[keyof typeof PhenomenonType
 /** Signal the React adapter fires once hydration commits (handlers attached). Shared browser↔server. */
 export const RETICLE_HYDRATION_SIGNAL = 'reticle:hydration-complete';
 
+/**
+ * Signal the React adapter fires when an error boundary catches (dev-only). Carried on the signal channel
+ * (the SDK's public emit surface) so the server sees a boundary that swallowed — the purest "looks fine,
+ * isn't", invisible to every other channel. `data: { message, stack?, componentStack? }`.
+ */
+export const RETICLE_ERROR_BOUNDARY_SIGNAL = 'reticle:error-boundary';
+
 /** The observation channel a TRUNCATED event names, so downstream knows WHICH data is incomplete. */
 export const TruncationChannel = {
   DOM: 'dom',
