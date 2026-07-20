@@ -1,0 +1,53 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createNodeFileSystem, type FileSystemPort } from '../project/fs-port.js';
+import { EnvelopeStore } from './envelope-store.js';
+import { reportAndAccumulate } from './deviation-service.js';
+import type { SegmentRollup } from './rollups.js';
+
+function seg(route: string, durationMs: number): SegmentRollup {
+  return { route, from: 0, to: durationMs, durationMs, actions: 1, net: { total: 2, errors: 0 }, consoleErrors: 0, statePathsChanged: [] };
+}
+
+describe('reportAndAccumulate — the push-default loop', () => {
+  let root: string;
+  let fs: FileSystemPort;
+  let store: EnvelopeStore;
+
+  beforeEach(async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'reticle-dev-svc-'));
+    root = join(dir, '.reticle');
+    fs = createNodeFileSystem();
+    store = new EnvelopeStore(fs, root);
+  });
+  afterEach(async () => {
+    await rm(join(root, '..'), { recursive: true, force: true });
+  });
+
+  it('is silent on early runs, then catches a regression once the envelope matures', async () => {
+    // First runs: too few samples — falls back to the causal summary.
+    for (const d of [100, 110, 95]) {
+      const report = await reportAndAccumulate(store, [seg('/checkout', d)]);
+      expect(report.insufficientSamples).toBe(true);
+    }
+    // A now-established route stays nominal on a healthy run…
+    const healthy = await reportAndAccumulate(store, [seg('/checkout', 104)]);
+    expect(healthy.insufficientSamples).toBe(false);
+    expect(healthy.deviations).toEqual([]);
+    expect(healthy.headline).toContain('nominal');
+
+    // …and flags a real slowdown, naming the route.
+    const regressed = await reportAndAccumulate(store, [seg('/checkout', 1500)]);
+    expect(regressed.deviations[0]?.route).toBe('/checkout');
+    expect(regressed.headline).toContain('/checkout');
+  });
+
+  it('persists the accumulated baseline across separate store instances (run to run)', async () => {
+    for (const d of [100, 110, 95, 105]) await reportAndAccumulate(store, [seg('/a', d)]);
+    const fresh = new EnvelopeStore(fs, root); // a later daemon run
+    const report = await reportAndAccumulate(fresh, [seg('/a', 100)]);
+    expect(report.insufficientSamples).toBe(false);
+  });
+});
