@@ -67,6 +67,9 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 8000;
 /** Prefix on correlated command ids (c1, c2, …) — distinguishes them from mark ids. */
 const COMMAND_ID_PREFIX = 'c';
 
+/** Prefix on minted action ids (a1, a2, …) — the journal's action identity, independent of commands. */
+const ACTION_ID_PREFIX = 'a';
+
 /** ws readyState for an OPEN socket — guard fire-and-forget pushes against a closing tab. */
 const WS_OPEN = 1;
 
@@ -96,6 +99,7 @@ export class Session {
   readonly #pending = new Map<string, PendingCommand>();
   readonly #listeners = new Set<(event: ReticleEvent) => void>();
   #seq = 0;
+  #actionSeq = 0;
   #lastSeenAt: number;
   #hidden = false;
   #focused = true;
@@ -241,9 +245,15 @@ export class Session {
     this.#journal = recorder;
   }
 
-  /** Open an action-attribution window: events observed until finishAction attribute to this action. */
-  beginAction(actionId: string, tool: string, args: Record<string, unknown>): void {
+  /**
+   * Open an action-attribution window: events observed until finishAction attribute to the returned
+   * action id. Ids are minted independently of command correlation ids so the journal is self-contained.
+   */
+  beginAction(tool: string, args: Record<string, unknown>): string {
+    this.#actionSeq += 1;
+    const actionId = `${ACTION_ID_PREFIX}${String(this.#actionSeq)}`;
     this.#journal?.beginAction(actionId, tool, args);
+    return actionId;
   }
 
   /** Close the active action window, persisting its action record with the settle outcome. */

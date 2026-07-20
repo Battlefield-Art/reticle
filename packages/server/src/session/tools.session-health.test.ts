@@ -35,6 +35,8 @@ function fakeSession(throttled: boolean): Session {
     url: SESSION_URL,
     elapsed: () => 0,
     markActCursor: () => undefined,
+    beginAction: () => 'a1',
+    finishAction: () => undefined,
     lastActCursor: () => undefined,
     eventsSince: () => [],
     eventsInWindow: () => [],

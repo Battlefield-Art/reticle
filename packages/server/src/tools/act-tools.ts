@@ -225,29 +225,42 @@ export const ACT_TOOLS: ToolDef[] = [
         });
       }
 
-      const result = await session.command(ReticleCommand.ACT, {
-        ref: args['ref'],
-        action: args['action'],
-        args: args['args'] ?? {},
-      });
-      if (!result.ok) throw new Error(result.error ?? 'act failed');
-      if (deps.recordings.active().length > 0) {
-        deps.recordings.capture(compileActStep(args, result.result));
+      // Open the journal's action-attribution window: events until finishAction attribute to this act.
+      session.beginAction(ReticleCommand.ACT, asRecord(args));
+      let settledOutcome: boolean | undefined;
+      try {
+        const result = await session.command(ReticleCommand.ACT, {
+          ref: args['ref'],
+          action: args['action'],
+          args: args['args'] ?? {},
+        });
+        if (!result.ok) throw new Error(result.error ?? 'act failed');
+        if (deps.recordings.active().length > 0) {
+          deps.recordings.capture(compileActStep(args, result.result));
+        }
+        // lift dispatch/settle status to the envelope (a settle timeout is NOT a failure).
+        const r = asRecord(result.result);
+        if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
+        return withControl(session, {
+          since,
+          inputMode: InputMode.SYNTHETIC,
+          // #2: never a silent real→synthetic fallback — say WHY (unless real input isn't configured).
+          ...(real.reason !== undefined ? { inputModeReason: real.reason } : {}),
+          dispatched: r['dispatched'] ?? true,
+          settled: r['settled'] ?? null,
+          settleReason: r['settleReason'] ?? null,
+          result: leanActResult(result.result),
+          ...(real.fellBack === true ? { warning: ActionWarning.REAL_INPUT_FELL_BACK } : {}),
+          ...healthEnvelope(session),
+        });
+      } finally {
+        // Close the window on every exit (settle or throw), recording the action + settle outcome.
+        session.finishAction(
+          undefined,
+          settledOutcome,
+          settledOutcome === true ? session.elapsed() - since : undefined,
+        );
       }
-      // lift dispatch/settle status to the envelope (a settle timeout is NOT a failure).
-      const r = asRecord(result.result);
-      return withControl(session, {
-        since,
-        inputMode: InputMode.SYNTHETIC,
-        // #2: never a silent real→synthetic fallback — say WHY (unless real input isn't configured).
-        ...(real.reason !== undefined ? { inputModeReason: real.reason } : {}),
-        dispatched: r['dispatched'] ?? true,
-        settled: r['settled'] ?? null,
-        settleReason: r['settleReason'] ?? null,
-        result: leanActResult(result.result),
-        ...(real.fellBack === true ? { warning: ActionWarning.REAL_INPUT_FELL_BACK } : {}),
-        ...healthEnvelope(session),
-      });
     },
   },
   {

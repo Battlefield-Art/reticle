@@ -93,6 +93,8 @@ function fakeSession(state: { actCalls: number }): Session {
     url: DRIVE_URL,
     elapsed: () => 0,
     markActCursor: () => undefined,
+    beginAction: () => 'a1',
+    finishAction: () => undefined,
     lastActCursor: () => undefined,
     command,
     health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
