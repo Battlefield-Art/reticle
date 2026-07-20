@@ -74,12 +74,6 @@ export const ReticleTool = {
   NAVIGATE: 'reticle_navigate',
   /** Reload the connected browser tab (soft or hard). */
   REFRESH: 'reticle_refresh',
-  /** Report running version, latest available, changelog, and breaking changes. */
-  VERSION_INFO: 'reticle_version_info',
-  /** Install the latest server version and restart (Claude Code reconnects automatically). */
-  APPLY_UPDATE: 'reticle_apply_update',
-  /** Restore the previous server version and restart. */
-  ROLLBACK: 'reticle_rollback',
   /** Export a verification-run artifact (.reticle/runs/<id>.json) — the OEM/CI-consumable verdict. */
   RUN_EXPORT: 'reticle_run_export',
   /** Lease a fresh isolated headless context from the shared browser pool (one per flow). */

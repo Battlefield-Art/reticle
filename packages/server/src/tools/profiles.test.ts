@@ -39,6 +39,12 @@ describe('tool profiles', () => {
     expect(CORE_TOOL_NAMES.size).toBeLessThan(TOOLS.length);
   });
 
+  it('4b: server-management ops are NOT on the MCP surface (CLI-only — they restart the daemon)', () => {
+    const names = new Set(TOOLS.map((t) => t.name));
+    for (const retired of ['reticle_version_info', 'reticle_apply_update', 'reticle_rollback'])
+      expect(names.has(retired)).toBe(false);
+  });
+
   it('5: resolveToolProfile — explicit value wins over env', () => {
     process.env[TOOL_PROFILE_ENV] = TOOL_PROFILE.FULL;
     expect(resolveToolProfile(TOOL_PROFILE.CORE)).toBe(TOOL_PROFILE.CORE);

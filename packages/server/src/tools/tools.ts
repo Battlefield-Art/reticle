@@ -19,7 +19,6 @@ import { VIEWPORT_TOOLS } from '../input/viewport-tools.js';
 import { SESSION_TOOLS } from '../session/session-tools.js';
 import { ANNOTATE_TOOLS } from '../flows/annotate-tools.js';
 import { LIVE_CONTROL_TOOLS } from '../session/live-control-tools.js';
-import { UPDATE_TOOLS } from '../update/update-tools.js';
 import { type ToolDef, sessionIdShape, commandOrThrow } from './tool-kit.js';
 import { ACT_TOOLS } from './act-tools.js';
 import { OBSERVE_TOOLS } from './observe-tools.js';
@@ -304,8 +303,6 @@ export const TOOLS: ToolDef[] = [
   ...LIVE_CONTROL_TOOLS,
   // reticle_navigate / reticle_refresh — browser navigation tools. See browser-tools.ts.
   ...BROWSER_TOOLS,
-  // reticle_version_info / reticle_apply_update / reticle_rollback — update lifecycle tools.
-  ...UPDATE_TOOLS,
   ...ACT_TOOLS,
   ...OBSERVE_TOOLS,
   ...READ_TOOLS,
