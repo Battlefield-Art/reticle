@@ -86,6 +86,9 @@ function memoryFs(): FileSystemPort {
       files.delete(path);
       return Promise.resolve();
     },
+    stat() {
+      return Promise.resolve({ mtimeMs: 0 });
+    },
     isNotFound(error) {
       return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
     },

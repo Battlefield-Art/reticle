@@ -65,6 +65,7 @@ function memoryFs(files: Record<string, string>): FileSystemPort {
       store.delete(path);
       return Promise.resolve();
     },
+    stat: () => Promise.resolve({ mtimeMs: 0 }),
     isNotFound: (error) => (error as { code?: string } | undefined)?.code === 'ENOENT',
   };
 }

@@ -1,4 +1,4 @@
-import { access, appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 
 /**
  * The injectable filesystem seam. Server logic depends on this interface, never on node:fs
@@ -23,6 +23,8 @@ export interface FileSystemPort {
   rename(from: string, to: string): Promise<void>;
   /** Idempotent remove (no throw if absent) — for retention pruning + cleaning temp files. */
   rm(path: string): Promise<void>;
+  /** Modification time in epoch ms — for recency-based retention pruning. Rejects if absent. */
+  stat(path: string): Promise<{ mtimeMs: number }>;
   /** ENOENT classifier — narrows unknown without `any`, so callers can distinguish missing-file. */
   isNotFound(error: unknown): boolean;
 }
@@ -52,7 +54,13 @@ export function createNodeFileSystem(): FileSystemPort {
     readdir: (path) => readdir(path),
     rename: (from, to) => rename(from, to),
     rm: async (path) => {
-      await rm(path, { force: true });
+      // recursive so a session-journal DIRECTORY can be pruned; force so a missing path is a no-op.
+      // recursive is harmless for the file-removal callers (run/flow artifacts).
+      await rm(path, { recursive: true, force: true });
+    },
+    stat: async (path) => {
+      const s = await stat(path);
+      return { mtimeMs: s.mtimeMs };
     },
     isNotFound: (error) => (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT',
   };
