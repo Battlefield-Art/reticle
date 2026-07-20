@@ -1,0 +1,59 @@
+import { describe, expect, it } from 'vitest';
+import { EventAttribution, EventType, type ReticleEvent } from '@reticlehq/core';
+import { computeSegments } from './rollups.js';
+
+let seq = 0;
+function e(type: EventType, over: Partial<ReticleEvent> = {}): ReticleEvent {
+  seq += 1;
+  return { t: seq, seq, type, sessionId: 'demo', data: {}, ...over };
+}
+function route(pathname: string): ReticleEvent {
+  return e(EventType.ROUTE_CHANGE, { data: { from: '', to: pathname, pathname, search: '', hash: '' } });
+}
+function net(status: number, ok: boolean): ReticleEvent {
+  return e(EventType.NET_REQUEST, { data: { id: 'r', method: 'GET', url: '/x', status, ok, durationMs: 1, initiator: 'fetch' } });
+}
+
+describe('computeSegments', () => {
+  it('splits the event stream into segments at each route change', () => {
+    const events = [net(200, true), route('/b'), net(500, false), route('/c')];
+    const segs = computeSegments(events);
+    expect(segs).toHaveLength(3); // initial, /b, /c
+    expect(segs[1]?.route).toBe('/b');
+    expect(segs[2]?.route).toBe('/c');
+  });
+
+  it('counts network totals and errors per segment', () => {
+    const events = [net(200, true), net(500, false), route('/b'), net(404, false)];
+    const segs = computeSegments(events);
+    expect(segs[0]?.net).toEqual({ total: 2, errors: 1 });
+    expect(segs[1]?.net).toEqual({ total: 1, errors: 1 });
+  });
+
+  it('counts console + uncaught errors and collects changed state paths', () => {
+    const events = [
+      e(EventType.CONSOLE_ERROR, { data: { message: 'boom' } }),
+      e(EventType.ERROR_UNCAUGHT, { data: { message: 'nope' } }),
+      e(EventType.STATE_CHANGE, { data: { name: 'cart.count', value: 1 } }),
+      e(EventType.STATE_CHANGE, { data: { name: 'cart.count', value: 2 } }),
+    ];
+    const seg = computeSegments(events)[0];
+    expect(seg?.consoleErrors).toBe(2);
+    expect(seg?.statePathsChanged).toEqual(['cart.count']);
+  });
+
+  it('counts distinct attributed actions and the segment duration', () => {
+    const events = [
+      e(EventType.DOM_ADDED, { t: 10, actionId: 'a1', attribution: EventAttribution.WINDOW }),
+      e(EventType.DOM_ADDED, { t: 20, actionId: 'a1', attribution: EventAttribution.WINDOW }),
+      e(EventType.DOM_ADDED, { t: 40, actionId: 'a2', attribution: EventAttribution.WINDOW }),
+    ];
+    const seg = computeSegments(events)[0];
+    expect(seg?.actions).toBe(2);
+    expect(seg?.durationMs).toBe(30); // 40 - 10
+  });
+
+  it('returns no segments for an empty stream', () => {
+    expect(computeSegments([])).toEqual([]);
+  });
+});
