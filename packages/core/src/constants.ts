@@ -257,6 +257,12 @@ export const EventType = {
 } as const;
 export type EventType = (typeof EventType)[keyof typeof EventType];
 
+/** The observation channel a TRUNCATED event names, so downstream knows WHICH data is incomplete. */
+export const TruncationChannel = {
+  DOM: 'dom',
+} as const;
+export type TruncationChannel = (typeof TruncationChannel)[keyof typeof TruncationChannel];
+
 /**
  * How an event was linked to the action it is attributed to. `window` means the SDK stamped the
  * currently-active action's id onto every event observed between that action's dispatch and its

@@ -1,4 +1,4 @@
-import { EventType } from '@reticlehq/core';
+import { EventType, TruncationChannel } from '@reticlehq/core';
 import { getAccessibleName, getRole, isVisible } from '../dom/a11y.js';
 import { refs } from '../dom/refs.js';
 import { isReticleOverlay } from '../dom/dom-ignore.js';
@@ -32,15 +32,18 @@ export function installDom(emit: Emit): Teardown {
     let added = 0;
     let removed = 0;
     let changed = 0;
+    // Count element nodes dropped purely because a per-batch cap was already reached. The cap is on
+    // MEANINGFUL events, so it is only hit after a real flood — the count is a raw over-estimate
+    // (it can include not-yet-inspected noise) but `dropped > 0` honestly means "this batch was capped".
+    let dropped = 0;
     for (const record of records) {
       if (record.type === 'attributes') {
         const target = record.target;
-        if (
-          target instanceof Element &&
-          record.attributeName !== null &&
-          changed < MAX_PER_BATCH &&
-          !isReticleOverlay(target)
-        ) {
+        if (target instanceof Element && record.attributeName !== null && !isReticleOverlay(target)) {
+          if (changed >= MAX_PER_BATCH) {
+            dropped += 1;
+            continue;
+          }
           changed += 1;
           emit(
             EventType.DOM_ATTR,
@@ -54,7 +57,11 @@ export function installDom(emit: Emit): Teardown {
         // In-place text change inside an existing subtree (wizard steps, inline edits) —
         // childList-only would miss this.
         const parent = record.target.parentElement;
-        if (parent !== null && changed < MAX_PER_BATCH && !isReticleOverlay(parent)) {
+        if (parent !== null && !isReticleOverlay(parent)) {
+          if (changed >= MAX_PER_BATCH) {
+            dropped += 1;
+            continue;
+          }
           changed += 1;
           const text = (record.target.textContent ?? '').trim().slice(0, 80);
           emit(EventType.DOM_TEXT, { text }, refs.refFor(parent));
@@ -62,7 +69,11 @@ export function installDom(emit: Emit): Teardown {
         continue;
       }
       for (const node of record.addedNodes) {
-        if (!(node instanceof Element) || added >= MAX_PER_BATCH) continue;
+        if (!(node instanceof Element)) continue;
+        if (added >= MAX_PER_BATCH) {
+          dropped += 1;
+          continue;
+        }
         if (isReticleOverlay(node)) continue;
         const role = getRole(node);
         const name = getAccessibleName(node);
@@ -79,7 +90,11 @@ export function installDom(emit: Emit): Teardown {
         }
       }
       for (const node of record.removedNodes) {
-        if (!(node instanceof Element) || removed >= MAX_PER_BATCH) continue;
+        if (!(node instanceof Element)) continue;
+        if (removed >= MAX_PER_BATCH) {
+          dropped += 1;
+          continue;
+        }
         if (isReticleOverlay(node)) continue;
         const role = getRole(node);
         const name = getAccessibleName(node);
@@ -88,6 +103,8 @@ export function installDom(emit: Emit): Teardown {
         emit(EventType.DOM_REMOVED, { role, name });
       }
     }
+    // Never silent: a capped batch tells the ledger its DOM counts understate reality.
+    if (dropped > 0) emit(EventType.TRUNCATED, { channel: TruncationChannel.DOM, dropped });
   });
 
   observer.observe(document.documentElement, {
