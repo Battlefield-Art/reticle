@@ -532,6 +532,59 @@ export async function runReticle(bugs) {
           );
           caught = ref ? !hit : false;
           note = ref ? `frame containing "${c.expectContains}": ${hit}` : `${c.steps[0]} not reached`;
+        } else if (c.kind === 'netCountAfterBurst') {
+          // §4.10 debounce: each fill is one input event, so a burst of fills is a burst of keystrokes.
+          // A debounced client collapses them into ONE request; an undebounced one fires per event.
+          // Results are identical either way — only the count differs.
+          const ref = await waitRef(c.testid);
+          let since;
+          if (ref) {
+            for (const value of c.values) {
+              const res = await call('reticle_act', {
+                sessionId: sid,
+                ref,
+                action: 'fill',
+                args: { value },
+              });
+              since ??= res?.since;
+              await sleep(c.gapMs ?? 60); // inside the debounce window on a healthy build
+            }
+          }
+          await sleep(c.settleMs ?? 1200);
+          const net = await call('reticle_network', { sessionId: sid, limit: 100 });
+          const n = (net?.calls ?? []).filter((e) =>
+            String(e.url ?? '').includes(c.urlContains),
+          ).length;
+          caught = ref ? n > c.maxExpected : false;
+          note = ref
+            ? `${c.urlContains} requests=${n} (max ${c.maxExpected} for ${c.values.length} keystrokes)`
+            : `${c.testid} not reached`;
+        } else if (c.kind === 'netCountCapped') {
+          // §4.10 retry storm: the endpoint always fails, so correct and incorrect look identical at
+          // any instant. The only difference is how many times we asked before giving up.
+          const ref = await waitRef(c.steps[0]);
+          if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          await sleep(c.settleMs ?? 3000);
+          const net = await call('reticle_network', { sessionId: sid, limit: 100 });
+          const n = (net?.calls ?? []).filter((e) =>
+            String(e.url ?? '').includes(c.urlContains),
+          ).length;
+          caught = ref ? n > c.maxExpected : false;
+          note = ref ? `${c.urlContains} attempts=${n} (max ${c.maxExpected})` : `${c.steps[0]} not reached`;
+        } else if (c.kind === 'stableTextDespiteChurn') {
+          // §4.11 trap, CLEAN-only by nature. A neighbouring region rewrites itself several times a
+          // second on a healthy build. A text/diff oracle that reads "it changed" as "it broke" would
+          // flag this forever. Detection here is the FAILURE — it means the harness over-flags.
+          const first = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.churnTestid });
+          await sleep(c.waitMs ?? 1200);
+          const second = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.churnTestid });
+          const churned =
+            String(first?.elements?.[0]?.text ?? '') !== String(second?.elements?.[0]?.text ?? '');
+          const stable = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.stableTestid });
+          const stableText = String(stable?.elements?.[0]?.text ?? '');
+          // The trap only means something if the region ACTUALLY churned; otherwise it passes vacuously.
+          caught = churned && !stableText.includes(c.expectStable);
+          note = `churned=${churned} stable="${stableText}" (trap: caught must stay false)`;
         } else if (c.kind === 'stateInvariantAfter') {
           const pre = await call('reticle_state', {
             sessionId: sid,

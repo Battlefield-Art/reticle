@@ -159,6 +159,17 @@ app.get('/api/build-log', (req, res) => {
   req.on('close', () => clearInterval(timer));
 });
 
+// --- timing (§4.10) support: a search endpoint to debounce against, and an always-failing endpoint
+// to retry against. Both exist so the timing bugs are about WHEN the client calls, not about faking.
+app.get('/api/search', (req, res) => {
+  const q = String(req.query.q ?? '');
+  res.json({ q, matches: q.length === 0 ? 0 : (q.length * 3) % 7 });
+});
+
+// Always 500s. A correct client retries a bounded number of times with backoff and then gives up;
+// an incorrect one hammers it forever, which is only visible as a REQUEST COUNT over time.
+app.get('/api/flaky', (_req, res) => res.status(500).json({ error: 'flaky upstream' }));
+
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 const server = createServer(app);

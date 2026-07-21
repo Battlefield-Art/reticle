@@ -301,6 +301,34 @@ export async function runPlaywright(bugs) {
           const hit = frames.some((f) => f.includes(c.expectContains));
           caught = !hit;
           note = `frame containing "${c.expectContains}": ${hit} (${frames.length} frames)`;
+        } else if (c.kind === 'netCountAfterBurst') {
+          // Playwright sees requests, so request-count timing is a fair 'both'.
+          for (const value of c.values) {
+            await page.locator(sel(c.testid)).fill(value).catch(() => {});
+            await sleep(c.gapMs ?? 60);
+          }
+          await sleep(c.settleMs ?? 1200);
+          const n = requests.filter((r) => r.url.includes(c.urlContains)).length;
+          caught = n > c.maxExpected;
+          note = `${c.urlContains} requests=${n} (max ${c.maxExpected})`;
+        } else if (c.kind === 'netCountCapped') {
+          for (const t of c.steps ?? []) {
+            await click(t);
+            await sleep(200);
+          }
+          await sleep(c.settleMs ?? 3000);
+          const n = requests.filter((r) => r.url.includes(c.urlContains)).length;
+          caught = n > c.maxExpected;
+          note = `${c.urlContains} attempts=${n} (max ${c.maxExpected})`;
+        } else if (c.kind === 'stableTextDespiteChurn') {
+          const read = async (t) =>
+            page.locator(sel(t)).first().innerText().catch(() => '');
+          const first = await read(c.churnTestid);
+          await sleep(c.waitMs ?? 1200);
+          const second = await read(c.churnTestid);
+          const stableText = await read(c.stableTestid);
+          caught = first !== second && !stableText.includes(c.expectStable);
+          note = `churned=${first !== second} stable="${stableText}"`;
         } else if (c.kind === 'netStatusAfter') {
           // Playwright sees response statuses, so this class is genuinely catchable here — no charity.
           await fillPrep(c.prep);

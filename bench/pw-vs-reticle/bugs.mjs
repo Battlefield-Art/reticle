@@ -762,6 +762,54 @@ export const BUGS = [
   // ── silent-removal (§4.9): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
   // crawler that only exercises controls is structurally blind. Only a saved baseline notices. ───────
   {
+    id: 'debounce-broken',
+    category: 'timing',
+    intent: 'a burst of keystrokes issues ONE search request, not one per keystroke',
+    setup: ['login-submit', 'nav-diagnostics'],
+    check: {
+      kind: 'netCountAfterBurst',
+      testid: 'timing-search',
+      values: ['a', 'ap', 'api', 'api-', 'api-g'],
+      urlContains: '/api/search',
+      gapMs: 60,
+      // Must exceed the fixture's debounce window so the single coalesced request has landed.
+      settleMs: 3000,
+      maxExpected: 2,
+    },
+    expect: 'both',
+  },
+  {
+    id: 'retry-storm',
+    category: 'timing',
+    intent: 'a failing request is retried a bounded number of times, then gives up',
+    setup: ['login-submit', 'nav-diagnostics'],
+    check: {
+      kind: 'netCountCapped',
+      steps: ['timing-retry'],
+      urlContains: '/api/flaky',
+      settleMs: 3500,
+      maxExpected: 4,
+    },
+    expect: 'both',
+  },
+  {
+    id: 'trap-timestamp-region',
+    category: 'false-positive-trap',
+    trap: true,
+    // Not a bug. The timestamp beside the label rewrites itself several times a second on a HEALTHY
+    // build. A text or diff oracle that reads "it changed" as "it broke" would flag this forever.
+    intent: 'a live-updating timestamp must not make a stable neighbour read as changed',
+    setup: ['login-submit', 'nav-diagnostics'],
+    check: {
+      kind: 'stableTextDespiteChurn',
+      churnTestid: 'timing-clock',
+      stableTestid: 'timing-clock-label',
+      expectStable: 'Last refreshed',
+      waitMs: 1200,
+    },
+    expect: 'none',
+  },
+  {
     id: 'sse-silent-stop',
     category: 'streams',
     intent: 'the build-log stream actually delivers frames, not just an open connection',

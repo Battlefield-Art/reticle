@@ -45,6 +45,7 @@ import {
   SHADOW_TAG,
 } from './components/DeepPanels.js';
 import { STREAM_URLS } from './components/BuildLogStream.js';
+import { TIMING_CONFIG } from './components/TimingPanel.js';
 import { useApp } from './store/store.js';
 import type { Deployment } from './data/seed.js';
 
@@ -776,6 +777,22 @@ function installStreamFaults(bugs: ReadonlySet<string>): void {
   }
 }
 
+
+/**
+ * timing, the count-over-time half (§4.10). Both of these render identically and return identical
+ * results; only the NUMBER of requests differs, which no single observation can reveal.
+ */
+function installRequestTimingFaults(bugs: ReadonlySet<string>): void {
+  if (bugs.has('debounce-broken')) {
+    // Debounce removed: one request per keystroke instead of one per settled query.
+    TIMING_CONFIG.debounceMs = 0;
+  }
+  if (bugs.has('retry-storm')) {
+    // No sane bound. A correct client gives up after 3; this one keeps asking a failing endpoint.
+    TIMING_CONFIG.maxAttempts = 12;
+  }
+}
+
 /** DOM-text bugs → a testid whose displayed label/number is silently overwritten with a wrong value. */
 const DOM_TEXT: Record<string, { testid: string; wrong: string }> = {
   'brand-typo': { testid: 'brand', wrong: 'Retcile mission control' },
@@ -1009,6 +1026,7 @@ export function installBugInjector(): void {
   installTimingFaults(bugs);
   installDeepDomFaults(bugs);
   installStreamFaults(bugs);
+  installRequestTimingFaults(bugs);
   installSilentRemoval(bugs);
   installPerfFaults(bugs);
   installDoubleFetch(bugs);
