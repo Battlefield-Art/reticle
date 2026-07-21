@@ -272,6 +272,118 @@ const DOUBLE_FETCH: Record<string, DoubleFetch> = {
   'double-fault-500': { method: 'GET', urlContains: '/api/broken/500' },
 };
 
+
+/**
+ * net-status — the hidden-500 class (§4.1). The request genuinely FAILS (or answers the wrong shape) but
+ * the app swallows it and renders success anyway. This is the flagship "looks fine, isn't" case: the DOM
+ * is correct, the screenshot is correct, and only the wire tells the truth.
+ *
+ * `status` rewrites the response the app sees; `contentType` answers the wrong media type with a 200;
+ * `emptyBody` returns 200 with nothing in it (the app falls back to stale cache).
+ */
+interface NetStatusBug {
+  urlContains: string;
+  status?: number;
+  contentType?: string;
+  emptyBody?: boolean;
+}
+const NET_STATUS: Record<string, NetStatusBug> = {
+  'swallowed-500-generate': { urlContains: '/api/generate-script', status: 500 },
+  'swallowed-500-login': { urlContains: '/api/login', status: 500 },
+  'empty-200-deployments': { urlContains: '/api/deployments', status: 200, emptyBody: true },
+  'wrong-content-type': { urlContains: '/api/generate-script', contentType: 'text/html' },
+};
+
+/** net-status payload bugs: the REQUEST body is wrong (a field dropped, or a stale value sent). */
+interface NetPayloadBug {
+  urlContains: string;
+  /** Remove this key from the outgoing JSON body. */
+  dropField?: string;
+  /** Overwrite this key with a stale/wrong value. */
+  overwrite?: { field: string; value: string };
+}
+const NET_PAYLOAD: Record<string, NetPayloadBug> = {
+  'payload-missing-field': { urlContains: '/api/generate-script', dropField: 'prompt' },
+  'payload-wrong-value': {
+    urlContains: '/api/deploy',
+    overwrite: { field: 'service', value: 'stale-previous-session' },
+  },
+};
+
+/**
+ * net-hang — the in-flight oracle (§4.2). The request never resolves. `uiDone` is the nastier variant:
+ * the app optimistically renders completion and never reconciles, so the DOM says "done" while the wire
+ * is still waiting forever. `abort` drops the request mid-flight with no retry and no surfaced error.
+ */
+interface NetHangBug {
+  urlContains: string;
+  /** Let the UI render success even though nothing came back. */
+  uiDone?: boolean;
+  /** Abort mid-flight instead of hanging forever. */
+  abort?: boolean;
+}
+const NET_HANG: Record<string, NetHangBug> = {
+  'hung-generate': { urlContains: '/api/generate-script' },
+  'hung-but-ui-done': { urlContains: '/api/generate-script', uiDone: true },
+  'slow-then-drop': { urlContains: '/api/generate-script', abort: true },
+};
+
+/** Rewrite/stall responses per the net-status + net-hang registries. One fetch wrap serves both. */
+function installNetFaults(bugs: ReadonlySet<string>): void {
+  const statuses = [...bugs].map((id) => NET_STATUS[id]).filter((b): b is NetStatusBug => b !== undefined);
+  const payloads = [...bugs].map((id) => NET_PAYLOAD[id]).filter((b): b is NetPayloadBug => b !== undefined);
+  const hangs = [...bugs].map((id) => NET_HANG[id]).filter((b): b is NetHangBug => b !== undefined);
+  if (statuses.length === 0 && payloads.length === 0 && hangs.length === 0) return;
+
+  const base = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = input instanceof Request ? input.url : String(input);
+
+    // net-hang: never resolve (or abort), so the request stays pending on the wire forever.
+    const hang = hangs.find((h) => url.includes(h.urlContains));
+    if (hang !== undefined) {
+      if (hang.uiDone === true) {
+        // Optimistic completion the app never reconciles: hand back a fake OK while the REAL request is
+        // left hanging, so the DOM reads "done" and the wire never finishes.
+        void base(input, init).catch(() => undefined);
+        return new Response(JSON.stringify({ result: 'done (optimistic)' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (hang.abort === true) return Promise.reject(new DOMException('aborted', 'AbortError'));
+      return new Promise<Response>(() => undefined); // never settles
+    }
+
+    // net-status payload: mutate the OUTGOING body before it leaves.
+    const payload = payloads.find((pl) => url.includes(pl.urlContains));
+    let outInit = init;
+    if (payload !== undefined && typeof init?.body === 'string') {
+      try {
+        const body: Record<string, unknown> = JSON.parse(init.body);
+        if (payload.dropField !== undefined) delete body[payload.dropField];
+        if (payload.overwrite !== undefined) body[payload.overwrite.field] = payload.overwrite.value;
+        outInit = { ...init, body: JSON.stringify(body) };
+      } catch {
+        // not JSON — leave the request untouched rather than corrupting it
+      }
+    }
+
+    const response = await base(input, outInit);
+
+    // net-status: rewrite what the APP sees, while the real wire status stays observable to Reticle.
+    const rewrite = statuses.find((s) => url.includes(s.urlContains));
+    if (rewrite === undefined) return response;
+    const body = rewrite.emptyBody === true ? '' : await response.clone().text();
+    return new Response(body, {
+      status: rewrite.status ?? response.status,
+      headers: {
+        'content-type': rewrite.contentType ?? response.headers.get('content-type') ?? 'application/json',
+      },
+    });
+  };
+}
+
 /** DOM-text bugs → a testid whose displayed label/number is silently overwritten with a wrong value. */
 const DOM_TEXT: Record<string, { testid: string; wrong: string }> = {
   'brand-typo': { testid: 'brand', wrong: 'Retcile mission control' },
@@ -495,6 +607,7 @@ export function installBugInjector(): void {
   if (bugs.has('status-stale')) installStatusDesync();
   if (bugs.has('render-storm')) installRenderStorm();
   installClickBugs(bugs);
+  installNetFaults(bugs);
   installDoubleFetch(bugs);
   installDomTextBugs(bugs);
 }

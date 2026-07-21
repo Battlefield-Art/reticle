@@ -30,6 +30,15 @@ export async function runPlaywright(bugs) {
         if (m.type() === 'error') consoleErrors.push(m.text());
       });
       page.on('request', (r) => requests.push({ url: r.url(), method: r.method() }));
+      // Response statuses: Playwright CAN see these, so the hidden-500 class is fairly 'both'.
+      const responses = [];
+      page.on('response', (r) =>
+        responses.push({
+          url: r.url(),
+          status: r.status(),
+          contentType: String(r.headers()['content-type'] ?? ''),
+        }),
+      );
       const click = async (t) => {
         try {
           await page.locator(sel(t)).click({ timeout: 4000, force: true });
@@ -173,6 +182,36 @@ export async function runPlaywright(bugs) {
           await sleep(400);
           caught = false; // the invariant lives in the store; Playwright has no access to assert it
           note = 'no app-state access — store invariant not assertable from the DOM';
+        } else if (c.kind === 'netStatusAfter') {
+          // Playwright sees response statuses, so this class is genuinely catchable here — no charity.
+          await fillPrep(c.prep);
+          const ok = await waitFor(c.steps[0]);
+          if (ok) await click(c.steps[0]);
+          await sleep(800);
+          const matches = responses.filter((r) => r.url.includes(c.urlContains));
+          const good = matches.filter(
+            (r) =>
+              r.status === Number(c.expected) &&
+              (c.contentType === undefined || r.contentType.includes(c.contentType)),
+          );
+          caught = ok ? good.length === 0 : false;
+          note = ok
+            ? `matched=${matches.length} ok=${good.length}`
+            : `${c.steps[0]} not reached`;
+        } else if (c.kind === 'netBodyAfter') {
+          await fillPrep(c.prep);
+          const ok = await waitFor(c.steps[0]);
+          if (ok) await click(c.steps[0]);
+          await sleep(400);
+          caught = false;
+          note = 'request/response bodies not captured by the deterministic script harness';
+        } else if (c.kind === 'netPendingAfter') {
+          await fillPrep(c.prep);
+          const ok = await waitFor(c.steps[0]);
+          if (ok) await click(c.steps[0]);
+          await sleep(400);
+          caught = false;
+          note = 'no in-flight-request oracle — a never-resolving request looks like nothing happened';
         }
         if (!caught && (note.includes('not found') || note.includes('not reached'))) note += diag;
       } catch (e) {

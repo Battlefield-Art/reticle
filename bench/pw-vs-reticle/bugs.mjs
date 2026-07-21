@@ -620,4 +620,126 @@ export const BUGS = [
     },
     expect: 'both',
   },
+
+  // ── net-status: the hidden-500 class (§4.1) — the request FAILS, the UI shows success anyway. ────
+  // The DOM and a screenshot are both correct here; only the wire disagrees. This is the flagship
+  // "structurally invisible" case for a screenshot/DOM tool.
+  {
+    id: 'swallowed-500-generate',
+    category: 'net-status',
+    intent: 'the generate request actually succeeded (not a 500 the UI swallowed)',
+    setup: ['login-submit', 'nav-compose', composePrep],
+    check: {
+      kind: 'netStatusAfter',
+      steps: ['compose-generate'],
+      urlContains: '/api/generate-script',
+      expected: 200,
+    },
+    expect: 'both',
+  },
+  {
+    id: 'swallowed-500-login',
+    category: 'net-status',
+    intent: 'login actually succeeded (not a 500 the UI proceeded past)',
+    setup: [],
+    check: { kind: 'netStatusAfter', steps: ['login-submit'], urlContains: '/api/login', expected: 200 },
+    expect: 'both',
+  },
+  {
+    id: 'empty-200-deployments',
+    category: 'net-status',
+    intent: 'the deployments response carries data (not a 200 with an empty body behind stale cache)',
+    setup: ['login-submit'],
+    check: {
+      kind: 'netBodyAfter',
+      steps: ['nav-deployments'],
+      urlContains: '/api/deployments',
+      expected: 'deployments',
+    },
+    expect: 'reticle',
+  },
+  {
+    id: 'wrong-content-type',
+    category: 'net-status',
+    intent: 'the generate endpoint answers JSON (not an HTML error page with a 200)',
+    setup: ['login-submit', 'nav-compose', composePrep],
+    check: {
+      kind: 'netStatusAfter',
+      steps: ['compose-generate'],
+      urlContains: '/api/generate-script',
+      expected: 200,
+      contentType: 'application/json',
+    },
+    expect: 'reticle',
+  },
+  {
+    id: 'payload-missing-field',
+    category: 'net-status',
+    intent: 'the generate request actually sends the prompt (server must not silently default it)',
+    setup: ['login-submit', 'nav-compose', composePrep],
+    check: {
+      kind: 'netBodyAfter',
+      steps: ['compose-generate'],
+      urlContains: '/api/generate-script',
+      direction: 'request',
+      expected: 'prompt',
+    },
+    expect: 'reticle',
+  },
+  {
+    id: 'payload-wrong-value',
+    category: 'net-status',
+    intent: 'the deploy request sends the name just typed (not one from a previous form session)',
+    setup: ['login-submit', 'nav-deployments', 'new-deploy', namePrep],
+    check: {
+      kind: 'netBodyAfter',
+      steps: ['deploy-submit'],
+      urlContains: '/api/deploy',
+      direction: 'request',
+      expected: 'benchmark-svc',
+    },
+    expect: 'reticle',
+  },
+
+  // ── net-hang: the in-flight oracle (§4.2) — the request never resolves. ───────────────────────────
+  {
+    id: 'hung-generate',
+    category: 'net-hang',
+    intent: 'the generate request completes (no forever-spinner)',
+    setup: ['login-submit', 'nav-compose', composePrep],
+    check: {
+      kind: 'netPendingAfter',
+      steps: ['compose-generate'],
+      urlContains: '/api/generate-script',
+      withinMs: 3000,
+    },
+    expect: 'reticle',
+  },
+  {
+    id: 'hung-but-ui-done',
+    category: 'net-hang',
+    intent: 'the generate request completes — even though the UI already claims it did',
+    setup: ['login-submit', 'nav-compose', composePrep],
+    check: {
+      kind: 'netPendingAfter',
+      steps: ['compose-generate'],
+      urlContains: '/api/generate-script',
+      withinMs: 3000,
+    },
+    // The nastier variant: the DOM renders success, so ONLY the pending-request oracle can see it.
+    expect: 'reticle',
+  },
+  {
+    id: 'slow-then-drop',
+    category: 'net-hang',
+    intent: 'the generate request lands a completed 2xx (not aborted mid-flight and swallowed)',
+    setup: ['login-submit', 'nav-compose', composePrep],
+    check: {
+      kind: 'netStatusAfter',
+      steps: ['compose-generate'],
+      urlContains: '/api/generate-script',
+      expected: 200,
+    },
+    expect: 'reticle',
+  },
 ];

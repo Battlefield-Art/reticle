@@ -191,6 +191,59 @@ export async function runReticle(bugs) {
           ).length;
           caught = ref ? n !== c.expected : false;
           note = ref ? `count=${n} expected=${c.expected}` : 'compose-generate not reached';
+        } else if (c.kind === 'netStatusAfter') {
+          // §4.1 hidden-500: the request FAILED (or answered the wrong media type) while the UI showed
+          // success. Caught when no matching call carries the expected status (+ contentType if asked).
+          await doPrep(c.prep);
+          const ref = await waitRef(c.steps[0]);
+          if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          await sleep(800);
+          const net = await call('reticle_network', { sessionId: sid, limit: 50 });
+          const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
+          const good = matches.filter((e) => {
+            if (Number(e.status) !== Number(c.expected)) return false;
+            if (c.contentType === undefined) return true;
+            return String(e.contentType ?? '').includes(c.contentType);
+          });
+          caught = ref ? good.length === 0 : false;
+          note = ref
+            ? `matched=${matches.length} ok=${good.length} statuses=${matches.map((m) => m.status).join('/') || 'none'}`
+            : `${c.steps[0]} not reached`;
+        } else if (c.kind === 'netBodyAfter') {
+          // §4.1 payload truth: the body actually sent/received must contain `expected`. `direction`
+          // selects request vs response; bodies are opt-in capture, so an absent body is NOT a catch —
+          // reporting "missing body" as a detection would be a false positive.
+          await doPrep(c.prep);
+          const ref = await waitRef(c.steps[0]);
+          if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          await sleep(800);
+          const net = await call('reticle_network', { sessionId: sid, limit: 50 });
+          const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
+          const field = c.direction === 'request' ? 'requestBody' : 'responseBody';
+          const bodies = matches.map((m) => String(m[field] ?? ''));
+          const anyBody = bodies.some((b) => b.length > 0);
+          caught = ref && anyBody ? !bodies.some((b) => b.includes(c.expected)) : false;
+          note = ref
+            ? anyBody
+              ? `${field} present, contains '${c.expected}'=${bodies.some((b) => b.includes(c.expected))}`
+              : `${field} not captured (bodies are opt-in) — not counted as a detection`
+            : `${c.steps[0]} not reached`;
+        } else if (c.kind === 'netPendingAfter') {
+          // §4.2 in-flight oracle: caught when a matching request is STILL pending after withinMs. This
+          // is the one a screenshot cannot reach — on `hung-but-ui-done` the DOM already says "done".
+          await doPrep(c.prep);
+          const ref = await waitRef(c.steps[0]);
+          if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          await sleep(c.withinMs ?? 3000);
+          const net = await call('reticle_network', { sessionId: sid, limit: 50 });
+          const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
+          const stillPending = matches.filter((e) => e.pending === true || e.status === 'pending');
+          const completed = matches.filter((e) => Number(e.status) >= 200 && Number(e.status) < 400);
+          // Either still hanging, or it never landed a completed 2xx at all (aborted mid-flight).
+          caught = ref ? stillPending.length > 0 || completed.length === 0 : false;
+          note = ref
+            ? `pending=${stillPending.length} completed2xx=${completed.length} of ${matches.length}`
+            : `${c.steps[0]} not reached`;
         } else if (c.kind === 'stateInvariantAfter') {
           const pre = await call('reticle_state', {
             sessionId: sid,
