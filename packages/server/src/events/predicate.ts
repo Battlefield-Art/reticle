@@ -7,7 +7,7 @@ import {
   type MatchResult,
 } from '@reticlehq/core';
 import { selectPath, capDepth } from '../session/state-select.js';
-import { isAmbient, type AmbientCounts } from '../journal/ambient.js';
+import { isAmbient, ambientKeyOf, type AmbientCounts } from '../journal/ambient.js';
 import {
   PredicateSchema,
   matchValue,
@@ -174,7 +174,7 @@ export async function evaluatePredicate(
       // heuristic, never causation, so a chat message arriving mid-window must not hold settle open.
       const counts = session.ambientCounts?.();
       const settleEvents =
-        counts === undefined ? events : events.filter((e) => !isAmbient(counts, e.ref));
+        counts === undefined ? events : events.filter((e) => !isAmbient(counts, ambientKeyOf(e)));
       return evalSettled(settleEvents, predicate, session.elapsed());
     }
     case 'allOf': {

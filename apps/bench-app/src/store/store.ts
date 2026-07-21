@@ -11,7 +11,7 @@ import {
   type Kpi,
 } from '../data/seed.js';
 
-export type ViewId = 'overview' | 'deployments' | 'compose' | 'diagnostics';
+export type ViewId = 'overview' | 'deployments' | 'compose' | 'diagnostics' | 'hostile';
 export type EnvFilter = Env | 'all';
 
 export interface Toast {

@@ -7,6 +7,7 @@ import { CommandPalette } from './components/CommandPalette.js';
 import { Login } from './components/Login.js';
 import { Overview } from './views/Overview.js';
 import { Deployments } from './views/Deployments.js';
+import { Hostile } from './views/Hostile.js';
 import { Compose } from './views/Compose.js';
 import { Diagnostics } from './views/Diagnostics.js';
 
@@ -39,6 +40,7 @@ export function App(): React.ReactElement {
           {view === 'deployments' ? <Deployments /> : null}
           {view === 'compose' ? <Compose /> : null}
           {view === 'diagnostics' ? <Diagnostics /> : null}
+          {view === 'hostile' ? <Hostile /> : null}
         </div>
       </div>
       <Toasts />

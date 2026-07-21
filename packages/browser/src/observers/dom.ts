@@ -1,6 +1,19 @@
 import { EventType, TruncationChannel } from '@reticlehq/core';
 import { getAccessibleName, getRole, isVisible } from '../dom/a11y.js';
 import { refs } from '../dom/refs.js';
+
+/**
+ * A STABLE identity for the region a mutation happened in. Ambient learning cannot key on the element
+ * ref for a churning list: every appended row is a NEW element (fresh ref) and a removed one has no ref
+ * at all, so per-ref counts never accumulate and the region is never recognized as ambient. The
+ * container persists across ticks, so its testid (or ref) is the identity that does accumulate.
+ */
+function regionKeyOf(target: Node): string | undefined {
+  const el = target instanceof Element ? target : null;
+  if (el === null) return undefined;
+  const labelled = el.closest('[data-testid]');
+  return labelled?.getAttribute('data-testid') ?? refs.refFor(el);
+}
 import { isReticleOverlay } from '../dom/dom-ignore.js';
 import type { Emit, Teardown } from './types.js';
 
@@ -105,7 +118,7 @@ export function installDom(emit: Emit): Teardown {
         if (!isMeaningful(role, name)) continue;
         added += 1;
         const ref = refs.refFor(node);
-        emit(EventType.DOM_ADDED, { role, name }, ref);
+        emit(EventType.DOM_ADDED, { role, name, region: regionKeyOf(record.target) }, ref);
         if (
           DIALOG_ROLES.has(role) ||
           LIVE_ROLES.has(role) ||
@@ -125,7 +138,9 @@ export function installDom(emit: Emit): Teardown {
         const name = getAccessibleName(node);
         if (!isMeaningful(role, name)) continue;
         removed += 1;
-        emit(EventType.DOM_REMOVED, { role, name });
+        // A removed node has no ref (it is gone), so the CONTAINER is the only stable identity — and it
+        // is what ambient learning needs to recognize a churning region.
+        emit(EventType.DOM_REMOVED, { role, name, region: regionKeyOf(record.target) });
       }
     }
     // Never silent: a capped batch tells the ledger its DOM counts understate reality.

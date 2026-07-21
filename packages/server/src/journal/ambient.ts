@@ -12,8 +12,24 @@ import type { ReticleEvent } from '@reticlehq/core';
  * over time. Only UNATTRIBUTED churn counts — an event caused by an action is signal, never ambient.
  */
 
-/** Per-ref ambient churn counts. */
+/** Per-region ambient churn counts. */
 export type AmbientCounts = Record<string, number>;
+
+/**
+ * The identity ambient learning counts against. Prefer the emitted `region` (the stable CONTAINER of a
+ * mutation) over the element ref: a churning feed appends a NEW element every tick (fresh ref) and a
+ * removed element has no ref at all, so per-ref counts never accumulate and the region is never learned.
+ * The container persists, so it is the only key that converges. Falls back to the ref for events that
+ * mutate a single stable element (a ticker's text).
+ */
+export function ambientKeyOf(event: {
+  ref?: string | undefined;
+  data?: Record<string, unknown>;
+}): string | undefined {
+  const region = event.data?.['region'];
+  if (typeof region === 'string' && region.length > 0) return region;
+  return event.ref;
+}
 
 export const AmbientFileSchema = z.object({
   version: z.literal(1),
@@ -31,8 +47,9 @@ export function accumulateAmbient(
   const next: AmbientCounts = { ...counts };
   for (const event of events) {
     if (event.actionId !== undefined) continue; // attributed to an action → signal, not ambient
-    if (event.ref === undefined) continue;
-    next[event.ref] = (next[event.ref] ?? 0) + 1;
+    const key = ambientKeyOf(event);
+    if (key === undefined) continue;
+    next[key] = (next[key] ?? 0) + 1;
   }
   return next;
 }
