@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { clearSession, newSession, persistSession } from '../lib/persisted-session.js';
 import { emit, Sig } from '../lib/reticle-bridge.js';
 import {
   seedActivity,
@@ -48,6 +49,7 @@ interface AppState {
 
   setView: (v: ViewId) => void;
   setAuth: (email: string) => void;
+  signOut: () => void;
   setFilter: (patch: Partial<{ query: string; env: EnvFilter }>) => void;
   select: (id: number | null) => void;
   openDrawer: (id: number) => void;
@@ -96,7 +98,13 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setAuth: (email) => {
     set({ auth: { email } });
+    // Persist BEFORE announcing: a listener that reloads on auth:granted must find the token there.
+    persistSession(newSession());
     emit(Sig.AUTH_GRANTED, { email });
+  },
+  signOut: () => {
+    set({ auth: null, view: 'overview' });
+    clearSession();
   },
   setFilter: (patch) => {
     set({ filter: { ...get().filter, ...patch } });

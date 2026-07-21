@@ -37,6 +37,7 @@
 
 import { reticle } from '@reticlehq/browser';
 import { Sig } from './lib/reticle-bridge.js';
+import { AUTH_TOKEN_KEY, SESSION_ID_KEY } from './lib/persisted-session.js';
 import { useApp } from './store/store.js';
 import type { Deployment } from './data/seed.js';
 
@@ -567,6 +568,105 @@ function installSignalFaults(bugs: ReadonlySet<string>): void {
   };
 }
 
+
+/**
+ * storage (§4.5) — persistence truth. The UI is completely correct in every one of these: sign-in
+ * succeeds, the avatar appears, sign-out returns you to the login screen. The lie only shows up on the
+ * NEXT page load, or to the server. A tool that judges the rendered page cannot see any of it.
+ *
+ * Patched at the Storage/cookie seam rather than in persisted-session.ts, because that is how these
+ * fail in real code: a write that silently does not land, lands in the wrong store, or uses a
+ * pre-rename key — never a missing function call.
+ */
+interface StorageBug {
+  /** Drop writes for this key (the value is never persisted). */
+  dropWrite?: string;
+  /** Drop deletes for this key (sign-out clears the UI, the token survives). */
+  dropRemove?: string;
+  /** Persist this key into localStorage instead of sessionStorage (outlives the tab). */
+  wrongStore?: string;
+  /** Write under a stale key name; every reader looks for the current one and finds nothing. */
+  renameKey?: { from: string; to: string };
+  /** Swallow the cookie write — the client looks signed in, the server disagrees. */
+  dropCookie?: boolean;
+}
+const STORAGE_BUGS: Record<string, StorageBug> = {
+  'token-not-persisted': { dropWrite: AUTH_TOKEN_KEY },
+  'logout-leaves-token': { dropRemove: AUTH_TOKEN_KEY },
+  'session-in-localstorage': { wrongStore: SESSION_ID_KEY },
+  'stale-cache-key': { renameKey: { from: AUTH_TOKEN_KEY, to: `${AUTH_TOKEN_KEY}.v1` } },
+  'cookie-not-set': { dropCookie: true },
+};
+
+function installStorageFaults(bugs: ReadonlySet<string>): void {
+  const active = [...bugs]
+    .map((id) => STORAGE_BUGS[id])
+    .filter((b): b is StorageBug => b !== undefined);
+  if (active.length === 0) return;
+
+  const localSet = localStorage.setItem.bind(localStorage);
+  const localRemove = localStorage.removeItem.bind(localStorage);
+  const sessionSet = sessionStorage.setItem.bind(sessionStorage);
+
+  localStorage.setItem = (key: string, value: string): void => {
+    for (const bug of active) {
+      if (bug.dropWrite === key) return;
+      if (bug.renameKey?.from === key) {
+        localSet(bug.renameKey.to, value);
+        return;
+      }
+    }
+    localSet(key, value);
+  };
+  localStorage.removeItem = (key: string): void => {
+    for (const bug of active) if (bug.dropRemove === key) return;
+    localRemove(key);
+  };
+  sessionStorage.setItem = (key: string, value: string): void => {
+    for (const bug of active) {
+      if (bug.wrongStore === key) {
+        localSet(key, value); // lands in the wrong store: survives the tab close it must not survive
+        return;
+      }
+    }
+    sessionSet(key, value);
+  };
+
+  if (active.some((b) => b.dropCookie === true)) {
+    const proto = Object.getPrototypeOf(document) as Document;
+    const desc = Object.getOwnPropertyDescriptor(proto, 'cookie');
+    if (desc?.set !== undefined && desc.get !== undefined) {
+      Object.defineProperty(document, 'cookie', {
+        configurable: true,
+        get: desc.get.bind(document),
+        set: () => {
+          /* swallowed — the client believes it is signed in, the server never sees a session */
+        },
+      });
+    }
+  }
+}
+
+
+/**
+ * Storage survives navigation within an origin, so one bug's writes leak into the next bug's run — a
+ * buggy `logout-leaves-token` deliberately leaves a token behind, which then makes a LATER storage
+ * check pass for the wrong reason. `?reticle-reset-storage` wipes all three stores before the app
+ * mounts, giving every storage run a known starting state. Explicit test infrastructure, dev-only,
+ * and never on unless the harness asks for it.
+ */
+const RESET_STORAGE_PARAM = 'reticle-reset-storage';
+
+function resetStorageIfAsked(params: URLSearchParams): void {
+  if (!params.has(RESET_STORAGE_PARAM)) return;
+  localStorage.clear();
+  sessionStorage.clear();
+  for (const entry of document.cookie.split('; ')) {
+    const name = entry.split('=')[0];
+    if (name !== undefined && name.length > 0) document.cookie = `${name}=; path=/; Max-Age=0`;
+  }
+}
+
 /** DOM-text bugs → a testid whose displayed label/number is silently overwritten with a wrong value. */
 const DOM_TEXT: Record<string, { testid: string; wrong: string }> = {
   'brand-typo': { testid: 'brand', wrong: 'Retcile mission control' },
@@ -774,7 +874,10 @@ function installDoubleFetch(bugs: ReadonlySet<string>): void {
  * network, the console, or the app's state can catch it.
  */
 export function installBugInjector(): void {
-  const raw = new URLSearchParams(window.location.search).get(BUG_PARAM);
+  const params = new URLSearchParams(window.location.search);
+  // Before the early return: a CLEAN run carries no bug id but still needs the known starting state.
+  resetStorageIfAsked(params);
+  const raw = params.get(BUG_PARAM);
   if (raw === null || raw.length === 0) return;
   const bugs = new Set(
     raw
@@ -793,6 +896,7 @@ export function installBugInjector(): void {
   installNetFaults(bugs);
   installRouteFaults(bugs);
   installSignalFaults(bugs);
+  installStorageFaults(bugs);
   installSilentRemoval(bugs);
   installPerfFaults(bugs);
   installDoubleFetch(bugs);

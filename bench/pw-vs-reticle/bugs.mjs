@@ -34,8 +34,24 @@ export function bugUrl(id) {
   return id ? `${APP_ORIGIN}/?reticle-bug=${encodeURIComponent(id)}` : `${APP_ORIGIN}/`;
 }
 
+/**
+ * Storage survives navigation within an origin, so one bug's writes leak into the next bug's run —
+ * the buggy `logout-leaves-token` deliberately leaves a token behind, which then made a later storage
+ * check pass for the wrong reason. Storage bugs load with an explicit reset so each run starts clean.
+ */
+export function storageBugUrl(id) {
+  const base = bugUrl(id);
+  return `${base}${base.includes('?') ? '&' : '?'}reticle-reset-storage=1`;
+}
+
 const composePrep = { fill: 'compose-prompt', text: 'benchmark note' };
 const namePrep = { fill: 'deploy-name', text: 'benchmark-svc' };
+
+
+/** Mirrors apps/bench-app/src/lib/persisted-session.ts — the bench is JS and cannot import the TS module. */
+const AUTH_TOKEN_KEY = 'reticle.bench.authToken';
+const SESSION_ID_KEY = 'reticle.bench.sessionId';
+const SESSION_COOKIE = 'bench_session';
 
 export const BUGS = [
   // ── ui-visual (usable): the control is present + labelled, but not actually usable ──────────────

@@ -4,7 +4,7 @@
 // state/blast-radius checks structurally cannot be made (that gap is the benchmark's point). Measures
 // bytes pulled to decide (screenshots are a real, large cost), latency, and detection.
 import { chromium } from 'playwright';
-import { bugUrl } from './bugs.mjs';
+import { bugUrl, storageBugUrl } from './bugs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sel = (t) => `[data-testid="${t}"]`;
@@ -16,7 +16,8 @@ export async function runPlaywright(bugs) {
 
   for (const bug of bugs) {
     for (const variant of ['clean', 'buggy']) {
-      const url = variant === 'buggy' ? (bug.url ?? bugUrl(bug.id)) : bugUrl('');
+      const makeUrl = bug.category === 'storage' ? storageBugUrl : bugUrl;
+      const url = variant === 'buggy' ? (bug.url ?? makeUrl(bug.id)) : makeUrl('');
       const t0 = Date.now();
       let bytes = 0,
         caught = false,
@@ -215,6 +216,23 @@ export async function runPlaywright(bugs) {
           await fillPrep(c.prep);
           caught = false;
           note = 'no signal stream visible to a DOM/pixel tool';
+        } else if (c.kind === 'storagePresentAfter') {
+          // Playwright reads storage directly via evaluate, so this class is genuinely catchable here.
+          for (const t of c.steps ?? []) {
+            await click(t);
+            await sleep(250);
+          }
+          await sleep(2500); // sign-in POSTs before it persists
+          const present = await page.evaluate(
+            ({ area, key }) => {
+              if (area === 'local') return localStorage.getItem(key) !== null;
+              if (area === 'session') return sessionStorage.getItem(key) !== null;
+              return document.cookie.split('; ').some((c) => c.startsWith(`${key}=`) && !c.endsWith('='));
+            },
+            { area: c.area, key: c.key },
+          );
+          caught = present !== c.expectPresent;
+          note = `${c.area}[${c.key}] present=${present} expected=${c.expectPresent}`;
         } else if (c.kind === 'netStatusAfter') {
           // Playwright sees response statuses, so this class is genuinely catchable here — no charity.
           await fillPrep(c.prep);

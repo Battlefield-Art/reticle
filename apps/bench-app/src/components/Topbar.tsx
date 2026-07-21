@@ -12,6 +12,7 @@ const TITLES: Record<ViewId, { title: string; sub: string }> = {
 export function Topbar(): React.ReactElement {
   const view = useApp((s) => s.view);
   const setPalette = useApp((s) => s.setPalette);
+  const signOut = useApp((s) => s.signOut);
   const auth = useApp((s) => s.auth);
   const t = TITLES[view];
 
@@ -33,6 +34,14 @@ export function Topbar(): React.ReactElement {
         <IconSearch size={15} />
         Search or jump to…
         <span className="kbd">⌘K</span>
+      </button>
+      <button
+        type="button"
+        className="kbd-search"
+        data-testid="sign-out"
+        onClick={() => signOut()}
+      >
+        Sign out
       </button>
       <div
         title={auth?.email}

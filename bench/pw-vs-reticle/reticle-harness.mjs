@@ -6,7 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { McpStdioClient, RETICLE_CLI as CLI } from '../harness/mcp-client.mjs';
-import { APP_ORIGIN, bugUrl } from './bugs.mjs';
+import { APP_ORIGIN, bugUrl, storageBugUrl } from './bugs.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..', '..');
@@ -22,6 +22,21 @@ const parseText = (t) => {
   }
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Two URLs belong to the same benchmark run when they share an origin and a query string. The path is
+ * deliberately ignored — the app rewrites it via history.pushState as soon as it routes.
+ */
+const sameRun = (a, b) => {
+  try {
+    const ua = new URL(a),
+      ub = new URL(b);
+    return ua.origin === ub.origin && ua.search === ub.search;
+  } catch {
+    return false;
+  }
+};
+
 
 export async function runReticle(bugs) {
   const client = new McpStdioClient('node', [CLI, 'mcp', '--port', PORT], {
@@ -56,6 +71,13 @@ export async function runReticle(bugs) {
 
   // navigate to a URL and return the fresh focused session id
   const goto = async (url) => {
+    // Sessions from earlier bugs linger in the daemon's registry, and every CLEAN run of a category
+    // navigates to the SAME url — so a URL match alone cannot tell this tab from a dead one, and
+    // reading a dead tab's storage returns an empty, entirely plausible answer. Remember which
+    // sessions existed BEFORE navigating and prefer one this navigation created.
+    const before = new Set(
+      ((await call('reticle_sessions', {}))?.sessions ?? []).map((x) => x.sessionId),
+    );
     await call('reticle_navigate', { sessionId: sid, url });
     for (let i = 0; i < 30; i++) {
       const s = await call('reticle_sessions', {});
@@ -68,8 +90,14 @@ export async function runReticle(bugs) {
       // routinely a stale tab from an earlier bug. That is why checks read plausible-but-wrong values
       // (an inspect returning another element's geometry) instead of failing loudly: the queries all
       // succeeded, just against the wrong page. Prefer the freshest URL match; wait rather than guess.
-      const matches = all.filter((x) => x.url === url && !x.stale);
-      const focused = matches.find((x) => !x.throttled) ?? matches[0];
+      // Compare ORIGIN + QUERY, never the full href: the app pushes history on nav (/ -> /overview),
+      // so an exact match goes empty the moment the app routes and the pick silently keeps a stale sid.
+      // The query is what identifies the run (?reticle-bug=… / ?reticle-reset-storage=1); the path drifts.
+      const matches = all.filter((x) => !x.stale && sameRun(x.url, url));
+      const fresh = matches.filter((x) => !before.has(x.sessionId));
+      // Freshest first; among equals prefer an unthrottled tab; last match beats an arbitrary first.
+      const pool = fresh.length > 0 ? fresh : matches;
+      const focused = pool.find((x) => !x.throttled) ?? pool[pool.length - 1];
       if (focused) {
         sid = focused.sessionId;
         if (i > 1) break;
@@ -110,26 +138,34 @@ export async function runReticle(bugs) {
   // guard blocks those synthetic clicks unless the caller confirms. The harness is a deterministic
   // script driving a fixture, so it always confirms — otherwise the modal never opens.
   const CLICK_ARGS = { confirmDangerous: true };
+  // Returns the testids it could NOT find. A silently skipped step is the worst failure mode here: the
+  // check still runs, reads a perfectly plausible value from a page that never reached the right state,
+  // and reports a confident wrong answer. Callers surface misses in the note.
   const clickSteps = async (steps) => {
+    const missed = [];
     for (const t of steps) {
       const ref = await waitRef(t);
-      if (ref)
-        await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+      if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+      else missed.push(t);
       await sleep(250);
     }
+    return missed;
   };
 
   const results = [];
   for (const bug of bugs) {
     for (const variant of ['clean', 'buggy']) {
-      const url = variant === 'buggy' ? (bug.url ?? bugUrl(bug.id)) : bugUrl('');
+      const makeUrl = bug.category === 'storage' ? storageBugUrl : bugUrl;
+      const url = variant === 'buggy' ? (bug.url ?? makeUrl(bug.id)) : makeUrl('');
       const before = bytes;
       const t0 = Date.now();
       let caught = false,
-        note = '';
+        note = '',
+        setupNote = '';
       try {
         await goto(url);
-        await clickSteps(bug.setup);
+        const setupMissed = await clickSteps(bug.setup);
+        if (setupMissed.length > 0) setupNote = ` [setup missed: ${setupMissed.join(',')}]`;
         const c = bug.check;
         if (c.kind === 'usable') {
           const ref = await waitRef(c.testid);
@@ -334,6 +370,21 @@ export async function runReticle(bugs) {
           ).length;
           caught = ref ? fired !== c.expected : false;
           note = ref ? `${c.signal} fired=${fired} expected=${c.expected}` : `${c.steps[0]} not reached`;
+        } else if (c.kind === 'storagePresentAfter') {
+          // §4.5 persistence truth. The UI is right in every one of these — sign-in succeeds, sign-out
+          // returns to the login screen. The lie only appears on the NEXT load, or to the server.
+          // Asserted on `found` rather than the value because the tool redacts sensitive keys by design.
+          await clickSteps(c.steps ?? []);
+          // Sign-in POSTs before it persists; a 600ms window closed before the write landed and read
+          // as "token never persisted" on a CLEAN build.
+          await sleep(2500);
+          const st = await call('reticle_storage', { sessionId: sid, area: c.area, key: c.key });
+          const present = st?.found === true;
+          // Prove the page is actually signed in when we read: an unauthenticated page has empty
+          // storage for entirely legitimate reasons, and that reads identically to "the bug fired".
+          const authed = (await refOf('sign-out')) !== undefined;
+          caught = present !== c.expectPresent;
+          note = `${c.area}[${c.key}] present=${present} expected=${c.expectPresent} authed=${authed}`;
         } else if (c.kind === 'stateInvariantAfter') {
           const pre = await call('reticle_state', {
             sessionId: sid,
@@ -393,7 +444,7 @@ export async function runReticle(bugs) {
         expect: bug.expect,
         bytes: bytes - before,
         ms: Date.now() - t0,
-        note,
+        note: note + setupNote,
       });
     }
   }
