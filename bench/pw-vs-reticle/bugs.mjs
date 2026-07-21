@@ -53,6 +53,27 @@ const AUTH_TOKEN_KEY = 'reticle.bench.authToken';
 const SESSION_ID_KEY = 'reticle.bench.sessionId';
 const SESSION_COOKIE = 'bench_session';
 
+/**
+ * Severity is graded by CONSEQUENCE TO THE USER, deliberately NOT by how hard the bug is to detect.
+ * A cosmetic regression that no tool can see is still cosmetic; a silently-wrong total written to disk
+ * is critical even when a one-line assertion would catch it. Grading by difficulty would let the suite
+ * flatter whichever tool happens to be good at the hard-but-unimportant cases.
+ *
+ *   critical — wrong data persisted, auth/money affected, or the UI reports success over a failure
+ *   high     — functionally broken for a real task, or a signal downstream code depends on is wrong
+ *   medium   — a control is unusable, or content is missing/wrong, without corrupting data
+ *   low      — visual or performance degradation a user notices but can work around
+ *   none     — traps: not bugs. They exist to catch a harness that over-flags a healthy build.
+ */
+export const SEVERITY_BY_CATEGORY = {"business-logic": "critical", "storage": "critical", "net-status": "critical", "net-hang": "critical", "state": "critical", "signal": "high", "streams": "high", "network": "high", "console": "high", "mock-data": "high", "routing": "high", "regression": "high", "ui-visual": "medium", "deep-dom": "medium", "silent-removal": "medium", "timing": "medium", "ui-paint": "low", "perf": "low", "false-positive-trap": "none"};
+
+/** Severity for a bug, derived from its category so a new bug cannot silently arrive ungraded. */
+export function severityOf(bug) {
+  const sev = SEVERITY_BY_CATEGORY[bug.category];
+  if (sev === undefined) throw new Error(`bugs.mjs: category "${bug.category}" has no severity grade`);
+  return sev;
+}
+
 export const BUGS = [
   // ── ui-visual (usable): the control is present + labelled, but not actually usable ──────────────
   {
@@ -1075,5 +1096,6 @@ for (const [i, b] of BUGS.entries()) {
   }
   if (!b.id || !b.category || !b.check?.kind) throw new Error(`bugs.mjs: ${b.id ?? i} is missing id/category/check.kind`);
 }
+for (const b of BUGS) severityOf(b); // every category must carry a grade
 const dupes = BUGS.map((b) => b.id).filter((id, i, a) => a.indexOf(id) !== i);
 if (dupes.length > 0) throw new Error(`bugs.mjs: duplicate ids: ${dupes.join(', ')}`);
