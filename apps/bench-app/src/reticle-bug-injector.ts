@@ -387,6 +387,94 @@ function installNetFaults(bugs: ReadonlySet<string>): void {
   };
 }
 
+
+/**
+ * silent-removal (§4.9) — a NON-INTERACTIVE element quietly unmounts. Nothing errors, nothing shifts
+ * visibly enough to notice, and no click breaks: a crawler that only exercises controls is structurally
+ * blind to it. Only a saved baseline notices the absence.
+ */
+const SILENT_REMOVAL: Record<string, string> = {
+  'kpi-card-removed': 'kpi-services',
+  'footer-status-removed': 'session-pill',
+};
+
+function installSilentRemoval(bugs: ReadonlySet<string>): void {
+  const targets = [...bugs].map((id) => SILENT_REMOVAL[id]).filter((v): v is string => v !== undefined);
+  if (targets.length === 0) return;
+  const strip = (): void => {
+    for (const testid of targets) {
+      document.querySelector(`[data-testid="${testid}"]`)?.remove();
+    }
+  };
+  strip();
+  // React re-renders would restore it; keep removing so the element stays gone for the whole run.
+  new MutationObserver(strip).observe(document.documentElement, { childList: true, subtree: true });
+}
+
+/**
+ * perf (§4.6) — the layout-shift / long-task blind spot. These are invisible to a DOM assertion and to a
+ * screenshot taken after things settle: the damage is in WHEN the page moved, not in what it ends up
+ * looking like.
+ */
+const PERF_BUGS = {
+  /** Inject a banner 300ms after load so settled content is shoved down (CLS). */
+  CLS_LATE_BANNER: 'cls-late-banner',
+  /** KPI cards render heightless, then reflow to full height (CLS). */
+  CLS_IMAGELESS_JUMP: 'cls-imageless-jump',
+  /** A synchronous 400ms loop on Diagnostics nav — main thread blocked (long task). */
+  LONGTASK_ON_NAV: 'longtask-on-nav',
+} as const;
+
+function installPerfFaults(bugs: ReadonlySet<string>): void {
+  if (bugs.has(PERF_BUGS.CLS_LATE_BANNER)) {
+    setTimeout(() => {
+      const banner = document.createElement('div');
+      banner.setAttribute('data-testid', 'late-banner');
+      banner.style.cssText = 'height:96px;background:#fde68a;width:100%;';
+      banner.textContent = 'Scheduled maintenance tonight';
+      document.body.insertBefore(banner, document.body.firstChild);
+    }, 300);
+  }
+
+  if (bugs.has(PERF_BUGS.CLS_IMAGELESS_JUMP)) {
+    const squash = (): void => {
+      const grid = document.querySelector('[data-testid="kpi-deploys"]')?.parentElement;
+      if (grid instanceof HTMLElement && grid.dataset['squashed'] !== 'done') {
+        grid.dataset['squashed'] = 'done';
+        const original = grid.style.minHeight;
+        grid.style.minHeight = '0px';
+        for (const child of Array.from(grid.children)) {
+          if (child instanceof HTMLElement) child.style.height = '0px';
+        }
+        // Reflow to full height a beat later — the jump IS the bug.
+        setTimeout(() => {
+          for (const child of Array.from(grid.children)) {
+            if (child instanceof HTMLElement) child.style.height = '';
+          }
+          grid.style.minHeight = original;
+        }, 400);
+      }
+    };
+    setTimeout(squash, 100);
+  }
+
+  if (bugs.has(PERF_BUGS.LONGTASK_ON_NAV)) {
+    document.addEventListener(
+      'click',
+      (e) => {
+        const el = e.target instanceof Element ? e.target.closest('[data-testid]') : null;
+        if (el?.getAttribute('data-testid') !== 'nav-diagnostics') return;
+        // Block the main thread synchronously — a real long task, not a fake mark.
+        const until = Date.now() + 400;
+        while (Date.now() < until) {
+          /* busy-wait: this is the regression */
+        }
+      },
+      true,
+    );
+  }
+}
+
 /** DOM-text bugs → a testid whose displayed label/number is silently overwritten with a wrong value. */
 const DOM_TEXT: Record<string, { testid: string; wrong: string }> = {
   'brand-typo': { testid: 'brand', wrong: 'Retcile mission control' },
@@ -611,6 +699,8 @@ export function installBugInjector(): void {
   if (bugs.has('render-storm')) installRenderStorm();
   installClickBugs(bugs);
   installNetFaults(bugs);
+  installSilentRemoval(bugs);
+  installPerfFaults(bugs);
   installDoubleFetch(bugs);
   installDomTextBugs(bugs);
 }

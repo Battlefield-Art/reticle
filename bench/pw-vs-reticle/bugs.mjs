@@ -742,4 +742,50 @@ export const BUGS = [
     },
     expect: 'reticle',
   },
+
+  // ── silent-removal (§4.9): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
+  // crawler that only exercises controls is structurally blind. Only a saved baseline notices. ───────
+  {
+    id: 'kpi-card-removed',
+    category: 'silent-removal',
+    intent: 'the Active-services KPI card is still on the Overview page',
+    setup: ['login-submit'],
+    check: { kind: 'domPresentVsBaseline', testid: 'kpi-services' },
+    expect: 'both',
+  },
+  {
+    id: 'footer-status-removed',
+    category: 'silent-removal',
+    intent: 'the session status strip is still present',
+    setup: ['login-submit'],
+    check: { kind: 'domPresentVsBaseline', testid: 'session-pill' },
+    expect: 'both',
+  },
+
+  // ── perf (§4.6): the damage is in WHEN the page moved, not what it ends up looking like. A
+  // screenshot taken after things settle looks perfect. ─────────────────────────────────────────────
+  {
+    id: 'cls-late-banner',
+    category: 'perf',
+    intent: 'the page does not shove content down after it has settled (CLS under 0.1)',
+    setup: ['login-submit'],
+    check: { kind: 'perfClsUnder', expected: 0.1 },
+    expect: 'reticle',
+  },
+  {
+    id: 'cls-imageless-jump',
+    category: 'perf',
+    intent: 'the KPI row renders at its final height (no reflow jump)',
+    setup: ['login-submit'],
+    check: { kind: 'perfClsUnder', expected: 0.1 },
+    expect: 'reticle',
+  },
+  {
+    id: 'longtask-on-nav',
+    category: 'perf',
+    intent: 'navigating to Diagnostics does not block the main thread',
+    setup: ['login-submit'],
+    check: { kind: 'perfNoLongTaskAfter', steps: ['nav-diagnostics'], ms: 200 },
+    expect: 'reticle',
+  },
 ];

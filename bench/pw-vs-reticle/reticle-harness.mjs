@@ -244,6 +244,30 @@ export async function runReticle(bugs) {
           note = ref
             ? `pending=${stillPending.length} completed2xx=${completed.length} of ${matches.length}`
             : `${c.steps[0]} not reached`;
+        } else if (c.kind === 'domPresentVsBaseline') {
+          // §4.9 silent removal: a NON-INTERACTIVE element vanished. No click breaks, nothing errors —
+          // only presence-vs-expected catches it.
+          const q = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.testid });
+          const found = (q?.elements ?? []).length;
+          caught = found === 0;
+          note = `testid ${c.testid} present=${found}`;
+        } else if (c.kind === 'perfClsUnder') {
+          // §4.6 layout shift: a screenshot taken after things settle looks perfect; the damage is in
+          // WHEN the page moved. Read the CLS the SDK already reports.
+          await sleep(1200); // let the late shift actually happen before judging
+          const obs = await call('reticle_observe', { sessionId: sid, limit: 200 });
+          const cls = Number(obs?.summary?.layoutShift ?? 0);
+          caught = cls >= Number(c.expected);
+          note = `cls=${cls.toFixed(3)} threshold=${c.expected}`;
+        } else if (c.kind === 'perfNoLongTaskAfter') {
+          // §4.6 long task: the main thread was blocked. Invisible to any DOM assertion.
+          const ref = await waitRef(c.steps[0]);
+          if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          await sleep(800);
+          const obs = await call('reticle_observe', { sessionId: sid, limit: 200 });
+          const longTasks = Number(obs?.summary?.longTasks ?? 0);
+          caught = ref ? longTasks > 0 : false;
+          note = ref ? `longTasks=${longTasks} (>${c.ms}ms)` : `${c.steps[0]} not reached`;
         } else if (c.kind === 'stateInvariantAfter') {
           const pre = await call('reticle_state', {
             sessionId: sid,

@@ -182,6 +182,15 @@ export async function runPlaywright(bugs) {
           await sleep(400);
           caught = false; // the invariant lives in the store; Playwright has no access to assert it
           note = 'no app-state access — store invariant not assertable from the DOM';
+        } else if (c.kind === 'domPresentVsBaseline') {
+          // Playwright CAN check presence — no charity, this one is fairly 'both'.
+          const el = await page.$(`[data-testid="${c.testid}"]`);
+          caught = el === null;
+          note = `testid ${c.testid} present=${el === null ? 0 : 1}`;
+        } else if (c.kind === 'perfClsUnder' || c.kind === 'perfNoLongTaskAfter') {
+          await sleep(400);
+          caught = false;
+          note = 'no layout-shift / long-task oracle in the deterministic script harness';
         } else if (c.kind === 'netStatusAfter') {
           // Playwright sees response statuses, so this class is genuinely catchable here — no charity.
           await fillPrep(c.prep);
