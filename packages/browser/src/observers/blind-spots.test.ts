@@ -72,4 +72,54 @@ describe('installBlindSpots', () => {
       document.querySelectorAll = original;
     }
   });
+
+  /**
+   * The mutation path re-checks on a debounce rather than inspecting each mutated node. The old code
+   * gated on `addedNode.querySelector('iframe')`, which cost a full subtree scan per mutated node —
+   * more expensive than the document scan it was avoiding, and scaling with the size of whatever the
+   * app just rendered. These two tests pin the behaviour that made coalescing safe to adopt: a frame
+   * appearing later is still reported, and unrelated churn reports nothing.
+   */
+  it('reports a cross-origin frame that appears AFTER install', async () => {
+    let frames: HTMLIFrameElement[] = [];
+    const original = document.querySelectorAll.bind(document);
+    document.querySelectorAll = ((sel: string) =>
+      sel === 'iframe' ? frames : original(sel)) as typeof document.querySelectorAll;
+
+    const events: { type: EventType; data: Record<string, unknown> }[] = [];
+    const emit: Emit = (type, data) => events.push({ type, data });
+    try {
+      const { installBlindSpots } = await import('./blind-spots.js');
+      teardown = installBlindSpots(emit);
+      expect(events.filter((e) => e.type === EventType.BLIND_SPOT)).toHaveLength(0);
+
+      frames = [frame('https://pay.stripe.com', null)];
+      document.body.appendChild(document.createElement('div')); // any childList mutation
+      await new Promise((r) => setTimeout(r, 400)); // past the debounce window
+
+      const spots = events.filter((e) => e.type === EventType.BLIND_SPOT);
+      expect(spots).toHaveLength(1);
+      expect(spots[0]?.data['count']).toBe(1);
+    } finally {
+      document.querySelectorAll = original;
+    }
+  });
+
+  it('stays silent when the DOM churns but no frame appears', async () => {
+    const original = document.querySelectorAll.bind(document);
+    document.querySelectorAll = ((sel: string) =>
+      sel === 'iframe' ? [] : original(sel)) as typeof document.querySelectorAll;
+
+    const events: { type: EventType; data: Record<string, unknown> }[] = [];
+    const emit: Emit = (type, data) => events.push({ type, data });
+    try {
+      const { installBlindSpots } = await import('./blind-spots.js');
+      teardown = installBlindSpots(emit);
+      for (let i = 0; i < 50; i += 1) document.body.appendChild(document.createElement('span'));
+      await new Promise((r) => setTimeout(r, 400));
+      expect(events.filter((e) => e.type === EventType.BLIND_SPOT)).toHaveLength(0);
+    } finally {
+      document.querySelectorAll = original;
+    }
+  });
 });

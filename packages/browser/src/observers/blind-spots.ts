@@ -1,5 +1,6 @@
 import { EventType, BlindSpotKind } from '@reticlehq/core';
 import type { Emit, Teardown } from './types.js';
+import { nativeClearTimeout, nativeSetTimeout } from '../timers/native-timers.js';
 
 /**
  * Blind-spot sensor. The SDK instruments the DOM, but a cross-origin iframe is a wall it cannot
@@ -41,6 +42,14 @@ function currentCount(): number {
  * on any added/removed frame). Only the delta is emitted — never a per-mutation flood — so a static
  * embed reports once. Reversible: disconnects the observer on teardown.
  */
+/**
+ * How long added/removed nodes are allowed to pile up before the frame count is re-checked.
+ *
+ * A blind spot is a coverage caveat on a verdict, not a live signal — noticing an embed a fraction of
+ * a second later costs nothing, while checking on every mutation costs a DOM scan per render.
+ */
+const RECHECK_DEBOUNCE_MS = 250;
+
 export function installBlindSpots(emit: Emit): Teardown {
   let last = -1;
   const report = (): void => {
@@ -52,15 +61,29 @@ export function installBlindSpots(emit: Emit): Teardown {
     }
   };
   report();
-  const observer = new MutationObserver((records) => {
-    // Re-count only when an <iframe> was actually added or removed (cheap gate against unrelated churn).
-    const touchedIframe = records.some((r) =>
-      [...r.addedNodes, ...r.removedNodes].some(
-        (n) => n instanceof HTMLElement && (n.tagName === 'IFRAME' || n.querySelector?.('iframe') !== null),
-      ),
-    );
-    if (touchedIframe) report();
+
+  // Coalesce rather than gate.
+  //
+  // This used to try to skip unrelated churn by testing each added/removed node with
+  // `n.querySelector('iframe')` — but that is a full subtree scan per mutated node, so a React commit
+  // mounting a 500-node panel paid a 500-node scan to decide whether to do a document scan. The gate
+  // cost more than the work, and it scaled with exactly the thing a large app does most.
+  //
+  // Since report() emits only when the count CHANGES, running it late and rarely is free. One
+  // debounced document scan per quarter-second replaces per-node scanning, and it is also more
+  // correct: the old gate's `querySelector` missed an iframe added inside a subtree whose own root
+  // was a text or comment node.
+  let pending: ReturnType<typeof nativeSetTimeout> | undefined;
+  const observer = new MutationObserver(() => {
+    if (pending !== undefined) return;
+    pending = nativeSetTimeout(() => {
+      pending = undefined;
+      report();
+    }, RECHECK_DEBOUNCE_MS);
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
-  return () => observer.disconnect();
+  return () => {
+    if (pending !== undefined) nativeClearTimeout(pending);
+    observer.disconnect();
+  };
 }
