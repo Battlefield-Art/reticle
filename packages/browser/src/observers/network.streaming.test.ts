@@ -82,3 +82,48 @@ describe('body capture must not block the host app', () => {
     expect(String(withBody?.data['responseBody'])).toContain('ok');
   });
 });
+
+/**
+ * Work must not scale with body size.
+ *
+ * The 500ms deadline bounds how long the SDK WAITS for a body, but everything after it was synchronous
+ * and unbounded: JSON.parse over the whole text, a deep sanitising walk, a re-stringify, then two global
+ * regexes — with the 8 KB cap applied last. A 30 MB CSV export or a large HTML error page resolves fast,
+ * so the deadline never fires, and the app freezes on the main thread instead. That is the same class of
+ * host-app damage as the hang, with the SDK still the cause.
+ */
+describe('body projection is bounded by input size, not just output size', () => {
+  const hugeBody = (chars: number, contentType: string): void => {
+    const body = 'x'.repeat(chars);
+    vi.stubGlobal('fetch', () =>
+      Promise.resolve({
+        headers: { get: () => contentType },
+        status: 200,
+        ok: true,
+        clone: () => ({ text: () => Promise.resolve(body) }),
+      } as unknown as Response),
+    );
+  };
+
+  it('projects a very large text body without scanning all of it', async () => {
+    hugeBody(4_000_000, 'text/csv');
+    const { emit, events } = collect();
+    teardowns.push(installNetwork(emit, { captureBodies: true }));
+    const started = Date.now();
+    await window.fetch('/api/export.csv');
+    // The point is that cost is FIXED, not that it is fast here. Unbounded, this body would have been
+    // parsed and regex-swept in full — the same pass costs ~2s at 64 KB and this input is 4 MB.
+    expect(Date.now() - started).toBeLessThan(1000);
+    const withBody = events.find((e) => e.data['responseBody'] !== undefined);
+    expect(String(withBody?.data['responseBody']).length).toBeLessThanOrEqual(8192);
+  });
+
+  it('marks an over-large body as truncated — never reports a clipped read as complete', async () => {
+    hugeBody(4_000_000, 'text/plain');
+    const { emit, events } = collect();
+    teardowns.push(installNetwork(emit, { captureBodies: true }));
+    await window.fetch('/api/big.txt');
+    const withBody = events.find((e) => e.data['responseBody'] !== undefined);
+    expect(withBody?.data['responseBodyTruncated']).toBe(true);
+  });
+});

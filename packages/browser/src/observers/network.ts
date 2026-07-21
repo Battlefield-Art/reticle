@@ -1,12 +1,7 @@
 import { EventType, REDACTED_VALUE, RETICLE_WS_PATH } from '@reticlehq/core';
-import {
-  isSensitiveKey,
-  sanitizeForTransport,
-  safeStringify,
-  scrubKnownSecrets,
-} from '../security/serialization.js';
+import { isSensitiveKey } from '../security/serialization.js';
 import type { Emit, Teardown } from './types.js';
-import { isCapturableType, withBodyDeadline } from './network-body.js';
+import { isCapturableType, projectBody, withBodyDeadline } from './network-body.js';
 
 /** Config for the network observer. Body capture is OFF by default and dev-only opt-in. */
 export interface NetworkOptions {
@@ -14,70 +9,11 @@ export interface NetworkOptions {
   captureBodies?: boolean;
 }
 
-/**
- * Per-body character cap. Bodies ride the same ring buffer as the DOM/route/console timeline, so an
- * uncapped body could evict the whole behavioral history; the small cap keeps a few large responses
- * from starving the timeline (the separate-budget concern in the scalability audit).
- */
-const MAX_BODY_CHARS = 8192;
 
 
 
-/**
- * An `Authorization: Bearer …` / `Basic …` credential. The token side requires credential shape — 16+
- * chars AND at least one digit or symbol — so ordinary prose ("Basic subscription includes…", "Bearer
- * capacity exceeded") is NOT mangled, only actual opaque tokens are.
- */
-const AUTH_SCHEME_TOKEN =
-  /\b(Bearer|Basic)\s+(?=[A-Za-z0-9._~+/=-]{16,})(?=[A-Za-z0-9._~+/=-]*[\d._~+/=-])[A-Za-z0-9._~+/=-]+/gi;
 
-/**
- * Redact credentials in ANY text body (form-urlencoded, text/plain, xml, or JSON that failed to parse).
- * sanitizeForTransport only redacts KEYS inside a parsed object, so a `password=secret` form post or a
- * `Bearer <token>` string would otherwise ship verbatim. Redacts the value of any `key=value` / `key: value`
- * pair whose key is sensitive, plus credential-shaped auth-scheme tokens.
- */
-function redactText(text: string): string {
-  return (
-    text
- // Auth-scheme tokens FIRST: `Authorization: Bearer <token>` — the key/value rule below would
- // otherwise consume just "Bearer" as Authorization's value (it stops at whitespace) and leave the
- // token behind, so the scheme rule must run before it.
-      .replace(AUTH_SCHEME_TOKEN, (_m: string, scheme: string) => `${scheme} ${REDACTED_VALUE}`)
-      .replace(
-        /([A-Za-z0-9_.-]+)(\s*[=:]\s*"?)([^&\s,;"}]+)/g,
-        (match: string, key: string, sep: string) =>
-          isSensitiveKey(key) ? `${key}${sep}${REDACTED_VALUE}` : match,
-      )
-  );
-}
 
-/**
- * Redact + cap a body for the agent transcript. JSON is parsed and run through the same
- * sanitizeForTransport redaction used for state (sensitive keys -> [REDACTED]); every other text body
- * (and JSON that didn't parse) goes through redactText so form/plain-text credentials can't leak.
- * Returns the (possibly truncated) body plus whether it was cut.
- */
-function projectBody(
-  text: string,
-  contentType: string | null,
-): { body: string; truncated: boolean } {
-  let out: string;
-  if (contentType !== null && /json|graphql/i.test(contentType)) {
-    try {
-      out = safeStringify(sanitizeForTransport(JSON.parse(text)));
-    } catch {
-      out = redactText(text); // looked like JSON but wasn't — still redact key/value + auth tokens
-    }
-  } else {
-    out = redactText(text);
-  }
- // Key-based redaction can't see a secret sitting in a VALUE under a benign key — scan the projected
- // text for high-confidence secret shapes (JWTs, provider keys) as a backstop, JSON or not.
-  out = scrubKnownSecrets(out);
-  const truncated = out.length > MAX_BODY_CHARS;
-  return { body: truncated ? out.slice(0, MAX_BODY_CHARS) : out, truncated };
-}
 
 /** The byte size of a binary frame (ArrayBuffer / Blob / typed-array view), or undefined if unknown. */
 function binaryFrameBytes(data: unknown): number | undefined {

@@ -432,18 +432,24 @@ export async function runPlaywright(bugs) {
             note = `body contains '${c.expected}'=${!caught} (${bodies.length} sent)`;
           }
         } else if (c.kind === 'netPendingAfter') {
-          // The harness already collects requests[] AND responses[]; a pending request is simply one
-          // with no matching response. This branch used to return caught=false with "no in-flight
-          // oracle" while both arrays sat in scope — the data was there, the check just was not run.
+          // The SAME two-part oracle the reticle branch uses: still in flight, OR no completed 2xx ever
+          // landed. The reticle side had that second disjunct and this branch did not, so a hang that
+          // sends nothing scored a catch there and a miss here — an asymmetry inside the very check the
+          // de-rigging pass existed to remove, and it was the sole basis for the last surviving
+          // reticle-only label in this category. requests[] and responses[] are both in scope; "no
+          // completed 2xx" is one expression. Withholding it manufactured the win.
           await fillPrep(c.prep);
           const ok = await waitFor(c.steps[0]);
           if (ok) await click(c.steps[0]);
-          await sleep(RESPONSE_SETTLE_MS);
+          await sleep(c.withinMs ?? RESPONSE_SETTLE_MS);
           const asked = requests.filter((r) => r.url.includes(c.urlContains)).length;
-          const answered = responses.filter((r) => r.url.includes(c.urlContains)).length;
-          const pending = asked - answered;
-          caught = ok ? pending > 0 : false;
-          note = ok ? `requests=${asked} responses=${answered} pending=${pending}` : `${c.steps[0]} not reached`;
+          const answered = responses.filter((r) => r.url.includes(c.urlContains));
+          const completed = answered.filter((r) => r.status >= 200 && r.status < 400);
+          const pending = asked - answered.length;
+          caught = ok ? pending > 0 || completed.length === 0 : false;
+          note = ok
+            ? `pending=${pending} completed2xx=${completed.length} of ${asked}`
+            : `${c.steps[0]} not reached`;
         }
         if (!caught && (note.includes('not found') || note.includes('not reached'))) note += diag;
       } catch (e) {

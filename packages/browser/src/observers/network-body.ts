@@ -5,6 +5,13 @@
  * WebSocket and sendBeacon at once. This module owns exactly one question: given a body, what is safe
  * and affordable to report?
  */
+import { REDACTED_VALUE } from '@reticlehq/core';
+import {
+  isSensitiveKey,
+  sanitizeForTransport,
+  safeStringify,
+  scrubKnownSecrets,
+} from '../security/serialization.js';
 import { nativeSetTimeout } from '../timers/native-timers.js';
 
 /** Only text-like bodies are worth capturing; binary (images/fonts/octet-stream) is skipped. */
@@ -54,4 +61,91 @@ export function isCapturableType(contentType: string | null): boolean {
   if (contentType === null) return false;
   if (STREAMING_CONTENT.test(contentType)) return false;
   return CAPTURABLE_CONTENT.test(contentType);
+}
+
+/**
+ * Per-body character cap. Bodies ride the same ring buffer as the DOM/route/console timeline, so an
+ * uncapped body could evict the whole behavioral history; the small cap keeps a few large responses
+ * from starving the timeline (the separate-budget concern in the scalability audit).
+ */
+const MAX_BODY_CHARS = 8192;
+
+/**
+ * Hard bound on how much of a body is ever PARSED or SCANNED, independent of how much is reported.
+ *
+ * Only twice the output cap, and that ceiling is measured rather than guessed. The redaction pass uses
+ * `[A-Za-z0-9_.-]+` followed by a delimiter, which backtracks quadratically on a long run without one.
+ * Timed on this machine: 8 KB → 36 ms, 16 KB → 136 ms, 64 KB → 2067 ms. A first attempt at 8× the
+ * output cap therefore still froze the main thread for seconds, so the bound is set where the cost
+ * stays bounded AND redaction keeps enough context to catch a secret straddling the reported edge.
+ * Scanning far past the output cap is wasted work in any case — only 8 KB is ever reported.
+ */
+const MAX_BODY_SCAN_CHARS = MAX_BODY_CHARS * 2;
+
+/**
+ * An `Authorization: Bearer …` / `Basic …` credential. The token side requires credential shape — 16+
+ * chars AND at least one digit or symbol — so ordinary prose ("Basic subscription includes…", "Bearer
+ * capacity exceeded") is NOT mangled, only actual opaque tokens are.
+ */
+const AUTH_SCHEME_TOKEN =
+  /\b(Bearer|Basic)\s+(?=[A-Za-z0-9._~+/=-]{16,})(?=[A-Za-z0-9._~+/=-]*[\d._~+/=-])[A-Za-z0-9._~+/=-]+/gi;
+
+/**
+ * Redact credentials in ANY text body (form-urlencoded, text/plain, xml, or JSON that failed to parse).
+ * sanitizeForTransport only redacts KEYS inside a parsed object, so a `password=secret` form post or a
+ * `Bearer <token>` string would otherwise ship verbatim. Redacts the value of any `key=value` / `key: value`
+ * pair whose key is sensitive, plus credential-shaped auth-scheme tokens.
+ */
+function redactText(text: string): string {
+  return (
+    text
+ // Auth-scheme tokens FIRST: `Authorization: Bearer <token>` — the key/value rule below would
+ // otherwise consume just "Bearer" as Authorization's value (it stops at whitespace) and leave the
+ // token behind, so the scheme rule must run before it.
+      .replace(AUTH_SCHEME_TOKEN, (_m: string, scheme: string) => `${scheme} ${REDACTED_VALUE}`)
+      .replace(
+        /([A-Za-z0-9_.-]+)(\s*[=:]\s*"?)([^&\s,;"}]+)/g,
+        (match: string, key: string, sep: string) =>
+          isSensitiveKey(key) ? `${key}${sep}${REDACTED_VALUE}` : match,
+      )
+  );
+}
+
+/**
+ * Redact + cap a body for the agent transcript. JSON is parsed and run through the same
+ * sanitizeForTransport redaction used for state (sensitive keys -> [REDACTED]); every other text body
+ * (and JSON that didn't parse) goes through redactText so form/plain-text credentials can't leak.
+ * Returns the (possibly truncated) body plus whether it was cut.
+ */
+export function projectBody(
+  rawText: string,
+  contentType: string | null,
+): { body: string; truncated: boolean } {
+  // Bound the INPUT before any parsing or scanning. The cap used to be applied only at the end, so a
+  // large body was JSON.parsed in full, deep-walked, re-stringified, and swept by two global regexes
+  // before all but 8 KB of the result was thrown away — seconds of synchronous main-thread work for a
+  // fixed-size output. A 30 MB CSV export or a big HTML error page froze the app, which is the same
+  // class of host-app damage as the streaming hang, with the SDK still the cause.
+  //
+  // The slice is generous (a multiple of the output cap) so redaction still sees enough context to
+  // recognise a secret that straddles the boundary, while the work stays bounded regardless of body size.
+  const oversized = rawText.length > MAX_BODY_SCAN_CHARS;
+  const text = oversized ? rawText.slice(0, MAX_BODY_SCAN_CHARS) : rawText;
+  let out: string;
+  if (contentType !== null && /json|graphql/i.test(contentType)) {
+    try {
+      out = safeStringify(sanitizeForTransport(JSON.parse(text)));
+    } catch {
+      out = redactText(text); // looked like JSON but wasn't — still redact key/value + auth tokens
+    }
+  } else {
+    out = redactText(text);
+  }
+ // Key-based redaction can't see a secret sitting in a VALUE under a benign key — scan the projected
+ // text for high-confidence secret shapes (JWTs, provider keys) as a backstop, JSON or not.
+  out = scrubKnownSecrets(out);
+  // Truncated if the projection overflows the cap OR the input itself was clipped above — a body the
+  // SDK never fully read must not be reported as complete.
+  const truncated = oversized || out.length > MAX_BODY_CHARS;
+  return { body: out.length > MAX_BODY_CHARS ? out.slice(0, MAX_BODY_CHARS) : out, truncated };
 }
