@@ -32,7 +32,7 @@ function stripExisting(broken: ReadonlySet<string>): void {
  * anchor sees zero matches on its very first query and drifts. Dev-only; no teardown needed.
  */
 function patchSetAttribute(broken: ReadonlySet<string>): void {
-  // Monkeypatching a prototype method is inherently this-dynamic; we forward `this` via.call below.
+  // Monkeypatching a prototype method is inherently this-dynamic; we forward `this` via .call below.
   // eslint-disable-next-line @typescript-eslint/unbound-method
   const original = Element.prototype.setAttribute;
   Element.prototype.setAttribute = function (this: Element, name: string, value: string): void {
