@@ -1,4 +1,4 @@
-// W11 §5 — ORACLE GUARDS: the suite that tests Reticle's own judgment.
+// W11  — ORACLE GUARDS: the suite that tests Reticle's own judgment.
 //
 // These are not app bugs. Each guard is a permanent regression guard for a historical false-green or for
 // the honesty machinery, and the assertion target is *Reticle's verdict*, not the app. They live in their

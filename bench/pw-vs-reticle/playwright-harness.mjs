@@ -216,42 +216,37 @@ export async function runPlaywright(bugs) {
           caught = el === null;
           note = `testid ${c.testid} present=${el === null ? 0 : 1}`;
         } else if (c.kind === 'perfClsUnder' || c.kind === 'perfNoLongTaskAfter') {
-          // The long-task variant blocks the main thread on a nav, so the click must happen while the
-          // observer is watching — click first, then measure.
-          // The long-task variant blocks the main thread ON a nav, so the click must actually happen —
-          // and the observer below uses buffered:true, so a task from this click is still counted.
+          // Install the observers BEFORE the action, then act, then read. Creating them after the
+          // click (as this did, 600ms after) with buffered:false meant the long task had already
+          // finished and was never seen — the check could not catch its own bug. Using buffered:true
+          // instead is the opposite error: it replays the whole page timeline, so React's initial
+          // render counts as "a long task after the action" and the CLEAN build trips.
+          //
+          // CLS stays buffered on purpose: cumulative layout shift is a page-lifetime metric and the
+          // injected shift happens during load, before any click.
+          await page.evaluate(() => {
+            const probe = { cls: 0, longTaskDurations: [] };
+            window.__reticleBenchPerf = probe;
+            try {
+              new PerformanceObserver((list) => {
+                for (const e of list.getEntries()) {
+                  if (!e.hadRecentInput) probe.cls += e.value; // recent-input shifts are excluded by definition
+                }
+              }).observe({ type: 'layout-shift', buffered: true });
+              new PerformanceObserver((list) => {
+                for (const e of list.getEntries()) probe.longTaskDurations.push(e.duration);
+              }).observe({ type: 'longtask' });
+            } catch {
+              /* entry type unsupported in this browser */
+            }
+          });
           if (c.kind === 'perfNoLongTaskAfter' && c.steps?.[0] !== undefined) {
             await waitFor(c.steps[0]);
             await click(c.steps[0]);
-            await sleep(600);
           }
-          // PerformanceObserver inside page.evaluate is exactly how CLS and long tasks are measured —
-          // the same browser mechanism Reticle's own SDK uses. Returning caught=false with "no perf
-          // oracle" manufactured three reticle-only wins from a check that was simply never written.
+          await sleep(1500); // let a late shift land, and the blocking task finish
           const metrics = await page.evaluate(
-            () =>
-              new Promise((resolve) => {
-                let cls = 0;
-                const longTaskDurations = [];
-                try {
-                  new PerformanceObserver((list) => {
-                    for (const e of list.getEntries()) {
-                      // Shifts with recent input are excluded from CLS by definition.
-                      if (!e.hadRecentInput) cls += e.value;
-                    }
-                  }).observe({ type: 'layout-shift', buffered: true });
-                  // NOT buffered: a buffered observer replays the whole page timeline, so React's
-                  // initial render and the dev-bundle evaluation count as "a long task after the
-                  // action" — a clean-build false positive on any loaded CI box. Only tasks that occur
-                  // while this observer is live belong to the action under test.
-                  new PerformanceObserver((list) => {
-                    for (const e of list.getEntries()) longTaskDurations.push(e.duration);
-                  }).observe({ type: 'longtask' });
-                } catch {
-                  /* entry type unsupported in this browser */
-                }
-                setTimeout(() => resolve({ cls, longTaskDurations }), 1500);
-              }),
+            () => window.__reticleBenchPerf ?? { cls: 0, longTaskDurations: [] },
           );
           if (c.kind === 'perfClsUnder') {
             caught = metrics.cls >= Number(c.expected);
@@ -425,15 +420,15 @@ export async function runPlaywright(bugs) {
           // API call. Mirrors the reticle check exactly: same substring, same direction semantics.
           await fillPrep(c.prep);
           const ok = await waitFor(c.steps[0]);
+          // Reset BEFORE the action. Placed after it (as this was, briefly) the array is cleared once
+          // the request has already been recorded, so `bodies` is always empty and Playwright can never
+          // observe a body at all — silently restoring the reticle-only win the de-rig pass removed.
+          // The comment said "before"; the code did it after.
+          postBodies.length = 0;
           if (ok) await click(c.steps[0]);
           await sleep(RESPONSE_SETTLE_MS);
-          // Honour c.direction. This branch read only OUTGOING bodies while its comment claimed the
-          // same direction semantics as the reticle side — harmless today because the one surviving
-          // bug is direction:'request', but the next response-direction bug would have been scored
-          // against the wrong payload, producing a false positive or a silent Playwright loss.
-          // Reset before the action, as netCountAfter already does. These arrays accumulate from page
-          // load, so a setup step hitting the same URL would otherwise be counted as the bug's traffic.
-          postBodies.length = 0;
+          // Honour c.direction: this branch reads only OUTGOING bodies, which is all request.postData()
+          // exposes. Stated rather than scored when the check asks for a response body.
           const responseDirection = c.direction !== undefined && c.direction !== 'request';
           const bodies = responseDirection
             ? []

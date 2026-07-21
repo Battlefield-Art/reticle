@@ -94,12 +94,12 @@ export function advanceClock(ms: number): void {
  * at the cause. That matters most on the path this is called from: an agent freezes the clock, the
  * bridge dies, and the developer is left with an app that was never un-frozen deliberately.
  *
- * Pending work is re-scheduled onto REAL timers with its remaining virtual delay, so a 5s toast that
- * was frozen 2s in still has ~3s to go. Intervals resume at their period.
+ * Pending one-shot timeouts are re-scheduled onto REAL timers with their remaining virtual delay, so a
+ * 5s toast frozen 2s in still has ~3s to go. Intervals are deliberately NOT resumed — see below.
  */
 export function resetClock(): void {
   if (!installed || originals === null) return;
-  const { setTimeout: realSetTimeout, setInterval: realSetInterval } = originals;
+  const { setTimeout: realSetTimeout } = originals;
   const pending = tasks;
   window.setTimeout = originals.setTimeout;
   window.clearTimeout = originals.clearTimeout;
@@ -113,9 +113,15 @@ export function resetClock(): void {
   virtualNow = 0;
   // Re-arm AFTER the natives are restored, so these schedule onto real time rather than back into the
   // queue we are draining.
+  //
+  // INTERVALS ARE NOT RE-ARMED. The app is still holding the VIRTUAL id it was given while frozen, and
+  // a native re-arm returns a different id — so the app's own `clearInterval(id)` would no longer
+  // cancel it and the callback would run forever. Worse, both id spaces start at 1, so that stale
+  // clearInterval could cancel an unrelated live timer. A one-shot timeout has no such handle problem:
+  // it fires once and is done, so losing it is a real behaviour change while re-arming it is safe.
+  // Dropping a repeating timer is the lesser harm, and it is stated rather than silent.
   for (const task of pending) {
-    const remaining = Math.max(0, task.time - resumeFrom);
-    if (task.interval !== undefined) realSetInterval(task.cb, task.interval);
-    else realSetTimeout(task.cb, remaining);
+    if (task.interval !== undefined) continue;
+    realSetTimeout(task.cb, Math.max(0, task.time - resumeFrom));
   }
 }

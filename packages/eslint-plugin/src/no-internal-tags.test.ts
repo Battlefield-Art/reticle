@@ -60,5 +60,9 @@ ruleTester.run('no-internal-tags', noInternalTags, {
       code: "it('allows richer payloads (W4 will add fields)', () => {});",
       errors: [{ messageId: 'internalTag' }],
     },
+    // The shapes an exemption-by-default rule silently permitted: a design-doc pointer attributed to
+    // an internal document, and our OWN product name making a banned version string legal.
+    { code: '// see PLAN §4.3 for the derivation', errors: [{ messageId: 'internalTag' }] },
+    { code: '// new in Reticle v2.2.0', errors: [{ messageId: 'internalTag' }] },
   ],
 });

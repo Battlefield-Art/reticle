@@ -79,15 +79,20 @@ describe('resetClock hands back the work queued while frozen', () => {
     expect(fired).toBe(false);
   });
 
-  it('resumes an interval scheduled during the freeze', async () => {
+  it('does NOT resume an interval — an un-cancellable repeat is worse than a dropped one', async () => {
+    // The app still holds the VIRTUAL id it was handed while frozen. Re-arming natively returns a
+    // different id, so the app's own clearInterval(id) could never stop the callback — and since both
+    // id spaces start at 1, that stale clearInterval might cancel an unrelated live timer instead.
+    // My first version did re-arm, and this very test masked it: it cleaned up with the virtual id, so
+    // the interval kept firing for the rest of the worker while the assertion still passed.
     freezeClock();
     let ticks = 0;
     const id = window.setInterval(() => {
       ticks += 1;
     }, 5);
     resetClock();
+    clearInterval(id); // the app's own cleanup, using the id it was given
     await new Promise((r) => setTimeout(r, 40));
-    clearInterval(id);
-    expect(ticks).toBeGreaterThan(0);
+    expect(ticks).toBe(0);
   });
 });

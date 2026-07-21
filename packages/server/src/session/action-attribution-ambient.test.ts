@@ -26,9 +26,11 @@ const noopSocket = { send: () => undefined, close: () => undefined } as unknown 
  * flight. That is a false green produced by the anti-false-green machinery, and it is invisible: every
  * call succeeds, the counts just drift.
  *
- * Two real paths had this bug: `reticle_act`'s native-input branch returned before `beginAction`, and
- * `reticle_crawl` called the ACT command directly. These tests pin the property itself rather than
- * either call site, so a third dispatch path added later is caught here.
+ * These tests pin the CLASSIFIER: an attributed event is not counted as ambient, an unattributed one
+ * is. They do NOT and cannot catch a dispatch path that forgets to open a window — they call pushEvent
+ * directly and never look at call sites. An earlier version of this comment claimed otherwise, and that
+ * false claim is exactly why two more forgetful paths (flow-replay, replay) went unnoticed after the
+ * first three were fixed. `dispatch-attribution.test.ts` scans call sites and is the guard for that.
  */
 
 function sessionWithRefEvent(): { session: Session; push: (actionId?: string) => void } {

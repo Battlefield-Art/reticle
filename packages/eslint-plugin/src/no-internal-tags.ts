@@ -29,16 +29,27 @@ export const INTERNAL_TAG_MESSAGE =
 /** `(W11)`, `B37`, `W10.3`, `N5:` — a short capital-prefixed code used as a label. */
 const TRACKING_CODE = /(?<![A-Za-z0-9])[A-Z]{1,2}\d{1,2}(?:\.\d{1,2})?(?![A-Za-z0-9])/g;
 /**
- * `§4.3` — a design-doc section reference. A citation of an EXTERNAL spec is legitimate ("RFC 6265
- * §5.2", "WCAG §1.4.3"), so a § preceded by a spec-looking token is left alone.
+ * `§4.3` — a design-doc section reference.
+ *
+ * Defaults to FLAGGING and exempts only a citation of a NAMED EXTERNAL spec. The first version did the
+ * reverse — it exempted any § preceded by a word — which silently permitted `see PLAN §4.3`, the very
+ * shape being banned. For a ban rule the default must be "flag", or the exemption swallows the rule.
  */
-const SECTION_REF = /(?<![A-Za-z0-9]\s)(?<!\d\s)§\s?\d+(?:\.\d+)*/g;
+const SECTION_REF = /§\s?\d+(?:\.\d+)*/g;
+/** Specs whose section numbers are real references a reader can follow. */
+const EXTERNAL_SPECS =
+  /\b(RFC|WCAG|ECMA|ISO|IEEE|W3C|WHATWG|HTML|CSS|ARIA|HTTP|OAuth|JSON-LD)\b[^§]{0,20}$/i;
 /**
- * `v2.2.0` — an INTERNAL version string. A third-party version is legitimate prose ("React v18.2.0
- * changed this"), so only a bare, unattributed one is flagged: preceded by start-of-text, whitespace or
- * an opening bracket, and NOT preceded by a capitalised word (which reads as a product name).
+ * `v2.2.0` — an INTERNAL version string.
+ *
+ * Same inversion: flag by default, exempt only a version attributed to a NAMED third party. Exempting
+ * "any capitalised preceding word" permitted `new in Reticle v2.2.0` — our own product name made the
+ * banned string legal.
  */
-const VERSION_STRING = /(?<![A-Za-z0-9])(?<![A-Z][A-Za-z.]{1,20} )v\d+\.\d+\.\d+(?![A-Za-z0-9])/g;
+const VERSION_STRING = /(?<![A-Za-z0-9])v\d+\.\d+\.\d+(?![A-Za-z0-9])/g;
+/** Third-party names whose versions are legitimate prose. Reticle is deliberately NOT here. */
+const THIRD_PARTY =
+  /\b(React|Vite|Node|TypeScript|Playwright|Chrome|Chromium|Firefox|Safari|Zod|Vitest|ESLint|pnpm|MCP)\b[^v]{0,12}$/i;
 
 /** Tokens that look like codes but are established technical terms. */
 /** Test-block callees whose first argument is a human-readable description. */
@@ -72,11 +83,19 @@ export const noInternalTags = createRule({
     /** Every banned token in a piece of text. */
     const tagsIn = (text: string): Set<string> => {
       const found = new Set<string>();
-      for (const pattern of [TRACKING_CODE, SECTION_REF, VERSION_STRING]) {
+      for (const { pattern, exempt } of [
+        { pattern: TRACKING_CODE, exempt: undefined },
+        { pattern: SECTION_REF, exempt: EXTERNAL_SPECS },
+        { pattern: VERSION_STRING, exempt: THIRD_PARTY },
+      ]) {
         pattern.lastIndex = 0;
         for (const match of text.matchAll(pattern)) {
           const tag = match[0].trim();
-          if (!ALLOWED.has(tag.replace(/[^A-Za-z0-9]/g, ''))) found.add(tag);
+          if (ALLOWED.has(tag.replace(/[^A-Za-z0-9]/g, ''))) continue;
+          // Attribution is judged from the text BEFORE the match, so "RFC 6265 §5.2" is a reference
+          // and "PLAN §4.3" is a design-doc pointer.
+          if (exempt !== undefined && exempt.test(text.slice(0, match.index ?? 0))) continue;
+          found.add(tag);
         }
       }
       return found;

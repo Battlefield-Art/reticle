@@ -637,7 +637,7 @@ export const BUGS = [
     expect: 'both',
   },
 
-  // ── net-status: the hidden-500 class (§4.1) — the request FAILS, the UI shows success anyway. ────
+  // ── net-status: the hidden-500 class (net-status) — the request FAILS, the UI shows success anyway. ────
   // The DOM and a screenshot are both correct here; only the wire disagrees. This is the flagship
   // "structurally invisible" case for a screenshot/DOM tool.
   {
@@ -694,7 +694,7 @@ export const BUGS = [
     expect: 'both',
   },
 
-  // ── net-hang: the in-flight oracle (§4.2) — the request never resolves. ───────────────────────────
+  // ── net-hang: the in-flight oracle (net-payload) — the request never resolves. ───────────────────────────
   {
     id: 'hung-generate',
     category: 'net-hang',
@@ -706,9 +706,11 @@ export const BUGS = [
       urlContains: '/api/generate-script',
       withinMs: 3000,
     },
-    // reticle-only, MEASURED: Playwright sees requests=0 on the buggy build. The injected hang returns a
-    // never-settling promise WITHOUT sending anything, so there is genuinely no wire activity to
-    // observe — the fault is client-side, which is exactly where an in-page view wins.
+    // CLASSIFICATION PENDING RE-MEASUREMENT. This said "reticle-only, MEASURED: Playwright sees
+    // requests=0", which described the harness BEFORE its oracle was completed. Playwright now scores
+    // `pending > 0 || completed2xx === 0`, and a hang that sends nothing satisfies the second disjunct
+    // — so it may well discriminate. The label stays until a live run says otherwise; changing a
+    // ground-truth classification on reasoning alone is the mistake that produced the wrong value.
     expect: 'reticle-only',
   },
   {
@@ -725,7 +727,7 @@ export const BUGS = [
     expect: 'reticle-only',
   },
 
-  // ── silent-removal (§4.9): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
+  // ── silent-removal (silent-removal): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
   // crawler that only exercises controls is structurally blind. Only a saved baseline notices. ───────
   {
     id: 'token-not-persisted',
@@ -1018,7 +1020,7 @@ export const BUGS = [
     expect: 'both',
   },
 
-  // ── perf (§4.6): the damage is in WHEN the page moved, not what it ends up looking like. A
+  // ── perf (perf): the damage is in WHEN the page moved, not what it ends up looking like. A
   // screenshot taken after things settle looks perfect. ─────────────────────────────────────────────
   {
     id: 'cls-late-banner',

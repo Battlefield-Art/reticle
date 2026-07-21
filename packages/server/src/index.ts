@@ -235,16 +235,6 @@ function createBrowserPool(headless: boolean): BrowserPool {
 }
 
 /**
- * Wire journal capture, ambient seeding and the journal-tail flush onto a bridge.
- *
- * Both entry points need all three, and both used to hand-roll them. `startDaemon` only ever wired the
- * first, so on the path every user actually takes (`reticle serve` / `reticle mcp`) the journal tail was
- * dropped at session end and the learned ambient map was never persisted OR seeded — meaning ambient
- * learning could not converge across sessions and the last events of every session were lost. The two
- * call sites had already drifted once before, which is why this is one function rather than a
- * copy-paste both are asked to keep in step.
- */
-/**
  * Route CDP-authoritative network detail onto the driven session's journal.
  *
  * The page and the SDK session share an origin, so a NET_DETAIL is pushed to the matching connected
@@ -266,6 +256,16 @@ function makeNetworkDetailRouter(bridge: Bridge, driveUrl: string | undefined) {
   };
 }
 
+/**
+ * Wire journal capture, ambient seeding and the journal-tail flush onto a bridge.
+ *
+ * Both entry points need all three, and both used to hand-roll them. `startDaemon` only ever wired the
+ * first, so on the path every user actually takes (`reticle serve` / `reticle mcp`) the journal tail was
+ * dropped at session end and the learned ambient map was never persisted OR seeded — meaning ambient
+ * learning could not converge across sessions and the last events of every session were lost. The two
+ * call sites had already drifted once before, which is why this is one function rather than a
+ * copy-paste both are asked to keep in step.
+ */
 function attachJournal(
   bridge: Bridge,
   deps: { fs: FileSystemPort; reticleRoot: string; enabled: boolean },

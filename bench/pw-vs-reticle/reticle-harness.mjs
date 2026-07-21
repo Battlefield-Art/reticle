@@ -270,7 +270,7 @@ export async function runReticle(bugs) {
           caught = ref ? n !== c.expected : false;
           note = ref ? `count=${n} expected=${c.expected}` : 'compose-generate not reached';
         } else if (c.kind === 'netStatusAfter') {
-          // §4.1 hidden-500: the request FAILED (or answered the wrong media type) while the UI showed
+          // net-status: hidden-500: the request FAILED (or answered the wrong media type) while the UI showed
           // success. Caught when no matching call carries the expected status (+ contentType if asked).
           await doPrep(c.prep);
           const ref = await waitRef(c.steps[0]);
@@ -288,7 +288,7 @@ export async function runReticle(bugs) {
             ? `matched=${matches.length} ok=${good.length} statuses=${matches.map((m) => m.status).join('/') || 'none'}`
             : `${c.steps[0]} not reached`;
         } else if (c.kind === 'netBodyAfter') {
-          // §4.1 payload truth: the body actually sent/received must contain `expected`. `direction`
+          // net-status: payload truth: the body actually sent/received must contain `expected`. `direction`
           // selects request vs response; bodies are opt-in capture, so an absent body is NOT a catch —
           // reporting "missing body" as a detection would be a false positive.
           await doPrep(c.prep);
@@ -307,13 +307,22 @@ export async function runReticle(bugs) {
               : `${field} not captured (bodies are opt-in) — not counted as a detection`
             : `${c.steps[0]} not reached`;
         } else if (c.kind === 'netPendingAfter') {
-          // §4.2 in-flight oracle: caught when a matching request is STILL pending after withinMs. This
+          // net-payload: in-flight oracle: caught when a matching request is STILL pending after withinMs. This
           // is the one a screenshot cannot reach — on `hung-but-ui-done` the DOM already says "done".
           await doPrep(c.prep);
           const ref = await waitRef(c.steps[0]);
-          if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          const act0 = ref
+            ? await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS })
+            : {};
           await sleep(c.withinMs ?? 3000);
-          const net = await call('reticle_network', { sessionId: sid, limit: 50 });
+          // Scope to the act, matching the Playwright side's reset. Reading the whole session meant
+          // setup traffic to this URL counted as the bug's traffic on one side and not the other — the
+          // two harnesses were measuring different windows on the same check.
+          const net = await call('reticle_network', {
+            sessionId: sid,
+            since: act0?.since,
+            limit: 50,
+          });
           const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
           const stillPending = matches.filter((e) => e.pending === true || e.status === 'pending');
           const completed = matches.filter((e) => Number(e.status) >= 200 && Number(e.status) < 400);
@@ -323,14 +332,14 @@ export async function runReticle(bugs) {
             ? `pending=${stillPending.length} completed2xx=${completed.length} of ${matches.length}`
             : `${c.steps[0]} not reached`;
         } else if (c.kind === 'domPresentVsBaseline') {
-          // §4.9 silent removal: a NON-INTERACTIVE element vanished. No click breaks, nothing errors —
+          // silent-removal: silent removal: a NON-INTERACTIVE element vanished. No click breaks, nothing errors —
           // only presence-vs-expected catches it.
           const q = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.testid });
           const found = (q?.elements ?? []).length;
           caught = found === 0;
           note = `testid ${c.testid} present=${found}`;
         } else if (c.kind === 'perfClsUnder') {
-          // §4.6 layout shift: a screenshot taken after things settle looks perfect; the damage is in
+          // perf: layout shift: a screenshot taken after things settle looks perfect; the damage is in
           // WHEN the page moved. Read the CLS the SDK already reports.
           await sleep(1200); // let the late shift actually happen before judging
           const obs = await call('reticle_observe', { sessionId: sid, limit: 200 });
@@ -363,7 +372,7 @@ export async function runReticle(bugs) {
             ? `longTasks>=${c.ms}ms: ${overBudget.length} (of ${durations.length} total)`
             : `${c.steps[0]} not reached`;
         } else if (c.kind === 'routeAfter') {
-          // §4.3 routing: the VIEW renders correctly, so every DOM assertion passes — the URL is the
+          // routing: routing: the VIEW renders correctly, so every DOM assertion passes — the URL is the
           // only thing that is wrong. Deep links and the back button are broken and nothing says so.
           await doPrep(c.prep);
           const ref = await waitRef(c.steps[0]);
@@ -394,7 +403,7 @@ export async function runReticle(bugs) {
             note = `path=${path || '(no route event)'} expected~${c.expectPath}`;
           }
         } else if (c.kind === 'signalFiredAfter') {
-          // §4.4 signal: the network call succeeded, the DOM updated and the store is right — only the
+          // signal: signal: the network call succeeded, the DOM updated and the store is right — only the
           // app's own declared signal is missing, doubled, or typo'd. There is nothing in the rendered
           // page to compare against, which is why this category is reticle-only.
           await doPrep(c.prep);
@@ -420,7 +429,7 @@ export async function runReticle(bugs) {
           caught = ref ? fired !== c.expected : false;
           note = ref ? `${c.signal} fired=${fired} expected=${c.expected}` : `${c.steps[0]} not reached`;
         } else if (c.kind === 'storagePresentAfter') {
-          // §4.5 persistence truth. The UI is right in every one of these — sign-in succeeds, sign-out
+          // storage: persistence truth. The UI is right in every one of these — sign-in succeeds, sign-out
           // returns to the login screen. The lie only appears on the NEXT load, or to the server.
           // Asserted on `found` rather than the value because the tool redacts sensitive keys by design.
           await clickSteps(c.steps ?? []);
@@ -435,7 +444,7 @@ export async function runReticle(bugs) {
           caught = present !== c.expectPresent;
           note = `${c.area}[${c.key}] present=${present} expected=${c.expectPresent} authed=${authed}`;
         } else if (c.kind === 'domAbsentAfterDelay') {
-          // §4.10 timing: the bug lives entirely in WHEN. Immediately after the action the page is
+          // timing: timing: the bug lives entirely in WHEN. Immediately after the action the page is
           // correct — the toast SHOULD be on screen. Only waiting past its own deadline reveals that
           // it never leaves.
           await doPrep(c.prep);
@@ -449,7 +458,7 @@ export async function runReticle(bugs) {
               ? `steps missed: ${missed.join(',')}`
               : `${c.testid} present after ${c.delayMs}ms = ${stillThere}`;
         } else if (c.kind === 'settlesDespiteAnimation') {
-          // §4.11 trap. Runs on the CLEAN build only and must produce NO detection. The page carries
+          // false-positive trap: trap. Runs on the CLEAN build only and must produce NO detection. The page carries
           // infinite ambient animations; a settle oracle that treats "something is still moving" as
           // "not settled" would hang here and report a problem where there is none. Catching this is
           // the failure — it means the harness over-flags a healthy page.
@@ -463,7 +472,7 @@ export async function runReticle(bugs) {
           caught = !settled; // a trap is "caught" only when the harness wrongly flags a clean page
           note = `settled=${settled} in ${Date.now() - t0}ms (trap: caught must stay false)`;
         } else if (c.kind === 'domTextDeep') {
-          // §4.8: the content lives inside an open shadow root or a same-origin iframe. reticle_query
+          // deep-dom: the content lives inside an open shadow root or a same-origin iframe. reticle_query
           // resolves testids through Testing Library, which does NOT cross a shadow boundary — the
           // snapshot walks shadowRoot and contentDocument, so read it there. Using query here would
           // report "not found" on a HEALTHY page and look exactly like a caught bug.
@@ -472,7 +481,7 @@ export async function runReticle(bugs) {
           caught = !tree.includes(c.expectText);
           note = `expected "${c.expectText}" in ${c.scope}: ${tree.includes(c.expectText)}`;
         } else if (c.kind === 'deepNetCountAfter') {
-          // §4.8: a control INSIDE an open shadow root whose handler is gone. It looks and reads
+          // deep-dom: a control INSIDE an open shadow root whose handler is gone. It looks and reads
           // identically; only the request it should have made is missing.
           //
           // An earlier version of this check passed `selector:` to reticle_act. That input does not
@@ -499,7 +508,7 @@ export async function runReticle(bugs) {
             ? `${c.urlContains} calls +${afterN - beforeN}`
             : `${c.deepTestid} not resolvable (shadow-root query returned no ref)`;
         } else if (c.kind === 'deepCountMatchesState') {
-          // §4.8: truth is the store's array length; display is a number rendered INSIDE a same-origin
+          // deep-dom: truth is the store's array length; display is a number rendered INSIDE a same-origin
           // iframe. Comparing static frame text would prove nothing — a frozen count still renders the
           // same label. Only store-vs-frame catches a panel stuck on a value that was once true.
           const st = await call('reticle_state', {
@@ -515,7 +524,7 @@ export async function runReticle(bugs) {
           caught = Number.isFinite(truth) && Number.isFinite(shown) && truth !== shown;
           note = `store=${truth} frame=${shown}`;
         } else if (c.kind === 'streamFramesAfter') {
-          // §4.7: the connection is open and healthy and the DOM is rendered; the app is simply never
+          // streams: the connection is open and healthy and the DOM is rendered; the app is simply never
           // told anything. No single moment reveals it — only the frame timeline.
           await sleep(c.waitMs ?? 2500);
           const obs = await call('reticle_observe', {
@@ -588,7 +597,7 @@ export async function runReticle(bugs) {
           caught = ref ? !hit : false;
           note = ref ? `frame containing "${c.expectContains}": ${hit}` : `${c.steps[0]} not reached`;
         } else if (c.kind === 'netCountAfterBurst') {
-          // §4.10 debounce: each fill is one input event, so a burst of fills is a burst of keystrokes.
+          // timing: debounce: each fill is one input event, so a burst of fills is a burst of keystrokes.
           // A debounced client collapses them into ONE request; an undebounced one fires per event.
           // Results are identical either way — only the count differs.
           const ref = await waitRef(c.testid);
@@ -615,7 +624,7 @@ export async function runReticle(bugs) {
             ? `${c.urlContains} requests=${n} (max ${c.maxExpected} for ${c.values.length} keystrokes)`
             : `${c.testid} not reached`;
         } else if (c.kind === 'netCountCapped') {
-          // §4.10 retry storm: the endpoint always fails, so correct and incorrect look identical at
+          // timing: retry storm: the endpoint always fails, so correct and incorrect look identical at
           // any instant. The only difference is how many times we asked before giving up.
           const ref = await waitRef(c.steps[0]);
           if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
@@ -627,7 +636,7 @@ export async function runReticle(bugs) {
           caught = ref ? n > c.maxExpected : false;
           note = ref ? `${c.urlContains} attempts=${n} (max ${c.maxExpected})` : `${c.steps[0]} not reached`;
         } else if (c.kind === 'stableTextDespiteChurn') {
-          // §4.11 trap, CLEAN-only by nature. A neighbouring region rewrites itself several times a
+          // false-positive trap: trap, CLEAN-only by nature. A neighbouring region rewrites itself several times a
           // second on a healthy build. A text/diff oracle that reads "it changed" as "it broke" would
           // flag this forever. Detection here is the FAILURE — it means the harness over-flags.
           const first = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.churnTestid });

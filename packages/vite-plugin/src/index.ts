@@ -125,7 +125,7 @@ export function connectModuleSource(options: ReticleVitePluginOptions): string {
  * Reticle Vite plugin. Add to your `plugins` array and the entire integration is done:
  *
  * import { reticle } from '@reticlehq/vite-plugin';
- * export default defineConfig({ plugins: [react, reticle] });
+ * export default defineConfig({ plugins: [react(), reticle()] });
  *
  * `apply: 'serve'` means Vite drops the plugin entirely from `vite build` — production bundles
  * are never instrumented. Gating is the tool's job, not a user-managed env check.
