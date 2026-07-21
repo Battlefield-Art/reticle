@@ -62,6 +62,57 @@ describe('paginateQueryResult', () => {
     expect('elements' in r).toBe(false);
   });
 
+  /**
+   * The browser counts matches BEFORE the result is serialized; the wire sanitizer then caps the
+   * elements array (200 items, and a node budget that bites sooner). So on a large page the array
+   * that arrives here is shorter than the number of elements that actually matched, and deriving the
+   * count from `elements.length` reports the truncation as if it were the answer.
+   *
+   * This is the worst shape of wrong a verification tool can produce: an authoritative-looking number
+   * that is quietly capped. "How many broken buttons are there?" answered 200 when it is 5000 is not a
+   * degraded answer, it is a false one.
+   */
+  describe('when the wire truncated the elements array', () => {
+    it('count_only reports the browser count, not the surviving array length', () => {
+      const r = paginateQueryResult({ count: 5000, elements: elements(200) }, undefined, true) as {
+        count: number;
+      };
+      expect(r.count).toBe(5000);
+    });
+
+    it('count_only marks the result truncated so the number is never read as complete', () => {
+      const r = paginateQueryResult({ count: 5000, elements: elements(200) }, undefined, true) as {
+        truncated?: boolean;
+      };
+      expect(r.truncated).toBe(true);
+    });
+
+    it('limit reports the browser count as total', () => {
+      const r = paginateQueryResult({ count: 5000, elements: elements(200) }, 10, false) as {
+        total: number;
+        truncated: boolean;
+      };
+      expect(r.total).toBe(5000);
+      expect(r.truncated).toBe(true);
+    });
+
+    it('flags truncation even when no limit was asked for', () => {
+      const r = paginateQueryResult({ count: 5000, elements: elements(200) }, undefined, false) as {
+        total?: number;
+        truncated?: boolean;
+      };
+      expect(r.truncated).toBe(true);
+      expect(r.total).toBe(5000);
+    });
+
+    it('does not flag truncation when the array arrived intact', () => {
+      const r = paginateQueryResult({ count: 3, elements: elements(3) }, undefined, false) as {
+        truncated?: boolean;
+      };
+      expect(r.truncated).toBeUndefined();
+    });
+  });
+
   it('passes non-object / element-less results through untouched', () => {
     expect(paginateQueryResult(null, 5, false)).toBeNull();
     expect(paginateQueryResult('err', 5, true)).toBe('err');

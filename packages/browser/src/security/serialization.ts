@@ -93,7 +93,19 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
     }
 
     const out = Object.create(null) as Record<string, unknown>;
-    for (const rawKey of Object.keys(value).slice(0, TRANSPORT_LIMITS.MAX_OBJECT_KEYS)) {
+    // Scalars first, collections second. The node budget is spent in iteration order, so a large
+    // array sitting earlier in the object would consume the whole budget and turn the scalars after
+    // it into "[TRUNCATED]". Those scalars are the summary fields — a match `count`, a `total`, a
+    // status — and a summary that degrades to a placeholder while its own sample survives is the
+    // worst trade available: the caller keeps a partial list and loses the number that says the list
+    // is partial. Ordering by cost makes that impossible regardless of how a producer writes its
+    // object literal, so no caller has to know this rule to stay correct.
+    const keys = Object.keys(value).slice(0, TRANSPORT_LIMITS.MAX_OBJECT_KEYS);
+    const isScalar = (k: string): boolean => {
+      const v = (value as Record<string, unknown>)[k];
+      return v === null || typeof v !== 'object';
+    };
+    for (const rawKey of [...keys.filter(isScalar), ...keys.filter((k) => !isScalar(k))]) {
       const safeKey = boundedString(rawKey, state, MAX_KEY_LENGTH);
       try {
         const sanitized = sanitize(
