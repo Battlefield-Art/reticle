@@ -90,14 +90,47 @@ export function projectNetCall(e: ReticleEvent): NetCallView {
   return view;
 }
 
-/** Compact console-log summary for reticle_console output — { level, text } only. */
+/**
+ * How many stack frames reach the agent.
+ *
+ * A raw stack is mostly framework internals, and padding a failure report with them is not free —
+ * the frames that identify the origin are the first few, and everything after is context the agent
+ * has to read past. Four keeps the error line plus the app frames that actually called it.
+ */
+const MAX_STACK_FRAMES = 4;
+
+/** Trim a stack to the frames that locate the fault. */
+function topFrames(stack: string): string {
+  return stack.split('\n').slice(0, MAX_STACK_FRAMES).join('\n');
+}
+
+/**
+ * Compact console-log summary for reticle_console output.
+ *
+ * `stack`/`source` are the only localization signal a console failure carries — there is no element
+ * to map to a component here, so without them "an error was logged" is the whole report and the agent
+ * has to go find the origin itself. The browser already keeps this lean by capturing a stack for
+ * console.error only; the projection used to discard even that.
+ */
 interface ConsoleLogView {
   level: string;
   text: string;
+  stack?: string;
+  source?: string;
 }
 export function projectConsoleLog(e: ReticleEvent): ConsoleLogView {
   const level = e.type === EventType.ERROR_UNCAUGHT ? 'error' : e.type.replace('console.', '');
-  return { level, text: asString(e.data['message']) ?? '' };
+  const view: ConsoleLogView = { level, text: asString(e.data['message']) ?? '' };
+  const stack = asString(e.data['stack']);
+  if (stack !== undefined && stack.length > 0) view.stack = topFrames(stack);
+  // An uncaught error reports its origin as discrete fields rather than in a stack; render them in
+  // the same file:line form the element descriptors use so the agent reads one shape everywhere.
+  const source = asString(e.data['source']);
+  const line = e.data['line'];
+  if (source !== undefined && source.length > 0) {
+    view.source = typeof line === 'number' ? `${source}:${String(line)}` : source;
+  }
+  return view;
 }
 
 /** True for any console.* / uncaught-error event (the reticle_console universe). */

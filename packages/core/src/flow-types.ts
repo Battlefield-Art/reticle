@@ -13,7 +13,16 @@ import {
  * time. Never a volatile eXX ref. testid/role+name bind a DOM element; signal binds an event.
  */
 export const FlowAnchorSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal(AnchorKind.TESTID), value: z.string().min(1) }),
+  // `source` is provenance, not part of how the step re-finds its element — the testid does that.
+  // It rides along so a failure can say which file to open; optional, so existing flow files parse
+  // unchanged and FLOW_FILE_VERSION does not move.
+  z.object({
+    kind: z.literal(AnchorKind.TESTID),
+    value: z.string().min(1),
+    source: z
+      .object({ file: z.string(), line: z.number(), column: z.number().optional() })
+      .optional(),
+  }),
   z.object({
     kind: z.literal(AnchorKind.ROLE),
     role: z.string().min(1),

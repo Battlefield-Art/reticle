@@ -25,13 +25,22 @@ function failingStep(steps: FlowStepResult[]): FlowStepResult | undefined {
   return steps.find((s) => s.drift !== undefined) ?? steps.find((s) => !s.ok);
 }
 
-/** `file:line` for a step, preferring the recorded component anchor's source, else the live page. */
+/**
+ * `file:line` for a step, from whichever anchor recorded provenance — or nothing.
+ *
+ * It used to fall back to `step.page`, which meant a field named "whereInSource" could return
+ * "/checkout". The report writer renders it as **Where:** `<value>`, so a route arrived looking
+ * exactly like a file path. A locator that is sometimes a route cannot be trusted when it genuinely
+ * is a path, which costs more than the fallback ever added — the page is already reported separately
+ * on the step.
+ */
 function whereInSource(step: FlowStepResult, flow: FlowFile | undefined): string | undefined {
   const anchor = flow?.steps[step.step]?.anchor;
-  if (anchor?.kind === AnchorKind.COMPONENT && anchor.source !== undefined) {
-    return `${anchor.source.file}:${anchor.source.line}`;
-  }
-  return step.page;
+  const source =
+    anchor?.kind === AnchorKind.COMPONENT || anchor?.kind === AnchorKind.TESTID
+      ? anchor.source
+      : undefined;
+  return source === undefined ? undefined : `${source.file}:${String(source.line)}`;
 }
 
 export function buildDecision(result: FlowReplayResult, flow?: FlowFile): ReplayDecision {

@@ -52,23 +52,28 @@ function degradedAnchor(): FlowAnchor {
  * null when neither is present (caller falls back to degraded). The on-disk anchor carries the
  * component name + source location — re-resolvable by `reticle_query by:'component'` at replay.
  */
+/** The `source` location carried on a normalized step's args, or undefined if absent/malformed. */
+function sourceArg(
+  src: Record<string, unknown>,
+): { file: string; line: number; column?: number } | undefined {
+  const source = asRecord(src['source']);
+  const file = source['file'];
+  const line = source['line'];
+  if (typeof file !== 'string' || file.length === 0 || typeof line !== 'number') return undefined;
+  const out: { file: string; line: number; column?: number } = { file, line };
+  if (typeof source['column'] === 'number') out.column = source['column'];
+  return out;
+}
+
 function componentAnchor(src: Record<string, unknown>): FlowAnchor | null {
   const component = asString(src['component']);
-  const source = asRecord(src['source']);
-  const hasSource = typeof source['file'] === 'string' && typeof source['line'] === 'number';
-  if (component === undefined && !hasSource) return null;
+  const source = sourceArg(src);
+  if (component === undefined && source === undefined) return null;
   const anchor: Extract<FlowAnchor, { kind: typeof AnchorKind.COMPONENT }> = {
     kind: AnchorKind.COMPONENT,
   };
   if (component !== undefined) anchor.component = component;
-  if (hasSource) {
-    const out: { file: string; line: number; column?: number } = {
-      file: source['file'] as string,
-      line: source['line'] as number,
-    };
-    if (typeof source['column'] === 'number') out.column = source['column'];
-    anchor.source = out;
-  }
+  if (source !== undefined) anchor.source = source;
   return anchor;
 }
 
@@ -77,7 +82,13 @@ function anchorForStep(args: Record<string, unknown>): { anchor: FlowAnchor; deg
   const by = asString(args['by']);
   const value = asString(args['value']);
   if (by === QueryBy.TESTID && value !== undefined) {
-    return { anchor: { kind: AnchorKind.TESTID, value }, degraded: false };
+    const anchor: Extract<FlowAnchor, { kind: typeof AnchorKind.TESTID }> = {
+      kind: AnchorKind.TESTID,
+      value,
+    };
+    const source = sourceArg(args);
+    if (source !== undefined) anchor.source = source;
+    return { anchor, degraded: false };
   }
   if (by === QueryBy.COMPONENT) {
     const anchor = componentAnchor(args);

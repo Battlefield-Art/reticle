@@ -146,3 +146,43 @@ describe('near-miss hint builders', () => {
     expect(hint.byLevel).toEqual({ log: 2, warn: 1, error: 2 });
   });
 });
+
+/**
+ * An error's stack is the only localization signal a console failure has. The browser already goes
+ * out of its way to capture it for console.error only (log/warn stay lean), and the projection then
+ * threw it away — so the agent was told "something threw" and had to go find where on its own.
+ *
+ * Trimmed to the frames that identify the origin: a full stack is mostly framework internals, and
+ * padding a failure report with them measurably hurts more than it helps.
+ */
+describe('console projections keep the origin of an error', () => {
+  const stack = [
+    'Error: total is NaN',
+    '    at computeTotal (/src/lib/cart.ts:42:11)',
+    '    at Cart (/src/views/Cart.tsx:88:20)',
+    '    at renderWithHooks (/node_modules/react-dom/cjs/react-dom.development.js:14985:18)',
+    '    at mountIndeterminateComponent (/node_modules/react-dom/cjs/react-dom.development.js:17811:13)',
+  ].join('\n');
+
+  it('carries the stack for an error that has one', () => {
+    const view = projectConsoleLog(ev(EventType.CONSOLE_ERROR, { message: 'boom', stack }));
+    expect(view.stack).toContain('computeTotal (/src/lib/cart.ts:42:11)');
+  });
+
+  it('trims to the top frames rather than shipping the whole framework trace', () => {
+    const view = projectConsoleLog(ev(EventType.CONSOLE_ERROR, { message: 'boom', stack }));
+    expect(view.stack).not.toContain('mountIndeterminateComponent');
+  });
+
+  it('omits stack entirely when the event has none, rather than emitting an empty field', () => {
+    const view = projectConsoleLog(ev(EventType.CONSOLE_INFO, { message: 'fyi' }));
+    expect('stack' in view).toBe(false);
+  });
+
+  it('carries the file and line of an uncaught error', () => {
+    const view = projectConsoleLog(
+      ev(EventType.ERROR_UNCAUGHT, { message: 'x is not a function', source: '/src/App.tsx', line: 17 }),
+    );
+    expect(view.source).toBe('/src/App.tsx:17');
+  });
+});
