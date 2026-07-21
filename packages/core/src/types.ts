@@ -103,6 +103,14 @@ export interface QueryEmptyHint {
 /** Result of the QUERY command / reticle_query tool. `hint` present ONLY on zero matches. */
 export interface QueryResult {
   elements: ElementDescriptor[];
+  /**
+   * How many elements MATCHED, which is not the same as how many are in `elements`.
+   *
+   * Descriptors are expensive to build and the transport caps collections, so beyond a point matches
+   * are counted but not described. Reporting the count separately is what keeps "how many are there?"
+   * an exact answer instead of a description of the cap.
+   */
+  count: number;
   hint?: QueryEmptyHint;
 }
 

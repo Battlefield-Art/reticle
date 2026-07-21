@@ -16,6 +16,7 @@ import {
   type PresentRegion,
   type QueryEmptyHint,
   type QueryResult,
+  TRANSPORT_LIMITS,
 } from '@reticlehq/core';
 import { describe, getStates } from './a11y.js';
 import { isSensitiveKey } from '../security/serialization.js';
@@ -242,8 +243,29 @@ function inState(el: Element, state: ElementState): boolean {
   return getStates(el).includes(state);
 }
 
-/** Match an element predicate against the live DOM. */
-export function matchQuery(query: ElementQuery, state?: ElementState): MatchResult {
+/**
+ * How many matches are DESCRIBED, however many are found.
+ *
+ * describe() is the expensive part of a query: it resolves the accessible name and forces a style
+ * computation for every ancestor to decide visibility. Describing every match on a page with
+ * thousands of them freezes the main thread for seconds — and then the wire discards all but the
+ * first `MAX_COLLECTION_ITEMS` anyway, so the work past that point was never observable by anyone.
+ * Matching one to the other means the cost of a broad query is bounded by the transport rather than
+ * by the size of the page.
+ */
+const MAX_DESCRIBED = TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS;
+
+/**
+ * Match an element predicate against the live DOM.
+ *
+ * `count` is every match; `elements` is the described prefix. Keeping those separate is what lets
+ * "how many?" stay exact while the answer stays affordable.
+ */
+export function matchQuery(
+  query: ElementQuery,
+  state?: ElementState,
+  limit: number = MAX_DESCRIBED,
+): MatchResult {
   let elements: HTMLElement[];
   try {
     elements = findCandidates(query);
@@ -252,13 +274,14 @@ export function matchQuery(query: ElementQuery, state?: ElementState): MatchResu
   }
   const filtered = state === undefined ? elements : elements.filter((el) => inState(el, state));
   const attrs = query.attrs;
-  const descriptors: ElementDescriptor[] = filtered.map((el) => {
+  const described = filtered.slice(0, Math.max(0, Math.min(limit, MAX_DESCRIBED)));
+  const descriptors: ElementDescriptor[] = described.map((el) => {
     const base = describe(el);
     if (attrs === undefined || attrs.length === 0) return base;
     const projected = projectAttrs(el, attrs);
     return projected === undefined ? base : { ...base, attrs: projected };
   });
-  return { matched: descriptors.length > 0, count: descriptors.length, elements: descriptors };
+  return { matched: filtered.length > 0, count: filtered.length, elements: descriptors };
 }
 
 /** Structural clusters of the page — the successor to the raw testid list in zero-match hints. */
@@ -342,11 +365,17 @@ function buildEmptyHint(query: ElementQuery): QueryEmptyHint {
   };
 }
 
-/** Resolve a query to descriptors for the `query` MCP tool. */
-export function runQuery(query: ElementQuery): QueryResult {
-  const result = matchQuery(query);
+/**
+ * Resolve a query to descriptors for the `query` MCP tool.
+ *
+ * `count` is carried through deliberately: the server reports match totals from it rather than from
+ * the array, because the array is capped in transit. Dropping it here — which this function used to
+ * do — silently put the server back to counting survivors and calling that the answer.
+ */
+export function runQuery(query: ElementQuery, limit?: number): QueryResult {
+  const result = matchQuery(query, undefined, limit);
   if (result.elements.length === 0) {
-    return { elements: result.elements, hint: buildEmptyHint(query) };
+    return { elements: result.elements, count: result.count, hint: buildEmptyHint(query) };
   }
-  return { elements: result.elements };
+  return { elements: result.elements, count: result.count };
 }

@@ -220,7 +220,10 @@ export function createCommandRegistry(): Map<string, CommandHandler> {
       mode: (str(args['mode']) as SnapshotMode | undefined) ?? SnapshotMode.FULL,
     }),
   );
-  reg.set(ReticleCommand.QUERY, (args) => runQuery(queryFromArgs(args)));
+  reg.set(ReticleCommand.QUERY, (args) => {
+    const limit = args['limit'];
+    return runQuery(queryFromArgs(args), typeof limit === 'number' ? limit : undefined);
+  });
   reg.set(ReticleCommand.MATCH, (args) =>
     matchQuery(
       ElementQuerySchema.parse(record(args['query'])),
