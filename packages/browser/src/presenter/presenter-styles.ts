@@ -29,7 +29,7 @@ export const PRESENTER_CSS = `
 [data-reticle-ring][data-on="1"]{opacity:1;}
 [data-reticle-hud]{
   --reticle-accent:#7c83ff;--reticle-accent-soft:rgba(124,131,255,.16);
-  --reticle-bg:rgba(13,15,22,.80);--reticle-bg2:rgba(19,22,32,.74);
+  --reticle-bg:rgba(13,15,22,.92);--reticle-bg2:rgba(19,22,32,.88);
   --reticle-fg:#e9ebf2;--reticle-muted:#9aa0b2;--reticle-faint:#6a7186;
   --reticle-line:rgba(255,255,255,.09);--reticle-line2:rgba(255,255,255,.05);
   --reticle-read:#54d2e6;--reticle-ok:#3dd7a6;--reticle-bad:#ff7a7a;
@@ -40,7 +40,13 @@ export const PRESENTER_CSS = `
   display:flex;flex-direction:column;overflow:hidden;text-align:left;z-index:2147483647;pointer-events:none;
   font-family:var(--reticle-font);font-size:13px;line-height:1.5;color:var(--reticle-fg);-webkit-font-smoothing:antialiased;
   background:linear-gradient(180deg,var(--reticle-bg),var(--reticle-bg2));
-  -webkit-backdrop-filter:blur(24px) saturate(1.5);backdrop-filter:blur(24px) saturate(1.5);
+  /* No backdrop-filter here, deliberately. blur(24px) on this panel was measured as the single most
+     expensive thing the whole SDK does: a backdrop blur must re-sample everything behind it whenever
+     that content changes, and on a page repainting at 60fps that is continuous full-panel work. On
+     the hostile fixture it cost +4.0pp of main thread — five times the rest of the presenter, and
+     more than every observer combined. Removing it took total main-thread time from 2.15s to 1.67s
+     over an 8s window. The panel background is ~85% opaque, so the glass effect it bought was
+     marginal. If you want it back, add it here and expect to pay that. */
   border:1px solid var(--reticle-line);border-radius:20px;
   box-shadow:0 28px 70px -18px rgba(0,0,0,.66),0 0 0 1px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.07),0 0 54px -22px var(--reticle-accent);
   opacity:0;transform:translateX(-50%) translateY(14px) scale(.985);

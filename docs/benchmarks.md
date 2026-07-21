@@ -243,25 +243,31 @@ to a budget: **total instrumentation overhead below 3% of main-thread time**, me
 fixture — a page that never goes quiet (a ~10 messages/sec feed, a 60fps ticker, a large list), not a
 polite demo.
 
-The same page is loaded twice in one browser — once normally, once with the SDK skipped — and Chrome's own
-cumulative `TaskDuration` is compared over an identical window (condition order alternated so warm-up
-can't favour either side).
+The same page is loaded in one browser under three conditions — full SDK, observers with the HUD
+suppressed, and Reticle absent — and Chrome's own cumulative `TaskDuration` is compared over an
+identical window (condition order rotated so warm-up can't favour any one of them). Three conditions,
+not two, so that what instrumenting costs is separable from what the HUD costs.
 
 | | main-thread task time | busy |
 | --- | --- | --- |
-| SDK on | 2.164 s | 27.0% |
-| SDK off | 1.696 s | 21.2% |
-| measured difference | **+5.85 pp** | |
-| method noise floor | ±1.83 pp | run-to-run spread of the *same* condition |
+| full (observers + HUD) | 1.669 s | 20.9% |
+| observers only (`?nopresent`) | 1.627 s | 20.3% |
+| Reticle absent (`?no-hud`) | 1.610 s | 20.1% |
+| **instrumentation** | **+0.21 pp** | below the ±1.23 pp noise floor |
+| **presenter HUD** | **+0.53 pp** | opt out with `present: false` |
 
-**Result: the budget is currently FAILING, and we are publishing that rather than the number it used to
-be.** Overhead measures +5.85 percentage points against a < 3% bar, and it reproduces — three
-consecutive runs gave +6.50, +5.30 and +5.85 pp, each above that run's own noise floor. An earlier
-build measured this as unresolvably small (a slightly *negative* difference, i.e. the method hitting its
-limit); something between that build and this one made instrumentation materially more expensive on a
-continuously churning page.
+**Result: instrumentation overhead is smaller than the method can resolve — report it as `< 1.2
+percentage points`, inside the 3% budget.** The HUD is measured and reported separately, because it
+is a developer-visible affordance you can turn off, not a cost of observing.
 
-Which observer is responsible is not yet established, so we are not guessing in public. **Treat any
-"Reticle costs under 3%" claim as unsupported until this line says PASS again.** Reproduce it yourself
+Getting here required correcting the method and then fixing a real bug. The two-condition version of
+this bench compared the full SDK against Reticle being absent, so it charged instrumentation for the
+HUD too, and reported **+5.85 pp — FAIL**. Decomposing it showed almost none of that was
+instrumentation: a single `backdrop-filter: blur(24px)` on the HUD panel was costing **+4.03 pp** on
+its own — more than every observer combined — because a backdrop blur re-samples everything behind it
+whenever that content changes, and this fixture repaints at 60fps. Removing it took total main-thread
+time down 22%. Full history, including a fix that measured nothing and was reverted rather than kept,
+is in `bench/overhead/README.md`. Reproduce it yourself
 with `node bench/overhead/measure.mjs` (see `bench/overhead/README.md`, which records the ruled-out
+causes).
 causes).
