@@ -28,3 +28,42 @@ describe('gateDecision', () => {
     expect(result.quarantined).toEqual(['checkout']);
   });
 });
+
+describe('gate — anti-reward-hacking (B37): weakened or deleted coverage BLOCKS', () => {
+  it('blocks when an affected flow weakened its assertions since the last passing run', () => {
+    // The gaming vector: the flow "passes", but only because its mustHold dropped from a real
+    // consequence (signal/net/state) to a fakeable presence check. A green bought that way must not pass.
+    const r = gateDecision({
+      affected: ['checkout'],
+      passing: ['checkout'],
+      downgraded: [{ flow: 'checkout', steps: [2] }],
+    });
+    expect(r.pass).toBe(false);
+    expect(r.downgraded).toEqual([{ flow: 'checkout', steps: [2] }]);
+    expect(r.uncovered).toEqual([]); // it IS covered — that is precisely why the downgrade must block
+  });
+
+  it('blocks when a flow covering a changed file was deleted rather than satisfied', () => {
+    const r = gateDecision({ affected: [], passing: [], deleted: ['checkout'] });
+    expect(r.pass).toBe(false);
+    expect(r.deleted).toEqual(['checkout']);
+  });
+
+  it('a flaky flow is still quarantined (not the agent’s doing) while a downgrade still blocks', () => {
+    const r = gateDecision({
+      affected: ['flaky-one', 'checkout'],
+      passing: ['checkout'],
+      flaky: ['flaky-one'],
+      downgraded: [{ flow: 'checkout', steps: [0] }],
+    });
+    expect(r.quarantined).toEqual(['flaky-one']);
+    expect(r.pass).toBe(false);
+  });
+
+  it('stays green when nothing was weakened or deleted', () => {
+    const r = gateDecision({ affected: ['checkout'], passing: ['checkout'] });
+    expect(r.pass).toBe(true);
+    expect(r.downgraded).toEqual([]);
+    expect(r.deleted).toEqual([]);
+  });
+});
