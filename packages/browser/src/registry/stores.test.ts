@@ -132,6 +132,23 @@ describe('silent store registration', () => {
     warn.mockRestore();
   });
 
+  it('warns ONCE per store — a repeat on every HMR cycle or remount is just noise', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    registerStore('remounted', () => ({ n: 1 }));
+    registerStore('remounted', () => ({ n: 2 }));
+    registerStore('remounted', () => ({ n: 3 }));
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it("stays silent for Reticle's OWN read-only store — telling a user to fix our code is absurd", () => {
+    // @reticlehq/react registers a render-stats getter the app developer never wrote and cannot change.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    registerStore('__reticle_renders', () => ({ commits: 0 }));
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it('does NOT warn for a store-like object, which carries its own subscribe', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     registerStore('zustand-like', {

@@ -280,10 +280,10 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
  // Read a CLONE so the app's response stream stays untouched. Dev-only opt-in; only text-like
  // bodies; a read failure never breaks the observation.
       let responseBodyFields: Record<string, unknown> = {};
- // A complete response declares its length. A chunked/streamed one does not — and reading it means
- // waiting for the stream to finish, which for SSE or a token-streamed completion is never. Use
- // the declared length as the "this body is complete" signal rather than waiting to find out, so a
- // streaming endpoint costs the app nothing instead of a timeout's worth of delay.
+ // Streaming content types are skipped outright (zero cost, covers SSE); anything else is read behind
+ // a deadline. Gating on `content-length` instead was tried and REJECTED — plenty of complete responses
+ // omit it (gzip, HTTP/2), so it silently stopped capturing bodies for ordinary apps. This comment
+ // previously described that rejected design as though it were the implementation.
       if (captureBodies && isCapturableType(contentType)) {
  // Bounded: a chunked response with no content-length can still be arbitrarily long, and the app
  // must never wait on our read. Race the clone against a deadline and drop the body on timeout.

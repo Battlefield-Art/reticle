@@ -78,11 +78,7 @@ export function registerStore(
   // never observe it changing. That reads exactly like "the app did not change anything" — a false
   // negative with no error attached. Say so once, at registration, where the developer can fix it by
   // passing the store itself (or a subscribe function) instead of a bare getter.
-  console.warn(
-    `[reticle] store "${name}" was registered without a subscribe function. It can be READ, but its ` +
-      `changes are invisible: no STATE_CHANGE events, no state diffs in causal summaries, and a state ` +
-      `predicate will never see it update. Pass the store object (or a subscribe callback) to fix.`,
-  );
+  warnSilentStoreOnce(name);
 }
 
 function notifyRegistered(name: string, getter: StoreGetter, subscribe: StoreSubscribe): void {
@@ -139,4 +135,24 @@ export function readStores(only?: string): Record<string, unknown> {
     out[name] = sanitizeForTransport(value);
   }
   return out;
+}
+
+/** Stores already warned about — a warning that repeats on every HMR cycle or remount becomes noise. */
+const warnedSilent = new Set<string>();
+
+/**
+ * Reticle's OWN read-only stores. `@reticlehq/react` registers a render-stats getter that the app
+ * developer never wrote and cannot change, so warning about it would be Reticle telling the user to fix
+ * Reticle — the same self-contradiction as a tool description naming a tool the profile does not expose.
+ */
+const RETICLE_OWNED_STORES = new Set(['__reticle_renders']);
+
+function warnSilentStoreOnce(name: string): void {
+  if (RETICLE_OWNED_STORES.has(name) || warnedSilent.has(name)) return;
+  warnedSilent.add(name);
+  console.warn(
+    `[reticle] store "${name}" was registered without a subscribe function. It can be READ, but its ` +
+      `changes are invisible: no STATE_CHANGE events, no state diffs in causal summaries, and a state ` +
+      `predicate will never see it update. Pass the store object (or a subscribe callback) to fix.`,
+  );
 }

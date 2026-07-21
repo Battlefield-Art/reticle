@@ -154,7 +154,7 @@ const RAW_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.QUERY,
     description:
-      'Find elements by Testing-Library semantics, INCLUDING inside open shadow roots. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `attrs:["href"]` to project attributes (link/image URLs) onto each match. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentTestids[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
+      'Find elements by Testing-Library semantics, INCLUDING inside open shadow roots. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `attrs:["href"]` to project attributes (link/image URLs) onto each match. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
     inputSchema: {
       by: z.string().describe('Query strategy: role | text | label | placeholder | testid | alt'),
       value: z
@@ -228,6 +228,10 @@ const RAW_TOOLS: ToolDef[] = [
                 role: z.string(),
                 name: z.string().optional(),
                 childCount: z.number(),
+                // `sample` is the orientation payload an agent actually reads ("there is a list with
+                // 847 rows, first three are …"). It was omitted from the first version of this
+                // declaration, which repeated the original sin one level down.
+                sample: z.array(z.string()),
               }),
             )
             .optional()

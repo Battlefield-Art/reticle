@@ -12,7 +12,7 @@ import {
   safeStringify,
   scrubKnownSecrets,
 } from '../security/serialization.js';
-import { nativeSetTimeout } from '../timers/native-timers.js';
+import { nativeClearTimeout, nativeSetTimeout } from '../timers/native-timers.js';
 
 /** Only text-like bodies are worth capturing; binary (images/fonts/octet-stream) is skipped. */
 const CAPTURABLE_CONTENT =
@@ -49,12 +49,21 @@ const BODY_READ_TIMEOUT_MS = 500;
  * Losing an observation is always preferable to freezing the page being observed.
  */
 export async function withBodyDeadline(read: Promise<string>): Promise<string | undefined> {
-  return await Promise.race([
-    read,
-    new Promise<undefined>((resolve) => {
-      nativeSetTimeout(() => resolve(undefined), BODY_READ_TIMEOUT_MS);
-    }),
-  ]);
+  // The timer is CLEARED on the winning path. Left uncleared, every captured body leaves a live timer
+  // and a retained closure behind — harmless individually, but `boundedFrame` in this same package
+  // already races-with-cleanup correctly, so not reusing that shape was an oversight rather than a
+  // choice. It also keeps test workers from being held open by pending handles.
+  let timer: number | undefined;
+  try {
+    return await Promise.race([
+      read,
+      new Promise<undefined>((resolve) => {
+        timer = nativeSetTimeout(() => resolve(undefined), BODY_READ_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) nativeClearTimeout(timer);
+  }
 }
 
 export function isCapturableType(contentType: string | null): boolean {
