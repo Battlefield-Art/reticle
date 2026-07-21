@@ -87,7 +87,7 @@ describe('resetClock hands back the work queued while frozen', () => {
     }, 5);
     resetClock();
     await new Promise((r) => setTimeout(r, 40));
-    clearInterval(id as unknown as number);
+    clearInterval(id);
     expect(ticks).toBeGreaterThan(0);
   });
 });
