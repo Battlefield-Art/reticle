@@ -29,10 +29,36 @@ The full agent-loop cost has two countervailing terms this direct measurement ca
   conclude in FEWER calls (less polling) — or the extra detail may cost re-reading. Only a live run's
   `usage.input_tokens` + tool-call count settles the net direction.
 
-## Status
+## MEASURED: full agent-loop delta (2026-07-21)
 
-- **Per-act result cost**: measured, +~128 tok/act (this file).
-- **Full loop delta (tokens + call count, v2.1.0 vs v2.2.0)**: NOT run. It needs the session's Reticle MCP
-  wired to the v2.2.0 daemon from the start; swapping the daemon mid-session drops the stdio↔SSE proxy
-  connection irrecoverably. Run in a fresh session whose MCP points at the local v2.2.0 build, re-execute
-  the WITH-Reticle cells, and compare to the v2.1.0 baseline above.
+Run against the **local v2.2.0 daemon** (verified: `packages/server/dist/cli.js _daemon` on the MCP port,
+and `reticle_tools` showed the retired `version_info`/`apply_update`/`rollback` absent; `act_and_wait`
+returned the v2.2.0 `summary.stateDiffs`/`storageDiffs` + `honesty.coverage`/`integrity` fields). Same
+model and prompts as the v2.1.0 baseline. **All 4 cells fixed correctly in both versions.**
+
+Only the **4 injections that were NOT de-confounded after the baseline run** are compared — `signal-contract`,
+`cross-component`, and `broken-form` had their injections rewritten (comment-free) after the v2.1.0 cells
+ran, so they are not apples-to-apples and are excluded.
+
+| bug | v2.1.0 tok | calls | v2.2.0 tok | calls | Δtok | Δcalls |
+| --- | --- | --- | --- | --- | --- | --- |
+| silent-dom-regression | 41,531 | 13 | 39,027 | 11 | −2,504 | −2 |
+| missing-modal | 49,023 | 41 | 53,182 | 28 | +4,159 | −13 |
+| layout-shift | 46,011 | 27 | 48,961 | 22 | +2,950 | −5 |
+| route-transition-break | 46,728 | 24 | 47,001 | 18 | +273 | −6 |
+| **AVG** | **45,823** | **26.25** | **47,043** | **19.75** | **+2.7%** | **−24.8%** |
+
+### Verdict: v2.2.0 is NOT a loop cost regression — it trades tokens for round-trips
+
+**+2.7% tokens, −24.8% tool calls.** The mechanism matches the direct measurement: each act result is
+~128 tok richer (summary + honesty), but the agent needs ~25% FEWER round-trips because a single act now
+answers what previously took extra `observe`/`state`/`query` calls. The token premium is small and flat;
+the call reduction is large and consistent (−2, −13, −5, −6 across all four).
+
+That matters beyond tokens: fewer round-trips means lower wall-clock latency and fewer opportunities for
+the model to wander mid-loop — the failure mode the Layer-B profile work already flagged.
+
+**Caveat:** n=4, one model, one fixture. The direction is consistent across all four cells (calls down in
+every one), but this is a cost measurement, not a capability one — it says nothing about whether Reticle
+helps an agent fix bugs (the ablation says it doesn't, on this fixture), only that v2.2.0 made the WITH
+loop cheaper in round-trips than v2.1.0.
