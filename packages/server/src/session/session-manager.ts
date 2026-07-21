@@ -57,7 +57,7 @@ function scopeMissError(scope?: ResolveScope): string {
 export class SessionManager {
   readonly #sessions = new Map<string, Session>();
   /**
-   * The active project's scope, set once from the daemon's.reticle.json. When a tool resolves a session
+   * The active project's scope, set once from the daemon's .reticle.json. When a tool resolves a session
    * without passing its own scope, this is applied — so auto-selection is project-scoped by default
    * and a stray tab from another app is never picked, even on the no-sessionId path.
    */

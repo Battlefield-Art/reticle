@@ -184,7 +184,7 @@ export interface StartOptions {
   injectConnect?: InjectConnectOptions;
   /** Path to a Playwright storageState JSON so the driven browser starts authenticated (past a login wall). */
   storageState?: string;
-  /** absolute.reticle root. Defaults to process.cwd/.reticle. Injectable for tests. */
+  /** absolute .reticle root. Defaults to process.cwd()/.reticle. Injectable for tests. */
   reticleRoot?: string;
   /** Directory holding the auto-provisioned pairing token. Defaults to ~/.reticle. Injectable for tests. */
   pairingTokenDir?: string;
@@ -341,7 +341,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
   // whose agent has gone idle, so a forgotten/crashed agent never leaves the HUD "running" forever.
   const reaper = new SessionReaper(bridge.sessions);
   reaper.start();
-  // Scope auto-selection to the active project (from.reticle.json) so a stray tab from another app is
+  // Scope auto-selection to the active project (from .reticle.json) so a stray tab from another app is
   // never picked when the agent omits a sessionId. Explicit per-call scope/sessionId still overrides.
   const activeProjectId = readProjectId(process.cwd());
   if (activeProjectId !== undefined) {
@@ -446,7 +446,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
 
   const reaper = new SessionReaper(bridge.sessions);
   reaper.start();
-  // Scope auto-selection to the active project (from.reticle.json) so a stray tab from another app is
+  // Scope auto-selection to the active project (from .reticle.json) so a stray tab from another app is
   // never picked when the agent omits a sessionId. Explicit per-call scope/sessionId still overrides.
   const activeProjectId = readProjectId(process.cwd());
   if (activeProjectId !== undefined) {

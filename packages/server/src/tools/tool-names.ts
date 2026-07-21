@@ -40,7 +40,7 @@ export const ReticleTool = {
   FLOW_HEAL: 'reticle_flow_heal',
   /** structured annotation → compiles into the recording's expect/dynamic/success. */
   ANNOTATE: 'reticle_annotate',
-  /** read cross-run history.reticle/project.json) + diff-vs-last for a name. */
+  /** read cross-run history (.reticle/project.json) + diff-vs-last for a name. */
   PROJECT: 'reticle_project',
   /** explicitly record a run outcome (the manual companion to auto-recording). */
   RUN_RECORD: 'reticle_run_record',
@@ -75,7 +75,7 @@ export const ReticleTool = {
   NAVIGATE: 'reticle_navigate',
   /** Reload the connected browser tab (soft or hard). */
   REFRESH: 'reticle_refresh',
-  /** Export a verification-run artifact.reticle/runs/<id>.json) — the OEM/CI-consumable verdict. */
+  /** Export a verification-run artifact (.reticle/runs/<id>.json) — the OEM/CI-consumable verdict. */
   RUN_EXPORT: 'reticle_run_export',
   /** Consolidated families — one action-dispatched tool per family; members below stay
    * defined (handlers intact) but are no longer advertised separately. */

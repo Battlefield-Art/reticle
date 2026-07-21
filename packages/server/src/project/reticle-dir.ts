@@ -34,7 +34,7 @@ export interface ReticleDirPaths {
   envelopes: string;
   /**.../.reticle/ambient.json (learned ambient-churn region map) */
   ambient: string;
-  /**.../.reticle/capsules (fail-to-pass bug capsules) */
+  /** .../.reticle/capsules (fail-to-pass bug capsules) */
   capsules: string;
   /**.../.reticle/flake.json (per-flow flake ledger) */
   flake: string;
@@ -65,17 +65,17 @@ export function runPath(root: string, runId: string): string {
   return join(root, ReticleDir.RUNS_SUBDIR, `${runId}.json`);
 }
 
-/** The journal directory for `sessionId`.reticle/sessions/<id>). Guard the id first. */
+/** The journal directory for `sessionId` (.reticle/sessions/<id>). Guard the id first. */
 export function sessionDirPath(root: string, sessionId: string): string {
   return join(root, ReticleDir.SESSIONS_SUBDIR, sessionId);
 }
 
-/** The append-only event ledger path for a session.reticle/sessions/<id>/events.jsonl). */
+/** The append-only event ledger path for a session (.reticle/sessions/<id>/events.jsonl). */
 export function journalEventsPath(root: string, sessionId: string): string {
   return join(sessionDirPath(root, sessionId), ReticleDir.JOURNAL_EVENTS_FILE);
 }
 
-/** The append-only action ledger path for a session.reticle/sessions/<id>/actions.jsonl). */
+/** The append-only action ledger path for a session (.reticle/sessions/<id>/actions.jsonl). */
 export function journalActionsPath(root: string, sessionId: string): string {
   return join(sessionDirPath(root, sessionId), ReticleDir.JOURNAL_ACTIONS_FILE);
 }
@@ -128,7 +128,7 @@ export function flowDir(root: string, projectId?: string): string {
 
 /**
  * A flow name must be a single safe path segment — rejects '../', '/', '\\', absolute, dotfiles.
- * Guards every disk op before a path is ever joined, so a traversal name never escapes.reticle/.
+ * Guards every disk op before a path is ever joined, so a traversal name never escapes .reticle/.
  */
 export function isValidFlowName(name: string): name is FlowName {
   return FLOW_NAME_PATTERN.test(name) && !name.includes('..');
@@ -138,7 +138,7 @@ export function baselinePath(root: string, name: string): string {
   return join(root, ReticleDir.BASELINES_SUBDIR, `${name}.json`);
 }
 
-/** Idempotent: creates.reticle/,.reticle/flows/,.reticle/baselines/ (recursive mkdir → safe to re-run). */
+/** Idempotent: creates .reticle/,.reticle/flows/,.reticle/baselines/ (recursive mkdir → safe to re-run). */
 export async function ensureReticleDir(fs: FileSystemPort, root: string): Promise<void> {
   const p = reticleDirPaths(root);
   await fs.mkdir(p.root);
@@ -193,7 +193,7 @@ function serializeGovernance(g: ManifestGovernance): ManifestGovernance {
   };
 }
 
-/** Write the contract to.reticle/contract.json (auto-creating.reticle/ first). */
+/** Write the contract to .reticle/contract.json (auto-creating .reticle/ first). */
 export async function writeContract(
   fs: FileSystemPort,
   root: string,

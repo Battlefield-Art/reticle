@@ -332,7 +332,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
 
   const meta = new WeakMap<XMLHttpRequest, XhrMeta>();
   const proto = XMLHttpRequest.prototype;
- /* eslint-disable @typescript-eslint/unbound-method -- captured to re-invoke via.call(this) */
+ /* eslint-disable @typescript-eslint/unbound-method -- captured to re-invoke via .call(this) */
   const origOpen = proto.open;
   const origSend = proto.send;
  /* eslint-enable @typescript-eslint/unbound-method */

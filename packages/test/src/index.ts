@@ -33,7 +33,7 @@ export type {
   RunnerOptions,
 } from './types.js';
 
-// flows under.reticle/flows become the runnable suite.
+// flows under .reticle/flows become the runnable suite.
 export { flowToSpec, flowsAsSpecs } from './flow-spec.js';
 export type { FlowSpec, FlowSpecOptions, FlowsAsSpecsOptions, SpecRunResult } from './flow-spec.js';
 export { assertSuccess, successToPredicate } from './success-assert.js';

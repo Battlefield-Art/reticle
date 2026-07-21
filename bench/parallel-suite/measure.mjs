@@ -1,5 +1,5 @@
-// the loop2 — suite wall-time, tracked. Runs the REAL flow_verify handler twice against a live app:
-// sequential (one shared tab) vs parallel (one leased isolated context per flow, W14.2), and reports
+// this bench — suite wall-time, tracked. Runs the REAL flow_verify handler twice against a live app:
+// sequential (one shared tab) vs parallel (one leased isolated context per flow), and reports
 // wall-time plus the speedup. Also asserts both modes agree on the verdict — a faster suite that
 // disagrees with the sequential one is not a faster suite, it is a broken one.
 //
@@ -92,7 +92,7 @@ await server.close();
 
 const speedup = seq.ms / Math.max(1, par.ms);
 
-// the loop2: suite wall-time is a TRACKED number with a budget, not a vibe. The budget is per-flow so it
+// this bench: suite wall-time is a TRACKED number with a budget, not a vibe. The budget is per-flow so it
 // stays meaningful as the suite grows — a 200-flow suite is allowed 200x a single flow's allowance.
 const BUDGET_MS_PER_FLOW = Number(process.env.SUITE_BUDGET_MS_PER_FLOW ?? 1500);
 const flows = par.verdict.total || 1;

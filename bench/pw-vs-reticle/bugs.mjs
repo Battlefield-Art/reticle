@@ -727,7 +727,7 @@ export const BUGS = [
     expect: 'reticle-only',
   },
 
-  // ── silent-removal (silent-removal): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
+  // ── silent-removal: a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
   // crawler that only exercises controls is structurally blind. Only a saved baseline notices. ───────
   {
     id: 'token-not-persisted',
@@ -1020,7 +1020,7 @@ export const BUGS = [
     expect: 'both',
   },
 
-  // ── perf (perf): the damage is in WHEN the page moved, not what it ends up looking like. A
+  // ── perf: the damage is in WHEN the page moved, not what it ends up looking like. A
   // screenshot taken after things settle looks perfect. ─────────────────────────────────────────────
   {
     id: 'cls-late-banner',

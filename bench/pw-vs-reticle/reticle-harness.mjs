@@ -259,9 +259,12 @@ export async function runReticle(bugs) {
             ? await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS })
             : {};
           await sleep(600);
+          // Scope to the act. Playwright's side resets its arrays before the click, so reading the
+          // whole session here would have the two harnesses measuring different windows.
           const net = await call('reticle_network', {
             sessionId: sid,
             method: c.method,
+            since: act0?.since,
             limit: 50,
           });
           const n = (net?.calls ?? []).filter((e) =>
@@ -274,9 +277,18 @@ export async function runReticle(bugs) {
           // success. Caught when no matching call carries the expected status (+ contentType if asked).
           await doPrep(c.prep);
           const ref = await waitRef(c.steps[0]);
-          if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          const act0 = ref
+            ? await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS })
+            : {};
           await sleep(RESPONSE_SETTLE_MS);
-          const net = await call('reticle_network', { sessionId: sid, limit: 50 });
+          // Act-scoped, matching the Playwright side's postBodies reset. Unscoped, a setup step hitting
+          // the same URL would let reticle match the SETUP body and report "not caught" while
+          // Playwright, correctly scoped, catches it.
+          const net = await call('reticle_network', {
+            sessionId: sid,
+            since: act0?.since,
+            limit: 50,
+          });
           const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
           const good = matches.filter((e) => {
             if (Number(e.status) !== Number(c.expected)) return false;
@@ -288,14 +300,23 @@ export async function runReticle(bugs) {
             ? `matched=${matches.length} ok=${good.length} statuses=${matches.map((m) => m.status).join('/') || 'none'}`
             : `${c.steps[0]} not reached`;
         } else if (c.kind === 'netBodyAfter') {
-          // net-status: payload truth: the body actually sent/received must contain `expected`. `direction`
+          // payload truth: the body actually sent/received must contain `expected`. `direction`
           // selects request vs response; bodies are opt-in capture, so an absent body is NOT a catch —
           // reporting "missing body" as a detection would be a false positive.
           await doPrep(c.prep);
           const ref = await waitRef(c.steps[0]);
-          if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          const act0 = ref
+            ? await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS })
+            : {};
           await sleep(RESPONSE_SETTLE_MS);
-          const net = await call('reticle_network', { sessionId: sid, limit: 50 });
+          // Act-scoped, matching the Playwright side's postBodies reset. Unscoped, a setup step hitting
+          // the same URL would let reticle match the SETUP body and report "not caught" while
+          // Playwright, correctly scoped, catches it.
+          const net = await call('reticle_network', {
+            sessionId: sid,
+            since: act0?.since,
+            limit: 50,
+          });
           const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
           const field = c.direction === 'request' ? 'requestBody' : 'responseBody';
           const bodies = matches.map((m) => String(m[field] ?? ''));
@@ -307,7 +328,7 @@ export async function runReticle(bugs) {
               : `${field} not captured (bodies are opt-in) — not counted as a detection`
             : `${c.steps[0]} not reached`;
         } else if (c.kind === 'netPendingAfter') {
-          // net-payload: in-flight oracle: caught when a matching request is STILL pending after withinMs. This
+          // in-flight oracle: caught when a matching request is STILL pending after withinMs. This
           // is the one a screenshot cannot reach — on `hung-but-ui-done` the DOM already says "done".
           await doPrep(c.prep);
           const ref = await waitRef(c.steps[0]);

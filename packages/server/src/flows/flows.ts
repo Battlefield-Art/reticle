@@ -173,7 +173,7 @@ function withAnnotations(flow: FlowFile, ann: FlowAnnotations | undefined): Flow
 const JSON_INDENT = 2;
 const FLOW_SUFFIX = '.json';
 
-/** Persists anchored flows to.reticle/flows/<name>.json. Filesystem + clock are injected. */
+/** Persists anchored flows to .reticle/flows/<name>.json. Filesystem + clock are injected. */
 export class FlowStore {
   readonly #fs: FileSystemPort;
   readonly #root: string;
@@ -345,7 +345,7 @@ export class FlowStore {
     const flat = flowPath(this.#root, name);
     if (await this.#fs.exists(flat)) return flat;
     // No projectId (CLI/CI/contract callers, e.g. reticle_domain): mirror list's subdir union on
-    // the read side too — a flow saved under.reticle/flows/<projectId>/ must still load, else it is
+    // the read side too — a flow saved under .reticle/flows/<projectId>/ must still load, else it is
     // listed and then silently dropped by `if (loaded.ok)` (reticle_domain reports flowCount:0).
     if (pid === undefined) return this.#resolveNestedPath(name);
     return null;

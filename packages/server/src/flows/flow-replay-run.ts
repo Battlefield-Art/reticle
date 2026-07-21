@@ -62,7 +62,7 @@ function replayToRunStatus(status: ReplayStatus): RunStatus {
   }
 }
 
-/** Append a flow-replay outcome to.reticle/project.json (never throws into replay). */
+/** Append a flow-replay outcome to .reticle/project.json (never throws into replay). */
 async function recordReplayRun(
   deps: ToolDeps,
   name: string,

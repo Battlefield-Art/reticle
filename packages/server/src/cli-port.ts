@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs';
 
 /**
- * Read the port stored in the project's.reticle.json (written by `reticle init`).
+ * Read the port stored in the project's .reticle.json (written by `reticle init`).
  * Returns undefined if the file is absent, unreadable, or has no valid numeric port.
  */
 export function readProjectPort(cwd: string): number | undefined {
@@ -29,7 +29,7 @@ export function readProjectPort(cwd: string): number | undefined {
 }
 
 /**
- * Read the stable projectId stored in the project's.reticle.json (written by `reticle init`). The daemon
+ * Read the stable projectId stored in the project's .reticle.json (written by `reticle init`). The daemon
  * uses it as the default resolve scope so auto-selection stays within the active app. Returns
  * undefined if the file is absent/unreadable or has no non-empty string projectId.
  */

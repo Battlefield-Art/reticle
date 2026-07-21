@@ -79,20 +79,50 @@ describe('resetClock hands back the work queued while frozen', () => {
     expect(fired).toBe(false);
   });
 
-  it('does NOT resume an interval — an un-cancellable repeat is worse than a dropped one', async () => {
-    // The app still holds the VIRTUAL id it was handed while frozen. Re-arming natively returns a
-    // different id, so the app's own clearInterval(id) could never stop the callback — and since both
-    // id spaces start at 1, that stale clearInterval might cancel an unrelated live timer instead.
-    // My first version did re-arm, and this very test masked it: it cleaned up with the virtual id, so
-    // the interval kept firing for the rest of the worker while the assertion still passed.
+  it('resumes an interval AND lets the app cancel it with the id it was given', async () => {
+    // The handle is the whole difficulty: the app holds a VIRTUAL id, the re-arm produces a NATIVE one.
+    // Two earlier attempts got this wrong — one re-armed without translation (uncancellable, and the
+    // stale clear could kill an unrelated timer), the other dropped intervals entirely to dodge it
+    // while re-arming timeouts, which has the identical hazard.
     freezeClock();
     let ticks = 0;
     const id = window.setInterval(() => {
       ticks += 1;
     }, 5);
     resetClock();
-    clearInterval(id); // the app's own cleanup, using the id it was given
+    await new Promise((r) => setTimeout(r, 30));
+    expect(ticks).toBeGreaterThan(0); // it resumed
+    const seen = ticks;
+    clearInterval(id); // the app's own cleanup, with the id it was handed while frozen
+    await new Promise((r) => setTimeout(r, 30));
+    expect(ticks).toBe(seen); // and it actually stopped
+  });
+
+  it('lets the app cancel a re-armed TIMEOUT with its original id', async () => {
+    // `const t = setTimeout(hide, 5000); return () => clearTimeout(t)` — the standard effect cleanup.
+    freezeClock();
+    let fired = false;
+    const id = window.setTimeout(() => {
+      fired = true;
+    }, 10);
+    resetClock();
+    clearTimeout(id);
     await new Promise((r) => setTimeout(r, 40));
-    expect(ticks).toBe(0);
+    expect(fired).toBe(false);
+  });
+
+  it('does not disturb a native timer that happens to share the virtual id space', async () => {
+    // Both id spaces start at 1, so a naive re-arm made the app's clear cancel an unrelated timer.
+    freezeClock();
+    window.setTimeout(() => undefined, 10_000); // virtual id 1
+    resetClock();
+    let unrelated = false;
+    const nativeId = setTimeout(() => {
+      unrelated = true;
+    }, 20);
+    clearTimeout(1 as unknown as typeof nativeId); // stale virtual id from the frozen period
+    await new Promise((r) => setTimeout(r, 50));
+    expect(unrelated).toBe(true); // the unrelated timer must survive
+    clearTimeout(nativeId);
   });
 });

@@ -62,7 +62,7 @@ export const NO_ELEMENT_FOR_TESTID = 'no element for testid';
 export const PROBE_TESTID = 'reticle-root';
 
 /**
- * a flow under.reticle/flows becomes a runnable spec. A flow either loads to a
+ * a flow under .reticle/flows becomes a runnable spec. A flow either loads to a
  * RUNNABLE spec (replay its anchored steps + assert flow.success) or, when the file is
  * missing/malformed/badly-named, surfaces as an ERROR spec that fails loudly (never a silent skip).
  */
@@ -77,7 +77,7 @@ export type SpecOutcome = (typeof SpecOutcome)[keyof typeof SpecOutcome];
  * FLOW2SPEC: the named failure/diagnostic messages a flow spec can carry — never a free string.
  * SUCCESS_NOT_MET: replay was clean but flow.success did not hold. STEP_DRIFT: a step anchor
  * drifted or its expect did not hold (replay stopped). EMPTY_DIR: documentation-only note that an
- * empty.reticle/flows yields zero specs.
+ * empty .reticle/flows yields zero specs.
  */
 export const SpecMessage = {
   SUCCESS_NOT_MET: 'flow.success predicate did not hold after replay',

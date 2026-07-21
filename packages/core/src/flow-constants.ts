@@ -50,7 +50,7 @@ export const PROJECT_RUN_CAP = {
   TOTAL: 200,
 } as const;
 
-/** Schema version stamped onto on-disk flow files.reticle/flows/<name>.json). */
+/** Schema version stamped onto on-disk flow files (.reticle/flows/<name>.json). */
 export const FLOW_FILE_VERSION = 1;
 
 /** How a flow step is anchored to the live DOM at replay time (semantic, never a volatile ref). */

@@ -1,4 +1,4 @@
-// the loop1 — SDK overhead budget. "An observability layer that slows the app corrupts its own perf
+// SDK overhead budget. "An observability layer that slows the app corrupts its own perf
 // verdicts", so the release bar is: total instrumentation overhead (stacks, store subscriptions,
 // journal writes, DOM/network observers) < 3% of main-thread time, measured on the HOSTILE fixture —
 // the page that never goes quiet, i.e. the worst realistic case.
@@ -82,7 +82,7 @@ const overheadPct = ((onS - offS) / wallS) * 100;
 
 // The method's own resolution: how much the SAME condition varies run to run. An overhead smaller than
 // this is not a measurement of the SDK, it is noise — and reporting it as a number (especially a
-// flattering negative one) would be exactly the self-corrupting perf claim the loop1 exists to prevent.
+// flattering negative one) would be exactly the self-corrupting perf claim this bench exists to prevent.
 const spread = (xs) => (Math.max(...xs) - Math.min(...xs)) / wallS * 100;
 const noiseFloorPct = Math.max(
   spread(samples.map((r) => r.on.taskS)),
@@ -90,7 +90,7 @@ const noiseFloorPct = Math.max(
 );
 const resolved = Math.abs(overheadPct) > noiseFloorPct;
 
-console.log('\n=== SDK overhead on the hostile fixture (the loop1) ===\n');
+console.log('\n=== SDK overhead on the hostile fixture ===\n');
 console.log(`  window                  : ${wallS.toFixed(1)}s x ${String(REPEATS)} repeats`);
 console.log(`  main-thread, SDK ON     : ${onS.toFixed(3)}s  (${((onS / wallS) * 100).toFixed(1)}% busy)`);
 console.log(`  main-thread, SDK OFF    : ${offS.toFixed(3)}s  (${((offS / wallS) * 100).toFixed(1)}% busy)`);

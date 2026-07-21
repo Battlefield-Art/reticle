@@ -17,7 +17,7 @@ import { flowToSpec, flowsAsSpecs } from './flow-spec.js';
 const FIXED_MS = 1_700_000_000_000;
 const fixedClock: Clock = { now: () => FIXED_MS };
 
-/** An in-memory FileSystemPort over.reticle/flows so a unit test never touches the repo. */
+/** An in-memory FileSystemPort over .reticle/flows so a unit test never touches the repo. */
 function memoryFs(files: Record<string, string>): FileSystemPort {
   const store = new Map<string, string>(Object.entries(files));
   return {

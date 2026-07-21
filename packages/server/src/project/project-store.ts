@@ -21,7 +21,7 @@ export type ReadProjectResult =
 const EMPTY_PROJECT: ProjectFile = { version: PROJECT_FILE_VERSION, runs: [] };
 
 /**
- * Cross-run outcome memory persisted at.reticle/project.json. Models FlowStore:
+ * Cross-run outcome memory persisted at .reticle/project.json. Models FlowStore:
  * injected FileSystemPort + Clock, byte-stable serialize, never-throws read. The clock is the
  * single `at`-stamp site so handlers pass an un-stamped record and no Date.now leaks into logic.
  */

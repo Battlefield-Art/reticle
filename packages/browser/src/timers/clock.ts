@@ -94,34 +94,80 @@ export function advanceClock(ms: number): void {
  * at the cause. That matters most on the path this is called from: an agent freezes the clock, the
  * bridge dies, and the developer is left with an app that was never un-frozen deliberately.
  *
- * Pending one-shot timeouts are re-scheduled onto REAL timers with their remaining virtual delay, so a
- * 5s toast frozen 2s in still has ~3s to go. Intervals are deliberately NOT resumed — see below.
+ * Pending work is re-scheduled onto REAL timers with its remaining virtual delay (a 5s toast frozen 2s
+ * in still has ~3s to go), and the ids the app is holding keep working — see the translation note.
  */
 export function resetClock(): void {
   if (!installed || originals === null) return;
-  const { setTimeout: realSetTimeout } = originals;
+  const natives = originals;
   const pending = tasks;
-  window.setTimeout = originals.setTimeout;
-  window.clearTimeout = originals.clearTimeout;
-  window.setInterval = originals.setInterval;
-  window.clearInterval = originals.clearInterval;
-  Date.now = originals.dateNow;
+  window.setTimeout = natives.setTimeout;
+  window.clearTimeout = natives.clearTimeout;
+  window.setInterval = natives.setInterval;
+  window.clearInterval = natives.clearInterval;
+  Date.now = natives.dateNow;
   const resumeFrom = virtualNow;
   originals = null;
   tasks = [];
   installed = false;
   virtualNow = 0;
-  // Re-arm AFTER the natives are restored, so these schedule onto real time rather than back into the
-  // queue we are draining.
+  if (pending.length === 0) return;
+
+  // Re-arm the app's pending work onto REAL timers, translating ids as we go.
   //
-  // INTERVALS ARE NOT RE-ARMED. The app is still holding the VIRTUAL id it was given while frozen, and
-  // a native re-arm returns a different id — so the app's own `clearInterval(id)` would no longer
-  // cancel it and the callback would run forever. Worse, both id spaces start at 1, so that stale
-  // clearInterval could cancel an unrelated live timer. A one-shot timeout has no such handle problem:
-  // it fires once and is done, so losing it is a real behaviour change while re-arming it is safe.
-  // Dropping a repeating timer is the lesser harm, and it is stated rather than silent.
+  // The app is still holding the VIRTUAL id it was handed while frozen; a native re-arm returns a
+  // different one. Without translation the app's own `clearTimeout(id)` would fail to cancel the
+  // re-armed callback AND would cancel whichever unrelated native timer happens to hold that id — both
+  // id spaces start at 1, so the collision is likely, not theoretical. An earlier version dropped
+  // intervals to dodge this and re-armed timeouts anyway, which has the identical hazard: a component
+  // that does `const t = setTimeout(hide, 5000); return () => clearTimeout(t)` cannot cancel `hide`,
+  // so it fires on an unmounted component.
+  //
+  // So keep a translation map and a clear-shim for exactly as long as re-armed work is outstanding.
+  // Nothing is dropped, and the app's handles keep working.
+  const reArmed = new Map<number, number>();
+  const done = (virtualId: number): void => {
+    reArmed.delete(virtualId);
+    if (reArmed.size === 0) restoreRawClears(natives);
+  };
   for (const task of pending) {
-    if (task.interval !== undefined) continue;
-    realSetTimeout(task.cb, Math.max(0, task.time - resumeFrom));
+    if (task.interval !== undefined) {
+      reArmed.set(task.id, natives.setInterval(task.cb, task.interval));
+    } else {
+      reArmed.set(
+        task.id,
+        natives.setTimeout(() => {
+          done(task.id);
+          task.cb();
+        }, Math.max(0, task.time - resumeFrom)),
+      );
+    }
   }
+  installTranslatingClears(reArmed, natives, done);
+}
+
+/** Route a clear() for a re-armed virtual id to its real native id; everything else passes through. */
+function installTranslatingClears(
+  reArmed: Map<number, number>,
+  natives: Originals,
+  done: (virtualId: number) => void,
+): void {
+  const translate = (rawClear: (id?: number) => void) =>
+    ((id: number): void => {
+      const nativeId = reArmed.get(id);
+      if (nativeId === undefined) {
+        rawClear(id);
+        return;
+      }
+      rawClear(nativeId);
+      done(id);
+    }) as unknown as typeof window.clearTimeout;
+  window.clearTimeout = translate(natives.clearTimeout);
+  window.clearInterval = translate(natives.clearInterval);
+}
+
+/** Drop the shim once no re-armed work is outstanding — it costs nothing to remove and one hop to keep. */
+function restoreRawClears(natives: Originals): void {
+  window.clearTimeout = natives.clearTimeout;
+  window.clearInterval = natives.clearInterval;
 }

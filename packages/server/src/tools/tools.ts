@@ -318,7 +318,7 @@ const RAW_TOOLS: ToolDef[] = [
   ...FLOW_TOOLS,
   // reticle_project (read history + diff-vs-last) / reticle_run_record. See project-tools.ts.
   ...PROJECT_TOOLS,
-  // reticle_run_export — export the verification-run verdict artifact.reticle/runs/). See run-tools.ts.
+  // reticle_run_export — export the verification-run verdict artifact (.reticle/runs/). See run-tools.ts.
   ...RUN_TOOLS,
   // reticle_screenshot / reticle_visual_diff — opt-in, CDP-driven. See visual-tools.ts.
   ...VISUAL_TOOLS,

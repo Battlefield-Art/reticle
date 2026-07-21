@@ -224,6 +224,10 @@ export async function runPlaywright(bugs) {
           //
           // CLS stays buffered on purpose: cumulative layout shift is a page-lifetime metric and the
           // injected shift happens during load, before any click.
+          // Wait for the target BEFORE arming the long-task probe. Arming first made Playwright's
+          // window up to 6s wider than the reticle side's act-scoped one, so ordinary churn during
+          // waitFor scored as "a long task after the action" on the CLEAN build.
+          if (c.kind === 'perfNoLongTaskAfter' && c.steps?.[0] !== undefined) await waitFor(c.steps[0]);
           await page.evaluate(() => {
             const probe = { cls: 0, longTaskDurations: [] };
             window.__reticleBenchPerf = probe;
@@ -240,10 +244,7 @@ export async function runPlaywright(bugs) {
               /* entry type unsupported in this browser */
             }
           });
-          if (c.kind === 'perfNoLongTaskAfter' && c.steps?.[0] !== undefined) {
-            await waitFor(c.steps[0]);
-            await click(c.steps[0]);
-          }
+          if (c.kind === 'perfNoLongTaskAfter' && c.steps?.[0] !== undefined) await click(c.steps[0]);
           await sleep(1500); // let a late shift land, and the blocking task finish
           const metrics = await page.evaluate(
             () => window.__reticleBenchPerf ?? { cls: 0, longTaskDurations: [] },

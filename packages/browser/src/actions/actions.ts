@@ -76,7 +76,7 @@ interface ActionResult {
 function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): boolean {
   const proto =
     el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- setter is invoked via.call(el)
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- setter is invoked via .call(el)
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   if (setter !== undefined) {
     setter.call(el, value);

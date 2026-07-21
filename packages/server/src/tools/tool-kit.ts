@@ -23,11 +23,11 @@ export interface ToolDeps {
   pool?: BrowserPool;
   baselines: BaselineStore;
   recordings: RecordingStore;
-  /** on-disk anchored-flow store.reticle/flows/). */
+  /** on-disk anchored-flow store (.reticle/flows/). */
   flows: FlowStore;
   /** structured annotations accumulating for the live recording. */
   annotations: AnnotationStore;
-  /** cross-run outcome memory.reticle/project.json). */
+  /** cross-run outcome memory (.reticle/project.json). */
   project: ProjectStore;
   /** optional native-input provider. undefined ⇒ everything stays synthetic. */
   realInput?: RealInputProvider;

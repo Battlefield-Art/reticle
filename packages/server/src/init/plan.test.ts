@@ -120,7 +120,7 @@ describe('buildPlan — MCP (global, per detected agent)', () => {
     expect(step(plan, CLAUDE_STEP).exec?.args).not.toContain('--port');
     expect(step(plan, CURSOR_STEP).write?.content).not.toContain('5000');
     expect(step(plan, CURSOR_STEP).write?.content).not.toContain('--port');
-    // Instead the port is written to the per-project.reticle.json.
+    // Instead the port is written to the per-project .reticle.json.
     expect(step(plan, CONFIG_STEP).write?.content).toContain('5000');
   });
 });

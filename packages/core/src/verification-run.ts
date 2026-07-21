@@ -25,7 +25,7 @@ export type RunId = z.infer<typeof RunIdSchema>;
 export const asRunId = (value: string): RunId => value as RunId;
 
 /**
- * Retention bound for.reticle/runs/ so disk stays bounded over a long-running pipeline. Pruned
+ * Retention bound for .reticle/runs/ so disk stays bounded over a long-running pipeline. Pruned
  * oldest-first only once the count exceeds RUN_RETENTION + RUN_RETENTION_SLACK, then back down to
  * RUN_RETENTION — so the O(n) prune is amortized (≈ once per SLACK writes), not paid on every write.
  */

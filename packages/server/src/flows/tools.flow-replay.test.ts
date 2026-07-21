@@ -200,7 +200,7 @@ describe('reticle_flow_replay handler — temp dir, never touches the repo', () 
     expect(res.error?.code).toBe(FlowErrorCode.INVALID_NAME);
   });
 
-  // ---- every replay records a run to.reticle/project.json ----
+  // ---- every replay records a run to .reticle/project.json ----
 
   it('F: an ok replay auto-records a pass run with mapped status + driftSteps:0', async () => {
     await saveFlow('green', [actStep('chat-send')]);

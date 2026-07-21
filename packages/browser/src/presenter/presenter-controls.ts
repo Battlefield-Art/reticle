@@ -135,7 +135,7 @@ export const CONTROLS_CSS = `
 [data-reticle-hud] .reticle-flow:active{transform:scale(.95);}
 `;
 
-/** Header markup (controls + badge) injected into.reticle-hud-head, after the expand button. */
+/** Header markup (controls + badge) injected into .reticle-hud-head, after the expand button. */
 export const CONTROLS_HEAD_HTML = `<button type="button" data-reticle-pause class="reticle-ctl">${CONTROL_LABEL.PAUSE}</button><button type="button" data-reticle-end class="reticle-ctl">${CONTROL_LABEL.END}</button><span data-reticle-badge class="reticle-badge">${PAUSED_BADGE_TEXT}</span>`;
 
 /** Banner markup (between head and log, hidden unless ended). */

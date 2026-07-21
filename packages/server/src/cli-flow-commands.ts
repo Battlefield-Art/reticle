@@ -120,7 +120,7 @@ export function handleWatch(): void {
 }
 
 /**
- * `reticle capsules` — list saved fail-to-pass bug capsules.reticle/capsules). Each is a minimal
+ * `reticle capsules` — list saved fail-to-pass bug capsules (.reticle/capsules). Each is a minimal
  * failing reproduction plus the consequence that should have held; replay one with reticle_flow_replay.
  */
 export async function handleCapsules(): Promise<void> {

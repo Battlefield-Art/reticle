@@ -49,8 +49,8 @@ export const SESSION_EXEMPT_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.FLOW_VERIFY, // returns its own SuiteVerdict contract (replays the whole suite)
   ReticleTool.FLOW_SAVE_RECORDED, // reads the recording buffer, writes disk
   ReticleTool.FLOW_HEAL, // returns its own FlowHealResult contract
-  ReticleTool.PROJECT, // reads.reticle/project.json
-  ReticleTool.RUN_EXPORT, // reads.reticle/runs/<id>.json (verification-run artifact)
+  ReticleTool.PROJECT, // reads .reticle/project.json
+  ReticleTool.RUN_EXPORT, // reads .reticle/runs/<id>.json (verification-run artifact)
   ReticleTool.SESSION, // merged lifecycle/human-channel family (tune/yield/end/resume/messages/review/narrate)
   ReticleTool.SCREENSHOT, // own contract; provider-driven, not a live-DOM-health read
   ReticleTool.VISUAL_DIFF, // own contract (matched/ratio/region)

@@ -1,4 +1,4 @@
-// the loop: — the release's live demo, as a runnable assertion rather than a story:
+// The release's live demo, as a runnable assertion rather than a story:
 //
 //   agent edits a covered file → the layer names the affected flows → verification goes RED
 //   → the gate BLOCKS with the exact flows to run → agent fixes → verification goes GREEN
@@ -47,7 +47,7 @@ function cli(args) {
 
 const gateBlocked = () => cli(['gate', COVERED_FILE]).code !== 0;
 
-console.log('\n=== the loop: end-to-end loop ===\n');
+console.log('\n=== end-to-end loop ===\n');
 try {
   // 1. Baseline: verification passes and the gate is therefore open.
   const baseline = cli(['verify', APP_URL, '--timeout', '30000']);

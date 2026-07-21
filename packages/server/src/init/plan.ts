@@ -90,7 +90,7 @@ export interface PlanInput {
   nextReticleDevExists: boolean;
   /** Whether src/hooks.client.ts already exists (SvelteKit idempotency). */
   svelteKitHooksExists?: boolean;
-  /** Whether.reticle.json already exists in the project root (idempotency). */
+  /** Whether .reticle.json already exists in the project root (idempotency). */
   reticleConfigExists?: boolean;
   options: {
     port: number | undefined;
