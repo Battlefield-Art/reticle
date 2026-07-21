@@ -96,7 +96,7 @@ gap is 24 vs 8. **Use both.** That is the honest recommendation, and it's why we
 - **We now consume MORE output per bug than Playwright, not less.** Attaching the `file:line` to every
   element we report costs about 47% more bytes (8.0 KB → 11.8 KB). We think that trade is right —
   the published repair literature puts file-level localization at roughly +50pp of fix rate, and
-  measures better localization as *reducing* an agent's total tokens by cutting the search — but we
+  measures better localization as _reducing_ an agent's total tokens by cutting the search — but we
   have not measured that end-to-end ourselves, so treat it as a considered bet, not a proven one.
 
 **Where we lose:** Playwright catches paint-level regressions we can't see (a global CSS filter leaves
