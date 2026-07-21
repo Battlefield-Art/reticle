@@ -39,6 +39,8 @@ import { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launch
 import { LeaseReaper } from './pool/lease-reaper.js';
 import { readJournalEnabled, readProjectId } from './cli-port.js';
 import { makeJournalAttach } from './journal/attach-journal.js';
+import { makeSessionEnd } from './journal/session-end.js';
+import { AmbientStore } from './journal/ambient-store.js';
 import { pruneSessions } from './journal/retention.js';
 import type {
   OwnedRealInputProvider,
@@ -314,7 +316,21 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
     const reticleRoot = options.reticleRoot ?? join(process.cwd(), ReticleDir.ROOT);
     const now = options.now ?? ((): number => Date.now());
     const journalEnabled = readJournalEnabled(process.cwd(), process.env[ReticleEnv.JOURNAL]);
-    bridge.attachSessionCreate(makeJournalAttach({ fs, reticleRoot, enabled: journalEnabled }));
+    const journalAttach = makeJournalAttach({ fs, reticleRoot, enabled: journalEnabled });
+    const ambientStore = new AmbientStore(fs, reticleRoot);
+    bridge.attachSessionCreate((session) => {
+      journalAttach(session);
+      // Seed the learned ambient map so a fresh session starts knowing which regions churn (B11), instead
+      // of re-learning from zero. Best-effort + async: a late seed still helps, a failure is silent.
+      if (journalEnabled) {
+        void ambientStore
+          .load()
+          .then((counts) => session.seedAmbient(counts))
+          .catch(() => undefined);
+      }
+    });
+    // Teardown: flush the journal tail to disk + persist what this session learned (B11 persistence).
+    bridge.attachSessionEnd(makeSessionEnd({ fs, reticleRoot, enabled: journalEnabled }));
     if (journalEnabled) void pruneSessions(fs, reticleRoot);
     const flows = new FlowStore(fs, reticleRoot, { now });
     const project = new ProjectStore(fs, reticleRoot, { now });
