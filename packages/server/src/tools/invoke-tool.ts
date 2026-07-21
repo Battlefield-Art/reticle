@@ -25,7 +25,6 @@ export const SESSION_BOUND_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.BASELINE, // merged save/list/diff — save+diff are live reads
   ReticleTool.RECORD, // merged start/stop — both live
   ReticleTool.REPLAY,
-  ReticleTool.NARRATE,
   ReticleTool.CLOCK,
   ReticleTool.STATE,
   ReticleTool.STORAGE,
@@ -53,12 +52,7 @@ export const SESSION_EXEMPT_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.FLOW_HEAL, // returns its own FlowHealResult contract
   ReticleTool.PROJECT, // reads .reticle/project.json
   ReticleTool.RUN_EXPORT, // reads .reticle/runs/<id>.json (verification-run artifact)
-  ReticleTool.END_SESSION, // live-control lifecycle
-  ReticleTool.YIELD, // live-control lifecycle (hand back to the human between turns)
-  ReticleTool.RESUME, // live-control lifecycle
-  ReticleTool.MESSAGES, // drains the human→agent inbox
-  ReticleTool.REVIEW, // lists/resolves human review marks; own contract, no live-DOM read
-  ReticleTool.SESSION, // tunes the presenter session (idle-end); own contract
+  ReticleTool.SESSION, // merged lifecycle/human-channel family (tune/yield/end/resume/messages/review/narrate)
   ReticleTool.SCREENSHOT, // own contract; provider-driven, not a live-DOM-health read
   ReticleTool.VISUAL_DIFF, // own contract (matched/ratio/region)
   ReticleTool.NETWORK_MOCK, // own contract (applied/count); provider-driven, not a live-DOM read

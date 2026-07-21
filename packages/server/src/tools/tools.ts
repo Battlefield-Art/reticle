@@ -346,6 +346,20 @@ const MERGE_PLANS: MergePlan[] = [
     },
   },
   {
+    name: ReticleTool.SESSION,
+    description:
+      'Session lifecycle and the human channel, by action: "tune" adjusts the presenter session (e.g. idle-end window); "yield" hands control back to the human between turns (mode: waiting|ask) and is MANDATORY before you stop driving; "end" terminates the session for good; "resume" clears a human pause; "messages" drains the human→agent inbox; "review" lists/resolves the mistakes a human pinned to elements; "narrate" states your intent on the presenter HUD. Replaces reticle_end_session/yield/resume/messages/review/narrate.',
+    members: {
+      tune: ReticleTool.SESSION_TUNE,
+      yield: ReticleTool.YIELD,
+      end: ReticleTool.END_SESSION,
+      resume: ReticleTool.RESUME,
+      messages: ReticleTool.MESSAGES,
+      review: ReticleTool.REVIEW,
+      narrate: ReticleTool.NARRATE,
+    },
+  },
+  {
     name: ReticleTool.LEASE,
     description:
       'Isolated headless contexts from the shared pool: { action: "acquire" } leases one and navigates it to the app URL, "release" closes it and frees the slot. Replaces reticle_lease_acquire/release.',

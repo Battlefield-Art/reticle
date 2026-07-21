@@ -547,7 +547,7 @@ export class Session {
       sessionId: this.id,
       opened_at: this.#startedAt,
       IMPORTANT:
-        'MANDATORY: the moment you stop driving — finishing a reply or waiting on the human — call reticle_yield (mode:"waiting", or "ask" with your question) so the panel never falsely reads "live". Call reticle_end_session only when the whole task is done. The session revives on your next action.',
+        'MANDATORY: the moment you stop driving — finishing a reply or waiting on the human — call reticle_session {action:"yield", mode:"waiting"} (or mode:"ask" with your question) so the panel never falsely reads "live". Call reticle_session {action:"end"} only when the whole task is done. The session revives on your next action.',
     };
   }
 
