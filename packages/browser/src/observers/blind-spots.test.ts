@@ -95,7 +95,17 @@ describe('installBlindSpots', () => {
 
       frames = [frame('https://pay.stripe.com', null)];
       document.body.appendChild(document.createElement('div')); // any childList mutation
-      await new Promise((r) => setTimeout(r, 400)); // past the debounce window
+
+      // Poll rather than sleep a fixed margin past the debounce. A fixed wait races the debounce on a
+      // loaded machine, and a timing test that fails under parallel load teaches people to re-run the
+      // suite instead of reading it.
+      const deadline = Date.now() + 5000;
+      while (
+        events.filter((e) => e.type === EventType.BLIND_SPOT).length === 0 &&
+        Date.now() < deadline
+      ) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
 
       const spots = events.filter((e) => e.type === EventType.BLIND_SPOT);
       expect(spots).toHaveLength(1);
@@ -116,7 +126,8 @@ describe('installBlindSpots', () => {
       const { installBlindSpots } = await import('./blind-spots.js');
       teardown = installBlindSpots(emit);
       for (let i = 0; i < 50; i += 1) document.body.appendChild(document.createElement('span'));
-      await new Promise((r) => setTimeout(r, 400));
+      // A negative assertion has to wait out the window rather than poll — there is nothing to poll for.
+      await new Promise((r) => setTimeout(r, 1000));
       expect(events.filter((e) => e.type === EventType.BLIND_SPOT)).toHaveLength(0);
     } finally {
       document.querySelectorAll = original;
