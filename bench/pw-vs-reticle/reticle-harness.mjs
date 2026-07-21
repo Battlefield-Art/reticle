@@ -59,8 +59,17 @@ export async function runReticle(bugs) {
     await call('reticle_navigate', { sessionId: sid, url });
     for (let i = 0; i < 30; i++) {
       const s = await call('reticle_sessions', {});
-      const focused =
-        (s?.sessions ?? []).find((x) => x.url === url && !x.throttled) ?? (s?.sessions ?? [])[0];
+      const all = s?.sessions ?? [];
+      // Match on URL and NEVER fall back to sessions[0].
+      //
+      // The old pick was `find(url matches && !throttled) ?? sessions[0]`. Every headless tab reports
+      // hidden/unfocused, so it is always throttled — the first branch could never win, and every run
+      // silently used sessions[0], which is whichever session the daemon happens to list first,
+      // routinely a stale tab from an earlier bug. That is why checks read plausible-but-wrong values
+      // (an inspect returning another element's geometry) instead of failing loudly: the queries all
+      // succeeded, just against the wrong page. Prefer the freshest URL match; wait rather than guess.
+      const matches = all.filter((x) => x.url === url && !x.stale);
+      const focused = matches.find((x) => !x.throttled) ?? matches[0];
       if (focused) {
         sid = focused.sessionId;
         if (i > 1) break;
@@ -299,6 +308,32 @@ export async function runReticle(bugs) {
             caught = !path.includes(c.expectPath);
             note = `path=${path || '(no route event)'} expected~${c.expectPath}`;
           }
+        } else if (c.kind === 'signalFiredAfter') {
+          // §4.4 signal: the network call succeeded, the DOM updated and the store is right — only the
+          // app's own declared signal is missing, doubled, or typo'd. There is nothing in the rendered
+          // page to compare against, which is why this category is reticle-only.
+          await doPrep(c.prep);
+          const ref = await waitRef(c.steps[0]);
+          const act0 = ref
+            ? await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS })
+            : {};
+          // Generous, and deliberately NOT an early-exit poll: `signal-double-fire` is only visible if
+          // the whole window is observed, so stopping at the first matching signal would score a
+          // double fire as correct. Measured: the signal lands well after a 600ms wait.
+          await sleep(2500);
+          const obs = await call('reticle_observe', {
+            sessionId: sid,
+            types: ['signal'],
+            since: act0?.since,
+            limit: 50,
+          });
+          // The 'signal' type bucket also carries page.health heartbeats, so match the event type
+          // exactly rather than trusting the filter to mean only app signals.
+          const fired = (obs?.events ?? []).filter(
+            (e) => String(e?.type ?? '') === 'signal' && String(e?.data?.name ?? '') === c.signal,
+          ).length;
+          caught = ref ? fired !== c.expected : false;
+          note = ref ? `${c.signal} fired=${fired} expected=${c.expected}` : `${c.steps[0]} not reached`;
         } else if (c.kind === 'stateInvariantAfter') {
           const pre = await call('reticle_state', {
             sessionId: sid,

@@ -35,6 +35,8 @@
  * Tree-shaken out of production; never imported there.
  */
 
+import { reticle } from '@reticlehq/browser';
+import { Sig } from './lib/reticle-bridge.js';
 import { useApp } from './store/store.js';
 import type { Deployment } from './data/seed.js';
 
@@ -520,6 +522,51 @@ function installRouteFaults(bugs: ReadonlySet<string>): void {
   };
 }
 
+
+/**
+ * signal (§4.4) — Tier-1 coverage. The network call succeeds, the DOM updates, the store is correct;
+ * only the app's own declared SIGNAL is wrong or missing. A DOM/pixel tool has nothing to compare
+ * against, which is why this whole category is reticle-only rather than a fair fight.
+ *
+ * Patched on the `reticle` singleton rather than on the app's `emit` helper, so every call site is
+ * covered by one interception instead of one edit per site.
+ */
+interface SignalBug {
+  /** Swallow this signal entirely — the action happens, nothing is announced. */
+  suppress?: string;
+  /** Fire this signal twice for one action (a downstream counter double-counts). */
+  double?: string;
+  /** Emit under a typo'd name; listeners waiting on the real name never wake. */
+  rename?: { from: string; to: string };
+}
+const SIGNAL_BUGS: Record<string, SignalBug> = {
+  'signal-missing-generate': { suppress: Sig.COMPOSE_GENERATED },
+  'signal-missing-deploy': { suppress: Sig.DEPLOY_CREATED },
+  'signal-double-fire': { double: Sig.COMPOSE_GENERATED },
+  'signal-wrong-name': { rename: { from: Sig.COMPOSE_GENERATED, to: 'compose:generate' } },
+};
+
+function installSignalFaults(bugs: ReadonlySet<string>): void {
+  const active = [...bugs].map((id) => SIGNAL_BUGS[id]).filter((b): b is SignalBug => b !== undefined);
+  if (active.length === 0) return;
+  const base = reticle.signal.bind(reticle);
+  reticle.signal = (name: string, data: Record<string, unknown> = {}): void => {
+    for (const bug of active) {
+      if (bug.suppress === name) return;
+      if (bug.double === name) {
+        base(name, data);
+        base(name, data);
+        return;
+      }
+      if (bug.rename?.from === name) {
+        base(bug.rename.to, data);
+        return;
+      }
+    }
+    base(name, data);
+  };
+}
+
 /** DOM-text bugs → a testid whose displayed label/number is silently overwritten with a wrong value. */
 const DOM_TEXT: Record<string, { testid: string; wrong: string }> = {
   'brand-typo': { testid: 'brand', wrong: 'Retcile mission control' },
@@ -745,6 +792,7 @@ export function installBugInjector(): void {
   installClickBugs(bugs);
   installNetFaults(bugs);
   installRouteFaults(bugs);
+  installSignalFaults(bugs);
   installSilentRemoval(bugs);
   installPerfFaults(bugs);
   installDoubleFetch(bugs);

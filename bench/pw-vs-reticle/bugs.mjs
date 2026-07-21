@@ -746,6 +746,62 @@ export const BUGS = [
   // ── silent-removal (§4.9): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
   // crawler that only exercises controls is structurally blind. Only a saved baseline notices. ───────
   {
+    id: 'signal-missing-generate',
+    category: 'signal',
+    intent: 'generating a script announces compose:generated exactly once',
+    setup: ['login-submit', 'nav-compose'],
+    check: {
+      kind: 'signalFiredAfter',
+      prep: { fill: 'compose-prompt', text: 'benchmark note' },
+      steps: ['compose-generate'],
+      signal: 'compose:generated',
+      expected: 1,
+    },
+    expect: 'reticle-only',
+  },
+  {
+    id: 'signal-missing-deploy',
+    category: 'signal',
+    intent: 'creating a deployment announces deploy:created exactly once',
+    setup: ['login-submit', 'nav-deployments', 'new-deploy'],
+    check: {
+      kind: 'signalFiredAfter',
+      prep: { fill: 'deploy-name', text: 'bench-svc' },
+      steps: ['deploy-submit'],
+      signal: 'deploy:created',
+      expected: 1,
+    },
+    expect: 'reticle-only',
+  },
+  {
+    id: 'signal-double-fire',
+    category: 'signal',
+    intent: 'one generate click announces compose:generated once, not twice',
+    setup: ['login-submit', 'nav-compose'],
+    check: {
+      kind: 'signalFiredAfter',
+      prep: { fill: 'compose-prompt', text: 'benchmark note' },
+      steps: ['compose-generate'],
+      signal: 'compose:generated',
+      expected: 1,
+    },
+    expect: 'reticle-only',
+  },
+  {
+    id: 'signal-wrong-name',
+    category: 'signal',
+    intent: 'the generate signal uses its declared name, not a typo',
+    setup: ['login-submit', 'nav-compose'],
+    check: {
+      kind: 'signalFiredAfter',
+      prep: { fill: 'compose-prompt', text: 'benchmark note' },
+      steps: ['compose-generate'],
+      signal: 'compose:generated',
+      expected: 1,
+    },
+    expect: 'reticle-only',
+  },
+  {
     id: 'route-stuck-deployments',
     category: 'routing',
     intent: 'opening Deployments actually navigates, so the view is deep-linkable',

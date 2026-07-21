@@ -209,6 +209,12 @@ export async function runPlaywright(bugs) {
             caught = !path.includes(c.expectPath);
             note = `url=${path} expected~${c.expectPath}`;
           }
+        } else if (c.kind === 'signalFiredAfter') {
+          // Playwright has no access to the app's signal stream at all — not a gap in this script, a
+          // structural one. Recorded honestly as uncatchable rather than quietly skipped.
+          await fillPrep(c.prep);
+          caught = false;
+          note = 'no signal stream visible to a DOM/pixel tool';
         } else if (c.kind === 'netStatusAfter') {
           // Playwright sees response statuses, so this class is genuinely catchable here — no charity.
           await fillPrep(c.prep);
