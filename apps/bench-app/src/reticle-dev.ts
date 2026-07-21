@@ -91,7 +91,10 @@ export function installReticle(): void {
   const present = !params.has('nopresent');
   const session = params.get('session') ?? SESSION_AUTO;
   const reticlePort: number = typeof __RETICLE_PORT__ !== 'undefined' ? __RETICLE_PORT__ : 4400;
-  const token = import.meta.env.VITE_RETICLE_TOKEN;
+  // The daemon requires its pairing token on the websocket hello; vite.config injects it (env wins).
+  const injectedToken = typeof __RETICLE_TOKEN__ !== 'undefined' ? __RETICLE_TOKEN__ : '';
+  const envToken = import.meta.env.VITE_RETICLE_TOKEN;
+  const token = typeof envToken === 'string' && envToken.length > 0 ? envToken : injectedToken;
   const configuredUrl = import.meta.env.VITE_RETICLE_WS_URL;
   const url =
     typeof configuredUrl === 'string' && configuredUrl.length > 0

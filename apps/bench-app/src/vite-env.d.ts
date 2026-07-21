@@ -11,3 +11,5 @@ interface ImportMeta {
 }
 
 declare const __RETICLE_PORT__: number;
+/** Pairing token read from ~/.reticle/pairing-token at config load — the bridge requires it on hello. */
+declare const __RETICLE_TOKEN__: string;
