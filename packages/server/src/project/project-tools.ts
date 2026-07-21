@@ -5,7 +5,7 @@ import { sessionIdShape } from '../tools/tool-kit.js';
 import { asString } from '../tools/tools-helpers.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 import { RunStore } from '../runs/run-store.js';
-import { diffRuns as diffVerificationRuns } from '../runs/run-diff.js';
+import { diffRuns as diffVerificationRuns, type RunDiff as VerificationRunDiff } from '../runs/run-diff.js';
 
 /** The diff between the two most-recent runs for a name — the "did it behave like last time?" answer. */
 interface RunDiff {
@@ -67,7 +67,7 @@ function lastTwoFor(runs: RunRecord[], name: string): [RunRecord, RunRecord] | u
  * The per-flow diff between the two most-recent verification ARTIFACTS (.reticle/runs), or undefined when
  * fewer than two exist. Never throws — a missing/unreadable artifact must not break reading run history.
  */
-async function lastTwoRunArtifacts(deps: ToolDeps): Promise<unknown | undefined> {
+async function lastTwoRunArtifacts(deps: ToolDeps): Promise<VerificationRunDiff | undefined> {
   try {
     const pair = await new RunStore(deps.fs, deps.reticleRoot).latestTwo();
     return pair === undefined ? undefined : diffVerificationRuns(pair[0], pair[1]);
