@@ -35,6 +35,8 @@ export interface ReticleDirPaths {
   ambient: string;
   /** .../.reticle/flake.json (per-flow flake ledger) */
   flake: string;
+  /** .../.reticle/assertion-tiers.json (last-passing assertion tiers; anti-reward-hacking baseline) */
+  tiers: string;
 }
 
 export function reticleDirPaths(root: string): ReticleDirPaths {
@@ -50,6 +52,7 @@ export function reticleDirPaths(root: string): ReticleDirPaths {
     envelopes: join(root, ReticleDir.ENVELOPES_FILE),
     ambient: join(root, ReticleDir.AMBIENT_FILE),
     flake: join(root, ReticleDir.FLAKE_FILE),
+    tiers: join(root, ReticleDir.TIERS_FILE),
   };
 }
 

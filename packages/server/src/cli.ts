@@ -9,6 +9,8 @@ import { createNodeFileSystem, type FileSystemPort } from './project/fs-port.js'
 import { affectedSavedFlows, type NamedFlow } from './flows/flow-sources.js';
 import { gateDecision } from './flows/gate.js';
 import { FlakeStore } from './flows/flake-store.js';
+import { AssertionTiersStore } from './flows/assertion-tiers-store.js';
+import { detectDowngrades } from './flows/assertion-integrity.js';
 import { computeCoverage } from './flows/coverage.js';
 import { changedFilesSince } from './flows/git-changed.js';
 import { checkForUpdate } from './update/update-checker.js';
@@ -242,7 +244,33 @@ async function handleGate(files: string[], since: string | undefined): Promise<v
       .filter((f) => f.status === RunFlowStatus.PASS || f.status === RunFlowStatus.HEALED)
       .map((f) => f.name);
     const flaky = await new FlakeStore(fs, reticleRoot).flakyFlows();
-    const result = gateDecision({ affected, passing, flaky });
+    // Anti-reward-hacking (B37): diff each flow's CURRENT assertions against what it asserted the last
+    // time it passed. A mustHold that dropped from a real consequence to a fakeable presence check is a
+    // green bought by weakening the test — and a flow that covered a changed file but no longer exists
+    // is coverage deleted rather than satisfied. Both block.
+    const baseline = await new AssertionTiersStore(fs, reticleRoot).load();
+    const byName = new Map(allFlows.map((f) => [f.name, f]));
+    const downgraded = Object.entries(baseline)
+      .filter(([name]) => affected.includes(name) && byName.has(name))
+      .map(([name, before]) => {
+        const current = byName.get(name);
+        const after = (current?.steps ?? []).map((s, i) => ({
+          step: i,
+          ...(s.expect === undefined ? {} : { expect: s.expect }),
+        }));
+        return { flow: name, steps: detectDowngrades(before.steps, after).map((d) => d.step) };
+      })
+      .filter((d) => d.steps.length > 0);
+    // A flow with a recorded passing baseline that has since vanished, while its files changed.
+    // A flow that PASSED covering these files and has since vanished is coverage DELETED, not satisfied —
+    // and it can never appear in `affected` (that is derived from flows that still exist), so it must be
+    // matched against the baseline's own recorded sources. Missing this made deleting a flow turn the
+    // gate green, which is precisely the gaming move B37 exists to stop.
+    const changedSet = new Set(changed);
+    const deleted = Object.entries(baseline)
+      .filter(([name, entry]) => !byName.has(name) && entry.sources.some((f) => changedSet.has(f)))
+      .map(([name]) => name);
+    const result = gateDecision({ affected, passing, flaky, downgraded, deleted });
     // Verified-surface coverage over flows: how much of the saved suite this run actually exercised.
     const coverage = computeCoverage(
       { testids: [], signals: [], flows: allFlows.map((f) => f.name) },
@@ -252,6 +280,8 @@ async function handleGate(files: string[], since: string | undefined): Promise<v
       pass: result.pass,
       uncovered: result.uncovered,
       quarantined: result.quarantined,
+      ...(result.downgraded.length > 0 ? { downgraded: result.downgraded } : {}),
+      ...(result.deleted.length > 0 ? { deletedCoverage: result.deleted } : {}),
       coverage: { pct: coverage.flows.pct, covered: coverage.flows.covered, total: coverage.flows.total },
     });
     if (!result.pass) process.exitCode = 1;

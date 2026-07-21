@@ -17,6 +17,8 @@ import { assertSuccess, dynamicTestids, successLabel, SUCCESS_STEP_TOOL } from '
 import { buildDecision } from './decision.js';
 import { waitForPredicate } from '../events/predicate.js';
 import { computeSegments } from '../journal/rollups.js';
+import { AssertionTiersStore } from './assertion-tiers-store.js';
+import { toFlowSources } from './flow-sources.js';
 import { reportAndAccumulate } from '../journal/deviation-service.js';
 import { EnvelopeStore } from '../journal/envelope-store.js';
 import type { DeviationReport } from '../journal/deviation-report.js';
@@ -170,6 +172,16 @@ export async function replayNamedFlow(
   const allOk = steps.every((s) => s.ok);
   const status = driftSteps > 0 ? ReplayStatus.DRIFT : allOk ? ReplayStatus.OK : ReplayStatus.ERROR;
   await recordReplayRun(deps, name, status, driftSteps, deps.now() - startedAt);
+  // Anti-reward-hacking baseline (B37): record what this flow asserted ONLY when it passed clean. A
+  // failing run must never become the baseline a later weakening is measured against.
+  if (status === ReplayStatus.OK) {
+    await new AssertionTiersStore(deps.fs, deps.reticleRoot).recordPassing(
+      name,
+      loaded.value.steps.map((s, i) => ({ step: i, ...(s.expect === undefined ? {} : { expect: s.expect }) })),
+      // Record what this flow COVERS so a later deletion can be scoped to the files that changed.
+      toFlowSources([{ name, steps: loaded.value.steps }])[0]?.sources ?? [],
+    );
+  }
   // Push-default: the deviation report over this drive's segments, learned across runs. Best-effort.
   const deviation = await computeReplayDeviation(deps, session, replayFloor);
   const failed = steps.find((step) => !step.ok && step.drift === undefined);

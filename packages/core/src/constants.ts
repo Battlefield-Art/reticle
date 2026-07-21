@@ -126,6 +126,8 @@ export const ReticleDir = {
   AMBIENT_FILE: 'ambient.json',
   /** per-flow flake ledger — replay outcomes that decide intermittent-failure quarantine. */
   FLAKE_FILE: 'flake.json',
+  /** Per-flow assertion tiers recorded on each PASSING replay — the gate's anti-downgrade baseline. */
+  TIERS_FILE: 'assertion-tiers.json',
   /**
    * Auto-provisioned bridge pairing token, stored at ~/.reticle/pairing-token (mode 0600). Written by
    * the daemon, read Node-side by the build plugins to inject into connect(). A browser sandbox cannot
