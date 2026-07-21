@@ -336,6 +336,23 @@ describe('settled predicate (deterministic waiting)', () => {
     expect(r.pass).toBe(true); // settled: chat-log churn is ambient, excluded from the settle oracle
   });
 
+  it('a churning FEED (new element each tick, ref-less removals) still settles — the B11 acceptance', async () => {
+    // The real hostile shape: every appended row is a NEW element (fresh ref) and each removal has NO
+    // ref, so ref-keyed exclusion never applied and settle stayed blocked forever. Keyed on the stable
+    // region, the same stream is correctly treated as ambient.
+    const churn: ReticleEvent[] = [];
+    for (let i = 0; i < 6; i++) {
+      churn.push({ t: 980 + i, type: EventType.DOM_ADDED, sessionId: 's', ref: `e${String(800 + i)}`, data: { region: 'hostile-feed' } });
+      churn.push({ t: 981 + i, type: EventType.DOM_REMOVED, sessionId: 's', data: { region: 'hostile-feed' } });
+    }
+    const notLearned = new FakeSession(churn, undefined, 1000);
+    expect((await evaluatePredicate(notLearned, { kind: 'settled', quietMs: 200 }, 0)).pass).toBe(false);
+
+    const learned = new FakeSession(churn, undefined, 1000, { 'hostile-feed': 40 });
+    const r = await evaluatePredicate(learned, { kind: 'settled', quietMs: 200 }, 0);
+    expect(r.pass).toBe(true); // settles despite a feed that never stops churning
+  });
+
   it('keeps a non-ambient structural change even while an ambient region churns', async () => {
     // The chat churns (ambient) AND a real modal mounts on a different ref → still NOT settled.
     const session = new FakeSession(
