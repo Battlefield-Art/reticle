@@ -105,7 +105,9 @@ export function installReticle(): void {
     ...(allowNonLocalhost ? { allowNonLocalhost: true } : {}),
     ...(typeof token === 'string' && token.length > 0 ? { token } : {}),
   });
-  registerStore('app', () => useApp.getState());
+  // Pass the store itself (not a getter) so Reticle wires subscribe too — every mutation emits a
+  // STATE_CHANGE path diff, which is what fills `stateDiffs` in the causal summary.
+  registerStore('app', useApp);
   registerCapabilities({
     testids: TESTIDS,
     signals: Object.values(Sig),

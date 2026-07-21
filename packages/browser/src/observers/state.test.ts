@@ -43,6 +43,26 @@ describe('diffState', () => {
 describe('installStoreState', () => {
   afterEach(() => {
     unregisterStore('cart');
+    unregisterStore('late');
+  });
+
+  it('observes a store registered AFTER install (the real app ordering)', () => {
+    // Regression: the SDK installs observers during connect(), but apps call registerStore() after —
+    // so enumerating once at install subscribed to nothing and STATE_CHANGE never fired in any real app.
+    const events: Captured[] = [];
+    const teardown = installStoreState((type, data) => events.push({ type, data }));
+
+    const store = fakeStore<{ count: number }>({ count: 1 });
+    registerStore('late', store); // registered AFTER installStoreState
+    store.setState({ count: 2 });
+
+    const changes = events.filter((e) => e.type === EventType.STATE_CHANGE);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]?.data).toMatchObject({ name: 'late', path: 'count', old: 1, value: 2 });
+
+    teardown();
+    store.setState({ count: 3 });
+    expect(events.filter((e) => e.type === EventType.STATE_CHANGE)).toHaveLength(1);
   });
 
   it('emits STATE_CHANGE path diffs when a subscribed store mutates', () => {

@@ -362,7 +362,7 @@ onSaved(() => reticle.signal('order:saved', { id, total }));
 
 ```ts
 import { registerStore } from '@reticlehq/react';
-registerStore('cart', () => useCart.getState());
+registerStore('cart', useCart); // pass the store itself → auto STATE_CHANGE diffs
 // agent: reticle_state({ store: 'cart' })  → { stores: { cart: {...} } }
 ```
 

@@ -31,15 +31,18 @@ describe('causalSummary', () => {
     expect(summary.longTasks).toBe(1);
   });
 
-  it('reports state/storage as before→after DIFFS (from the events old/new), not just names', () => {
+  it('reports state/storage as before→after DIFFS, using the shape the observers really emit', () => {
+    // STATE_CHANGE is emitted by the store observer as { name, path, value, old } — `value` is the AFTER
+    // side. An earlier version of this test invented an {old,new} shape, so stateDiffs silently stayed
+    // empty against a live app even though the unit test passed. Assert the REAL wire shape.
     const summary = causalSummary([
-      e(EventType.STATE_CHANGE, { name: 'cart.count', path: 'cart.count', old: 0, new: 1 }),
+      e(EventType.STATE_CHANGE, { name: 'app', path: 'cart.count', old: 0, value: 1 }),
       e(EventType.STORAGE_CHANGE, { area: 'local', key: 'token', old: 'a', new: 'b' }),
     ]);
     expect(summary.stateDiffs).toEqual([{ path: 'cart.count', from: 0, to: 1 }]);
     expect(summary.storageDiffs).toEqual([{ key: 'token', from: 'a', to: 'b' }]);
     // The lean name lists stay for the compact index.
-    expect(summary.statePathsChanged).toEqual(['cart.count']);
+    expect(summary.statePathsChanged).toEqual(['app']); // the store name, as the observer emits it
     expect(summary.storageKeysChanged).toEqual(['token']);
   });
 

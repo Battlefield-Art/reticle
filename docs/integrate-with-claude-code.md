@@ -44,7 +44,7 @@ Then do all of this:
    - emit at moments the DOM can't express (save succeeded, webhook received, edit applied,
      caption generated) via commitAndSignal(emit, () => mutate(), '<name>', {...}) at commit
      points so the mutation↔signal can't drift
-   - registerStore('<name>', () => myStore.getState()) for any state worth asserting
+   - registerStore('<name>', myStore) for any state worth asserting (pass the store, not a getter — that also wires change diffs)
    - self-register each domain with registerReticleDomain({ testids:[...], signals:[...],
      stores:[...] }) co-located per domain, so reticle_capabilities() assembles the surface
      without a central map to forget

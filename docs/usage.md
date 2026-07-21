@@ -815,7 +815,7 @@ No need to broadcast a signal for every fact. Register stores in your app:
 
 ```ts
 import { registerStore } from '@reticlehq/react';
-registerStore('workspace', () => useWorkspace.getState());
+registerStore('workspace', useWorkspace); // pass the store itself → auto STATE_CHANGE diffs
 ```
 
 ```jsonc

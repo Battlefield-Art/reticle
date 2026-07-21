@@ -1,5 +1,10 @@
 import { EventType, REDACTED_VALUE } from '@reticlehq/core';
-import { subscribableStores, type StoreGetter } from '../registry/stores.js';
+import {
+  subscribableStores,
+  onStoreRegistered,
+  type StoreGetter,
+  type StoreSubscribe,
+} from '../registry/stores.js';
 import { isSensitiveKey, sanitizeForTransport } from '../security/serialization.js';
 import type { Emit, Teardown } from './types.js';
 
@@ -49,7 +54,10 @@ function safeRead(getter: StoreGetter): unknown {
  */
 export function installStoreState(emit: Emit): Teardown {
   const unsubscribes: Array<() => void> = [];
-  for (const [name, getter, subscribe] of subscribableStores()) {
+  const seen = new Set<string>();
+  const watch = ([name, getter, subscribe]: [string, StoreGetter, StoreSubscribe]): void => {
+    if (seen.has(name)) return; // a re-registration (HMR) must not double-emit
+    seen.add(name);
     let last = safeRead(getter);
     unsubscribes.push(
       subscribe(() => {
@@ -65,7 +73,12 @@ export function installStoreState(emit: Emit): Teardown {
         last = next;
       }),
     );
-  }
+  };
+  // Stores already registered...
+  for (const entry of subscribableStores()) watch(entry);
+  // ...and any registered LATER. The SDK installs observers during connect(), but apps call
+  // registerStore() after that, so without this the common case subscribes to nothing.
+  unsubscribes.push(onStoreRegistered(watch));
   return () => {
     for (const unsubscribe of unsubscribes) unsubscribe();
   };

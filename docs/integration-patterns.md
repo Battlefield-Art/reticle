@@ -101,7 +101,7 @@ If `mutate` throws, the mutation never happened — so **the signal is not emitt
 
 > **The documented exception:** genuinely view-level signals — render or async completions like `diff:shown` or `caption:generated`, which aren't store state — legitimately stay in your components. Only commit-point signals belong in the store layer.
 
-Pair this with store registration so the agent can _read_ state instead of you emitting a signal per fact: `registerStore('workspace', () => useWorkspace.getState())`, then `reticle_state({ store: 'workspace' })`.
+Pair this with store registration so the agent can _read_ state instead of you emitting a signal per fact: `registerStore('workspace', useWorkspace)`, then `reticle_state({ store: 'workspace' })`.
 
 ## 4 — Self-registering domains (`registerReticleDomain`)
 

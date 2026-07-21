@@ -86,10 +86,14 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
         break;
       case EventType.STATE_CHANGE: {
         pushUnique(statePathsChanged, data['name']);
-        // The path/old/new the subscribed-store observer emits → a real before→after diff, not a reading.
+        // The subscribed-store observer emits { name, path, value, old } — `value` is the AFTER side
+        // (`new` is accepted too for any producer that uses it). Presence of either makes it a real
+        // before→after diff rather than a bare reading.
         const path = typeof data['path'] === 'string' ? data['path'] : data['name'];
-        if (typeof path === 'string' && path.length > 0 && 'old' in data && 'new' in data) {
-          stateDiffs.push({ path, from: capValue(data['old']), to: capValue(data['new']) });
+        const hasAfter = 'value' in data || 'new' in data;
+        if (typeof path === 'string' && path.length > 0 && ('old' in data || hasAfter)) {
+          const after = 'value' in data ? data['value'] : data['new'];
+          stateDiffs.push({ path, from: capValue(data['old']), to: capValue(after) });
         }
         break;
       }

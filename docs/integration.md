@@ -60,7 +60,7 @@ Reticle embeds a **dev/preview-only** SDK (`@reticlehq/browser`, Apache-2.0, tre
 | Layer | What you add | Unlocks | Effort |
 | --- | --- | --- | --- |
 | **1 — drive + DOM/network/console** | 1 build-plugin line + ~10-line dev-only `reticle.connect({…})` file (`npx @reticlehq/server init` does it) | broken routes, network status/cardinality (double-submit), console errors, persistence-after-reload | **Easy** (~15 min) |
-| **2 — program-state truth** | `registerStore('app', () => store.getState())` (1/store) + `reticle.signal('order:saved', …)` (1/consequence) + `data-testid`s | UI-vs-store desync, dead handlers, blast-radius, source mapping | **Easy–Medium** (an afternoon, once) |
+| **2 — program-state truth** | `registerStore('app', store)` (1/store, pass the store itself so mutations emit diffs) + `reticle.signal('order:saved', …)` (1/consequence) + `data-testid`s | UI-vs-store desync, dead handlers, blast-radius, source mapping | **Easy–Medium** (an afternoon, once) |
 | **3 — governance (optional)** | `registerCapabilities(...)` (signals/stores/risk zones) + recorded flows with success oracles | risk policy + sharper verdicts | **Medium**, optional |
 
 Copyable patterns: `apps/demo/src/reticle-dev.ts`, `apps/next-smoke/app/reticle-dev.tsx`. Without instrumentation, Layer-1 checks still work via the driven browser; Layers 2–3 are what no out-of-page tool can see.
