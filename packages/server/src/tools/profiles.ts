@@ -31,12 +31,21 @@ export type ToolProfile = (typeof TOOL_PROFILE)[keyof typeof TOOL_PROFILE];
 
 export const TOOL_PROFILE_ENV = 'RETICLE_TOOL_PROFILE';
 
-// The set an agent needs to verify a change end-to-end. Tool DEFINITIONS are re-sent every turn,
-// so a smaller surface compounds — but there is a floor: an 8-tool cut (dropping act/navigate/
-// wait_for/sessions) was MEASURED to regress real-agent accuracy from 5/5 to 3/5, because the
-// model loses scaffolding and wanders (more turns) on harder flows. These 12 are the lean sweet
-// spot that holds 5/5 in a real gpt-4o loop. Direct network/console stay (far more discoverable
-// than observe-with-filters → fewer turns, better verdicts). See bench/LAYER-B.md.
+// The set an agent needs to verify a change end-to-end. Tool DEFINITIONS are re-sent every turn, so a
+// smaller surface compounds. Measured per-turn surface cost (bench/first-drive, o200k proxy):
+// core 6,479 tok (12 tools) · standard 13,951 (40) · full 20,441 (56) — the hybrid default is ~68%
+// cheaper per turn than advertising everything.
+//
+// There is a floor, though: an 8-tool cut (dropping act/navigate/wait_for/sessions) was MEASURED to
+// regress real-agent accuracy 5/5 → 3/5, because the model loses scaffolding and wanders on harder
+// flows. These 12 are the lean sweet spot. Direct network/console stay (far more discoverable than
+// observe-with-filters → fewer turns, better verdicts).
+//
+// Evidence status (B05): the original 5/5 figure came from a single gpt-4o run and is STALE as a
+// justification. Current-model evidence is indirect but real — the v2.2.0 cost-delta run
+// (bench/fix-loop/COST-DELTA.md) drove this hybrid default on a current model and fixed 4/4 cells with
+// ~25% FEWER tool calls than the v2.1.0 baseline. A formal core-vs-hybrid A/B on a current model is
+// still UNRUN; do not quote the 5/5 number as if it were current. See bench/LAYER-B.md.
 export const CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   ReticleTool.SESSIONS,
   ReticleTool.NAVIGATE,
