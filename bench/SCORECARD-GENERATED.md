@@ -7,8 +7,8 @@ command that would produce it — there is deliberately no way to hand-write a f
 
 | harness | bugs | caught | of what it can catch | **false positives on clean** | avg bytes/bug | avg ms/bug |
 |---|---|---|---|---|---|---|
-| reticle-script | 85 | 78 | 78/81 | **0** | 8010 | 3572 |
-| playwright-script | 85 | 56 | 54/57 | **0** | 8233 | 32461 |
+| reticle-script | 85 | 78 | 78/81 | **0** | 11771 | 3589 |
+| playwright-script | 85 | 57 | 55/57 | **0** | 8234 | 32414 |
 
 False positives are the column that matters most: a verification tool that flags a healthy build
 is worse than no tool, because it trains the team to ignore it.
@@ -20,7 +20,7 @@ Severity is graded by consequence to the user, not by how hard the bug is to fin
 | severity | bugs | reticle | playwright | caught by neither |
 |---|---|---|---|---|
 | critical | 25 | 24 | 8 | 0 |
-| high | 29 | 29 | 22 | 0 |
+| high | 29 | 29 | 23 | 0 |
 | medium | 24 | 24 | 23 | 0 |
 | low | 5 | 1 | 3 | 2 |
 
@@ -31,10 +31,10 @@ reported rather than the mean, because a single slow outlier makes a mean meanin
 
 | harness | decisions | median ms | p90 ms | total bytes pulled |
 |---|---|---|---|---|
-| reticle-script | 170 | 3296 | 6404 | 1,362,558 |
-| playwright-script | 170 | 31915 | 34995 | 1,308,607 |
+| reticle-script | 170 | 3318 | 6422 | 2,001,978 |
+| playwright-script | 170 | 31937 | 34655 | 1,308,742 |
 
-**Median decision latency: 9.7x faster** (3296ms vs 31915ms).
+**Median decision latency: 9.6x faster** (3318ms vs 31937ms).
 Both harnesses are deterministic scripts with no model in the loop, so this compares the
 OBSERVATION path only — not agent reasoning, which dominates a real loop and is measured separately.
 

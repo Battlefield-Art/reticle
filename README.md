@@ -60,7 +60,7 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 | **False positives (clean build)**                         | **0** (Playwright 0)                              |
 | False-positive traps (bug-shaped non-bugs)                | **2 / 2 held** (Playwright 2 / 2)                 |
 | Wall-time per bug                                         | **3.6 s** vs Playwright 32.5 s                    |
-| Output consumed per bug                                   | 8.0 KB vs Playwright 8.2 KB — _parity, see below_ |
+| Output consumed per bug                                   | 11.8 KB vs Playwright 8.2 KB — _we cost more_     |
 | Reports that name the file to open (`file:line`)          | **83 / 85** carry one; **79** name the exact file |
 | Cost to re-run a 4-flow regression suite                  | **~47 tokens**, constant in suite size            |
 | Same suite, LLM re-driven (Playwright/DevTools MCP)       | ~120,000 tokens                                   |
@@ -93,6 +93,11 @@ gap is 24 vs 8. **Use both.** That is the honest recommendation, and it's why we
   are the ones that survived an adversarial pass on the competitor's side.
 - **2,574× was labelled "Speed-up".** It is a _token cost_ ratio for re-running a recorded suite, not
   a wall-clock one. The wall-clock number is 9×.
+- **We now consume MORE output per bug than Playwright, not less.** Attaching the `file:line` to every
+  element we report costs about 47% more bytes (8.0 KB → 11.8 KB). We think that trade is right —
+  the published repair literature puts file-level localization at roughly +50pp of fix rate, and
+  measures better localization as *reducing* an agent's total tokens by cutting the search — but we
+  have not measured that end-to-end ourselves, so treat it as a considered bet, not a proven one.
 
 **Where we lose:** Playwright catches paint-level regressions we can't see (a global CSS filter leaves
 every computed style identical — that needs pixels), and it caught one request-payload bug we missed.

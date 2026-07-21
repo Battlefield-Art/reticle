@@ -9,7 +9,7 @@ are ignored here — only the run counts.
 > catch them existed and simply were not called. Two of those six are now scored as parity.
 > A moat claim is only as strong as the adversarial pass on the COMPETITOR's harness.
 
-## Measured: 25 Reticle-only · 53 parity · 3 Playwright-only · 2 missed by both
+## Measured: 24 Reticle-only · 54 parity · 3 Playwright-only · 2 missed by both
 
 ### CRITICAL severity (17)
 
@@ -33,11 +33,10 @@ are ignored here — only the run counts.
 | `swallowed-500-login` | login actually succeeded (not a 500 the UI proceeded past) | the fault is CLIENT-side — the app receives a 500 the wire never carried. A request/response observer sees the real 200 and nothing wrong. |
 | `wrong-content-type` | the generate endpoint answers JSON (not an HTML error page with a 200) | the fault is CLIENT-side — the app receives a 500 the wire never carried. A request/response observer sees the real 200 and nothing wrong. |
 
-### HIGH severity (7)
+### HIGH severity (6)
 
 | bug | what breaks | why a script outside the page cannot see it |
 |---|---|---|
-| `forbidden-500-newdeploy` | opening the new-deploy modal never fires a stray GET /api/broken/500 | (no structural claim recorded — treat as unproven) |
 | `sse-silent-stop` | the build-log stream actually delivers frames, not just an open connection | SSE/WebSocket FRAMES delivered vs rendered. Playwright exposes WS frames (so those are scored as parity), but comparing frames received against DOM produced needs both halves at once. |
 | `sse-malformed-frame` | every frame the stream delivers is actually rendered — none silently dropped | SSE/WebSocket FRAMES delivered vs rendered. Playwright exposes WS frames (so those are scored as parity), but comparing frames received against DOM produced needs both halves at once. |
 | `signal-missing-generate` | generating a script announces compose:generated exactly once | a declared domain signal has no DOM representation at all. Nothing renders when it fails to fire. |
