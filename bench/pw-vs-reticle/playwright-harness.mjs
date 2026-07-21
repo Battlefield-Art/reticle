@@ -7,6 +7,18 @@ import { chromium } from 'playwright';
 import { bugUrl, storageBugUrl } from './bugs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * How long to wait for a RESPONSE before judging its status or body.
+ *
+ * apps/api delays /api/generate-script by LLM_DELAY_MS (1500ms default) to imitate a real model call.
+ * The old 800ms window closed while the request was still in flight, so the check saw
+ * `statuses=pending` and read "no successful call" as the bug — a false positive on every clean build.
+ * Must comfortably exceed that delay; counting REQUESTS is unaffected (they fire immediately), which
+ * is why only the status/body checks need it.
+ */
+const RESPONSE_SETTLE_MS = 3000;
+
 const sel = (t) => `[data-testid="${t}"]`;
 
 export async function runPlaywright(bugs) {
@@ -31,6 +43,11 @@ export async function runPlaywright(bugs) {
         if (m.type() === 'error') consoleErrors.push(m.text());
       });
       page.on('request', (r) => requests.push({ url: r.url(), method: r.method() }));
+      // Sockets open during setup, so this must be attached before any navigation happens.
+      const wsFrames = [];
+      page.on('websocket', (ws) =>
+        ws.on('framereceived', (f) => wsFrames.push(String(f.payload))),
+      );
       // Response statuses: Playwright CAN see these, so the hidden-500 class is fairly 'both'.
       const responses = [];
       page.on('response', (r) =>
@@ -62,9 +79,13 @@ export async function runPlaywright(bugs) {
             await sleep(200);
           }
         };
-        for (const t of bug.setup) {
-          await waitFor(t);
-          await click(t);
+        for (const step of bug.setup) {
+          // Same two shapes as the reticle harness: a testid to click, or {fill,text} to type into.
+          const isFill = typeof step === 'object' && step !== null && typeof step.fill === 'string';
+          const testid = isFill ? step.fill : step;
+          await waitFor(testid);
+          if (isFill) await page.locator(sel(testid)).fill(step.text ?? '').catch(() => {});
+          else await click(testid);
           await sleep(400);
         }
         const seen = await page
@@ -291,8 +312,10 @@ export async function runPlaywright(bugs) {
         } else if (c.kind === 'streamPayloadAfter') {
           // Playwright DOES expose WebSocket frames via page.on('websocket'), so this one is a fair
           // 'both' — claiming it as reticle-only would be charity to ourselves.
-          const frames = [];
-          page.on('websocket', (ws) => ws.on('framereceived', (f) => frames.push(String(f.payload))));
+          // wsFrames is attached at page creation: the app opens its socket when the view mounts,
+          // during SETUP, so a listener registered here would miss every frame and report 0 on a
+          // healthy build.
+          const frames = wsFrames;
           for (const t of c.steps ?? []) {
             await click(t);
             await sleep(250);
@@ -334,7 +357,7 @@ export async function runPlaywright(bugs) {
           await fillPrep(c.prep);
           const ok = await waitFor(c.steps[0]);
           if (ok) await click(c.steps[0]);
-          await sleep(800);
+          await sleep(RESPONSE_SETTLE_MS);
           const matches = responses.filter((r) => r.url.includes(c.urlContains));
           const good = matches.filter(
             (r) =>

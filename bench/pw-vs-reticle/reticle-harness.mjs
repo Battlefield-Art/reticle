@@ -24,6 +24,18 @@ const parseText = (t) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * How long to wait for a RESPONSE before judging its status or body.
+ *
+ * apps/api delays /api/generate-script by LLM_DELAY_MS (1500ms default) to imitate a real model call.
+ * The old 800ms window closed while the request was still in flight, so the check saw
+ * `statuses=pending` and read "no successful call" as the bug — a false positive on every clean build.
+ * Must comfortably exceed that delay; counting REQUESTS is unaffected (they fire immediately), which
+ * is why only the status/body checks need it.
+ */
+const RESPONSE_SETTLE_MS = 3000;
+
+
+/**
  * Two URLs belong to the same benchmark run when they share an origin and a query string. The path is
  * deliberately ignored — the app rewrites it via history.pushState as soon as it routes.
  */
@@ -148,17 +160,26 @@ export async function runReticle(bugs) {
   let lastSince;
   const clickSteps = async (steps) => {
     const missed = [];
-    for (const t of steps) {
-      const ref = await waitRef(t);
-      if (ref) {
-        const res = await call('reticle_act', {
-          sessionId: sid,
-          ref,
-          action: 'click',
-          args: CLICK_ARGS,
-        });
-        lastSince = res?.since ?? lastSince;
-      } else missed.push(t);
+    for (const step of steps) {
+      // A setup step is either a testid to click, or {fill,text} to type into. The fill form was
+      // never handled here: it fell through to waitRef(object), missed, and was skipped. Compose's
+      // generate() early-returns on an empty prompt, so the request under test never fired and the
+      // check read "no matching call" as the bug — a false positive on five net bugs.
+      const isFill = typeof step === 'object' && step !== null && typeof step.fill === 'string';
+      const testid = isFill ? step.fill : step;
+      const ref = await waitRef(testid);
+      if (!ref) {
+        missed.push(testid);
+        await sleep(250);
+        continue;
+      }
+      const res = await call('reticle_act', {
+        sessionId: sid,
+        ref,
+        action: isFill ? 'fill' : 'click',
+        args: isFill ? { value: step.text ?? '' } : CLICK_ARGS,
+      });
+      lastSince = res?.since ?? lastSince;
       await sleep(250);
     }
     return missed;
@@ -254,7 +275,7 @@ export async function runReticle(bugs) {
           await doPrep(c.prep);
           const ref = await waitRef(c.steps[0]);
           if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
-          await sleep(800);
+          await sleep(RESPONSE_SETTLE_MS);
           const net = await call('reticle_network', { sessionId: sid, limit: 50 });
           const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
           const good = matches.filter((e) => {
@@ -273,7 +294,7 @@ export async function runReticle(bugs) {
           await doPrep(c.prep);
           const ref = await waitRef(c.steps[0]);
           if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
-          await sleep(800);
+          await sleep(RESPONSE_SETTLE_MS);
           const net = await call('reticle_network', { sessionId: sid, limit: 50 });
           const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
           const field = c.direction === 'request' ? 'requestBody' : 'responseBody';
@@ -320,7 +341,7 @@ export async function runReticle(bugs) {
           // §4.6 long task: the main thread was blocked. Invisible to any DOM assertion.
           const ref = await waitRef(c.steps[0]);
           if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
-          await sleep(800);
+          await sleep(RESPONSE_SETTLE_MS);
           const obs = await call('reticle_observe', { sessionId: sid, limit: 200 });
           const longTasks = Number(obs?.summary?.longTasks ?? 0);
           caught = ref ? longTasks > 0 : false;

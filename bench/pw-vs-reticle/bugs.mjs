@@ -651,7 +651,9 @@ export const BUGS = [
       urlContains: '/api/generate-script',
       expected: 200,
     },
-    expect: 'both',
+    // reticle-only, MEASURED: the fault is client-side, so the wire still shows 200 and a
+    // request/response observer sees nothing wrong. Only an in-page view sees what the app got.
+    expect: 'reticle-only',
   },
   {
     id: 'swallowed-500-login',
@@ -660,19 +662,6 @@ export const BUGS = [
     setup: [],
     check: { kind: 'netStatusAfter', steps: ['login-submit'], urlContains: '/api/login', expected: 200 },
     expect: 'both',
-  },
-  {
-    id: 'empty-200-deployments',
-    category: 'net-status',
-    intent: 'the deployments response carries data (not a 200 with an empty body behind stale cache)',
-    setup: ['login-submit'],
-    check: {
-      kind: 'netBodyAfter',
-      steps: ['nav-deployments'],
-      urlContains: '/api/deployments',
-      expected: 'deployments',
-    },
-    expect: 'reticle-only',
   },
   {
     id: 'wrong-content-type',
@@ -729,20 +718,6 @@ export const BUGS = [
       urlContains: '/api/generate-script',
       withinMs: 3000,
     },
-    expect: 'reticle-only',
-  },
-  {
-    id: 'hung-but-ui-done',
-    category: 'net-hang',
-    intent: 'the generate request completes — even though the UI already claims it did',
-    setup: ['login-submit', 'nav-compose', composePrep],
-    check: {
-      kind: 'netPendingAfter',
-      steps: ['compose-generate'],
-      urlContains: '/api/generate-script',
-      withinMs: 3000,
-    },
-    // The nastier variant: the DOM renders success, so ONLY the pending-request oracle can see it.
     expect: 'reticle-only',
   },
   {

@@ -15,9 +15,14 @@ if (import.meta.env.DEV) {
   // would actually face, with NO HUD overlay to fight. The bug injector still runs, so the same bug
   // is present; only Reticle's own instrumentation is absent. (Reticle-MCP uses the normal build.)
   const noHud = new URLSearchParams(window.location.search).has('no-hud');
+  // The injector goes FIRST so its fetch/history patches sit UNDERNEATH Reticle's observers.
+  // Reticle patches window.fetch on connect; whichever installs last is outermost. With Reticle first,
+  // the injector wrapped it, so a rewritten response (a swallowed 500, a wrong content-type) was
+  // applied AFTER Reticle had already recorded the real 200 — the fault was invisible to the very
+  // tool meant to catch it, and three net bugs silently never fired.
+  installBugInjector(); // no-op unless ?reticle-bug=<ids> — injects UI bugs for the benchmark
   if (!noHud) installReticle(); // presenter (glow+cursor+HUD) + capabilities + store registration
   installRegressions(); // no-op unless ?reticle-break=<testids> — controlled regression knob for benchmarks
-  installBugInjector(); // no-op unless ?reticle-bug=<ids> — injects UI bugs (computed-style/geometry + state-desync) for the benchmark
   installOpaqueShell(); // no-op unless ?opaque=<1|2> — strips testids (+role/aria) for the opaque-shell metric
 }
 
