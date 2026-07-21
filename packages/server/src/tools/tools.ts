@@ -206,10 +206,21 @@ const RAW_TOOLS: ToolDef[] = [
               .record(z.string())
               .optional()
               .describe('Present only for attributes requested via `attrs` and found on the element.'),
+            source: z
+              .string()
+              .optional()
+              .describe(
+                'Where this element is written, as `file:line` — open this to change it. Present when the app is built with the Reticle plugin in dev; absent in production builds.',
+              ),
           }),
         )
         .optional(),
-      count: z.number().optional().describe('Match count — present when count_only is set.'),
+      count: z
+        .number()
+        .optional()
+        .describe(
+          'How many elements MATCHED — always exact, even when the returned list was capped. Never derive a count from elements.length.',
+        ),
       total: z
         .number()
         .optional()
@@ -302,8 +313,27 @@ const RAW_TOOLS: ToolDef[] = [
       // large inspect payload's fields to strings, which a strict shape would reject; the full object
       // is always present in the text content the agent reads.
       theme: z.unknown().optional(),
+      /**
+       * Where this element is written, as `file:line`. Present when the app is built with the
+       * Reticle build plugin in dev; absent in production builds.
+       */
+      source: z.string().optional(),
+      /**
+       * Component identity from the framework adapter (@reticlehq/react).
+       *
+       * Declared to match what the handler actually returns. It previously declared
+       * `{ name, sourceFile }` while the runtime returned `{ componentStack, source }` — the SDK
+       * passes structured content through, so the real shape won and the declaration was simply
+       * wrong. An agent reads this schema to decide what to ask for, which makes a wrong schema worse
+       * than a missing one.
+       */
       component: z
-        .object({ name: z.string().optional(), sourceFile: z.string().optional() })
+        .object({
+          componentStack: z.array(z.string()).optional(),
+          source: z
+            .object({ file: z.string(), line: z.number(), column: z.number().optional() })
+            .optional(),
+        })
         .optional(),
     },
     handler: (deps, args) =>
