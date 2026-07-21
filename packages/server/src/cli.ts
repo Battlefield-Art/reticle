@@ -9,6 +9,7 @@ import { createNodeFileSystem, type FileSystemPort } from './project/fs-port.js'
 import { affectedSavedFlows, type NamedFlow } from './flows/flow-sources.js';
 import { gateDecision } from './flows/gate.js';
 import { FlakeStore } from './flows/flake-store.js';
+import { formatBuddyStatus } from './flows/buddy-status.js';
 import { CapsuleStore } from './capsule/capsule-store.js';
 import { AssertionTiersStore } from './flows/assertion-tiers-store.js';
 import { detectDowngrades } from './flows/assertion-integrity.js';
@@ -193,6 +194,42 @@ async function loadNamedFlows(fs: FileSystemPort, reticleRoot: string): Promise<
 }
 
 /** File-change extensions worth reacting to (skip node_modules churn, dotfiles, build output). */
+
+/**
+ * The buddy channel (W14.3): one ambient line a human can park in a statusline. Deliberately best-effort
+ * and silent on failure — a status line that throws is worse than no status line, and it must never
+ * interfere with the watch loop it rides on.
+ */
+async function emitBuddyStatus(
+  fs: ReturnType<typeof createNodeFileSystem>,
+  reticleRoot: string,
+  flows: readonly NamedFlow[],
+  affected: readonly string[],
+): Promise<void> {
+  try {
+    const latest = await new RunStore(fs, reticleRoot).latest();
+    const passingNames = new Set(
+      (latest?.flows ?? [])
+        .filter((f) => f.status === RunFlowStatus.PASS || f.status === RunFlowStatus.HEALED)
+        .map((f) => f.name),
+    );
+    const quarantined = await new FlakeStore(fs, reticleRoot).flakyFlows();
+    const flaky = new Set(quarantined);
+    // A deviation is an at-risk flow with no passing artifact — and a quarantined flake is not a deviation.
+    const deviations = affected.filter((n) => !passingNames.has(n) && !flaky.has(n));
+    log('reticle_buddy', {
+      status: formatBuddyStatus({
+        total: flows.length,
+        passing: passingNames.size,
+        deviations,
+        quarantined,
+      }),
+    });
+  } catch {
+    // never let the ambient line break the watcher
+  }
+}
+
 const WATCHED_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte)$/;
 const WATCH_DEBOUNCE_MS = 200;
 
@@ -211,11 +248,12 @@ function handleWatch(): void {
     },
     onFlush: (files) => {
       void loadNamedFlows(fs, reticleRoot)
-        .then((flows) => {
+        .then(async (flows) => {
           const result = affectedSavedFlows(flows, files);
           if (result.affected.length > 0) {
             log('reticle_watch_affected', { changed: files, affected: result.affected });
           }
+          await emitBuddyStatus(fs, reticleRoot, flows, result.affected);
         })
         .catch((error) => {
           log('reticle_watch_failed', { error: error instanceof Error ? error.message : String(error) });
@@ -223,6 +261,10 @@ function handleWatch(): void {
     },
   });
   log('reticle_watch_started', { cwd: process.cwd() });
+  // Print the ambient line once at startup so the human sees where they stand before touching anything.
+  void loadNamedFlows(fs, reticleRoot)
+    .then((flows) => emitBuddyStatus(fs, reticleRoot, flows, []))
+    .catch(() => undefined);
   watch(process.cwd(), { recursive: true }, (_event, filename) => {
     if (typeof filename === 'string' && WATCHED_EXTENSIONS.test(filename)) batcher.onChange(filename);
   });

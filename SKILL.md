@@ -450,6 +450,44 @@ Then pick a mode:
    ```
 5. Record: ✅ pass / ❌ fail / ⚠️ partial
 
+### Plan then batch — do NOT ping-pong act-by-act
+
+The repeat loop is cheap (~175 tok); the expensive part is the FIRST drive of a surface you have not seen.
+Every extra round-trip pays the advertised tool surface again, so the way to make a first drive cheap is
+fewer, bigger hops — not smaller ones.
+
+**Do this** — state the whole journey, then assert its consequence once:
+
+```
+reticle_act_sequence({ sessionId, steps: [
+  { ref: emailRef,    action: "fill",   args: { value: "a@b.com" } },
+  { ref: passwordRef, action: "fill",   args: { value: "hunter2"  } },
+  { ref: submitRef,   action: "click" }
+]})
+→ reticle_assert({ sessionId, since, predicate: { kind: "allOf", predicates: [
+    { kind: "signal",  name: "auth:granted" },
+    { kind: "net",     method: "POST", urlContains: "/api/login", status: 200 },
+    { kind: "console", level: "error", absent: true }
+  ]}})
+```
+
+**Not this** — act, look, act, look:
+
+```
+act(fill email) → snapshot → act(fill password) → snapshot → act(click) → snapshot → assert
+```
+
+Both verify the same thing. The second costs several times more and gives the model more chances to
+wander off-plan mid-journey.
+
+**Declare before you act.** Name the consequence you expect *before* the action, in `until`/`mustHold` —
+never after seeing the result. An oracle written after the fact can be rationalized into agreeing with
+whatever happened; one written before cannot. `reticle_act_and_wait({ ref, action, until })` is the
+one-hop version of exactly this.
+
+**Record the first drive.** If you had to explore to find a journey, save it (`reticle_flow_save`) so the
+exploration is paid once, ever — every later run replays it deterministically for ~175 tok with no LLM.
+
 ### Smoke
 
 Walk every testid in `capabilities.testids`. For each one that is visible and interactable:

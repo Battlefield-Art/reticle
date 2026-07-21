@@ -27,7 +27,11 @@
   "navigation": [
     {
       "group": "Get started",
-      "pages": ["getting-started", "local-install", "integrate-with-claude-code"]
+      "pages": [
+        "getting-started",
+        "local-install",
+        "integrate-with-claude-code"
+      ]
     },
     {
       "group": "Integrate",
@@ -37,20 +41,30 @@
         "flows",
         "testing",
         "multi-agent-testing",
-        "human-control"
+        "human-control",
+        "deploy-checks"
       ]
     },
     {
       "group": "Concepts",
-      "pages": ["architecture", "benchmarks", "token-efficiency"]
+      "pages": [
+        "architecture",
+        "benchmarks",
+        "token-efficiency"
+      ]
     },
     {
       "group": "Reference",
-      "pages": ["usage", "agent-cheatsheet"]
+      "pages": [
+        "usage",
+        "agent-cheatsheet"
+      ]
     },
     {
       "group": "Enterprise",
-      "pages": ["enterprise"]
+      "pages": [
+        "enterprise"
+      ]
     }
   ],
   "footerSocials": {
