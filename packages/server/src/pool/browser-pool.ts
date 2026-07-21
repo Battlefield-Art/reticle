@@ -108,6 +108,11 @@ export class BrowserPool {
   }
 
   /** Currently leased contexts. */
+  /** Max simultaneous leases — the ceiling the parallel suite sizes its concurrency to (W14.2). */
+  capacity(): number {
+    return this.#max;
+  }
+
   activeCount(): number {
     return this.#active.size;
   }

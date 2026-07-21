@@ -1,10 +1,12 @@
 import { z } from 'zod';
-import { FlowErrorCode, RecordedSaveError, type FlowReplayResult } from '@reticlehq/core';
+import { FlowErrorCode, RecordedSaveError, ReplayStatus, type FlowReplayResult } from '@reticlehq/core';
 import type { FlowFile } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
-import { asString } from '../tools/tools-helpers.js';
+import { asNumber, asString } from '../tools/tools-helpers.js';
 import { log } from '../log.js';
 import { resolveCloudConfig, syncFlowToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
+import { mapWithConcurrency, resolveConcurrency } from './parallel-suite.js';
+import { acquireLeasedSession } from '../tools/lease-tools.js';
 import { buildSuiteVerdict } from './decision.js';
 import { classifyFlowAssertions } from './flow-classify.js';
 import { flowPath } from '../project/reticle-dir.js';
@@ -33,6 +35,30 @@ async function syncSavedFlowToCloud(flow: FlowFile, projectId: string | undefine
   if (result.outcome !== SyncOutcome.SYNCED) {
     log('cloud-flow-sync-failed', { flow: flow.name, status: result.status, error: result.error });
   }
+}
+
+
+/** The app URL a leased context should open — taken from the live tab, which is already on the app. */
+function leasableAppUrl(deps: ToolDeps, sessionId: string | undefined): string | undefined {
+  try {
+    const url = deps.sessions.resolve(sessionId).url;
+    return typeof url === 'string' && url.length > 0 ? url : undefined;
+  } catch {
+    return undefined; // no live session to learn the URL from → sequential path
+  }
+}
+
+/** A flow whose leased context never came up is a suite ERROR, never a silent pass. */
+function leaseFailureReplay(name: string, error: string | undefined): FlowReplayResult {
+  return {
+    name,
+    status: ReplayStatus.ERROR,
+    steps: [],
+    error: {
+      code: ReplayStatus.ERROR,
+      message: `could not run in a leased context: ${error ?? 'unknown error'}`,
+    },
+  };
 }
 
 export const FLOW_TOOLS: ToolDef[] = [
@@ -254,6 +280,12 @@ export const FLOW_TOOLS: ToolDef[] = [
         .array(z.string())
         .optional()
         .describe('Flow names to verify. Omit to verify every saved flow.'),
+      parallel: z
+        .number()
+        .optional()
+        .describe(
+          'Run this many flows at once, each in its own isolated leased browser context (needs the browser pool). Clamped to the pool capacity and the flow count. Omit for the sequential single-tab run.',
+        ),
       sessionId: z
         .string()
         .optional()
@@ -275,8 +307,36 @@ export const FLOW_TOOLS: ToolDef[] = [
       const requested = Array.isArray(args['names'])
         ? args['names'].filter((n): n is string => typeof n === 'string')
         : await deps.flows.list(sessionProjectId(deps, sessionId));
+      // PARALLEL (W14.2): flows race the DOM only when they share ONE tab. Given the lease pool, each
+      // flow gets its own isolated context, so a large suite finishes in interactive time. Opt-in via
+      // `parallel`; any missing prerequisite (no pool, unknown app URL, single flow) falls back to the
+      // sequential path rather than failing — a suite must always be runnable.
+      const parallelArg = asNumber(args['parallel']);
+      const pool = deps.pool;
+      const appUrl = leasableAppUrl(deps, sessionId);
+      if (parallelArg !== undefined && pool !== undefined && appUrl !== undefined && requested.length > 1) {
+        const concurrency = resolveConcurrency(requested.length, pool.capacity(), parallelArg);
+        const outcomes = await mapWithConcurrency(requested, concurrency, async (flowName) => {
+          const lease = await acquireLeasedSession(
+            pool,
+            (id) => deps.sessions.get(id) !== undefined,
+            appUrl,
+          );
+          try {
+            return await replayNamedFlow(deps, { flowName, sessionId: lease.sessionId });
+          } finally {
+            // Always release: a crashed flow must never leak a slot and starve the rest of the suite.
+            await lease.release().catch(() => undefined);
+          }
+        });
+        return buildSuiteVerdict(
+          outcomes.map((o, i) => ({
+            replay: o.ok && o.value !== undefined ? o.value : leaseFailureReplay(requested[i] ?? '', o.error),
+          })),
+        );
+      }
       const runs: { replay: FlowReplayResult }[] = [];
-      // Sequential: each flow replays against the same live session; parallel would race the DOM.
+      // Sequential default: every flow replays against the same live session, so they must not overlap.
       for (const flowName of requested) {
         const replay = await replayNamedFlow(deps, { flowName, sessionId });
         runs.push({ replay });
