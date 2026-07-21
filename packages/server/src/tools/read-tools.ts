@@ -380,6 +380,12 @@ export const READ_TOOLS: ToolDef[] = [
       consoleErrors: z.number(),
       hint: z.string(),
       buffer: z.unknown().optional(),
+      truncated: z
+        .boolean()
+        .optional()
+        .describe(
+          'True when the page exceeded the snapshot cap, so `interactive` is a document-order PREFIX — a floor on the controls that exist, not a total. Narrow with `scope` to reach the rest.',
+        ),
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -388,7 +394,7 @@ export const READ_TOOLS: ToolDef[] = [
         scope: args['scope'],
       });
       if (!result.ok) throw new Error(result.error ?? 'snapshot failed');
-      const snap = (result.result ?? {}) as { tree?: string };
+      const snap = (result.result ?? {}) as { tree?: string; truncated?: boolean };
       const consoleErrors = session
         .eventsSince(0)
         .filter(
@@ -396,6 +402,10 @@ export const READ_TOOLS: ToolDef[] = [
         ).length;
       return {
         interactive: parseInteractive(snap.tree ?? ''),
+        // The walk stops at its node cap and returns a document-order prefix, so an inventory taken
+        // from a big page is a floor, not a census — and this is the tool crawl's description points
+        // agents at first for "a non-destructive list of what is here".
+        ...(snap.truncated === true ? { truncated: true } : {}),
         consoleErrors,
         hint: 'act on each ref, observe the reaction, and report failed requests / console errors / dead controls',
         // Buffer-honesty: the console-error count spans the whole buffer, which evicts — signal it.
