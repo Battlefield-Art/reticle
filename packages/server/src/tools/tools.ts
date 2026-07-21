@@ -154,7 +154,7 @@ const RAW_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.QUERY,
     description:
-      'Find elements by Testing-Library semantics. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentTestids[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
+      'Find elements by Testing-Library semantics, INCLUDING inside open shadow roots. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `attrs:["href"]` to project attributes (link/image URLs) onto each match. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentTestids[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
     inputSchema: {
       by: z.string().describe('Query strategy: role | text | label | placeholder | testid | alt'),
       value: z
@@ -172,6 +172,12 @@ const RAW_TOOLS: ToolDef[] = [
         .string()
         .optional()
         .describe('CSS selector or element ref to restrict the search to a subtree.'),
+      attrs: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Attribute names to return per match, e.g. ['href'] to inventory links or ['src'] for images. Absent attributes are omitted; credential-bearing names are redacted.",
+        ),
       limit: z
         .number()
         .optional()
@@ -196,6 +202,10 @@ const RAW_TOOLS: ToolDef[] = [
             value: z.string().optional(),
             states: z.array(z.string()),
             visible: z.boolean(),
+            attrs: z
+              .record(z.string())
+              .optional()
+              .describe('Present only for attributes requested via `attrs` and found on the element.'),
           }),
         )
         .optional(),

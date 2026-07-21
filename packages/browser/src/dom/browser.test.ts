@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ElementState, SnapshotMode } from '@reticlehq/core';
+import { ElementState, REDACTED_VALUE, SnapshotMode } from '@reticlehq/core';
 import { getAccessibleName, getRole, getStates } from './a11y.js';
 import { buildSnapshot } from './snapshot.js';
-import { matchQuery, runQuery } from './query.js';
+import { ATTR_VALUE_MAX, matchQuery, runQuery } from './query.js';
 import { registerCapabilities } from '../registry/capabilities.js';
 import { executeAction } from '../actions/actions.js';
 import { refs } from './refs.js';
@@ -249,5 +249,77 @@ describe('actions', () => {
     const ref = refs.refFor(button);
     button.remove();
     await expect(executeAction(ref, 'click')).rejects.toThrow(/no longer resolves/);
+  });
+});
+
+describe('query: open shadow roots and attribute projection', () => {
+  beforeEach(() => {
+    render('');
+  });
+
+  /** Attach an open shadow root containing `html` to a fresh host in the body. */
+  const withShadow = (html: string, mode: ShadowRootMode = 'open'): HTMLElement => {
+    const host = document.createElement('div');
+    host.setAttribute('data-testid', 'shadow-host');
+    document.body.append(host);
+    host.attachShadow({ mode }).innerHTML = html;
+    return host;
+  };
+
+  it('finds a testid inside an OPEN shadow root', () => {
+    // Testing Library only walks the light DOM, so this returned zero on a healthy page — a miss that
+    // is indistinguishable from a genuinely absent element.
+    withShadow('<span data-testid="shadow-status">All systems nominal</span>');
+    expect(matchQuery({ by: 'testid', value: 'shadow-status' }).count).toBe(1);
+  });
+
+  it('finds a role inside an OPEN shadow root', () => {
+    withShadow('<button>Refresh status</button>');
+    const r = matchQuery({ by: 'role', value: 'button', name: 'Refresh status' });
+    expect(r.count).toBe(1);
+  });
+
+  it('does NOT reach into a CLOSED shadow root', () => {
+    // element.shadowRoot is null by design; the SDK reports this as a blind spot rather than
+    // pretending to see through it.
+    withShadow('<span data-testid="sealed">hidden</span>', 'closed');
+    expect(matchQuery({ by: 'testid', value: 'sealed' }).count).toBe(0);
+  });
+
+  it('does not double-count an element reachable from both the host and the root', () => {
+    withShadow('<span data-testid="once">x</span>');
+    expect(matchQuery({ by: 'testid', value: 'once' }).count).toBe(1);
+  });
+
+  it('projects requested attributes so links and images can be inventoried', () => {
+    render('<a href="/pricing" data-testid="nav-pricing">Pricing</a>');
+    const r = matchQuery({ by: 'testid', value: 'nav-pricing', attrs: ['href'] });
+    expect(r.elements[0]?.attrs).toEqual({ href: '/pricing' });
+  });
+
+  it('omits attributes the element does not carry rather than emitting empty strings', () => {
+    render('<a href="/x" data-testid="l">L</a>');
+    const r = matchQuery({ by: 'testid', value: 'l', attrs: ['href', 'src', 'target'] });
+    expect(r.elements[0]?.attrs).toEqual({ href: '/x' });
+  });
+
+  it('omits attrs entirely when none were requested (shape unchanged for existing callers)', () => {
+    render('<a href="/x" data-testid="l">L</a>');
+    expect(matchQuery({ by: 'testid', value: 'l' }).elements[0]?.attrs).toBeUndefined();
+  });
+
+  it('REDACTS credential-bearing attributes — projection must not become an exfiltration path', () => {
+    render('<div data-testid="w" data-auth-token="sk-live-abc123" data-page="3"></div>');
+    const r = matchQuery({ by: 'testid', value: 'w', attrs: ['data-auth-token', 'data-page'] });
+    expect(r.elements[0]?.attrs?.['data-auth-token']).toBe(REDACTED_VALUE);
+    expect(r.elements[0]?.attrs?.['data-page']).toBe('3');
+  });
+
+  it('caps a long attribute value so one huge href cannot blow the response budget', () => {
+    render(`<a href="/${'x'.repeat(5000)}" data-testid="big">B</a>`);
+    const href = matchQuery({ by: 'testid', value: 'big', attrs: ['href'] }).elements[0]?.attrs?.[
+      'href'
+    ];
+    expect((href ?? '').length).toBeLessThanOrEqual(ATTR_VALUE_MAX + 1);
   });
 });

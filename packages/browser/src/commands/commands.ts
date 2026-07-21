@@ -61,6 +61,9 @@ function queryFromArgs(args: Record<string, unknown>): ElementQuery {
     testid: str(args['testid']),
     alt: str(args['alt']),
     scope: str(args['scope']),
+    attrs: Array.isArray(args['attrs'])
+      ? args['attrs'].filter((a): a is string => typeof a === 'string')
+      : undefined,
   };
 }
 

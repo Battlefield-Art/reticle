@@ -9,6 +9,7 @@ import {
 import {
   ElementState,
   QueryBy,
+  REDACTED_VALUE,
   type ElementDescriptor,
   type ElementQuery,
   type MatchResult,
@@ -17,6 +18,7 @@ import {
   type QueryResult,
 } from '@reticlehq/core';
 import { describe, getStates } from './a11y.js';
+import { isSensitiveKey } from '../security/serialization.js';
 import { getCapabilities } from '../registry/capabilities.js';
 import { identifyComponent } from '../registry/adapters.js';
 import { refs } from './refs.js';
@@ -94,9 +96,8 @@ function findByComponent(container: HTMLElement, query: ElementQuery): HTMLEleme
   return [];
 }
 
-/** Run the appropriate Testing-Library query for the given ElementQuery. */
-function findCandidates(query: ElementQuery): HTMLElement[] {
-  const container = resolveContainer(query.scope);
+/** Run the appropriate Testing-Library query against ONE root (light DOM or a shadow root). */
+function findIn(container: HTMLElement, query: ElementQuery): HTMLElement[] {
   const by = query.by;
   const value = query.value;
 
@@ -153,6 +154,76 @@ function findCandidates(query: ElementQuery): HTMLElement[] {
   return [];
 }
 
+/**
+ * Every open shadow root at or beneath `root`, in document order.
+ *
+ * A closed root is deliberately unreachable — `element.shadowRoot` is null by design, and the SDK
+ * reports that as a blind spot rather than pretending to see through it.
+ */
+function openShadowRootsUnder(root: HTMLElement): ShadowRoot[] {
+  const found: ShadowRoot[] = [];
+  const walk = (node: ParentNode): void => {
+    for (const el of Array.from(node.querySelectorAll<HTMLElement>('*'))) {
+      const shadow = el.shadowRoot;
+      if (shadow !== null) {
+        found.push(shadow);
+        walk(shadow); // nested web components
+      }
+    }
+  };
+  walk(root);
+  return found;
+}
+
+/**
+ * Run the query against the light DOM AND every open shadow root beneath the scope.
+ *
+ * Testing Library only walks the light DOM, so a control inside a web component returned zero matches
+ * on a completely healthy page — a miss indistinguishable from a genuinely absent element. The
+ * snapshot has always pierced open roots; this makes `query` agree with it.
+ */
+function findCandidates(query: ElementQuery): HTMLElement[] {
+  const container = resolveContainer(query.scope);
+  const seen = new Set<HTMLElement>();
+  const out: HTMLElement[] = [];
+  const collect = (els: HTMLElement[]): void => {
+    for (const el of els) {
+      if (seen.has(el)) continue; // reachable from both host and root — count once
+      seen.add(el);
+      out.push(el);
+    }
+  };
+  collect(findIn(container, query));
+  for (const shadow of openShadowRootsUnder(container)) {
+    // A ShadowRoot is a DocumentFragment; the Testing-Library queries accept any HTMLElement-like
+    // container, and every call site below only reads from it.
+    collect(findIn(shadow as unknown as HTMLElement, query));
+  }
+  return out;
+}
+
+/** Longest attribute value returned; one enormous href must not blow the response budget. */
+export const ATTR_VALUE_MAX = 512;
+/** Most attributes projected per element — a guard against a caller asking for everything. */
+const ATTR_KEYS_MAX = 12;
+
+/**
+ * Read the requested attributes off an element.
+ *
+ * Absent attributes are OMITTED rather than returned empty, so "not present" and "present but blank"
+ * stay distinguishable. Credential-bearing names are redacted with the same rule the network and
+ * storage paths use — a projection API must not become an exfiltration path.
+ */
+function projectAttrs(el: Element, keys: readonly string[]): Record<string, string> | undefined {
+  const out: Record<string, string> = {};
+  for (const key of keys.slice(0, ATTR_KEYS_MAX)) {
+    const raw = el.getAttribute(key);
+    if (raw === null) continue;
+    out[key] = isSensitiveKey(key) ? REDACTED_VALUE : raw.slice(0, ATTR_VALUE_MAX);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function inState(el: Element, state: ElementState): boolean {
   return getStates(el).includes(state);
 }
@@ -166,7 +237,13 @@ export function matchQuery(query: ElementQuery, state?: ElementState): MatchResu
     elements = [];
   }
   const filtered = state === undefined ? elements : elements.filter((el) => inState(el, state));
-  const descriptors: ElementDescriptor[] = filtered.map((el) => describe(el));
+  const attrs = query.attrs;
+  const descriptors: ElementDescriptor[] = filtered.map((el) => {
+    const base = describe(el);
+    if (attrs === undefined || attrs.length === 0) return base;
+    const projected = projectAttrs(el, attrs);
+    return projected === undefined ? base : { ...base, attrs: projected };
+  });
   return { matched: descriptors.length > 0, count: descriptors.length, elements: descriptors };
 }
 

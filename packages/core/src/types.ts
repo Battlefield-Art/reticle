@@ -26,6 +26,11 @@ export const ElementQuerySchema = z.object({
   alt: z.string().optional(),
   /** Component display name (auto-anchor resolution). The nearest enclosing component of the target. */
   component: z.string().optional(),
+  /**
+   * Attribute names to project onto each match (e.g. `['href']` to inventory links, `['src']` for
+   * images). Without this the descriptor carries only semantics, so URLs are unreachable.
+   */
+  attrs: z.array(z.string()).optional(),
   /** Source location of the target element (auto-anchor resolution) — the precise, granular match. */
   source: z
     .object({ file: z.string(), line: z.number(), column: z.number().optional() })
@@ -44,6 +49,11 @@ export interface ElementDescriptor {
   states: ElementState[];
   visible: boolean;
   text?: string;
+  /**
+   * Attributes explicitly requested via `ElementQuery.attrs`. Absent attributes are omitted (so
+   * "missing" and "present but blank" stay distinguishable) and credential-bearing names are redacted.
+   */
+  attrs?: Record<string, string>;
 }
 
 export interface MatchResult {
