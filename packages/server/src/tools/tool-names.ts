@@ -88,5 +88,9 @@ export const ReticleTool = {
   LEASE_ACQUIRE: 'reticle_lease_acquire',
   /** Release a previously leased context, freeing the pool slot. */
   LEASE_RELEASE: 'reticle_lease_release',
+  /** Meta: discover tool definitions on demand instead of paying for all of them every turn. */
+  TOOLS: 'reticle_tools',
+  /** Meta: invoke any tool by name — the escape hatch that keeps a trimmed profile a trim, not a removal. */
+  RUN: 'reticle_run',
 } as const;
 export type ReticleTool = (typeof ReticleTool)[keyof typeof ReticleTool];

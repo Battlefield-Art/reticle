@@ -265,12 +265,20 @@ export class BrowserPool {
     if (this.#browser !== undefined && this.#browser.isConnected()) return this.#browser;
     // De-dupe concurrent launches: the first acquire to find no browser starts one; the rest await it.
     if (this.#launching === undefined) {
-      this.#launching = this.#launch().then((b) => {
-        b.onDisconnected(() => this.#onCrash(b));
-        this.#browser = b;
-        this.#launching = undefined;
-        return b;
-      });
+      // The in-flight promise MUST be cleared on failure as well as success. It used to be cleared only
+      // in the success callback, so the first failed launch — Chromium not downloaded, a transient
+      // EAGAIN — left a permanently rejected promise here, and every subsequent acquire for the daemon's
+      // lifetime re-returned that same stale rejection. Running `npx playwright install` did not help;
+      // only restarting the daemon did. A retry must be allowed to actually retry.
+      this.#launching = this.#launch()
+        .then((b) => {
+          b.onDisconnected(() => this.#onCrash(b));
+          this.#browser = b;
+          return b;
+        })
+        .finally(() => {
+          this.#launching = undefined;
+        });
     }
     return this.#launching;
   }

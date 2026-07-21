@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ToolDef, ToolDeps } from './tools.js';
 import { runTool } from './invoke-tool.js';
+import { ReticleTool } from './tool-names.js';
 
 /**
  * On-demand tool loading for MCP — the answer to the per-turn tool-definition tax.
@@ -53,7 +54,7 @@ export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
   const byName = new Map(allTools.map((t) => [t.name, t]));
 
   const reticleTools: ToolDef = {
-    name: 'reticle_tools',
+    name: ReticleTool.TOOLS,
     description:
       'Discover Reticle tools on demand. Call with no arguments to list every tool (name + one-line summary); call with names:["reticle_network", …] to load full descriptions and parameters for specific tools. Then invoke them with reticle_run. This avoids paying for every tool definition on every turn.',
     inputSchema: {
@@ -84,7 +85,7 @@ export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
   };
 
   const reticleRun: ToolDef = {
-    name: 'reticle_run',
+    name: ReticleTool.RUN,
     description:
       "Invoke any Reticle tool by name (discover names/params first with reticle_tools). On an unknown tool or bad arguments it returns the available names or the tool's params, so you can correct and retry.",
     inputSchema: {

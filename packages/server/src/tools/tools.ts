@@ -336,7 +336,7 @@ const MERGE_PLANS: MergePlan[] = [
   {
     name: ReticleTool.BASELINE,
     description:
-      'Semantic-state baselines: { action: "save" } snapshots the current state under a name, "list" returns saved names, "diff" compares the live page against a saved baseline (REMOVED/ADDED elements + console-error count). Replaces reticle_baseline_save/list and reticle_diff.',
+      'Semantic-state baselines: { action: "save" } snapshots the current state under a name, "list" returns saved names, "diff" compares the live page against a saved baseline (REMOVED/ADDED elements + console-error count).',
     members: {
       save: ReticleTool.BASELINE_SAVE,
       list: ReticleTool.BASELINE_LIST,
@@ -346,13 +346,13 @@ const MERGE_PLANS: MergePlan[] = [
   {
     name: ReticleTool.RECORD,
     description:
-      'Timeline recording: { action: "start" } begins recording under a name, "stop" ends it and returns the reaction report plus a compiled replayable program. Replaces reticle_record_start/stop.',
+      'Timeline recording: { action: "start" } begins recording under a name, "stop" ends it and returns the reaction report plus a compiled replayable program.',
     members: { start: ReticleTool.RECORD_START, stop: ReticleTool.RECORD_STOP },
   },
   {
     name: ReticleTool.FLOW,
     description:
-      'Saved-flow management: { action: "list" } names every saved flow, "load" reads+validates one by flowName, "delete" removes one. The hot verbs (flow_save, flow_replay, flow_verify, flow_heal) stay separate. Replaces reticle_flow_list/load/delete.',
+      'Saved-flow management: { action: "list" } names every saved flow, "load" reads+validates one by flowName, "delete" removes one. The hot verbs (flow_save, flow_replay, flow_verify, flow_heal) stay separate.',
     members: {
       list: ReticleTool.FLOW_LIST,
       load: ReticleTool.FLOW_LOAD,
@@ -362,7 +362,7 @@ const MERGE_PLANS: MergePlan[] = [
   {
     name: ReticleTool.SESSION,
     description:
-      'Session lifecycle and the human channel, by action: "tune" adjusts the presenter session (e.g. idle-end window); "yield" hands control back to the human between turns (mode: waiting|ask) and is MANDATORY before you stop driving; "end" terminates the session for good; "resume" clears a human pause; "messages" drains the human→agent inbox; "review" lists/resolves the mistakes a human pinned to elements; "narrate" states your intent on the presenter HUD. Replaces reticle_end_session/yield/resume/messages/review/narrate.',
+      'Session lifecycle and the human channel, by action: "tune" adjusts the presenter session (e.g. idle-end window); "yield" hands control back to the human between turns (mode: waiting|ask) and is MANDATORY before you stop driving; "end" terminates the session for good; "resume" clears a human pause; "messages" drains the human→agent inbox; "review" lists/resolves the mistakes a human pinned to elements; "narrate" states your intent on the presenter HUD.',
     members: {
       tune: ReticleTool.SESSION_TUNE,
       yield: ReticleTool.YIELD,
@@ -376,7 +376,7 @@ const MERGE_PLANS: MergePlan[] = [
   {
     name: ReticleTool.LEASE,
     description:
-      'Isolated headless contexts from the shared pool: { action: "acquire" } leases one and navigates it to the app URL, "release" closes it and frees the slot. Replaces reticle_lease_acquire/release.',
+      'Isolated headless contexts from the shared pool: { action: "acquire" } leases one and navigates it to the app URL, "release" closes it and frees the slot.',
     members: { acquire: ReticleTool.LEASE_ACQUIRE, release: ReticleTool.LEASE_RELEASE },
   },
 ];

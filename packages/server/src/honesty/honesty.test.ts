@@ -29,7 +29,10 @@ describe('buildHonestyBlock', () => {
   });
 
   it('flags an immature envelope as insufficient', () => {
-    expect(buildHonestyBlock({ grade: HonestyGrade.NET, envelopeSamples: 2 }).envelope.sufficient).toBe(false);
+    // `envelope` is optional now — it is omitted when nothing was sampled — so read it defensively.
+    expect(buildHonestyBlock({ grade: HonestyGrade.NET, envelopeSamples: 2 }).envelope?.sufficient).toBe(
+      false,
+    );
   });
 });
 

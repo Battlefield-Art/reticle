@@ -398,7 +398,7 @@ export const ACT_TOOLS: ToolDef[] = [
       honesty: z
         .unknown()
         .describe(
-          'The verdict trust block { grade, attribution, envelope, coverage, integrity } — a green never looks stronger than this. Gate on it (grade ≥ net, integrity clean).',
+          'The verdict trust block { grade, attribution, coverage, integrity, envelope? } — a green never looks stronger than this. Gate on grade ≥ net AND integrity.clean. Fields that were not measured are OMITTED rather than reported as zero, so treat an absent `envelope` as "not sampled", never as a failure.',
         ),
       since: z
         .number()

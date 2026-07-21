@@ -105,12 +105,20 @@ export function createMcpServer(
   // `dynamic` advertises only the 2 meta-tools (reticle_tools + reticle_run); real tools load on demand.
   // core/standard advertise the filtered set with terse descriptions (first sentence + trimmed
   // param prose) — the full prose is re-sent every turn, and the first clause carries the purpose.
+  // Every TRIMMED profile keeps the meta-tools, so a tool that is not advertised is still reachable
+  // through reticle_run. Without them a trim is not a trim, it is a hard removal: under `standard`,
+  // 11 tools were unreachable with no escape hatch — including reticle_annotate, which
+  // reticle_flow_save's own description instructs the agent to call. `full` advertises everything
+  // directly and needs no hatch.
   const advertised =
     profile === TOOL_PROFILE.DYNAMIC
       ? buildDynamicTools(TOOLS)
-      : profile === TOOL_PROFILE.HYBRID
-        ? [...filterTools(TOOLS, TOOL_PROFILE.CORE), ...buildDynamicTools(TOOLS)]
-        : filterTools(TOOLS, profile);
+      : profile === TOOL_PROFILE.FULL
+        ? TOOLS
+        : [
+            ...filterTools(TOOLS, profile === TOOL_PROFILE.HYBRID ? TOOL_PROFILE.CORE : profile),
+            ...buildDynamicTools(TOOLS),
+          ];
   const terse =
     profile === TOOL_PROFILE.CORE ||
     profile === TOOL_PROFILE.STANDARD ||
