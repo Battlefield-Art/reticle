@@ -38,13 +38,21 @@ async function syncSavedFlowToCloud(flow: FlowFile, projectId: string | undefine
 }
 
 
-/** The app URL a leased context should open — taken from the live tab, which is already on the app. */
+/**
+ * The URL a leased context should open: the app's ORIGIN, not the live tab's current location.
+ *
+ * The live tab drifts — every replay navigates it — so using its full URL made each lease start wherever
+ * the previous run happened to finish (observed: leases opening /deployments and failing to find the
+ * login control that only exists at the root). A lease must be a FRESH visit to a deterministic entry
+ * point; flows that need another page carry their own startPath.
+ */
 function leasableAppUrl(deps: ToolDeps, sessionId: string | undefined): string | undefined {
   try {
     const url = deps.sessions.resolve(sessionId).url;
-    return typeof url === 'string' && url.length > 0 ? url : undefined;
+    if (typeof url !== 'string' || url.length === 0) return undefined;
+    return new URL(url).origin;
   } catch {
-    return undefined; // no live session to learn the URL from → sequential path
+    return undefined; // no live session (or an unparseable URL) → sequential path
   }
 }
 
@@ -309,12 +317,17 @@ export const FLOW_TOOLS: ToolDef[] = [
         : await deps.flows.list(sessionProjectId(deps, sessionId));
       // PARALLEL (W14.2): flows race the DOM only when they share ONE tab. Given the lease pool, each
       // flow gets its own isolated context, so a large suite finishes in interactive time. Opt-in via
-      // `parallel`; any missing prerequisite (no pool, unknown app URL, single flow) falls back to the
-      // sequential path rather than failing — a suite must always be runnable.
+      // `parallel`; a missing prerequisite (no pool, unknown app URL) falls back to the sequential path
+      // rather than failing — a suite must always be runnable.
+      //
+      // NOTE: this applies even to a ONE-flow suite. Skipping leases for a single flow looked harmless
+      // (no speedup to win) but silently downgraded an explicit `parallel` request to a shared-tab run,
+      // so the flow inherited whatever state the previous run left behind — isolation is the point here,
+      // not only concurrency.
       const parallelArg = asNumber(args['parallel']);
       const pool = deps.pool;
       const appUrl = leasableAppUrl(deps, sessionId);
-      if (parallelArg !== undefined && pool !== undefined && appUrl !== undefined && requested.length > 1) {
+      if (parallelArg !== undefined && pool !== undefined && appUrl !== undefined && requested.length > 0) {
         const concurrency = resolveConcurrency(requested.length, pool.capacity(), parallelArg);
         const outcomes = await mapWithConcurrency(requested, concurrency, async (flowName) => {
           const lease = await acquireLeasedSession(
