@@ -17,6 +17,7 @@ import {
 import type { EvalResult, Predicate } from '../events/predicate.js';
 import { asRecord, asString } from '../tools/tools-helpers.js';
 import { replayActionArgs, ambiguousTestidNote, queryRefs } from './replay.js';
+import { ReticleTool } from '../tools/tool-names.js';
 
 /**
  * The session surface flow-replay needs: QUERY to re-resolve a testid anchor against the live
@@ -25,6 +26,15 @@ import { replayActionArgs, ambiguousTestidNote, queryRefs } from './replay.js';
  */
 export interface FlowReplaySession {
   command(name: string, args?: Record<string, unknown>): Promise<CommandResult>;
+  /**
+   * Attribution window around each replayed step. Optional so a minimal test double still satisfies the
+   * interface, but a real session MUST supply it: without a window the step's own effects carry no
+   * actionId, and Session.pushEvent classifies an unattributed ref-bearing event as ambient background
+   * churn. A 15-step flow can therefore teach the settle oracle to ignore every region the app reacts
+   * in — and this is the CI path, so the result is a green suite over an app that is still working.
+   */
+  beginAction?(tool: string, args: Record<string, unknown>): void;
+  finishAction?(error?: string, settled?: boolean, settleMs?: number): void;
   eventsSince(cursor: number): ReticleEvent[];
   onEvent(listener: (event: ReticleEvent) => void): () => void;
   /** Buffer clock (ms since connect) — required by the predicate engine's `settled` check. */
@@ -305,11 +315,20 @@ async function runComponentStep(
     };
   }
   const ref = refs[0] ?? '';
-  const act = await session.command(ReticleCommand.ACT, {
-    ref,
-    action: step.action ?? '',
-    args: replayActionArgs(step.args, confirmDangerous),
-  });
+  // Attribute the step's effects to the step. Without this window they arrive with no actionId and are
+  // learned as ambient churn on the very regions the flow exercises.
+  session.beginAction?.(ReticleTool.FLOW_REPLAY, { ref, action: step.action ?? '' });
+  let act;
+  try {
+    act = await session.command(ReticleCommand.ACT, {
+      ref,
+      action: step.action ?? '',
+      args: replayActionArgs(step.args, confirmDangerous),
+    });
+  } finally {
+    // Close on every exit so a throwing step cannot leak the window onto the next step's events.
+    session.finishAction?.();
+  }
   const result: FlowStepResult = { step: index, tool: step.tool, anchor: label, ok: act.ok };
   if (!act.ok) result.error = act.error ?? 'command failed';
   return result;
@@ -337,11 +356,17 @@ async function runTestidStep(
   }
   const ref = refs[0] ?? '';
   const note = refs.length > 1 ? ambiguousTestidNote(value) : undefined;
-  const act = await session.command(ReticleCommand.ACT, {
-    ref,
-    action: step.action ?? '',
-    args: replayActionArgs(step.args, confirmDangerous),
-  });
+  session.beginAction?.(ReticleTool.FLOW_REPLAY, { ref, action: step.action ?? '' });
+  let act;
+  try {
+    act = await session.command(ReticleCommand.ACT, {
+      ref,
+      action: step.action ?? '',
+      args: replayActionArgs(step.args, confirmDangerous),
+    });
+  } finally {
+    session.finishAction?.();
+  }
   const result: FlowStepResult = { step: index, tool: step.tool, anchor: value, ok: act.ok };
   if (!act.ok) {
     result.error = act.error ?? 'command failed';

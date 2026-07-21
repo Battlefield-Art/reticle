@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { isToonable, resultToToon } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from './tools/tools.js';
+import type { ToolDef } from './tools/tools.js';
 import { filterTools, TOOL_PROFILE, type ToolProfile } from './tools/profiles.js';
 import { buildDynamicTools } from './tools/dynamic-tools.js';
 import { runTool, SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
@@ -93,6 +94,25 @@ type ReticleRegisterTool = (
   }>,
 ) => void;
 
+/**
+ * The tools a profile advertises directly.
+ *
+ * Exported so it can be TESTED. A previous guard re-implemented this decision in the test and was
+ * therefore insensitive to it — every profile appeared to reach every tool, so reverting the fix here
+ * left the suite green. Exercise the real function or the guard is theatre.
+ *
+ * Every TRIMMED profile keeps the meta-tools, so a tool that is not advertised is still reachable via
+ * reticle_run. Without them a trim is not a trim but a hard removal: under `standard`, 11 tools were
+ * uncallable — including reticle_annotate, which reticle_flow_save's own description tells the agent to
+ * call. `full` advertises everything and needs no hatch.
+ */
+export function advertisedTools(profile: ToolProfile): ToolDef[] {
+  if (profile === TOOL_PROFILE.DYNAMIC) return buildDynamicTools(TOOLS);
+  if (profile === TOOL_PROFILE.FULL) return TOOLS;
+  const base = filterTools(TOOLS, profile === TOOL_PROFILE.HYBRID ? TOOL_PROFILE.CORE : profile);
+  return [...base, ...buildDynamicTools(TOOLS)];
+}
+
 export function createMcpServer(
   deps: ToolDeps,
   profile: ToolProfile = TOOL_PROFILE.HYBRID,
@@ -110,15 +130,7 @@ export function createMcpServer(
   // 11 tools were unreachable with no escape hatch — including reticle_annotate, which
   // reticle_flow_save's own description instructs the agent to call. `full` advertises everything
   // directly and needs no hatch.
-  const advertised =
-    profile === TOOL_PROFILE.DYNAMIC
-      ? buildDynamicTools(TOOLS)
-      : profile === TOOL_PROFILE.FULL
-        ? TOOLS
-        : [
-            ...filterTools(TOOLS, profile === TOOL_PROFILE.HYBRID ? TOOL_PROFILE.CORE : profile),
-            ...buildDynamicTools(TOOLS),
-          ];
+  const advertised = advertisedTools(profile);
   const terse =
     profile === TOOL_PROFILE.CORE ||
     profile === TOOL_PROFILE.STANDARD ||

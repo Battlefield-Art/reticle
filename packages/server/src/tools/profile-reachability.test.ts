@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TOOLS } from './tools.js';
 import { ReticleTool } from './tool-names.js';
 import { TOOL_PROFILE, filterTools, type ToolProfile } from './profiles.js';
-import { buildDynamicTools } from './dynamic-tools.js';
+import { advertisedTools } from '../mcp.js';
 
 /**
  * Under every profile, a tool named in another tool's description must be REACHABLE.
@@ -22,21 +22,37 @@ import { buildDynamicTools } from './dynamic-tools.js';
 const TRIMMED: ToolProfile[] = [TOOL_PROFILE.CORE, TOOL_PROFILE.STANDARD, TOOL_PROFILE.HYBRID];
 
 /** Names an agent can invoke under a profile: advertised directly, or via the meta-tools. */
+/**
+ * Names an agent can invoke under a profile.
+ *
+ * Derived from the REAL `advertisedTools`, not re-implemented. The previous version unioned in every
+ * tool unconditionally, so it was insensitive to `profile` and would have stayed green if the escape
+ * hatch were removed — a guard that cannot fail. The hatch is what makes an un-advertised tool
+ * reachable, so its presence is exactly what must be checked.
+ */
 function reachable(profile: ToolProfile): Set<string> {
-  const advertised = filterTools(TOOLS, profile).map((t) => t.name);
-  const meta = buildDynamicTools(TOOLS).map((t) => t.name);
-  // reticle_run dispatches through the same runTool chokepoint, so with the hatch present everything
-  // in TOOLS is callable even when it is not advertised.
-  return new Set([...advertised, ...meta, ...TOOLS.map((t) => t.name)]);
+  const advertised = advertisedTools(profile);
+  const names = advertised.map((t) => t.name);
+  const hasHatch = names.includes(ReticleTool.RUN);
+  // With reticle_run advertised, everything in TOOLS is callable through the same chokepoint.
+  return new Set(hasHatch ? [...names, ...TOOLS.map((t) => t.name)] : names);
 }
 
 const ALL_NAMES = new Set(Object.values(ReticleTool));
 
 describe('tool reachability across profiles', () => {
-  it('the meta-tools exist to serve as the escape hatch', () => {
-    const meta = buildDynamicTools(TOOLS).map((t) => t.name);
-    expect(meta).toContain(ReticleTool.TOOLS);
-    expect(meta).toContain(ReticleTool.RUN);
+  it('every trimmed profile ADVERTISES the escape hatch — without it a trim is a hard removal', () => {
+    for (const profile of TRIMMED) {
+      const names = advertisedTools(profile).map((t) => t.name);
+      expect(names, `profile '${profile}' must advertise ${ReticleTool.RUN}`).toContain(ReticleTool.RUN);
+      expect(names).toContain(ReticleTool.TOOLS);
+    }
+  });
+
+  it('a trimmed profile advertises FEWER tools than full, or the trim buys nothing', () => {
+    for (const profile of TRIMMED) {
+      expect(advertisedTools(profile).length).toBeLessThan(advertisedTools(TOOL_PROFILE.FULL).length);
+    }
   });
 
   for (const profile of TRIMMED) {

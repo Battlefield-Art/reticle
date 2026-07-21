@@ -69,6 +69,9 @@ export function leaseFailureReplay(name: string, error: string | undefined): Flo
   };
 }
 
+/** Stand-in path for a flow whose name fails the path-segment guard — never a real join. */
+const INVALID_FLOW_NAME_PATH = '(invalid flow name — not a usable path)';
+
 export const FLOW_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.FLOW_SAVE,
@@ -165,14 +168,17 @@ export const FLOW_TOOLS: ToolDef[] = [
     handler: (deps: ToolDeps, args) => {
       const projectId = sessionProjectId(deps, asString(args['sessionId']));
       return deps.flows.list(projectId).then((names) => ({
-        // Validate before joining: `list` deliberately returns invalid names too so they can be
-        // reported rather than silently dropped, so the path is omitted for one rather than built.
-        flows: names.map((name) => ({
-          name,
-          ...(isValidFlowName(name)
-            ? { path: flowPath(deps.reticleRoot, name, projectId) }
-            : { invalidName: true }),
-        })),
+        // `list` deliberately returns invalid names so they are reported rather than silently
+        // dropped — but the declared outputSchema requires `path` on EVERY entry, and omitting it made
+        // a strict MCP client reject the whole listing (the agent then sees no flows at all, which is
+        // worse than the bad path it replaced). So every entry keeps a string `path`; an invalid name
+        // gets an explanatory marker instead of a joined filesystem path, which is what must never
+        // happen for a traversal-shaped name.
+        flows: names.map((name) =>
+          isValidFlowName(name)
+            ? { name, path: flowPath(deps.reticleRoot, name, projectId) }
+            : { name, path: INVALID_FLOW_NAME_PATH },
+        ),
       }));
     },
   },
