@@ -12,7 +12,7 @@ interface ResolveScope {
 }
 
 /** The scheme://host:port of a URL, or undefined if it can't be parsed. Used to compare origins. */
-function originOf(url: string | undefined): string | undefined {
+export function originOf(url: string | undefined): string | undefined {
   if (url === undefined) return undefined;
   try {
     return new URL(url).origin;

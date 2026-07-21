@@ -12,6 +12,7 @@
 import type { Browser, Page } from 'playwright';
 import { ActionType, DriveErrorCode, DRIVE_PLAYWRIGHT_MISSING_MSG } from '@reticlehq/core';
 import { installNetworkMocks, type MockRule } from './network-mock.js';
+import { attachNetworkDetail, type NetworkDetail } from './network-detail.js';
 
 /** Viewport CSS-px box as returned by the INSPECT command (getBoundingClientRect). */
 export interface ElementBox {
@@ -325,6 +326,12 @@ export interface LaunchedProviderOptions {
   injectConnect?: InjectConnectOptions;
   /** Path to a Playwright storageState JSON (cookies/localStorage) — starts the page authenticated. */
   storageState?: string;
+  /**
+   * Sink for CDP-authoritative network detail (W4.5). When set, every driven-page response is captured
+   * as a NET_DETAIL and handed here — the daemon routes it onto the driven session's journal so the
+   * inside-app view never loses fidelity to the outside-in view. Omitted → no network detail captured.
+   */
+  onNetworkDetail?: (detail: NetworkDetail) => void;
 }
 
 const INJECT_CONNECT_WAIT_MS = 8_000;
@@ -355,6 +362,7 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
   readonly #launch: LaunchFn;
   readonly #injectConnect: InjectConnectOptions | undefined;
   readonly #storageState: string | undefined;
+  readonly #onNetworkDetail: ((detail: NetworkDetail) => void) | undefined;
   #browser: Browser | undefined;
   #page: Page | undefined;
 
@@ -365,6 +373,7 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
     this.#launch = options.launch ?? launchedChromium;
     this.#injectConnect = options.injectConnect;
     this.#storageState = options.storageState;
+    this.#onNetworkDetail = options.onNetworkDetail;
   }
 
   async navigate(): Promise<void> {
@@ -373,6 +382,8 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
       this.#storageState !== undefined ? { storageState: this.#storageState } : undefined,
     );
     this.#page = page;
+    // Capture CDP-authoritative response detail into the driven session's journal (best-effort).
+    if (this.#onNetworkDetail !== undefined) attachNetworkDetail(page, this.#onNetworkDetail);
     try {
       await page.goto(this.#driveUrl);
     } catch (e) {

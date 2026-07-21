@@ -89,6 +89,15 @@ describe('compact projections (token leanness)', () => {
     });
   });
 
+  it('reconcileNet folds CDP-authoritative headers onto the matching request (driven fidelity)', () => {
+    const merged = reconcileNet([
+      ev(EventType.NET_REQUEST, { id: '1', method: 'GET', url: '/api/x', status: 200 }),
+      ev(EventType.NET_DETAIL, { url: '/api/x', method: 'GET', status: 200, headers: { etag: 'v9' } }, 2),
+    ]);
+    const call = projectNetCall(merged[0] as ReticleEvent);
+    expect(call.headers).toEqual({ etag: 'v9' });
+  });
+
   it('isConsoleEvent includes info/debug so reticle_console can surface them', () => {
     expect(isConsoleEvent(ev(EventType.CONSOLE_INFO, { message: 'i' }))).toBe(true);
     expect(isConsoleEvent(ev(EventType.CONSOLE_DEBUG, { message: 'd' }))).toBe(true);

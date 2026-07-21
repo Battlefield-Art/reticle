@@ -262,6 +262,13 @@ export const EventType = {
    */
   BLIND_SPOT: 'blind-spot',
   /**
+   * synthetic (driven only): CDP/Playwright-authoritative network detail for a response the in-page
+   * fetch/XHR wrapper also saw — full response headers + authoritative status/mimeType the page-side
+   * wrapper can't reach. `data: { url, method?, status, headers, resourceType? }`. Merged onto the
+   * matching in-page NET_REQUEST so the driven view never loses fidelity to an outside-in tool.
+   */
+  NET_DETAIL: 'net.detail',
+  /**
    * Live-control: browser → bridge. A human acted on the presenter panel.
    * `data: { kind: HumanControlKind; text?: string }`. Rides the existing EventMessage.
    */

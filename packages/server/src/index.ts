@@ -9,8 +9,11 @@ import {
   ReticleEnv,
   LOOPBACK_HOST,
   ReplayStatus,
+  EventType,
 } from '@reticlehq/core';
 import type { FlowReplayResult } from '@reticlehq/core';
+import { originOf } from './session/session-manager.js';
+import type { NetworkDetail } from './input/network-detail.js';
 import { replayNamedFlow } from './flows/flow-tools.js';
 import { createSharedServer } from './http-server.js';
 import { resolveBridgeSecurityWithAutoToken } from './bridge-security.js';
@@ -240,6 +243,7 @@ function createBrowserPool(headless: boolean): BrowserPool {
 async function resolveRealInput(
   options: StartOptions,
   onNavigateError: () => Promise<void>,
+  onNetworkDetail?: (detail: NetworkDetail) => void,
 ): Promise<{ realInput?: RealInputProvider; owned?: { dispose: () => Promise<void> } }> {
   const driveUrl = options.driveUrl;
   if (driveUrl !== undefined && driveUrl.length > 0) {
@@ -254,6 +258,7 @@ async function resolveRealInput(
           headless: opts.headless,
           ...(injectConnect !== undefined ? { injectConnect } : {}),
           ...(storageState !== undefined ? { storageState } : {}),
+          ...(onNetworkDetail !== undefined ? { onNetworkDetail } : {}),
         }));
     const launched = factory({ driveUrl, headless });
     try {
@@ -291,7 +296,17 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
   // drive precedence: driveUrl (launch+own a browser) → CDP (attach) → none.
   let pool: BrowserPool | undefined;
   let leaseReaper: LeaseReaper | undefined;
-  const { realInput, owned } = await resolveRealInput(options, () => bridge.close());
+  // Route CDP-authoritative network detail (drive path only) onto the driven session's journal: the
+  // page and the SDK session share an origin, so a NET_DETAIL is pushed to the matching connected session.
+  const routeNetworkDetail = (detail: NetworkDetail): void => {
+    const wantOrigin = originOf(detail.url);
+    for (const session of bridge.sessions.all()) {
+      if (originOf(session.url) === wantOrigin || originOf(session.url) === originOf(options.driveUrl ?? '')) {
+        session.pushEvent({ t: 0, type: EventType.NET_DETAIL, sessionId: session.id, data: { ...detail } });
+      }
+    }
+  };
+  const { realInput, owned } = await resolveRealInput(options, () => bridge.close(), routeNetworkDetail);
 
   if (options.mcp !== false) {
     // cwd()/Date.now() are confined to start() — never inside reticle-dir.ts's pure logic (rule 7).

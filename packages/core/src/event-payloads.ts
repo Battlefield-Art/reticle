@@ -115,6 +115,15 @@ export const EVENT_PAYLOAD_SCHEMAS = {
   [EventType.TRANSPORT_OVERFLOW]: z.object({ dropped: z.number() }),
   [EventType.TRUNCATED]: z.object({ channel: z.string(), dropped: z.number() }),
   [EventType.BLIND_SPOT]: z.object({ kind: z.nativeEnum(BlindSpotKind), count: z.number() }),
+  [EventType.NET_DETAIL]: z
+    .object({
+      url: z.string(),
+      method: z.string().optional(),
+      status: z.number(),
+      headers: z.record(z.string()),
+      resourceType: z.string().optional(),
+    })
+    .passthrough(),
   [EventType.HUMAN_CONTROL]: HumanControlDataSchema,
   [EventType.HUMAN_MARK]: HumanMarkDataSchema,
 } satisfies Record<EventType, z.ZodTypeAny>;

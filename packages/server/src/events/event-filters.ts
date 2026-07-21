@@ -1,5 +1,6 @@
 import { EventType, type ReticleEvent } from '@reticlehq/core';
 import { asString, asNumber } from '../tools/tools-helpers.js';
+import { mergeNetworkDetail } from '../input/network-detail.js';
 
 /** Match a net.request event against optional method/url/status filters (reticle_network). */
 export function matchNet(
@@ -26,6 +27,9 @@ export function matchNet(
  * pending: true }` so a numeric `status` filter excludes them but `urlContains`/`method` match.
  */
 export function reconcileNet(events: ReticleEvent[]): ReticleEvent[] {
+  // Fold CDP-authoritative detail (driven path) onto the matching in-page request first, so the driven
+  // view carries the full headers/status the page-side wrapper couldn't see (no-op when none present).
+  events = mergeNetworkDetail(events);
   const completed = events.filter((e) => e.type === EventType.NET_REQUEST);
   const doneIds = new Set(
     completed.map((e) => asString(e.data['id'])).filter((id): id is string => id !== undefined),
@@ -54,6 +58,8 @@ interface NetCallView {
   responseBody?: string;
   bodyTruncated?: boolean;
   ms?: number;
+  /** Authoritative response headers merged from the driven (CDP) path — present only when driven. */
+  headers?: Record<string, string>;
 }
 export function projectNetCall(e: ReticleEvent): NetCallView {
   const status = e.data['status'];
@@ -77,6 +83,10 @@ export function projectNetCall(e: ReticleEvent): NetCallView {
     view.bodyTruncated = true;
   }
   if (ms !== undefined) view.ms = ms;
+  const headers = e.data['headers'];
+  if (headers !== null && typeof headers === 'object') {
+    view.headers = headers as Record<string, string>;
+  }
   return view;
 }
 
