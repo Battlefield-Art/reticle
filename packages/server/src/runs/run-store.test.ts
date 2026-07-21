@@ -73,6 +73,16 @@ describe('RunStore — temp-dir filesystem, never touches the repo', () => {
     expect(await store.latest()).toBeUndefined();
   });
 
+  it('latestTwo returns [previous, current] oldest-first, undefined with fewer than two', async () => {
+    expect(await store.latestTwo()).toBeUndefined();
+    await store.write(make('run-a', 1000));
+    expect(await store.latestTwo()).toBeUndefined();
+    await store.write(make('run-b', 3000));
+    await store.write(make('run-c', 2000));
+    const pair = await store.latestTwo();
+    expect(pair?.map((r) => r.runId)).toEqual(['run-c', 'run-b']); // 2000 then 3000
+  });
+
   it('refuses to write a run whose runId is a path-traversal value', async () => {
     const evil = make('../../etc/evil', 1000);
     await expect(store.write(evil)).rejects.toThrow(/unsafe runId/);

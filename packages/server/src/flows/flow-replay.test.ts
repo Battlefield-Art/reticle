@@ -47,7 +47,12 @@ class FakeSession implements FlowReplaySession {
     private readonly events: ReticleEvent[] = [],
     private readonly actOk: (ref: string) => boolean = PASS,
     private readonly stores: Record<string, unknown> = {},
+    // Injected clock: successive elapsed() readings. Defaults to a fixed 0 (no advancing clock) so
+    // existing tests are unaffected; pass a rising sequence to exercise per-step durationMs.
+    private readonly elapsedReadings?: number[],
   ) {}
+
+  #elapsedCall = 0;
 
   command(name: string, args: Record<string, unknown> = {}): Promise<CommandResult> {
     if (name === ReticleCommand.QUERY) {
@@ -92,7 +97,10 @@ class FakeSession implements FlowReplaySession {
   }
 
   elapsed(): number {
-    return 0;
+    if (this.elapsedReadings === undefined) return 0;
+    const value = this.elapsedReadings[this.#elapsedCall] ?? this.elapsedReadings.at(-1) ?? 0;
+    this.#elapsedCall += 1;
+    return value;
   }
 }
 
@@ -149,6 +157,19 @@ describe('replayFlow — anchor re-resolution + legible drift', () => {
       { ref: 'e-chat-send', action: ActionType.CLICK },
       { ref: 'e-chat-input', action: ActionType.FILL },
     ]);
+  });
+
+  it('records per-step durationMs from the injected clock (and omits it when the clock is fixed)', async () => {
+    const script = (testid: string): QueryScript => ({ elements: [el(`e-${testid}`, testid)] });
+    // Two elapsed() reads per step (cursorBefore, then post-settle): step at 10→35 = 25ms.
+    const timed = new FakeSession(script, [], PASS, {}, [10, 35]);
+    const steps = await replayFlow(timed, flow([testidStep('chat-send')]), waitForPredicate, FAST);
+    expect(steps[0]?.durationMs).toBe(25);
+
+    // Fixed-clock fake (default): durationMs stays absent — additive, never a spurious 0.
+    const untimed = new FakeSession(script);
+    const s2 = await replayFlow(untimed, flow([testidStep('chat-send')]), waitForPredicate, FAST);
+    expect(s2[0]?.durationMs).toBeUndefined();
   });
 
   it('captures the page (route) each step ran on — the journey trail', async () => {

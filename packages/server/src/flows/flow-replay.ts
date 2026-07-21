@@ -475,6 +475,10 @@ export async function replayFlow(
       session.eventsSince(cursorBefore).filter((e) => e.t >= cursorBefore),
     );
     if (consequence !== undefined) result.consequence = consequence;
+    // Per-step wall time from the session's injected clock (dispatch → here, post-settle). Only set when
+    // the clock actually advanced, so a fixed-clock fake reads durationMs-free (additive, non-breaking).
+    const durationMs = session.elapsed() - cursorBefore;
+    if (durationMs > 0) result.durationMs = durationMs;
     results.push(result);
     if (result.drift !== undefined || !result.ok) break;
     index += 1;

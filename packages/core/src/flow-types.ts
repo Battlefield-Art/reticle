@@ -168,6 +168,11 @@ export interface FlowStepResult {
    * appear; the asserted consequence (expect/success) is the authoritative pass/fail signal.
    */
   consequence?: string;
+  /**
+   * Wall-clock ms this step took (dispatch → post-settle), from the session's injected elapsed clock.
+   * Additive/optional: absent in contexts with no advancing clock. Feeds per-step run-to-run perf diffs.
+   */
+  durationMs?: number;
   ok: boolean;
   error?: string;
   note?: string;

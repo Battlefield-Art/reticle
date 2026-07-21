@@ -138,4 +138,22 @@ export class RunStore {
     }
     return best;
   }
+
+  /**
+   * The two most-recent runs by createdAt as `[previous, current]` (oldest-first), or undefined when
+   * fewer than two readable runs exist. Powers reticle_run_export's `format:"diff"` (run-to-run deltas).
+   */
+  async latestTwo(): Promise<[ReticleVerificationRun, ReticleVerificationRun] | undefined> {
+    const runs: ReticleVerificationRun[] = [];
+    for (const id of await this.list()) {
+      const result = await this.read(id);
+      if (result.ok) runs.push(result.run);
+    }
+    if (runs.length < 2) return undefined;
+    runs.sort((a, b) => a.createdAt - b.createdAt);
+    const previous = runs[runs.length - 2];
+    const current = runs[runs.length - 1];
+    if (previous === undefined || current === undefined) return undefined;
+    return [previous, current];
+  }
 }
