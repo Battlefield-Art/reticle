@@ -46,6 +46,10 @@ export interface CrawlAnomaly {
   source?: string;
 }
 
+/** Said out loud when the page was larger than one snapshot, so a clean sweep cannot mean "all clear". */
+export const CAPPED_SNAPSHOT_NOTE =
+  'the page exceeded one snapshot, so controls past the cap were never seen — interactiveFound is a floor, not a total; re-run with a narrower `scope` to cover the rest';
+
 export interface CrawlReport {
   interactiveFound: number;
   stepsRun: number;
@@ -53,8 +57,10 @@ export interface CrawlReport {
   counts: { consoleErrors: number; failedRequests: number; deadControls: number };
   /** Descriptions of the controls actually clicked. */
   visited: string[];
-  /** True when there were more controls than maxSteps allowed (coverage was bounded). */
+  /** True when coverage was bounded — by the step budget, or by the page exceeding one snapshot. */
   truncated: boolean;
+  /** Present only when the snapshot itself was capped, i.e. controls exist that were never listed. */
+  coverageNote?: string;
 }
 
 export interface CrawlOptions {
@@ -110,8 +116,14 @@ export async function crawl(
     mode: 'interactive',
     ...(opts.scope !== undefined ? { scope: opts.scope } : {}),
   });
-  const tree = snap.ok ? (((snap.result ?? {}) as { tree?: string }).tree ?? '') : '';
+  const snapshot = snap.ok ? ((snap.result ?? {}) as { tree?: string; truncated?: boolean }) : {};
+  const tree = snapshot.tree ?? '';
   const items = parseInteractive(tree);
+  // The snapshot walk stops at its node cap and returns a DOCUMENT-ORDER PREFIX, so on a large page
+  // the controls it never reached are not merely unclicked — they were never seen. Reporting
+  // `interactiveFound` without this would state a control count that is really a cap, and
+  // `truncated:false` would positively assert that nothing was cut.
+  const coverageCapped = snapshot.truncated === true;
 
   const anomalies: CrawlAnomaly[] = [];
   const visited: string[] = [];
@@ -194,6 +206,10 @@ export async function crawl(
     anomalies,
     counts,
     visited,
-    truncated: items.length > stepsRun,
+    // True when coverage was bounded for EITHER reason: the step budget ran out, or the page was
+    // bigger than one snapshot. Conflating "I stopped early" with "I saw everything" is what turns a
+    // partial sweep into "all controls healthy".
+    truncated: items.length > stepsRun || coverageCapped,
+    ...(coverageCapped ? { coverageNote: CAPPED_SNAPSHOT_NOTE } : {}),
   };
 }

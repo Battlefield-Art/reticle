@@ -155,6 +155,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
+      buffer: z
+        .object({ held: z.number(), dropped: z.number(), note: z.string() })
+        .optional()
+        .describe(
+          'Present ONLY when the ring buffer evicted events during this window. A passing assertion — especially an absence one — may then be a false negative: the evidence that would have failed it could have been dropped. Absence of this block means the buffer was intact and the verdict is trustworthy.',
+        ),
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -167,8 +173,13 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         asNumber(args['timeout_ms']) ?? 4000,
         since,
       );
-      // match reticle_assert — wrap with control + session health (throttle matters most while blocking).
-      return withControl(session, { ...verdict, ...healthEnvelope(session) });
+      // match reticle_assert — wrap with control + session health (throttle matters most while blocking)
+      // and the buffer envelope, so a verdict reached over an evicted window says so.
+      return withControl(session, {
+        ...verdict,
+        ...healthEnvelope(session),
+        ...bufferEnvelope(session),
+      });
     },
   },
   {
@@ -204,6 +215,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
+      buffer: z
+        .object({ held: z.number(), dropped: z.number(), note: z.string() })
+        .optional()
+        .describe(
+          'Present ONLY when the ring buffer evicted events during this window. A passing assertion — especially an absence one — may then be a false negative: the evidence that would have failed it could have been dropped. Absence of this block means the buffer was intact and the verdict is trustworthy.',
+        ),
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -219,7 +236,15 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       // toward a consequence. Never on a failing verdict (moot) or when a signal/net is asserted.
       const advice =
         verdict.pass && isPresenceOnlyAssertion(predicate) ? { advice: PRESENCE_ONLY_ADVICE } : {};
-      return withControl(session, { ...verdict, ...advice, ...healthEnvelope(session) });
+      // A verdict reached over an evicted buffer can be a FALSE NEGATIVE: "no console error" may
+      // simply mean the error aged out. reticle_console has always disclosed this on the same window;
+      // the verdict path — the one an agent actually gates on — did not. Omitted when nothing dropped.
+      return withControl(session, {
+        ...verdict,
+        ...advice,
+        ...healthEnvelope(session),
+        ...bufferEnvelope(session),
+      });
     },
   },
   {

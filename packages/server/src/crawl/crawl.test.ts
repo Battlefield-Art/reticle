@@ -18,7 +18,11 @@ interface RefScript {
 }
 
 /** A scripted CrawlSession: SNAPSHOT returns `tree`; each ACT pushes that ref's scripted events. */
-function fakeSession(tree: string, perRef: Record<string, RefScript>): CrawlSession {
+function fakeSession(
+  tree: string,
+  perRef: Record<string, RefScript>,
+  snapshotTruncated = false,
+): CrawlSession {
   let clock = 0;
   const buffer: ReticleEvent[] = [];
   const ok = (result: unknown): Promise<CommandResult> =>
@@ -27,7 +31,7 @@ function fakeSession(tree: string, perRef: Record<string, RefScript>): CrawlSess
     elapsed: () => clock,
     eventsSince: (since) => buffer.filter((e) => e.t > since),
     command: (name, args = {}) => {
-      if (name === ReticleCommand.SNAPSHOT) return ok({ tree });
+      if (name === ReticleCommand.SNAPSHOT) return ok({ tree, truncated: snapshotTruncated });
       if (name === ReticleCommand.ACT) {
         const ref = typeof args['ref'] === 'string' ? args['ref'] : '';
         clock += 1;
@@ -173,5 +177,33 @@ describe('crawl anomalies name the file the control is written in', () => {
     const session = fakeSession(tree(['button "Save" (ref=e1)']), { e1: { events: [] } });
     const r = await crawl(session, {}, noSleep);
     expect(r.anomalies[0]?.source).toBeUndefined();
+  });
+});
+
+/**
+ * A crawl that swept a PREFIX of the page must not report like one that swept the page.
+ *
+ * The snapshot walk stops at its node cap and returns elements in document order, so on a large page
+ * the controls past the cap were never listed — not merely unclicked. `interactiveFound` was that
+ * post-cap count and `truncated` meant only "the step budget ran out", so a data grid with 900
+ * controls could report 18 found, 18 clicked, 0 anomalies, truncated:false. That reads as "this app
+ * is clean" and it is the strongest possible false green: the tool description promises it clicked
+ * every reachable control.
+ */
+describe('crawl does not present a capped sweep as a complete one', () => {
+  it('flags truncated when the snapshot itself was capped, even though every listed control was clicked', async () => {
+    const session = fakeSession(tree(['button "Save" (ref=e1)']), { e1: domActivity }, true);
+    const r = await crawl(session, {}, noSleep);
+    expect(r.stepsRun).toBe(1);
+    expect(r.interactiveFound).toBe(1);
+    expect(r.truncated).toBe(true);
+    expect(r.coverageNote).toBeDefined();
+  });
+
+  it('says nothing extra when the whole page fitted in one snapshot', async () => {
+    const session = fakeSession(tree(['button "Save" (ref=e1)']), { e1: domActivity }, false);
+    const r = await crawl(session, {}, noSleep);
+    expect(r.truncated).toBe(false);
+    expect(r.coverageNote).toBeUndefined();
   });
 });
