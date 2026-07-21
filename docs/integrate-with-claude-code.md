@@ -84,8 +84,8 @@ The loop is look → act → observe → assert:
 - state:   reticle_state({ store } | { ref }) to read React/Zustand directly instead of inferring.
 - learn:   reticle_capabilities() to discover the app's testids/signals/stores before guessing.
 - time:    reticle_clock({ freeze | advanceMs | reset }) for toasts/debounces/auto-dismiss.
-- regress: reticle_baseline_save once green, reticle_diff later to catch silent breakage.
-- narrate: reticle_narrate({ text }) before a meaningful action so the watching human sees intent.
+- regress: reticle_baseline {action:"save"} once green, reticle_baseline {action:"diff"} later to catch silent breakage.
+- narrate: reticle_session {action:"narrate"}({ text }) before a meaningful action so the watching human sees intent.
 
 Rules: target stable testids/roles, not brittle text; scope assertions with `since` after an
 action; if something is unverifiable from the DOM, add an reticle.signal in the app rather than

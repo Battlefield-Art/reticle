@@ -46,25 +46,25 @@ A claim is real only when the layers agree. Check more than the UI:
 
 Sessions/perception/verify — what you'll use 90% of the time:
 
-`reticle_sessions` · `reticle_domain` (learn the app + gaps, read first) · `reticle_snapshot` · `reticle_query` · `reticle_act` · `reticle_act_and_wait` · `reticle_observe` · `reticle_wait_for` · `reticle_assert` · `reticle_state` · `reticle_diff` · `reticle_capabilities` · `reticle_narrate` (show intent on-page) · `reticle_project` (run-history).
+`reticle_sessions` · `reticle_domain` (learn the app + gaps, read first) · `reticle_snapshot` · `reticle_query` · `reticle_act` · `reticle_act_and_wait` · `reticle_observe` · `reticle_wait_for` · `reticle_assert` · `reticle_state` · `reticle_baseline {action:"diff"}` · `reticle_capabilities` · `reticle_session {action:"narrate"}` (show intent on-page) · `reticle_project` (run-history).
 
-**Reach past core when…** you need to record/replay a journey (`reticle_record_start/stop`, `reticle_replay`), persist a self-healing golden flow (`reticle_flow_save*` / `reticle_flow_replay` / `reticle_flow_heal`), compile annotations (`reticle_annotate`), explore autonomously (`reticle_explore` lists controls; `reticle_crawl` clicks them all and reports anomalies — **destructive**), reveal a virtualized off-screen row (`reticle_scroll_to` — when `reticle_query` finds nothing because a windowed list hasn't rendered it yet), visual-check (`reticle_screenshot` / `reticle_visual_diff`, pinned with `reticle_viewport` for reproducible baselines), test error/edge states by stubbing the network (`reticle_network_mock` — 500 / offline / delay, driven mode), or work with a human (`reticle_end_session` / `reticle_resume` / `reticle_messages`, and **`reticle_review`** to drain + fix the bugs the human flagged from the panel).
+**Reach past core when…** you need to record/replay a journey (`reticle_record {action:"start"}/stop`, `reticle_replay`), persist a self-healing golden flow (`reticle_flow_save*` / `reticle_flow_replay` / `reticle_flow_heal`), compile annotations (`reticle_annotate`), explore autonomously (`reticle_explore` lists controls; `reticle_crawl` clicks them all and reports anomalies — **destructive**), reveal a virtualized off-screen row (`reticle_scroll_to` — when `reticle_query` finds nothing because a windowed list hasn't rendered it yet), visual-check (`reticle_screenshot` / `reticle_visual_diff`, pinned with `reticle_viewport` for reproducible baselines), test error/edge states by stubbing the network (`reticle_network_mock` — 500 / offline / delay, driven mode), or work with a human (`reticle_session {action:"end"}` / `reticle_session {action:"resume"}` / `reticle_session {action:"messages"}`, and **`reticle_session {action:"review"}`** to drain + fix the bugs the human flagged from the panel).
 
 ## flows vs baselines vs project.json (the persistence layers)
 
 | Artifact | Tool(s) | What it is |
 | --- | --- | --- |
 | **flows** | `reticle_flow_save*` / `reticle_flow_replay` / `reticle_flow_heal` | Replayable **golden journeys**, anchored to testids/signals — drift is legible and self-heals. |
-| **baselines** | `reticle_baseline_save` / `reticle_diff` | Structural **"before" snapshots**; `reticle_diff` flags regressions against them. |
+| **baselines** | `reticle_baseline {action:"save"}` / `reticle_baseline {action:"diff"}` | Structural **"before" snapshots**; `reticle_baseline {action:"diff"}` flags regressions against them. |
 | **project.json** | `reticle_project` | Cross-run **run-history** — "did it behave like last run?" read via `reticle_project`. |
 
-> `reticle_project` / `reticle_run_record` / `project.json` are the **run-history layer**. flows answer "does the journey still work?"; baselines answer "did the structure change?"; project.json answers "is this run consistent with prior runs?".
+> `reticle_project` / `project.json` are the **run-history layer**. flows answer "does the journey still work?"; baselines answer "did the structure change?"; project.json answers "is this run consistent with prior runs?".
 
 **Visual layer (opt-in, M11).** `reticle_screenshot` saves a PNG baseline to `.reticle/visual/<name>.png`; `reticle_visual_diff` perceptually compares the live page to it (`{ masks }` to ignore volatile regions, `{ maxRatio }` tolerance) → `{ matched, changedPixels, ratio, region, diffPath }`. It answers "does it **look** right" — complementary to the behavioral layers, never a replacement. Both need a **driven browser** (`reticle drive <url>` / `RETICLE_CDP_URL`); without one they return `{ ok:false, reason:"no-visual-provider" }` (the always-on SDK ships no screenshotter).
 
 ## Start here
 
-0. Just ran `reticle init` / started the dev server? `reticle_wait_ready` — blocks until the app connects (instant if it already has) so your first call doesn't lose the race; its reply also carries a one-line `loop` guide.
+0. Just ran `reticle init` / started the dev server? Poll `reticle_sessions()` until your tab appears — readiness is server-internal now, so the first live call already blocks until the SDK connects.
 1. `reticle_sessions` — find the connected tab (omit `sessionId` if there's only one).
 2. `reticle_domain` — learn the app BEFORE testing: the saved flows, what each asserts, and the **gaps** (declared signals/testids that no flow verifies — untested intent). Tells you what to test and where the real risk is without crawling the whole app. Falls back to `reticle_capabilities` for the raw testable surface (`testids`, `signals`, `stores`, `flows`).
 3. Run the loop: **look → act → observe → assert**, cross-checking the 4 layers on anything that matters.
