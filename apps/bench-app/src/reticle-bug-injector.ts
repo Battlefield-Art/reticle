@@ -641,8 +641,10 @@ function installStorageFaults(bugs: ReadonlySet<string>): void {
   };
 
   if (active.some((b) => b.dropCookie === true)) {
-    const proto = Object.getPrototypeOf(document) as Document;
-    const desc = Object.getOwnPropertyDescriptor(proto, 'cookie');
+    // `cookie` is defined on Document.prototype, NOT on the document's immediate prototype
+    // (HTMLDocument.prototype), so getPrototypeOf(document) found no descriptor and the patch silently
+    // did nothing — the bug never fired and the check passed on the buggy build.
+    const desc = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie');
     if (desc?.set !== undefined && desc.get !== undefined) {
       Object.defineProperty(document, 'cookie', {
         configurable: true,

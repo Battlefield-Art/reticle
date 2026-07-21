@@ -762,6 +762,52 @@ export const BUGS = [
   // ── silent-removal (§4.9): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
   // crawler that only exercises controls is structurally blind. Only a saved baseline notices. ───────
   {
+    id: 'token-not-persisted',
+    category: 'storage',
+    intent: 'signing in writes an auth token that survives a reload',
+    setup: ['login-submit'],
+    check: { kind: 'storagePresentAfter', area: 'local', key: AUTH_TOKEN_KEY, expectPresent: true },
+    expect: 'both',
+  },
+  {
+    id: 'logout-leaves-token',
+    category: 'storage',
+    intent: 'signing out actually clears the auth token, not just the UI',
+    setup: ['login-submit'],
+    check: {
+      kind: 'storagePresentAfter',
+      steps: ['sign-out'],
+      area: 'local',
+      key: AUTH_TOKEN_KEY,
+      expectPresent: false,
+    },
+    expect: 'both',
+  },
+  {
+    id: 'session-in-localstorage',
+    category: 'storage',
+    intent: 'the session id is session-scoped — it must NOT outlive the tab in localStorage',
+    setup: ['login-submit'],
+    check: { kind: 'storagePresentAfter', area: 'local', key: SESSION_ID_KEY, expectPresent: false },
+    expect: 'both',
+  },
+  {
+    id: 'stale-cache-key',
+    category: 'storage',
+    intent: 'the token is written under the current key, not the pre-rename one',
+    setup: ['login-submit'],
+    check: { kind: 'storagePresentAfter', area: 'local', key: AUTH_TOKEN_KEY, expectPresent: true },
+    expect: 'both',
+  },
+  {
+    id: 'cookie-not-set',
+    category: 'storage',
+    intent: 'the sign-in session cookie reaches the browser, so the server sees the session too',
+    setup: ['login-submit'],
+    check: { kind: 'storagePresentAfter', area: 'cookies', key: SESSION_COOKIE, expectPresent: true },
+    expect: 'both',
+  },
+  {
     id: 'debounce-broken',
     category: 'timing',
     intent: 'a burst of keystrokes issues ONE search request, not one per keystroke',
