@@ -762,6 +762,46 @@ export const BUGS = [
   // ── silent-removal (§4.9): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
   // crawler that only exercises controls is structurally blind. Only a saved baseline notices. ───────
   {
+    id: 'shadow-label-typo',
+    category: 'deep-dom',
+    intent: 'the status label inside the shadow root reads correctly',
+    setup: ['login-submit', 'nav-diagnostics'],
+    check: {
+      kind: 'domTextDeep',
+      scope: '[data-testid="shadow-host"]',
+      deepTestid: 'shadow-status',
+      expectText: 'All systems nominal',
+    },
+    expect: 'both',
+  },
+  {
+    id: 'shadow-control-dead',
+    category: 'deep-dom',
+    intent: 'the refresh control inside the shadow root still makes its request',
+    setup: ['login-submit', 'nav-diagnostics'],
+    check: {
+      kind: 'deepNetCountAfter',
+      deepSelector: '[data-testid="shadow-refresh"]',
+      deepTestid: 'shadow-refresh',
+      urlContains: '/api/health',
+    },
+    // Playwright-only, measured not assumed: its locators pierce open shadow roots (clean +1,
+    // buggy +0). reticle_act resolves against the top document and cannot reach the control at all.
+    expect: 'playwright-only',
+  },
+  {
+    id: 'iframe-stale-data',
+    category: 'deep-dom',
+    intent: 'the iframe panel shows the CURRENT deployment count, not a frozen one',
+    setup: ['login-submit', 'nav-diagnostics'],
+    check: {
+      kind: 'deepCountMatchesState',
+      scope: '[data-testid="deep-iframe"]',
+      statePath: 'deployments',
+    },
+    expect: 'reticle-only',
+  },
+  {
     id: 'toast-never-dismisses',
     category: 'timing',
     intent: 'the success toast honours its own 4.2s auto-dismiss',

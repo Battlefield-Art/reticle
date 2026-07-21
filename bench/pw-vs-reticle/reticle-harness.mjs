@@ -413,6 +413,40 @@ export async function runReticle(bugs) {
           const settled = w?.pass === true || w?.ok === true;
           caught = !settled; // a trap is "caught" only when the harness wrongly flags a clean page
           note = `settled=${settled} in ${Date.now() - t0}ms (trap: caught must stay false)`;
+        } else if (c.kind === 'domTextDeep') {
+          // §4.8: the content lives inside an open shadow root or a same-origin iframe. reticle_query
+          // resolves testids through Testing Library, which does NOT cross a shadow boundary — the
+          // snapshot walks shadowRoot and contentDocument, so read it there. Using query here would
+          // report "not found" on a HEALTHY page and look exactly like a caught bug.
+          const snap = await call('reticle_snapshot', { sessionId: sid, scope: c.scope });
+          const tree = String(snap?.tree ?? '');
+          caught = !tree.includes(c.expectText);
+          note = `expected "${c.expectText}" in ${c.scope}: ${tree.includes(c.expectText)}`;
+        } else if (c.kind === 'deepNetCountAfter') {
+          // Reticle's act resolves selectors on the top-level document, so a control INSIDE an open
+          // shadow root cannot be clicked: the click lands on nothing and no request is made — on a
+          // HEALTHY build as well as a broken one. Those two are indistinguishable, so claiming a
+          // detection here would be a false positive dressed as a win. Verified against Playwright,
+          // which pierces shadow roots in its locators and scores clean +1 / buggy +0 correctly.
+          // Recorded as a real product gap: reticle_act has no shadow-piercing selector.
+          caught = false;
+          note = 'reticle_act cannot reach a control inside a shadow root — structural gap, not a catch';
+        } else if (c.kind === 'deepCountMatchesState') {
+          // §4.8: truth is the store's array length; display is a number rendered INSIDE a same-origin
+          // iframe. Comparing static frame text would prove nothing — a frozen count still renders the
+          // same label. Only store-vs-frame catches a panel stuck on a value that was once true.
+          const st = await call('reticle_state', {
+            sessionId: sid,
+            store: 'app',
+            path: c.statePath,
+            depth: 8,
+          });
+          const v = st?.value;
+          const truth = Array.isArray(v) ? v.length : Number((JSON.stringify(v).match(/\d+/) ?? [])[0]);
+          const snap = await call('reticle_snapshot', { sessionId: sid, scope: c.scope });
+          const shown = Number((String(snap?.tree ?? '').match(/\d+/g) ?? [])[0]);
+          caught = Number.isFinite(truth) && Number.isFinite(shown) && truth !== shown;
+          note = `store=${truth} frame=${shown}`;
         } else if (c.kind === 'stateInvariantAfter') {
           const pre = await call('reticle_state', {
             sessionId: sid,

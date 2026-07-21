@@ -38,6 +38,12 @@
 import { reticle } from '@reticlehq/browser';
 import { Sig } from './lib/reticle-bridge.js';
 import { AUTH_TOKEN_KEY, SESSION_ID_KEY } from './lib/persisted-session.js';
+import {
+  IFRAME_TESTID,
+  SHADOW_BUTTON_TESTID,
+  SHADOW_LABEL_TESTID,
+  SHADOW_TAG,
+} from './components/DeepPanels.js';
 import { useApp } from './store/store.js';
 import type { Deployment } from './data/seed.js';
 
@@ -687,6 +693,63 @@ function installTimingFaults(bugs: ReadonlySet<string>): void {
   }
 }
 
+
+/**
+ * deep-dom (§4.8) — shadow root + iframe piercing. Everything here is INSIDE a boundary the top-level
+ * document does not expose: `document.querySelectorAll('[data-testid]')` finds none of it, and the
+ * parent console never sees the frame's error. Reticle's snapshot walks `element.shadowRoot` and a
+ * same-origin `contentDocument`, so the content is reachable — that reach is exactly what is measured.
+ *
+ * Note for check authors: `reticle_query` resolves testids through Testing Library, which does NOT
+ * cross a shadow boundary. These must be read via `reticle_snapshot`.
+ */
+function installDeepDomFaults(bugs: ReadonlySet<string>): void {
+  const wrongLabel = bugs.has('shadow-label-typo');
+  const deadControl = bugs.has('shadow-control-dead');
+  const staleIframe = bugs.has('iframe-stale-data');
+  const throwIframe = bugs.has('iframe-console-leak');
+  if (!wrongLabel && !deadControl && !staleIframe && !throwIframe) return;
+
+  const patch = (): void => {
+    const host = document.querySelector(SHADOW_TAG);
+    const root = host?.shadowRoot ?? null;
+    if (root !== null) {
+      if (wrongLabel) {
+        const label = root.querySelector(`[data-testid="${SHADOW_LABEL_TESTID}"]`);
+        // Plausible, and wrong: a human skims past it and every top-level DOM assertion still passes.
+        if (label !== null) label.textContent = 'All systems nominel';
+      }
+      if (deadControl) {
+        const button = root.querySelector(`[data-testid="${SHADOW_BUTTON_TESTID}"]`);
+        // Replacing the node drops its listener while leaving an identical-looking control behind.
+        if (button !== null) button.replaceWith(button.cloneNode(true));
+      }
+    }
+    const frame = document.querySelector<HTMLIFrameElement>(`[data-testid="${IFRAME_TESTID}"]`);
+    if (frame !== null) {
+      const url = new URL(frame.src, location.origin);
+      let changed = false;
+      if (staleIframe && url.searchParams.get('count') !== STALE_IFRAME_COUNT) {
+        url.searchParams.set('count', STALE_IFRAME_COUNT); // frozen at a value that was true once
+        changed = true;
+      }
+      if (throwIframe && !url.searchParams.has('throw')) {
+        url.searchParams.set('throw', '1');
+        changed = true;
+      }
+      if (changed) frame.src = url.toString();
+    }
+  };
+
+  // The panels mount with the Diagnostics view, not at install time, so re-apply as the DOM arrives.
+  const observer = new MutationObserver(patch);
+  observer.observe(document.body, { childList: true, subtree: true });
+  patch();
+}
+
+/** The stale count the iframe freezes at — deliberately not the real deployment count. */
+const STALE_IFRAME_COUNT = '3';
+
 /** DOM-text bugs → a testid whose displayed label/number is silently overwritten with a wrong value. */
 const DOM_TEXT: Record<string, { testid: string; wrong: string }> = {
   'brand-typo': { testid: 'brand', wrong: 'Retcile mission control' },
@@ -918,6 +981,7 @@ export function installBugInjector(): void {
   installSignalFaults(bugs);
   installStorageFaults(bugs);
   installTimingFaults(bugs);
+  installDeepDomFaults(bugs);
   installSilentRemoval(bugs);
   installPerfFaults(bugs);
   installDoubleFetch(bugs);

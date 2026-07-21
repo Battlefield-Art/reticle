@@ -3,6 +3,7 @@ import { useApp } from '../store/store.js';
 import { fault } from '../lib/api.js';
 import { emit, Sig } from '../lib/reticle-bridge.js';
 import { IconBolt, IconBug } from '../components/icons.js';
+import { DeepPanels } from '../components/DeepPanels.js';
 
 interface FaultDef {
   kind: string;
@@ -60,6 +61,9 @@ export function Diagnostics(): React.ReactElement {
       className="view"
       style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16, maxWidth: 1140 }}
     >
+      <div style={{ gridColumn: '1 / -1' }}>
+        <DeepPanels />
+      </div>
       <div className="panel panel-pad">
         <div className="eyebrow">Fault injection</div>
         <h3 style={{ fontSize: 16, margin: '6px 0 16px' }}>Break things on purpose</h3>

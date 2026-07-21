@@ -249,6 +249,39 @@ export async function runPlaywright(bugs) {
           // evaluates, so the trap is vacuously passed here rather than scored as a win.
           caught = false;
           note = 'no settle oracle in the script harness — trap not exercised';
+        } else if (c.kind === 'domTextDeep') {
+          // Playwright pierces open shadow roots in its own locators and can address a frame
+          // explicitly, so this is a fair 'both' — not a Reticle-only win.
+          let text = '';
+          if (c.frame === true) {
+            const f = page.frames().find((fr) => fr.url().includes('panel.html'));
+            text = f ? await f.evaluate(() => document.body.innerText) : '';
+          } else {
+            text = await page
+              .locator(`[data-testid="${c.deepTestid}"]`)
+              .first()
+              .innerText()
+              .catch(() => '');
+          }
+          caught = !text.includes(c.expectText);
+          note = `expected "${c.expectText}": ${text.includes(c.expectText)}`;
+        } else if (c.kind === 'deepNetCountAfter') {
+          const before = requests.filter((r) => r.url.includes(c.urlContains)).length;
+          await page
+            .locator(`[data-testid="${c.deepTestid}"]`)
+            .first()
+            .click({ timeout: 4000 })
+            .catch(() => {});
+          await sleep(900);
+          const after = requests.filter((r) => r.url.includes(c.urlContains)).length;
+          caught = after - before < 1;
+          note = `${c.urlContains} calls +${after - before}`;
+        } else if (c.kind === 'deepCountMatchesState') {
+          // Playwright can read the frame, but the STORE length is not reachable from the DOM — the
+          // visible row count is a different number (it is filtered/capped). Recorded as a structural
+          // gap rather than pretended.
+          caught = false;
+          note = 'no app-state access — cannot compare the frame against the store';
         } else if (c.kind === 'netStatusAfter') {
           // Playwright sees response statuses, so this class is genuinely catchable here — no charity.
           await fillPrep(c.prep);
