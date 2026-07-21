@@ -31,6 +31,46 @@ function unionShape(actions: Record<string, ToolDef>): z.ZodRawShape {
   return shape;
 }
 
+/** A merge declared by member NAME, resolved against the assembled tool list. */
+export interface MergePlan {
+  name: string;
+  description: string;
+  /** action value → the existing tool name whose handler serves it. */
+  members: Record<string, string>;
+}
+
+/**
+ * Apply the consolidation to an assembled tool list: drop each plan's members and each retired name from
+ * the advertised surface, and append one action-dispatched tool per plan. Member ToolDefs stay defined in
+ * their own modules (handlers untouched) — they simply stop being advertised separately, which is the
+ * whole point: the cost is the advertised count, not the code.
+ *
+ * A plan naming a member that does not exist is a build error, not a silent no-op — a typo would
+ * otherwise quietly drop a capability from the surface.
+ */
+export function applyMerges(
+  tools: readonly ToolDef[],
+  plans: readonly MergePlan[],
+  retired: readonly string[] = [],
+): ToolDef[] {
+  const byName = new Map(tools.map((t) => [t.name, t]));
+  const consumed = new Set<string>(retired);
+  const merged: ToolDef[] = [];
+  for (const plan of plans) {
+    const actions: Record<string, ToolDef> = {};
+    for (const [action, memberName] of Object.entries(plan.members)) {
+      const member = byName.get(memberName);
+      if (member === undefined) {
+        throw new Error(`applyMerges(${plan.name}): unknown member tool '${memberName}'`);
+      }
+      actions[action] = member;
+      consumed.add(memberName);
+    }
+    merged.push(mergeTools({ name: plan.name, description: plan.description, actions }));
+  }
+  return [...tools.filter((t) => !consumed.has(t.name)), ...merged];
+}
+
 export function mergeTools(spec: MergeSpec): ToolDef {
   const actionNames = Object.keys(spec.actions);
   if (actionNames.length === 0) throw new Error(`mergeTools(${spec.name}): no actions`);

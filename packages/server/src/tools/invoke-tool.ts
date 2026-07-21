@@ -22,10 +22,8 @@ export const SESSION_BOUND_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.NETWORK,
   ReticleTool.CONSOLE,
   ReticleTool.ANIMATIONS,
-  ReticleTool.BASELINE_SAVE,
-  ReticleTool.DIFF,
-  ReticleTool.RECORD_START,
-  ReticleTool.RECORD_STOP,
+  ReticleTool.BASELINE, // merged save/list/diff — save+diff are live reads
+  ReticleTool.RECORD, // merged start/stop — both live
   ReticleTool.REPLAY,
   ReticleTool.NARRATE,
   ReticleTool.CLOCK,
@@ -48,15 +46,12 @@ export const SESSION_EXEMPT_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.CAPABILITIES, // has a fromDisk mode with no live session
   ReticleTool.CONTRACT_SAVE, // persists the registry to disk
   ReticleTool.FLOW_SAVE, // sessionId only scopes the write to the app's flow subdir; disk-side
-  ReticleTool.FLOW_LIST, // sessionId only scopes which project's flows are listed; disk read
-  ReticleTool.FLOW_LOAD, // sessionId only scopes which project's flow is read; disk read
-  ReticleTool.FLOW_DELETE, // sessionId only scopes which project's flow is removed; disk delete
+  ReticleTool.FLOW, // merged list/load/delete — sessionId only scopes the project; all disk-side
   ReticleTool.FLOW_REPLAY, // returns its own FlowReplayResult contract (+ auto-records a run)
   ReticleTool.FLOW_VERIFY, // returns its own SuiteVerdict contract (replays the whole suite)
   ReticleTool.FLOW_SAVE_RECORDED, // reads the recording buffer, writes disk
   ReticleTool.FLOW_HEAL, // returns its own FlowHealResult contract
   ReticleTool.PROJECT, // reads .reticle/project.json
-  ReticleTool.RUN_RECORD, // writes .reticle/project.json
   ReticleTool.RUN_EXPORT, // reads .reticle/runs/<id>.json (verification-run artifact)
   ReticleTool.END_SESSION, // live-control lifecycle
   ReticleTool.YIELD, // live-control lifecycle (hand back to the human between turns)
@@ -69,7 +64,7 @@ export const SESSION_EXEMPT_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.NETWORK_MOCK, // own contract (applied/count); provider-driven, not a live-DOM read
   ReticleTool.VIEWPORT, // own contract (applied/width/height); provider-driven, not a live-DOM read
   ReticleTool.ANNOTATE, // annotates a recording's steps; pure disk-side metadata, no live DOM read
-  ReticleTool.LEASE_RELEASE, // its sessionId is a pool lease id, not a live session; no health splice
+  ReticleTool.LEASE, // merged acquire/release — its sessionId is a pool lease id, not a live session
 ]);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -76,6 +76,12 @@ export const ReticleTool = {
   REFRESH: 'reticle_refresh',
   /** Export a verification-run artifact (.reticle/runs/<id>.json) — the OEM/CI-consumable verdict. */
   RUN_EXPORT: 'reticle_run_export',
+  /** Consolidated families (W10.3) — one action-dispatched tool per family; members below stay
+   *  defined (handlers intact) but are no longer advertised separately. */
+  BASELINE: 'reticle_baseline',
+  RECORD: 'reticle_record',
+  FLOW: 'reticle_flow',
+  LEASE: 'reticle_lease',
   /** Lease a fresh isolated headless context from the shared browser pool (one per flow). */
   LEASE_ACQUIRE: 'reticle_lease_acquire',
   /** Release a previously leased context, freeing the pool slot. */

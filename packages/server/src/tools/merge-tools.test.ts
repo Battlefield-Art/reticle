@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { mergeTools } from './merge-tools.js';
+import { mergeTools, applyMerges } from './merge-tools.js';
 import type { ToolDef, ToolDeps } from './tool-kit.js';
 
 const deps = {} as ToolDeps;
@@ -57,5 +57,45 @@ describe('mergeTools (W10.3 surface consolidation)', () => {
     };
     expect(out.error).toContain('bogus');
     expect(out.expected).toEqual(['save', 'list', 'diff']);
+  });
+});
+
+describe('applyMerges (assembly-point consolidation)', () => {
+  const raw: ToolDef[] = [
+    member('reticle_act'),
+    member('reticle_baseline_save', { name: z.string() }),
+    member('reticle_baseline_list'),
+    member('reticle_diff'),
+    member('reticle_run_record'),
+  ];
+  const plans = [
+    {
+      name: 'reticle_baseline',
+      description: 'baseline family',
+      members: { save: 'reticle_baseline_save', list: 'reticle_baseline_list', diff: 'reticle_diff' },
+    },
+  ];
+
+  it('drops members + retired names and appends one merged tool (net surface shrink)', () => {
+    const out = applyMerges(raw, plans, ['reticle_run_record']);
+    const names = out.map((t) => t.name);
+    expect(names).toContain('reticle_act'); // untouched
+    expect(names).toContain('reticle_baseline'); // merged
+    expect(names).not.toContain('reticle_baseline_save');
+    expect(names).not.toContain('reticle_diff');
+    expect(names).not.toContain('reticle_run_record'); // retired
+    expect(out).toHaveLength(2); // 5 → 2
+  });
+
+  it('the merged tool still reaches every original handler', async () => {
+    const out = applyMerges(raw, plans);
+    const baseline = out.find((t) => t.name === 'reticle_baseline');
+    expect(await baseline?.handler(deps, { action: 'diff' })).toMatchObject({ ran: 'reticle_diff' });
+  });
+
+  it('throws on a plan naming a member that does not exist (a typo must not silently drop capability)', () => {
+    expect(() =>
+      applyMerges(raw, [{ name: 'x', description: 'd', members: { a: 'reticle_nope' } }]),
+    ).toThrow(/unknown member tool/);
   });
 });

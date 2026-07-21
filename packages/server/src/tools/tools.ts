@@ -20,6 +20,7 @@ import { SESSION_TOOLS } from '../session/session-tools.js';
 import { ANNOTATE_TOOLS } from '../flows/annotate-tools.js';
 import { LIVE_CONTROL_TOOLS } from '../session/live-control-tools.js';
 import { type ToolDef, sessionIdShape, commandOrThrow } from './tool-kit.js';
+import { applyMerges, type MergePlan } from './merge-tools.js';
 import { ACT_TOOLS } from './act-tools.js';
 import { OBSERVE_TOOLS } from './observe-tools.js';
 import { READ_TOOLS } from './read-tools.js';
@@ -31,7 +32,7 @@ export type { ToolDef, ToolDeps } from './tool-kit.js';
 /** Per-server last-snapshot cache backing reticle_snapshot's diff:true delta mode (route-invalidated). */
 const SNAPSHOT_CACHE = new SnapshotCache();
 
-export const TOOLS: ToolDef[] = [
+const RAW_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.SESSIONS,
     description:
@@ -308,3 +309,54 @@ export const TOOLS: ToolDef[] = [
   ...READ_TOOLS,
   ...LEASE_TOOLS,
 ];
+
+/**
+ * W10.3 surface consolidation. Tool defs are re-sent EVERY turn, so the advertised count is a per-turn
+ * tax multiplied by loop length. Sibling families collapse into one action-dispatched tool; the member
+ * handlers stay defined above and are simply no longer advertised separately.
+ *
+ * Guardrail (from the plan): the 12-tool core hot-set keeps its EXACT names and shapes and is never
+ * merged — sessions/navigate/snapshot/query/act/act_and_wait/observe/network/console/wait_for/assert/state.
+ */
+const MERGE_PLANS: MergePlan[] = [
+  {
+    name: ReticleTool.BASELINE,
+    description:
+      'Semantic-state baselines: { action: "save" } snapshots the current state under a name, "list" returns saved names, "diff" compares the live page against a saved baseline (REMOVED/ADDED elements + console-error count). Replaces reticle_baseline_save/list and reticle_diff.',
+    members: {
+      save: ReticleTool.BASELINE_SAVE,
+      list: ReticleTool.BASELINE_LIST,
+      diff: ReticleTool.DIFF,
+    },
+  },
+  {
+    name: ReticleTool.RECORD,
+    description:
+      'Timeline recording: { action: "start" } begins recording under a name, "stop" ends it and returns the reaction report plus a compiled replayable program. Replaces reticle_record_start/stop.',
+    members: { start: ReticleTool.RECORD_START, stop: ReticleTool.RECORD_STOP },
+  },
+  {
+    name: ReticleTool.FLOW,
+    description:
+      'Saved-flow management: { action: "list" } names every saved flow, "load" reads+validates one by flowName, "delete" removes one. The hot verbs (flow_save, flow_replay, flow_verify, flow_heal) stay separate. Replaces reticle_flow_list/load/delete.',
+    members: {
+      list: ReticleTool.FLOW_LIST,
+      load: ReticleTool.FLOW_LOAD,
+      delete: ReticleTool.FLOW_DELETE,
+    },
+  },
+  {
+    name: ReticleTool.LEASE,
+    description:
+      'Isolated headless contexts from the shared pool: { action: "acquire" } leases one and navigates it to the app URL, "release" closes it and frees the slot. Replaces reticle_lease_acquire/release.',
+    members: { acquire: ReticleTool.LEASE_ACQUIRE, release: ReticleTool.LEASE_RELEASE },
+  },
+];
+
+/**
+ * Retired from the MCP surface entirely (capability preserved elsewhere, per the plan):
+ *  - run_record: auto-recording on flow_replay already persists run outcomes.
+ */
+const RETIRED_FROM_SURFACE: string[] = [ReticleTool.RUN_RECORD];
+
+export const TOOLS: ToolDef[] = applyMerges(RAW_TOOLS, MERGE_PLANS, RETIRED_FROM_SURFACE);
