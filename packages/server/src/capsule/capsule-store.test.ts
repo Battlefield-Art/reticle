@@ -29,7 +29,7 @@ const capsule = (id: string): Capsule => ({
   steps: [step('buy')],
 });
 
-describe('CapsuleStore (W8.2 fail-to-pass bug capsules)', () => {
+describe('CapsuleStore (fail-to-pass bug capsules)', () => {
   let root: string;
   const fs = createNodeFileSystem();
 

@@ -6,7 +6,7 @@ import { createNodeFileSystem } from '../project/fs-port.js';
 import { AssertionTiersStore } from './assertion-tiers-store.js';
 import { detectDowngrades } from './assertion-integrity.js';
 
-describe('AssertionTiersStore (B37 anti-downgrade baseline)', () => {
+describe('AssertionTiersStore (anti-downgrade baseline)', () => {
   let root: string;
   const fs = createNodeFileSystem();
 

@@ -14,7 +14,7 @@ function member(name: string, extra: z.ZodRawShape = {}): ToolDef {
   };
 }
 
-describe('mergeTools (W10.3 surface consolidation)', () => {
+describe('mergeTools (surface consolidation)', () => {
   const merged = mergeTools({
     name: 'reticle_baseline',
     description: 'baseline family',

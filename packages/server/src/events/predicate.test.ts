@@ -337,7 +337,7 @@ describe('settled predicate (deterministic waiting)', () => {
     expect(r.pass).toBe(true); // settled: chat-log churn is ambient, excluded from the settle oracle
   });
 
-  it('a churning FEED (new element each tick, ref-less removals) still settles — the B11 acceptance', async () => {
+  it('a churning FEED (new element each tick, ref-less removals) still settles — the ambient-churn acceptance', async () => {
     // The real hostile shape: every appended row is a NEW element (fresh ref) and each removal has NO
     // ref, so ref-keyed exclusion never applied and settle stayed blocked forever. Keyed on the stable
     // region, the same stream is correctly treated as ambient.

@@ -24,7 +24,7 @@ describe('parseEventPayload', () => {
     expect(r.success).toBe(true);
   });
 
-  it('allows richer network payloads to pass through (W4 will add stack/timing fields)', () => {
+  it('allows richer network payloads to pass through (observers will add stack/timing fields)', () => {
     const r = parseEventPayload(EventType.NET_REQUEST, {
       id: 'r1',
       method: 'GET',

@@ -1,6 +1,6 @@
 import { EventType, REDACTED_VALUE } from '@reticlehq/core';
 import { isSensitiveKey } from '../security/serialization.js';
-import type { Emit, Teardown } from './types.js';
+import { observeSafely, observeValue, type Emit, type Teardown } from './types.js';
 
 /** The three readable client-side storage areas. httpOnly cookies are invisible to JS by design. */
 export interface StorageSnapshot {
@@ -112,24 +112,29 @@ export function installStorage(emit: Emit): Teardown {
   };
 
   proto.setItem = function patchedSetItem(this: Storage, key: string, value: string): void {
-    const old = readOld(this, key);
+    // The app's write happens FIRST and outside the guard — it must succeed or fail on its own terms.
+    const old = observeValue(() => readOld(this, key)) ?? null;
     origSet.call(this, key, value);
-    emit(EventType.STORAGE_CHANGE, {
-      area: areaOf(this),
-      key,
-      ...(redactFor(key, old) === undefined ? {} : { old: redactFor(key, old) }),
-      new: redactFor(key, value) ?? REDACTED_VALUE,
+    observeSafely(() => {
+      emit(EventType.STORAGE_CHANGE, {
+        area: areaOf(this),
+        key,
+        ...(redactFor(key, old) === undefined ? {} : { old: redactFor(key, old) }),
+        new: redactFor(key, value) ?? REDACTED_VALUE,
+      });
     });
   };
 
   proto.removeItem = function patchedRemoveItem(this: Storage, key: string): void {
-    const old = readOld(this, key);
+    const old = observeValue(() => readOld(this, key)) ?? null;
     origRemove.call(this, key);
-    // No `new` field ⇒ the key was removed.
-    emit(EventType.STORAGE_CHANGE, {
-      area: areaOf(this),
-      key,
-      ...(redactFor(key, old) === undefined ? {} : { old: redactFor(key, old) }),
+    observeSafely(() => {
+      // No `new` field ⇒ the key was removed.
+      emit(EventType.STORAGE_CHANGE, {
+        area: areaOf(this),
+        key,
+        ...(redactFor(key, old) === undefined ? {} : { old: redactFor(key, old) }),
+      });
     });
   };
 

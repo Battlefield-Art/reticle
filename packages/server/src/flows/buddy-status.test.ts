@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatBuddyStatus } from './buddy-status.js';
 
-describe('formatBuddyStatus (W14.3 buddy channel)', () => {
+describe('formatBuddyStatus (buddy channel)', () => {
   it('says the reassuring thing briefly when everything is nominal', () => {
     expect(formatBuddyStatus({ total: 41, passing: 41, deviations: [], quarantined: [] })).toBe(
       '✓ 41/41 flows nominal',

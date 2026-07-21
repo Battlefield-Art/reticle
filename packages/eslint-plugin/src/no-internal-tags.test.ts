@@ -24,6 +24,9 @@ ruleTester.run('no-internal-tags', noInternalTags, {
     { code: '// Matches UTF-8 encoded payloads only.' },
     // A version of a THIRD-PARTY thing is not an internal tracking string.
     { code: "// Requires @playwright/mcp 0.0.76 or newer." },
+    // Test descriptions are scanned too, so ordinary ones must stay legal.
+    { code: "describe('formatBuddyStatus', () => {});" },
+    { code: "it('falls back to HTTP/2 when available', () => {});" },
   ],
   invalid: [
     {
@@ -35,5 +38,19 @@ ruleTester.run('no-internal-tags', noInternalTags, {
     { code: '// Widened (W3)', errors: [{ messageId: 'internalTag' }] },
     { code: '// surface consolidation W10.3', errors: [{ messageId: 'internalTag' }] },
     { code: '// anti-reward-hacking (B37)', errors: [{ messageId: 'internalTag' }] },
+    // The project rule names TEST DESCRIPTIONS explicitly, and these are real ones that survived a
+    // repo-wide cleanup because a comment-only rule could not see a string literal.
+    {
+      code: "describe('gate — anti-reward-hacking (B37)', () => {});",
+      errors: [{ messageId: 'internalTag' }],
+    },
+    {
+      code: "describe('mergeTools (W10.3 surface consolidation)', () => {});",
+      errors: [{ messageId: 'internalTag' }],
+    },
+    {
+      code: "it('allows richer payloads (W4 will add fields)', () => {});",
+      errors: [{ messageId: 'internalTag' }],
+    },
   ],
 });

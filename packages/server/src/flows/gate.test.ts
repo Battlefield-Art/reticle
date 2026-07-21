@@ -29,7 +29,7 @@ describe('gateDecision', () => {
   });
 });
 
-describe('gate — anti-reward-hacking (B37): weakened or deleted coverage BLOCKS', () => {
+describe('gate — anti-reward-hacking: weakened or deleted coverage BLOCKS', () => {
   it('blocks when an affected flow weakened its assertions since the last passing run', () => {
     // The gaming vector: the flow "passes", but only because its mustHold dropped from a real
     // consequence (signal/net/state) to a fakeable presence check. A green bought that way must not pass.

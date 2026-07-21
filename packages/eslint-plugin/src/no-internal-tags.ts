@@ -18,7 +18,7 @@
  * `H2`, `Welford M2` when part of a sentence) is matched only when it stands alone as a tag.
  */
 
-import { ESLintUtils } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, ESLintUtils } from '@typescript-eslint/utils';
 import { DOCS_URL_ROOT } from './constants.js';
 
 const createRule = ESLintUtils.RuleCreator((name) => `${DOCS_URL_ROOT}#${name}`);
@@ -34,6 +34,9 @@ const SECTION_REF = /§\s?\d+(?:\.\d+)*/g;
 const VERSION_STRING = /(?<![A-Za-z0-9])v\d+\.\d+\.\d+(?![A-Za-z0-9])/g;
 
 /** Tokens that look like codes but are established technical terms. */
+/** Test-block callees whose first argument is a human-readable description. */
+const TEST_BLOCKS = new Set(['describe', 'it', 'test', 'suite', 'bench']);
+
 const ALLOWED = new Set(['M2', 'H1', 'H2', 'H3', 'P2', 'P3', 'S3', 'I18', 'L1', 'L2', 'UTF8']);
 
 export const noInternalTags = createRule({
@@ -46,20 +49,47 @@ export const noInternalTags = createRule({
   },
   defaultOptions: [],
   create(context) {
+    /** Every banned token in a piece of text. */
+    const tagsIn = (text: string): Set<string> => {
+      const found = new Set<string>();
+      for (const pattern of [TRACKING_CODE, SECTION_REF, VERSION_STRING]) {
+        pattern.lastIndex = 0;
+        for (const match of text.matchAll(pattern)) {
+          const tag = match[0].trim();
+          if (!ALLOWED.has(tag.replace(/[^A-Za-z0-9]/g, ''))) found.add(tag);
+        }
+      }
+      return found;
+    };
+
     return {
       Program(): void {
         for (const comment of context.sourceCode.getAllComments()) {
-          const found = new Set<string>();
-          for (const pattern of [TRACKING_CODE, SECTION_REF, VERSION_STRING]) {
-            pattern.lastIndex = 0;
-            for (const match of comment.value.matchAll(pattern)) {
-              const tag = match[0].trim();
-              if (!ALLOWED.has(tag.replace(/[^A-Za-z0-9]/g, ''))) found.add(tag);
-            }
-          }
-          for (const tag of found) {
+          for (const tag of tagsIn(comment.value)) {
             context.report({ node: comment, messageId: 'internalTag', data: { tag } });
           }
+        }
+      },
+
+      /**
+       * TEST DESCRIPTIONS are string literals, not comments, so a comment-only rule could not see them
+       * — and the project rule names them explicitly. Seven violations survived a repo-wide cleanup that
+       * claimed to have removed them, precisely because nothing mechanical was looking here.
+       */
+      CallExpression(node): void {
+        const callee = node.callee;
+        const name =
+          callee.type === AST_NODE_TYPES.Identifier
+            ? callee.name
+            : callee.type === AST_NODE_TYPES.MemberExpression &&
+                callee.object.type === AST_NODE_TYPES.Identifier
+              ? callee.object.name
+              : undefined;
+        if (name === undefined || !TEST_BLOCKS.has(name)) return;
+        const first = node.arguments[0];
+        if (first?.type !== AST_NODE_TYPES.Literal || typeof first.value !== 'string') return;
+        for (const tag of tagsIn(first.value)) {
+          context.report({ node: first, messageId: 'internalTag', data: { tag } });
         }
       },
     };
