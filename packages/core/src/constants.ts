@@ -114,6 +114,8 @@ export const ReticleDir = {
   VISUAL_SUBDIR: 'visual',
   /** verification-run artifacts — .reticle/runs/<runId>.json (the OEM/CI-consumable verdict). */
   RUNS_SUBDIR: 'runs',
+  /** fail-to-pass bug capsules — .reticle/capsules/<id>.json (a minimal failing flow + its evidence). */
+  CAPSULES_SUBDIR: 'capsules',
   /** durable causal journal — .reticle/sessions/<id>/{events,actions}.jsonl (the substrate). */
   SESSIONS_SUBDIR: 'sessions',
   /** append-only event ledger inside a session dir (one ReticleEvent per line). */

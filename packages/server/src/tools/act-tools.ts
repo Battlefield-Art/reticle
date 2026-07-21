@@ -8,6 +8,7 @@ import { compileActStep, compileSequenceStep } from '../flows/replay.js';
 import {
   ActionType,
   ActionWarning,
+  AnchorKind,
   DANGEROUS_ACTION_CONFIRM_ARG,
   InputMode,
   InputModeReason,
@@ -25,6 +26,7 @@ import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import { HonestyGrade, buildHonestyBlock } from '../honesty/honesty.js';
 import { buildCoverageStatement, blindSpotsFromEvents } from '../honesty/blind-spots.js';
+import { CapsuleStore, capsuleId } from '../capsule/capsule-store.js';
 import type { ExpectedLink } from '../capsule/divergence.js';
 import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
@@ -457,10 +459,40 @@ export const ACT_TOOLS: ToolDef[] = [
           coveragePartial: coverage.coverage === 'partial',
           ...(coverage.note === undefined ? {} : { blindSpots: [coverage.note] }),
         });
+        // W8.2: a red assertion is the ONE moment the evidence explaining it is in hand. Persist it as a
+        // replayable fail-to-pass capsule so the bug survives the turn — and becomes a regression flow
+        // the moment it goes green. Best-effort: capturing evidence must never fail the run that found it.
+        let capsuleSaved: string | undefined;
+        if (!verdict.pass && capsule !== undefined) {
+          const id = capsuleId(deps.now(), asString(args['ref']) ?? 'assert');
+          const expectedText = links
+            .map((l) => ('name' in l ? `${l.kind} ${l.name}` : l.kind))
+            .join(' AND ');
+          const saved = await new CapsuleStore(deps.fs, deps.reticleRoot).save({
+            version: 1,
+            id,
+            createdAt: deps.now(),
+            origin: 'failed-assert',
+            expected: expectedText.length > 0 ? expectedText : 'declared consequence',
+            observed: capsule.firstDivergence?.observed ?? verdict.failureReason ?? 'not observed',
+            steps: [
+              {
+                tool: ReticleTool.ACT,
+                anchor: {
+                  kind: AnchorKind.TESTID,
+                  value: asString(asRecord(actResult.result)['testid']) ?? asString(args['ref']) ?? '',
+                },
+                action: (asString(args['action']) ?? ActionType.CLICK) as ActionType,
+              },
+            ],
+          });
+          if (saved) capsuleSaved = id;
+        }
         return withControl(session, {
           effect: leanActResult(actResult.result),
           verdict,
           trace,
+          ...(capsuleSaved === undefined ? {} : { capsuleSaved }),
           summary: causalSummary(windowEvents),
           honesty,
           ...(capsule === undefined ? {} : { capsule }),

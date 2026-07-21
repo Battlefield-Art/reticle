@@ -9,6 +9,7 @@ import { createNodeFileSystem, type FileSystemPort } from './project/fs-port.js'
 import { affectedSavedFlows, type NamedFlow } from './flows/flow-sources.js';
 import { gateDecision } from './flows/gate.js';
 import { FlakeStore } from './flows/flake-store.js';
+import { CapsuleStore } from './capsule/capsule-store.js';
 import { AssertionTiersStore } from './flows/assertion-tiers-store.js';
 import { detectDowngrades } from './flows/assertion-integrity.js';
 import { computeCoverage } from './flows/coverage.js';
@@ -225,6 +226,31 @@ function handleWatch(): void {
   watch(process.cwd(), { recursive: true }, (_event, filename) => {
     if (typeof filename === 'string' && WATCHED_EXTENSIONS.test(filename)) batcher.onChange(filename);
   });
+}
+
+/**
+ * `reticle capsules` — list saved fail-to-pass bug capsules (.reticle/capsules). Each is a minimal
+ * failing reproduction plus the consequence that should have held; replay one with reticle_flow_replay.
+ */
+async function handleCapsules(): Promise<void> {
+  try {
+    const fs = createNodeFileSystem();
+    const capsules = await new CapsuleStore(fs, join(process.cwd(), ReticleDir.ROOT)).all();
+    log('reticle_capsules', {
+      count: capsules.length,
+      capsules: capsules.map((c) => ({
+        id: c.id,
+        ...(c.flow === undefined ? {} : { flow: c.flow }),
+        origin: c.origin,
+        expected: c.expected,
+        observed: c.observed,
+        steps: c.steps.length,
+      })),
+    });
+  } catch (error) {
+    log('reticle_capsules_failed', { error: error instanceof Error ? error.message : String(error) });
+    process.exitCode = 1;
+  }
 }
 
 /**
@@ -535,6 +561,9 @@ function main(): void {
       break;
     case 'verify':
       handleVerify(parsed);
+      break;
+    case 'capsules':
+      void handleCapsules();
       break;
     case 'affected':
       void handleAffected(parsed.files, parsed.since);

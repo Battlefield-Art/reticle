@@ -29,6 +29,7 @@ const OPEN_COMMAND = 'open';
 const DRIVE_COMMAND = 'drive';
 const VERIFY_COMMAND = 'verify';
 const AFFECTED_COMMAND = 'affected';
+const CAPSULES_COMMAND = 'capsules';
 const GATE_COMMAND = 'gate';
 const WATCH_COMMAND = 'watch';
 const UPDATE_COMMAND = 'update';
@@ -80,6 +81,7 @@ export type CliResult =
   | { kind: 'drive'; port: number; driveUrl: string; headless: boolean }
   | { kind: 'verify'; url: string; headless: boolean; timeoutMs?: number; storageState?: string }
   | { kind: 'affected'; files: string[]; since?: string }
+  | { kind: 'capsules' }
   | { kind: 'gate'; files: string[]; since?: string }
   | { kind: 'watch'; url?: string }
   | { kind: 'update' }
@@ -360,6 +362,8 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
         ...(r.storageState !== undefined ? { storageState: r.storageState } : {}),
       };
     }
+    case CAPSULES_COMMAND:
+      return { kind: 'capsules' };
     case AFFECTED_COMMAND: {
       const t = parseTargetArgs(rest);
       if (t.files.length === 0 && t.since === undefined) {

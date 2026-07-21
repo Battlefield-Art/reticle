@@ -33,6 +33,8 @@ export interface ReticleDirPaths {
   envelopes: string;
   /** .../.reticle/ambient.json (learned ambient-churn region map) */
   ambient: string;
+  /** .../.reticle/capsules (fail-to-pass bug capsules) */
+  capsules: string;
   /** .../.reticle/flake.json (per-flow flake ledger) */
   flake: string;
   /** .../.reticle/assertion-tiers.json (last-passing assertion tiers; anti-reward-hacking baseline) */
@@ -51,6 +53,7 @@ export function reticleDirPaths(root: string): ReticleDirPaths {
     sessions: join(root, ReticleDir.SESSIONS_SUBDIR),
     envelopes: join(root, ReticleDir.ENVELOPES_FILE),
     ambient: join(root, ReticleDir.AMBIENT_FILE),
+    capsules: join(root, ReticleDir.CAPSULES_SUBDIR),
     flake: join(root, ReticleDir.FLAKE_FILE),
     tiers: join(root, ReticleDir.TIERS_FILE),
   };
