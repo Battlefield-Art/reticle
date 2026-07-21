@@ -218,7 +218,21 @@ const RAW_TOOLS: ToolDef[] = [
       hint: z
         .object({
           route: z.string(),
-          presentTestids: z.array(z.string()),
+          // The browser emits presentRegions and it was NOT declared here, so zod stripped it from
+          // structuredContent on every zero-match result — the successor field was invisible while its
+          // deprecated predecessor was the only thing an agent could see. An undeclared field is a
+          // silent data loss, which is exactly what this schema exists to prevent.
+          presentRegions: z
+            .array(
+              z.object({
+                role: z.string(),
+                name: z.string().optional(),
+                childCount: z.number(),
+              }),
+            )
+            .optional()
+            .describe('Structural clusters on the page — what IS here, to diagnose the miss.'),
+          presentTestids: z.array(z.string()).optional(),
           knownEmptyState: z.boolean(),
         })
         .optional()

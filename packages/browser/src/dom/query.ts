@@ -163,7 +163,7 @@ function findIn(container: HTMLElement, query: ElementQuery): HTMLElement[] {
 function openShadowRootsUnder(root: HTMLElement): ShadowRoot[] {
   const found: ShadowRoot[] = [];
   const walk = (node: ParentNode): void => {
-    for (const el of Array.from(node.querySelectorAll<HTMLElement>('*'))) {
+    for (const el of node.querySelectorAll<HTMLElement>('*')) {
       const shadow = el.shadowRoot;
       if (shadow !== null) {
         found.push(shadow);
@@ -175,6 +175,20 @@ function openShadowRootsUnder(root: HTMLElement): ShadowRoot[] {
   return found;
 }
 
+/**
+ * NOTE ON COST. The walk above is a `querySelectorAll('*')` over the container, and `reticle_query` is
+ * a hot-path tool, so every query on every app pays it — including the overwhelming majority that hold
+ * no web components.
+ *
+ * A cache invalidated by a MutationObserver was written and then REMOVED, because it is not sound:
+ * `attachShadow()` on an element that is already in the document mutates only the shadow tree, which an
+ * observer watching documentElement's subtree never sees. The cached "no shadow roots here" would
+ * persist and the content would be silently missed — a false negative indistinguishable from a genuinely
+ * absent element, which is the exact bug the piercing was added to fix.
+ *
+ * Correctness wins until there is a measurement saying the walk actually matters. The allocation is
+ * avoided (iterate the live NodeList rather than copying it); the traversal itself stays.
+ */
 /**
  * Run the query against the light DOM AND every open shadow root beneath the scope.
  *
