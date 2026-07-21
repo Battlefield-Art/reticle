@@ -43,6 +43,12 @@ export async function runPlaywright(bugs) {
         if (m.type() === 'error') consoleErrors.push(m.text());
       });
       page.on('request', (r) => requests.push({ url: r.url(), method: r.method() }));
+      // Outgoing bodies — Playwright exposes these, so the payload checks are a fair fight.
+      const postBodies = [];
+      page.on('request', (r) => {
+        const body = r.postData();
+        if (body !== null && body !== undefined) postBodies.push({ url: r.url(), body });
+      });
       // Sockets open during setup, so this must be attached before any navigation happens.
       const wsFrames = [];
       page.on('websocket', (ws) =>
@@ -210,9 +216,46 @@ export async function runPlaywright(bugs) {
           caught = el === null;
           note = `testid ${c.testid} present=${el === null ? 0 : 1}`;
         } else if (c.kind === 'perfClsUnder' || c.kind === 'perfNoLongTaskAfter') {
-          await sleep(400);
-          caught = false;
-          note = 'no layout-shift / long-task oracle in the deterministic script harness';
+          // The long-task variant blocks the main thread on a nav, so the click must happen while the
+          // observer is watching — click first, then measure.
+          // The long-task variant blocks the main thread ON a nav, so the click must actually happen —
+          // and the observer below uses buffered:true, so a task from this click is still counted.
+          if (c.kind === 'perfNoLongTaskAfter' && c.steps?.[0] !== undefined) {
+            await waitFor(c.steps[0]);
+            await click(c.steps[0]);
+            await sleep(600);
+          }
+          // PerformanceObserver inside page.evaluate is exactly how CLS and long tasks are measured —
+          // the same browser mechanism Reticle's own SDK uses. Returning caught=false with "no perf
+          // oracle" manufactured three reticle-only wins from a check that was simply never written.
+          const metrics = await page.evaluate(
+            () =>
+              new Promise((resolve) => {
+                let cls = 0;
+                let longTasks = 0;
+                try {
+                  new PerformanceObserver((list) => {
+                    for (const e of list.getEntries()) {
+                      // Shifts with recent input are excluded from CLS by definition.
+                      if (!e.hadRecentInput) cls += e.value;
+                    }
+                  }).observe({ type: 'layout-shift', buffered: true });
+                  new PerformanceObserver((list) => {
+                    longTasks += list.getEntries().length;
+                  }).observe({ type: 'longtask', buffered: true });
+                } catch {
+                  /* entry type unsupported in this browser */
+                }
+                setTimeout(() => resolve({ cls, longTasks }), 1500);
+              }),
+          );
+          if (c.kind === 'perfClsUnder') {
+            caught = metrics.cls >= Number(c.expected);
+            note = `cls=${metrics.cls.toFixed(3)} threshold=${c.expected}`;
+          } else {
+            caught = metrics.longTasks > 0;
+            note = `longTasks=${metrics.longTasks} (>${c.ms}ms)`;
+          }
         } else if (c.kind === 'routeAfter') {
           // Playwright reads location directly, so a WRONG-PATH route is genuinely catchable here.
           // A DOUBLE history push is not — that needs the route event stream, not the final URL.
@@ -369,19 +412,38 @@ export async function runPlaywright(bugs) {
             ? `matched=${matches.length} ok=${good.length}`
             : `${c.steps[0]} not reached`;
         } else if (c.kind === 'netBodyAfter') {
+          // Playwright exposes the outgoing body via request.postData(). This branch used to return
+          // caught=false with "bodies not captured", manufacturing a reticle-only win out of a one-line
+          // API call. Mirrors the reticle check exactly: same substring, same direction semantics.
           await fillPrep(c.prep);
           const ok = await waitFor(c.steps[0]);
           if (ok) await click(c.steps[0]);
-          await sleep(400);
-          caught = false;
-          note = 'request/response bodies not captured by the deterministic script harness';
+          await sleep(RESPONSE_SETTLE_MS);
+          const bodies = postBodies.filter((b) => b.url.includes(c.urlContains)).map((b) => b.body);
+          if (!ok) {
+            caught = false;
+            note = `${c.steps[0]} not reached`;
+          } else if (bodies.length === 0) {
+            // No body seen at all is NOT evidence of the bug — say so rather than scoring a catch.
+            caught = false;
+            note = `no request body captured for ${c.urlContains}`;
+          } else {
+            caught = !bodies.some((b) => b.includes(c.expected));
+            note = `body contains '${c.expected}'=${!caught} (${bodies.length} sent)`;
+          }
         } else if (c.kind === 'netPendingAfter') {
+          // The harness already collects requests[] AND responses[]; a pending request is simply one
+          // with no matching response. This branch used to return caught=false with "no in-flight
+          // oracle" while both arrays sat in scope — the data was there, the check just was not run.
           await fillPrep(c.prep);
           const ok = await waitFor(c.steps[0]);
           if (ok) await click(c.steps[0]);
-          await sleep(400);
-          caught = false;
-          note = 'no in-flight-request oracle — a never-resolving request looks like nothing happened';
+          await sleep(RESPONSE_SETTLE_MS);
+          const asked = requests.filter((r) => r.url.includes(c.urlContains)).length;
+          const answered = responses.filter((r) => r.url.includes(c.urlContains)).length;
+          const pending = asked - answered;
+          caught = ok ? pending > 0 : false;
+          note = ok ? `requests=${asked} responses=${answered} pending=${pending}` : `${c.steps[0]} not reached`;
         }
         if (!caught && (note.includes('not found') || note.includes('not reached'))) note += diag;
       } catch (e) {

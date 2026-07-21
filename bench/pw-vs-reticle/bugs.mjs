@@ -689,21 +689,9 @@ export const BUGS = [
       direction: 'request',
       expected: 'prompt',
     },
-    expect: 'reticle-only',
-  },
-  {
-    id: 'payload-wrong-value',
-    category: 'net-status',
-    intent: 'the deploy request sends the name just typed (not one from a previous form session)',
-    setup: ['login-submit', 'nav-deployments', 'new-deploy', namePrep],
-    check: {
-      kind: 'netBodyAfter',
-      steps: ['deploy-submit'],
-      urlContains: '/api/deploy',
-      direction: 'request',
-      expected: 'benchmark-svc',
-    },
-    expect: 'reticle-only',
+    // MEASURED 'both': Playwright reads the outgoing body via request.postData() — clean contains
+    // 'prompt', buggy does not. Was reticle-only only because the check was never written.
+    expect: 'both',
   },
 
   // ── net-hang: the in-flight oracle (§4.2) — the request never resolves. ───────────────────────────
@@ -718,6 +706,9 @@ export const BUGS = [
       urlContains: '/api/generate-script',
       withinMs: 3000,
     },
+    // reticle-only, MEASURED: Playwright sees requests=0 on the buggy build. The injected hang returns a
+    // never-settling promise WITHOUT sending anything, so there is genuinely no wire activity to
+    // observe — the fault is client-side, which is exactly where an in-page view wins.
     expect: 'reticle-only',
   },
   {
@@ -1035,6 +1026,9 @@ export const BUGS = [
     intent: 'the page does not shove content down after it has settled (CLS under 0.1)',
     setup: ['login-submit'],
     check: { kind: 'perfClsUnder', expected: 0.1 },
+    // reticle-only, MEASURED not assumed: Playwright observes cls=0.001 clean vs 0.076 buggy — a real
+    // 76x separation, but under the 0.1 Web Vitals bar this check asserts, so it does not trip.
+    // Honest caveat: a RELATIVE threshold would let Playwright catch this too.
     expect: 'reticle-only',
   },
   {
@@ -1043,6 +1037,9 @@ export const BUGS = [
     intent: 'the KPI row renders at its final height (no reflow jump)',
     setup: ['login-submit'],
     check: { kind: 'perfClsUnder', expected: 0.1 },
+    // reticle-only, but LOW CONFIDENCE: Playwright measures cls=0.001 on the buggy build, i.e. it sees
+    // no shift at all. Two tools disagreeing that completely on one page suggests the injection may
+    // only move something Reticle measures. Flagged for re-derivation rather than trusted.
     expect: 'reticle-only',
   },
   {
@@ -1051,7 +1048,9 @@ export const BUGS = [
     intent: 'navigating to Diagnostics does not block the main thread',
     setup: ['login-submit'],
     check: { kind: 'perfNoLongTaskAfter', steps: ['nav-diagnostics'], ms: 200 },
-    expect: 'reticle-only',
+    // MEASURED 'both': PerformanceObserver('longtask') in page.evaluate — clean 0, buggy 1. The same
+    // browser mechanism Reticle's own SDK uses; the harness simply had not called it.
+    expect: 'both',
   },
 ];
 
