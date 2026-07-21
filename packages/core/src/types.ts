@@ -56,6 +56,15 @@ export interface ElementDescriptor {
    * "missing" and "present but blank" stay distinguishable) and credential-bearing names are redacted.
    */
   attrs?: Record<string, string>;
+  /**
+   * Where this element is written, as `file:line` — the nearest `data-reticle-source` stamped by the
+   * build plugin in dev. Absent in production builds and in apps that do not use the plugin, so an
+   * agent must treat it as a shortcut rather than a guarantee.
+   *
+   * A compact string rather than `{file, line}` because a descriptor can repeat hundreds of times in
+   * one response and every consumer either opens an editor or prints it.
+   */
+  source?: string;
 }
 
 export interface MatchResult {

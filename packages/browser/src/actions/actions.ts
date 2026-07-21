@@ -111,12 +111,18 @@ interface CapturedAnchor {
  * unmount the target (login submit, a close button), after which it has no readable attribute — so
  * reading the anchor post-settle would silently degrade the recorded step. We read it up front while
  * the element is still mounted.
+ *
+ * The component walk runs even when a testid is present. It used to be skipped, on the reasoning that
+ * a testid is the better anchor and the walk is wasted work — true for anchoring, but it also threw
+ * away the source pointer, which answers a different question (where is this defined?) and is the
+ * most useful thing we can give an agent that has to fix the thing we just broke. Acts are
+ * agent-initiated and rare, so the walk's cost is not on any hot path.
  */
 function anchorOf(el: Element): CapturedAnchor {
   const testid = el.getAttribute('data-testid') ?? undefined;
-  if (testid !== undefined) return { testid };
   const info = identifyComponent(el);
   const out: CapturedAnchor = {};
+  if (testid !== undefined) out.testid = testid;
   const component = info?.componentStack[0];
   if (component !== undefined) out.component = component;
   if (info?.source !== undefined) out.source = info.source;
@@ -141,13 +147,13 @@ const result = (
     settleReason,
     effect,
   };
-  if (anchor.testid !== undefined) {
-    base.testid = anchor.testid;
-  } else {
-    // No testid — carry the auto-anchor so the recorded step stays stable, not degraded.
-    if (anchor.component !== undefined) base.component = anchor.component;
-    if (anchor.source !== undefined) base.source = anchor.source;
-  }
+  // Anchor and provenance are reported side by side rather than as alternatives: the testid says how
+  // to find this element next run, the component/source says where it is written. A step is anchored
+  // by the testid when it has one (see the flow compiler) and that is unchanged — what changed is
+  // that having a testid no longer erases the answer to "which file do I open?".
+  if (anchor.testid !== undefined) base.testid = anchor.testid;
+  if (anchor.component !== undefined) base.component = anchor.component;
+  if (anchor.source !== undefined) base.source = anchor.source;
   if (warning !== undefined) base.warning = warning;
   return base;
 };

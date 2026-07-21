@@ -1,6 +1,7 @@
 import { ElementState, REDACTED_VALUE, type ElementDescriptor } from '@reticlehq/core';
 import { refs } from './refs.js';
 import { isSensitiveKey } from '../security/serialization.js';
+import { formatSource, sourceFromDom } from './source.js';
 
 /** Roles whose accessible name comes from their text content. */
 const NAME_FROM_CONTENT = new Set([
@@ -266,5 +267,11 @@ export function describe(el: Element): ElementDescriptor {
   };
   if (value !== undefined && value.length > 0) base.value = value;
   if (text.length > 0 && text !== name) base.text = text;
+  // DOM-only lookup on purpose: describe() runs once per matched element, so the adapter's fiber walk
+  // would turn a broad query into thousands of tree traversals. The stamped attribute answers the
+  // same question for a fraction of the cost, and single-element paths that can afford the better
+  // answer (inspect, act, review) use sourceFor() instead.
+  const source = formatSource(sourceFromDom(el));
+  if (source !== undefined) base.source = source;
   return base;
 }
