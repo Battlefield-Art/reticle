@@ -53,23 +53,39 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 
 **The numbers, every one measured by a committed harness, reproducible with `pnpm bench`, and we publish where we _lose_ too:**
 
-| Check                                                     | Result                             |
-| --------------------------------------------------------- | ---------------------------------- |
-| Bugs caught (52 injected regressions, controlled app)     | **50 / 52** (Playwright-script 38) |
-| Caught of those it _can_ catch                            | **50 / 50** (Playwright 38 / 39)   |
-| False positives (clean build)                             | **0** (Playwright 0)               |
-| Output consumed per bug                                   | **5.7 KB** vs Playwright 14.7 KB   |
-| Wall-time per bug                                         | **2.7 s** vs Playwright 31.7 s     |
-| Cost to re-run a 4-flow regression suite                  | **~47 tokens**                     |
-| Same suite, LLM re-driven (Playwright/DevTools)           | ~120,000 tokens                    |
-| **Speed-up**                                              | **2,574×**                         |
-| Flake rate on deterministic replay                        | **0%**                             |
-| Real app, first pass: live `500`s the UI hid              | **2 caught**                       |
-| Parallel agents on **one** browser (16 flows, 8 contexts) | **6.78× faster**                   |
+| Check                                                     | Result                                            |
+| --------------------------------------------------------- | ------------------------------------------------- |
+| Bugs caught (85 injected regressions, controlled app)     | **78 / 85** (Playwright-script 56)                |
+| Caught of those it _can_ catch                            | **78 / 81** (Playwright 54 / 57)                  |
+| **False positives (clean build)**                         | **0** (Playwright 0)                              |
+| False-positive traps (bug-shaped non-bugs)                | **2 / 2 held** (Playwright 2 / 2)                 |
+| Wall-time per bug                                         | **3.6 s** vs Playwright 32.5 s                    |
+| Output consumed per bug                                   | 8.0 KB vs Playwright 8.2 KB — _parity, see below_ |
+| Failures that name the file to open (`file:line`)         | **[pending measurement]**                         |
+| Cost to re-run a 4-flow regression suite                  | **~47 tokens**, constant in suite size            |
+| Same suite, LLM re-driven (Playwright/DevTools MCP)       | ~120,000 tokens                                   |
+| **Regression-run token cost at 4 flows**                  | **2,574× cheaper** (a cost ratio, not a speed-up) |
+| Flake rate on deterministic replay                        | **0%**                                            |
+| Real app, first pass: live `500`s the UI hid              | **2 caught**                                      |
+| Parallel agents on **one** browser (16 flows, 8 contexts) | **6.78× faster**                                  |
+
+**Two corrections we owe you**, because a benchmark that only moves in our favour isn't one:
+
+- **Output-per-bug is now parity, not a 2.6× win.** Earlier runs showed 5.7 KB vs 14.7 KB. That gap
+  was our own harness: six Playwright branches returned "not supported" while the APIs to do the
+  check existed and simply weren't called. We implemented them. Two bugs moved from "Reticle-only"
+  to parity, Playwright's catch rate went up, and our byte advantage went away. The remaining wins
+  are the ones that survived an adversarial pass on the competitor's side.
+- **2,574× was labelled "Speed-up".** It is a _token cost_ ratio for re-running a recorded suite, not
+  a wall-clock one. The wall-clock number is 9×.
+
+**Where we lose:** Playwright catches paint-level regressions we can't see (a global CSS filter leaves
+every computed style identical — that needs pixels), and it caught one request-payload bug we missed.
+Neither tool catches the two layout-shift bugs. All of it is in the scorecard.
 
 > **The proof that mattered most:** before we instrumented anything, Reticle's _first_ pass on our own production dashboard flagged two live `500`s (`GET /projects` and `/recovery/incidents`) that the UI completely hid. The page looked perfect. A screenshot would have called it done. **That is the entire point of Reticle**, and we found it on our own app, not a cherry-picked demo.
 
-→ [Full benchmark scorecard](bench/SCORECARD.md) · [Reproducible token math](docs/token-efficiency.md)
+→ [Full benchmark scorecard](bench/SCORECARD.md) · [What Reticle catches that Playwright can't, and why](bench/pw-vs-reticle/MOAT.md) · [Reproducible token math](docs/token-efficiency.md)
 
 ---
 

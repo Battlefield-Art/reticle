@@ -62,7 +62,7 @@ const verdict = (harness, bug, variant) =>
 const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'none'];
 
 /** A bug is a MEASURED moat case when reticle caught it, playwright did not, and neither tripped clean. */
-const measured = { moat: [], parity: [], competitorOnly: [], bothMissed: [], unclean: [] };
+const measured = { moat: [], parity: [], competitorOnly: [], bothMissed: [], unclean: [], traps: [] };
 
 for (const bug of BUGS) {
   const rBuggy = verdict('reticle-script', bug.id, 'buggy');
@@ -82,6 +82,16 @@ for (const bug of BUGS) {
   // A bug that trips the CLEAN build tells us nothing about either tool.
   if (rClean?.caught === true || pClean?.caught === true) {
     measured.unclean.push(entry);
+    continue;
+  }
+  // A TRAP is a bug-shaped thing that is not a bug — a live timestamp, an ambient animation. The
+  // correct outcome is that NEITHER tool fires. Counting those as "missed by both" would file the two
+  // tools' best behaviour under open coverage gaps, and would quietly reward a tool for firing on them.
+  if (bug.trap === true) {
+    measured.traps.push({ ...entry, heldFor: [
+      ...(rBuggy.caught ? [] : ['reticle']),
+      ...(pBuggy.caught ? [] : ['playwright']),
+    ] });
     continue;
   }
   if (rBuggy.caught && !pBuggy.caught) measured.moat.push(entry);
@@ -130,6 +140,20 @@ if (measured.competitorOnly.length > 0) {
   for (const m of measured.competitorOnly) {
     lines.push(`- \`${m.id}\` (${m.severity}) — ${m.intent}`);
     lines.push(`  - reticle: ${m.reticleNote}`);
+  }
+  lines.push('');
+}
+
+if (measured.traps.length > 0) {
+  lines.push('## False-positive traps (not firing is the PASS)');
+  lines.push('');
+  lines.push('Bug-shaped things that are not bugs: a live-updating timestamp, an infinite ambient');
+  lines.push('animation. A tool that flags these is unusable on a real app, so silence is the correct');
+  lines.push('result and these are excluded from every catch count above.');
+  lines.push('');
+  for (const m of measured.traps) {
+    const held = m.heldFor.length === 2 ? 'both held' : m.heldFor.length === 0 ? 'BOTH FIRED — false positive' : `${m.heldFor.join('/')} held, the other FIRED`;
+    lines.push(`- \`${m.id}\` — ${m.intent} — **${held}**`);
   }
   lines.push('');
 }

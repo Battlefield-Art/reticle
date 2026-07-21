@@ -148,24 +148,40 @@ async function main() {
     const testid = chosen[0].testid;
     try {
       await goto(bugUrl(bug.id));
+      // Read each control's source AS IT IS CLICKED, not afterwards.
+      //
+      // This mirrors what Reticle actually does: act captures the anchor and its source BEFORE
+      // dispatching, precisely because a navigating or destructive action unmounts its own target.
+      // Querying after the fact instead measured a thing the product does not do — 15 bugs scored
+      // "element not found" purely because clicking `login-submit` navigates away from it.
+      let observed;
       for (const step of bug.setup ?? []) {
         const el = await waitFor(step);
         if (el?.ref !== undefined) {
+          if (el.source !== undefined) observed = { testid: step, source: el.source };
           await call('reticle_act', { sessionId: sid, ref: el.ref, action: 'click' });
           await sleep(250);
         }
       }
-      const el = await waitFor(testid);
+      // The subject is the better answer when it is still on the page; the last control we actually
+      // touched is the honest fallback, and is what a real failure report would carry.
+      const subject = await waitFor(testid, 2500);
+      const el = subject ?? observed;
       if (el === undefined) {
         rows.push({ bug: bug.id, severity: severityOf(bug), testid, outcome: 'elementNotFound' });
         continue;
       }
       const reported = fileOf(el.source);
-      const truthFiles = [...new Set(chosen.map((s) => s.file))];
+      // Score against the ground truth for the control we ACTUALLY read. Falling back to the trigger
+      // but grading against the subject's file would mark a correct pointer wrong.
+      const scoredTestid = subject !== undefined ? testid : (observed?.testid ?? testid);
+      const sites = truth.sites.filter((s) => s.testid === scoredTestid);
+      const truthFiles = [...new Set((sites.length > 0 ? sites : chosen).map((s) => s.file))];
       rows.push({
         bug: bug.id,
         severity: severityOf(bug),
-        testid,
+        testid: scoredTestid,
+        anchorRole: subject !== undefined ? 'subject' : 'trigger',
         outcome: el.source === undefined ? 'noSource' : 'source',
         reported: el.source ?? null,
         truthFiles,
