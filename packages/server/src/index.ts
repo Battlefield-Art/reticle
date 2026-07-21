@@ -24,7 +24,7 @@ import { FlowStore } from './flows/flows.js';
 import { buildFlowChips } from './flows/flow-scope.js';
 import { ProjectStore } from './project/project-store.js';
 import { AnnotationStore } from './flows/annotation-store.js';
-import { createNodeFileSystem } from './project/fs-port.js';
+import { createNodeFileSystem, type FileSystemPort } from './project/fs-port.js';
 import { ReticleRunner } from './runs/reticle-runner.js';
 import { createRunnerPort } from './runs/runner-port.js';
 import { RunStore } from './runs/run-store.js';
@@ -242,6 +242,60 @@ function createBrowserPool(headless: boolean): BrowserPool {
  * so a failed launch never leaks a WS port. A past divergence between the two paths let daemon mode
  * run with a different setup — this removes that risk.
  */
+/**
+ * Wire journal capture, ambient seeding and the journal-tail flush onto a bridge.
+ *
+ * Both entry points need all three, and both used to hand-roll them. `startDaemon` only ever wired the
+ * first, so on the path every user actually takes (`reticle serve` / `reticle mcp`) the journal tail was
+ * dropped at session end and the learned ambient map was never persisted OR seeded — meaning ambient
+ * learning could not converge across sessions and the last events of every session were lost. The two
+ * call sites had already drifted once before, which is why this is one function rather than a
+ * copy-paste both are asked to keep in step.
+ */
+/**
+ * Route CDP-authoritative network detail onto the driven session's journal.
+ *
+ * The page and the SDK session share an origin, so a NET_DETAIL is pushed to the matching connected
+ * session. Shared by both entry points: `startDaemon` previously omitted it entirely, so on the path
+ * users actually take, CDP network detail was collected and then dropped on the floor.
+ */
+function makeNetworkDetailRouter(bridge: Bridge, driveUrl: string | undefined) {
+  const driveOrigin = originOf(driveUrl ?? '');
+  return (detail: NetworkDetail): void => {
+    const wantOrigin = originOf(detail.url);
+    for (const session of bridge.sessions.all()) {
+      const origin = originOf(session.url);
+      // Match the detail's own origin first; fall back to the driven URL's origin for a session whose
+      // reported url has drifted (an SPA route change rewrites it).
+      if (origin === wantOrigin || origin === driveOrigin) {
+        session.pushEvent({ t: 0, type: EventType.NET_DETAIL, sessionId: session.id, data: { ...detail } });
+      }
+    }
+  };
+}
+
+function attachJournal(
+  bridge: Bridge,
+  deps: { fs: FileSystemPort; reticleRoot: string; enabled: boolean },
+): void {
+  const journalAttach = makeJournalAttach(deps);
+  const ambientStore = new AmbientStore(deps.fs, deps.reticleRoot);
+  bridge.attachSessionCreate((session) => {
+    journalAttach(session);
+    // Seed the learned ambient map so a fresh session starts knowing which regions churn, instead of
+    // re-learning from zero. Best-effort + async: a late seed still helps, a failure is silent.
+    if (deps.enabled) {
+      void ambientStore
+        .load()
+        .then((counts) => session.seedAmbient(counts))
+        .catch(() => undefined);
+    }
+  });
+  // Teardown: flush the journal tail to disk + persist what this session learned.
+  bridge.attachSessionEnd(makeSessionEnd(deps));
+  if (deps.enabled) void pruneSessions(deps.fs, deps.reticleRoot);
+}
+
 async function resolveRealInput(
   options: StartOptions,
   onNavigateError: () => Promise<void>,
@@ -300,14 +354,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
   let leaseReaper: LeaseReaper | undefined;
   // Route CDP-authoritative network detail (drive path only) onto the driven session's journal: the
   // page and the SDK session share an origin, so a NET_DETAIL is pushed to the matching connected session.
-  const routeNetworkDetail = (detail: NetworkDetail): void => {
-    const wantOrigin = originOf(detail.url);
-    for (const session of bridge.sessions.all()) {
-      if (originOf(session.url) === wantOrigin || originOf(session.url) === originOf(options.driveUrl ?? '')) {
-        session.pushEvent({ t: 0, type: EventType.NET_DETAIL, sessionId: session.id, data: { ...detail } });
-      }
-    }
-  };
+  const routeNetworkDetail = makeNetworkDetailRouter(bridge, options.driveUrl);
   const { realInput, owned } = await resolveRealInput(options, () => bridge.close(), routeNetworkDetail);
 
   if (options.mcp !== false) {
@@ -316,22 +363,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
     const reticleRoot = options.reticleRoot ?? join(process.cwd(), ReticleDir.ROOT);
     const now = options.now ?? ((): number => Date.now());
     const journalEnabled = readJournalEnabled(process.cwd(), process.env[ReticleEnv.JOURNAL]);
-    const journalAttach = makeJournalAttach({ fs, reticleRoot, enabled: journalEnabled });
-    const ambientStore = new AmbientStore(fs, reticleRoot);
-    bridge.attachSessionCreate((session) => {
-      journalAttach(session);
-      // Seed the learned ambient map so a fresh session starts knowing which regions churn (B11), instead
-      // of re-learning from zero. Best-effort + async: a late seed still helps, a failure is silent.
-      if (journalEnabled) {
-        void ambientStore
-          .load()
-          .then((counts) => session.seedAmbient(counts))
-          .catch(() => undefined);
-      }
-    });
-    // Teardown: flush the journal tail to disk + persist what this session learned (B11 persistence).
-    bridge.attachSessionEnd(makeSessionEnd({ fs, reticleRoot, enabled: journalEnabled }));
-    if (journalEnabled) void pruneSessions(fs, reticleRoot);
+    attachJournal(bridge, { fs, reticleRoot, enabled: journalEnabled });
     const flows = new FlowStore(fs, reticleRoot, { now });
     const project = new ProjectStore(fs, reticleRoot, { now });
     const annotations = new AnnotationStore();
@@ -421,14 +453,17 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     bridge.sessions.setDefaultScope({ projectId: activeProjectId });
   }
 
-  const { realInput, owned } = await resolveRealInput(options, () => shared.close());
+  const { realInput, owned } = await resolveRealInput(
+    options,
+    () => shared.close(),
+    makeNetworkDetailRouter(bridge, options.driveUrl),
+  );
 
   const fs = createNodeFileSystem();
   const reticleRoot = options.reticleRoot ?? join(process.cwd(), ReticleDir.ROOT);
   const now = options.now ?? ((): number => Date.now());
   const journalEnabled = readJournalEnabled(process.cwd(), process.env[ReticleEnv.JOURNAL]);
-  bridge.attachSessionCreate(makeJournalAttach({ fs, reticleRoot, enabled: journalEnabled }));
-  if (journalEnabled) void pruneSessions(fs, reticleRoot);
+  attachJournal(bridge, { fs, reticleRoot, enabled: journalEnabled });
   const flows = new FlowStore(fs, reticleRoot, { now });
   const project = new ProjectStore(fs, reticleRoot, { now });
   const annotations = new AnnotationStore();
