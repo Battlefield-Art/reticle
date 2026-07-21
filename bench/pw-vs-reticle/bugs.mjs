@@ -912,12 +912,14 @@ export const BUGS = [
     setup: ['login-submit', 'nav-diagnostics'],
     check: {
       kind: 'deepNetCountAfter',
-      deepSelector: '[data-testid="shadow-refresh"]',
       deepTestid: 'shadow-refresh',
       urlContains: '/api/health',
     },
-    // Playwright-only, measured not assumed: its locators pierce open shadow roots (clean +1,
-    // buggy +0). reticle_act resolves against the top document and cannot reach the control at all.
+    // Classification PENDING re-measurement. It was set to playwright-only on a wrong diagnosis:
+    // the check passed `selector:` to reticle_act, an input that does not exist, so the click was a
+    // no-op and BOTH variants showed zero requests. With query now piercing open shadow roots a ref
+    // is obtainable, so this may well be 'both'. Left as-is until a live run says otherwise —
+    // changing it on reasoning alone is exactly the mistake that produced the wrong value.
     expect: 'playwright-only',
   },
   {

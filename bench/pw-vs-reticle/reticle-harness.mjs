@@ -435,14 +435,32 @@ export async function runReticle(bugs) {
           caught = !tree.includes(c.expectText);
           note = `expected "${c.expectText}" in ${c.scope}: ${tree.includes(c.expectText)}`;
         } else if (c.kind === 'deepNetCountAfter') {
-          // Reticle's act resolves selectors on the top-level document, so a control INSIDE an open
-          // shadow root cannot be clicked: the click lands on nothing and no request is made — on a
-          // HEALTHY build as well as a broken one. Those two are indistinguishable, so claiming a
-          // detection here would be a false positive dressed as a win. Verified against Playwright,
-          // which pierces shadow roots in its locators and scores clean +1 / buggy +0 correctly.
-          // Recorded as a real product gap: reticle_act has no shadow-piercing selector.
-          caught = false;
-          note = 'reticle_act cannot reach a control inside a shadow root — structural gap, not a catch';
+          // §4.8: a control INSIDE an open shadow root whose handler is gone. It looks and reads
+          // identically; only the request it should have made is missing.
+          //
+          // An earlier version of this check passed `selector:` to reticle_act. That input does not
+          // exist — act takes a `ref` from query/snapshot — so the call was a no-op and BOTH variants
+          // showed zero requests. I read that as "reticle_act cannot reach into a shadow root" and
+          // recorded a product gap that was not real. Query genuinely could not see shadow content at
+          // the time, which made the wrong explanation fit. Both are fixed; this now resolves a ref
+          // the normal way and clicks it.
+          const ref = await waitRef(c.deepTestid);
+          const before = await call('reticle_network', { sessionId: sid, limit: 50 });
+          const beforeN = (before?.calls ?? []).filter((e) =>
+            String(e.url ?? '').includes(c.urlContains),
+          ).length;
+          if (ref) {
+            await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          }
+          await sleep(900);
+          const after = await call('reticle_network', { sessionId: sid, limit: 50 });
+          const afterN = (after?.calls ?? []).filter((e) =>
+            String(e.url ?? '').includes(c.urlContains),
+          ).length;
+          caught = ref ? afterN - beforeN < 1 : false;
+          note = ref
+            ? `${c.urlContains} calls +${afterN - beforeN}`
+            : `${c.deepTestid} not resolvable (shadow-root query returned no ref)`;
         } else if (c.kind === 'deepCountMatchesState') {
           // §4.8: truth is the store's array length; display is a number rendered INSIDE a same-origin
           // iframe. Comparing static frame text would prove nothing — a frozen count still renders the
