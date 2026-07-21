@@ -307,6 +307,12 @@ export class Reticle {
       // no server-pushed end can arrive — so end the run we're presenting ourselves. A returning
       // agent revives it via the normal sessionStart() path on its next command.
       onConnectionLost: () => {
+        // Restore real timers. A frozen clock is driven by the agent through the bridge; once the
+        // bridge is gone nothing can ever advance it, so leaving it installed pins Date.now() and
+        // queues every setTimeout into a scheduler that will never run. Concretely that kills every
+        // lodash debounce/throttle in the app (now() - lastCall stays 0), so search boxes, autosave
+        // and resize handlers stop firing until a reload — with nothing on screen explaining why.
+        resetClock();
         if (this.#presenter?.sessionActive === true) {
           this.#presenter.setState(SessionState.ENDED, BRIDGE_LOST_SUMMARY);
         }
@@ -453,11 +459,20 @@ export class Reticle {
       data,
       ref,
     });
-    this.#transport?.sendEvent(event);
-    this.#eventCount += 1;
-    this.#overlay?.update({ connected: true, events: this.#eventCount });
-    // On a route change, re-scope the HUD's replay-flow chips to the page we're now on.
-    if (type === EventType.ROUTE_CHANGE) this.#presenter?.refilterFlows();
+    // Guarded because #emit runs INLINE IN THE APP'S CALL STACK: every monkey-patch calls it from
+    // inside the function it replaced. An exception here does not surface as an SDK error — it
+    // propagates out of history.pushState (crashing a router's navigate()), out of localStorage.setItem
+    // after the write already succeeded, or out of console.log before the message reaches the console.
+    // A dev-only observability SDK must never be able to break the app it is observing.
+    try {
+      this.#transport?.sendEvent(event);
+      this.#eventCount += 1;
+      this.#overlay?.update({ connected: true, events: this.#eventCount });
+      // On a route change, re-scope the HUD's replay-flow chips to the page we're now on.
+      if (type === EventType.ROUTE_CHANGE) this.#presenter?.refilterFlows();
+    } catch {
+      /* observation is best-effort; the host app's control flow is not */
+    }
   };
 
   #hello(): HelloMessage {

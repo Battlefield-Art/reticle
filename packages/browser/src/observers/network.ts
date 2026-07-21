@@ -6,6 +6,7 @@ import {
   scrubKnownSecrets,
 } from '../security/serialization.js';
 import type { Emit, Teardown } from './types.js';
+import { nativeSetTimeout } from '../timers/native-timers.js';
 
 /** Config for the network observer. Body capture is OFF by default and dev-only opt-in. */
 export interface NetworkOptions {
@@ -23,8 +24,49 @@ const MAX_BODY_CHARS = 8192;
 const CAPTURABLE_CONTENT =
   /application\/json|text\/|application\/xml|x-www-form-urlencoded|graphql/i;
 
+/**
+ * Content types that are STREAMS, never complete bodies.
+ *
+ * `text/event-stream` matches `text/` in CAPTURABLE_CONTENT, and body capture awaited
+ * `res.clone().text()` BEFORE returning the response to the app. A clone of a stream only settles when
+ * the stream ends — and an SSE stream does not end — so the app's `await fetch(...)` never resolved.
+ * Enabling body capture silently hung every streaming endpoint (SSE, and the chunked `application/json`
+ * every token-streaming model API uses), leaving a permanently loading UI with no reason to suspect the
+ * observability SDK. Never read these; the frame observer covers SSE properly.
+ */
+const STREAMING_CONTENT = /event-stream|x-ndjson|application\/stream/i;
+
+/**
+ * Longest the SDK will wait on a response-body clone before emitting without it.
+ *
+ * Two layers protect the app. `text/event-stream` and friends are skipped outright, which covers the
+ * common streaming case at zero cost. This deadline is the backstop for a body that streams WITHOUT
+ * announcing it in its content type — chunked `application/json` from a token-streaming API. Gating on
+ * `content-length` instead was tried and rejected: plenty of complete responses omit it (gzip, HTTP/2),
+ * so that would silently stop capturing bodies for ordinary apps. A bounded half-second on a rare path
+ * beats an unbounded hang, and beats losing capture everywhere.
+ */
+const BODY_READ_TIMEOUT_MS = 500;
+
+/**
+ * Resolve with the body text, or `undefined` if it takes too long.
+ *
+ * The app is already awaiting our patched fetch, so any unbounded read here is a hang in the host app.
+ * Losing an observation is always preferable to freezing the page being observed.
+ */
+async function withBodyDeadline(read: Promise<string>): Promise<string | undefined> {
+  return await Promise.race([
+    read,
+    new Promise<undefined>((resolve) => {
+      nativeSetTimeout(() => resolve(undefined), BODY_READ_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 function isCapturableType(contentType: string | null): boolean {
-  return contentType !== null && CAPTURABLE_CONTENT.test(contentType);
+  if (contentType === null) return false;
+  if (STREAMING_CONTENT.test(contentType)) return false;
+  return CAPTURABLE_CONTENT.test(contentType);
 }
 
 /**
@@ -348,12 +390,21 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
       // Read a CLONE so the app's response stream stays untouched. Dev-only opt-in; only text-like
       // bodies; a read failure never breaks the observation.
       let responseBodyFields: Record<string, unknown> = {};
+      // A complete response declares its length. A chunked/streamed one does not — and reading it means
+      // waiting for the stream to finish, which for SSE or a token-streamed completion is never. Use
+      // the declared length as the "this body is complete" signal rather than waiting to find out, so a
+      // streaming endpoint costs the app nothing instead of a timeout's worth of delay.
       if (captureBodies && isCapturableType(contentType)) {
+        // Bounded: a chunked response with no content-length can still be arbitrarily long, and the app
+        // must never wait on our read. Race the clone against a deadline and drop the body on timeout.
         try {
-          const { body, truncated } = projectBody(await res.clone().text(), contentType);
-          responseBodyFields = truncated
-            ? { responseBody: body, responseBodyTruncated: true }
-            : { responseBody: body };
+          const text = await withBodyDeadline(res.clone().text());
+          if (text !== undefined) {
+            const { body, truncated } = projectBody(text, contentType);
+            responseBodyFields = truncated
+              ? { responseBody: body, responseBodyTruncated: true }
+              : { responseBody: body };
+          }
         } catch {
           /* body not readable (already locked/consumed) — skip, keep the envelope */
         }
