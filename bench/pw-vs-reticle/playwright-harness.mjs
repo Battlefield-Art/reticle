@@ -191,6 +191,24 @@ export async function runPlaywright(bugs) {
           await sleep(400);
           caught = false;
           note = 'no layout-shift / long-task oracle in the deterministic script harness';
+        } else if (c.kind === 'routeAfter') {
+          // Playwright reads location directly, so a WRONG-PATH route is genuinely catchable here.
+          // A DOUBLE history push is not — that needs the route event stream, not the final URL.
+          await fillPrep(c.prep);
+          const ok = await waitFor(c.steps[0]);
+          if (ok) await page.click(`[data-testid="${c.steps[0]}"]`);
+          await sleep(400);
+          if (!ok) {
+            caught = false;
+            note = `${c.steps[0]} not reached`;
+          } else if (c.expectRoutes !== undefined) {
+            caught = false;
+            note = 'final URL cannot reveal a duplicate history entry';
+          } else {
+            const path = page.url();
+            caught = !path.includes(c.expectPath);
+            note = `url=${path} expected~${c.expectPath}`;
+          }
         } else if (c.kind === 'netStatusAfter') {
           // Playwright sees response statuses, so this class is genuinely catchable here — no charity.
           await fillPrep(c.prep);

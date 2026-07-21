@@ -656,7 +656,7 @@ export const BUGS = [
       urlContains: '/api/deployments',
       expected: 'deployments',
     },
-    expect: 'reticle',
+    expect: 'reticle-only',
   },
   {
     id: 'wrong-content-type',
@@ -670,7 +670,7 @@ export const BUGS = [
       expected: 200,
       contentType: 'application/json',
     },
-    expect: 'reticle',
+    expect: 'reticle-only',
   },
   {
     id: 'payload-missing-field',
@@ -684,7 +684,7 @@ export const BUGS = [
       direction: 'request',
       expected: 'prompt',
     },
-    expect: 'reticle',
+    expect: 'reticle-only',
   },
   {
     id: 'payload-wrong-value',
@@ -698,7 +698,7 @@ export const BUGS = [
       direction: 'request',
       expected: 'benchmark-svc',
     },
-    expect: 'reticle',
+    expect: 'reticle-only',
   },
 
   // ── net-hang: the in-flight oracle (§4.2) — the request never resolves. ───────────────────────────
@@ -713,7 +713,7 @@ export const BUGS = [
       urlContains: '/api/generate-script',
       withinMs: 3000,
     },
-    expect: 'reticle',
+    expect: 'reticle-only',
   },
   {
     id: 'hung-but-ui-done',
@@ -727,7 +727,7 @@ export const BUGS = [
       withinMs: 3000,
     },
     // The nastier variant: the DOM renders success, so ONLY the pending-request oracle can see it.
-    expect: 'reticle',
+    expect: 'reticle-only',
   },
   {
     id: 'slow-then-drop',
@@ -740,11 +740,27 @@ export const BUGS = [
       urlContains: '/api/generate-script',
       expected: 200,
     },
-    expect: 'reticle',
+    expect: 'reticle-only',
   },
 
   // ── silent-removal (§4.9): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
   // crawler that only exercises controls is structurally blind. Only a saved baseline notices. ───────
+  {
+    id: 'route-stuck-deployments',
+    category: 'routing',
+    intent: 'opening Deployments actually navigates, so the view is deep-linkable',
+    setup: ['login-submit'],
+    check: { kind: 'routeAfter', steps: ['nav-deployments'], expectPath: '/deployments' },
+    expect: 'both',
+  },
+  {
+    id: 'route-wrong-target',
+    category: 'routing',
+    intent: 'the Diagnostics nav puts /diagnostics in the URL, not another view',
+    setup: ['login-submit'],
+    check: { kind: 'routeAfter', steps: ['nav-diagnostics'], expectPath: '/diagnostics' },
+    expect: 'both',
+  },
   {
     id: 'kpi-card-removed',
     category: 'silent-removal',
@@ -770,7 +786,7 @@ export const BUGS = [
     intent: 'the page does not shove content down after it has settled (CLS under 0.1)',
     setup: ['login-submit'],
     check: { kind: 'perfClsUnder', expected: 0.1 },
-    expect: 'reticle',
+    expect: 'reticle-only',
   },
   {
     id: 'cls-imageless-jump',
@@ -778,7 +794,7 @@ export const BUGS = [
     intent: 'the KPI row renders at its final height (no reflow jump)',
     setup: ['login-submit'],
     check: { kind: 'perfClsUnder', expected: 0.1 },
-    expect: 'reticle',
+    expect: 'reticle-only',
   },
   {
     id: 'longtask-on-nav',
@@ -786,6 +802,22 @@ export const BUGS = [
     intent: 'navigating to Diagnostics does not block the main thread',
     setup: ['login-submit'],
     check: { kind: 'perfNoLongTaskAfter', steps: ['nav-diagnostics'], ms: 200 },
-    expect: 'reticle',
+    expect: 'reticle-only',
   },
 ];
+
+/**
+ * Load-time shape guard. A typo'd `expect` value is invisible at runtime — `expectsFor()` simply
+ * returns false, so the bug quietly leaves the scoring denominator and the suite reports a healthy
+ * ratio over a smaller set. That happened (11 entries said 'reticle' instead of 'reticle-only'), so
+ * the shape is now asserted instead of assumed.
+ */
+const VALID_EXPECT = new Set(['both', 'reticle-only', 'playwright-only']);
+for (const [i, b] of BUGS.entries()) {
+  if (!b) throw new Error(`bugs.mjs: hole in the registry at index ${i}`);
+  if (!VALID_EXPECT.has(b.expect))
+    throw new Error(`bugs.mjs: ${b.id} has expect="${b.expect}", must be one of ${[...VALID_EXPECT].join(' | ')}`);
+  if (!b.id || !b.category || !b.check?.kind) throw new Error(`bugs.mjs: ${b.id ?? i} is missing id/category/check.kind`);
+}
+const dupes = BUGS.map((b) => b.id).filter((id, i, a) => a.indexOf(id) !== i);
+if (dupes.length > 0) throw new Error(`bugs.mjs: duplicate ids: ${dupes.join(', ')}`);

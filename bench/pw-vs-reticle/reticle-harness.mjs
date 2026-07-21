@@ -268,6 +268,37 @@ export async function runReticle(bugs) {
           const longTasks = Number(obs?.summary?.longTasks ?? 0);
           caught = ref ? longTasks > 0 : false;
           note = ref ? `longTasks=${longTasks} (>${c.ms}ms)` : `${c.steps[0]} not reached`;
+        } else if (c.kind === 'routeAfter') {
+          // §4.3 routing: the VIEW renders correctly, so every DOM assertion passes — the URL is the
+          // only thing that is wrong. Deep links and the back button are broken and nothing says so.
+          await doPrep(c.prep);
+          const ref = await waitRef(c.steps[0]);
+          const act0 = ref
+            ? await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS })
+            : {};
+          await sleep(400);
+          const obs = await call('reticle_observe', {
+            sessionId: sid,
+            types: ['route'],
+            since: act0?.since,
+            limit: 50,
+          });
+          const routes = (obs?.events ?? []).filter(
+            (e) => String(e.type ?? '') === 'route.change',
+          );
+          if (!ref) {
+            caught = false;
+            note = `${c.steps[0]} not reached`;
+          } else if (c.expectRoutes !== undefined) {
+            // one click must produce exactly one history entry, or Back needs two presses
+            caught = routes.length !== c.expectRoutes;
+            note = `routeChanges=${routes.length} expected=${c.expectRoutes}`;
+          } else {
+            const last = routes.at(-1);
+            const path = String(last?.data?.pathname ?? last?.data?.to ?? '');
+            caught = !path.includes(c.expectPath);
+            note = `path=${path || '(no route event)'} expected~${c.expectPath}`;
+          }
         } else if (c.kind === 'stateInvariantAfter') {
           const pre = await call('reticle_state', {
             sessionId: sid,

@@ -475,6 +475,51 @@ function installPerfFaults(bugs: ReadonlySet<string>): void {
   }
 }
 
+
+/**
+ * routing (§4.3) — the view renders correctly but the URL is wrong. Deep links and the back button
+ * break while every DOM assertion still passes, so only a route oracle catches it.
+ *
+ * TWO of the spec's four routing bugs are deliberately absent, both for the same reason — they would
+ * report "caught" on a CLEAN build, which the standing rule forbids:
+ *
+ *  - `route-double-push`: injectable and genuinely broken (verified: one click = 2 history entries, so
+ *    Back strands you), but NEITHER harness can see it. Reticle's route observer drops a push whose URL
+ *    is unchanged (`route.ts`: `if (to.href === from) return;`) — correct behaviour that fixes a real
+ *    back-nav drop — and Playwright only sees the final URL, which is right. A bug nobody can catch adds
+ *    no signal to a comparison suite. Recorded as a known blind spot instead of scored.
+ *  - `deeplink-dead`: NOT here either. The app has no
+ * URL→view hydration at all, so a direct /deployments load ALREADY falls back to overview on a clean
+ * build — injecting it would trip the clean-build-zero gate. It needs the app to support deep links first.
+ */
+interface RouteBug {
+  /** Suppress the URL update for this view (renders, never navigates). */
+  stuck?: string;
+  /** Push this path instead of the real one, for the given view. */
+  wrong?: { view: string; push: string };
+}
+const ROUTE_BUGS: Record<string, RouteBug> = {
+  'route-stuck-deployments': { stuck: '/deployments' },
+  'route-wrong-target': { wrong: { view: '/diagnostics', push: '/overview' } },
+};
+
+function installRouteFaults(bugs: ReadonlySet<string>): void {
+  const active = [...bugs].map((id) => ROUTE_BUGS[id]).filter((b): b is RouteBug => b !== undefined);
+  if (active.length === 0) return;
+  const base = history.pushState.bind(history);
+  history.pushState = (data: unknown, unused: string, url?: string | URL | null): void => {
+    const path = String(url ?? '');
+    for (const bug of active) {
+      if (bug.stuck !== undefined && path.includes(bug.stuck)) return; // renders, never navigates
+      if (bug.wrong !== undefined && path.includes(bug.wrong.view)) {
+        base(data, unused, bug.wrong.push);
+        return;
+      }
+    }
+    base(data, unused, url);
+  };
+}
+
 /** DOM-text bugs → a testid whose displayed label/number is silently overwritten with a wrong value. */
 const DOM_TEXT: Record<string, { testid: string; wrong: string }> = {
   'brand-typo': { testid: 'brand', wrong: 'Retcile mission control' },
@@ -699,6 +744,7 @@ export function installBugInjector(): void {
   if (bugs.has('render-storm')) installRenderStorm();
   installClickBugs(bugs);
   installNetFaults(bugs);
+  installRouteFaults(bugs);
   installSilentRemoval(bugs);
   installPerfFaults(bugs);
   installDoubleFetch(bugs);
