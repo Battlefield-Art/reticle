@@ -84,15 +84,38 @@ export function advanceClock(ms: number): void {
   virtualNow = target;
 }
 
+/**
+ * Restore the real timers AND hand back everything the app queued while frozen.
+ *
+ * The queue used to be discarded (`tasks = []`). Restoring the native functions is only half the job:
+ * the callbacks the app scheduled during the freeze live in the virtual queue, and dropping them leaves
+ * the app quietly broken in a new way — a toast that never dismisses, a retry that never fires, a
+ * session-expiry check that never runs. `Date.now()` and future timers look healthy, so nothing points
+ * at the cause. That matters most on the path this is called from: an agent freezes the clock, the
+ * bridge dies, and the developer is left with an app that was never un-frozen deliberately.
+ *
+ * Pending work is re-scheduled onto REAL timers with its remaining virtual delay, so a 5s toast that
+ * was frozen 2s in still has ~3s to go. Intervals resume at their period.
+ */
 export function resetClock(): void {
   if (!installed || originals === null) return;
+  const { setTimeout: realSetTimeout, setInterval: realSetInterval } = originals;
+  const pending = tasks;
   window.setTimeout = originals.setTimeout;
   window.clearTimeout = originals.clearTimeout;
   window.setInterval = originals.setInterval;
   window.clearInterval = originals.clearInterval;
   Date.now = originals.dateNow;
+  const resumeFrom = virtualNow;
   originals = null;
   tasks = [];
   installed = false;
   virtualNow = 0;
+  // Re-arm AFTER the natives are restored, so these schedule onto real time rather than back into the
+  // queue we are draining.
+  for (const task of pending) {
+    const remaining = Math.max(0, task.time - resumeFrom);
+    if (task.interval !== undefined) realSetInterval(task.cb, task.interval);
+    else realSetTimeout(task.cb, remaining);
+  }
 }

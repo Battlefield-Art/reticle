@@ -43,3 +43,51 @@ describe('fake clock', () => {
     expect(isClockFrozen()).toBe(false);
   });
 });
+
+/**
+ * Restoring real timers is only half of un-freezing. The callbacks the app queued during the freeze
+ * live in the virtual queue, and discarding them leaves the app broken in a NEW way — a toast that
+ * never dismisses, a retry that never fires — while `Date.now()` and future timers look healthy, so
+ * nothing points at the cause. This matters most on the path resetClock is actually called from: the
+ * agent froze the clock, the bridge died, and nobody un-froze it deliberately.
+ */
+describe('resetClock hands back the work queued while frozen', () => {
+  afterEach(() => {
+    resetClock();
+  });
+
+  it('runs a timeout that was scheduled during the freeze', async () => {
+    freezeClock();
+    let fired = false;
+    window.setTimeout(() => {
+      fired = true;
+    }, 5);
+    resetClock(); // bridge lost — nothing will ever advance the virtual clock again
+    await new Promise((r) => setTimeout(r, 40));
+    expect(fired).toBe(true);
+  });
+
+  it('preserves the REMAINING delay rather than firing everything immediately', async () => {
+    freezeClock();
+    let fired = false;
+    window.setTimeout(() => {
+      fired = true;
+    }, 10_000);
+    resetClock();
+    await new Promise((r) => setTimeout(r, 30));
+    // A 10s timer must still be pending — re-arming must not collapse into "run it all now".
+    expect(fired).toBe(false);
+  });
+
+  it('resumes an interval scheduled during the freeze', async () => {
+    freezeClock();
+    let ticks = 0;
+    const id = window.setInterval(() => {
+      ticks += 1;
+    }, 5);
+    resetClock();
+    await new Promise((r) => setTimeout(r, 40));
+    clearInterval(id as unknown as number);
+    expect(ticks).toBeGreaterThan(0);
+  });
+});
