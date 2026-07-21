@@ -55,6 +55,23 @@ const STRUCTURAL_REASON = {
     'locators, so most of this class is parity; only the store-vs-frame comparison is not.',
 };
 
+/**
+ * Why the competitor wins, where it does. Published with the same specificity as our own wins, because
+ * a loss without a reason reads as an oversight we will fix, and some of these are structural.
+ */
+const LOSS_REASON = {
+  'ui-paint':
+    'a paint-level regression leaves every COMPUTED style identical — a global CSS filter re-tints ' +
+    'pixels without touching any property an in-page read can see. Only a screenshot is ground truth. ' +
+    'This is a permanent limit of reading the program instead of the picture.',
+  'net-status':
+    'Reticle observes at the APP boundary — what the page handed to fetch — not at the wire. Anything ' +
+    'that rewrites the request after that point (another fetch wrapper installed later, a service ' +
+    'worker) is invisible to it, while a CDP/proxy observer sees what actually left. In a real app the ' +
+    'equivalent bug lives in the code that BUILDS the body, which Reticle does see; but the blind spot ' +
+    'is real and worth stating rather than explaining away.',
+};
+
 const rows = JSON.parse(readFileSync(RESULTS, 'utf8')).rows;
 const verdict = (harness, bug, variant) =>
   rows.find((r) => r.harness === harness && r.bug === bug && r.variant === variant);
@@ -139,7 +156,9 @@ if (measured.competitorOnly.length > 0) {
   lines.push('');
   for (const m of measured.competitorOnly) {
     lines.push(`- \`${m.id}\` (${m.severity}) — ${m.intent}`);
-    lines.push(`  - reticle: ${m.reticleNote}`);
+    lines.push(`  - reticle observed: ${m.reticleNote}`);
+    const why = LOSS_REASON[m.category];
+    lines.push(`  - **why we lose:** ${why ?? '(no structural reason recorded — treat as a gap to close, not a limit)'}`);
   }
   lines.push('');
 }

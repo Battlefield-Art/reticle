@@ -56,11 +56,14 @@ are ignored here — only the run counts.
 Published deliberately. A benchmark that never reports a loss is not measuring.
 
 - `paint-filter` (low) — the page renders with the correct colors (no global hue-rotate paint regression)
-  - reticle: reticle script has no pixel diff (inspect computed-styles unchanged)
+  - reticle observed: reticle script has no pixel diff (inspect computed-styles unchanged)
+  - **why we lose:** a paint-level regression leaves every COMPUTED style identical — a global CSS filter re-tints pixels without touching any property an in-page read can see. Only a screenshot is ground truth. This is a permanent limit of reading the program instead of the picture.
 - `paint-invert` (low) — the page renders with the correct colors (no global invert paint regression)
-  - reticle: reticle script has no pixel diff (inspect computed-styles unchanged)
+  - reticle observed: reticle script has no pixel diff (inspect computed-styles unchanged)
+  - **why we lose:** a paint-level regression leaves every COMPUTED style identical — a global CSS filter re-tints pixels without touching any property an in-page read can see. Only a screenshot is ground truth. This is a permanent limit of reading the program instead of the picture.
 - `payload-missing-field` (critical) — the generate request actually sends the prompt (server must not silently default it)
-  - reticle: requestBody present, contains 'prompt'=true
+  - reticle observed: requestBody present, contains 'prompt'=true
+  - **why we lose:** Reticle observes at the APP boundary — what the page handed to fetch — not at the wire. Anything that rewrites the request after that point (another fetch wrapper installed later, a service worker) is invisible to it, while a CDP/proxy observer sees what actually left. In a real app the equivalent bug lives in the code that BUILDS the body, which Reticle does see; but the blind spot is real and worth stating rather than explaining away.
 
 ## False-positive traps (not firing is the PASS)
 
