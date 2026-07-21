@@ -46,7 +46,7 @@ async function syncSavedFlowToCloud(flow: FlowFile, projectId: string | undefine
  * login control that only exists at the root). A lease must be a FRESH visit to a deterministic entry
  * point; flows that need another page carry their own startPath.
  */
-function leasableAppUrl(deps: ToolDeps, sessionId: string | undefined): string | undefined {
+export function leasableAppUrl(deps: ToolDeps, sessionId: string | undefined): string | undefined {
   try {
     const url = deps.sessions.resolve(sessionId).url;
     if (typeof url !== 'string' || url.length === 0) return undefined;
@@ -57,7 +57,7 @@ function leasableAppUrl(deps: ToolDeps, sessionId: string | undefined): string |
 }
 
 /** A flow whose leased context never came up is a suite ERROR, never a silent pass. */
-function leaseFailureReplay(name: string, error: string | undefined): FlowReplayResult {
+export function leaseFailureReplay(name: string, error: string | undefined): FlowReplayResult {
   return {
     name,
     status: ReplayStatus.ERROR,
