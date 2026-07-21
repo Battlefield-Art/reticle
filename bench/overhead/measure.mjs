@@ -3,10 +3,20 @@
 // journal writes, DOM/network observers) < 3% of main-thread time, measured on the HOSTILE fixture —
 // the page that never goes quiet, i.e. the worst realistic case.
 //
-// Method: load the same hostile page twice in the same browser — once with the SDK installed, once with
-// `?no-hud` (which skips Reticle entirely) — and read Chrome's own cumulative `TaskDuration` metric over
-// an identical wall-clock window. Overhead is the difference expressed as a share of that window, so it
-// is main-thread PERCENTAGE POINTS, not a ratio of an arbitrary baseline.
+// Method: load the same hostile page in the same browser under THREE conditions and read Chrome's own
+// cumulative `TaskDuration` over an identical wall-clock window. Overhead is a difference expressed as a
+// share of that window, so it is main-thread PERCENTAGE POINTS, not a ratio of an arbitrary baseline.
+//
+//   full      — instrumentation + the presenter HUD (what a developer sees by default)
+//   observers — `?nopresent`: every observer installed, no HUD          <-- the budget applies HERE
+//   none      — `?no-hud`: Reticle skipped entirely
+//
+// The third condition is the point. The budget's sentence is "what does INSTRUMENTING cost the app",
+// but the two-condition version compared `full` against `none`, so it charged instrumentation for the
+// HUD as well — and the HUD is a full-viewport element with an infinite box-shadow animation and a
+// backdrop-filter, i.e. per-FRAME paint work that has nothing to do with observing anything. Reporting
+// them as one number both overstates the cost of instrumentation and hides the cost of the HUD.
+// Decomposed:  instrumentation = observers - none   ·   presenter = full - observers
 //
 //   node bench/overhead/measure.mjs [url] [seconds]
 //
@@ -22,10 +32,17 @@ const BUDGET_PCT = 3;
 
 const metric = (metrics, name) => metrics.find((m) => m.name === name)?.value ?? 0;
 
+/** The three conditions, as URL suffixes. */
+const CONDITION = {
+  full: '',
+  observers: '/?nopresent',
+  none: '/?no-hud',
+};
+
 /** Drive one condition and return the main-thread task-seconds consumed during the window. */
-async function measureOnce(browser, { withSdk }) {
+async function measureOnce(browser, condition) {
   const page = await browser.newPage();
-  const url = withSdk ? BASE : `${BASE}/?no-hud`;
+  const url = `${BASE}${CONDITION[condition]}`;
   await page.goto(url, { waitUntil: 'load' });
 
   // Sign in, then click through to the hostile view — by CLICK, so it works with the SDK disabled.
@@ -60,40 +77,48 @@ async function measureOnce(browser, { withSdk }) {
   return { taskS, wallS };
 }
 
+const NAMES = ['full', 'observers', 'none'];
+
 const browser = await chromium.launch({ headless: true });
 const samples = [];
 for (let i = 0; i < REPEATS; i++) {
-  // Alternate order so warm-up never systematically favours one condition.
-  const order = i % 2 === 0 ? [true, false] : [false, true];
+  // Rotate the order so warm-up/JIT drift cannot systematically favour any one condition.
+  const order = NAMES.map((_n, j) => NAMES[(j + i) % NAMES.length]);
   const run = {};
-  for (const withSdk of order) run[withSdk ? 'on' : 'off'] = await measureOnce(browser, { withSdk });
+  for (const condition of order) run[condition] = await measureOnce(browser, condition);
   samples.push(run);
   console.log(
-    `  repeat ${String(i + 1)}: SDK on ${run.on.taskS.toFixed(3)}s / off ${run.off.taskS.toFixed(3)}s main-thread task time`,
+    `  repeat ${String(i + 1)}: ` +
+      NAMES.map((n) => `${n} ${run[n].taskS.toFixed(3)}s`).join(' / ') +
+      ' main-thread task time',
   );
 }
 await browser.close();
 
 const avg = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
-const onS = avg(samples.map((r) => r.on.taskS));
-const offS = avg(samples.map((r) => r.off.taskS));
-const wallS = avg(samples.map((r) => r.on.wallS));
-const overheadPct = ((onS - offS) / wallS) * 100;
+const taskOf = (n) => avg(samples.map((r) => r[n].taskS));
+const fullS = taskOf('full');
+const observersS = taskOf('observers');
+const noneS = taskOf('none');
+const wallS = avg(samples.map((r) => r.full.wallS));
+// The budget is about instrumentation, so it is measured against the no-HUD condition.
+const overheadPct = ((observersS - noneS) / wallS) * 100;
+const presenterPct = ((fullS - observersS) / wallS) * 100;
 
 // The method's own resolution: how much the SAME condition varies run to run. An overhead smaller than
 // this is not a measurement of the SDK, it is noise — and reporting it as a number (especially a
 // flattering negative one) would be exactly the self-corrupting perf claim this bench exists to prevent.
-const spread = (xs) => (Math.max(...xs) - Math.min(...xs)) / wallS * 100;
-const noiseFloorPct = Math.max(
-  spread(samples.map((r) => r.on.taskS)),
-  spread(samples.map((r) => r.off.taskS)),
-);
+const spread = (xs) => ((Math.max(...xs) - Math.min(...xs)) / wallS) * 100;
+const noiseFloorPct = Math.max(...NAMES.map((n) => spread(samples.map((r) => r[n].taskS))));
 const resolved = Math.abs(overheadPct) > noiseFloorPct;
 
+const busy = (t) => `${t.toFixed(3)}s  (${((t / wallS) * 100).toFixed(1)}% busy)`;
 console.log('\n=== SDK overhead on the hostile fixture ===\n');
 console.log(`  window                  : ${wallS.toFixed(1)}s x ${String(REPEATS)} repeats`);
-console.log(`  main-thread, SDK ON     : ${onS.toFixed(3)}s  (${((onS / wallS) * 100).toFixed(1)}% busy)`);
-console.log(`  main-thread, SDK OFF    : ${offS.toFixed(3)}s  (${((offS / wallS) * 100).toFixed(1)}% busy)`);
+console.log(`  full (observers + HUD)  : ${busy(fullS)}`);
+console.log(`  observers only (no HUD) : ${busy(observersS)}`);
+console.log(`  Reticle absent          : ${busy(noneS)}`);
+console.log(`  presenter HUD costs     : ${presenterPct >= 0 ? '+' : ''}${presenterPct.toFixed(2)} pp  (opt out with present:false)`);
 console.log(`  measured difference     : ${overheadPct >= 0 ? '+' : ''}${overheadPct.toFixed(2)} pp of main thread`);
 console.log(`  method noise floor      : ±${noiseFloorPct.toFixed(2)} pp (same-condition run-to-run spread)`);
 if (resolved) {
