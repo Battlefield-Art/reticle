@@ -3,13 +3,18 @@ import type { ToolDef } from './tools.js';
 
 /**
  * Which MCP tool surface to expose. The advertised tool DEFINITIONS are re-sent to the model on
- * every turn, so a smaller surface is a per-turn token saving that compounds across a loop —
- * measured ~14.6k tok/turn at full (48 tools) vs ~half that for core. Fewer tools also makes the
- * model wander less (fewer turns, higher accuracy). See bench/LAYER-B.md.
+ * every turn, so a smaller surface is a per-turn token saving that compounds across a loop. Fewer
+ * tools also makes the model wander less (fewer turns, higher accuracy). See bench/LAYER-B.md.
+ *
+ * MEASURED surface sizes (assert them with profile-reachability.test.ts rather than trusting prose —
+ * every count previously written here was wrong, and the token figures below derive from those counts):
+ *   core 14 · standard 32 · hybrid 14 · full 41 · dynamic 2
+ * core and hybrid are both 14 because a trimmed profile now also advertises the two meta-tools, which
+ * is what keeps an un-advertised tool reachable through reticle_run.
  *
  * core — the verify loop a coding agent actually needs: navigate→look→act→observe→assert,
  * WITH direct network + console + state observability (the highest-signal checks).
- * ~12 tools. The recommended profile for agent-driven verification.
+ * The recommended profile for agent-driven verification.
  * standard — core + common extras (inspect, sequences, animations, flows, session lifecycle,
  * scroll, baselines, …). For agents that need more than the bare loop.
  * hybrid — THE DEFAULT: core verify+oracle tools advertised directly + 2 meta-tools for on-demand
@@ -33,8 +38,10 @@ export const TOOL_PROFILE_ENV = 'RETICLE_TOOL_PROFILE';
 
 // The set an agent needs to verify a change end-to-end. Tool DEFINITIONS are re-sent every turn, so a
 // smaller surface compounds. Measured per-turn surface cost (bench/first-drive, o200k proxy):
-// core 6,479 tok (12 tools) · standard 13,951 (40) · full 20,441 (56) — the hybrid default is ~68%
-// cheaper per turn than advertising everything.
+// core 6,479 tok · standard 13,951 · full 20,441 — the hybrid default is far cheaper per turn than
+// advertising everything. STALE: these were measured against a 12/40/56-tool surface that no longer
+// exists (it is now 14/32/41 after the merge and the escape-hatch change), so treat the ratio as
+// directional and the absolute numbers as needing a re-measure before they are quoted anywhere.
 //
 // There is a floor, though: an 8-tool cut (dropping act/navigate/wait_for/sessions) was MEASURED to
 // regress real-agent accuracy 5/5 → 3/5, because the model loses scaffolding and wanders on harder

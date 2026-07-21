@@ -28,16 +28,36 @@ export const INTERNAL_TAG_MESSAGE =
 
 /** `(W11)`, `B37`, `W10.3`, `N5:` — a short capital-prefixed code used as a label. */
 const TRACKING_CODE = /(?<![A-Za-z0-9])[A-Z]{1,2}\d{1,2}(?:\.\d{1,2})?(?![A-Za-z0-9])/g;
-/** `§4.3`, `§5` — a design-doc section reference. */
-const SECTION_REF = /§\s?\d+(?:\.\d+)*/g;
-/** `v2.2.0` — an internal version string. */
-const VERSION_STRING = /(?<![A-Za-z0-9])v\d+\.\d+\.\d+(?![A-Za-z0-9])/g;
+/**
+ * `§4.3` — a design-doc section reference. A citation of an EXTERNAL spec is legitimate ("RFC 6265
+ * §5.2", "WCAG §1.4.3"), so a § preceded by a spec-looking token is left alone.
+ */
+const SECTION_REF = /(?<![A-Za-z0-9]\s)(?<!\d\s)§\s?\d+(?:\.\d+)*/g;
+/**
+ * `v2.2.0` — an INTERNAL version string. A third-party version is legitimate prose ("React v18.2.0
+ * changed this"), so only a bare, unattributed one is flagged: preceded by start-of-text, whitespace or
+ * an opening bracket, and NOT preceded by a capitalised word (which reads as a product name).
+ */
+const VERSION_STRING = /(?<![A-Za-z0-9])(?<![A-Z][A-Za-z.]{1,20} )v\d+\.\d+\.\d+(?![A-Za-z0-9])/g;
 
 /** Tokens that look like codes but are established technical terms. */
 /** Test-block callees whose first argument is a human-readable description. */
 const TEST_BLOCKS = new Set(['describe', 'it', 'test', 'suite', 'bench']);
 
-const ALLOWED = new Set(['M2', 'H1', 'H2', 'H3', 'P2', 'P3', 'S3', 'I18', 'L1', 'L2', 'UTF8']);
+/**
+ * Tokens matching the code shape that are established technical terms. Kept deliberately explicit: a
+ * rule that fires on ordinary technical writing gets disabled, and a disabled rule enforces nothing.
+ */
+const ALLOWED = new Set([
+  'M2', // Welford's streaming-variance accumulator
+  'H1', 'H2', 'H3', // heading levels
+  'P1', 'P2', 'P3', // priority labels
+  'S3', 'EC2', // AWS services
+  'ES5', 'ES6', // ECMAScript editions
+  'IE11', // browser
+  'Q1', 'Q2', 'Q3', 'Q4', // quarters
+  'L1', 'L2', // cache levels
+]);
 
 export const noInternalTags = createRule({
   name: 'no-internal-tags',

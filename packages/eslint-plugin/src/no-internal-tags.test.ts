@@ -27,6 +27,14 @@ ruleTester.run('no-internal-tags', noInternalTags, {
     // Test descriptions are scanned too, so ordinary ones must stay legal.
     { code: "describe('formatBuddyStatus', () => {});" },
     { code: "it('falls back to HTTP/2 when available', () => {});" },
+    // Established technical terms that happen to match the code shape.
+    { code: '// Targets ES5 for the legacy bundle.' },
+    { code: '// Works around an IE11 layout quirk.' },
+    { code: '// Uploads land in S3 via EC2.' },
+    // A third-party version is prose, not an internal tracking string.
+    { code: '// React v18.2.0 changed this behaviour.' },
+    // An external spec citation is a real reference a reader can follow.
+    { code: '// Cookie parsing follows RFC 6265 §5.2.' },
   ],
   invalid: [
     {

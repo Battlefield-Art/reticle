@@ -232,7 +232,7 @@ export async function runPlaywright(bugs) {
             () =>
               new Promise((resolve) => {
                 let cls = 0;
-                let longTasks = 0;
+                const longTaskDurations = [];
                 try {
                   new PerformanceObserver((list) => {
                     for (const e of list.getEntries()) {
@@ -240,21 +240,29 @@ export async function runPlaywright(bugs) {
                       if (!e.hadRecentInput) cls += e.value;
                     }
                   }).observe({ type: 'layout-shift', buffered: true });
+                  // NOT buffered: a buffered observer replays the whole page timeline, so React's
+                  // initial render and the dev-bundle evaluation count as "a long task after the
+                  // action" — a clean-build false positive on any loaded CI box. Only tasks that occur
+                  // while this observer is live belong to the action under test.
                   new PerformanceObserver((list) => {
-                    longTasks += list.getEntries().length;
-                  }).observe({ type: 'longtask', buffered: true });
+                    for (const e of list.getEntries()) longTaskDurations.push(e.duration);
+                  }).observe({ type: 'longtask' });
                 } catch {
                   /* entry type unsupported in this browser */
                 }
-                setTimeout(() => resolve({ cls, longTasks }), 1500);
+                setTimeout(() => resolve({ cls, longTaskDurations }), 1500);
               }),
           );
           if (c.kind === 'perfClsUnder') {
             caught = metrics.cls >= Number(c.expected);
             note = `cls=${metrics.cls.toFixed(3)} threshold=${c.expected}`;
           } else {
-            caught = metrics.longTasks > 0;
-            note = `longTasks=${metrics.longTasks} (>${c.ms}ms)`;
+            // Compare against the DECLARED threshold. It was printed in the note but never used, so a
+            // 60ms hydration task was reported as a ">200ms main-thread block" — the browser's fixed
+            // 50ms longtask boundary was doing the deciding while the note claimed otherwise.
+            const overBudget = metrics.longTaskDurations.filter((d) => d >= Number(c.ms));
+            caught = overBudget.length > 0;
+            note = `longTasks>=${c.ms}ms: ${overBudget.length} (of ${metrics.longTaskDurations.length} total)`;
           }
         } else if (c.kind === 'routeAfter') {
           // Playwright reads location directly, so a WRONG-PATH route is genuinely catchable here.
@@ -419,10 +427,25 @@ export async function runPlaywright(bugs) {
           const ok = await waitFor(c.steps[0]);
           if (ok) await click(c.steps[0]);
           await sleep(RESPONSE_SETTLE_MS);
-          const bodies = postBodies.filter((b) => b.url.includes(c.urlContains)).map((b) => b.body);
+          // Honour c.direction. This branch read only OUTGOING bodies while its comment claimed the
+          // same direction semantics as the reticle side — harmless today because the one surviving
+          // bug is direction:'request', but the next response-direction bug would have been scored
+          // against the wrong payload, producing a false positive or a silent Playwright loss.
+          // Reset before the action, as netCountAfter already does. These arrays accumulate from page
+          // load, so a setup step hitting the same URL would otherwise be counted as the bug's traffic.
+          postBodies.length = 0;
+          const responseDirection = c.direction !== undefined && c.direction !== 'request';
+          const bodies = responseDirection
+            ? []
+            : postBodies.filter((b) => b.url.includes(c.urlContains)).map((b) => b.body);
           if (!ok) {
             caught = false;
             note = `${c.steps[0]} not reached`;
+          } else if (responseDirection) {
+            // Playwright's request.postData() is outgoing-only; a response body would need a
+            // response.body() read. Stated rather than scored either way.
+            caught = false;
+            note = `direction '${c.direction}' not captured — only outgoing bodies are read here`;
           } else if (bodies.length === 0) {
             // No body seen at all is NOT evidence of the bug — say so rather than scoring a catch.
             caught = false;
@@ -440,6 +463,10 @@ export async function runPlaywright(bugs) {
           // completed 2xx" is one expression. Withholding it manufactured the win.
           await fillPrep(c.prep);
           const ok = await waitFor(c.steps[0]);
+          // Same reset rationale: pending is requests-minus-responses, and setup traffic to this URL
+          // would skew both sides.
+          requests.length = 0;
+          responses.length = 0;
           if (ok) await click(c.steps[0]);
           await sleep(c.withinMs ?? RESPONSE_SETTLE_MS);
           const asked = requests.filter((r) => r.url.includes(c.urlContains)).length;

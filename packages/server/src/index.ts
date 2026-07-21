@@ -234,14 +234,6 @@ function createBrowserPool(headless: boolean): BrowserPool {
   return new BrowserPool(playwrightLauncher({ headless }), { maxContexts, genSessionId });
 }
 
-/** Start the Reticle bridge (browser WS endpoint) and, by default, the MCP stdio server. */
-/**
- * Resolve the drive/real-input provider from options — shared by start and startDaemon so the
- * precedence (driveUrl launch+own → CDP attach → none) and the storageState/injectConnect plumbing
- * live in ONE place. `onNavigateError` is the entrypoint's own cleanup (close the bridge/shared server)
- * so a failed launch never leaks a WS port. A past divergence between the two paths let daemon mode
- * run with a different setup — this removes that risk.
- */
 /**
  * Wire journal capture, ambient seeding and the journal-tail flush onto a bridge.
  *
@@ -296,6 +288,13 @@ function attachJournal(
   if (deps.enabled) void pruneSessions(deps.fs, deps.reticleRoot);
 }
 
+/**
+ * Resolve the drive/real-input provider from options — shared by start and startDaemon so the
+ * precedence (driveUrl launch+own → CDP attach → none) and the storageState/injectConnect plumbing
+ * live in ONE place. `onNavigateError` is the entrypoint's own cleanup (close the bridge/shared server)
+ * so a failed launch never leaks a WS port. A past divergence between the two paths let daemon mode
+ * run with a different setup — this removes that risk.
+ */
 async function resolveRealInput(
   options: StartOptions,
   onNavigateError: () => Promise<void>,
@@ -333,6 +332,7 @@ async function resolveRealInput(
   return {};
 }
 
+/** Start the Reticle bridge (browser WS endpoint) and, by default, the MCP stdio server. */
 export async function start(options: StartOptions = {}): Promise<RunningServer> {
   const port = options.port ?? RETICLE_DEFAULT_PORT;
   const security = await resolveBridgeSecurityWithAutoToken(options);

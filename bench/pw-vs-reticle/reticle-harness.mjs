@@ -338,14 +338,30 @@ export async function runReticle(bugs) {
           caught = cls >= Number(c.expected);
           note = `cls=${cls.toFixed(3)} threshold=${c.expected}`;
         } else if (c.kind === 'perfNoLongTaskAfter') {
-          // §4.6 long task: the main thread was blocked. Invisible to any DOM assertion.
+          // Long task: the main thread was blocked. Invisible to any DOM assertion.
           const ref = await waitRef(c.steps[0]);
-          if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          const act0 = ref
+            ? await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS })
+            : {};
           await sleep(RESPONSE_SETTLE_MS);
-          const obs = await call('reticle_observe', { sessionId: sid, limit: 200 });
-          const longTasks = Number(obs?.summary?.longTasks ?? 0);
-          caught = ref ? longTasks > 0 : false;
-          note = ref ? `longTasks=${longTasks} (>${c.ms}ms)` : `${c.steps[0]} not reached`;
+          // Read the perf EVENTS, not summary.longTasks. The summary is a count, so it cannot honour
+          // the declared threshold — the note printed `>${c.ms}ms` while the browser's fixed 50ms
+          // longtask boundary was doing the deciding. `since` scopes this to the click, so an earlier
+          // hydration task is not counted as a consequence of the action.
+          const obs = await call('reticle_observe', {
+            sessionId: sid,
+            types: ['perf'],
+            since: act0?.since,
+            limit: 200,
+          });
+          const durations = (obs?.events ?? [])
+            .filter((e) => String(e?.data?.metric ?? '') === 'longtask')
+            .map((e) => Number(e?.data?.value ?? 0));
+          const overBudget = durations.filter((d) => d >= Number(c.ms));
+          caught = ref ? overBudget.length > 0 : false;
+          note = ref
+            ? `longTasks>=${c.ms}ms: ${overBudget.length} (of ${durations.length} total)`
+            : `${c.steps[0]} not reached`;
         } else if (c.kind === 'routeAfter') {
           // §4.3 routing: the VIEW renders correctly, so every DOM assertion passes — the URL is the
           // only thing that is wrong. Deep links and the back button are broken and nothing says so.
