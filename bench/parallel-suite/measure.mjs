@@ -92,7 +92,17 @@ await server.close();
 
 const speedup = seq.ms / Math.max(1, par.ms);
 
+// §5.12: suite wall-time is a TRACKED number with a budget, not a vibe. The budget is per-flow so it
+// stays meaningful as the suite grows — a 200-flow suite is allowed 200x a single flow's allowance.
+const BUDGET_MS_PER_FLOW = Number(process.env.SUITE_BUDGET_MS_PER_FLOW ?? 1500);
+const flows = par.verdict.total || 1;
+const budgetMs = BUDGET_MS_PER_FLOW * flows;
+const withinBudget = par.ms <= budgetMs;
+
 console.log(`\n  speedup            : ${speedup.toFixed(2)}x`);
+console.log(
+  `  wall-time budget   : ${String(par.ms)}ms vs ${String(budgetMs)}ms (${String(flows)} flows x ${String(BUDGET_MS_PER_FLOW)}ms) → ${withinBudget ? 'PASS' : 'OVER BUDGET'}`,
+);
 console.log(
   `  sequential         : ${String(seq.verdict.passed)}/${String(seq.verdict.total)} passed`,
 );
@@ -116,4 +126,5 @@ if (par.verdict.passed > seq.verdict.passed) {
 }
 console.log('');
 // Fail only when parallelism made verification WORSE.
-process.exit(par.verdict.passed < seq.verdict.passed ? 1 : 0);
+// Fail on a verification regression OR a blown wall-time budget — both are release-bar breaches.
+process.exit(par.verdict.passed < seq.verdict.passed || !withinBudget ? 1 : 0);
