@@ -667,6 +667,26 @@ function resetStorageIfAsked(params: URLSearchParams): void {
   }
 }
 
+
+/**
+ * timing (§4.10) — fake-clock territory. The bug is entirely in WHEN something happens, so any check
+ * that looks immediately after the action sees a perfectly correct page. Only waiting past the
+ * deadline and looking again reveals it.
+ *
+ * `toast-never-dismisses` overrides the store's dismiss action rather than patching setTimeout: the
+ * timer still fires exactly on schedule, it just no longer does anything — which is how this fails in
+ * real code (a stale closure, an id that no longer matches) rather than a clock that stopped.
+ */
+function installTimingFaults(bugs: ReadonlySet<string>): void {
+  if (bugs.has('toast-never-dismisses')) {
+    useApp.setState({
+      dismissToast: () => {
+        /* the 4.2s timer fires and does nothing — the toast stays on screen forever */
+      },
+    });
+  }
+}
+
 /** DOM-text bugs → a testid whose displayed label/number is silently overwritten with a wrong value. */
 const DOM_TEXT: Record<string, { testid: string; wrong: string }> = {
   'brand-typo': { testid: 'brand', wrong: 'Retcile mission control' },
@@ -897,6 +917,7 @@ export function installBugInjector(): void {
   installRouteFaults(bugs);
   installSignalFaults(bugs);
   installStorageFaults(bugs);
+  installTimingFaults(bugs);
   installSilentRemoval(bugs);
   installPerfFaults(bugs);
   installDoubleFetch(bugs);

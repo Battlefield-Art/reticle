@@ -233,6 +233,22 @@ export async function runPlaywright(bugs) {
           );
           caught = present !== c.expectPresent;
           note = `${c.area}[${c.key}] present=${present} expected=${c.expectPresent}`;
+        } else if (c.kind === 'domAbsentAfterDelay') {
+          // Playwright can wait and re-check presence, so timing-of-disappearance is a fair 'both'.
+          await fillPrep(c.prep);
+          for (const t of c.steps ?? []) {
+            await click(t);
+            await sleep(250);
+          }
+          await sleep(c.delayMs);
+          const el = await page.$(`[data-testid="${c.testid}"]`);
+          caught = el !== null;
+          note = `${c.testid} present after ${c.delayMs}ms = ${el !== null}`;
+        } else if (c.kind === 'settlesDespiteAnimation') {
+          // No settle oracle in the deterministic script harness — it cannot over-flag what it never
+          // evaluates, so the trap is vacuously passed here rather than scored as a win.
+          caught = false;
+          note = 'no settle oracle in the script harness — trap not exercised';
         } else if (c.kind === 'netStatusAfter') {
           // Playwright sees response statuses, so this class is genuinely catchable here — no charity.
           await fillPrep(c.prep);

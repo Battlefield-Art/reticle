@@ -385,6 +385,34 @@ export async function runReticle(bugs) {
           const authed = (await refOf('sign-out')) !== undefined;
           caught = present !== c.expectPresent;
           note = `${c.area}[${c.key}] present=${present} expected=${c.expectPresent} authed=${authed}`;
+        } else if (c.kind === 'domAbsentAfterDelay') {
+          // §4.10 timing: the bug lives entirely in WHEN. Immediately after the action the page is
+          // correct — the toast SHOULD be on screen. Only waiting past its own deadline reveals that
+          // it never leaves.
+          await doPrep(c.prep);
+          const missed = await clickSteps(c.steps ?? []);
+          await sleep(c.delayMs);
+          const q = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.testid });
+          const stillThere = (q?.elements ?? []).length > 0;
+          caught = missed.length > 0 ? false : stillThere;
+          note =
+            missed.length > 0
+              ? `steps missed: ${missed.join(',')}`
+              : `${c.testid} present after ${c.delayMs}ms = ${stillThere}`;
+        } else if (c.kind === 'settlesDespiteAnimation') {
+          // §4.11 trap. Runs on the CLEAN build only and must produce NO detection. The page carries
+          // infinite ambient animations; a settle oracle that treats "something is still moving" as
+          // "not settled" would hang here and report a problem where there is none. Catching this is
+          // the failure — it means the harness over-flags a healthy page.
+          const t0 = Date.now();
+          const w = await call('reticle_wait_for', {
+            sessionId: sid,
+            predicate: { kind: 'settled', quietMs: c.quietMs ?? 500 },
+            timeout_ms: c.timeoutMs ?? 8000,
+          });
+          const settled = w?.pass === true || w?.ok === true;
+          caught = !settled; // a trap is "caught" only when the harness wrongly flags a clean page
+          note = `settled=${settled} in ${Date.now() - t0}ms (trap: caught must stay false)`;
         } else if (c.kind === 'stateInvariantAfter') {
           const pre = await call('reticle_state', {
             sessionId: sid,

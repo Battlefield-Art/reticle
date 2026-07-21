@@ -762,6 +762,36 @@ export const BUGS = [
   // ── silent-removal (§4.9): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
   // crawler that only exercises controls is structurally blind. Only a saved baseline notices. ───────
   {
+    id: 'toast-never-dismisses',
+    category: 'timing',
+    intent: 'the success toast honours its own 4.2s auto-dismiss',
+    setup: ['login-submit', 'nav-deployments', 'new-deploy'],
+    check: {
+      kind: 'domAbsentAfterDelay',
+      prep: { fill: 'deploy-name', text: 'benchmark-svc' },
+      steps: ['deploy-submit'],
+      testid: 'toast',
+      // createDeployment pushes TWO toasts: one immediately, one at 2600ms when the deploy goes live.
+      // The later one lives until 2600+4200=6800ms, so anything under that finds a toast on screen for
+      // entirely correct reasons — a 6000ms window read as "never dismisses" on a CLEAN build.
+      delayMs: 8200,
+    },
+    expect: 'both',
+  },
+  {
+    id: 'trap-ambient-animation',
+    category: 'false-positive-trap',
+    trap: true,
+    // Not a bug. The page carries infinite ambient animations (livePulse, reticlePulse) on a HEALTHY
+    // build. A settle oracle that reads "something is still moving" as "not settled" would hang and
+    // report trouble where there is none. Detection here is the failure, which is why it scores as a
+    // false positive rather than a catch.
+    intent: 'an infinite ambient animation must not stop the page from settling',
+    setup: ['login-submit'],
+    check: { kind: 'settlesDespiteAnimation', quietMs: 500, timeoutMs: 8000 },
+    expect: 'none',
+  },
+  {
     id: 'signal-missing-generate',
     category: 'signal',
     intent: 'generating a script announces compose:generated exactly once',
@@ -885,10 +915,16 @@ export const BUGS = [
  * the shape is now asserted instead of assumed.
  */
 const VALID_EXPECT = new Set(['both', 'reticle-only', 'playwright-only']);
+/** Traps must NEVER be caught, so they carry no expected catcher — legal only with `trap: true`. */
+const TRAP_EXPECT = 'none';
 for (const [i, b] of BUGS.entries()) {
   if (!b) throw new Error(`bugs.mjs: hole in the registry at index ${i}`);
-  if (!VALID_EXPECT.has(b.expect))
+  if (b.expect === TRAP_EXPECT) {
+    if (b.trap !== true)
+      throw new Error(`bugs.mjs: ${b.id} uses expect="${TRAP_EXPECT}" without trap:true`);
+  } else if (!VALID_EXPECT.has(b.expect)) {
     throw new Error(`bugs.mjs: ${b.id} has expect="${b.expect}", must be one of ${[...VALID_EXPECT].join(' | ')}`);
+  }
   if (!b.id || !b.category || !b.check?.kind) throw new Error(`bugs.mjs: ${b.id ?? i} is missing id/category/check.kind`);
 }
 const dupes = BUGS.map((b) => b.id).filter((id, i, a) => a.indexOf(id) !== i);
