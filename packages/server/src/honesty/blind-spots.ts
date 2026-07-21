@@ -54,3 +54,16 @@ export function blindSpotsFromEvents(events: readonly ReticleEvent[]): BlindSpot
   }
   return [...latest].map(([kind, count]) => ({ kind, count }));
 }
+
+/**
+ * Blind spots from the session's remembered LEVEL state rather than from a window of events.
+ *
+ * The SDK emits BLIND_SPOT only when the count changes, so a page that mounted cross-origin frames at
+ * load announces them once and is silent thereafter. Deriving coverage from one act's window then
+ * reports "full" for a page a third of which is unobservable — and the act tool's own description
+ * tells harnesses to gate on that block. Ask the session what is true now instead of inferring it
+ * from what happened to be said recently.
+ */
+export function blindSpotsFromState(state: Readonly<Record<string, number>>): BlindSpot[] {
+  return Object.entries(state).map(([kind, count]) => ({ kind: kind as BlindSpotKind, count }));
+}

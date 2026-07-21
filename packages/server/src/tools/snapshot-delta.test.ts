@@ -111,3 +111,48 @@ describe('applySnapshotDelta', () => {
     });
   });
 });
+
+/**
+ * `diff:true` is the token-saving path the snapshot tool actively recommends, which makes it the
+ * path most worth being honest on.
+ *
+ * The walk stops at a node cap and returns a document-order PREFIX. So on a page bigger than the cap,
+ * two snapshots taken either side of a real change are byte-identical whenever the change happened
+ * past the cap — and the agent is told `mode: 'unchanged'`, i.e. "your click did nothing". That is a
+ * false green produced entirely by our own bound.
+ */
+describe('a diff over a capped tree does not claim the page is unchanged', () => {
+  const opts = { sessionId: 's1', scope: '', mode: 'full', diff: true };
+
+  it('flags truncation on an unchanged verdict', () => {
+    const cache = new SnapshotCache();
+    const raw = { tree: 'a\nb', status: { route: '/' }, truncated: true };
+    applySnapshotDelta(raw, opts, cache); // prime
+    const out = applySnapshotDelta(raw, opts, cache) as { mode: string; truncated?: boolean; note?: string };
+    expect(out.mode).toBe('unchanged');
+    expect(out.truncated).toBe(true);
+    expect(out.note).toBeDefined();
+  });
+
+  it('flags truncation on a delta verdict too — a partial diff is still partial', () => {
+    const cache = new SnapshotCache();
+    applySnapshotDelta({ tree: 'a\nb', status: { route: '/' }, truncated: true }, opts, cache);
+    const out = applySnapshotDelta(
+      { tree: 'a\nb\nc', status: { route: '/' }, truncated: true },
+      opts,
+      cache,
+    ) as { mode: string; truncated?: boolean };
+    expect(out.mode).toBe('delta');
+    expect(out.truncated).toBe(true);
+  });
+
+  it('stays silent when the whole page fitted — silence must keep meaning complete', () => {
+    const cache = new SnapshotCache();
+    const raw = { tree: 'a\nb', status: { route: '/' }, truncated: false };
+    applySnapshotDelta(raw, opts, cache);
+    const out = applySnapshotDelta(raw, opts, cache) as { mode: string; truncated?: boolean; note?: string };
+    expect(out.mode).toBe('unchanged');
+    expect(out.truncated).toBeUndefined();
+    expect(out.note).toBeUndefined();
+  });
+});

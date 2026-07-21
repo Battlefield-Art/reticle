@@ -19,7 +19,8 @@ import {
 import { RingBuffer } from '../events/ring-buffer.js';
 import type { JournalReader, JournalRecorder } from '../journal/journal-recorder.js';
 import { filterEvents, mergeEventsBySeq, type EventQueryOptions } from '../journal/journal-query.js';
-import { ambientKeyOf, type AmbientCounts } from '../journal/ambient.js';
+import { type AmbientCounts } from '../journal/ambient.js';
+import { ObservedState } from './observed-state.js';
 import { ReviewStore, type ReviewMark } from './review-store.js';
 import { buildSessionRecommendation } from './session-recommendation.js';
 import { buildPresenterArgs } from './presenter-args.js';
@@ -123,9 +124,8 @@ export class Session {
   #activeActionId: string | undefined; // action window, held independently of the journal
   /** Read side of the journal, for queries that must survive ring-buffer eviction. */
   #journalReader: JournalReader | undefined;
-  /** Learned ambient-churn counts, accumulated in-session and seeded from disk; the settle oracle
-   * reads them so a churning page can still go quiet. */
-  #ambient: AmbientCounts = {};
+  /** What this session has learned by watching its own stream: ambient churn + blind-spot levels. */
+  readonly #observed = new ObservedState();
 
   constructor(hello: HelloMessage, socket: WebSocket, clock: Clock) {
     this.id = hello.sessionId;
@@ -248,24 +248,24 @@ export class Session {
     const fallback = this.#activeActionId;
     const attributed =
       seen.actionId === undefined && fallback !== undefined ? { ...seen, actionId: fallback } : seen;
-    // Learn ambient churn: an unattributed, ref-bearing event is background motion (chat/ticker), not
-    // action-caused work. Counting only unattributed events keeps genuine action effects out of the map.
-    const ambientKey = attributed.actionId === undefined ? ambientKeyOf(attributed) : undefined;
-    if (ambientKey !== undefined) {
-      this.#ambient[ambientKey] = (this.#ambient[ambientKey] ?? 0) + 1;
-    }
+    this.#observed.observe(attributed);
     this.#buffer.push(attributed, t, byteSize);
     for (const listener of this.#listeners) listener(attributed);
   }
 
+  /** Latest count per blind-spot kind; survives buffer eviction. See ObservedState for why. */
+  blindSpots(): Readonly<Record<string, number>> {
+    return this.#observed.blindSpots();
+  }
+
   /** Learned ambient-churn counts (PredicateSession hook the settle oracle reads). */
   ambientCounts(): AmbientCounts {
-    return this.#ambient;
+    return this.#observed.ambientCounts();
   }
 
   /** Seed the ambient map from the persisted per-app `.reticle/ambient.json` (sharpens across sessions). */
   seedAmbient(counts: AmbientCounts): void {
-    this.#ambient = { ...counts, ...this.#ambient };
+    this.#observed.seedAmbient(counts);
   }
 
   /**

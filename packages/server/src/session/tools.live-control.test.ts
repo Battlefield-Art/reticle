@@ -49,6 +49,8 @@ function fakeSession(opts: { state?: SessionState; inbox?: string[] }): FakeSess
     beginAction: () => 'a1',
     finishAction: () => undefined,
     bufferHealth: () => ({ total: 0, dropped: 0 }),
+    // Coverage is asked of the session now, not inferred from a window of events.
+    blindSpots: () => ({}),
     lastActCursor: () => undefined,
     eventsSince: () => [],
     onEvent: () => () => undefined,

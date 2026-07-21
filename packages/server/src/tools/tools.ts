@@ -128,6 +128,21 @@ const RAW_TOOLS: ToolDef[] = [
         .object({ bytes: z.number(), tokens: z.number() })
         .optional()
         .describe('Estimated size of this result — re-scope if large.'),
+      // buildSnapshot has always returned these; leaving them undeclared stripped them from
+      // structuredContent, so a schema-aware client saw a tree that ended abruptly with no way to
+      // tell a small page from a capped one. Every "that element isn't rendered" conclusion drawn
+      // from a capped tree inherits the omission.
+      nodes: z.number().optional().describe('How many nodes this tree actually contains.'),
+      truncated: z
+        .boolean()
+        .optional()
+        .describe(
+          'True when the page exceeded the snapshot cap. The tree is then a document-order PREFIX: an element being absent from it does NOT mean it is absent from the page.',
+        ),
+      note: z
+        .string()
+        .optional()
+        .describe('Present when a diff was computed over a capped tree — "unchanged" is then partial.'),
     },
     handler: (deps, args) => {
       const sessionId = asString(args['sessionId']);
