@@ -5,12 +5,10 @@
  * Pure formatting over the counted blind spots the observers report.
  */
 
-export const BlindSpotKind = {
-  CLOSED_SHADOW_ROOT: 'closed-shadow-root',
-  CROSS_ORIGIN_IFRAME: 'cross-origin-iframe',
-  VIRTUALIZED_UNMOUNTED: 'virtualized-unmounted',
-} as const;
-export type BlindSpotKind = (typeof BlindSpotKind)[keyof typeof BlindSpotKind];
+// The kind enum lives in core (it crosses the wire in a BLIND_SPOT event); re-exported here so existing
+// honesty-side imports keep working.
+export { BlindSpotKind } from '@reticlehq/core';
+import { BlindSpotKind, EventType, type ReticleEvent } from '@reticlehq/core';
 
 export interface BlindSpot {
   kind: BlindSpotKind;
@@ -37,4 +35,22 @@ export function buildCoverageStatement(spots: readonly BlindSpot[]): CoverageSta
   if (present.length === 0) return { coverage: 'full', spots: [] };
   const note = `partial — ${present.map((s) => `${LABEL[s.kind](s.count)} unobserved`).join(', ')}`;
   return { coverage: 'partial', note, spots: present };
+}
+
+/**
+ * Reduce a window's BLIND_SPOT events to one spot per kind — the LATEST reported count wins (the sensor
+ * emits only on change, so the last value is the live count). This is how a result's coverage is derived
+ * from what the SDK observed during the action, with no extra round-trip.
+ */
+export function blindSpotsFromEvents(events: readonly ReticleEvent[]): BlindSpot[] {
+  const latest = new Map<BlindSpotKind, number>();
+  for (const e of events) {
+    if (e.type !== EventType.BLIND_SPOT) continue;
+    const kind = e.data['kind'];
+    const count = e.data['count'];
+    if (typeof kind === 'string' && typeof count === 'number') {
+      latest.set(kind as BlindSpotKind, count);
+    }
+  }
+  return [...latest].map(([kind, count]) => ({ kind, count }));
 }

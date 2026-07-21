@@ -256,6 +256,12 @@ export const EventType = {
    */
   TRUNCATED: 'truncated',
   /**
+   * synthetic: the SDK detected a region it CANNOT observe (a cross-origin iframe, a closed shadow root).
+   * `data: { kind: BlindSpotKind, count }`. Surfaced on results as `coverage: partial` so a green never
+   * implies it saw everything.
+   */
+  BLIND_SPOT: 'blind-spot',
+  /**
    * Live-control: browser → bridge. A human acted on the presenter panel.
    * `data: { kind: HumanControlKind; text?: string }`. Rides the existing EventMessage.
    */
@@ -313,6 +319,17 @@ export const TruncationChannel = {
   DOM: 'dom',
 } as const;
 export type TruncationChannel = (typeof TruncationChannel)[keyof typeof TruncationChannel];
+
+/**
+ * A region the SDK cannot see into — surfaced (never hidden) so a result's coverage reads honestly.
+ * Crosses the wire in a BLIND_SPOT event's `kind`, so it lives in core (the contract), not the server.
+ */
+export const BlindSpotKind = {
+  CLOSED_SHADOW_ROOT: 'closed-shadow-root',
+  CROSS_ORIGIN_IFRAME: 'cross-origin-iframe',
+  VIRTUALIZED_UNMOUNTED: 'virtualized-unmounted',
+} as const;
+export type BlindSpotKind = (typeof BlindSpotKind)[keyof typeof BlindSpotKind];
 
 /**
  * How an event was linked to the action it is attributed to. `window` means the SDK stamped the

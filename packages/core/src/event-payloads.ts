@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EventType, PerfMetric } from './constants.js';
+import { EventType, PerfMetric, BlindSpotKind } from './constants.js';
 import { HumanControlDataSchema, HumanMarkDataSchema } from './messages.js';
 
 /**
@@ -114,6 +114,7 @@ export const EVENT_PAYLOAD_SCHEMAS = {
   [EventType.FLOW_RECORDED]: z.object({ name: z.string(), flow: z.unknown() }),
   [EventType.TRANSPORT_OVERFLOW]: z.object({ dropped: z.number() }),
   [EventType.TRUNCATED]: z.object({ channel: z.string(), dropped: z.number() }),
+  [EventType.BLIND_SPOT]: z.object({ kind: z.nativeEnum(BlindSpotKind), count: z.number() }),
   [EventType.HUMAN_CONTROL]: HumanControlDataSchema,
   [EventType.HUMAN_MARK]: HumanMarkDataSchema,
 } satisfies Record<EventType, z.ZodTypeAny>;

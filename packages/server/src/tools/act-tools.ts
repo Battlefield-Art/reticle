@@ -24,6 +24,7 @@ import { causalSummary } from '../capsule/causal-summary.js';
 import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import { HonestyGrade, buildHonestyBlock } from '../honesty/honesty.js';
+import { buildCoverageStatement, blindSpotsFromEvents } from '../honesty/blind-spots.js';
 import type { ExpectedLink } from '../capsule/divergence.js';
 import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
@@ -446,10 +447,15 @@ export const ACT_TOOLS: ToolDef[] = [
         const capsule = verdict.pass ? undefined : buildDivergenceCapsule(links, windowEvents);
         // Honesty: the grade this verdict actually proved + capture integrity — a green never looks
         // stronger than this block. Grade from the strongest asserted consequence; integrity from evictions.
+        // Coverage: cross-origin frames / other blind spots the SDK reported during this window mean the
+        // verdict didn't see everything — say so, never imply full coverage.
+        const coverage = buildCoverageStatement(blindSpotsFromEvents(windowEvents));
         const honesty = buildHonestyBlock({
           grade: gradeOf(links),
           attribution: 'window',
           truncated: session.bufferHealth().dropped > 0,
+          coveragePartial: coverage.coverage === 'partial',
+          ...(coverage.note === undefined ? {} : { blindSpots: [coverage.note] }),
         });
         return withControl(session, {
           effect: leanActResult(actResult.result),

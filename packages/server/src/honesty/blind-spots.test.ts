@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { BlindSpotKind, buildCoverageStatement } from './blind-spots.js';
+import { EventType, type ReticleEvent } from '@reticlehq/core';
+import { BlindSpotKind, buildCoverageStatement, blindSpotsFromEvents } from './blind-spots.js';
+
+function ev(type: EventType, data: Record<string, unknown>, t = 1): ReticleEvent {
+  return { t, type, sessionId: 's', data };
+}
 
 describe('buildCoverageStatement', () => {
   it('reports full coverage when nothing went unobserved', () => {
@@ -23,5 +28,22 @@ describe('buildCoverageStatement', () => {
     ]);
     expect(statement.spots).toHaveLength(1);
     expect(statement.note).toContain('5 virtualized unmounted rows');
+  });
+});
+
+describe('blindSpotsFromEvents', () => {
+  it('reduces BLIND_SPOT events to one spot per kind, latest count winning', () => {
+    const spots = blindSpotsFromEvents([
+      ev(EventType.BLIND_SPOT, { kind: BlindSpotKind.CROSS_ORIGIN_IFRAME, count: 1 }),
+      ev(EventType.DOM_ADDED, {}),
+      ev(EventType.BLIND_SPOT, { kind: BlindSpotKind.CROSS_ORIGIN_IFRAME, count: 2 }), // later wins
+    ]);
+    expect(spots).toEqual([{ kind: BlindSpotKind.CROSS_ORIGIN_IFRAME, count: 2 }]);
+  });
+
+  it('is empty when the window has no BLIND_SPOT events (→ full coverage)', () => {
+    const spots = blindSpotsFromEvents([ev(EventType.NET_REQUEST, {})]);
+    expect(spots).toEqual([]);
+    expect(buildCoverageStatement(spots).coverage).toBe('full');
   });
 });
