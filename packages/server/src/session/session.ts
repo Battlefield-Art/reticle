@@ -120,6 +120,8 @@ export class Session {
   #firstCommandDone = false;
   /** Durable causal-journal recorder; undefined when journaling is off (opt-out or not yet attached). */
   #journal: JournalRecorder | undefined;
+  /** Action window held independently of the journal — see beginAction. */
+  #activeActionId: string | undefined;
   /** Read side of the journal, for queries that must survive ring-buffer eviction. */
   #journalReader: JournalReader | undefined;
   /** Learned per-ref ambient-churn counts (unattributed real-time regions), accumulated in-session and
@@ -242,7 +244,13 @@ export class Session {
     const stamped: ReticleEvent = { ...event, t, sessionId: this.id };
     // The recorder attributes the event to the in-flight action (if any) and journals it durably; the
     // returned event carries actionId/attribution so the buffer + all queries see the same causal link.
-    const attributed = this.#journal?.observe(stamped) ?? stamped;
+    // The journal is authoritative when present; otherwise fall back to the window the session itself
+    // is holding, so attribution survives the journal being switched off.
+    const journalled = this.#journal?.observe(stamped) ?? stamped;
+    const attributed =
+      journalled.actionId === undefined && this.#activeActionId !== undefined
+        ? { ...journalled, actionId: this.#activeActionId }
+        : journalled;
     // Learn ambient churn: an unattributed, ref-bearing event is background motion (chat/ticker), not
     // action-caused work. Counting only unattributed events keeps genuine action effects out of the map.
     const ambientKey = attributed.actionId === undefined ? ambientKeyOf(attributed) : undefined;
@@ -293,12 +301,20 @@ export class Session {
   beginAction(tool: string, args: Record<string, unknown>): string {
     this.#actionSeq += 1;
     const actionId = `${ACTION_ID_PREFIX}${String(this.#actionSeq)}`;
+    // Held on the session, NOT only handed to the journal. Attribution used to flow exclusively through
+    // the journal, so disabling it (RETICLE_JOURNAL=0, or `"journal": false` in .reticle.json — both
+    // documented, both user-reachable) left every event unattributed. pushEvent classifies an
+    // unattributed ref-bearing event as ambient background churn, so with the journal off an app taught
+    // the settle oracle to ignore every region it reacted in, and `{kind:"settled"}` degraded toward
+    // always-settled. A persistence toggle must not change what the oracle believes.
+    this.#activeActionId = actionId;
     this.#journal?.beginAction(actionId, tool, args);
     return actionId;
   }
 
   /** Close the active action window, persisting its action record with the settle outcome. */
   finishAction(effect?: unknown, settled?: boolean, settledInMs?: number): void {
+    this.#activeActionId = undefined;
     this.#journal?.finishAction(effect, settled, settledInMs);
   }
 

@@ -224,27 +224,34 @@ export const ACT_TOOLS: ToolDef[] = [
       const ref = asString(args['ref']) ?? '';
       const action = asString(args['action']) ?? '';
 
-      // drive native pointer input when a provider is available; otherwise fall back.
-      const real = await tryRealInput(deps, session, ref, action, args);
-      if (real.result !== undefined) {
-        if (deps.recordings.active().length > 0) {
-          deps.recordings.capture(compileActStep(args, real.result));
-        }
-        return withControl(session, {
-          since,
-          inputMode: InputMode.REAL,
-          dispatched: true,
-          settled: real.settled,
-          settleReason: null,
-          result: leanActResult(real.result),
-          ...healthEnvelope(session),
-        });
-      }
-
-      // Open the journal's action-attribution window: events until finishAction attribute to this act.
+      // Open the journal's action-attribution window BEFORE dispatching, so it covers the native path
+      // too. It used to open only on the synthetic path, and the native path returned above it — so a
+      // hover, a drag or any native:true click produced events with no actionId. Session.pushEvent
+      // treats an unattributed ref-bearing event as ambient background churn, so an action's OWN
+      // effects were learned as noise; past the ambient threshold the settle oracle then filtered that
+      // region out entirely and reported settled while the app was still working. A false green
+      // manufactured by the machinery that exists to prevent false greens.
       session.beginAction(ReticleTool.ACT, asRecord(args));
       let settledOutcome: boolean | undefined;
       try {
+        // drive native pointer input when a provider is available; otherwise fall back.
+        const real = await tryRealInput(deps, session, ref, action, args);
+        if (real.result !== undefined) {
+          if (deps.recordings.active().length > 0) {
+            deps.recordings.capture(compileActStep(args, real.result));
+          }
+          settledOutcome = real.settled ?? undefined;
+          return withControl(session, {
+            since,
+            inputMode: InputMode.REAL,
+            dispatched: true,
+            settled: real.settled,
+            settleReason: null,
+            result: leanActResult(real.result),
+            ...healthEnvelope(session),
+          });
+        }
+
         const result = await session.command(ReticleCommand.ACT, {
           ref: args['ref'],
           action: args['action'],

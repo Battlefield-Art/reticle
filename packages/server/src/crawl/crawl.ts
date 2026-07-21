@@ -9,12 +9,22 @@ import {
   type ReticleEvent,
 } from '@reticlehq/core';
 import { parseInteractive, asRecord, asNumber, asString } from '../tools/tools-helpers.js';
+import { ReticleTool } from '../tools/tool-names.js';
 
 /** The slice of Session the crawler needs — so tests inject a fake without a live browser. */
 export interface CrawlSession {
   command(name: string, args?: Record<string, unknown>): Promise<CommandResult>;
   elapsed(): number;
   eventsSince(cursor: number): ReticleEvent[];
+  /**
+   * Attribution window around each click. Optional so a caller can supply a minimal session, but a real
+   * session MUST provide it: without a window the click's own effects carry no actionId, and an
+   * unattributed ref-bearing event is learned as ambient background churn. A crawl clicks up to 25
+   * controls, so it can single-handedly teach the settle oracle to ignore the regions the app actually
+   * reacts in — turning a later `{kind:"settled"}` into a false green.
+   */
+  beginAction?(tool: string, args: Record<string, unknown>): void;
+  finishAction?(error?: string, settled?: boolean, settleMs?: number): void;
 }
 
 type CrawlSleep = (ms: number) => Promise<void>;
@@ -111,12 +121,19 @@ export async function crawl(
     visited.push(item.desc);
 
     const since = session.elapsed();
-    const act = await session.command(ReticleCommand.ACT, {
-      ref: item.ref,
-      action: ActionType.CLICK,
-      args: opts.confirmDangerous === true ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
-    });
-    await sleep(settleMs);
+    session.beginAction?.(ReticleTool.CRAWL, { ref: item.ref, action: ActionType.CLICK });
+    let act;
+    try {
+      act = await session.command(ReticleCommand.ACT, {
+        ref: item.ref,
+        action: ActionType.CLICK,
+        args: opts.confirmDangerous === true ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
+      });
+      await sleep(settleMs);
+    } finally {
+      // Close on every exit so a throw cannot leak the window onto the next control's events.
+      session.finishAction?.();
+    }
     const events = session.eventsSince(since);
 
     const errs = events.filter(isConsoleError);
