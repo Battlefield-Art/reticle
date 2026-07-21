@@ -226,6 +226,8 @@ export const EventType = {
   CONSOLE_LOG: 'console.log',
   CONSOLE_WARN: 'console.warn',
   CONSOLE_ERROR: 'console.error',
+  CONSOLE_INFO: 'console.info',
+  CONSOLE_DEBUG: 'console.debug',
   ERROR_UNCAUGHT: 'error.uncaught',
   VISIBLE_SHOWN: 'visible.shown',
   ANIM_START: 'anim.start',

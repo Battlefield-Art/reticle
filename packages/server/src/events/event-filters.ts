@@ -96,6 +96,8 @@ export function isConsoleEvent(e: ReticleEvent): boolean {
     e.type === EventType.CONSOLE_LOG ||
     e.type === EventType.CONSOLE_WARN ||
     e.type === EventType.CONSOLE_ERROR ||
+    e.type === EventType.CONSOLE_INFO ||
+    e.type === EventType.CONSOLE_DEBUG ||
     e.type === EventType.ERROR_UNCAUGHT
   );
 }

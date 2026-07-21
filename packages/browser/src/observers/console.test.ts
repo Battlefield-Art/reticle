@@ -55,6 +55,23 @@ describe('installConsole', () => {
     expect(events[0]?.data['stack']).toBeUndefined();
   });
 
+  it('captures console.info and console.debug lean (no stack), excluded from summaries downstream', () => {
+    const { emit, events } = collect();
+    teardown = installConsole(emit);
+
+    // Reach the methods via globalThis so this test never trips the no-console lint rule.
+    const c = globalThis.console;
+    c.info('info line', 1);
+    c.debug('debug line');
+
+    expect(events).toHaveLength(2);
+    expect(events[0]?.type).toBe(EventType.CONSOLE_INFO);
+    expect(events[0]?.data.message).toBe('info line 1');
+    expect(events[0]?.data['stack']).toBeUndefined();
+    expect(events[1]?.type).toBe(EventType.CONSOLE_DEBUG);
+    expect(events[1]?.data.message).toBe('debug line');
+  });
+
   it('restores the original console methods (identity) on teardown', () => {
     /* eslint-disable no-console -- asserting console.log identity, not logging */
     const beforeLog = console.log;

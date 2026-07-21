@@ -74,6 +74,8 @@ export const EVENT_PAYLOAD_SCHEMAS = {
   [EventType.CONSOLE_LOG]: consoleSchema,
   [EventType.CONSOLE_WARN]: consoleSchema,
   [EventType.CONSOLE_ERROR]: consoleSchema,
+  [EventType.CONSOLE_INFO]: consoleSchema,
+  [EventType.CONSOLE_DEBUG]: consoleSchema,
   [EventType.ERROR_UNCAUGHT]: z
     .object({
       message: z.string(),

@@ -1,14 +1,18 @@
-/* eslint-disable no-console -- this module's whole purpose is to wrap console.{log,warn,error} */
+/* eslint-disable no-console -- this module's whole purpose is to wrap the console.* methods */
 import { EventType } from '@reticlehq/core';
 import type { Emit, Teardown } from './types.js';
 import { safeStringify } from '../security/serialization.js';
 
-type ConsoleMethod = 'log' | 'warn' | 'error';
+type ConsoleMethod = 'log' | 'warn' | 'error' | 'info' | 'debug';
 
 const METHOD_EVENT: Record<ConsoleMethod, EventType> = {
   log: EventType.CONSOLE_LOG,
   warn: EventType.CONSOLE_WARN,
   error: EventType.CONSOLE_ERROR,
+  // info/debug are captured for the raw console channel but excluded from summaries/deviation reports
+  // (low signal — most apps chatter here). Lean: no stack, like log/warn.
+  info: EventType.CONSOLE_INFO,
+  debug: EventType.CONSOLE_DEBUG,
 };
 
 function stringifyArgs(args: unknown[]): string {
@@ -39,7 +43,7 @@ function firstErrorStack(args: unknown[]): string | undefined {
 
 /** Patch console.{log,warn,error} and window error events. Reversible. */
 export function installConsole(emit: Emit): Teardown {
-  const methods: ConsoleMethod[] = ['log', 'warn', 'error'];
+  const methods: ConsoleMethod[] = ['log', 'warn', 'error', 'info', 'debug'];
   const originals = new Map<ConsoleMethod, (...args: unknown[]) => void>();
 
   for (const method of methods) {

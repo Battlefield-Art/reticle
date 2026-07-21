@@ -6,6 +6,7 @@ import {
   reconcileNet,
   projectNetCall,
   projectConsoleLog,
+  isConsoleEvent,
 } from './event-filters.js';
 
 function ev(type: EventType, data: Record<string, unknown>, t = 1): ReticleEvent {
@@ -78,6 +79,20 @@ describe('compact projections (token leanness)', () => {
       level: 'error',
       text: 'uncaught x',
     });
+    expect(projectConsoleLog(ev(EventType.CONSOLE_INFO, { message: 'fyi' }))).toEqual({
+      level: 'info',
+      text: 'fyi',
+    });
+    expect(projectConsoleLog(ev(EventType.CONSOLE_DEBUG, { message: 'dbg' }))).toEqual({
+      level: 'debug',
+      text: 'dbg',
+    });
+  });
+
+  it('isConsoleEvent includes info/debug so reticle_console can surface them', () => {
+    expect(isConsoleEvent(ev(EventType.CONSOLE_INFO, { message: 'i' }))).toBe(true);
+    expect(isConsoleEvent(ev(EventType.CONSOLE_DEBUG, { message: 'd' }))).toBe(true);
+    expect(isConsoleEvent(ev(EventType.NET_REQUEST, {}))).toBe(false);
   });
 });
 
