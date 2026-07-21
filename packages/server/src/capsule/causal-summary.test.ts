@@ -31,6 +31,28 @@ describe('causalSummary', () => {
     expect(summary.longTasks).toBe(1);
   });
 
+  it('reports state/storage as before→after DIFFS (from the events old/new), not just names', () => {
+    const summary = causalSummary([
+      e(EventType.STATE_CHANGE, { name: 'cart.count', path: 'cart.count', old: 0, new: 1 }),
+      e(EventType.STORAGE_CHANGE, { area: 'local', key: 'token', old: 'a', new: 'b' }),
+    ]);
+    expect(summary.stateDiffs).toEqual([{ path: 'cart.count', from: 0, to: 1 }]);
+    expect(summary.storageDiffs).toEqual([{ key: 'token', from: 'a', to: 'b' }]);
+    // The lean name lists stay for the compact index.
+    expect(summary.statePathsChanged).toEqual(['cart.count']);
+    expect(summary.storageKeysChanged).toEqual(['token']);
+  });
+
+  it('caps long diff values so the per-act summary stays bounded', () => {
+    const big = 'x'.repeat(500);
+    const summary = causalSummary([
+      e(EventType.STORAGE_CHANGE, { area: 'local', key: 'blob', old: '', new: big }),
+    ]);
+    const to = summary.storageDiffs[0]?.to;
+    expect(typeof to).toBe('string');
+    expect((to as string).length).toBeLessThanOrEqual(140);
+  });
+
   it('omits optional fields on a quiet green act', () => {
     const summary = causalSummary([e(EventType.NET_REQUEST, { method: 'GET', url: '/api/ok', status: 200, ok: true })]);
     expect(summary.net).toEqual({ total: 1, errors: 0 });

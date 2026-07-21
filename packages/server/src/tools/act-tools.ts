@@ -378,7 +378,7 @@ export const ACT_TOOLS: ToolDef[] = [
       summary: z
         .unknown()
         .describe(
-          'Bounded causal summary: net {total,errors,headline}, consoleErrors, statePathsChanged, storageKeysChanged, route, signals, layoutShift, longTasks — the diffs the trace counts miss.',
+          'Bounded causal summary: net {total,errors,headline}, consoleErrors, statePathsChanged, storageKeysChanged, stateDiffs [{path,from,to}], storageDiffs [{key,from,to}], route, signals, layoutShift, longTasks — real before→after diffs (capped), not just readings.',
         ),
       capsule: z
         .unknown()
