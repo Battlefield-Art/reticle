@@ -360,7 +360,10 @@ function installNetFaults(bugs: ReadonlySet<string>): void {
     let outInit = init;
     if (payload !== undefined && typeof init?.body === 'string') {
       try {
-        const body: Record<string, unknown> = JSON.parse(init.body);
+        // JSON.parse returns `any`; narrow at the boundary instead of trusting it (no-explicit-any).
+        const parsed: unknown = JSON.parse(init.body);
+        if (typeof parsed !== 'object' || parsed === null) throw new Error('not an object body');
+        const body = parsed as Record<string, unknown>;
         if (payload.dropField !== undefined) delete body[payload.dropField];
         if (payload.overwrite !== undefined) body[payload.overwrite.field] = payload.overwrite.value;
         outInit = { ...init, body: JSON.stringify(body) };
