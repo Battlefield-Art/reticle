@@ -44,6 +44,7 @@ import {
   SHADOW_LABEL_TESTID,
   SHADOW_TAG,
 } from './components/DeepPanels.js';
+import { STREAM_URLS } from './components/BuildLogStream.js';
 import { useApp } from './store/store.js';
 import type { Deployment } from './data/seed.js';
 
@@ -750,6 +751,31 @@ function installDeepDomFaults(bugs: ReadonlySet<string>): void {
 /** The stale count the iframe freezes at — deliberately not the real deployment count. */
 const STALE_IFRAME_COUNT = '3';
 
+
+/**
+ * streams (§4.7) — SSE / WebSocket. A stream failure is invisible to anything that inspects a MOMENT:
+ * the connection is open and healthy, the DOM is rendered and correct, nothing throws. The app is just
+ * never told, or is told something it silently drops. Only the frame timeline shows it.
+ *
+ * Each variant is produced by pointing the app at the server's own broken mode, so the stream really
+ * does stall / really does emit an unparseable frame — nothing is faked client-side.
+ */
+function installStreamFaults(bugs: ReadonlySet<string>): void {
+  if (bugs.has('sse-silent-stop')) {
+    // Opens, then says nothing. The UI sits on "streaming…" forever and the request looks fine.
+    STREAM_URLS.sse = `${STREAM_URLS.sse}?silent=1`;
+  }
+  if (bugs.has('sse-malformed-frame')) {
+    // One frame mid-stream is not valid JSON; the client drops it and the log is quietly incomplete.
+    STREAM_URLS.sse = `${STREAM_URLS.sse}?malformed=1`;
+  }
+  if (bugs.has('ws-wrong-payload')) {
+    // The echo answers on a channel nobody subscribed to, so the reply is correctly ignored — and the
+    // UI never updates, with no error anywhere to explain why.
+    STREAM_URLS.ws = `${STREAM_URLS.ws}?wrongChannel=1`;
+  }
+}
+
 /** DOM-text bugs → a testid whose displayed label/number is silently overwritten with a wrong value. */
 const DOM_TEXT: Record<string, { testid: string; wrong: string }> = {
   'brand-typo': { testid: 'brand', wrong: 'Retcile mission control' },
@@ -982,6 +1008,7 @@ export function installBugInjector(): void {
   installStorageFaults(bugs);
   installTimingFaults(bugs);
   installDeepDomFaults(bugs);
+  installStreamFaults(bugs);
   installSilentRemoval(bugs);
   installPerfFaults(bugs);
   installDoubleFetch(bugs);

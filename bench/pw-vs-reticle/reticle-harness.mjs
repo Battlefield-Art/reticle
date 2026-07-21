@@ -141,12 +141,24 @@ export async function runReticle(bugs) {
   // Returns the testids it could NOT find. A silently skipped step is the worst failure mode here: the
   // check still runs, reads a perfectly plausible value from a page that never reached the right state,
   // and reports a confident wrong answer. Callers surface misses in the note.
+  // Cursor of the most recent act. reticle_observe defaults to a narrow window ("since your last
+  // act"), so a check that waits seconds before observing sees almost nothing: the stream checks saw
+  // ONE event and concluded no frames had arrived while the page had rendered all five. Checks that
+  // observe after a delay must pass `since`.
+  let lastSince;
   const clickSteps = async (steps) => {
     const missed = [];
     for (const t of steps) {
       const ref = await waitRef(t);
-      if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
-      else missed.push(t);
+      if (ref) {
+        const res = await call('reticle_act', {
+          sessionId: sid,
+          ref,
+          action: 'click',
+          args: CLICK_ARGS,
+        });
+        lastSince = res?.since ?? lastSince;
+      } else missed.push(t);
       await sleep(250);
     }
     return missed;
@@ -447,6 +459,79 @@ export async function runReticle(bugs) {
           const shown = Number((String(snap?.tree ?? '').match(/\d+/g) ?? [])[0]);
           caught = Number.isFinite(truth) && Number.isFinite(shown) && truth !== shown;
           note = `store=${truth} frame=${shown}`;
+        } else if (c.kind === 'streamFramesAfter') {
+          // §4.7: the connection is open and healthy and the DOM is rendered; the app is simply never
+          // told anything. No single moment reveals it — only the frame timeline.
+          await sleep(c.waitMs ?? 2500);
+          const obs = await call('reticle_observe', {
+            sessionId: sid,
+            types: ['net'],
+            since: lastSince,
+            limit: 300,
+          });
+          const frames = (obs?.events ?? []).filter(
+            (e) =>
+              String(e?.type ?? '') === 'net.stream' &&
+              String(e?.data?.direction ?? '') === 'in' &&
+              String(e?.data?.url ?? '').includes(c.urlContains),
+          );
+          caught = frames.length < (c.minFrames ?? 1);
+          note = `${c.urlContains} inbound frames=${frames.length} (need >=${c.minFrames ?? 1})`;
+        } else if (c.kind === 'streamVsDomCount') {
+          // The sharpest shape in this suite: the stream DELIVERED n frames, the UI rendered m steps.
+          // A frame the client silently drops (unparseable JSON) leaves no error and no visual gap —
+          // the log is just quietly short. Only the wire against the DOM shows it.
+          await sleep(c.waitMs ?? 2500);
+          const obs = await call('reticle_observe', {
+            sessionId: sid,
+            types: ['net'],
+            since: lastSince,
+            limit: 300,
+          });
+          const frames = (obs?.events ?? []).filter(
+            (e) =>
+              String(e?.type ?? '') === 'net.stream' &&
+              String(e?.data?.direction ?? '') === 'in' &&
+              String(e?.data?.url ?? '').includes(c.urlContains),
+          ).length;
+          // Read the steps from reticle_query, NOT the snapshot: they live in a plain <div>, and the
+          // snapshot tree omits generic non-semantic containers (it returns ""), while query returns
+          // the element with its text. A snapshot read scored rendered=0 on a HEALTHY page — a false
+          // positive indistinguishable from the bug.
+          const q = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.testid });
+          const rendered = String(q?.elements?.[0]?.text ?? '')
+            .split('·')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0).length;
+          caught = frames > 0 && rendered < frames;
+          note = `frames=${frames} rendered=${rendered}`;
+        } else if (c.kind === 'streamPayloadAfter') {
+          const ref = await waitRef(c.steps[0]);
+          let since = lastSince;
+          if (ref) {
+            const res = await call('reticle_act', {
+              sessionId: sid,
+              ref,
+              action: 'click',
+              args: CLICK_ARGS,
+            });
+            since = res?.since ?? since;
+          }
+          await sleep(c.waitMs ?? 1200);
+          const obs = await call('reticle_observe', {
+            sessionId: sid,
+            types: ['net'],
+            since,
+            limit: 300,
+          });
+          const hit = (obs?.events ?? []).some(
+            (e) =>
+              String(e?.type ?? '') === 'net.stream' &&
+              String(e?.data?.direction ?? '') === 'in' &&
+              JSON.stringify(e?.data ?? {}).includes(c.expectContains),
+          );
+          caught = ref ? !hit : false;
+          note = ref ? `frame containing "${c.expectContains}": ${hit}` : `${c.steps[0]} not reached`;
         } else if (c.kind === 'stateInvariantAfter') {
           const pre = await call('reticle_state', {
             sessionId: sid,

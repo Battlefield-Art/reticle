@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { EventType } from '@reticlehq/core';
+import { EventType, RETICLE_WS_PATH } from '@reticlehq/core';
 import { extractTiming, firstAppFrame, installNetwork, redactUrl } from './network.js';
 import type { Emit, Teardown } from './types.js';
 
@@ -483,7 +483,38 @@ describe('installNetwork (WebSocket / SSE frames, Network 1f)', () => {
     expect(window.EventSource).toBe(FakeEventSource); // teardown restored
   });
 
-  it('captures open, outbound send, and inbound message frames when opted in', () => {
+it('NEVER instruments the SDK\'s own bridge socket — that recursion crashes the page', () => {
+    // The transport resolves `WebSocket` at call time, so any RECONNECT after instrumentation builds
+    // a patched socket. Emitting an event then calls transport.send -> patched send -> emit -> send,
+    // until the stack blows. Observed live as an unusable app: "Maximum call stack size exceeded"
+    // repeating, with the trace running emit -> sendEvent -> safeStringify -> send.
+    window.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+    const { emit, events } = collect();
+    const teardown = installNetwork(emit, { captureBodies: true });
+
+    const bridge = new window.WebSocket(
+      `ws://localhost:4400${RETICLE_WS_PATH}`,
+    ) as unknown as FakeWebSocket;
+    bridge.send('{"kind":"hello"}');
+    bridge.dispatch('message', { data: '{"kind":"ack"}' });
+    teardown();
+
+    expect(events.filter((e) => e.type === EventType.NET_STREAM)).toEqual([]);
+  });
+
+  it('still instruments an app socket served from the same origin as the bridge', () => {
+    // The guard keys on the bridge PATH, not the host — an app's own socket on the same host must
+    // still be observed, or the fix would blind the very category it exists to support.
+    window.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+    const { emit, events } = collect();
+    const teardown = installNetwork(emit, { captureBodies: true });
+    const app = new window.WebSocket('ws://localhost:4400/ws/echo') as unknown as FakeWebSocket;
+    app.dispatch('message', { data: '{"channel":"deployments"}' });
+    teardown();
+    expect(events.filter((e) => e.type === EventType.NET_STREAM).length).toBeGreaterThan(0);
+  });
+
+    it('captures open, outbound send, and inbound message frames when opted in', () => {
     window.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
     const { emit, events } = collect();
     const teardown = installNetwork(emit, { captureBodies: true });

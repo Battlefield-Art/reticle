@@ -762,6 +762,43 @@ export const BUGS = [
   // ── silent-removal (§4.9): a NON-INTERACTIVE element vanishes. Nothing errors, no click breaks, so a
   // crawler that only exercises controls is structurally blind. Only a saved baseline notices. ───────
   {
+    id: 'sse-silent-stop',
+    category: 'streams',
+    intent: 'the build-log stream actually delivers frames, not just an open connection',
+    setup: ['login-submit', 'nav-diagnostics'],
+    check: { kind: 'streamFramesAfter', urlContains: '/api/build-log', minFrames: 1, waitMs: 3000 },
+    // reticle-only: an SSE body is a streaming response — the script harness sees the request but
+    // never the individual frames.
+    expect: 'reticle-only',
+  },
+  {
+    id: 'sse-malformed-frame',
+    category: 'streams',
+    intent: 'every frame the stream delivers is actually rendered — none silently dropped',
+    setup: ['login-submit', 'nav-diagnostics'],
+    check: {
+      kind: 'streamVsDomCount',
+      urlContains: '/api/build-log',
+      testid: 'stream-steps',
+      waitMs: 3000,
+    },
+    expect: 'reticle-only',
+  },
+  {
+    id: 'ws-wrong-payload',
+    category: 'streams',
+    intent: 'the echo replies on the channel the client subscribed to',
+    setup: ['login-submit', 'nav-diagnostics'],
+    check: {
+      kind: 'streamPayloadAfter',
+      steps: ['ws-send'],
+      expectContains: 'deployments',
+      waitMs: 1500,
+    },
+    // Playwright exposes WebSocket frames via page.on('websocket'), so this is a fair 'both'.
+    expect: 'both',
+  },
+  {
     id: 'shadow-label-typo',
     category: 'deep-dom',
     intent: 'the status label inside the shadow root reads correctly',

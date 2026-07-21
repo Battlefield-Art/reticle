@@ -105,6 +105,9 @@ export function installReticle(): void {
     session,
     present,
     url,
+    // SSE/WebSocket frames are only captured with body capture on — a chatty stream is the
+    // high-volume case, so the SDK makes it opt-in. The streams bugs are invisible without it.
+    captureNetworkBodies: true,
     ...(allowNonLocalhost ? { allowNonLocalhost: true } : {}),
     ...(typeof token === 'string' && token.length > 0 ? { token } : {}),
   });

@@ -1,4 +1,4 @@
-import { EventType, REDACTED_VALUE } from '@reticlehq/core';
+import { EventType, REDACTED_VALUE, RETICLE_WS_PATH } from '@reticlehq/core';
 import {
   isSensitiveKey,
   sanitizeForTransport,
@@ -302,6 +302,23 @@ function resourceTiming(rawUrl: string): NetTiming {
 }
 
 /** Patch fetch + XMLHttpRequest to emit net.request events. Fully reversible. */
+/**
+ * True for Reticle's OWN bridge connection, which must never be instrumented.
+ *
+ * The transport resolves `WebSocket` at call time, so a reconnect after instrumentation constructs a
+ * PATCHED socket. From then on emitting an event calls transport.send -> the patched send emits a
+ * NET_STREAM event -> which calls transport.send again, until the stack blows and the page is dead.
+ * Keyed on the bridge PATH rather than the host: an app's own socket on the same origin must still be
+ * observed, otherwise this guard would blind the stream category it exists to protect.
+ */
+function isBridgeSocket(url: string): boolean {
+  try {
+    return new URL(url, location.href).pathname === RETICLE_WS_PATH;
+  } catch {
+    return url.includes(RETICLE_WS_PATH);
+  }
+}
+
 export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown {
   const captureBodies = opts.captureBodies === true;
   // Keep the true original for teardown identity, plus a window-bound copy to invoke
@@ -477,8 +494,12 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
   }
   if (captureBodies && typeof origWebSocket === 'function') {
     window.WebSocket = class extends origWebSocket {
+      /** Reticle's own bridge socket is never observed — see isBridgeSocket. */
+      readonly #isBridge: boolean;
       constructor(u: string | URL, protocols?: string | string[]) {
         super(u, protocols);
+        this.#isBridge = isBridgeSocket(String(u));
+        if (this.#isBridge) return;
         const url = redactUrl(String(u));
         emit(EventType.NET_STREAM, { transport: 'ws', direction: 'open', url });
         this.addEventListener('message', (ev: MessageEvent) => {
@@ -491,6 +512,10 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
         });
       }
       send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
+        if (this.#isBridge) {
+          super.send(data);
+          return;
+        }
         emit(EventType.NET_STREAM, {
           transport: 'ws',
           direction: 'out',

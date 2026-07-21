@@ -3,6 +3,8 @@
 // a (real-or-mock) LLM call, and a file-scoring endpoint.
 import express from 'express';
 import cors from 'cors';
+import { createServer } from 'node:http';
+import { WebSocketServer } from 'ws';
 
 const PORT = Number(process.env.API_PORT ?? 8787);
 // How long a created item takes to become visible (simulated eventual consistency).
@@ -117,9 +119,69 @@ app.post('/api/score', requireAuth, async (req, res) => {
   res.json({ filename, score, verdict: score > 50 ? 'strong' : 'needs work' });
 });
 
+// --- streams (§4.7): one SSE build-log and one WebSocket echo ---
+// Both accept query flags so the bug injector can ask for a broken variant WITHOUT the client having
+// to fake anything: the stream really does stall / really does emit an unparseable frame.
+const BUILD_LOG_FRAMES = [
+  'fetching source',
+  'installing dependencies',
+  'compiling',
+  'running tests',
+  'build complete',
+];
+
+app.get('/api/build-log', (req, res) => {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream',
+    'cache-control': 'no-cache',
+    connection: 'keep-alive',
+  });
+  // silent=1: the connection OPENS and then says nothing. The UI sits on "streaming…" forever, which
+  // is the point — the request looks perfectly healthy from the outside.
+  if (req.query.silent === '1') return;
+
+  let i = 0;
+  const timer = setInterval(() => {
+    if (i >= BUILD_LOG_FRAMES.length) {
+      clearInterval(timer);
+      res.end();
+      return;
+    }
+    // malformed=1: one frame in the middle is not valid JSON, so a client that JSON.parses it drops
+    // the frame silently and the log is quietly incomplete.
+    const payload =
+      req.query.malformed === '1' && i === 2
+        ? '{"step": "compiling", oops'
+        : JSON.stringify({ step: BUILD_LOG_FRAMES[i], n: i });
+    res.write(`data: ${payload}\n\n`);
+    i += 1;
+  }, 220);
+  req.on('close', () => clearInterval(timer));
+});
+
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-app.listen(PORT, () => {
+const server = createServer(app);
+
+// WS echo. `channel` is echoed back so a client can correlate a reply with what it asked for;
+// wrongChannel=1 answers on a channel nobody subscribed to, so the reply is silently ignored.
+const wss = new WebSocketServer({ server, path: '/ws/echo' });
+wss.on('connection', (socket, req) => {
+  const wrongChannel = new URL(req.url, 'http://localhost').searchParams.get('wrongChannel') === '1';
+  socket.on('message', (raw) => {
+    let channel = 'deployments';
+    try {
+      channel = JSON.parse(String(raw)).channel ?? channel;
+    } catch {
+      /* keep the default channel for an unparseable request */
+    }
+    socket.send(
+      JSON.stringify({ channel: wrongChannel ? 'unrelated' : channel, ok: true, at: 'echo' }),
+    );
+  });
+});
+
+server.listen(PORT, () => {
   // eslint-disable-next-line no-console -- server startup banner
   console.log(`[reticle-api] listening on http://localhost:${PORT} (reflect=${REFLECT_MS}ms)`);
 });

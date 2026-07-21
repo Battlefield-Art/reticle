@@ -282,6 +282,25 @@ export async function runPlaywright(bugs) {
           // gap rather than pretended.
           caught = false;
           note = 'no app-state access — cannot compare the frame against the store';
+        } else if (c.kind === 'streamFramesAfter' || c.kind === 'streamVsDomCount') {
+          // An SSE body is a streaming response; this script harness sees the request, never the
+          // individual frames, so it cannot compare the wire against the DOM. Stated, not skipped.
+          await sleep(c.waitMs ?? 2500);
+          caught = false;
+          note = 'no SSE frame visibility in the script harness';
+        } else if (c.kind === 'streamPayloadAfter') {
+          // Playwright DOES expose WebSocket frames via page.on('websocket'), so this one is a fair
+          // 'both' — claiming it as reticle-only would be charity to ourselves.
+          const frames = [];
+          page.on('websocket', (ws) => ws.on('framereceived', (f) => frames.push(String(f.payload))));
+          for (const t of c.steps ?? []) {
+            await click(t);
+            await sleep(250);
+          }
+          await sleep(c.waitMs ?? 1200);
+          const hit = frames.some((f) => f.includes(c.expectContains));
+          caught = !hit;
+          note = `frame containing "${c.expectContains}": ${hit} (${frames.length} frames)`;
         } else if (c.kind === 'netStatusAfter') {
           // Playwright sees response statuses, so this class is genuinely catchable here — no charity.
           await fillPrep(c.prep);

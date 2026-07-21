@@ -4,6 +4,7 @@ import { fault } from '../lib/api.js';
 import { emit, Sig } from '../lib/reticle-bridge.js';
 import { IconBolt, IconBug } from '../components/icons.js';
 import { DeepPanels } from '../components/DeepPanels.js';
+import { BuildLogStream } from '../components/BuildLogStream.js';
 
 interface FaultDef {
   kind: string;
@@ -61,8 +62,9 @@ export function Diagnostics(): React.ReactElement {
       className="view"
       style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16, maxWidth: 1140 }}
     >
-      <div style={{ gridColumn: '1 / -1' }}>
+      <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 16 }}>
         <DeepPanels />
+        <BuildLogStream />
       </div>
       <div className="panel panel-pad">
         <div className="eyebrow">Fault injection</div>
