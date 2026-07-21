@@ -31,7 +31,7 @@ import type { ExpectedLink } from '../capsule/divergence.js';
 import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
 import { pausedShortCircuit, withControl } from '../session/control-envelope.js';
-import { asString, asNumber, asRecord } from './tools-helpers.js';
+import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
 import { type ToolDef, type ToolDeps, sessionIdShape, commandOrThrow } from './tool-kit.js';
 
 /** The strongest consequence grade a set of expected links proves (signal > net > state > presence). */
@@ -465,6 +465,9 @@ export const ACT_TOOLS: ToolDef[] = [
 
         const r = asRecord(actResult.result);
         if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
+        // Where the acted element is written. Captured at act time alongside the anchor, so it is
+        // available even when the action unmounted its own target.
+        const actedSource = sourceOf(r['source']);
         const windowEvents = session.eventsSince(since);
         const trace = summarizeReaction(
           buildReactionReport(windowEvents, session.elapsed() - since),
@@ -509,6 +512,9 @@ export const ACT_TOOLS: ToolDef[] = [
                 anchor: {
                   kind: AnchorKind.TESTID,
                   value: asString(asRecord(actResult.result)['testid']) ?? asString(args['ref']) ?? '',
+                  // Carried so the saved capsule — which outlives this turn and becomes a regression
+                  // flow when it goes green — still knows which file the failure came from.
+                  ...(actedSource === undefined ? {} : { source: actedSource }),
                 },
                 action: (asString(args['action']) ?? ActionType.CLICK) as ActionType,
               },
@@ -519,6 +525,12 @@ export const ACT_TOOLS: ToolDef[] = [
         return withControl(session, {
           effect: leanActResult(actResult.result),
           verdict,
+          // Promoted out of `effect` on red only. On green nobody needs it and it is noise; on red it
+          // is the first thing the agent wants, and burying a file:line inside the effect block is
+          // most of the way to not reporting it at all.
+          ...(verdict.pass || actedSource === undefined
+            ? {}
+            : { source: `${actedSource.file}:${String(actedSource.line)}` }),
           trace,
           ...(capsuleSaved === undefined ? {} : { capsuleSaved }),
           summary: causalSummary(windowEvents),
