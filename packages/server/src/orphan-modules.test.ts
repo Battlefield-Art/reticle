@@ -29,10 +29,6 @@ const DECLARED_UNWIRED: Record<string, string> = {
   'ee/audit-log.ts':
     'Enterprise audit hook, a self-admitted pass-through stub. Nothing calls it; the license gate that ' +
     'would is real, but this consumer is not implemented.',
-  'session/snapshot-diff.ts':
-    'Pure pre/post diff. The pre/post CAPTURE it describes does not exist, so causal summaries have no ' +
-    'fallback for stores that emit no change events. Wire the capture or delete this — do not leave the ' +
-    'comment implying the fallback is live.',
 };
 
 /** Source files, excluding tests, type-only barrels and the entry points everything hangs off. */

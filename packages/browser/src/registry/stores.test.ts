@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   registerStore,
   unregisterStore,
@@ -105,5 +105,40 @@ describe('store registry', () => {
     expect(storeNames()).toContain('ws_d');
     unregisterStore('ws_d');
     expect(storeNames()).not.toContain('ws_d');
+  });
+});
+
+/**
+ * A store registered with only a getter is READABLE but SILENT: reticle_state can read it on demand,
+ * yet nothing ever emits a STATE_CHANGE, so causal summaries show no state diff and a state predicate
+ * can never observe it updating. That is indistinguishable from "the app changed nothing" — a false
+ * negative with no error attached, and the exact gap a now-deleted pre/post snapshot module was written
+ * to paper over at the cost of two extra round-trips per action. Warning once at registration is free
+ * and fixes the cause rather than the symptom.
+ */
+describe('silent store registration', () => {
+  it('warns when a store is registered without any way to observe changes', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    registerStore('getter-only', () => ({ count: 1 }));
+    expect(warn).toHaveBeenCalledOnce();
+    expect(String(warn.mock.calls[0]?.[0])).toContain('getter-only');
+    warn.mockRestore();
+  });
+
+  it('does NOT warn when a subscribe function is supplied', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    registerStore('observable', () => ({ count: 1 }), () => () => undefined);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('does NOT warn for a store-like object, which carries its own subscribe', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    registerStore('zustand-like', {
+      getState: () => ({ count: 1 }),
+      subscribe: () => () => undefined,
+    });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

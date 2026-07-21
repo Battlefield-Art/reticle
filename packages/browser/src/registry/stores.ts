@@ -71,7 +71,18 @@ export function registerStore(
   if (subscribe !== undefined) {
     subscribers.set(name, subscribe);
     notifyRegistered(name, source, subscribe);
+    return;
   }
+  // Readable but SILENT: reticle_state can read this store on demand, yet nothing will ever emit a
+  // STATE_CHANGE for it, so causal summaries show no state diff and a {kind:"state"} predicate can
+  // never observe it changing. That reads exactly like "the app did not change anything" — a false
+  // negative with no error attached. Say so once, at registration, where the developer can fix it by
+  // passing the store itself (or a subscribe function) instead of a bare getter.
+  console.warn(
+    `[reticle] store "${name}" was registered without a subscribe function. It can be READ, but its ` +
+      `changes are invisible: no STATE_CHANGE events, no state diffs in causal summaries, and a state ` +
+      `predicate will never see it update. Pass the store object (or a subscribe callback) to fix.`,
+  );
 }
 
 function notifyRegistered(name: string, getter: StoreGetter, subscribe: StoreSubscribe): void {
