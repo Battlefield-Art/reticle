@@ -82,7 +82,7 @@ async function tryRealInput(
   deps: ToolDeps,
   session: Session,
   ref: string,
-  action: string,
+  action: ActionType,
   args: Record<string, unknown>,
 ): Promise<RealActResult> {
   const provider = deps.realInput;
@@ -168,6 +168,20 @@ async function tryRealInput(
   }
 }
 
+/**
+ * Narrow the wire's `action` to a real ActionType, or undefined.
+ *
+ * It used to be `asString(args['action']) ?? ''`, so an unknown or missing action became the empty
+ * string and travelled on — reaching the browser as a command it could not perform, and reported back
+ * as a generic failure rather than "that is not an action". Validate at the boundary, per the project's
+ * unknown-plus-narrowing rule, so a typo is rejected where it can still be explained.
+ */
+function asActionType(value: unknown): ActionType | undefined {
+  const raw = asString(value);
+  if (raw === undefined) return undefined;
+  return (Object.values(ActionType) as string[]).includes(raw) ? (raw as ActionType) : undefined;
+}
+
 export const ACT_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.ACT,
@@ -214,6 +228,14 @@ export const ACT_TOOLS: ToolDef[] = [
         .optional(),
     },
     handler: async (deps, args) => {
+      // Validate the REQUEST before touching a session: a malformed action is the caller's error and
+      // should be reported as such, not after resolving a session and marking an act cursor.
+      const action = asActionType(args['action']);
+      if (action === undefined) {
+        throw new Error(
+          `unknown action '${String(args['action'])}' — expected one of: ${Object.values(ActionType).join(', ')}`,
+        );
+      }
       const session = deps.sessions.resolve(asString(args['sessionId']));
       // Live-control: refuse to drive the page while the human has paused us (before any work).
       const paused = pausedShortCircuit(session);
@@ -222,7 +244,6 @@ export const ACT_TOOLS: ToolDef[] = [
       const since = session.elapsed();
       session.markActCursor(since); // honesty: wait_for/assert default their floor to this cursor
       const ref = asString(args['ref']) ?? '';
-      const action = asString(args['action']) ?? '';
 
       // Open the journal's action-attribution window BEFORE dispatching, so it covers the native path
       // too. It used to open only on the synthetic path, and the native path returned above it — so a

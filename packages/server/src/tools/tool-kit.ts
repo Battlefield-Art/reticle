@@ -79,7 +79,9 @@ export const sessionEnvelopeShape: z.ZodRawShape = {
 export async function commandOrThrow(
   deps: ToolDeps,
   sessionId: string | undefined,
-  name: string,
+  // ReticleCommand, not string: the union already exists and every caller passes a member. Typed as
+  // `string` a sessionId/name swap compiled cleanly and failed at runtime with a stringly error.
+  name: ReticleCommand,
   args: Record<string, unknown>,
 ): Promise<unknown> {
   const session = deps.sessions.resolve(sessionId);

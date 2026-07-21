@@ -52,7 +52,7 @@ export interface RealInputProvider {
   /** Drive a native gesture for `action` at the element `box`. */
   perform(
     sessionUrl: string,
-    action: string,
+    action: ActionType,
     box: ElementBox,
     args: RealInputArgs,
   ): Promise<RealInputResult>;
@@ -106,7 +106,7 @@ export function boxCenter(box: ElementBox): { cx: number; cy: number } {
  * Which actions are driven by native pointer input. fill/type stay synthetic unless a
  * provider explicitly runs them.
  */
-export function isPointerAction(action: string): boolean {
+export function isPointerAction(action: ActionType): boolean {
   return (
     action === ActionType.HOVER ||
     action === ActionType.CLICK ||
@@ -129,7 +129,7 @@ type ConnectFn = (url: string) => Promise<Browser>;
  */
 export async function performGesture(
   page: Page,
-  action: string,
+  action: ActionType,
   box: ElementBox,
   args: RealInputArgs,
   sleep: SleepFn,
@@ -262,7 +262,7 @@ export class CdpRealInputProvider implements RealInputProvider {
 
   async perform(
     sessionUrl: string,
-    action: string,
+    action: ActionType,
     box: ElementBox,
     args: RealInputArgs,
   ): Promise<RealInputResult> {
@@ -423,7 +423,7 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
 
   perform(
     _sessionUrl: string,
-    action: string,
+    action: ActionType,
     box: ElementBox,
     args: RealInputArgs,
   ): Promise<RealInputResult> {

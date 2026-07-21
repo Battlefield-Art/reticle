@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ActionType } from '@reticlehq/core';
 import type { Page } from 'playwright';
 import { boxCenter, capturePage, isPointerAction } from './real-input.js';
 
@@ -26,23 +27,23 @@ describe('real-input pure helpers', () => {
   });
 
   it('isPointerAction is true for hover/click/dblclick/drag', () => {
-    for (const action of ['hover', 'click', 'dblclick', 'drag']) {
+    for (const action of [ActionType.HOVER, ActionType.CLICK, ActionType.DBLCLICK, ActionType.DRAG]) {
       expect(isPointerAction(action)).toBe(true);
     }
   });
 
   it('isPointerAction is false for keyboard/value actions', () => {
     for (const action of [
-      'fill',
-      'type',
-      'focus',
-      'blur',
-      'check',
-      'uncheck',
-      'select',
-      'submit',
-      'press',
-      'scrollIntoView',
+      ActionType.FILL,
+      ActionType.TYPE,
+      ActionType.FOCUS,
+      ActionType.BLUR,
+      ActionType.CHECK,
+      ActionType.UNCHECK,
+      ActionType.SELECT,
+      ActionType.SUBMIT,
+      ActionType.PRESS,
+      ActionType.SCROLL_INTO_VIEW,
     ]) {
       expect(isPointerAction(action)).toBe(false);
     }

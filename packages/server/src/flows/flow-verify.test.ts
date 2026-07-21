@@ -3,6 +3,8 @@ import { ReplayStatus } from '@reticlehq/core';
 import { leasableAppUrl, leaseFailureReplay } from './flow-tools.js';
 import type { ToolDeps } from '../tools/tools.js';
 import type { Session, SessionManager } from '../session/session.js';
+import { TOOLS } from '../tools/tools.js';
+import { ReticleTool } from '../tools/tool-names.js';
 
 /**
  * `reticle_flow_verify` is the tool a CI user runs first, and it had no tests at all — nothing
@@ -67,5 +69,30 @@ describe('leaseFailureReplay — a flow that never ran is never a pass', () => {
 
   it('reports no steps, so a failed lease cannot look like a flow that did work', () => {
     expect(leaseFailureReplay('checkout', 'x').steps).toEqual([]);
+  });
+});
+
+/**
+ * The `action` argument arrives from the wire and was previously coerced with `asString(...) ?? ''`,
+ * so an unknown or missing action became the empty string and travelled on — reaching the browser as a
+ * command it could not perform, and surfacing as a generic failure instead of "that is not an action".
+ * ActionType is a closed union that already existed; the boundary now narrows to it and says what the
+ * valid values are, which is the difference between a diagnosable error and a confusing one.
+ */
+describe('act rejects an unknown action at the wire boundary', () => {
+  const actTool = (): { handler: (deps: unknown, args: Record<string, unknown>) => Promise<unknown> } => {
+    const tool = TOOLS.find((t) => t.name === ReticleTool.ACT);
+    if (tool === undefined) throw new Error('reticle_act missing from the surface');
+    return tool as unknown as { handler: (d: unknown, a: Record<string, unknown>) => Promise<unknown> };
+  };
+
+  it('names the offending value AND the legal ones, instead of failing generically', async () => {
+    await expect(
+      actTool().handler({}, { ref: 'e1', action: 'clcik' }),
+    ).rejects.toThrow(/unknown action 'clcik'.*click/s);
+  });
+
+  it('rejects a missing action rather than dispatching an empty one', async () => {
+    await expect(actTool().handler({}, { ref: 'e1' })).rejects.toThrow(/unknown action/);
   });
 });
