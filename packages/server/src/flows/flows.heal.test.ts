@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
+import { asFlowName,
   ActionType,
   AnchorKind,
   DANGEROUS_ACTION_CONFIRM_ARG,
@@ -235,7 +235,7 @@ describe('FlowStore.heal + reticle_flow_heal', () => {
       ...flowFile('chat', [clickStep('old-id')]),
       success: { signal: 'done' },
     });
-    const before = await readFile(flowPath(root, 'chat'), 'utf8');
+    const before = await readFile(flowPath(root, asFlowName('chat')), 'utf8');
     // The locator heals (old-id → new-id resolves), but the page never emits the 'done' signal,
     // so the healed flow no longer satisfies its intent. The write must be refused.
     const session = renamedSession('old-id', ['new-id']);
@@ -247,7 +247,7 @@ describe('FlowStore.heal + reticle_flow_heal', () => {
     expect(res.proposals).toHaveLength(1); // the proposal is still surfaced for a human
     expect(res.message).toContain('done');
 
-    const after = await readFile(flowPath(root, 'chat'), 'utf8');
+    const after = await readFile(flowPath(root, asFlowName('chat')), 'utf8');
     expect(after).toEqual(before); // file untouched — never ship a green-but-dead flow
   }, 10_000);
 
@@ -263,7 +263,7 @@ describe('FlowStore.heal + reticle_flow_heal', () => {
 
   it('heal apply:false returns the proposal but does NOT modify the file', async () => {
     await store.saveFlow(flowFile('chat', [clickStep('old-id')]));
-    const before = await readFile(flowPath(root, 'chat'), 'utf8');
+    const before = await readFile(flowPath(root, asFlowName('chat')), 'utf8');
     const session = renamedSession('old-id', ['new-id']);
 
     const res = await heal(store, session, { flowName: 'chat', apply: false });
@@ -275,13 +275,13 @@ describe('FlowStore.heal + reticle_flow_heal', () => {
     expect(res.proposals[0]?.from).toBe('old-id');
     expect(res.proposals[0]?.to).toBe('new-id');
 
-    const after = await readFile(flowPath(root, 'chat'), 'utf8');
+    const after = await readFile(flowPath(root, asFlowName('chat')), 'utf8');
     expect(after).toEqual(before);
   });
 
   it('drift with no confident nearest leaves file untouched with a clear status', async () => {
     await store.saveFlow(flowFile('chat', [clickStep('old-id')]));
-    const before = await readFile(flowPath(root, 'chat'), 'utf8');
+    const before = await readFile(flowPath(root, asFlowName('chat')), 'utf8');
     const session = renamedSession('old-id', ['zzz-unrelated']);
 
     const res = await heal(store, session, { flowName: 'chat', apply: true });
@@ -291,13 +291,13 @@ describe('FlowStore.heal + reticle_flow_heal', () => {
     expect(res.applied).toBe(false);
     expect(res.message.length).toBeGreaterThan(0);
 
-    const after = await readFile(flowPath(root, 'chat'), 'utf8');
+    const after = await readFile(flowPath(root, asFlowName('chat')), 'utf8');
     expect(after).toEqual(before);
   });
 
   it('heal on a green flow is a no-op "nothing to heal"', async () => {
     await store.saveFlow(flowFile('chat', [clickStep('chat-send')]));
-    const before = await readFile(flowPath(root, 'chat'), 'utf8');
+    const before = await readFile(flowPath(root, asFlowName('chat')), 'utf8');
     const session = new FakeSession((testid) => ({ elements: [el(`e-${testid}`, testid)] }));
 
     const res = await heal(store, session, { flowName: 'chat', apply: true });
@@ -306,7 +306,7 @@ describe('FlowStore.heal + reticle_flow_heal', () => {
     expect(res.proposals).toEqual([]);
     expect(res.applied).toBe(false);
 
-    const after = await readFile(flowPath(root, 'chat'), 'utf8');
+    const after = await readFile(flowPath(root, asFlowName('chat')), 'utf8');
     expect(after).toEqual(before);
   });
 
@@ -385,7 +385,7 @@ describe('FlowStore.heal + reticle_flow_heal', () => {
     const badStore = new FlowStore(fsPort, root, clock);
     // Materialize the flows dir + a garbage file.
     await store.saveFlow(flowFile('seed', [clickStep('x')]));
-    await writeFile(flowPath(root, 'bad'), 'this is not json', 'utf8');
+    await writeFile(flowPath(root, asFlowName('bad')), 'this is not json', 'utf8');
     const writeSpy = vi.spyOn(fsPort, 'writeFile');
     const session = new FakeSession(() => ({ elements: [] }));
 
@@ -414,7 +414,7 @@ describe('FlowStore.heal + reticle_flow_heal', () => {
     await store.saveFlow(flowFile('chat', [clickStep('old-id')]));
     await heal(store, renamedSession('old-id', ['new-id']), { flowName: 'chat', apply: true });
 
-    const raw = await readFile(flowPath(root, 'chat'), 'utf8');
+    const raw = await readFile(flowPath(root, asFlowName('chat')), 'utf8');
     expect(raw.endsWith('\n')).toBe(true);
     expect(raw.endsWith('\n\n')).toBe(false);
     const parsed = FlowFileSchema.safeParse(JSON.parse(raw));

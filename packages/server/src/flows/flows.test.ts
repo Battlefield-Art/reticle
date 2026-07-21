@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
+import { asFlowName,
   ActionType,
   AnchorKind,
   DEGRADED_ANCHOR_ROLE,
@@ -152,7 +152,7 @@ describe('FlowStore — temp-dir fs, never touches the repo', () => {
       kind: AnchorKind.ROLE,
       role: DEGRADED_ANCHOR_ROLE,
     });
-    const raw = await readFile(flowPath(root, 'f'), 'utf8');
+    const raw = await readFile(flowPath(root, asFlowName('f')), 'utf8');
     expect(raw).not.toContain('e34');
   });
 
@@ -225,7 +225,7 @@ describe('FlowStore — temp-dir fs, never touches the repo', () => {
 
   it('11: load of a malformed JSON file returns PARSE_FAILED', async () => {
     await mkdir(reticleDirPaths(root).flows, { recursive: true });
-    await writeFile(flowPath(root, 'bad'), '{not json', 'utf8');
+    await writeFile(flowPath(root, asFlowName('bad')), '{not json', 'utf8');
     const loaded = await store.load('bad');
     expect(loaded).toEqual({ ok: false, code: FlowErrorCode.PARSE_FAILED });
   });
@@ -233,7 +233,7 @@ describe('FlowStore — temp-dir fs, never touches the repo', () => {
   it('12: load of a schema-invalid flow (wrong version) returns PARSE_FAILED', async () => {
     await mkdir(reticleDirPaths(root).flows, { recursive: true });
     await writeFile(
-      flowPath(root, 'wrong'),
+      flowPath(root, asFlowName('wrong')),
       JSON.stringify({ version: 99, name: 'wrong', createdAt: 1, steps: [] }),
       'utf8',
     );

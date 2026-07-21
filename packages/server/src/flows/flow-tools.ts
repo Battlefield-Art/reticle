@@ -9,7 +9,7 @@ import { mapWithConcurrency, resolveConcurrency } from './parallel-suite.js';
 import { acquireLeasedSession } from '../tools/lease-tools.js';
 import { buildSuiteVerdict } from './decision.js';
 import { classifyFlowAssertions } from './flow-classify.js';
-import { flowPath } from '../project/reticle-dir.js';
+import { isValidFlowName, flowPath } from '../project/reticle-dir.js';
 import type { SuiteVerdict } from '@reticlehq/core';
 import type { FlowAnnotations } from './flows.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
@@ -165,7 +165,14 @@ export const FLOW_TOOLS: ToolDef[] = [
     handler: (deps: ToolDeps, args) => {
       const projectId = sessionProjectId(deps, asString(args['sessionId']));
       return deps.flows.list(projectId).then((names) => ({
-        flows: names.map((name) => ({ name, path: flowPath(deps.reticleRoot, name, projectId) })),
+        // Validate before joining: `list` deliberately returns invalid names too so they can be
+        // reported rather than silently dropped, so the path is omitted for one rather than built.
+        flows: names.map((name) => ({
+          name,
+          ...(isValidFlowName(name)
+            ? { path: flowPath(deps.reticleRoot, name, projectId) }
+            : { invalidName: true }),
+        })),
       }));
     },
   },

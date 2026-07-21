@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ContractReadError, type CapabilitiesContract } from '@reticlehq/core';
+import { asFlowName, ContractReadError, type CapabilitiesContract } from '@reticlehq/core';
 import {
   baselinePath,
   ensureReticleDir,
@@ -138,7 +138,7 @@ describe('reticle-dir — temp-dir filesystem, never touches the repo', () => {
     expect(p.contract.endsWith(join('.reticle', 'contract.json'))).toBe(true);
     expect(p.flows.endsWith(join('.reticle', 'flows'))).toBe(true);
     expect(p.baselines.endsWith(join('.reticle', 'baselines'))).toBe(true);
-    expect(flowPath(root, 'checkout').endsWith(join('.reticle', 'flows', 'checkout.json'))).toBe(
+    expect(flowPath(root, asFlowName('checkout')).endsWith(join('.reticle', 'flows', 'checkout.json'))).toBe(
       true,
     );
     expect(baselinePath(root, 'home').endsWith(join('.reticle', 'baselines', 'home.json'))).toBe(

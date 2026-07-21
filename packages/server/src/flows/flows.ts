@@ -1,3 +1,4 @@
+import { asFlowName, type FlowName } from '@reticlehq/core';
 import {
   AnchorKind,
   DEGRADED_ANCHOR_ROLE,
@@ -245,7 +246,7 @@ export class FlowStore {
     if (!parsed.success) return { ok: false, code: FlowErrorCode.PARSE_FAILED };
     const valid = parsed.data;
     await this.#fs.mkdir(flowDir(this.#root, pid));
-    await this.#fs.writeFile(flowPath(this.#root, valid.name, pid), this.#serialize(valid));
+    await this.#fs.writeFile(flowPath(this.#root, asFlowName(valid.name), pid), this.#serialize(valid));
     const degraded = valid.steps.filter((s) => s.degraded === true).length;
     return {
       ok: true,
@@ -308,6 +309,11 @@ export class FlowStore {
    * flows PLUS legacy flat (untagged/global) ones. Without one (CLI/CI/contract callers): EVERY flow
    * in the store — flat plus every per-project subdir — so a repo-wide replay/audit misses nothing.
    */
+  /**
+   * All flow names on disk, INCLUDING any that fail the path-segment guard — an invalid name must reach
+   * the caller as a reportable error, never be silently filtered away. Callers that build a path from a
+   * name must validate first; `flowPath` takes a branded FlowName precisely so the compiler insists.
+   */
   async list(projectId?: string): Promise<string[]> {
     const flowsDir = reticleDirPaths(this.#root).flows;
     const pid = safeProjectId(projectId);
@@ -331,7 +337,7 @@ export class FlowStore {
   }
 
   /** The path a flow actually lives at: nested (per-project) if present, else legacy flat, else null. */
-  async #resolveReadPath(name: string, pid: string | undefined): Promise<string | null> {
+  async #resolveReadPath(name: FlowName, pid: string | undefined): Promise<string | null> {
     if (pid !== undefined) {
       const nested = flowPath(this.#root, name, pid);
       if (await this.#fs.exists(nested)) return nested;
@@ -346,7 +352,7 @@ export class FlowStore {
   }
 
   /** Scan the per-project subdirs for a flow by name — the read-side of list's no-pid union. */
-  async #resolveNestedPath(name: string): Promise<string | null> {
+  async #resolveNestedPath(name: FlowName): Promise<string | null> {
     const flowsDir = reticleDirPaths(this.#root).flows;
     if (!(await this.#fs.exists(flowsDir))) return null;
     let entries: string[];

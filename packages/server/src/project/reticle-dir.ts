@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import type { FlowName, SessionId } from '@reticlehq/core';
 import {
   CONTRACT_FILE_VERSION,
   ContractFileSchema,
@@ -84,7 +85,7 @@ export function journalActionsPath(root: string, sessionId: string): string {
  * run/flow ids (rejects '../', slashes, absolute, dotfiles). Session labels are user/tab-supplied, so
  * this guard runs before any journal write.
  */
-export function isValidSessionId(sessionId: string): boolean {
+export function isValidSessionId(sessionId: string): sessionId is SessionId {
   return FLOW_NAME_PATTERN.test(sessionId) && !sessionId.includes('..');
 }
 
@@ -112,7 +113,7 @@ export function visualDiffPath(root: string, name: string): string {
  * apps' flows of the same name; without one it's the flat legacy path (`.reticle/flows/<name>.json`),
  * which is also where pre-existing (untagged) flows stay. Callers pass ONLY a validated projectId.
  */
-export function flowPath(root: string, name: string, projectId?: string): string {
+export function flowPath(root: string, name: FlowName, projectId?: string): string {
   const flowsDir = join(root, ReticleDir.FLOWS_SUBDIR);
   return projectId === undefined
     ? join(flowsDir, `${name}.json`)
@@ -129,7 +130,7 @@ export function flowDir(root: string, projectId?: string): string {
  * A flow name must be a single safe path segment — rejects '../', '/', '\\', absolute, dotfiles.
  * Guards every disk op before a path is ever joined, so a traversal name never escapes.reticle/.
  */
-export function isValidFlowName(name: string): boolean {
+export function isValidFlowName(name: string): name is FlowName {
   return FLOW_NAME_PATTERN.test(name) && !name.includes('..');
 }
 

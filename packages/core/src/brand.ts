@@ -17,3 +17,24 @@ declare const brand: unique symbol;
 
 /** A nominal wrapper: `T` tagged with brand `B`, assignable FROM nowhere except an explicit mint/cast. */
 export type Brand<T, B extends string> = T & { readonly [brand]: B };
+
+/**
+ * A flow name that has passed the path-segment guard.
+ *
+ * The doc above names this exact hazard — "a plain `string` runId and a `string` flowName are
+ * interchangeable to the compiler and get swapped by accident (both feed path helpers!)" — and for a
+ * long time only RunId was branded, so the pair the warning describes was half-fixed. `flowPath` and
+ * `runPath` sit beside each other and take the same shape; the compiler could not tell them apart.
+ */
+export type FlowName = Brand<string, 'FlowName'>;
+
+/**
+ * A session id that has passed the path-segment guard. Joined straight into journal paths, so the same
+ * argument applies. Mint ONLY through the validating guard, never with a bare cast.
+ */
+export type SessionId = Brand<string, 'SessionId'>;
+
+/** Mint a FlowName — call ONLY behind isValidFlowName, or on a literal in a test. */
+export const asFlowName = (value: string): FlowName => value as FlowName;
+/** Mint a SessionId — call ONLY behind isValidSessionId, or on a literal in a test. */
+export const asSessionId = (value: string): SessionId => value as SessionId;

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AnchorKind, FLOW_FILE_VERSION, type FlowFile } from '@reticlehq/core';
+import { asFlowName, AnchorKind, FLOW_FILE_VERSION, type FlowFile } from '@reticlehq/core';
 import { createNodeFileSystem, type FileSystemPort } from '../project/fs-port.js';
 import { flowPath, reticleDirPaths } from '../project/reticle-dir.js';
 import { FlowStore } from './flows.js';
@@ -35,8 +35,8 @@ describe('FlowStore — per-project storage (shared-daemon isolation)', () => {
 
   it('nests a saved flow under its projectId and stamps the file', async () => {
     await store.saveFlow(flow('login'), 'app-a');
-    expect(await fs.exists(flowPath(root, 'login', 'app-a'))).toBe(true);
-    expect(await fs.exists(flowPath(root, 'login'))).toBe(false); // NOT at the flat path
+    expect(await fs.exists(flowPath(root, asFlowName('login'), 'app-a'))).toBe(true);
+    expect(await fs.exists(flowPath(root, asFlowName('login')))).toBe(false); // NOT at the flat path
     const loaded = await store.load('login', 'app-a');
     expect(loaded.ok && loaded.value.projectId).toBe('app-a');
   });
@@ -59,7 +59,7 @@ describe('FlowStore — per-project storage (shared-daemon isolation)', () => {
   it('falls back to a legacy flat (untagged) flow of the same name', async () => {
     // A pre-existing flow written before per-project storage: flat, no projectId.
     await mkdir(reticleDirPaths(root).flows, { recursive: true });
-    await writeFile(flowPath(root, 'legacy'), `${JSON.stringify(flow('legacy'))}\n`);
+    await writeFile(flowPath(root, asFlowName('legacy')), `${JSON.stringify(flow('legacy'))}\n`);
     const loaded = await store.load('legacy', 'app-a'); // scoped read, no nested copy
     expect(loaded.ok).toBe(true);
   });
@@ -68,7 +68,7 @@ describe('FlowStore — per-project storage (shared-daemon isolation)', () => {
     await store.saveFlow(flow('a-only'), 'app-a');
     await store.saveFlow(flow('b-only'), 'app-b');
     await mkdir(reticleDirPaths(root).flows, { recursive: true });
-    await writeFile(flowPath(root, 'shared-legacy'), `${JSON.stringify(flow('shared-legacy'))}\n`);
+    await writeFile(flowPath(root, asFlowName('shared-legacy')), `${JSON.stringify(flow('shared-legacy'))}\n`);
     expect(await store.list('app-a')).toEqual(['a-only', 'shared-legacy']);
     expect(await store.list('app-b')).toEqual(['b-only', 'shared-legacy']);
   });
@@ -77,7 +77,7 @@ describe('FlowStore — per-project storage (shared-daemon isolation)', () => {
     await store.saveFlow(flow('a-only'), 'app-a');
     await store.saveFlow(flow('b-only'), 'app-b');
     await mkdir(reticleDirPaths(root).flows, { recursive: true });
-    await writeFile(flowPath(root, 'flat-one'), `${JSON.stringify(flow('flat-one'))}\n`);
+    await writeFile(flowPath(root, asFlowName('flat-one')), `${JSON.stringify(flow('flat-one'))}\n`);
     expect(await store.list()).toEqual(['a-only', 'b-only', 'flat-one']);
   });
 
@@ -93,9 +93,9 @@ describe('FlowStore — per-project storage (shared-daemon isolation)', () => {
 
   it('remove deletes a per-project flow (and a second remove is NOT_FOUND, not a silent pass)', async () => {
     await store.saveFlow(flow('stale'), 'app-a');
-    expect(await fs.exists(flowPath(root, 'stale', 'app-a'))).toBe(true);
+    expect(await fs.exists(flowPath(root, asFlowName('stale'), 'app-a'))).toBe(true);
     expect((await store.remove('stale', 'app-a')).ok).toBe(true);
-    expect(await fs.exists(flowPath(root, 'stale', 'app-a'))).toBe(false);
+    expect(await fs.exists(flowPath(root, asFlowName('stale'), 'app-a'))).toBe(false);
     expect(await store.list('app-a')).not.toContain('stale');
     expect((await store.remove('stale', 'app-a')).ok).toBe(false); // gone → NOT_FOUND
   });
@@ -103,7 +103,7 @@ describe('FlowStore — per-project storage (shared-daemon isolation)', () => {
   it('remove resolves a nested flow with no projectId (mirrors load)', async () => {
     await store.saveFlow(flow('nested'), 'app-a');
     expect((await store.remove('nested')).ok).toBe(true);
-    expect(await fs.exists(flowPath(root, 'nested', 'app-a'))).toBe(false);
+    expect(await fs.exists(flowPath(root, asFlowName('nested'), 'app-a'))).toBe(false);
   });
 
   it('heal rewrites the nested file in place, never forking a flat copy', async () => {
@@ -114,7 +114,7 @@ describe('FlowStore — per-project storage (shared-daemon isolation)', () => {
       'app-a',
     );
     expect(healed.ok).toBe(true);
-    expect(await fs.exists(flowPath(root, 'h'))).toBe(false); // no stray flat copy
+    expect(await fs.exists(flowPath(root, asFlowName('h')))).toBe(false); // no stray flat copy
     const loaded = await store.load('h', 'app-a');
     expect(loaded.ok && loaded.value.steps[0]?.anchor).toMatchObject({ value: 'new-testid' });
   });
