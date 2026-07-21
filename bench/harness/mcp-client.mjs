@@ -4,6 +4,11 @@
 // whether a failure signal is present. This is the "observation-cost" layer and
 // needs no API key. The agent-loop layer (agent-loop.mjs) is separate.
 import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export class McpStdioClient {
   constructor(command, args, env = {}) {
@@ -114,3 +119,19 @@ export class McpStdioClient {
     }
   }
 }
+
+/**
+ * The reticle CLI entrypoint, resolved once.
+ *
+ * This lived as a hand-written path literal in three call sites, all of which still said
+ * `packages/core/dist/cli.js` after the CLI moved to `packages/server`. Nothing referenced a missing
+ * file until spawn time, where it surfaced only as `mcp process exited code=1` — so the head-to-head
+ * suite was simply unrunnable, with no error that named the cause. Resolved and existence-checked here
+ * so a future move fails loudly, in one place.
+ */
+export const RETICLE_CLI = (() => {
+  const p = path.join(REPO_ROOT, 'packages', 'server', 'dist', 'cli.js');
+  if (!existsSync(p))
+    throw new Error(`reticle CLI not found at ${p} — run \`pnpm build\` first (or fix RETICLE_CLI if the CLI moved).`);
+  return p;
+})();

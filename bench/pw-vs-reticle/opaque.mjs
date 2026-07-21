@@ -8,12 +8,12 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
-import { McpStdioClient } from '../harness/mcp-client.mjs';
+import { McpStdioClient, RETICLE_CLI as CLI } from '../harness/mcp-client.mjs';
 import { ensureApp } from './run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..', '..');
-const CLI = path.join(REPO, 'packages', 'core', 'dist', 'cli.js');
+
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const ORIGIN = 'http://localhost:4312';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
