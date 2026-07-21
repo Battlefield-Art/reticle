@@ -64,3 +64,42 @@ describe('RingBuffer', () => {
     expect(buf.window(15, 40).map((e) => e.t)).toEqual([30, 40]); // now=40, from=25
   });
 });
+
+describe('priority-aware eviction (churn must not evict scarce evidence)', () => {
+  const ev = (type: EventType, t: number, data: Record<string, unknown> = {}): ReticleEvent => ({
+    t,
+    type,
+    sessionId: 's',
+    data,
+  });
+
+  it('a DOM/animation flood does NOT evict a failed request or a console error', () => {
+    // The hostile-page case: a chat/ticker region churns thousands of low-signal events. Under a plain
+    // FIFO cap the one failed request scrolls out of the buffer and the verdict goes blind.
+    const buf = new RingBuffer({ maxEvents: 50 });
+    buf.push(ev(EventType.NET_REQUEST, 1, { url: '/api/save', status: 500, ok: false }), 1);
+    buf.push(ev(EventType.CONSOLE_ERROR, 2, { message: 'boom' }), 2);
+    for (let i = 0; i < 500; i++) buf.push(ev(EventType.DOM_TEXT, 3 + i, { text: String(i) }), 3 + i);
+
+    const live = buf.since(0);
+    expect(live.some((e) => e.type === EventType.NET_REQUEST)).toBe(true);
+    expect(live.some((e) => e.type === EventType.CONSOLE_ERROR)).toBe(true);
+    expect(live.length).toBeLessThanOrEqual(50);
+  });
+
+  it('still evicts when the buffer is full of high-signal events (no unbounded growth)', () => {
+    const buf = new RingBuffer({ maxEvents: 10 });
+    for (let i = 0; i < 100; i++) buf.push(ev(EventType.SIGNAL, i, { name: `s${String(i)}` }), i);
+    expect(buf.since(0).length).toBeLessThanOrEqual(10);
+    expect(buf.bufferHealth().dropped).toBeGreaterThan(0);
+  });
+
+  it('keeps events time-ordered after a churn eviction (since/window stay correct)', () => {
+    const buf = new RingBuffer({ maxEvents: 20 });
+    buf.push(ev(EventType.NET_REQUEST, 1, { status: 500 }), 1);
+    for (let i = 0; i < 100; i++) buf.push(ev(EventType.DOM_TEXT, 2 + i), 2 + i);
+    const live = buf.since(0);
+    const times = live.map((e) => e.t);
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
+  });
+});
