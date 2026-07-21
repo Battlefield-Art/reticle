@@ -47,7 +47,7 @@ describe('installStoreState', () => {
   });
 
   it('observes a store registered AFTER install (the real app ordering)', () => {
-    // Regression: the SDK installs observers during connect(), but apps call registerStore() after —
+    // Regression: the SDK installs observers during connect, but apps call registerStore after —
     // so enumerating once at install subscribed to nothing and STATE_CHANGE never fired in any real app.
     const events: Captured[] = [];
     const teardown = installStoreState((type, data) => events.push({ type, data }));

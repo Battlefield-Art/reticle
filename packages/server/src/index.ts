@@ -184,7 +184,7 @@ export interface StartOptions {
   injectConnect?: InjectConnectOptions;
   /** Path to a Playwright storageState JSON so the driven browser starts authenticated (past a login wall). */
   storageState?: string;
-  /** absolute .reticle root. Defaults to process.cwd()/.reticle. Injectable for tests. */
+  /** absolute.reticle root. Defaults to process.cwd/.reticle. Injectable for tests. */
   reticleRoot?: string;
   /** Directory holding the auto-provisioned pairing token. Defaults to ~/.reticle. Injectable for tests. */
   pairingTokenDir?: string;
@@ -236,7 +236,7 @@ function createBrowserPool(headless: boolean): BrowserPool {
 
 /** Start the Reticle bridge (browser WS endpoint) and, by default, the MCP stdio server. */
 /**
- * Resolve the drive/real-input provider from options — shared by start() and startDaemon() so the
+ * Resolve the drive/real-input provider from options — shared by start and startDaemon so the
  * precedence (driveUrl launch+own → CDP attach → none) and the storageState/injectConnect plumbing
  * live in ONE place. `onNavigateError` is the entrypoint's own cleanup (close the bridge/shared server)
  * so a failed launch never leaks a WS port. A past divergence between the two paths let daemon mode
@@ -341,7 +341,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
   // whose agent has gone idle, so a forgotten/crashed agent never leaves the HUD "running" forever.
   const reaper = new SessionReaper(bridge.sessions);
   reaper.start();
-  // Scope auto-selection to the active project (from .reticle.json) so a stray tab from another app is
+  // Scope auto-selection to the active project (from.reticle.json) so a stray tab from another app is
   // never picked when the agent omits a sessionId. Explicit per-call scope/sessionId still overrides.
   const activeProjectId = readProjectId(process.cwd());
   if (activeProjectId !== undefined) {
@@ -358,7 +358,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
   const { realInput, owned } = await resolveRealInput(options, () => bridge.close(), routeNetworkDetail);
 
   if (options.mcp !== false) {
-    // cwd()/Date.now() are confined to start() — never inside reticle-dir.ts's pure logic (rule 7).
+    // cwd/Date.now are confined to start — never inside reticle-dir.ts's pure logic (rule 7).
     const fs = createNodeFileSystem();
     const reticleRoot = options.reticleRoot ?? join(process.cwd(), ReticleDir.ROOT);
     const now = options.now ?? ((): number => Date.now());
@@ -413,7 +413,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
 
 /**
  * Start the Reticle bridge in daemon mode: a single HTTP server handles both the WebSocket
- * bridge (browser SDK) and the SSE MCP transport (Claude/agent). Unlike start(), the MCP
+ * bridge (browser SDK) and the SSE MCP transport (Claude/agent). Unlike start, the MCP
  * connection is not tied to the process lifetime — Claude reconnects across sessions while
  * browser sessions persist in the daemon.
  */
@@ -423,7 +423,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   const security = await resolveBridgeSecurityWithAutoToken(options);
   const shared = createSharedServer(security.token === undefined ? {} : { token: security.token });
   const bridge = new Bridge({ port, server: shared.httpServer, ...security });
-  // The daemon owns listen() (below), so the real bind error is reported there; absorb bridge.ready's
+  // The daemon owns listen (below), so the real bind error is reported there; absorb bridge.ready's
   // mirror rejection so a port collision can't surface as an unhandled promise rejection.
   void bridge.ready.catch(() => undefined);
   // `reticle status` GETs this for a live, at-a-glance view of connected tabs + their health.
@@ -446,7 +446,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
 
   const reaper = new SessionReaper(bridge.sessions);
   reaper.start();
-  // Scope auto-selection to the active project (from .reticle.json) so a stray tab from another app is
+  // Scope auto-selection to the active project (from.reticle.json) so a stray tab from another app is
   // never picked when the agent omits a sessionId. Explicit per-call scope/sessionId still overrides.
   const activeProjectId = readProjectId(process.cwd());
   if (activeProjectId !== undefined) {

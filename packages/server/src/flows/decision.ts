@@ -15,9 +15,9 @@ import { SUCCESS_STEP_TOOL } from './flow-success.js';
  * Turn a replay result into the autonomy DECISION envelope — the judgement a human reviewer used to
  * make, expressed so a coding agent can act on it without one. Pure: no IO, no clock.
  *
- *   pass  → intent held; next action is none (or "add a consequence oracle" if the flow asserts nothing).
- *   drift → a locator/anchor missed; point at WHERE (file:line from the source anchor) + a rebind hint.
- *   fail  → an action ran but its consequence/success oracle didn't fire (green-but-wrong) — check the handler.
+ * pass → intent held; next action is none (or "add a consequence oracle" if the flow asserts nothing).
+ * drift → a locator/anchor missed; point at WHERE (file:line from the source anchor) + a rebind hint.
+ * fail → an action ran but its consequence/success oracle didn't fire (green-but-wrong) — check the handler.
  */
 
 /** The first step that drifted or failed (drift takes precedence as the legible cause). */

@@ -69,7 +69,7 @@ describe('project-scoped resolve()', () => {
   });
 
   it('port swap: projectId is stable, so scoping ignores which port the app booted on', async () => {
-    // app-a normally lives on :3000 but today grabbed :3001; app-b took :3000.
+    // app-a normally lives on:3000 but today grabbed:3001; app-b took:3000.
     await connect({ sessionId: 'a', url: 'http://localhost:3001/', projectId: 'app-a' });
     await connect({ sessionId: 'b', url: 'http://localhost:3000/', projectId: 'app-b' });
     await waitForSessions(2);

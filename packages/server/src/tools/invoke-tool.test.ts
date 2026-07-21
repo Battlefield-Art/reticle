@@ -14,8 +14,8 @@ import type { Session, SessionManager } from '../session/session.js';
 const ROOT = '/tmp/reticle-invoke-test/.reticle';
 const now = (): number => 0;
 
-/** A throttled fake session (complete enough to drive real read-only handlers) whose health()
- *  carries the un-scriptable recommendation. */
+/** A throttled fake session (complete enough to drive real read-only handlers) whose health
+ * carries the un-scriptable recommendation. */
 function throttledSession(overrides: Partial<Session> = {}): Session {
   const stub: Partial<Session> = {
     id: 'demo',

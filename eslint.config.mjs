@@ -2,6 +2,7 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
+import reticleLint from '@reticlehq/eslint-plugin';
 
 export default tseslint.config(
   {
@@ -27,9 +28,15 @@ export default tseslint.config(
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    plugins: { reticle: reticleLint },
     rules: {
       // TypeScript handles undefined symbols; no-undef is noise on TS.
       'no-undef': 'off',
+
+      // An audit found every LINT-ENFORCED rule at ~100% compliance and every PROSE-ONLY rule violated
+      // systematically. The gap was enforcement, not intent, so the two mechanically checkable house
+      // rules are now errors rather than paragraphs.
+      'reticle/no-internal-tags': 'error',
 
       // Foundation skill — non-negotiable type-safety rules
       '@typescript-eslint/no-explicit-any': 'error',
@@ -135,5 +142,22 @@ export default tseslint.config(
         { name: 'localStorage', message: 'Server runs in Node — no DOM globals.' },
       ],
     },
+  },
+  {
+    // The file-size cap, enforced on SHIPPING code rather than merely asked for. It was prose-only, and
+    // the prose-only rules are precisely the ones that drifted. Scoped to packages/ because the rule's
+    // rationale is cohesion in code we ship; the bench fixtures are catalogues, where length is not the
+    // same smell. apps/bench-app's bug injector (1036 lines) is known debt and wants splitting by
+    // category — deliberately not done in the same pass that is verifying those fixtures' behaviour.
+    files: ['packages/*/src/**'],
+    ignores: ['**/*.test.ts', '**/*.test.tsx'],
+    rules: { 'max-lines': ['error', { max: 600, skipBlankLines: false, skipComments: false }] },
+  },
+  {
+    // The rule that BANS these tokens has to name them — in its own doc comment explaining the ban, and
+    // in fixtures asserting it fires. Exempting only this package keeps the rule enforceable everywhere
+    // else while letting it document itself.
+    files: ['packages/eslint-plugin/src/**'],
+    rules: { 'reticle/no-internal-tags': 'off' },
   },
 );

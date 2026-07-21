@@ -173,10 +173,10 @@ export function urlParts(url: string): { origin?: string; loopback: boolean } {
 }
 
 async function openLiveConnection(opts: LiveOpts): Promise<VerifyConnection> {
-  // A localhost preview connects natively (the app's own reticle.connect() is allowed on loopback), so the
+  // A localhost preview connects natively (the app's own reticle.connect is allowed on loopback), so the
   // bridge stays token-free. A HOSTED (non-localhost) preview is blocked by the SDK's connection policy
   // and rejected as a foreign origin — so there we pair via a one-shot token both the bridge and the
-  // injected reticle.connect() share, plus the preview's origin on the allow-list. That split is what makes
+  // injected reticle.connect share, plus the preview's origin on the allow-list. That split is what makes
   // both "verify my dev server" and "verify a live Lovable URL" work from the same command.
   // `reticle verify` boots its OWN daemon. Hardcoding the default port meant it crashed with EADDRINUSE
   // on any machine already running a daemon — i.e. every developer machine — so honour RETICLE_PORT.
@@ -216,7 +216,7 @@ async function openLiveConnection(opts: LiveOpts): Promise<VerifyConnection> {
         trigger: { kind: RunTrigger.OEM },
         profile: RunProfile.PROD_PREVIEW,
       });
-      // Persist the artifact. `reticle gate` decides from RunStore.latest(), so without this the
+      // Persist the artifact. `reticle gate` decides from RunStore.latest, so without this the
       // documented CI loop is broken end to end: `reticle verify` could pass and the gate would still
       // block, because it never sees a passing run. (Only the optional `serve --http` endpoint used to
       // persist.) Best-effort — a disk failure must not turn a passing verification into a failure.

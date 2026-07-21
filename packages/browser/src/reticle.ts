@@ -109,7 +109,7 @@ export interface ReticleConnectOptions {
 
 /**
  * Runtime backstop for the dev-only SDK: block connecting when the build reports production, unless
- * explicitly overridden. Pure so it's testable; connect() reads NODE_ENV safely (process may be absent
+ * explicitly overridden. Pure so it's testable; connect reads NODE_ENV safely (process may be absent
  * in a raw browser). This is defense-in-depth — the primary guard is the consumer gating the import
  * behind `import.meta.env.DEV` so the SDK is dead-code-eliminated from prod bundles entirely.
  */
@@ -178,7 +178,7 @@ export { RETICLE_URL_PARAM };
 
 /**
  * Extract Reticle identity overrides from a `location.search` string. Pure (takes the string, not the
- * window) so it's testable without a DOM. Explicit connect() options still win over these.
+ * window) so it's testable without a DOM. Explicit connect options still win over these.
  */
 export function reticleParamsFromSearch(search: string): { session?: string; projectId?: string } {
   const params = new URLSearchParams(search);
@@ -305,12 +305,12 @@ export class Reticle {
       onConnected: () => this.#presenter?.sessionStart(),
       // Liveness fallback: if the bridge stays unreachable (the agent killed the server process),
       // no server-pushed end can arrive — so end the run we're presenting ourselves. A returning
-      // agent revives it via the normal sessionStart() path on its next command.
+      // agent revives it via the normal sessionStart path on its next command.
       onConnectionLost: () => {
         // Restore real timers. A frozen clock is driven by the agent through the bridge; once the
-        // bridge is gone nothing can ever advance it, so leaving it installed pins Date.now() and
+        // bridge is gone nothing can ever advance it, so leaving it installed pins Date.now and
         // queues every setTimeout into a scheduler that will never run. Concretely that kills every
-        // lodash debounce/throttle in the app (now() - lastCall stays 0), so search boxes, autosave
+        // lodash debounce/throttle in the app (now - lastCall stays 0), so search boxes, autosave
         // and resize handlers stop firing until a reload — with nothing on screen explaining why.
         resetClock();
         if (this.#presenter?.sessionActive === true) {
@@ -461,7 +461,7 @@ export class Reticle {
     });
     // Guarded because #emit runs INLINE IN THE APP'S CALL STACK: every monkey-patch calls it from
     // inside the function it replaced. An exception here does not surface as an SDK error — it
-    // propagates out of history.pushState (crashing a router's navigate()), out of localStorage.setItem
+    // propagates out of history.pushState (crashing a router's navigate), out of localStorage.setItem
     // after the write already succeeded, or out of console.log before the message reaches the console.
     // A dev-only observability SDK must never be able to break the app it is observing.
     try {

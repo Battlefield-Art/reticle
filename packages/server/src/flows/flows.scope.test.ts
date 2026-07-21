@@ -82,7 +82,7 @@ describe('FlowStore — per-project storage (shared-daemon isolation)', () => {
   });
 
   it('unscoped load (CLI/CI, e.g. reticle_domain) resolves a per-project flow — not just lists it', async () => {
-    // The bug: list() unioned the subdirs but load()'s resolveReadPath did not, so an unscoped
+    // The bug: list unioned the subdirs but load's resolveReadPath did not, so an unscoped
     // caller listed a nested flow then silently dropped it on `if (loaded.ok)` (flowCount:0).
     await store.saveFlow(flow('nested-only'), 'app-a');
     expect(await store.list()).toContain('nested-only'); // listed

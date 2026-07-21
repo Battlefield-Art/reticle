@@ -41,7 +41,7 @@ function fakeDeps(fs: FileSystemPort, root: string): ToolDeps {
 }
 
 function tool(name: string): (typeof TOOLS)[number] {
-  // run_record was retired from the advertised surface (W10.3) but its handler is still defined and
+  // run_record was retired from the advertised surface but its handler is still defined and
   // exercised here — fall back to the module's own defs so the behavior stays under test.
   const t = TOOLS.find((x) => x.name === name) ?? PROJECT_TOOLS.find((x) => x.name === name);
   if (t === undefined) throw new Error(`no tool ${name}`);

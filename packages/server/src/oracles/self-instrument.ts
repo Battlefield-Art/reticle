@@ -32,7 +32,7 @@ export interface InstrumentationProposal {
   rationale: string;
 }
 
-/** PascalCase a store name for a `useX.getState()` hint (cart → Cart). */
+/** PascalCase a store name for a `useX.getState` hint (cart → Cart). */
 function pascal(name: string): string {
   return name.length === 0 ? name : name[0]?.toUpperCase() + name.slice(1);
 }

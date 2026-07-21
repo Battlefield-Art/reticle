@@ -188,7 +188,7 @@ describe('recorder capture — semantic anchored steps', () => {
     const box = document.querySelector('input') as HTMLInputElement;
     box.checked = true;
     fire(box, 'click'); // the click that toggles it...
-    fire(box, 'change'); // ...and the change it triggers
+    fire(box, 'change'); //...and the change it triggers
 
     const steps = handle?.steps() ?? [];
     expect(steps).toHaveLength(1);

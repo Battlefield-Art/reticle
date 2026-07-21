@@ -1,13 +1,13 @@
 /**
- * Parallel suite execution (W14.2). `flow_verify` replays flows sequentially because they all drive the
+ * Parallel suite execution. `flow_verify` replays flows sequentially because they all drive the
  * SAME live tab and would race the DOM. The escape is the lease pool: each flow gets its own isolated
  * headless context, so N flows can run at once and a 200-flow suite finishes in interactive time.
  *
  * This is the scheduler half — a bounded-concurrency map, kept pure and injectable so the ordering and
  * failure semantics are unit-tested without a browser:
- *  - results come back in INPUT order regardless of completion order (a suite verdict must be stable),
- *  - one flow throwing never sinks the run — it is captured as that item's outcome, because a suite that
- *    aborts on the first crash tells you nothing about the other 199 flows.
+ * - results come back in INPUT order regardless of completion order (a suite verdict must be stable),
+ * - one flow throwing never sinks the run — it is captured as that item's outcome, because a suite that
+ * aborts on the first crash tells you nothing about the other 199 flows.
  */
 
 export interface Outcome<T> {

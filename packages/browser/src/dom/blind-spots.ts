@@ -1,5 +1,5 @@
 /**
- * Blind-spot detection (B17, the detectable half). Cross-origin iframes are a real observation gap — the
+ * Blind-spot detection, the detectable half). Cross-origin iframes are a real observation gap — the
  * SDK cannot see inside them (same-origin policy). We COUNT them so a result can say "coverage: partial —
  * 2 cross-origin frames unobserved" instead of implying it saw the whole page. Closed shadow roots are a
  * blind spot too, but undetectable by design (element.shadowRoot === null), so they are not counted here.

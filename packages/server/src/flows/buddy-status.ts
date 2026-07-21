@@ -1,5 +1,5 @@
 /**
- * The buddy channel (W14.3). The co-dev experience for the HUMAN: a single ambient line they can park in
+ * The buddy channel. The co-dev experience for the HUMAN: a single ambient line they can park in
  * a statusline or terminal and glance at — never a wall of output, never something they have to ask for.
  *
  * The rule this encodes: say the reassuring thing briefly and the alarming thing specifically. "41 flows
@@ -23,8 +23,8 @@ const MAX_NAMED = 2;
 
 /**
  * One line, safe to print on every save. Shape:
- *   `✓ 41 flows nominal`
- *   `✗ 2 deviations: checkout, billing · 39 nominal · 1 flaky quarantined`
+ * `✓ 41 flows nominal`
+ * `✗ 2 deviations: checkout, billing · 39 nominal · 1 flaky quarantined`
  */
 export function formatBuddyStatus(input: BuddyStatusInput): string {
   const parts: string[] = [];

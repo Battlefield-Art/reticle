@@ -23,8 +23,8 @@ const registrationListeners: Set<StoreRegisteredListener> = (globalStore.__retic
   new Set());
 
 /**
- * Observe FUTURE subscribable-store registrations. The SDK installs its observers during connect(), but
- * apps call registerStore() afterwards — so enumerating once at install time subscribes to nothing and
+ * Observe FUTURE subscribable-store registrations. The SDK installs its observers during connect, but
+ * apps call registerStore afterwards — so enumerating once at install time subscribes to nothing and
  * STATE_CHANGE never fires. Observers use this to pick up stores registered after they installed.
  */
 export function onStoreRegistered(listener: StoreRegisteredListener): () => void {
@@ -39,7 +39,7 @@ export interface StoreLike {
 }
 
 function isStoreLike(source: StoreGetter | StoreLike): source is StoreLike {
-  // Zustand's `create()` returns a CALLABLE hook that also carries getState/subscribe, so a store can be
+  // Zustand's `create` returns a CALLABLE hook that also carries getState/subscribe, so a store can be
   // typeof 'function' as well as 'object'. What distinguishes it from a plain getter is those two members
   // — never the typeof. (Checking only for 'object' left every Zustand app on pull-only reads.)
   if (source === null) return false;

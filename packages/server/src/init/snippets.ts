@@ -6,7 +6,7 @@
 import { RETICLE_DEFAULT_PORT, bridgeWsUrl } from '@reticlehq/core';
 
 /**
- * The connect() argument literal: a non-default port adds a `url`, and a projectId is always passed
+ * The connect argument literal: a non-default port adds a `url`, and a projectId is always passed
  * (so the app is identifiable across port changes). Empty string only when neither applies.
  */
 function connectArg(port: number | undefined, projectId?: string): string {

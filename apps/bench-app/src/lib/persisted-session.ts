@@ -1,7 +1,7 @@
 /**
  * Sign-in persistence for the benchmark fixture.
  *
- * This exists so the storage bug category (§4.5) has something true to be wrong about. Until now the
+ * This exists so the storage bug category has something true to be wrong about. Until now the
  * app kept auth purely in memory, so every "the token is persisted" assertion would have failed on a
  * CLEAN build — the bugs would have been false positives rather than bugs.
  *

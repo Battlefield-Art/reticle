@@ -3,7 +3,7 @@
  * regression DETECTION. Reads a URL param and degrades the running app so a recorded flow that
  * used to pass now fails, exactly as a real code regression would. Tree-shaken out of production.
  *
- *   ?reticle-break=new-deploy,deploy-submit   strip those data-testid attributes (selector regression)
+ * ?reticle-break=new-deploy,deploy-submit strip those data-testid attributes (selector regression)
  *
  * Stripping a data-testid is the most common real regression a flow hits: the element still renders
  * but the stable hook a test relied on is gone (renamed/removed in a refactor). A deterministic
@@ -32,7 +32,7 @@ function stripExisting(broken: ReadonlySet<string>): void {
  * anchor sees zero matches on its very first query and drifts. Dev-only; no teardown needed.
  */
 function patchSetAttribute(broken: ReadonlySet<string>): void {
-  // Monkeypatching a prototype method is inherently this-dynamic; we forward `this` via .call below.
+  // Monkeypatching a prototype method is inherently this-dynamic; we forward `this` via.call below.
   // eslint-disable-next-line @typescript-eslint/unbound-method
   const original = Element.prototype.setAttribute;
   Element.prototype.setAttribute = function (this: Element, name: string, value: string): void {
@@ -86,9 +86,9 @@ function parseSet(params: URLSearchParams, key: string): Set<string> {
 
 /**
  * Install the regression injector. No-op unless a break param is present.
- *   ?reticle-break=<testids>        strip those data-testids (selector regression → testid drift)
- *   ?reticle-break-click=<testids>  kill those elements' click handlers (consequence regression →
- *                                element resolves green, but the success/signal oracle fails)
+ * ?reticle-break=<testids> strip those data-testids (selector regression → testid drift)
+ * ?reticle-break-click=<testids> kill those elements' click handlers (consequence regression →
+ * element resolves green, but the success/signal oracle fails)
  */
 export function installRegressions(): void {
   const params = new URLSearchParams(window.location.search);

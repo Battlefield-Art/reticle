@@ -47,7 +47,7 @@ class FakeSession implements FlowReplaySession {
     private readonly events: ReticleEvent[] = [],
     private readonly actOk: (ref: string) => boolean = PASS,
     private readonly stores: Record<string, unknown> = {},
-    // Injected clock: successive elapsed() readings. Defaults to a fixed 0 (no advancing clock) so
+    // Injected clock: successive elapsed readings. Defaults to a fixed 0 (no advancing clock) so
     // existing tests are unaffected; pass a rising sequence to exercise per-step durationMs.
     private readonly elapsedReadings?: number[],
   ) {}
@@ -161,7 +161,7 @@ describe('replayFlow — anchor re-resolution + legible drift', () => {
 
   it('records per-step durationMs from the injected clock (and omits it when the clock is fixed)', async () => {
     const script = (testid: string): QueryScript => ({ elements: [el(`e-${testid}`, testid)] });
-    // Two elapsed() reads per step (cursorBefore, then post-settle): step at 10→35 = 25ms.
+    // Two elapsed reads per step (cursorBefore, then post-settle): step at 10→35 = 25ms.
     const timed = new FakeSession(script, [], PASS, {}, [10, 35]);
     const steps = await replayFlow(timed, flow([testidStep('chat-send')]), waitForPredicate, FAST);
     expect(steps[0]?.durationMs).toBe(25);

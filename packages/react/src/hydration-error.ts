@@ -1,7 +1,7 @@
 import { RETICLE_HYDRATION_ERROR_SIGNAL } from '@reticlehq/core';
 
 /**
- * React hydration-mismatch capture (B26). A mismatch — server-rendered markup disagreeing with the
+ * React hydration-mismatch capture. A mismatch — server-rendered markup disagreeing with the
  * client's first render — is reported by React as a *recoverable* error, not thrown: React discards the
  * SSR DOM and re-renders on the client, so the page "looks fine" while handlers/form-state/scroll were
  * silently lost. Invisible to DOM/network/console; only an in-app hook sees it. Pass `reticleOnRecoverableError`

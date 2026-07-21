@@ -6,7 +6,7 @@ import { EventType, type ReticleEvent } from '@reticlehq/core';
  * follows the moat's tiering: a signal (the app attested it) beats net/state/route (observable
  * consequences) beats presence (a wrong/healed locator can fake it). Deterministic; accepting a
  * proposal is one existing-tool call. The learned RANKING across projects is the paid layer
- * (OSS-VS-SERVER §6); these local rules are OSS.
+ * (OSS-VS-SERVER); these local rules are OSS.
  */
 
 export interface ProposedConsequence {

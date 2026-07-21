@@ -1,9 +1,9 @@
 import { EventType, PerfMetric, type ReticleEvent } from '@reticlehq/core';
 
 /**
- * The causal summary (W5 Tier 1) — the bounded ~50–100 token block on EVERY act, green included: what the
- * app did in the act's window, as counts + a headline, not a raw event dump. Diffs come from the W3
- * storage/state events; attribution from W2. Pure composition over the attributed event window.
+ * The causal summary (Tier 1) — the bounded ~50–100 token block on EVERY act, green included: what the
+ * app did in the act's window, as counts + a headline, not a raw event dump. Diffs come from the 
+ * storage/state events; attribution from. Pure composition over the attributed event window.
  */
 export interface StateDiff {
   path: string;
@@ -20,7 +20,7 @@ export interface CausalSummary {
   consoleErrors: number;
   statePathsChanged: string[];
   storageKeysChanged: string[];
-  /** Before→after for each changed store path — the diffs, not just the names (W3 B18). Values capped. */
+  /** Before→after for each changed store path — the diffs, not just the names. Values capped. */
   stateDiffs: StateDiff[];
   /** Before→after for each changed storage key. Values capped. */
   storageDiffs: StorageDiff[];

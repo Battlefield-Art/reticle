@@ -33,8 +33,8 @@ interface SessionProbes {
 type FakeSession = Session & SessionProbes;
 
 /**
- * A fake Session with a mutable lifecycle state, an inbox, and recorders for `command()` (the
- * wire path the action tools must NOT touch while paused) and `pushPresenter()`.
+ * A fake Session with a mutable lifecycle state, an inbox, and recorders for `command` (the
+ * wire path the action tools must NOT touch while paused) and `pushPresenter`.
  */
 function fakeSession(opts: { state?: SessionState; inbox?: string[] }): FakeSession {
   let state = opts.state ?? SessionState.ACTIVE;

@@ -21,7 +21,7 @@ export function installRoute(emit: Emit): Teardown {
   const callPush = origPush.bind(history);
   const callReplace = origReplace.bind(history);
 
-  // The `from` baseline for the NEXT popstate/hashchange. Updated in fire() on every emitted change
+  // The `from` baseline for the NEXT popstate/hashchange. Updated in fire on every emitted change
   // — including pushState/replaceState — so a later Back nav isn't compared against a stale href
   // (which made `to === from` trip and silently drop the back navigation).
   let lastHref = location.href;

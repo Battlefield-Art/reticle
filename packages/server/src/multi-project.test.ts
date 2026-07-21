@@ -2,15 +2,15 @@
  * Multi-project / multi-port madman tests.
  *
  * Simulates the real chaos of a vibe-coder juggling multiple apps at once:
- *   - 3+ Reticle daemons on different ports running simultaneously
- *   - Browsers connecting to the wrong port
- *   - Daemon started, no browser
- *   - Browser started, no daemon
- *   - Port conflicts (two daemons fight for the same port)
- *   - Daemon killed mid-session
- *   - Session isolation — app A's events must never bleed into app B's session list
- *   - Reconnection after daemon restart
- *   - Daemon on port A, then port A killed, then B takes over (musical chairs)
+ * - 3+ Reticle daemons on different ports running simultaneously
+ * - Browsers connecting to the wrong port
+ * - Daemon started, no browser
+ * - Browser started, no daemon
+ * - Port conflicts (two daemons fight for the same port)
+ * - Daemon killed mid-session
+ * - Session isolation — app A's events must never bleed into app B's session list
+ * - Reconnection after daemon restart
+ * - Daemon on port A, then port A killed, then B takes over (musical chairs)
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -107,9 +107,9 @@ describe('daemon without app', () => {
 
   it('reticle_wait_ready resolves immediately when no session (no hang)', async () => {
     const { bridge, deps } = await startBridge();
-    // timeoutMs:0 means "check once and return" — the injected now()=>0 clock means the loop
-    // exits immediately on the first iteration (0 - 0 >= 0 → true → return count()>0 → false).
-    // wait_ready is server-internal now (W10.3) — its handler still exists and is exercised here.
+    // timeoutMs:0 means "check once and return" — the injected now=>0 clock means the loop
+    // exits immediately on the first iteration (0 - 0 >= 0 → true → return count>0 → false).
+    // wait_ready is server-internal now — its handler still exists and is exercised here.
     const waitReady = LIVE_CONTROL_TOOLS.find((x) => x.name === ReticleTool.WAIT_READY);
     const result = (await waitReady?.handler(deps, { timeoutMs: 0 })) as {
       ready: boolean;

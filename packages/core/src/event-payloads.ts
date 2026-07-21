@@ -9,11 +9,11 @@ import { HumanControlDataSchema, HumanMarkDataSchema } from './messages.js';
  * an event's fields. `parseEventPayload` is that boundary.
  *
  * Two fidelity tiers by design:
- *  - **Precise + closed** for stable observers (dom/route/perf/anim/scroll/signal/health/...).
- *  - **Precise on the load-bearing fields + `.passthrough()`** for observers W3/W4 will enrich
- *    (network, console, error, state, storage) — today's fields are validated, tomorrow's added
- *    fields (stack, TTFB, initiator, path diffs) pass through instead of failing closed. Each closes
- *    fully as its observer is rewritten.
+ * - **Precise + closed** for stable observers (dom/route/perf/anim/scroll/signal/health/...).
+ * - **Precise on the load-bearing fields + `.passthrough`** for observers / will enrich
+ * (network, console, error, state, storage) — today's fields are validated, tomorrow's added
+ * fields (stack, TTFB, initiator, path diffs) pass through instead of failing closed. Each closes
+ * fully as its observer is rewritten.
  */
 
 const elementLabel = z.object({ role: z.string().optional(), name: z.string().optional() });
@@ -41,7 +41,7 @@ const netRequestSchema = z
 const consoleSchema = z.object({ message: z.string() }).passthrough();
 
 /**
- * The registry. `satisfies Record<EventType, ...>` makes a missing event type a *compile* error —
+ * The registry. `satisfies Record<EventType,...>` makes a missing event type a *compile* error —
  * the wire can never carry a type without a payload contract.
  */
 export const EVENT_PAYLOAD_SCHEMAS = {

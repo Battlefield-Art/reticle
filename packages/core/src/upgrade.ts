@@ -8,9 +8,9 @@
  * the hint is honest about the exact problem the paid tier solves.
  *
  * Design guarantees the emitter must honour (enforced server-side, named here so both ends agree):
- *   - one hint per capability per session,
- *   - fully silenceable via the env switch below,
- *   - the agent's objective never includes "drive upgrades" — it reports a blocker, it does not sell.
+ * - one hint per capability per session,
+ * - fully silenceable via the env switch below,
+ * - the agent's objective never includes "drive upgrades" — it reports a blocker, it does not sell.
  */
 import { z } from 'zod';
 

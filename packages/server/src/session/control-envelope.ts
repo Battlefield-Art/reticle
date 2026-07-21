@@ -45,7 +45,7 @@ export function buildControlEnvelope(session: Session): ControlEnvelope | undefi
  * PAUSE short-circuit. When the session is paused, drain the inbox and refuse the action so the
  * human's pause cannot be driven through. Returns undefined when the action may proceed.
  *
- * `drainInbox()` is the SOLE sink for guidance — draining here means the same message can never
+ * `drainInbox` is the SOLE sink for guidance — draining here means the same message can never
  * also surface in a piggyback, guaranteeing delivered-once.
  */
 export function pausedShortCircuit(session: Session): PausedResult | undefined {

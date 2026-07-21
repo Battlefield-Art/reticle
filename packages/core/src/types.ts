@@ -267,7 +267,7 @@ export type AnnotateResult =
  * (success-state). All optional; exactly the fields the compiled kind needs are set.
  */
 export interface AnnotatePatch {
-  /** index of the step whose .expect is set (assert-signal / assert-visible). */
+  /** index of the step whose.expect is set (assert-signal / assert-visible). */
   stepIndex?: number;
   stepExpect?: FlowExpect;
   /** the testid pushed into flow.dynamic[] (mark-dynamic). */

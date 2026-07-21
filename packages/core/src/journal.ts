@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { TRANSPORT_LIMITS } from './constants.js';
 
 /**
- * The durable causal journal (v2.2.0 W2). Each session gets an append-only pair on disk:
+ * The durable causal journal. Each session gets an append-only pair on disk:
  * `.reticle/sessions/<id>/events.jsonl` (one `ReticleEvent` per line — already seq/actionId-stamped
  * and browser-edge-redacted) and `actions.jsonl` (one JournalAction per line). The ring buffer becomes
  * a hot cache over this ledger, so evidence survives eviction. Local-only; JSONL is versioned per line

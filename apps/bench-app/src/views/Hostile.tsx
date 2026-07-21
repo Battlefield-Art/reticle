@@ -2,15 +2,15 @@ import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * The hostile fixture (B03): a page that NEVER goes quiet on its own. Two independent churn sources —
+ * The hostile fixture: a page that NEVER goes quiet on its own. Two independent churn sources —
  * a fake real-time feed appending rows continuously, and a count-up ticker mutating text every frame —
  * plus a large list and a control that fires ONE failing request.
  *
  * It exists to make two acceptances testable, both of which a calm fixture cannot exercise:
- *  - B11 ambient learning: `settled` must still fire here (the churn region is learned as ambient),
- *    so act_and_wait does not time out on a healthy real-time page.
- *  - B12c priority eviction: the single failed request must survive the flood instead of being
- *    pushed out of the ring buffer by thousands of low-signal churn events.
+ * - ambient learning: `settled` must still fire here (the churn region is learned as ambient),
+ * so act_and_wait does not time out on a healthy real-time page.
+ * - B12c priority eviction: the single failed request must survive the flood instead of being
+ * pushed out of the ring buffer by thousands of low-signal churn events.
  */
 
 const FEED_INTERVAL_MS = 100; // ~10 messages/sec — the real-time-chat floor
@@ -58,7 +58,7 @@ export function Hostile(): React.ReactElement {
       </button>
       <span data-testid="hostile-last-fault">{lastFault}</span>
 
-      {/* Churning feed region — the ambient area B11 must learn and exclude from settle. */}
+      {/* Churning feed region — the ambient area the settle oracle must learn and exclude. */}
       <ul data-testid="hostile-feed" style={{ maxHeight: 160, overflow: 'auto', margin: 0 }}>
         {messages.map((m) => (
           <li key={m}>{m}</li>

@@ -2,7 +2,7 @@ import { EventType, BlindSpotKind } from '@reticlehq/core';
 import type { Emit, Teardown } from './types.js';
 
 /**
- * Blind-spot sensor (W12.4). The SDK instruments the DOM, but a cross-origin iframe is a wall it cannot
+ * Blind-spot sensor. The SDK instruments the DOM, but a cross-origin iframe is a wall it cannot
  * see through — its contents, network, and console are invisible. Left unstated, a green verdict would
  * imply the whole page was verified. This detects cross-origin frames and emits a BLIND_SPOT event so the
  * server can mark results `coverage: partial` instead of lying by omission. Closed shadow roots and

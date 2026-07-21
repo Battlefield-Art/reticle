@@ -29,7 +29,7 @@ import { flowDir, flowPath, reticleDirPaths, isValidFlowName } from '../project/
 const safeProjectId = (projectId?: string): string | undefined =>
   projectId !== undefined && isValidFlowName(projectId) ? projectId : undefined;
 
-/** A monotonic clock injected for createdAt — never call Date.now() inside the store (rule 7). */
+/** A monotonic clock injected for createdAt — never call Date.now inside the store (rule 7). */
 export interface Clock {
   now(): number;
 }
@@ -172,7 +172,7 @@ function withAnnotations(flow: FlowFile, ann: FlowAnnotations | undefined): Flow
 const JSON_INDENT = 2;
 const FLOW_SUFFIX = '.json';
 
-/** Persists anchored flows to .reticle/flows/<name>.json. Filesystem + clock are injected. */
+/** Persists anchored flows to.reticle/flows/<name>.json. Filesystem + clock are injected. */
 export class FlowStore {
   readonly #fs: FileSystemPort;
   readonly #root: string;
@@ -185,8 +185,8 @@ export class FlowStore {
   }
 
   /**
-   * The single byte-stable flow serializer: 2-space indent + one trailing newline. save(),
-   * saveFlow() and heal() all route through it so an unchanged flow that round-trips through any
+   * The single byte-stable flow serializer: 2-space indent + one trailing newline. save,
+   * saveFlow and heal all route through it so an unchanged flow that round-trips through any
    * of them produces byte-identical on-disk content (locked by the byte-stability tests).
    */
   #serialize(flow: FlowFile): string {
@@ -233,7 +233,7 @@ export class FlowStore {
   /**
    * Persist an already-anchored FlowFile captured in-page (no recompilation). The
    * browser resolved every semantic anchor at capture time; here we only validate the name +
-   * re-run FlowFileSchema before writing. save() is left untouched.
+   * re-run FlowFileSchema before writing. save is left untouched.
    */
   async saveFlow(flow: FlowFile, projectId?: string): Promise<FlowResult<SaveSummary>> {
     if (!isValidFlowName(flow.name)) return { ok: false, code: FlowErrorCode.INVALID_NAME };
@@ -262,7 +262,7 @@ export class FlowStore {
    * Apply confident testid rebinds to an on-disk flow (the reticle_flow_heal
    * apply path). Loads + validates the flow (so it gets NOT_FOUND / PARSE_FAILED for free), then
    * rewrites ONLY the named steps' testid anchors — preserving createdAt + every other field — and
-   * re-serializes byte-stably via the same #serialize() that save() uses. The name guard runs
+   * re-serializes byte-stably via the same #serialize that save uses. The name guard runs
    * FIRST, before any path is joined, so a traversal name never reaches the disk.
    *
    * This writer is PURE of the confidence policy: it trusts the changes it is handed (the tool only
@@ -338,14 +338,14 @@ export class FlowStore {
     }
     const flat = flowPath(this.#root, name);
     if (await this.#fs.exists(flat)) return flat;
-    // No projectId (CLI/CI/contract callers, e.g. reticle_domain): mirror list()'s subdir union on
-    // the read side too — a flow saved under .reticle/flows/<projectId>/ must still load, else it is
+    // No projectId (CLI/CI/contract callers, e.g. reticle_domain): mirror list's subdir union on
+    // the read side too — a flow saved under.reticle/flows/<projectId>/ must still load, else it is
     // listed and then silently dropped by `if (loaded.ok)` (reticle_domain reports flowCount:0).
     if (pid === undefined) return this.#resolveNestedPath(name);
     return null;
   }
 
-  /** Scan the per-project subdirs for a flow by name — the read-side of list()'s no-pid union. */
+  /** Scan the per-project subdirs for a flow by name — the read-side of list's no-pid union. */
   async #resolveNestedPath(name: string): Promise<string | null> {
     const flowsDir = reticleDirPaths(this.#root).flows;
     if (!(await this.#fs.exists(flowsDir))) return null;
@@ -394,7 +394,7 @@ export class FlowStore {
 
   /**
    * Delete a flow's file so a renamed/obsolete flow stops lingering in the replay list. Resolves the
-   * same path `load()` would (per-project copy, else legacy flat, else a subdir scan for the no-pid
+   * same path `load` would (per-project copy, else legacy flat, else a subdir scan for the no-pid
    * caller), then removes it. NOT_FOUND when nothing resolves — deleting an absent flow is an error,
    * not a silent no-op, so a typo doesn't read as success.
    */

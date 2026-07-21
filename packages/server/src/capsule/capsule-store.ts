@@ -5,7 +5,7 @@ import type { FileSystemPort } from '../project/fs-port.js';
 import { reticleDirPaths } from '../project/reticle-dir.js';
 
 /**
- * Bug capsules (W8.2). When an assertion fails, the evidence that explains it is in hand exactly once —
+ * Bug capsules. When an assertion fails, the evidence that explains it is in hand exactly once —
  * at the moment of the failure. A capsule persists that moment as a *replayable artifact*: the minimal
  * failing steps, the consequence that was supposed to hold, and the divergence that was observed instead.
  *
@@ -103,7 +103,7 @@ export class CapsuleStore {
   }
 }
 
-/** Deterministic, path-safe capsule id: time-ordered so `list()` sorts newest-first for free. */
+/** Deterministic, path-safe capsule id: time-ordered so `list` sorts newest-first for free. */
 export function capsuleId(now: number, label: string): string {
   const safe = label.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 40);
   return `${String(now)}-${safe.length > 0 ? safe : 'capsule'}`;

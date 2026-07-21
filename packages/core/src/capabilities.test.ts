@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CapabilitiesSchema, RiskSurface } from './index.js';
 
 /** Governance is additive — a manifest without it must still parse (back-compat), and a manifest with
- *  it must validate the declared risk surfaces against the shared vocabulary. */
+ * it must validate the declared risk surfaces against the shared vocabulary. */
 const bare = { testids: ['pay'], signals: ['order:saved'], stores: ['cart'], flows: [] };
 
 describe('CapabilitiesSchema governance (manifest extension)', () => {

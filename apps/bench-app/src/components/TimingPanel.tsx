@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Timing fixture (§4.10) plus the dynamic-region trap (§4.11).
+ * Timing fixture plus the dynamic-region trap.
  *
  * Everything here is correct at any single instant — the right value renders, the right request is
  * made, nothing throws. The bugs live in HOW OFTEN and HOW SOON, which no screenshot and no
@@ -111,7 +111,7 @@ export function TimingPanel(): React.ReactElement {
         <span data-testid={RETRY_STATUS_TESTID}>{retryStatus}</span>
       </div>
       {/*
-        §4.11 trap. This region changes on its own several times a second on a HEALTHY build. A diff or
+        False-positive trap. This region changes on its own several times a second on a HEALTHY build. A diff or
         text oracle that treats "it changed" as "something broke" would flag it forever. The label
         beside it never changes, and is what a stable-content check should key on.
       */}

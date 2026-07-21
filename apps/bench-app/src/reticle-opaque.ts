@@ -1,8 +1,8 @@
 /**
  * Opaque-shell mode for metric #7 ("which works against opaque React shells?").
  *
- *   ?opaque=1   strip every data-testid  (the anchor devs add for testing)
- *   ?opaque=2   also strip role + aria-label  (kill the a11y fallback too)
+ * ?opaque=1 strip every data-testid (the anchor devs add for testing)
+ * ?opaque=2 also strip role + aria-label (kill the a11y fallback too)
  *
  * This simulates the real-world opaque React app: no test ids, generic/hashed markup, thin
  * semantics — the case where DOM-selector tools lose their grip. Reticle's dev-only source

@@ -3,13 +3,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * `start()` and `startDaemon()` must wire the same session-lifecycle machinery.
+ * `start` and `startDaemon` must wire the same session-lifecycle machinery.
  *
  * They drifted once and it was invisible: `startDaemon` attached journal CAPTURE but never the session-END
  * flush, never seeded the learned ambient map, and never routed CDP network detail. Since `reticle serve`
  * and `reticle mcp` both go through `startDaemon`, the path every user takes silently dropped each
  * session's journal tail and could never converge ambient learning across sessions — while the tests,
- * which exercise `start()`, stayed green.
+ * which exercise `start`, stayed green.
  *
  * The fix is shared helpers. This test guards the fix: it asserts BOTH entry points route through them,
  * so re-inlining the wiring in one path (which is how the drift happened) fails here instead of in

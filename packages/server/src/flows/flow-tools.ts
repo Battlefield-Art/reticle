@@ -315,7 +315,7 @@ export const FLOW_TOOLS: ToolDef[] = [
       const requested = Array.isArray(args['names'])
         ? args['names'].filter((n): n is string => typeof n === 'string')
         : await deps.flows.list(sessionProjectId(deps, sessionId));
-      // PARALLEL (W14.2): flows race the DOM only when they share ONE tab. Given the lease pool, each
+      // PARALLEL: flows race the DOM only when they share ONE tab. Given the lease pool, each
       // flow gets its own isolated context, so a large suite finishes in interactive time. Opt-in via
       // `parallel`; a missing prerequisite (no pool, unknown app URL) falls back to the sequential path
       // rather than failing — a suite must always be runnable.

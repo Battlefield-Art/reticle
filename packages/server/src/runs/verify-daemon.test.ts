@@ -7,7 +7,7 @@ import { startDaemon, type RunningServer } from '../index.js';
 /**
  * End-to-end wiring test for `reticle serve --http`: start the daemon with the verify endpoint enabled
  * (ephemeral ports), POST /verify over real HTTP, and confirm a verdict comes back AND a run artifact
- * is persisted to .reticle/runs/. No browser/flows needed — an empty suite verifies to PASS, which is
+ * is persisted to.reticle/runs/. No browser/flows needed — an empty suite verifies to PASS, which is
  * enough to prove the CLI→startDaemon→ReticleRunner→RunStore wiring end to end.
  */
 describe('reticle serve --http (daemon wiring)', () => {

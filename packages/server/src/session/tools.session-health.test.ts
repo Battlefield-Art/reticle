@@ -13,7 +13,7 @@ import type { Session, SessionInfo, SessionManager } from './session.js';
 
 const SESSION_URL = 'http://localhost:5173/app';
 
-/** A minimal fake Session whose health()/throttled() are configurable per test. */
+/** A minimal fake Session whose health/throttled are configurable per test. */
 function fakeSession(throttled: boolean): Session {
   const command = (): Promise<CommandResult> =>
     Promise.resolve({

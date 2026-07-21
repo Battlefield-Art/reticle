@@ -120,12 +120,11 @@ export class Session {
   #firstCommandDone = false;
   /** Durable causal-journal recorder; undefined when journaling is off (opt-out or not yet attached). */
   #journal: JournalRecorder | undefined;
-  /** Action window held independently of the journal — see beginAction. */
-  #activeActionId: string | undefined;
+  #activeActionId: string | undefined; // action window, held independently of the journal
   /** Read side of the journal, for queries that must survive ring-buffer eviction. */
   #journalReader: JournalReader | undefined;
-  /** Learned per-ref ambient-churn counts (unattributed real-time regions), accumulated in-session and
-   *  seeded from the persisted map. The settle oracle reads these to let a churning page still go quiet. */
+  /** Learned ambient-churn counts, accumulated in-session and seeded from disk; the settle oracle
+   * reads them so a churning page can still go quiet. */
   #ambient: AmbientCounts = {};
 
   constructor(hello: HelloMessage, socket: WebSocket, clock: Clock) {
@@ -244,13 +243,11 @@ export class Session {
     const stamped: ReticleEvent = { ...event, t, sessionId: this.id };
     // The recorder attributes the event to the in-flight action (if any) and journals it durably; the
     // returned event carries actionId/attribution so the buffer + all queries see the same causal link.
-    // The journal is authoritative when present; otherwise fall back to the window the session itself
-    // is holding, so attribution survives the journal being switched off.
-    const journalled = this.#journal?.observe(stamped) ?? stamped;
+    // Falls back to the session's own window so attribution survives the journal being switched off.
+    const seen = this.#journal?.observe(stamped) ?? stamped;
+    const fallback = this.#activeActionId;
     const attributed =
-      journalled.actionId === undefined && this.#activeActionId !== undefined
-        ? { ...journalled, actionId: this.#activeActionId }
-        : journalled;
+      seen.actionId === undefined && fallback !== undefined ? { ...seen, actionId: fallback } : seen;
     // Learn ambient churn: an unattributed, ref-bearing event is background motion (chat/ticker), not
     // action-caused work. Counting only unattributed events keeps genuine action effects out of the map.
     const ambientKey = attributed.actionId === undefined ? ambientKeyOf(attributed) : undefined;
@@ -301,12 +298,8 @@ export class Session {
   beginAction(tool: string, args: Record<string, unknown>): string {
     this.#actionSeq += 1;
     const actionId = `${ACTION_ID_PREFIX}${String(this.#actionSeq)}`;
-    // Held on the session, NOT only handed to the journal. Attribution used to flow exclusively through
-    // the journal, so disabling it (RETICLE_JOURNAL=0, or `"journal": false` in .reticle.json — both
-    // documented, both user-reachable) left every event unattributed. pushEvent classifies an
-    // unattributed ref-bearing event as ambient background churn, so with the journal off an app taught
-    // the settle oracle to ignore every region it reacted in, and `{kind:"settled"}` degraded toward
-    // always-settled. A persistence toggle must not change what the oracle believes.
+    // Held here, not only in the journal: with the journal off every event was unattributed, and
+    // pushEvent reads that as ambient churn the settle oracle then ignores. See action-attribution test.
     this.#activeActionId = actionId;
     this.#journal?.beginAction(actionId, tool, args);
     return actionId;
@@ -491,7 +484,7 @@ export class Session {
 
   // ── Human review marks: the "annotate the bug where you see it" inbox (server-owned) ──────────
 
-  /** Human marks still awaiting a fix (oldest first). Reading does not consume — resolveMark() does. */
+  /** Human marks still awaiting a fix (oldest first). Reading does not consume — resolveMark does. */
   pendingMarks(): ReviewMark[] {
     return this.#review.pending();
   }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Streams fixture (§4.7): an SSE build log and a WebSocket echo.
+ * Streams fixture: an SSE build log and a WebSocket echo.
  *
  * These exist because a stream failure is invisible to everything that inspects a moment. The request
  * is open and healthy, the DOM is rendered and correct, nothing throws — the app is simply told

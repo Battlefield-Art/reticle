@@ -4,9 +4,9 @@
  * expensive part of a tool call is the bytes that land in its context.
  *
  * - count_only: drop the elements array entirely, return just `count` (the agent often only needs
- *   "how many?" — e.g. "are there 3 rows now?").
+ * "how many?" — e.g. "are there 3 rows now?").
  * - limit: keep the first N descriptors, report `total` + `truncated:true` so the trim is never
- *   silent (the agent knows to narrow with name/scope rather than assume it saw everything).
+ * silent (the agent knows to narrow with name/scope rather than assume it saw everything).
  *
  * Pure and result-shape-tolerant: anything that is not a `{ elements: [...] }` object passes
  * through untouched (a thrown-error envelope, a zero-match hint result, etc.).

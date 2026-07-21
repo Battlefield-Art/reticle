@@ -1,5 +1,5 @@
 /**
- * Throttled commit aggregator (B46 render stream). React can commit many times per frame; emitting a
+ * Throttled commit aggregator (render stream). React can commit many times per frame; emitting a
  * RENDER_COMMIT event per commit would flood the ledger. This accumulates commits and flushes the COUNT
  * once per throttle window (a scheduled tick), so a commit storm shows up as one event carrying its
  * magnitude. The scheduler is injected, keeping the accumulate/flush logic pure and unit-testable.

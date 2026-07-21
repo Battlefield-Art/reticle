@@ -5,7 +5,7 @@ import type { SegmentRollup } from './rollups.js';
  * The expected-envelope model — the OSS statistical engine behind the deviation report. Per-metric
  * running stats (Welford, so we never store every sample) accumulate across runs of the same route;
  * a new segment is compared against them and flagged when a metric runs high. The *math* is open; the
- * fleet-calibrated thresholds are the paid layer (see OSS-VS-SERVER §6). We only flag INCREASES
+ * fleet-calibrated thresholds are the paid layer (see OSS-VS-SERVER). We only flag INCREASES
  * (slower, more errors, more requests) — a segment doing less than expected is not a regression.
  */
 

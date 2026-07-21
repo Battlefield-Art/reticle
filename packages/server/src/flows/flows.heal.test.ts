@@ -423,7 +423,7 @@ describe('FlowStore.heal + reticle_flow_heal', () => {
   });
 });
 
-/** Direct FlowStore.heal() unit checks (no tool/session indirection). */
+/** Direct FlowStore.heal unit checks (no tool/session indirection). */
 describe('FlowStore.heal — writer', () => {
   let root: string;
   let store: FlowStore;

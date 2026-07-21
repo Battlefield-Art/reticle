@@ -39,7 +39,7 @@ function firstSentence(description: string): string {
 
 /**
  * Lean copy of a tool's zod input shape for lean profiles: each parameter's description is
- * truncated to its first sentence via zod's own `.describe()` (which returns a new schema, so the
+ * truncated to its first sentence via zod's own `.describe` (which returns a new schema, so the
  * shared shape is never mutated). The per-parameter prose is the bulk of the re-sent-every-turn
  * schema cost; the first clause keeps each param's purpose and any enum hints. Params without a
  * description pass through unchanged.

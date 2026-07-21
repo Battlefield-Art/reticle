@@ -1,5 +1,5 @@
 /**
- * The skip sentinel. MATCHERS' `t.expectInputModeReal()` throws this when the active input mode
+ * The skip sentinel. MATCHERS' `t.expectInputModeReal` throws this when the active input mode
  * is not 'real', so the runner reports `status:'skip'` (with the reason) instead of a silent pass.
  */
 export class ReticleSkip extends Error {

@@ -3,7 +3,7 @@ import { installNetwork } from './network.js';
 import type { Emit, Teardown } from './types.js';
 
 /**
- * Body capture must never make the app's own `fetch()` wait.
+ * Body capture must never make the app's own `fetch` wait.
  *
  * The observer reads a CLONE of the response so the app's stream stays untouched — but it awaited that
  * clone BEFORE returning the response. A clone of a stream only settles when the stream ends, and an

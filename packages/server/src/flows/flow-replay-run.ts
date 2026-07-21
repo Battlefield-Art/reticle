@@ -62,7 +62,7 @@ function replayToRunStatus(status: ReplayStatus): RunStatus {
   }
 }
 
-/** Append a flow-replay outcome to .reticle/project.json (never throws into replay). */
+/** Append a flow-replay outcome to.reticle/project.json (never throws into replay). */
 async function recordReplayRun(
   deps: ToolDeps,
   name: string,
@@ -172,7 +172,7 @@ export async function replayNamedFlow(
   const allOk = steps.every((s) => s.ok);
   const status = driftSteps > 0 ? ReplayStatus.DRIFT : allOk ? ReplayStatus.OK : ReplayStatus.ERROR;
   await recordReplayRun(deps, name, status, driftSteps, deps.now() - startedAt);
-  // Anti-reward-hacking baseline (B37): record what this flow asserted ONLY when it passed clean. A
+  // Anti-reward-hacking baseline: record what this flow asserted ONLY when it passed clean. A
   // failing run must never become the baseline a later weakening is measured against.
   if (status === ReplayStatus.OK) {
     await new AssertionTiersStore(deps.fs, deps.reticleRoot).recordPassing(

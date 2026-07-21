@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useApp } from '../store/store.js';
 
 /**
- * Deep-DOM fixture surface (§4.8): one web component with an OPEN shadow root, and one same-origin
+ * Deep-DOM fixture surface: one web component with an OPEN shadow root, and one same-origin
  * iframe panel. Both are places a tool has to deliberately pierce to see anything — Reticle's snapshot
  * walks `element.shadowRoot` and a same-origin `contentDocument`, so content inside them is reachable;
  * a plain `querySelectorAll('[data-testid]')` on the top document is not.

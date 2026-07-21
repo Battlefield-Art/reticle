@@ -2,14 +2,14 @@
  * Classify whether a flow asserts an observable CONSEQUENCE or is "assertion-free" / presence-only.
  *
  * Why this exists (grounded in real testing behavior):
- *  - Martin Fowler, *Assertion-Free Testing*: teams hit 100% coverage with tests that "weren't any
- *    assertions" — green, but verifying nothing.
- *  - Kent C. Dodds, *Make Your Test Fail*: a test that doesn't fail when you break the code gives
- *    false security.
- *  - Self-healing vendors (mabl, qate.ai) admit a locator healed to the WRONG element makes a test
- *    pass green while a real regression ships — but only if the test merely checks presence.
- *  - AI agents agree with human pass/fail only ~68% of the time (arXiv 2510.02418), so the flow
- *    itself must carry a real oracle, not rely on the agent eyeballing success.
+ * - Martin Fowler, *Assertion-Free Testing*: teams hit 100% coverage with tests that "weren't any
+ * assertions" — green, but verifying nothing.
+ * - Kent C. Dodds, *Make Your Test Fail*: a test that doesn't fail when you break the code gives
+ * false security.
+ * - Self-healing vendors (mabl, qate.ai) admit a locator healed to the WRONG element makes a test
+ * pass green while a real regression ships — but only if the test merely checks presence.
+ * - AI agents agree with human pass/fail only ~68% of the time (arXiv 2510.02418), so the flow
+ * itself must carry a real oracle, not rely on the agent eyeballing success.
  *
  * For a flow, an FlowExpect can assert a `signal` (app emitted an event), a `net` call, or just an
  * `element` presence. signal/net are OBSERVABLE CONSEQUENCES — they can't be satisfied by a wrong

@@ -36,7 +36,7 @@ interface ActiveAction {
 
 /**
  * Owns action-window attribution and batched, order-preserving journaling — the durable half of the
- * causal spine, kept out of Session so neither file bloats. Every stamped event is `observe()`d: if an
+ * causal spine, kept out of Session so neither file bloats. Every stamped event is `observe`d: if an
  * action is active (dispatch→settle), the event is attributed to it (`attribution:"window"` — a time
  * heuristic, never presented as dataflow truth) and its seq folds into the action's range. Writes are
  * serialized on one chain so `events.jsonl` never interleaves and an action is always persisted after

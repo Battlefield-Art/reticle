@@ -4,7 +4,7 @@ import { ReticleTool } from './tool-names.js';
 import type { ToolDeps } from './tools.js';
 import type { SessionManager } from '../session/session.js';
 
-/** Minimal ToolDeps stub: only `sessions.list()` is exercised by reticle_sessions. */
+/** Minimal ToolDeps stub: only `sessions.list` is exercised by reticle_sessions. */
 function fakeDeps(): ToolDeps {
   const sessions: Partial<SessionManager> = { list: () => [] };
   return { sessions: sessions as SessionManager } as unknown as ToolDeps;

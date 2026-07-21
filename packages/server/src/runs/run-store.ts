@@ -1,5 +1,5 @@
 /**
- * Persistence for verification-run artifacts at .reticle/runs/<runId>.json. Mirrors ProjectStore:
+ * Persistence for verification-run artifacts at.reticle/runs/<runId>.json. Mirrors ProjectStore:
  * injected FileSystemPort, never-throws read, path-segment guard on the runId (the tool-arg attack
  * surface). One artifact per file (unlike project.json's single rolling file) so a host can attach an
  * individual run to a deploy. The run is already clock-stamped by buildVerificationRun, so the store
@@ -47,9 +47,9 @@ export class RunStore {
   }
 
   /**
-   * Write one run artifact. Creates .reticle/runs/ first; byte-stable (fixed indent + trailing newline).
+   * Write one run artifact. Creates.reticle/runs/ first; byte-stable (fixed indent + trailing newline).
    * Guards runId as a safe path segment BEFORE building the path — a runId can originate from a caller
-   * (an OEM may set it), so an unsafe value must never escape .reticle/runs/ (mirrors the read guard).
+   * (an OEM may set it), so an unsafe value must never escape.reticle/runs/ (mirrors the read guard).
    */
   async write(run: ReticleVerificationRun): Promise<void> {
     if (!isValidRunId(run.runId)) {
@@ -57,7 +57,7 @@ export class RunStore {
     }
     await this.#fs.mkdir(reticleDirPaths(this.#root).runs);
     // Atomic publish: write a temp file then rename, so a crash mid-write never leaves a half-written
-    // artifact (a partial .json would otherwise read back as MALFORMED).
+    // artifact (a partial.json would otherwise read back as MALFORMED).
     const path = runPath(this.#root, run.runId);
     const tmp = `${path}${TMP_EXT}`;
     await this.#fs.writeFile(tmp, `${JSON.stringify(run, null, JSON_INDENT)}\n`);
@@ -66,7 +66,7 @@ export class RunStore {
   }
 
   /**
-   * Keep .reticle/runs/ bounded. Only acts once the count exceeds RUN_RETENTION + SLACK, then deletes the
+   * Keep.reticle/runs/ bounded. Only acts once the count exceeds RUN_RETENTION + SLACK, then deletes the
    * oldest (by createdAt) back down to RUN_RETENTION — so the read-all is amortized, not per-write.
    */
   async #pruneOld(): Promise<void> {
@@ -111,7 +111,7 @@ export class RunStore {
     return { ok: true, run: result.data };
   }
 
-  /** List run ids on disk (filenames minus .json). Empty when the runs dir is absent. */
+  /** List run ids on disk (filenames minus.json). Empty when the runs dir is absent. */
   async list(): Promise<RunId[]> {
     const dir = reticleDirPaths(this.#root).runs;
     if (!(await this.#fs.exists(dir))) return [];

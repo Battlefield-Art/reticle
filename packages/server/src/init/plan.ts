@@ -23,7 +23,7 @@ import {
 // An app dev installs exactly the audience-scoped browser-side dependencies — never the retired
 // `@reticlehq/core` umbrella (which dragged the Node MCP server + ws into every app). The kit is the
 // framework adapter (it re-exports the browser sensor), paired with that framework's dev-only build
-// plugin for source mapping + connect() injection.
+// plugin for source mapping + connect injection.
 const RETICLE_REACT_KIT = '@reticlehq/react';
 const RETICLE_VITE_PLUGIN = '@reticlehq/vite-plugin';
 const RETICLE_NEXT_PLUGIN = '@reticlehq/next';
@@ -38,7 +38,7 @@ export function frameworkPackages(framework: Framework): readonly string[] {
       // SvelteKit builds on Vite; until a dedicated Svelte kit exists it uses the Vite build plugin.
       return [RETICLE_REACT_KIT, RETICLE_VITE_PLUGIN];
     case Framework.HTML:
-      // No bundler plugin to install — just the kit; connect() is wired by hand (see htmlManual).
+      // No bundler plugin to install — just the kit; connect is wired by hand (see htmlManual).
       return [RETICLE_REACT_KIT];
   }
 }
@@ -90,7 +90,7 @@ export interface PlanInput {
   nextReticleDevExists: boolean;
   /** Whether src/hooks.client.ts already exists (SvelteKit idempotency). */
   svelteKitHooksExists?: boolean;
-  /** Whether .reticle.json already exists in the project root (idempotency). */
+  /** Whether.reticle.json already exists in the project root (idempotency). */
   reticleConfigExists?: boolean;
   options: {
     port: number | undefined;

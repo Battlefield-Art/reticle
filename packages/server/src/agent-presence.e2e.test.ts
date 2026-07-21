@@ -17,8 +17,8 @@ import { endAllSessions } from './session/session-reaper.js';
 
 /**
  * End-to-end proof of the agent-independent presence chain through the REAL wiring:
- *   agent's SSE drops → SharedServer presence(false) → endAllSessions → Session.autoEnd →
- *   PRESENTER push over the WS bridge → the browser panel.
+ * agent's SSE drops → SharedServer presence(false) → endAllSessions → Session.autoEnd →
+ * PRESENTER push over the WS bridge → the browser panel.
  * No mocks in the path: a real Bridge, a real Session, a real WebSocket browser stand-in.
  */
 

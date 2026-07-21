@@ -27,7 +27,7 @@ const WATCHED_ATTRS = [
   'aria-selected',
   'aria-checked',
   'data-state',
-  // Widened (W3): visual + resource + form-value attributes. Values are capped (they can be long).
+  // Widened: visual + resource + form-value attributes. Values are capped (they can be long).
   'style',
   'src',
   'href',

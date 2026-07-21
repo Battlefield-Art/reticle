@@ -25,7 +25,7 @@ interface TransportDeps {
   onConnected?: () => void;
   /**
    * Liveness fallback: fired once when the bridge has been unreachable for SESSION_LIFECYCLE
-   * .BRIDGE_LOST_MS — i.e. the server/agent process is gone, so no server-pushed end can arrive and
+   *.BRIDGE_LOST_MS — i.e. the server/agent process is gone, so no server-pushed end can arrive and
    * the SDK must end the session itself instead of showing a forever-"running" HUD.
    */
   onConnectionLost?: () => void;

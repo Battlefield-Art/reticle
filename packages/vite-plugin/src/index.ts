@@ -23,12 +23,12 @@ const NODE_MODULES = 'node_modules';
  * The connect code is served as a real module (not an inline <script>) so that Vite's import
  * pipeline resolves the bare `@reticlehq/react` specifier. An inline injected script is NOT run through
  * import resolution, so its bare import would fail in the browser. This path-like id is requested
- * by the injected <script src> and served by the load() hook below.
+ * by the injected <script src> and served by the load hook below.
  */
 export const RETICLE_CONNECT_MODULE = '/@reticle-connect';
 
 export interface ReticleVitePluginOptions {
-  /** Bridge WebSocket port. Defaults to the SDK default; only baked into connect() when non-default. */
+  /** Bridge WebSocket port. Defaults to the SDK default; only baked into connect when non-default. */
   port?: number;
   /** Stable session label for the bridge. Defaults to the SDK's auto-generated id. */
   session?: string;
@@ -37,11 +37,11 @@ export interface ReticleVitePluginOptions {
    * so multi-project session scoping works with zero config. Override only for special setups.
    */
   projectId?: string;
-  /** Auth token forwarded to connect() when the bridge requires one. */
+  /** Auth token forwarded to connect when the bridge requires one. */
   token?: string;
   /** Stamp data-reticle-source for React 19 source mapping. Default true (harmless on React <=18). */
   sourceMapping?: boolean;
-  /** Auto-inject the dev-gated reticle.connect() call. Default true. */
+  /** Auto-inject the dev-gated reticle.connect call. Default true. */
   inject?: boolean;
 }
 
@@ -65,7 +65,7 @@ interface HtmlTag {
 function shouldStamp(id: string): boolean {
   if (id.startsWith(VIRTUAL_PREFIX)) return false;
   if (id.includes(NODE_MODULES)) return false;
-  // Strip any query suffix (?worker, ?raw, ...) before matching the extension.
+  // Strip any query suffix (?worker, ?raw,...) before matching the extension.
   const clean = id.split('?')[0] ?? id;
   return JSX_FILE.test(clean);
 }
@@ -104,7 +104,7 @@ export function readPairingToken(): string | undefined {
   }
 }
 
-/** Build the `reticle.connect()` argument literal — only includes keys the user set. */
+/** Build the `reticle.connect` argument literal — only includes keys the user set. */
 function connectArgs(options: ReticleVitePluginOptions): string {
   const args: Record<string, string | number> = {};
   const port = options.port ?? RETICLE_DEFAULT_PORT;
@@ -124,8 +124,8 @@ export function connectModuleSource(options: ReticleVitePluginOptions): string {
 /**
  * Reticle Vite plugin. Add to your `plugins` array and the entire integration is done:
  *
- *   import { reticle } from '@reticlehq/vite-plugin';
- *   export default defineConfig({ plugins: [react(), reticle()] });
+ * import { reticle } from '@reticlehq/vite-plugin';
+ * export default defineConfig({ plugins: [react, reticle] });
  *
  * `apply: 'serve'` means Vite drops the plugin entirely from `vite build` — production bundles
  * are never instrumented. Gating is the tool's job, not a user-managed env check.
@@ -148,7 +148,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       return stamp(code, id);
     },
     resolveId(id) {
-      // Return the id verbatim so Vite serves it back to load() (the bare imports inside it then
+      // Return the id verbatim so Vite serves it back to load (the bare imports inside it then
       // go through normal resolution). No NUL prefix: the browser requests it as a URL.
       return inject && id === RETICLE_CONNECT_MODULE ? RETICLE_CONNECT_MODULE : null;
     },

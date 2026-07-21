@@ -70,7 +70,7 @@ export function endAllSessions(sessions: SessionManager, reason: string): string
 
 /**
  * Runs {@link reapIdleSessions} on a Node interval. The timer is `unref`'d so it never keeps the
- * process alive on its own, and `start()` is idempotent.
+ * process alive on its own, and `start` is idempotent.
  */
 export class SessionReaper {
   #timer: ReturnType<typeof setInterval> | undefined;

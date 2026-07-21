@@ -29,7 +29,7 @@ describe('store registry — passing the STORE auto-wires change diffs', () => {
   });
 
   it('accepts a CALLABLE Zustand-style hook (function carrying getState/subscribe)', () => {
-    // Regression: Zustand's create() returns a callable hook, so a real store is typeof 'function'.
+    // Regression: Zustand's create returns a callable hook, so a real store is typeof 'function'.
     // An object-only guard silently fell through to the getter path and left STATE_CHANGE dormant —
     // caught only by driving a live app, never by an object-shaped fixture.
     let subscribed = false;

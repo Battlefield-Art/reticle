@@ -12,7 +12,7 @@ export const PROJECT_FILE_VERSION = 1;
 
 /**
  * Structured outcome when reading project.json fails (never thrown to the agent).
- * Mirrors ContractReadError. NOTE: recordRun() self-heals a MALFORMED file (starts fresh) so a
+ * Mirrors ContractReadError. NOTE: recordRun self-heals a MALFORMED file (starts fresh) so a
  * corrupt history never wedges the agent; only the READ path (reticle_project) surfaces MALFORMED.
  */
 export const ProjectReadError = {
@@ -50,7 +50,7 @@ export const PROJECT_RUN_CAP = {
   TOTAL: 200,
 } as const;
 
-/** Schema version stamped onto on-disk flow files (.reticle/flows/<name>.json). */
+/** Schema version stamped onto on-disk flow files.reticle/flows/<name>.json). */
 export const FLOW_FILE_VERSION = 1;
 
 /** How a flow step is anchored to the live DOM at replay time (semantic, never a volatile ref). */
@@ -117,12 +117,12 @@ export const FLOW_SIGNAL_TIMEOUT_MS = 4000;
  * from the plan grammar are also future — only the four requested kinds ship here.
  */
 export const AnnotationKind = {
-  ASSERT_SIGNAL: 'assert-signal', // → step.expect.signal  (invariant)
+  ASSERT_SIGNAL: 'assert-signal', // → step.expect.signal (invariant)
   ASSERT_VISIBLE: 'assert-visible', // → step.expect.element (invariant)
-  ASSERT_STATE: 'assert-state', // → step.expect.state   (store-truth invariant on the last step)
-  MARK_DYNAMIC: 'mark-dynamic', // → flow.dynamic[]      (don't assert words/content)
-  SUCCESS_STATE: 'success-state', // → flow.success        (golden end condition)
-  INTENT: 'intent', // → flow.intent         (the business goal this flow exists to verify)
+  ASSERT_STATE: 'assert-state', // → step.expect.state (store-truth invariant on the last step)
+  MARK_DYNAMIC: 'mark-dynamic', // → flow.dynamic[] (don't assert words/content)
+  SUCCESS_STATE: 'success-state', // → flow.success (golden end condition)
+  INTENT: 'intent', // → flow.intent (the business goal this flow exists to verify)
 } as const;
 export type AnnotationKind = (typeof AnnotationKind)[keyof typeof AnnotationKind];
 
@@ -178,7 +178,7 @@ export type AnnotationTarget = (typeof AnnotationTarget)[keyof typeof Annotation
 
 /**
  * Structured failure codes for the annotate compiler/tool (returned, never
- * thrown / free strings). NO_ACTIVE_RECORDING = annotate() with nothing recording; NO_STEP_TO_
+ * thrown / free strings). NO_ACTIVE_RECORDING = annotate with nothing recording; NO_STEP_TO_
  * ANNOTATE = an assert-* with zero captured steps yet; UNKNOWN_KIND = kind ∉ AnnotationKind (or a
  * free natural-language string — see AnnotationSchema's FUTURE note); MISSING_FIELD = e.g. a
  * success-state with neither signal nor testid.

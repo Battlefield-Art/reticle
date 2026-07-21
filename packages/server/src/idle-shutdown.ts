@@ -18,9 +18,9 @@ export interface IdleShutdownOptions {
  * Self-terminates an idle daemon so Reticle never lingers eating a user's resources (the daemon process,
  * any headless Chromium the pool launched, and the bound port) after the editor closes. The `reticle mcp`
  * proxy spawns the daemon DETACHED so it survives between turns — which means nothing else will ever
- * stop it; this watcher is that missing stop. Idle = `isIdle()` true continuously for `graceMs` (long
+ * stop it; this watcher is that missing stop. Idle = `isIdle` true continuously for `graceMs` (long
  * enough to ride out brief agent reconnects between turns). On fire it calls `onShutdown` exactly once.
- * The interval is `unref`'d, so it never keeps the process alive on its own; `start()` is idempotent.
+ * The interval is `unref`'d, so it never keeps the process alive on its own; `start` is idempotent.
  */
 export class IdleShutdown {
   #timer: ReturnType<typeof setInterval> | undefined;

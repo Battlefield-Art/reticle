@@ -45,7 +45,7 @@ describe('Session.queryEvents', () => {
       },
     };
     const session = newSession(reader);
-    // Overflow the ring buffer so seq 0 is evicted (count cap) and bufferHealth().dropped > 0.
+    // Overflow the ring buffer so seq 0 is evicted (count cap) and bufferHealth.dropped > 0.
     for (let i = 0; i <= RING_BUFFER_DEFAULTS.MAX_EVENTS; i += 1) session.pushEvent(evt(i));
 
     const all = await session.queryEvents({});

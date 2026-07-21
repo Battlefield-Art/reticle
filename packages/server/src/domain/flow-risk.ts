@@ -1,10 +1,10 @@
 /**
  * Risk-rank flows so an agent tests the riskiest first. Risk combines two signals:
- *  - run history (.reticle/project.json): a flow whose last run errored/drifted, or passed but with
- *    console/network errors, is riskier than one that passed clean; a never-run flow is unknown.
- *  - assertion quality (flow-classify): a flow that asserts no consequence is risky EVEN when it
- *    "passes" — a green assertion-free flow is false confidence (Fowler/Dodds), so it can't be
- *    trusted to catch a regression.
+ * - run history.reticle/project.json): a flow whose last run errored/drifted, or passed but with
+ * console/network errors, is riskier than one that passed clean; a never-run flow is unknown.
+ * - assertion quality (flow-classify): a flow that asserts no consequence is risky EVEN when it
+ * "passes" — a green assertion-free flow is false confidence (Fowler/Dodds), so it can't be
+ * trusted to catch a regression.
  *
  * Taking the worse of the two means "passed clean last time" never hides "but it asserts nothing".
  * Pure: no IO, no clock.

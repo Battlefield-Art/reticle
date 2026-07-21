@@ -216,7 +216,7 @@ describe('resolvePort — priority chain', () => {
   });
 });
 
-// ─── Scenario matrix — real .reticle.json files in isolated temp dirs ────────────
+// ─── Scenario matrix — real.reticle.json files in isolated temp dirs ────────────
 
 describe('Scenario matrix — port isolation per project', () => {
   let projectA: string;

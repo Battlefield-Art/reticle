@@ -6,7 +6,7 @@ import { reticleDirPaths } from '../project/reticle-dir.js';
 import type { StepExpect } from './assertion-integrity.js';
 
 /**
- * The anti-reward-hacking baseline (B37/W7.4). Detecting an assertion DOWNGRADE requires knowing what the
+ * The anti-reward-hacking baseline. Detecting an assertion DOWNGRADE requires knowing what the
  * flow asserted the last time it PASSED — otherwise a weakened flow simply looks like a flow that always
  * asserted little. Flows are git-checked and agent-editable, so we cannot trust the file itself as its own
  * history.
@@ -26,7 +26,7 @@ export const AssertionTiersFileSchema = z.object({
     z.object({
       steps: z.array(z.object({ step: z.number(), expect: z.unknown().optional() })),
       /** Source files this flow covered when it last passed — lets the gate scope DELETION findings to
-       *  the files that actually changed, instead of flagging every intentionally-removed flow. */
+       * the files that actually changed, instead of flagging every intentionally-removed flow. */
       sources: z.array(z.string()).default([]),
     }),
   ),

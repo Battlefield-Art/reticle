@@ -6,31 +6,31 @@
  * app's own STATE reveals the break. This is the data that separates "the element exists" from "a user
  * can actually use it, and the program did the right thing."
  *
- *   ?reticle-bug=<id>[,<id>...]
+ * ?reticle-bug=<id>[,<id>...]
  *
  * The catalog is organised as a handful of generic installers driven by lookup tables, so a new bug is
  * one table row, not a new function:
  *
- *   CSS_BUGS      — a control loses interactivity/visibility via computed style (opacity:0, 0×0,
- *                   recolor) or the whole page is re-tinted (a paint-only regression). Caught by a
- *                   geometry/computed-style read (both tools) or a pixel diff (screenshot only).
- *   OCCLUDE       — a transparent overlay covers a control so clicks land on the overlay, not it.
- *   TAMPER        — an action writes store state it should not (blast radius) or writes a WRONG value
- *                   (a business-logic invariant: a KPI number, a created row's field). The corruption
- *                   is off-screen, so no DOM/pixel tool can see it; only reading the store proves it.
- *   CONSOLE_LEAKS — an action logs a console.error while the UI still renders fine.
- *   EXTRA_FETCH   — an action fires a request it must NOT (a forbidden endpoint / privacy beacon) or
- *                   fires its own request one extra time (double-submit). Caught by a network count.
- *   DOM_TEXT      — a displayed label/number is silently wrong (a mock-data / copy regression).
+ * CSS_BUGS — a control loses interactivity/visibility via computed style (opacity:0, 0×0,
+ * recolor) or the whole page is re-tinted (a paint-only regression). Caught by a
+ * geometry/computed-style read (both tools) or a pixel diff (screenshot only).
+ * OCCLUDE — a transparent overlay covers a control so clicks land on the overlay, not it.
+ * TAMPER — an action writes store state it should not (blast radius) or writes a WRONG value
+ * (a business-logic invariant: a KPI number, a created row's field). The corruption
+ * is off-screen, so no DOM/pixel tool can see it; only reading the store proves it.
+ * CONSOLE_LEAKS — an action logs a console.error while the UI still renders fine.
+ * EXTRA_FETCH — an action fires a request it must NOT (a forbidden endpoint / privacy beacon) or
+ * fires its own request one extra time (double-submit). Caught by a network count.
+ * DOM_TEXT — a displayed label/number is silently wrong (a mock-data / copy regression).
  *
  * Two always-on desync installers keep the DOM self-consistent while lying about the truth:
- *   state-desync  — the Deployments nav badge is forced to a wrong count while the store holds the real
- *                   one. Only reading the store reveals the mismatch.
- *   status-stale  — the top deployment row shows a status the store does NOT hold (a failed/in-flight
- *                   deploy rendered as "live"). The pill is fully self-consistent, so a screenshot/a11y
- *                   tool sees a healthy deploy; only the store reveals the lie.
- *   render-storm  — re-renders `series` subscribers ~60×/s with identical output: React commits every
- *                   tick but the DOM never mutates. Only the React commit meter sees it.
+ * state-desync — the Deployments nav badge is forced to a wrong count while the store holds the real
+ * one. Only reading the store reveals the mismatch.
+ * status-stale — the top deployment row shows a status the store does NOT hold (a failed/in-flight
+ * deploy rendered as "live"). The pill is fully self-consistent, so a screenshot/a11y
+ * tool sees a healthy deploy; only the store reveals the lie.
+ * render-storm — re-renders `series` subscribers ~60×/s with identical output: React commits every
+ * tick but the DOM never mutates. Only the React commit meter sees it.
  *
  * Tree-shaken out of production; never imported there.
  */
@@ -285,7 +285,7 @@ const DOUBLE_FETCH: Record<string, DoubleFetch> = {
 
 
 /**
- * net-status — the hidden-500 class (§4.1). The request genuinely FAILS (or answers the wrong shape) but
+ * net-status — the hidden-500 class. The request genuinely FAILS (or answers the wrong shape) but
  * the app swallows it and renders success anyway. This is the flagship "looks fine, isn't" case: the DOM
  * is correct, the screenshot is correct, and only the wire tells the truth.
  *
@@ -322,7 +322,7 @@ const NET_PAYLOAD: Record<string, NetPayloadBug> = {
 };
 
 /**
- * net-hang — the in-flight oracle (§4.2). The request never resolves. `uiDone` is the nastier variant:
+ * net-hang — the in-flight oracle. The request never resolves. `uiDone` is the nastier variant:
  * the app optimistically renders completion and never reconciles, so the DOM says "done" while the wire
  * is still waiting forever. `abort` drops the request mid-flight with no retry and no surfaced error.
  */
@@ -400,7 +400,7 @@ function installNetFaults(bugs: ReadonlySet<string>): void {
 
 
 /**
- * silent-removal (§4.9) — a NON-INTERACTIVE element quietly unmounts. Nothing errors, nothing shifts
+ * silent-removal — a NON-INTERACTIVE element quietly unmounts. Nothing errors, nothing shifts
  * visibly enough to notice, and no click breaks: a crawler that only exercises controls is structurally
  * blind to it. Only a saved baseline notices the absence.
  */
@@ -423,7 +423,7 @@ function installSilentRemoval(bugs: ReadonlySet<string>): void {
 }
 
 /**
- * perf (§4.6) — the layout-shift / long-task blind spot. These are invisible to a DOM assertion and to a
+ * perf — the layout-shift / long-task blind spot. These are invisible to a DOM assertion and to a
  * screenshot taken after things settle: the damage is in WHEN the page moved, not in what it ends up
  * looking like.
  */
@@ -488,18 +488,18 @@ function installPerfFaults(bugs: ReadonlySet<string>): void {
 
 
 /**
- * routing (§4.3) — the view renders correctly but the URL is wrong. Deep links and the back button
+ * routing — the view renders correctly but the URL is wrong. Deep links and the back button
  * break while every DOM assertion still passes, so only a route oracle catches it.
  *
  * TWO of the spec's four routing bugs are deliberately absent, both for the same reason — they would
  * report "caught" on a CLEAN build, which the standing rule forbids:
  *
- *  - `route-double-push`: injectable and genuinely broken (verified: one click = 2 history entries, so
- *    Back strands you), but NEITHER harness can see it. Reticle's route observer drops a push whose URL
- *    is unchanged (`route.ts`: `if (to.href === from) return;`) — correct behaviour that fixes a real
- *    back-nav drop — and Playwright only sees the final URL, which is right. A bug nobody can catch adds
- *    no signal to a comparison suite. Recorded as a known blind spot instead of scored.
- *  - `deeplink-dead`: NOT here either. The app has no
+ * - `route-double-push`: injectable and genuinely broken (verified: one click = 2 history entries, so
+ * Back strands you), but NEITHER harness can see it. Reticle's route observer drops a push whose URL
+ * is unchanged (`route.ts`: `if (to.href === from) return;`) — correct behaviour that fixes a real
+ * back-nav drop — and Playwright only sees the final URL, which is right. A bug nobody can catch adds
+ * no signal to a comparison suite. Recorded as a known blind spot instead of scored.
+ * - `deeplink-dead`: NOT here either. The app has no
  * URL→view hydration at all, so a direct /deployments load ALREADY falls back to overview on a clean
  * build — injecting it would trip the clean-build-zero gate. It needs the app to support deep links first.
  */
@@ -533,7 +533,7 @@ function installRouteFaults(bugs: ReadonlySet<string>): void {
 
 
 /**
- * signal (§4.4) — Tier-1 coverage. The network call succeeds, the DOM updates, the store is correct;
+ * signal — Tier-1 coverage. The network call succeeds, the DOM updates, the store is correct;
  * only the app's own declared SIGNAL is wrong or missing. A DOM/pixel tool has nothing to compare
  * against, which is why this whole category is reticle-only rather than a fair fight.
  *
@@ -578,7 +578,7 @@ function installSignalFaults(bugs: ReadonlySet<string>): void {
 
 
 /**
- * storage (§4.5) — persistence truth. The UI is completely correct in every one of these: sign-in
+ * storage — persistence truth. The UI is completely correct in every one of these: sign-in
  * succeeds, the avatar appears, sign-out returns you to the login screen. The lie only shows up on the
  * NEXT page load, or to the server. A tool that judges the rendered page cannot see any of it.
  *
@@ -679,7 +679,7 @@ function resetStorageIfAsked(params: URLSearchParams): void {
 
 
 /**
- * timing (§4.10) — fake-clock territory. The bug is entirely in WHEN something happens, so any check
+ * timing — fake-clock territory. The bug is entirely in WHEN something happens, so any check
  * that looks immediately after the action sees a perfectly correct page. Only waiting past the
  * deadline and looking again reveals it.
  *
@@ -699,7 +699,7 @@ function installTimingFaults(bugs: ReadonlySet<string>): void {
 
 
 /**
- * deep-dom (§4.8) — shadow root + iframe piercing. Everything here is INSIDE a boundary the top-level
+ * deep-dom — shadow root + iframe piercing. Everything here is INSIDE a boundary the top-level
  * document does not expose: `document.querySelectorAll('[data-testid]')` finds none of it, and the
  * parent console never sees the frame's error. Reticle's snapshot walks `element.shadowRoot` and a
  * same-origin `contentDocument`, so the content is reachable — that reach is exactly what is measured.
@@ -756,7 +756,7 @@ const STALE_IFRAME_COUNT = '3';
 
 
 /**
- * streams (§4.7) — SSE / WebSocket. A stream failure is invisible to anything that inspects a MOMENT:
+ * streams — SSE / WebSocket. A stream failure is invisible to anything that inspects a MOMENT:
  * the connection is open and healthy, the DOM is rendered and correct, nothing throws. The app is just
  * never told, or is told something it silently drops. Only the frame timeline shows it.
  *
@@ -781,7 +781,7 @@ function installStreamFaults(bugs: ReadonlySet<string>): void {
 
 
 /**
- * timing, the count-over-time half (§4.10). Both of these render identically and return identical
+ * timing, the count-over-time half. Both of these render identically and return identical
  * results; only the NUMBER of requests differs, which no single observation can reveal.
  */
 function installRequestTimingFaults(bugs: ReadonlySet<string>): void {

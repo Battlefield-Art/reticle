@@ -13,7 +13,7 @@ export const FLAKE_FILE_VERSION = 1;
 
 /**
  * Persists the per-flow flake ledger at `.reticle/flake.json`. Local single-project memory (stays OSS —
- * OSS-VS-SERVER §6). Loads never throw: missing/malformed/wrong-version degrades to an empty ledger, so
+ * OSS-VS-SERVER). Loads never throw: missing/malformed/wrong-version degrades to an empty ledger, so
  * a bad file never blocks a gate — it just re-learns flakiness. `record` accrues one unchanged-code
  * replay outcome; `flakyFlows` is what the gate quarantines.
  */

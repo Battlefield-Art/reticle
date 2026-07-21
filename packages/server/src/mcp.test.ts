@@ -21,7 +21,7 @@ describe('withSessionEnvelope — spliced fields survive structuredContent valid
   it("keeps a tool's own field shape over the permissive envelope default (ACT session)", () => {
     const act = TOOLS.find((t) => t.name === ReticleTool.ACT);
     const merged = withSessionEnvelope(ReticleTool.ACT, act?.outputSchema) ?? {};
-    // ACT declares a typed session object; the merge must not overwrite it with z.unknown().
+    // ACT declares a typed session object; the merge must not overwrite it with z.unknown.
     expect(merged['session']).toBe(act?.outputSchema?.['session']);
   });
 

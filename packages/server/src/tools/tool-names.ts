@@ -40,11 +40,11 @@ export const ReticleTool = {
   FLOW_HEAL: 'reticle_flow_heal',
   /** structured annotation → compiles into the recording's expect/dynamic/success. */
   ANNOTATE: 'reticle_annotate',
-  /** read cross-run history (.reticle/project.json) + diff-vs-last for a name. */
+  /** read cross-run history.reticle/project.json) + diff-vs-last for a name. */
   PROJECT: 'reticle_project',
   /** explicitly record a run outcome (the manual companion to auto-recording). */
   RUN_RECORD: 'reticle_run_record',
-  /** capture a pixel screenshot (CDP/driven browser) → .reticle/visual/<name>.png. */
+  /** capture a pixel screenshot (CDP/driven browser) →.reticle/visual/<name>.png. */
   SCREENSHOT: 'reticle_screenshot',
   /** stub/intercept network on the driven page (500, offline, delay) for error/edge-state testing. */
   NETWORK_MOCK: 'reticle_network_mock',
@@ -57,7 +57,7 @@ export const ReticleTool = {
   /** scroll a virtualized list until a queried row mounts, then return it. */
   SCROLL_TO: 'reticle_scroll_to',
   /** Session lifecycle: tune the presenter session (e.g. idle-end window) for the app's needs.
-   *  Member of the consolidated reticle_session {action:"tune"} — no longer advertised alone. */
+   * Member of the consolidated reticle_session {action:"tune"} — no longer advertised alone. */
   SESSION_TUNE: 'reticle_session_tune',
   /** Live-control: end the session (→ ended + push PRESENTER). Handlers live in the tools facet. */
   END_SESSION: 'reticle_end_session',
@@ -75,10 +75,10 @@ export const ReticleTool = {
   NAVIGATE: 'reticle_navigate',
   /** Reload the connected browser tab (soft or hard). */
   REFRESH: 'reticle_refresh',
-  /** Export a verification-run artifact (.reticle/runs/<id>.json) — the OEM/CI-consumable verdict. */
+  /** Export a verification-run artifact.reticle/runs/<id>.json) — the OEM/CI-consumable verdict. */
   RUN_EXPORT: 'reticle_run_export',
-  /** Consolidated families (W10.3) — one action-dispatched tool per family; members below stay
-   *  defined (handlers intact) but are no longer advertised separately. */
+  /** Consolidated families — one action-dispatched tool per family; members below stay
+   * defined (handlers intact) but are no longer advertised separately. */
   BASELINE: 'reticle_baseline',
   SESSION: 'reticle_session',
   RECORD: 'reticle_record',

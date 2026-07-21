@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Page } from 'playwright';
 import { boxCenter, capturePage, isPointerAction } from './real-input.js';
 
-/** Records the options each page.screenshot() call receives and returns minimal PNG bytes. */
+/** Records the options each page.screenshot call receives and returns minimal PNG bytes. */
 function recordingPage(calls: Record<string, unknown>[]): Page {
   return {
     screenshot: (opts: Record<string, unknown>) => {

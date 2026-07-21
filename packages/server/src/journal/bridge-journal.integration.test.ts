@@ -12,7 +12,7 @@ import { makeJournalAttach } from './attach-journal.js';
 
 /**
  * The one path unit tests can't reach: a real WebSocket browser → bridge → Session → durable journal on
- * disk. Proves B09 end-to-end — events stream to events.jsonl and an act mints an action in actions.jsonl.
+ * disk. Proves end-to-end — events stream to events.jsonl and an act mints an action in actions.jsonl.
  */
 describe('durable journal over a live bridge session', () => {
   let bridge: Bridge;

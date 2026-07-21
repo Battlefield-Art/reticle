@@ -6,10 +6,10 @@ import { useApp } from './store/store.js';
 
 /**
  * Dev-only Reticle wiring. Wires the proof layer into this running dashboard:
- *  - connect() opens the presenter (glow + cursor + HUD) and the bridge.
- *  - registerStore('app', …) → reticle_state reads the live zustand store (the reliable layer).
- *  - registerCapabilities(…) → reticle_capabilities advertises the WHOLE testable surface (testids,
- *    signals, store, named flows) so a fresh agent learns what to drive without reading source.
+ * - connect opens the presenter (glow + cursor + HUD) and the bridge.
+ * - registerStore('app', …) → reticle_state reads the live zustand store (the reliable layer).
+ * - registerCapabilities(…) → reticle_capabilities advertises the WHOLE testable surface (testids,
+ * signals, store, named flows) so a fresh agent learns what to drive without reading source.
  * Tree-shaken out of production; never imported there.
  */
 

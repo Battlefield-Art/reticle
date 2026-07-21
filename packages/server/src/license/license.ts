@@ -1,6 +1,6 @@
 /**
  * Enterprise license-key verification + the assertEnterprise gate. ENTERPRISE CODE (Reticle Enterprise
- * License — see ./LICENSE), not the FSL that covers the rest of the server.
+ * License — see./LICENSE), not the FSL that covers the rest of the server.
  *
  * Offline + no phone-home (preserves the no-telemetry brand): a key is a signed payload Reticle issues
  * with its private key; this verifies it against the issuer's PUBLIC key with Ed25519. Dev/eval is a

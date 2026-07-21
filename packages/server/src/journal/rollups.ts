@@ -2,7 +2,7 @@ import { EventType, type ReticleEvent } from '@reticlehq/core';
 
 /**
  * A route-segment rollup: what happened between two ROUTE_CHANGE events. Aggregated, not raw — the
- * unit the deviation report (B16) compares against an expected envelope. Computed by folding the
+ * unit the deviation report compares against an expected envelope. Computed by folding the
  * journal's events; per the plan's risk note this runs lazily on query rather than threading a
  * stateful accumulator through the hot write path.
  */

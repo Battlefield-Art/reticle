@@ -3,7 +3,7 @@ import { causalSummary, type CausalSummary } from './causal-summary.js';
 import { firstDivergence, type Divergence, type ExpectedLink } from './divergence.js';
 
 /**
- * The divergence capsule (W5 Tier 2) — the whole packet on a red: the attributed causal summary, the
+ * The divergence capsule (Tier 2) — the whole packet on a red: the attributed causal summary, the
  * FIRST divergence (where declared ≠ observed), and the BLAST RADIUS (truth that changed OUTSIDE the
  * declared consequence — an act that also fired an undeclared signal or mutated an unexpected store).
  * Blast radius is how a "green" that did extra damage still gets caught. Pure composition of the parts;

@@ -6,11 +6,11 @@ import {
   scrubKnownSecrets,
 } from '../security/serialization.js';
 import type { Emit, Teardown } from './types.js';
-import { nativeSetTimeout } from '../timers/native-timers.js';
+import { isCapturableType, withBodyDeadline } from './network-body.js';
 
 /** Config for the network observer. Body capture is OFF by default and dev-only opt-in. */
 export interface NetworkOptions {
-  /** Capture request/response bodies (text-like content only, redacted, per-body capped). */
+ /** Capture request/response bodies (text-like content only, redacted, per-body capped). */
   captureBodies?: boolean;
 }
 
@@ -20,54 +20,8 @@ export interface NetworkOptions {
  * from starving the timeline (the separate-budget concern in the scalability audit).
  */
 const MAX_BODY_CHARS = 8192;
-/** Only text-like bodies are worth capturing; binary (images/fonts/octet-stream) is skipped. */
-const CAPTURABLE_CONTENT =
-  /application\/json|text\/|application\/xml|x-www-form-urlencoded|graphql/i;
 
-/**
- * Content types that are STREAMS, never complete bodies.
- *
- * `text/event-stream` matches `text/` in CAPTURABLE_CONTENT, and body capture awaited
- * `res.clone().text()` BEFORE returning the response to the app. A clone of a stream only settles when
- * the stream ends — and an SSE stream does not end — so the app's `await fetch(...)` never resolved.
- * Enabling body capture silently hung every streaming endpoint (SSE, and the chunked `application/json`
- * every token-streaming model API uses), leaving a permanently loading UI with no reason to suspect the
- * observability SDK. Never read these; the frame observer covers SSE properly.
- */
-const STREAMING_CONTENT = /event-stream|x-ndjson|application\/stream/i;
 
-/**
- * Longest the SDK will wait on a response-body clone before emitting without it.
- *
- * Two layers protect the app. `text/event-stream` and friends are skipped outright, which covers the
- * common streaming case at zero cost. This deadline is the backstop for a body that streams WITHOUT
- * announcing it in its content type — chunked `application/json` from a token-streaming API. Gating on
- * `content-length` instead was tried and rejected: plenty of complete responses omit it (gzip, HTTP/2),
- * so that would silently stop capturing bodies for ordinary apps. A bounded half-second on a rare path
- * beats an unbounded hang, and beats losing capture everywhere.
- */
-const BODY_READ_TIMEOUT_MS = 500;
-
-/**
- * Resolve with the body text, or `undefined` if it takes too long.
- *
- * The app is already awaiting our patched fetch, so any unbounded read here is a hang in the host app.
- * Losing an observation is always preferable to freezing the page being observed.
- */
-async function withBodyDeadline(read: Promise<string>): Promise<string | undefined> {
-  return await Promise.race([
-    read,
-    new Promise<undefined>((resolve) => {
-      nativeSetTimeout(() => resolve(undefined), BODY_READ_TIMEOUT_MS);
-    }),
-  ]);
-}
-
-function isCapturableType(contentType: string | null): boolean {
-  if (contentType === null) return false;
-  if (STREAMING_CONTENT.test(contentType)) return false;
-  return CAPTURABLE_CONTENT.test(contentType);
-}
 
 /**
  * An `Authorization: Bearer …` / `Basic …` credential. The token side requires credential shape — 16+
@@ -86,9 +40,9 @@ const AUTH_SCHEME_TOKEN =
 function redactText(text: string): string {
   return (
     text
-      // Auth-scheme tokens FIRST: `Authorization: Bearer <token>` — the key/value rule below would
-      // otherwise consume just "Bearer" as Authorization's value (it stops at whitespace) and leave the
-      // token behind, so the scheme rule must run before it.
+ // Auth-scheme tokens FIRST: `Authorization: Bearer <token>` — the key/value rule below would
+ // otherwise consume just "Bearer" as Authorization's value (it stops at whitespace) and leave the
+ // token behind, so the scheme rule must run before it.
       .replace(AUTH_SCHEME_TOKEN, (_m: string, scheme: string) => `${scheme} ${REDACTED_VALUE}`)
       .replace(
         /([A-Za-z0-9_.-]+)(\s*[=:]\s*"?)([^&\s,;"}]+)/g,
@@ -118,8 +72,8 @@ function projectBody(
   } else {
     out = redactText(text);
   }
-  // Key-based redaction can't see a secret sitting in a VALUE under a benign key — scan the projected
-  // text for high-confidence secret shapes (JWTs, provider keys) as a backstop, JSON or not.
+ // Key-based redaction can't see a secret sitting in a VALUE under a benign key — scan the projected
+ // text for high-confidence secret shapes (JWTs, provider keys) as a backstop, JSON or not.
   out = scrubKnownSecrets(out);
   const truncated = out.length > MAX_BODY_CHARS;
   return { body: truncated ? out.slice(0, MAX_BODY_CHARS) : out, truncated };
@@ -134,7 +88,7 @@ function binaryFrameBytes(data: unknown): number | undefined {
 }
 
 /** Project one SSE/WebSocket frame: byte size + shape; the (capped, redacted) payload only when body
- *  capture is on and it is a string frame. Binary frames report their byte size, not just a bare type. */
+ * capture is on and it is a string frame. Binary frames report their byte size, not just a bare type. */
 function frameFields(data: unknown, captureBodies: boolean): Record<string, unknown> {
   if (typeof data !== 'string') {
     const bytes = binaryFrameBytes(data);
@@ -196,7 +150,7 @@ export function redactUrl(raw: string): string {
 
   let changed = false;
 
-  // Credentials in the authority (`scheme://user:pass@host`) never belong in a transcript.
+ // Credentials in the authority (`scheme://user:pass@host`) never belong in a transcript.
   let authority = pathPart;
   const userinfo = /^([a-z][a-z0-9+.-]*:\/\/)[^/@]+@/i.exec(pathPart);
   if (userinfo !== null) {
@@ -231,8 +185,8 @@ export function redactUrl(raw: string): string {
     }
   }
 
-  // OAuth implicit flow puts the access_token in the FRAGMENT (`#access_token=…`), and hash-routers carry
-  // `?token=…` in the hash — redact sensitive params there too, leaving plain anchors (`#section`) alone.
+ // OAuth implicit flow puts the access_token in the FRAGMENT (`#access_token=…`), and hash-routers carry
+ // `?token=…` in the hash — redact sensitive params there too, leaving plain anchors (`#section`) alone.
   let newHash = hash;
   if (hash.length > 1) {
     newHash = hash.replace(/([A-Za-z0-9_.-]+)=([^&\s]+)/g, (m: string, key: string) =>
@@ -289,7 +243,7 @@ function methodOf(input: RequestInfo | URL, init: RequestInit | undefined): stri
 
 /**
  * The first app-code frame that fired a request — the in-page answer to a CDP initiator, as file:line.
- * Captured from a fresh Error().stack at call time, skipping Reticle's own wrapper frames. Feeds the
+ * Captured from a fresh Error.stack at call time, skipping Reticle's own wrapper frames. Feeds the
  * causal chain (which code path made this request). Capped; undefined when no stack is available.
  * ponytail: one stack unwind per request — cheap next to fetch itself; revisit only if a profiler flags it.
  */
@@ -363,15 +317,15 @@ function isBridgeSocket(url: string): boolean {
 
 export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown {
   const captureBodies = opts.captureBodies === true;
-  // Keep the true original for teardown identity, plus a window-bound copy to invoke
-  // (fetch throws "Illegal invocation" if called with the wrong `this`).
+ // Keep the true original for teardown identity, plus a window-bound copy to invoke
+ // (fetch throws "Illegal invocation" if called with the wrong `this`).
   const origFetch = window.fetch;
   const callFetch = origFetch.bind(window);
 
-  // Correlation id so a NET_PENDING (emitted at request START) can be matched to its
-  // NET_REQUEST completion. A request that never completes leaves an unmatched NET_PENDING —
-  // that is how a hung/in-flight request becomes observable (it never resolves, so the old
-  // completion-only emit saw nothing).
+ // Correlation id so a NET_PENDING (emitted at request START) can be matched to its
+ // NET_REQUEST completion. A request that never completes leaves an unmatched NET_PENDING —
+ // that is how a hung/in-flight request becomes observable (it never resolves, so the old
+ // completion-only emit saw nothing).
   let seq = 0;
   const nextId = (): string => `n${++seq}`;
 
@@ -387,16 +341,16 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     try {
       const res = await callFetch(input, init);
       const contentType = res.headers.get('content-type');
-      // Read a CLONE so the app's response stream stays untouched. Dev-only opt-in; only text-like
-      // bodies; a read failure never breaks the observation.
+ // Read a CLONE so the app's response stream stays untouched. Dev-only opt-in; only text-like
+ // bodies; a read failure never breaks the observation.
       let responseBodyFields: Record<string, unknown> = {};
-      // A complete response declares its length. A chunked/streamed one does not — and reading it means
-      // waiting for the stream to finish, which for SSE or a token-streamed completion is never. Use
-      // the declared length as the "this body is complete" signal rather than waiting to find out, so a
-      // streaming endpoint costs the app nothing instead of a timeout's worth of delay.
+ // A complete response declares its length. A chunked/streamed one does not — and reading it means
+ // waiting for the stream to finish, which for SSE or a token-streamed completion is never. Use
+ // the declared length as the "this body is complete" signal rather than waiting to find out, so a
+ // streaming endpoint costs the app nothing instead of a timeout's worth of delay.
       if (captureBodies && isCapturableType(contentType)) {
-        // Bounded: a chunked response with no content-length can still be arbitrarily long, and the app
-        // must never wait on our read. Race the clone against a deadline and drop the body on timeout.
+ // Bounded: a chunked response with no content-length can still be arbitrarily long, and the app
+ // must never wait on our read. Race the clone against a deadline and drop the body on timeout.
         try {
           const text = await withBodyDeadline(res.clone().text());
           if (text !== undefined) {
@@ -406,7 +360,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
               : { responseBody: body };
           }
         } catch {
-          /* body not readable (already locked/consumed) — skip, keep the envelope */
+ /* body not readable (already locked/consumed) — skip, keep the envelope */
         }
       }
       emit(EventType.NET_REQUEST, {
@@ -442,10 +396,10 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
 
   const meta = new WeakMap<XMLHttpRequest, XhrMeta>();
   const proto = XMLHttpRequest.prototype;
-  /* eslint-disable @typescript-eslint/unbound-method -- captured to re-invoke via .call(this) */
+ /* eslint-disable @typescript-eslint/unbound-method -- captured to re-invoke via.call(this) */
   const origOpen = proto.open;
   const origSend = proto.send;
-  /* eslint-enable @typescript-eslint/unbound-method */
+ /* eslint-enable @typescript-eslint/unbound-method */
   const callOpen = origOpen as (this: XMLHttpRequest, ...args: unknown[]) => void;
 
   proto.open = function (
@@ -464,9 +418,9 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     callOpen.call(this, method, url, ...rest);
   };
 
-  // A reused XHR calls send() repeatedly; attach the completion listener ONCE per instance and read the
-  // request identity from `meta` at fire time. Adding a fresh closure each send() would leave stale
-  // listeners that re-fire on later completions, emitting duplicate, mislabeled events.
+ // A reused XHR calls send repeatedly; attach the completion listener ONCE per instance and read the
+ // request identity from `meta` at fire time. Adding a fresh closure each send would leave stale
+ // listeners that re-fire on later completions, emitting duplicate, mislabeled events.
   const listenerAttached = new WeakSet<XMLHttpRequest>();
   proto.send = function (
     this: XMLHttpRequest,
@@ -476,7 +430,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     if (m !== undefined) {
       m.start = performance.now();
       m.reqBody = body ?? null;
-      m.initiatorStack = initiatorFrame(); // the app's xhr.send() call site
+      m.initiatorStack = initiatorFrame(); // the app's xhr.send call site
       const initiatorFields = m.initiatorStack === undefined ? {} : { initiatorStack: m.initiatorStack };
       emit(EventType.NET_PENDING, { id: m.id, method: m.method, url: m.url, initiator: 'xhr', ...initiatorFields });
       if (!listenerAttached.has(this)) {
@@ -486,7 +440,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
           if (cur === undefined) return;
           const xhrContentType = this.getResponseHeader('content-type');
           let responseBodyFields: Record<string, unknown> = {};
-          // responseText throws unless responseType is '' or 'text' — guard before reading.
+ // responseText throws unless responseType is '' or 'text' — guard before reading.
           const textReadable = this.responseType === '' || this.responseType === 'text';
           if (captureBodies && textReadable && isCapturableType(xhrContentType)) {
             try {
@@ -495,7 +449,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
                 ? { responseBody: rb, responseBodyTruncated: true }
                 : { responseBody: rb };
             } catch {
-              /* unreadable body — skip */
+ /* unreadable body — skip */
             }
           }
           emit(EventType.NET_REQUEST, {
@@ -522,8 +476,8 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     origSend.call(this, body ?? null);
   };
 
-  // SSE + WebSocket frame capture — gated behind body capture, since a chatty stream is the
-  // high-volume case. Subclass the native constructors so the app's own usage is unchanged.
+ // SSE + WebSocket frame capture — gated behind body capture, since a chatty stream is the
+ // high-volume case. Subclass the native constructors so the app's own usage is unchanged.
   const origEventSource = window.EventSource;
   const origWebSocket = window.WebSocket;
   if (captureBodies && typeof origEventSource === 'function') {
@@ -545,7 +499,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
   }
   if (captureBodies && typeof origWebSocket === 'function') {
     window.WebSocket = class extends origWebSocket {
-      /** Reticle's own bridge socket is never observed — see isBridgeSocket. */
+ /** Reticle's own bridge socket is never observed — see isBridgeSocket. */
       readonly #isBridge: boolean;
       constructor(u: string | URL, protocols?: string | string[]) {
         super(u, protocols);
@@ -578,10 +532,10 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     };
   }
 
-  // navigator.sendBeacon — fire-and-forget analytics/telemetry, invisible to fetch/XHR wrapping. A page
-  // that beacons a "checkout completed" event should show it. Patch the instance's prototype (via
-  // getPrototypeOf, robust whether or not the Navigator global exists); the descriptor read avoids an
-  // unbound-method access; the send is synchronous so we emit one completed NET_REQUEST with its result.
+ // navigator.sendBeacon — fire-and-forget analytics/telemetry, invisible to fetch/XHR wrapping. A page
+ // that beacons a "checkout completed" event should show it. Patch the instance's prototype (via
+ // getPrototypeOf, robust whether or not the Navigator global exists); the descriptor read avoids an
+ // unbound-method access; the send is synchronous so we emit one completed NET_REQUEST with its result.
   const navProto = (
     typeof navigator !== 'undefined' ? Object.getPrototypeOf(navigator) : null
   ) as Navigator | null;

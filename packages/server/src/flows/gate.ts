@@ -1,12 +1,12 @@
 /**
  * The completion gate — exits non-zero unless passing artifacts cover the flows affected by the changed
  * files. This is what makes verification unavoidable: an agent that edits a covered file cannot "finish"
- * without re-verifying. Flaky flows (B38) are quarantined — surfaced, never gate-blocking — because one
+ * without re-verifying. Flaky flows are quarantined — surfaced, never gate-blocking — because one
  * unexplained flake that blocks a merge destroys trust in the red. Pure decision; the CLI computes the
  * inputs (git diff → affected → run artifacts + flake ledger) and maps `pass` to the exit code.
  */
 
-/** A flow whose assertions were WEAKENED since its last passing run (B37). */
+/** A flow whose assertions were WEAKENED since its last passing run. */
 export interface DowngradedFlow {
   flow: string;
   /** Step indices whose mustHold dropped from a consequence to presence-only. */
@@ -51,7 +51,7 @@ export function gateDecision(input: GateInput): GateResult {
   }
   // Downgrades and deleted coverage BLOCK. Flakiness is quarantined because a flake is not the agent's
   // doing; a weakened or deleted assertion is — surfacing it without blocking would leave the gate
-  // trivially gameable, which is the exact failure B37 exists to prevent.
+  // trivially gameable, which is the exact failure exists to prevent.
   const downgraded = [...(input.downgraded ?? [])];
   const deleted = [...(input.deleted ?? [])];
   return {

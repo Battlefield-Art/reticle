@@ -169,7 +169,7 @@ export class Bridge {
           done(allowed, 403, 'Forbidden');
         },
       });
-      // In shared-server mode the daemon owns listen(); but a WebSocketServer bound to a server that
+      // In shared-server mode the daemon owns listen; but a WebSocketServer bound to a server that
       // fails to listen (EADDRINUSE) surfaces the error on the WS instance too. Without a listener
       // that is an unhandled 'error' that can crash/hang the process — so absorb it here and reject
       // `ready`, mirroring the standalone branch. The daemon's own listen handler reports the failure.

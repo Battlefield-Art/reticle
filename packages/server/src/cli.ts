@@ -2,23 +2,20 @@
 import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
-import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv, RunFlowStatus } from '@reticlehq/core';
-import { FlowStore } from './flows/flows.js';
-import { RunStore } from './runs/run-store.js';
-import { createNodeFileSystem, type FileSystemPort } from './project/fs-port.js';
-import { affectedSavedFlows, type NamedFlow } from './flows/flow-sources.js';
-import { gateDecision } from './flows/gate.js';
-import { FlakeStore } from './flows/flake-store.js';
-import { formatBuddyStatus } from './flows/buddy-status.js';
-import { CapsuleStore } from './capsule/capsule-store.js';
-import { AssertionTiersStore } from './flows/assertion-tiers-store.js';
-import { detectDowngrades } from './flows/assertion-integrity.js';
-import { computeCoverage } from './flows/coverage.js';
-import { changedFilesSince } from './flows/git-changed.js';
+import {
+  handleWatch,
+  handleCapsules,
+  handleGate,
+  loadNamedFlows,
+  resolveChangedFiles,
+} from './cli-flow-commands.js';
+import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv } from '@reticlehq/core';
+import { createNodeFileSystem } from './project/fs-port.js';
+import { affectedSavedFlows } from './flows/flow-sources.js';
+
 import { checkForUpdate } from './update/update-checker.js';
 import { applyUpdate, rollback } from './update/updater.js';
-import { createWatchBatcher } from './flows/watch-batcher.js';
-import { watch } from 'node:fs';
+
 import { start, startDaemon } from './index.js';
 import { SERVER_VERSION } from './server-version.js';
 import { log } from './log.js';
@@ -134,7 +131,7 @@ function handleStatus(port: number): void {
     log('reticle_status', { port, running: false });
     return;
   }
-  // The daemon is up — ask it for live sessions + health so status is at-a-glance, not just a pid.
+ // The daemon is up — ask it for live sessions + health so status is at-a-glance, not just a pid.
   void fetchStatus(port).then((payload) => {
     if (payload === undefined) {
       log('reticle_status', { port, running: true, pid });
@@ -159,11 +156,6 @@ function handleLicense(): void {
  * Environment-side (costs the agent nothing per turn); the foundation of watch/gate. Never throws:
  * a load error is logged, not fatal.
  */
-/** Explicit files plus, when --since is given, the git-changed files since that ref. */
-async function resolveChangedFiles(files: string[], since: string | undefined): Promise<string[]> {
-  if (since === undefined) return files;
-  return [...new Set([...files, ...(await changedFilesSince(since, process.cwd()))])];
-}
 
 async function handleAffected(files: string[], since: string | undefined): Promise<void> {
   try {
@@ -178,184 +170,6 @@ async function handleAffected(files: string[], since: string | undefined): Promi
     });
   } catch (error) {
     log('reticle_affected_failed', { error: error instanceof Error ? error.message : String(error) });
-  }
-}
-
-/** Load the {name, steps} of every saved flow for the active project. */
-async function loadNamedFlows(fs: FileSystemPort, reticleRoot: string): Promise<NamedFlow[]> {
-  const projectId = readProjectId(process.cwd());
-  const store = new FlowStore(fs, reticleRoot, { now: () => Date.now() });
-  const flows: NamedFlow[] = [];
-  for (const name of await store.list(projectId)) {
-    const loaded = await store.load(name, projectId);
-    if (loaded.ok) flows.push({ name: loaded.value.name, steps: loaded.value.steps });
-  }
-  return flows;
-}
-
-/** File-change extensions worth reacting to (skip node_modules churn, dotfiles, build output). */
-
-/**
- * The buddy channel (W14.3): one ambient line a human can park in a statusline. Deliberately best-effort
- * and silent on failure — a status line that throws is worse than no status line, and it must never
- * interfere with the watch loop it rides on.
- */
-async function emitBuddyStatus(
-  fs: ReturnType<typeof createNodeFileSystem>,
-  reticleRoot: string,
-  flows: readonly NamedFlow[],
-  affected: readonly string[],
-): Promise<void> {
-  try {
-    const latest = await new RunStore(fs, reticleRoot).latest();
-    const passingNames = new Set(
-      (latest?.flows ?? [])
-        .filter((f) => f.status === RunFlowStatus.PASS || f.status === RunFlowStatus.HEALED)
-        .map((f) => f.name),
-    );
-    const quarantined = await new FlakeStore(fs, reticleRoot).flakyFlows();
-    const flaky = new Set(quarantined);
-    // A deviation is an at-risk flow with no passing artifact — and a quarantined flake is not a deviation.
-    const deviations = affected.filter((n) => !passingNames.has(n) && !flaky.has(n));
-    log('reticle_buddy', {
-      status: formatBuddyStatus({
-        total: flows.length,
-        passing: passingNames.size,
-        deviations,
-        quarantined,
-      }),
-    });
-  } catch {
-    // never let the ambient line break the watcher
-  }
-}
-
-const WATCHED_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte)$/;
-const WATCH_DEBOUNCE_MS = 200;
-
-/**
- * `reticle watch [url]` — on every save, report which saved flows must re-verify (the affected set).
- * Environment-side (costs the agent nothing per turn); the buddy loop. This v1 detects + reports on
- * change; auto-replaying the affected flows against the app is the next increment. Long-running.
- */
-function handleWatch(): void {
-  const fs = createNodeFileSystem();
-  const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
-  const batcher = createWatchBatcher({
-    debounceMs: WATCH_DEBOUNCE_MS,
-    schedule: (fn, ms) => {
-      setTimeout(fn, ms).unref();
-    },
-    onFlush: (files) => {
-      void loadNamedFlows(fs, reticleRoot)
-        .then(async (flows) => {
-          const result = affectedSavedFlows(flows, files);
-          if (result.affected.length > 0) {
-            log('reticle_watch_affected', { changed: files, affected: result.affected });
-          }
-          await emitBuddyStatus(fs, reticleRoot, flows, result.affected);
-        })
-        .catch((error) => {
-          log('reticle_watch_failed', { error: error instanceof Error ? error.message : String(error) });
-        });
-    },
-  });
-  log('reticle_watch_started', { cwd: process.cwd() });
-  // Print the ambient line once at startup so the human sees where they stand before touching anything.
-  void loadNamedFlows(fs, reticleRoot)
-    .then((flows) => emitBuddyStatus(fs, reticleRoot, flows, []))
-    .catch(() => undefined);
-  watch(process.cwd(), { recursive: true }, (_event, filename) => {
-    if (typeof filename === 'string' && WATCHED_EXTENSIONS.test(filename)) batcher.onChange(filename);
-  });
-}
-
-/**
- * `reticle capsules` — list saved fail-to-pass bug capsules (.reticle/capsules). Each is a minimal
- * failing reproduction plus the consequence that should have held; replay one with reticle_flow_replay.
- */
-async function handleCapsules(): Promise<void> {
-  try {
-    const fs = createNodeFileSystem();
-    const capsules = await new CapsuleStore(fs, join(process.cwd(), ReticleDir.ROOT)).all();
-    log('reticle_capsules', {
-      count: capsules.length,
-      capsules: capsules.map((c) => ({
-        id: c.id,
-        ...(c.flow === undefined ? {} : { flow: c.flow }),
-        origin: c.origin,
-        expected: c.expected,
-        observed: c.observed,
-        steps: c.steps.length,
-      })),
-    });
-  } catch (error) {
-    log('reticle_capsules_failed', { error: error instanceof Error ? error.message : String(error) });
-    process.exitCode = 1;
-  }
-}
-
-/**
- * `reticle gate <file...>` — exit non-zero unless passing artifacts cover the flows affected by the
- * changed files. Flaky flows are quarantined (surfaced, not blocking). The environment-side enforcement
- * that makes verification unavoidable. Never throws; a fault fails closed (exit 1).
- */
-async function handleGate(files: string[], since: string | undefined): Promise<void> {
-  try {
-    const fs = createNodeFileSystem();
-    const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
-    const changed = await resolveChangedFiles(files, since);
-    const allFlows = await loadNamedFlows(fs, reticleRoot);
-    const affected = affectedSavedFlows(allFlows, changed).affected;
-    const latest = await new RunStore(fs, reticleRoot).latest();
-    const passing = (latest?.flows ?? [])
-      .filter((f) => f.status === RunFlowStatus.PASS || f.status === RunFlowStatus.HEALED)
-      .map((f) => f.name);
-    const flaky = await new FlakeStore(fs, reticleRoot).flakyFlows();
-    // Anti-reward-hacking (B37): diff each flow's CURRENT assertions against what it asserted the last
-    // time it passed. A mustHold that dropped from a real consequence to a fakeable presence check is a
-    // green bought by weakening the test — and a flow that covered a changed file but no longer exists
-    // is coverage deleted rather than satisfied. Both block.
-    const baseline = await new AssertionTiersStore(fs, reticleRoot).load();
-    const byName = new Map(allFlows.map((f) => [f.name, f]));
-    const downgraded = Object.entries(baseline)
-      .filter(([name]) => affected.includes(name) && byName.has(name))
-      .map(([name, before]) => {
-        const current = byName.get(name);
-        const after = (current?.steps ?? []).map((s, i) => ({
-          step: i,
-          ...(s.expect === undefined ? {} : { expect: s.expect }),
-        }));
-        return { flow: name, steps: detectDowngrades(before.steps, after).map((d) => d.step) };
-      })
-      .filter((d) => d.steps.length > 0);
-    // A flow with a recorded passing baseline that has since vanished, while its files changed.
-    // A flow that PASSED covering these files and has since vanished is coverage DELETED, not satisfied —
-    // and it can never appear in `affected` (that is derived from flows that still exist), so it must be
-    // matched against the baseline's own recorded sources. Missing this made deleting a flow turn the
-    // gate green, which is precisely the gaming move B37 exists to stop.
-    const changedSet = new Set(changed);
-    const deleted = Object.entries(baseline)
-      .filter(([name, entry]) => !byName.has(name) && entry.sources.some((f) => changedSet.has(f)))
-      .map(([name]) => name);
-    const result = gateDecision({ affected, passing, flaky, downgraded, deleted });
-    // Verified-surface coverage over flows: how much of the saved suite this run actually exercised.
-    const coverage = computeCoverage(
-      { testids: [], signals: [], flows: allFlows.map((f) => f.name) },
-      { testids: [], signals: [], flows: passing },
-    );
-    log('reticle_gate', {
-      pass: result.pass,
-      uncovered: result.uncovered,
-      quarantined: result.quarantined,
-      ...(result.downgraded.length > 0 ? { downgraded: result.downgraded } : {}),
-      ...(result.deleted.length > 0 ? { deletedCoverage: result.deleted } : {}),
-      coverage: { pct: coverage.flows.pct, covered: coverage.flows.covered, total: coverage.flows.total },
-    });
-    if (!result.pass) process.exitCode = 1;
-  } catch (error) {
-    log('reticle_gate_failed', { error: error instanceof Error ? error.message : String(error) });
-    process.exitCode = 1;
   }
 }
 
@@ -456,8 +270,8 @@ function handleDaemonInner(parsed: {
   startDaemon(options)
     .then((server) => {
       log('reticle_daemon_ready', { port: parsed.port, pid: process.pid });
-      // Publish to the discovery registry so a build plugin can find this daemon by projectId — no
-      // hand-reconciled port. Written from the child (only it knows its cwd); removePid drops it.
+ // Publish to the discovery registry so a build plugin can find this daemon by projectId — no
+ // hand-reconciled port. Written from the child (only it knows its cwd); removePid drops it.
       const registryProjectId = readProjectId(process.cwd());
       writeDaemonRegistry(parsed.port, {
         pid: process.pid,
@@ -465,8 +279,8 @@ function handleDaemonInner(parsed: {
         startedAt: Date.now(),
         ...(registryProjectId !== undefined ? { projectId: registryProjectId } : {}),
       });
-      // The daemon serves many agents — keep it alive through one agent's stray async error; only a
-      // genuine uncaught throw takes it down (cleanly, so the next `reticle mcp` respawns it fresh).
+ // The daemon serves many agents — keep it alive through one agent's stray async error; only a
+ // genuine uncaught throw takes it down (cleanly, so the next `reticle mcp` respawns it fresh).
       installDaemonResilience(process, log, () => {
         removePid(parsed.port);
         process.exit(1);
@@ -487,8 +301,8 @@ function handleDaemonInner(parsed: {
       };
       process.on('SIGTERM', shutdown);
       process.on('SIGINT', shutdown);
-      // Self-shut-down when idle so a detached daemon (and any headless Chromium it launched) never
-      // lingers on the user's machine after the editor closes. Reuses the same clean shutdown path.
+ // Self-shut-down when idle so a detached daemon (and any headless Chromium it launched) never
+ // lingers on the user's machine after the editor closes. Reuses the same clean shutdown path.
       const idleShutdown = new IdleShutdown({
         graceMs: resolveIdleShutdownMs(process.env[ReticleEnv.IDLE_SHUTDOWN]),
         isIdle: server.isIdle ?? (() => false),
@@ -510,15 +324,15 @@ function handleDaemonInner(parsed: {
 /**
  * MCP proxy mode: ensures the daemon is running, then bridges Claude Code's
  * stdin/stdout to the daemon's SSE endpoint. This is the recommended way to
- * configure Reticle in .mcp.json — users never need to manage the daemon manually.
+ * configure Reticle in.mcp.json — users never need to manage the daemon manually.
  *
  * Pass --drive <url> to have the daemon launch its own Playwright browser at that
  * URL. The agent then has full autonomous control without relying on the user's browser.
  */
 function handleMcp(opts: { port: number; driveUrl?: string; headless: boolean }): void {
   const { port, driveUrl, headless } = opts;
-  // Probe the port first — a daemon with a stale PID file is still usable.
-  // Only spawn when nothing is actually listening on the port.
+ // Probe the port first — a daemon with a stale PID file is still usable.
+ // Only spawn when nothing is actually listening on the port.
   probeDaemon(port)
     .then((listening) => {
       if (!listening) {

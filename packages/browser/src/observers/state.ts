@@ -76,8 +76,8 @@ export function installStoreState(emit: Emit): Teardown {
   };
   // Stores already registered...
   for (const entry of subscribableStores()) watch(entry);
-  // ...and any registered LATER. The SDK installs observers during connect(), but apps call
-  // registerStore() after that, so without this the common case subscribes to nothing.
+  //...and any registered LATER. The SDK installs observers during connect, but apps call
+  // registerStore after that, so without this the common case subscribes to nothing.
   unsubscribes.push(onStoreRegistered(watch));
   return () => {
     for (const unsubscribe of unsubscribes) unsubscribe();

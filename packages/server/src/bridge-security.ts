@@ -16,7 +16,7 @@ interface BridgeSecurity {
 
 /**
  * Resolve the bridge's security options from explicit options first, then the environment. Shared by
- * both `start()` and `startDaemon()` so the token/host/origin contract is enforced identically on
+ * both `start` and `startDaemon` so the token/host/origin contract is enforced identically on
  * every entrypoint — a past divergence let daemon mode silently run with auth disabled.
  */
 export function resolveBridgeSecurity(options: StartOptions): BridgeSecurity {

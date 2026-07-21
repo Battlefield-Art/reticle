@@ -1,7 +1,7 @@
 /**
  * Action tools — reticle_act, reticle_act_sequence, reticle_act_and_wait — plus the native-input machinery
  * (asBox / tryRealInput). Split out of tools.ts to keep that file under the line cap; assembled back
- * into the tool list there via ...ACT_TOOLS.
+ * into the tool list there via...ACT_TOOLS.
  */
 import { z } from 'zod';
 import { compileActStep, compileSequenceStep } from '../flows/replay.js';
@@ -448,8 +448,8 @@ export const ACT_TOOLS: ToolDef[] = [
         const trace = summarizeReaction(
           buildReactionReport(windowEvents, session.elapsed() - since),
         );
-        // The bounded W5 Tier-1 causal summary — net/console/state/storage diffs the trace's counts miss.
-        // ponytail: Layer B (W1) validation of this result-shape change is pending — additive + bounded.
+        // The bounded Tier-1 causal summary — net/console/state/storage diffs the trace's counts miss.
+        // ponytail: Layer B validation of this result-shape change is pending — additive + bounded.
         // On RED only, attach the Tier-2 divergence capsule (first-divergence + blast radius). Red-only,
         // so the common green path — what the loop optimizes — is unchanged; on red, diagnosis is the point.
         const links = predicateToExpectedLinks(until);
@@ -466,7 +466,7 @@ export const ACT_TOOLS: ToolDef[] = [
           coveragePartial: coverage.coverage === 'partial',
           ...(coverage.note === undefined ? {} : { blindSpots: [coverage.note] }),
         });
-        // W8.2: a red assertion is the ONE moment the evidence explaining it is in hand. Persist it as a
+        //: a red assertion is the ONE moment the evidence explaining it is in hand. Persist it as a
         // replayable fail-to-pass capsule so the bug survives the turn — and becomes a regression flow
         // the moment it goes green. Best-effort: capturing evidence must never fail the run that found it.
         let capsuleSaved: string | undefined;

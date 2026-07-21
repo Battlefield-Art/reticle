@@ -54,7 +54,7 @@ function headlineFor(diff: Omit<RunDiff, 'headline'>): string {
  * Compare two verification runs — the concrete answer to "what changed between run A and B". Flow
  * durations are diffed with a noise floor (jitter below it is ignored); status changes and new/removed
  * flows are always surfaced. Deterministic and pure; flows are matched by name. Per-step deltas + net/
- * console diffs land once runs persist per-step detail (B30).
+ * console diffs land once runs persist per-step detail.
  */
 export function diffRuns(
   before: ReticleVerificationRun,

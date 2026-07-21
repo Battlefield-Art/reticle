@@ -89,7 +89,7 @@ describe('attachNetworkDetail', () => {
       headers: () => ({ 'content-type': 'text/html' }),
       request: () => ({ method: () => 'GET', resourceType: () => 'document' }),
     });
-    await Promise.resolve(); // flush the async headers() → emit microtask
+    await Promise.resolve(); // flush the async headers → emit microtask
     await Promise.resolve();
     expect(events[0]).toMatchObject({ url: 'https://api/x', status: 200, method: 'GET' });
   });

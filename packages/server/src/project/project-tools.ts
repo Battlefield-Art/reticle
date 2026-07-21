@@ -57,14 +57,14 @@ function lastTwoFor(runs: RunRecord[], name: string): [RunRecord, RunRecord] | u
 }
 
 /**
- * The cross-run memory tools. `reticle_project` reads .reticle/project.json (optionally
+ * The cross-run memory tools. `reticle_project` reads.reticle/project.json (optionally
  * scoped to a name, with a diff-vs-last summary); `reticle_run_record` explicitly records an outcome
  * (the manual companion to the auto-record on reticle_flow_replay). Both keep the agent's "did this
  * behave like last run?" question answerable without re-deriving it from raw observations.
  */
 
 /**
- * The per-flow diff between the two most-recent verification ARTIFACTS (.reticle/runs), or undefined when
+ * The per-flow diff between the two most-recent verification ARTIFACTS.reticle/runs), or undefined when
  * fewer than two exist. Never throws — a missing/unreadable artifact must not break reading run history.
  */
 async function lastTwoRunArtifacts(deps: ToolDeps): Promise<VerificationRunDiff | undefined> {
@@ -107,11 +107,11 @@ export const PROJECT_TOOLS: ToolDef[] = [
       }
       const lastRun = await deps.project.lastRun(name);
       const pair = lastTwoFor(read.file.runs, name);
-      // W6.2: the RICH run diff (per-flow duration deltas past a noise floor, status changes, new/removed
+      //: the RICH run diff (per-flow duration deltas past a noise floor, status changes, new/removed
       // flows, verdict change) over the last two verification ARTIFACTS. That lives alongside — not
       // instead of — the lightweight RunRecord diff above: `diff` answers "did this named run behave like
       // last time?" from project.json, while `runDiff` answers "what changed between the last two full
-      // verification runs?" from .reticle/runs. Best-effort: no artifacts simply means no runDiff.
+      // verification runs?" from.reticle/runs. Best-effort: no artifacts simply means no runDiff.
       const runDiff = await lastTwoRunArtifacts(deps);
       return {
         runs: read.file.runs.filter((r) => r.name === name),

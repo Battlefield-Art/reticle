@@ -20,6 +20,9 @@ importers:
       '@reticlehq/core':
         specifier: workspace:*
         version: link:packages/core
+      '@reticlehq/eslint-plugin':
+        specifier: workspace:*
+        version: link:packages/eslint-plugin
       '@reticlehq/next':
         specifier: workspace:*
         version: link:packages/next

@@ -121,7 +121,7 @@ function findIn(container: HTMLElement, query: ElementQuery): HTMLElement[] {
       case QueryBy.ALT:
         return queryAllByAltText(container, value, { exact: false });
       case QueryBy.COMPONENT:
-        // value is the component name; .source (if present) still takes precedence inside.
+        // value is the component name;.source (if present) still takes precedence inside.
         return findByComponent(container, { ...query, component: query.component ?? value });
       default:
         return [];
@@ -181,7 +181,7 @@ function openShadowRootsUnder(root: HTMLElement): ShadowRoot[] {
  * no web components.
  *
  * A cache invalidated by a MutationObserver was written and then REMOVED, because it is not sound:
- * `attachShadow()` on an element that is already in the document mutates only the shadow tree, which an
+ * `attachShadow` on an element that is already in the document mutates only the shadow tree, which an
  * observer watching documentElement's subtree never sees. The cached "no shadow roots here" would
  * persist and the content would be silently missed — a false negative indistinguishable from a genuinely
  * absent element, which is the exact bug the piercing was added to fix.

@@ -20,7 +20,7 @@ describe('mergeCursorConfig', () => {
 
   it('is portless — the global Cursor entry never bakes in a port', () => {
     // One global entry per user serves every project; the port is read per-project from
-    // .reticle.json at runtime, so pinning a port here would break multi-project isolation.
+    //.reticle.json at runtime, so pinning a port here would break multi-project isolation.
     const r = mergeCursorConfig(null);
     expect(parse(r.content).mcpServers['reticle']?.args).toEqual(['@reticlehq/server', 'mcp']);
     expect(parse(r.content).mcpServers['reticle']?.args).not.toContain('--port');
@@ -41,7 +41,7 @@ describe('mergeCursorConfig', () => {
   });
 
   it('bails to manual on unparseable jsonc without rewriting', () => {
-    const jsonc = '{\n  // servers\n  "mcpServers": {}\n}\n';
+    const jsonc = '{\n  // servers\n "mcpServers": {}\n}\n';
     const r = mergeCursorConfig(jsonc);
     expect(r.status).toBe(CursorMergeStatus.MANUAL);
     expect(r.content).toBe(jsonc);

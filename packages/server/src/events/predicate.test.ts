@@ -533,7 +533,7 @@ describe('state predicate — assert store truth', () => {
 });
 
 /** Session that lets the test drive events and control when each command resolves, to prove the
- *  waiter never fans out one round-trip per event. `command` counts calls (one STATE_READ per eval). */
+ * waiter never fans out one round-trip per event. `command` counts calls (one STATE_READ per eval). */
 class CoalesceSession implements PredicateSession {
   commandCount = 0;
   #listener: ((event: ReticleEvent) => void) | null = null;

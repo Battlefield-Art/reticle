@@ -19,7 +19,7 @@ export interface AffectedResult {
   unknownProvenance: string[];
 }
 
-/** Normalize a path for comparison — strip a leading ./ and any file:line suffix. */
+/** Normalize a path for comparison — strip a leading./ and any file:line suffix. */
 function normalize(path: string): string {
   return path.replace(/^\.\//, '').replace(/:\d+(:\d+)?$/, '');
 }

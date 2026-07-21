@@ -14,7 +14,7 @@ const EnvelopeFileSchema = z.object({
 
 /**
  * Persists the learned per-route envelopes at `.reticle/envelopes.json`. Local, single-project statistics
- * (single-player memory stays OSS — OSS-VS-SERVER §6). Loads never throw: a missing, malformed, or
+ * (single-player memory stays OSS — OSS-VS-SERVER). Loads never throw: a missing, malformed, or
  * wrong-version file degrades to no envelopes, so a bad baseline can never crash a drive; the deviation
  * report just falls back to the causal summary until the envelope rebuilds.
  */

@@ -11,7 +11,7 @@ import { diffRuns } from './run-diff.js';
 
 /**
  * The verification-run export tool. `reticle_run_export` reads a persisted ReticleVerificationRun artifact
- * from .reticle/runs/ — the stable verdict a host platform (OEM/design partner) or CI consumes. With a
+ * from.reticle/runs/ — the stable verdict a host platform (OEM/design partner) or CI consumes. With a
  * runId it returns that run; without one it returns the most recent. With format:"report" it returns a
  * legible ✓/✗ text report instead of raw JSON. The RunStore is built inline from the injected fs +
  * reticleRoot (it is stateless), so this needs no new ToolDeps wiring.

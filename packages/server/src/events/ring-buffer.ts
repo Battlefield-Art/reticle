@@ -27,15 +27,15 @@ interface RingBufferOptions {
 
 /**
  * Bounded, time-aware event store per session. The single data structure that powers
- * observe()/wait_for()/assert() — it lets us look both backward (recent buffer) and
+ * observe/wait_for/assert — it lets us look both backward (recent buffer) and
  * forward (await new events).
  *
- * Eviction advances a HEAD index instead of shift()/splice() — O(1) per dropped event (was O(n) per
+ * Eviction advances a HEAD index instead of shift/splice — O(1) per dropped event (was O(n) per
  * shift, i.e. O(n) per push at steady state under the DOM/animation floods). The dead prefix is
  * compacted away once it dominates, so the backing arrays stay bounded (amortized O(1)).
  *
  * `now` is injected so the buffer is deterministically testable (inject the clock, never call
- * Date.now() inside logic).
+ * Date.now inside logic).
  */
 export class RingBuffer {
   readonly #maxEvents: number;

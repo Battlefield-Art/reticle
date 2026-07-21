@@ -6,10 +6,10 @@
 /**
  * Tone of a PRESENTER push, rides the command as optional `tone`. Lets the panel tell apart the ways
  * a session can stop, so the human on the browser always knows the agent's mode:
- *   calm    — a normal, human/agent-driven end ("done").
- *   waiting — the agent finished its turn / went idle; it will resume on your next message.
- *   ask     — the agent is blocked and needs your input to continue (carries the question as text).
- *   warn    — the agent stopped unexpectedly (crashed / disconnected) — switch to your terminal.
+ * calm — a normal, human/agent-driven end ("done").
+ * waiting — the agent finished its turn / went idle; it will resume on your next message.
+ * ask — the agent is blocked and needs your input to continue (carries the question as text).
+ * warn — the agent stopped unexpectedly (crashed / disconnected) — switch to your terminal.
  */
 export const PresenterTone = {
   CALM: 'calm',

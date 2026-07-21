@@ -6,10 +6,10 @@ import type { Page, Route } from 'playwright';
  * "Verify the app handles a failed payment" becomes one declared rule.
  *
  * Two layers, split for testability:
- *   - matchMock(): PURE. Given the active rules and a request's url/method, decide the outcome
- *     (fulfill | abort | continue). Unit-tested directly.
- *   - installNetworkMocks(): the Playwright wiring. Registers a single catch-all page.route handler
- *     that consults matchMock and fulfills/aborts/continues. Driven in tests with a fake Page + Route.
+ * - matchMock: PURE. Given the active rules and a request's url/method, decide the outcome
+ * (fulfill | abort | continue). Unit-tested directly.
+ * - installNetworkMocks: the Playwright wiring. Registers a single catch-all page.route handler
+ * that consults matchMock and fulfills/aborts/continues. Driven in tests with a fake Page + Route.
  */
 
 /** One interception rule. First matching rule (in order) wins for a request. */

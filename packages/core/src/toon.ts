@@ -7,22 +7,22 @@
  * able to generate and read it reliably from its training data alone.
  *
  * Grammar (one element per line):
- *   type ref "name" [states] key=value ...
+ * type ref "name" [states] key=value...
  *
  * Element types (abbreviated roles):
- *   btn  button      inp  textbox/input   sel  combobox/listbox    chk  checkbox
- *   rad  radio       lnk  link            img  img                 dlg  dialog/alertdialog
- *   nav  navigation  lst  list/listbox    tab  tab/tabpanel        hdr  heading
- *   frm  form        mn   menu/menubar    fld  group/fieldset      el   (any other role)
+ * btn button inp textbox/input sel combobox/listbox chk checkbox
+ * rad radio lnk link img img dlg dialog/alertdialog
+ * nav navigation lst list/listbox tab tab/tabpanel hdr heading
+ * frm form mn menu/menubar fld group/fieldset el (any other role)
  *
  * State flags (inside []):
- *   vis  visible     hid  hidden          en   enabled             dis  disabled
- *   chk  checked     uch  unchecked       exp  expanded            col  collapsed   focus
+ * vis visible hid hidden en enabled dis disabled
+ * chk checked uch unchecked exp expanded col collapsed focus
  *
  * Attributes (key=value, space-separated):
- *   val="..."   current value of the element
- *   count=N     child count (for containers, replaces expanding children)
- *   ph="..."    placeholder text
+ * val="..." current value of the element
+ * count=N child count (for containers, replaces expanding children)
+ * ph="..." placeholder text
  */
 
 /** Encode an ElementDescriptor to a TOON line. */

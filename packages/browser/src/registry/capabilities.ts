@@ -12,7 +12,7 @@ export interface Capabilities {
   flows: CapabilityFlow[];
 }
 
-/** What the host app passes to reticle.describe(); all fields optional. */
+/** What the host app passes to reticle.describe; all fields optional. */
 export interface CapabilitiesInput {
   testids?: string[];
   signals?: string[];
@@ -34,7 +34,7 @@ function mergeUnique(into: string[], add: readonly string[] | undefined): void {
   for (const v of add) if (!into.includes(v)) into.push(v);
 }
 
-/** Called by the host app via reticle.describe(). Merges (idempotent), never replaces wholesale. */
+/** Called by the host app via reticle.describe. Merges (idempotent), never replaces wholesale. */
 export function registerCapabilities(input: CapabilitiesInput): void {
   mergeUnique(capabilities.testids, input.testids);
   mergeUnique(capabilities.signals, input.signals);

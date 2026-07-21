@@ -8,7 +8,7 @@ export const AMBIENT_FILE_VERSION = 1;
 
 /**
  * Persists the learned ambient-churn region map at `.reticle/ambient.json`. Local, single-project
- * memory (stays OSS — OSS-VS-SERVER §6). Loads never throw: missing/malformed/wrong-version degrades to
+ * memory (stays OSS — OSS-VS-SERVER). Loads never throw: missing/malformed/wrong-version degrades to
  * an empty map, so a bad file never breaks a drive — the layer just re-learns the ambient regions.
  */
 export class AmbientStore {

@@ -12,10 +12,10 @@ import { ReticleTool } from './tool-names.js';
  *
  * The `dynamic` profile advertises just TWO meta-tools (~hundreds of tokens, fixed regardless of
  * how many real tools exist):
- *   reticle_tools — discover. No args ⇒ a compact catalog (name + one-line summary) of every tool.
- *                names:[...] ⇒ full description + params for just those tools, loaded on demand.
- *   reticle_run   — invoke any tool by name. On a bad/unknown call it returns that tool's params as a
- *                hint, so the model self-corrects without ever needing the schema up front.
+ * reticle_tools — discover. No args ⇒ a compact catalog (name + one-line summary) of every tool.
+ * names:[...] ⇒ full description + params for just those tools, loaded on demand.
+ * reticle_run — invoke any tool by name. On a bad/unknown call it returns that tool's params as a
+ * hint, so the model self-corrects without ever needing the schema up front.
  *
  * The model lists once, loads the 2–3 tools it actually needs, and calls them — paying for tool
  * detail only when used, not every turn. Works with any MCP client (no client-side support needed).

@@ -48,13 +48,13 @@ describe('JournalRecorder', () => {
   it('attributes events inside an action window and records seqRange + tRange', async () => {
     const sink = fakeSink();
     const rec = new JournalRecorder(sink, { now: stepClock([10, 42]), flushAt: 100 });
-    rec.beginAction('c1', 'reticle_act', { ref: 'e7' }); // now()->10 (tStart)
+    rec.beginAction('c1', 'reticle_act', { ref: 'e7' }); // now->10 (tStart)
     const a = rec.observe(evt(3));
     const b = rec.observe(evt(5));
     expect(a.actionId).toBe('c1');
     expect(a.attribution).toBe(EventAttribution.WINDOW);
     expect(b.actionId).toBe('c1');
-    rec.finishAction({ glyph: 'pass' }, true, 32); // now()->42 (tEnd)
+    rec.finishAction({ glyph: 'pass' }, true, 32); // now->42 (tEnd)
     await rec.flush();
     const action = sink.actions[0];
     expect(action?.actionId).toBe('c1');

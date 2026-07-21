@@ -1,7 +1,7 @@
 import { EventType, type ReticleEvent } from '@reticlehq/core';
 
 /**
- * First-divergence — the brain of the divergence capsule (W5 Tier 2). Given the chain the flow DECLARED
+ * First-divergence — the brain of the divergence capsule (Tier 2). Given the chain the flow DECLARED
  * should happen (its mustHold, as ordered expected links) and what was OBSERVED, walk the declaration and
  * report the FIRST link where expected ≠ observed, values side by side. That single link is where the
  * fault lives — the agent fixes it without re-exploring. Pure; the acceptance bar is that for every

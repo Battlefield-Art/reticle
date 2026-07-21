@@ -111,7 +111,7 @@ describe('reticle_run_export (MCP persona)', () => {
 
   it('format:"diff" returns the run-to-run delta once a second run exists', async () => {
     if (tool === undefined) return;
-    // A later run so latestTwo() sees [run-a, run-b] oldest-first.
+    // A later run so latestTwo sees [run-a, run-b] oldest-first.
     await new RunStore(deps.fs, root).write(buildVerificationRun(failingRun('run-b'), () => 2000));
     const out = (await tool.handler(deps, { format: 'diff' })) as {
       diff?: { headline?: string };

@@ -7,21 +7,21 @@ import type { ToolDef } from './tools.js';
  * measured ~14.6k tok/turn at full (48 tools) vs ~half that for core. Fewer tools also makes the
  * model wander less (fewer turns, higher accuracy). See bench/LAYER-B.md.
  *
- *   core     — the verify loop a coding agent actually needs: navigate→look→act→observe→assert,
- *              WITH direct network + console + state observability (the highest-signal checks).
- *              ~12 tools. The recommended profile for agent-driven verification.
- *   standard — core + common extras (inspect, sequences, animations, flows, session lifecycle,
- *              scroll, baselines, …). For agents that need more than the bare loop.
- *   hybrid   — THE DEFAULT: core verify+oracle tools advertised directly + 2 meta-tools for on-demand
- *              reach to everything else. Core accuracy/detection at ~64% less schema tax than full.
- *   full     — all tools advertised directly. Opt in via RETICLE_TOOL_PROFILE=full for hard-call scripts.
+ * core — the verify loop a coding agent actually needs: navigate→look→act→observe→assert,
+ * WITH direct network + console + state observability (the highest-signal checks).
+ * ~12 tools. The recommended profile for agent-driven verification.
+ * standard — core + common extras (inspect, sequences, animations, flows, session lifecycle,
+ * scroll, baselines, …). For agents that need more than the bare loop.
+ * hybrid — THE DEFAULT: core verify+oracle tools advertised directly + 2 meta-tools for on-demand
+ * reach to everything else. Core accuracy/detection at ~64% less schema tax than full.
+ * full — all tools advertised directly. Opt in via RETICLE_TOOL_PROFILE=full for hard-call scripts.
  */
 export const TOOL_PROFILE = {
   /** dynamic — advertise only 2 meta-tools (reticle_tools + reticle_run); load real tools on demand.
-   *  Fixed ~hundreds of tokens/turn regardless of how many tools exist. See dynamic-tools.ts. */
+   * Fixed ~hundreds of tokens/turn regardless of how many tools exist. See dynamic-tools.ts. */
   DYNAMIC: 'dynamic',
   /** hybrid — the core verify tools advertised directly (so the agent acts reliably) PLUS the 2
-   *  meta-tools for on-demand reach to every other tool. Core accuracy + full reach at ~core cost. */
+   * meta-tools for on-demand reach to every other tool. Core accuracy + full reach at ~core cost. */
   HYBRID: 'hybrid',
   CORE: 'core',
   STANDARD: 'standard',
@@ -41,10 +41,10 @@ export const TOOL_PROFILE_ENV = 'RETICLE_TOOL_PROFILE';
 // flows. These 12 are the lean sweet spot. Direct network/console stay (far more discoverable than
 // observe-with-filters → fewer turns, better verdicts).
 //
-// Evidence status (B05): the original 5/5 figure came from a single gpt-4o run and is STALE as a
-// justification. Current-model evidence is indirect but real — the v2.2.0 cost-delta run
+// Evidence status: the original 5/5 figure came from a single gpt-4o run and is STALE as a
+// justification. Current-model evidence is indirect but real — the cost-delta run
 // (bench/fix-loop/COST-DELTA.md) drove this hybrid default on a current model and fixed 4/4 cells with
-// ~25% FEWER tool calls than the v2.1.0 baseline. A formal core-vs-hybrid A/B on a current model is
+// ~25% FEWER tool calls than the baseline. A formal core-vs-hybrid A/B on a current model is
 // still UNRUN; do not quote the 5/5 number as if it were current. See bench/LAYER-B.md.
 export const CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   ReticleTool.SESSIONS,

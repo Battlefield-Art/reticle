@@ -23,7 +23,7 @@ export interface BootOptions {
   /** Launch headless (default true). */
   headless?: boolean;
   port?: number;
-  /** Absolute .reticle root. Defaults to cwd()/.reticle. Injectable for tests. */
+  /** Absolute.reticle root. Defaults to cwd/.reticle. Injectable for tests. */
   reticleRoot?: string;
   /** Injected clock; defaults to Date.now. */
   now?: () => number;

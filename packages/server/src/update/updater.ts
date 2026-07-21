@@ -143,7 +143,7 @@ async function installVersionRollback(version: string, kind: ExecutionKind): Pro
 /**
  * Install targetVersion using the appropriate strategy for the detected execution kind,
  * then exit so Claude Code restarts with the new binary. Saves the current version
- * first so rollback() can restore it.
+ * first so rollback can restore it.
  */
 export async function applyUpdate(targetVersion: string): Promise<void> {
   const manifest = loadManifest();
@@ -173,7 +173,7 @@ export async function rollback(): Promise<void> {
   await installVersionRollback(prev, kind);
   log('reticle_rollback_applied', { version: prev, executionKind: kind });
   // For npx, exiting would let the next restart re-resolve @latest — rolling FORWARD, the opposite
-  // of rollback. installVersionRollback already told the user to pin the version in .mcp.json, so
+  // of rollback. installVersionRollback already told the user to pin the version in.mcp.json, so
   // stay running rather than trigger that. Other kinds installed the old version and must restart.
   if (kind !== ExecutionKind.NPX) process.exit(0);
 }

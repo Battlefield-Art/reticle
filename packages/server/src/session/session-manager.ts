@@ -57,7 +57,7 @@ function scopeMissError(scope?: ResolveScope): string {
 export class SessionManager {
   readonly #sessions = new Map<string, Session>();
   /**
-   * The active project's scope, set once from the daemon's .reticle.json. When a tool resolves a session
+   * The active project's scope, set once from the daemon's.reticle.json. When a tool resolves a session
    * without passing its own scope, this is applied — so auto-selection is project-scoped by default
    * and a stray tab from another app is never picked, even on the no-sessionId path.
    */
@@ -102,13 +102,13 @@ export class SessionManager {
    * one connected, returns that.
    *
    * With none and multiple connected, applies smart auto-selection:
-   *   1. Prefer non-throttled sessions (not hidden + recently heard from).
-   *   2. Within each tier, prefer lowest lastSeenMs (most recently active SDK heartbeat).
-   *   3. If two or more non-throttled sessions are within 1 s of each other, throw —
-   *      genuinely ambiguous, agent must specify sessionId.
-   *   4. If ALL sessions are throttled (e.g. user is working in their editor on another
-   *      desktop), skip the gap check and pick the freshest heartbeat. This lets the agent
-   *      keep working in the background without requiring sessionId every time.
+   * 1. Prefer non-throttled sessions (not hidden + recently heard from).
+   * 2. Within each tier, prefer lowest lastSeenMs (most recently active SDK heartbeat).
+   * 3. If two or more non-throttled sessions are within 1 s of each other, throw —
+   * genuinely ambiguous, agent must specify sessionId.
+   * 4. If ALL sessions are throttled (e.g. user is working in their editor on another
+   * desktop), skip the gap check and pick the freshest heartbeat. This lets the agent
+   * keep working in the background without requiring sessionId every time.
    */
   resolve(sessionId?: string, scope?: ResolveScope): Session {
     if (sessionId !== undefined) {

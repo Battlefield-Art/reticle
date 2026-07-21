@@ -1,6 +1,6 @@
 /**
  * Read / record / replay tools — baselines + diff, recordings + replay, narrate, clock, state,
- * explore. Split out of tools.ts; assembled back via ...READ_TOOLS.
+ * explore. Split out of tools.ts; assembled back via...READ_TOOLS.
  */
 import { z } from 'zod';
 import { EventType, ReticleCommand, REPLAY_PROGRAM_VERSION, SnapshotMode } from '@reticlehq/core';

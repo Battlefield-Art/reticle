@@ -14,7 +14,7 @@ import { nativeSetTimeout, settle } from '../timers/native-timers.js';
 /**
  * Best-effort evidence of whether/why an action landed, so the agent can separate
  * "my action missed" vs "app didn't react" vs "tool didn't dispatch". All probes are
- * cheap and best-effort (see docs/usage.md §3).
+ * cheap and best-effort (see docs/usage.md).
  */
 interface ActionEffect {
   /** We reached dispatch (no throw before it). Typed `true`: if we never dispatch we throw. */
@@ -76,7 +76,7 @@ interface ActionResult {
 function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): boolean {
   const proto =
     el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- setter is invoked via .call(el)
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- setter is invoked via.call(el)
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   if (setter !== undefined) {
     setter.call(el, value);
@@ -275,7 +275,7 @@ async function dispatchFor(
       return false; // FocusEvents are not cancelable.
     case ActionType.BLUR:
       // Fire a bubbling focusout so React 19's delegated root listener runs onBlur
-      // (commit-on-blur). el.blur() alone only works if the element was truly focused.
+      // (commit-on-blur). el.blur alone only works if the element was truly focused.
       el.blur();
       el.dispatchEvent(new FocusEvent('blur'));
       el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
@@ -316,7 +316,7 @@ async function dispatchFor(
       const form = el instanceof HTMLFormElement ? el : el.closest('form');
       if (form === null) throw new Error('no form to submit');
       form.requestSubmit();
-      return false; // requestSubmit() returns void; the internal submit event is unobservable.
+      return false; // requestSubmit returns void; the internal submit event is unobservable.
     }
     case ActionType.PRESS: {
       const key = asString(args['key'], 'Enter');
@@ -398,7 +398,7 @@ export async function executeAction(
     // bounded settle — microtask + one BOUNDED frame so React's commit (and the resulting DOM
     // mutations → dom.added/dom.text/dom.attr events) flush before we return, landing inside
     // observe({ since }). Bounded so a throttled/background tab never hangs; a settle timeout NEVER
-    // rejects (only a real dispatch failure thrown above does). settle() can never throw.
+    // rejects (only a real dispatch failure thrown above does). settle can never throw.
     const outcome = await settle();
     settled = outcome.settled;
     settleReason = outcome.settled ? null : SettleReason.TIMEOUT;

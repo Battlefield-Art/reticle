@@ -1,6 +1,6 @@
 /**
- * Example enterprise feature (Reticle Enterprise License — see ./LICENSE). Demonstrates the pattern every
- * ee feature follows: call assertEnterprise(...) first, then do the privileged work. The body here is a
+ * Example enterprise feature (Reticle Enterprise License — see./LICENSE). Demonstrates the pattern every
+ * ee feature follows: call assertEnterprise...) first, then do the privileged work. The body here is a
  * stub — the real audit sink is the hosted control plane. It exists now to prove the gate.
  */
 

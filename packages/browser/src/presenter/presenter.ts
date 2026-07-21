@@ -111,7 +111,7 @@ export class Presenter {
   // v2: narration + action status accumulate in a persistent, timestamped, scrollable log.
   #logMax: number;
   #log: HTMLElement | undefined;
-  /** now() of the first row, the baseline for the +elapsed timestamps. */
+  /** now of the first row, the baseline for the +elapsed timestamps. */
   #logBaseMs: number | undefined;
 
   // Live-control panel: the two-way control surface (Pause/Resume + End + message Send).
@@ -166,8 +166,8 @@ export class Presenter {
   }
 
   /** Apply a bridge→browser presenter push: PRESENTER (state echo) or FLOWS (replay list, the human's
-   *  no-agent replay surface). Owns the wire parsing so the SDK dispatcher stays a thin router;
-   *  setState-only so an echo can't re-emit. */
+   * no-agent replay surface). Owns the wire parsing so the SDK dispatcher stays a thin router;
+   * setState-only so an echo can't re-emit. */
   /** Re-scope the replay-flow chips to the current page (called by the SDK on route change). */
   refilterFlows(): void {
     this.#panel.refilterFlows();
@@ -254,7 +254,7 @@ export class Presenter {
 
   /**
    * Session start: in 'session' border mode this fades the base border IN and keeps it on until
-   * sessionEnd(). Idempotent, and a no-op when unmounted or in 'busy' border mode.
+   * sessionEnd. Idempotent, and a no-op when unmounted or in 'busy' border mode.
    */
   sessionStart(): void {
     // Returning agent activity after the session ended (idle or explicit) revives it as a fresh run.
@@ -467,7 +467,7 @@ export class Presenter {
   }
 
   /**
-   * Mirror the server's session.throttled() state onto the HUD border. When throttled (tab
+   * Mirror the server's session.throttled state onto the HUD border. When throttled (tab
    * backgrounded or stale), the border turns amber so the developer knows actions are no-oping —
    * the same signal the agent already reads from result.session.throttled.
    */

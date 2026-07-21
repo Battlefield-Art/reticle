@@ -52,7 +52,7 @@ export type HumanMarkData = z.infer<typeof HumanMarkDataSchema>;
 /**
  * A normalized observation pushed from the browser into the ring buffer.
  * `t` is a monotonic millisecond timestamp relative to session start (clock injected,
- * never `Date.now()` inside pure logic — see plan engineering standards).
+ * never `Date.now` inside pure logic — see plan engineering standards).
  */
 export const ReticleEventSchema = z.object({
   t: z.number(),

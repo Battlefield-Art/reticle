@@ -1,7 +1,7 @@
 import { RETICLE_ERROR_BOUNDARY_SIGNAL } from '@reticlehq/core';
 
 /**
- * React error-boundary capture (B27, dev-only). A boundary that catches and swallows renders a fallback
+ * React error-boundary capture, dev-only). A boundary that catches and swallows renders a fallback
  * that "looks fine" while the feature is broken — invisible to DOM/network/console channels. React 19's
  * `createRoot(el, { onCaughtError })` reports every boundary catch; pass `reticleOnCaughtError` there and
  * the catch surfaces on the signal channel (the SDK's public emit surface). Pure formatter is unit-tested;

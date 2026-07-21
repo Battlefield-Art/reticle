@@ -12,7 +12,7 @@ const NAV: NavDef[] = [
   { id: 'deployments', label: 'Deployments', icon: IconRocket },
   { id: 'compose', label: 'Compose', icon: IconSparkles },
   { id: 'diagnostics', label: 'Diagnostics', icon: IconBug },
-  // The hostile fixture (B03): reachable by click so the overhead A/B works with the SDK disabled too.
+  // The hostile fixture: reachable by click so the overhead A/B works with the SDK disabled too.
   { id: 'hostile', label: 'Hostile', icon: IconBug },
 ];
 

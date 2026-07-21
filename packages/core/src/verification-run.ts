@@ -7,7 +7,7 @@
  *
  * Conventions match the rest of `@reticlehq/core`: enums are `as const` objects narrowed with
  * `z.nativeEnum`, timestamps are epoch-ms NUMBERS (the clock is injected — never read inside pure
- * logic), no `any` (opaque evidence is `z.unknown()`), and every domain string is a named constant.
+ * logic), no `any` (opaque evidence is `z.unknown`), and every domain string is a named constant.
  */
 
 import { z } from 'zod';
@@ -25,7 +25,7 @@ export type RunId = z.infer<typeof RunIdSchema>;
 export const asRunId = (value: string): RunId => value as RunId;
 
 /**
- * Retention bound for .reticle/runs/ so disk stays bounded over a long-running pipeline. Pruned
+ * Retention bound for.reticle/runs/ so disk stays bounded over a long-running pipeline. Pruned
  * oldest-first only once the count exceeds RUN_RETENTION + RUN_RETENTION_SLACK, then back down to
  * RUN_RETENTION — so the O(n) prune is amortized (≈ once per SLACK writes), not paid on every write.
  */

@@ -2,7 +2,7 @@
  * BrowserPool — one headless browser, many cheap isolated contexts.
  *
  * The "10 agents test 10 flows" scenario does NOT mean 10 Chromiums (each ~hundreds of MB). It means
- * ONE launched browser and N `newContext()` calls (each ~a few MB, fully isolated cookies/storage).
+ * ONE launched browser and N `newContext` calls (each ~a few MB, fully isolated cookies/storage).
  * The pool owns that single browser, hands out per-flow leases, caps concurrency so a machine is
  * never overwhelmed (over-cap acquires queue FIFO), and transparently relaunches if the browser dies.
  *
@@ -36,7 +36,7 @@ export interface PooledBrowser {
 /** Produces a freshly launched browser. Injected so tests can supply a fake. */
 export type Launcher = () => Promise<PooledBrowser>;
 
-/** A leased context+page for one flow. `release()` frees the slot and closes the context. */
+/** A leased context+page for one flow. `release` frees the slot and closes the context. */
 export interface Lease {
   readonly sessionId: string;
   readonly url: string;
@@ -56,7 +56,7 @@ interface BrowserPoolOptions {
   genSessionId: () => string;
   /** Injected clock (ms). Defaults to Date.now; tests pass a controllable one. */
   now?: () => number;
-  /** A lease untouched for longer than this is reclaimed by sweepExpired(). */
+  /** A lease untouched for longer than this is reclaimed by sweepExpired. */
   leaseTtlMs?: number;
   /** Per-lease navigation timeout — a page that won't load fails its own lease, never blocks a slot. */
   navTimeoutMs?: number;
@@ -108,7 +108,7 @@ export class BrowserPool {
   }
 
   /** Currently leased contexts. */
-  /** Max simultaneous leases — the ceiling the parallel suite sizes its concurrency to (W14.2). */
+  /** Max simultaneous leases — the ceiling the parallel suite sizes its concurrency to. */
   capacity(): number {
     return this.#max;
   }

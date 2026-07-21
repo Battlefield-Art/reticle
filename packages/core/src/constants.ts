@@ -110,13 +110,13 @@ export const ReticleDir = {
   BASELINES_SUBDIR: 'baselines',
   /** cross-run memory — outcomes of past runs (the "did it behave like last time?" file). */
   PROJECT_FILE: 'project.json',
-  /** opt-in pixel baselines — .reticle/visual/<name>.png + <name>.diff.png. */
+  /** opt-in pixel baselines —.reticle/visual/<name>.png + <name>.diff.png. */
   VISUAL_SUBDIR: 'visual',
-  /** verification-run artifacts — .reticle/runs/<runId>.json (the OEM/CI-consumable verdict). */
+  /** verification-run artifacts —.reticle/runs/<runId>.json (the OEM/CI-consumable verdict). */
   RUNS_SUBDIR: 'runs',
-  /** fail-to-pass bug capsules — .reticle/capsules/<id>.json (a minimal failing flow + its evidence). */
+  /** fail-to-pass bug capsules —.reticle/capsules/<id>.json (a minimal failing flow + its evidence). */
   CAPSULES_SUBDIR: 'capsules',
-  /** durable causal journal — .reticle/sessions/<id>/{events,actions}.jsonl (the substrate). */
+  /** durable causal journal —.reticle/sessions/<id>/{events,actions}.jsonl (the substrate). */
   SESSIONS_SUBDIR: 'sessions',
   /** append-only event ledger inside a session dir (one ReticleEvent per line). */
   JOURNAL_EVENTS_FILE: 'events.jsonl',
@@ -132,7 +132,7 @@ export const ReticleDir = {
   TIERS_FILE: 'assertion-tiers.json',
   /**
    * Auto-provisioned bridge pairing token, stored at ~/.reticle/pairing-token (mode 0600). Written by
-   * the daemon, read Node-side by the build plugins to inject into connect(). A browser sandbox cannot
+   * the daemon, read Node-side by the build plugins to inject into connect. A browser sandbox cannot
    * read it, so a rogue localhost app can't present it — that's what stops cross-app session hijack.
    */
   PAIRING_TOKEN_FILE: 'pairing-token',
@@ -490,7 +490,7 @@ export const QueryBy = {
   TESTID: 'testid',
   ALT: 'alt',
   /** Resolve by component identity / source location (auto-anchors — addresses any element with
-   * no hand-added testid). Pair with ElementQuery.component and/or .source. */
+   * no hand-added testid). Pair with ElementQuery.component and/or.source. */
   COMPONENT: 'component',
 } as const;
 export type QueryBy = (typeof QueryBy)[keyof typeof QueryBy];

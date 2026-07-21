@@ -314,7 +314,7 @@ const RAW_TOOLS: ToolDef[] = [
   ...FLOW_TOOLS,
   // reticle_project (read history + diff-vs-last) / reticle_run_record. See project-tools.ts.
   ...PROJECT_TOOLS,
-  // reticle_run_export — export the verification-run verdict artifact (.reticle/runs/). See run-tools.ts.
+  // reticle_run_export — export the verification-run verdict artifact.reticle/runs/). See run-tools.ts.
   ...RUN_TOOLS,
   // reticle_screenshot / reticle_visual_diff — opt-in, CDP-driven. See visual-tools.ts.
   ...VISUAL_TOOLS,
@@ -339,7 +339,7 @@ const RAW_TOOLS: ToolDef[] = [
 ];
 
 /**
- * W10.3 surface consolidation. Tool defs are re-sent EVERY turn, so the advertised count is a per-turn
+ * surface consolidation. Tool defs are re-sent EVERY turn, so the advertised count is a per-turn
  * tax multiplied by loop length. Sibling families collapse into one action-dispatched tool; the member
  * handlers stay defined above and are simply no longer advertised separately.
  *
@@ -397,7 +397,7 @@ const MERGE_PLANS: MergePlan[] = [
 
 /**
  * Retired from the MCP surface entirely (capability preserved elsewhere, per the plan):
- *  - run_record: auto-recording on flow_replay already persists run outcomes.
+ * - run_record: auto-recording on flow_replay already persists run outcomes.
  */
 const RETIRED_FROM_SURFACE: string[] = [
   ReticleTool.RUN_RECORD, // auto-recording on flow_replay already persists run outcomes

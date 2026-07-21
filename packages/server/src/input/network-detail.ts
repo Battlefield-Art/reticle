@@ -1,7 +1,7 @@
 import { EventType, type ReticleEvent } from '@reticlehq/core';
 
 /**
- * CDP-authoritative network detail (W4.5, driven only). On the `reticle drive` path the daemon owns a
+ * CDP-authoritative network detail, driven only). On the `reticle drive` path the daemon owns a
  * Playwright browser; its `page.on('response')` sees the FULL response — status, mime type, and every
  * response header — which the in-page fetch/XHR wrapper cannot read (CORS-opaque headers, redirects).
  * Capturing it as a NET_DETAIL event and merging it onto the matching in-page NET_REQUEST means the

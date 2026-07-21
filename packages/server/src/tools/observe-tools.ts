@@ -1,6 +1,6 @@
 /**
  * Observe / wait / assert tools — reticle_observe, reticle_wait_for, reticle_assert, reticle_network,
- * reticle_console, reticle_animations. Split out of tools.ts; assembled back via ...OBSERVE_TOOLS.
+ * reticle_console, reticle_animations. Split out of tools.ts; assembled back via...OBSERVE_TOOLS.
  */
 import { z } from 'zod';
 import { ReticleCommand } from '@reticlehq/core';

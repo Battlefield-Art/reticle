@@ -205,7 +205,7 @@ interface CdpProviderOptions {
   cdpUrl: string;
   /** Injected so the settle delay is deterministic in tests; defaults to a real Node timer. */
   sleep?: SleepFn;
-  /** Injected connector so unit tests can stub Playwright without import(). */
+  /** Injected connector so unit tests can stub Playwright without import. */
   connect?: ConnectFn;
 }
 
@@ -302,13 +302,13 @@ export class CdpRealInputProvider implements RealInputProvider {
   }
 }
 
-/** Injected launcher so unit tests stub Playwright without import(). */
+/** Injected launcher so unit tests stub Playwright without import. */
 export type LaunchFn = (headless: boolean) => Promise<Browser>;
 
 /**
  * Force a driven page's already-loaded SDK to connect to our loopback bridge with a pairing token,
- * overriding the app's own (often localhost-only) reticle.connect() — so a hosted preview verifies with
- * no app redeploy. connect() is a no-op once connected, so re-invoking it is safe.
+ * overriding the app's own (often localhost-only) reticle.connect — so a hosted preview verifies with
+ * no app redeploy. connect is a no-op once connected, so re-invoking it is safe.
  */
 export interface InjectConnectOptions {
   token: string;
@@ -322,12 +322,12 @@ export interface LaunchedProviderOptions {
   sleep?: SleepFn;
   /** Injected launcher so unit tests can stub Playwright; defaults to dynamic import('playwright'). */
   launch?: LaunchFn;
-  /** When set, re-invoke the page's reticle.connect() with these after load (drive-a-hosted-preview). */
+  /** When set, re-invoke the page's reticle.connect with these after load (drive-a-hosted-preview). */
   injectConnect?: InjectConnectOptions;
   /** Path to a Playwright storageState JSON (cookies/localStorage) — starts the page authenticated. */
   storageState?: string;
   /**
-   * Sink for CDP-authoritative network detail (W4.5). When set, every driven-page response is captured
+   * Sink for CDP-authoritative network detail. When set, every driven-page response is captured
    * as a NET_DETAIL and handed here — the daemon routes it onto the driven session's journal so the
    * inside-app view never loses fidelity to the outside-in view. Omitted → no network detail captured.
    */
@@ -396,7 +396,7 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
   }
 
   /**
-   * Wait for the page's Reticle singleton to exist, then re-invoke connect() with our token + loopback
+   * Wait for the page's Reticle singleton to exist, then re-invoke connect with our token + loopback
    * URL so a hosted (non-localhost) preview pairs to our bridge without the app being reconfigured.
    * Best-effort: a page with no SDK simply never exposes the global, and we move on.
    */

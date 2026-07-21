@@ -26,9 +26,9 @@ import { TOOLBAR_CSS, BTN_CSS, NAME_CSS, STATUS_CSS, MENU_CSS } from './recorder
  *
  * FIRST CUT scope: structured annotations only (the 4 AnnotationKind values via a menu + a signal
  * <select> drawn from registered capabilities). Explicitly FUTURE, not faked here:
- *   - NL annotation → predicate compiler (CO-OWNED-FLOWS invariant #2 best-UX path).
- *   - fixtures/preconditions (FlowFile.fixture stays a schema slot, never written).
- *   - wait-for / ignore-region annotation kinds (only the 4 requested ship).
+ * - NL annotation → predicate compiler (CO-OWNED-FLOWS invariant #2 best-UX path).
+ * - fixtures/preconditions (FlowFile.fixture stays a schema slot, never written).
+ * - wait-for / ignore-region annotation kinds (only the 4 requested ship).
  */
 
 /** Browser-local UI text — never crosses the wire, mirrors presenter.ts CHIP_LABEL precedent. */
@@ -63,7 +63,7 @@ const NEEDS_SIGNAL = new Set<AnnotationKind>([
 interface RecorderDeps {
   /** Emit a wire event (Reticle.#emit bound). */
   emit: (type: EventType, data: Record<string, unknown>) => void;
-  /** Injected clock for FlowFile.createdAt — never Date.now() in pure logic (rule 7). */
+  /** Injected clock for FlowFile.createdAt — never Date.now in pure logic (rule 7). */
   now: () => number;
   /** Default flow name when the toolbar field is blank. */
   defaultName?: string;
@@ -131,10 +131,10 @@ function buildStep(el: Element, action: ActionType, args?: Record<string, unknow
 
 /**
  * Pure: assemble the in-page FlowFile from captured steps + annotations.
- *  - ASSERT_SIGNAL  → the most-recent step's expect.signal.
- *  - ASSERT_VISIBLE → the most-recent step's expect.element (from the annotation anchor).
- *  - MARK_DYNAMIC   → push the anchor into flow.dynamic[].
- *  - SUCCESS_STATE  → flow.success = { signal }.
+ * - ASSERT_SIGNAL → the most-recent step's expect.signal.
+ * - ASSERT_VISIBLE → the most-recent step's expect.element (from the annotation anchor).
+ * - MARK_DYNAMIC → push the anchor into flow.dynamic[].
+ * - SUCCESS_STATE → flow.success = { signal }.
  * (FUTURE: per-step annotation targeting beyond the most-recent step.)
  */
 export function compileRecording(

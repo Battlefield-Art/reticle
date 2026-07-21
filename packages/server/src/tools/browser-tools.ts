@@ -28,7 +28,7 @@ export const BROWSER_TOOLS: ToolDef[] = [
       reason: z.string().optional(),
     },
     handler: async (deps, args) => {
-      // reload:true is the absorbed reticle_refresh (W10.3) — same command, one fewer advertised tool.
+      // reload:true is the absorbed reticle_refresh — same command, one fewer advertised tool.
       if (args['reload'] === true) {
         await commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.REFRESH, {
           hard: args['hard'] === true,

@@ -13,10 +13,10 @@ import {
  * the current captured-step count → an AnnotateOutcome (a result envelope + the patch to apply to
  * the AnnotationStore). No IO, no clock, unit-testable in isolation.
  *
- *   assert-signal  → step.expect.signal (+ signalData)   on the LAST step (needs ≥1 step)
- *   assert-visible → step.expect.element.testid          on the LAST step (needs ≥1 step)
- *   mark-dynamic   → flow.dynamic[] += testid            flow-level, allowed with 0 steps
- *   success-state  → flow.success = { signal | element } flow-level (signal XOR testid; both → signal)
+ * assert-signal → step.expect.signal (+ signalData) on the LAST step (needs ≥1 step)
+ * assert-visible → step.expect.element.testid on the LAST step (needs ≥1 step)
+ * mark-dynamic → flow.dynamic[] += testid flow-level, allowed with 0 steps
+ * success-state → flow.success = { signal | element } flow-level (signal XOR testid; both → signal)
  *
  * FIRST CUT: only the four structured kinds above. Free natural-language annotation → predicate
  * compilation is explicitly FUTURE — an NL string never reaches here (AnnotationSchema

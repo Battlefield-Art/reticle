@@ -52,7 +52,7 @@ export interface PresenterOptions {
 export const DEFAULT_PACE = 450;
 
 /**
- * Glow state machine phases (exposed via glowPhase() for tests). A burst of activity flips the
+ * Glow state machine phases (exposed via glowPhase for tests). A burst of activity flips the
  * border IN once on the first activity, holds steady (the slow reticle-pulse breathing keeps running
  * uninterrupted — no per-action restart/strobe), then fades OUT once after a quiet window.
  */
@@ -74,11 +74,11 @@ export const HEARTBEAT_MS = 1000;
  */
 export const IDLE_NOTICE_MS = 4000;
 /** Default session-idle-end: after this much quiet the session auto-ends (glow off, panel persists
- *  for analysis). Agent-tweakable via reticle_session { idleEndMs } for the app's needs. */
+ * for analysis). Agent-tweakable via reticle_session { idleEndMs } for the app's needs. */
 export const IDLE_END_MS = 300_000;
 /** Floor for a tweaked idle-end so the agent can't set a uselessly tiny window. */
 export const IDLE_END_MIN_MS = 5_000;
-/** Must match the glow CSS opacity transition (.25s) so phase reaches idle after the fade paints. */
+/** Must match the glow CSS opacity transition.25s) so phase reaches idle after the fade paints. */
 export const GLOW_FADE_MS = 250;
 export const GLOW_ON = '1';
 export const GLOW_OFF = '0';

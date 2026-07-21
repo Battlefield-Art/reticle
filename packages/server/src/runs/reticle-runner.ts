@@ -33,7 +33,7 @@ export interface RunnerPort {
   newRunId(): RunId;
 }
 
-/** Run metadata the caller supplies; flows + verdict are produced by verify(). */
+/** Run metadata the caller supplies; flows + verdict are produced by verify. */
 export interface VerifyOptions {
   names?: string[];
   project: VerificationRunInput['project'];

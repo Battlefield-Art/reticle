@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { ToolDef, ToolDeps } from './tool-kit.js';
 
 /**
- * Surface consolidation (W10.3). Tool definitions are re-sent to the model EVERY turn, so the named-def
+ * Surface consolidation. Tool definitions are re-sent to the model EVERY turn, so the named-def
  * count is a per-turn tax multiplied by loop length. This merges a family of sibling tools
  * (`baseline_save`/`baseline_list`/`diff`) into one action-dispatched tool (`reticle_baseline {action}`)
  * WITHOUT rewriting any handler — each original handler is kept verbatim and selected by `action`, so a

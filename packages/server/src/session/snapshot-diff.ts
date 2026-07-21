@@ -1,8 +1,8 @@
 /**
- * Pre/post snapshot diff (W3 B18). The server snapshots registered store paths + storage keys BEFORE
+ * Pre/post snapshot diff. The server snapshots registered store paths + storage keys BEFORE
  * dispatching an action and again after, so the causal summary reports a DIFF, not a reading — the
  * "before" the pull path alone can never show. This is the fallback for stores/storage that don't emit
- * change events (unregistered stores, pull-only areas); the W3 STATE/STORAGE_CHANGE events cover the
+ * change events (unregistered stores, pull-only areas); the STATE/STORAGE_CHANGE events cover the
  * rest. Pure: two flat snapshots (key → value) in, the changed keys with before/after out.
  */
 export interface SnapshotChange {
