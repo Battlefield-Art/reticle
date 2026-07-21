@@ -236,6 +236,10 @@ const RAW_TOOLS: ToolDef[] = [
         value: args['value'],
         name: args['name'],
         scope: args['scope'],
+        // The handler forwards an explicit allowlist, so a new input is silently dropped unless it is
+        // added here — the browser saw no `attrs` and returned undefined while the unit tests, which
+        // call matchQuery directly, passed. Schema plus implementation is not the whole wire.
+        attrs: args['attrs'],
       }).then((result) =>
         withSizeCost(
           paginateQueryResult(result, asNumber(args['limit']), args['count_only'] === true),

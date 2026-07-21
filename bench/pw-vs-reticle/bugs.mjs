@@ -915,12 +915,11 @@ export const BUGS = [
       deepTestid: 'shadow-refresh',
       urlContains: '/api/health',
     },
-    // Classification PENDING re-measurement. It was set to playwright-only on a wrong diagnosis:
-    // the check passed `selector:` to reticle_act, an input that does not exist, so the click was a
-    // no-op and BOTH variants showed zero requests. With query now piercing open shadow roots a ref
-    // is obtainable, so this may well be 'both'. Left as-is until a live run says otherwise —
-    // changing it on reasoning alone is exactly the mistake that produced the wrong value.
-    expect: 'playwright-only',
+    // 'both', re-measured live: reticle clean +1 request / buggy +0, matching Playwright exactly.
+    // Was briefly recorded as playwright-only on a wrong diagnosis — the check passed `selector:` to
+    // reticle_act, an input that does not exist, so the click was a no-op and BOTH variants showed
+    // zero requests. reticle_act reaches shadow controls fine once query can hand it a ref.
+    expect: 'both',
   },
   {
     id: 'iframe-stale-data',
