@@ -11,6 +11,12 @@ import type { ToolDef, ToolDeps } from './tool-kit.js';
  * The merged input schema is `{ action }` plus the union of the members' fields, each made optional
  * (different actions need different fields). Every handler already narrows its own args, so validation
  * strength is unchanged in practice.
+ *
+ * TRADEOFF (deliberate): a merged tool carries NO `outputSchema`, because its members return different
+ * shapes and one schema cannot describe them. Schema-aware clients lose output validation for merged
+ * families. That is why tools whose result contract matters — the 12-tool core hot-set, and hot verbs
+ * like flow_replay/flow_verify/flow_heal that return their own documented verdict shapes — are NOT
+ * merged. Only sibling families whose value is the capability, not the contract, are consolidated.
  */
 export interface MergeSpec {
   name: string;

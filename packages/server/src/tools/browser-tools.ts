@@ -9,9 +9,17 @@ export const BROWSER_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.NAVIGATE,
     description:
-      'Navigate the connected browser tab to a URL. The SDK reconnects automatically after the page loads. Use reticle_sessions to confirm the new tab is connected before acting.',
+      'Navigate the connected browser tab to a URL, or reload it in place with { reload: true } (add { hard: true } to bypass the cache). The SDK reconnects automatically after the page loads. Use reticle_sessions to confirm the new tab is connected before acting.',
     inputSchema: {
-      url: z.string().describe('The URL to navigate to.'),
+      url: z.string().optional().describe('The URL to navigate to. Omit when using reload.'),
+      reload: z
+        .boolean()
+        .optional()
+        .describe('Reload the current page instead of navigating (replaces reticle_refresh).'),
+      hard: z
+        .boolean()
+        .optional()
+        .describe('With reload:true, bypass the browser cache (Cmd+Shift+R). Default: false.'),
       ...sessionIdShape,
     },
     outputSchema: {
@@ -20,6 +28,13 @@ export const BROWSER_TOOLS: ToolDef[] = [
       reason: z.string().optional(),
     },
     handler: async (deps, args) => {
+      // reload:true is the absorbed reticle_refresh (W10.3) — same command, one fewer advertised tool.
+      if (args['reload'] === true) {
+        await commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.REFRESH, {
+          hard: args['hard'] === true,
+        });
+        return { ok: true };
+      }
       const url = asString(args['url']);
       if (url === undefined || url.length === 0) return { ok: false, reason: 'url required' };
       // Record navigate as an action. Its window is usually empty (the page unloads and the SDK

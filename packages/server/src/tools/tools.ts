@@ -371,6 +371,10 @@ const MERGE_PLANS: MergePlan[] = [
  * Retired from the MCP surface entirely (capability preserved elsewhere, per the plan):
  *  - run_record: auto-recording on flow_replay already persists run outcomes.
  */
-const RETIRED_FROM_SURFACE: string[] = [ReticleTool.RUN_RECORD];
+const RETIRED_FROM_SURFACE: string[] = [
+  ReticleTool.RUN_RECORD, // auto-recording on flow_replay already persists run outcomes
+  ReticleTool.REFRESH, // absorbed into reticle_navigate { reload: true }
+  ReticleTool.WAIT_READY, // server-internal: the first live call already blocks for the session
+];
 
 export const TOOLS: ToolDef[] = applyMerges(RAW_TOOLS, MERGE_PLANS, RETIRED_FROM_SURFACE);

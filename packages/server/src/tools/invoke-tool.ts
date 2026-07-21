@@ -32,7 +32,6 @@ export const SESSION_BOUND_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.CRAWL,
   ReticleTool.SCROLL_TO,
   ReticleTool.NAVIGATE,
-  ReticleTool.REFRESH,
 ]);
 
 /**

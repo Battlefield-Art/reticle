@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { Bridge } from './bridge.js';
 import { FakeBrowser, callTool, makeDeps, waitUntil } from './bridge.test-harness.js';
 import { ReticleTool } from './tools/tool-names.js';
+import { LIVE_CONTROL_TOOLS } from './session/live-control-tools.js';
 import type { ToolDeps } from './tools/tools.js';
 import { EventType, RETICLE_DEFAULT_PORT } from '@reticlehq/core';
 
@@ -108,7 +109,9 @@ describe('daemon without app', () => {
     const { bridge, deps } = await startBridge();
     // timeoutMs:0 means "check once and return" — the injected now()=>0 clock means the loop
     // exits immediately on the first iteration (0 - 0 >= 0 → true → return count()>0 → false).
-    const result = (await callTool(deps, ReticleTool.WAIT_READY, { timeoutMs: 0 })) as {
+    // wait_ready is server-internal now (W10.3) — its handler still exists and is exercised here.
+    const waitReady = LIVE_CONTROL_TOOLS.find((x) => x.name === ReticleTool.WAIT_READY);
+    const result = (await waitReady?.handler(deps, { timeoutMs: 0 })) as {
       ready: boolean;
       sessionCount: number;
     };
