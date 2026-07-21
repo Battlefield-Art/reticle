@@ -41,6 +41,8 @@ const headToHead = readArtifact('pw-vs-reticle/results.json');
 const parallel = readArtifact('raw/parallel-suite.json') ?? readArtifact('parallel-suite/results.json');
 const overhead = readArtifact('raw/overhead.json') ?? readArtifact('overhead/results.json');
 const firstDrive = readArtifact('raw/first-drive.json') ?? readArtifact('first-drive/results.json');
+const diagnosis = readArtifact('raw/diagnosis.json');
+const crossTool = readArtifact('raw/cross-tool-parallel.json');
 
 const out = [];
 const p = (line = '') => out.push(line);
@@ -148,17 +150,51 @@ p();
 p(orMissing(firstDrive?.summary ?? firstDrive, 'node bench/first-drive/measure.mjs'));
 p();
 
-// ── 3. CONCURRENCY ──────────────────────────────────────────────────────────────────────────────
-p('## 3. Serial vs parallel');
+// ── 3. DIAGNOSIS ────────────────────────────────────────────────────────────────────────────────
+p('## 3. Does a report say where to fix it?');
+p();
+p('Detection is the easy half. The half that decides whether a human gets pulled in is whether the');
+p('agent knows which file to open — worth more downstream than any amount of extra description of the');
+p('symptom. Ground truth is derived by scanning the fixture\'s own source, not hand-maintained.');
+p();
+if (diagnosis?.summary === undefined) {
+  p(orMissing(undefined, 'node bench/diagnosis/measure.mjs'));
+  p();
+} else {
+  const d = diagnosis.summary;
+  p('| measure | result |');
+  p('|---|---|');
+  p(`| bugs scored | ${d.scorable} / ${d.bugsAttempted} |`);
+  p(`| report carries a \`file:line\` | **${d.sourcePresent}** (${d.coveragePct}%) |`);
+  p(`| names the RIGHT file | **${d.sourceCorrect}** (${d.accuracyPct}% of those present) |`);
+  p();
+  p('No competitor column: a browser-automation tool\'s stack trace points at its own test, never at');
+  p('the app source. That is the asymmetry — but it also means there is no baseline to beat, so this');
+  p('is a capability measurement, not a head-to-head.');
+  p();
+}
+
+// ── 4. CONCURRENCY ──────────────────────────────────────────────────────────────────────────────
+p('## 4. Serial vs parallel');
 p();
 p(orMissing(parallel?.summary ?? parallel, 'node bench/parallel-suite/measure.mjs'));
 p();
-p('> Honest limit: this measures RETICLE serial vs parallel. A like-for-like parallel comparison');
-p('> against Playwright workers is NOT yet implemented, so no cross-tool concurrency claim is made here.');
-p();
+if (crossTool !== undefined) {
+  p(`**The same mechanism, driven through Playwright:** ${crossTool.serial?.ms} ms serial vs ` +
+    `${crossTool.parallel?.ms} ms across ${crossTool.parallelism} contexts — **${crossTool.speedup}x**` +
+    `${crossTool.comparable === true ? '' : ' (NOT COMPARABLE — the two modes completed different journey counts)'}.`);
+  p();
+  p('> So concurrency is not a Reticle capability. `browser.newContext()` is available to anyone, and');
+  p('> gets most of the same win. What is ours is the pooling and lease reclamation around it, which');
+  p('> is a convenience, not a moat. Any claim built on the speed-up alone is overstated.');
+  p();
+} else {
+  p(orMissing(undefined, 'node bench/parallel-suite/cross-tool.mjs'));
+  p();
+}
 
 // ── 4. OVERHEAD ─────────────────────────────────────────────────────────────────────────────────
-p('## 4. SDK overhead on the observed app');
+p('## 5. SDK overhead on the observed app');
 p();
 p('An observability layer that slows the app corrupts its own performance verdicts.');
 p();
@@ -166,7 +202,7 @@ p(orMissing(overhead?.summary ?? overhead, 'node bench/overhead/measure.mjs'));
 p();
 
 // ── 5. WHAT IS NOT MEASURED ─────────────────────────────────────────────────────────────────────
-p('## 5. What this scorecard does NOT show');
+p('## 6. What this scorecard does NOT show');
 p();
 p('Stated as plainly as the wins, because a scorecard without this section is marketing.');
 p();

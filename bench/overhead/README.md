@@ -21,7 +21,34 @@ alternates across repeats so warm-up/JIT drift cannot systematically favour eith
 asserts it actually reached the churning view (a silent miss would measure an idle page and report a
 flatteringly small number).
 
-## Result (2026-07-21, 8s × 3 repeats, headless Chromium)
+## Result (2026-07-22, 8s × 3 repeats, headless Chromium) — **BUDGET FAILING**
+
+| | main-thread task time | busy |
+| --- | --- | --- |
+| SDK ON | 2.164 s | 27.0% |
+| SDK OFF (`?no-hud`) | 1.696 s | 21.2% |
+| measured difference | **+5.85 pp** | |
+| **method noise floor** | ±1.83 pp | (same-condition run-to-run spread) |
+
+**Instrumentation overhead: 5.85 pp — resolved above noise. Budget < 3%: FAIL.**
+
+This is a regression against the prior result below, and it reproduces: three consecutive runs
+measured +6.50, +5.30 and +5.85 pp, every one of them above that run's own noise floor.
+
+Two things were ruled out rather than assumed:
+
+- **It is not the scalar-first serialization change.** Reverting that one change and re-measuring gave
+  +5.30 pp — indistinguishable from +6.50 at a ±2.58 pp noise floor. The change was restored.
+- **It is not a one-off.** The sign is consistent across runs, unlike the prior result where the
+  difference came out negative (the method hitting its resolution limit).
+
+What is NOT yet established is which observer is responsible. The per-event candidates, none of them
+measured individually: `new Error().stack` per network request, the document-wide capture-phase
+animation/transition listeners, and the DOM observer watching `class` + `style` (which a
+re-rendering framework churns constantly). **Do not quote an overhead number in any user-facing
+material until this is resolved.** The 3% claim is currently unsupported.
+
+## Prior result (2026-07-21, same method) — for comparison
 
 | | main-thread task time | busy |
 | --- | --- | --- |

@@ -61,13 +61,28 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 | False-positive traps (bug-shaped non-bugs)                | **2 / 2 held** (Playwright 2 / 2)                 |
 | Wall-time per bug                                         | **3.6 s** vs Playwright 32.5 s                    |
 | Output consumed per bug                                   | 8.0 KB vs Playwright 8.2 KB — _parity, see below_ |
-| Failures that name the file to open (`file:line`)         | **[pending measurement]**                         |
+| Reports that name the file to open (`file:line`)          | **83 / 85** carry one; **79** name the exact file |
 | Cost to re-run a 4-flow regression suite                  | **~47 tokens**, constant in suite size            |
 | Same suite, LLM re-driven (Playwright/DevTools MCP)       | ~120,000 tokens                                   |
 | **Regression-run token cost at 4 flows**                  | **2,574× cheaper** (a cost ratio, not a speed-up) |
 | Flake rate on deterministic replay                        | **0%**                                            |
 | Real app, first pass: live `500`s the UI hid              | **2 caught**                                      |
-| Parallel agents on **one** browser (16 flows, 8 contexts) | **6.78× faster**                                  |
+| Parallel agents on **one** browser (16 flows, 8 contexts) | **6.78× faster** (Playwright's own: 4.08×)        |
+
+**The catch rate isn't the story — _which_ bugs is.** Severity is graded by consequence to the user,
+not by how hard the bug is to find:
+
+| Severity                                     | Bugs | Reticle | Playwright-script |
+| -------------------------------------------- | ---- | ------- | ----------------- |
+| **Critical** (wrong data, silent 500, state) | 25   | **24**  | 8                 |
+| **High** (signals, streams, network)         | 29   | **29**  | 22                |
+| Medium (visual, deep DOM, timing)            | 24   | **24**  | 23                |
+| Low (paint, layout shift)                    | 5    | 1       | **3**             |
+
+On cosmetic regressions Playwright wins, and it should: a global CSS filter leaves every computed
+style identical, so only pixels can catch it. On the bugs that corrupt data or hide a failure, the
+gap is 24 vs 8. **Use both.** That is the honest recommendation, and it's why we ship a
+[when-to-use-which](#when-to-use-reticle-vs-playwright-and-devtools) section rather than a takedown.
 
 **Two corrections we owe you**, because a benchmark that only moves in our favour isn't one:
 
@@ -82,6 +97,11 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 **Where we lose:** Playwright catches paint-level regressions we can't see (a global CSS filter leaves
 every computed style identical — that needs pixels), and it caught one request-payload bug we missed.
 Neither tool catches the two layout-shift bugs. All of it is in the scorecard.
+
+**And parallelism is not our moat.** Driving Playwright's own `browser.newContext()` the same way, on
+the same machine, gets **4.08×**. Leasing contexts from one browser is a convenience we give an agent
+for free, not a capability only we have — the honest claim is the pooling and lease reclamation, not
+the concurrency itself.
 
 > **The proof that mattered most:** before we instrumented anything, Reticle's _first_ pass on our own production dashboard flagged two live `500`s (`GET /projects` and `/recovery/incidents`) that the UI completely hid. The page looked perfect. A screenshot would have called it done. **That is the entire point of Reticle**, and we found it on our own app, not a cherry-picked demo.
 

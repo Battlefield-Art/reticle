@@ -249,14 +249,19 @@ can't favour either side).
 
 | | main-thread task time | busy |
 | --- | --- | --- |
-| SDK on | 1.632 s | 20.4% |
-| SDK off | 1.737 s | 21.7% |
-| method noise floor | ±1.31 pp | run-to-run spread of the *same* condition |
+| SDK on | 2.164 s | 27.0% |
+| SDK off | 1.696 s | 21.2% |
+| measured difference | **+5.85 pp** | |
+| method noise floor | ±1.83 pp | run-to-run spread of the *same* condition |
 
-**Result: overhead is smaller than the method can resolve — report it as `< 1.3 percentage points`, well
-inside the 3% budget.**
+**Result: the budget is currently FAILING, and we are publishing that rather than the number it used to
+be.** Overhead measures +5.85 percentage points against a < 3% bar, and it reproduces — three
+consecutive runs gave +6.50, +5.30 and +5.85 pp, each above that run's own noise floor. An earlier
+build measured this as unresolvably small (a slightly *negative* difference, i.e. the method hitting its
+limit); something between that build and this one made instrumentation materially more expensive on a
+continuously churning page.
 
-We deliberately do *not* publish the raw signed difference: it came out slightly negative, and since the
-SDK cannot make your app faster, that is the measurement's resolution limit rather than a speedup.
-Quoting "−1.3% overhead" would be exactly the self-flattering perf claim this budget exists to prevent.
-Reproduce it yourself with `node bench/overhead/measure.mjs` (see `bench/overhead/README.md`).
+Which observer is responsible is not yet established, so we are not guessing in public. **Treat any
+"Reticle costs under 3%" claim as unsupported until this line says PASS again.** Reproduce it yourself
+with `node bench/overhead/measure.mjs` (see `bench/overhead/README.md`, which records the ruled-out
+causes).
