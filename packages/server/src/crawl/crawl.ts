@@ -8,7 +8,7 @@ import {
   type CommandResult,
   type ReticleEvent,
 } from '@reticlehq/core';
-import { parseInteractive, asRecord, asNumber, asString } from '../tools/tools-helpers.js';
+import { parseInteractive, asRecord, asNumber, asString, sourceOf } from '../tools/tools-helpers.js';
 import { ReticleTool } from '../tools/tool-names.js';
 
 /** The slice of Session the crawler needs — so tests inject a fake without a live browser. */
@@ -35,6 +35,15 @@ export interface CrawlAnomaly {
   ref: string;
   desc: string;
   detail: string;
+  /**
+   * Where the control is written, as `file:line`.
+   *
+   * A crawl reports problems across a whole app, so it is the output most likely to be read as a
+   * work list — and "e42 does nothing" is a work list item that starts with a search. The location
+   * comes free: the crawl already clicks each control, and an act result carries the source captured
+   * alongside its anchor. Absent in production builds and apps without the build plugin.
+   */
+  source?: string;
 }
 
 export interface CrawlReport {
@@ -135,6 +144,9 @@ export async function crawl(
       session.finishAction?.();
     }
     const events = session.eventsSince(since);
+    // Captured at act time, so it survives a click that unmounts its own control.
+    const src = sourceOf(asRecord(act?.result)['source']);
+    const source = src === undefined ? {} : { source: `${src.file}:${String(src.line)}` };
 
     const errs = events.filter(isConsoleError);
     for (const e of errs) {
@@ -144,6 +156,7 @@ export async function crawl(
         ref: item.ref,
         desc: item.desc,
         detail: asString(e.data['message']) ?? e.type,
+        ...source,
       });
     }
 
@@ -157,6 +170,7 @@ export async function crawl(
         ref: item.ref,
         desc: item.desc,
         detail: `${method} ${url} → ${status ?? ''}`.trim(),
+        ...source,
       });
     }
 
@@ -169,6 +183,7 @@ export async function crawl(
         ref: item.ref,
         desc: item.desc,
         detail: 'clicked but the app did nothing (no DOM/network/route/signal change)',
+        ...source,
       });
     }
   }

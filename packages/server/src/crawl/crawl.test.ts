@@ -13,6 +13,8 @@ const noSleep = (): Promise<void> => Promise.resolve();
 interface RefScript {
   events?: { type: EventType; data?: Record<string, unknown> }[];
   dispatched?: boolean;
+  /** What the browser captured alongside the anchor when this control was clicked. */
+  source?: { file: string; line: number };
 }
 
 /** A scripted CrawlSession: SNAPSHOT returns `tree`; each ACT pushes that ref's scripted events. */
@@ -32,7 +34,11 @@ function fakeSession(tree: string, perRef: Record<string, RefScript>): CrawlSess
         for (const e of perRef[ref]?.events ?? []) {
           buffer.push({ t: clock, type: e.type, sessionId: 's', data: e.data ?? {} });
         }
-        return ok({ dispatched: perRef[ref]?.dispatched ?? true });
+        const src = perRef[ref]?.source;
+        return ok({
+          dispatched: perRef[ref]?.dispatched ?? true,
+          ...(src === undefined ? {} : { source: src }),
+        });
       }
       return ok({});
     },
@@ -129,5 +135,43 @@ describe('crawl — autonomous smart-monkey', () => {
     const r = await crawl(session, {}, noSleep);
     expect(r.stepsRun).toBe(2);
     expect(r.visited).toEqual(['button "Dup"', 'button "Dup"']);
+  });
+});
+
+/**
+ * A crawl report is the output most likely to be read as a work list — it sweeps a whole app and
+ * hands back everything broken. "e42 does nothing" is a work item that starts with a search, and the
+ * location costs nothing to include: the crawl already clicks each control, and the act result
+ * carries the source captured alongside its anchor.
+ */
+describe('crawl anomalies name the file the control is written in', () => {
+  it('attaches source to a dead control', async () => {
+    const session = fakeSession(tree(['button "Save" (ref=e1)']), {
+      e1: { events: [], source: { file: 'src/components/Toolbar.tsx', line: 44 } },
+    });
+    const r = await crawl(session, {}, noSleep);
+    expect(r.anomalies[0]?.kind).toBe(CrawlAnomalyKind.DEAD_CONTROL);
+    expect(r.anomalies[0]?.source).toBe('src/components/Toolbar.tsx:44');
+  });
+
+  it('attaches source to a console error and a failed request alike', async () => {
+    const session = fakeSession(tree(['button "Pay" (ref=e1)']), {
+      e1: {
+        events: [
+          { type: EventType.CONSOLE_ERROR, data: { message: 'boom' } },
+          { type: EventType.NET_REQUEST, data: { method: 'POST', url: '/api/pay', status: 500 } },
+        ],
+        source: { file: 'src/views/Checkout.tsx', line: 88 },
+      },
+    });
+    const r = await crawl(session, {}, noSleep);
+    expect(r.anomalies.length).toBeGreaterThanOrEqual(2);
+    for (const a of r.anomalies) expect(a.source).toBe('src/views/Checkout.tsx:88');
+  });
+
+  it('omits source when the app was not built with the stamp', async () => {
+    const session = fakeSession(tree(['button "Save" (ref=e1)']), { e1: { events: [] } });
+    const r = await crawl(session, {}, noSleep);
+    expect(r.anomalies[0]?.source).toBeUndefined();
   });
 });
