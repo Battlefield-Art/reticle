@@ -34,6 +34,19 @@ export type FlowName = Brand<string, 'FlowName'>;
  */
 export type SessionId = Brand<string, 'SessionId'>;
 
+/**
+ * A live element handle (`e42`) minted by the browser's ref registry.
+ *
+ * The most-passed identifier in the codebase and the one crossing browser↔bridge↔agent most often. The
+ * registry keys a plain `Map<string, WeakRef<Element>>`, so handing it a sessionId returns null — a
+ * silent miss rather than an error. Branding stops OUR code confusing the two; a ref arriving from the
+ * wire is still an untrusted string until the registry resolves it.
+ */
+export type Ref = Brand<string, 'Ref'>;
+
+/** Mint a Ref — the registry does this when it hands out a handle. */
+export const asRef = (value: string): Ref => value as Ref;
+
 /** Mint a FlowName — call ONLY behind isValidFlowName, or on a literal in a test. */
 export const asFlowName = (value: string): FlowName => value as FlowName;
 /** Mint a SessionId — call ONLY behind isValidSessionId, or on a literal in a test. */

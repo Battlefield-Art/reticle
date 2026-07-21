@@ -1,3 +1,4 @@
+import type { Ref } from './brand.js';
 import { z } from 'zod';
 import {
   AnnotationKind,
@@ -42,7 +43,8 @@ export type ElementQuery = z.infer<typeof ElementQuerySchema>;
 
 /** Compact semantic descriptor of one element surfaced to the agent. */
 export interface ElementDescriptor {
-  ref: string;
+  /** Branded: minted by the browser's ref registry, so it cannot be confused with another id kind. */
+  ref: Ref;
   role: string;
   name: string;
   value?: string;

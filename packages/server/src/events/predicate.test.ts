@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  asRef,
   EventType,
   ReticleCommand,
   type CommandResult,
@@ -245,7 +246,7 @@ describe('predicate engine', () => {
         return {
           matched: true,
           count: 1,
-          elements: [{ ref: 'e1', role: 'button', name: 'Cancel', states: [], visible: true }],
+          elements: [{ ref: asRef('e1'), role: 'button', name: 'Cancel', states: [], visible: true }],
         };
       }
       return { matched: false, count: 0, elements: [] };

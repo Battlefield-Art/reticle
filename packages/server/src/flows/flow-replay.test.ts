@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  asRef,
   ActionType,
   AnchorKind,
   DANGEROUS_ACTION_CONFIRM_ARG,
@@ -105,7 +106,7 @@ class FakeSession implements FlowReplaySession {
 }
 
 function el(ref: string, testid: string): ElementDescriptor {
-  return { ref, role: 'button', name: testid, states: [], visible: true };
+  return { ref: asRef(ref), role: 'button', name: testid, states: [], visible: true };
 }
 
 function present(testids: string[]): QueryEmptyHint {
@@ -284,7 +285,7 @@ describe('replayFlow — anchor re-resolution + legible drift', () => {
     // The element's role/name differ from record time, but the testid matches → resolves.
     const script = (): QueryScript => ({
       elements: [
-        { ref: 'e1', role: 'link', name: 'totally different label', states: [], visible: true },
+        { ref: asRef('e1'), role: 'link', name: 'totally different label', states: [], visible: true },
       ],
     });
     const session = new FakeSession(script);

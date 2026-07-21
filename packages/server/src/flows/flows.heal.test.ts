@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { asFlowName,
+import {
+  asRef,
+  asFlowName,
   ActionType,
   AnchorKind,
   DANGEROUS_ACTION_CONFIRM_ARG,
@@ -46,7 +48,7 @@ interface QueryScript {
 }
 
 function el(ref: string, testid: string): ElementDescriptor {
-  return { ref, role: 'button', name: testid, states: [], visible: true };
+  return { ref: asRef(ref), role: 'button', name: testid, states: [], visible: true };
 }
 
 function present(testids: string[]): QueryEmptyHint {

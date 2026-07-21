@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  asRef,
   ActionType,
   AnchorKind,
   FLOW_FILE_VERSION,
@@ -22,7 +23,7 @@ import { ReticleTool } from '../tools/tool-names.js';
 const FAST = 60;
 
 function el(ref: string, testid: string): ElementDescriptor {
-  return { ref, role: 'button', name: testid, states: [], visible: true };
+  return { ref: asRef(ref), role: 'button', name: testid, states: [], visible: true };
 }
 
 class FakeSession implements FlowReplaySession {
