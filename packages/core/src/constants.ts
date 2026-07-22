@@ -339,6 +339,14 @@ export const BlindSpotKind = {
   CLOSED_SHADOW_ROOT: 'closed-shadow-root',
   CROSS_ORIGIN_IFRAME: 'cross-origin-iframe',
   VIRTUALIZED_UNMOUNTED: 'virtualized-unmounted',
+  /**
+   * Something wrapped `fetch` before we did, so the request we record is not necessarily the request
+   * that leaves. Wrappers chain outermost-first: anything installed EARLIER sits below us and mutates
+   * after we have read `init.body`. An interceptor initialised before connect(), or a polyfill, does
+   * exactly that. Unfixable from inside the page — there is no "patch last" primitive — so it is
+   * declared instead, and a verdict over it reports partial coverage rather than implying we saw the wire.
+   */
+  WRAPPED_NETWORK: 'wrapped-network',
 } as const;
 export type BlindSpotKind = (typeof BlindSpotKind)[keyof typeof BlindSpotKind];
 

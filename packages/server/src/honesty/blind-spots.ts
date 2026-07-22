@@ -27,6 +27,10 @@ const LABEL: Record<BlindSpotKind, (n: number) => string> = {
   [BlindSpotKind.CROSS_ORIGIN_IFRAME]: (n) => `${String(n)} cross-origin frame${n === 1 ? '' : 's'}`,
   [BlindSpotKind.VIRTUALIZED_UNMOUNTED]: (n) =>
     `${String(n)} virtualized unmounted row${n === 1 ? '' : 's'}`,
+  // Not a count of things — a single fact about the page. Phrased so the coverage line reads as a
+  // caveat on what the network view MEANS, not as a tally.
+  [BlindSpotKind.WRAPPED_NETWORK]: () =>
+    'fetch was already wrapped before Reticle, so recorded requests may differ from what was sent',
 };
 
 /** Compose the coverage statement. `full` (no note) when nothing was unobserved. */

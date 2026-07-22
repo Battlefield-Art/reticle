@@ -1,4 +1,5 @@
-import { EventType, REDACTED_VALUE, RETICLE_WS_PATH } from '@reticlehq/core';
+import {
+  BlindSpotKind, EventType, REDACTED_VALUE, RETICLE_WS_PATH } from '@reticlehq/core';
 import { isSensitiveKey } from '../security/serialization.js';
 import { captureMethod } from '../patching/capture-method.js';
 import type { Emit, Teardown } from './types.js';
@@ -252,12 +253,53 @@ function isBridgeSocket(url: string): boolean {
   }
 }
 
+/**
+ * Whether a function is the platform's own fetch rather than someone's wrapper.
+ *
+ * `Function.prototype.toString` on a built-in yields "[native code]"; a JS wrapper yields its source.
+ * Called off the prototype deliberately, so a wrapper cannot hide behind its own `toString`.
+ *
+ * Two known limits, both stated in tests rather than left to be discovered:
+ *   - a BOUND wrapper (`window.fetch = mine.bind(x)`) also reports "[native code]", so it is missed.
+ *     Nothing in the platform separates the two.
+ *   - a POLYFILLED fetch reads as wrapped and IS reported — correctly, since a polyfill is a layer we
+ *     cannot see through, though it will look like a false positive to anyone triaging it.
+ *
+ * Both failure modes are safe: we under-report on the first and over-report on the second, and
+ * over-reporting a coverage caveat is the direction this library errs in everywhere else.
+ */
+function isNativeFetch(fn: typeof window.fetch): boolean {
+  try {
+    return Function.prototype.toString.call(fn).includes('native code');
+  } catch {
+    return false;
+  }
+}
+
+/** Wrappers this module installed, so a re-install does not report itself as a foreign wrapper. */
+const OURS = new WeakSet<typeof window.fetch>();
+
 export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown {
   const captureBodies = opts.captureBodies === true;
  // Keep the true original for teardown identity, plus a window-bound copy to invoke
  // (fetch throws "Illegal invocation" if called with the wrong `this`).
   const origFetch = window.fetch;
   const callFetch = origFetch.bind(window);
+
+  // Declare it if we are not the first to wrap fetch.
+  //
+  // Wrappers chain outermost-first, and we record `init.body` when OUR wrapper runs — so anything
+  // installed EARLIER sits below us and mutates the request after we have read it. That is a real
+  // blind spot (an auth/analytics interceptor started before connect(), a polyfill, a service worker
+  // is worse still) and it is not fixable from in here: there is no "patch last" primitive, and
+  // racing for outermost loses to whatever loads after us.
+  //
+  // So it is reported rather than hidden, on the same contract as the cross-origin-iframe sensor —
+  // say what we cannot see, so a green verdict never implies we saw it. `isOurs` keeps a re-install
+  // from blaming the app for our own wrapper.
+  if (!isNativeFetch(origFetch) && !OURS.has(origFetch)) {
+    emit(EventType.BLIND_SPOT, { kind: BlindSpotKind.WRAPPED_NETWORK, count: 1 });
+  }
 
  // Correlation id so a NET_PENDING (emitted at request START) can be matched to its
  // NET_REQUEST completion. A request that never completes leaves an unmatched NET_PENDING —
@@ -330,6 +372,8 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
       throw error;
     }
   };
+  // Remember it, so a later install recognises our own wrapper instead of reporting the app.
+  OURS.add(window.fetch);
 
   const meta = new WeakMap<XMLHttpRequest, XhrMeta>();
   const proto = XMLHttpRequest.prototype;

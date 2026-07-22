@@ -16,6 +16,19 @@ function collect(): { emit: Emit; events: Emitted[] } {
   return { emit, events };
 }
 
+/**
+ * Select an emitted event by TYPE, not by position.
+ *
+ * These assertions used to index `events[1]`, which quietly encoded "the observer emits exactly one
+ * thing before the completion". Adding an install-time BLIND_SPOT shifted every index and broke nine
+ * tests that were not about blind spots at all. Position is not part of the contract; type is.
+ */
+function eventOf(events: Emitted[], type: EventType): Record<string, unknown> {
+  const hit = events.filter((e) => e.type === type).at(-1);
+  if (hit === undefined) throw new Error(`no ${type} event emitted (got: ${events.map((e) => e.type).join(', ')})`);
+  return hit.data;
+}
+
 /** A minimal Response stand-in — jsdom does not always expose a usable global Response. */
 function fakeResponse(
   status: number,
@@ -197,7 +210,7 @@ describe('installNetwork (fetch)', () => {
       method: 'POST',
       body: JSON.stringify({ email: 'a@b.com', password: reqPasswordValue }),
     });
-    const data = events[1]?.data as Record<string, unknown>;
+    const data = eventOf(events, EventType.NET_REQUEST);
     expect(String(data['responseBody'])).toContain('"id":1');
     expect(String(data['responseBody'])).toContain('[REDACTED]'); // token value redacted
     expect(String(data['responseBody'])).not.toContain(respTokenValue);
@@ -216,7 +229,7 @@ describe('installNetwork (fetch)', () => {
       method: 'POST',
       body: `username=alice&password=${formPasswordValue}`,
     });
-    const data = events[1]?.data as Record<string, unknown>;
+    const data = eventOf(events, EventType.NET_REQUEST);
     expect(String(data['requestBody'])).toContain('username=alice'); // non-sensitive kept
     expect(String(data['requestBody'])).toContain('password=[REDACTED]');
     expect(String(data['requestBody'])).not.toContain(formPasswordValue);
@@ -229,7 +242,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit, { captureBodies: true });
     await window.fetch('http://localhost:8787/docs');
-    expect(String((events[1]?.data as Record<string, unknown>)['responseBody'])).toBe(prose);
+    expect(String((eventOf(events, EventType.NET_REQUEST))['responseBody'])).toBe(prose);
   });
 
   it('scrubs a high-confidence secret sitting in a JSON VALUE under a benign key', async () => {
@@ -241,7 +254,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit, { captureBodies: true });
     await window.fetch('http://localhost:8787/api/x');
-    const rb = String((events[1]?.data as Record<string, unknown>)['responseBody']);
+    const rb = String((eventOf(events, EventType.NET_REQUEST))['responseBody']);
     expect(rb).toContain('[REDACTED]');
     expect(rb).not.toContain(jwt);
   });
@@ -257,7 +270,7 @@ describe('installNetwork (fetch)', () => {
       method: 'POST',
       body: new URLSearchParams({ user: 'bob', password: pw }),
     });
-    const rb = String((events[1]?.data as Record<string, unknown>)['requestBody']);
+    const rb = String((eventOf(events, EventType.NET_REQUEST))['requestBody']);
     expect(rb).toContain('password=[REDACTED]');
     expect(rb).not.toContain(pw);
   });
@@ -271,7 +284,7 @@ describe('installNetwork (fetch)', () => {
     const fd = new FormData();
     fd.append('field', 'value');
     await window.fetch('http://localhost:8787/upload', { method: 'POST', body: fd });
-    expect((events[1]?.data as Record<string, unknown>)['requestBodyType']).toBe('FormData');
+    expect((eventOf(events, EventType.NET_REQUEST))['requestBodyType']).toBe('FormData');
   });
 
   it('redacts a credential-shaped Bearer token in a text body', async () => {
@@ -282,7 +295,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit, { captureBodies: true });
     await window.fetch('http://localhost:8787/echo');
-    const rb = String((events[1]?.data as Record<string, unknown>)['responseBody']);
+    const rb = String((eventOf(events, EventType.NET_REQUEST))['responseBody']);
     expect(rb).toContain('Bearer [REDACTED]');
     expect(rb).not.toContain(token);
   });
@@ -295,7 +308,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit, { captureBodies: true });
     await window.fetch('http://localhost:8787/echo');
-    const rb = String((events[1]?.data as Record<string, unknown>)['responseBody']);
+    const rb = String((eventOf(events, EventType.NET_REQUEST))['responseBody']);
     expect(rb).not.toContain(token); // the token must not survive, whatever the surrounding shape
     expect(rb).toContain('[REDACTED]');
   });
@@ -306,7 +319,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit, { captureBodies: true });
     await window.fetch('http://localhost:8787/big');
-    const data = events[1]?.data as Record<string, unknown>;
+    const data = eventOf(events, EventType.NET_REQUEST);
     expect(data['responseBodyTruncated']).toBe(true);
     expect(String(data['responseBody']).length).toBe(8192); // MAX_BODY_CHARS
   });
@@ -318,7 +331,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit);
     await window.fetch('http://localhost:8787/api/x');
-    expect((events[1]?.data as Record<string, unknown>)['responseBody']).toBeUndefined();
+    expect((eventOf(events, EventType.NET_REQUEST))['responseBody']).toBeUndefined();
   });
 
   it('captures content-type, response size, and status text without reading the body (Network 1a)', async () => {
@@ -333,7 +346,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit);
     await window.fetch('http://localhost:8787/api/data');
-    expect(events[1]?.data).toMatchObject({
+    expect(eventOf(events, EventType.NET_REQUEST)).toMatchObject({
       contentType: 'application/json; charset=utf-8',
       responseSize: 1234,
       statusText: 'OK',
@@ -348,15 +361,20 @@ describe('installNetwork (fetch)', () => {
     const res = await window.fetch('http://localhost:8787/api/broken/500');
 
     expect(res.status).toBe(500);
-    expect(events).toHaveLength(2);
-    expect(events[0]?.type).toBe(EventType.NET_PENDING);
-    expect(events[0]?.data).toMatchObject({
+    // Scoped to NETWORK events: the contract is "a request emits a pending then a completion", not
+    // "the observer emits exactly two things ever" — install-time events are not part of it.
+    const net = events.filter(
+      (e) => e.type === EventType.NET_PENDING || e.type === EventType.NET_REQUEST,
+    );
+    expect(net).toHaveLength(2);
+    expect(net[0]?.type).toBe(EventType.NET_PENDING);
+    expect(net[0]?.data).toMatchObject({
       method: 'GET',
       url: 'http://localhost:8787/api/broken/500',
       initiator: 'fetch',
     });
-    expect(events[1]?.type).toBe(EventType.NET_REQUEST);
-    expect(events[1]?.data).toMatchObject({
+    expect(net[1]?.type).toBe(EventType.NET_REQUEST);
+    expect(eventOf(events, EventType.NET_REQUEST)).toMatchObject({
       method: 'GET',
       url: 'http://localhost:8787/api/broken/500',
       status: 500,
@@ -364,7 +382,7 @@ describe('installNetwork (fetch)', () => {
       initiator: 'fetch',
     });
     // The pending and the completion share a correlation id.
-    expect(events[1]?.data['id']).toBe(events[0]?.data['id']);
+    expect(net[1]?.data['id']).toBe(net[0]?.data['id']);
   });
 
   it('captures the method from init for a POST (completion is the second event)', async () => {
@@ -374,8 +392,8 @@ describe('installNetwork (fetch)', () => {
 
     await window.fetch('http://localhost:8787/api/login', { method: 'POST' });
 
-    expect(events[0]?.type).toBe(EventType.NET_PENDING);
-    expect(events[1]?.data).toMatchObject({ method: 'POST', status: 200, ok: true });
+    expect(events.filter((e) => e.type === EventType.NET_PENDING)).toHaveLength(1);
+    expect(eventOf(events, EventType.NET_REQUEST)).toMatchObject({ method: 'POST', status: 200, ok: true });
   });
 
   it('emits a NET_REQUEST with status 0 and rethrows when the fetch rejects', async () => {
@@ -385,8 +403,8 @@ describe('installNetwork (fetch)', () => {
     teardown = installNetwork(emit);
 
     await expect(window.fetch('http://localhost:8787/api/x')).rejects.toBe(boom);
-    expect(events).toHaveLength(2);
-    expect(events[1]?.data).toMatchObject({ status: 0, ok: false, error: 'network down' });
+    expect(events.filter((e) => e.type !== EventType.BLIND_SPOT)).toHaveLength(2);
+    expect(eventOf(events, EventType.NET_REQUEST)).toMatchObject({ status: 0, ok: false, error: 'network down' });
   });
 
   it('emits only NET_PENDING for a request that never resolves (the hung-request case)', () => {
@@ -397,9 +415,9 @@ describe('installNetwork (fetch)', () => {
 
     void window.fetch('http://localhost:8787/api/broken/timeout');
 
-    expect(events).toHaveLength(1);
-    expect(events[0]?.type).toBe(EventType.NET_PENDING);
-    expect(events[0]?.data).toMatchObject({
+    expect(events.filter((e) => e.type !== EventType.BLIND_SPOT)).toHaveLength(1);
+    expect(events.filter((e) => e.type !== EventType.BLIND_SPOT)[0]?.type).toBe(EventType.NET_PENDING);
+    expect(events.filter((e) => e.type !== EventType.BLIND_SPOT)[0]?.data).toMatchObject({
       method: 'GET',
       url: 'http://localhost:8787/api/broken/timeout',
       initiator: 'fetch',
