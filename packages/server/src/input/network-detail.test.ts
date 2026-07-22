@@ -6,6 +6,7 @@ import {
   attachNetworkDetail,
   type NetworkDetail,
   type ResponseLike,
+  type PageLike,
 } from './network-detail.js';
 
 describe('buildNetworkDetail', () => {
@@ -76,7 +77,8 @@ describe('attachNetworkDetail', () => {
   it('emits a NET_DETAIL for each response the page reports', async () => {
     const events: NetworkDetail[] = [];
     let handler: ((res: ResponseLike) => void) | undefined;
-    const page = {
+    const page: PageLike = {
+      url: () => 'http://app.test/',
       on: (event: 'response', fn: (res: ResponseLike) => void) => {
         if (event === 'response') handler = fn;
       },
@@ -178,5 +180,52 @@ describe('authoritative request body', () => {
     ]);
     const req = merged.find((e) => e.type === EventType.NET_REQUEST);
     expect(req?.data['requestBodyDivergedFromPage']).toBeUndefined();
+  });
+});
+
+/**
+ * Which page a wire detail belongs to.
+ *
+ * Routing matched the REQUEST's origin against the session's origin, with a fallback to the drive
+ * URL's origin. Both fail for the ordinary case: an app on :4312 calling an API on :8787 produces a
+ * detail whose origin matches no session, so it was silently dropped. On the CDP-attach path there is
+ * no driveUrl either, so the fallback was an empty string and matched nothing at all.
+ *
+ * The document that ISSUED the request is what identifies the session, so the detail carries it.
+ */
+describe('network detail carries its originating page', () => {
+  it('records the page url the request was issued from', () => {
+    const d = buildNetworkDetail({
+      url: 'http://localhost:8787/api/generate',
+      method: 'POST',
+      status: 200,
+      headers: {},
+      pageUrl: 'http://localhost:4312/?reticle-bug=x',
+    });
+    expect(d.pageUrl).toBe('http://localhost:4312/?reticle-bug=x');
+  });
+
+  it('omits it when the driver could not say', () => {
+    const d = buildNetworkDetail({ url: 'http://x/y', status: 200, headers: {} });
+    expect('pageUrl' in d).toBe(false);
+  });
+
+  it('attach passes the page url through, so cross-origin calls stay attributable', async () => {
+    const seen: NetworkDetail[] = [];
+    const page: PageLike = {
+      url: () => 'http://localhost:4312/dashboard',
+      on: (_e, handler) => {
+        void handler({
+          url: () => 'http://localhost:8787/api/generate',
+          status: () => 200,
+          headers: () => ({}),
+          request: () => ({ method: () => 'POST', postData: () => '{"prompt":"hi"}' }),
+        });
+      },
+    };
+    attachNetworkDetail(page, (d) => seen.push(d));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(seen[0]?.pageUrl).toBe('http://localhost:4312/dashboard');
+    expect(seen[0]?.requestBody).toBe('{"prompt":"hi"}');
   });
 });

@@ -207,6 +207,15 @@ interface CdpProviderOptions {
   sleep?: SleepFn;
   /** Injected connector so unit tests can stub Playwright without import. */
   connect?: ConnectFn;
+  /**
+   * Sink for CDP-authoritative network detail. Optional, so the capture stays opt-in.
+   *
+   * This used to exist only on the LAUNCHED provider, which gated wire-level network visibility on
+   * whether Reticle happened to open the browser. That is the wrong axis: owning the browser says
+   * nothing about being able to see its network, and both providers speak CDP. The authoritative
+   * request body is the one thing an in-page fetch wrapper structurally cannot get.
+   */
+  onNetworkDetail?: (detail: NetworkDetail) => void;
 }
 
 const nodeSleep: SleepFn = (ms) =>
@@ -224,12 +233,25 @@ export class CdpRealInputProvider implements RealInputProvider {
   readonly #cdpUrl: string;
   readonly #sleep: SleepFn;
   readonly #connect: ConnectFn;
+  readonly #onNetworkDetail: ((detail: NetworkDetail) => void) | undefined;
+  /** Pages already listening. #pageFor resolves on EVERY call, so without this each action would add
+   *  another listener and every response would be emitted once per action taken so far. */
+  readonly #listening = new WeakSet<object>();
   #browser: Browser | undefined;
 
   constructor(options: CdpProviderOptions) {
     this.#cdpUrl = options.cdpUrl;
     this.#sleep = options.sleep ?? nodeSleep;
     this.#connect = options.connect ?? cdpConnect;
+    this.#onNetworkDetail = options.onNetworkDetail;
+  }
+
+  /** Attach the response listener the first time we see a page; a no-op afterwards. */
+  #listen(page: Page): void {
+    const sink = this.#onNetworkDetail;
+    if (sink === undefined || this.#listening.has(page)) return;
+    this.#listening.add(page);
+    attachNetworkDetail(page, sink);
   }
 
   async #ensureBrowser(): Promise<Browser | undefined> {
@@ -245,7 +267,9 @@ export class CdpRealInputProvider implements RealInputProvider {
   async #pageFor(sessionUrl: string): Promise<Page | undefined> {
     const browser = await this.#ensureBrowser();
     if (browser === undefined) return undefined;
-    return selectPage(browser.contexts().flatMap((c) => c.pages()), sessionUrl);
+    const page = selectPage(browser.contexts().flatMap((c) => c.pages()), sessionUrl);
+    if (page !== undefined) this.#listen(page);
+    return page;
   }
 
   async isAvailableFor(sessionUrl: string): Promise<boolean> {

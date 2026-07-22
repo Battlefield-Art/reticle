@@ -244,12 +244,21 @@ function createBrowserPool(headless: boolean): BrowserPool {
 function makeNetworkDetailRouter(bridge: Bridge, driveUrl: string | undefined) {
   const driveOrigin = originOf(driveUrl ?? '');
   return (detail: NetworkDetail): void => {
-    const wantOrigin = originOf(detail.url);
+    // Route by the DOCUMENT that issued the request, not by the request's own origin.
+    //
+    // Matching the request's origin only works for same-origin calls. An app on one origin calling an
+    // API on another — most API calls — produced a detail matching no session, and it was dropped
+    // without a trace. The drive-URL fallback papered over it on the launched path and did nothing on
+    // the CDP-attach path, where driveUrl is undefined and the fallback compares against ''.
+    const pageOrigin = originOf(detail.pageUrl ?? '');
+    const requestOrigin = originOf(detail.url);
     for (const session of bridge.sessions.all()) {
       const origin = originOf(session.url);
-      // Match the detail's own origin first; fall back to the driven URL's origin for a session whose
-      // reported url has drifted (an SPA route change rewrites it).
-      if (origin === wantOrigin || origin === driveOrigin) {
+      const matches =
+        (pageOrigin !== '' && origin === pageOrigin) ||
+        origin === requestOrigin ||
+        (driveOrigin !== '' && origin === driveOrigin);
+      if (matches) {
         session.pushEvent({ t: 0, type: EventType.NET_DETAIL, sessionId: session.id, data: { ...detail } });
       }
     }
@@ -326,7 +335,12 @@ async function resolveRealInput(
   }
   const cdpUrl = options.cdpUrl ?? process.env[ReticleEnv.CDP_URL];
   if (cdpUrl !== undefined && cdpUrl.length > 0) {
-    const cdp = new CdpRealInputProvider({ cdpUrl });
+    // Same network sink as the launched path. Whether Reticle opened the browser or attached to one
+    // someone else opened has no bearing on whether it can read that browser's network.
+    const cdp = new CdpRealInputProvider({
+      cdpUrl,
+      ...(onNetworkDetail !== undefined ? { onNetworkDetail } : {}),
+    });
     return { realInput: cdp, owned: cdp };
   }
   return {};

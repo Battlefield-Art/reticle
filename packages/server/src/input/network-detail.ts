@@ -31,6 +31,15 @@ export interface NetworkDetail {
    * window.fetch frame at all), rewrites requests invisibly. Available on the DRIVE path only.
    */
   requestBody?: string;
+  /**
+   * The document that ISSUED the request, which is what identifies the session it belongs to.
+   *
+   * Routing used to match the REQUEST's origin against the session's, falling back to the drive
+   * URL's. Both miss the ordinary case: an app on one origin calling an API on another produces a
+   * detail matching no session, so it was dropped silently — and on the CDP-attach path there is no
+   * drive URL, so the fallback matched nothing at all. Cross-origin API calls are most API calls.
+   */
+  pageUrl?: string;
 }
 
 /** Bound on a captured wire body — matches the in-page capture so the two are comparable. */
@@ -69,6 +78,7 @@ export function buildNetworkDetail(raw: {
   headers: Record<string, string>;
   resourceType?: string;
   requestBody?: string;
+  pageUrl?: string;
 }): NetworkDetail {
   return {
     url: raw.url,
@@ -79,6 +89,7 @@ export function buildNetworkDetail(raw: {
     ...(raw.requestBody === undefined || raw.requestBody.length === 0
       ? {}
       : { requestBody: projectWireBody(raw.requestBody) }),
+    ...(raw.pageUrl === undefined || raw.pageUrl.length === 0 ? {} : { pageUrl: raw.pageUrl }),
   };
 }
 
@@ -147,6 +158,7 @@ export interface ResponseLike {
   request(): { method(): string; resourceType?(): string; postData?(): string | null };
 }
 export interface PageLike {
+  url(): string;
   on(event: 'response', handler: (response: ResponseLike) => void): void;
 }
 
@@ -169,6 +181,7 @@ export function attachNetworkDetail(page: PageLike, emit: (detail: NetworkDetail
           headers,
           ...(resourceType === undefined ? {} : { resourceType }),
           ...(postData === null ? {} : { requestBody: postData }),
+          pageUrl: page.url(),
         }),
       );
     });

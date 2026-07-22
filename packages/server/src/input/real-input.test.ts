@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ActionType } from '@reticlehq/core';
 import type { Page } from 'playwright';
-import { boxCenter, capturePage, isPointerAction, selectPage } from './real-input.js';
+import { boxCenter, capturePage, CdpRealInputProvider, isPointerAction, selectPage } from './real-input.js';
 
 /** Records the options each page.screenshot call receives and returns minimal PNG bytes. */
 function recordingPage(calls: Record<string, unknown>[]): Page {
@@ -116,5 +116,61 @@ describe('selectPage — correlate a session to a driven page, or refuse', () =>
   it('an exact match wins even when other pages would strip to the same path', () => {
     const list = pages('http://app/?a=1', 'http://app/?b=2', 'http://app/?c=3');
     expect(selectPage(list, 'http://app/?b=2')?.url()).toBe('http://app/?b=2');
+  });
+});
+
+/**
+ * Wire-level network detail on the ATTACH path, not just the launched one.
+ *
+ * `attachNetworkDetail` was wired only in LaunchedRealInputProvider — the `reticle drive` path where
+ * the daemon opens its own browser. CdpRealInputProvider, which attaches to a browser someone else
+ * started, never attached it. So the authoritative request body (the one thing an in-page fetch
+ * wrapper structurally cannot get, because anything patching fetch earlier mutates after we read)
+ * was available only if Reticle happened to own the browser.
+ *
+ * That is the wrong axis to gate it on: whether we LAUNCHED the browser says nothing about whether we
+ * can see its network. Both providers speak CDP.
+ *
+ * Attaching per page and only once matters — #pageFor resolves a page on every call, so a naive
+ * attach would add a listener per action and emit each response N times.
+ */
+describe('CdpRealInputProvider attaches network detail', () => {
+  const fakePage = (url: string): { url(): string; on: (e: string, h: unknown) => void; handlers: unknown[] } => {
+    const handlers: unknown[] = [];
+    return { url: () => url, on: (_e, h) => handlers.push(h), handlers };
+  };
+
+  const providerWith = (pages: ReturnType<typeof fakePage>[], onNetworkDetail?: (d: unknown) => void) =>
+    new CdpRealInputProvider({
+      cdpUrl: 'http://127.0.0.1:9222',
+      connect: () =>
+        Promise.resolve({
+          contexts: () => [{ pages: () => pages }],
+          close: () => Promise.resolve(),
+        } as never),
+      ...(onNetworkDetail === undefined ? {} : { onNetworkDetail }),
+    });
+
+  it('attaches a response listener to the correlated page', async () => {
+    const page = fakePage('http://app/');
+    const provider = providerWith([page], () => undefined);
+    await provider.isAvailableFor('http://app/');
+    expect(page.handlers.length).toBe(1);
+  });
+
+  it('attaches ONCE per page, however many times the page is resolved', async () => {
+    const page = fakePage('http://app/');
+    const provider = providerWith([page], () => undefined);
+    await provider.isAvailableFor('http://app/');
+    await provider.isAvailableFor('http://app/');
+    await provider.isAvailableFor('http://app/');
+    expect(page.handlers.length).toBe(1);
+  });
+
+  it('does nothing when no callback was supplied — the feature stays opt-in', async () => {
+    const page = fakePage('http://app/');
+    const provider = providerWith([page]);
+    await provider.isAvailableFor('http://app/');
+    expect(page.handlers.length).toBe(0);
   });
 });
