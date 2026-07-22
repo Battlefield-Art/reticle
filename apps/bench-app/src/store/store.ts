@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { clearSession, newSession, persistSession } from '../lib/persisted-session.js';
+import { isEnterpriseEnabled } from '../lib/enterprise-config.js';
 import { emit, Sig } from '../lib/reticle-bridge.js';
 import {
   seedActivity,
@@ -12,7 +13,13 @@ import {
   type Kpi,
 } from '../data/seed.js';
 
-export type ViewId = 'overview' | 'deployments' | 'compose' | 'diagnostics' | 'hostile';
+export type ViewId =
+  | 'overview'
+  | 'deployments'
+  | 'compose'
+  | 'diagnostics'
+  | 'hostile'
+  | 'enterprise';
 export type EnvFilter = Env | 'all';
 
 export interface Toast {
@@ -70,7 +77,9 @@ let logSeq = 1;
 let depSeq = 9000;
 
 export const useApp = create<AppState>((set, get) => ({
-  view: 'overview',
+  // The enterprise-scale fixture boots straight into its view when its URL knob is present, so a
+  // benchmark reaches it in one navigation. Every other URL is untouched.
+  view: isEnterpriseEnabled() ? 'enterprise' : 'overview',
   auth: null,
   deployments: seedDeployments(),
   kpis: seedKpis(),

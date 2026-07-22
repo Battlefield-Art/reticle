@@ -60,6 +60,12 @@ export async function generateScript(
   return { script: '', source: 'error', r };
 }
 
+/** Cheap unauthenticated GET — the background-poll target for the enterprise-scale fixture. */
+export async function health(): Promise<ApiResult> {
+  const { r } = await timed('GET', '/api/health');
+  return r;
+}
+
 /** Each fault is a distinct real failure mode (404/500/cors/wrong-format/wrong-data). */
 export async function fault(kind: string): Promise<ApiResult> {
   const authed = kind === 'wrong-data';

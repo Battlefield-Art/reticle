@@ -65,11 +65,14 @@ const LOSS_REASON = {
     'pixels without touching any property an in-page read can see. Only a screenshot is ground truth. ' +
     'This is a permanent limit of reading the program instead of the picture.',
   'net-status':
-    'Reticle observes at the APP boundary — what the page handed to fetch — not at the wire. Anything ' +
-    'that rewrites the request after that point (another fetch wrapper installed later, a service ' +
-    'worker) is invisible to it, while a CDP/proxy observer sees what actually left. In a real app the ' +
-    'equivalent bug lives in the code that BUILDS the body, which Reticle does see; but the blind spot ' +
-    'is real and worth stating rather than explaining away.',
+    'Reticle reads `init.body` inside its own fetch wrapper, so it sees what the page HANDED to fetch, ' +
+    'not what left the machine. Whoever patches fetch last is outermost, and that ordering is decided ' +
+    'by app bootstrap, not by us — so an axios/Sentry/auth interceptor initialised after connect(), a ' +
+    'service worker (which never produces a window.fetch frame at all), or sendBeacon can all rewrite a ' +
+    'request invisibly. A CDP or proxy observer sees the wire and catches it. This is a real limit of ' +
+    'in-page instrumentation, not a fixture artifact: the fix is wire-level capture on the drive path ' +
+    '(read request.postData() in the CDP network-detail listener), which is bounded work but does not ' +
+    'exist yet, and would not help attach-mode sessions at all.',
 };
 
 const rows = JSON.parse(readFileSync(RESULTS, 'utf8')).rows;

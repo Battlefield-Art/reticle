@@ -7,6 +7,7 @@ const TITLES: Record<ViewId, { title: string; sub: string }> = {
   compose: { title: 'Compose', sub: 'generate a release note' },
   diagnostics: { title: 'Diagnostics', sub: 'inject faults, watch the wire' },
   hostile: { title: 'Hostile', sub: 'a page that never goes quiet' },
+  enterprise: { title: 'Enterprise', sub: 'ten thousand nodes, fifteen deep' },
 };
 
 export function Topbar(): React.ReactElement {
