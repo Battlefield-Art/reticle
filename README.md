@@ -131,7 +131,7 @@ well-structured codebase**: we tried twice to build a harder localization case i
 the size and could not — agents localized in 4–13 calls regardless of search space or wording.
 → [Full method and caveats](bench/diagnosis/LOCALIZATION-ABLATION.md)
 
-→ [Full benchmark scorecard](bench/SCORECARD.md) · [What Reticle catches that Playwright can't, and why](bench/pw-vs-reticle/MOAT.md) · [Reproducible token math](docs/token-efficiency.md)
+→ [Confidence, claim by claim](bench/CONFIDENCE.md) · [Full benchmark scorecard](bench/SCORECARD.md) · [What Reticle catches that Playwright can't, and why](bench/pw-vs-reticle/MOAT.md) · [Reproducible token math](docs/token-efficiency.md)
 
 ---
 
