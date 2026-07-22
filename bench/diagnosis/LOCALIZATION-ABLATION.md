@@ -43,18 +43,27 @@ agent smarter. It removes the search.**
 
 **It is a small result and should be quoted as one.**
 
-- **n = 3, and the excluded cell is excluded for operator error — mine.** The fourth bug
-  (`network-timeout`) satisfied the oracle in neither condition, and an earlier draft of this file
-  guessed that its bug report was ambiguous. That was wrong, and the correction matters more than the
-  guess did: **both** of its agents landed on the correct `Diagnostics.tsx:19`. They failed the oracle
-  because the harness reverted the injections while they were still running and wiped their edits.
-  Condition A on this bug ran for 17 minutes and crossed a revert AND a re-inject, so its 69 tool calls
-  are inflated by re-searching a file that changed underneath it. Both cells are dropped together so
-  the exclusion cannot favour a condition. The fix is to gate the revert on agent completion.
+- **n = 3, and the fourth cell was never valid — I found out by re-running it.** This file has now
+  given two wrong explanations for that exclusion, and the third is the real one, so the sequence is
+  worth keeping as a caution about guessing at causes:
 
-  Recorded because the direction is worth seeing even when the magnitude is not usable: **69 → 22 tool
-  calls (−68%)** on the one bug in this set where localization was genuinely hard. That is the case the
-  other three lack, and it is the case the literature is about.
+  1. First draft: "the bug report was ambiguous." A guess.
+  2. Second draft: "operator error — I reverted while its agents ran." True, but not the cause.
+  3. Actual cause, found by re-running it cleanly: **`network-timeout` is not a regression.** Its
+     injection ADDS a fault-trigger button to `Diagnostics.tsx`; the oracle is satisfied when that
+     line is REMOVED. My bug report told the agent the timeout trigger had stopped working — the exact
+     opposite of what the injection does. **No agent could have passed that cell.**
+
+  The clean re-run makes it unmistakable: condition A spent 44 tool calls and condition B 23, and
+  *both* edited `reticle-dev.ts` — a different file from the one condition B was explicitly told to
+  open. Agents given a wrong problem statement do not find the right answer faster; they find a
+  different wrong answer faster. The cell is dropped for being invalid, not for being unlucky, and the
+  −68% direction reported in an earlier draft is **withdrawn**: it was measuring nothing.
+
+  This is also the one place in the suite where a bug report was authored by hand rather than derived
+  from the injection, which is exactly where this class of error gets in. A bug report should be
+  generated from what `apply()` does, not written from memory of what it was supposed to do.
+
 - **One run per cell.** No repeats, so per-bug numbers carry run-to-run variance that is not measured.
 - **The fixture flatters condition A.** `apps/bench-app` is a small app where a symptom description
   greps to the right file in 4 tool calls. On a codebase where localization is genuinely hard — the
