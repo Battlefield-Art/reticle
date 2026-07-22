@@ -9,6 +9,7 @@ import {
 import { refs } from '../dom/refs.js';
 import { getAccessibleName, isVisible, getStates } from '../dom/a11y.js';
 import { elementHasHoverHandlers, identifyComponent } from '../registry/adapters.js';
+import { captureValueSetter } from '../patching/capture-method.js';
 import { nativeSetTimeout, settle } from '../timers/native-timers.js';
 
 /**
@@ -76,8 +77,7 @@ interface ActionResult {
 function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): boolean {
   const proto =
     el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- setter is invoked via .call(el)
-  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  const setter = captureValueSetter(proto);
   if (setter !== undefined) {
     setter.call(el, value);
   } else {

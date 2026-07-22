@@ -71,6 +71,28 @@ export default tseslint.config(
     },
   },
   {
+    // This suite proves the runner survives a non-Error throw, so it has to perform one. The rule is
+    // asking the test not to create the condition it exists to verify. Scoped here for the same
+    // reason as the console files below: declared once, where the rule is governed.
+    files: ['packages/test/src/runner.test.ts'],
+    rules: {
+      '@typescript-eslint/only-throw-error': 'off',
+    },
+  },
+  {
+    // The console observer and its test exist to WRAP console.*, so `no-console` cannot be satisfied
+    // there by refactoring — the rule is asking them not to do the one thing they are for. Scoped
+    // here rather than as an inline disable so the exception is declared once, in the place that
+    // governs the rule, instead of being re-argued in a comment at each use.
+    files: [
+      'packages/browser/src/observers/console.ts',
+      'packages/browser/src/observers/console.test.ts',
+    ],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     // React surfaces: enforce rules-of-hooks (drives the useX naming rule)
     files: ['packages/react/**/*.{ts,tsx}', 'apps/demo/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },

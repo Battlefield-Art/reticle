@@ -1,5 +1,6 @@
 import { EventType, REDACTED_VALUE, RETICLE_WS_PATH } from '@reticlehq/core';
 import { isSensitiveKey } from '../security/serialization.js';
+import { captureMethod } from '../patching/capture-method.js';
 import type { Emit, Teardown } from './types.js';
 import { isCapturableType, projectBody, withBodyDeadline } from './network-body.js';
 
@@ -332,10 +333,8 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
 
   const meta = new WeakMap<XMLHttpRequest, XhrMeta>();
   const proto = XMLHttpRequest.prototype;
- /* eslint-disable @typescript-eslint/unbound-method -- captured to re-invoke via .call(this) */
-  const origOpen = proto.open;
-  const origSend = proto.send;
- /* eslint-enable @typescript-eslint/unbound-method */
+  const origOpen = captureMethod(proto, 'open');
+  const origSend = captureMethod(proto, 'send');
   const callOpen = origOpen as (this: XMLHttpRequest, ...args: unknown[]) => void;
 
   proto.open = function (

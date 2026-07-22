@@ -73,7 +73,6 @@ describe('installConsole', () => {
   });
 
   it('restores the original console methods (identity) on teardown', () => {
-    /* eslint-disable no-console -- asserting console.log identity, not logging */
     const beforeLog = console.log;
     const beforeWarn = console.warn;
     const beforeError = console.error;
@@ -83,6 +82,5 @@ describe('installConsole', () => {
     expect(console.log).toBe(beforeLog);
     expect(console.warn).toBe(beforeWarn);
     expect(console.error).toBe(beforeError);
-    /* eslint-enable no-console */
   });
 });

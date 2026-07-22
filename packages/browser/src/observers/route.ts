@@ -1,5 +1,6 @@
 import { EventType } from '@reticlehq/core';
 import type { Emit, Teardown } from './types.js';
+import { captureMethod } from '../patching/capture-method.js';
 
 function snapshotLocation(): { pathname: string; search: string; hash: string; href: string } {
   return {
@@ -14,10 +15,8 @@ function snapshotLocation(): { pathname: string; search: string; hash: string; h
 export function installRoute(emit: Emit): Teardown {
   // Keep the true originals for teardown identity; bound copies are used for invocation
   // (History methods throw "Illegal invocation" if called with the wrong `this`).
-  /* eslint-disable @typescript-eslint/unbound-method -- captured to restore exact identity on teardown */
-  const origPush = history.pushState;
-  const origReplace = history.replaceState;
-  /* eslint-enable @typescript-eslint/unbound-method */
+  const origPush = captureMethod(history, 'pushState');
+  const origReplace = captureMethod(history, 'replaceState');
   const callPush = origPush.bind(history);
   const callReplace = origReplace.bind(history);
 

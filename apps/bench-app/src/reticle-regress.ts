@@ -31,10 +31,20 @@ function stripExisting(broken: ReadonlySet<string>): void {
  * broken hook is gone the instant React tries to set it, so a deterministic replay querying that
  * anchor sees zero matches on its very first query and drifts. Dev-only; no teardown needed.
  */
+/**
+ * Hold an UNBOUND method so it can be re-invoked with an explicit `this`.
+ *
+ * Local rather than imported from the SDK: the SDK has the same helper, but exporting an internal
+ * patching utility from its public API just to spare a fixture four lines is the wrong trade. The
+ * generic index access is what keeps `unbound-method` satisfied without disabling it.
+ */
+function captureMethod<T, K extends keyof T>(target: T, key: K): T[K] {
+  return target[key];
+}
+
 function patchSetAttribute(broken: ReadonlySet<string>): void {
   // Monkeypatching a prototype method is inherently this-dynamic; we forward `this` via .call below.
-  // eslint-disable-next-line @typescript-eslint/unbound-method
-  const original = Element.prototype.setAttribute;
+  const original = captureMethod(Element.prototype, 'setAttribute');
   Element.prototype.setAttribute = function (this: Element, name: string, value: string): void {
     if (name === TESTID_ATTR && broken.has(value)) {
       original.call(this, STRIPPED_ATTR, value);

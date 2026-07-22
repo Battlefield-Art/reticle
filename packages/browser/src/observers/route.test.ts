@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { EventType } from '@reticlehq/core';
 import { installRoute } from './route.js';
+import { captureMethod } from '../patching/capture-method.js';
 import type { Emit, Teardown } from './types.js';
 
 interface Emitted {
@@ -53,14 +54,14 @@ describe('installRoute', () => {
   });
 
   it('restores the original history methods (identity) on teardown', () => {
-    /* eslint-disable @typescript-eslint/unbound-method -- comparing method identity, not calling */
-    const beforePush = history.pushState;
-    const beforeReplace = history.replaceState;
+    // Identity is the whole assertion — teardown has to put back the SAME function object, not an
+    // equivalent one — so the references are captured the same way the observer captures them.
+    const beforePush = captureMethod(history, 'pushState');
+    const beforeReplace = captureMethod(history, 'replaceState');
     const t = installRoute(collect().emit);
-    expect(history.pushState).not.toBe(beforePush);
+    expect(captureMethod(history, 'pushState')).not.toBe(beforePush);
     t();
-    expect(history.pushState).toBe(beforePush);
-    expect(history.replaceState).toBe(beforeReplace);
-    /* eslint-enable @typescript-eslint/unbound-method */
+    expect(captureMethod(history, 'pushState')).toBe(beforePush);
+    expect(captureMethod(history, 'replaceState')).toBe(beforeReplace);
   });
 });
