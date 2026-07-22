@@ -15,8 +15,43 @@
  */
 
 const OPAQUE_PARAM = 'opaque';
+/**
+ * `?nosource=1` strips the babel plugin's `data-reticle-source` stamps.
+ *
+ * The INVERSE of opaque mode, and it exists for one reason: to run Reticle against itself. Every
+ * other condition in the suite compares Reticle to another tool; this one compares Reticle WITH the
+ * file:line pointer against Reticle WITHOUT it, holding detection, tooling and the app constant. It
+ * is the only way to attribute a change in an agent's behaviour to the pointer rather than to
+ * everything else Reticle does.
+ *
+ * Deliberately does not disable the observers or any tool — only the stamp an agent reads back.
+ */
+const NO_SOURCE_PARAM = 'nosource';
+const SOURCE_ATTR = 'data-reticle-source';
 const STRIP_LEVEL1 = ['data-testid'];
 const STRIP_LEVEL2 = ['data-testid', 'role', 'aria-label', 'aria-labelledby'];
+
+/**
+ * Strip source stamps continuously, so a React re-render cannot restore what the ablation removed.
+ * Runs independently of opaque mode: the two knobs compose.
+ */
+export function installNoSource(): void {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get(NO_SOURCE_PARAM) === null) return;
+
+  const strip = (): void => {
+    for (const el of document.querySelectorAll(`[${SOURCE_ATTR}]`)) {
+      el.removeAttribute(SOURCE_ATTR);
+    }
+  };
+  strip();
+  new MutationObserver(strip).observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: [SOURCE_ATTR],
+  });
+}
 
 export function installOpaqueShell(): void {
   const level = new URLSearchParams(window.location.search).get(OPAQUE_PARAM);

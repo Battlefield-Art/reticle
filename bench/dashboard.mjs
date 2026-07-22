@@ -42,6 +42,7 @@ const parallel = readArtifact('raw/parallel-suite.json') ?? readArtifact('parall
 const overhead = readArtifact('raw/overhead.json') ?? readArtifact('overhead/results.json');
 const firstDrive = readArtifact('raw/first-drive.json') ?? readArtifact('first-drive/results.json');
 const diagnosis = readArtifact('raw/diagnosis.json');
+const diagnosisControl = readArtifact('raw/diagnosis-nosource.json');
 const crossTool = readArtifact('raw/cross-tool-parallel.json');
 
 const out = [];
@@ -168,6 +169,19 @@ if (diagnosis?.summary === undefined) {
   p(`| report carries a \`file:line\` | **${d.sourcePresent}** (${d.coveragePct}%) |`);
   p(`| names the RIGHT file | **${d.sourceCorrect}** (${d.accuracyPct}% of those present) |`);
   p();
+  if (diagnosisControl?.summary !== undefined) {
+    const c = diagnosisControl.summary;
+    p(`**Control** (same run, build-time source stamps stripped at runtime, everything else held): ` +
+      `**${c.sourcePresent} / ${c.scorable} (${c.coveragePct}%)**.`);
+    p();
+    p('That is what makes the number above mean what it says. Coverage collapses to zero when only the');
+    p('stamp is removed, so it is caused by the stamp — not by a hardcoded path, a lucky default, or a');
+    p('harness fabricating the field. A headline metric without this control is an assertion.');
+    p();
+  } else {
+    p(orMissing(undefined, 'node bench/diagnosis/measure.mjs --nosource'));
+    p();
+  }
   p('No competitor column: a browser-automation tool\'s stack trace points at its own test, never at');
   p('the app source. That is the asymmetry — but it also means there is no baseline to beat, so this');
   p('is a capability measurement, not a head-to-head.');

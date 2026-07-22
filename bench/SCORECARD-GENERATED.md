@@ -54,6 +54,12 @@ symptom. Ground truth is derived by scanning the fixture's own source, not hand-
 | report carries a `file:line` | **83** (98%) |
 | names the RIGHT file | **79** (95% of those present) |
 
+**Control** (same run, build-time source stamps stripped at runtime, everything else held): **0 / 22 (0%)**.
+
+That is what makes the number above mean what it says. Coverage collapses to zero when only the
+stamp is removed, so it is caused by the stamp — not by a hardcoded path, a lucky default, or a
+harness fabricating the field. A headline metric without this control is an assertion.
+
 No competitor column: a browser-automation tool's stack trace points at its own test, never at
 the app source. That is the asymmetry — but it also means there is no baseline to beat, so this
 is a capability measurement, not a head-to-head.

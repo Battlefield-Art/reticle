@@ -26,6 +26,7 @@
  *     claims this capability — which is the point, but it also means there is no baseline to beat.
  *
  *   node bench/diagnosis/measure.mjs [--limit N]
+ *   node bench/diagnosis/measure.mjs --nosource   # the control: same run, stamps stripped
  */
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -42,6 +43,18 @@ const PORT = process.env.BENCH_RETICLE_PORT ?? '4461';
 
 const limitArg = process.argv.indexOf('--limit');
 const LIMIT = limitArg === -1 ? BUGS.length : Number(process.argv[limitArg + 1]);
+
+/**
+ * `--nosource` runs the fixture with its build-time source stamps stripped at runtime.
+ *
+ * This is the CONTROL for the headline number. "83 of 85 reports carry a file:line" only means
+ * something if the coverage is caused by the stamp rather than by something incidental in the
+ * fixture — a hardcoded path, a lucky default, a harness that fabricates the field. Removing only the
+ * stamp and re-running should take coverage to zero. If it does not, the metric is measuring
+ * something other than what it claims.
+ */
+const NO_SOURCE = process.argv.includes('--nosource');
+const withCondition = (url) => (NO_SOURCE ? `${url}${url.includes('?') ? '&' : '/?'}nosource=1` : url);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const parseText = (t) => {
@@ -147,7 +160,7 @@ async function main() {
     }
     const testid = chosen[0].testid;
     try {
-      await goto(bugUrl(bug.id));
+      await goto(withCondition(bugUrl(bug.id)));
       // Read each control's source AS IT IS CLICKED, not afterwards.
       //
       // This mirrors what Reticle actually does: act captures the anchor and its source BEFORE
@@ -217,11 +230,11 @@ async function main() {
 
   mkdirSync(path.join(HERE, '..', 'raw'), { recursive: true });
   writeFileSync(
-    path.join(HERE, '..', 'raw', 'diagnosis.json'),
+    path.join(HERE, '..', 'raw', NO_SOURCE ? 'diagnosis-nosource.json' : 'diagnosis.json'),
     JSON.stringify({ summary, rows }, null, 2),
   );
 
-  console.log('\n=== Source-pointer coverage (Reticle) ===\n');
+  console.log(`\n=== Source-pointer coverage (Reticle${NO_SOURCE ? ', STAMPS STRIPPED — control' : ''}) ===\n`);
   console.log(`scorable bugs        ${String(summary.scorable)} / ${String(summary.bugsAttempted)}`);
   console.log(`carries a source     ${String(summary.sourcePresent)}  (${String(summary.coveragePct)}%)`);
   console.log(`names the right file ${String(summary.sourceCorrect)}  (${String(summary.accuracyPct)}% of those present)`);
@@ -236,7 +249,7 @@ async function main() {
       console.log(`  ${r.bug}: got ${String(r.reported)}, expected one of ${r.truthFiles.join(', ')}`);
     }
   }
-  console.log('\nwritten to bench/raw/diagnosis.json');
+  console.log(`\nwritten to bench/raw/${NO_SOURCE ? 'diagnosis-nosource.json' : 'diagnosis.json'}`);
   await client.stop?.();
   process.exit(0);
 }

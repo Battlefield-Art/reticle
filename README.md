@@ -63,6 +63,7 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 | Output consumed per bug                                   | 11.8 KB vs Playwright 8.2 KB — _we cost more_     |
 | Cost of the `file:line` itself                            | **38 bytes** per element described                |
 | Reports that name the file to open (`file:line`)          | **83 / 85** carry one; **79** name the exact file |
+| Same run, source stamps stripped (control)                | **0 / 22** — the coverage is caused by the stamp  |
 | Cost to re-run a 4-flow regression suite                  | **~47 tokens**, constant in suite size            |
 | Same suite, LLM re-driven (Playwright/DevTools MCP)       | ~120,000 tokens                                   |
 | **Regression-run token cost at 4 flows**                  | **2,574× cheaper** (a cost ratio, not a speed-up) |
