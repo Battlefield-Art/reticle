@@ -61,6 +61,7 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 | False-positive traps (bug-shaped non-bugs)                | **2 / 2 held** (Playwright 2 / 2)                 |
 | Wall-time per bug                                         | **3.6 s** vs Playwright 32.5 s                    |
 | Output consumed per bug                                   | 11.8 KB vs Playwright 8.2 KB — _we cost more_     |
+| Cost of the `file:line` itself                            | **38 bytes** per element described                |
 | Reports that name the file to open (`file:line`)          | **83 / 85** carry one; **79** name the exact file |
 | Cost to re-run a 4-flow regression suite                  | **~47 tokens**, constant in suite size            |
 | Same suite, LLM re-driven (Playwright/DevTools MCP)       | ~120,000 tokens                                   |
@@ -68,6 +69,8 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 | Flake rate on deterministic replay                        | **0%**                                            |
 | Real app, first pass: live `500`s the UI hid              | **2 caught**                                      |
 | Parallel agents on **one** browser (16 flows, 8 contexts) | **6.78× faster** (Playwright's own: 4.08×)        |
+| SDK overhead, 9,083-node app (20 req/s, 285 transition/s) | **< 1.2 pp** of main thread — under a 3% bar      |
+| Exact match count on a 4,000-element query                | **62 bytes**, 46 ms (`count_only`)                |
 
 **The catch rate isn't the story — _which_ bugs is.** Severity is graded by consequence to the user,
 not by how hard the bug is to find:
@@ -93,11 +96,14 @@ gap is 24 vs 8. **Use both.** That is the honest recommendation, and it's why we
   are the ones that survived an adversarial pass on the competitor's side.
 - **2,574× was labelled "Speed-up".** It is a _token cost_ ratio for re-running a recorded suite, not
   a wall-clock one. The wall-clock number is 9×.
-- **We now consume MORE output per bug than Playwright, not less.** Attaching the `file:line` to every
-  element we report costs about 47% more bytes (8.0 KB → 11.8 KB). We think that trade is right —
-  the published repair literature puts file-level localization at roughly +50pp of fix rate, and
-  measures better localization as _reducing_ an agent's total tokens by cutting the search — but we
-  have not measured that end-to-end ourselves, so treat it as a considered bet, not a proven one.
+- **We now consume MORE output per bug than Playwright, not less.** Attaching the `file:line` costs
+  **38 bytes per element described**. That reads as "+47% per bug" here only because the benchmark
+  harness polls for elements with full queries — about 98 descriptor-returns per bug — so it pays for
+  descriptors it then discards. A normal agent loop describes far fewer elements, and can pass
+  `count_only:true` when it only needs existence. We think the trade is right: the published repair
+  literature puts file-level localization at roughly +50pp of fix rate, and measures better
+  localization as _reducing_ an agent's total tokens by cutting the search. We have not measured that
+  end-to-end ourselves, so treat it as a considered bet, not a proven one.
 
 **Where we lose:** Playwright catches paint-level regressions we can't see (a global CSS filter leaves
 every computed style identical — that needs pixels), and it caught one request-payload bug we missed.

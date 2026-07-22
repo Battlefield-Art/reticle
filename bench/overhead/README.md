@@ -36,6 +36,32 @@ old two-condition method charged instrumentation for the presenter HUD as well.
 
 **Instrumentation overhead: not resolvable above noise → report as `< 1.2pp`. Budget < 3%: PASS.**
 
+### At enterprise scale
+
+The result above is the small hostile fixture. Re-run against `?enterprise=1` — **9,083 DOM nodes,
+max depth 27, 4,000 elements sharing a testid prefix, ~20 req/s of background polling, ~285
+transitionend/s, and a 300-node subtree mounting and unmounting every second**:
+
+| | main-thread task time | busy |
+| --- | --- | --- |
+| full (observers + HUD) | 1.890 s | 23.6% |
+| observers only | 1.846 s | 23.1% |
+| Reticle absent | 1.807 s | 22.6% |
+| **instrumentation** | **+0.48 pp** | below the ±1.21 pp noise floor |
+| **presenter HUD** | **+0.54 pp** | |
+
+**Instrumentation stays under the budget at ~9k nodes.** That is the honest answer to "does this hold
+on a real app" for the OBSERVER path.
+
+The first attempt at this measurement was invalid and worth recording: `measure.mjs` hardcoded a nav
+click to the hostile view, so it loaded the enterprise fixture and then navigated away from it,
+returning numbers identical to the small page. A harness that silently measures the wrong thing
+produces a plausible number, which is worse than an error.
+
+**Pointing the query tools at the same page found a real bug the overhead number could not see** —
+`reticle_query` with thousands of matches was failing MCP output validation outright. See the commit
+"a broad query on a large page returned an ERROR, not a result". Overhead is not the only scale axis.
+
 ### How this got here, because the intermediate numbers were alarming
 
 A two-condition run first reported **+5.85 pp — FAIL**, reproduced three times. Decomposing it found
