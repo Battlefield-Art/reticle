@@ -12,7 +12,7 @@ argued but not measured. **NONE** means we tried and could not.
 
 | #  | Claim                                        | Evidence                                                                                | Confidence                                                                                                                                                   |
 | -- | -------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1  | Catches bugs a Playwright script misses      | 85-bug registry: **82/85** vs 57/85; **24/25 critical vs 8/25**                         | **HIGH** for detection; **MEDIUM** on the exact figure — 82 comes from a Reticle-only re-run after four harness defects were fixed, not a fresh head-to-head |
+| 1  | Catches bugs a Playwright script misses      | 85-bug registry: **83/85** vs 57/85; **25/25 critical vs 8/25**; 0 real bugs missed      | **HIGH** — fresh full head-to-head, both harnesses re-run end to end after the harness defects were fixed                                                    |
 | 2  | Does not flag healthy builds                 | 0 false positives on every clean variant, both runs; 2/2 false-positive traps held      | **HIGH** — repeated                                                                                                                                          |
 | 3  | A failure names the file to open             | 83/85 carry `file:line`; 79 name the exact file                                         | **HIGH** — plus a control (0/22 with stamps stripped) proving the stamp causes it                                                                            |
 | 4  | That pointer is not obtainable another way   | 0/5 recoverable via any other Reticle route, inspect included                           | **HIGH** — direct measurement, both conditions                                                                                                               |
@@ -42,6 +42,12 @@ argued but not measured. **NONE** means we tried and could not.
   positive).
 - **That the false-green list is complete.** Five were found by auditing for one bug's *shape*. The
   audit found them; it cannot prove there is no sixth.
+- **That detection is free.** It is not, and the last change made it worse. Capturing the wire request
+  body — the fix that took `payload-missing-field` from missed to caught — moved average output per
+  bug from **8.5 KB to 9.97 KB**, against Playwright's 8.2 KB. Reticle is now the *more* expensive of
+  the two per bug, having previously been at parity. That is a deliberate trade (a whole class of
+  request-payload bugs is structurally invisible without it) but it is a trade, and the README states
+  the losing number rather than dropping the row.
 
 ## The honest summary
 

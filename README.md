@@ -55,12 +55,13 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 
 | Check                                                     | Result                                                    |
 | --------------------------------------------------------- | --------------------------------------------------------- |
-| Bugs caught (85 injected regressions, controlled app)     | **82 / 85** (Playwright-script 57)                        |
-| Caught of those it _can_ catch                            | **82 / 83** (Playwright 55 / 57)                          |
+| Bugs caught (85 injected regressions, controlled app)     | **83 / 85** (Playwright-script 57)                        |
+| Caught of those it _can_ catch                            | **83 / 83** (Playwright 55 / 57)                          |
+| Critical-severity bugs caught                             | **25 / 25** (Playwright 8 / 25)                           |
 | **False positives (clean build)**                         | **0** (Playwright 0)                                      |
 | False-positive traps (bug-shaped non-bugs)                | **2 / 2 held** (Playwright 2 / 2)                         |
-| Wall-time per bug                                         | **3.6 s** vs Playwright 32.4 s                            |
-| Output consumed per bug                                   | 8.5 KB vs Playwright 8.2 KB — _near parity_               |
+| Wall-time per bug                                         | **3.6 s** vs Playwright 36.7 s                            |
+| Output consumed per bug                                   | 9.7 KB vs Playwright 8.2 KB — _we are now the more expensive one_ |
 | Cost of the `file:line` itself                            | **38 bytes** per element described                        |
 | Reports that name the file to open (`file:line`)          | **83 / 85** carry one; **79** name the exact file         |
 | Same run, source stamps stripped (control)                | **0 / 22** — the coverage is caused by the stamp          |
