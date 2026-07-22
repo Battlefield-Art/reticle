@@ -94,3 +94,89 @@ describe('attachNetworkDetail', () => {
     expect(events[0]).toMatchObject({ url: 'https://api/x', status: 200, method: 'GET' });
   });
 });
+
+/**
+ * The wire body, for the one blind spot in-page instrumentation cannot cover.
+ *
+ * Reticle reads `init.body` inside its OWN fetch wrapper, so it records what the page HANDED to
+ * fetch — not what left the machine. Whoever patches fetch last is outermost, and app bootstrap
+ * decides that, not us: an axios/auth/analytics interceptor initialised after connect(), or a service
+ * worker (which produces no window.fetch frame at all), can rewrite a request invisibly. Our own
+ * benchmark has a bug of exactly this shape that Playwright catches and we miss.
+ *
+ * On the DRIVE path the daemon owns the browser and can read the request as the network stack sees
+ * it, which closes the gap for that path. It does nothing for attach-mode sessions, and the tests
+ * below are the contract for the half that is fixable.
+ */
+describe('authoritative request body', () => {
+  const ev = (type: EventType, data: Record<string, unknown>): ReticleEvent => ({
+    t: 1,
+    type,
+    sessionId: 's',
+    data,
+  });
+
+  it('carries the wire body onto the detail', () => {
+    const d = buildNetworkDetail({
+      url: 'https://api.test/generate',
+      method: 'POST',
+      status: 200,
+      headers: {},
+      requestBody: '{"prompt":"hello"}',
+    });
+    expect(d.requestBody).toBe('{"prompt":"hello"}');
+  });
+
+  it('redacts credentials in the wire body — it is raw and unscrubbed from Playwright', () => {
+    const d = buildNetworkDetail({
+      url: 'https://api.test/login',
+      method: 'POST',
+      status: 200,
+      headers: {},
+      requestBody: '{"password":"hunter2","token":"sk_live_abcdefghijklmnop"}',
+    });
+    expect(d.requestBody).not.toContain('hunter2');
+    expect(d.requestBody).not.toContain('sk_live_abcdefghijklmnop');
+  });
+
+  it('bounds an enormous wire body rather than journaling it whole', () => {
+    const d = buildNetworkDetail({
+      url: 'https://api.test/upload',
+      method: 'POST',
+      status: 200,
+      headers: {},
+      requestBody: 'x'.repeat(500_000),
+    });
+    expect(d.requestBody).toBeDefined();
+    expect(String(d.requestBody).length).toBeLessThanOrEqual(8_300);
+  });
+
+  it('omits the field entirely when there is no body (a GET)', () => {
+    const d = buildNetworkDetail({ url: 'https://api.test/x', method: 'GET', status: 200, headers: {} });
+    expect('requestBody' in d).toBe(false);
+  });
+
+  /**
+   * The in-page value is what the app INTENDED to send; the wire value is what actually went. When
+   * they differ that IS the bug, so the authoritative one must win — this is the only merge field
+   * that overwrites rather than filling a gap, and the reason is worth stating at the assertion.
+   */
+  it('overwrites the in-page body, because a disagreement is the finding', () => {
+    const merged = mergeNetworkDetail([
+      ev(EventType.NET_REQUEST, { url: 'https://api.test/generate', method: 'POST', requestBody: '{"prompt":"hello"}' }),
+      ev(EventType.NET_DETAIL, { url: 'https://api.test/generate', method: 'POST', requestBody: '{}' }),
+    ]);
+    const req = merged.find((e) => e.type === EventType.NET_REQUEST);
+    expect(req?.data['requestBody']).toBe('{}');
+    expect(req?.data['requestBodyDivergedFromPage']).toBe(true);
+  });
+
+  it('does not flag divergence when the two agree', () => {
+    const merged = mergeNetworkDetail([
+      ev(EventType.NET_REQUEST, { url: 'https://api.test/a', method: 'POST', requestBody: '{"a":1}' }),
+      ev(EventType.NET_DETAIL, { url: 'https://api.test/a', method: 'POST', requestBody: '{"a":1}' }),
+    ]);
+    const req = merged.find((e) => e.type === EventType.NET_REQUEST);
+    expect(req?.data['requestBodyDivergedFromPage']).toBeUndefined();
+  });
+});

@@ -14,3 +14,4 @@ export * from './consequence.js';
 export * from './types.js';
 export * from './verification-run.js';
 export * from './upgrade.js';
+export * from './redaction.js';

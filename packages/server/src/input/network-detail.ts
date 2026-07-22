@@ -1,4 +1,10 @@
-import { EventType, type ReticleEvent } from '@reticlehq/core';
+import {
+  EventType,
+  REDACTED_VALUE,
+  isSensitiveKey,
+  scrubKnownSecrets,
+  type ReticleEvent,
+} from '@reticlehq/core';
 
 /**
  * CDP-authoritative network detail, driven only). On the `reticle drive` path the daemon owns a
@@ -15,6 +21,37 @@ export interface NetworkDetail {
   status: number;
   headers: Record<string, string>;
   resourceType?: string;
+  /**
+   * The request body as the NETWORK STACK saw it — what actually left, not what the page handed to
+   * fetch. Redacted and bounded here because it arrives raw from the driver.
+   *
+   * This is the one thing in-page instrumentation structurally cannot get: Reticle reads `init.body`
+   * inside its own fetch wrapper, and whoever patches fetch last is outermost — app bootstrap
+   * decides that, not us. An interceptor initialised after connect(), or a service worker (no
+   * window.fetch frame at all), rewrites requests invisibly. Available on the DRIVE path only.
+   */
+  requestBody?: string;
+}
+
+/** Bound on a captured wire body — matches the in-page capture so the two are comparable. */
+const MAX_WIRE_BODY_CHARS = 8192;
+
+/**
+ * Redact and bound a raw wire body.
+ *
+ * Playwright hands this over unscrubbed, so it is the one payload in the system that reaches the
+ * journal without having passed through the SDK's sanitizer. Both passes matter: `scrubKnownSecrets`
+ * catches credential SHAPES wherever they sit, and the key sweep catches values under a
+ * credential-named field whose shape is unremarkable (a plain password).
+ */
+function projectWireBody(raw: string): string {
+  const bounded = raw.length > MAX_WIRE_BODY_CHARS ? raw.slice(0, MAX_WIRE_BODY_CHARS) : raw;
+  const byShape = scrubKnownSecrets(bounded);
+  // Field-name sweep over JSON-ish `"key": "value"` pairs — string-level so it never has to parse
+  // (and so a truncated body, which is no longer valid JSON, is still redacted).
+  return byShape.replace(/"([^"]+)"\s*:\s*"([^"]*)"/g, (whole, key: string) =>
+    isSensitiveKey(key) ? `"${key}":"${REDACTED_VALUE}"` : whole,
+  );
 }
 
 /** Header names are case-insensitive; normalize to lower-case so a merge/compare is stable. */
@@ -31,6 +68,7 @@ export function buildNetworkDetail(raw: {
   status: number;
   headers: Record<string, string>;
   resourceType?: string;
+  requestBody?: string;
 }): NetworkDetail {
   return {
     url: raw.url,
@@ -38,6 +76,9 @@ export function buildNetworkDetail(raw: {
     status: raw.status,
     headers: lowerKeys(raw.headers),
     ...(raw.resourceType === undefined ? {} : { resourceType: raw.resourceType }),
+    ...(raw.requestBody === undefined || raw.requestBody.length === 0
+      ? {}
+      : { requestBody: projectWireBody(raw.requestBody) }),
   };
 }
 
@@ -75,6 +116,18 @@ export function mergeNetworkDetail(events: readonly ReticleEvent[]): ReticleEven
       if (data['resourceType'] === undefined && e.data['resourceType'] !== undefined) {
         data['resourceType'] = e.data['resourceType'];
       }
+      // The ONLY field that overwrites rather than filling a gap. The in-page value is what the app
+      // INTENDED to send; this is what actually went. When they disagree, the disagreement is the
+      // finding — that is the whole reason for capturing it — so the authoritative one wins and the
+      // divergence is flagged rather than silently resolved.
+      const wireBody = e.data['requestBody'];
+      if (typeof wireBody === 'string') {
+        const pageBody = data['requestBody'];
+        if (typeof pageBody === 'string' && pageBody !== wireBody) {
+          data['requestBodyDivergedFromPage'] = true;
+        }
+        data['requestBody'] = wireBody;
+      }
       enriched.set(match, { ...base, data });
       continue; // the detail is absorbed into the request
     }
@@ -91,7 +144,7 @@ export interface ResponseLike {
   url(): string;
   status(): number;
   headers(): Record<string, string> | Promise<Record<string, string>>;
-  request(): { method(): string; resourceType?(): string };
+  request(): { method(): string; resourceType?(): string; postData?(): string | null };
 }
 export interface PageLike {
   on(event: 'response', handler: (response: ResponseLike) => void): void;
@@ -106,6 +159,8 @@ export function attachNetworkDetail(page: PageLike, emit: (detail: NetworkDetail
     void Promise.resolve(response.headers()).then((headers) => {
       const request = response.request();
       const resourceType = request.resourceType?.();
+      // postData is null for GETs and for bodies the driver did not retain; both mean "nothing to say".
+      const postData = request.postData?.() ?? null;
       emit(
         buildNetworkDetail({
           url: response.url(),
@@ -113,6 +168,7 @@ export function attachNetworkDetail(page: PageLike, emit: (detail: NetworkDetail
           status: response.status(),
           headers,
           ...(resourceType === undefined ? {} : { resourceType }),
+          ...(postData === null ? {} : { requestBody: postData }),
         }),
       );
     });
