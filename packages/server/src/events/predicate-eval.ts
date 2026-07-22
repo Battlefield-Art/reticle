@@ -89,6 +89,21 @@ export interface EvalResult {
   pass: boolean;
   evidence?: unknown;
   failureReason?: string;
+  /**
+   * The failure, structured — what was seen, what was required, and which oracle judged it.
+   *
+   * `failureReason` says the same thing in prose, and prose is the WRONG shape for this: measured on
+   * three seeded bugs, an agent handed observed/expected/assertion alongside the source pointer used
+   * fewer tool calls than one handed the pointer alone, and the repair literature has structured
+   * feedback beating rich natural-language feedback by 10.5pp. The prose stays for humans reading a
+   * log; these three fields are for the agent.
+   *
+   * Optional because they are populated per oracle, not globally — see the note in predicate.ts on
+   * which classes carry them today.
+   */
+  observed?: string;
+  expected?: string;
+  assertion?: string;
 }
 
 function str(value: unknown): string | undefined {

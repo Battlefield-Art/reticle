@@ -56,11 +56,15 @@ async function evalElement(
   absent: boolean,
 ): Promise<EvalResult> {
   const match = await matchOnce(session, query, state);
+  const subject = JSON.stringify(query);
   if (absent) {
     return match.matched
       ? {
           pass: false,
           failureReason: `expected element to be absent but found ${String(match.count)}`,
+          observed: `${String(match.count)} element(s) matching ${subject}`,
+          expected: `no element matching ${subject}`,
+          assertion: 'element.absent',
           evidence: match.elements,
         }
       : { pass: true, evidence: { absent: true } };
@@ -74,6 +78,11 @@ async function evalElement(
       return {
         pass: false,
         failureReason: `element exists but not in state '${state}'`,
+        observed: `element matching ${subject} is present, states: ${
+          relaxed.elements[0]?.states.join(', ') ?? 'unknown'
+        }`,
+        expected: `element matching ${subject} in state '${state}'`,
+        assertion: 'element.state',
         evidence: { nearMiss: relaxed.elements },
       };
     }
@@ -87,13 +96,22 @@ async function evalElement(
           .map((e) => e.name)
           .filter((n) => n.length > 0)
           .join(', ')}`,
+        observed: `${String(roleOnly.count)} '${query.role}' element(s), named: ${roleOnly.elements
+          .map((e) => e.name)
+          .filter((n) => n.length > 0)
+          .join(', ')}`,
+        expected: `a '${query.role}' named '${query.name}'`,
+        assertion: 'element.role+name',
         evidence: { nearMiss: roleOnly.elements },
       };
     }
   }
   return {
     pass: false,
-    failureReason: `no element matched ${JSON.stringify(query)}${state === undefined ? '' : ` in state '${state}'`}`,
+    failureReason: `no element matched ${subject}${state === undefined ? '' : ` in state '${state}'`}`,
+    observed: 'no matching element on the page',
+    expected: `an element matching ${subject}${state === undefined ? '' : ` in state '${state}'`}`,
+    assertion: 'element.present',
   };
 }
 

@@ -589,3 +589,102 @@ describe('waitForPredicate coalescing', () => {
     expect(r.pass).toBe(true);
   });
 });
+
+/**
+ * A failure carries its cause as STRUCTURE, not only as prose.
+ *
+ * `failureReason` already said this in a sentence, and a sentence is the wrong shape for a consumer
+ * that has to branch on it. Measured on three seeded bugs, an agent given observed/expected/assertion
+ * alongside the source pointer used fewer tool calls than one given the pointer alone; the repair
+ * literature separately has structured feedback beating rich natural-language feedback by 10.5pp,
+ * with narrative finishing LAST. The prose stays for humans reading a log.
+ *
+ * Scope, stated so it cannot be mistaken for complete: the ELEMENT oracle carries these today. The
+ * other classes (net, state, signal, console, route, settled, animation) still return prose only —
+ * that is the remaining work, and the last test here names it rather than leaving it to memory.
+ */
+describe('element failures carry observed/expected/assertion', () => {
+  const session = (elements: { states?: string[]; name?: string }[]): PredicateSession =>
+    ({
+      eventsSince: () => [],
+      elapsed: () => 0,
+      // Honours the state filter the way matchQuery does — without that, a state assertion "matches"
+      // its own relaxed retry and the near-miss branch is never reached.
+      command: (_cmd: string, args?: Record<string, unknown>) => {
+        const want = typeof args?.['state'] === 'string' ? args['state'] : undefined;
+        const all = elements.map((e, i) => ({
+          ref: `e${String(i)}`,
+          role: 'button',
+          name: e.name ?? 'Save',
+          states: e.states ?? ['present', 'visible', 'enabled'],
+          visible: true,
+        }));
+        const hit = want === undefined ? all : all.filter((e) => e.states.includes(want));
+        return Promise.resolve({
+          kind: 'command_result',
+          id: 'c',
+          ok: true,
+          result: { matched: hit.length > 0, count: hit.length, elements: hit },
+        });
+      },
+    }) as unknown as PredicateSession;
+
+  it('a missing element states what was looked for and what was seen', async () => {
+    const r = await evaluatePredicate(session([]), {
+      kind: 'element',
+      query: { by: 'testid', value: 'new-deploy' },
+    });
+    expect(r.pass).toBe(false);
+    expect(r.assertion).toBe('element.present');
+    expect(r.observed).toContain('no matching element');
+    expect(r.expected).toContain('new-deploy');
+  });
+
+  it('an element present in the wrong state reports the states it actually had', async () => {
+    const r = await evaluatePredicate(session([{ states: ['present', 'hidden'] }]), {
+      kind: 'element',
+      query: { by: 'testid', value: 'new-deploy' },
+      state: 'visible',
+    });
+    expect(r.pass).toBe(false);
+    expect(r.assertion).toBe('element.state');
+    expect(r.observed).toContain('hidden');
+    expect(r.expected).toContain('visible');
+  });
+
+  it('an absent-assertion that finds something reports the count', async () => {
+    const r = await evaluatePredicate(session([{}, {}]), {
+      kind: 'element',
+      query: { by: 'testid', value: 'toast' },
+      absent: true,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.assertion).toBe('element.absent');
+    expect(r.observed).toContain('2');
+  });
+
+  it('a PASSING assertion carries no failure structure — it is not noise on the green path', async () => {
+    const r = await evaluatePredicate(session([{}]), {
+      kind: 'element',
+      query: { by: 'testid', value: 'new-deploy' },
+    });
+    expect(r.pass).toBe(true);
+    expect(r.assertion).toBeUndefined();
+    expect(r.observed).toBeUndefined();
+  });
+
+  /**
+   * Deliberately asserts the CURRENT limit. When a net/state/signal oracle grows these fields this
+   * test goes red, which is the prompt to move it — an unrecorded gap is one nobody closes.
+   */
+  it('records that non-element oracles do NOT carry them yet', async () => {
+    const r = await evaluatePredicate(session([]), {
+      kind: 'net',
+      urlContains: '/api/x',
+      count: 1,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.failureReason).toBeDefined();
+    expect(r.assertion).toBeUndefined();
+  });
+});

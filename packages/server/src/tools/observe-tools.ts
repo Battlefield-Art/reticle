@@ -179,6 +179,15 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Present ONLY when the ring buffer evicted events during this window. A passing assertion — especially an absence one — may then be a false negative: the evidence that would have failed it could have been dropped. Absence of this block means the buffer was intact and the verdict is trustworthy.',
         ),
+      observed: z
+        .string()
+        .optional()
+        .describe('What was actually seen — the structured half of failureReason, for the agent rather than a log.'),
+      expected: z.string().optional().describe('What the oracle required.'),
+      assertion: z
+        .string()
+        .optional()
+        .describe('Which oracle judged it, e.g. element.state — lets an agent branch on the failure KIND without parsing prose.'),
       source: z
         .string()
         .optional()
@@ -237,6 +246,15 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .string()
         .optional()
         .describe('Present on a PASSING presence-only assertion — nudges toward a consequence.'),
+      observed: z
+        .string()
+        .optional()
+        .describe('What was actually seen — the structured half of failureReason, for the agent rather than a log.'),
+      expected: z.string().optional().describe('What the oracle required.'),
+      assertion: z
+        .string()
+        .optional()
+        .describe('Which oracle judged it, e.g. element.state — lets an agent branch on the failure KIND without parsing prose.'),
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
