@@ -11,9 +11,10 @@ fresh general-purpose agent was given a user-visible bug report and told to find
 conditions differing in **one line of text**:
 
 - **A — symptom only.** The bug report as a user would write it.
-- **B — symptom + pointer.** The identical report, plus
-  `The verification layer additionally reports the failing element's source location: <file>:<line>` —
-  the exact artifact Reticle now emits on a failure.
+- **B — symptom + pointer.** The identical report, plus the source location — and specifically the
+  location Reticle **actually emits**, which is where the acted ELEMENT is rendered, not where the bug
+  is caused. Those are the same file for two of these bugs and different for the third, and getting
+  that distinction wrong is the single easiest way to inflate this experiment (see below).
 
 Both conditions had the same repo, the same tools, and the same instructions. Agents were forbidden
 from using `git` in any form (`diff`, `log`, `show`, `stash`, `checkout`), because the injected change
@@ -23,15 +24,31 @@ Tool-call counts are the harness's own `tool_uses`, not the agents' self-reports
 
 ## Result (n = 3 paired)
 
-| bug | A: symptom only | B: + `file:line` | change |
-| --- | ---: | ---: | ---: |
-| silent-dom-regression | 4 | 2 | −50% |
-| signal-contract-violation | 13 | 4 | −69% |
-| broken-form-validation | 6 | 3 | −50% |
-| **total tool calls** | **23** | **9** | **−61%** |
-| **fixed correctly** | **3 / 3** | **3 / 3** | no change |
+| bug | A: symptom only | B: + `file:line` | change | element file = cause file? |
+| --- | ---: | ---: | ---: | --- |
+| silent-dom-regression | 4 | 2 | −50% | yes |
+| signal-contract-violation | 13 | 6 | −54% | **no** — element in a view, cause in the store |
+| broken-form-validation | 6 | 3 | −50% | yes |
+| **total tool calls** | **23** | **11** | **−52%** | |
+| **fixed correctly** | **3 / 3** | **3 / 3** | no change | |
 
 Every agent in both conditions landed on the correct file and line.
+
+### The correction that produced these numbers
+
+An earlier run of this table reported **−61%**, because condition B for `signal-contract-violation` was
+handed `store.ts:99` — the line that actually needed changing. **Reticle cannot produce that.** It
+reports where the acted control is rendered (`Deployments.tsx:74`); the cause is a store method one hop
+away. Giving the agent the fix site measured a tool we do not have.
+
+Re-run with the pointer Reticle genuinely emits: **6 tool calls instead of 4**, and the agent still
+traced correctly from the control to the store. The honest total is **−52%**, not −61%.
+
+**This is a real property of the artifact, not a benchmarking detail.** For a bug whose symptom and
+cause live in the same component, the pointer lands on the fix. For a signal, state or network bug,
+it lands on the control that should have produced the effect — a starting point, not the answer, and
+the agent still pays one hop. The measurement above includes that hop, which is why one of the three
+cells improves less than the others.
 
 ## What this does and does not say
 
