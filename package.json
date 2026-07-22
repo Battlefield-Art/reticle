@@ -2,7 +2,7 @@
   "name": "reticle-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "Reticle — the proof layer for AI agents. Observe and verify a running web app over MCP, no screenshots.",
+  "description": "Reticle \u2014 the proof layer for AI agents. Observe and verify a running web app over MCP, no screenshots.",
   "packageManager": "pnpm@10.33.2",
   "engines": {
     "node": ">=22.12"
@@ -15,6 +15,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test:unit",
     "test:unit": "turbo run test:unit",
+    "test:e2e": "bash apps/e2e/run-ci.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "bench": "node bench/harness/bench-all.mjs",

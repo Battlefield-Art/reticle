@@ -63,4 +63,8 @@ This is **one git repo** at the root (pnpm + turbo monorepo). The TS library pac
 
 ## Pre/post-coding checklist
 
-**Before coding:** scan for existing code to reuse → identify the constants you'll need and add them first → write the failing test. **After coding:** refactor with tests green → check file < 500 lines → run `pnpm lint && pnpm typecheck && pnpm test:unit` → confirm no `any`, no free strings, no `console.log`.
+**Before coding:** scan for existing code to reuse → identify the constants you'll need and add them first → write the failing test. **After coding:** refactor with tests green → check file < 500 lines → run `pnpm lint && pnpm typecheck && pnpm test:unit` **before committing, not chained after it** → confirm no `any`, no free strings, no `console.log`.
+
+**Touching the tool surface, the wire contract, or an observer?** Also run `pnpm test:e2e` (boots api + bench-app + next-smoke, ~20 min). The unit gate cannot see cross-package drift: a tool rename once left four e2e specs dead across a whole framework and nothing caught it, because the battery is not part of `test:unit`. `e2e-surface-drift.test.ts` now catches the name-lookup half of that in the fast gate; the rest still needs the battery.
+
+**Timing assertions are a bug.** Two flaky tests this build both asserted a DURATION when the invariant was a BOUND. If the property is "cost is fixed", assert the bound (output size, truncation flag) or use a generous per-test timeout — never `Date.now() - t < N`, which is a statement about the machine and fails only under parallel load, i.e. only in CI.
