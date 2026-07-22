@@ -43,12 +43,18 @@ agent smarter. It removes the search.**
 
 **It is a small result and should be quoted as one.**
 
-- **n = 3, and the excluded cell is excluded for an honest reason.** The fourth bug
-  (`network-timeout`) did not satisfy the oracle in either condition. Its condition-B agent was still
-  running when the harness reverted the injections, so its result is contaminated by that cleanup
-  rather than by anything about the condition — a mistake in how this run was operated, not a finding.
-  Both of its cells are dropped together so the exclusion cannot favour a condition. Re-run it with
-  the revert gated on agent completion.
+- **n = 3, and the excluded cell is excluded for operator error — mine.** The fourth bug
+  (`network-timeout`) satisfied the oracle in neither condition, and an earlier draft of this file
+  guessed that its bug report was ambiguous. That was wrong, and the correction matters more than the
+  guess did: **both** of its agents landed on the correct `Diagnostics.tsx:19`. They failed the oracle
+  because the harness reverted the injections while they were still running and wiped their edits.
+  Condition A on this bug ran for 17 minutes and crossed a revert AND a re-inject, so its 69 tool calls
+  are inflated by re-searching a file that changed underneath it. Both cells are dropped together so
+  the exclusion cannot favour a condition. The fix is to gate the revert on agent completion.
+
+  Recorded because the direction is worth seeing even when the magnitude is not usable: **69 → 22 tool
+  calls (−68%)** on the one bug in this set where localization was genuinely hard. That is the case the
+  other three lack, and it is the case the literature is about.
 - **One run per cell.** No repeats, so per-bug numbers carry run-to-run variance that is not measured.
 - **The fixture flatters condition A.** `apps/bench-app` is a small app where a symptom description
   greps to the right file in 4 tool calls. On a codebase where localization is genuinely hard — the
