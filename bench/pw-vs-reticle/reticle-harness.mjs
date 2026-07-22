@@ -13,8 +13,26 @@ const REPO = path.resolve(__dirname, '..', '..');
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = process.env.BENCH_RETICLE_PORT ?? '4460';
-/** DevTools port the harness's own Chrome listens on, so the daemon can drive the same tab. */
-const CDP_PORT = process.env.BENCH_CDP_PORT ?? '9377';
+/**
+ * DevTools port the harness's own Chrome listens on, so the daemon can drive the same tab.
+ *
+ * Per-process, NOT a constant. A fixed port is silently wrong when a previous run's Chrome is still
+ * holding it: the new Chrome fails to bind, the daemon connects to the SURVIVOR, and every screenshot
+ * comes from a browser sitting on a different page. That produced a visual diff of 0 changed pixels
+ * for a page whose pixels demonstrably differ — a green verdict sourced from the wrong browser.
+ */
+const CDP_PORT = process.env.BENCH_CDP_PORT ?? String(9300 + (process.pid % 600));
+
+/**
+ * A marker this run stamps on every URL it loads, so its own sessions are identifiable.
+ *
+ * Filtering by "session I have not seen before" is not enough: a leftover browser's SDK reconnects on
+ * a loop, so its sessions are perpetually new. Adopting one means every navigate/query/act goes to a
+ * browser we do not control while screenshots go over CDP to the one we spawned — DOM checks keep
+ * passing and pixel checks silently compare an untouched page. The app ignores unknown query params.
+ */
+const RUN_MARK = `__hbench=${String(process.pid)}`;
+const marked = (url) => (url.includes('?') ? `${url}&${RUN_MARK}` : `${url}?${RUN_MARK}`);
 
 const parseText = (t) => {
   try {
@@ -67,6 +85,13 @@ export async function runReticle(bugs) {
   });
   await client.start();
 
+  let bytes = 0;
+  const call = async (name, args) => {
+    const { text } = await client.callTool(name, args);
+    bytes += (text ?? '').length;
+    return parseText(text ?? '');
+  };
+
   // one headless Chrome; we reticle_navigate it to each bug URL (fresh SDK session per load).
   const profile = path.join(os.tmpdir(), `rbench-${process.pid}`);
   const chrome = spawn(
@@ -77,26 +102,81 @@ export async function runReticle(bugs) {
       '--no-first-run',
       `--remote-debugging-port=${CDP_PORT}`,
       `--user-data-dir=${profile}`,
-      APP_ORIGIN,
+      marked(APP_ORIGIN),
     ],
     { stdio: 'ignore', detached: true },
   );
   chrome.unref();
 
-  let bytes = 0;
-  const call = async (name, args) => {
-    const { text } = await client.callTool(name, args);
-    bytes += (text ?? '').length;
-    return parseText(text ?? '');
+  // Assert the daemon will drive OUR browser, not a survivor from an earlier run. Connecting to the
+  // wrong Chrome is invisible at every later step — the tools all answer, they just answer about a
+  // different page — so it has to be caught here or not at all.
+  {
+    const { chromium } = await import('playwright');
+    let ok = false;
+    for (let i = 0; i < 20 && !ok; i += 1) {
+      try {
+        const probe = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
+        const urls = probe.contexts().flatMap((c) => c.pages()).map((pg) => pg.url());
+        ok = urls.some((u) => u.startsWith(APP_ORIGIN));
+        await probe.close();
+      } catch {
+        // Chrome may not be listening yet.
+      }
+      if (!ok) await sleep(500);
+    }
+    if (!ok) {
+      throw new Error(
+        `CDP on :${CDP_PORT} is not showing ${APP_ORIGIN} — a stale Chrome is probably holding the ` +
+          'port. Kill leftover browsers before running, or set BENCH_CDP_PORT to a free one.',
+      );
+    }
+  }
+
+
+  // Assert we are talking to OUR daemon, driving OUR browser.
+  //
+  // The MCP client spawns a daemon on a fixed port, but if one is ALREADY listening there the spawn
+  // loses and every call is served by the survivor — which carries a different RETICLE_CDP_URL and
+  // drives a different Chrome. Nothing downstream reveals it: sessions resolve, queries answer, and
+  // screenshots succeed. They are just about another browser, which is how a visual diff came back
+  // "0 changed pixels" for a page whose pixels demonstrably differ.
+  //
+  // A screenshot is the cheapest end-to-end proof that the daemon we reached owns the browser we
+  // spawned, so it is taken up front and failure is loud.
+  const proveOwnBrowser = async (probeSid) => {
+    const probe = await call('reticle_screenshot', { sessionId: probeSid, name: 'harness-probe' });
+    if (probe?.ok !== true) {
+      throw new Error(
+        `the daemon on :${PORT} could not screenshot (reason: ${probe?.reason ?? probe?.error ?? '?'}). ` +
+          'That means it is NOT the daemon this harness spawned — a stale one is holding the port. ' +
+          'Kill it before running: lsof -tiTCP:' + PORT + ' -sTCP:LISTEN | xargs kill',
+      );
+    }
   };
 
-  // wait for the first session
+  // Wait for a session THIS run's browser created.
+  //
+  // This used to take sessions[0], i.e. whichever the daemon happened to list first. When any other
+  // Chrome was connected — a leftover from an earlier run is the common case — the harness adopted
+  // ITS session and every navigate/query/act went to that browser, while every screenshot went over
+  // CDP to the one we spawned. DOM checks kept passing (they follow the session) and pixel checks
+  // silently compared an untouched page, which is how a visual diff reported 0 changed pixels for a
+  // page whose pixels demonstrably differed.
   let sid;
-  for (let i = 0; i < 40 && !sid; i++) {
-    const s = await call('reticle_sessions', {});
-    sid = s?.sessions?.[0]?.sessionId;
+  for (let i = 0; i < 60 && !sid; i++) {
+    const all = (await call('reticle_sessions', {}))?.sessions ?? [];
+    sid = all.find((x) => x.url?.includes(RUN_MARK) && !x.stale)?.sessionId;
     if (!sid) await sleep(500);
   }
+  if (!sid) {
+    throw new Error(
+      'no session appeared from the browser this harness spawned. Every connected session predates ' +
+        'it, so driving one would report on a browser we do not control.',
+    );
+  }
+
+  await proveOwnBrowser(sid);
 
   // navigate to a URL and return the fresh focused session id
   const goto = async (url) => {
@@ -107,7 +187,7 @@ export async function runReticle(bugs) {
     const before = new Set(
       ((await call('reticle_sessions', {}))?.sessions ?? []).map((x) => x.sessionId),
     );
-    await call('reticle_navigate', { sessionId: sid, url });
+    await call('reticle_navigate', { sessionId: sid, url: marked(url) });
     for (let i = 0; i < 30; i++) {
       const s = await call('reticle_sessions', {});
       const all = s?.sessions ?? [];
@@ -122,7 +202,9 @@ export async function runReticle(bugs) {
       // Compare ORIGIN + QUERY, never the full href: the app pushes history on nav (/ -> /overview),
       // so an exact match goes empty the moment the app routes and the pick silently keeps a stale sid.
       // The query is what identifies the run (?reticle-bug=… / ?reticle-reset-storage=1); the path drifts.
-      const matches = all.filter((x) => !x.stale && sameRun(x.url, url));
+      const matches = all.filter(
+        (x) => !x.stale && x.url?.includes(RUN_MARK) && sameRun(x.url, marked(url)),
+      );
       const fresh = matches.filter((x) => !before.has(x.sessionId));
       // Freshest first; among equals prefer an unthrottled tab; last match beats an arbitrary first.
       const pool = fresh.length > 0 ? fresh : matches;
