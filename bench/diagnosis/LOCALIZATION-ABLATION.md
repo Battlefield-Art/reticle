@@ -82,10 +82,29 @@ agent smarter. It removes the search.**
   generated from what `apply()` does, not written from memory of what it was supposed to do.
 
 - **One run per cell.** No repeats, so per-bug numbers carry run-to-run variance that is not measured.
-- **The fixture flatters condition A.** `apps/bench-app` is a small app where a symptom description
-  greps to the right file in 4 tool calls. On a codebase where localization is genuinely hard — the
-  case the literature measures and the case this layer exists for — the baseline is far higher and the
-  gap should widen. This measurement therefore **understates** the effect it finds.
+- **The fixture was assumed to flatter condition A. I tried to prove that and could not.**
+
+  The reasoning was: `apps/bench-app` is 34 files, so a symptom greps to the right file in 4 calls;
+  on a real codebase the baseline would be far higher and the gap would widen. Two attempts to build
+  that harder case, both in `packages/server/src` — **337 files, 42k lines, ten times the fixture**:
+
+  | attempt | condition A tool calls |
+  | --- | ---: |
+  | subtle behavioural bug, symptom shares the code's vocabulary | 5 |
+  | same bug, symptom deliberately vocabulary-disjoint (user's words, no "event"/"limit"/"oldest") | 9 |
+
+  A ten-fold larger search space did not make localization harder, and neither did stripping the
+  shared vocabulary. Agents localized in 4–13 calls across every cell in this repo regardless.
+
+  **So the honest conclusion is not "this understates the effect" — it is that this repo cannot
+  produce the hard case.** It is well-named and well-partitioned; `output-budget.ts` is findable from
+  a description of a budgeting bug however the description is phrased. The settings where the
+  literature measures very large localization effects are unfamiliar OSS repositories with weaker
+  naming, and that is a property of the codebase, not something a bigger fixture here can simulate.
+
+  What this measurement therefore supports: **−52% on a well-structured codebase the agent can
+  navigate.** Whether the effect is larger on a badly-organised one is unmeasured, and cannot be
+  measured here. Anyone quoting the number should quote that scope with it.
 - **Fix rate did not move**, and no one should claim it did. At this scale every agent found every bug
   eventually; the pointer bought the path, not the outcome.
 
