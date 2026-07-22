@@ -108,6 +108,15 @@ export class McpStdioClient {
       .filter((c) => c.type === 'text')
       .map((c) => c.text)
       .join('\n');
+    // A protocol-level tool error (unknown/renamed tool) arrives as a SUCCESSFUL JSON-RPC result
+    // carrying isError:true, so the transport's reject path never fires and every caller here read
+    // "MCP error -32602: Tool ... not found" as ordinary output. Nine bench harnesses called
+    // reticle_record_start/stop for an unknown number of commits after those were consolidated into
+    // reticle_record{action}, recorded nothing, saved nothing, and still printed an RRE ratio over
+    // the wreckage. Fail loudly instead: a benchmark that cannot call its tool has no number to give.
+    if (result?.isError === true) {
+      throw new Error(`tool ${name} failed: ${text.slice(0, 300)}`);
+    }
     return { result, latencyMs, text };
   }
 

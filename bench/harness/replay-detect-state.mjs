@@ -53,7 +53,7 @@ async function detectFor(flow) {
   const a = new ReticleAdapter(URL);
   await a.start();
   try {
-    await a.c.callTool('reticle_record_start', { recordingName: flow.name });
+    await a.c.callTool('reticle_record', { action: 'start', recordingName: flow.name });
     await a.login();
     await a.gotoView('deployments');
     await sleep(300);
@@ -69,12 +69,12 @@ async function detectFor(flow) {
       statePath: flow.statePath,
       equals: flow.equals,
     });
-    await a.c.callTool('reticle_record_stop', { recordingName: flow.name });
+    await a.c.callTool('reticle_record', { action: 'stop', recordingName: flow.name });
     const saved = await a.c.callTool('reticle_flow_save', { flowName: flow.name });
     const savedObj = JSON.parse(saved.text || '{}');
 
     // baseline: healthy app — the click logs the request, the store holds the status
-    await a.c.callTool('reticle_refresh', { hard: true });
+    await a.refresh();
     await sleep(1500);
     const baseline = await replayOnce(a, flow);
 

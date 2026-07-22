@@ -12,7 +12,12 @@ import { measure } from './tokenizer.mjs';
 
 const URL = process.env.BENCH_URL ?? 'http://localhost:4312/';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const LLM_REDRIVE_PER_FLOW = 30249; // Playwright MCP per-flow re-drive (Layer B, authoritative usage)
+// Playwright *MCP* per-flow re-drive by an LLM (Layer B, authoritative usage) — NOT `npx playwright test`.
+// This distinction is the whole meaning of the ratio and is the easiest thing in this repo to quote
+// dishonestly: a company that already owns a compiled Playwright suite re-runs it for ZERO tokens, so
+// against THEM the ratio below is not 2574x, it is undefined. The ratio answers "cheaper than an agent
+// re-driving the browser every run", and only that.
+const LLM_REDRIVE_PER_FLOW = 30249;
 
 // Self-contained golden-path flows (each includes login), recorded once and saved to .reticle/flows/.
 const FLOWS = [
@@ -31,13 +36,13 @@ async function recordFlow(flow) {
   await a.start();
   try {
     await a.login();
-    await a.c.callTool('reticle_record_start', { recordingName: flow.name });
+    await a.c.callTool('reticle_record', { action: 'start', recordingName: flow.name });
     for (const s of flow.steps) {
       if (s.view) await a.gotoView(s.view);
       else if (s.tap) await a.clickTestid(s.tap);
       await sleep(200);
     }
-    await a.c.callTool('reticle_record_stop', { recordingName: flow.name });
+    await a.c.callTool('reticle_record', { action: 'stop', recordingName: flow.name });
     await a.c.callTool('reticle_flow_save', { flowName: flow.name });
   } finally {
     await a.stop();
@@ -81,6 +86,16 @@ const points = [];
 for (const k of [2, names.length]) {
   const subset = names.slice(0, k);
   const v = await verifySuite(subset);
+  // A ratio over a FAILING verify is not a measurement. This harness happily printed "474x" from a
+  // run in which every flow failed to replay (status=fail, passed=0) because the tool names it called
+  // had been consolidated away — the cost of a failed verify is still a number, and a number still
+  // divides. Efficiency is only meaningful when the thing was actually verified.
+  if (v.status !== 'pass' || v.passed !== k) {
+    throw new Error(
+      `suite verify did not pass at K=${k} (status=${v.status}, passed=${v.passed}/${k}). ` +
+        'Refusing to report a regression-efficiency ratio for a suite that did not verify.',
+    );
+  }
   const competitor = k * LLM_REDRIVE_PER_FLOW;
   points.push({
     flows: k,

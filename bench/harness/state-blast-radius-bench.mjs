@@ -67,7 +67,7 @@ await a.start();
 let result;
 try {
   // Record login + Compose generate (login MUST be in the flow so replay re-auths after a hard refresh).
-  await a.c.callTool('reticle_record_start', { recordingName: FLOW });
+  await a.c.callTool('reticle_record', { action: 'start', recordingName: FLOW });
   await a.login();
   await sleep(300);
   // Read the live baseline value of the path the Compose action must NOT touch (deterministic seed).
@@ -85,11 +85,11 @@ try {
     equals: baselineStatus,
     hold: true,
   });
-  await a.c.callTool('reticle_record_stop', { recordingName: FLOW });
+  await a.c.callTool('reticle_record', { action: 'stop', recordingName: FLOW });
   await a.c.callTool('reticle_flow_save', { flowName: FLOW });
 
   // Baseline: healthy app — Compose leaves deployments untouched → the invariant holds.
-  await a.c.callTool('reticle_refresh', { hard: true });
+  await a.refresh();
   await sleep(1500);
   const baseline = await replayOnce(a);
 

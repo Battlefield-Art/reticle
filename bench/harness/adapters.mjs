@@ -193,8 +193,20 @@ function reticleRefForTestid(queryText, testid) {
   const m = queryText.match(/ref[=:"\s]+([a-z]?e?\d+)/i);
   return m ? m[1] : null;
 }
+/**
+ * The port apps/bench-app's SDK dials — see apps/bench-app/vite.config.ts, which defaults RETICLE_PORT
+ * to 4460 "so it never collides with reticle:4400 or the local mcp daemon".
+ *
+ * This adapter hardcoded 4455. The daemon it spawned therefore listened on a port the fixture's SDK
+ * never dialled, so NO browser session ever connected and every tool call returned
+ * "no browser session connected" — which the client then handed back as ordinary text. Every
+ * bench/harness measurement against bench-app (replay, determinism, RRE, flake) was running against
+ * a daemon with no app attached.
+ */
+const BENCH_APP_RETICLE_PORT = Number(process.env.RETICLE_PORT ?? 4460);
+
 export class ReticleAdapter {
-  constructor(url, port = 4455) {
+  constructor(url, port = BENCH_APP_RETICLE_PORT) {
     this.url = url;
     this.port = String(port);
     this.name = 'reticle';
@@ -213,6 +225,12 @@ export class ReticleAdapter {
   }
   async navigate() {
     return rec('reticle_navigate', await this.c.callTool('reticle_navigate', { url: this.url }));
+  }
+
+  /** Hard reload. reticle_refresh was absorbed into reticle_navigate { reload: true } and is no
+   *  longer dispatchable, so calling it by name threw "Tool not found" in ten harnesses. */
+  async refresh() {
+    return this.c.callTool('reticle_navigate', { url: this.url, reload: true });
   }
   async snapshot() {
     return rec('reticle_snapshot', await this.c.callTool('reticle_snapshot', { scope: 'page' }));
@@ -288,7 +306,7 @@ export class ReticleAdapter {
   }
   async stop() {
     try {
-      await this.c.callTool('reticle_end_session', { summary: 'bench' }, 5000);
+      await this.c.callTool('reticle_session', { action: 'end', summary: 'bench' }, 5000);
     } catch {
       /* noop */
     }

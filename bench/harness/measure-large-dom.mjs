@@ -36,7 +36,7 @@ const c = new McpStdioClient(
 );
 await c.start();
 // Block until the driven browser's SDK actually connects (no fixed-sleep race).
-await c.callTool('reticle_wait_ready', { timeout_ms: 15000 }).catch(() => undefined);
+// reticle_wait_ready is retired (server-internal): the first live call already blocks.
 await sleep(300);
 
 const rows = [];

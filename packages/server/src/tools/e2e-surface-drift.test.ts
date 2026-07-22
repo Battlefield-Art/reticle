@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOOLS } from './tools.js';
@@ -24,7 +24,19 @@ import { TOOLS } from './tools.js';
  * silently deleting a spec's coverage.
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SPEC_DIR = join(HERE, '..', '..', '..', '..', 'apps', 'e2e', 'specs');
+const REPO = join(HERE, '..', '..', '..', '..');
+const SPEC_DIR = join(REPO, 'apps', 'e2e', 'specs');
+/**
+ * The bench harnesses drive the SAME tool surface and rot the SAME way — which is not hypothetical:
+ * the identical 56->41 consolidation that killed four e2e specs ALSO killed nine harnesses under
+ * bench/harness, and this guard did not cover them because it was written to the shape of the first
+ * incident instead of the shape of the failure. They called reticle_record_start/stop long after
+ * those became reticle_record{action}; every replay, determinism and regression-efficiency number in
+ * bench/ was produced by a harness that could not call its own tool, and the published
+ * "128-2574x cheaper" claim traces back to one of them. Guarding one directory against a
+ * repo-wide failure mode is what let it happen twice.
+ */
+const BENCH_DIR = join(REPO, 'bench');
 
 /** Tool names referenced as string literals in a spec, e.g. T('reticle_query', …). */
 const TOOL_REF = /'(reticle_[a-z0-9_]+)'/g;
@@ -46,6 +58,18 @@ const KNOWN_REMOVED = new Map<string, string>([
 
 function specFiles(): string[] {
   return readdirSync(SPEC_DIR).filter((f) => f.endsWith('.mjs'));
+}
+
+/** Every .mjs under bench/, recursively — harnesses live several directories deep. */
+function benchFiles(dir: string = BENCH_DIR): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    if (entry === 'node_modules') continue;
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) out.push(...benchFiles(full));
+    else if (entry.endsWith('.mjs')) out.push(full);
+  }
+  return out;
 }
 
 describe('e2e specs do not reference tools that no longer exist', () => {
@@ -77,5 +101,33 @@ describe('e2e specs do not reference tools that no longer exist', () => {
         false,
       );
     }
+  });
+});
+
+describe('bench harnesses do not reference tools that no longer exist', () => {
+  const advertised = new Set(TOOLS.map((t) => t.name));
+
+  it('finds bench harnesses to check', () => {
+    expect(benchFiles().length).toBeGreaterThan(10);
+  });
+
+  it('every reticle_* name a bench harness calls is on the surface', () => {
+    const broken: string[] = [];
+    for (const file of benchFiles()) {
+      const text = readFileSync(file, 'utf8');
+      // Only names being CALLED — a tool name inside a comment or a results key is not a call.
+      const called = [...text.matchAll(/callTool\(\s*'(reticle_[a-z0-9_]+)'/g)].map((m) => m[1]);
+      for (const name of new Set(called)) {
+        if (name !== undefined && !advertised.has(name) && !KNOWN_REMOVED.has(name)) {
+          broken.push(`${file.slice(REPO.length + 1)} -> ${name}`);
+        }
+      }
+    }
+    expect(
+      broken,
+      'These bench harnesses call tools that are not on the surface. They will fail at runtime and ' +
+        'produce a number anyway unless the harness checks isError. Fix the call, or add the name to ' +
+        'KNOWN_REMOVED with the reason.',
+    ).toEqual([]);
   });
 });

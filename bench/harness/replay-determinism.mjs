@@ -54,19 +54,19 @@ await a.start();
 const runs = [];
 try {
   // Record the flow once (one-time authoring cost, excluded from the per-run determinism claim).
-  await a.c.callTool('reticle_record_start', { recordingName: FLOW.name });
+  await a.c.callTool('reticle_record', { action: 'start', recordingName: FLOW.name });
   await a.login();
   for (const s of FLOW.steps) {
     if (s.view) await a.gotoView(s.view);
     else if (s.tap) await a.clickTestid(s.tap);
     await sleep(200);
   }
-  await a.c.callTool('reticle_record_stop', { recordingName: FLOW.name });
+  await a.c.callTool('reticle_record', { action: 'stop', recordingName: FLOW.name });
   await a.c.callTool('reticle_flow_save', { flowName: FLOW.name });
 
   // Replay N times against the SAME unchanged page; each run reloads fresh so it re-runs end to end.
   for (let i = 0; i < RUNS; i++) {
-    await a.c.callTool('reticle_refresh', { hard: true });
+    await a.refresh();
     await sleep(1500);
     const rep = await a.c.callTool('reticle_flow_replay', { flowName: FLOW.name });
     const repObj = parse(rep.text);
