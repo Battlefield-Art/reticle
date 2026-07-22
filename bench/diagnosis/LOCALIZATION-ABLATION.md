@@ -140,6 +140,36 @@ sits barely outside it. Anyone quoting a further improvement from causal detail 
 literature — and explicitly NOT a prose explanation, which is the shape that loses. Reticle already
 emits exactly this on `act_and_wait`; the gap is that plain `reticle_assert` does not.
 
+## Fourth condition: does telling the agent HOW to fix it help?
+
+The vision's last part is "how to make it work", and I had been refusing to build it by citing the
+literature — which is the one move that failed repeatedly this session. So it got measured too. Same
+three bugs, condition C plus a `nextStep` keyed to the ASSERTION KIND (not to the specific bug, since
+that is all Reticle could ever produce): "a rendered count below the state count means the render
+expression is filtering or slicing the collection", and so on.
+
+| condition | tool calls | vs A |
+| --- | ---: | ---: |
+| A — symptom only | 22.0 (23, 21) | — |
+| B — + `file:line` | 12.0 (11, 13) | **−45%** |
+| C — + structured cause | 10 (n=1) | −55% |
+| D — + next-step fix hint | 11 (n=1) | −50% |
+
+**D is not better than C.** Adding prescriptive guidance on top of the structured cause bought
+nothing measurable — it did not hurt either, but 11 versus 10 is noise, and both sit inside condition
+B's own 11–13 spread.
+
+**The honest reading of the whole table: the pointer is the effect.** B vs A is a resolved,
+repeated result (two runs each, −45%, spread ±2). Everything after the pointer — the cause, the fix
+hint — is at or below what this experiment can resolve. Anyone quoting C or D as separate wins is
+over-reading n=1.
+
+**So the fourth part of the vision is answered by measurement rather than deferred: do not build a
+suggested-fix surface.** It is the most speculative thing to build, it is the shape the literature
+says loses, and here it earns nothing. The structured cause is worth having for a different reason —
+the assertion KIND lets an agent branch on the failure class, which is a capability rather than a
+token saving — but the fix hint is neither.
+
 ## Why this was worth running rather than asserting
 
 The three prior measurements established that the pointer is *present* (83/85), that its presence is
