@@ -9,7 +9,7 @@ are ignored here — only the run counts.
 > catch them existed and simply were not called. Two of those six are now scored as parity.
 > A moat claim is only as strong as the adversarial pass on the COMPETITOR's harness.
 
-## Measured: 24 Reticle-only · 54 parity · 3 Playwright-only · 2 missed by both
+## Measured: 26 Reticle-only · 56 parity · 1 Playwright-only · 0 missed by both
 
 ### CRITICAL severity (17)
 
@@ -50,16 +50,17 @@ are ignored here — only the run counts.
 |---|---|---|
 | `iframe-stale-data` | the iframe panel shows the CURRENT deployment count, not a frozen one | content inside an open shadow root or a same-origin frame. Playwright pierces shadow roots in its locators, so most of this class is parity; only the store-vs-frame comparison is not. |
 
+### LOW severity (2)
+
+| bug | what breaks | why a script outside the page cannot see it |
+|---|---|---|
+| `cls-late-banner` | the page does not shove content down after it has settled (CLS under 0.1) | layout-shift and long-task are PerformanceObserver metrics. Playwright CAN read them — these are scored on measurement, and where it does read them the bug is scored as parity. |
+| `cls-imageless-jump` | the KPI row renders at its final height (no reflow jump) | layout-shift and long-task are PerformanceObserver metrics. Playwright CAN read them — these are scored on measurement, and where it does read them the bug is scored as parity. |
+
 ## Caught by Playwright, missed by Reticle
 
 Published deliberately. A benchmark that never reports a loss is not measuring.
 
-- `paint-filter` (low) — the page renders with the correct colors (no global hue-rotate paint regression)
-  - reticle observed: reticle script has no pixel diff (inspect computed-styles unchanged)
-  - **why we lose:** a paint-level regression leaves every COMPUTED style identical — a global CSS filter re-tints pixels without touching any property an in-page read can see. Only a screenshot is ground truth. This is a permanent limit of reading the program instead of the picture.
-- `paint-invert` (low) — the page renders with the correct colors (no global invert paint regression)
-  - reticle observed: reticle script has no pixel diff (inspect computed-styles unchanged)
-  - **why we lose:** a paint-level regression leaves every COMPUTED style identical — a global CSS filter re-tints pixels without touching any property an in-page read can see. Only a screenshot is ground truth. This is a permanent limit of reading the program instead of the picture.
 - `payload-missing-field` (critical) — the generate request actually sends the prompt (server must not silently default it)
   - reticle observed: requestBody present, contains 'prompt'=true
   - **why we lose:** Reticle reads `init.body` inside its own fetch wrapper, so it sees what the page HANDED to fetch, not what left the machine. Whoever patches fetch last is outermost, and that ordering is decided by app bootstrap, not by us — so an axios/Sentry/auth interceptor initialised after connect(), a service worker (which never produces a window.fetch frame at all), or sendBeacon can all rewrite a request invisibly. A CDP or proxy observer sees the wire and catches it. This is a real limit of in-page instrumentation, not a fixture artifact: the fix is wire-level capture on the drive path (read request.postData() in the CDP network-detail listener), which is bounded work but does not exist yet, and would not help attach-mode sessions at all.
@@ -72,11 +73,4 @@ result and these are excluded from every catch count above.
 
 - `trap-timestamp-region` — a live-updating timestamp must not make a stable neighbour read as changed — **both held**
 - `trap-ambient-animation` — an infinite ambient animation must not stop the page from settling — **both held**
-
-## Missed by both
-
-Neither tool caught these. They are open coverage gaps, not wins for anyone.
-
-- `cls-late-banner` (low) — the page does not shove content down after it has settled (CLS under 0.1)
-- `cls-imageless-jump` (low) — the KPI row renders at its final height (no reflow jump)
 

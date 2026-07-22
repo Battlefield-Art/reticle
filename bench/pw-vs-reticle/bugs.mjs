@@ -212,7 +212,11 @@ export const BUGS = [
     intent: 'the page renders with the correct colors (no global hue-rotate paint regression)',
     setup: ['login-submit'],
     check: { kind: 'paint' },
-    expect: 'playwright-only',
+    // Was 'playwright-only' on the reasoning that a paint regression "needs pixels" and Reticle reads
+    // the program. That was wrong: reticle_screenshot + reticle_visual_diff exist, and once the
+    // harness drove a real browser instead of only attaching, both tools caught it (2.12% of pixels
+    // changed against a 1% tolerance). The label described the harness, not the capability.
+    expect: 'both',
   },
   {
     id: 'paint-invert',
@@ -220,7 +224,7 @@ export const BUGS = [
     intent: 'the page renders with the correct colors (no global invert paint regression)',
     setup: ['login-submit'],
     check: { kind: 'paint' },
-    expect: 'playwright-only',
+    expect: 'both', // see paint-filter: the old 'playwright-only' described the harness, not the tool
   },
 
   // ── state (needs the store as source of truth): the DOM looks fine, the store proves it wrong ───
