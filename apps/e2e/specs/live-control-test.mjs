@@ -27,7 +27,7 @@ chk('human Resume → server state = active', sess.getState?.()==='active', `sta
 const act2=await T('reticle_act',{ref,action:'click'});
 chk('agent reticle_act after resume → executes (not paused)', act2.paused!==true && !!act2.result, JSON.stringify(act2).slice(0,70));
 // AGENT ends the session → server pushes PRESENTER → panel shows ended
-await T('reticle_end_session',{summary:'12 checks passed'}); await sleep(400);
+await T('reticle_session',{action:'end',summary:'12 checks passed'}); await sleep(400);
 const panelState=await p.evaluate(()=>document.querySelector('div[data-reticle-overlay]')?.getAttribute('data-reticle-state'));
 const banner=await p.evaluate(()=>(document.querySelector('[data-reticle-banner]')?.textContent||'').trim());
 chk('agent reticle_end_session → server state ended', sess.getState?.()==='ended', `state=${sess.getState?.()}`);

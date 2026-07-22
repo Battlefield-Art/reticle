@@ -22,9 +22,9 @@ const refOf=async(by,value)=>{for(let i=0;i<30;i++){const r=(await T('reticle_qu
 console.log('\n=== 0.3.7 RUNHISTORY: replay → .reticle/project.json → reticle_project diff (real browser) ===');
 
 // Record + save a one-step flow.
-await T('reticle_record_start',{recordingName:'addtask'});
+await T('reticle_record',{action:'start',recordingName:'addtask'});
 await T('reticle_act',{ref:await refOf('testid','add-task'),action:'click'});
-await T('reticle_record_stop',{recordingName:'addtask'});
+await T('reticle_record',{action:'stop',recordingName:'addtask'});
 await T('reticle_flow_save',{flowName:'addtask'});
 
 // Replay twice — each replay should auto-record a run.
@@ -44,10 +44,18 @@ chk('reticle_project returns scoped runs', Array.isArray(proj.runs)&&proj.runs.l
 chk('reticle_project returns lastRun', proj.lastRun&&proj.lastRun.name==='addtask', JSON.stringify(proj.lastRun)?.slice(0,80));
 chk('reticle_project returns a diff-vs-last block', proj.diff&&typeof proj.diff.regressed==='boolean', JSON.stringify(proj.diff)?.slice(0,100));
 
-// 3) reticle_run_record appends a manual run that lastRun then sees.
-await T('reticle_run_record',{name:'addtask',status:'pass',summary:'manual smoke'});
-const after=await T('reticle_project',{name:'addtask'});
-chk('reticle_run_record appends a manual run', after.lastRun?.kind==='manual'&&after.lastRun?.summary==='manual smoke', JSON.stringify(after.lastRun)?.slice(0,100));
+// 3) SKIPPED: reticle_run_record no longer exists on the tool surface.
+//
+// The consolidation that merged 56 tools down to 41 removed it, and unlike record_start/record_stop
+// (now reticle_record{action}) or end_session (now reticle_session{action:'end'}) it has no successor
+// — there is currently NO way for an agent to append a manual run to project history. This spec is
+// the only thing that noticed, and it could not report it because it was crashing on an earlier
+// renamed call.
+//
+// Left as an explicit skip rather than deleted: whether that capability should come back is a product
+// decision, and silently dropping the assertion would erase the only record that it went missing.
+chk.skip?.('reticle_run_record appends a manual run — TOOL REMOVED, capability has no successor');
+console.log('   ⏭  skipped: reticle_run_record was removed by the surface consolidation (no successor)');
 
 console.log(`\n${fail===0?'✅ RUNHISTORY VERIFIED':'❌ FAILED'} (${pass} passed, ${fail} failed)`);
 await b.close(); await server.close(); nfs.rmSync(path.dirname(reticleRoot),{recursive:true,force:true}); process.exit(fail===0?0:1);
