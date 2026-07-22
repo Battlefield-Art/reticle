@@ -65,6 +65,7 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 | Reports that name the file to open (`file:line`)          | **83 / 85** carry one; **79** name the exact file         |
 | Same run, source stamps stripped (control)                | **0 / 22** — the coverage is caused by the stamp          |
 | File recoverable without the stamp, via ANY Reticle route | **0 / 5** — the pointer is the only route, not a shortcut |
+| Agent tool calls to fix, with vs without the `file:line`  | **23 -> 9 (-61%)**, fix rate 3/3 both (n=3)               |
 | Cost to re-run a 4-flow regression suite                  | **~47 tokens**, constant in suite size                    |
 | Same suite, LLM re-driven (Playwright/DevTools MCP)       | ~120,000 tokens                                           |
 | **Regression-run token cost at 4 flows**                  | **2,574× cheaper** (a cost ratio, not a speed-up)         |
@@ -117,6 +118,13 @@ for free, not a capability only we have — the honest claim is the pooling and 
 the concurrency itself.
 
 > **The proof that mattered most:** before we instrumented anything, Reticle's _first_ pass on our own production dashboard flagged two live `500`s (`GET /projects` and `/recovery/incidents`) that the UI completely hid. The page looked perfect. A screenshot would have called it done. **That is the entire point of Reticle**, and we found it on our own app, not a cherry-picked demo.
+
+**Does it actually change what an agent does?** Measured, not assumed: same bug reports, same repo,
+same tools, one line of difference — the `file:line` Reticle emits. Agents fixed **3/3 in both**
+conditions, but took **23 tool calls without the pointer and 9 with it (−61%)**. The pointer does not
+make the agent smarter; it removes the search. Small n, one run per cell, and on a fixture small
+enough that the no-pointer baseline is only 4–13 calls — so it understates the effect.
+→ [Full method and caveats](bench/diagnosis/LOCALIZATION-ABLATION.md)
 
 → [Full benchmark scorecard](bench/SCORECARD.md) · [What Reticle catches that Playwright can't, and why](bench/pw-vs-reticle/MOAT.md) · [Reproducible token math](docs/token-efficiency.md)
 
