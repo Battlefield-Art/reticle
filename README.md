@@ -121,8 +121,10 @@ the concurrency itself.
 
 **Does it actually change what an agent does?** Measured, not assumed: same bug reports, same repo,
 same tools, one line of difference — the `file:line` Reticle emits. Agents fixed **3/3 in both**
-conditions, but took **22 tool calls without the pointer and 12 with it (−45%)**, averaged over two runs. The pointer does not
-make the agent smarter; it removes the search. Note what the pointer actually is: **where the acted
+conditions, but took **22 tool calls without the pointer and 12 with it (−45%)**, averaged over two runs.
+Two further arms — adding the structured cause, then adding a suggested fix — measured **10 and 11**,
+i.e. no resolvable gain over the pointer alone. **The pointer is the effect;** it does not make the
+agent smarter, it removes the search. Note what the pointer actually is: **where the acted
 element is rendered**, not where the bug is caused — for a signal or state bug those differ, and the
 agent still pays a hop, which this number includes. Small n, one run per cell, and **scoped to a
 well-structured codebase**: we tried twice to build a harder localization case in a package ten times
