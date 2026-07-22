@@ -60,6 +60,20 @@ That is what makes the number above mean what it says. Coverage collapses to zer
 stamp is removed, so it is caused by the stamp — not by a hardcoded path, a lucky default, or a
 harness fabricating the field. A headline metric without this control is an assertion.
 
+**Is the file recoverable without the stamp, at any cost?** The obvious objection to the number
+above is "the agent could just look it up". Measured, on the same elements, trying every route
+Reticle gives an agent — the descriptor's own field AND a follow-up `reticle_inspect`:
+
+| condition | elements | via query | via inspect | recoverable by ANY route |
+|---|---|---|---|---|
+| stamps present | 5 | 5 | 5 | **5** |
+| stamps stripped | 5 | 0 | 0 | **0** |
+
+So the difference is not cost, it is AVAILABILITY. With the stamp the file is already on the
+descriptor and costs zero extra calls; without it, no number of Reticle calls recovers it. The
+agent falls back to searching the repo — which is precisely the work the localization literature
+measures as the dominant cost of a repair loop, and precisely what this layer exists to remove.
+
 No competitor column: a browser-automation tool's stack trace points at its own test, never at
 the app source. That is the asymmetry — but it also means there is no baseline to beat, so this
 is a capability measurement, not a head-to-head.
