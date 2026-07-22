@@ -21,6 +21,8 @@ import type { JournalReader, JournalRecorder } from '../journal/journal-recorder
 import { filterEvents, mergeEventsBySeq, type EventQueryOptions } from '../journal/journal-query.js';
 import { type AmbientCounts } from '../journal/ambient.js';
 import { ObservedState } from './observed-state.js';
+import { LiveControl, type InboxMessage } from './live-control.js';
+export type { InboxMessage } from './live-control.js'; // moved; still part of Session's surface
 import { ReviewStore, type ReviewMark } from './review-store.js';
 import { buildSessionRecommendation } from './session-recommendation.js';
 import { buildPresenterArgs } from './presenter-args.js';
@@ -76,12 +78,6 @@ const ACTION_ID_PREFIX = 'a';
 /** ws readyState for an OPEN socket — guard fire-and-forget pushes against a closing tab. */
 const WS_OPEN = 1;
 
-/** Live-control: a human note queued for the agent, stamped with session-relative elapsed time. */
-export interface InboxMessage {
-  text: string;
-  t: number;
-}
-
 /**
  * One connected browser tab. Owns its socket, a ring buffer of observations, and the
  * in-flight command map. `clock` is injected so elapsed-time logic stays testable.
@@ -106,15 +102,15 @@ export class Session {
   #lastSeenAt: number;
   #hidden = false;
   #focused = true;
-  #state: SessionState = SessionState.ACTIVE;
   #lastActCursor: number | undefined;
+  #lastActSource: string | undefined;
   /** Liveness: wall-clock of the last AGENT command (distinct from browser chatter / lastSeen). */
   #lastAgentActivityAt: number;
   /** Server-side mirror of the agent-tuned idle window, so the reaper honors reticle_session. */
   #idleEndMs: number = SESSION_LIFECYCLE.IDLE_END_MS;
   /** True when the reaper/disconnect ended this session — such an end is revivable; explicit ends are not. */
   #autoEnded = false;
-  readonly #inbox: InboxMessage[] = [];
+  readonly #live = new LiveControl();
   /** Human review marks: mistakes the human pinned to elements, for the agent to drain and fix. */
   readonly #review = new ReviewStore();
   /** Whether the session_lease has already been returned (fire-once per session). */
@@ -333,6 +329,16 @@ export class Session {
     return this.#lastActCursor;
   }
 
+  /** Remember where the last acted control is written (`file:line`), for failures with no element. */
+  markActSource(source: string | undefined): void {
+    this.#lastActSource = source;
+  }
+
+  /** Where the last acted control is written, or undefined if nothing has acted yet. */
+  lastActSource(): string | undefined {
+    return this.#lastActSource;
+  }
+
   // ── Server-authoritative liveness (immune to browser-tab throttling) ──────────────
 
   /**
@@ -343,7 +349,7 @@ export class Session {
    */
   markAgentActivity(): void {
     this.#lastAgentActivityAt = this.#clock();
-    if (this.#state === SessionState.ENDED && this.#autoEnded) {
+    if (this.#live.isEnded() && this.#autoEnded) {
       this.#autoEnded = false;
       this.setState(SessionState.ACTIVE);
     }
@@ -370,7 +376,7 @@ export class Session {
    * already ended.
    */
   autoEnd(text?: string, tone: PresenterTone = PresenterTone.WARN): void {
-    if (this.#state === SessionState.ENDED) return;
+    if (this.#live.isEnded()) return;
     this.#autoEnded = true;
     this.setState(SessionState.ENDED, text, tone);
   }
@@ -444,15 +450,15 @@ export class Session {
   // ── Live-control: state machine + human→agent inbox (server-owned) ───────────────
 
   getState(): SessionState {
-    return this.#state;
+    return this.#live.state();
   }
 
   isPaused(): boolean {
-    return this.#state === SessionState.PAUSED;
+    return this.#live.isPaused();
   }
 
   isEnded(): boolean {
-    return this.#state === SessionState.ENDED;
+    return this.#live.isEnded();
   }
 
   /**
@@ -461,25 +467,23 @@ export class Session {
    * summary) so a transition never emits two PRESENTER commands.
    */
   setState(next: SessionState, text?: string, tone?: PresenterTone): void {
-    this.#state = next;
-    this.pushPresenter(this.#state, text, tone);
+    this.#live.setState(next);
+    this.pushPresenter(next, text, tone);
   }
 
-  /** Push a human note onto the inbox; empty/whitespace-only text is ignored. Stamped with elapsed t. */
+  /** Push a human note onto the inbox (see LiveControl). */
   pushMessage(text: string): void {
-    const trimmed = text.trim();
-    if (trimmed.length === 0) return;
-    this.#inbox.push({ text: trimmed, t: this.elapsed() });
+    this.#live.push(text, this.elapsed());
   }
 
-  /** Return the queued human notes AND clear the inbox (delivered-once). */
+  /** Queued human notes, cleared as they are read (delivered-once). */
   drainInbox(): InboxMessage[] {
-    return this.#inbox.splice(0, this.#inbox.length);
+    return this.#live.drain();
   }
 
   /** Diagnostic read of the inbox depth (does not clear). */
   inboxSize(): number {
-    return this.#inbox.length;
+    return this.#live.size();
   }
 
   // ── Human review marks: the "annotate the bug where you see it" inbox (server-owned) ──────────
@@ -505,30 +509,14 @@ export class Session {
   }
 
   /**
-   * Apply a narrowed human control. `setState` is called only on a GENUINE change, so each real
-   * transition pushes exactly one PRESENTER command; no-ops (e.g. resume on active, pause after
-   * end) push nothing. `ended` is terminal — pause/resume after end are no-ops.
+   * Apply a narrowed human control. LiveControl decides the transition; this applies it, so a real
+   * change pushes exactly one PRESENTER command and a no-op pushes none.
    */
   applyHumanControl(data: HumanControlData): void {
-    if (this.#state === SessionState.ENDED) {
-      // Terminal: end is idempotent; pause/resume are no-ops.
-      return;
-    }
-    switch (data.kind) {
-      case HumanControlKind.PAUSE:
-        if (this.#state !== SessionState.PAUSED) this.setState(SessionState.PAUSED);
-        return;
-      case HumanControlKind.RESUME:
-        if (this.#state !== SessionState.ACTIVE) this.setState(SessionState.ACTIVE);
-        return;
-      case HumanControlKind.END:
-        this.setState(SessionState.ENDED);
-        return;
-      case HumanControlKind.MESSAGE:
-        if (data.text !== undefined) this.pushMessage(data.text);
-        return;
-      default:
-        return;
+    const next = this.#live.nextStateFor(data);
+    if (next !== undefined) this.setState(next);
+    if (data.kind === HumanControlKind.MESSAGE && data.text !== undefined) {
+      this.pushMessage(data.text);
     }
   }
 

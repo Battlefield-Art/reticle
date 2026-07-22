@@ -468,6 +468,13 @@ export const ACT_TOOLS: ToolDef[] = [
         // Where the acted element is written. Captured at act time alongside the anchor, so it is
         // available even when the action unmounted its own target.
         const actedSource = sourceOf(r['source']);
+        // Remembered on the session so a LATER assertion can name a file even when its failure has no
+        // element to point at — a signal that never fired, a request that was never made.
+        session.markActSource(
+          actedSource === undefined
+            ? undefined
+            : `${actedSource.file}:${String(actedSource.line)}`,
+        );
         const windowEvents = session.eventsSince(since);
         const trace = summarizeReaction(
           buildReactionReport(windowEvents, session.elapsed() - since),

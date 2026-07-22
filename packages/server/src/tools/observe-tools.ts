@@ -19,6 +19,7 @@ import {
 } from '../events/event-filters.js';
 import { applyEventBudget, costHint, withSizeCost } from '../session/output-budget.js';
 import { healthEnvelope, bufferEnvelope } from '../session/session-health.js';
+import type { Session } from '../session/session.js';
 import { isPresenceOnlyAssertion, PRESENCE_ONLY_ADVICE } from './assert-grade.js';
 import { withControl } from '../session/control-envelope.js';
 import { asString, asNumber } from './tools-helpers.js';
@@ -36,6 +37,23 @@ const bufferOutputShape = {
       'Present only when the event buffer evicted events — a negative result may then be a false negative.',
     ),
 };
+
+/**
+ * Where to look when a failure has no element.
+ *
+ * "the signal never fired", "the request was never made", "the store did not change" have no DOM node
+ * to map to a component, so the file:line that covers element failures leaves exactly the failures
+ * that most need explaining with nowhere to send the agent. The handler that should have fired the
+ * signal lives with the control that was clicked, and the act path captured that control's source —
+ * so a failing assertion can point there instead of at nothing.
+ *
+ * RED only: on a pass this is noise on the path the agent walks most.
+ */
+function lastActSourceOnFailure(session: Session, pass: boolean): { source?: string } {
+  if (pass) return {};
+  const source = session.lastActSource();
+  return source === undefined ? {} : { source };
+}
 
 export const OBSERVE_TOOLS: ToolDef[] = [
   {
@@ -161,6 +179,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Present ONLY when the ring buffer evicted events during this window. A passing assertion — especially an absence one — may then be a false negative: the evidence that would have failed it could have been dropped. Absence of this block means the buffer was intact and the verdict is trustworthy.',
         ),
+      source: z
+        .string()
+        .optional()
+        .describe(
+          'On a FAILING assertion, the `file:line` of the control last acted on — where the code that should have produced the missing signal/request/state change lives. Present only when an act preceded this assertion.',
+        ),
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -177,6 +201,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       // and the buffer envelope, so a verdict reached over an evicted window says so.
       return withControl(session, {
         ...verdict,
+        ...lastActSourceOnFailure(session, verdict.pass),
         ...healthEnvelope(session),
         ...bufferEnvelope(session),
       });
@@ -221,6 +246,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Present ONLY when the ring buffer evicted events during this window. A passing assertion — especially an absence one — may then be a false negative: the evidence that would have failed it could have been dropped. Absence of this block means the buffer was intact and the verdict is trustworthy.',
         ),
+      source: z
+        .string()
+        .optional()
+        .describe(
+          'On a FAILING assertion, the `file:line` of the control last acted on — where the code that should have produced the missing signal/request/state change lives. Present only when an act preceded this assertion.',
+        ),
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -242,6 +273,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       return withControl(session, {
         ...verdict,
         ...advice,
+        ...lastActSourceOnFailure(session, verdict.pass),
         ...healthEnvelope(session),
         ...bufferEnvelope(session),
       });

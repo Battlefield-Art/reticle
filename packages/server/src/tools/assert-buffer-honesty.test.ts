@@ -16,9 +16,10 @@ import type { Session, SessionManager } from '../session/session.js';
  * The block stays OMITTED when nothing was dropped: silence has to keep meaning "the buffer was
  * intact", or it becomes noise on every healthy call and gets ignored.
  */
-function depsWithBuffer(dropped: number): ToolDeps {
+function depsWithBuffer(dropped: number, lastActSource?: string): ToolDeps {
   const session: Partial<Session> = {
     id: 'demo',
+    lastActSource: () => lastActSource,
     bufferHealth: () => ({ total: 12, dropped }),
     eventsSince: () => [],
     queryEvents: () => Promise.resolve([]),
@@ -67,5 +68,51 @@ describe('a verdict reached over an evicted buffer says so', () => {
     for (const name of [ReticleTool.ASSERT, ReticleTool.WAIT_FOR]) {
       expect(Object.keys(tool(name).outputSchema ?? {})).toContain('buffer');
     }
+  });
+});
+
+/**
+ * A failure with no ELEMENT still has a place to send the agent.
+ *
+ * "the signal never fired", "the request was never made", "the store did not change" have no DOM node
+ * to map to a component — so the file:line work that covers element failures leaves exactly the
+ * failures that most need explaining with no destination. But the handler that should have fired the
+ * signal lives with the control that was clicked, and the act path already captures that control's
+ * source. Carrying it onto the verdict turns "nothing happened" into "nothing happened, and the code
+ * that should have made it happen is here".
+ *
+ * Only on RED, and only when an act actually preceded the assertion.
+ */
+describe('a non-element failure still names a file', () => {
+  const missingSignal = {
+    predicate: { kind: 'signal', name: 'compose:generated' },
+    timeout_ms: 0,
+  };
+
+  it('attaches the last acted control\'s source to a failing signal assertion', async () => {
+    const result = (await tool(ReticleTool.ASSERT).handler(
+      depsWithBuffer(0, 'src/views/Compose.tsx:60'),
+      missingSignal,
+    )) as { pass: boolean; source?: string };
+    expect(result.pass).toBe(false);
+    expect(result.source).toBe('src/views/Compose.tsx:60');
+  });
+
+  it('does not attach it to a PASSING assertion', async () => {
+    const result = (await tool(ReticleTool.ASSERT).handler(
+      depsWithBuffer(0, 'src/views/Compose.tsx:60'),
+      { predicate: { kind: 'console', level: 'error', absent: true }, timeout_ms: 0 },
+    )) as { pass: boolean; source?: string };
+    expect(result.pass).toBe(true);
+    expect(result.source).toBeUndefined();
+  });
+
+  it('says nothing when no act preceded the assertion', async () => {
+    const result = (await tool(ReticleTool.ASSERT).handler(
+      depsWithBuffer(0),
+      missingSignal,
+    )) as { pass: boolean; source?: string };
+    expect(result.pass).toBe(false);
+    expect(result.source).toBeUndefined();
   });
 });
