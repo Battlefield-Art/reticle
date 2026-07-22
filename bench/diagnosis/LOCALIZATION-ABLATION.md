@@ -22,17 +22,20 @@ is visible in the working tree and would have handed over the answer. Correctnes
 oracle in `bench/fix-loop/verify.mjs` — the injected signature is gone — not the agent's own claim.
 Tool-call counts are the harness's own `tool_uses`, not the agents' self-reports.
 
-## Result (n = 3 paired)
+## Result (3 bugs x 2 conditions x 2 runs = 12 agent runs)
+
+Tool calls are the harness's own count, not the agents' self-reports.
 
 | bug | A: symptom only | B: + `file:line` | change | element file = cause file? |
 | --- | ---: | ---: | ---: | --- |
-| silent-dom-regression | 4 | 2 | −50% | yes |
-| signal-contract-violation | 13 | 6 | −54% | **no** — element in a view, cause in the store |
-| broken-form-validation | 6 | 3 | −50% | yes |
-| **total tool calls** | **23** | **11** | **−52%** | |
-| **fixed correctly** | **3 / 3** | **3 / 3** | no change | |
+| silent-dom-regression | 4, 3 (mean 3.5) | 2, 3 (mean 2.5) | −29% | yes |
+| signal-contract-violation | 13, 11 (mean 12.0) | 6, 7 (mean 6.5) | −46% | **no** — element in a view, cause in the store |
+| broken-form-validation | 6, 7 (mean 6.5) | 3, 3 (mean 3.0) | −54% | yes |
+| **total per run** | 23, 21 (mean **22.0**) | 11, 13 (mean **12.0**) | **−45%** | |
+| **fixed correctly** | **6 / 6** | **6 / 6** | no change | |
 
-Every agent in both conditions landed on the correct file and line.
+Run-to-run spread is small — condition A totalled 23 then 21, condition B 11 then 13 — so the gap is
+not an artifact of a single lucky run. Every agent in every cell landed on the correct file and line.
 
 ### The correction that produced these numbers
 
@@ -81,7 +84,8 @@ agent smarter. It removes the search.**
   from the injection, which is exactly where this class of error gets in. A bug report should be
   generated from what `apply()` does, not written from memory of what it was supposed to do.
 
-- **One run per cell.** No repeats, so per-bug numbers carry run-to-run variance that is not measured.
+- **Two runs per cell, not more.** Enough to show the spread is small (±2 on a total of ~22), not
+  enough for a confidence interval. Per-bug numbers move by 1–2 calls between runs.
 - **The fixture was assumed to flatter condition A. I tried to prove that and could not.**
 
   The reasoning was: `apps/bench-app` is 34 files, so a symptom greps to the right file in 4 calls;

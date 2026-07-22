@@ -65,7 +65,7 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 | Reports that name the file to open (`file:line`)          | **83 / 85** carry one; **79** name the exact file         |
 | Same run, source stamps stripped (control)                | **0 / 22** — the coverage is caused by the stamp          |
 | File recoverable without the stamp, via ANY Reticle route | **0 / 5** — the pointer is the only route, not a shortcut |
-| Agent tool calls to fix, with vs without the `file:line`  | **23 -> 11 (-52%)**, fix rate 3/3 both (n=3)              |
+| Agent tool calls to fix, with vs without the `file:line`  | **22 -> 12 (-45%)** mean of 2 runs, fix rate 6/6 both     |
 | Cost to re-run a 4-flow regression suite                  | **~47 tokens**, constant in suite size                    |
 | Same suite, LLM re-driven (Playwright/DevTools MCP)       | ~120,000 tokens                                           |
 | **Regression-run token cost at 4 flows**                  | **2,574× cheaper** (a cost ratio, not a speed-up)         |
@@ -121,7 +121,7 @@ the concurrency itself.
 
 **Does it actually change what an agent does?** Measured, not assumed: same bug reports, same repo,
 same tools, one line of difference — the `file:line` Reticle emits. Agents fixed **3/3 in both**
-conditions, but took **23 tool calls without the pointer and 11 with it (−52%)**. The pointer does not
+conditions, but took **22 tool calls without the pointer and 12 with it (−45%)**, averaged over two runs. The pointer does not
 make the agent smarter; it removes the search. Note what the pointer actually is: **where the acted
 element is rendered**, not where the bug is caused — for a signal or state bug those differ, and the
 agent still pays a hop, which this number includes. Small n, one run per cell, and **scoped to a
