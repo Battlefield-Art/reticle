@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ActionType } from '@reticlehq/core';
 import type { Page } from 'playwright';
-import { boxCenter, capturePage, isPointerAction } from './real-input.js';
+import { boxCenter, capturePage, isPointerAction, selectPage } from './real-input.js';
 
 /** Records the options each page.screenshot call receives and returns minimal PNG bytes. */
 function recordingPage(calls: Record<string, unknown>[]): Page {
@@ -71,5 +71,50 @@ describe('capturePage suppresses Reticle chrome for deterministic baselines', ()
     expect(opts['clip']).toEqual(clip);
     expect(String(opts['style'])).toContain('data-reticle-overlay');
     expect(opts['fullPage']).toBeUndefined();
+  });
+});
+
+/**
+ * Which driven page a session corresponds to — and when to refuse rather than guess.
+ *
+ * This existed as "exact URL match, else first page whose URL matches once the query string is
+ * stripped". That fallback is unsound when the query string is the ONLY thing distinguishing two
+ * pages, which is exactly how the benchmark fixture selects a bug (`?reticle-bug=paint-filter`).
+ * The observable result was a visual diff reporting "0.00% changed, matched" for a page whose pixels
+ * demonstrably differ — a FALSE GREEN in the visual layer, produced by screenshotting the wrong page
+ * and comparing it to itself.
+ *
+ * A loose match is still worth keeping: an app that pushState's to /overview genuinely has a page
+ * whose URL no longer equals the session's. But it is only safe when it is UNAMBIGUOUS. Two
+ * candidates means we do not know, and "I do not know" must not render as a matching screenshot.
+ */
+describe('selectPage — correlate a session to a driven page, or refuse', () => {
+  const pages = (...urls: string[]): { url(): string }[] => urls.map((u) => ({ url: () => u }));
+
+  it('prefers an exact URL match, query string included', () => {
+    const list = pages('http://app/', 'http://app/?reticle-bug=paint-filter');
+    expect(selectPage(list, 'http://app/?reticle-bug=paint-filter')?.url()).toBe(
+      'http://app/?reticle-bug=paint-filter',
+    );
+  });
+
+  it('falls back to a stripped match when it is the only candidate (pushState case)', () => {
+    const list = pages('http://app/overview');
+    expect(selectPage(list, 'http://app/overview?session=x')?.url()).toBe('http://app/overview');
+  });
+
+  it('REFUSES when the stripped match is ambiguous — two pages differing only by query', () => {
+    const list = pages('http://app/?reticle-bug=paint-filter', 'http://app/?reticle-bug=paint-invert');
+    // Neither is an exact match for a third URL on the same path; both strip to the same thing.
+    expect(selectPage(list, 'http://app/?reticle-bug=something-else')).toBeUndefined();
+  });
+
+  it('returns undefined when nothing is close', () => {
+    expect(selectPage(pages('http://other/'), 'http://app/')).toBeUndefined();
+  });
+
+  it('an exact match wins even when other pages would strip to the same path', () => {
+    const list = pages('http://app/?a=1', 'http://app/?b=2', 'http://app/?c=3');
+    expect(selectPage(list, 'http://app/?b=2')?.url()).toBe('http://app/?b=2');
   });
 });

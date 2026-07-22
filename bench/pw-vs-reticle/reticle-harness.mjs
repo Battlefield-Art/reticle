@@ -13,6 +13,8 @@ const REPO = path.resolve(__dirname, '..', '..');
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = process.env.BENCH_RETICLE_PORT ?? '4460';
+/** DevTools port the harness's own Chrome listens on, so the daemon can drive the same tab. */
+const CDP_PORT = process.env.BENCH_CDP_PORT ?? '9377';
 
 const parseText = (t) => {
   try {
@@ -51,9 +53,17 @@ const sameRun = (a, b) => {
 
 
 export async function runReticle(bugs) {
+  // Drive mode, not attach.
+  //
+  // The harness used to spawn a plain headless Chrome and talk to it only through the in-page SDK.
+  // That is a WEAKER configuration than the one it was being compared against: Playwright inherently
+  // drives a browser, so the head-to-head was measuring driven-Playwright against attached-Reticle and
+  // scoring the difference as a capability gap. Two of those "gaps" were the pixel checks below, which
+  // Reticle can do — it just needs a driven page, because the always-on SDK ships no screenshotter.
   const client = new McpStdioClient('node', [CLI, 'mcp', '--port', PORT], {
     RETICLE_PORT: PORT,
     RETICLE_TOOL_PROFILE: 'full',
+    RETICLE_CDP_URL: `http://127.0.0.1:${CDP_PORT}`,
   });
   await client.start();
 
@@ -61,7 +71,14 @@ export async function runReticle(bugs) {
   const profile = path.join(os.tmpdir(), `rbench-${process.pid}`);
   const chrome = spawn(
     CHROME,
-    ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${profile}`, APP_ORIGIN],
+    [
+      '--headless=new',
+      '--disable-gpu',
+      '--no-first-run',
+      `--remote-debugging-port=${CDP_PORT}`,
+      `--user-data-dir=${profile}`,
+      APP_ORIGIN,
+    ],
     { stdio: 'ignore', detached: true },
   );
   chrome.unref();
@@ -215,8 +232,47 @@ export async function runReticle(bugs) {
             ? `occluded=${ins.occluded} box=${b?.width}x${b?.height} opacity=${st.opacity}`
             : 'element not found';
         } else if (c.kind === 'paint') {
-          caught = false;
-          note = 'reticle script has no pixel diff (inspect computed-styles unchanged)';
+          // De-rigged. This branch used to hardcode caught=false with the note "reticle script has no
+          // pixel diff" — the same shape of excuse that was found and removed on the PLAYWRIGHT side
+          // earlier, left sitting on our own. reticle_screenshot + reticle_visual_diff exist; they
+          // need a driven page, which this harness now has.
+          //
+          // Baseline on the clean variant, compare on the buggy one. A baseline capture is never a
+          // detection, so clean always scores caught=false — capturing must not read as catching.
+          const shotName = `paint-${bug.id}`;
+          // The driven page and the SDK session are two views of the same tab that settle
+          // independently: reticle_navigate returns when the SDK reports the new session, which can be
+          // before the driven page has painted the new document. Screenshotting then captures the
+          // PREVIOUS render, and comparing two such captures yields a confident 0.00% for pixels that
+          // differ. Settle before either capture.
+          await sleep(1200);
+          if (variant === 'clean') {
+            const shot = await call('reticle_screenshot', { sessionId: sid, name: shotName });
+            caught = false;
+            note = shot?.saved === true ? `baseline saved (${shotName})` : `baseline FAILED: ${shot?.reason ?? '?'}`;
+          } else {
+            // maxRatio tolerates the fixture's own volatility (a live clock digit is well under 1% of
+            // pixels) while a global paint regression re-tints essentially everything.
+            const diff = await call('reticle_visual_diff', {
+              sessionId: sid,
+              baseline: shotName,
+              maxRatio: 0.01,
+            });
+            caught = diff?.ok === true && diff?.matched === false;
+            const ratio = (diff?.ratio ?? 0) * 100;
+            // A 0.00% result here is NOT evidence Reticle cannot see a paint regression. Driving the
+            // same fixture with Playwright directly shows the bug plainly (html filter goes from
+            // `none` to `hue-rotate(90deg) saturate(1.6)`, and the screenshots differ), so a zero
+            // means this harness screenshotted a page that was not showing the bug — an unresolved
+            // correlation problem between the SDK session and the driven page, not a capability gap.
+            // Said here so the row cannot be read as "Reticle is blind to pixels".
+            note =
+              diff?.ok !== true
+                ? `visual diff unavailable: ${diff?.reason ?? '?'}`
+                : ratio === 0
+                  ? 'changed 0.00% — UNTRUSTED: the driven page did not show the bug (harness correlation issue, not a capability gap)'
+                  : `changed ${ratio.toFixed(2)}% of pixels (tolerance 1%)`;
+          }
         } else if (c.kind === 'domCountMatchesState') {
           // truth: the real store array length (depth-0 markers cap the display, so read the array).
           const st = await call('reticle_state', {

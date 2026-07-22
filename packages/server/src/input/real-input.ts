@@ -245,11 +245,7 @@ export class CdpRealInputProvider implements RealInputProvider {
   async #pageFor(sessionUrl: string): Promise<Page | undefined> {
     const browser = await this.#ensureBrowser();
     if (browser === undefined) return undefined;
-    const pages = browser.contexts().flatMap((c) => c.pages());
-    const exact = pages.find((p) => p.url() === sessionUrl);
-    if (exact !== undefined) return exact;
-    const target = stripVolatile(sessionUrl);
-    return pages.find((p) => stripVolatile(p.url()) === target);
+    return selectPage(browser.contexts().flatMap((c) => c.pages()), sessionUrl);
   }
 
   async isAvailableFor(sessionUrl: string): Promise<boolean> {
@@ -449,6 +445,30 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
 }
 
 /** Drop hash/query so a page whose URL drifted by fragment still correlates to the session. */
+/**
+ * Correlate a session URL to one driven page, or refuse.
+ *
+ * Exact match first, query string included — that is the only fully reliable signal. The stripped
+ * fallback exists for a real case (an app pushState's to /overview, so the page's URL no longer
+ * equals the session's) but it is only sound when UNAMBIGUOUS.
+ *
+ * Returning the first loose match was a false-green generator: the benchmark fixture selects a bug
+ * purely by query string, so two pages differing only there stripped to the same key, and a visual
+ * diff happily compared the wrong page to itself and reported "0.00% changed, matched" for pixels
+ * that demonstrably differed. Ambiguity now yields undefined, which callers already surface as
+ * "no driven page" rather than as a passing comparison.
+ */
+export function selectPage<T extends { url(): string }>(
+  pages: readonly T[],
+  sessionUrl: string,
+): T | undefined {
+  const exact = pages.find((p) => p.url() === sessionUrl);
+  if (exact !== undefined) return exact;
+  const target = stripVolatile(sessionUrl);
+  const loose = pages.filter((p) => stripVolatile(p.url()) === target);
+  return loose.length === 1 ? loose[0] : undefined;
+}
+
 function stripVolatile(url: string): string {
   const hash = url.indexOf('#');
   const base = hash >= 0 ? url.slice(0, hash) : url;
