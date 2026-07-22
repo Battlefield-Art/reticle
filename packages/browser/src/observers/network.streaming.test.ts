@@ -105,18 +105,34 @@ describe('body projection is bounded by input size, not just output size', () =>
     );
   };
 
-  it('projects a very large text body without scanning all of it', async () => {
-    hugeBody(4_000_000, 'text/csv');
-    const { emit, events } = collect();
-    teardowns.push(installNetwork(emit, { captureBodies: true }));
-    const started = Date.now();
-    await window.fetch('/api/export.csv');
-    // The point is that cost is FIXED, not that it is fast here. Unbounded, this body would have been
-    // parsed and regex-swept in full — the same pass costs ~2s at 64 KB and this input is 4 MB.
-    expect(Date.now() - started).toBeLessThan(1000);
-    const withBody = events.find((e) => e.data['responseBody'] !== undefined);
-    expect(String(withBody?.data['responseBody']).length).toBeLessThanOrEqual(8192);
-  });
+  /**
+   * Bounded by INPUT size, proven without a wall-clock assertion.
+   *
+   * This used to assert `Date.now() - started < 1000`, which is a statement about the machine, not
+   * about the code. It passed alone and failed reproducibly when the rest of the suite ran in
+   * parallel under load — and it cost a commit through a red gate before it was identified. Its own
+   * comment already said the point was that "cost is FIXED, not that it is fast here", so the
+   * assertion contradicted the thing it was written to check.
+   *
+   * The regression it guards is UNBOUNDED work: without the input cap, 4 MB gets parsed and
+   * regex-swept in full, which does not merely get slow, it exceeds any sane budget by orders of
+   * magnitude (the same pass costs ~2s at 64 KB — this input is 60x that). A generous per-test
+   * timeout catches exactly that and is immune to how loaded the machine is; the output-size
+   * assertion below carries the rest.
+   */
+  it(
+    'projects a very large text body without scanning all of it',
+    async () => {
+      hugeBody(4_000_000, 'text/csv');
+      const { emit, events } = collect();
+      teardowns.push(installNetwork(emit, { captureBodies: true }));
+      await window.fetch('/api/export.csv');
+      const withBody = events.find((e) => e.data['responseBody'] !== undefined);
+      expect(String(withBody?.data['responseBody']).length).toBeLessThanOrEqual(8192);
+      expect(withBody?.data['responseBodyTruncated']).toBe(true);
+    },
+    10_000,
+  );
 
   it('marks an over-large body as truncated — never reports a clipped read as complete', async () => {
     hugeBody(4_000_000, 'text/plain');
