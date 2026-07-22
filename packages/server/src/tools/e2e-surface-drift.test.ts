@@ -30,13 +30,17 @@ const SPEC_DIR = join(HERE, '..', '..', '..', '..', 'apps', 'e2e', 'specs');
 const TOOL_REF = /'(reticle_[a-z0-9_]+)'/g;
 
 /**
- * Names a spec may reference despite being absent from the surface — each one an explicit record that
- * a capability was REMOVED rather than renamed, kept so the removal cannot be quietly forgotten.
+ * Names a spec may reference despite being absent from the advertised surface, each with the reason.
+ *
+ * "Absent" is not the same as "gone", and conflating them cost me a wrong claim in three files: a tool
+ * can be RETIRED — handler intact, deliberately unadvertised because something else covers it — and
+ * reading only the missing name looks identical to a lost capability. Every entry here states which
+ * it is, so the next reader does not have to re-derive it from tools.ts.
  */
 const KNOWN_REMOVED = new Map<string, string>([
   [
     'reticle_run_record',
-    'removed by the surface consolidation with no successor — an agent currently has no way to append a manual run to project history. project-history-test skips the assertion loudly rather than deleting it.',
+    'RETIRED from the surface, not removed: tools.ts RETIRED_FROM_SURFACE records that flow_replay already auto-records run outcomes, so a manual append was redundant. The handler still exists and works; it is simply not advertised. An earlier note here claimed the capability was lost — it was not, and the claim came from reading a missing tool name without checking the retirement list.',
   ],
 ]);
 

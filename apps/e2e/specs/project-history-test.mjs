@@ -44,18 +44,14 @@ chk('reticle_project returns scoped runs', Array.isArray(proj.runs)&&proj.runs.l
 chk('reticle_project returns lastRun', proj.lastRun&&proj.lastRun.name==='addtask', JSON.stringify(proj.lastRun)?.slice(0,80));
 chk('reticle_project returns a diff-vs-last block', proj.diff&&typeof proj.diff.regressed==='boolean', JSON.stringify(proj.diff)?.slice(0,100));
 
-// 3) SKIPPED: reticle_run_record no longer exists on the tool surface.
+// 3) SKIPPED: reticle_run_record is retired from the MCP surface — deliberately, and the capability
+// is NOT lost. tools.ts RETIRED_FROM_SURFACE records the reason: flow_replay already auto-records run
+// outcomes (flow-replay-run.ts calls project.recordRun), so a manual append was redundant. The
+// handler still exists and still works; it is simply not advertised.
 //
-// The consolidation that merged 56 tools down to 41 removed it, and unlike record_start/record_stop
-// (now reticle_record{action}) or end_session (now reticle_session{action:'end'}) it has no successor
-// — there is currently NO way for an agent to append a manual run to project history. This spec is
-// the only thing that noticed, and it could not report it because it was crashing on an earlier
-// renamed call.
-//
-// Left as an explicit skip rather than deleted: whether that capability should come back is a product
-// decision, and silently dropping the assertion would erase the only record that it went missing.
-chk.skip?.('reticle_run_record appends a manual run — TOOL REMOVED, capability has no successor');
-console.log('   ⏭  skipped: reticle_run_record was removed by the surface consolidation (no successor)');
+// This assertion exercised the retired tool, so it is skipped rather than rewritten: what it covered
+// — that a run lands in project history — is covered by the flow_replay path above.
+console.log('   ⏭  skipped: reticle_run_record is retired from the surface; flow_replay auto-records');
 
 console.log(`\n${fail===0?'✅ RUNHISTORY VERIFIED':'❌ FAILED'} (${pass} passed, ${fail} failed)`);
 await b.close(); await server.close(); nfs.rmSync(path.dirname(reticleRoot),{recursive:true,force:true}); process.exit(fail===0?0:1);
