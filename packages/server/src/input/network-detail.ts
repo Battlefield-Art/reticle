@@ -7,9 +7,10 @@ import {
 } from '@reticlehq/core';
 
 /**
- * CDP-authoritative network detail, driven only). On the `reticle drive` path the daemon owns a
- * Playwright browser; its `page.on('response')` sees the FULL response — status, mime type, and every
- * response header — which the in-page fetch/XHR wrapper cannot read (CORS-opaque headers, redirects).
+ * CDP-authoritative network detail. Wherever the daemon has a CDP connection — whether it launched
+ * the browser or attached to one someone else started — `page.on('response')` sees the FULL response:
+ * status, mime type, and every response header, including the ones the in-page fetch/XHR wrapper
+ * structurally cannot read (CORS-opaque headers, redirects).
  * Capturing it as a NET_DETAIL event and merging it onto the matching in-page NET_REQUEST means the
  * driven view never loses fidelity to an outside-in tool. Pure builder + merge are unit-tested; the
  * `page.on` attachment is thin Playwright glue (exercised e2e, like the pool launcher).
