@@ -123,7 +123,15 @@ async function evalState(
     ReticleCommand.STATE_READ,
     p.store !== undefined ? { store: p.store } : {},
   );
-  if (!res.ok) return { pass: false, failureReason: 'state read failed' };
+  if (!res.ok) {
+    return {
+      pass: false,
+      failureReason: 'state read failed',
+      observed: 'the store could not be read',
+      expected: 'a readable registered store',
+      assertion: 'state.unreadable',
+    };
+  }
   const stores = ((res.result ?? {}) as { stores?: Record<string, unknown> }).stores ?? {};
   const names = Object.keys(stores);
   const storeName = p.store ?? (names.length === 1 ? names[0] : undefined);
@@ -141,6 +149,9 @@ async function evalState(
     return {
       pass: false,
       failureReason: `state path '${p.path}' not found in store '${storeName}'`,
+      observed: `no path '${p.path}' in store '${storeName}'`,
+      expected: `store '${storeName}' to expose '${p.path}'`,
+      assertion: 'state.path-missing',
       evidence: { availableKeys: selection.availableKeys },
     };
   }
@@ -154,6 +165,9 @@ async function evalState(
   return {
     pass: false,
     failureReason: `state '${p.path}' is ${JSON.stringify(capDepth(selection.value, 0))}, expected ${JSON.stringify(want)}`,
+    observed: `${p.path} = ${JSON.stringify(capDepth(selection.value, 0))}`,
+    expected: `${p.path} = ${JSON.stringify(want)}`,
+    assertion: 'state.equals',
     evidence: { store: storeName, path: p.path, value: capDepth(selection.value, 1) },
   };
 }

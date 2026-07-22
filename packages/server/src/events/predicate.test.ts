@@ -9,6 +9,7 @@ import {
   type MatchResult,
 } from '@reticlehq/core';
 import { evaluatePredicate, waitForPredicate, type PredicateSession } from './predicate.js';
+import type { Predicate } from './predicate-eval.js';
 
 /** In-memory session: events from an array, MATCH from a supplied matcher. */
 class FakeSession implements PredicateSession {
@@ -674,17 +675,40 @@ describe('element failures carry observed/expected/assertion', () => {
   });
 
   /**
-   * Deliberately asserts the CURRENT limit. When a net/state/signal oracle grows these fields this
-   * test goes red, which is the prompt to move it — an unrecorded gap is one nobody closes.
+   * Every oracle now carries the structure, so this asserts COVERAGE rather than a limit.
+   *
+   * The test this replaces asserted the opposite — that non-element oracles had no `assertion` — and
+   * went red the moment they grew one, which is precisely what it was written to do. A gap that
+   * reports itself is the only kind that reliably gets closed; this repo lost four e2e specs and a
+   * whole tool capability to gaps that did not.
    */
-  it('records that non-element oracles do NOT carry them yet', async () => {
-    const r = await evaluatePredicate(session([]), {
-      kind: 'net',
-      urlContains: '/api/x',
-      count: 1,
+  const NON_ELEMENT: { label: string; predicate: Predicate; expected: string }[] = [
+    { label: 'net', predicate: { kind: 'net', urlContains: '/api/x', count: 1 }, expected: 'net.count' },
+    { label: 'net presence', predicate: { kind: 'net', urlContains: '/api/x' }, expected: 'net.present' },
+    { label: 'route', predicate: { kind: 'route', pathname: '/deployments' }, expected: 'route.changed' },
+    { label: 'console', predicate: { kind: 'console', level: 'error' }, expected: 'console.present' },
+    { label: 'console absent', predicate: { kind: 'console', level: 'error', absent: true }, expected: undefined as unknown as string },
+    { label: 'signal', predicate: { kind: 'signal', name: 'compose:generated' }, expected: 'signal.absent' },
+    { label: 'animation', predicate: { kind: 'animation', name: 'fade' }, expected: 'animation.present' },
+  ];
+
+  for (const { label, predicate, expected } of NON_ELEMENT) {
+    if (expected === undefined) continue; // absent-console PASSES on an empty window; nothing to assert
+    it(`${label} failures carry an assertion kind`, async () => {
+      const r = await evaluatePredicate(session([]), predicate);
+      expect(r.pass).toBe(false);
+      expect(r.assertion).toBe(expected);
+      expect(r.observed).toBeDefined();
+      expect(r.expected).toBeDefined();
     });
-    expect(r.pass).toBe(false);
-    expect(r.failureReason).toBeDefined();
-    expect(r.assertion).toBeUndefined();
+  }
+
+  it('the assertion kind distinguishes failures that need different fixes', async () => {
+    // "never fired" and "fired with the wrong payload" share one prose line but not one fix.
+    const never = await evaluatePredicate(session([]), {
+      kind: 'signal',
+      name: 'compose:generated',
+    });
+    expect(never.assertion).toBe('signal.absent');
   });
 });
