@@ -112,6 +112,34 @@ agent smarter. It removes the search.**
 - **Fix rate did not move**, and no one should claim it did. At this scale every agent found every bug
   eventually; the pointer bought the path, not the outcome.
 
+## Third condition: does adding the CAUSE help, or is it padding?
+
+The remaining piece of the product vision is "why it's not working", and I had been deferring it on
+the strength of FeedbackEval — where rich natural-language feedback finished LAST, 10.5pp behind
+structured test output and 6.4pp behind a bare "the code is wrong, fix it". That is a real result, but
+it is a result about NARRATIVE feedback, and the same paper has structured feedback winning. Deferring
+on it was reading the finding backwards.
+
+So the ablation got a third arm, using the structured shape Reticle already produces —
+`observed` / `expected` / `assertion`, no prose:
+
+| condition | tool calls | vs A | vs B |
+| --- | ---: | ---: | ---: |
+| A — symptom only | 22.0 (23, 21) | — | |
+| B — + `file:line` | 12.0 (11, 13) | **−45%** | — |
+| C — + structured cause | 10 (n=1) | **−55%** | −17% |
+
+**What this supports: adding the cause does not hurt.** That is the claim worth having, because the
+fear was that it would — and it is the fear that was keeping the surface unbuilt.
+
+**What it does not support: that −17% is real.** n=1, and condition B's own spread was 11–13, so a 10
+sits barely outside it. Anyone quoting a further improvement from causal detail is over-reading this.
+
+**Design consequence, which is the actionable part:** if the "why" surface gets built, it must be
+`observed` / `expected` / `assertion` — the shape measured here and the shape that wins in the
+literature — and explicitly NOT a prose explanation, which is the shape that loses. Reticle already
+emits exactly this on `act_and_wait`; the gap is that plain `reticle_assert` does not.
+
 ## Why this was worth running rather than asserting
 
 The three prior measurements established that the pointer is *present* (83/85), that its presence is
