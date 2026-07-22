@@ -124,8 +124,9 @@ same tools, one line of difference — the `file:line` Reticle emits. Agents fix
 conditions, but took **23 tool calls without the pointer and 11 with it (−52%)**. The pointer does not
 make the agent smarter; it removes the search. Note what the pointer actually is: **where the acted
 element is rendered**, not where the bug is caused — for a signal or state bug those differ, and the
-agent still pays a hop, which this number includes. Small n, one run per cell, and on a fixture small
-enough that the no-pointer baseline is only 4–13 calls — so it understates the effect.
+agent still pays a hop, which this number includes. Small n, one run per cell, and **scoped to a
+well-structured codebase**: we tried twice to build a harder localization case in a package ten times
+the size and could not — agents localized in 4–13 calls regardless of search space or wording.
 → [Full method and caveats](bench/diagnosis/LOCALIZATION-ABLATION.md)
 
 → [Full benchmark scorecard](bench/SCORECARD.md) · [What Reticle catches that Playwright can't, and why](bench/pw-vs-reticle/MOAT.md) · [Reproducible token math](docs/token-efficiency.md)
