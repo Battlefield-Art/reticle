@@ -448,7 +448,7 @@ function installPerfFaults(bugs: ReadonlySet<string>): void {
   }
 
   if (bugs.has(PERF_BUGS.CLS_IMAGELESS_JUMP)) {
-    const squash = (): void => {
+    const squash = (): boolean => {
       const grid = document.querySelector('[data-testid="kpi-deploys"]')?.parentElement;
       if (grid instanceof HTMLElement && grid.dataset['squashed'] !== 'done') {
         grid.dataset['squashed'] = 'done';
@@ -464,9 +464,23 @@ function installPerfFaults(bugs: ReadonlySet<string>): void {
           }
           grid.style.minHeight = original;
         }, 400);
+        return true;
       }
+      return false;
     };
-    setTimeout(squash, 100);
+    // Wait for the grid to exist before squashing it.
+    //
+    // This used to fire once at 100ms, when the app is still on the LOGIN screen — the KPI grid it
+    // targets only renders on Overview, after sign-in. querySelector returned null, squash did
+    // nothing, and the fault never happened. The registry counted it as a bug both tools missed;
+    // there was nothing to miss. A seeded bug that cannot occur is worse than no seeded bug, because
+    // it reads as coverage.
+    const deadline = Date.now() + 15000;
+    const attempt = (): void => {
+      if (squash()) return;
+      if (Date.now() < deadline) setTimeout(attempt, 150);
+    };
+    setTimeout(attempt, 100);
   }
 
   if (bugs.has(PERF_BUGS.LONGTASK_ON_NAV)) {

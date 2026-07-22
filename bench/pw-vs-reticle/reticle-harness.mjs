@@ -501,10 +501,18 @@ export async function runReticle(bugs) {
           // perf: layout shift: a screenshot taken after things settle looks perfect; the damage is in
           // WHEN the page moved. Read the CLS the SDK already reports.
           await sleep(1200); // let the late shift actually happen before judging
-          const obs = await call('reticle_observe', { sessionId: sid, limit: 200 });
-          const cls = Number(obs?.summary?.layoutShift ?? 0);
+          const obs = await call('reticle_observe', { sessionId: sid, limit: 300, since: 0 });
+          // Read the PERF events. This used to read `obs.summary.layoutShift`, a field
+          // reticle_observe does not return — that shape belongs to act_and_wait's causal summary —
+          // so it was always undefined and the check always scored cls=0.000. It could never fire,
+          // which made a genuine "we did not measure this" look like "the page was fine".
+          //
+          // CLS is cumulative and the SDK emits the running total, so the largest value IS the total.
+          const cls = (obs?.events ?? [])
+            .filter((e) => e.type === 'perf' && e.data?.metric === 'cls')
+            .reduce((max, e) => Math.max(max, Number(e.data?.value ?? 0)), 0);
           caught = cls >= Number(c.expected);
-          note = `cls=${cls.toFixed(3)} threshold=${c.expected}`;
+          note = `cls=${cls.toFixed(4)} threshold=${c.expected}`;
         } else if (c.kind === 'perfNoLongTaskAfter') {
           // Long task: the main thread was blocked. Invisible to any DOM assertion.
           const ref = await waitRef(c.steps[0]);
