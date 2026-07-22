@@ -12,7 +12,7 @@ argued but not measured. **NONE** means we tried and could not.
 
 | #  | Claim                                        | Evidence                                                                                | Confidence                                                                             |
 | -- | -------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 1  | Catches bugs a Playwright script misses      | 85-bug registry, 2 full runs: 78/85 vs 57/85; **24/25 critical vs 8/25**                | **HIGH** — repeated, competitor harness adversarially de-rigged, losses published      |
+| 1  | Catches bugs a Playwright script misses      | 85-bug registry: **82/85** vs 57/85; **24/25 critical vs 8/25**                          | **HIGH** for detection; **MEDIUM** on the exact figure — 82 comes from a Reticle-only re-run after four harness defects were fixed, not a fresh head-to-head |
 | 2  | Does not flag healthy builds                 | 0 false positives on every clean variant, both runs; 2/2 false-positive traps held      | **HIGH** — repeated                                                                    |
 | 3  | A failure names the file to open             | 83/85 carry `file:line`; 79 name the exact file                                         | **HIGH** — plus a control (0/22 with stamps stripped) proving the stamp causes it      |
 | 4  | That pointer is not obtainable another way   | 0/5 recoverable via any other Reticle route, inspect included                           | **HIGH** — direct measurement, both conditions                                         |

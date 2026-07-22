@@ -53,27 +53,27 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 
 **The numbers, every one measured by a committed harness, reproducible with `pnpm bench`, and we publish where we _lose_ too:**
 
-| Check                                                     | Result                                                    |
-| --------------------------------------------------------- | --------------------------------------------------------- |
-| Bugs caught (85 injected regressions, controlled app)     | **78 / 85** (Playwright-script 56)                        |
-| Caught of those it _can_ catch                            | **78 / 81** (Playwright 54 / 57)                          |
-| **False positives (clean build)**                         | **0** (Playwright 0)                                      |
-| False-positive traps (bug-shaped non-bugs)                | **2 / 2 held** (Playwright 2 / 2)                         |
-| Wall-time per bug                                         | **3.6 s** vs Playwright 32.5 s                            |
-| Output consumed per bug                                   | 11.8 KB vs Playwright 8.2 KB — _we cost more_             |
-| Cost of the `file:line` itself                            | **38 bytes** per element described                        |
-| Reports that name the file to open (`file:line`)          | **83 / 85** carry one; **79** name the exact file         |
-| Same run, source stamps stripped (control)                | **0 / 22** — the coverage is caused by the stamp          |
-| File recoverable without the stamp, via ANY Reticle route | **0 / 5** — the pointer is the only route, not a shortcut |
-| Agent tool calls to fix, with vs without the `file:line`  | **22 -> 12 (-45%)** mean of 2 runs, fix rate 6/6 both     |
-| Cost to re-run a 4-flow regression suite                  | **~47 tokens**, constant in suite size                    |
-| Same suite, LLM re-driven (Playwright/DevTools MCP)       | ~120,000 tokens                                           |
-| **Regression-run token cost at 4 flows**                  | **2,574× cheaper** (a cost ratio, not a speed-up)         |
-| Flake rate on deterministic replay                        | **0%**                                                    |
-| Real app, first pass: live `500`s the UI hid              | **2 caught**                                              |
-| Parallel agents on **one** browser (16 flows, 8 contexts) | **6.78× faster** (Playwright's own: 4.08×)                |
-| SDK overhead, 9,083-node app (20 req/s, 285 transition/s) | **< 1.2 pp** of main thread — under a 3% bar              |
-| Exact match count on a 4,000-element query                | **62 bytes**, 46 ms (`count_only`)                        |
+| Check                                                     | Result                                                      |
+| --------------------------------------------------------- | ----------------------------------------------------------- |
+| Bugs caught (85 injected regressions, controlled app)     | **82 / 85** (Playwright-script 57)                          |
+| Caught of those it _can_ catch                            | **82 / 83** (the other 2 are traps: not firing is the pass) |
+| **False positives (clean build)**                         | **0** (Playwright 0)                                        |
+| False-positive traps (bug-shaped non-bugs)                | **2 / 2 held** (Playwright 2 / 2)                           |
+| Wall-time per bug                                         | **3.6 s** vs Playwright 32.5 s                              |
+| Output consumed per bug                                   | 11.8 KB vs Playwright 8.2 KB — _we cost more_               |
+| Cost of the `file:line` itself                            | **38 bytes** per element described                          |
+| Reports that name the file to open (`file:line`)          | **83 / 85** carry one; **79** name the exact file           |
+| Same run, source stamps stripped (control)                | **0 / 22** — the coverage is caused by the stamp            |
+| File recoverable without the stamp, via ANY Reticle route | **0 / 5** — the pointer is the only route, not a shortcut   |
+| Agent tool calls to fix, with vs without the `file:line`  | **22 -> 12 (-45%)** mean of 2 runs, fix rate 6/6 both       |
+| Cost to re-run a 4-flow regression suite                  | **~47 tokens**, constant in suite size                      |
+| Same suite, LLM re-driven (Playwright/DevTools MCP)       | ~120,000 tokens                                             |
+| **Regression-run token cost at 4 flows**                  | **2,574× cheaper** (a cost ratio, not a speed-up)           |
+| Flake rate on deterministic replay                        | **0%**                                                      |
+| Real app, first pass: live `500`s the UI hid              | **2 caught**                                                |
+| Parallel agents on **one** browser (16 flows, 8 contexts) | **6.78× faster** (Playwright's own: 4.08×)                  |
+| SDK overhead, 9,083-node app (20 req/s, 285 transition/s) | **< 1.2 pp** of main thread — under a 3% bar                |
+| Exact match count on a 4,000-element query                | **62 bytes**, 46 ms (`count_only`)                          |
 
 **The catch rate isn't the story — _which_ bugs is.** Severity is graded by consequence to the user,
 not by how hard the bug is to find:
@@ -108,9 +108,16 @@ gap is 24 vs 8. **Use both.** That is the honest recommendation, and it's why we
   localization as _reducing_ an agent's total tokens by cutting the search. We have not measured that
   end-to-end ourselves, so treat it as a considered bet, not a proven one.
 
-**Where we lose:** Playwright catches paint-level regressions we can't see (a global CSS filter leaves
-every computed style identical — that needs pixels), and it caught one request-payload bug we missed.
-Neither tool catches the two layout-shift bugs. All of it is in the scorecard.
+**Where we lose:** one request-payload bug. Reticle reads `init.body` inside its own `fetch` wrapper,
+so anything installed earlier mutates the request after we have read it — fixed on the driven path
+via CDP wire capture, still open in attach mode, and now declared as a blind spot rather than silent.
+
+**A correction:** we previously reported the paint and layout-shift bugs as losses too, on the
+reasoning that they "need pixels". That was wrong — Reticle has `reticle_visual_diff` and a
+layout-shift observer, and all four were harness defects: a `paint` branch hardcoded to `false` with
+an excuse, a CLS check reading a field the tool does not return, a benchmark driving one browser while
+screenshotting another, and one seeded bug whose injector fired before its target existed. Fixed and
+measured; the scorecard carries the detail.
 
 **And parallelism is not our moat.** Driving Playwright's own `browser.newContext()` the same way, on
 the same machine, gets **4.08×**. Leasing contexts from one browser is a convenience we give an agent
