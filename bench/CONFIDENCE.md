@@ -34,9 +34,12 @@ argued but not measured. **NONE** means we tried and could not.
   literature's large numbers come from unfamiliar repos with weak naming, which is a property of the
   codebase and not something a bigger fixture here simulates.
 - **In-page network fidelity in attach mode.** Reticle reads `init.body` inside its own fetch
-  wrapper, so anything patching fetch later — an interceptor started after connect(), a service
-  worker, sendBeacon — rewrites requests invisibly. Fixed on the DRIVE path only (wire capture via
-  CDP). Attach-mode sessions still have this blind spot.
+  wrapper, so anything installed EARLIER sits below it and mutates after we have read. Fixed on the
+  DRIVE path (CDP wire capture). On the ATTACH path it is now **declared** rather than silent — a
+  `wrapped-network` blind spot fires at install and coverage reports partial. That does not restore
+  fidelity; it stops a verdict implying we had it. Two heuristic limits are pinned by tests: a BOUND
+  wrapper is missed, and a polyfilled fetch is reported (correctly, but it will read as a false
+  positive).
 - **That the false-green list is complete.** Five were found by auditing for one bug's *shape*. The
   audit found them; it cannot prove there is no sixth.
 
