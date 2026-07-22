@@ -86,10 +86,32 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
   state.seen.add(value);
   try {
     if (Array.isArray(value)) {
-      return value.slice(0, TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS).map((item) => {
+      // Truncate by dropping whole ITEMS, never by corrupting them.
+      //
+      // The node budget used to run out mid-collection, so later items kept their shape while
+      // individual fields became the string "[TRUNCATED]" — an array field turned into a string, a
+      // boolean into a string. Consumers declare output schemas over these payloads, so that was not
+      // a degraded answer: validation rejected the whole message and the caller received NOTHING. On
+      // a page with thousands of matches that is a total loss of the query tool, in exactly the
+      // conditions where it matters most.
+      //
+      // Stopping BEFORE an item that will not fit keeps every survivor whole and type-correct. The
+      // collection's true size travels separately as a scalar (serialized first), so "how many" stays
+      // exact while the sample shrinks.
+      const out: unknown[] = [];
+      for (const item of value.slice(0, TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS)) {
+        if (state.nodes >= MAX_TOTAL_NODES) break;
+        // Checking only BEFORE the item is not enough: one that starts under the budget can cross it
+        // partway through and come back with its tail replaced by placeholders. Serialize, then keep
+        // it only if it fitted — otherwise discard it and stop, so what ships is always whole.
         const sanitized = sanitize(item, state, depth + 1);
-        return sanitized === OMIT_VALUE ? null : sanitized;
-      });
+        // `>=`, not `>`: sanitize stops AT the ceiling rather than passing it, so the budget never
+        // reads as exceeded. Reaching it during this item means some field inside was replaced by a
+        // placeholder, which makes the item schema-invalid — drop it and stop.
+        if (state.nodes >= MAX_TOTAL_NODES) break;
+        out.push(sanitized === OMIT_VALUE ? null : sanitized);
+      }
+      return out;
     }
 
     const out = Object.create(null) as Record<string, unknown>;

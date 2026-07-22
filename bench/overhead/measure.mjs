@@ -30,22 +30,40 @@ const WINDOW_S = Number(process.argv[3] ?? 8);
 const REPEATS = 3;
 const BUDGET_PCT = 3;
 
+/**
+ * Which fixture is under test. The enterprise view boots itself from its query param and the hostile
+ * one is reached by a nav click, so the harness has to know which page it is supposed to end up on —
+ * and has to ASSERT it got there, because measuring the wrong view reports a flatteringly small
+ * number that looks entirely plausible.
+ */
+const ENTERPRISE = BASE.includes('enterprise');
+const ANCHOR_TESTID = ENTERPRISE
+  ? '[data-testid="enterprise-grid"]'
+  : '[data-testid="hostile-ticker"]';
+
 const metric = (metrics, name) => metrics.find((m) => m.name === name)?.value ?? 0;
 
 /** The three conditions, as URL suffixes. */
-const CONDITION = {
-  full: '',
-  observers: '/?nopresent',
-  none: '/?no-hud',
-};
+/**
+ * Condition flags, appended to BASE. Appended rather than replaced so a fixture's own query params
+ * (e.g. ?enterprise=1) survive — replacing them is how the first enterprise run silently measured
+ * the small fixture instead.
+ */
+const CONDITION = { full: '', observers: 'nopresent', none: 'no-hud' };
+
+function urlFor(condition) {
+  const flag = CONDITION[condition];
+  if (flag === '') return BASE;
+  return BASE.includes('?') ? `${BASE}&${flag}` : `${BASE}/?${flag}`;
+}
 
 /** Drive one condition and return the main-thread task-seconds consumed during the window. */
 async function measureOnce(browser, condition) {
   const page = await browser.newPage();
-  const url = `${BASE}${CONDITION[condition]}`;
+  const url = urlFor(condition);
   await page.goto(url, { waitUntil: 'load' });
 
-  // Sign in, then click through to the hostile view — by CLICK, so it works with the SDK disabled.
+  // Sign in — by CLICK, so it works with the SDK disabled.
   await page.evaluate(() => {
     const btn = [...document.querySelectorAll('button')].find((b) =>
       b.textContent?.includes('Sign in'),
@@ -53,15 +71,20 @@ async function measureOnce(browser, condition) {
     btn?.click();
   });
   await page.waitForTimeout(500);
-  await page.evaluate(() => {
-    const nav = [...document.querySelectorAll('button,a')].find((b) =>
-      b.textContent?.trim().startsWith('Hostile'),
-    );
-    nav?.click();
-  });
+  // The enterprise fixture boots straight into its own view; the hostile one needs a nav click.
+  // Navigating anyway would have silently measured the WRONG page — the first enterprise-scale run
+  // returned numbers identical to the small fixture because it clicked away to Hostile.
+  if (!ENTERPRISE) {
+    await page.evaluate(() => {
+      const nav = [...document.querySelectorAll('button,a')].find((b) =>
+        b.textContent?.trim().startsWith('Hostile'),
+      );
+      nav?.click();
+    });
+  }
   // Confirm we are actually on the churning page — a silent miss would measure an idle page and
   // report a flatteringly small overhead.
-  await page.waitForSelector('[data-testid="hostile-ticker"]', { timeout: 5000 });
+  await page.waitForSelector(ANCHOR_TESTID, { timeout: 8000 });
   await page.waitForTimeout(1000); // let the churn reach steady state before sampling
 
   const client = await page.context().newCDPSession(page);

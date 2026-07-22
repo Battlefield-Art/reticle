@@ -178,3 +178,86 @@ describe('scalar counts survive a payload that exhausts the node budget', () => 
     expect(wire.elements.length).toBeLessThanOrEqual(200);
   });
 });
+
+/**
+ * A partially-serialized array ITEM is worse than a missing one.
+ *
+ * The node budget used to run out in the middle of a collection, so later items kept their shape but
+ * had individual fields replaced by the string "[TRUNCATED]" — an array field became a string, a
+ * boolean became a string. The server declares an output schema for these payloads, so the result was
+ * not a degraded answer: the entire tool call failed output validation and the agent received NOTHING.
+ * On a page with thousands of matching elements that is a total loss of the query tool.
+ *
+ * Items are now whole or absent. The count travels separately, so "how many" stays exact while the
+ * sample shrinks.
+ */
+describe('collections truncate by dropping whole items, never by corrupting them', () => {
+  function descriptors(n: number): unknown[] {
+    return Array.from({ length: n }, (_v, i) => ({
+      ref: `e${String(i)}`,
+      role: 'button',
+      name: `cell ${String(i)}`,
+      states: ['present', 'visible', 'enabled'],
+      visible: true,
+      source: 'src/views/Enterprise.tsx:67',
+    }));
+  }
+
+  it('every surviving item keeps its declared field types', () => {
+    const wire = sanitizeForTransport({ count: 4016, elements: descriptors(4016) }) as {
+      elements: Record<string, unknown>[];
+    };
+    expect(wire.elements.length).toBeGreaterThan(0);
+    for (const el of wire.elements) {
+      expect(Array.isArray(el['states'])).toBe(true);
+      expect(typeof el['visible']).toBe('boolean');
+      expect(typeof el['ref']).toBe('string');
+    }
+  });
+
+  it('drops items rather than emitting placeholder strings in their place', () => {
+    const wire = sanitizeForTransport({ count: 4016, elements: descriptors(4016) }) as {
+      elements: unknown[];
+    };
+    for (const el of wire.elements) expect(typeof el).toBe('object');
+  });
+
+  it('still reports the exact count alongside the shortened sample', () => {
+    const wire = sanitizeForTransport({ count: 4016, elements: descriptors(4016) }) as {
+      count: unknown;
+      elements: unknown[];
+    };
+    expect(wire.count).toBe(4016);
+    expect(wire.elements.length).toBeLessThan(4016);
+  });
+});
+
+/**
+ * An item that STARTS under the budget can cross it partway through. Checking only before the item
+ * leaves the last one able to ship with its tail replaced by placeholders — the same schema-invalid
+ * payload, just rarer and dependent on how the item size happens to divide the budget.
+ */
+describe('the last surviving item is whole, whatever the item size', () => {
+  for (const fieldCount of [3, 5, 7, 11, 13]) {
+    it(`keeps types intact with ${String(fieldCount)}-field items`, () => {
+      const item = (i: number): Record<string, unknown> => {
+        const o: Record<string, unknown> = { id: `e${String(i)}`, flag: true, tags: ['a', 'b'] };
+        for (let f = 0; f < fieldCount; f += 1) o[`f${String(f)}`] = `value-${String(f)}`;
+        return o;
+      };
+      const wire = sanitizeForTransport({
+        count: 5000,
+        rows: Array.from({ length: 5000 }, (_v, i) => item(i)),
+      }) as { rows: Record<string, unknown>[] };
+      expect(wire.rows.length).toBeGreaterThan(0);
+      for (const row of wire.rows) {
+        expect(typeof row['flag']).toBe('boolean');
+        expect(Array.isArray(row['tags'])).toBe(true);
+        for (let f = 0; f < fieldCount; f += 1) {
+          expect(typeof row[`f${String(f)}`]).toBe('string');
+          expect(row[`f${String(f)}`]).not.toBe('[TRUNCATED]');
+        }
+      }
+    });
+  }
+});
