@@ -501,7 +501,7 @@ export async function runReticle(bugs) {
           // perf: layout shift: a screenshot taken after things settle looks perfect; the damage is in
           // WHEN the page moved. Read the CLS the SDK already reports.
           await sleep(1200); // let the late shift actually happen before judging
-          const obs = await call('reticle_observe', { sessionId: sid, limit: 300, since: 0 });
+          const obs = await call('reticle_observe', { sessionId: sid, max_events: 300, since: 0 });
           // Read the PERF events. This used to read `obs.summary.layoutShift`, a field
           // reticle_observe does not return — that shape belongs to act_and_wait's causal summary —
           // so it was always undefined and the check always scored cls=0.000. It could never fire,
@@ -528,7 +528,7 @@ export async function runReticle(bugs) {
             sessionId: sid,
             types: ['perf'],
             since: act0?.since,
-            limit: 200,
+            max_events: 200,
           });
           const durations = (obs?.events ?? [])
             .filter((e) => String(e?.data?.metric ?? '') === 'longtask')
@@ -551,7 +551,7 @@ export async function runReticle(bugs) {
             sessionId: sid,
             types: ['route'],
             since: act0?.since,
-            limit: 50,
+            max_events: 50,
           });
           const routes = (obs?.events ?? []).filter(
             (e) => String(e.type ?? '') === 'route.change',
@@ -586,7 +586,7 @@ export async function runReticle(bugs) {
             sessionId: sid,
             types: ['signal'],
             since: act0?.since,
-            limit: 50,
+            max_events: 50,
           });
           // The 'signal' type bucket also carries page.health heartbeats, so match the event type
           // exactly rather than trusting the filter to mean only app signals.

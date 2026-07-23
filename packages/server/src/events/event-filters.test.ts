@@ -7,11 +7,42 @@ import {
   projectNetCall,
   projectConsoleLog,
   isConsoleEvent,
+  eventMatchesFilters,
 } from './event-filters.js';
 
-function ev(type: EventType, data: Record<string, unknown>, t = 1): ReticleEvent {
+function ev(type: EventType, data: Record<string, unknown> = {}, t = 1): ReticleEvent {
   return { t, type, sessionId: 's', data };
 }
+
+describe('eventMatchesFilters (observe filters allowlist)', () => {
+  it('keeps net.request when the documented bucket name "net" is passed', () => {
+    // The whole point: the schema advertises bucket names, not raw types. Passing the documented
+    // value must keep the matching events — before the fix this returned false and the agent got
+    // an empty (false-green) timeline.
+    expect(eventMatchesFilters(ev(EventType.NET_REQUEST), ['net'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.DOM_ADDED), ['dom'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.CONSOLE_ERROR), ['console'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.SIGNAL), ['signal'])).toBe(true);
+  });
+
+  it('excludes events outside the requested bucket', () => {
+    expect(eventMatchesFilters(ev(EventType.DOM_ADDED), ['net'])).toBe(false);
+    expect(eventMatchesFilters(ev(EventType.NET_REQUEST), ['console'])).toBe(false);
+  });
+
+  it('also accepts a raw event type, so both spellings work', () => {
+    expect(eventMatchesFilters(ev(EventType.NET_REQUEST), ['net.request'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.DOM_TEXT), ['dom.text'])).toBe(true);
+  });
+
+  it('an unknown filter entry narrows rather than throws', () => {
+    expect(eventMatchesFilters(ev(EventType.NET_REQUEST), ['nonsense'])).toBe(false);
+  });
+
+  it('"console" bucket covers uncaught errors, not just console.error', () => {
+    expect(eventMatchesFilters(ev(EventType.ERROR_UNCAUGHT), ['console'])).toBe(true);
+  });
+});
 
 describe('reconcileNet (in-flight / hung requests)', () => {
   it('keeps a completed request and drops its matching pending (no double-count)', () => {

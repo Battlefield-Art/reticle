@@ -11,6 +11,7 @@ import {
   matchNet,
   matchConsole,
   isConsoleEvent,
+  eventMatchesFilters,
   netEmptyHint,
   consoleEmptyHint,
   reconcileNet,
@@ -83,7 +84,8 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .array(z.string())
         .optional()
         .describe(
-          'Event type allowlist: dom | net | route | console | animation | signal. Omit to return all types.',
+          'Event type allowlist. Use a bucket name — dom | net | route | console | animation | signal ' +
+            '— or a raw type (e.g. "net.request"). Omit to return all types.',
         ),
       max_events: z
         .number()
@@ -135,7 +137,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       });
       const filters = Array.isArray(args['filters']) ? (args['filters'] as string[]) : undefined;
       const filtered =
-        filters === undefined ? events : events.filter((e) => filters.includes(e.type));
+        filters === undefined ? events : events.filter((e) => eventMatchesFilters(e, filters));
       // Output budget: cap to the most recent N (no silent caps — droppedOldest is surfaced in cost).
       const { events: budgeted, droppedOldest } = applyEventBudget(
         filtered,

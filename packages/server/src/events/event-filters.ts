@@ -2,6 +2,38 @@ import { EventType, type ReticleEvent } from '@reticlehq/core';
 import { asString, asNumber } from '../tools/tools-helpers.js';
 import { mergeNetworkDetail } from '../input/network-detail.js';
 
+/**
+ * The friendly bucket names reticle_observe's `filters` param advertises → the real event types.
+ *
+ * The schema promised `dom | net | route | console | animation | signal`, but the handler filtered
+ * with `filters.includes(e.type)` against types like `net.request` and `dom.added` — so every
+ * documented value matched nothing, and an agent passing `filters:['net']` to trim its payload got an
+ * EMPTY timeline instead. Empty reads as "the app did nothing" — a false green produced by using the
+ * feature exactly as documented. Mapping the bucket to its member types makes the documented values
+ * work; raw types are still accepted (see eventMatchesFilters) so neither spelling surprises a caller.
+ */
+export const OBSERVE_FILTER_BUCKETS: Record<string, readonly string[]> = {
+  dom: [EventType.DOM_ADDED, EventType.DOM_REMOVED, EventType.DOM_ATTR, EventType.DOM_TEXT],
+  net: [EventType.NET_REQUEST, EventType.NET_PENDING, EventType.NET_STREAM],
+  route: [EventType.ROUTE_CHANGE],
+  console: [EventType.CONSOLE_ERROR, EventType.ERROR_UNCAUGHT],
+  animation: [EventType.ANIM_START, EventType.ANIM_END],
+  signal: [EventType.SIGNAL],
+};
+
+/**
+ * True when an event passes an observe `filters` allowlist. A filter entry matches either as a bucket
+ * name (`net` keeps every net.* type) or as a raw event type (`net.request`). Unknown entries match
+ * nothing rather than throwing — a typo narrows the result, it never crashes the observe.
+ */
+export function eventMatchesFilters(e: ReticleEvent, filters: readonly string[]): boolean {
+  for (const f of filters) {
+    const bucket = OBSERVE_FILTER_BUCKETS[f];
+    if (bucket !== undefined ? bucket.includes(e.type) : e.type === f) return true;
+  }
+  return false;
+}
+
 /** Match a net.request event against optional method/url/status filters (reticle_network). */
 export function matchNet(
   e: ReticleEvent,
