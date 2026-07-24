@@ -18,32 +18,41 @@ import { asRef, type Ref } from '@reticlehq/core';
  */
 export const MAX_TRACKED_REFS = 10000;
 
+/**
+ * Full-sweep cadence. The deref-sweep is O(retained), and a page legitimately holding ≥ MAX_TRACKED_REFS
+ * live elements (a 10k-node dashboard) can never get under the cap that way, so running it on EVERY mint
+ * over the cap turned each mint into a 10k-entry scan — measured 264µs vs 0.20µs (1,300x) on the app's
+ * main thread, ~2.6% of it forever on a churning page. The cap is instead held by an O(1) oldest-drop per
+ * over-cap mint, and the expensive dead-entry sweep runs once per this many mints (amortized O(1)).
+ */
+const SWEEP_EVERY_MINTS = 1000;
+
 export class RefRegistry {
   readonly #toRef = new WeakMap<Element, Ref>();
   readonly #fromRef = new Map<string, WeakRef<Element>>();
   #seq = 0;
+  #mintsSinceSweep = 0;
 
   /** How many reverse entries are currently retained. Exposed so the bound can be asserted. */
   get size(): number {
     return this.#fromRef.size;
   }
 
-  /**
-   * Drop entries whose element has been collected or detached, then — if still over the cap — the
-   * oldest remaining. Map iterates in insertion order, so "oldest" is simply the front.
-   */
-  #evict(): void {
+  /** O(1): drop the least-recently-minted reverse entry. Map iterates in insertion order, so the front
+   *  is the oldest. A still-live element whose entry is dropped re-registers on its next refFor. */
+  #evictOldest(): void {
+    const oldest = this.#fromRef.keys().next();
+    if (oldest.done !== true) this.#fromRef.delete(oldest.value);
+  }
+
+  /** Full pass: drop every entry whose element has been collected or detached (frees genuinely dead
+   *  bookkeeping), then any remaining excess by age. Amortized — called once per SWEEP_EVERY_MINTS. */
+  #sweep(): void {
     for (const [ref, weak] of this.#fromRef) {
       const el = weak.deref();
       if (el === undefined || !el.isConnected) this.#fromRef.delete(ref);
     }
-    // Sweeping usually suffices; a page legitimately holding more than the cap in live elements falls
-    // through to dropping the least recently minted.
-    while (this.#fromRef.size > MAX_TRACKED_REFS) {
-      const oldest = this.#fromRef.keys().next();
-      if (oldest.done === true) return;
-      this.#fromRef.delete(oldest.value);
-    }
+    while (this.#fromRef.size > MAX_TRACKED_REFS) this.#evictOldest();
   }
 
   /** Get the existing ref for an element, or mint a new one. */
@@ -60,7 +69,14 @@ export class RefRegistry {
     const ref = asRef(`e${String(this.#seq)}`);
     this.#toRef.set(el, ref);
     this.#fromRef.set(ref, new WeakRef(el));
-    if (this.#fromRef.size > MAX_TRACKED_REFS) this.#evict();
+    // Keep bounded cheaply on every mint; run the full dead-entry sweep only periodically.
+    this.#mintsSinceSweep += 1;
+    if (this.#mintsSinceSweep >= SWEEP_EVERY_MINTS) {
+      this.#mintsSinceSweep = 0;
+      this.#sweep();
+    } else if (this.#fromRef.size > MAX_TRACKED_REFS) {
+      this.#evictOldest();
+    }
     return ref;
   }
 
