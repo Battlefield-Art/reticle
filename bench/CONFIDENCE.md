@@ -8,7 +8,7 @@ Every row is generated from an artifact on disk or names the run that produced i
 
 | # | Claim | Evidence | Confidence |
 | --- | --- | --- | --- |
-| 1 | Catches bugs a Playwright script misses | 85-bug registry: **83/85** vs 57/85; **25/25 critical vs 8/25**; 0 real bugs missed | **HIGH** — fresh full head-to-head, both harnesses re-run end to end after the harness defects were fixed |
+| 1 | Catches bugs a Playwright script misses | 87-bug registry: **85/87** vs 59/87; **25/25 critical vs 8/25**; 0 real bugs missed | **HIGH** — fresh full head-to-head, both harnesses re-run end to end after the harness defects were fixed |
 | 2 | Does not flag healthy builds | 0 false positives on every clean variant, both runs; 2/2 false-positive traps held | **HIGH** — repeated |
 | 3 | A failure names the file to open | 83/85 carry `file:line`; 79 name the exact file | **HIGH** — plus a control (0/22 with stamps stripped) proving the stamp causes it |
 | 4 | That pointer is not obtainable another way | 0/5 recoverable via any other Reticle route, inspect included | **HIGH** — direct measurement, both conditions |

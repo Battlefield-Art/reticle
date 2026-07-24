@@ -55,17 +55,17 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 
 | Check | Result |
 | --- | --- |
-| Bugs caught (85 injected regressions, controlled app) | **83 / 85** (Playwright-script 57) |
-| Caught of those it _can_ catch | **83 / 83** (Playwright 55 / 57) |
+| Bugs caught (87 injected regressions, controlled app) | **85 / 87** (Playwright-script 59) |
+| Caught of those it _can_ catch | **85 / 85** (Playwright 57 / 59) |
 | Critical-severity bugs caught | **25 / 25** (Playwright 8 / 25) |
 | **False positives (clean build)** | **0** (Playwright 0) |
 | False-positive traps (bug-shaped non-bugs) | **2 / 2 held** (Playwright 2 / 2) |
 | Wall-time per bug | 3.6 s vs Playwright **2.4 s** — _Playwright is faster_ |
-| Output consumed per bug | **4.0 KB** vs Playwright 8.2 KB — _half the cost_ |
+| Output consumed per bug | **4.0 KB** vs Playwright 8.0 KB — _half the cost_ |
 | MCP tool-schema tax (paid on every request) | 6,559 tok default · **282 tok** lean vs Playwright 3,725 |
 | Cost at 25× the DOM (800 → 20,000 rows) | **flat** — 7,400 → 7,276 tokens, every call ratio 1.00 |
 | Cost of the `file:line` itself | **38 bytes** per element described |
-| Reports that name the file to open (`file:line`) | **83 / 85** carry one; **79** name the exact file |
+| Reports that name the file to open (`file:line`) | **83 / 85** carry one; **79** name the exact file (85-bug run) |
 | Same run, source stamps stripped (control) | **0 / 22** — the coverage is caused by the stamp |
 | File recoverable without the stamp, via ANY Reticle route | **0 / 5** — the pointer is the only route, not a shortcut |
 | Agent tool calls to fix, with vs without the `file:line` | **22 -> 12 (-45%)** mean of 2 runs, fix rate 6/6 both |
@@ -87,7 +87,7 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 | Severity                                     | Bugs | Reticle | Playwright-script |
 | -------------------------------------------- | ---- | ------- | ----------------- |
 | **Critical** (wrong data, silent 500, state) | 25   | **25**  | 8                 |
-| **High** (signals, streams, network)         | 29   | **29**  | 23                |
+| **High** (signals, streams, network, charts) | 31   | **31**  | 25                |
 | Medium (visual, deep DOM, timing)            | 24   | **24**  | 23                |
 | Low (paint, layout shift)                    | 5    | **5**   | 3                 |
 
