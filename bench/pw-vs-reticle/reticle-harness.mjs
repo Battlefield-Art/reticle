@@ -683,6 +683,16 @@ export async function runReticle(bugs) {
           const tree = String(snap?.tree ?? '');
           caught = !tree.includes(c.expectText);
           note = `expected "${c.expectText}" in ${c.scope}: ${tree.includes(c.expectText)}`;
+        } else if (c.kind === 'chartGeometryFault') {
+          // The chart fault rides the element descriptor, so this is ONE query — no extra tool, no
+          // flag, and a healthy chart returns the same descriptor minus the field. That is the whole
+          // design claim, so the check exercises it exactly as an agent would stumble into it.
+          const q = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.testid });
+          const faults = q?.elements?.[0]?.chart ?? [];
+          caught = faults.length > 0;
+          note = caught
+            ? `chart faults: ${faults.map((f) => f.kind).join(',')}`
+            : `no chart faults on ${c.testid}`;
         } else if (c.kind === 'deepNetCountAfter') {
           // deep-dom: a control INSIDE an open shadow root whose handler is gone. It looks and reads
           // identically; only the request it should have made is missing.

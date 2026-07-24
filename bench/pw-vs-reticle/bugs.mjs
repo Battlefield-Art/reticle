@@ -47,7 +47,6 @@ export function storageBugUrl(id) {
 const composePrep = { fill: 'compose-prompt', text: 'benchmark note' };
 const namePrep = { fill: 'deploy-name', text: 'benchmark-svc' };
 
-
 /** Mirrors apps/bench-app/src/lib/persisted-session.ts — the bench is JS and cannot import the TS module. */
 const AUTH_TOKEN_KEY = 'reticle.bench.authToken';
 const SESSION_ID_KEY = 'reticle.bench.sessionId';
@@ -65,12 +64,34 @@ const SESSION_COOKIE = 'bench_session';
  *   low      — visual or performance degradation a user notices but can work around
  *   none     — traps: not bugs. They exist to catch a harness that over-flags a healthy build.
  */
-export const SEVERITY_BY_CATEGORY = {"business-logic": "critical", "storage": "critical", "net-status": "critical", "net-hang": "critical", "state": "critical", "signal": "high", "streams": "high", "network": "high", "console": "high", "mock-data": "high", "routing": "high", "regression": "high", "ui-visual": "medium", "deep-dom": "medium", "silent-removal": "medium", "timing": "medium", "ui-paint": "low", "perf": "low", "false-positive-trap": "none"};
+export const SEVERITY_BY_CATEGORY = {
+  'business-logic': 'critical',
+  storage: 'critical',
+  'net-status': 'critical',
+  'net-hang': 'critical',
+  state: 'critical',
+  signal: 'high',
+  streams: 'high',
+  network: 'high',
+  console: 'high',
+  'mock-data': 'high',
+  routing: 'high',
+  regression: 'high',
+  'ui-visual': 'medium',
+  'deep-dom': 'medium',
+  'silent-removal': 'medium',
+  timing: 'medium',
+  'ui-paint': 'low',
+  perf: 'low',
+  chart: 'high',
+  'false-positive-trap': 'none',
+};
 
 /** Severity for a bug, derived from its category so a new bug cannot silently arrive ungraded. */
 export function severityOf(bug) {
   const sev = SEVERITY_BY_CATEGORY[bug.category];
-  if (sev === undefined) throw new Error(`bugs.mjs: category "${bug.category}" has no severity grade`);
+  if (sev === undefined)
+    throw new Error(`bugs.mjs: category "${bug.category}" has no severity grade`);
   return sev;
 }
 
@@ -685,7 +706,12 @@ export const BUGS = [
     category: 'net-status',
     intent: 'login actually succeeded (not a 500 the UI proceeded past)',
     setup: [],
-    check: { kind: 'netStatusAfter', steps: ['login-submit'], urlContains: '/api/login', expected: 200 },
+    check: {
+      kind: 'netStatusAfter',
+      steps: ['login-submit'],
+      urlContains: '/api/login',
+      expected: 200,
+    },
     expect: 'both',
   },
   {
@@ -781,7 +807,12 @@ export const BUGS = [
     category: 'storage',
     intent: 'the session id is session-scoped — it must NOT outlive the tab in localStorage',
     setup: ['login-submit'],
-    check: { kind: 'storagePresentAfter', area: 'local', key: SESSION_ID_KEY, expectPresent: false },
+    check: {
+      kind: 'storagePresentAfter',
+      area: 'local',
+      key: SESSION_ID_KEY,
+      expectPresent: false,
+    },
     expect: 'both',
   },
   {
@@ -797,7 +828,12 @@ export const BUGS = [
     category: 'storage',
     intent: 'the sign-in session cookie reaches the browser, so the server sees the session too',
     setup: ['login-submit'],
-    check: { kind: 'storagePresentAfter', area: 'cookies', key: SESSION_COOKIE, expectPresent: true },
+    check: {
+      kind: 'storagePresentAfter',
+      area: 'cookies',
+      key: SESSION_COOKIE,
+      expectPresent: true,
+    },
     expect: 'both',
   },
   {
@@ -896,6 +932,26 @@ export const BUGS = [
       deepTestid: 'shadow-status',
       expectText: 'All systems nominal',
     },
+    expect: 'both',
+  },
+  {
+    id: 'chart-empty-series',
+    category: 'chart',
+    intent: 'the overview chart plots the series it was given',
+    setup: ['login-submit'],
+    check: { kind: 'chartGeometryFault', testid: 'area-chart' },
+    // 'both' on purpose. SVG geometry IS in the DOM, so a Playwright script can read `points` and
+    // spot NaN exactly as we do — labelling this reticle-only would be inventing a moat. The real
+    // difference is that Reticle reports the fault on the descriptor WITHOUT being asked, while the
+    // Playwright check only finds it because this harness was told where to look.
+    expect: 'both',
+  },
+  {
+    id: 'chart-single-point',
+    category: 'chart',
+    intent: 'the overview chart plots the series it was given',
+    setup: ['login-submit'],
+    check: { kind: 'chartGeometryFault', testid: 'area-chart' },
     expect: 'both',
   },
   {
@@ -1096,9 +1152,12 @@ for (const [i, b] of BUGS.entries()) {
     if (b.trap !== true)
       throw new Error(`bugs.mjs: ${b.id} uses expect="${TRAP_EXPECT}" without trap:true`);
   } else if (!VALID_EXPECT.has(b.expect)) {
-    throw new Error(`bugs.mjs: ${b.id} has expect="${b.expect}", must be one of ${[...VALID_EXPECT].join(' | ')}`);
+    throw new Error(
+      `bugs.mjs: ${b.id} has expect="${b.expect}", must be one of ${[...VALID_EXPECT].join(' | ')}`,
+    );
   }
-  if (!b.id || !b.category || !b.check?.kind) throw new Error(`bugs.mjs: ${b.id ?? i} is missing id/category/check.kind`);
+  if (!b.id || !b.category || !b.check?.kind)
+    throw new Error(`bugs.mjs: ${b.id ?? i} is missing id/category/check.kind`);
 }
 for (const b of BUGS) severityOf(b); // every category must carry a grade
 const dupes = BUGS.map((b) => b.id).filter((id, i, a) => a.indexOf(id) !== i);

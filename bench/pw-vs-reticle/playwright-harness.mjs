@@ -149,6 +149,21 @@ export async function runPlaywright(bugs) {
           note = ok
             ? `box=${box?.width}x${box?.height} opacity=${info?.opacity} occluded=${info?.occluded}`
             : 'element not found';
+        } else if (c.kind === 'chartGeometryFault') {
+          // Playwright's fair shot: SVG geometry is ordinary DOM, so it can read `points`/`d` and
+          // scan for non-finite or empty coordinates itself. It just has to be TOLD to look here —
+          // which is the honest difference, not a capability gap.
+          const attrs = await page
+            .locator(`${sel(c.testid)} path, ${sel(c.testid)} polyline, ${sel(c.testid)} polygon`)
+            .evaluateAll((els) =>
+              els.flatMap((e) =>
+                [e.getAttribute('d'), e.getAttribute('points')].filter((v) => v !== null),
+              ),
+            )
+            .catch(() => []);
+          const bad = attrs.filter((v) => /NaN|Infinity/i.test(v) || v.trim().length === 0);
+          caught = bad.length > 0;
+          note = caught ? `bad geometry x${bad.length}` : `geometry ok (${attrs.length} shapes)`;
         } else if (c.kind === 'paint') {
           await sleep(400);
           const shot = await page.screenshot({ fullPage: false });

@@ -796,6 +796,26 @@ const STALE_IFRAME_COUNT = '3';
  * Each variant is produced by pointing the app at the server's own broken mode, so the stream really
  * does stall / really does emit an unparseable frame — nothing is faked client-side.
  */
+/**
+ * chart — the data reaches the store intact and the CHART is wrong.
+ *
+ * This is the one dashboard widget whose correctness is geometry rather than text. `AreaChart` maps
+ * the series through `y(v) = pad + (1 - (v - min) / span) * ...`, so the failure is arithmetic:
+ *
+ *  - an EMPTY series makes `Math.max(...[])` return -Infinity and `Math.min(...[])` +Infinity, so
+ *    every coordinate is NaN and the browser draws nothing;
+ *  - a SINGLE-POINT series makes `step = (w - pad*2) / (data.length - 1)` divide by zero.
+ *
+ * Both are ordinary product bugs — a filter that matched nothing, a range that selected one day —
+ * and neither is visible to a state read (the store is exactly what the app was told) or to a
+ * screenshot compared against a baseline that was also blank. The store stays HONEST here on
+ * purpose: the whole point is that `series` and the plotted geometry disagree.
+ */
+function installChartFaults(bugs: ReadonlySet<string>): void {
+  if (bugs.has('chart-empty-series')) useApp.setState({ series: [] });
+  if (bugs.has('chart-single-point')) useApp.setState({ series: [42] });
+}
+
 function installStreamFaults(bugs: ReadonlySet<string>): void {
   if (bugs.has('sse-silent-stop')) {
     // Opens, then says nothing. The UI sits on "streaming…" forever and the request looks fine.
@@ -1060,6 +1080,7 @@ export function installBugInjector(): void {
   installTimingFaults(bugs);
   installDeepDomFaults(bugs);
   installStreamFaults(bugs);
+  installChartFaults(bugs);
   installRequestTimingFaults(bugs);
   installSilentRemoval(bugs);
   installPerfFaults(bugs);
