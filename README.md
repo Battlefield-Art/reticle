@@ -473,7 +473,7 @@ New here? Open an issue, pick one up, or send a PR. See [CONTRIBUTING.md](CONTRI
 
 Reticle uses a per-package license model so it is safe to embed in your own app and fair to build a business on. Each package's `LICENSE` file is authoritative; see the root [LICENSE](LICENSE) for the full breakdown.
 
-- **Embedded in your app, Apache-2.0.** `@reticlehq/browser`, `-protocol`, `-react`, `-babel-plugin`, `-next`, `-vite-plugin`, `-eslint-plugin` run inside / compile into your application. Use them anywhere, including in the apps you ship to your own customers. No copyleft; explicit patent grant.
+- **Embedded in your app, Apache-2.0.** `@reticlehq/core` (the wire contract every SDK package builds on), `@reticlehq/browser`, `-react`, `-babel-plugin`, `-next`, `-vite-plugin`, `-eslint-plugin` run inside / compile into your application. Use them anywhere, including in the apps you ship to your own customers. No copyleft; explicit patent grant.
 - **Server / CLI / MCP, FSL-1.1-ALv2.** `@reticlehq/server` (and `@reticlehq/test`) are free for any use except offering Reticle itself as a competing hosted service; each release converts to Apache-2.0 after two years.
 - **Enterprise features, the Reticle Enterprise License.** Source-available under `packages/server/src/ee/`; free for development and evaluation, a subscription license key is required in production.
 
