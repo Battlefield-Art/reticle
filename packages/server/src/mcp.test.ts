@@ -55,3 +55,35 @@ describe('encodeResult', () => {
     expect(JSON.parse(encodeResult(result, 'pretty'))).toEqual(result);
   });
 });
+
+describe('lean profiles drop the advertised outputSchema without losing structuredContent', () => {
+  // The schema-tax reduction rests on ONE SDK guarantee: a tool registered with no outputSchema still
+  // delivers its structuredContent. If a future SDK bump breaks that, dropping the schema on lean
+  // profiles would silently strip the typed object an agent might rely on — a false-green-shaped
+  // regression — so the guarantee is pinned here rather than assumed. In-memory, no daemon, fast gate.
+  it('the SDK carries structuredContent for a tool declared WITHOUT an outputSchema', async () => {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+
+    const server = new McpServer({ name: 'test', version: '0' });
+    server.registerTool('noschema', { description: 'x' }, () => ({
+      content: [{ type: 'text' as const, text: '{"a":1,"b":2}' }],
+      structuredContent: { a: 1, b: 2 },
+    }));
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'c', version: '0' });
+    await client.connect(clientTransport);
+
+    const listed = await client.listTools();
+    const tool = listed.tools.find((t) => t.name === 'noschema');
+    expect(tool?.outputSchema).toBeUndefined(); // nothing advertised → no schema tax
+
+    const result = await client.callTool({ name: 'noschema', arguments: {} });
+    expect(result.structuredContent).toEqual({ a: 1, b: 2 }); // …yet the typed object still arrives
+    await client.close();
+    await server.close();
+  });
+});

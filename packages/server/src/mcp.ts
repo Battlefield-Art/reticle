@@ -175,9 +175,19 @@ export function createMcpServer(
     // next person does not spend the same hour. The remaining cost is structural — the shapes
     // themselves — and dropping them is NOT the answer: the type contract is what makes
     // `structuredContent` verifiable, and it has already caught a real defect (a broad reticle_query
-    // failing output validation outright instead of returning a degraded result). A real reduction
-    // means simplifying the SHAPES, which is a contract change, not a formatting one.
-    const outputSchema = withSessionEnvelope(tool.name, tool.outputSchema);
+    // failing output validation outright instead of returning a degraded result).
+    //
+    // Lean profiles therefore DROP the advertised outputSchema entirely, and that is safe — verified
+    // against the SDK, not assumed. A tool registered with NO outputSchema still returns its
+    // `structuredContent` unchanged (the SDK does not require a declared schema to carry it), so a
+    // client that wants the typed object still gets it; only client-side VALIDATION of that object is
+    // lost, which the MCP spec makes optional and which the agent, reading the text block, never did.
+    // If anything the object is MORE complete without a schema — with one, the SDK drops fields the
+    // schema does not list, which is the very reason the session envelope had to be spliced in. The
+    // handler below is unchanged, so `full`/`dynamic` (non-terse) keep the schema for validating
+    // clients. This removes the single largest remaining slice of the per-request tax (~36% of the
+    // hybrid payload) with no loss the agent can observe.
+    const outputSchema = terse ? undefined : withSessionEnvelope(tool.name, tool.outputSchema);
     const config = {
       description: terse ? firstSentence(tool.description) : tool.description,
       inputSchema: terse ? leanZodShape(tool.inputSchema) : tool.inputSchema,

@@ -9,13 +9,13 @@
     },
     "reticle_hybrid": {
       "tool_count": 14,
-      "schema_chars": 28635,
-      "schema_tokens": 6559
+      "schema_chars": 12535,
+      "schema_tokens": 2832
     },
     "reticle_standard": {
       "tool_count": 32,
-      "schema_chars": 50103,
-      "schema_tokens": 11531
+      "schema_chars": 25625,
+      "schema_tokens": 5763
     },
     "reticle_full": {
       "tool_count": 41,
@@ -33,5 +33,5 @@
       "schema_tokens": 5116
     }
   },
-  "finding": "reticle default (hybrid) = 6559 tok vs playwright_mcp = 3725 tok (ratio 1.76x). reticle dynamic = 282 tok."
+  "finding": "reticle default (hybrid) = 2832 tok vs playwright_mcp = 3725 tok (ratio 0.76x). reticle dynamic = 282 tok."
 }
