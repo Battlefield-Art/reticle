@@ -1,5 +1,9 @@
 import { registerAdapter, type ComponentInfo, type ComponentSource } from '@reticlehq/browser';
-import { ComponentStateReason, type ComponentStateResult } from '@reticlehq/core';
+import {
+  ComponentStateReason,
+  DATA_RETICLE_SOURCE_ATTR,
+  type ComponentStateResult,
+} from '@reticlehq/core';
 
 interface Hook {
   memoizedState: unknown;
@@ -105,8 +109,8 @@ export function identify(el: Element): ComponentInfo | null {
 }
 
 function sourceFromAttribute(el: Element): ComponentSource | undefined {
-  const stamped = el.closest('[data-reticle-source]');
-  const raw = stamped?.getAttribute('data-reticle-source');
+  const stamped = el.closest(`[${DATA_RETICLE_SOURCE_ATTR}]`);
+  const raw = stamped?.getAttribute(DATA_RETICLE_SOURCE_ATTR);
   if (raw === null || raw === undefined) return undefined;
   const match = /^(.*):(\d+):(\d+)$/.exec(raw);
   if (match === null) return undefined;

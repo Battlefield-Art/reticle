@@ -7,6 +7,7 @@ import {
   queryAllByAltText,
 } from '@testing-library/dom';
 import {
+  DATA_RETICLE_SOURCE_ATTR,
   ElementState,
   QueryBy,
   REDACTED_VALUE,
@@ -25,13 +26,12 @@ import { identifyComponent } from '../registry/adapters.js';
 import { refs } from './refs.js';
 
 const TESTID_ATTR = 'data-testid';
-const SOURCE_ATTR = 'data-reticle-source';
+const SOURCE_ATTR = DATA_RETICLE_SOURCE_ATTR;
 const MAX_PRESENT_TESTIDS = 12;
 /** Bound the fiber-walk fallback so a component-name query can't scan an unbounded DOM. */
 const MAX_COMPONENT_CANDIDATES = 2000;
 /** Likely-actionable elements considered when resolving a component anchor without a source stamp. */
-const COMPONENT_CANDIDATE_SELECTOR =
-  '[data-reticle-source], [data-testid], button, a, input, select, textarea, [role]';
+const COMPONENT_CANDIDATE_SELECTOR = `[${SOURCE_ATTR}], [${TESTID_ATTR}], button, a, input, select, textarea, [role]`;
 
 function resolveContainer(scope: string | undefined): HTMLElement {
   const body = document.body;
