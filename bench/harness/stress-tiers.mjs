@@ -56,8 +56,10 @@ async function timed(client, tool, args) {
 
 const results = [];
 for (const tier of TIERS) {
-  // The fixture's SDK dials RETICLE_PORT, fixed when its dev server started (default 4455), so the
-  // daemon has to listen exactly there. Tiers are sequential and each stops before the next starts.
+  // The fixture's SDK dials RETICLE_PORT, baked in when ITS dev server started — large-dom-bench
+  // defaults to 4455, bench-app to 4460. A daemon on any other port gets no session at all, and the
+  // whole report becomes a measurement of an idle daemon. Tiers run sequentially and each stops
+  // before the next starts, so one port suffices.
   const port = process.env.RETICLE_PORT ?? '4455';
   const url = `${APP}${APP.includes('?') ? '&' : '?'}rows=${tier.rows}`;
   const client = new McpStdioClient('node', [CLI, 'mcp', '--port', port, '--drive', url], {
@@ -69,15 +71,20 @@ for (const tier of TIERS) {
 
   let sid;
   try {
-    sid = JSON.parse((await client.callTool('reticle_sessions', {})).text)?.sessions?.[0]?.id;
+    sid = JSON.parse((await client.callTool('reticle_sessions', {})).text)?.sessions?.[0]
+      ?.sessionId;
   } catch {
     sid = undefined;
   }
 
   if (sid === undefined) {
-    results.push({ tier: tier.name, rows: tier.rows, error: 'no session connected' });
+    // Loud, not a quiet error row: "no session" is a HARNESS misconfiguration (wrong port), and
+    // recording it beside real measurements invites reading it as a product limit at scale.
     await client.stop();
-    continue;
+    throw new Error(
+      `no browser session on :${port} for ${tier.name} — the fixture's SDK dials a different port, ` +
+        'so this would measure an idle daemon rather than the app.',
+    );
   }
 
   const calls = [

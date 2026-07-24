@@ -70,7 +70,7 @@ async function exerciseSession(client, index) {
   const sessions = (await client.callTool('reticle_sessions', {})).text;
   let sid;
   try {
-    sid = JSON.parse(sessions)?.sessions?.[0]?.id;
+    sid = JSON.parse(sessions)?.sessions?.[0]?.sessionId;
   } catch {
     sid = undefined;
   }
@@ -84,20 +84,37 @@ async function exerciseSession(client, index) {
 
 const portsBefore = listeningPorts();
 
-const client = new McpStdioClient('node', [CLI, 'mcp', '--port', '4498', '--drive', APP], {
-  RETICLE_PORT: '4498',
+// Must be the port the fixture's SDK dials, fixed when its dev server started (bench-app defaults to
+// 4460). A daemon listening anywhere else gets no browser session at all and every measurement below
+// silently becomes a measurement of an idle daemon — which is exactly how the whole bench/harness
+// fleet ran against nothing for an unknown number of commits.
+const PORT = process.env.RETICLE_PORT ?? '4460';
+const client = new McpStdioClient('node', [CLI, 'mcp', '--port', PORT, '--drive', APP], {
+  RETICLE_PORT: PORT,
   RETICLE_TOOL_PROFILE: 'full',
 });
 await client.start();
 await sleep(4000); // driven browser + SDK handshake
 
 const daemonPid = client.proc?.pid;
+{
+  // Refuse to measure an unattached daemon. A leak report over a daemon with no app is all zeros —
+  // indistinguishable from a perfect result, which is the worst possible failure for this harness.
+  const probe = JSON.parse((await client.callTool('reticle_sessions', {})).text ?? '{}');
+  if ((probe.sessions ?? []).length === 0) {
+    throw new Error(
+      `no browser session on :${PORT} — the fixture's SDK dials a different port, so this would ` +
+        'measure an idle daemon and report zeros as if they were clean.',
+    );
+  }
+}
 const samples = [];
 const rssStart = rssMb(daemonPid);
 
 // ---- sequential phase: does repeated use grow the daemon monotonically? ----
+const sequentialResults = [];
 for (let i = 0; i < SESSIONS; i++) {
-  await exerciseSession(client, i);
+  sequentialResults.push(await exerciseSession(client, i));
   samples.push({
     phase: 'sequential',
     i,
@@ -130,8 +147,18 @@ await client.stop();
 await sleep(2500); // give the daemon a chance to release sockets/children
 
 const portsAfter = listeningPorts();
-const leakedPorts = [...portsAfter].filter((p) => !portsBefore.has(p));
+const newPorts = [...portsAfter].filter((p) => !portsBefore.has(p));
 const survivingChildren = descendants(daemonPid);
+
+// The daemon's own port is NOT a leak, and calling it one would make this harness a false-positive
+// generator — the exact failure it exists to catch.
+//
+// `reticle mcp` spawns the daemon DETACHED and unref'd on purpose, so it outlives any single client
+// and several agents share one browser. What bounds it is the idle watcher: 300s of continuous idle
+// (no agent, no session, no lease), re-checked every 30s, then self-exit. So the honest distinction
+// is "persists by design, bounded" versus "retained with nothing to release it". Anything OTHER than
+// the daemon port surviving would be the real leak.
+const leakedPorts = newPorts.filter((p) => p !== PORT);
 
 // Growth per session over the sequential phase — the honest slope, not an endpoint difference that
 // a single GC cycle could invent or hide.
@@ -151,12 +178,19 @@ const report = {
     slope_mb_per_session: slopeMbPerSession,
   },
   ports: {
+    daemon_port_still_listening: newPorts.includes(PORT),
+    daemon_persistence: 'by design — detached + unref, bounded by a 300s idle self-shutdown',
     leaked: leakedPorts,
     // A leaked LISTEN socket is the failure that silently attaches the NEXT run to a survivor, so it
     // is reported as a hard boolean rather than left for a reader to infer from two set sizes.
     leaked_any: leakedPorts.length > 0,
   },
   processes: { surviving_children_after_stop: survivingChildren },
+  sequential: {
+    total: sequentialResults.length,
+    ok: sequentialResults.filter((r) => r.ok).length,
+    failures: sequentialResults.filter((r) => !r.ok).slice(0, 3),
+  },
   concurrent: {
     total: concurrentResults.length,
     ok: concurrentResults.filter((r) => r.ok).length,

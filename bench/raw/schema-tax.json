@@ -9,18 +9,18 @@
     },
     "reticle_hybrid": {
       "tool_count": 14,
-      "schema_chars": 42177,
-      "schema_tokens": 9797
+      "schema_chars": 28635,
+      "schema_tokens": 6559
     },
     "reticle_standard": {
       "tool_count": 32,
-      "schema_chars": 63645,
-      "schema_tokens": 14769
+      "schema_chars": 50103,
+      "schema_tokens": 11531
     },
     "reticle_full": {
       "tool_count": 41,
-      "schema_chars": 96492,
-      "schema_tokens": 22402
+      "schema_chars": 97040,
+      "schema_tokens": 22520
     },
     "playwright_mcp": {
       "tool_count": 23,
@@ -33,5 +33,5 @@
       "schema_tokens": 5116
     }
   },
-  "finding": "reticle default (hybrid) = 9797 tok vs playwright_mcp = 3725 tok (ratio 2.63x). reticle dynamic = 282 tok."
+  "finding": "reticle default (hybrid) = 6559 tok vs playwright_mcp = 3725 tok (ratio 1.76x). reticle dynamic = 282 tok."
 }

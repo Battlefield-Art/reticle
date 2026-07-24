@@ -167,6 +167,16 @@ export function createMcpServer(
     profile === TOOL_PROFILE.STANDARD ||
     profile === TOOL_PROFILE.HYBRID;
   for (const tool of advertised) {
+    // Output schemas are now the largest slice of the per-request tax (55.6% of the hybrid payload
+    // after the predicate fix) and we are the only one of the three MCP servers that sends them.
+    //
+    // Trimming their prose was tried and MEASURED ZERO: the field descriptions were already written
+    // as single sentences, so first-sentence truncation had nothing to remove. Recorded here so the
+    // next person does not spend the same hour. The remaining cost is structural — the shapes
+    // themselves — and dropping them is NOT the answer: the type contract is what makes
+    // `structuredContent` verifiable, and it has already caught a real defect (a broad reticle_query
+    // failing output validation outright instead of returning a degraded result). A real reduction
+    // means simplifying the SHAPES, which is a contract change, not a formatting one.
     const outputSchema = withSessionEnvelope(tool.name, tool.outputSchema);
     const config = {
       description: terse ? firstSentence(tool.description) : tool.description,
