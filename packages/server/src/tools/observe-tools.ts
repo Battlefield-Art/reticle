@@ -18,7 +18,12 @@ import {
   projectNetCall,
   projectConsoleLog,
 } from '../events/event-filters.js';
-import { applyEventBudget, costHint, withSizeCost } from '../session/output-budget.js';
+import {
+  applyEventBudget,
+  costHint,
+  withSizeCost,
+  DEFAULT_QUERY_LIMIT,
+} from '../session/output-budget.js';
 import { healthEnvelope, bufferEnvelope } from '../session/session-health.js';
 import type { Session } from '../session/session.js';
 import { isPresenceOnlyAssertion, PRESENCE_ONLY_ADVICE } from './assert-grade.js';
@@ -377,7 +382,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .number()
         .optional()
         .describe(
-          'Keep only the most recent N matching calls (older are dropped and counted in droppedOldest) — cuts tokens on a wide window.',
+          'Keep only the most recent N matching calls (older are dropped and counted in droppedOldest) — cuts tokens on a wide window. Defaults to 200 when omitted; pass a higher number for more, or scope with since/until.',
         ),
       ...sessionIdShape,
     },
@@ -413,7 +418,11 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       if (matched.length === 0 && allNet.length > 0) {
         return withSizeCost({ calls: matched, hint: netEmptyHint(allNet), ...buffer });
       }
-      const { events: budgeted, droppedOldest } = applyEventBudget(matched, limit);
+      // Default the cap so an omitted `limit` can't dump a whole flooded session (since defaults to 0).
+      const { events: budgeted, droppedOldest } = applyEventBudget(
+        matched,
+        limit ?? DEFAULT_QUERY_LIMIT,
+      );
       const calls = budgeted.map(projectNetCall);
       return withSizeCost(
         droppedOldest > 0
@@ -449,7 +458,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .number()
         .optional()
         .describe(
-          'Keep only the most recent N matching entries (older are dropped and counted in droppedOldest) — cuts tokens when a page spams the console.',
+          'Keep only the most recent N matching entries (older are dropped and counted in droppedOldest) — cuts tokens when a page spams the console. Defaults to 200 when omitted; pass a higher number for more, or scope with since/until.',
         ),
       ...sessionIdShape,
     },
@@ -482,7 +491,11 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       if (matched.length === 0 && allConsole.length > 0) {
         return withSizeCost({ logs: matched, hint: consoleEmptyHint(allConsole), ...buffer });
       }
-      const { events: budgeted, droppedOldest } = applyEventBudget(matched, limit);
+      // Default the cap so an omitted `limit` can't dump a whole flooded session (since defaults to 0).
+      const { events: budgeted, droppedOldest } = applyEventBudget(
+        matched,
+        limit ?? DEFAULT_QUERY_LIMIT,
+      );
       const logs = budgeted.map(projectConsoleLog);
       return withSizeCost(
         droppedOldest > 0

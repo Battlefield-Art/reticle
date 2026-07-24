@@ -112,6 +112,23 @@ describe('token budget on reticle_network / reticle_console', () => {
     expect(r.cost?.bytes).toBeGreaterThan(0);
   });
 
+  it('reticle_network: no explicit limit still caps at the default (200), disclosing total', async () => {
+    // Guards the unbounded-output fix: since defaults to 0 (whole session), an omitted limit used to
+    // dump every call — a flooded session was ~1M tokens in one result. The default cap bounds it and
+    // total/droppedOldest disclose the cut, so nothing is hidden.
+    const many = Array.from({ length: 250 }, (_, i) =>
+      ev(EventType.NET_REQUEST, { url: `/${String(i)}`, status: 200 }),
+    );
+    const r = (await tool(ReticleTool.NETWORK).handler(depsWith(many), {})) as {
+      calls: unknown[];
+      total?: number;
+      droppedOldest?: number;
+    };
+    expect(r.calls).toHaveLength(200);
+    expect(r.total).toBe(250);
+    expect(r.droppedOldest).toBe(50);
+  });
+
   it('reticle_console: limit keeps the most recent N entries', async () => {
     const deps = depsWith([
       ev(EventType.CONSOLE_ERROR, { message: 'a' }),

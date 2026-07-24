@@ -6,12 +6,7 @@
  * and affordable to report?
  */
 import { REDACTED_VALUE } from '@reticlehq/core';
-import {
-  isSensitiveKey,
-  sanitizeForTransport,
-  safeStringify,
-  scrubKnownSecrets,
-} from '../security/serialization.js';
+import { isSensitiveKey, safeStringify, scrubKnownSecrets } from '../security/serialization.js';
 import { nativeClearTimeout, nativeSetTimeout } from '../timers/native-timers.js';
 
 /** Only text-like bodies are worth capturing; binary (images/fonts/octet-stream) is skipped. */
@@ -108,9 +103,9 @@ const AUTH_SCHEME_TOKEN =
 function redactText(text: string): string {
   return (
     text
- // Auth-scheme tokens FIRST: `Authorization: Bearer <token>` — the key/value rule below would
- // otherwise consume just "Bearer" as Authorization's value (it stops at whitespace) and leave the
- // token behind, so the scheme rule must run before it.
+      // Auth-scheme tokens FIRST: `Authorization: Bearer <token>` — the key/value rule below would
+      // otherwise consume just "Bearer" as Authorization's value (it stops at whitespace) and leave the
+      // token behind, so the scheme rule must run before it.
       .replace(AUTH_SCHEME_TOKEN, (_m: string, scheme: string) => `${scheme} ${REDACTED_VALUE}`)
       .replace(
         /([A-Za-z0-9_.-]+)(\s*[=:]\s*"?)([^&\s,;"}]+)/g,
@@ -143,15 +138,17 @@ export function projectBody(
   let out: string;
   if (contentType !== null && /json|graphql/i.test(contentType)) {
     try {
-      out = safeStringify(sanitizeForTransport(JSON.parse(text)));
+      // safeStringify already sanitizes internally — the extra sanitizeForTransport here re-walked
+      // every captured JSON body a second time (~21% of the per-response cost) for an identical result.
+      out = safeStringify(JSON.parse(text));
     } catch {
       out = redactText(text); // looked like JSON but wasn't — still redact key/value + auth tokens
     }
   } else {
     out = redactText(text);
   }
- // Key-based redaction can't see a secret sitting in a VALUE under a benign key — scan the projected
- // text for high-confidence secret shapes (JWTs, provider keys) as a backstop, JSON or not.
+  // Key-based redaction can't see a secret sitting in a VALUE under a benign key — scan the projected
+  // text for high-confidence secret shapes (JWTs, provider keys) as a backstop, JSON or not.
   out = scrubKnownSecrets(out);
   // Truncated if the projection overflows the cap OR the input itself was clipped above — a body the
   // SDK never fully read must not be reported as complete.
