@@ -10,6 +10,7 @@ import { sessionEnvelopeShape } from './tools/tool-kit.js';
 import { buildErrorPayload } from './tools/error-recovery.js';
 import { log } from './log.js';
 import { SERVER_VERSION } from './server-version.js';
+import { MCP_SERVER_NAME } from './init/mcp.js';
 
 /**
  * Merge the runtime-spliced envelope (health/lease/age/control) into a session-bound tool's declared
@@ -25,7 +26,7 @@ export function withSessionEnvelope(
   return { ...sessionEnvelopeShape, ...outputSchema };
 }
 
-const SERVER_INFO = { name: 'reticle', version: SERVER_VERSION };
+const SERVER_INFO = { name: MCP_SERVER_NAME, version: SERVER_VERSION };
 
 /** First sentence of a description (purpose only) for lean profiles — keeps per-turn def cost
  * down. Cuts at the first sentence-ending period or newline; falls back to a 160-char cap. The

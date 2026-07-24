@@ -115,7 +115,7 @@ export interface GateContext {
 
 /** The issuer public key from the environment (set at release / by the operator); undefined if unset. */
 function issuerPublicKey(): KeyObject | undefined {
-  const pem = process.env['RETICLE_LICENSE_PUBLIC_KEY'];
+  const pem = process.env[LICENSE_PUBLIC_KEY_ENV];
   if (pem === undefined || pem.length === 0) return undefined;
   try {
     return createPublicKey(pem);
