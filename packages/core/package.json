@@ -49,5 +49,8 @@
     "testing",
     "protocol",
     "reticle"
-  ]
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  }
 }

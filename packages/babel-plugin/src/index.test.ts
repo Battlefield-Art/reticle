@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { transformSync } from '@babel/core';
-import plugin, { SOURCE_ATTR } from './index.js';
+// The module IS the plugin function (module.exports = fn) — a default import resolves to it under
+// vite/node CJS interop, exactly as Babel's require() does. SOURCE_ATTR rides as a property.
+import plugin from './index.js';
+
+const SOURCE_ATTR = (plugin as unknown as { SOURCE_ATTR: string }).SOURCE_ATTR;
 
 function transform(code: string): string {
   const out = transformSync(code, {
