@@ -467,7 +467,7 @@ Reticle is built in the open, for the long run, not as a weekend project. If it 
 
 </div>
 
-New here? Open an issue, pick one up, or send a PR. See [CONTRIBUTING.md](CONTRIBUTING.md).
+New here? Open an issue, pick one up, or send a PR. See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup and the bar a change is held to, [GOVERNANCE.md](GOVERNANCE.md) for how decisions get made, and the [ROADMAP](ROADMAP.md) for where we're pointed. Contributions are certified under the [DCO](https://developercertificate.org) — just `git commit -s`.
 
 ## License
 
