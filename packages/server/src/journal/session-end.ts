@@ -1,6 +1,7 @@
 import { AmbientStore } from './ambient-store.js';
 import type { AmbientCounts } from './ambient.js';
 import type { FileSystemPort } from '../project/fs-port.js';
+import { pruneSessions } from './retention.js';
 
 /**
  * Session teardown: the durable half of ending a session. Two things must happen when a tab disconnects,
@@ -18,6 +19,7 @@ export interface SessionEndTarget {
   flushJournal(): Promise<void>;
   /** The ambient-churn counts learned during this session. */
   ambientCounts(): AmbientCounts;
+  ownAmbientCounts(): AmbientCounts;
 }
 
 export interface SessionEndDeps {
@@ -43,14 +45,32 @@ export function makeSessionEnd(deps: SessionEndDeps): (session: SessionEndTarget
     try {
       const store = new AmbientStore(deps.fs, deps.reticleRoot);
       const persisted = await store.load();
-      // Merge by re-accumulating: the session's counts are added on top of what previous runs learned.
+      // Accumulate history + what is NEW. `ownAmbientCounts` excludes the map this session was
+      // seeded from at startup; `ambientCounts` includes it, and adding that onto `persisted` wrote
+      // `2 x persisted + own` on every teardown — a doubling per session that had driven the
+      // committed map to ~9.1e23.
       const merged: AmbientCounts = { ...persisted };
-      for (const [ref, count] of Object.entries(session.ambientCounts())) {
+      for (const [ref, count] of Object.entries(session.ownAmbientCounts())) {
         merged[ref] = (merged[ref] ?? 0) + count;
       }
       await store.save(merged);
     } catch {
       // ambient learning is an optimization; a disk failure never breaks teardown
+    }
+    try {
+      // Bound the journal on disk HERE, not only at daemon start.
+      //
+      // Pruning ran exactly once, during wiring. A daemon that stays up — which is the normal case for
+      // a dev session, and the whole point of the pool — therefore never pruned again, so session
+      // directories accumulated without bound for as long as it lived. Session end is the right moment
+      // because it is precisely when a new directory has just been created, which makes this amortized
+      // rather than periodic (no timer to leak) and mirrors what RunStore already does.
+      //
+      // Safe against deleting the session that just ended: pruning selects the OLDEST by mtime, and the
+      // directory written moments ago is the newest.
+      await pruneSessions(deps.fs, deps.reticleRoot);
+    } catch {
+      // retention is best-effort maintenance; never surface at teardown
     }
   };
 }

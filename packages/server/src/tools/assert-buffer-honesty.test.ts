@@ -21,6 +21,7 @@ function depsWithBuffer(dropped: number, lastActSource?: string): ToolDeps {
     id: 'demo',
     lastActSource: () => lastActSource,
     bufferHealth: () => ({ total: 12, dropped }),
+    blindSpots: () => ({}),
     eventsSince: () => [],
     queryEvents: () => Promise.resolve([]),
     elapsed: () => 1000,
@@ -46,10 +47,10 @@ const absentConsole = {
 
 describe('a verdict reached over an evicted buffer says so', () => {
   it('reticle_assert discloses eviction on a PASSING absence assertion', async () => {
-    const result = (await tool(ReticleTool.ASSERT).handler(
-      depsWithBuffer(7),
-      absentConsole,
-    )) as { pass: boolean; buffer?: { dropped: number; note: string } };
+    const result = (await tool(ReticleTool.ASSERT).handler(depsWithBuffer(7), absentConsole)) as {
+      pass: boolean;
+      buffer?: { dropped: number; note: string };
+    };
     expect(result.pass).toBe(true);
     expect(result.buffer?.dropped).toBe(7);
     expect(result.buffer?.note).toBe(BUFFER_EVICTION_WARNING);
@@ -89,7 +90,7 @@ describe('a non-element failure still names a file', () => {
     timeout_ms: 0,
   };
 
-  it('attaches the last acted control\'s source to a failing signal assertion', async () => {
+  it("attaches the last acted control's source to a failing signal assertion", async () => {
     const result = (await tool(ReticleTool.ASSERT).handler(
       depsWithBuffer(0, 'src/views/Compose.tsx:60'),
       missingSignal,
@@ -108,10 +109,10 @@ describe('a non-element failure still names a file', () => {
   });
 
   it('says nothing when no act preceded the assertion', async () => {
-    const result = (await tool(ReticleTool.ASSERT).handler(
-      depsWithBuffer(0),
-      missingSignal,
-    )) as { pass: boolean; source?: string };
+    const result = (await tool(ReticleTool.ASSERT).handler(depsWithBuffer(0), missingSignal)) as {
+      pass: boolean;
+      source?: string;
+    };
     expect(result.pass).toBe(false);
     expect(result.source).toBeUndefined();
   });

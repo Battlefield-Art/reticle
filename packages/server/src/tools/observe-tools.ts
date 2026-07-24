@@ -22,6 +22,7 @@ import { applyEventBudget, costHint, withSizeCost } from '../session/output-budg
 import { healthEnvelope, bufferEnvelope } from '../session/session-health.js';
 import type { Session } from '../session/session.js';
 import { isPresenceOnlyAssertion, PRESENCE_ONLY_ADVICE } from './assert-grade.js';
+import { buildCoverageStatement, blindSpotsFromState } from '../honesty/blind-spots.js';
 import { withControl } from '../session/control-envelope.js';
 import { asString, asNumber } from './tools-helpers.js';
 import { type ToolDef, sessionIdShape, commandOrThrow } from './tool-kit.js';
@@ -79,13 +80,16 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       actionId: z
         .string()
         .optional()
-        .describe('Keep only events attributed to this action — answers "what did action N cause".'),
+        .describe(
+          'Keep only events attributed to this action — answers "what did action N cause".',
+        ),
       filters: z
         .array(z.string())
         .optional()
         .describe(
-          'Event type allowlist. Use a bucket name — dom | net | route | console | animation | signal ' +
-            '— or a raw type (e.g. "net.request"). Omit to return all types.',
+          'Event type allowlist — the cheapest way to shrink a large timeline. Use a bucket name — ' +
+            'dom | net | route | console | animation | signal | perf | state | storage — or a raw ' +
+            'type (e.g. "net.request"). Omit to return all types.',
         ),
       max_events: z
         .number()
@@ -184,12 +188,16 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       observed: z
         .string()
         .optional()
-        .describe('What was actually seen — the structured half of failureReason, for the agent rather than a log.'),
+        .describe(
+          'What was actually seen — the structured half of failureReason, for the agent rather than a log.',
+        ),
       expected: z.string().optional().describe('What the oracle required.'),
       assertion: z
         .string()
         .optional()
-        .describe('Which oracle judged it, e.g. element.state — lets an agent branch on the failure KIND without parsing prose.'),
+        .describe(
+          'Which oracle judged it, e.g. element.state — lets an agent branch on the failure KIND without parsing prose.',
+        ),
       source: z
         .string()
         .optional()
@@ -251,12 +259,16 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       observed: z
         .string()
         .optional()
-        .describe('What was actually seen — the structured half of failureReason, for the agent rather than a log.'),
+        .describe(
+          'What was actually seen — the structured half of failureReason, for the agent rather than a log.',
+        ),
       expected: z.string().optional().describe('What the oracle required.'),
       assertion: z
         .string()
         .optional()
-        .describe('Which oracle judged it, e.g. element.state — lets an agent branch on the failure KIND without parsing prose.'),
+        .describe(
+          'Which oracle judged it, e.g. element.state — lets an agent branch on the failure KIND without parsing prose.',
+        ),
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
@@ -272,6 +284,16 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'On a FAILING assertion, the `file:line` of the control last acted on — where the code that should have produced the missing signal/request/state change lives. Present only when an act preceded this assertion.',
         ),
+      coverage: z
+        .string()
+        .optional()
+        .describe(
+          'Present ONLY when part of the page was unobservable (cross-origin iframe, closed shadow root). A PASSING assertion is then scoped to what could be seen — treat it as "no failure found in the observed region", never as "the page is correct".',
+        ),
+      coverage_spots: z
+        .array(z.object({ kind: z.string(), count: z.number() }))
+        .optional()
+        .describe('Which regions were unobservable, when coverage is partial.'),
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -290,9 +312,33 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       // A verdict reached over an evicted buffer can be a FALSE NEGATIVE: "no console error" may
       // simply mean the error aged out. reticle_console has always disclosed this on the same window;
       // the verdict path — the one an agent actually gates on — did not. Omitted when nothing dropped.
+      // Coverage, on the verdict an agent actually gates on.
+      //
+      // Scope caveat, stated because it is a real limitation and not a bug: blind spots are tracked
+      // per SESSION, not per assertion window. So a cross-origin iframe seen once marks every later
+      // verdict in that session partial, including ones about a region it cannot affect. That errs
+      // toward over-warning, which is the correct direction for an honesty signal — the failure this
+      // guards against is a green that implies coverage it never had, and the opposite error (a
+      // needless caveat) costs the agent a sentence.
+      //
+      // act_and_wait has always disclosed this; plain assert did not — so a GREEN assert on a page
+      // with a cross-origin iframe or a closed shadow root read as "the page is correct" when the
+      // honest claim is "nothing failed in the part I could see". That is the false-green shape this
+      // project exists to prevent, sitting on the most-used verdict path. Omitted entirely when
+      // coverage is full, so an intact page pays nothing and the field's PRESENCE is the warning.
+      const spots = blindSpotsFromState(session.blindSpots());
+      const statement = buildCoverageStatement(spots);
+      const coverage =
+        statement.coverage === 'partial'
+          ? {
+              coverage: statement.note ?? 'partial',
+              coverage_spots: statement.spots.map((sp) => ({ kind: sp.kind, count: sp.count })),
+            }
+          : {};
       return withControl(session, {
         ...verdict,
         ...advice,
+        ...coverage,
         ...lastActSourceOnFailure(session, verdict.pass),
         ...healthEnvelope(session),
         ...bufferEnvelope(session),
@@ -310,7 +356,10 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Cursor from a prior reticle_act — scopes the query to requests fired after that act.',
         ),
-      until: z.number().optional().describe('Upper cursor bound — with `since`, the span between two acts.'),
+      until: z
+        .number()
+        .optional()
+        .describe('Upper cursor bound — with `since`, the span between two acts.'),
       actionId: z
         .string()
         .optional()
@@ -385,7 +434,10 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Cursor from a prior reticle_act — scopes the query to log entries after that act.',
         ),
-      until: z.number().optional().describe('Upper cursor bound — with `since`, the span between two acts.'),
+      until: z
+        .number()
+        .optional()
+        .describe('Upper cursor bound — with `since`, the span between two acts.'),
       actionId: z
         .string()
         .optional()

@@ -28,8 +28,27 @@ export {
 export type { ReticleAdapter, ComponentInfo, ComponentSource } from './registry/adapters.js';
 
 // Store registry: pull live framework/store state on demand.
-export { registerStore, unregisterStore, storeNames, readStores } from './registry/stores.js';
-export type { StoreGetter } from './registry/stores.js';
+export {
+  registerStore,
+  unregisterStore,
+  storeNames,
+  readStores,
+  readStoresWithTruncation,
+} from './registry/stores.js';
+export type { StoreGetter, StoreLike, StoreSubscribe } from './registry/stores.js';
+
+// Adapters for state libraries that do not natively expose `{getState, subscribe}`. zustand and Redux
+// need none of these; TanStack Query is the one that matters most, because a stale-cache bug fires no
+// request and renders a plausible value, so the cache is the only witness.
+export {
+  tanstackQueryStore,
+  jotaiStore,
+  xstateStore,
+  valtioStore,
+  mobxStore,
+  pushStore,
+} from './registry/store-adapters.js';
+export type { QuerySnapshot } from './registry/store-adapters.js';
 
 // Capability registry: the app self-describes its testable surface via reticle.describe.
 export { registerCapabilities, getCapabilities, hasCapabilities } from './registry/capabilities.js';
@@ -48,6 +67,12 @@ export type { ReticleDomain } from './registry/domains.js';
 
 // Lower-level building blocks (useful for tests and advanced embedding).
 export { buildSnapshot } from './dom/snapshot.js';
+
+// Chart inspection. Surfaced automatically on any element descriptor that contains faulty plot
+// geometry (see ElementDescriptor.chart), and exported for direct use — canvasChartData is the only
+// route to a canvas chart's data, since its pixels are not DOM.
+export { inspectChart, canvasChartData } from './dom/chart.js';
+export type { ChartReport, ChartFinding, CanvasChartData } from './dom/chart.js';
 export { matchQuery, runQuery } from './dom/query.js';
 export { executeAction, executeSequence } from './actions/actions.js';
 export { describe, getRole, getAccessibleName, getStates, isVisible } from './dom/a11y.js';

@@ -39,15 +39,46 @@ function firstSentence(description: string): string {
 }
 
 /**
+ * Parameters carrying the recursive predicate grammar. Advertised compactly in lean profiles.
+ *
+ * `PredicateSchema` is a 12-variant discriminated union whose `allOf`/`anyOf`/`not` members embed the
+ * union again. Zod's JSON-Schema emitter inlines that recursion rather than emitting one `$ref`, so a
+ * single tool ships the word "kind" 48 times and `reticle_wait_for` alone costs 6,571 characters.
+ * Across the three tools that take a predicate that is 72% of the entire advertised input schema — a
+ * cost re-sent on every request, forever, to describe a grammar most calls use one variant of.
+ */
+const PREDICATE_PARAMS = new Set(['predicate', 'until']);
+
+/**
+ * What a lean profile advertises in place of the full predicate union.
+ *
+ * Safe to loosen because it is NOT the validation boundary: every handler taking a predicate calls
+ * `PredicateSchema.parse()` itself (observe-tools.ts:203, :279, act-tools.ts:442), so a malformed
+ * predicate still fails strictly and structurally — the agent gets a zod error naming the bad field
+ * rather than a silently accepted one. What changes is only how many bytes we spend describing the
+ * grammar up front versus letting the agent fetch it from `reticle_tools` when it needs a variant it
+ * has not used before.
+ */
+const COMPACT_PREDICATE_DESCRIPTION =
+  'Predicate object: { kind, ...fields }. kind is one of element | text | net | route | console | ' +
+  'animation | signal | state | settled | allOf | anyOf | not. Call reticle_tools for the full ' +
+  'field grammar of a kind.';
+
+/**
  * Lean copy of a tool's zod input shape for lean profiles: each parameter's description is
  * truncated to its first sentence via zod's own `.describe` (which returns a new schema, so the
  * shared shape is never mutated). The per-parameter prose is the bulk of the re-sent-every-turn
  * schema cost; the first clause keeps each param's purpose and any enum hints. Params without a
- * description pass through unchanged.
+ * description pass through unchanged. Predicate params are replaced wholesale — see above.
  */
 function leanZodShape(shape: z.ZodRawShape): z.ZodRawShape {
   const out: z.ZodRawShape = {};
   for (const [key, schema] of Object.entries(shape)) {
+    if (PREDICATE_PARAMS.has(key)) {
+      const compact = z.record(z.unknown()).describe(COMPACT_PREDICATE_DESCRIPTION);
+      out[key] = schema.isOptional() ? compact.optional() : compact;
+      continue;
+    }
     const desc = schema.description;
     out[key] = typeof desc === 'string' ? schema.describe(firstSentence(desc)) : schema;
   }

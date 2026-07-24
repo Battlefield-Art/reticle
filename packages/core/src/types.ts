@@ -65,6 +65,24 @@ export interface ElementDescriptor {
    * one response and every consumer either opens an editor or prints it.
    */
   source?: string;
+  /**
+   * Chart geometry faults found inside this element — PRESENT ONLY WHEN SOMETHING IS WRONG.
+   *
+   * A chart is the one dashboard surface where the store and the screen diverge invisibly: every
+   * other widget renders text a comparison can read, while a chart renders coordinates that a correct
+   * `series` can still turn into a blank or NaN-filled path. Reported on the descriptor rather than
+   * behind a new tool so it costs nothing to ask for — the agent already queries the chart element,
+   * and a healthy chart adds zero bytes because the field is omitted.
+   */
+  chart?: ChartFault[];
+}
+
+/** One chart geometry fault. `kind` is what an agent branches on; `sample` is bounded for the wire. */
+export interface ChartFault {
+  kind: 'non-finite-coordinates' | 'empty-geometry' | 'degenerate-geometry';
+  tag: string;
+  attr: string;
+  sample: string;
 }
 
 export interface MatchResult {

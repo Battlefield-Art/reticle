@@ -18,7 +18,10 @@ import { ambientKeyOf, type AmbientCounts } from '../journal/ambient.js';
  *                the level here makes coverage something to ask rather than infer.
  */
 export class ObservedState {
-  #ambient: AmbientCounts = {};
+  /** What THIS session observed. Never contains seeded history — see seedAmbient. */
+  readonly #ownAmbient: AmbientCounts = {};
+  /** What previous sessions learned, kept separate so it is never re-persisted as if newly seen. */
+  #seededAmbient: AmbientCounts = {};
   readonly #blindSpots: Record<string, number> = {};
 
   /** Fold one already-attributed event into the learned state. */
@@ -27,7 +30,7 @@ export class ObservedState {
     // and learning it as background would teach the settle oracle to ignore real effects.
     if (event.actionId === undefined) {
       const key = ambientKeyOf(event);
-      if (key !== undefined) this.#ambient[key] = (this.#ambient[key] ?? 0) + 1;
+      if (key !== undefined) this.#ownAmbient[key] = (this.#ownAmbient[key] ?? 0) + 1;
     }
     if (event.type === EventType.BLIND_SPOT) {
       const kind = event.data['kind'];
@@ -36,9 +39,29 @@ export class ObservedState {
     }
   }
 
-  /** Learned ambient-churn counts (the settle oracle's hook). */
+  /**
+   * Learned ambient-churn counts — seeded history PLUS this session — for the settle oracle, which
+   * wants the sharpest available picture of what moves on its own.
+   */
   ambientCounts(): AmbientCounts {
-    return this.#ambient;
+    const merged: AmbientCounts = { ...this.#seededAmbient };
+    for (const [key, count] of Object.entries(this.#ownAmbient)) {
+      merged[key] = (merged[key] ?? 0) + count;
+    }
+    return merged;
+  }
+
+  /**
+   * ONLY what this session observed — the correct input to persistence.
+   *
+   * Teardown accumulates by adding the session's counts onto the file it loaded. When the session's
+   * counts still contained the seeded ones, that addition wrote `2 x persisted + own` every run, so
+   * the map doubled per session: the file committed in this repo had reached ~9.1e23 (about 2^80,
+   * i.e. ~80 sessions of doubling). Keeping the seed separate makes the accumulation what it always
+   * claimed to be — history plus what is new.
+   */
+  ownAmbientCounts(): AmbientCounts {
+    return this.#ownAmbient;
   }
 
   /**
@@ -46,7 +69,7 @@ export class ObservedState {
    * In-session counts win: they describe this page as it is now.
    */
   seedAmbient(counts: AmbientCounts): void {
-    this.#ambient = { ...counts, ...this.#ambient };
+    this.#seededAmbient = { ...counts };
   }
 
   /** Latest reported count per blind-spot kind, for the whole session. */

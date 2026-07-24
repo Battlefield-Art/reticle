@@ -1,4 +1,4 @@
-import { sanitizeForTransport } from '../security/serialization.js';
+import { sanitizeWithReport, type TruncationReport } from '../security/serialization.js';
 
 /** Store registry — lets the agent pull live framework/store state on demand. */
 export type StoreGetter = () => unknown;
@@ -7,9 +7,7 @@ export type StoreSubscribe = (listener: () => void) => () => void;
 
 // Persist on a global so registrations survive HMR re-evaluation (see adapters.ts / feedback #7).
 /** Notified when a SUBSCRIBABLE store is registered, so a late registration is still observed. */
-export type StoreRegisteredListener = (
-  entry: [string, StoreGetter, StoreSubscribe],
-) => void;
+export type StoreRegisteredListener = (entry: [string, StoreGetter, StoreSubscribe]) => void;
 
 const globalStore = globalThis as unknown as {
   __reticleStores?: Map<string, StoreGetter>;
@@ -130,11 +128,30 @@ export function readStoresRaw(only?: string): Record<string, unknown> {
 
 /** Read one store (by name) or all of them, each capped for transport. */
 export function readStores(only?: string): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+  return readStoresWithTruncation(only).stores;
+}
+
+/**
+ * As `readStores`, plus which stores came back INCOMPLETE.
+ *
+ * The whole-store read is the one path where the transport caps could silently hand back a fraction
+ * of a large store — ~142 of 1,000 entities, with the remainder simply absent. A caller comparing
+ * that against expected data reads it as "the app lost the rest", which is a false failure; a caller
+ * asserting something is absent reads it as proof, which is a false green. Neither is recoverable
+ * from the payload, so the fact of truncation travels beside it.
+ */
+export function readStoresWithTruncation(only?: string): {
+  stores: Record<string, unknown>;
+  truncation?: Record<string, TruncationReport>;
+} {
+  const stores: Record<string, unknown> = {};
+  const truncation: Record<string, TruncationReport> = {};
   for (const [name, value] of Object.entries(readStoresRaw(only))) {
-    out[name] = sanitizeForTransport(value);
+    const result = sanitizeWithReport(value);
+    stores[name] = result.value;
+    if (result.truncation !== undefined) truncation[name] = result.truncation;
   }
-  return out;
+  return Object.keys(truncation).length > 0 ? { stores, truncation } : { stores };
 }
 
 /** Stores already warned about — a warning that repeats on every HMR cycle or remount becomes noise. */

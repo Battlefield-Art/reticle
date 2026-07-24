@@ -818,6 +818,38 @@ import { registerStore } from '@reticlehq/react';
 registerStore('workspace', useWorkspace); // pass the store itself → auto STATE_CHANGE diffs
 ```
 
+**Which state libraries work.** `registerStore` accepts anything shaped `{ getState, subscribe }`, so **zustand and Redux (and Redux Toolkit) need no adapter at all** — pass the store. For everything else Reticle ships adapters, because the shape is the only thing missing:
+
+```ts
+import {
+  tanstackQueryStore,
+  jotaiStore,
+  xstateStore,
+  valtioStore,
+  mobxStore,
+} from '@reticlehq/browser';
+
+registerStore('queries', tanstackQueryStore(queryClient)); // TanStack Query
+registerStore('app', jotaiStore(getDefaultStore(), { cart, user })); // Jotai (name the atoms)
+registerStore('machine', xstateStore(actor)); // XState
+registerStore('app', valtioStore(state, snapshot, subscribe)); // Valtio
+registerStore('app', mobxStore(store, toJS, reaction)); // MobX
+```
+
+**TanStack Query is worth registering even if you register nothing else.** Its cache holds the state most likely to be wrong in a way nothing else can observe: a stale value served as fresh, a mutation that never invalidated its query, an optimistic update never rolled back. None of those fire a network request, so a network log shows silence and the DOM shows a plausible number — the cache is the only witness. The adapter exposes `status`, `fetchStatus`, `isStale` and `dataUpdatedAt` per query key, so an agent can assert the stronger property: not "the number rendered is 42" but "the number rendered came from fresh data".
+
+**React Context / `useState` / `useReducer`** have no store object to adapt — the value lives in the fiber tree and the only subscription is a re-render. Invert it with the hook:
+
+```tsx
+import { useReticleStore } from '@reticlehq/react/store';
+
+function CartProvider({ children }) {
+  const [cart, dispatch] = useReducer(cartReducer, initial);
+  useReticleStore('cart', cart); // one line — the agent can now read and assert on cart
+  return <CartContext.Provider value={cart}>{children}</CartContext.Provider>;
+}
+```
+
 ```jsonc
 reticle_state({ store: "workspace" })   // → { stores: { workspace: {…} } }
 reticle_state({ ref: "e9" })            // → { component: { ok: true, component, hooks } } or { component: { ok: false, reason: "component-state-unavailable" } }
@@ -829,6 +861,28 @@ reticle_state({ store: "workspace", path: "nope" })             // → { found: 
 ```
 
 Store reads are the reliable path; ref reads degrade to a structured failure rather than blocking. `path` (dot-path, numeric segments index arrays) and `depth` keep a 60KB store from becoming a token tax — and a wrong `path` returns the keys that _were_ there, so it's self-correcting.
+
+### Charts and dashboards — geometry faults report themselves
+
+Every dashboard widget except one renders text a comparison can read: a KPI card renders a number, a table renders rows. A **chart renders geometry** — the data has been through a scale function into coordinates — and a perfectly correct `series` in the store can still become a blank, flat, or NaN-filled path. Neither a state read nor a screenshot-vs-baseline catches that.
+
+So any element descriptor containing faulty plot geometry carries a `chart` field. There is no extra tool call and no flag: query the chart the way you already would, and a broken one tells you.
+
+```jsonc
+reticle_query({ by: "testid", value: "revenue-chart" })
+// → { elements: [{ ref: "e12", role: "img", source: "src/Chart.tsx:34",
+//      chart: [{ kind: "non-finite-coordinates", tag: "polyline", attr: "points",
+//                sample: "0,10 5,NaN 10,20" }] }] }
+```
+
+`kind` is one of `non-finite-coordinates` (a zero-range scale divided by zero — always a bug), `empty-geometry` (the chart mounted but no data reached it), or `degenerate-geometry` (every point identical). A **healthy chart adds no field at all**, so this costs nothing on the common path. A genuinely flat line — constant data — is not flagged.
+
+**Canvas charts** (Chart.js, ECharts) are pixels, not DOM, so nothing above applies. Read their data directly instead, which is the only route short of vision:
+
+```ts
+import { canvasChartData } from '@reticlehq/browser';
+canvasChartData(canvasEl, window); // → { library: "chartjs", data: { datasets: [...] } }
+```
 
 ### `reticle_capabilities` — the app's testable surface
 

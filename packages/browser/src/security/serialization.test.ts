@@ -4,6 +4,7 @@ import {
   isSensitiveKey,
   safeStringify,
   sanitizeForTransport,
+  sanitizeWithReport,
   scrubKnownSecrets,
 } from './serialization.js';
 
@@ -260,4 +261,39 @@ describe('the last surviving item is whole, whatever the item size', () => {
       }
     });
   }
+});
+
+describe('truncation is disclosed, never silent', () => {
+  it('reports how many items a big collection lost', () => {
+    // The defect this closes: a 1,000-entity store came back as ~142 entities with no marker. A
+    // caller comparing that against expected data reads "the app lost the rest" (false failure); a
+    // caller asserting absence reads it as proof (false green). Neither is recoverable from the
+    // payload, so the fact of truncation has to travel beside it.
+    const big = { rows: Array.from({ length: 1000 }, (_, i) => ({ id: i, name: `row-${i}` })) };
+    const { value, truncation } = sanitizeWithReport(big);
+    const rows = (value as { rows: unknown[] }).rows;
+    expect(rows.length).toBeLessThan(1000);
+    expect(truncation?.droppedItems).toBeGreaterThan(0);
+    expect(truncation?.note).toContain('NOT the whole value');
+  });
+
+  it('says NOTHING when the value fitted — silence must keep meaning complete', () => {
+    const { value, truncation } = sanitizeWithReport({ a: 1, b: ['x', 'y'] });
+    expect(value).toEqual({ a: 1, b: ['x', 'y'] });
+    expect(truncation).toBeUndefined();
+  });
+
+  it('counts placeholder replacements from a too-deep value', () => {
+    // Depth cap replaces the value with "[TRUNCATED]" — a string where an object was. That type
+    // change is exactly what breaks a consumer's schema, so it must be counted.
+    let deep: Record<string, unknown> = { leaf: true };
+    for (let i = 0; i < 15; i++) deep = { nest: deep };
+    const { truncation } = sanitizeWithReport(deep);
+    expect(truncation?.truncatedValues).toBeGreaterThan(0);
+  });
+
+  it('sanitizeForTransport keeps its old shape exactly (no behaviour change for existing callers)', () => {
+    const input = { a: 1, list: [1, 2, 3] };
+    expect(sanitizeForTransport(input)).toEqual(sanitizeWithReport(input).value);
+  });
 });

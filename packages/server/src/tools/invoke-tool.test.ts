@@ -24,6 +24,7 @@ function throttledSession(overrides: Partial<Session> = {}): Session {
     eventsSince: () => [],
     queryEvents: () => Promise.resolve([]),
     bufferHealth: () => ({ total: 0, dropped: 0 }),
+    blindSpots: () => ({}),
     health: () => ({
       lastSeenMs: 99_999,
       throttled: true,

@@ -19,6 +19,12 @@ export const OBSERVE_FILTER_BUCKETS: Record<string, readonly string[]> = {
   console: [EventType.CONSOLE_ERROR, EventType.ERROR_UNCAUGHT],
   animation: [EventType.ANIM_START, EventType.ANIM_END],
   signal: [EventType.SIGNAL],
+  // perf/state/storage are single-type buckets. They resolve through the raw-type fallback anyway,
+  // but naming them keeps the advertised vocabulary and the real one identical — the mismatch between
+  // those two is the bug this map exists to fix, so leaving observable types out of it would reopen it.
+  perf: [EventType.PERF],
+  state: [EventType.STATE_CHANGE],
+  storage: [EventType.STORAGE_CHANGE],
 };
 
 /**

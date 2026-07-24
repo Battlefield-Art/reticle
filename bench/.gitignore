@@ -1,4 +1,14 @@
-raw/
+# Raw run artifacts are regenerated per run and mostly noise — EXCEPT the ones a published claim
+# rests on. A number quoted in README/CONFIDENCE that cannot be re-derived from a fresh clone is a
+# claim, not a measurement, and this repo has already been bitten by exactly that: a stale
+# schema-tax artifact was quoted for months as though it described the shipping default.
+# Keep the artifacts behind load-bearing claims; ignore the rest.
+raw/*
+!raw/schema-tax.json
+!raw/compiled-suite-vs-replay.json
+!raw/suite-rre.json
+!raw/leak-stress.json
+!raw/stress-tiers.json
 logs/
 # Ignore run artifacts, but keep the two SVGs embedded in docs/benchmarks.md so the flagship doc
 # renders on a fresh clone (they were previously broken image links).

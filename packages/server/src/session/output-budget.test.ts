@@ -115,6 +115,7 @@ function fakeDeps(events: ReticleEvent[]): ToolDeps {
     queryEvents: () => Promise.resolve(events),
     health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
     bufferHealth: () => ({ total: events.length, dropped: 0 }),
+    blindSpots: () => ({}),
     getState: () => SessionState.ACTIVE,
     drainInbox: () => [],
   };

@@ -18,7 +18,11 @@ import {
 } from '@reticlehq/core';
 import { RingBuffer } from '../events/ring-buffer.js';
 import type { JournalReader, JournalRecorder } from '../journal/journal-recorder.js';
-import { filterEvents, mergeEventsBySeq, type EventQueryOptions } from '../journal/journal-query.js';
+import {
+  filterEvents,
+  mergeEventsBySeq,
+  type EventQueryOptions,
+} from '../journal/journal-query.js';
 import { type AmbientCounts } from '../journal/ambient.js';
 import { ObservedState } from './observed-state.js';
 import { LiveControl, type InboxMessage } from './live-control.js';
@@ -243,7 +247,9 @@ export class Session {
     const seen = this.#journal?.observe(stamped) ?? stamped;
     const fallback = this.#activeActionId;
     const attributed =
-      seen.actionId === undefined && fallback !== undefined ? { ...seen, actionId: fallback } : seen;
+      seen.actionId === undefined && fallback !== undefined
+        ? { ...seen, actionId: fallback }
+        : seen;
     this.#observed.observe(attributed);
     this.#buffer.push(attributed, t, byteSize);
     for (const listener of this.#listeners) listener(attributed);
@@ -257,6 +263,11 @@ export class Session {
   /** Learned ambient-churn counts (PredicateSession hook the settle oracle reads). */
   ambientCounts(): AmbientCounts {
     return this.#observed.ambientCounts();
+  }
+
+  /** Only what THIS session observed — what teardown accumulates onto the persisted map. */
+  ownAmbientCounts(): AmbientCounts {
+    return this.#observed.ownAmbientCounts();
   }
 
   /** Seed the ambient map from the persisted per-app `.reticle/ambient.json` (sharpens across sessions). */

@@ -5,8 +5,14 @@ import { join } from 'node:path';
 import { createNodeFileSystem } from '../project/fs-port.js';
 import { AmbientStore } from './ambient-store.js';
 import { makeSessionEnd, type SessionEndTarget } from './session-end.js';
+import { DEFAULT_SESSION_RETENTION } from './retention.js';
+import { reticleDirPaths, sessionDirPath } from '../project/reticle-dir.js';
 
-function fakeSession(id: string, ambient: Record<string, number>, onFlush?: () => void): SessionEndTarget {
+function fakeSession(
+  id: string,
+  ambient: Record<string, number>,
+  onFlush?: () => void,
+): SessionEndTarget {
   return {
     id,
     flushJournal: () => {
@@ -14,6 +20,8 @@ function fakeSession(id: string, ambient: Record<string, number>, onFlush?: () =
       return Promise.resolve();
     },
     ambientCounts: () => ambient,
+    // What teardown persists. The fakes model a session with no seeded history, so own === total.
+    ownAmbientCounts: () => ambient,
   };
 }
 
@@ -63,9 +71,42 @@ describe('makeSessionEnd (teardown: flush journal + persist ambient)', () => {
       id: 's1',
       flushJournal: () => Promise.reject(new Error('disk gone')),
       ambientCounts: () => ({ 'chat-log': 4 }),
+      ownAmbientCounts: () => ({ 'chat-log': 4 }),
     };
     await expect(end(broken)).resolves.toBeUndefined();
     // ambient still persisted despite the flush failure
     expect(await new AmbientStore(fs, root).load()).toEqual({ 'chat-log': 4 });
+  });
+});
+
+describe('journal retention is bounded on a long-running daemon', () => {
+  let root: string;
+  const fs = createNodeFileSystem();
+
+  beforeEach(async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'reticle-retain-'));
+    root = join(dir, '.reticle');
+  });
+  afterEach(async () => {
+    await rm(join(root, '..'), { recursive: true, force: true });
+  });
+
+  it('prunes at session END, not only at daemon start', async () => {
+    // The leak this closes: pruneSessions ran once during wiring, so a daemon that stays up — the
+    // normal case, and the entire point of the pool — accumulated a session directory per tab
+    // forever. Session end is the right moment: it is exactly when a new directory was just created.
+    const end = makeSessionEnd({ fs, reticleRoot: root, enabled: true });
+    const overBound = DEFAULT_SESSION_RETENTION + 5;
+    for (let i = 0; i < overBound; i++) {
+      const dir = sessionDirPath(root, `s${i}`);
+      await fs.mkdir(dir);
+      await fs.writeFile(join(dir, 'events.jsonl'), '{}\n');
+    }
+    expect((await fs.readdir(reticleDirPaths(root).sessions)).length).toBe(overBound);
+
+    await end(fakeSession('s-last', { 'chat-log': 1 }));
+
+    const remaining = await fs.readdir(reticleDirPaths(root).sessions);
+    expect(remaining.length).toBeLessThanOrEqual(DEFAULT_SESSION_RETENTION);
   });
 });

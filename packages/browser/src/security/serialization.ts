@@ -1,4 +1,9 @@
-import { REDACTED_VALUE, TRANSPORT_LIMITS, isSensitiveKey, scrubKnownSecrets } from '@reticlehq/core';
+import {
+  REDACTED_VALUE,
+  TRANSPORT_LIMITS,
+  isSensitiveKey,
+  scrubKnownSecrets,
+} from '@reticlehq/core';
 
 const TRUNCATED_VALUE = '[TRUNCATED]';
 const UNSERIALIZABLE_VALUE = '[UNSERIALIZABLE]';
@@ -13,6 +18,10 @@ interface SanitizeState {
   readonly seen: WeakSet<object>;
   remainingCharacters: number;
   nodes: number;
+  /** Collection items dropped to stay inside the node budget. */
+  droppedItems: number;
+  /** Values replaced by a placeholder because a cap was hit mid-value. */
+  truncatedValues: number;
 }
 
 function boundedString(value: string, state: SanitizeState, max: number): string {
@@ -32,6 +41,7 @@ function boundedString(value: string, state: SanitizeState, max: number): string
 function sanitize(value: unknown, state: SanitizeState, depth: number, key?: string): unknown {
   if (key !== undefined && isSensitiveKey(key)) return REDACTED_VALUE;
   if (depth > TRANSPORT_LIMITS.MAX_SERIALIZE_DEPTH || state.nodes >= MAX_TOTAL_NODES) {
+    state.truncatedValues += 1;
     return TRUNCATED_VALUE;
   }
   state.nodes += 1;
@@ -76,8 +86,15 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
       // collection's true size travels separately as a scalar (serialized first), so "how many" stays
       // exact while the sample shrinks.
       const out: unknown[] = [];
-      for (const item of value.slice(0, TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS)) {
-        if (state.nodes >= MAX_TOTAL_NODES) break;
+      const considered = value.slice(0, TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS);
+      // Items beyond the collection cap are dropped before the loop even sees them; count them here
+      // so the report covers BOTH reasons a caller is holding a short list.
+      state.droppedItems += Math.max(0, value.length - considered.length);
+      for (const item of considered) {
+        if (state.nodes >= MAX_TOTAL_NODES) {
+          state.droppedItems += 1;
+          continue;
+        }
         // Checking only BEFORE the item is not enough: one that starts under the budget can cross it
         // partway through and come back with its tail replaced by placeholders. Serialize, then keep
         // it only if it fitted — otherwise discard it and stop, so what ships is always whole.
@@ -85,7 +102,10 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
         // `>=`, not `>`: sanitize stops AT the ceiling rather than passing it, so the budget never
         // reads as exceeded. Reaching it during this item means some field inside was replaced by a
         // placeholder, which makes the item schema-invalid — drop it and stop.
-        if (state.nodes >= MAX_TOTAL_NODES) break;
+        if (state.nodes >= MAX_TOTAL_NODES) {
+          state.droppedItems += 1;
+          continue;
+        }
         out.push(sanitized === OMIT_VALUE ? null : sanitized);
       }
       return out;
@@ -124,18 +144,60 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
   }
 }
 
+/**
+ * What the transport caps removed from a value, if anything.
+ *
+ * Truncation used to be entirely silent: a 1,000-entity store came back as ~142 entities with no
+ * marker and no count, and a caller comparing it against expected data would conclude the app had
+ * lost the rest. A partial answer that cannot be distinguished from a complete one is the precise
+ * shape of a false green — the failure this project exists to prevent — so the caps now report.
+ */
+export interface TruncationReport {
+  /** Whole collection items not included, either past the item cap or past the node budget. */
+  droppedItems: number;
+  /** Values replaced by the `[TRUNCATED]` placeholder because a cap was hit inside them. */
+  truncatedValues: number;
+  /** Human-and-agent readable summary. Present so a consumer never has to compose one. */
+  note: string;
+}
+
 /** Convert arbitrary app state into a bounded, redacted JSON-compatible value. */
 export function sanitizeForTransport(value: unknown): unknown {
-  const sanitized = sanitize(
-    value,
-    {
-      seen: new WeakSet(),
-      remainingCharacters: MAX_TOTAL_CHARACTERS,
-      nodes: 0,
+  return sanitizeWithReport(value).value;
+}
+
+/**
+ * As `sanitizeForTransport`, but also reports what the caps removed.
+ *
+ * Returned as a separate field rather than embedded in the value: the value has to keep the exact
+ * shape the consumer's schema declares, so a marker spliced inside it would break validation on the
+ * very payloads that are already under pressure.
+ */
+export function sanitizeWithReport(value: unknown): {
+  value: unknown;
+  truncation?: TruncationReport;
+} {
+  const state: SanitizeState = {
+    seen: new WeakSet(),
+    remainingCharacters: MAX_TOTAL_CHARACTERS,
+    nodes: 0,
+    droppedItems: 0,
+    truncatedValues: 0,
+  };
+  const sanitized = sanitize(value, state, 0);
+  const out = sanitized === OMIT_VALUE ? null : sanitized;
+  if (state.droppedItems === 0 && state.truncatedValues === 0) return { value: out };
+  const parts: string[] = [];
+  if (state.droppedItems > 0) parts.push(`${state.droppedItems} item(s) dropped`);
+  if (state.truncatedValues > 0) parts.push(`${state.truncatedValues} value(s) truncated`);
+  return {
+    value: out,
+    truncation: {
+      droppedItems: state.droppedItems,
+      truncatedValues: state.truncatedValues,
+      note: `partial — ${parts.join(', ')}; this is NOT the whole value. Scope the read with \`path\`/\`depth\` to see the rest.`,
     },
-    0,
-  );
-  return sanitized === OMIT_VALUE ? null : sanitized;
+  };
 }
 
 /** Serialize without allowing cycles, BigInt, getters, or secrets to break the transport. */

@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./store": {
+      "types": "./dist/store.d.ts",
+      "default": "./dist/store.js"
     }
   },
   "scripts": {
@@ -32,7 +36,10 @@
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
-    "jsdom": "^26.0.0"
+    "jsdom": "^26.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
   },
   "license": "Apache-2.0",
   "author": "Reticle contributors",

@@ -54,7 +54,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  */
 const RESPONSE_SETTLE_MS = 3000;
 
-
 /**
  * Two URLs belong to the same benchmark run when they share an origin and a query string. The path is
  * deliberately ignored — the app rewrites it via history.pushState as soon as it routes.
@@ -68,7 +67,6 @@ const sameRun = (a, b) => {
     return false;
   }
 };
-
 
 export async function runReticle(bugs) {
   // Drive mode, not attach.
@@ -117,7 +115,10 @@ export async function runReticle(bugs) {
     for (let i = 0; i < 20 && !ok; i += 1) {
       try {
         const probe = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
-        const urls = probe.contexts().flatMap((c) => c.pages()).map((pg) => pg.url());
+        const urls = probe
+          .contexts()
+          .flatMap((c) => c.pages())
+          .map((pg) => pg.url());
         ok = urls.some((u) => u.startsWith(APP_ORIGIN));
         await probe.close();
       } catch {
@@ -132,7 +133,6 @@ export async function runReticle(bugs) {
       );
     }
   }
-
 
   // Assert we are talking to OUR daemon, driving OUR browser.
   //
@@ -150,7 +150,9 @@ export async function runReticle(bugs) {
       throw new Error(
         `the daemon on :${PORT} could not screenshot (reason: ${probe?.reason ?? probe?.error ?? '?'}). ` +
           'That means it is NOT the daemon this harness spawned — a stale one is holding the port. ' +
-          'Kill it before running: lsof -tiTCP:' + PORT + ' -sTCP:LISTEN | xargs kill',
+          'Kill it before running: lsof -tiTCP:' +
+          PORT +
+          ' -sTCP:LISTEN | xargs kill',
       );
     }
   };
@@ -231,6 +233,28 @@ export async function runReticle(bugs) {
       if (Date.now() >= deadline) return undefined;
       await sleep(150);
     }
+  };
+  // Click a control by testid, RE-RESOLVING the ref if it went stale between query and act.
+  //
+  // A ref names a live element; if the subtree re-renders in the gap before the click, the ref is
+  // gone and reticle_act errors "ref no longer resolves" — which is correct UX (re-query), and is
+  // exactly what a competent agent does next. The shadow-refresh control re-renders on a poll, so a
+  // single-shot resolve-then-act intermittently no-op'd. A no-op click makes zero requests — the same
+  // signature as the dead-control bug under test — so the miss and the catch were indistinguishable.
+  // Retry so the click actually lands and the test measures the control, not the race.
+  const clickByTestid = async (testid) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const ref = await waitRef(testid);
+      if (ref === undefined) return false;
+      try {
+        await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+        return true;
+      } catch (e) {
+        if (!String(e).includes('no longer resolves')) throw e;
+        await sleep(150); // re-render settled; resolve a fresh ref and retry
+      }
+    }
+    return false;
   };
   const doPrep = async (prep) => {
     if (!prep?.fill) return;
@@ -331,7 +355,10 @@ export async function runReticle(bugs) {
           if (variant === 'clean') {
             const shot = await call('reticle_screenshot', { sessionId: sid, name: shotName });
             caught = false;
-            note = shot?.saved === true ? `baseline saved (${shotName})` : `baseline FAILED: ${shot?.reason ?? '?'}`;
+            note =
+              shot?.saved === true
+                ? `baseline saved (${shotName})`
+                : `baseline FAILED: ${shot?.reason ?? '?'}`;
           } else {
             // maxRatio tolerates the fixture's own volatility (a live clock digit is well under 1% of
             // pixels) while a global paint regression re-tints essentially everything.
@@ -427,7 +454,9 @@ export async function runReticle(bugs) {
             since: act0?.since,
             limit: 50,
           });
-          const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
+          const matches = (net?.calls ?? []).filter((e) =>
+            String(e.url ?? '').includes(c.urlContains),
+          );
           const good = matches.filter((e) => {
             if (Number(e.status) !== Number(c.expected)) return false;
             if (c.contentType === undefined) return true;
@@ -455,7 +484,9 @@ export async function runReticle(bugs) {
             since: act0?.since,
             limit: 50,
           });
-          const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
+          const matches = (net?.calls ?? []).filter((e) =>
+            String(e.url ?? '').includes(c.urlContains),
+          );
           const field = c.direction === 'request' ? 'requestBody' : 'responseBody';
           const bodies = matches.map((m) => String(m[field] ?? ''));
           const anyBody = bodies.some((b) => b.length > 0);
@@ -482,9 +513,13 @@ export async function runReticle(bugs) {
             since: act0?.since,
             limit: 50,
           });
-          const matches = (net?.calls ?? []).filter((e) => String(e.url ?? '').includes(c.urlContains));
+          const matches = (net?.calls ?? []).filter((e) =>
+            String(e.url ?? '').includes(c.urlContains),
+          );
           const stillPending = matches.filter((e) => e.pending === true || e.status === 'pending');
-          const completed = matches.filter((e) => Number(e.status) >= 200 && Number(e.status) < 400);
+          const completed = matches.filter(
+            (e) => Number(e.status) >= 200 && Number(e.status) < 400,
+          );
           // Either still hanging, or it never landed a completed 2xx at all (aborted mid-flight).
           caught = ref ? stillPending.length > 0 || completed.length === 0 : false;
           note = ref
@@ -501,7 +536,11 @@ export async function runReticle(bugs) {
           // perf: layout shift: a screenshot taken after things settle looks perfect; the damage is in
           // WHEN the page moved. Read the CLS the SDK already reports.
           await sleep(1200); // let the late shift actually happen before judging
-          const obs = await call('reticle_observe', { sessionId: sid, max_events: 300, since: 0 });
+          const obs = await call('reticle_observe', {
+            sessionId: sid,
+            filters: ['perf'],
+            since: 0,
+          });
           // Read the PERF events. This used to read `obs.summary.layoutShift`, a field
           // reticle_observe does not return — that shape belongs to act_and_wait's causal summary —
           // so it was always undefined and the check always scored cls=0.000. It could never fire,
@@ -526,9 +565,8 @@ export async function runReticle(bugs) {
           // hydration task is not counted as a consequence of the action.
           const obs = await call('reticle_observe', {
             sessionId: sid,
-            types: ['perf'],
+            filters: ['perf'],
             since: act0?.since,
-            max_events: 200,
           });
           const durations = (obs?.events ?? [])
             .filter((e) => String(e?.data?.metric ?? '') === 'longtask')
@@ -549,13 +587,10 @@ export async function runReticle(bugs) {
           await sleep(400);
           const obs = await call('reticle_observe', {
             sessionId: sid,
-            types: ['route'],
+            filters: ['route'],
             since: act0?.since,
-            max_events: 50,
           });
-          const routes = (obs?.events ?? []).filter(
-            (e) => String(e.type ?? '') === 'route.change',
-          );
+          const routes = (obs?.events ?? []).filter((e) => String(e.type ?? '') === 'route.change');
           if (!ref) {
             caught = false;
             note = `${c.steps[0]} not reached`;
@@ -584,9 +619,8 @@ export async function runReticle(bugs) {
           await sleep(2500);
           const obs = await call('reticle_observe', {
             sessionId: sid,
-            types: ['signal'],
+            filters: ['signal'],
             since: act0?.since,
-            max_events: 50,
           });
           // The 'signal' type bucket also carries page.health heartbeats, so match the event type
           // exactly rather than trusting the filter to mean only app signals.
@@ -594,7 +628,9 @@ export async function runReticle(bugs) {
             (e) => String(e?.type ?? '') === 'signal' && String(e?.data?.name ?? '') === c.signal,
           ).length;
           caught = ref ? fired !== c.expected : false;
-          note = ref ? `${c.signal} fired=${fired} expected=${c.expected}` : `${c.steps[0]} not reached`;
+          note = ref
+            ? `${c.signal} fired=${fired} expected=${c.expected}`
+            : `${c.steps[0]} not reached`;
         } else if (c.kind === 'storagePresentAfter') {
           // storage: persistence truth. The UI is right in every one of these — sign-in succeeds, sign-out
           // returns to the login screen. The lie only appears on the NEXT load, or to the server.
@@ -657,21 +693,20 @@ export async function runReticle(bugs) {
           // recorded a product gap that was not real. Query genuinely could not see shadow content at
           // the time, which made the wrong explanation fit. Both are fixed; this now resolves a ref
           // the normal way and clicks it.
-          const ref = await waitRef(c.deepTestid);
           const before = await call('reticle_network', { sessionId: sid, limit: 50 });
           const beforeN = (before?.calls ?? []).filter((e) =>
             String(e.url ?? '').includes(c.urlContains),
           ).length;
-          if (ref) {
-            await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
-          }
+          const clicked = await clickByTestid(c.deepTestid);
           await sleep(900);
           const after = await call('reticle_network', { sessionId: sid, limit: 50 });
           const afterN = (after?.calls ?? []).filter((e) =>
             String(e.url ?? '').includes(c.urlContains),
           ).length;
-          caught = ref ? afterN - beforeN < 1 : false;
-          note = ref
+          // Only a click that actually LANDED can prove the control is dead. If the ref never resolved
+          // we cannot tell a dead control from an unreachable one, so we do not claim a catch.
+          caught = clicked ? afterN - beforeN < 1 : false;
+          note = clicked
             ? `${c.urlContains} calls +${afterN - beforeN}`
             : `${c.deepTestid} not resolvable (shadow-root query returned no ref)`;
         } else if (c.kind === 'deepCountMatchesState') {
@@ -685,7 +720,9 @@ export async function runReticle(bugs) {
             depth: 8,
           });
           const v = st?.value;
-          const truth = Array.isArray(v) ? v.length : Number((JSON.stringify(v).match(/\d+/) ?? [])[0]);
+          const truth = Array.isArray(v)
+            ? v.length
+            : Number((JSON.stringify(v).match(/\d+/) ?? [])[0]);
           const snap = await call('reticle_snapshot', { sessionId: sid, scope: c.scope });
           const shown = Number((String(snap?.tree ?? '').match(/\d+/g) ?? [])[0]);
           caught = Number.isFinite(truth) && Number.isFinite(shown) && truth !== shown;
@@ -696,9 +733,8 @@ export async function runReticle(bugs) {
           await sleep(c.waitMs ?? 2500);
           const obs = await call('reticle_observe', {
             sessionId: sid,
-            types: ['net'],
+            filters: ['net'],
             since: lastSince,
-            limit: 300,
           });
           const frames = (obs?.events ?? []).filter(
             (e) =>
@@ -715,9 +751,8 @@ export async function runReticle(bugs) {
           await sleep(c.waitMs ?? 2500);
           const obs = await call('reticle_observe', {
             sessionId: sid,
-            types: ['net'],
+            filters: ['net'],
             since: lastSince,
-            limit: 300,
           });
           const frames = (obs?.events ?? []).filter(
             (e) =>
@@ -751,9 +786,8 @@ export async function runReticle(bugs) {
           await sleep(c.waitMs ?? 1200);
           const obs = await call('reticle_observe', {
             sessionId: sid,
-            types: ['net'],
+            filters: ['net'],
             since,
-            limit: 300,
           });
           const hit = (obs?.events ?? []).some(
             (e) =>
@@ -762,7 +796,9 @@ export async function runReticle(bugs) {
               JSON.stringify(e?.data ?? {}).includes(c.expectContains),
           );
           caught = ref ? !hit : false;
-          note = ref ? `frame containing "${c.expectContains}": ${hit}` : `${c.steps[0]} not reached`;
+          note = ref
+            ? `frame containing "${c.expectContains}": ${hit}`
+            : `${c.steps[0]} not reached`;
         } else if (c.kind === 'netCountAfterBurst') {
           // timing: debounce: each fill is one input event, so a burst of fills is a burst of keystrokes.
           // A debounced client collapses them into ONE request; an undebounced one fires per event.
@@ -794,24 +830,39 @@ export async function runReticle(bugs) {
           // timing: retry storm: the endpoint always fails, so correct and incorrect look identical at
           // any instant. The only difference is how many times we asked before giving up.
           const ref = await waitRef(c.steps[0]);
-          if (ref) await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
+          if (ref)
+            await call('reticle_act', { sessionId: sid, ref, action: 'click', args: CLICK_ARGS });
           await sleep(c.settleMs ?? 3000);
           const net = await call('reticle_network', { sessionId: sid, limit: 100 });
           const n = (net?.calls ?? []).filter((e) =>
             String(e.url ?? '').includes(c.urlContains),
           ).length;
           caught = ref ? n > c.maxExpected : false;
-          note = ref ? `${c.urlContains} attempts=${n} (max ${c.maxExpected})` : `${c.steps[0]} not reached`;
+          note = ref
+            ? `${c.urlContains} attempts=${n} (max ${c.maxExpected})`
+            : `${c.steps[0]} not reached`;
         } else if (c.kind === 'stableTextDespiteChurn') {
           // false-positive trap: trap, CLEAN-only by nature. A neighbouring region rewrites itself several times a
           // second on a healthy build. A text/diff oracle that reads "it changed" as "it broke" would
           // flag this forever. Detection here is the FAILURE — it means the harness over-flags.
-          const first = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.churnTestid });
+          const first = await call('reticle_query', {
+            sessionId: sid,
+            by: 'testid',
+            value: c.churnTestid,
+          });
           await sleep(c.waitMs ?? 1200);
-          const second = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.churnTestid });
+          const second = await call('reticle_query', {
+            sessionId: sid,
+            by: 'testid',
+            value: c.churnTestid,
+          });
           const churned =
             String(first?.elements?.[0]?.text ?? '') !== String(second?.elements?.[0]?.text ?? '');
-          const stable = await call('reticle_query', { sessionId: sid, by: 'testid', value: c.stableTestid });
+          const stable = await call('reticle_query', {
+            sessionId: sid,
+            by: 'testid',
+            value: c.stableTestid,
+          });
           const stableText = String(stable?.elements?.[0]?.text ?? '');
           // The trap only means something if the region ACTUALLY churned; otherwise it passes vacuously.
           caught = churned && !stableText.includes(c.expectStable);

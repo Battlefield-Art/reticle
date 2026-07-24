@@ -26,8 +26,8 @@ import { refs } from '../dom/refs.js';
 import { hitTestOccluder } from '../dom/occlusion.js';
 import { readStorage } from '../observers/storage.js';
 import { identifyComponent, readComponentState } from '../registry/adapters.js';
-import { readStores, readStoresRaw, storeNames } from '../registry/stores.js';
-import { sanitizeForTransport } from '../security/serialization.js';
+import { readStoresWithTruncation, readStoresRaw, storeNames } from '../registry/stores.js';
+import { sanitizeWithReport } from '../security/serialization.js';
 import { getCapabilities } from '../registry/capabilities.js';
 import { freezeClock, advanceClock, resetClock, isClockFrozen } from '../timers/clock.js';
 import { scrollContainer } from '../actions/scroll.js';
@@ -155,25 +155,33 @@ function readState(
     const selection = path !== undefined ? selectPath(base, path) : { found: true, value: base };
     const selected =
       selection.found && depth !== undefined ? capDepth(selection.value, depth) : selection.value;
+    const projected = sanitizeWithReport(selected);
     return {
       store,
       path,
       found: selection.found,
-      value: sanitizeForTransport(selected),
+      value: projected.value,
+      // Even a SCOPED read can hit the caps when the selected sub-tree is itself large; saying so is
+      // what keeps "the list is short" distinguishable from "I shortened the list".
+      ...(projected.truncation === undefined ? {} : { truncation: projected.truncation }),
       ...('availableKeys' in selection ? { availableKeys: selection.availableKeys } : {}),
       storeNames: names,
     };
   }
 
-  const stores = readStores(store);
+  const { stores, truncation } = readStoresWithTruncation(store);
   const result: {
     stores: Record<string, unknown>;
     storeNames: string[];
     component?: ComponentStateResult;
+    truncation?: Record<string, unknown>;
   } = {
     stores,
     storeNames: names,
   };
+  // The whole-store read is where a large store silently became a small one. Present only when a cap
+  // actually fired, so an intact read is unchanged and the field's presence is the warning.
+  if (truncation !== undefined) result.truncation = truncation;
   if (ref !== undefined && ref.length > 0) {
     const el = refs.resolve(ref);
     if (el === null) {

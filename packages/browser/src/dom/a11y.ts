@@ -1,5 +1,6 @@
 import { ElementState, REDACTED_VALUE, type ElementDescriptor } from '@reticlehq/core';
 import { refs } from './refs.js';
+import { inspectChart } from './chart.js';
 import { isSensitiveKey } from '../security/serialization.js';
 import { formatSource, sourceFromDom } from './source.js';
 
@@ -273,5 +274,12 @@ export function describe(el: Element): ElementDescriptor {
   // answer (inspect, act, review) use sourceFor() instead.
   const source = formatSource(sourceFromDom(el));
   if (source !== undefined) base.source = source;
+  // Chart faults, only when there are any. Gated on the element actually containing plot geometry so
+  // the common case — every non-chart element on the page — pays one querySelector miss and nothing
+  // else, and a HEALTHY chart adds no bytes to the wire either.
+  if (el.querySelector('path, polyline, polygon') !== null) {
+    const faults = inspectChart(el).findings;
+    if (faults.length > 0) base.chart = faults;
+  }
   return base;
 }

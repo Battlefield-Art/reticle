@@ -51,9 +51,7 @@ export async function runPlaywright(bugs) {
       });
       // Sockets open during setup, so this must be attached before any navigation happens.
       const wsFrames = [];
-      page.on('websocket', (ws) =>
-        ws.on('framereceived', (f) => wsFrames.push(String(f.payload))),
-      );
+      page.on('websocket', (ws) => ws.on('framereceived', (f) => wsFrames.push(String(f.payload))));
       // Response statuses: Playwright CAN see these, so the hidden-500 class is fairly 'both'.
       const responses = [];
       page.on('response', (r) =>
@@ -90,7 +88,11 @@ export async function runPlaywright(bugs) {
           const isFill = typeof step === 'object' && step !== null && typeof step.fill === 'string';
           const testid = isFill ? step.fill : step;
           await waitFor(testid);
-          if (isFill) await page.locator(sel(testid)).fill(step.text ?? '').catch(() => {});
+          if (isFill)
+            await page
+              .locator(sel(testid))
+              .fill(step.text ?? '')
+              .catch(() => {});
           else await click(testid);
           await sleep(400);
         }
@@ -101,11 +103,23 @@ export async function runPlaywright(bugs) {
               .slice(0, 12),
           )
           .catch(() => []);
-        const err = await page
-          .locator('[data-testid="login-error"]')
-          .innerText()
-          .catch(() => '');
-        const diag = ` [seen:${seen.join(',')}${err ? ' loginErr:' + err : ''}]`;
+        // Built ONLY when a failure note actually needs it.
+        //
+        // This used to run eagerly on every bug: `.innerText()` against a `login-error` element that
+        // exists only on a FAILED login blocks for Playwright's full 30 s default before the catch
+        // fires. Every one of the 170 runs paid it, which inflated Playwright's measured wall-time to
+        // ~32 s/bug — and our published "10x faster" lead with it. The honest gap is ~1.26x. It also
+        // turned a full head-to-head into a ~90-minute job instead of ~15.
+        //
+        // The bounded timeout is belt-and-braces: even on the failure path where the element is
+        // genuinely absent, a diagnostic must not cost more than the check it is explaining.
+        const buildDiag = async () => {
+          const err = await page
+            .locator('[data-testid="login-error"]')
+            .innerText({ timeout: 500 })
+            .catch(() => '');
+          return ` [seen:${seen.join(',')}${err ? ' loginErr:' + err : ''}]`;
+        };
         const c = bug.check;
         if (c.kind === 'usable') {
           const ok = await waitFor(c.testid, 6000);
@@ -227,7 +241,8 @@ export async function runPlaywright(bugs) {
           // Wait for the target BEFORE arming the long-task probe. Arming first made Playwright's
           // window up to 6s wider than the reticle side's act-scoped one, so ordinary churn during
           // waitFor scored as "a long task after the action" on the CLEAN build.
-          if (c.kind === 'perfNoLongTaskAfter' && c.steps?.[0] !== undefined) await waitFor(c.steps[0]);
+          if (c.kind === 'perfNoLongTaskAfter' && c.steps?.[0] !== undefined)
+            await waitFor(c.steps[0]);
           await page.evaluate(() => {
             const probe = { cls: 0, longTaskDurations: [] };
             window.__reticleBenchPerf = probe;
@@ -244,7 +259,8 @@ export async function runPlaywright(bugs) {
               /* entry type unsupported in this browser */
             }
           });
-          if (c.kind === 'perfNoLongTaskAfter' && c.steps?.[0] !== undefined) await click(c.steps[0]);
+          if (c.kind === 'perfNoLongTaskAfter' && c.steps?.[0] !== undefined)
+            await click(c.steps[0]);
           await sleep(1500); // let a late shift land, and the blocking task finish
           const metrics = await page.evaluate(
             () => window.__reticleBenchPerf ?? { cls: 0, longTaskDurations: [] },
@@ -295,7 +311,9 @@ export async function runPlaywright(bugs) {
             ({ area, key }) => {
               if (area === 'local') return localStorage.getItem(key) !== null;
               if (area === 'session') return sessionStorage.getItem(key) !== null;
-              return document.cookie.split('; ').some((c) => c.startsWith(`${key}=`) && !c.endsWith('='));
+              return document.cookie
+                .split('; ')
+                .some((c) => c.startsWith(`${key}=`) && !c.endsWith('='));
             },
             { area: c.area, key: c.key },
           );
@@ -374,7 +392,10 @@ export async function runPlaywright(bugs) {
         } else if (c.kind === 'netCountAfterBurst') {
           // Playwright sees requests, so request-count timing is a fair 'both'.
           for (const value of c.values) {
-            await page.locator(sel(c.testid)).fill(value).catch(() => {});
+            await page
+              .locator(sel(c.testid))
+              .fill(value)
+              .catch(() => {});
             await sleep(c.gapMs ?? 60);
           }
           await sleep(c.settleMs ?? 1200);
@@ -392,7 +413,11 @@ export async function runPlaywright(bugs) {
           note = `${c.urlContains} attempts=${n} (max ${c.maxExpected})`;
         } else if (c.kind === 'stableTextDespiteChurn') {
           const read = async (t) =>
-            page.locator(sel(t)).first().innerText().catch(() => '');
+            page
+              .locator(sel(t))
+              .first()
+              .innerText()
+              .catch(() => '');
           const first = await read(c.churnTestid);
           await sleep(c.waitMs ?? 1200);
           const second = await read(c.churnTestid);
@@ -412,9 +437,7 @@ export async function runPlaywright(bugs) {
               (c.contentType === undefined || r.contentType.includes(c.contentType)),
           );
           caught = ok ? good.length === 0 : false;
-          note = ok
-            ? `matched=${matches.length} ok=${good.length}`
-            : `${c.steps[0]} not reached`;
+          note = ok ? `matched=${matches.length} ok=${good.length}` : `${c.steps[0]} not reached`;
         } else if (c.kind === 'netBodyAfter') {
           // Playwright exposes the outgoing body via request.postData(). This branch used to return
           // caught=false with "bodies not captured", manufacturing a reticle-only win out of a one-line
@@ -474,7 +497,9 @@ export async function runPlaywright(bugs) {
             ? `pending=${pending} completed2xx=${completed.length} of ${asked}`
             : `${c.steps[0]} not reached`;
         }
-        if (!caught && (note.includes('not found') || note.includes('not reached'))) note += diag;
+        if (!caught && (note.includes('not found') || note.includes('not reached'))) {
+          note += await buildDiag();
+        }
       } catch (e) {
         note = `ERR ${e.message}`;
       }

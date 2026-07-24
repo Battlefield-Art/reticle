@@ -238,15 +238,33 @@ Then describe your app's testable surface so the agent knows what to drive (fill
 
 ```ts
 // src/reticle-dev.ts — self-guards on import.meta.env.DEV, so it's a no-op in prod
-import { registerCapabilities } from '@reticlehq/react';
+import { registerCapabilities, registerStore } from '@reticlehq/react';
+import { useApp } from './store'; // your zustand/Redux store
 if (import.meta.env.DEV) {
+  // Register your store(s). This is the highest-value line in this file: it is what lets the agent
+  // check what the app BELIEVES, not just what it rendered — the class of bug a screenshot cannot see.
+  registerStore('app', useApp); // zustand or Redux: pass the store itself
   registerCapabilities({
     testids: [], // your data-testid values, e.g. ['login-btn', 'submit-form']
     signals: [], // your reticle.signal() names, e.g. ['auth:login']
-    stores: [], // your registerStore() names
+    stores: ['app'],
   });
 }
 ```
+
+**Registering the store is the step people skip, and it is the one that matters.** Pass the store itself (not `() => store.getState()`) — the store form wires `subscribe` too, so every mutation emits a state diff automatically; the getter form is read-only and silently produces empty diffs.
+
+Which libraries work:
+
+| Library | How |
+| --- | --- |
+| zustand, Redux, Redux Toolkit | `registerStore('app', store)` — no adapter needed |
+| **TanStack Query** | `registerStore('queries', tanstackQueryStore(queryClient))` |
+| Jotai | `registerStore('app', jotaiStore(getDefaultStore(), { cart, user }))` |
+| XState / Valtio / MobX | `xstateStore(actor)` / `valtioStore(...)` / `mobxStore(...)` |
+| React Context / useState / useReducer | `useReticleStore('cart', cart)` from `@reticlehq/react/store` |
+
+Register TanStack Query even if you register nothing else: a stale cache served as fresh fires **no network request**, so the network log shows silence and the DOM shows a plausible number — the cache is the only witness. Adapters come from `@reticlehq/browser`.
 
 Then load it once from your entry file — add this line near the top of `src/main.tsx` (the dynamic `import()` keeps it out of the production bundle):
 
@@ -275,18 +293,21 @@ import { useEffect } from 'react';
 export function ReticleDev() {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
-    void import('@reticlehq/react').then(({ reticle, install, registerCapabilities }) => {
-      install();
-      // The bridge requires a pairing token. Vite users get it auto-injected; hand-wired Next passes it
-      // in: set RETICLE_TOKEN for the daemon and expose the same value as NEXT_PUBLIC_RETICLE_TOKEN.
-      const token = process.env.NEXT_PUBLIC_RETICLE_TOKEN;
-      reticle.connect(token ? { token } : {});
-      registerCapabilities({
-        testids: [], // your data-testid values
-        signals: [], // your reticle.signal() names
-        stores: [], // your registerStore() names
-      });
-    });
+    void import('@reticlehq/react').then(
+      ({ reticle, install, registerCapabilities, registerStore }) => {
+        install();
+        // The bridge requires a pairing token. Vite users get it auto-injected; hand-wired Next passes it
+        // in: set RETICLE_TOKEN for the daemon and expose the same value as NEXT_PUBLIC_RETICLE_TOKEN.
+        const token = process.env.NEXT_PUBLIC_RETICLE_TOKEN;
+        reticle.connect(token ? { token } : {});
+        registerStore('app', useApp); // your store — see the table above for non-zustand libraries
+        registerCapabilities({
+          testids: [], // your data-testid values
+          signals: [], // your reticle.signal() names
+          stores: ['app'],
+        });
+      },
+    );
   }, []);
   return null;
 }
@@ -452,9 +473,7 @@ Then pick a mode:
 
 ### Plan then batch — do NOT ping-pong act-by-act
 
-The repeat loop is cheap (~175 tok); the expensive part is the FIRST drive of a surface you have not seen.
-Every extra round-trip pays the advertised tool surface again, so the way to make a first drive cheap is
-fewer, bigger hops — not smaller ones.
+The repeat loop is cheap (~175 tok); the expensive part is the FIRST drive of a surface you have not seen. Every extra round-trip pays the advertised tool surface again, so the way to make a first drive cheap is fewer, bigger hops — not smaller ones.
 
 **Do this** — state the whole journey, then assert its consequence once:
 
@@ -477,16 +496,11 @@ reticle_act_sequence({ sessionId, steps: [
 act(fill email) → snapshot → act(fill password) → snapshot → act(click) → snapshot → assert
 ```
 
-Both verify the same thing. The second costs several times more and gives the model more chances to
-wander off-plan mid-journey.
+Both verify the same thing. The second costs several times more and gives the model more chances to wander off-plan mid-journey.
 
-**Declare before you act.** Name the consequence you expect *before* the action, in `until`/`mustHold` —
-never after seeing the result. An oracle written after the fact can be rationalized into agreeing with
-whatever happened; one written before cannot. `reticle_act_and_wait({ ref, action, until })` is the
-one-hop version of exactly this.
+**Declare before you act.** Name the consequence you expect _before_ the action, in `until`/`mustHold` — never after seeing the result. An oracle written after the fact can be rationalized into agreeing with whatever happened; one written before cannot. `reticle_act_and_wait({ ref, action, until })` is the one-hop version of exactly this.
 
-**Record the first drive.** If you had to explore to find a journey, save it (`reticle_flow_save`) so the
-exploration is paid once, ever — every later run replays it deterministically for ~175 tok with no LLM.
+**Record the first drive.** If you had to explore to find a journey, save it (`reticle_flow_save`) so the exploration is paid once, ever — every later run replays it deterministically for ~175 tok with no LLM.
 
 ### Smoke
 

@@ -8,6 +8,7 @@ import {
   projectConsoleLog,
   isConsoleEvent,
   eventMatchesFilters,
+  OBSERVE_FILTER_BUCKETS,
 } from './event-filters.js';
 
 function ev(type: EventType, data: Record<string, unknown> = {}, t = 1): ReticleEvent {
@@ -41,6 +42,23 @@ describe('eventMatchesFilters (observe filters allowlist)', () => {
 
   it('"console" bucket covers uncaught errors, not just console.error', () => {
     expect(eventMatchesFilters(ev(EventType.ERROR_UNCAUGHT), ['console'])).toBe(true);
+  });
+
+  it('perf / state / storage resolve as buckets too', () => {
+    expect(eventMatchesFilters(ev(EventType.PERF), ['perf'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.STATE_CHANGE), ['state'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.STORAGE_CHANGE), ['storage'])).toBe(true);
+  });
+
+  it('every advertised bucket name resolves to at least one real event type', () => {
+    // The bug this guards: the schema advertised names that equalled no event type, so filtering
+    // returned nothing. Any future bucket added to the description must map to something real.
+    for (const [bucket, types] of Object.entries(OBSERVE_FILTER_BUCKETS)) {
+      expect(types.length, `bucket "${bucket}" maps to no event types`).toBeGreaterThan(0);
+      for (const t of types) {
+        expect(eventMatchesFilters(ev(t as EventType), [bucket])).toBe(true);
+      }
+    }
   });
 });
 
@@ -123,7 +141,11 @@ describe('compact projections (token leanness)', () => {
   it('reconcileNet folds CDP-authoritative headers onto the matching request (driven fidelity)', () => {
     const merged = reconcileNet([
       ev(EventType.NET_REQUEST, { id: '1', method: 'GET', url: '/api/x', status: 200 }),
-      ev(EventType.NET_DETAIL, { url: '/api/x', method: 'GET', status: 200, headers: { etag: 'v9' } }, 2),
+      ev(
+        EventType.NET_DETAIL,
+        { url: '/api/x', method: 'GET', status: 200, headers: { etag: 'v9' } },
+        2,
+      ),
     ]);
     const call = projectNetCall(merged[0] as ReticleEvent);
     expect(call.headers).toEqual({ etag: 'v9' });
@@ -212,7 +234,11 @@ describe('console projections keep the origin of an error', () => {
 
   it('carries the file and line of an uncaught error', () => {
     const view = projectConsoleLog(
-      ev(EventType.ERROR_UNCAUGHT, { message: 'x is not a function', source: '/src/App.tsx', line: 17 }),
+      ev(EventType.ERROR_UNCAUGHT, {
+        message: 'x is not a function',
+        source: '/src/App.tsx',
+        line: 17,
+      }),
     );
     expect(view.source).toBe('/src/App.tsx:17');
   });
