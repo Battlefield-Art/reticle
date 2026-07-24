@@ -9,6 +9,21 @@ import {
 } from './constants.js';
 
 /**
+ * The MCP tool names that can appear as a recorded flow step's `tool`. These are the ONLY tool names
+ * that cross the wire into a persisted flow file — the browser recorder stamps them, the server replays
+ * them, and FlowStep types them — so they live in core, the wire contract. The full agent-facing tool
+ * surface stays server-side (ReticleTool); ReticleTool references THESE for the flow-persisted three, so
+ * there is one source of truth and a rename cannot silently desync the recorder from the replayer (a
+ * tool rename once killed four e2e specs — this closes the browser/server half of that drift).
+ */
+export const FlowStepTool = {
+  ACT: 'reticle_act',
+  ACT_SEQUENCE: 'reticle_act_sequence',
+  ACT_AND_WAIT: 'reticle_act_and_wait',
+} as const;
+export type FlowStepTool = (typeof FlowStepTool)[keyof typeof FlowStepTool];
+
+/**
  * A semantic anchor: how a step re-finds its element/event at replay
  * time. Never a volatile eXX ref. testid/role+name bind a DOM element; signal binds an event.
  */
@@ -108,7 +123,7 @@ export type FlowExpect = z.infer<typeof FlowExpectSchema>;
 
 /** One step of a flow: an anchored action (+ optional expectation). */
 export interface FlowStep {
-  /** ReticleTool.ACT | ReticleTool.ACT_SEQUENCE (the server-side tool constant). */
+  /** FlowStepTool.ACT | FlowStepTool.ACT_SEQUENCE (core, shared with ReticleTool). */
   tool: string;
   anchor: FlowAnchor;
   action?: ActionType;
@@ -159,7 +174,7 @@ export interface Drift {
 export interface FlowStepResult {
   /** 0-based index of this step in the flow. */
   step: number;
-  /** The server-side tool constant the step runs (ReticleTool.ACT | ACT_SEQUENCE). */
+  /** The tool the step runs — FlowStepTool.ACT | ACT_SEQUENCE (core). */
   tool: string;
   /** The testid/signal value the step is bound to (the re-resolved anchor). */
   anchor: string;

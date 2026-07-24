@@ -1,12 +1,16 @@
-/** MCP tool names exposed to the coding agent (plan/05). No free strings. */
+import { FlowStepTool } from '@reticlehq/core';
+
+/** MCP tool names exposed to the coding agent. No free strings. The three that appear in a persisted
+ *  flow (ACT / ACT_SEQUENCE / ACT_AND_WAIT) come from core's FlowStepTool — one source shared with the
+ *  browser recorder and the flow schema, so a rename can't desync the recorder from the replayer. */
 export const ReticleTool = {
   SESSIONS: 'reticle_sessions',
   SNAPSHOT: 'reticle_snapshot',
   QUERY: 'reticle_query',
   INSPECT: 'reticle_inspect',
-  ACT: 'reticle_act',
-  ACT_SEQUENCE: 'reticle_act_sequence',
-  ACT_AND_WAIT: 'reticle_act_and_wait',
+  ACT: FlowStepTool.ACT,
+  ACT_SEQUENCE: FlowStepTool.ACT_SEQUENCE,
+  ACT_AND_WAIT: FlowStepTool.ACT_AND_WAIT,
   OBSERVE: 'reticle_observe',
   WAIT_FOR: 'reticle_wait_for',
   NETWORK: 'reticle_network',

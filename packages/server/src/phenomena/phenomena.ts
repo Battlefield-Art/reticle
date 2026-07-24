@@ -1,5 +1,6 @@
 import {
   EventType,
+  FlowStepTool,
   PhenomenonType,
   RETICLE_ERROR_BOUNDARY_SIGNAL,
   RETICLE_HYDRATION_SIGNAL,
@@ -18,7 +19,7 @@ export interface Finding {
 }
 
 /** ACT tools that represent a user-style interaction (a "click"), for dead-click detection. */
-const CLICK_TOOLS = new Set(['reticle_act', 'reticle_act_and_wait']);
+const CLICK_TOOLS = new Set<string>([FlowStepTool.ACT, FlowStepTool.ACT_AND_WAIT]);
 
 /** A request that started (NET_PENDING) but never completed (no NET_REQUEST with the same id). */
 export function detectHungRequests(events: readonly ReticleEvent[]): Finding[] {
@@ -103,7 +104,8 @@ export function detectSwallowedErrors(events: readonly ReticleEvent[]): Finding[
       const detail = event.data['data'];
       findings.push({
         phenomenon: PhenomenonType.SWALLOWED_ERROR,
-        evidence: typeof detail === 'object' && detail !== null ? (detail as Record<string, unknown>) : {},
+        evidence:
+          typeof detail === 'object' && detail !== null ? (detail as Record<string, unknown>) : {},
       });
     }
   }

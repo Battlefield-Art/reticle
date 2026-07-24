@@ -5,6 +5,7 @@ import {
   DEGRADED_ANCHOR_ROLE,
   EventType,
   FLOW_FILE_VERSION,
+  FlowStepTool,
   RecorderPhase,
   type FlowAnchor,
   type FlowExpect,
@@ -37,7 +38,7 @@ const STATUS_RECORDING = 'recording…';
 const STATUS_IDLE = 'ready';
 const STATUS_ANNOTATE = 'pick an annotation';
 const TESTID_ATTR = 'data-testid';
-const TOOL = 'reticle_act';
+const TOOL = FlowStepTool.ACT;
 
 const BUTTON_LABEL = {
   record: 'Record',
