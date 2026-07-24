@@ -55,9 +55,9 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 
 | Check | Result |
 | --- | --- |
-| Bugs caught (87 injected regressions, controlled app) | **85 / 87** (Playwright-script 59) |
-| Caught of those it _can_ catch | **85 / 85** (Playwright 57 / 59) |
-| Critical-severity bugs caught | **25 / 25** (Playwright 8 / 25) |
+| Bugs caught (88 injected regressions, controlled app) | **86 / 88** (Playwright-script 60) |
+| Caught of those it _can_ catch | **86 / 86** (Playwright 58 / 60) |
+| Critical-severity bugs caught | **26 / 26** (Playwright 9 / 26) |
 | **False positives (clean build)** | **0** (Playwright 0) |
 | False-positive traps (bug-shaped non-bugs) | **2 / 2 held** (Playwright 2 / 2) |
 | Wall-time per bug | 3.6 s vs Playwright **2.4 s** — _Playwright is faster_ |
@@ -84,14 +84,14 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 
 **The catch rate isn't the story — _which_ bugs is.** Severity is graded by consequence to the user, not by how hard the bug is to find:
 
-| Severity                                     | Bugs | Reticle | Playwright-script |
-| -------------------------------------------- | ---- | ------- | ----------------- |
-| **Critical** (wrong data, silent 500, state) | 25   | **25**  | 8                 |
-| **High** (signals, streams, network, charts) | 31   | **31**  | 25                |
-| Medium (visual, deep DOM, timing)            | 24   | **24**  | 23                |
-| Low (paint, layout shift)                    | 5    | **5**   | 3                 |
+| Severity                                            | Bugs | Reticle | Playwright-script |
+| --------------------------------------------------- | ---- | ------- | ----------------- |
+| **Critical** (wrong data, silent 500, server state) | 26   | **26**  | 9                 |
+| **High** (signals, streams, network, charts)        | 31   | **31**  | 25                |
+| Medium (visual, deep DOM, timing)                   | 24   | **24**  | 23                |
+| Low (paint, layout shift)                           | 5    | **5**   | 3                 |
 
-**Zero bugs are missed by both tools**, and the gap is widest exactly where it matters: 25 vs 8 on the bugs that corrupt data or hide a failure. **Use both anyway.** Playwright drives releases; this drives edits, and the honest recommendation is still the [when-to-use-which](#when-to-use-reticle-vs-playwright-and-devtools) section rather than a takedown.
+**Zero bugs are missed by both tools**, and the gap is widest exactly where it matters: 26 vs 9 on the bugs that corrupt data or hide a failure. **Use both anyway.** Playwright drives releases; this drives edits, and the honest recommendation is still the [when-to-use-which](#when-to-use-reticle-vs-playwright-and-devtools) section rather than a takedown.
 
 **Two corrections we owe you**, because a benchmark that only moves in our favour isn't one:
 
