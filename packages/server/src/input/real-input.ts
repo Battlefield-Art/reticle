@@ -255,11 +255,21 @@ export class CdpRealInputProvider implements RealInputProvider {
   }
 
   async #ensureBrowser(): Promise<Browser | undefined> {
-    if (this.#browser !== undefined) return this.#browser;
+    if (this.#browser !== undefined) {
+      // A cached browser can be DEAD: CDP dropped (the page was closed, the debugged Chrome exited,
+      // the network blipped). The old code cached it forever, so every later call handed back a
+      // corpse and the whole drive path went silently unavailable until the daemon restarted.
+      // Playwright's Browser exposes isConnected(); a test fake may not, so only an EXPLICIT false
+      // drops the cache — a fake without the method is assumed live.
+      const alive = this.#browser.isConnected?.() ?? true;
+      if (alive) return this.#browser;
+      this.#browser = undefined; // fall through and reconnect
+    }
     try {
       this.#browser = await this.#connect(this.#cdpUrl);
       return this.#browser;
     } catch {
+      this.#browser = undefined; // a failed reconnect must not leave a stale handle behind
       return undefined;
     }
   }
@@ -267,7 +277,10 @@ export class CdpRealInputProvider implements RealInputProvider {
   async #pageFor(sessionUrl: string): Promise<Page | undefined> {
     const browser = await this.#ensureBrowser();
     if (browser === undefined) return undefined;
-    const page = selectPage(browser.contexts().flatMap((c) => c.pages()), sessionUrl);
+    const page = selectPage(
+      browser.contexts().flatMap((c) => c.pages()),
+      sessionUrl,
+    );
     if (page !== undefined) this.#listen(page);
     return page;
   }

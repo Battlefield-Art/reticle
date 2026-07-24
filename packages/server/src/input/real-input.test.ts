@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { ActionType } from '@reticlehq/core';
 import type { Page } from 'playwright';
-import { boxCenter, capturePage, CdpRealInputProvider, isPointerAction, selectPage } from './real-input.js';
+import {
+  boxCenter,
+  capturePage,
+  CdpRealInputProvider,
+  isPointerAction,
+  selectPage,
+} from './real-input.js';
 
 /** Records the options each page.screenshot call receives and returns minimal PNG bytes. */
 function recordingPage(calls: Record<string, unknown>[]): Page {
@@ -27,7 +33,12 @@ describe('real-input pure helpers', () => {
   });
 
   it('isPointerAction is true for hover/click/dblclick/drag', () => {
-    for (const action of [ActionType.HOVER, ActionType.CLICK, ActionType.DBLCLICK, ActionType.DRAG]) {
+    for (const action of [
+      ActionType.HOVER,
+      ActionType.CLICK,
+      ActionType.DBLCLICK,
+      ActionType.DRAG,
+    ]) {
       expect(isPointerAction(action)).toBe(true);
     }
   });
@@ -104,7 +115,10 @@ describe('selectPage — correlate a session to a driven page, or refuse', () =>
   });
 
   it('REFUSES when the stripped match is ambiguous — two pages differing only by query', () => {
-    const list = pages('http://app/?reticle-bug=paint-filter', 'http://app/?reticle-bug=paint-invert');
+    const list = pages(
+      'http://app/?reticle-bug=paint-filter',
+      'http://app/?reticle-bug=paint-invert',
+    );
     // Neither is an exact match for a third URL on the same path; both strip to the same thing.
     expect(selectPage(list, 'http://app/?reticle-bug=something-else')).toBeUndefined();
   });
@@ -135,12 +149,17 @@ describe('selectPage — correlate a session to a driven page, or refuse', () =>
  * attach would add a listener per action and emit each response N times.
  */
 describe('CdpRealInputProvider attaches network detail', () => {
-  const fakePage = (url: string): { url(): string; on: (e: string, h: unknown) => void; handlers: unknown[] } => {
+  const fakePage = (
+    url: string,
+  ): { url(): string; on: (e: string, h: unknown) => void; handlers: unknown[] } => {
     const handlers: unknown[] = [];
     return { url: () => url, on: (_e, h) => handlers.push(h), handlers };
   };
 
-  const providerWith = (pages: ReturnType<typeof fakePage>[], onNetworkDetail?: (d: unknown) => void) =>
+  const providerWith = (
+    pages: ReturnType<typeof fakePage>[],
+    onNetworkDetail?: (d: unknown) => void,
+  ) =>
     new CdpRealInputProvider({
       cdpUrl: 'http://127.0.0.1:9222',
       connect: () =>
@@ -156,6 +175,34 @@ describe('CdpRealInputProvider attaches network detail', () => {
     const provider = providerWith([page], () => undefined);
     await provider.isAvailableFor('http://app/');
     expect(page.handlers.length).toBe(1);
+  });
+
+  it('reconnects when the cached browser reports it is no longer connected', async () => {
+    // The dead-handle bug: on a CDP drop the provider kept returning the corpse and the drive path
+    // went silently unavailable until a restart. It must re-dial when isConnected() goes false.
+    let connects = 0;
+    let live = true;
+    const page = fakePage('http://app/');
+    const provider = new CdpRealInputProvider({
+      cdpUrl: 'http://127.0.0.1:9222',
+      connect: () => {
+        connects += 1;
+        return Promise.resolve({
+          isConnected: () => live,
+          contexts: () => [{ pages: () => [page] }],
+          close: () => Promise.resolve(),
+        } as never);
+      },
+    });
+    expect(await provider.isAvailableFor('http://app/')).toBe(true);
+    expect(connects).toBe(1);
+    // second call while still live reuses the cached browser
+    await provider.isAvailableFor('http://app/');
+    expect(connects).toBe(1);
+    // the CDP connection drops; the next call must re-dial rather than hand back the dead handle
+    live = false;
+    await provider.isAvailableFor('http://app/');
+    expect(connects).toBe(2);
   });
 
   it('attaches ONCE per page, however many times the page is resolved', async () => {
