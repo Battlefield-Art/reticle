@@ -162,7 +162,7 @@ Then **restart Claude Code** (or run `/mcp` to refresh) so it picks up the serve
 | **Building with AI, don't write tests** ("vibe coding") | Your agent becomes its own QA. It checks its own work on every edit and fixes the break **before you ever see it**, so you stop being the manual tester and just keep building. |
 | **A software engineer** | An in-loop verifier: one call asserts over **network, store state, signals, console, and the React render stream**, returns a pass/fail verdict with the exact **`file:line` to fix**, and replays recorded flows deterministically: no LLM, **0% flake, ~175 tokens/run**. |
 | **In QA** | Every "I just eyeball it" acceptance step becomes a check the agent runs automatically on every edit, including the long tail nobody ever automated. Same flow, same verdict, every run. **Playwright gates releases; Reticle gates edits.** |
-| **A founder / engineering leader** | Fewer broken things shipped, agents that **prove their own work**, **2,574× cheaper** regression runs, and a **fleet of agents that verify in parallel** on one browser. Dev-only, localhost-only, **no telemetry**, nothing leaves your machine. |
+| **A founder / engineering leader** | Fewer broken things shipped, agents that **prove their own work**, regression suites that **replay for near-zero tokens** (deterministic, no model — the token multiple vs an LLM re-driving the browser is large; see the [caveat](#the-problem-the-fix-the-numbers) — it is not a claim against a compiled Playwright suite), and a **fleet of agents that verify in parallel** on one browser. Dev-only, localhost-only, **no telemetry**, nothing leaves your machine. |
 
 ---
 
@@ -477,6 +477,6 @@ Reticle uses a per-package license model so it is safe to embed in your own app 
 - **Server / CLI / MCP, FSL-1.1-ALv2.** `@reticlehq/server` (and `@reticlehq/test`) are free for any use except offering Reticle itself as a competing hosted service; each release converts to Apache-2.0 after two years.
 - **Enterprise features, the Reticle Enterprise License.** Source-available under `packages/server/src/ee/`; free for development and evaluation, a subscription license key is required in production.
 
-OEM, embedding, or commercial licensing questions: **[hey@syrin.ai](mailto:hey@syrin.ai)**
+OEM, embedding, or commercial licensing questions: **[hey@reticle.sh](mailto:hey@reticle.sh)**
 
 © 2026 Reticle HQ </content>

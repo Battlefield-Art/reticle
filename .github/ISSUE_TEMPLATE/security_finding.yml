@@ -6,11 +6,10 @@ body:
     attributes:
       value: |
         ⚠️ **Do not use this template for an undisclosed, exploitable vulnerability.**
-        Report those **privately** to **hey@reticle.ai** — see [SECURITY.md](https://github.com/reticlehq/reticle/blob/main/SECURITY.md).
+        Report those **privately** to **hey@reticle.sh** — see [SECURITY.md](https://github.com/reticlehq/reticle/blob/main/SECURITY.md).
 
         This template is for tracking findings that are already public-safe: an internal audit item,
-        a hardening task, or a finding whose fix has shipped. It mirrors the structure of
-        `plan/SECURITY-AUDIT.md` so a finding maps 1:1 to an issue.
+        a hardening task, or a finding whose fix has shipped. One finding per issue, with a clear severity, the affected area, and whether a fix has shipped.
   - type: dropdown
     id: severity
     attributes:
@@ -57,5 +56,5 @@ body:
     attributes:
       label: Disclosure check
       options:
-        - label: This finding is already mitigated OR is not an undisclosed exploitable vulnerability (otherwise I will email hey@reticle.ai instead of filing here).
+        - label: This finding is already mitigated OR is not an undisclosed exploitable vulnerability (otherwise I will email hey@reticle.sh instead of filing here).
           required: true
