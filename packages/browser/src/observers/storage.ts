@@ -1,4 +1,4 @@
-import { EventType, REDACTED_VALUE } from '@reticlehq/core';
+import { EventType, REDACTED_VALUE, StorageArea } from '@reticlehq/core';
 import { isSensitiveKey } from '../security/serialization.js';
 import { observeSafely, observeValue, type Emit, type Teardown } from './types.js';
 
@@ -65,8 +65,8 @@ function readCookies(): Record<string, string> {
  * for all three. Sensitive keys are redacted; httpOnly cookies are unreadable by design (documented).
  */
 export function readStorage(area?: string): StorageSnapshot | Record<string, string> {
-  if (area === 'local') return readArea(safeArea(() => window.localStorage));
-  if (area === 'session') return readArea(safeArea(() => window.sessionStorage));
+  if (area === StorageArea.LOCAL) return readArea(safeArea(() => window.localStorage));
+  if (area === StorageArea.SESSION) return readArea(safeArea(() => window.sessionStorage));
   if (area === 'cookies') return readCookies();
   return {
     local: readArea(safeArea(() => window.localStorage)),
@@ -101,8 +101,8 @@ export function installStorage(emit: Emit): Teardown {
   if (origSet === undefined || origRemove === undefined) return () => undefined;
 
   const session = safeArea(() => window.sessionStorage);
-  const areaOf = (storage: Storage): 'local' | 'session' =>
-    storage === session ? 'session' : 'local';
+  const areaOf = (storage: Storage): StorageArea =>
+    storage === session ? StorageArea.SESSION : StorageArea.LOCAL;
   const readOld = (storage: Storage, key: string): string | null => {
     try {
       return storage.getItem(key);

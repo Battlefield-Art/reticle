@@ -1,4 +1,4 @@
-import { EventType } from '@reticlehq/core';
+import { EventType, ScrollDirection } from '@reticlehq/core';
 import { refs } from '../dom/refs.js';
 import type { Emit, Teardown } from './types.js';
 
@@ -20,7 +20,7 @@ export function installScroll(emit: Emit): Teardown {
       x: window.scrollX,
       y,
       percent: Math.round((y / max) * 100),
-      direction: y >= lastY ? 'down' : 'up',
+      direction: y >= lastY ? ScrollDirection.DOWN : ScrollDirection.UP,
     });
     lastY = y;
   };

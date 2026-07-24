@@ -1,5 +1,13 @@
 import { z } from 'zod';
-import { EventType, PerfMetric, BlindSpotKind } from './constants.js';
+import {
+  EventType,
+  PerfMetric,
+  BlindSpotKind,
+  StreamTransport,
+  StreamDirection,
+  ScrollDirection,
+  StorageArea,
+} from './constants.js';
 import { HumanControlDataSchema, HumanMarkDataSchema } from './messages.js';
 
 /**
@@ -20,8 +28,8 @@ const elementLabel = z.object({ role: z.string().optional(), name: z.string().op
 
 const netStreamSchema = z
   .object({
-    transport: z.enum(['sse', 'ws']),
-    direction: z.enum(['open', 'in', 'out']),
+    transport: z.nativeEnum(StreamTransport),
+    direction: z.nativeEnum(StreamDirection),
     url: z.string(),
   })
   .passthrough();
@@ -91,13 +99,13 @@ export const EVENT_PAYLOAD_SCHEMAS = {
     x: z.number(),
     y: z.number(),
     percent: z.number(),
-    direction: z.enum(['up', 'down']),
+    direction: z.nativeEnum(ScrollDirection),
   }),
   [EventType.REVEAL_SHOWN]: elementLabel.passthrough(),
   [EventType.SIGNAL]: z.object({ name: z.string(), data: z.unknown().optional() }),
   [EventType.STATE_CHANGE]: z.object({ name: z.string(), value: z.unknown() }).passthrough(),
   [EventType.STORAGE_CHANGE]: z.object({
-    area: z.enum(['local', 'session', 'cookie']),
+    area: z.nativeEnum(StorageArea),
     key: z.string(),
     old: z.string().optional(),
     new: z.string().optional(),

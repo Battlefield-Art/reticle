@@ -362,6 +362,24 @@ export const BlindSpotKind = {
 export type BlindSpotKind = (typeof BlindSpotKind)[keyof typeof BlindSpotKind];
 
 /**
+ * Wire payload vocabularies. The browser observers EMIT these values and the core event schemas
+ * VALIDATE them, so a browser-side typo (`'SSE'`) would pass tsc and fail only at server-side schema
+ * validation, at runtime. Defining each as a const object here — the browser imports the members, the
+ * schema derives its z.nativeEnum from the same object — makes emitter and validator one source.
+ */
+export const StreamTransport = { SSE: 'sse', WS: 'ws' } as const;
+export type StreamTransport = (typeof StreamTransport)[keyof typeof StreamTransport];
+
+export const StreamDirection = { OPEN: 'open', IN: 'in', OUT: 'out' } as const;
+export type StreamDirection = (typeof StreamDirection)[keyof typeof StreamDirection];
+
+export const ScrollDirection = { UP: 'up', DOWN: 'down' } as const;
+export type ScrollDirection = (typeof ScrollDirection)[keyof typeof ScrollDirection];
+
+export const StorageArea = { LOCAL: 'local', SESSION: 'session', COOKIE: 'cookie' } as const;
+export type StorageArea = (typeof StorageArea)[keyof typeof StorageArea];
+
+/**
  * How an event was linked to the action it is attributed to. `window` means the SDK stamped the
  * currently-active action's id onto every event observed between that action's dispatch and its
  * settle — a time-window heuristic, not proven dataflow. It is the only tier available until

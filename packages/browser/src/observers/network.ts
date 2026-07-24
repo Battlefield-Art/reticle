@@ -1,5 +1,11 @@
 import {
-  BlindSpotKind, EventType, REDACTED_VALUE, RETICLE_WS_PATH } from '@reticlehq/core';
+  BlindSpotKind,
+  EventType,
+  REDACTED_VALUE,
+  RETICLE_WS_PATH,
+  StreamTransport,
+  StreamDirection,
+} from '@reticlehq/core';
 import { isSensitiveKey } from '../security/serialization.js';
 import { captureMethod } from '../patching/capture-method.js';
 import type { Emit, Teardown } from './types.js';
@@ -7,15 +13,9 @@ import { isCapturableType, projectBody, withBodyDeadline } from './network-body.
 
 /** Config for the network observer. Body capture is OFF by default and dev-only opt-in. */
 export interface NetworkOptions {
- /** Capture request/response bodies (text-like content only, redacted, per-body capped). */
+  /** Capture request/response bodies (text-like content only, redacted, per-body capped). */
   captureBodies?: boolean;
 }
-
-
-
-
-
-
 
 /** The byte size of a binary frame (ArrayBuffer / Blob / typed-array view), or undefined if unknown. */
 function binaryFrameBytes(data: unknown): number | undefined {
@@ -88,7 +88,7 @@ export function redactUrl(raw: string): string {
 
   let changed = false;
 
- // Credentials in the authority (`scheme://user:pass@host`) never belong in a transcript.
+  // Credentials in the authority (`scheme://user:pass@host`) never belong in a transcript.
   let authority = pathPart;
   const userinfo = /^([a-z][a-z0-9+.-]*:\/\/)[^/@]+@/i.exec(pathPart);
   if (userinfo !== null) {
@@ -123,8 +123,8 @@ export function redactUrl(raw: string): string {
     }
   }
 
- // OAuth implicit flow puts the access_token in the FRAGMENT (`#access_token=…`), and hash-routers carry
- // `?token=…` in the hash — redact sensitive params there too, leaving plain anchors (`#section`) alone.
+  // OAuth implicit flow puts the access_token in the FRAGMENT (`#access_token=…`), and hash-routers carry
+  // `?token=…` in the hash — redact sensitive params there too, leaving plain anchors (`#section`) alone.
   let newHash = hash;
   if (hash.length > 1) {
     newHash = hash.replace(/([A-Za-z0-9_.-]+)=([^&\s]+)/g, (m: string, key: string) =>
@@ -281,8 +281,8 @@ const OURS = new WeakSet<typeof window.fetch>();
 
 export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown {
   const captureBodies = opts.captureBodies === true;
- // Keep the true original for teardown identity, plus a window-bound copy to invoke
- // (fetch throws "Illegal invocation" if called with the wrong `this`).
+  // Keep the true original for teardown identity, plus a window-bound copy to invoke
+  // (fetch throws "Illegal invocation" if called with the wrong `this`).
   const origFetch = window.fetch;
   const callFetch = origFetch.bind(window);
 
@@ -301,10 +301,10 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     emit(EventType.BLIND_SPOT, { kind: BlindSpotKind.WRAPPED_NETWORK, count: 1 });
   }
 
- // Correlation id so a NET_PENDING (emitted at request START) can be matched to its
- // NET_REQUEST completion. A request that never completes leaves an unmatched NET_PENDING —
- // that is how a hung/in-flight request becomes observable (it never resolves, so the old
- // completion-only emit saw nothing).
+  // Correlation id so a NET_PENDING (emitted at request START) can be matched to its
+  // NET_REQUEST completion. A request that never completes leaves an unmatched NET_PENDING —
+  // that is how a hung/in-flight request becomes observable (it never resolves, so the old
+  // completion-only emit saw nothing).
   let seq = 0;
   const nextId = (): string => `n${++seq}`;
 
@@ -320,16 +320,16 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     try {
       const res = await callFetch(input, init);
       const contentType = res.headers.get('content-type');
- // Read a CLONE so the app's response stream stays untouched. Dev-only opt-in; only text-like
- // bodies; a read failure never breaks the observation.
+      // Read a CLONE so the app's response stream stays untouched. Dev-only opt-in; only text-like
+      // bodies; a read failure never breaks the observation.
       let responseBodyFields: Record<string, unknown> = {};
- // Streaming content types are skipped outright (zero cost, covers SSE); anything else is read behind
- // a deadline. Gating on `content-length` instead was tried and REJECTED — plenty of complete responses
- // omit it (gzip, HTTP/2), so it silently stopped capturing bodies for ordinary apps. This comment
- // previously described that rejected design as though it were the implementation.
+      // Streaming content types are skipped outright (zero cost, covers SSE); anything else is read behind
+      // a deadline. Gating on `content-length` instead was tried and REJECTED — plenty of complete responses
+      // omit it (gzip, HTTP/2), so it silently stopped capturing bodies for ordinary apps. This comment
+      // previously described that rejected design as though it were the implementation.
       if (captureBodies && isCapturableType(contentType)) {
- // Bounded: a chunked response with no content-length can still be arbitrarily long, and the app
- // must never wait on our read. Race the clone against a deadline and drop the body on timeout.
+        // Bounded: a chunked response with no content-length can still be arbitrarily long, and the app
+        // must never wait on our read. Race the clone against a deadline and drop the body on timeout.
         try {
           const text = await withBodyDeadline(res.clone().text());
           if (text !== undefined) {
@@ -339,7 +339,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
               : { responseBody: body };
           }
         } catch {
- /* body not readable (already locked/consumed) — skip, keep the envelope */
+          /* body not readable (already locked/consumed) — skip, keep the envelope */
         }
       }
       emit(EventType.NET_REQUEST, {
@@ -397,9 +397,9 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     callOpen.call(this, method, url, ...rest);
   };
 
- // A reused XHR calls send repeatedly; attach the completion listener ONCE per instance and read the
- // request identity from `meta` at fire time. Adding a fresh closure each send would leave stale
- // listeners that re-fire on later completions, emitting duplicate, mislabeled events.
+  // A reused XHR calls send repeatedly; attach the completion listener ONCE per instance and read the
+  // request identity from `meta` at fire time. Adding a fresh closure each send would leave stale
+  // listeners that re-fire on later completions, emitting duplicate, mislabeled events.
   const listenerAttached = new WeakSet<XMLHttpRequest>();
   proto.send = function (
     this: XMLHttpRequest,
@@ -410,8 +410,15 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
       m.start = performance.now();
       m.reqBody = body ?? null;
       m.initiatorStack = initiatorFrame(); // the app's xhr.send call site
-      const initiatorFields = m.initiatorStack === undefined ? {} : { initiatorStack: m.initiatorStack };
-      emit(EventType.NET_PENDING, { id: m.id, method: m.method, url: m.url, initiator: 'xhr', ...initiatorFields });
+      const initiatorFields =
+        m.initiatorStack === undefined ? {} : { initiatorStack: m.initiatorStack };
+      emit(EventType.NET_PENDING, {
+        id: m.id,
+        method: m.method,
+        url: m.url,
+        initiator: 'xhr',
+        ...initiatorFields,
+      });
       if (!listenerAttached.has(this)) {
         listenerAttached.add(this);
         this.addEventListener('loadend', () => {
@@ -419,7 +426,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
           if (cur === undefined) return;
           const xhrContentType = this.getResponseHeader('content-type');
           let responseBodyFields: Record<string, unknown> = {};
- // responseText throws unless responseType is '' or 'text' — guard before reading.
+          // responseText throws unless responseType is '' or 'text' — guard before reading.
           const textReadable = this.responseType === '' || this.responseType === 'text';
           if (captureBodies && textReadable && isCapturableType(xhrContentType)) {
             try {
@@ -428,7 +435,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
                 ? { responseBody: rb, responseBodyTruncated: true }
                 : { responseBody: rb };
             } catch {
- /* unreadable body — skip */
+              /* unreadable body — skip */
             }
           }
           emit(EventType.NET_REQUEST, {
@@ -455,8 +462,8 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     origSend.call(this, body ?? null);
   };
 
- // SSE + WebSocket frame capture — gated behind body capture, since a chatty stream is the
- // high-volume case. Subclass the native constructors so the app's own usage is unchanged.
+  // SSE + WebSocket frame capture — gated behind body capture, since a chatty stream is the
+  // high-volume case. Subclass the native constructors so the app's own usage is unchanged.
   const origEventSource = window.EventSource;
   const origWebSocket = window.WebSocket;
   if (captureBodies && typeof origEventSource === 'function') {
@@ -464,11 +471,15 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
       constructor(u: string | URL, init?: EventSourceInit) {
         super(u, init);
         const url = redactUrl(String(u));
-        emit(EventType.NET_STREAM, { transport: 'sse', direction: 'open', url });
+        emit(EventType.NET_STREAM, {
+          transport: StreamTransport.SSE,
+          direction: StreamDirection.OPEN,
+          url,
+        });
         this.addEventListener('message', (ev: MessageEvent) => {
           emit(EventType.NET_STREAM, {
-            transport: 'sse',
-            direction: 'in',
+            transport: StreamTransport.SSE,
+            direction: StreamDirection.IN,
             url,
             ...frameFields(ev.data, captureBodies),
           });
@@ -478,18 +489,22 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
   }
   if (captureBodies && typeof origWebSocket === 'function') {
     window.WebSocket = class extends origWebSocket {
- /** Reticle's own bridge socket is never observed — see isBridgeSocket. */
+      /** Reticle's own bridge socket is never observed — see isBridgeSocket. */
       readonly #isBridge: boolean;
       constructor(u: string | URL, protocols?: string | string[]) {
         super(u, protocols);
         this.#isBridge = isBridgeSocket(String(u));
         if (this.#isBridge) return;
         const url = redactUrl(String(u));
-        emit(EventType.NET_STREAM, { transport: 'ws', direction: 'open', url });
+        emit(EventType.NET_STREAM, {
+          transport: StreamTransport.WS,
+          direction: StreamDirection.OPEN,
+          url,
+        });
         this.addEventListener('message', (ev: MessageEvent) => {
           emit(EventType.NET_STREAM, {
-            transport: 'ws',
-            direction: 'in',
+            transport: StreamTransport.WS,
+            direction: StreamDirection.IN,
             url,
             ...frameFields(ev.data, captureBodies),
           });
@@ -501,8 +516,8 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
           return;
         }
         emit(EventType.NET_STREAM, {
-          transport: 'ws',
-          direction: 'out',
+          transport: StreamTransport.WS,
+          direction: StreamDirection.OUT,
           url: redactUrl(this.url),
           ...frameFields(data, captureBodies),
         });
@@ -511,10 +526,10 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     };
   }
 
- // navigator.sendBeacon — fire-and-forget analytics/telemetry, invisible to fetch/XHR wrapping. A page
- // that beacons a "checkout completed" event should show it. Patch the instance's prototype (via
- // getPrototypeOf, robust whether or not the Navigator global exists); the descriptor read avoids an
- // unbound-method access; the send is synchronous so we emit one completed NET_REQUEST with its result.
+  // navigator.sendBeacon — fire-and-forget analytics/telemetry, invisible to fetch/XHR wrapping. A page
+  // that beacons a "checkout completed" event should show it. Patch the instance's prototype (via
+  // getPrototypeOf, robust whether or not the Navigator global exists); the descriptor read avoids an
+  // unbound-method access; the send is synchronous so we emit one completed NET_REQUEST with its result.
   const navProto = (
     typeof navigator !== 'undefined' ? Object.getPrototypeOf(navigator) : null
   ) as Navigator | null;
