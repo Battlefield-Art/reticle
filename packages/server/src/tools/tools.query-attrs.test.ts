@@ -92,4 +92,19 @@ describe('QUERY output schema declares every field a descriptor can carry', () =
     expect(keys).toContain('chart');
     expect(keys).toContain('source');
   });
+
+  it('the STATE tool declares `truncation` — a false-green guard must survive schema validation', () => {
+    // Same class as the chart drop, but worse: truncation is the marker that says "this is NOT the
+    // whole store". If it drops on the validating `full` profile, a structuredContent consumer gets a
+    // partial store with no warning — the exact silent truncation the marker exists to prevent.
+    const state = TOOLS.find((t) => t.name === ReticleTool.STATE);
+    expect(Object.keys(state?.outputSchema ?? {})).toContain('truncation');
+  });
+
+  it('the ASSERT tool declares `coverage` — the partial-observation warning must not drop', () => {
+    const assert = TOOLS.find((t) => t.name === ReticleTool.ASSERT);
+    const keys = Object.keys(assert?.outputSchema ?? {});
+    expect(keys).toContain('coverage');
+    expect(keys).toContain('coverage_spots');
+  });
 });

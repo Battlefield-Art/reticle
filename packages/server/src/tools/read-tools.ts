@@ -304,6 +304,19 @@ export const READ_TOOLS: ToolDef[] = [
       component: z
         .object({ ok: z.boolean(), reason: z.string().optional(), state: z.unknown().optional() })
         .optional(),
+      // Truncation report — present ONLY when a transport cap trimmed the value. Declared so a
+      // schema-strict client on the `full` profile KEEPS it: this is a false-green GUARD, and dropping
+      // it would hand back a partial store with no marker, which is the exact silent truncation the
+      // report exists to prevent (re-introduced for structuredContent consumers if it is not here).
+      truncation: z
+        .object({
+          droppedItems: z.number(),
+          truncatedValues: z.number(),
+          note: z.string(),
+        })
+        .partial()
+        .optional()
+        .describe('Present only when a cap trimmed the value — the read is NOT the whole store.'),
     },
     handler: async (deps, args) => {
       const store = asString(args['store']);
