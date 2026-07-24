@@ -427,19 +427,27 @@ export function evalSettled(
   // still in flight — the page is NOT settled no matter how quiet the DOM has gone. Without this,
   // a slow save reads as "settled" the instant its spinner stops mutating the DOM: the exact
   // false-green `settled` exists to prevent.
-  const doneIds = new Set<string>();
-  for (const e of events) {
-    if (e.type === EventType.NET_REQUEST) {
-      const id = str(e.data['id']);
-      if (id !== undefined) doneIds.add(id);
-    }
-  }
-  let inFlight = 0;
+  //
+  // COUNT per id, don't just set-membership: a retry that reuses a request id (two NET_PENDING, one
+  // NET_REQUEST) would mark the id "done" and hide the second, still-flying request — an in-flight
+  // UNDERCOUNT that greens settle while a request is live. In-flight for an id is pendings minus
+  // completions (floored at 0); unkeyed pendings each count as one.
+  const pendingById = new Map<string, number>();
+  const doneById = new Map<string, number>();
+  let unkeyedPending = 0;
   for (const e of events) {
     if (e.type === EventType.NET_PENDING) {
       const id = str(e.data['id']);
-      if (id === undefined || !doneIds.has(id)) inFlight += 1;
+      if (id === undefined) unkeyedPending += 1;
+      else pendingById.set(id, (pendingById.get(id) ?? 0) + 1);
+    } else if (e.type === EventType.NET_REQUEST) {
+      const id = str(e.data['id']);
+      if (id !== undefined) doneById.set(id, (doneById.get(id) ?? 0) + 1);
     }
+  }
+  let inFlight = unkeyedPending;
+  for (const [id, pending] of pendingById) {
+    inFlight += Math.max(0, pending - (doneById.get(id) ?? 0));
   }
   if (inFlight > 0) {
     return {

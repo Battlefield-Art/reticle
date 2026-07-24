@@ -103,6 +103,23 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
     }
     return out;
   }
+  // A typed array (Uint8Array, Float32Array, …) is array-like DATA, not a plain object. The
+  // plain-object branch below turned it into index-keyed keys ({"0":1,"1":2,…}) — a shape lie: an
+  // agent reading a tensor/binary field saw an object where an array lives, and a big one blew the key
+  // cap silently. Emit its numbers as a bounded array like a Set. DataView is opaque bytes — leave it.
+  if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+    const arr = value as unknown as ArrayLike<number>;
+    const out: number[] = [];
+    for (let i = 0; i < arr.length; i++) {
+      if (state.nodes >= MAX_TOTAL_NODES || i >= TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS) {
+        state.droppedItems += arr.length - i;
+        break;
+      }
+      out.push(arr[i]);
+      state.nodes += 1;
+    }
+    return out;
+  }
   if (value instanceof Error) {
     return {
       name: boundedString(value.name, state, 256),

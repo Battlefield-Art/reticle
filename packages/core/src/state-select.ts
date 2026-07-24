@@ -14,9 +14,14 @@ export interface PathSelection {
   availableKeys?: string[];
 }
 
+/** Cap on how many near-miss keys travel in a failed selection — a 10k-key store must not return a
+ *  10k-entry array in the error payload (that was the token blowup the near-miss exists to avoid). */
+const MAX_AVAILABLE_KEYS = 50;
+
 function keysOf(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map((_, i) => String(i));
-  if (typeof value === 'object' && value !== null) return Object.keys(value);
+  if (Array.isArray(value)) return value.slice(0, MAX_AVAILABLE_KEYS).map((_, i) => String(i));
+  if (typeof value === 'object' && value !== null)
+    return Object.keys(value).slice(0, MAX_AVAILABLE_KEYS);
   return [];
 }
 
@@ -26,8 +31,16 @@ export function selectPath(root: unknown, path: string): PathSelection {
   let current: unknown = root;
   for (const segment of segments) {
     if (Array.isArray(current)) {
+      // Require a CANONICAL index string. `Number('01')`/`Number('1e0')`/`Number(' 1')` all coerce to 1,
+      // so `items.01` silently read index 1 — an assertion on a path that doesn't exist quietly passed.
+      // `String(index) === segment` accepts only "0","1","2",… and rejects the coercion aliases.
       const index = Number(segment);
-      if (!Number.isInteger(index) || index < 0 || index >= current.length) {
+      if (
+        !Number.isInteger(index) ||
+        index < 0 ||
+        String(index) !== segment ||
+        index >= current.length
+      ) {
         return { found: false, value: null, availableKeys: keysOf(current) };
       }
       current = current[index];

@@ -345,6 +345,21 @@ describe('Map and Set are readable, not silently empty', () => {
     expect(sanitizeForTransport(new Set(['a', 'b', 'c']))).toEqual(['a', 'b', 'c']);
   });
 
+  it('a typed array serializes to an array of its numbers, not an index-keyed object', () => {
+    // The false shape this closes: Uint8Array([1,2,3]) fell through to the plain-object path and became
+    // {"0":1,"1":2,"2":3}, so an agent reading a binary/tensor field saw an object where an array lives.
+    expect(sanitizeForTransport(new Uint8Array([1, 2, 3]))).toEqual([1, 2, 3]);
+    expect(sanitizeForTransport({ coords: new Float32Array([1.5, 2.5]) })).toEqual({
+      coords: [1.5, 2.5],
+    });
+  });
+
+  it('a huge typed array is truncated AND the drop is reported', () => {
+    const { value, truncation } = sanitizeWithReport(new Uint16Array(1000).fill(7));
+    expect((value as number[]).length).toBeLessThan(1000);
+    expect(truncation?.droppedItems).toBeGreaterThan(0);
+  });
+
   it('a Map nested in a store is reachable', () => {
     const state = { byId: new Map([['x', 1]]), count: 1 };
     expect(sanitizeForTransport(state)).toEqual({ byId: { x: 1 }, count: 1 });

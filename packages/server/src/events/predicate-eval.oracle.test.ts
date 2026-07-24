@@ -15,6 +15,19 @@ describe('evalSettled — in-flight requests are not settled', () => {
     expect(r.pass).toBe(false); // false-green guard: green must not mean "still saving"
   });
 
+  it('counts a REUSED request id correctly — a retry that reuses an id stays in-flight', () => {
+    // Two NET_PENDING share id 'r1' (a retry reused it), only one completed. Set-membership marked the
+    // id "done" and hid the second still-flying request → premature settle. Per-id counting catches it.
+    const events = [
+      ev(EventType.NET_PENDING, { id: 'r1', url: '/api/save' }, 100),
+      ev(EventType.NET_REQUEST, { id: 'r1', url: '/api/save', status: 200 }, 200),
+      ev(EventType.NET_PENDING, { id: 'r1', url: '/api/save' }, 300), // retry, same id, not yet done
+    ];
+    const r = evalSettled(events, { kind: 'settled', quietMs: 500 }, 100_000);
+    expect(r.pass).toBe(false);
+    expect((r.evidence as { inFlight: number }).inFlight).toBe(1);
+  });
+
   it('IS settled once the in-flight request completes and the page goes quiet', () => {
     const events = [
       ev(EventType.NET_PENDING, { id: 'r1', url: '/api/save' }, 100),

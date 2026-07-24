@@ -31,6 +31,16 @@ describe('RingBuffer', () => {
     expect(buf.bufferHealth().dropped).toBe(1);
   });
 
+  it('keeps a single event that alone exceeds maxBytes (never self-evicts the sole survivor)', () => {
+    // The bug: an event bigger than the whole byte budget was pushed, then immediately evicted by byte
+    // pressure — so a waiter for it never saw it and only `dropped` moved. Bytes is a soft cap; the last
+    // event must survive.
+    const buf = new RingBuffer({ maxAgeMs: 1_000_000, maxEvents: 100, maxBytes: 50 });
+    buf.push({ ...ev(1), data: { text: 'x'.repeat(500) } }, 1); // one event, way over the 50-byte cap
+    expect(buf.since(0).map((e) => e.t)).toEqual([1]);
+    expect(buf.bufferHealth().dropped).toBe(0);
+  });
+
   it('bulk age-eviction drops all expired events in one pass with correct counts', () => {
     const buf = new RingBuffer({ maxAgeMs: 100, maxEvents: 1000 });
     for (let t = 0; t < 50; t += 1) buf.push(ev(t), t); // 50 events at t=0..49
@@ -79,7 +89,8 @@ describe('priority-aware eviction (churn must not evict scarce evidence)', () =>
     const buf = new RingBuffer({ maxEvents: 50 });
     buf.push(ev(EventType.NET_REQUEST, 1, { url: '/api/save', status: 500, ok: false }), 1);
     buf.push(ev(EventType.CONSOLE_ERROR, 2, { message: 'boom' }), 2);
-    for (let i = 0; i < 500; i++) buf.push(ev(EventType.DOM_TEXT, 3 + i, { text: String(i) }), 3 + i);
+    for (let i = 0; i < 500; i++)
+      buf.push(ev(EventType.DOM_TEXT, 3 + i, { text: String(i) }), 3 + i);
 
     const live = buf.since(0);
     expect(live.some((e) => e.type === EventType.NET_REQUEST)).toBe(true);

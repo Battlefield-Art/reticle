@@ -17,6 +17,24 @@ describe('selectPath', () => {
     expect(selectPath({ xs: [10] }, 'xs.5').found).toBe(false);
   });
 
+  it('rejects non-canonical numeric segments — 01 / 1e0 / " 1" are not array index 1', () => {
+    const root = { xs: [10, 20, 30] };
+    expect(selectPath(root, 'xs.1')).toEqual({ found: true, value: 20 }); // canonical still works
+    for (const seg of ['01', '1e0', ' 1', '+1', '1.0']) {
+      expect(selectPath(root, `xs.${seg}`).found, `xs.${seg} must not resolve to index 1`).toBe(
+        false,
+      );
+    }
+  });
+
+  it('bounds availableKeys on a miss — a huge store does not return every key in the error', () => {
+    const wide: Record<string, number> = {};
+    for (let i = 0; i < 500; i++) wide[`k${String(i)}`] = i;
+    const r = selectPath(wide, 'nope');
+    expect(r.found).toBe(false);
+    expect(r.availableKeys?.length).toBeLessThanOrEqual(50);
+  });
+
   it('cannot reach a key that literally contains a dot (documented ambiguity)', () => {
     // 'v3.0' splits into ['v3','0'] — a float-looking key is unreachable via dot-path.
     expect(selectPath({ 'v3.0': { text: 'x' } }, 'v3.0.text').found).toBe(false);

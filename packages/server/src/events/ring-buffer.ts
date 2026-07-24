@@ -96,9 +96,14 @@ export class RingBuffer {
     // Cap/byte pressure: sacrifice the CHURN floor before scarce evidence. The head is usually churn on
     // a busy page, so this stays the O(1) head-advance; only when the oldest event is worth keeping do we
     // look forward (bounded) for a churn event to drop instead.
+    // Byte pressure keeps at least ONE event: a single event larger than the whole byte budget would
+    // otherwise be pushed and then immediately self-evicted, so a waiter for it never saw it and only
+    // `dropped` moved. Bytes is a soft cap and per-value serialization already bounds any one event, so
+    // keeping the sole survivor over the budget is the correct trade. The count cap (maxEvents, ~2000)
+    // is a hard bound and stays `> maxEvents`.
     while (
       this.#liveCount() > this.#maxEvents ||
-      (this.#totalBytes > this.#maxBytes && this.#liveCount() > 0)
+      (this.#totalBytes > this.#maxBytes && this.#liveCount() > 1)
     ) {
       if (CHURN_TYPES.has(this.#events[this.#head]?.type ?? '')) {
         this.#totalBytes -= this.#eventBytes[this.#head] ?? 0;
