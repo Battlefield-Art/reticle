@@ -427,8 +427,18 @@ async function runSignalStep(
   name: string,
   waitForSignal: WaitForSignal,
   signalTimeoutMs: number,
+  since: number,
 ): Promise<FlowStepResult> {
-  const verdict = await waitForSignal(session, { kind: 'signal', name }, signalTimeoutMs);
+  // Scope to THIS replay's floor, not the whole buffer.
+  //
+  // A signal step is a pure wait — the signal is fired by the PRECEDING act step — so a per-step floor
+  // would miss it (false negative). But the default whole-buffer read (since=0) was too loose in the
+  // one place it matters most: reticle_flow_verify replays every saved flow back-to-back in ONE
+  // session, so a signal an EARLIER flow emitted (`auth:granted`, `nav:changed`) sat in the buffer and
+  // satisfied a LATER flow's signal step even when that flow's own action never fired it — a
+  // cross-flow false green on the exact suite-verify path the regression-cost claim rests on. The
+  // replay-start floor excludes prior flows/runs while still seeing this run's adjacent-step signal.
+  const verdict = await waitForSignal(session, { kind: 'signal', name }, signalTimeoutMs, since);
   if (verdict.pass) return { step: index, tool: step.tool, anchor: name, ok: true };
   return {
     step: index,
@@ -465,6 +475,9 @@ export async function replayFlow(
       .filter((a) => a.kind === AnchorKind.TESTID)
       .map((a) => (a.kind === AnchorKind.TESTID ? a.value : '')),
   );
+  // Floor for signal steps: signals that fire during THIS replay, never a prior flow/run in the same
+  // session. Captured once, before any step, so a back-to-back suite verify cannot cross-satisfy.
+  const replayFloor = session.elapsed();
   let index = 0;
   for (const step of flow.steps) {
     const label = anchorLabel(step.anchor);
@@ -474,7 +487,15 @@ export async function replayFlow(
     const cursorBefore = session.elapsed();
     let result: FlowStepResult;
     if (step.anchor.kind === AnchorKind.SIGNAL) {
-      result = await runSignalStep(session, step, index, label, waitForSignal, signalTimeoutMs);
+      result = await runSignalStep(
+        session,
+        step,
+        index,
+        label,
+        waitForSignal,
+        signalTimeoutMs,
+        replayFloor,
+      );
     } else if (step.anchor.kind === AnchorKind.COMPONENT) {
       result = await runComponentStep(session, step, index, step.anchor, confirmDangerous, sleep);
     } else {
