@@ -56,6 +56,7 @@ async function evalElement(
   query: ElementQuery,
   state: ElementState | undefined,
   absent: boolean,
+  diagnose: boolean,
 ): Promise<EvalResult> {
   const match = await matchOnce(session, query, state);
   const subject = JSON.stringify(query);
@@ -72,6 +73,21 @@ async function evalElement(
       : { pass: true, evidence: { absent: true } };
   }
   if (match.matched) return { pass: true, evidence: match.elements };
+
+  // The near-miss diagnostic below costs one or two EXTRA MATCH round-trips. It only enriches a FAILED
+  // verdict, and a wait loop's interim rechecks read nothing but `pass` — so on the poll path (diagnose
+  // false) skip straight to the plain fail. Under an event flood a role+name element wait was firing
+  // two live-DOM scans per recheck for a diagnostic no interim eval ever reads; the final timeout eval
+  // still runs with diagnose=true and produces the full near-miss.
+  if (!diagnose) {
+    return {
+      pass: false,
+      failureReason: `no element matched ${subject}${state === undefined ? '' : ` in state '${state}'`}`,
+      observed: 'no matching element on the page',
+      expected: `an element matching ${subject}${state === undefined ? '' : ` in state '${state}'`}`,
+      assertion: 'element.present',
+    };
+  }
 
   // Diagnostic near-miss: was it there but in the wrong state, or a similar element present?
   if (state !== undefined) {
@@ -178,17 +194,29 @@ export async function evaluatePredicate(
   session: PredicateSession,
   predicate: Predicate,
   since = 0,
+  // Compute the (extra-round-trip) near-miss diagnostics on element failures. Default true so a
+  // one-shot assert is fully diagnostic; the wait loop passes false on its interim polls (which read
+  // only `pass`) and true on the final timeout eval, so a flood no longer pays for a diagnostic nobody
+  // reads. Only element/text failures have a near-miss; everything else ignores this.
+  diagnose = true,
 ): Promise<EvalResult> {
   const events = session.eventsSince(since);
   switch (predicate.kind) {
     case 'element':
-      return evalElement(session, predicate.query, predicate.state, predicate.absent ?? false);
+      return evalElement(
+        session,
+        predicate.query,
+        predicate.state,
+        predicate.absent ?? false,
+        diagnose,
+      );
     case 'text':
       return evalElement(
         session,
         { text: predicate.contains },
         predicate.visible === true ? ElementState.VISIBLE : undefined,
         predicate.absent ?? false,
+        diagnose,
       );
     case 'net':
       return evalNet(events, predicate);
@@ -213,7 +241,7 @@ export async function evaluatePredicate(
     }
     case 'allOf': {
       const results = await Promise.all(
-        predicate.predicates.map((p) => evaluatePredicate(session, p, since)),
+        predicate.predicates.map((p) => evaluatePredicate(session, p, since, diagnose)),
       );
       const failed = results.find((r) => !r.pass);
       return failed === undefined
@@ -226,7 +254,7 @@ export async function evaluatePredicate(
     }
     case 'anyOf': {
       const results = await Promise.all(
-        predicate.predicates.map((p) => evaluatePredicate(session, p, since)),
+        predicate.predicates.map((p) => evaluatePredicate(session, p, since, diagnose)),
       );
       const passed = results.find((r) => r.pass);
       return passed !== undefined
@@ -234,7 +262,7 @@ export async function evaluatePredicate(
         : { pass: false, failureReason: 'no sub-predicate of anyOf matched', evidence: results };
     }
     case 'not': {
-      const inner = await evaluatePredicate(session, predicate.predicate, since);
+      const inner = await evaluatePredicate(session, predicate.predicate, since, diagnose);
       return inner.pass
         ? { pass: false, failureReason: 'negated predicate unexpectedly held', evidence: inner }
         : { pass: true };
@@ -281,7 +309,9 @@ export function waitForPredicate(
         return;
       }
       inFlight = true;
-      void evaluatePredicate(session, predicate, since)
+      // Interim poll: read only `pass`, so skip the extra near-miss round-trips (diagnose=false). The
+      // final timeout eval below runs with full diagnostics.
+      void evaluatePredicate(session, predicate, since, false)
         .then((r) => {
           if (r.pass) finish(r);
         })

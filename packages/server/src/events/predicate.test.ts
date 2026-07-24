@@ -307,6 +307,37 @@ describe('predicate engine', () => {
     expect(r.failureReason).toContain('Cancel');
   });
 
+  it('diagnose=false skips the near-miss round-trips (interim-poll fast path)', async () => {
+    // The wait loop passes diagnose=false on its interim polls — which read only `pass` — so the extra
+    // role-only MATCH scan is not run. Count the MATCH commands to prove the second scan is skipped.
+    let matchCalls = 0;
+    const session = new FakeSession([], (query) => {
+      matchCalls += 1;
+      if (query.role === 'button' && query.name === undefined) {
+        return {
+          matched: true,
+          count: 1,
+          elements: [
+            { ref: asRef('e1'), role: 'button', name: 'Cancel', states: [], visible: true },
+          ],
+        };
+      }
+      return { matched: false, count: 0, elements: [] };
+    });
+    const q = { kind: 'element', query: { role: 'button', name: 'Submit' } } as const;
+
+    matchCalls = 0;
+    const interim = await evaluatePredicate(session, q, 0, false);
+    expect(interim.pass).toBe(false);
+    expect(interim.assertion).toBe('element.present'); // plain fail, no near-miss
+    expect(matchCalls).toBe(1); // ONE scan, not two
+
+    matchCalls = 0;
+    const full = await evaluatePredicate(session, q, 0, true);
+    expect(full.assertion).toBe('element.role+name'); // full near-miss on the diagnostic path
+    expect(matchCalls).toBe(2); // the extra role-only scan ran
+  });
+
   it('turns a disconnected browser command into a failed wait verdict', async () => {
     const session: PredicateSession = {
       command: () => Promise.reject(new Error('session disconnected')),
