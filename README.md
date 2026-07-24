@@ -62,7 +62,7 @@ It reads the _program_ (network, store state, signals, the React commit stream),
 | False-positive traps (bug-shaped non-bugs) | **2 / 2 held** (Playwright 2 / 2) |
 | Wall-time per bug | 3.6 s vs Playwright **2.4 s** — _Playwright is faster_ |
 | Output consumed per bug | **4.0 KB** vs Playwright 8.0 KB — _half the cost_ |
-| MCP tool-schema tax (paid on every request) | 6,559 tok default · **282 tok** lean vs Playwright 3,725 |
+| MCP tool-schema tax (paid on every request) | **2,832 tok** default · 282 tok minimal — _below Playwright's 3,725_ |
 | Cost at 25× the DOM (800 → 20,000 rows) | **flat** — 7,400 → 7,276 tokens, every call ratio 1.00 |
 | Cost of the `file:line` itself | **38 bytes** per element described |
 | Reports that name the file to open (`file:line`) | **83 / 85** carry one; **79** name the exact file (85-bug run) |
