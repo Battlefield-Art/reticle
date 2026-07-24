@@ -28,7 +28,12 @@ import { HonestyGrade, buildHonestyBlock } from '../honesty/honesty.js';
 import { buildCoverageStatement, blindSpotsFromState } from '../honesty/blind-spots.js';
 import { CapsuleStore, capsuleId } from '../capsule/capsule-store.js';
 import type { ExpectedLink } from '../capsule/divergence.js';
-import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
+import {
+  evaluatePredicate,
+  waitForPredicate,
+  provenExpectedLinks,
+  PredicateSchema,
+} from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
 import { pausedShortCircuit, withControl } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
@@ -492,13 +497,18 @@ export const ACT_TOOLS: ToolDef[] = [
         // so the common green path — what the loop optimizes — is unchanged; on red, diagnosis is the point.
         const links = predicateToExpectedLinks(until);
         const capsule = verdict.pass ? undefined : buildDivergenceCapsule(links, windowEvents);
+        // Grade from what the verdict PROVED, not what it declared. A green anyOf holds on one branch, so
+        // grading off `links` (every branch) would let a presence-only OR report grade `signal` — a false
+        // green in the gate itself. `provenExpectedLinks` narrows a green to the branch that actually held;
+        // on red we keep the declared links (the capsule wants the full expected surface).
+        const gradedLinks = verdict.pass ? await provenExpectedLinks(session, until, since) : links;
         // Honesty: the grade this verdict actually proved + capture integrity — a green never looks
         // stronger than this block. Grade from the strongest asserted consequence; integrity from evictions.
         // Coverage: cross-origin frames / other blind spots the SDK reported during this window mean the
         // verdict didn't see everything — say so, never imply full coverage.
         const coverage = buildCoverageStatement(blindSpotsFromState(session.blindSpots()));
         const honesty = buildHonestyBlock({
-          grade: gradeOf(links),
+          grade: gradeOf(gradedLinks),
           attribution: 'window',
           truncated: session.bufferHealth().dropped > 0,
           coveragePartial: coverage.coverage === 'partial',

@@ -8,7 +8,13 @@ import {
   type ReticleEvent,
   type MatchResult,
 } from '@reticlehq/core';
-import { evaluatePredicate, waitForPredicate, type PredicateSession } from './predicate.js';
+import {
+  evaluatePredicate,
+  waitForPredicate,
+  provenExpectedLinks,
+  type PredicateSession,
+} from './predicate.js';
+import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import type { Predicate } from './predicate-eval.js';
 
 /** In-memory session: events from an array, MATCH from a supplied matcher. */
@@ -182,6 +188,45 @@ describe('predicate engine', () => {
       ],
     });
     expect(any.pass).toBe(true);
+  });
+
+  it('proven links narrow a green anyOf to the branch that actually held (honest grade)', async () => {
+    // The OR greens because the app was CLEAN (no console errors), NOT because the signal fired.
+    const session = new FakeSession([
+      ev(EventType.NET_REQUEST, { method: 'POST', url: '/api/save', status: 200 }),
+    ]);
+    const anyOf: Predicate = {
+      kind: 'anyOf',
+      predicates: [
+        { kind: 'signal', name: 'saved' }, // strong branch — this signal never fired
+        { kind: 'console', level: 'error', absent: true }, // weak branch — holds (page is clean)
+      ],
+    };
+    // It's green — but only via the clean-console branch.
+    expect((await evaluatePredicate(session, anyOf)).pass).toBe(true);
+    // Declared links still claim the signal consequence (every branch flattens in).
+    expect(predicateToExpectedLinks(anyOf).some((l) => l.kind === 'signal')).toBe(true);
+    // Proven links must NOT — the signal was one of the options and never happened. Grading off these
+    // yields PRESENCE, so a minGrade:signal/net gate correctly refuses to trust this green.
+    const proven = await provenExpectedLinks(session, anyOf);
+    expect(proven.some((l) => l.kind === 'signal')).toBe(false);
+  });
+
+  it('proven links keep every allOf branch (all held for it to be green)', async () => {
+    const session = new FakeSession([
+      ev(EventType.SIGNAL, { name: 'saved' }),
+      ev(EventType.NET_REQUEST, { method: 'POST', url: '/api/save', status: 200 }),
+    ]);
+    const allOf: Predicate = {
+      kind: 'allOf',
+      predicates: [
+        { kind: 'signal', name: 'saved' },
+        { kind: 'net', urlContains: '/api/save', status: 200 },
+      ],
+    };
+    const proven = await provenExpectedLinks(session, allOf);
+    expect(proven.some((l) => l.kind === 'signal')).toBe(true);
+    expect(proven.some((l) => l.kind === 'net')).toBe(true);
   });
 
   it('not inverts', async () => {

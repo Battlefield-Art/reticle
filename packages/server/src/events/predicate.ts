@@ -7,6 +7,8 @@ import {
   type MatchResult,
 } from '@reticlehq/core';
 import { selectPath, capDepth } from '../session/state-select.js';
+import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
+import type { ExpectedLink } from '../capsule/divergence.js';
 import { isAmbient, ambientKeyOf, type AmbientCounts } from '../journal/ambient.js';
 import {
   PredicateSchema,
@@ -318,4 +320,38 @@ export function waitForPredicate(
     }, timeoutMs);
     check();
   });
+}
+
+/**
+ * The ExpectedLinks a GREEN verdict actually PROVED — not merely the ones it declared. Identical to
+ * predicateToExpectedLinks except for `anyOf`: an OR greens on a SINGLE branch, so only the branch that
+ * held may contribute its link. Grading a green anyOf off the declared links would let the honesty grade
+ * claim a signal/net consequence that was only one of the options and never fired — and a `minGrade:net`
+ * gate would then trust a verdict that proved nothing but presence. That is the exact false green the
+ * grade exists to prevent, sitting inside the grade itself.
+ *
+ * Call ONLY on a green verdict: a leaf and every `allOf` branch are returned unconditionally because a
+ * green top verdict guarantees they held (allOf needs all; a bare leaf IS the verdict). Only anyOf, where
+ * green ⇏ this-branch-held, re-checks each branch and keeps the winners.
+ */
+export async function provenExpectedLinks(
+  session: PredicateSession,
+  predicate: Predicate,
+  since = 0,
+): Promise<ExpectedLink[]> {
+  if (predicate.kind === 'allOf') {
+    const per = await Promise.all(
+      predicate.predicates.map((p) => provenExpectedLinks(session, p, since)),
+    );
+    return per.flat();
+  }
+  if (predicate.kind === 'anyOf') {
+    const per = await Promise.all(
+      predicate.predicates.map(async (p) =>
+        (await evaluatePredicate(session, p, since)).pass ? provenExpectedLinks(session, p, since) : [],
+      ),
+    );
+    return per.flat();
+  }
+  return predicateToExpectedLinks(predicate);
 }
