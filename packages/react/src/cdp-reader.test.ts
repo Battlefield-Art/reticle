@@ -64,9 +64,10 @@ describe('readComponentAt (zero-install fiber read)', () => {
     // half; this is the fast-gate half that fails the moment someone adds a helper call.
     const source = readComponentAt.toString();
     for (const forbidden of ['buildReaderExpression', 'parseComponentRead', 'CdpComponentRead']) {
-      expect(source, `reader references ${forbidden} — it will throw inside page.evaluate`).not.toContain(
-        forbidden,
-      );
+      expect(
+        source,
+        `reader references ${forbidden} — it will throw inside page.evaluate`,
+      ).not.toContain(forbidden);
     }
     // And it must actually be a complete function expression (a partial capture would inject broken JS).
     expect(source.startsWith('function')).toBe(true);
