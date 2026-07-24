@@ -52,7 +52,8 @@
   "bugs": "https://github.com/reticlehq/reticle/issues",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "NOTICE"
   ],
   "sideEffects": false,
   "keywords": [
