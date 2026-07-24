@@ -160,13 +160,29 @@ const survivingChildren = descendants(daemonPid);
 // the daemon port surviving would be the real leak.
 const leakedPorts = newPorts.filter((p) => p !== PORT);
 
-// Growth per session over the sequential phase — the honest slope, not an endpoint difference that
-// a single GC cycle could invent or hide.
+// Growth per session over the sequential phase. The endpoint slope ALONE cannot distinguish a leak
+// (sustained per-session growth) from a one-time allocation step (V8 heap resize / pool warm-up)
+// followed by a plateau: a measured run went 48→50 flat for six sessions, stepped 38 MB once at
+// session 7, then sat flat through five more sequential + sixteen concurrent sessions — and the
+// endpoint slope reported that as "3.6 MB/session", a false leak signal from the leak harness
+// itself. So the per-sample deltas classify the SHAPE, and only sustained growth reads as a leak.
 const seq = samples.filter((s) => s.phase === 'sequential' && typeof s.rss_mb === 'number');
 const slopeMbPerSession =
   seq.length > 1 && seq[0] !== undefined && seq.at(-1) !== undefined
     ? Number(((seq.at(-1).rss_mb - seq[0].rss_mb) / (seq.length - 1)).toFixed(3))
     : null;
+// A delta ≤ 2 MB is measurement noise (ps rounds to MB; GC jitters). More than two growth steps, or
+// a tail still climbing, is the leak signature; one or two steps with a flat tail is an allocation.
+const NOISE_MB = 2;
+const deltas = seq.slice(1).map((s, i) => s.rss_mb - seq[i].rss_mb);
+const growthSteps = deltas.filter((d) => d > NOISE_MB).length;
+const tailFlat = deltas.slice(-3).every((d) => d <= NOISE_MB);
+const growthShape =
+  growthSteps === 0
+    ? 'flat'
+    : growthSteps <= 2 && tailFlat
+      ? 'step-then-plateau'
+      : 'sustained-growth';
 
 const report = {
   metric: 'daemon memory / port / child-process retention under sequential and concurrent load',
@@ -176,6 +192,9 @@ const report = {
     rss_after_sequential_mb: rssAfterSequential,
     rss_after_concurrent_mb: rssAfterConcurrent,
     slope_mb_per_session: slopeMbPerSession,
+    growth_shape: growthShape,
+    // The verdict a reader should trust: shape-based, immune to a one-time step inflating the slope.
+    leak_suspected: growthShape === 'sustained-growth',
   },
   ports: {
     daemon_port_still_listening: newPorts.includes(PORT),
