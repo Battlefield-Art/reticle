@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { transformSync } from '@babel/core';
 // The module IS the plugin function (module.exports = fn) — a default import resolves to it under
-// vite/node CJS interop, exactly as Babel's require() does. SOURCE_ATTR rides as a property.
+// vite/node CJS interop, exactly as Babel's require() does. No named exports on the CJS module.
 import plugin from './index.js';
 
-const SOURCE_ATTR = (plugin as unknown as { SOURCE_ATTR: string }).SOURCE_ATTR;
+// The attribute the plugin stamps — kept dependency-free here (mirrors DATA_RETICLE_SOURCE_ATTR in core).
+const SOURCE_ATTR = 'data-reticle-source';
 
 function transform(code: string): string {
   const out = transformSync(code, {

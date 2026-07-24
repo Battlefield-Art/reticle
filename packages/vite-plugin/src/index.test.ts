@@ -2,9 +2,11 @@ import { afterAll, describe, it, expect } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SOURCE_ATTR } from '@reticlehq/babel-plugin';
 import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv } from '@reticlehq/core';
 import { reticle, RETICLE_VITE_PLUGIN_NAME, RETICLE_CONNECT_MODULE } from './index.js';
+
+// The attribute the babel plugin stamps (mirrors DATA_RETICLE_SOURCE_ATTR in core).
+const SOURCE_ATTR = 'data-reticle-source';
 
 // Point the token lookup at an empty temp dir so tests never pick up a real ~/.reticle/pairing-token.
 const emptyTokenDir = mkdtempSync(join(tmpdir(), 'reticle-vite-token-'));

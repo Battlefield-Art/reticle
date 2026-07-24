@@ -23,14 +23,18 @@
       "types": "./index.d.ts",
       "default": "./index.cjs"
     },
-    "./loader": "./loader.cjs"
+    "./loader": {
+      "types": "./loader.d.ts",
+      "default": "./loader.cjs"
+    }
   },
   "files": [
     "index.cjs",
     "loader.cjs",
     "README.md",
     "index.d.ts",
-    "NOTICE"
+    "NOTICE",
+    "loader.d.ts"
   ],
   "dependencies": {
     "@babel/core": "^7.26.0",

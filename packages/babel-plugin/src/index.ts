@@ -14,9 +14,10 @@ interface PluginApi {
  * which removed `_debugSource`. Intended for dev builds only.
  *
  * Exported with `export =` (CommonJS module.exports) — Babel loads a plugin via `require()` and takes
- * the module object directly, so this ships as `module.exports = fn` with no `__esModule`/`default`
- * interop wrapper (which some bundlers mishandle on a default import). The attribute name rides as a
- * property for the rare consumer that wants it: `require('@reticlehq/babel-plugin').SOURCE_ATTR`.
+ * the module object directly, so this ships as a bare `module.exports = fn` with no `__esModule`/`default`
+ * interop wrapper (which some bundlers mishandle) and no named exports (which an ESM consumer's static
+ * named import cannot see at runtime in a CJS module). The attribute name itself is exported from
+ * `@reticlehq/core` as `DATA_RETICLE_SOURCE_ATTR` for anyone who needs it.
  */
 function reticleSourcePlugin({ types: t }: PluginApi): PluginObj<PluginPass> {
   return {
@@ -49,7 +50,5 @@ function reticleSourcePlugin({ types: t }: PluginApi): PluginObj<PluginPass> {
     },
   };
 }
-
-reticleSourcePlugin.SOURCE_ATTR = SOURCE_ATTR;
 
 export = reticleSourcePlugin;
