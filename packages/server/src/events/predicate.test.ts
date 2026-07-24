@@ -697,7 +697,9 @@ describe('waitForPredicate coalescing', () => {
     expect(session.commandCount).toBe(1); // 50 events blocked by the single-in-flight guard
 
     session.resolveNext({ stores: { s: { x: 0 } } }); // not-yet-true → exactly one trailing re-check
-    await flush();
+    // The trailing recheck is now PACED behind a short cooldown (flood throttle), so poll for it rather
+    // than assuming it fires on the next microtask. Coalescing still holds: 50 events → ONE recheck.
+    for (let i = 0; i < 100 && session.commandCount < 2; i += 1) await flush();
     expect(session.commandCount).toBe(2);
 
     session.resolveNext({ stores: { s: { x: 1 } } }); // now true → the wait resolves

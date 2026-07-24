@@ -272,6 +272,13 @@ export async function evaluatePredicate(
   }
 }
 
+/** Backstop poll cadence — guarantees a re-check even if no event fires (e.g. a `settled` wait). */
+const POLL_INTERVAL_MS = 150;
+/** Minimum gap between consecutive event-driven rechecks, so an event flood can't drive back-to-back
+ *  DOM/STATE round-trips. Small enough that added pass-detection latency is negligible next to the
+ *  poll cadence, large enough to collapse a per-frame event storm into a bounded recheck rate. */
+const MIN_RECHECK_GAP_MS = 25;
+
 /**
  * Evaluate now, else wait for it to become true (on each event + a poll) until timeout. `since` is
  * the event-time floor (see evaluatePredicate) so a waiter cannot resolve on a stale buffered event.
@@ -288,23 +295,32 @@ export function waitForPredicate(
       pass: false,
       failureReason: error instanceof Error ? error.message : String(error),
     });
+    let cooldownTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (result: EvalResult): void => {
       if (done) return;
       done = true;
       unsub();
       clearInterval(interval);
       clearTimeout(timer);
+      if (cooldownTimer !== undefined) clearTimeout(cooldownTimer);
       resolve(result);
     };
     // Coalesce re-checks: at most ONE evaluatePredicate is ever in flight (each can be a browser
     // MATCH/STATE_READ round-trip). Events that arrive while one is running set a single trailing
     // re-check instead of each firing their own command — otherwise a page emitting an event per
     // animation frame fans out hundreds of concurrent round-trips and collapses under backpressure.
+    //
+    // Beyond coalescing, PACE the trailing rechecks: without a gap the next eval fired the instant the
+    // previous finished, so under an event flood one round-trip was permanently in flight (~184/sec at
+    // 5ms RTT) — each a live-DOM scan on the app's main thread, the "the dashboard is janky while the
+    // agent waits" case. The FIRST check on an idle loop still runs immediately (leading edge, so fast
+    // detection is unchanged); only back-to-back rechecks under sustained load wait MIN_RECHECK_GAP_MS.
     let inFlight = false;
+    let cooling = false;
     let pendingRecheck = false;
     const check = (): void => {
       if (done) return;
-      if (inFlight) {
+      if (inFlight || cooling) {
         pendingRecheck = true;
         return;
       }
@@ -320,16 +336,23 @@ export function waitForPredicate(
         })
         .finally(() => {
           inFlight = false;
-          if (pendingRecheck && !done) {
-            pendingRecheck = false;
-            check();
-          }
+          if (done) return;
+          // Enter a short cooldown; process a coalesced recheck when it ends. The 150ms poll is the
+          // backstop, so a missed trailing edge is caught within one interval regardless.
+          cooling = true;
+          cooldownTimer = setTimeout(() => {
+            cooling = false;
+            if (pendingRecheck && !done) {
+              pendingRecheck = false;
+              check();
+            }
+          }, MIN_RECHECK_GAP_MS);
         });
     };
     const unsub = session.onEvent(() => {
       check();
     });
-    const interval = setInterval(check, 150);
+    const interval = setInterval(check, POLL_INTERVAL_MS);
     const timer = setTimeout(() => {
       void evaluatePredicate(session, predicate, since)
         .then((r) => {
