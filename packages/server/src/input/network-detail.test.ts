@@ -141,6 +141,54 @@ describe('authoritative request body', () => {
     expect(d.requestBody).not.toContain('sk_live_abcdefghijklmnop');
   });
 
+  it('redacts a sensitive key with a NON-string value — the gap that leaked', () => {
+    // The old string-only sweep matched exclusively `"key":"string"`, so a numeric PIN, a token
+    // array, or a nested credential object under a sensitive key sailed straight through to the
+    // agent and the on-disk journal. A structural pass redacts by key whatever the value type.
+    const d = buildNetworkDetail({
+      url: 'https://api.test/login',
+      method: 'POST',
+      status: 200,
+      headers: {},
+      requestBody:
+        '{"password":1234,"apiKey":{"v":"nested-secret"},"token":["a","b"],"ok":"visible"}',
+    });
+    expect(d.requestBody).not.toContain('1234');
+    expect(d.requestBody).not.toContain('nested-secret');
+    expect(d.requestBody).not.toContain('"a"');
+    // a non-sensitive field is untouched
+    expect(d.requestBody).toContain('visible');
+  });
+
+  it('still redacts the common string case in a TRUNCATED (non-JSON) body via the fallback', () => {
+    // A capture cut at 8192 chars is no longer valid JSON, so the structural parse fails and the
+    // string sweep must still catch the plain `"key":"string"` case.
+    const long = 'x'.repeat(9000);
+    const d = buildNetworkDetail({
+      url: 'https://api.test/login',
+      method: 'POST',
+      status: 200,
+      headers: {},
+      requestBody: `{"password":"hunter2","blob":"${long}`,
+    });
+    expect(d.requestBody).not.toContain('hunter2');
+  });
+
+  it('redacts a FORM-ENCODED body — the shape a real login form POSTs', () => {
+    // application/x-www-form-urlencoded is not JSON and not `"key":"string"`, so neither the
+    // structural path nor the JSON regex touched it — `password=hunter2` from a plain form login
+    // sailed through to the agent and the journal.
+    const d = buildNetworkDetail({
+      url: 'https://api.test/login',
+      method: 'POST',
+      status: 200,
+      headers: {},
+      requestBody: 'username=bob&password=hunter2&remember=true',
+    });
+    expect(d.requestBody).not.toContain('hunter2');
+    expect(d.requestBody).toContain('username=bob');
+  });
+
   it('bounds an enormous wire body rather than journaling it whole', () => {
     const d = buildNetworkDetail({
       url: 'https://api.test/upload',
@@ -154,7 +202,12 @@ describe('authoritative request body', () => {
   });
 
   it('omits the field entirely when there is no body (a GET)', () => {
-    const d = buildNetworkDetail({ url: 'https://api.test/x', method: 'GET', status: 200, headers: {} });
+    const d = buildNetworkDetail({
+      url: 'https://api.test/x',
+      method: 'GET',
+      status: 200,
+      headers: {},
+    });
     expect('requestBody' in d).toBe(false);
   });
 
@@ -165,8 +218,16 @@ describe('authoritative request body', () => {
    */
   it('overwrites the in-page body, because a disagreement is the finding', () => {
     const merged = mergeNetworkDetail([
-      ev(EventType.NET_REQUEST, { url: 'https://api.test/generate', method: 'POST', requestBody: '{"prompt":"hello"}' }),
-      ev(EventType.NET_DETAIL, { url: 'https://api.test/generate', method: 'POST', requestBody: '{}' }),
+      ev(EventType.NET_REQUEST, {
+        url: 'https://api.test/generate',
+        method: 'POST',
+        requestBody: '{"prompt":"hello"}',
+      }),
+      ev(EventType.NET_DETAIL, {
+        url: 'https://api.test/generate',
+        method: 'POST',
+        requestBody: '{}',
+      }),
     ]);
     const req = merged.find((e) => e.type === EventType.NET_REQUEST);
     expect(req?.data['requestBody']).toBe('{}');
@@ -175,8 +236,16 @@ describe('authoritative request body', () => {
 
   it('does not flag divergence when the two agree', () => {
     const merged = mergeNetworkDetail([
-      ev(EventType.NET_REQUEST, { url: 'https://api.test/a', method: 'POST', requestBody: '{"a":1}' }),
-      ev(EventType.NET_DETAIL, { url: 'https://api.test/a', method: 'POST', requestBody: '{"a":1}' }),
+      ev(EventType.NET_REQUEST, {
+        url: 'https://api.test/a',
+        method: 'POST',
+        requestBody: '{"a":1}',
+      }),
+      ev(EventType.NET_DETAIL, {
+        url: 'https://api.test/a',
+        method: 'POST',
+        requestBody: '{"a":1}',
+      }),
     ]);
     const req = merged.find((e) => e.type === EventType.NET_REQUEST);
     expect(req?.data['requestBodyDivergedFromPage']).toBeUndefined();

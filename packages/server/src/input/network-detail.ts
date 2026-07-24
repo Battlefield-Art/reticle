@@ -47,21 +47,47 @@ export interface NetworkDetail {
 const MAX_WIRE_BODY_CHARS = 8192;
 
 /**
- * Redact and bound a raw wire body.
+ * Redact a sensitive key's value whatever its TYPE — string, number, array, or a nested object.
  *
- * Playwright hands this over unscrubbed, so it is the one payload in the system that reaches the
- * journal without having passed through the SDK's sanitizer. Both passes matter: `scrubKnownSecrets`
- * catches credential SHAPES wherever they sit, and the key sweep catches values under a
- * credential-named field whose shape is unremarkable (a plain password).
+ * This is the one payload in the system that reaches the journal without having passed through the
+ * SDK's sanitizer (Playwright hands it over raw), so its redaction has to be as strong as the SDK's,
+ * which is key-based over a parsed object — not string-shaped.
  */
+function redactByKey(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactByKey);
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = isSensitiveKey(k) ? REDACTED_VALUE : redactByKey(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 function projectWireBody(raw: string): string {
   const bounded = raw.length > MAX_WIRE_BODY_CHARS ? raw.slice(0, MAX_WIRE_BODY_CHARS) : raw;
   const byShape = scrubKnownSecrets(bounded);
-  // Field-name sweep over JSON-ish `"key": "value"` pairs — string-level so it never has to parse
-  // (and so a truncated body, which is no longer valid JSON, is still redacted).
-  return byShape.replace(/"([^"]+)"\s*:\s*"([^"]*)"/g, (whole, key: string) =>
-    isSensitiveKey(key) ? `"${key}":"${REDACTED_VALUE}"` : whole,
-  );
+  // Prefer a STRUCTURAL pass. A sensitive key must be redacted regardless of its value type — a
+  // numeric PIN (`"password": 1234`), a token array, a nested credential object — and the old
+  // string-only sweep matched exclusively `"key":"string"`, so every non-string secret leaked
+  // straight to the agent's context and the on-disk journal. Parsing and walking redacts them by key
+  // whatever the shape.
+  try {
+    return JSON.stringify(redactByKey(JSON.parse(byShape)));
+  } catch {
+    // Not JSON (a truncated capture, or a form-encoded body — the shape a login form actually POSTs).
+    // Two best-effort sweeps, because a password lives in both: the `"key":"string"` JSON fragment a
+    // truncated body still contains, and the `key=value` pair of `application/x-www-form-urlencoded`,
+    // which neither the JSON path nor the old regex ever touched — so `password=hunter2` leaked.
+    return byShape
+      .replace(/"([^"]+)"\s*:\s*"([^"]*)"/g, (whole, key: string) =>
+        isSensitiveKey(key) ? `"${key}":"${REDACTED_VALUE}"` : whole,
+      )
+      .replace(/([^&?=\s]+)=([^&\s]*)/g, (whole, key: string) =>
+        isSensitiveKey(key) ? `${key}=${REDACTED_VALUE}` : whole,
+      );
+  }
 }
 
 /** Header names are case-insensitive; normalize to lower-case so a merge/compare is stable. */
@@ -109,7 +135,8 @@ function keyOf(url: unknown, method: unknown): string {
 export function mergeNetworkDetail(events: readonly ReticleEvent[]): ReticleEvent[] {
   const requestByKey = new Map<string, ReticleEvent>();
   for (const e of events) {
-    if (e.type === EventType.NET_REQUEST) requestByKey.set(keyOf(e.data['url'], e.data['method']), e);
+    if (e.type === EventType.NET_REQUEST)
+      requestByKey.set(keyOf(e.data['url'], e.data['method']), e);
   }
   const out: ReticleEvent[] = [];
   const enriched = new Map<ReticleEvent, ReticleEvent>();
