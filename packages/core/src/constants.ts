@@ -191,6 +191,11 @@ export const CRAWL_DEFAULTS = {
   FAILED_STATUS: 400,
 } as const;
 
+/** Default max wait for reticle_assert / reticle_wait_for / reticle_act_and_wait when the caller gives
+ *  no `timeout_ms`. One fact, shared by the server tools and the @reticlehq/test matchers so the test
+ *  package's assumption can't silently diverge from the server default. */
+export const DEFAULT_ASSERT_TIMEOUT_MS = 4000;
+
 /** How long to wait between npm registry update checks (24 h). */
 export const UpdateCheckIntervalMs = 24 * 60 * 60 * 1000;
 

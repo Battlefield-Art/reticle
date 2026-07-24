@@ -10,6 +10,7 @@ import {
   ActionWarning,
   AnchorKind,
   DANGEROUS_ACTION_CONFIRM_ARG,
+  DEFAULT_ASSERT_TIMEOUT_MS,
   InputMode,
   InputModeReason,
   ReticleCommand,
@@ -475,7 +476,7 @@ export const ACT_TOOLS: ToolDef[] = [
         args['until'] !== undefined
           ? PredicateSchema.parse(args['until'])
           : ({ kind: 'settled' } as const);
-      const timeout = asNumber(args['timeout_ms']) ?? 4000;
+      const timeout = asNumber(args['timeout_ms']) ?? DEFAULT_ASSERT_TIMEOUT_MS;
 
       const since = session.elapsed();
       session.markActCursor(since);

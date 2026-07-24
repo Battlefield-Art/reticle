@@ -3,7 +3,7 @@
  * reticle_console, reticle_animations. Split out of tools.ts; assembled back via...OBSERVE_TOOLS.
  */
 import { z } from 'zod';
-import { ReticleCommand } from '@reticlehq/core';
+import { ReticleCommand, DEFAULT_ASSERT_TIMEOUT_MS } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport } from '../events/reaction.js';
 import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
@@ -221,7 +221,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const verdict = await waitForPredicate(
         session,
         predicate,
-        asNumber(args['timeout_ms']) ?? 4000,
+        asNumber(args['timeout_ms']) ?? DEFAULT_ASSERT_TIMEOUT_MS,
         since,
       );
       // match reticle_assert — wrap with control + session health (throttle matters most while blocking)

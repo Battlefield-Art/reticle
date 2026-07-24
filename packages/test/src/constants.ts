@@ -35,8 +35,8 @@ export const DEFAULT_JUNIT_SUITE_NAME = 'reticle';
  */
 export const SKIP_REASON_REAL_INPUT = 'real input not active — run via reticle drive';
 
-/** Default wait window for assertion matchers (reticle_assert timeout_ms). */
-export const DEFAULT_ASSERT_TIMEOUT_MS = 4000;
+/** Default wait window for assertion matchers — re-exported from core so it matches the server default. */
+export { DEFAULT_ASSERT_TIMEOUT_MS } from '@reticlehq/core';
 
 /** Predicate `kind` discriminants the matchers build. Mirrors @reticlehq/server's Predicate union. */
 export const PredicateKind = {
