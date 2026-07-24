@@ -108,15 +108,17 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
   // agent reading a tensor/binary field saw an object where an array lives, and a big one blew the key
   // cap silently. Emit its numbers as a bounded array like a Set. DataView is opaque bytes — leave it.
   if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
-    const arr = value as unknown as ArrayLike<number>;
+    const len = (value as unknown as { length: number }).length;
     const out: number[] = [];
-    for (let i = 0; i < arr.length; i++) {
-      if (state.nodes >= MAX_TOTAL_NODES || i >= TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS) {
-        state.droppedItems += arr.length - i;
+    let n = 0;
+    for (const item of value as unknown as Iterable<number>) {
+      if (state.nodes >= MAX_TOTAL_NODES || n >= TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS) {
+        state.droppedItems += len - n;
         break;
       }
-      out.push(arr[i]);
+      out.push(item);
       state.nodes += 1;
+      n += 1;
     }
     return out;
   }
