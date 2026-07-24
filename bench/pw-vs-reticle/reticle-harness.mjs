@@ -684,26 +684,48 @@ export async function runReticle(bugs) {
           caught = !tree.includes(c.expectText);
           note = `expected "${c.expectText}" in ${c.scope}: ${tree.includes(c.expectText)}`;
         } else if (c.kind === 'staleCacheAfterMutation') {
-          // Read the CACHE, not the screen. The bug is that the mutation succeeded and the cached
-          // total never moved, while `isStale` stays false — the cache is confidently serving a value
-          // the server has already passed. Nothing in the DOM or the request log carries that
-          // disagreement, which is the whole reason server state is registered as a store.
-          const readTotal = async () => {
+          // Assert FRESHNESS, not the value.
+          //
+          // The obvious oracle — "the total should go up" — is wrong here and taught the lesson the
+          // hard way by firing on the clean build. `POST /api/items` answers **202 Accepted**: the add
+          // is deliberately eventually-consistent, so the count legitimately has not moved yet even
+          // when everything worked. Asserting on the value made a correct app look broken.
+          //
+          // `dataUpdatedAt` is the honest signal, and it is the one thing only the cache knows. After a
+          // successful mutation the query that owns that data must have been REFRESHED; the timestamp
+          // advancing proves a refetch landed. Frozen means nothing ever went back to the server, which
+          // is the bug — and it is invisible in the DOM (the rendered number is identical either way)
+          // and only indirectly visible on the wire.
+          const readCache = async () => {
             const st = await call('reticle_state', { sessionId: sid, store: c.store, path: c.key });
-            return { total: st?.value?.data?.total, stale: st?.value?.isStale };
+            return { at: st?.value?.dataUpdatedAt, total: st?.value?.data?.total };
           };
-          const before = await readTotal();
+          const before = await readCache();
           const clicked = await clickByTestid(c.testid);
-          await sleep(2500);
-          const after = await readTotal();
-          caught =
-            clicked &&
-            before.total !== undefined &&
-            after.total === before.total &&
-            after.stale === false;
-          note = clicked
-            ? `cache total ${before.total} -> ${after.total} (isStale=${after.stale})`
-            : `${c.testid} not clickable`;
+          // Bounded wait, never a fixed sleep: only the ABSENCE of a refresh is the fault, never its
+          // lateness. A fixed 2.5s window previously scored a slow-but-correct refetch as the bug.
+          let after = before;
+          const deadline = Date.now() + 10000;
+          while (Date.now() < deadline) {
+            await sleep(400);
+            after = await readCache();
+            if (after.at !== before.at) break; // refreshed → healthy, stop early
+          }
+          // The precondition must be PROVEN before the consequence is judged: "no refetch" is only a
+          // fault if the mutation actually succeeded. Otherwise a mis-click or an auth failure reads
+          // as the stale-cache bug.
+          const net = await call('reticle_network', { sessionId: sid, limit: 50 });
+          const mutated = (net?.calls ?? []).some(
+            (e) =>
+              String(e.method ?? '').toUpperCase() === 'POST' &&
+              String(e.url ?? '').includes('/api/items') &&
+              Number(e.status) >= 200 &&
+              Number(e.status) < 300,
+          );
+          caught = Boolean(clicked) && mutated && before.at !== undefined && after.at === before.at;
+          note = !clicked
+            ? `${c.testid} not clickable`
+            : `mutated=${String(mutated)} dataUpdatedAt ${before.at === after.at ? 'FROZEN' : 'advanced'} (total ${after.total})`;
         } else if (c.kind === 'chartGeometryFault') {
           // The chart fault rides the element descriptor, so this is ONE query — no extra tool, no
           // flag, and a healthy chart returns the same descriptor minus the field. That is the whole
