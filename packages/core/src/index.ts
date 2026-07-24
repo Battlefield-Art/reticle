@@ -1,17 +1,30 @@
-export * from './constants.js';
-export * from './daemon-registry.js';
+/**
+ * @reticlehq/core — the wire contract at the bottom of the Reticle graph (zod its only dependency).
+ *
+ * API-stability note: the exports below the divider are INTERNAL cross-package plumbing — they are
+ * re-exported so the other @reticlehq/* packages can share one implementation, NOT as a stable surface
+ * for outside consumers. They can change in a minor release. Depend on the STABLE section for anything
+ * outside this monorepo. (A dedicated `@reticlehq/core/internal` entry point is a 3.0 consideration; for
+ * now the boundary is documented here.)
+ */
+
+// ── STABLE public surface: the wire/domain contract ──────────────────────────────────────────────
+export * from './constants.js'; // EventType, ActionType, wire constants, TRANSPORT_LIMITS, …
 export * from './session-constants.js';
-export * from './notices.js';
-export * from './messages.js';
-export * from './event-payloads.js';
-export * from './journal.js';
-export * from './security.js';
-export * from './state-select.js';
-export * from './brand.js';
-export * from './toon.js';
-export * from './flow-types.js';
-export * from './consequence.js';
+export * from './messages.js'; // ReticleEvent + the message schemas
+export * from './event-payloads.js'; // per-event payload schemas + wire vocab
+export * from './flow-types.js'; // FlowStep, FlowExpect, FlowStepTool, replay result shapes
+export * from './verification-run.js'; // run/verdict shapes for the CI surface
 export * from './types.js';
-export * from './verification-run.js';
-export * from './upgrade.js';
-export * from './redaction.js';
+export * from './brand.js'; // RunId / SessionId / Ref brands + validators
+export * from './consequence.js';
+export * from './notices.js';
+export * from './journal.js';
+
+// ── INTERNAL cross-package plumbing (shared impl; not a stable outside API — may change in a minor) ─
+export * from './daemon-registry.js'; // daemon discovery, used by the vite plugin + server
+export * from './security.js'; // sanitize/serialize helpers shared by browser + server
+export * from './redaction.js'; // isSensitiveKey / scrubKnownSecrets — the shared redaction rules
+export * from './state-select.js'; // selectPath / capDepth — shared by browser SDK + server fallback
+export * from './toon.js'; // TOON encoding used by the server's result encoder
+export * from './upgrade.js'; // self-update policy shared by the CLI
