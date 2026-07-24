@@ -100,6 +100,9 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       ...sessionIdShape,
     },
     outputSchema: {
+      // The observed window's duration — buildReactionReport returns it on every call; without it in
+      // the schema, a validating profile stripped it and the agent lost "over how long" the counts hold.
+      window_ms: z.number(),
       events: z.array(z.unknown()),
       summary: z.object({
         total: z.number(),

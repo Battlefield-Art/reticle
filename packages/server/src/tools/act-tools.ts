@@ -35,7 +35,7 @@ import {
   PredicateSchema,
 } from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
-import { pausedShortCircuit, withControl } from '../session/control-envelope.js';
+import { pausedShortCircuit, pausedOutputShape, withControl } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
 import { type ToolDef, type ToolDeps, sessionIdShape, commandOrThrow } from './tool-kit.js';
 
@@ -231,6 +231,9 @@ export const ACT_TOOLS: ToolDef[] = [
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
+      // This tool short-circuits to pausedShortCircuit while the human has paused; declare its fields
+      // or the whole pause payload — including drained-once guidance — is stripped on validating clients.
+      ...pausedOutputShape,
     },
     handler: async (deps, args) => {
       // Validate the REQUEST before touching a session: a malformed action is the caller's error and
@@ -331,6 +334,8 @@ export const ACT_TOOLS: ToolDef[] = [
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
+      // Short-circuits to pausedShortCircuit while paused — declare its fields (drained-once guidance).
+      ...pausedOutputShape,
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -424,11 +429,24 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           'Bounded causal summary: net {total,errors,headline}, consoleErrors, statePathsChanged, storageKeysChanged, stateDiffs [{path,from,to}], storageDiffs [{key,from,to}], route, signals, layoutShift, longTasks — real before→after diffs (capped), not just readings.',
         ),
+      // Promoted out of `effect` on RED only — the file:line the failure came from, the first thing a
+      // repair wants. Undeclared, it was stripped on the validating profile exactly like the structured
+      // cause above was, losing the highest-value pointer on the one path (a failed verdict) that has it.
+      source: z
+        .string()
+        .optional()
+        .describe('Present only on a FAILED verdict: `file:line` of the acted element.'),
       capsule: z
         .unknown()
         .optional()
         .describe(
           'Present only on a FAILED verdict: the divergence capsule { summary, firstDivergence (declared vs observed), blastRadius (undeclared side effects) } — the fault, located, no re-exploration needed.',
+        ),
+      capsuleSaved: z
+        .string()
+        .optional()
+        .describe(
+          'Present only on a FAILED verdict when the fail-to-pass capsule was persisted: its id, replayable as a regression flow once the bug goes green.',
         ),
       honesty: z
         .unknown()
@@ -443,6 +461,8 @@ export const ACT_TOOLS: ToolDef[] = [
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
+      // Short-circuits to pausedShortCircuit while paused — declare its fields (drained-once guidance).
+      ...pausedOutputShape,
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));

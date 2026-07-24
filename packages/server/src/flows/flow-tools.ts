@@ -262,6 +262,9 @@ export const FLOW_TOOLS: ToolDef[] = [
         ),
     },
     outputSchema: {
+      // The flow's name — always present in FlowReplayResult (the description promises `{ name, … }`),
+      // but omitted here, so a validating profile stripped it and a replay result arrived anonymous.
+      name: z.string(),
       status: z.string().describe('ok | drift | error'),
       steps: z.array(z.unknown()),
       proposals: z.array(z.unknown()).optional(),

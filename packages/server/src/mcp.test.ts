@@ -6,7 +6,10 @@ import { SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
 import { ReticleTool } from './tools/tool-names.js';
 
 describe('withSessionEnvelope — spliced fields survive structuredContent validation', () => {
-  const ENVELOPE_KEYS = ['session', 'session_lease', 'session_age_warning', 'control'];
+  // `warning` rides with `session` from healthEnvelope on a throttled tab — it is spliced by runTool
+  // exactly like the others, so the superset guard must cover it or a throttled tab's warning is
+  // stripped on validating profiles from every session-bound tool but the one that declared it locally.
+  const ENVELOPE_KEYS = ['session', 'session_lease', 'session_age_warning', 'control', 'warning'];
 
   it('every session-bound tool with an outputSchema declares the envelope fields (superset guard)', () => {
     for (const tool of TOOLS) {
@@ -29,6 +32,30 @@ describe('withSessionEnvelope — spliced fields survive structuredContent valid
     const shape: z.ZodRawShape = { ok: z.boolean() };
     expect(withSessionEnvelope('not_a_session_tool', shape)).toBe(shape);
   });
+});
+
+describe('outputSchema declares every field its handler returns (field-drop guard)', () => {
+  // The structuredContent-vs-outputSchema drop: on a validating profile (full/dynamic) the SDK strips
+  // any returned key the schema does not declare. Each entry pins a field the handler is KNOWN to
+  // return so a future schema edit that drops it fails here instead of silently vanishing from the
+  // agent's view. This is the per-field backlog of the systematic returned-keys ⊆ declared-keys guard.
+  const REQUIRED_FIELDS: Array<[string, string[]]> = [
+    [ReticleTool.OBSERVE, ['window_ms']],
+    [ReticleTool.FLOW_REPLAY, ['name']],
+    [ReticleTool.ACT_AND_WAIT, ['source', 'capsuleSaved', 'paused', 'guidance', 'hint']],
+    [ReticleTool.ACT, ['paused', 'guidance', 'hint']],
+    [ReticleTool.ACT_SEQUENCE, ['paused', 'guidance', 'hint']],
+    [ReticleTool.CAPABILITIES, ['generatedAt', 'governance']],
+  ];
+  for (const [name, fields] of REQUIRED_FIELDS) {
+    it(`${name} declares ${fields.join(', ')}`, () => {
+      const tool = TOOLS.find((t) => t.name === name);
+      const keys = Object.keys(tool?.outputSchema ?? {});
+      for (const f of fields) {
+        expect(keys, `${name} outputSchema must declare '${f}' or it is stripped on validating profiles`).toContain(f);
+      }
+    });
+  }
 });
 
 describe('encodeResult', () => {
