@@ -283,7 +283,6 @@ const DOUBLE_FETCH: Record<string, DoubleFetch> = {
   'double-fault-500': { method: 'GET', urlContains: '/api/broken/500' },
 };
 
-
 /**
  * net-status — the hidden-500 class. The request genuinely FAILS (or answers the wrong shape) but
  * the app swallows it and renders success anyway. This is the flagship "looks fine, isn't" case: the DOM
@@ -341,8 +340,12 @@ const NET_HANG: Record<string, NetHangBug> = {
 
 /** Rewrite/stall responses per the net-status + net-hang registries. One fetch wrap serves both. */
 function installNetFaults(bugs: ReadonlySet<string>): void {
-  const statuses = [...bugs].map((id) => NET_STATUS[id]).filter((b): b is NetStatusBug => b !== undefined);
-  const payloads = [...bugs].map((id) => NET_PAYLOAD[id]).filter((b): b is NetPayloadBug => b !== undefined);
+  const statuses = [...bugs]
+    .map((id) => NET_STATUS[id])
+    .filter((b): b is NetStatusBug => b !== undefined);
+  const payloads = [...bugs]
+    .map((id) => NET_PAYLOAD[id])
+    .filter((b): b is NetPayloadBug => b !== undefined);
   const hangs = [...bugs].map((id) => NET_HANG[id]).filter((b): b is NetHangBug => b !== undefined);
   if (statuses.length === 0 && payloads.length === 0 && hangs.length === 0) return;
 
@@ -376,7 +379,8 @@ function installNetFaults(bugs: ReadonlySet<string>): void {
         if (typeof parsed !== 'object' || parsed === null) throw new Error('not an object body');
         const body = parsed as Record<string, unknown>;
         if (payload.dropField !== undefined) delete body[payload.dropField];
-        if (payload.overwrite !== undefined) body[payload.overwrite.field] = payload.overwrite.value;
+        if (payload.overwrite !== undefined)
+          body[payload.overwrite.field] = payload.overwrite.value;
         outInit = { ...init, body: JSON.stringify(body) };
       } catch {
         // not JSON — leave the request untouched rather than corrupting it
@@ -392,12 +396,12 @@ function installNetFaults(bugs: ReadonlySet<string>): void {
     return new Response(body, {
       status: rewrite.status ?? response.status,
       headers: {
-        'content-type': rewrite.contentType ?? response.headers.get('content-type') ?? 'application/json',
+        'content-type':
+          rewrite.contentType ?? response.headers.get('content-type') ?? 'application/json',
       },
     });
   };
 }
-
 
 /**
  * silent-removal — a NON-INTERACTIVE element quietly unmounts. Nothing errors, nothing shifts
@@ -410,7 +414,9 @@ const SILENT_REMOVAL: Record<string, string> = {
 };
 
 function installSilentRemoval(bugs: ReadonlySet<string>): void {
-  const targets = [...bugs].map((id) => SILENT_REMOVAL[id]).filter((v): v is string => v !== undefined);
+  const targets = [...bugs]
+    .map((id) => SILENT_REMOVAL[id])
+    .filter((v): v is string => v !== undefined);
   if (targets.length === 0) return;
   const strip = (): void => {
     for (const testid of targets) {
@@ -500,7 +506,6 @@ function installPerfFaults(bugs: ReadonlySet<string>): void {
   }
 }
 
-
 /**
  * routing — the view renders correctly but the URL is wrong. Deep links and the back button
  * break while every DOM assertion still passes, so only a route oracle catches it.
@@ -529,7 +534,9 @@ const ROUTE_BUGS: Record<string, RouteBug> = {
 };
 
 function installRouteFaults(bugs: ReadonlySet<string>): void {
-  const active = [...bugs].map((id) => ROUTE_BUGS[id]).filter((b): b is RouteBug => b !== undefined);
+  const active = [...bugs]
+    .map((id) => ROUTE_BUGS[id])
+    .filter((b): b is RouteBug => b !== undefined);
   if (active.length === 0) return;
   const base = history.pushState.bind(history);
   history.pushState = (data: unknown, unused: string, url?: string | URL | null): void => {
@@ -544,7 +551,6 @@ function installRouteFaults(bugs: ReadonlySet<string>): void {
     base(data, unused, url);
   };
 }
-
 
 /**
  * signal — Tier-1 coverage. The network call succeeds, the DOM updates, the store is correct;
@@ -570,7 +576,9 @@ const SIGNAL_BUGS: Record<string, SignalBug> = {
 };
 
 function installSignalFaults(bugs: ReadonlySet<string>): void {
-  const active = [...bugs].map((id) => SIGNAL_BUGS[id]).filter((b): b is SignalBug => b !== undefined);
+  const active = [...bugs]
+    .map((id) => SIGNAL_BUGS[id])
+    .filter((b): b is SignalBug => b !== undefined);
   if (active.length === 0) return;
   const base = reticle.signal.bind(reticle);
   reticle.signal = (name: string, data: Record<string, unknown> = {}): void => {
@@ -589,7 +597,6 @@ function installSignalFaults(bugs: ReadonlySet<string>): void {
     base(name, data);
   };
 }
-
 
 /**
  * storage — persistence truth. The UI is completely correct in every one of these: sign-in
@@ -671,7 +678,6 @@ function installStorageFaults(bugs: ReadonlySet<string>): void {
   }
 }
 
-
 /**
  * Storage survives navigation within an origin, so one bug's writes leak into the next bug's run — a
  * buggy `logout-leaves-token` deliberately leaves a token behind, which then makes a LATER storage
@@ -691,7 +697,6 @@ function resetStorageIfAsked(params: URLSearchParams): void {
   }
 }
 
-
 /**
  * timing — fake-clock territory. The bug is entirely in WHEN something happens, so any check
  * that looks immediately after the action sees a perfectly correct page. Only waiting past the
@@ -710,7 +715,6 @@ function installTimingFaults(bugs: ReadonlySet<string>): void {
     });
   }
 }
-
 
 /**
  * deep-dom — shadow root + iframe piercing. Everything here is INSIDE a boundary the top-level
@@ -735,12 +739,28 @@ function installDeepDomFaults(bugs: ReadonlySet<string>): void {
       if (wrongLabel) {
         const label = root.querySelector(`[data-testid="${SHADOW_LABEL_TESTID}"]`);
         // Plausible, and wrong: a human skims past it and every top-level DOM assertion still passes.
-        if (label !== null) label.textContent = 'All systems nominel';
+        // Guarded for the same reason as the control below: writing textContent is a mutation, and
+        // this runs from a MutationObserver, so an unconditional write is an endless loop.
+        if (label !== null && label.textContent !== 'All systems nominel') {
+          label.textContent = 'All systems nominel';
+        }
       }
       if (deadControl) {
         const button = root.querySelector(`[data-testid="${SHADOW_BUTTON_TESTID}"]`);
         // Replacing the node drops its listener while leaving an identical-looking control behind.
-        if (button !== null) button.replaceWith(button.cloneNode(true));
+        //
+        // Marked so it happens EXACTLY ONCE. `replaceWith` is itself a DOM mutation, and this runs
+        // from a MutationObserver on document.body — so an unguarded replace re-triggered the
+        // observer, which replaced the node again, forever. The control churned continuously, which
+        // is a far more extreme fault than the intended "listener quietly dropped": no ref could
+        // survive long enough to click it, so the check reported the control as unresolvable rather
+        // than dead. Worse, the miss LOOKED like a catch — a click that never lands produces zero
+        // requests, the same signature as the dead control under test.
+        if (button !== null && !button.hasAttribute('data-bench-dead')) {
+          const clone = button.cloneNode(true) as Element;
+          clone.setAttribute('data-bench-dead', '1');
+          button.replaceWith(clone);
+        }
       }
     }
     const frame = document.querySelector<HTMLIFrameElement>(`[data-testid="${IFRAME_TESTID}"]`);
@@ -768,7 +788,6 @@ function installDeepDomFaults(bugs: ReadonlySet<string>): void {
 /** The stale count the iframe freezes at — deliberately not the real deployment count. */
 const STALE_IFRAME_COUNT = '3';
 
-
 /**
  * streams — SSE / WebSocket. A stream failure is invisible to anything that inspects a MOMENT:
  * the connection is open and healthy, the DOM is rendered and correct, nothing throws. The app is just
@@ -792,7 +811,6 @@ function installStreamFaults(bugs: ReadonlySet<string>): void {
     STREAM_URLS.ws = `${STREAM_URLS.ws}?wrongChannel=1`;
   }
 }
-
 
 /**
  * timing, the count-over-time half. Both of these render identically and return identical

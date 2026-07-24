@@ -7,8 +7,11 @@ import { useApp } from '../store/store.js';
  * walks `element.shadowRoot` and a same-origin `contentDocument`, so content inside them is reachable;
  * a plain `querySelectorAll('[data-testid]')` on the top document is not.
  *
- * Worth knowing when writing checks against these: `reticle_query` resolves testids through Testing
- * Library, which does NOT cross a shadow boundary. Read this content via `reticle_snapshot`.
+ * The note that used to sit here — "`reticle_query` cannot cross a shadow boundary, use
+ * `reticle_snapshot`" — is STALE and was wrong for long enough to matter. `findCandidates` runs the
+ * query against the light DOM and every open shadow root beneath the scope, so `reticle_query` by
+ * testid resolves `shadow-status` and `shadow-refresh` directly (verified live). A closed root stays
+ * unreachable by design and is reported as a blind spot rather than silently missed.
  */
 
 /** Element + testid names live here so the injector and the fixture cannot drift apart. */
