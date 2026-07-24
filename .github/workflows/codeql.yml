@@ -1,0 +1,37 @@
+name: CodeQL
+
+# Static analysis (OpenSSF Scorecard SAST). Scans the TypeScript/JavaScript for injection, unsafe
+# deserialization, path traversal, and the like — the same classes we hand-audit — on PRs, pushes to
+# main, and a weekly schedule so a newly-published query catches an old pattern.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "27 4 * * 1" # Mondays, off the hour to avoid the load spike
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload results to the Security tab
+    strategy:
+      matrix:
+        language: [javascript-typescript]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
+        with:
+          languages: ${{ matrix.language }}
+          # Broader query set than the default — worth it for a security-adjacent tool.
+          queries: security-and-quality
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
+      - name: Analyze
+        uses: github/codeql-action/analyze@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
