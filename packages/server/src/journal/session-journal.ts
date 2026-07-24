@@ -32,6 +32,14 @@ export class SessionJournal {
   readonly #root: string;
   readonly #sessionId: string;
   #dirEnsured = false;
+  // Parse-cache for the append-only EVENTS journal. queryEvents falls through to readEvents on every
+  // observe/network/console call once the ring buffer has evicted (permanent ~60s into any session), so
+  // a naive readEvents re-read + re-JSON.parse + re-zod-validated the WHOLE file each time — measured at
+  // a 1-hour 100 ev/s session as ~1.5s CPU + ~300MB transient heap PER tool call, growing with age. The
+  // journal only ever grows and is always a run of complete '\n'-terminated lines, so we keep the parsed
+  // events and the char count already consumed, and parse only the tail written since the last read.
+  #eventCache: ReticleEvent[] | undefined;
+  #eventCharsConsumed = 0;
 
   constructor(fs: FileSystemPort, root: string, sessionId: string) {
     if (!isValidSessionId(sessionId)) {
@@ -58,7 +66,40 @@ export class SessionJournal {
   }
 
   async readEvents(): Promise<ReticleEvent[]> {
-    return this.#readLines(journalEventsPath(this.#root, this.#sessionId), ReticleEventSchema);
+    const path = journalEventsPath(this.#root, this.#sessionId);
+    let text: string;
+    try {
+      text = await this.#fs.readFile(path);
+    } catch (error) {
+      if (this.#fs.isNotFound(error)) return (this.#eventCache ?? []).slice();
+      throw error;
+    }
+    if (this.#eventCache === undefined) this.#eventCache = [];
+    // Parse only what was appended since the last read. #eventCharsConsumed is always a line boundary
+    // (every line is written with a trailing '\n'), so slicing there yields whole lines. If the file
+    // somehow shrank (rotation/truncation — not done today, but be safe), fall back to a full reparse.
+    if (text.length < this.#eventCharsConsumed) {
+      this.#eventCache = [];
+      this.#eventCharsConsumed = 0;
+    }
+    if (text.length > this.#eventCharsConsumed) {
+      const fresh = text.slice(this.#eventCharsConsumed);
+      for (const line of fresh.split('\n')) {
+        if (line.length === 0) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        const result = ReticleEventSchema.safeParse(parsed);
+        if (result.success) this.#eventCache.push(result.data);
+      }
+      this.#eventCharsConsumed = text.length;
+    }
+    // A shallow copy preserves the fresh-array contract callers had (merge/sort own their input); it is
+    // O(n) pointer copy, not the O(n) JSON.parse + validate that was the actual cost.
+    return this.#eventCache.slice();
   }
 
   async readActions(): Promise<JournalAction[]> {

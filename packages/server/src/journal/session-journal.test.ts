@@ -2,16 +2,36 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EventType, JOURNAL_FILE_VERSION, type JournalAction, type ReticleEvent } from '@reticlehq/core';
+import {
+  EventType,
+  JOURNAL_FILE_VERSION,
+  type JournalAction,
+  type ReticleEvent,
+} from '@reticlehq/core';
 import { createNodeFileSystem, type FileSystemPort } from '../project/fs-port.js';
 import { SessionJournal } from './session-journal.js';
 
 function evt(seq: number, over: Partial<ReticleEvent> = {}): ReticleEvent {
-  return { t: seq, seq, type: EventType.DOM_ADDED, sessionId: 'demo', data: { role: 'button' }, ...over };
+  return {
+    t: seq,
+    seq,
+    type: EventType.DOM_ADDED,
+    sessionId: 'demo',
+    data: { role: 'button' },
+    ...over,
+  };
 }
 
 function action(over: Partial<JournalAction> = {}): JournalAction {
-  return { v: JOURNAL_FILE_VERSION, actionId: 'c1', tool: 'reticle_act', args: {}, tRange: { from: 0, to: 5 }, at: 0, ...over };
+  return {
+    v: JOURNAL_FILE_VERSION,
+    actionId: 'c1',
+    tool: 'reticle_act',
+    args: {},
+    tRange: { from: 0, to: 5 },
+    at: 0,
+    ...over,
+  };
 }
 
 describe('SessionJournal — durable JSONL over a temp dir', () => {
@@ -34,6 +54,25 @@ describe('SessionJournal — durable JSONL over a temp dir', () => {
     await j.appendEvents([evt(2)]);
     const back = await j.readEvents();
     expect(back.map((e) => e.seq)).toEqual([0, 1, 2]);
+  });
+
+  it('reads incrementally across appends — a re-read after more writes returns the union', async () => {
+    // The parse-cache only parses the TAIL written since the last read (queryEvents calls readEvents on
+    // every observe/network/console once the ring buffer evicts, so re-parsing the whole file each time
+    // was the hot cost). Correctness: reads interleaved with appends must still return every event once.
+    const j = new SessionJournal(fs, root, 'demo');
+    await j.appendEvents([evt(0), evt(1)]);
+    expect((await j.readEvents()).map((e) => e.seq)).toEqual([0, 1]);
+    // A re-read with nothing new returns the same set (cache hit, no duplication).
+    expect((await j.readEvents()).map((e) => e.seq)).toEqual([0, 1]);
+    // Append more, then re-read: the tail is parsed and merged, no earlier event lost or repeated.
+    await j.appendEvents([evt(2)]);
+    await j.appendEvents([evt(3), evt(4)]);
+    expect((await j.readEvents()).map((e) => e.seq)).toEqual([0, 1, 2, 3, 4]);
+    // The returned array is a copy — mutating it must not corrupt the cache for the next read.
+    const back = await j.readEvents();
+    back.pop();
+    expect((await j.readEvents()).map((e) => e.seq)).toEqual([0, 1, 2, 3, 4]);
   });
 
   it('appends and reads back actions', async () => {
