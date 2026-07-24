@@ -149,6 +149,21 @@ export async function runPlaywright(bugs) {
           note = ok
             ? `box=${box?.width}x${box?.height} opacity=${info?.opacity} occluded=${info?.occluded}`
             : 'element not found';
+        } else if (c.kind === 'staleCacheAfterMutation') {
+          // Playwright's honest route: request cardinality. It cannot read the query cache, but a
+          // mutation that never triggers a refetch is visible as a POST with no follow-up GET.
+          const seen = [];
+          const onReq = (r) => {
+            if (r.url().includes('/api/items')) seen.push(r.method().toUpperCase());
+          };
+          page.on('request', onReq);
+          await click(c.testid);
+          await sleep(2500);
+          page.off('request', onReq);
+          const posts = seen.filter((m) => m === 'POST').length;
+          const gets = seen.filter((m) => m === 'GET').length;
+          caught = posts >= 1 && gets === 0;
+          note = `POST=${posts} refetchGET=${gets}`;
         } else if (c.kind === 'chartGeometryFault') {
           // Playwright's fair shot: SVG geometry is ordinary DOM, so it can read `points`/`d` and
           // scan for non-finite or empty coordinates itself. It just has to be TOLD to look here —

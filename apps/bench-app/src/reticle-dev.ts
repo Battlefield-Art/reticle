@@ -1,8 +1,9 @@
 import { reticle, SESSION_AUTO } from '@reticlehq/browser';
 import { install as installReactAdapter } from '@reticlehq/react';
-import { registerCapabilities, registerStore } from '@reticlehq/browser';
+import { registerCapabilities, registerStore, tanstackQueryStore } from '@reticlehq/browser';
 import { Sig } from './lib/reticle-bridge.js';
 import { useApp } from './store/store.js';
+import { queryClient } from './lib/query-client.js';
 
 /**
  * Dev-only Reticle wiring. Wires the proof layer into this running dashboard:
@@ -114,6 +115,11 @@ export function installReticle(): void {
   // Pass the store itself (not a getter) so Reticle wires subscribe too — every mutation emits a
   // STATE_CHANGE path diff, which is what fills `stateDiffs` in the causal summary.
   registerStore('app', useApp);
+  // The TanStack Query cache, via the adapter. Registered because server state is where "the screen
+  // is plausible and the network is silent" is the NORMAL failure: a mutation that forgets to
+  // invalidate leaves the UI rendering a number that was correct a moment ago, and no request fires
+  // for anything outside the app to notice. The cache's freshness metadata is the only witness.
+  registerStore('queries', tanstackQueryStore(queryClient));
   registerCapabilities({
     testids: TESTIDS,
     signals: Object.values(Sig),

@@ -70,6 +70,9 @@ export const SEVERITY_BY_CATEGORY = {
   'net-status': 'critical',
   'net-hang': 'critical',
   state: 'critical',
+  // Server state served stale is a data-correctness failure: the user acts on a number the server
+  // has already moved past, and nothing on screen or on the wire says so.
+  'server-state': 'critical',
   signal: 'high',
   streams: 'high',
   network: 'high',
@@ -932,6 +935,27 @@ export const BUGS = [
       deepTestid: 'shadow-status',
       expectText: 'All systems nominal',
     },
+    expect: 'both',
+  },
+  {
+    id: 'stale-cache-serves-old',
+    category: 'server-state',
+    intent: 'adding an item leaves the UI showing what the server actually holds',
+    setup: ['login-submit', 'nav-diagnostics'],
+    check: {
+      kind: 'staleCacheAfterMutation',
+      testid: 'query-add-item',
+      store: 'queries',
+      key: 'items',
+    },
+    // 'both', and the label is doing real work. The mutation succeeds and then NOTHING refetches, so
+    // Playwright can catch it by request cardinality (a POST with no follow-up GET). Reticle catches
+    // it by reading the cache directly — the total is unchanged while `isStale` is still false, i.e.
+    // the cache is CONFIDENTLY serving a value the server has moved past.
+    //
+    // The reason to keep it here is not exclusivity, it is that this is the archetypal server-state
+    // failure: the screen is plausible, the network is SILENT, and the only witness to the disagreement
+    // is freshness metadata that lives in neither the DOM nor the request log.
     expect: 'both',
   },
   {

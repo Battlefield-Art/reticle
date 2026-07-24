@@ -6,6 +6,8 @@ import { IconBolt, IconBug } from '../components/icons.js';
 import { DeepPanels } from '../components/DeepPanels.js';
 import { BuildLogStream } from '../components/BuildLogStream.js';
 import { TimingPanel } from '../components/TimingPanel.js';
+import { QueryPanel } from '../components/QueryPanel.js';
+import { invalidatesOnAdd } from '../lib/query-client.js';
 
 interface FaultDef {
   kind: string;
@@ -67,6 +69,7 @@ export function Diagnostics(): React.ReactElement {
         <DeepPanels />
         <BuildLogStream />
         <TimingPanel />
+        <QueryPanel invalidateOnAdd={invalidatesOnAdd()} />
       </div>
       <div className="panel panel-pad">
         <div className="eyebrow">Fault injection</div>

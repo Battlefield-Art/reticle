@@ -683,6 +683,27 @@ export async function runReticle(bugs) {
           const tree = String(snap?.tree ?? '');
           caught = !tree.includes(c.expectText);
           note = `expected "${c.expectText}" in ${c.scope}: ${tree.includes(c.expectText)}`;
+        } else if (c.kind === 'staleCacheAfterMutation') {
+          // Read the CACHE, not the screen. The bug is that the mutation succeeded and the cached
+          // total never moved, while `isStale` stays false — the cache is confidently serving a value
+          // the server has already passed. Nothing in the DOM or the request log carries that
+          // disagreement, which is the whole reason server state is registered as a store.
+          const readTotal = async () => {
+            const st = await call('reticle_state', { sessionId: sid, store: c.store, path: c.key });
+            return { total: st?.value?.data?.total, stale: st?.value?.isStale };
+          };
+          const before = await readTotal();
+          const clicked = await clickByTestid(c.testid);
+          await sleep(2500);
+          const after = await readTotal();
+          caught =
+            clicked &&
+            before.total !== undefined &&
+            after.total === before.total &&
+            after.stale === false;
+          note = clicked
+            ? `cache total ${before.total} -> ${after.total} (isStale=${after.stale})`
+            : `${c.testid} not clickable`;
         } else if (c.kind === 'chartGeometryFault') {
           // The chart fault rides the element descriptor, so this is ONE query — no extra tool, no
           // flag, and a healthy chart returns the same descriptor minus the field. That is the whole

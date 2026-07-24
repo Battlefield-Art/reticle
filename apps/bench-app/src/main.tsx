@@ -2,7 +2,9 @@ import './reticle-render-setup.js'; // MUST be first — installs the render met
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App.js';
+import { queryClient } from './lib/query-client.js';
 import { installReticle } from './reticle-dev.js';
 import { installRegressions } from './reticle-regress.js';
 import { installBugInjector } from './reticle-bug-injector.js';
@@ -32,6 +34,8 @@ if (rootElement === null) throw new Error('Root element #root not found');
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
   </StrictMode>,
 );
