@@ -399,6 +399,15 @@ export const ACT_TOOLS: ToolDef[] = [
         pass: z.boolean(),
         evidence: z.unknown().optional(),
         failureReason: z.string().optional(),
+        // The STRUCTURED cause — observed / expected / assertion — is what the repair literature ranks
+        // above the prose failureReason (structured feedback beat narrative by 10.5pp) and above a bare
+        // pointer. `verdict` is `await waitForPredicate(...)`, whose EvalResult carries these on a
+        // failure; without declaring them here the strict object schema silently dropped them from
+        // structuredContent on the validating `full` profile — reticle_assert declares them (it spreads
+        // the verdict at top level), so act_and_wait was losing the highest-value signal that assert kept.
+        observed: z.string().optional(),
+        expected: z.string().optional(),
+        assertion: z.string().optional(),
       }),
       trace: z
         .unknown()
@@ -471,9 +480,7 @@ export const ACT_TOOLS: ToolDef[] = [
         // Remembered on the session so a LATER assertion can name a file even when its failure has no
         // element to point at — a signal that never fired, a request that was never made.
         session.markActSource(
-          actedSource === undefined
-            ? undefined
-            : `${actedSource.file}:${String(actedSource.line)}`,
+          actedSource === undefined ? undefined : `${actedSource.file}:${String(actedSource.line)}`,
         );
         const windowEvents = session.eventsSince(since);
         const trace = summarizeReaction(
@@ -518,7 +525,8 @@ export const ACT_TOOLS: ToolDef[] = [
                 tool: ReticleTool.ACT,
                 anchor: {
                   kind: AnchorKind.TESTID,
-                  value: asString(asRecord(actResult.result)['testid']) ?? asString(args['ref']) ?? '',
+                  value:
+                    asString(asRecord(actResult.result)['testid']) ?? asString(args['ref']) ?? '',
                   // Carried so the saved capsule — which outlives this turn and becomes a regression
                   // flow when it goes green — still knows which file the failure came from.
                   ...(actedSource === undefined ? {} : { source: actedSource }),

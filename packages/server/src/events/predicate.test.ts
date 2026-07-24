@@ -247,7 +247,9 @@ describe('predicate engine', () => {
         return {
           matched: true,
           count: 1,
-          elements: [{ ref: asRef('e1'), role: 'button', name: 'Cancel', states: [], visible: true }],
+          elements: [
+            { ref: asRef('e1'), role: 'button', name: 'Cancel', states: [], visible: true },
+          ],
         };
       }
       return { matched: false, count: 0, elements: [] };
@@ -273,6 +275,27 @@ describe('predicate engine', () => {
       100,
     );
     expect(result).toEqual({ pass: false, failureReason: 'session disconnected' });
+  });
+
+  it('propagates the STRUCTURED cause (observed/expected/assertion) on a timed-out wait', async () => {
+    // The bug: on timeout, waitForPredicate rebuilt the verdict as { pass, evidence, failureReason },
+    // discarding observed/expected/assertion that the near-miss oracle computed — the highest-value
+    // localization signal, thrown away exactly on the failure path where it matters. A net.count
+    // predicate that can never be satisfied must still return the structured near-miss.
+    const session = new FakeSession(
+      [ev(EventType.NET_REQUEST, { url: '/api/x', status: 200 }, 10)],
+      undefined,
+      100,
+    );
+    const result = await waitForPredicate(
+      session,
+      { kind: 'net', urlContains: '/api/', count: 99 },
+      80,
+    );
+    expect(result.pass).toBe(false);
+    expect(result.assertion).toBe('net.count');
+    expect(result.observed).toContain('1 matching');
+    expect(result.expected).toContain('99');
   });
 });
 
@@ -344,11 +367,24 @@ describe('settled predicate (deterministic waiting)', () => {
     // region, the same stream is correctly treated as ambient.
     const churn: ReticleEvent[] = [];
     for (let i = 0; i < 6; i++) {
-      churn.push({ t: 980 + i, type: EventType.DOM_ADDED, sessionId: 's', ref: `e${String(800 + i)}`, data: { region: 'hostile-feed' } });
-      churn.push({ t: 981 + i, type: EventType.DOM_REMOVED, sessionId: 's', data: { region: 'hostile-feed' } });
+      churn.push({
+        t: 980 + i,
+        type: EventType.DOM_ADDED,
+        sessionId: 's',
+        ref: `e${String(800 + i)}`,
+        data: { region: 'hostile-feed' },
+      });
+      churn.push({
+        t: 981 + i,
+        type: EventType.DOM_REMOVED,
+        sessionId: 's',
+        data: { region: 'hostile-feed' },
+      });
     }
     const notLearned = new FakeSession(churn, undefined, 1000);
-    expect((await evaluatePredicate(notLearned, { kind: 'settled', quietMs: 200 }, 0)).pass).toBe(false);
+    expect((await evaluatePredicate(notLearned, { kind: 'settled', quietMs: 200 }, 0)).pass).toBe(
+      false,
+    );
 
     const learned = new FakeSession(churn, undefined, 1000, { 'hostile-feed': 40 });
     const r = await evaluatePredicate(learned, { kind: 'settled', quietMs: 200 }, 0);
@@ -358,7 +394,10 @@ describe('settled predicate (deterministic waiting)', () => {
   it('keeps a non-ambient structural change even while an ambient region churns', async () => {
     // The chat churns (ambient) AND a real modal mounts on a different ref → still NOT settled.
     const session = new FakeSession(
-      [ev(EventType.DOM_ADDED, {}, 990, 'chat-log'), ev(EventType.DOM_ADDED, {}, 992, 'modal-root')],
+      [
+        ev(EventType.DOM_ADDED, {}, 990, 'chat-log'),
+        ev(EventType.DOM_ADDED, {}, 992, 'modal-root'),
+      ],
       undefined,
       1000,
       { 'chat-log': 25 },
@@ -683,13 +722,41 @@ describe('element failures carry observed/expected/assertion', () => {
    * whole tool capability to gaps that did not.
    */
   const NON_ELEMENT: { label: string; predicate: Predicate; expected: string }[] = [
-    { label: 'net', predicate: { kind: 'net', urlContains: '/api/x', count: 1 }, expected: 'net.count' },
-    { label: 'net presence', predicate: { kind: 'net', urlContains: '/api/x' }, expected: 'net.present' },
-    { label: 'route', predicate: { kind: 'route', pathname: '/deployments' }, expected: 'route.changed' },
-    { label: 'console', predicate: { kind: 'console', level: 'error' }, expected: 'console.present' },
-    { label: 'console absent', predicate: { kind: 'console', level: 'error', absent: true }, expected: undefined as unknown as string },
-    { label: 'signal', predicate: { kind: 'signal', name: 'compose:generated' }, expected: 'signal.absent' },
-    { label: 'animation', predicate: { kind: 'animation', name: 'fade' }, expected: 'animation.present' },
+    {
+      label: 'net',
+      predicate: { kind: 'net', urlContains: '/api/x', count: 1 },
+      expected: 'net.count',
+    },
+    {
+      label: 'net presence',
+      predicate: { kind: 'net', urlContains: '/api/x' },
+      expected: 'net.present',
+    },
+    {
+      label: 'route',
+      predicate: { kind: 'route', pathname: '/deployments' },
+      expected: 'route.changed',
+    },
+    {
+      label: 'console',
+      predicate: { kind: 'console', level: 'error' },
+      expected: 'console.present',
+    },
+    {
+      label: 'console absent',
+      predicate: { kind: 'console', level: 'error', absent: true },
+      expected: undefined as unknown as string,
+    },
+    {
+      label: 'signal',
+      predicate: { kind: 'signal', name: 'compose:generated' },
+      expected: 'signal.absent',
+    },
+    {
+      label: 'animation',
+      predicate: { kind: 'animation', name: 'fade' },
+      expected: 'animation.present',
+    },
   ];
 
   for (const { label, predicate, expected } of NON_ELEMENT) {

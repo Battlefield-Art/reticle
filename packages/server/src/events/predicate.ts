@@ -301,9 +301,14 @@ export function waitForPredicate(
     const timer = setTimeout(() => {
       void evaluatePredicate(session, predicate, since)
         .then((r) => {
+          // Spread the near-miss, do NOT hand-copy two fields. The oracle computes observed / expected
+          // / assertion — the structured cause the repair literature ranks above prose — and the old
+          // `{ pass, evidence, failureReason }` construction DISCARDED them on every timed-out wait and
+          // assert. So the highest-value localization signal was computed and then thrown away exactly
+          // on the failure path where it matters, no matter what the schema declared.
           finish({
+            ...r,
             pass: false,
-            evidence: r.evidence,
             failureReason: r.failureReason ?? 'timed out waiting for predicate',
           });
         })
