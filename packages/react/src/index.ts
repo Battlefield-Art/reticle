@@ -231,8 +231,16 @@ export {
   getRenderStats,
   type RenderStats,
 } from './render-meter.js';
-export { HYDRATION_COMPLETE_SIGNAL, createHydrationTracker, type HydrationTracker } from './hydration.js';
-export { buildErrorBoundaryData, reticleOnCaughtError, type ErrorBoundaryData } from './error-boundary.js';
+export {
+  HYDRATION_COMPLETE_SIGNAL,
+  createHydrationTracker,
+  type HydrationTracker,
+} from './hydration.js';
+export {
+  buildErrorBoundaryData,
+  reticleOnCaughtError,
+  type ErrorBoundaryData,
+} from './error-boundary.js';
 export {
   buildHydrationErrorData,
   isHydrationMismatch,
@@ -240,6 +248,15 @@ export {
   type HydrationErrorData,
 } from './hydration-error.js';
 export { createCommitAggregator, type CommitAggregator } from './commit-aggregator.js';
+
+// Zero-install component read: a self-contained fiber walker that runs INSIDE a page over CDP, for a
+// page that never installed the SDK. react-devtools-mcp parity, reusing our own algorithm.
+export {
+  readComponentAt,
+  buildReaderExpression,
+  parseComponentRead,
+  type CdpComponentRead,
+} from './cdp-reader.js';
 
 // This package IS the React kit: one install gives an app dev the full browser-side surface
 // (the `reticle` instance + all sensing) plus this React adapter. Re-exporting the sensor here is
