@@ -1,13 +1,5 @@
 import { z } from 'zod';
-import {
-  EventType,
-  PerfMetric,
-  BlindSpotKind,
-  StreamTransport,
-  StreamDirection,
-  ScrollDirection,
-  StorageArea,
-} from './constants.js';
+import { EventType, PerfMetric, BlindSpotKind } from './constants.js';
 import { HumanControlDataSchema, HumanMarkDataSchema } from './messages.js';
 
 /**
@@ -23,6 +15,24 @@ import { HumanControlDataSchema, HumanMarkDataSchema } from './messages.js';
  * fields (stack, TTFB, initiator, path diffs) pass through instead of failing closed. Each closes
  * fully as its observer is rewritten.
  */
+
+/**
+ * Wire payload vocabularies. The browser observers EMIT these values and the schemas below VALIDATE
+ * them, so a browser-side typo (`'SSE'`) would pass tsc and fail only here, at runtime. Each is a const
+ * object — the browser imports the members, the schema derives its z.nativeEnum from the same object —
+ * so emitter and validator are one source. Co-located with the schemas (kept constants.ts under its cap).
+ */
+export const StreamTransport = { SSE: 'sse', WS: 'ws' } as const;
+export type StreamTransport = (typeof StreamTransport)[keyof typeof StreamTransport];
+
+export const StreamDirection = { OPEN: 'open', IN: 'in', OUT: 'out' } as const;
+export type StreamDirection = (typeof StreamDirection)[keyof typeof StreamDirection];
+
+export const ScrollDirection = { UP: 'up', DOWN: 'down' } as const;
+export type ScrollDirection = (typeof ScrollDirection)[keyof typeof ScrollDirection];
+
+export const StorageArea = { LOCAL: 'local', SESSION: 'session', COOKIE: 'cookie' } as const;
+export type StorageArea = (typeof StorageArea)[keyof typeof StorageArea];
 
 const elementLabel = z.object({ role: z.string().optional(), name: z.string().optional() });
 
