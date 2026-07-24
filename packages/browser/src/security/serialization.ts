@@ -62,6 +62,39 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
     return OMIT_VALUE;
   }
   if (value instanceof Date) return value.toISOString();
+  // Map and Set are common enough in app state (a normalized store keyed by id, a set of selected
+  // ids) that serializing them to `{}` — which is what the plain-object branch below does, since they
+  // have no enumerable own keys — is a false green: an agent reads empty and concludes the state is
+  // empty, when really it was unrepresentable. Convert to a readable shape, bounded by the same caps.
+  if (value instanceof Map) {
+    const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    let n = 0;
+    for (const [k, v] of value) {
+      if (state.nodes >= MAX_TOTAL_NODES || n >= TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS) {
+        state.droppedItems += 1;
+        continue;
+      }
+      const sk = boundedString(typeof k === 'string' ? k : String(k), state, MAX_KEY_LENGTH);
+      const sv = sanitize(v, state, depth + 1, sk);
+      if (sv !== OMIT_VALUE) out[sk] = sv;
+      n += 1;
+    }
+    return out;
+  }
+  if (value instanceof Set) {
+    const out: unknown[] = [];
+    let n = 0;
+    for (const item of value) {
+      if (state.nodes >= MAX_TOTAL_NODES || n >= TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS) {
+        state.droppedItems += 1;
+        continue;
+      }
+      const sv = sanitize(item, state, depth + 1);
+      out.push(sv === OMIT_VALUE ? null : sv);
+      n += 1;
+    }
+    return out;
+  }
   if (value instanceof Error) {
     return {
       name: boundedString(value.name, state, 256),

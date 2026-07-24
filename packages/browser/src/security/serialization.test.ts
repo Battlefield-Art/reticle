@@ -297,3 +297,34 @@ describe('truncation is disclosed, never silent', () => {
     expect(sanitizeForTransport(input)).toEqual(sanitizeWithReport(input).value);
   });
 });
+
+describe('Map and Set are readable, not silently empty', () => {
+  it('a Map serializes to an object of its entries, not {}', () => {
+    // The false green this closes: Map has no enumerable own keys, so the plain-object path turned it
+    // into {} and an agent read the state as empty when it was merely unrepresentable.
+    const store = new Map<string, unknown>([
+      ['deploy-1', { status: 'ok' }],
+      ['deploy-2', { status: 'failed' }],
+    ]);
+    expect(sanitizeForTransport(store)).toEqual({
+      'deploy-1': { status: 'ok' },
+      'deploy-2': { status: 'failed' },
+    });
+  });
+
+  it('a Set serializes to an array of its members', () => {
+    expect(sanitizeForTransport(new Set(['a', 'b', 'c']))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('a Map nested in a store is reachable', () => {
+    const state = { byId: new Map([['x', 1]]), count: 1 };
+    expect(sanitizeForTransport(state)).toEqual({ byId: { x: 1 }, count: 1 });
+  });
+
+  it('a huge Map is truncated AND the drop is reported, never silently', () => {
+    const big = new Map(Array.from({ length: 1000 }, (_, i) => [`k${i}`, i]));
+    const { value, truncation } = sanitizeWithReport(big);
+    expect(Object.keys(value as object).length).toBeLessThan(1000);
+    expect(truncation?.droppedItems).toBeGreaterThan(0);
+  });
+});
