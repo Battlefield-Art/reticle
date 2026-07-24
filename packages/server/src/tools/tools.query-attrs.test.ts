@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import type { CommandResult } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from './tools.js';
 import { ReticleTool } from './tool-names.js';
@@ -61,7 +62,34 @@ describe('reticle_query argument forwarding', () => {
 
   it('omits `attrs` when the caller did not ask for it, so the browser keeps its default shape', async () => {
     const seen: { args?: Record<string, unknown> | undefined } = {};
-    await queryTool().handler(depsCapturing(seen), { sessionId: 's1', by: 'role', value: 'button' });
+    await queryTool().handler(depsCapturing(seen), {
+      sessionId: 's1',
+      by: 'role',
+      value: 'button',
+    });
     expect(seen.args?.['attrs']).toBeUndefined();
+  });
+});
+
+describe('QUERY output schema declares every field a descriptor can carry', () => {
+  it('includes `chart`, so structuredContent does not drop it on a validating profile', () => {
+    // The bug this pins: the browser `describe()` adds a `chart` field to a broken chart's descriptor,
+    // but the QUERY outputSchema listed ref/role/name/value/states/visible/attrs/source and NOT chart.
+    // On the `full` profile (which keeps outputSchema and validates structuredContent), the SDK drops
+    // any field the schema does not list — so the chart faults silently vanished from structuredContent
+    // while the text block still carried them. A field the tool RETURNS must be in the schema it
+    // DECLARES, or the two disagree exactly where a schema-consuming client trusts the schema.
+    const query = TOOLS.find((t) => t.name === ReticleTool.QUERY);
+    const elements = query?.outputSchema?.['elements'];
+    // elements is ZodOptional<ZodArray<ZodObject>>. Walk it with zod's PUBLIC api (no _def spelunking).
+    if (!(elements instanceof z.ZodOptional))
+      throw new Error('elements is not optional as expected');
+    const arr = elements.unwrap() as z.ZodTypeAny;
+    if (!(arr instanceof z.ZodArray)) throw new Error('elements is not an array as expected');
+    const obj = arr.element as z.ZodTypeAny;
+    if (!(obj instanceof z.ZodObject)) throw new Error('element is not an object as expected');
+    const keys = Object.keys((obj as z.ZodObject<z.ZodRawShape>).shape);
+    expect(keys).toContain('chart');
+    expect(keys).toContain('source');
   });
 });

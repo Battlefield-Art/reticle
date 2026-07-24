@@ -142,7 +142,9 @@ const RAW_TOOLS: ToolDef[] = [
       note: z
         .string()
         .optional()
-        .describe('Present when a diff was computed over a capped tree — "unchanged" is then partial.'),
+        .describe(
+          'Present when a diff was computed over a capped tree — "unchanged" is then partial.',
+        ),
     },
     handler: (deps, args) => {
       const sessionId = asString(args['sessionId']);
@@ -220,12 +222,27 @@ const RAW_TOOLS: ToolDef[] = [
             attrs: z
               .record(z.string())
               .optional()
-              .describe('Present only for attributes requested via `attrs` and found on the element.'),
+              .describe(
+                'Present only for attributes requested via `attrs` and found on the element.',
+              ),
             source: z
               .string()
               .optional()
               .describe(
                 'Where this element is written, as `file:line` — open this to change it. Present when the app is built with the Reticle plugin in dev; absent in production builds.',
+              ),
+            chart: z
+              .array(
+                z.object({
+                  kind: z.string(),
+                  tag: z.string(),
+                  attr: z.string(),
+                  sample: z.string(),
+                }),
+              )
+              .optional()
+              .describe(
+                'Chart geometry faults, present ONLY when the element is a broken chart. kind is non-finite-coordinates | empty-geometry | degenerate-geometry. A healthy chart omits this. Declared here so structuredContent carries it on validating profiles rather than dropping it.',
               ),
           }),
         )
