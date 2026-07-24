@@ -1,6 +1,7 @@
 'use client';
 import { useState, useRef } from 'react';
 import { reticle } from '@reticlehq/browser';
+import { useReticleStore } from '@reticlehq/react/store';
 
 export default function Page() {
   const [loading, setLoading] = useState(false);
@@ -9,6 +10,13 @@ export default function Page() {
   const [items, setItems] = useState<string[]>(['First task']);
   const [committed, setCommitted] = useState('');
   const [toast, setToast] = useState(false);
+
+  // Next.js keeps this page's state in useState — there is no store object to hand registerStore, which
+  // is the case react-devtools would read via the fiber and the case useReticleStore exists for. One
+  // line makes the live page state readable via `reticle_state store=page` AND emits a STATE_CHANGE on
+  // every commit, WITHOUT the bare-getter silent-store pattern the docs warn against. This is the
+  // reference example for "Reticle on Next state".
+  useReticleStore('page', { items, committed, open, toast, loading });
 
   // Commit-on-blur: the value is only saved when the field loses focus (React onBlur).
   const commit = (value: string) => {

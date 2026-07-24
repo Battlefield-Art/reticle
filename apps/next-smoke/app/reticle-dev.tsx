@@ -10,14 +10,16 @@ export function ReticleDev() {
         import('@reticlehq/browser'),
         import('@reticlehq/react'),
       ]);
-      const { reticle, registerStore, registerCapabilities } = browser;
+      const { reticle, registerCapabilities } = browser;
       react.install();
-      // Expose a "store" the agent can read directly via reticle_state.
-      registerStore('demo', () => ({ ready: true, tasks: 2 }));
-      // Self-describe the testable surface so the agent learns it via reticle_capabilities.
+      // The page's live state is registered from page.tsx via useReticleStore('page', ...) — the
+      // correct pattern for Next's useState (no store object, and STATE_CHANGE diffs on every commit).
+      // The old bare-getter placeholder here modelled the silent-store anti-pattern the docs warn
+      // against, so it is gone; capabilities now advertises the real store name.
       registerCapabilities({
         testids: ['ping-button', 'add-task', 'edit-field', 'show-toast'],
         signals: ['field:committed'],
+        stores: ['page'],
       });
       const token = process.env['NEXT_PUBLIC_RETICLE_TOKEN'];
       // This is a single-app E2E fixture: the test battery navigates to the bare URL and addresses it
