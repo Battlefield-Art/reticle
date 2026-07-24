@@ -4,7 +4,7 @@ Agent browser tools that feed the **whole accessibility tree** to the model ever
 
 ## Head-to-head (measured, same page, same moment)
 
-Measured against the demo dashboard (`apps/demo`) **with a 1,000-item list rendered**, after login. Token estimate = characters ÷ 4. Reproduce with the benchmark harness — see `bench/README.md`.
+Measured against the bench dashboard (`apps/bench-app`) **with a 1,000-item list rendered**, after login. Token estimate = characters ÷ 4. Reproduce with the benchmark harness — see `bench/README.md`.
 
 | Payload                                                                        |     Tokens |
 | ------------------------------------------------------------------------------ | ---------: |
@@ -35,6 +35,22 @@ Measured on a representative 150-row dashboard (the shipped regression benchmark
 **~99% fewer tokens** to re-look after an action — and because a `delta` carries no stale full tree, it also removes the 60–80K-token stale-context buildup that makes long-running agents start hallucinating selectors that no longer exist.
 
 Every `reticle_snapshot`/`reticle_query` result also carries `cost:{ bytes, tokens }` (estimated) so you can **re-scope before reading** a large body (`mode:interactive`/`status`, a tighter `scope`, or a narrower `query`) instead of paying for it first.
+
+## The other tax: tool schemas, paid on every request
+
+Per-payload leanness is only half the token story. Before an agent reads a single result, it pays for the tool SCHEMAS injected into its context on every request — and this is the metric the field now organises around. A filed issue measures Playwright MCP's default tool list at 14.4k tokens = 7.2% of a Claude Code context window, and Microsoft's own README steers coding agents to the CLI over its MCP on exactly these grounds.
+
+Measured live, all servers in one run, same tokenizer (`bench/harness/schema-tax.mjs`):
+
+| MCP server                       | tools | schema tokens |
+| -------------------------------- | ----: | ------------: |
+| Reticle — `dynamic` profile      |     2 |       **282** |
+| **Reticle — `hybrid` (default)** |    14 |     **2,832** |
+| Playwright MCP                   |    23 |         3,725 |
+| Chrome DevTools MCP              |    29 |         5,116 |
+| Reticle — `full` (all tools)     |    41 |        22,520 |
+
+The default profile is **below both competitors**, and the minimal `dynamic` profile — which advertises two meta-tools and loads the rest on demand — is **13× leaner than Playwright**. The typed result object still travels as `structuredContent` on every profile; the lean profiles simply do not advertise the output schema, which the agent (reading the `text` block) never consumed anyway.
 
 ## The honest version
 
