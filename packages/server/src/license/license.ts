@@ -97,7 +97,7 @@ export class EnterpriseLicenseError extends Error {
   readonly reason: string;
   constructor(feature: string, reason: string) {
     super(
-      `Reticle Enterprise feature "${feature}" requires a valid license (${reason}). Contact hey@reticle.ai.`,
+      `Reticle Enterprise feature "${feature}" requires a valid license (${reason}). Contact hey@reticle.sh.`,
     );
     this.name = 'EnterpriseLicenseError';
     this.feature = feature;
@@ -201,10 +201,18 @@ export function describeLicense(
 ): LicenseReport {
   const pem = resolveIssuerPublicKeyPem(env, baked);
   if (pem === undefined || pem.length === 0) {
-    return {
-      status: 'eval',
-      detail: 'evaluation mode — enterprise features run free (no issuer key configured)',
-    };
+    // In a production runtime this is NOT a benign eval session — it is a mis-built release whose gate
+    // is off, and assertEnterpriseFromEnv now denies rather than unlocking. Say so loudly here too.
+    return isProductionEnv(env)
+      ? {
+          status: 'invalid',
+          detail:
+            'MISCONFIGURED — running in production with no issuer key baked; enterprise features are DENIED (rebuild with BAKED_ISSUER_PUBLIC_KEY_PEM stamped in)',
+        }
+      : {
+          status: 'eval',
+          detail: 'evaluation mode — enterprise features run free (no issuer key configured)',
+        };
   }
   const publicKey = loadPublicKey(pem);
   if (publicKey === undefined)
@@ -237,9 +245,20 @@ export function describeLicense(
   return { status: 'invalid', detail: `license key rejected (${check.status})` };
 }
 
+/** True in a production runtime (NODE_ENV=production) — where a missing issuer key is a mis-built
+ *  release, not an eval session, so the gate must fail CLOSED rather than run features free. */
+function isProductionEnv(env: NodeJS.ProcessEnv): boolean {
+  return env['NODE_ENV'] === 'production';
+}
+
 /**
- * Gate an enterprise feature using env-resolved activation. Enforcement is ON only when the issuer
- * public key is configured (i.e. a real release); without it (dev/repo) features run free in eval mode.
+ * Gate an enterprise feature using env-resolved activation. Enforcement is ON when the issuer public key
+ * is configured (a real release). Without it, behaviour splits on runtime:
+ *  - dev/eval (NODE_ENV ≠ production): features run FREE — never blocks a contributor or CI.
+ *  - production (NODE_ENV = production): FAIL CLOSED — a release that reaches production with no
+ *    resolvable issuer key was mis-built (the baked key wasn't stamped in, BAKED_ISSUER_PUBLIC_KEY_PEM
+ *    is still ''), and silently unlocking every ee feature with no key and no warning is the worst
+ *    outcome. Deny instead, with a distinct reason so the misconfiguration is obvious.
  */
 export function assertEnterpriseFromEnv(
   feature: string,
@@ -248,11 +267,17 @@ export function assertEnterpriseFromEnv(
   baked: string = BAKED_ISSUER_PUBLIC_KEY_PEM,
 ): void {
   const publicKey = loadPublicKey(resolveIssuerPublicKeyPem(env, baked));
+  if (publicKey === undefined) {
+    if (isProductionEnv(env)) {
+      throw new EnterpriseLicenseError(feature, 'enterprise-gate-unconfigured');
+    }
+    return; // dev/eval — free
+  }
   const key = env[LICENSE_KEY_ENV];
   assertEnterprise(feature, {
-    requireLicense: publicKey !== undefined,
+    requireLicense: true,
     now: () => now,
     ...(key !== undefined ? { key } : {}),
-    ...(publicKey !== undefined ? { publicKey } : {}),
+    publicKey,
   });
 }

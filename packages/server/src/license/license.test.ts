@@ -123,6 +123,30 @@ describe('env-resolved activation (describeLicense / assertEnterpriseFromEnv)', 
     );
   });
 
+  it('FAILS CLOSED in production when no issuer key resolves (a mis-built release must not run free)', () => {
+    // dev/eval with no key is still free — a contributor/CI is never blocked.
+    expect(() => assertEnterpriseFromEnv('audit-log', NOW, {})).not.toThrow();
+    // But NODE_ENV=production with no baked key AND no env key is a broken release: DENY, don't unlock.
+    expect(() => assertEnterpriseFromEnv('audit-log', NOW, { NODE_ENV: 'production' })).toThrow(
+      /enterprise-gate-unconfigured/,
+    );
+    // A correctly-built production release (issuer key present) still enforces normally.
+    expect(() =>
+      assertEnterpriseFromEnv('audit-log', NOW, withPubKey({ NODE_ENV: 'production' })),
+    ).toThrow(EnterpriseLicenseError); // no license key → still denied, but for 'missing', not misconfig
+  });
+
+  it('describeLicense flags a production eval-mode build as MISCONFIGURED, not benign eval', () => {
+    expect(describeLicense(NOW, {}).status).toBe('eval'); // dev: benign
+    const prod = describeLicense(NOW, { NODE_ENV: 'production' });
+    expect(prod.status).toBe('invalid');
+    expect(prod.detail).toContain('MISCONFIGURED');
+  });
+
+  it('the enterprise error points at the current contact address', () => {
+    expect(new EnterpriseLicenseError('x', 'y').message).toContain('hey@reticle.sh');
+  });
+
   it('a baked-in issuer key fails closed: enforcement cannot be disabled by unsetting env', () => {
     // Simulates a release build (baked key present) with an operator who never sets the env var.
     // Old behavior: eval mode, features free. New behavior: enforced, throws without a valid key.
