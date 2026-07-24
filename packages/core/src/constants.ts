@@ -83,6 +83,9 @@ export const TRANSPORT_LIMITS = {
   MAX_COMMAND_NAME_LENGTH: 128,
   MAX_REF_LENGTH: 128,
   MAX_ERROR_LENGTH: 4096,
+  /** Cap on a captured stack trace before it crosses the wire — the console observer and both React
+   *  error hooks (error-boundary, hydration-error) all truncate to this, so it is one fact. */
+  MAX_STACK_LENGTH: 4000,
   MAX_SERIALIZE_DEPTH: 8,
   MAX_COLLECTION_ITEMS: 200,
   MAX_OBJECT_KEYS: 200,

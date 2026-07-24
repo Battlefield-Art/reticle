@@ -1,4 +1,4 @@
-import { EventType } from '@reticlehq/core';
+import { EventType, TRANSPORT_LIMITS } from '@reticlehq/core';
 import type { Emit, Teardown } from './types.js';
 import { safeStringify } from '../security/serialization.js';
 
@@ -25,7 +25,7 @@ function stringifyArgs(args: unknown[]): string {
 }
 
 /** Stacks can be long; cap so a deep async trace never blows the event budget. */
-const MAX_STACK_LEN = 4000;
+const MAX_STACK_LEN = TRANSPORT_LIMITS.MAX_STACK_LENGTH;
 
 function capStack(stack: string | undefined): string | undefined {
   if (stack === undefined || stack.length === 0) return undefined;

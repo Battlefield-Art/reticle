@@ -1,4 +1,4 @@
-import { RETICLE_HYDRATION_ERROR_SIGNAL } from '@reticlehq/core';
+import { RETICLE_HYDRATION_ERROR_SIGNAL, TRANSPORT_LIMITS } from '@reticlehq/core';
 
 /**
  * React hydration-mismatch capture. A mismatch — server-rendered markup disagreeing with the
@@ -9,10 +9,19 @@ import { RETICLE_HYDRATION_ERROR_SIGNAL } from '@reticlehq/core';
  * Pure classifier + shaper are unit-tested; the handler is thin glue that emits via the SDK if present.
  */
 
-const MAX_STACK_LEN = 4000;
+const MAX_STACK_LEN = TRANSPORT_LIMITS.MAX_STACK_LENGTH;
 
 /** Minified React error codes that denote a hydration mismatch (react.dev/errors/<code>). */
-const HYDRATION_ERROR_CODES: ReadonlySet<string> = new Set(['418', '419', '420', '421', '422', '423', '424', '425']);
+const HYDRATION_ERROR_CODES: ReadonlySet<string> = new Set([
+  '418',
+  '419',
+  '420',
+  '421',
+  '422',
+  '423',
+  '424',
+  '425',
+]);
 
 function cap(value: string | undefined): string | undefined {
   if (value === undefined || value.length === 0) return undefined;

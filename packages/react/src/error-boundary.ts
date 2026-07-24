@@ -1,4 +1,4 @@
-import { RETICLE_ERROR_BOUNDARY_SIGNAL } from '@reticlehq/core';
+import { RETICLE_ERROR_BOUNDARY_SIGNAL, TRANSPORT_LIMITS } from '@reticlehq/core';
 
 /**
  * React error-boundary capture, dev-only). A boundary that catches and swallows renders a fallback
@@ -8,7 +8,7 @@ import { RETICLE_ERROR_BOUNDARY_SIGNAL } from '@reticlehq/core';
  * the handler is thin glue that emits via the SDK instance if present.
  */
 
-const MAX_STACK_LEN = 4000;
+const MAX_STACK_LEN = TRANSPORT_LIMITS.MAX_STACK_LENGTH;
 
 export interface ErrorBoundaryData {
   message: string;
@@ -43,7 +43,9 @@ export function reticleOnCaughtError(
 ): void {
   const data = buildErrorBoundaryData(error, errorInfo);
   const instance = (
-    globalThis as { __reticleInstance?: { signal?: (name: string, data: Record<string, unknown>) => void } }
+    globalThis as {
+      __reticleInstance?: { signal?: (name: string, data: Record<string, unknown>) => void };
+    }
   ).__reticleInstance;
   instance?.signal?.(RETICLE_ERROR_BOUNDARY_SIGNAL, { ...data });
 }
