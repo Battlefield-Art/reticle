@@ -1,3 +1,4 @@
+import { RETICLE_RENDERS_STORE } from '@reticlehq/core';
 import { sanitizeWithReport, type TruncationReport } from '../security/serialization.js';
 
 /** Store registry — lets the agent pull live framework/store state on demand. */
@@ -162,7 +163,7 @@ const warnedSilent = new Set<string>();
  * developer never wrote and cannot change, so warning about it would be Reticle telling the user to fix
  * Reticle — the same self-contradiction as a tool description naming a tool the profile does not expose.
  */
-const RETICLE_OWNED_STORES = new Set(['__reticle_renders']);
+const RETICLE_OWNED_STORES = new Set<string>([RETICLE_RENDERS_STORE]);
 
 function warnSilentStoreOnce(name: string): void {
   if (RETICLE_OWNED_STORES.has(name) || warnedSilent.has(name)) return;

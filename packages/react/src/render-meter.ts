@@ -16,12 +16,13 @@
  * complete minimal hook. MUST be installed before `react-dom` initializes (React reads the hook at
  * renderer-inject time) — import this as the first side-effect in the app entry, before React.
  */
+import { RETICLE_RENDERS_STORE } from '@reticlehq/core';
 import { registerStore } from '@reticlehq/browser';
 import { HYDRATION_COMPLETE_SIGNAL, createHydrationTracker } from './hydration.js';
 import { createCommitAggregator } from './commit-aggregator.js';
 
 const HOOK_KEY = '__REACT_DEVTOOLS_GLOBAL_HOOK__';
-const RENDER_STORE = '__reticle_renders';
+const RENDER_STORE = RETICLE_RENDERS_STORE;
 
 // Fire the hydration-complete signal (once, on the first commit) via the SDK instance if it is present.
 // Structural access avoids importing the whole Reticle type into this tooling module.
@@ -33,7 +34,8 @@ const hydration = createHydrationTracker(() => {
 
 // Access the SDK instance structurally (avoids importing the whole Reticle type into this tooling module).
 function reticleInstance(): { renderCommit?: (n: number) => void } | undefined {
-  return (globalThis as { __reticleInstance?: { renderCommit?: (n: number) => void } }).__reticleInstance;
+  return (globalThis as { __reticleInstance?: { renderCommit?: (n: number) => void } })
+    .__reticleInstance;
 }
 
 // Emit the render stream as aggregated RENDER_COMMIT events, throttled to one flush per frame so a commit
