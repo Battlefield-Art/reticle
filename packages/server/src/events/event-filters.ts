@@ -34,7 +34,11 @@ export const OBSERVE_FILTER_BUCKETS: Record<string, readonly string[]> = {
  */
 export function eventMatchesFilters(e: ReticleEvent, filters: readonly string[]): boolean {
   for (const f of filters) {
-    const bucket = OBSERVE_FILTER_BUCKETS[f];
+    // `Object.hasOwn`, not a bare index: a plain-object map inherits from Object.prototype, so a
+    // filter value like "toString" or "hasOwnProperty" would resolve to the inherited FUNCTION and
+    // then `.includes` would throw — a crash on an odd-but-harmless agent input. Only an OWN key is a
+    // real bucket; anything else falls through to the raw-type comparison.
+    const bucket = Object.hasOwn(OBSERVE_FILTER_BUCKETS, f) ? OBSERVE_FILTER_BUCKETS[f] : undefined;
     if (bucket !== undefined ? bucket.includes(e.type) : e.type === f) return true;
   }
   return false;

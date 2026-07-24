@@ -40,6 +40,15 @@ describe('eventMatchesFilters (observe filters allowlist)', () => {
     expect(eventMatchesFilters(ev(EventType.NET_REQUEST), ['nonsense'])).toBe(false);
   });
 
+  it('an Object.prototype key as a filter does not crash the matcher', () => {
+    // The map is a plain object, so `map['toString']` is the inherited function, not undefined —
+    // a bare index would then call `.includes` on a function and throw. These must fall through to
+    // the raw-type comparison and simply not match.
+    for (const proto of ['toString', 'hasOwnProperty', 'constructor', '__proto__']) {
+      expect(eventMatchesFilters(ev(EventType.NET_REQUEST), [proto])).toBe(false);
+    }
+  });
+
   it('"console" bucket covers uncaught errors, not just console.error', () => {
     expect(eventMatchesFilters(ev(EventType.ERROR_UNCAUGHT), ['console'])).toBe(true);
   });
