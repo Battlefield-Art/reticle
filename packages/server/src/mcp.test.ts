@@ -52,7 +52,10 @@ describe('outputSchema declares every field its handler returns (field-drop guar
       const tool = TOOLS.find((t) => t.name === name);
       const keys = Object.keys(tool?.outputSchema ?? {});
       for (const f of fields) {
-        expect(keys, `${name} outputSchema must declare '${f}' or it is stripped on validating profiles`).toContain(f);
+        expect(
+          keys,
+          `${name} outputSchema must declare '${f}' or it is stripped on validating profiles`,
+        ).toContain(f);
       }
     });
   }

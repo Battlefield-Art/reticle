@@ -348,7 +348,9 @@ export async function provenExpectedLinks(
   if (predicate.kind === 'anyOf') {
     const per = await Promise.all(
       predicate.predicates.map(async (p) =>
-        (await evaluatePredicate(session, p, since)).pass ? provenExpectedLinks(session, p, since) : [],
+        (await evaluatePredicate(session, p, since)).pass
+          ? provenExpectedLinks(session, p, since)
+          : [],
       ),
     );
     return per.flat();
