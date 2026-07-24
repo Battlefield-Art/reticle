@@ -13,8 +13,13 @@ import { REDACTED_VALUE } from './constants.js';
 // auth-prefixed tokens (accessToken, auth_token, sessionToken, …) are redacted; `colorToken`,
 // `backgroundToken`, `tokenCount`, `designToken` are NOT — they were false-positives that redacted
 // legitimate reticle_inspect/reticle_state output.
+// `token` must match auth CREDENTIALS, not compound design fields (see note above). `cookie` is
+// boundary-anchored the same way: it targets the `Cookie` / `Set-Cookie` HTTP HEADER names (which
+// bundle the session credential and were the one wire payload reaching the journal + the agent
+// unredacted), NOT any key that merely contains the substring — `scopecookie`, `cookieConsent`,
+// `cookiePolicy` are legitimate app values an agent may need to read, and stay visible.
 const SENSITIVE_KEY =
-  /password|passwd|passcode|secret|(?:(?:access|refresh|auth|bearer|api|id|session|csrf|client)[-_]?tokens?|(?:^|[-_])tokens?(?=$|[-_]))|session[-_]?id|(?:^|[-_])(?:sid|pwd|jwt)(?=$|[-_])|authorization|api[-_]?key|access[-_]?key|private[-_]?key|client[-_]?secret|credit[-_]?card|card[-_]?number|cvv|cvc|ssn/i;
+  /password|passwd|passcode|secret|(?:(?:access|refresh|auth|bearer|api|id|session|csrf|client)[-_]?tokens?|(?:^|[-_])tokens?(?=$|[-_]))|session[-_]?id|(?:^|[-_])(?:sid|pwd|jwt)(?=$|[-_])|authorization|(?:^|[-_])(?:set[-_])?cookie(?=$|[-_])|api[-_]?key|access[-_]?key|private[-_]?key|client[-_]?secret|credit[-_]?card|card[-_]?number|cvv|cvc|ssn/i;
 
 export function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY.test(key);

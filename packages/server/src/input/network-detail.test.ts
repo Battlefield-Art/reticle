@@ -26,6 +26,37 @@ describe('buildNetworkDetail', () => {
       resourceType: 'fetch',
     });
   });
+
+  it('redacts credential headers — set-cookie/cookie/authorization never reach the journal or the agent', () => {
+    const detail = buildNetworkDetail({
+      url: 'https://api.example/login',
+      method: 'POST',
+      status: 200,
+      // The CDP path sees the full response headers; the SDK's in-page wrapper structurally cannot.
+      headers: {
+        'Set-Cookie': 'session=s3cr3t; HttpOnly',
+        Authorization: 'Bearer abc.def.ghi',
+        Cookie: 'session=s3cr3t',
+        'Content-Type': 'application/json',
+      },
+    });
+    expect(detail.headers).toEqual({
+      'set-cookie': '[REDACTED]',
+      authorization: '[REDACTED]',
+      cookie: '[REDACTED]',
+      'content-type': 'application/json',
+    });
+  });
+
+  it('scrubs a known secret SHAPE echoed in an otherwise-benign header', () => {
+    const detail = buildNetworkDetail({
+      url: 'https://api.example/x',
+      method: 'GET',
+      status: 200,
+      headers: { 'X-Debug-Token': 'eyJhbGciOi.eyJzdWIiOi.sIgnAtuRe' }, // a JWT under a non-sensitive key
+    });
+    expect(detail.headers['x-debug-token']).toBe('[REDACTED]');
+  });
 });
 
 describe('mergeNetworkDetail', () => {

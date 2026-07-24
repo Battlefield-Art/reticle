@@ -90,10 +90,21 @@ function projectWireBody(raw: string): string {
   }
 }
 
-/** Header names are case-insensitive; normalize to lower-case so a merge/compare is stable. */
-function lowerKeys(headers: Record<string, string>): Record<string, string> {
+/**
+ * Header names are case-insensitive; normalize to lower-case so a merge/compare is stable — and
+ * REDACT while we do it. On the CDP/drive path `page.on('response')` sees the full response headers,
+ * including `set-cookie` (the session credential), and requests carry `cookie`/`authorization`. These
+ * were the one wire payload that reached the journal (cleartext, on disk) and the agent's context
+ * window unredacted — every other capture goes through the SDK sanitizer or projectWireBody. A
+ * credential HEADER is redacted whole by key; any other header value is still swept for known secret
+ * SHAPES (a JWT echoed in a custom header), matching how request bodies are handled.
+ */
+function projectHeaders(headers: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(headers)) out[k.toLowerCase()] = v;
+  for (const [k, v] of Object.entries(headers)) {
+    const key = k.toLowerCase();
+    out[key] = isSensitiveKey(key) ? REDACTED_VALUE : scrubKnownSecrets(v);
+  }
   return out;
 }
 
@@ -111,7 +122,7 @@ export function buildNetworkDetail(raw: {
     url: raw.url,
     ...(raw.method === undefined ? {} : { method: raw.method }),
     status: raw.status,
-    headers: lowerKeys(raw.headers),
+    headers: projectHeaders(raw.headers),
     ...(raw.resourceType === undefined ? {} : { resourceType: raw.resourceType }),
     ...(raw.requestBody === undefined || raw.requestBody.length === 0
       ? {}
