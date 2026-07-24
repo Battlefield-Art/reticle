@@ -296,6 +296,35 @@ describe('truncation is disclosed, never silent', () => {
     const input = { a: 1, list: [1, 2, 3] };
     expect(sanitizeForTransport(input)).toEqual(sanitizeWithReport(input).value);
   });
+
+  it('reports a truncated STRING instead of silently shortening it', () => {
+    // A 500k-char value cut to the cap used to carry no marker, so a caller comparing it to expected
+    // data read "the app dropped the rest" — the same false green the collection caps already report.
+    const { value, truncation } = sanitizeWithReport({ blob: 'x'.repeat(500_000) });
+    expect((value as { blob: string }).blob.length).toBeLessThan(500_000);
+    expect(truncation?.truncatedValues).toBeGreaterThan(0);
+  });
+
+  it('reports object KEYS dropped past the cap instead of reading as a complete object', () => {
+    const wide: Record<string, number> = {};
+    for (let i = 0; i < 5_000; i++) wide[`k${String(i)}`] = i;
+    const { value, truncation } = sanitizeWithReport(wide);
+    expect(Object.keys(value as object).length).toBeLessThan(5_000);
+    expect(truncation?.droppedItems).toBeGreaterThan(0);
+  });
+});
+
+describe('an invalid Date does not crash the whole state read', () => {
+  it('degrades new Date(NaN) to null instead of throwing RangeError', () => {
+    // sanitizeForTransport is called DIRECTLY (readStoresWithTruncation, the state observer) — not
+    // only via safeStringify — so an unguarded toISOString() on one bad Date threw and took out the
+    // entire STATE_READ. One invalid Date in app state must not blind the agent to the rest of it.
+    expect(() => sanitizeForTransport({ when: new Date(NaN), ok: 1 })).not.toThrow();
+    expect(sanitizeForTransport({ when: new Date(NaN), ok: 1 })).toEqual({ when: null, ok: 1 });
+    // A valid Date still serializes to its ISO string.
+    const d = new Date('2026-07-24T00:00:00.000Z');
+    expect(sanitizeForTransport({ when: d })).toEqual({ when: '2026-07-24T00:00:00.000Z' });
+  });
 });
 
 describe('Map and Set are readable, not silently empty', () => {

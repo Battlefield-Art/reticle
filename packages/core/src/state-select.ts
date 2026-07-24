@@ -33,7 +33,11 @@ export function selectPath(root: unknown, path: string): PathSelection {
       current = current[index];
       continue;
     }
-    if (typeof current === 'object' && current !== null && segment in current) {
+    // `Object.hasOwn`, not `in`: `in` walks the prototype, so a path segment of `constructor`,
+    // `__proto__`, or `toString` reported found:true and returned a function from Object.prototype —
+    // a state assertion on a typo'd path silently passed against a builtin instead of failing with
+    // availableKeys. Only an OWN key is a real state path.
+    if (typeof current === 'object' && current !== null && Object.hasOwn(current, segment)) {
       current = (current as Record<string, unknown>)[segment];
       continue;
     }
@@ -56,7 +60,10 @@ export function capDepth(value: unknown, maxDepth: number): unknown {
   if (typeof value === 'object' && value !== null) {
     const keys = Object.keys(value);
     if (maxDepth === 0) return `{…${String(keys.length)} keys}`;
-    const out: Record<string, unknown> = {};
+    // Null-proto target: a wire object can carry an own `__proto__` key (via JSON.parse), and
+    // `out['__proto__'] = …` on a normal object writes the prototype slot instead of a key, losing
+    // that key from the projection. A prototype-less target makes every key an ordinary assignment.
+    const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
     for (const key of keys)
       out[key] = capDepth((value as Record<string, unknown>)[key], maxDepth - 1);
     return out;

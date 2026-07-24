@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EventType, type ReticleEvent } from '@reticlehq/core';
-import { evalSettled, evalConsole } from './predicate-eval.js';
+import { evalSettled, evalConsole, matchValue } from './predicate-eval.js';
 
 function ev(type: EventType, data: Record<string, unknown>, t: number): ReticleEvent {
   return { t, type, sessionId: 's', data };
@@ -38,5 +38,25 @@ describe('evalConsole — uncaptured levels do not false-pass', () => {
     const withLog = [ev(EventType.CONSOLE_LOG, { text: 'hi' }, 10)];
     expect(evalConsole(withLog, { kind: 'console', level: 'log' }).pass).toBe(true);
     expect(evalConsole([], { kind: 'console', level: 'log', absent: true }).pass).toBe(true);
+  });
+});
+
+describe('matchValue — an operator-less object does not vacuously match everything', () => {
+  it('an empty {} matches ONLY an equal literal, never any value (the fail-open false green)', () => {
+    // `{}` used to enter the operator branch, iterate zero operators, and return true — so `equals: {}`
+    // passed against a number, a string, even undefined. An assertion that asserts nothing is the
+    // exact false green the oracle exists to prevent.
+    expect(matchValue(42, {})).toBe(false);
+    expect(matchValue('x', {})).toBe(false);
+    expect(matchValue(undefined, {})).toBe(false);
+    expect(matchValue(null, {})).toBe(false);
+  });
+
+  it('a real operator still works, and a non-$ literal object compares by equality', () => {
+    expect(matchValue(5, { $gte: 3 })).toBe(true);
+    expect(matchValue(2, { $gte: 3 })).toBe(false);
+    // A non-operator object (no `$` key) is a literal — not a container that vacuously passes.
+    expect(matchValue({ id: 1 }, { id: 1 })).toBe(false); // strict eq, no deep-equal (unchanged behavior)
+    expect(matchValue('*', '*') || matchValue('anything', '*')).toBe(true); // `*` presence unaffected
   });
 });

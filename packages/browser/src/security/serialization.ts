@@ -30,6 +30,10 @@ function boundedString(value: string, state: SanitizeState, max: number): string
     state.remainingCharacters -= value.length;
     return value;
   }
+  // Count the cut. A silently shortened string is the same false green the collection caps were made
+  // to report: a caller comparing a 500k-char value against expected data sees 65k and concludes the
+  // app dropped the rest, with no marker saying WE did. The report interface exists for exactly this.
+  state.truncatedValues += 1;
   const truncated =
     allowed <= TRUNCATED_VALUE.length
       ? TRUNCATED_VALUE.slice(0, allowed)
@@ -61,7 +65,11 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
   if (typeof value === 'undefined' || typeof value === 'function' || typeof value === 'symbol') {
     return OMIT_VALUE;
   }
-  if (value instanceof Date) return value.toISOString();
+  // An invalid Date (`new Date(NaN)` / `new Date(undefined)`, easy to land in app state) throws
+  // RangeError on toISOString — and only safeStringify catches it, so a direct sanitize caller
+  // (readStoresWithTruncation, the state observer) crashed the WHOLE state read over one bad Date.
+  // Degrade to null, the same way a non-finite number does two branches up.
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
   // Map and Set are common enough in app state (a normalized store keyed by id, a set of selected
   // ids) that serializing them to `{}` — which is what the plain-object branch below does, since they
   // have no enumerable own keys — is a false green: an agent reads empty and concludes the state is
@@ -152,7 +160,11 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
     // worst trade available: the caller keeps a partial list and loses the number that says the list
     // is partial. Ordering by cost makes that impossible regardless of how a producer writes its
     // object literal, so no caller has to know this rule to stay correct.
-    const keys = Object.keys(value).slice(0, TRANSPORT_LIMITS.MAX_OBJECT_KEYS);
+    const allKeys = Object.keys(value);
+    const keys = allKeys.slice(0, TRANSPORT_LIMITS.MAX_OBJECT_KEYS);
+    // Keys past the cap are dropped — count them, like the array/Map/Set paths do, so a 5,000-key
+    // store reported as 200 keys carries a droppedItems marker instead of reading as complete.
+    state.droppedItems += Math.max(0, allKeys.length - keys.length);
     const isScalar = (k: string): boolean => {
       const v = (value as Record<string, unknown>)[k];
       return v === null || typeof v !== 'object';

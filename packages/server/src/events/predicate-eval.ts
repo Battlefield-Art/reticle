@@ -119,8 +119,17 @@ function num(value: unknown): number | undefined {
  */
 export function matchValue(got: unknown, want: unknown): boolean {
   if (want === '*') return got !== undefined;
-  if (typeof want === 'object' && want !== null && !Array.isArray(want)) {
-    for (const [op, val] of Object.entries(want as Record<string, unknown>)) {
+  // An object is an OPERATOR container only if it actually carries a `$`-prefixed operator. An empty
+  // `{}` (or an object with no `$` key) used to enter this branch, iterate zero recognized operators,
+  // and `return true` — so `equals: {}` / `dataMatches: {status: {}}` was a green assertion that
+  // passed against ANYTHING, undefined included: the exact false green the oracle exists to catch.
+  // Without an operator it is a literal to compare, and falls through to strict equality below.
+  const ops =
+    typeof want === 'object' && want !== null && !Array.isArray(want)
+      ? Object.entries(want as Record<string, unknown>)
+      : undefined;
+  if (ops !== undefined && ops.some(([op]) => op.startsWith('$'))) {
+    for (const [op, val] of ops) {
       const n = typeof got === 'number' ? got : NaN;
       switch (op) {
         case '$gte':

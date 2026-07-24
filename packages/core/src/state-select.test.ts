@@ -25,6 +25,16 @@ describe('selectPath', () => {
   it('returns the whole root for an empty path', () => {
     expect(selectPath({ a: 1 }, '')).toEqual({ found: true, value: { a: 1 } });
   });
+
+  it('does NOT resolve prototype-chain keys — constructor/__proto__/toString are not state paths', () => {
+    // `in` walked the prototype, so a typo'd path shadowing a builtin returned found:true against a
+    // function from Object.prototype, and a state assertion on it silently passed. Only OWN keys count.
+    for (const proto of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      expect(selectPath({ a: 1 }, proto).found, `${proto} must not be found`).toBe(false);
+    }
+    // A real own key that happens to be named like a builtin is still reachable.
+    expect(selectPath({ toString: 42 }, 'toString')).toEqual({ found: true, value: 42 });
+  });
 });
 
 describe('capDepth', () => {
