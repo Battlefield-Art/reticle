@@ -60,6 +60,19 @@ async function evalElement(
 ): Promise<EvalResult> {
   const match = await matchOnce(session, query, state);
   const subject = JSON.stringify(query);
+  // A given-but-missing scope is INCONCLUSIVE, never a pass. Zero matches then means "couldn't look"
+  // (the scope was unmounted), not "element absent" — so confirming absence off it, or reading a
+  // present-check's miss as a genuine miss, is the exact false green scopeMissing exists to stop.
+  if (match.scopeMissing === true) {
+    return {
+      pass: false,
+      failureReason: `scope resolved to no element — cannot verify ${absent ? 'absence' : 'presence'} of ${subject}`,
+      observed: 'the requested scope is not on the page (unmounted or selector matched nothing)',
+      expected: `${absent ? 'no element' : 'an element'} matching ${subject} within an existing scope`,
+      assertion: absent ? 'element.absent' : 'element.present',
+      evidence: { scopeMissing: true },
+    };
+  }
   if (absent) {
     return match.matched
       ? {

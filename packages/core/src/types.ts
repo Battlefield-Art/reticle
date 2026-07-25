@@ -89,6 +89,14 @@ export interface MatchResult {
   matched: boolean;
   count: number;
   elements: ElementDescriptor[];
+  /**
+   * True when a `scope` was given but resolved to nothing (the container was unmounted or the selector
+   * matched no element). The search returns zero matches WITHOUT falling back to the whole page, and
+   * this flag says why — so "element absent" and "scope vanished" stay distinguishable. Without it, a
+   * scoped assertion silently widened to the body (a phantom positive) or read a gone scope as a
+   * confirmed absence (a false negative); both are the false-green shape this tool exists to prevent.
+   */
+  scopeMissing?: boolean;
 }
 
 /**
@@ -130,6 +138,8 @@ export interface QueryResult {
    */
   count: number;
   hint?: QueryEmptyHint;
+  /** See MatchResult.scopeMissing — a provided scope resolved to nothing; the search did not widen. */
+  scopeMissing?: boolean;
 }
 
 /** One named flow advertised by the app (mirrors the browser CapabilityFlow). */

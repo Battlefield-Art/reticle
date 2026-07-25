@@ -50,6 +50,12 @@ export interface SnapshotResult {
   status: SnapshotStatus;
   nodes: number;
   truncated: boolean;
+  /**
+   * True when a `scope` was given but resolved to nothing. The snapshot then covers NOTHING rather
+   * than silently falling back to the whole page — an agent snapshotting "the modal" after it closed
+   * must not receive the entire page as if it were the modal.
+   */
+  scopeMissing?: boolean;
 }
 
 interface SnapshotOptions {
@@ -211,9 +217,14 @@ export function buildSnapshot(options: SnapshotOptions = {}): SnapshotResult {
     options.scope !== undefined
       ? (refs.resolve(options.scope) ?? document.querySelector(options.scope))
       : document.body;
-  const root = scopeEl ?? document.body;
+  // A given-but-missing scope snapshots NOTHING and says so — never a silent whole-page fallback.
+  const scopeMissing = options.scope !== undefined && !(scopeEl instanceof Element);
+  const root = scopeEl instanceof Element ? scopeEl : document.body;
   const status = buildStatus(root);
 
+  if (scopeMissing) {
+    return { tree: '', status, nodes: 0, truncated: false, scopeMissing: true };
+  }
   if (mode === SnapshotMode.STATUS) {
     return { tree: '', status, nodes: 0, truncated: false };
   }

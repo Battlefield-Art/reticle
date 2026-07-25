@@ -57,3 +57,36 @@ suite('a query counts every match and describes a bounded prefix', () => {
     expect(result.hint).toBeDefined();
   });
 });
+
+suite('a missing scope fails closed with scopeMissing, never a silent whole-page search', () => {
+  it('flags scopeMissing and returns NO matches when the scope selector matches nothing', () => {
+    // The element EXISTS on the page, but not inside the (absent) scope. The old code fell back to
+    // document.body and returned it — a phantom match from an unrelated region.
+    document.body.innerHTML = '<button data-testid="save">Save</button>';
+    const result = matchQuery({ by: 'testid', value: 'save', scope: '#modal-that-is-gone' });
+    expect(result.matched).toBe(false);
+    expect(result.count).toBe(0);
+    expect(result.scopeMissing).toBe(true);
+  });
+
+  it('does NOT set scopeMissing when the scope resolves (normal scoped search)', () => {
+    document.body.innerHTML = '<div id="panel"><button data-testid="save">Save</button></div>';
+    const result = matchQuery({ by: 'testid', value: 'save', scope: '#panel' });
+    expect(result.matched).toBe(true);
+    expect(result.scopeMissing).toBeUndefined();
+  });
+
+  it('does NOT set scopeMissing for an unscoped query that simply finds nothing', () => {
+    document.body.innerHTML = '<button data-testid="save">Save</button>';
+    const result = matchQuery({ by: 'testid', value: 'nope' });
+    expect(result.matched).toBe(false);
+    expect(result.scopeMissing).toBeUndefined(); // absent element ≠ missing scope
+  });
+
+  it('runQuery carries scopeMissing through to the tool result', () => {
+    document.body.innerHTML = '<button data-testid="save">Save</button>';
+    const result = runQuery({ by: 'testid', value: 'save', scope: '#gone' });
+    expect(result.scopeMissing).toBe(true);
+    expect(result.count).toBe(0);
+  });
+});

@@ -33,18 +33,23 @@ const MAX_COMPONENT_CANDIDATES = 2000;
 /** Likely-actionable elements considered when resolving a component anchor without a source stamp. */
 const COMPONENT_CANDIDATE_SELECTOR = `[${SOURCE_ATTR}], [${TESTID_ATTR}], button, a, input, select, textarea, [role]`;
 
-function resolveContainer(scope: string | undefined): HTMLElement {
-  const body = document.body;
-  if (scope === undefined) return body;
+/**
+ * Resolve a scope to its container. A container of `null` means a scope was GIVEN but resolved to
+ * nothing (unmounted, or a selector that matches no element) — the caller must NOT fall back to the
+ * whole page, or a scoped query silently widens into a phantom match. `scope === undefined` (no scope)
+ * legitimately searches the body.
+ */
+function resolveContainer(scope: string | undefined): { container: HTMLElement | null; scopeMissing: boolean } {
+  if (scope === undefined) return { container: document.body, scopeMissing: false };
   const byRef = refs.resolve(scope);
-  if (byRef instanceof HTMLElement) return byRef;
+  if (byRef instanceof HTMLElement) return { container: byRef, scopeMissing: false };
   try {
     const found = document.querySelector(scope);
-    if (found instanceof HTMLElement) return found;
+    if (found instanceof HTMLElement) return { container: found, scopeMissing: false };
   } catch {
-    // invalid selector — fall through to body
+    // invalid selector — treat as a missing scope, never a whole-page search
   }
-  return body;
+  return { container: null, scopeMissing: true };
 }
 
 /**
@@ -197,8 +202,11 @@ function openShadowRootsUnder(root: HTMLElement): ShadowRoot[] {
  * on a completely healthy page — a miss indistinguishable from a genuinely absent element. The
  * snapshot has always pierced open roots; this makes `query` agree with it.
  */
-function findCandidates(query: ElementQuery): HTMLElement[] {
-  const container = resolveContainer(query.scope);
+function findCandidates(query: ElementQuery): { candidates: HTMLElement[]; scopeMissing: boolean } {
+  const { container, scopeMissing } = resolveContainer(query.scope);
+  // A given-but-missing scope searches NOTHING — never the whole page. The empty result plus the
+  // scopeMissing flag is what keeps "gone scope" distinct from "absent element".
+  if (container === null) return { candidates: [], scopeMissing: true };
   const seen = new Set<HTMLElement>();
   const out: HTMLElement[] = [];
   const collect = (els: HTMLElement[]): void => {
@@ -214,7 +222,7 @@ function findCandidates(query: ElementQuery): HTMLElement[] {
     // container, and every call site below only reads from it.
     collect(findIn(shadow as unknown as HTMLElement, query));
   }
-  return out;
+  return { candidates: out, scopeMissing };
 }
 
 /** Longest attribute value returned; one enormous href must not blow the response budget. */
@@ -267,8 +275,11 @@ export function matchQuery(
   limit: number = MAX_DESCRIBED,
 ): MatchResult {
   let elements: HTMLElement[];
+  let scopeMissing = false;
   try {
-    elements = findCandidates(query);
+    const found = findCandidates(query);
+    elements = found.candidates;
+    scopeMissing = found.scopeMissing;
   } catch {
     elements = [];
   }
@@ -281,12 +292,19 @@ export function matchQuery(
     const projected = projectAttrs(el, attrs);
     return projected === undefined ? base : { ...base, attrs: projected };
   });
-  return { matched: filtered.length > 0, count: filtered.length, elements: descriptors };
+  return {
+    matched: filtered.length > 0,
+    count: filtered.length,
+    elements: descriptors,
+    ...(scopeMissing ? { scopeMissing: true } : {}),
+  };
 }
 
 /** Structural clusters of the page — the successor to the raw testid list in zero-match hints. */
 function buildPresentRegions(query: ElementQuery): PresentRegion[] {
-  const container = resolveContainer(query.scope);
+  // For the diagnostic hint we WANT the page's orientation even when the scope is gone, so fall back
+  // to the body here (the match path above already reported scopeMissing, so this can't mask it).
+  const container = resolveContainer(query.scope).container ?? document.body;
   const regions: PresentRegion[] = [];
   const CONTAINER_ROLES = [
     'list',
@@ -344,7 +362,7 @@ function buildPresentRegions(query: ElementQuery): PresentRegion[] {
 
 /** Diagnostic hint for a zero-match query: what testids ARE present in the searched scope. */
 function buildEmptyHint(query: ElementQuery): QueryEmptyHint {
-  const container = resolveContainer(query.scope);
+  const container = resolveContainer(query.scope).container ?? document.body;
   const all = container.querySelectorAll(`[${TESTID_ATTR}]`);
   const present: string[] = [];
   for (const el of Array.from(all)) {
@@ -374,8 +392,9 @@ function buildEmptyHint(query: ElementQuery): QueryEmptyHint {
  */
 export function runQuery(query: ElementQuery, limit?: number): QueryResult {
   const result = matchQuery(query, undefined, limit);
+  const scopeFields = result.scopeMissing === true ? { scopeMissing: true as const } : {};
   if (result.elements.length === 0) {
-    return { elements: result.elements, count: result.count, hint: buildEmptyHint(query) };
+    return { elements: result.elements, count: result.count, hint: buildEmptyHint(query), ...scopeFields };
   }
-  return { elements: result.elements, count: result.count };
+  return { elements: result.elements, count: result.count, ...scopeFields };
 }

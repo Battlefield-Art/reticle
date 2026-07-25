@@ -80,6 +80,22 @@ describe('snapshot', () => {
     expect(snap.tree).not.toContain('heading');
   });
 
+  it('a missing scope snapshots NOTHING and flags scopeMissing — never a whole-page fallback', () => {
+    render('<main><button>Real</button></main>');
+    const snap = buildSnapshot({ mode: SnapshotMode.FULL, scope: '#modal-gone' });
+    expect(snap.scopeMissing).toBe(true);
+    expect(snap.tree).toBe(''); // did NOT fall back to snapshotting the whole page
+    expect(snap.tree).not.toContain('Real');
+  });
+
+  it('a resolving scope snapshots that subtree without scopeMissing', () => {
+    render('<div id="panel"><button>Inside</button></div><button>Outside</button>');
+    const snap = buildSnapshot({ mode: SnapshotMode.FULL, scope: '#panel' });
+    expect(snap.scopeMissing).toBeUndefined();
+    expect(snap.tree).toContain('Inside');
+    expect(snap.tree).not.toContain('Outside');
+  });
+
   it('includes text content of generic containers so silent content removal is visible', () => {
     // KPI-card shape: generic divs with no role/name carry the value text. Without this,
     // removing a card is invisible to the snapshot (the silent-DOM benchmark blind spot).

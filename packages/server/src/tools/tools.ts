@@ -145,6 +145,12 @@ const RAW_TOOLS: ToolDef[] = [
         .describe(
           'Present when a diff was computed over a capped tree — "unchanged" is then partial.',
         ),
+      scopeMissing: z
+        .boolean()
+        .optional()
+        .describe(
+          'True when a scope was given but resolved to nothing — the tree is EMPTY on purpose, not because the page is empty. Do not read an absent element as absent from the page; re-check the scope.',
+        ),
     },
     handler: (deps, args) => {
       const sessionId = asString(args['sessionId']);
@@ -290,6 +296,12 @@ const RAW_TOOLS: ToolDef[] = [
         .object({ bytes: z.number(), tokens: z.number() })
         .optional()
         .describe('Estimated size of this result — narrow with `name`/`scope`/`limit` if large.'),
+      scopeMissing: z
+        .boolean()
+        .optional()
+        .describe(
+          'True when a `scope` was given but resolved to nothing — zero matches then means the scope is gone, NOT that the element is absent. The search did not widen to the whole page. Re-check the scope before concluding anything.',
+        ),
     },
     handler: (deps, args) =>
       commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.QUERY, {

@@ -781,6 +781,54 @@ describe('element failures carry observed/expected/assertion', () => {
     expect(r.observed).toContain('2');
   });
 
+  it('a MISSING scope never confirms absence — it is inconclusive, not a pass', async () => {
+    // The false green: assert "toast is absent" scoped to a modal that has closed. matched:false then
+    // means "couldn't look", not "not there". scopeMissing must turn that into a FAIL, not a green.
+    const scopeGone: PredicateSession = {
+      eventsSince: () => [],
+      elapsed: () => 0,
+      onEvent: () => () => undefined,
+      command: () =>
+        Promise.resolve({
+          kind: 'command_result',
+          id: 'c',
+          ok: true,
+          result: { matched: false, count: 0, elements: [], scopeMissing: true },
+        }),
+    } as unknown as PredicateSession;
+    const r = await evaluatePredicate(scopeGone, {
+      kind: 'element',
+      query: { by: 'testid', value: 'toast', scope: '#modal' },
+      absent: true,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.assertion).toBe('element.absent');
+    expect(JSON.stringify(r.evidence)).toContain('scopeMissing');
+    expect(r.observed).toContain('scope');
+  });
+
+  it('a MISSING scope also fails a PRESENT assertion with a scope-specific reason', async () => {
+    const scopeGone: PredicateSession = {
+      eventsSince: () => [],
+      elapsed: () => 0,
+      onEvent: () => () => undefined,
+      command: () =>
+        Promise.resolve({
+          kind: 'command_result',
+          id: 'c',
+          ok: true,
+          result: { matched: false, count: 0, elements: [], scopeMissing: true },
+        }),
+    } as unknown as PredicateSession;
+    const r = await evaluatePredicate(scopeGone, {
+      kind: 'element',
+      query: { by: 'testid', value: 'save', scope: '#panel' },
+    });
+    expect(r.pass).toBe(false);
+    expect(r.assertion).toBe('element.present');
+    expect(r.failureReason).toContain('scope');
+  });
+
   it('a PASSING assertion carries no failure structure — it is not noise on the green path', async () => {
     const r = await evaluatePredicate(session([{}]), {
       kind: 'element',
