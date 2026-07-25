@@ -325,6 +325,34 @@ describe('an invalid Date does not crash the whole state read', () => {
     const d = new Date('2026-07-24T00:00:00.000Z');
     expect(sanitizeForTransport({ when: d })).toEqual({ when: '2026-07-24T00:00:00.000Z' });
   });
+
+  it('a throwing property getter degrades to [UNSERIALIZABLE], not a lost read', () => {
+    // MobX strict mode, a Vue reactive read outside a reactive context, a hostile Proxy: a getter
+    // can throw. It was dereferenced in an UNGUARDED scalar-vs-collection partition before the
+    // per-key try, so one bad property lost the entire object read — the Date bug's twin. One bad
+    // getter must cost only its own key; every sibling field must still survive.
+    const state = {
+      ok: 1,
+      get poison(): never {
+        throw new Error('getter blew up');
+      },
+      also: 'here',
+    };
+    expect(() => sanitizeForTransport(state)).not.toThrow();
+    expect(sanitizeForTransport(state)).toEqual({ ok: 1, poison: '[UNSERIALIZABLE]', also: 'here' });
+  });
+
+  it('reads each property getter exactly once (no double side effects)', () => {
+    let reads = 0;
+    const state = {
+      get counted(): number {
+        reads += 1;
+        return 42;
+      },
+    };
+    sanitizeForTransport(state);
+    expect(reads).toBe(1);
+  });
 });
 
 describe('Map and Set are readable, not silently empty', () => {

@@ -184,19 +184,28 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
     // Keys past the cap are dropped — count them, like the array/Map/Set paths do, so a 5,000-key
     // store reported as 200 keys carries a droppedItems marker instead of reading as complete.
     state.droppedItems += Math.max(0, allKeys.length - keys.length);
-    const isScalar = (k: string): boolean => {
-      const v = (value as Record<string, unknown>)[k];
-      return v === null || typeof v !== 'object';
-    };
-    for (const rawKey of [...keys.filter(isScalar), ...keys.filter((k) => !isScalar(k))]) {
-      const safeKey = boundedString(rawKey, state, MAX_KEY_LENGTH);
+    // Read each key's value ONCE, inside the guard. A property getter can throw — MobX strict mode,
+    // a Vue reactive trap read outside a reactive context, any hostile Proxy — and that throw must
+    // cost only its own key, not the whole object read. The earlier code dereferenced the getter in
+    // an unguarded `isScalar` (and again in the sanitize call: two invocations, doubling side
+    // effects), so one bad property lost the entire STATE_READ — the exact silent-loss shape the Date
+    // guard above was written to prevent. Snapshot first, then partition scalars-before-collections.
+    const read = keys.map((key) => {
       try {
-        const sanitized = sanitize(
-          (value as Record<string, unknown>)[rawKey],
-          state,
-          depth + 1,
-          rawKey,
-        );
+        const v = (value as Record<string, unknown>)[key];
+        return { key, value: v, scalar: v === null || typeof v !== 'object', ok: true };
+      } catch {
+        return { key, value: undefined, scalar: true, ok: false };
+      }
+    });
+    for (const entry of [...read.filter((e) => e.scalar), ...read.filter((e) => !e.scalar)]) {
+      const safeKey = boundedString(entry.key, state, MAX_KEY_LENGTH);
+      if (!entry.ok) {
+        out[safeKey] = UNSERIALIZABLE_VALUE;
+        continue;
+      }
+      try {
+        const sanitized = sanitize(entry.value, state, depth + 1, entry.key);
         if (sanitized !== OMIT_VALUE) out[safeKey] = sanitized;
       } catch {
         out[safeKey] = UNSERIALIZABLE_VALUE;
