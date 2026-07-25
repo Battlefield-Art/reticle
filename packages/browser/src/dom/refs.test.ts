@@ -62,5 +62,28 @@ describe('RefRegistry', () => {
       expect(registry.refFor(kept)).toBe(ref);
       expect(registry.resolve(ref)).toBe(kept);
     });
+
+    it('a ref the agent just RESOLVED survives a following mint storm (LRU-protected)', () => {
+      // The false negative: resolve e7 (about to act on it), a mint storm evicts e7 (FIFO oldest-drop),
+      // then act(e7) -> resolve returns null for a LIVE element. Resolving must touch it to the recent
+      // end so the next wave of oldest-drops can't reclaim it out from under the agent.
+      const registry = new RefRegistry();
+      const kept = document.createElement('button');
+      document.body.appendChild(kept);
+      const ref = registry.refFor(kept);
+      // Churn CONNECTED elements (so the dead-entry sweep can't be what saves `kept` — isolate LRU).
+      const fill = (n: number): void => {
+        for (let i = 0; i < n; i += 1) {
+          const d = document.createElement('div');
+          document.body.appendChild(d);
+          registry.refFor(d);
+        }
+      };
+      fill(MAX_TRACKED_REFS - 1); // `kept` is now the oldest entry, at the eviction front
+      expect(registry.resolve(ref)).toBe(kept); // agent resolves it — LRU touch to the recent end
+      fill(MAX_TRACKED_REFS - 1); // a second storm evicts the OLD front, but not the just-touched `kept`
+      // Still resolves WITHOUT re-observing via refFor — protected purely by the resolve-time touch.
+      expect(registry.resolve(ref)).toBe(kept);
+    });
   });
 });

@@ -47,7 +47,6 @@ export function installScroll(emit: Emit): Teardown {
   window.addEventListener('scroll', onScroll, { passive: true });
 
   let io: IntersectionObserver | undefined;
-  let mo: MutationObserver | undefined;
   if (typeof IntersectionObserver === 'function') {
     io = new IntersectionObserver(
       (entries) => {
@@ -64,27 +63,18 @@ export function installScroll(emit: Emit): Teardown {
       { threshold: 0.25 },
     );
     const observer = io;
+    // Observe reveal targets present at install. Reveal-on-scroll sections are in the initial DOM by
+    // design (they exist hidden and animate in on scroll), so this covers the real case. Watching the
+    // whole body subtree for LATE-mounted reveal targets was tried and reverted: a second body-wide
+    // MutationObserver on EVERY app — running querySelectorAll(section,...) per mutation batch — is
+    // disproportionate overhead for a niche signal. Dynamically-mounted reveal targets are simply not
+    // tracked (an honest blind spot, consistent with the rest of the SDK).
     for (const el of document.querySelectorAll(REVEAL_SELECTOR)) observer.observe(el);
-    // Observe reveal targets mounted AFTER install too (lazy sections, infinite scroll) — a static
-    // query at install missed every section that appeared later.
-    if (typeof MutationObserver === 'function') {
-      mo = new MutationObserver((records) => {
-        for (const record of records) {
-          for (const node of record.addedNodes) {
-            if (!(node instanceof Element)) continue;
-            if (node.matches(REVEAL_SELECTOR)) observer.observe(node);
-            for (const nested of node.querySelectorAll(REVEAL_SELECTOR)) observer.observe(nested);
-          }
-        }
-      });
-      mo.observe(document.body, { childList: true, subtree: true });
-    }
   }
 
   return () => {
     window.removeEventListener('scroll', onScroll);
     if (trailingTimer !== undefined) nativeClearTimeout(trailingTimer);
     io?.disconnect();
-    mo?.disconnect();
   };
 }

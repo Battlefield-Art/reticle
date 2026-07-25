@@ -62,7 +62,11 @@ export class RefRegistry {
       // Re-register if this element's entry was evicted while it was off the agent's radar. Without
       // this, an element that is still on the page could hold a ref that no longer resolves — the
       // eviction would surface as "element not found", which is a wrong answer rather than a slow one.
-      if (!this.#fromRef.has(existing)) this.#fromRef.set(existing, new WeakRef(el));
+      // Either way, TOUCH it to the recent end (LRU): an element being surfaced right now must not be
+      // the oldest-drop victim of a mint storm before the agent gets to act on it.
+      const weak = this.#fromRef.get(existing);
+      this.#fromRef.delete(existing);
+      this.#fromRef.set(existing, weak ?? new WeakRef(el));
       return existing;
     }
     this.#seq += 1;
@@ -96,6 +100,11 @@ export class RefRegistry {
       this.#fromRef.delete(ref);
       return null;
     }
+    // LRU touch: a ref the agent just resolved is in ACTIVE use — move it to the most-recent end so an
+    // oldest-drop eviction between this resolve and the follow-up act can't reclaim it and turn a live
+    // element into a false "ref no longer resolves". O(1) — Map preserves insertion order.
+    this.#fromRef.delete(ref);
+    this.#fromRef.set(ref, weak);
     return el;
   }
 }
