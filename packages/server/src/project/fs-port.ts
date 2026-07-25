@@ -1,4 +1,15 @@
-import { access, appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import {
+  access,
+  appendFile,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 
 /**
  * The injectable filesystem seam. Server logic depends on this interface, never on node:fs
@@ -7,6 +18,15 @@ import { access, appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFi
 export interface FileSystemPort {
   /** Read a UTF-8 file. Rejects (ENOENT) if absent. */
   readFile(path: string): Promise<string>;
+  /**
+   * Read a UTF-8 file from a BYTE offset to EOF, returning the tail plus the file's total byte size.
+   * The append-only journal grows unboundedly, so re-reading the whole file per query is O(N-per-call);
+   * this reads only what was appended since the caller's tracked offset. Callers MUST pass an offset
+   * that lands on a `\n` boundary (the journal's line terminator, 1 ASCII byte) so the returned tail
+   * starts on a valid UTF-8 char boundary. Optional — a FileSystemPort that omits it makes readers fall
+   * back to a whole-file read.
+   */
+  readFileFrom?(path: string, byteOffset: number): Promise<{ text: string; size: number }>;
   writeFile(path: string, data: string): Promise<void>;
   /** Append UTF-8 text, creating the file if absent — for the append-only JSONL journal. */
   appendFile(path: string, data: string): Promise<void>;
@@ -33,6 +53,19 @@ export interface FileSystemPort {
 export function createNodeFileSystem(): FileSystemPort {
   return {
     readFile: (path) => readFile(path, 'utf8'),
+    readFileFrom: async (path, byteOffset) => {
+      const fh = await open(path, 'r');
+      try {
+        const { size } = await fh.stat();
+        if (byteOffset >= size) return { text: '', size };
+        const length = size - byteOffset;
+        const buf = Buffer.allocUnsafe(length);
+        await fh.read(buf, 0, length, byteOffset);
+        return { text: buf.toString('utf8'), size };
+      } finally {
+        await fh.close();
+      }
+    },
     writeFile: (path, data) => writeFile(path, data, 'utf8'),
     appendFile: (path, data) => appendFile(path, data, 'utf8'),
     readFileBytes: async (path) => {

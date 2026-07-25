@@ -39,7 +39,8 @@ export class SessionJournal {
   // journal only ever grows and is always a run of complete '\n'-terminated lines, so we keep the parsed
   // events and the char count already consumed, and parse only the tail written since the last read.
   #eventCache: ReticleEvent[] | undefined;
-  #eventCharsConsumed = 0;
+  #eventCharsConsumed = 0; // fallback (whole-file) path: UTF-16 code units consumed
+  #eventBytesConsumed = 0; // fast (bounded-read) path: UTF-8 bytes consumed, always at a '\n' boundary
 
   constructor(fs: FileSystemPort, root: string, sessionId: string) {
     if (!isValidSessionId(sessionId)) {
@@ -67,46 +68,76 @@ export class SessionJournal {
 
   async readEvents(): Promise<ReticleEvent[]> {
     const path = journalEventsPath(this.#root, this.#sessionId);
+    if (this.#eventCache === undefined) this.#eventCache = [];
+    // Fast path: read only the BYTES appended since the last read, so cost tracks the tail, not the
+    // whole (unboundedly growing) file. Falls back to a whole-file read for a FileSystemPort that omits
+    // readFileFrom (test stubs).
+    const readFrom = this.#fs.readFileFrom?.bind(this.#fs);
+    if (readFrom !== undefined) {
+      let chunk: { text: string; size: number };
+      try {
+        chunk = await readFrom(path, this.#eventBytesConsumed);
+      } catch (error) {
+        if (this.#fs.isNotFound(error)) return this.#eventCache.slice();
+        throw error;
+      }
+      // Shrink/rotation guard (not done today): if the file is smaller than what we consumed, the offset
+      // is meaningless — reset and re-read from 0.
+      if (chunk.size < this.#eventBytesConsumed) {
+        this.#eventCache = [];
+        this.#eventBytesConsumed = 0;
+        chunk = await readFrom(path, 0);
+      }
+      this.#eventBytesConsumed += this.#ingestTail(chunk.text);
+      return this.#eventCache.slice();
+    }
+
     let text: string;
     try {
       text = await this.#fs.readFile(path);
     } catch (error) {
-      if (this.#fs.isNotFound(error)) return (this.#eventCache ?? []).slice();
+      if (this.#fs.isNotFound(error)) return this.#eventCache.slice();
       throw error;
     }
-    if (this.#eventCache === undefined) this.#eventCache = [];
-    // Parse only what was appended since the last read. #eventCharsConsumed is always a line boundary
-    // (every line is written with a trailing '\n'), so slicing there yields whole lines. If the file
-    // somehow shrank (rotation/truncation — not done today, but be safe), fall back to a full reparse.
+    // Fallback (whole-file) path: #eventCharsConsumed is a UTF-16 offset into the whole text. Shrink
+    // guard, then ingest the un-consumed tail up to its last newline (see #ingestTail for the
+    // partial-line rationale).
     if (text.length < this.#eventCharsConsumed) {
       this.#eventCache = [];
       this.#eventCharsConsumed = 0;
     }
-    // Consume only up to the LAST newline. A concurrent append can be observed MID-LINE — reads
-    // (query fall-through) and writes (the append chain) are not on the same chain and hit the file on
-    // separate libuv threads — so `text` may end with a partial record. Advancing the offset to
-    // text.length past that partial line would make the next read splice the line's tail onto its head,
-    // fail to parse the join, and drop that event from the durable cache permanently. Leave the partial
-    // tail for the next read (which will see it complete).
     const end = text.lastIndexOf('\n') + 1;
     if (end > this.#eventCharsConsumed) {
-      const fresh = text.slice(this.#eventCharsConsumed, end);
-      for (const line of fresh.split('\n')) {
-        if (line.length === 0) continue;
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        const result = ReticleEventSchema.safeParse(parsed);
-        if (result.success) this.#eventCache.push(result.data);
-      }
+      this.#ingestTail(text.slice(this.#eventCharsConsumed, end));
       this.#eventCharsConsumed = end;
     }
-    // A shallow copy preserves the fresh-array contract callers had (merge/sort own their input); it is
-    // O(n) pointer copy, not the O(n) JSON.parse + validate that was the actual cost.
     return this.#eventCache.slice();
+  }
+
+  /**
+   * Parse complete ('\n'-terminated) JSON event lines from `tail` into #eventCache, stopping at the LAST
+   * newline. A concurrent append can be observed mid-record (reads and writes run on separate libuv
+   * threads), and consuming a partial trailing line would splice its tail onto the next read's head, fail
+   * to parse, and drop that event forever — so the partial tail is left for the next read. Returns the
+   * UTF-8 BYTES consumed, which the bounded-read path uses to advance its byte offset.
+   */
+  #ingestTail(tail: string): number {
+    const cache = this.#eventCache ?? (this.#eventCache = []);
+    const end = tail.lastIndexOf('\n') + 1;
+    if (end === 0) return 0; // no complete line yet
+    const complete = tail.slice(0, end);
+    for (const line of complete.split('\n')) {
+      if (line.length === 0) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const result = ReticleEventSchema.safeParse(parsed);
+      if (result.success) cache.push(result.data);
+    }
+    return Buffer.byteLength(complete, 'utf8');
   }
 
   async readActions(): Promise<JournalAction[]> {
