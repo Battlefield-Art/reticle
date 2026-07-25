@@ -355,7 +355,9 @@ async function dispatchFor(
     }
     case ActionType.DRAG: {
       const toRef = asString(args['toRef']);
-      const resolved = toRef !== undefined ? refs.resolve(toRef) : null;
+      // asString falls back to '' (never undefined), so the old `!== undefined` was always true and
+      // handed '' to refs.resolve. A drag with no target ref is a free drag — resolve nothing.
+      const resolved = toRef !== '' ? refs.resolve(toRef) : null;
       return await dragElement(el, resolved instanceof HTMLElement ? resolved : null, args['data']);
     }
     default:
