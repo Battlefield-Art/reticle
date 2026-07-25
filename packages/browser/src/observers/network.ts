@@ -280,13 +280,23 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
         // ONLY the body read can make the app wait (a chunked response with no content-length can be
         // arbitrarily long). Clone synchronously so the app's stream is untouched, then read + emit from
         // a DETACHED promise — the app already has res, so our bounded read is invisible to it. Without
-        // body capture (the default) we emit synchronously, exactly as before: no latency, no deferral.
+        // body capture (the DEFAULT) we emit synchronously below, exactly as before: no latency, no
+        // deferral, NET_REQUEST in order.
+        //
+        // Tradeoff, opt-in path only: under captureBodies the NET_REQUEST for THIS call lands after the
+        // bounded body read (≤ the deadline), so it can arrive out of order vs a later request's
+        // NET_PENDING, and a BARE `assert { net, count }` fired the instant the app's fetch resolves may
+        // see the count not-yet-incremented. Use `wait_for` for count/settle assertions when body
+        // capture is on (it already polls until the event lands). The default path has neither caveat.
         let clone: Response | undefined;
         try {
           clone = res.clone();
         } catch {
           /* already consumed/locked — emit the envelope with no body */
         }
+        // The whole IIFE is guarded: emit is the SDK's already-try/catch'd sink today, but a detached
+        // promise must never be able to surface an unhandledrejection into the host page even if a
+        // future caller passes a throwing emit. A body we can't read is simply dropped.
         void (async () => {
           let responseBodyFields: Record<string, unknown> = {};
           if (clone !== undefined) {
@@ -302,8 +312,12 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
               /* body not readable — skip, keep the envelope */
             }
           }
-          emitRequest(responseBodyFields);
-        })();
+          try {
+            emitRequest(responseBodyFields);
+          } catch {
+            /* observation is best-effort; never reject into the page */
+          }
+        })().catch(() => undefined);
       } else {
         emitRequest({});
       }

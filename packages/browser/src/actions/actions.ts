@@ -158,7 +158,15 @@ const result = (
   return base;
 };
 
-const FILL_LIKE = new Set<string>([ActionType.FILL, ActionType.TYPE, ActionType.CLEAR]);
+// SELECT is fill-like for the purpose of `valueChanged`: selecting a value with NO matching <option>
+// leaves el.value unchanged (or ''), and valueChanged:false is the only signal an agent gets that the
+// select silently did nothing. Without it a no-op SELECT reported plain success — a false green.
+const FILL_LIKE = new Set<string>([
+  ActionType.FILL,
+  ActionType.TYPE,
+  ActionType.CLEAR,
+  ActionType.SELECT,
+]);
 const isFillLike = (action: string): boolean => FILL_LIKE.has(action);
 
 /** Actions that resolve to a point and so benefit from off-viewport scroll + occlusion hit-test. */
@@ -302,7 +310,9 @@ async function dispatchFor(
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
         return setNativeValue(el, '');
       }
-      return false;
+      // Consistent with TYPE/SELECT/CHECK: clearing a non-field is not a silent success. Throwing
+      // surfaces the mismatch instead of reporting ok:true for an action that did nothing.
+      throw new Error(`cannot clear a <${el.tagName.toLowerCase()}>`);
     case ActionType.SELECT:
       if (el instanceof HTMLSelectElement) {
         el.value = asString(args['value']);

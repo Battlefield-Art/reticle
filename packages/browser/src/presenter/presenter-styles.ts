@@ -6,8 +6,11 @@ import { CONTROLS_CSS } from './presenter-controls.js';
  * Split out of presenter.ts so that file stays a cohesive controller under the size cap; this is
  * pure style data (no behavior). LOG_CSS + CONTROLS_CSS are composed in at the end as before.
  */
+// No web-font @import: a dev-only SDK must not make the host page issue a cross-origin request to
+// fonts.googleapis.com (and trip a `style-src 'self'` CSP with a console violation) just for HUD
+// polish. The font vars below already prefer Inter/IBM Plex Serif if present and fall back to the
+// system stack otherwise — so the overlay stays self-contained and never touches the network.
 export const PRESENTER_CSS = `
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;500&family=Inter:wght@400;450;500;600&display=swap");
 [data-reticle-glow]{position:fixed;inset:0;pointer-events:none;z-index:2147483600;opacity:0;
   transition:opacity .25s ease;box-shadow:inset 0 0 0 3px rgba(99,102,241,.9),inset 0 0 28px 6px rgba(99,102,241,.45);}
 [data-reticle-glow][data-on="1"]{opacity:1;animation:reticle-pulse 1.6s ease-in-out infinite;}
