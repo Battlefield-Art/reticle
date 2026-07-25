@@ -781,9 +781,10 @@ describe('element failures carry observed/expected/assertion', () => {
     expect(r.observed).toContain('2');
   });
 
-  it('a MISSING scope never confirms absence — it is inconclusive, not a pass', async () => {
-    // The false green: assert "toast is absent" scoped to a modal that has closed. matched:false then
-    // means "couldn't look", not "not there". scopeMissing must turn that into a FAIL, not a green.
+  it('a MISSING scope SATISFIES an absence check — the scope being gone is the thing you waited for', async () => {
+    // The common pattern: wait_for { absent, scope:'#loading-overlay' }. When the overlay is removed
+    // (loading done), the scope is gone → the element is trivially absent → PASS. Treating scopeMissing
+    // as a hard fail here burned the whole timeout and flipped a correct green to red.
     const scopeGone: PredicateSession = {
       eventsSince: () => [],
       elapsed: () => 0,
@@ -798,16 +799,14 @@ describe('element failures carry observed/expected/assertion', () => {
     } as unknown as PredicateSession;
     const r = await evaluatePredicate(scopeGone, {
       kind: 'element',
-      query: { by: 'testid', value: 'toast', scope: '#modal' },
+      query: { by: 'testid', value: 'toast', scope: '#loading-overlay' },
       absent: true,
     });
-    expect(r.pass).toBe(false);
-    expect(r.assertion).toBe('element.absent');
+    expect(r.pass).toBe(true);
     expect(JSON.stringify(r.evidence)).toContain('scopeMissing');
-    expect(r.observed).toContain('scope');
   });
 
-  it('a MISSING scope also fails a PRESENT assertion with a scope-specific reason', async () => {
+  it('a MISSING scope FAILS a PRESENT assertion with a scope-specific reason (no whole-page widening)', async () => {
     const scopeGone: PredicateSession = {
       eventsSince: () => [],
       elapsed: () => 0,

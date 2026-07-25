@@ -82,8 +82,15 @@ export class SessionJournal {
       this.#eventCache = [];
       this.#eventCharsConsumed = 0;
     }
-    if (text.length > this.#eventCharsConsumed) {
-      const fresh = text.slice(this.#eventCharsConsumed);
+    // Consume only up to the LAST newline. A concurrent append can be observed MID-LINE — reads
+    // (query fall-through) and writes (the append chain) are not on the same chain and hit the file on
+    // separate libuv threads — so `text` may end with a partial record. Advancing the offset to
+    // text.length past that partial line would make the next read splice the line's tail onto its head,
+    // fail to parse the join, and drop that event from the durable cache permanently. Leave the partial
+    // tail for the next read (which will see it complete).
+    const end = text.lastIndexOf('\n') + 1;
+    if (end > this.#eventCharsConsumed) {
+      const fresh = text.slice(this.#eventCharsConsumed, end);
       for (const line of fresh.split('\n')) {
         if (line.length === 0) continue;
         let parsed: unknown;
@@ -95,7 +102,7 @@ export class SessionJournal {
         const result = ReticleEventSchema.safeParse(parsed);
         if (result.success) this.#eventCache.push(result.data);
       }
-      this.#eventCharsConsumed = text.length;
+      this.#eventCharsConsumed = end;
     }
     // A shallow copy preserves the fresh-array contract callers had (merge/sort own their input); it is
     // O(n) pointer copy, not the O(n) JSON.parse + validate that was the actual cost.

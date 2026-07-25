@@ -108,4 +108,31 @@ describe('SessionJournal — durable JSONL over a temp dir', () => {
   it('rejects an unsafe session id before any disk path is built', () => {
     expect(() => new SessionJournal(fs, root, '../escape')).toThrow();
   });
+
+  it('does NOT drop an event when a read observes a partial trailing line mid-append', async () => {
+    // Reads and writes are not on the same chain and hit separate libuv threads, so a read can see the
+    // file ending mid-record. Advancing the parse offset past that partial line used to splice its tail
+    // onto the next read's head, fail to parse the join, and lose that event from the durable cache
+    // forever. The offset must stop at the last newline and re-read the completed line.
+    let fileText = '';
+    const controllable: FileSystemPort = {
+      ...fs,
+      readFile: (path) => (path.endsWith('events.jsonl') ? Promise.resolve(fileText) : fs.readFile(path)),
+      appendFile: (path, data) => {
+        if (path.endsWith('events.jsonl')) {
+          fileText += data;
+          return Promise.resolve();
+        }
+        return fs.appendFile(path, data);
+      },
+      mkdir: () => Promise.resolve(),
+    };
+    const j = new SessionJournal(controllable, root, 'demo');
+    const complete = `${JSON.stringify(evt(0))}\n${JSON.stringify(evt(1))}\n`;
+    fileText = `${complete}${JSON.stringify(evt(2))}`; // event 2 is a PARTIAL trailing line (no \n yet)
+    expect((await j.readEvents()).map((e) => e.seq)).toEqual([0, 1]); // partial line left unconsumed
+
+    fileText = `${complete}${JSON.stringify(evt(2))}\n`; // the append completes with the newline
+    expect((await j.readEvents()).map((e) => e.seq)).toEqual([0, 1, 2]); // event 2 recovered, not dropped
+  });
 });

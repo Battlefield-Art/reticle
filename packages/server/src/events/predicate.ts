@@ -60,20 +60,19 @@ async function evalElement(
 ): Promise<EvalResult> {
   const match = await matchOnce(session, query, state);
   const subject = JSON.stringify(query);
-  // A given-but-missing scope is INCONCLUSIVE, never a pass. Zero matches then means "couldn't look"
-  // (the scope was unmounted), not "element absent" — so confirming absence off it, or reading a
-  // present-check's miss as a genuine miss, is the exact false green scopeMissing exists to stop.
-  if (match.scopeMissing === true) {
-    return {
-      pass: false,
-      failureReason: `scope resolved to no element — cannot verify ${absent ? 'absence' : 'presence'} of ${subject}`,
-      observed: 'the requested scope is not on the page (unmounted or selector matched nothing)',
-      expected: `${absent ? 'no element' : 'an element'} matching ${subject} within an existing scope`,
-      assertion: absent ? 'element.absent' : 'element.present',
-      evidence: { scopeMissing: true },
-    };
-  }
+  // A given-but-missing scope is handled ASYMMETRICALLY, because "absent" and "present" ask different
+  // questions of a scope that no longer exists:
+  //  - ABSENT: an element is trivially absent from a container that isn't there. This is also the
+  //    everyday "wait for the #overlay/#spinner/#modal to disappear" pattern (scope the wait to the
+  //    node being removed) — treating scopeMissing as a hard fail there burned the whole timeout and
+  //    flipped a correct green to red. So scopeMissing satisfies an absence check.
+  //  - PRESENT: you cannot confirm an element is present inside a scope that resolved to nothing, and
+  //    silently widening to the whole page is the original false green. So scopeMissing FAILS presence
+  //    (on the wait_for path this just keeps polling until the scope appears).
   if (absent) {
+    if (match.scopeMissing === true) {
+      return { pass: true, evidence: { absent: true, scopeMissing: true } };
+    }
     return match.matched
       ? {
           pass: false,
@@ -84,6 +83,16 @@ async function evalElement(
           evidence: match.elements,
         }
       : { pass: true, evidence: { absent: true } };
+  }
+  if (match.scopeMissing === true) {
+    return {
+      pass: false,
+      failureReason: `scope resolved to no element — cannot confirm ${subject} is present`,
+      observed: 'the requested scope is not on the page (unmounted or selector matched nothing)',
+      expected: `an element matching ${subject} within an existing scope`,
+      assertion: 'element.present',
+      evidence: { scopeMissing: true },
+    };
   }
   if (match.matched) return { pass: true, evidence: match.elements };
 
