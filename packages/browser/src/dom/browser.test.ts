@@ -235,6 +235,16 @@ describe('query empty hint', () => {
     const r = runQuery({ role: 'button', name: 'nope' });
     expect(r.hint?.route).toBe('/cart?x=1');
   });
+
+  it('names a present region by its aria-labelledby TEXT, not the raw element id', () => {
+    render(`
+      <h2 id="cart-heading">Your Cart</h2>
+      <ul role="list" aria-labelledby="cart-heading"><li role="listitem">item</li></ul>
+    `);
+    const r = runQuery({ role: 'button', name: 'nope' });
+    const listRegion = r.hint?.presentRegions.find((reg) => reg.role === 'list');
+    expect(listRegion?.name).toBe('Your Cart'); // resolved text, not "cart-heading"
+  });
 });
 
 describe('actions', () => {

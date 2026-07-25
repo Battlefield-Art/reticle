@@ -300,6 +300,19 @@ export function matchQuery(
   };
 }
 
+/** Resolve `aria-labelledby` (one or more element IDs) to the referenced elements' text — a bare ID is
+ * not a human-readable name. Undefined when unset or nothing resolves. */
+function resolveLabelledBy(el: Element): string | undefined {
+  const ids = el.getAttribute('aria-labelledby');
+  if (ids === null) return undefined;
+  const text = ids
+    .split(/\s+/)
+    .map((id) => (id.length > 0 ? (el.ownerDocument.getElementById(id)?.textContent?.trim() ?? '') : ''))
+    .filter((t) => t.length > 0)
+    .join(' ');
+  return text.length > 0 ? text : undefined;
+}
+
 /** Structural clusters of the page — the successor to the raw testid list in zero-match hints. */
 function buildPresentRegions(query: ElementQuery): PresentRegion[] {
   // For the diagnostic hint we WANT the page's orientation even when the scope is gone, so fall back
@@ -334,7 +347,7 @@ function buildPresentRegions(query: ElementQuery): PresentRegion[] {
     for (const el of containers) {
       const name =
         el.getAttribute('aria-label') ??
-        el.getAttribute('aria-labelledby') ??
+        resolveLabelledBy(el) ?? // aria-labelledby is an element ID — resolve it to the referenced TEXT
         el.getAttribute('data-testid') ??
         undefined;
       const children = el.querySelectorAll('[role]');
