@@ -156,11 +156,13 @@ function ariaBool(el: Element, attr: string): boolean | undefined {
   return value === 'true';
 }
 
-/** The set of states relevant to assertions. */
-export function getStates(el: Element): ElementState[] {
+/**
+ * The set of states relevant to assertions. `visible` is an O(depth) forced-style walk; callers that
+ * already computed it (describe) pass it in so it isn't resolved twice per element.
+ */
+export function getStates(el: Element, visible: boolean = isVisible(el)): ElementState[] {
   const states: ElementState[] = [ElementState.PRESENT];
-  if (isVisible(el)) states.push(ElementState.VISIBLE);
-  else states.push(ElementState.HIDDEN);
+  states.push(visible ? ElementState.VISIBLE : ElementState.HIDDEN);
 
   const disabledProp =
     (el instanceof HTMLButtonElement ||
@@ -259,12 +261,13 @@ export function describe(el: Element): ElementDescriptor {
   const value = getValue(el);
   const text = getVisibleText(el);
   const name = getAccessibleName(el);
+  const visible = isVisible(el); // O(depth) style walk — computed ONCE and reused by getStates below
   const base: ElementDescriptor = {
     ref: refs.refFor(el),
     role: getRole(el),
     name,
-    states: getStates(el),
-    visible: isVisible(el),
+    states: getStates(el, visible),
+    visible,
   };
   if (value !== undefined && value.length > 0) base.value = value;
   if (text.length > 0 && text !== name) base.text = text;
