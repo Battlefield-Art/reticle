@@ -27,6 +27,11 @@ export class EnvelopeStore {
     this.#path = reticleDirPaths(root).envelopes;
   }
 
+  /** Absolute path of the backing file — the key a caller uses to serialize its read-modify-write. */
+  get path(): string {
+    return this.#path;
+  }
+
   async load(): Promise<Map<string, RouteEnvelope>> {
     let text: string;
     try {

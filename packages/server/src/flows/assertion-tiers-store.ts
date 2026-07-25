@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { FlowExpect } from '@reticlehq/core';
 import type { FileSystemPort } from '../project/fs-port.js';
 import { reticleDirPaths } from '../project/reticle-dir.js';
+import { withFileLock } from '../project/file-lock.js';
 import type { StepExpect } from './assertion-integrity.js';
 
 /**
@@ -93,12 +94,21 @@ export class AssertionTiersStore {
     sources: readonly string[] = [],
   ): Promise<void> {
     try {
-      const all = await this.load();
-      all[name] = {
-        steps: steps.map((s) => ({ step: s.step, ...(s.expect === undefined ? {} : { expect: s.expect }) })),
-        sources: [...sources],
-      };
-      await this.save(all);
+      // Serialized per file: a fresh store instance is created per flow (flow-replay-run), so parallel
+      // passing replays would otherwise each load the same baseline, add only THEIR flow, and the last
+      // save would drop every other flow's baseline — the downgrade-detection gate silently losing
+      // coverage. The lock is keyed by path, so it serializes across those distinct instances.
+      await withFileLock(this.#path, async () => {
+        const all = await this.load();
+        all[name] = {
+          steps: steps.map((s) => ({
+            step: s.step,
+            ...(s.expect === undefined ? {} : { expect: s.expect }),
+          })),
+          sources: [...sources],
+        };
+        await this.save(all);
+      });
     } catch {
       // a ledger write must never fail a green replay
     }

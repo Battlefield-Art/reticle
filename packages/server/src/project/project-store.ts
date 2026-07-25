@@ -10,6 +10,7 @@ import {
 import type { FileSystemPort } from './fs-port.js';
 import type { Clock } from '../flows/flows.js';
 import { reticleDirPaths } from './reticle-dir.js';
+import { withFileLock } from './file-lock.js';
 
 const JSON_INDENT = 2;
 
@@ -84,13 +85,18 @@ export class ProjectStore {
    * (last PER_NAME of any one name, then cap to TOTAL overall) and writes byte-stably.
    */
   async recordRun(record: Omit<RunRecord, 'at'>): Promise<void> {
-    const existing = await this.read();
-    const base: ProjectFile = existing.ok ? existing.file : EMPTY_PROJECT;
-    const stamped: RunRecord = { ...record, at: this.#clock.now() };
-    const runs = truncate([...base.runs, stamped]);
-    const next: ProjectFile = { ...base, runs };
-    await this.#fs.mkdir(reticleDirPaths(this.#root).root);
-    await this.#fs.writeFile(reticleDirPaths(this.#root).project, this.#serialize(next));
+    const path = reticleDirPaths(this.#root).project;
+    // Serialized per file: a parallel flow_verify records N runs concurrently, and an unlocked
+    // read-append-write drops every run but the last writer's (each read the same base list).
+    await withFileLock(path, async () => {
+      const existing = await this.read();
+      const base: ProjectFile = existing.ok ? existing.file : EMPTY_PROJECT;
+      const stamped: RunRecord = { ...record, at: this.#clock.now() };
+      const runs = truncate([...base.runs, stamped]);
+      const next: ProjectFile = { ...base, runs };
+      await this.#fs.mkdir(reticleDirPaths(this.#root).root);
+      await this.#fs.writeFile(path, this.#serialize(next));
+    });
   }
 
   /** The most-recent run for `name` (undefined on missing/malformed/none). Powers diff-vs-last. */
