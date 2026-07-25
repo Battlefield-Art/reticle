@@ -129,6 +129,20 @@ describe('runTool — universal session-health invariant', () => {
       expect(all.has(n)).toBe(true);
   });
 
+  it('8: touches the AUTO-SELECTED session lease when sessionId is omitted (not the raw undefined arg)', async () => {
+    // The leak: with no sessionId the raw arg is undefined, so pool.touch was skipped — yet the handler
+    // auto-selects and drives a real leased session, whose lease then never refreshes and the reaper can
+    // reclaim it mid-drive. Touch must target the RESOLVED session id.
+    const touched: string[] = [];
+    const session = throttledSession({ id: 'auto-picked' });
+    const deps = fakeDeps(session);
+    (deps as { pool?: { touch(id: string): void } }).pool = {
+      touch: (id: string) => touched.push(id),
+    };
+    await runTool(stubTool(ReticleTool.ACT, { ok: true }), deps, {}); // no sessionId
+    expect(touched).toEqual(['auto-picked']);
+  });
+
   it('7: real handlers — previously-bare tools now carry health through runTool', async () => {
     const deps = fakeDeps();
     const tool = (name: string): ToolDef => {

@@ -152,10 +152,17 @@ const RAW_TOOLS: ToolDef[] = [
           'True when a scope was given but resolved to nothing — the tree is EMPTY on purpose, not because the page is empty. Do not read an absent element as absent from the page; re-check the scope.',
         ),
     },
-    handler: (deps, args) => {
-      const sessionId = asString(args['sessionId']);
+    // async so a synchronous resolve() failure (no session connected) surfaces as a REJECTED promise —
+    // the handler contract every caller relies on — not a throw that escapes a direct invocation.
+    handler: async (deps, args) => {
+      // Resolve ONCE and key the diff cache on the RESOLVED session id. Keying on `sessionId ?? 'default'`
+      // meant two different auto-selected sessions (agent omits sessionId) shared the 'default' slot, so
+      // diff:true computed a delta against the WRONG session's prior snapshot — a cross-session false
+      // change. Pass the resolved id to the command too, so the cache key and the snapshotted session
+      // can't drift apart via a second auto-selection.
+      const resolved = deps.sessions.resolve(asString(args['sessionId']));
       const mode = asString(args['mode']) ?? SnapshotMode.FULL;
-      return commandOrThrow(deps, sessionId, ReticleCommand.SNAPSHOT, {
+      return commandOrThrow(deps, resolved.id, ReticleCommand.SNAPSHOT, {
         scope: args['scope'],
         mode,
       }).then((raw) =>
@@ -163,7 +170,7 @@ const RAW_TOOLS: ToolDef[] = [
           applySnapshotDelta(
             raw,
             {
-              sessionId: sessionId ?? 'default',
+              sessionId: resolved.id,
               scope: asString(args['scope']) ?? '',
               mode,
               diff: args['diff'] === true,
