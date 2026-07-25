@@ -63,6 +63,14 @@ function subscribeDocumentVisible(handler: () => void): () => void {
 
 const RECONNECT_DELAY_MS = 1000;
 const MAX_QUEUE = 500;
+/**
+ * Standard WebSocket close code 1008 ("policy violation") — the bridge sends it for TERMINAL refusals:
+ * a protocol-version mismatch (the browser package is older than the bridge and must be upgraded),
+ * auth failure, or a duplicate/invalid handshake. Reconnecting cannot fix any of those, so a blind
+ * retry loop just hammers the bridge every second forever and buries the actionable reason. 1013
+ * ("try again later" — rate/session limits) and transport-level closes stay retryable.
+ */
+const WS_POLICY_VIOLATION = 1008;
 /** Warn that the bridge is unreachable after this many consecutive failed INITIAL connects (~3s). */
 const UNREACHABLE_WARN_AFTER = 3;
 
@@ -112,7 +120,21 @@ export class Transport {
   }
 
   #open(): void {
-    const ws = new WebSocket(this.#deps.url);
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(this.#deps.url);
+    } catch {
+      // `new WebSocket()` throws SYNCHRONOUSLY on a mixed-content SecurityError — a ws:// URL from an
+      // https page, which Safari does not exempt for localhost the way Chrome does. Unguarded, that
+      // exception propagates out of connect() into the host app's bootstrap (the SDK's cardinal sin:
+      // it must never break the app it observes) AND leaves connect() half-run, so #connected never
+      // flips true and disconnect() can't remove the monkeypatches. Treat it like any failed open:
+      // note the outage and schedule the normal retry.
+      this.#noteOutage();
+      this.#noteInitialFailure();
+      if (!this.#closed) nativeSetTimeout(() => this.#reopen(), RECONNECT_DELAY_MS);
+      return;
+    }
     this.#ws = ws;
     ws.onopen = (): void => {
       this.#disconnectedSince = undefined; // healthy again — reset the loss timer
@@ -129,8 +151,19 @@ export class Transport {
       const data: unknown = event.data;
       void this.#onMessage(typeof data === 'string' ? data : String(data));
     };
-    ws.onclose = (): void => {
+    ws.onclose = (event: CloseEvent): void => {
       this.#ws = undefined;
+      // A 1008 is the bridge saying "don't come back as you are" — a version mismatch, a rejected
+      // handshake. Retrying every second cannot change the outcome; stop and surface the reason (the
+      // bridge puts an actionable message there, e.g. "upgrade @reticlehq/browser") instead of a
+      // silent reconnect storm. End the session cleanly so the HUD doesn't hang on "running".
+      if (event.code === WS_POLICY_VIOLATION) {
+        this.#closed = true;
+        const reason = event.reason.length > 0 ? event.reason : 'policy violation';
+        console.warn(`[reticle] bridge refused the connection: ${reason} — not retrying.`);
+        this.#deps.onConnectionLost?.();
+        return;
+      }
       this.#noteOutage();
       this.#noteInitialFailure();
       if (!this.#closed) nativeSetTimeout(() => this.#reopen(), RECONNECT_DELAY_MS);

@@ -16,7 +16,7 @@ class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((e: MessageEvent) => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((e: { code: number; reason: string }) => void) | null = null;
   onerror: (() => void) | null = null;
   readyState = 0;
   sent: string[] = [];
@@ -28,7 +28,7 @@ class FakeWebSocket {
   }
   close(): void {
     this.readyState = 3;
-    this.onclose?.();
+    this.onclose?.({ code: 1006, reason: "" });
   }
   open(): void {
     this.readyState = FakeWebSocket.OPEN;
