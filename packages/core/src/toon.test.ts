@@ -46,4 +46,22 @@ describe('resultToToon / isToonable', () => {
     expect(isToonable(null)).toBe(false);
     expect(isToonable([1, 2])).toBe(false);
   });
+
+  it('survives a malformed element (unvalidated wire data) without crashing the whole encode', () => {
+    // resultToToon casts wire data to ToonElement; an element missing `name` used to throw
+    // `name.replace is not a function` and lose the ENTIRE encode. One bad node must cost only itself.
+    const result = {
+      elements: [
+        { ref: 'e1', role: 'button', name: 'OK' },
+        { ref: 'e2', role: 'button' }, // no name
+        { ref: 'e3' }, // no role or name
+        { role: 'link', name: 'next' }, // no ref
+      ],
+    };
+    const out = resultToToon(result);
+    expect(out).toContain('# TOON v1');
+    expect(out).toContain('"OK"'); // the good element survived
+    expect(out).toContain('"next"'); // the ref-less element still encoded
+    expect(out.split('\n').length).toBeGreaterThanOrEqual(4); // header + 3+ element lines, none lost
+  });
 });

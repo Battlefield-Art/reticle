@@ -119,20 +119,29 @@ function encodeStates(states: string[], visible?: boolean): string {
   return flags.length > 0 ? `[${flags.join(',')}]` : '';
 }
 
-function encodeName(name: string): string {
-  return `"${name.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+/** Coerce a wire field to a string. resultToToon receives UNVALIDATED wire data cast to ToonElement,
+ * so a missing/numeric `name` must not make `.replace` throw and lose the whole encode. */
+function toText(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
+  return ''; // undefined / null / object / symbol have no representable text on a wire field
 }
 
-function encodeValue(val: string): string {
-  return `"${val.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+function encodeName(name: unknown): string {
+  return `"${toText(name).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function encodeValue(val: unknown): string {
+  return `"${toText(val).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 function encodeLine(el: ToonElement, depth: number): string {
   const indent = '  '.repeat(depth);
   const type = abbreviateRole(el.role);
-  const states = encodeStates(el.states ?? [], el.visible);
-  const parts: string[] = [indent + type, el.ref, encodeName(el.name), ...(states ? [states] : [])];
-  if (el.value !== undefined && el.value.length > 0) parts.push(`val=${encodeValue(el.value)}`);
+  const states = encodeStates(Array.isArray(el.states) ? el.states : [], el.visible);
+  const ref = toText(el.ref) || '?';
+  const parts: string[] = [indent + type, ref, encodeName(el.name), ...(states ? [states] : [])];
+  if (typeof el.value === 'string' && el.value.length > 0) parts.push(`val=${encodeValue(el.value)}`);
   if (el.childCount !== undefined) parts.push(`count=${String(el.childCount)}`);
   return parts.join(' ');
 }
@@ -140,9 +149,14 @@ function encodeLine(el: ToonElement, depth: number): string {
 function encodeTree(elements: ToonElement[], depth = 0): string {
   const lines: string[] = [];
   for (const el of elements) {
-    lines.push(encodeLine(el, depth));
-    if (el.children && el.children.length > 0) {
-      lines.push(encodeTree(el.children, depth + 1));
+    // A single malformed element must not lose the rest of the tree — fall back to a placeholder line.
+    try {
+      lines.push(encodeLine(el, depth));
+      if (Array.isArray(el.children) && el.children.length > 0) {
+        lines.push(encodeTree(el.children, depth + 1));
+      }
+    } catch {
+      lines.push(`${'  '.repeat(depth)}el ? "[unencodable]"`);
     }
   }
   return lines.join('\n');
