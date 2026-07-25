@@ -90,6 +90,9 @@ export class Transport {
   /** Whether the unreachable warning has fired (fire-once). */
   #warnedUnreachable = false;
   #overflowCount = 0;
+  /** Session id, cached from the first hello(). Stable for a Transport's life — no need to rebuild the
+   * whole HelloMessage (url/title/adapters) on every inbound command just to read it. */
+  #sessionId: string | undefined;
   /** Teardown for the visibility subscription (foreground-triggered reconnect), while connected. */
   #unsubscribeVisible: (() => void) | undefined;
   readonly #deps: TransportDeps;
@@ -220,8 +223,8 @@ export class Transport {
     const result = CommandMessageSchema.safeParse(parsed);
     if (!result.success) return;
     const command = result.data;
-    const currentSessionId = this.#deps.hello().sessionId;
-    if (command.sessionId !== undefined && command.sessionId !== currentSessionId) return;
+    this.#sessionId ??= this.#deps.hello().sessionId;
+    if (command.sessionId !== undefined && command.sessionId !== this.#sessionId) return;
     let outcome: CommandOutcome;
     try {
       outcome = await this.#deps.handleCommand(command);
