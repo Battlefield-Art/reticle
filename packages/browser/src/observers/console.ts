@@ -44,13 +44,14 @@ function firstErrorStack(args: unknown[]): string | undefined {
 export function installConsole(emit: Emit): Teardown {
   const methods: ConsoleMethod[] = ['log', 'warn', 'error', 'info', 'debug'];
   const originals = new Map<ConsoleMethod, (...args: unknown[]) => void>();
+  const patched = new Map<ConsoleMethod, (...args: unknown[]) => void>();
 
   for (const method of methods) {
     // Store the true original for teardown identity; call through a bound copy.
     const original = console[method] as (...args: unknown[]) => void;
     originals.set(method, original);
     const callOriginal = original.bind(console);
-    console[method] = (...args: unknown[]): void => {
+    const wrapper = (...args: unknown[]): void => {
       // Only console.error carries a stack — the diagnosis case; log/warn stay lean.
       const stack = method === 'error' ? firstErrorStack(args) : undefined;
       emit(METHOD_EVENT[method], {
@@ -59,6 +60,8 @@ export function installConsole(emit: Emit): Teardown {
       });
       callOriginal(...args);
     };
+    patched.set(method, wrapper);
+    console[method] = wrapper;
   }
 
   const onError = (event: ErrorEvent): void => {
@@ -84,7 +87,9 @@ export function installConsole(emit: Emit): Teardown {
 
   return () => {
     for (const [method, original] of originals) {
-      console[method] = original as typeof console.log;
+      // Restore only if console[method] still holds our wrapper — a logging SDK (Sentry, LogRocket)
+      // that wrapped console AFTER connect() must keep its instrumentation on teardown.
+      if (console[method] === patched.get(method)) console[method] = original as typeof console.log;
     }
     window.removeEventListener('error', onError);
     window.removeEventListener('unhandledrejection', onRejection);

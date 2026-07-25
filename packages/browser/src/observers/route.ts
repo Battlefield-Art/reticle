@@ -38,16 +38,18 @@ export function installRoute(emit: Emit): Teardown {
     });
   };
 
-  history.pushState = (data: unknown, unused: string, url?: string | URL | null): void => {
+  const patchedPush = (data: unknown, unused: string, url?: string | URL | null): void => {
     const from = location.href;
     callPush(data, unused, url ?? null);
     fire(from);
   };
-  history.replaceState = (data: unknown, unused: string, url?: string | URL | null): void => {
+  const patchedReplace = (data: unknown, unused: string, url?: string | URL | null): void => {
     const from = location.href;
     callReplace(data, unused, url ?? null);
     fire(from);
   };
+  history.pushState = patchedPush;
+  history.replaceState = patchedReplace;
 
   const onNav = (): void => {
     fire(lastHref);
@@ -56,8 +58,11 @@ export function installRoute(emit: Emit): Teardown {
   window.addEventListener('hashchange', onNav);
 
   return () => {
-    history.pushState = origPush;
-    history.replaceState = origReplace;
+    // Restore ONLY if the slot still holds our wrapper. If a router/analytics SDK wrapped
+    // history.pushState AFTER connect(), unconditionally writing origPush back would silently
+    // uninstall THEIR instrumentation too — the SDK harming the app it only meant to observe.
+    if (history.pushState === patchedPush) history.pushState = origPush;
+    if (history.replaceState === patchedReplace) history.replaceState = origReplace;
     window.removeEventListener('popstate', onNav);
     window.removeEventListener('hashchange', onNav);
   };

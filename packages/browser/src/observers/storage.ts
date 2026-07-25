@@ -111,7 +111,7 @@ export function installStorage(emit: Emit): Teardown {
     }
   };
 
-  proto.setItem = function patchedSetItem(this: Storage, key: string, value: string): void {
+  const patchedSetItem = function (this: Storage, key: string, value: string): void {
     // The app's write happens FIRST and outside the guard — it must succeed or fail on its own terms.
     const old = observeValue(() => readOld(this, key)) ?? null;
     origSet.call(this, key, value);
@@ -124,8 +124,9 @@ export function installStorage(emit: Emit): Teardown {
       });
     });
   };
+  proto.setItem = patchedSetItem;
 
-  proto.removeItem = function patchedRemoveItem(this: Storage, key: string): void {
+  const patchedRemoveItem = function (this: Storage, key: string): void {
     const old = observeValue(() => readOld(this, key)) ?? null;
     origRemove.call(this, key);
     observeSafely(() => {
@@ -137,9 +138,12 @@ export function installStorage(emit: Emit): Teardown {
       });
     });
   };
+  proto.removeItem = patchedRemoveItem;
 
   return () => {
-    proto.setItem = origSet;
-    proto.removeItem = origRemove;
+    // Restore only if the slot still holds our wrapper — never uninstall a wrapper the app layered
+    // on top of ours after connect().
+    if (proto.setItem === patchedSetItem) proto.setItem = origSet;
+    if (proto.removeItem === patchedRemoveItem) proto.removeItem = origRemove;
   };
 }

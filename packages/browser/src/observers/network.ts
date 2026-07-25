@@ -374,6 +374,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
   };
   // Remember it, so a later install recognises our own wrapper instead of reporting the app.
   OURS.add(window.fetch);
+  const patchedFetch = window.fetch;
 
   const meta = new WeakMap<XMLHttpRequest, XhrMeta>();
   const proto = XMLHttpRequest.prototype;
@@ -396,6 +397,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     });
     callOpen.call(this, method, url, ...rest);
   };
+  const patchedOpen = captureMethod(proto, 'open');
 
   // A reused XHR calls send repeatedly; attach the completion listener ONCE per instance and read the
   // request identity from `meta` at fire time. Adding a fresh closure each send would leave stale
@@ -461,11 +463,14 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     }
     origSend.call(this, body ?? null);
   };
+  const patchedSend = captureMethod(proto, 'send');
 
   // SSE + WebSocket frame capture — gated behind body capture, since a chatty stream is the
   // high-volume case. Subclass the native constructors so the app's own usage is unchanged.
   const origEventSource = window.EventSource;
   const origWebSocket = window.WebSocket;
+  let patchedEventSource: typeof window.EventSource | undefined;
+  let patchedWebSocket: typeof window.WebSocket | undefined;
   if (captureBodies && typeof origEventSource === 'function') {
     window.EventSource = class extends origEventSource {
       constructor(u: string | URL, init?: EventSourceInit) {
@@ -486,6 +491,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
         });
       }
     };
+    patchedEventSource = window.EventSource;
   }
   if (captureBodies && typeof origWebSocket === 'function') {
     window.WebSocket = class extends origWebSocket {
@@ -524,6 +530,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
         super.send(data);
       }
     };
+    patchedWebSocket = window.WebSocket;
   }
 
   // navigator.sendBeacon — fire-and-forget analytics/telemetry, invisible to fetch/XHR wrapping. A page
@@ -536,12 +543,9 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
   const origBeacon = (
     navProto === null ? undefined : Object.getOwnPropertyDescriptor(navProto, 'sendBeacon')?.value
   ) as BeaconFn | undefined;
+  let patchedBeacon: BeaconFn | undefined;
   if (navProto !== null && origBeacon !== undefined) {
-    navProto.sendBeacon = function patchedBeacon(
-      this: Navigator,
-      url: string | URL,
-      data?: BodyInit | null,
-    ): boolean {
+    patchedBeacon = function (this: Navigator, url: string | URL, data?: BodyInit | null): boolean {
       const id = nextId();
       const redacted = redactUrl(String(url));
       const initiatorStack = initiatorFrame();
@@ -558,15 +562,26 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
       });
       return sent;
     };
+    navProto.sendBeacon = patchedBeacon;
   }
 
   return () => {
-    window.fetch = origFetch;
-    proto.open = origOpen;
-    proto.send = origSend;
-    window.EventSource = origEventSource;
-    window.WebSocket = origWebSocket;
-    if (navProto !== null && origBeacon !== undefined) navProto.sendBeacon = origBeacon;
+    // Restore each slot ONLY if it still holds OUR wrapper. Between connect() and disconnect() the app
+    // (or Sentry/analytics/a router) may have wrapped fetch/XHR/EventSource/WebSocket/sendBeacon ON TOP
+    // of ours; blindly writing the original back would silently uninstall their instrumentation — the
+    // dev-only SDK breaking the app it only meant to observe.
+    if (window.fetch === patchedFetch) window.fetch = origFetch;
+    if (captureMethod(proto, 'open') === patchedOpen) proto.open = origOpen;
+    if (captureMethod(proto, 'send') === patchedSend) proto.send = origSend;
+    if (patchedEventSource !== undefined && window.EventSource === patchedEventSource) {
+      window.EventSource = origEventSource;
+    }
+    if (patchedWebSocket !== undefined && window.WebSocket === patchedWebSocket) {
+      window.WebSocket = origWebSocket;
+    }
+    if (navProto !== null && origBeacon !== undefined && navProto.sendBeacon === patchedBeacon) {
+      navProto.sendBeacon = origBeacon;
+    }
   };
 }
 
