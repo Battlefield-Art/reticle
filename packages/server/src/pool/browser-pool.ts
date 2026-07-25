@@ -175,6 +175,11 @@ export class BrowserPool {
         void this.#release(sessionId);
       });
       await page.goto(url, { timeoutMs: this.#navTimeout });
+      // The browser can crash WHILE goto is resolving; #onCrash then clears #active and zeroes
+      // #occupied. Registering the lease now would resurrect a dead entry against a crashed browser with
+      // the slot count out of sync (drifting below #active.size, eventually exceeding the cap). If we're
+      // no longer the live browser, bail — the catch below closes the context and returns the slot.
+      if (this.#browser !== browser) throw new Error('browser crashed during navigation');
       this.#active.set(sessionId, { context, page, url, touchedAt: this.#now() });
       return {
         sessionId,
