@@ -78,7 +78,10 @@ export function advanceClock(ms: number): void {
     virtualNow = next.time;
     next.cb();
     if (next.interval !== undefined) {
-      tasks.push({ ...next, id: seq++, time: virtualNow + next.interval });
+      // Reschedule under the SAME id — a real setInterval keeps one id for its whole life. Minting a
+      // fresh id here (an earlier `id: seq++`) meant the app still held the original id, so its own
+      // clearInterval(id) after the first tick matched nothing and the interval fired forever.
+      tasks.push({ ...next, time: virtualNow + next.interval });
     }
   }
   virtualNow = target;
@@ -136,10 +139,13 @@ export function resetClock(): void {
     } else {
       reArmed.set(
         task.id,
-        natives.setTimeout(() => {
-          done(task.id);
-          task.cb();
-        }, Math.max(0, task.time - resumeFrom)),
+        natives.setTimeout(
+          () => {
+            done(task.id);
+            task.cb();
+          },
+          Math.max(0, task.time - resumeFrom),
+        ),
       );
     }
   }

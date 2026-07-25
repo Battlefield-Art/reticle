@@ -33,7 +33,11 @@ describe('fake clock', () => {
     }, 100);
     advanceClock(350);
     expect(n).toBe(3);
+    // clearInterval must STOP it — even though the interval has already fired (and internally
+    // rescheduled) several times. The app holds the id from setInterval; that id must keep working.
     clearInterval(id);
+    advanceClock(1000);
+    expect(n).toBe(3); // no further ticks after the clear
   });
 
   it('reset restores real timers', () => {
