@@ -35,7 +35,7 @@ import { scrollContainer } from '../actions/scroll.js';
 export type CommandHandler = (args: Record<string, unknown>) => unknown;
 
 /** Query param appended on a hard reload to bypass the browser cache. */
-const RELOAD_CACHE_BUST_PARAM = '_reticle_reload';
+export const RELOAD_CACHE_BUST_PARAM = '_reticle_reload';
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;

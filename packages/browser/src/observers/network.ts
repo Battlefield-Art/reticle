@@ -1,15 +1,18 @@
 import {
   BlindSpotKind,
   EventType,
-  REDACTED_VALUE,
   RETICLE_WS_PATH,
   StreamTransport,
   StreamDirection,
 } from '@reticlehq/core';
-import { isSensitiveKey } from '../security/serialization.js';
 import { captureMethod } from '../patching/capture-method.js';
 import type { Emit, Teardown } from './types.js';
 import { isCapturableType, projectBody, withBodyDeadline } from './network-body.js';
+import { redactUrl } from './network-redact.js';
+
+// Redaction moved to its own cohesive module (network.ts is at its line cap); re-exported so callers
+// and the existing test suite keep importing it from here.
+export { redactUrl };
 
 /** Config for the network observer. Body capture is OFF by default and dev-only opt-in. */
 export interface NetworkOptions {
@@ -66,78 +69,6 @@ function projectRequestBody(body: unknown, captureBodies: boolean): Record<strin
   return truncated ? { requestBody: out, requestBodyTruncated: true } : { requestBody: out };
 }
 
-/** A path segment name that is typically followed by a single-use secret token in the NEXT segment. */
-const SENSITIVE_PATH_SEGMENT =
-  /^(reset|verify|verification|confirm|activate|invite|magic|magiclink|token|key|oauth|unsubscribe|password)$/i;
-/** Only mask a following segment that looks token-like — short ids/words (`reset/form`) are left alone. */
-const PATH_TOKEN_MIN_LENGTH = 12;
-
-/**
- * Redact credential-bearing values so they don't leak into the agent transcript / flow / run
- * artifacts: query params (`?access_token=…`, signed-URL keys) via the shared `isSensitiveKey` regex,
- * AND path-embedded tokens (`/reset/<token>`, `/invite/<token>`) that live in the path, not the query.
- * The hash is preserved and the URL is returned byte-for-byte when nothing matched.
- */
-export function redactUrl(raw: string): string {
-  const hashStart = raw.indexOf('#');
-  const hash = hashStart === -1 ? '' : raw.slice(hashStart);
-  const beforeHash = hashStart === -1 ? raw : raw.slice(0, hashStart);
-  const queryStart = beforeHash.indexOf('?');
-  const pathPart = queryStart === -1 ? beforeHash : beforeHash.slice(0, queryStart);
-  const query = queryStart === -1 ? '' : beforeHash.slice(queryStart + 1);
-
-  let changed = false;
-
-  // Credentials in the authority (`scheme://user:pass@host`) never belong in a transcript.
-  let authority = pathPart;
-  const userinfo = /^([a-z][a-z0-9+.-]*:\/\/)[^/@]+@/i.exec(pathPart);
-  if (userinfo !== null) {
-    authority = `${userinfo[1] ?? ''}${REDACTED_VALUE}@${pathPart.slice(userinfo[0].length)}`;
-    changed = true;
-  }
-
-  let newQuery = query;
-  if (query !== '') {
-    const params = new URLSearchParams(query);
-    for (const key of [...params.keys()]) {
-      if (isSensitiveKey(key)) {
-        params.set(key, REDACTED_VALUE);
-        changed = true;
-      }
-    }
-    newQuery = params.toString();
-  }
-
-  const segments = authority.split('/');
-  for (let i = 0; i + 1 < segments.length; i++) {
-    const name = segments[i];
-    const next = segments[i + 1];
-    if (
-      name !== undefined &&
-      next !== undefined &&
-      next.length >= PATH_TOKEN_MIN_LENGTH &&
-      SENSITIVE_PATH_SEGMENT.test(name)
-    ) {
-      segments[i + 1] = REDACTED_VALUE;
-      changed = true;
-    }
-  }
-
-  // OAuth implicit flow puts the access_token in the FRAGMENT (`#access_token=…`), and hash-routers carry
-  // `?token=…` in the hash — redact sensitive params there too, leaving plain anchors (`#section`) alone.
-  let newHash = hash;
-  if (hash.length > 1) {
-    newHash = hash.replace(/([A-Za-z0-9_.-]+)=([^&\s]+)/g, (m: string, key: string) =>
-      isSensitiveKey(key) ? `${key}=${REDACTED_VALUE}` : m,
-    );
-    if (newHash !== hash) changed = true;
-  }
-
-  if (!changed) return raw;
-  const queryOut = queryStart === -1 ? '' : `?${newQuery}`;
-  return `${segments.join('/')}${queryOut}${newHash}`;
-}
-
 interface XhrMeta {
   id: string;
   method: string;
@@ -185,8 +116,14 @@ function methodOf(input: RequestInfo | URL, init: RequestInit | undefined): stri
  * causal chain (which code path made this request). Capped; undefined when no stack is available.
  * ponytail: one stack unwind per request — cheap next to fetch itself; revisit only if a profiler flags it.
  */
-/** Frames to skip: Reticle's own wrappers + engine-internal frames with no app source location. */
-const NON_APP_FRAME = /reticle|network\.ts|@reticlehq|<anonymous>|new Promise|node:internal/i;
+/**
+ * Frames to skip: Reticle's own wrappers + engine-internal frames with no app source location.
+ * Anchored to Reticle's actual module paths (`@reticlehq/…`, the SDK's own `.ts` files) — a bare
+ * `reticle` alternative matched ANY app whose bundle URL merely contained the word (including this
+ * repo's own dogfood fixtures served under `/reticle/`), silently dropping their initiatorStack.
+ */
+const NON_APP_FRAME =
+  /@reticlehq|reticle\.ts|network\.ts|transport\.ts|<anonymous>|new Promise|node:internal/i;
 
 /** Pure: the first real app-code frame in a stack string, capped. Exported for unit testing. */
 export function firstAppFrame(stack: string | undefined): string | undefined {
@@ -319,43 +256,57 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     emit(EventType.NET_PENDING, { id, method, url, initiator: 'fetch', ...initiatorFields });
     try {
       const res = await callFetch(input, init);
+      // The app's fetch resolves HERE — at headers — like a native fetch. durationMs is measured to
+      // headers-received, so it stays honest whether or not we read the body.
+      const headersAt = performance.now();
       const contentType = res.headers.get('content-type');
-      // Read a CLONE so the app's response stream stays untouched. Dev-only opt-in; only text-like
-      // bodies; a read failure never breaks the observation.
-      let responseBodyFields: Record<string, unknown> = {};
-      // Streaming content types are skipped outright (zero cost, covers SSE); anything else is read behind
-      // a deadline. Gating on `content-length` instead was tried and REJECTED — plenty of complete responses
-      // omit it (gzip, HTTP/2), so it silently stopped capturing bodies for ordinary apps. This comment
-      // previously described that rejected design as though it were the implementation.
+      const emitRequest = (responseBodyFields: Record<string, unknown>): void => {
+        emit(EventType.NET_REQUEST, {
+          id,
+          method,
+          url,
+          status: res.status,
+          ok: res.ok,
+          durationMs: Math.round(headersAt - start),
+          initiator: 'fetch',
+          ...initiatorFields,
+          ...resourceTiming(rawUrl),
+          ...netResponseMeta(res.statusText, contentType, res.headers.get('content-length')),
+          ...projectRequestBody(init?.body, captureBodies),
+          ...responseBodyFields,
+        });
+      };
       if (captureBodies && isCapturableType(contentType)) {
-        // Bounded: a chunked response with no content-length can still be arbitrarily long, and the app
-        // must never wait on our read. Race the clone against a deadline and drop the body on timeout.
+        // ONLY the body read can make the app wait (a chunked response with no content-length can be
+        // arbitrarily long). Clone synchronously so the app's stream is untouched, then read + emit from
+        // a DETACHED promise — the app already has res, so our bounded read is invisible to it. Without
+        // body capture (the default) we emit synchronously, exactly as before: no latency, no deferral.
+        let clone: Response | undefined;
         try {
-          const text = await withBodyDeadline(res.clone().text());
-          if (text !== undefined) {
-            const { body, truncated } = projectBody(text, contentType);
-            responseBodyFields = truncated
-              ? { responseBody: body, responseBodyTruncated: true }
-              : { responseBody: body };
-          }
+          clone = res.clone();
         } catch {
-          /* body not readable (already locked/consumed) — skip, keep the envelope */
+          /* already consumed/locked — emit the envelope with no body */
         }
+        void (async () => {
+          let responseBodyFields: Record<string, unknown> = {};
+          if (clone !== undefined) {
+            try {
+              const text = await withBodyDeadline(clone.text());
+              if (text !== undefined) {
+                const { body, truncated } = projectBody(text, contentType);
+                responseBodyFields = truncated
+                  ? { responseBody: body, responseBodyTruncated: true }
+                  : { responseBody: body };
+              }
+            } catch {
+              /* body not readable — skip, keep the envelope */
+            }
+          }
+          emitRequest(responseBodyFields);
+        })();
+      } else {
+        emitRequest({});
       }
-      emit(EventType.NET_REQUEST, {
-        id,
-        method,
-        url,
-        status: res.status,
-        ok: res.ok,
-        durationMs: Math.round(performance.now() - start),
-        initiator: 'fetch',
-        ...initiatorFields,
-        ...resourceTiming(rawUrl),
-        ...netResponseMeta(res.statusText, contentType, res.headers.get('content-length')),
-        ...projectRequestBody(init?.body, captureBodies),
-        ...responseBodyFields,
-      });
       return res;
     } catch (error) {
       emit(EventType.NET_REQUEST, {
@@ -550,12 +501,16 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
       const redacted = redactUrl(String(url));
       const initiatorStack = initiatorFrame();
       const sent = origBeacon.call(this, url, data);
+      // sendBeacon returns whether the payload was QUEUED, not an HTTP result — the response never
+      // surfaces to JS. Fabricating status 200 lied to an agent asserting on status. Report status 0
+      // (no HTTP response observed) and carry the real signal in `queued`.
       emit(EventType.NET_REQUEST, {
         id,
         method: 'POST',
         url: redacted,
-        status: sent ? 200 : 0,
+        status: 0,
         ok: sent,
+        queued: sent,
         durationMs: 0,
         initiator: 'beacon',
         ...(initiatorStack === undefined ? {} : { initiatorStack }),

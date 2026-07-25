@@ -29,6 +29,13 @@ function eventOf(events: Emitted[], type: EventType): Record<string, unknown> {
   return hit.data;
 }
 
+/**
+ * With body capture on, the app's fetch resolves at HEADERS and NET_REQUEST is emitted from a detached
+ * promise once the (bounded) body read completes — so the app never waits on us. Tests must let that
+ * detached emit land before asserting on the completion. One macrotask covers the resolved-clone read.
+ */
+const flushBody = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
 /** A minimal Response stand-in — jsdom does not always expose a usable global Response. */
 function fakeResponse(
   status: number,
@@ -75,6 +82,12 @@ describe('redactUrl', () => {
       'https://[REDACTED]@api.example.com/data',
     );
     expect(redactUrl('http://plainhost.com/x')).toBe('http://plainhost.com/x');
+  });
+  it('redacts the WHOLE userinfo even when the password contains an @', () => {
+    // Matching to the first @ left the password tail (`ss@api...`) in the clear.
+    const out = redactUrl('https://user:p@ss@api.example.com/data');
+    expect(out).toBe('https://[REDACTED]@api.example.com/data');
+    expect(out).not.toContain('ss@');
   });
   it('redacts a token in the URL FRAGMENT (OAuth implicit flow) but leaves plain anchors alone', () => {
     expect(redactUrl('https://app.com/cb#access_token=ya29SECRETVAL&token_type=bearer')).toContain(
@@ -157,7 +170,15 @@ describe('installNetwork (sendBeacon)', () => {
     const result = navigator.sendBeacon('http://localhost:8787/analytics', 'event=checkout');
     expect(result).toBe(true);
     const request = events.find((e) => e.type === EventType.NET_REQUEST);
-    expect(request?.data).toMatchObject({ method: 'POST', initiator: 'beacon', status: 200, ok: true });
+    // sendBeacon has no observable HTTP response — status 0 (not a fabricated 200); the real signal
+    // that it was accepted rides in `queued`.
+    expect(request?.data).toMatchObject({
+      method: 'POST',
+      initiator: 'beacon',
+      status: 0,
+      ok: true,
+      queued: true,
+    });
   });
 
   it('reports ok:false when the beacon is rejected (queue full)', () => {
@@ -210,6 +231,7 @@ describe('installNetwork (fetch)', () => {
       method: 'POST',
       body: JSON.stringify({ email: 'a@b.com', password: reqPasswordValue }),
     });
+    await flushBody();
     const data = eventOf(events, EventType.NET_REQUEST);
     expect(String(data['responseBody'])).toContain('"id":1');
     expect(String(data['responseBody'])).toContain('[REDACTED]'); // token value redacted
@@ -229,6 +251,7 @@ describe('installNetwork (fetch)', () => {
       method: 'POST',
       body: `username=alice&password=${formPasswordValue}`,
     });
+    await flushBody();
     const data = eventOf(events, EventType.NET_REQUEST);
     expect(String(data['requestBody'])).toContain('username=alice'); // non-sensitive kept
     expect(String(data['requestBody'])).toContain('password=[REDACTED]');
@@ -242,6 +265,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit, { captureBodies: true });
     await window.fetch('http://localhost:8787/docs');
+    await flushBody();
     expect(String((eventOf(events, EventType.NET_REQUEST))['responseBody'])).toBe(prose);
   });
 
@@ -254,6 +278,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit, { captureBodies: true });
     await window.fetch('http://localhost:8787/api/x');
+    await flushBody();
     const rb = String((eventOf(events, EventType.NET_REQUEST))['responseBody']);
     expect(rb).toContain('[REDACTED]');
     expect(rb).not.toContain(jwt);
@@ -270,6 +295,7 @@ describe('installNetwork (fetch)', () => {
       method: 'POST',
       body: new URLSearchParams({ user: 'bob', password: pw }),
     });
+    await flushBody();
     const rb = String((eventOf(events, EventType.NET_REQUEST))['requestBody']);
     expect(rb).toContain('password=[REDACTED]');
     expect(rb).not.toContain(pw);
@@ -284,6 +310,7 @@ describe('installNetwork (fetch)', () => {
     const fd = new FormData();
     fd.append('field', 'value');
     await window.fetch('http://localhost:8787/upload', { method: 'POST', body: fd });
+    await flushBody();
     expect((eventOf(events, EventType.NET_REQUEST))['requestBodyType']).toBe('FormData');
   });
 
@@ -295,6 +322,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit, { captureBodies: true });
     await window.fetch('http://localhost:8787/echo');
+    await flushBody();
     const rb = String((eventOf(events, EventType.NET_REQUEST))['responseBody']);
     expect(rb).toContain('Bearer [REDACTED]');
     expect(rb).not.toContain(token);
@@ -308,6 +336,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit, { captureBodies: true });
     await window.fetch('http://localhost:8787/echo');
+    await flushBody();
     const rb = String((eventOf(events, EventType.NET_REQUEST))['responseBody']);
     expect(rb).not.toContain(token); // the token must not survive, whatever the surrounding shape
     expect(rb).toContain('[REDACTED]');
@@ -319,6 +348,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit, { captureBodies: true });
     await window.fetch('http://localhost:8787/big');
+    await flushBody();
     const data = eventOf(events, EventType.NET_REQUEST);
     expect(data['responseBodyTruncated']).toBe(true);
     expect(String(data['responseBody']).length).toBe(8192); // MAX_BODY_CHARS
@@ -331,6 +361,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit);
     await window.fetch('http://localhost:8787/api/x');
+    await flushBody();
     expect((eventOf(events, EventType.NET_REQUEST))['responseBody']).toBeUndefined();
   });
 
@@ -346,6 +377,7 @@ describe('installNetwork (fetch)', () => {
     const { emit, events } = collect();
     teardown = installNetwork(emit);
     await window.fetch('http://localhost:8787/api/data');
+    await flushBody();
     expect(eventOf(events, EventType.NET_REQUEST)).toMatchObject({
       contentType: 'application/json; charset=utf-8',
       responseSize: 1234,
@@ -391,6 +423,7 @@ describe('installNetwork (fetch)', () => {
     teardown = installNetwork(emit);
 
     await window.fetch('http://localhost:8787/api/login', { method: 'POST' });
+    await flushBody();
 
     expect(events.filter((e) => e.type === EventType.NET_PENDING)).toHaveLength(1);
     expect(eventOf(events, EventType.NET_REQUEST)).toMatchObject({ method: 'POST', status: 200, ok: true });

@@ -58,4 +58,31 @@ describe('installStorage — storage write events', () => {
     localStorage.setItem('after', 'x');
     expect(events).toHaveLength(0);
   });
+
+  it('emits a removal per key on clear() — the common logout path', () => {
+    // localStorage.clear() is how most apps log out; it used to emit NOTHING, so "logout cleared the
+    // session" was unverifiable from the write path.
+    localStorage.setItem('a', '1');
+    localStorage.setItem('auth_token', 'tok-secret-123');
+    events.length = 0;
+    localStorage.clear();
+    const changes = events.filter((e) => e.type === EventType.STORAGE_CHANGE);
+    expect(changes).toHaveLength(2);
+    for (const c of changes) {
+      expect(c.data['area']).toBe('local');
+      expect(c.data['new']).toBeUndefined(); // removal
+    }
+    const authChange = changes.find((c) => c.data['key'] === 'auth_token');
+    expect(authChange?.data['old']).toBe('[REDACTED]'); // credential redacted, not leaked on clear
+    expect(localStorage.length).toBe(0); // the app's clear still happened
+  });
+
+  it('restores clear() on teardown (fully reversible)', () => {
+    teardown();
+    events.length = 0;
+    localStorage.setItem('k', 'v');
+    localStorage.clear();
+    expect(events).toHaveLength(0);
+    expect(localStorage.length).toBe(0);
+  });
 });

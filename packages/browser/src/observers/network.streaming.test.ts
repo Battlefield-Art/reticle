@@ -26,6 +26,9 @@ function collect(): { emit: Emit; events: Array<{ type: string; data: Record<str
   return { emit: (type, data) => events.push({ type, data }), events };
 }
 
+/** NET_REQUEST (with the body) is emitted from a detached promise so the app never waits; let it land. */
+const flushBody = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
 /** A response whose body never completes — an SSE endpoint held open by the server. */
 function neverEndingResponse(contentType: string): Response {
   const res = {
@@ -78,6 +81,7 @@ describe('body capture must not block the host app', () => {
     const { emit, events } = collect();
     teardowns.push(installNetwork(emit, { captureBodies: true }));
     await window.fetch('/api/thing');
+    await flushBody();
     const withBody = events.find((e) => e.data['responseBody'] !== undefined);
     expect(String(withBody?.data['responseBody'])).toContain('ok');
   });
@@ -127,6 +131,7 @@ describe('body projection is bounded by input size, not just output size', () =>
       const { emit, events } = collect();
       teardowns.push(installNetwork(emit, { captureBodies: true }));
       await window.fetch('/api/export.csv');
+      await flushBody();
       const withBody = events.find((e) => e.data['responseBody'] !== undefined);
       expect(String(withBody?.data['responseBody']).length).toBeLessThanOrEqual(8192);
       expect(withBody?.data['responseBodyTruncated']).toBe(true);
@@ -139,6 +144,7 @@ describe('body projection is bounded by input size, not just output size', () =>
     const { emit, events } = collect();
     teardowns.push(installNetwork(emit, { captureBodies: true }));
     await window.fetch('/api/big.txt');
+    await flushBody();
     const withBody = events.find((e) => e.data['responseBody'] !== undefined);
     expect(withBody?.data['responseBodyTruncated']).toBe(true);
   });

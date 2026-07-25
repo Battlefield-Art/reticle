@@ -79,8 +79,10 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
     let n = 0;
     for (const [k, v] of value) {
       if (state.nodes >= MAX_TOTAL_NODES || n >= TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS) {
-        state.droppedItems += 1;
-        continue;
+        // Budget spent — STOP. `continue` iterated a million-entry Map to the end just to count drops
+        // one at a time; size-n records the remainder in one shot (like the typed-array branch).
+        state.droppedItems += value.size - n;
+        break;
       }
       const sk = boundedString(typeof k === 'string' ? k : String(k), state, MAX_KEY_LENGTH);
       const sv = sanitize(v, state, depth + 1, sk);
@@ -94,8 +96,8 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
     let n = 0;
     for (const item of value) {
       if (state.nodes >= MAX_TOTAL_NODES || n >= TRANSPORT_LIMITS.MAX_COLLECTION_ITEMS) {
-        state.droppedItems += 1;
-        continue;
+        state.droppedItems += value.size - n; // stop; record the remainder at once, don't walk the rest
+        break;
       }
       const sv = sanitize(item, state, depth + 1);
       out.push(sv === OMIT_VALUE ? null : sv);

@@ -83,6 +83,7 @@ function redactFor(key: string, value: string | null): string | undefined {
 
 type SetItemFn = (this: Storage, key: string, value: string) => void;
 type RemoveItemFn = (this: Storage, key: string) => void;
+type ClearFn = (this: Storage) => void;
 
 /**
  * Observe storage WRITES (not just reads): patch Storage.setItem/removeItem so a token persisted, a
@@ -98,11 +99,16 @@ export function installStorage(emit: Emit): Teardown {
   const origRemove = Object.getOwnPropertyDescriptor(proto, 'removeItem')?.value as
     | RemoveItemFn
     | undefined;
-  if (origSet === undefined || origRemove === undefined) return () => undefined;
+  const origClear = Object.getOwnPropertyDescriptor(proto, 'clear')?.value as ClearFn | undefined;
+  if (origSet === undefined || origRemove === undefined || origClear === undefined) {
+    return () => undefined;
+  }
 
-  const session = safeArea(() => window.sessionStorage);
+  // Resolve sessionStorage at CALL time, not once at install. If the property threw during install
+  // (a transient sandbox state) the captured reference would be null and every session write would be
+  // misreported as `local` for the life of the page. Reads are cheap and safeArea swallows throws.
   const areaOf = (storage: Storage): StorageArea =>
-    storage === session ? StorageArea.SESSION : StorageArea.LOCAL;
+    storage === safeArea(() => window.sessionStorage) ? StorageArea.SESSION : StorageArea.LOCAL;
   const readOld = (storage: Storage, key: string): string | null => {
     try {
       return storage.getItem(key);
@@ -140,10 +146,38 @@ export function installStorage(emit: Emit): Teardown {
   };
   proto.removeItem = patchedRemoveItem;
 
+  const patchedClear = function (this: Storage): void {
+    // localStorage.clear() is the most common logout — but it emitted NOTHING, so "logout cleared the
+    // session" was unverifiable from the write path. Snapshot the keys BEFORE clearing (the values are
+    // gone after), then report each as a removal, reusing the {area, key, old} shape removeItem emits.
+    const area = areaOf(this);
+    const removed: Array<{ key: string; old: string | null }> = [];
+    try {
+      for (let i = 0; i < this.length; i += 1) {
+        const key = this.key(i);
+        if (key !== null) removed.push({ key, old: readOld(this, key) });
+      }
+    } catch {
+      // Enumerating keys can throw in a locked-down context; clear anyway, just without the diff.
+    }
+    origClear.call(this);
+    for (const { key, old } of removed) {
+      observeSafely(() => {
+        emit(EventType.STORAGE_CHANGE, {
+          area,
+          key,
+          ...(redactFor(key, old) === undefined ? {} : { old: redactFor(key, old) }),
+        });
+      });
+    }
+  };
+  proto.clear = patchedClear;
+
   return () => {
     // Restore only if the slot still holds our wrapper — never uninstall a wrapper the app layered
     // on top of ours after connect().
     if (proto.setItem === patchedSetItem) proto.setItem = origSet;
     if (proto.removeItem === patchedRemoveItem) proto.removeItem = origRemove;
+    if (proto.clear === patchedClear) proto.clear = origClear;
   };
 }

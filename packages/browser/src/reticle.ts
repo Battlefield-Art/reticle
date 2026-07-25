@@ -14,7 +14,11 @@ import {
   type HelloMessage,
   type ReticleEvent,
 } from '@reticlehq/core';
-import { createCommandRegistry, type CommandHandler } from './commands/commands.js';
+import {
+  createCommandRegistry,
+  RELOAD_CACHE_BUST_PARAM,
+  type CommandHandler,
+} from './commands/commands.js';
 import { Transport, type CommandOutcome } from './transport/transport.js';
 import { adapterNames } from './registry/adapters.js';
 import {
@@ -176,6 +180,18 @@ export function resolveSessionLabel(option: string | undefined, gen: () => strin
 // Re-exported from the protocol (the wire contract) so callers/tests can import it from the SDK too.
 export { RETICLE_URL_PARAM };
 
+/** Remove the `_reticle_reload` cache-buster a hard REFRESH left behind, via a native replaceState. */
+function stripReloadCacheBustParam(): void {
+  try {
+    const current = new URL(window.location.href);
+    if (!current.searchParams.has(RELOAD_CACHE_BUST_PARAM)) return;
+    current.searchParams.delete(RELOAD_CACHE_BUST_PARAM);
+    window.history.replaceState(window.history.state, '', current.toString());
+  } catch {
+    /* best-effort URL hygiene — never block connect() on it */
+  }
+}
+
 /**
  * Extract Reticle identity overrides from a `location.search` string. Pure (takes the string, not the
  * window) so it's testable without a DOM. Explicit connect options still win over these.
@@ -269,6 +285,11 @@ export class Reticle {
       );
       return;
     }
+
+    // A `hard` REFRESH left a cache-busting `_reticle_reload=<nonce>` in the address bar. Strip it now
+    // (before the route observer installs, so it emits no spurious ROUTE_CHANGE) — otherwise every hard
+    // reload permanently pollutes the URL the app and the agent see.
+    stripReloadCacheBustParam();
 
     const url = options.url ?? bridgeWsUrl(RETICLE_DEFAULT_PORT);
     const policy = connectionPolicy(

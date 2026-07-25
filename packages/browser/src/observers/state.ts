@@ -53,13 +53,16 @@ function safeRead(getter: StoreGetter): unknown {
  * without a subscribe fall back to the pull path (reticle_state). Fully reversible.
  */
 export function installStoreState(emit: Emit): Teardown {
-  const unsubscribes: Array<() => void> = [];
-  const seen = new Set<string>();
+  const active = new Map<string, () => void>();
   const watch = ([name, getter, subscribe]: [string, StoreGetter, StoreSubscribe]): void => {
-    if (seen.has(name)) return; // a re-registration (HMR) must not double-emit
-    seen.add(name);
+    // A re-registration under the same name is the HMR cycle: the store INSTANCE is replaced (new
+    // getter + new subscribe). Skipping it (the old `seen` guard) left the subscription bound to the
+    // DEAD getter forever and the live store invisible until a full reload. Rebind: drop the previous
+    // subscription for this name, then subscribe the new tuple.
+    active.get(name)?.();
     let last = safeRead(getter);
-    unsubscribes.push(
+    active.set(
+      name,
       subscribe(() => {
         const next = safeRead(getter);
         for (const change of diffState(last, next)) {
@@ -78,8 +81,10 @@ export function installStoreState(emit: Emit): Teardown {
   for (const entry of subscribableStores()) watch(entry);
   //...and any registered LATER. The SDK installs observers during connect, but apps call
   // registerStore after that, so without this the common case subscribes to nothing.
-  unsubscribes.push(onStoreRegistered(watch));
+  const offRegistered = onStoreRegistered(watch);
   return () => {
-    for (const unsubscribe of unsubscribes) unsubscribe();
+    offRegistered();
+    for (const unsubscribe of active.values()) unsubscribe();
+    active.clear();
   };
 }

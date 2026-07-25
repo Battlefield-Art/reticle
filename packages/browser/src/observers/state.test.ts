@@ -80,6 +80,28 @@ describe('installStoreState', () => {
     expect(changes[0]?.data).toMatchObject({ name: 'cart', path: 'count', old: 1, value: 2 });
   });
 
+  it('rebinds to a re-registered store instance (HMR) and drops the dead one', () => {
+    // HMR replaces the store INSTANCE under the same name. The old `seen` guard skipped it, leaving the
+    // subscription bound to the dead getter forever while the live store stayed invisible until reload.
+    const events: Captured[] = [];
+    const teardown = installStoreState((type, data) => events.push({ type, data }));
+
+    const oldStore = fakeStore<{ count: number }>({ count: 1 });
+    registerStore('cart', oldStore.getState, oldStore.subscribe);
+    oldStore.setState({ count: 2 }); // fires from the first instance
+
+    const newStore = fakeStore<{ count: number }>({ count: 10 });
+    registerStore('cart', newStore.getState, newStore.subscribe); // HMR: same name, new instance
+    newStore.setState({ count: 11 }); // must fire — the new store is now the live one
+    oldStore.setState({ count: 3 }); // must NOT fire — the dead subscription was dropped
+
+    teardown();
+    const changes = events.filter((e) => e.type === EventType.STATE_CHANGE);
+    expect(changes).toHaveLength(2);
+    expect(changes[0]?.data).toMatchObject({ name: 'cart', old: 1, value: 2 });
+    expect(changes[1]?.data).toMatchObject({ name: 'cart', old: 10, value: 11 });
+  });
+
   it('redacts a credential-bearing changed path', () => {
     const store = fakeStore<Record<string, unknown>>({ token: 'old' });
     registerStore('cart', store.getState, store.subscribe);
