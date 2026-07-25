@@ -225,28 +225,44 @@ export function getValue(el: Element): string | undefined {
   return valueNow ?? undefined;
 }
 
-/** Whether the element is actually visible (not display:none/hidden/aria-hidden/opacity:0). */
-export function isVisible(el: Element): boolean {
-  if (!el.isConnected) return false;
-  let node: Element | null = el;
-  while (node !== null) {
-    if (node.getAttribute('aria-hidden') === 'true') return false;
-    if (node instanceof HTMLElement && node.hidden) return false;
-    const view = node.ownerDocument.defaultView;
-    if (view !== null) {
-      const style = view.getComputedStyle(node);
-      if (
-        style.display === 'none' ||
-        style.visibility === 'hidden' ||
-        style.visibility === 'collapse'
-      ) {
-        return false;
-      }
-      if (Number.parseFloat(style.opacity || '1') === 0) return false;
+/** Whether the element's OWN box hides it — one forced-style resolution, no ancestor walk. */
+function selfHidden(el: Element): boolean {
+  if (el.getAttribute('aria-hidden') === 'true') return true;
+  if (el instanceof HTMLElement && el.hidden) return true;
+  const view = el.ownerDocument.defaultView;
+  if (view !== null) {
+    const style = view.getComputedStyle(el);
+    if (
+      style.display === 'none' ||
+      style.visibility === 'hidden' ||
+      style.visibility === 'collapse'
+    ) {
+      return true;
     }
-    node = node.parentElement;
+    if (Number.parseFloat(style.opacity || '1') === 0) return true;
   }
-  return true;
+  return false;
+}
+
+/**
+ * Whether the element is actually visible (not display:none/hidden/aria-hidden/opacity:0), walking to
+ * root. This is an O(depth) forced-style walk PER node; `memo` (optional, scoped to ONE synchronous
+ * query pass) caches the full inherited result per element so a broad state-filtered query stops
+ * re-resolving getComputedStyle up the same ancestor chain for every sibling. Sound because the DOM is
+ * static for the pass's duration — the cache MUST be a per-call Map, never module-level (that would go
+ * stale the instant the app mutates, the same trap the shadow-root note in query.ts documents).
+ */
+export function isVisible(el: Element, memo?: Map<Element, boolean>): boolean {
+  if (!el.isConnected) return false;
+  const cached = memo?.get(el);
+  if (cached !== undefined) return cached;
+  const parent = el.parentElement;
+  // Each cached boolean already folds in that node's own aria-hidden/[hidden]/display/visibility/opacity,
+  // so inherited visibility composes by AND up the chain and a sibling short-circuits at the first
+  // cached ancestor.
+  const result = !selfHidden(el) && (parent === null || isVisible(parent, memo));
+  if (memo !== undefined) memo.set(el, result);
+  return result;
 }
 
 const MAX_TEXT = 80;
@@ -256,12 +272,13 @@ function getVisibleText(el: Element): string {
   return text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT)}…` : text;
 }
 
-/** Build the compact descriptor surfaced to the agent. */
-export function describe(el: Element): ElementDescriptor {
+/** Build the compact descriptor surfaced to the agent. `memo` (optional) shares the per-call
+ * visibility cache with the query's state filter so ancestors aren't re-walked per element. */
+export function describe(el: Element, memo?: Map<Element, boolean>): ElementDescriptor {
   const value = getValue(el);
   const text = getVisibleText(el);
   const name = getAccessibleName(el);
-  const visible = isVisible(el); // O(depth) style walk — computed ONCE and reused by getStates below
+  const visible = isVisible(el, memo); // O(depth) style walk — computed ONCE and reused by getStates
   const base: ElementDescriptor = {
     ref: refs.refFor(el),
     role: getRole(el),

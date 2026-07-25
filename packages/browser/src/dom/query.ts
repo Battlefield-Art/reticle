@@ -19,7 +19,7 @@ import {
   type QueryResult,
   TRANSPORT_LIMITS,
 } from '@reticlehq/core';
-import { describe, getStates } from './a11y.js';
+import { describe, getStates, isVisible } from './a11y.js';
 import { isSensitiveKey } from '../security/serialization.js';
 import { getCapabilities } from '../registry/capabilities.js';
 import { identifyComponent } from '../registry/adapters.js';
@@ -247,8 +247,8 @@ function projectAttrs(el: Element, keys: readonly string[]): Record<string, stri
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-function inState(el: Element, state: ElementState): boolean {
-  return getStates(el).includes(state);
+function inState(el: Element, state: ElementState, memo?: Map<Element, boolean>): boolean {
+  return getStates(el, isVisible(el, memo)).includes(state);
 }
 
 /**
@@ -283,11 +283,17 @@ export function matchQuery(
   } catch {
     elements = [];
   }
-  const filtered = state === undefined ? elements : elements.filter((el) => inState(el, state));
+  // One visibility cache for the whole (synchronous) query pass. isVisible is an O(depth) forced-style
+  // walk; the state filter runs it over EVERY candidate (the count must be exact) — on a match-heavy
+  // page (e.g. a 3k-row grid) that is tens of thousands of getComputedStyle calls on the host's main
+  // thread. The memo makes each element's ancestors resolve once, then short-circuit for every sibling.
+  const visMemo = new Map<Element, boolean>();
+  const filtered =
+    state === undefined ? elements : elements.filter((el) => inState(el, state, visMemo));
   const attrs = query.attrs;
   const described = filtered.slice(0, Math.max(0, Math.min(limit, MAX_DESCRIBED)));
   const descriptors: ElementDescriptor[] = described.map((el) => {
-    const base = describe(el);
+    const base = describe(el, visMemo);
     if (attrs === undefined || attrs.length === 0) return base;
     const projected = projectAttrs(el, attrs);
     return projected === undefined ? base : { ...base, attrs: projected };
