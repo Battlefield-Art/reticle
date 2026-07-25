@@ -207,7 +207,7 @@ export interface PageLike {
  */
 export function attachNetworkDetail(page: PageLike, emit: (detail: NetworkDetail) => void): void {
   page.on('response', (response) => {
-    void Promise.resolve(response.headers()).then((headers) => {
+    const detailPromise = Promise.resolve(response.headers()).then((headers) => {
       const request = response.request();
       const resourceType = request.resourceType?.();
       // postData is null for GETs and for bodies the driver did not retain; both mean "nothing to say".
@@ -224,5 +224,10 @@ export function attachNetworkDetail(page: PageLike, emit: (detail: NetworkDetail
         }),
       );
     });
+    // `response.headers()` REJECTS when the page/CDP session is closing — precisely when responses race
+    // teardown (navigation, tab close). Without this catch the rejection floats; on the daemon path a
+    // global unhandledRejection trap swallows it, but on the stdio `start()` path there is no trap, so
+    // one late response would crash the whole MCP server. A detail we can't read is simply dropped.
+    void detailPromise.catch(() => undefined);
   });
 }
