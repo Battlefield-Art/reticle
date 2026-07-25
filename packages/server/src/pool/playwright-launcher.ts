@@ -6,7 +6,7 @@
  * Headless by default — the pool exists for fault-tolerant headless multi-agent testing.
  */
 
-import { chromium, type Browser } from 'playwright';
+import type { Browser } from 'playwright';
 import type { Launcher, PooledBrowser, PooledContext, PooledPage } from './browser-pool.js';
 
 function wrapBrowser(browser: Browser): PooledBrowser {
@@ -38,7 +38,15 @@ function wrapBrowser(browser: Browser): PooledBrowser {
 /** A Launcher that boots a real headless Chromium and adapts it to the pool's interface. */
 export function playwrightLauncher(opts: { headless?: boolean } = {}): Launcher {
   const headless = opts.headless ?? true;
-  return async () => wrapBrowser(await chromium.launch({ headless }));
+  // `playwright` is an OPTIONAL dependency. A static value-import here would be pulled in by the
+  // server's main entry (index.ts re-exports this module) and crash the whole process with
+  // ERR_MODULE_NOT_FOUND on any install without Chromium — the CLI, the MCP server, everything.
+  // Import it lazily, only when a browser is actually launched, so absence fails at drive-time
+  // (where it's meaningful) instead of at import-time (where it kills unrelated features).
+  return async () => {
+    const { chromium } = await import('playwright');
+    return wrapBrowser(await chromium.launch({ headless }));
+  };
 }
 
 const MAX_CONTEXTS_CEILING = 8;
