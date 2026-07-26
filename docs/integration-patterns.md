@@ -158,7 +158,7 @@ Or turn it on with the shipped preset (warns, with empty no-op defaults you then
 
 Reticle observes and drives a tab through the in-page SDK plus (optionally) CDP. It **cannot bring to front or recover a browser tab the OS won't let it script** — e.g. a backgrounded tab, or a non-default browser (Dia, etc.) reporting `hidden:true` / `throttled:true`.
 
-When that happens, `reticle_sessions` and every act/assert result carry a `session.recommendation` saying so. The escape hatch is **`reticle drive <url>`** (add `--headed` to watch) — Reticle launches and owns a guaranteed-scriptable browser. See [usage §18](usage.md#18-real-input-mode--native-hover--drag-m58) for the full note.
+When that happens, `reticle_sessions` and every act/assert result carry a `session.recommendation` saying so. The escape hatch is **`reticle drive <url>`** (add `--headed` to watch) — Reticle launches and owns a guaranteed-scriptable browser. See [usage §18](usage.md#18-real-input-mode--native-hover--drag) for the full note.
 
 ## Checklist
 

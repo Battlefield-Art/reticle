@@ -200,7 +200,7 @@ Read the app's domain model **before testing**: a synthesis of every saved flow 
 
 ### `reticle_state`
 
-Read live framework/store state directly instead of inferring it from the DOM — [§17](#17-evidence-of-effect-actawait-state-capabilities-replay-m56).
+Read live framework/store state directly instead of inferring it from the DOM — [§17](#17-evidence-of-effect-actawait-state-capabilities-replay).
 
 - `reticle_state({ store?, ref?, path?, depth?, sessionId? })` → `{ stores, component? }`, or `{ store, path, found, value, availableKeys?, storeNames }` when `path`/`depth` is given.
 
@@ -781,7 +781,7 @@ On a failed signal assert, the result includes a **near-miss**: the signals that
 
 ---
 
-## 17. Evidence-of-effect, act+await, state, capabilities, replay (M5.6)
+## 17. Evidence-of-effect, act+await, state, capabilities, replay
 
 These close the "is the action trusted?" gap — so you can tell _my action missed_ vs _the app didn't react_ vs _the tool didn't dispatch_.
 
@@ -903,7 +903,7 @@ reticle_capabilities()   // → { testids, signals, stores, flows }
 
 ---
 
-## 18. Real input mode — native hover & drag (M5.8)
+## 18. Real input mode — native hover & drag
 
 Reticle drives actions by dispatching JS events from inside the page. That covers click, fill, type, select, submit, press, and HTML5 drag — but it **cannot** trigger browser-native pointer behavior: `onMouseEnter`/`onMouseLeave`, hover-gated reveals, and pointer-library drags rely on the browser's real hit-testing, which synthetic events don't drive.
 
@@ -958,6 +958,6 @@ That's it. Reticle correlates the CDP page to your SDK session by URL; pointer a
 
 > **SPA navigation is handled.** The URL correlation tracks client-side route changes (`pushState`/`replaceState`/`popstate`), so real input keeps working after your app navigates into a sub-route — e.g. the hover/quick-edit cluster on a `/workspace` view stays drivable. (If you see `inputModeReason:"page-not-correlated-to-a-cdp-target"`, the reported session URL isn't correlated to a CDP target and real input silently falls back to synthetic.)
 
-> **Watching the agent (presenter, M5.8).** With `present: true` the activity border now glows once while the agent is busy and fades when idle (no per-action strobe); the HUD sits **bottom-center**, shows a **READING** vs **ACTING** chip so you can tell observation from action at a glance, and `reticle_session {action:"narrate"}` lines are **queued** with a minimum on-screen dwell so none flash by unread.
+> **Watching the agent (presenter).** With `present: true` the activity border now glows once while the agent is busy and fades when idle (no per-action strobe); the HUD sits **bottom-center**, shows a **READING** vs **ACTING** chip so you can tell observation from action at a glance, and `reticle_session {action:"narrate"}` lines are **queued** with a minimum on-screen dwell so none flash by unread.
 
 > **Limitation — un-scriptable tabs.** Reticle observes/drives a tab through the in-page SDK + (optionally) CDP; it **cannot bring to front or recover a browser tab the OS won't let it script** (e.g. a backgrounded or non-default-browser tab reporting `hidden:true`/`throttled:true`). When that happens, `reticle_sessions` and every act/assert result carry a `session.recommendation` saying so and pointing to `reticle drive <url>` for a guaranteed scriptable context — refocus the tab, or use `reticle drive`.

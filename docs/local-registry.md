@@ -107,7 +107,7 @@ Synthetic events can't trigger native `onMouseEnter`/pointer state (hover menus,
   }
   ```
 
-With neither set, Reticle stays synthetic (zero extra deps) and says so via `inputMode`. See [usage §18](usage.md#18-real-input-mode--native-hover--drag-m58).
+With neither set, Reticle stays synthetic (zero extra deps) and says so via `inputMode`. See [usage §18](usage.md#18-real-input-mode--native-hover--drag).
 
 ## Write replayable specs + git-checked flows
 
