@@ -31,23 +31,19 @@ function randomString(rand: () => number, maxLen: number): string {
 }
 
 describe('redaction fuzz — no crash, no hang, no leak of a known secret shape', () => {
-  it(
-    'scrubKnownSecrets never throws and terminates on 5,000 adversarial inputs',
-    () => {
-      const rand = prng(0x9e3779b1);
-      for (let i = 0; i < 5000; i++) {
-        const s = randomString(rand, 400);
-        // Invariant: never throws (a regex error / infinite loop would surface here).
-        expect(() => scrubKnownSecrets(s)).not.toThrow();
-        expect(() => isSensitiveKey(s)).not.toThrow();
-      }
-      // The "no hang" backstop is the per-test TIMEOUT below, not a wall-clock assertion. Catastrophic
-      // regex backtracking would blow a generous timeout; a `Date.now() - start < N` check is a
-      // statement about the machine and flakes under CI load (it failed at 4056ms vs a 4000ms limit),
-      // which is exactly the timing-assertion anti-pattern the repo rules forbid.
-    },
-    20_000,
-  );
+  it('scrubKnownSecrets never throws and terminates on 5,000 adversarial inputs', () => {
+    const rand = prng(0x9e3779b1);
+    for (let i = 0; i < 5000; i++) {
+      const s = randomString(rand, 400);
+      // Invariant: never throws (a regex error / infinite loop would surface here).
+      expect(() => scrubKnownSecrets(s)).not.toThrow();
+      expect(() => isSensitiveKey(s)).not.toThrow();
+    }
+    // The "no hang" backstop is the per-test TIMEOUT below, not a wall-clock assertion. Catastrophic
+    // regex backtracking would blow a generous timeout; a `Date.now() - start < N` check is a
+    // statement about the machine and flakes under CI load (it failed at 4056ms vs a 4000ms limit),
+    // which is exactly the timing-assertion anti-pattern the repo rules forbid.
+  }, 20_000);
 
   it('a JWT is redacted no matter what benign text surrounds it', () => {
     const rand = prng(0x1234abcd);
