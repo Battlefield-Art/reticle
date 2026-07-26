@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Boot api + bench-app (the dashboard fixture) + next-smoke, wait for health, run the e2e battery, tear
 # down. The dashboard specs (real-world-tests, multi-agent-lease) drive @reticlehq/bench-app on :4310 —
-# it carries the login + deployments/compose/diagnostics surface those specs exercise (the old @reticlehq/demo
-# was rebuilt into a minimal task app). bench-app dials the per-spec bridge via RETICLE_PORT and presents
-# the pairing token via VITE_RETICLE_TOKEN.
+# it carries the login + deployments/compose/diagnostics surface those specs exercise. bench-app dials
+# the per-spec bridge via RETICLE_PORT and presents the pairing token via VITE_RETICLE_TOKEN.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"

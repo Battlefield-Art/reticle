@@ -1,6 +1,6 @@
 # Reticle for enterprises
 
-> Premium access (how you get + activate it), what's gated, the security/data-handling posture, and the licensing model. Integration mechanics live in [`integration.md`](./integration.md).
+> Premium access (how you get + activate it), what's gated, the security/data-handling posture, and the licensing model. Integration mechanics live in [`platform-integration.md`](./platform-integration.md).
 
 ## How premium access works (offline, no phone-home)
 

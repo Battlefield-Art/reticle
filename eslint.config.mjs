@@ -94,7 +94,7 @@ export default tseslint.config(
   },
   {
     // React surfaces: enforce rules-of-hooks (drives the useX naming rule)
-    files: ['packages/react/**/*.{ts,tsx}', 'apps/demo/**/*.{ts,tsx}'],
+    files: ['packages/react/**/*.{ts,tsx}', 'apps/bench-app/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     rules: {
       'react-hooks/rules-of-hooks': 'error',

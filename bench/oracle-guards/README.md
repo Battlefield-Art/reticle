@@ -1,4 +1,4 @@
-# Oracle guards — verifying the verifier (W11 §5)
+# Oracle guards — verifying the verifier
 
 ```bash
 node bench/oracle-guards/run.mjs   # deterministic; no app, agent, or API. exit 1 on any breach
@@ -61,6 +61,6 @@ is wrong, not the guard.
 
 ## Not yet covered
 
-The plan's §5 also lists heal-refuses-wrong-element, heal-accepts-right-element, drift-decision-legibility
+The plan also lists heal-refuses-wrong-element, heal-accepts-right-element, drift-decision-legibility
 and effect-honesty. Those need a live app (they assert on heal/drift behaviour against real DOM), so they
-belong with the injected-registry expansion in §4 rather than in this browser-free runner.
+belong with the injected-registry expansion rather than in this browser-free runner.

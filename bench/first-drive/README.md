@@ -1,4 +1,4 @@
-# First-drive / advertised-surface cost (B02)
+# First-drive / advertised-surface cost
 
 The dominant standing cost of putting Reticle in front of an agent is not any single call — it is the
 **advertised tool surface, re-sent to the model on every turn**. That number used to be quoted from memory

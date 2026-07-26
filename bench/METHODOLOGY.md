@@ -16,7 +16,7 @@ Hypothesis under test (to be validated OR falsified): _AI coding agents are limi
 
 | Control | How it is held constant |
 | --- | --- |
-| Same application | `apps/demo` (Vite/React dashboard) + `apps/api` (Express), this repo. |
+| Same application | `apps/bench-app` (Vite/React dashboard) + `apps/api` (Express), this repo. |
 | Same hardware | One machine; all tools run locally, back to back. Host recorded in run metadata. |
 | Same browser engine | All three drive **Chromium**. Playwright MCP & Reticle use Playwright Chromium (same cache: `chromium-1223`); DevTools MCP uses local Chrome/Chromium via CDP. Engine family identical; channel noted per tool. |
 | Same task prompts | One canonical natural-language verification task per scenario, fed verbatim to each tool's agent loop. Stored in `scenarios/<id>.json`. |
@@ -36,7 +36,7 @@ Hypothesis under test (to be validated OR falsified): _AI coding agents are limi
 The headline metric people want — _tokens per verification cycle_ — only exists if a real LLM drives the tool. That has two parts, measured separately:
 
 - **Layer A — Observation cost (no API key, fully reproducible).** Drive each tool's MCP server directly (newline-delimited JSON-RPC, `harness/mcp-client.mjs`), run the canonical verification recipe, and measure the **exact** tool-response payloads (`chars`, `bytes`) plus a tokenizer proxy (tiktoken `o200k_base`) and wall-clock latency. This is the number of context tokens each tool _injects into the agent_ per cycle. It is deterministic and reproducible by anyone.
-- **Layer B — Full agent-loop cost (requires `ANTHROPIC_API_KEY`).** Run a real Claude tool-use loop (`harness/agent-loop.mjs`) where the model itself chooses calls until it emits a verdict; record **authoritative** `usage.input_tokens` / `output_tokens` from the API. This captures agent _reasoning_ tokens, which Layer A omits.
+- **Layer B — Full agent-loop cost (requires `ANTHROPIC_API_KEY`).** Run a real Claude tool-use loop (`harness/claude-agent-loop.mjs`) where the model itself chooses calls until it emits a verdict; record **authoritative** `usage.input_tokens` / `output_tokens` from the API. This captures agent _reasoning_ tokens, which Layer A omits.
 
 **Tokenization honesty.** Anthropic does not expose a public offline tokenizer; the authoritative Anthropic token count comes only from Layer B's `usage`. In Layer A we report exact `chars`/`bytes` (no estimation) and a clearly-labeled `tokens_o200k` **proxy** (OpenAI BPE). The proxy ranks payloads consistently but is **not** the Anthropic count. Anywhere a number cannot be obtained it is written **NOT MEASURED**.
 
@@ -132,9 +132,9 @@ These are exactly the kind of subtle measurement bugs that flatter or punish a t
 node bench/harness/bench-all.mjs --full && node bench/harness/gate.mjs
 
 # Or run the passes by hand:
-# 1. start backends — api on :8787, demo on :4312; the demo's embedded SDK dials the bench daemon (:4455)
+# 1. start backends — api on :8787, bench-app on :4312; its embedded SDK dials the bench daemon (:4455)
 node apps/api/server.mjs &
-RETICLE_PORT=4455 pnpm --filter @reticlehq/demo exec vite --port 4312 --strictPort &
+RETICLE_PORT=4455 pnpm --filter @reticlehq/bench-app exec vite --port 4312 --strictPort &
 
 # 2. verify all three tool servers boot + list tools
 node bench/harness/probe.mjs
@@ -143,7 +143,7 @@ node bench/harness/probe.mjs
 node bench/harness/run-observation.mjs            # all scenarios x all tools
 
 # 4. agent-loop pass ("Layer B", needs key): full LLM-driven loop, authoritative usage
-ANTHROPIC_API_KEY=... node bench/harness/agent-loop.mjs
+ANTHROPIC_API_KEY=... node bench/harness/claude-agent-loop.mjs
 
 # raw outputs: bench/raw/*.json ; logs: bench/logs/
 ```

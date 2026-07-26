@@ -4,7 +4,7 @@ import type { ToolDef } from './tools.js';
 /**
  * Which MCP tool surface to expose. The advertised tool DEFINITIONS are re-sent to the model on
  * every turn, so a smaller surface is a per-turn token saving that compounds across a loop. Fewer
- * tools also makes the model wander less (fewer turns, higher accuracy). See bench/LAYER-B.md.
+ * tools also makes the model wander less (fewer turns, higher accuracy). See bench/agent-loop-and-replay.md.
  *
  * MEASURED surface sizes (assert them with profile-reachability.test.ts rather than trusting prose —
  * every count previously written here was wrong, and the token figures below derive from those counts):
@@ -52,7 +52,7 @@ export const TOOL_PROFILE_ENV = 'RETICLE_TOOL_PROFILE';
 // justification. Current-model evidence is indirect but real — the cost-delta run
 // (bench/fix-loop/COST-DELTA.md) drove this hybrid default on a current model and fixed 4/4 cells with
 // ~25% FEWER tool calls than the baseline. A formal core-vs-hybrid A/B on a current model is
-// still UNRUN; do not quote the 5/5 number as if it were current. See bench/LAYER-B.md.
+// still UNRUN; do not quote the 5/5 number as if it were current. See bench/agent-loop-and-replay.md.
 export const CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   ReticleTool.SESSIONS,
   ReticleTool.NAVIGATE,

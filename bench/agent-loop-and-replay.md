@@ -1,4 +1,6 @@
-# Layer B — the full agent loop (measured, and it humbles Reticle)
+# Agent loop and replay — historical real-LLM (gpt-4o era) agent-loop benchmark + deterministic replay results
+
+Historical record ("Layer B" of the original study): a real LLM drives each tool end-to-end, plus the Layer C deterministic-replay results. Numbers below are from the gpt-4o-era run and are preserved as recorded.
 
 > Layer A drives each tool with a fixed, expert recipe — it measures the **ceiling** (what's possible with perfect tool-driving). Layer B puts a **real LLM (gpt-4o) in the loop**: the model chooses every call until it emits a verdict. Token counts are authoritative OpenAI `usage` (prompt + completion), summed across turns. Harness: `harness/openai-agent-loop.mjs`; raw: `raw/agent-loop-openai.json`. 5 scenarios × 3 tools = 15 cells, model `gpt-4o`, max 14 turns. Run cost ≈ $2.50.
 
@@ -192,7 +194,7 @@ The honest headline: for **one-shot** verification Reticle is ~1.5–2× Playwri
 
 ## Layer C — detection (replay doesn't just cost less, it CATCHES the break)
 
-Cost without correctness is meaningless, so the second half of Layer C proves the deterministic replay actually catches a regression. `harness/replay-detect.mjs`: record a flow against the healthy app and replay it (baseline), then re-navigate with `?reticle-break=<anchor>` — a dev-only injector (`apps/demo/src/reticle-regress.ts`) that patches `setAttribute` so a given `data-testid` can never be applied. The element still renders; the stable hook a test relied on is gone — the single most common real regression (a refactor renames/removes a testid). Replay the SAME recording and see what it returns.
+Cost without correctness is meaningless, so the second half of Layer C proves the deterministic replay actually catches a regression. `harness/replay-detect.mjs`: record a flow against the healthy app and replay it (baseline), then re-navigate with `?reticle-break=<anchor>` — a dev-only injector (`apps/bench-app/src/reticle-regress.ts`) that patches `setAttribute` so a given `data-testid` can never be applied. The element still renders; the stable hook a test relied on is gone — the single most common real regression (a refactor renames/removes a testid). Replay the SAME recording and see what it returns.
 
 | Flow | break (testid removed) | baseline replay | regressed replay | drift anchor (nearest fix) | caught? |
 | --- | --- | --- | --- | --- | --- |

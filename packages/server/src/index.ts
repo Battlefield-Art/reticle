@@ -121,7 +121,7 @@ export {
 export type { ReticleDirPaths, ReadContractResult } from './project/reticle-dir.js';
 export { createNodeFileSystem } from './project/fs-port.js';
 export type { FileSystemPort } from './project/fs-port.js';
-// Replay/Verify API — the programmatic surface an OEM/CI pipeline drives (see docs/integration.md).
+// Replay/Verify API — the programmatic surface an OEM/CI pipeline drives (see docs/platform-integration.md).
 export { ReticleRunner } from './runs/reticle-runner.js';
 export type { RunnerPort, VerifyOptions } from './runs/reticle-runner.js';
 export { createRunnerPort, defaultRunId } from './runs/runner-port.js';
@@ -200,7 +200,7 @@ export interface StartOptions {
   httpVerifyToken?: string;
 }
 
-/** Default localhost port for the verify HTTP endpoint (see docs/integration.md). */
+/** Default localhost port for the verify HTTP endpoint (see docs/platform-integration.md). */
 export const RETICLE_VERIFY_DEFAULT_PORT = 7331;
 
 export interface RunningServer {
@@ -254,10 +254,14 @@ function makeNetworkDetailRouter(bridge: Bridge, driveUrl: string | undefined) {
     const requestOrigin = originOf(detail.url);
     for (const session of bridge.sessions.all()) {
       const origin = originOf(session.url);
+      // originOf returns `string | undefined`, NEVER '' — so the old `!== ''` guards were dead, and a
+      // bare `origin === requestOrigin` matched `undefined === undefined` when BOTH the session URL and
+      // the detail URL were unparseable. That routed a NET_DETAIL (with its response headers, incl.
+      // set-cookie) onto an unrelated session. Require a DEFINED origin; undefined operands then simply
+      // fail to match any of the three candidates.
       const matches =
-        (pageOrigin !== '' && origin === pageOrigin) ||
-        origin === requestOrigin ||
-        (driveOrigin !== '' && origin === driveOrigin);
+        origin !== undefined &&
+        (origin === pageOrigin || origin === requestOrigin || origin === driveOrigin);
       if (matches) {
         session.pushEvent({ t: 0, type: EventType.NET_DETAIL, sessionId: session.id, data: { ...detail } });
       }

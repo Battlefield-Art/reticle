@@ -34,10 +34,10 @@ packages/server        @reticlehq/server       — bridge + MCP server, the `ret
 packages/react         @reticlehq/react        — React adapter: DOM ref -> component -> source file
 packages/babel-plugin  @reticlehq/babel-plugin — stamps data-reticle-source (source mapping, React 19)
 packages/next          @reticlehq/next         — Next.js source mapping (keeps SWC) via withReticle (CJS)
-apps/demo              @reticlehq/demo         — Vite/React dashboard used to dogfood Reticle
+apps/bench-app         @reticlehq/bench-app   — Vite/React dashboard used to dogfood Reticle
 apps/api              @reticlehq/api          — Express backend exercising real-world behaviors
 apps/next-smoke       @reticlehq/next-smoke   — Next.js 15 app verifying Reticle on Next
-docs/                  — user-facing docs (getting-started, usage, token-efficiency, local-install)
+docs/                  — user-facing docs (getting-started, usage, token-efficiency, local-registry)
 SKILL.md              — public skill for users integrating Reticle into their own project (the canonical paste-URL)
 ```
 
@@ -117,17 +117,11 @@ These are enforced by lint and review. A PR that violates them will be asked to 
 
 ## Running the demo app locally
 
-`apps/demo` is the React dashboard we use to dogfood Reticle (tabs, lists, modals, forms, API calls).
+`apps/bench-app` is the React dashboard we use to dogfood Reticle (tabs, lists, modals, forms, API calls).
 
 ```bash
 pnpm install                 # once, from the repo root
-pnpm --filter @reticlehq/demo dev
-```
-
-This starts the Vite dev server. There is also a dedicated, isolated Reticle dev server on port 4310 (so it doesn't collide with your normal dev port):
-
-```bash
-pnpm --filter @reticlehq/demo dev:reticle   # http://localhost:4310
+pnpm --filter @reticlehq/bench-app dev   # http://localhost:4312
 ```
 
 From there, point your MCP-capable agent at Reticle and ask it to verify the app — see [`docs/getting-started.md`](docs/getting-started.md) for the full walkthrough.

@@ -61,9 +61,9 @@ are ignored here — only the run counts.
 
 Published deliberately. A benchmark that never reports a loss is not measuring.
 
-- `payload-missing-field` (critical) — the generate request actually sends the prompt (server must not silently default it)
-  - reticle observed: requestBody present, contains 'prompt'=true
-  - **why we lose:** Reticle reads `init.body` inside its own fetch wrapper, so it sees what the page HANDED to fetch, not what left the machine. Whoever patches fetch last is outermost, and that ordering is decided by app bootstrap, not by us — so an axios/Sentry/auth interceptor initialised after connect(), a service worker (which never produces a window.fetch frame at all), or sendBeacon can all rewrite a request invisibly. A CDP or proxy observer sees the wire and catches it. This is a real limit of in-page instrumentation, not a fixture artifact: the fix is wire-level capture on the drive path (read request.postData() in the CDP network-detail listener), which is bounded work but does not exist yet, and would not help attach-mode sessions at all.
+- `shadow-control-dead` (medium) — the refresh control inside the shadow root still makes its request
+  - reticle observed: ERR tool reticle_act failed: {"error":"ref 'e22' no longer resolves to an element"}
+  - **why we lose:** (no structural reason recorded — treat as a gap to close, not a limit)
 
 ## False-positive traps (not firing is the PASS)
 

@@ -36,12 +36,7 @@ export function Topbar(): React.ReactElement {
         Search or jump to…
         <span className="kbd">⌘K</span>
       </button>
-      <button
-        type="button"
-        className="kbd-search"
-        data-testid="sign-out"
-        onClick={() => signOut()}
-      >
+      <button type="button" className="kbd-search" data-testid="sign-out" onClick={() => signOut()}>
         Sign out
       </button>
       <div

@@ -1,4 +1,4 @@
-# Fix-loop ablation (W1 / B01)
+# Fix-loop ablation
 
 The release's before/after number: **does an agent fix bugs better with the Reticle MCP than without?**
 

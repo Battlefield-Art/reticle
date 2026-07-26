@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // One source of truth for the fixture app the benches boot (bench-all.mjs boots @reticlehq/bench-app).
-// The views moved here from apps/demo; keep this in sync with bench-all's fixture so the injector and
-// the runner never target different apps again.
+// Keep this in sync with bench-all's fixture so the injector and the runner never target different
+// apps again.
 const FIXTURE_APP = `${ROOT}/apps/bench-app`;
 const F = {
   store: `${FIXTURE_APP}/src/store/store.ts`,

@@ -70,9 +70,9 @@ const LOSS_REASON = {
     'by app bootstrap, not by us — so an axios/Sentry/auth interceptor initialised after connect(), a ' +
     'service worker (which never produces a window.fetch frame at all), or sendBeacon can all rewrite a ' +
     'request invisibly. A CDP or proxy observer sees the wire and catches it. This is a real limit of ' +
-    'in-page instrumentation, not a fixture artifact: the fix is wire-level capture on the drive path ' +
-    '(read request.postData() in the CDP network-detail listener), which is bounded work but does not ' +
-    'exist yet, and would not help attach-mode sessions at all.',
+    'in-page instrumentation, not a fixture artifact. The drive path now reads the wire (CDP ' +
+    'network-detail capture), so seeing this loss again means that capture regressed; attach-mode ' +
+    'sessions remain exposed, since wire capture cannot help them at all.',
 };
 
 const rows = JSON.parse(readFileSync(RESULTS, 'utf8')).rows;

@@ -29,14 +29,13 @@
       "group": "Get started",
       "pages": [
         "getting-started",
-        "local-install",
-        "integrate-with-claude-code"
+        "local-registry"
       ]
     },
     {
       "group": "Integrate",
       "pages": [
-        "integration",
+        "platform-integration",
         "integration-patterns",
         "flows",
         "testing",

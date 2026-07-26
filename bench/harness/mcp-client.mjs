@@ -2,7 +2,7 @@
 // Used to drive Playwright MCP / Chrome DevTools MCP / Reticle MCP WITHOUT an LLM,
 // so we can capture the exact tool-response payloads, wall-clock latency, and
 // whether a failure signal is present. This is the "observation-cost" layer and
-// needs no API key. The agent-loop layer (agent-loop.mjs) is separate.
+// needs no API key. The agent-loop layer (claude-agent-loop.mjs) is separate.
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { existsSync } from 'node:fs';

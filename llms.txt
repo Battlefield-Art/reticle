@@ -165,7 +165,7 @@ both results published, including where Reticle loses. Full from-scratch explain
 - **Skill file (paste this URL to your agent):** https://raw.githubusercontent.com/reticlehq/reticle/main/SKILL.md
 - **Docs home:** https://github.com/reticlehq/reticle/tree/main/docs
   - Getting started: https://github.com/reticlehq/reticle/blob/main/docs/getting-started.md
-  - Integration (Lovable / Emergent / Bolt): https://github.com/reticlehq/reticle/blob/main/docs/integration.md
+  - Integration (Lovable / Emergent / Bolt): https://github.com/reticlehq/reticle/blob/main/docs/platform-integration.md
   - Enterprise: https://github.com/reticlehq/reticle/blob/main/docs/enterprise.md
   - Token efficiency: https://github.com/reticlehq/reticle/blob/main/docs/token-efficiency.md
   - Usage & flows: https://github.com/reticlehq/reticle/blob/main/docs/usage.md

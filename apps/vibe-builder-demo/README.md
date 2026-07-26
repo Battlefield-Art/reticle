@@ -22,7 +22,7 @@ generated app ships with, deterministically, while an HTTP/render-only gate catc
 | `qa/builder-api.mjs` | The Builder API (`/api/verify`, `/api/repair`) mounted as Vite middleware — the INNER Reticle layer. |
 | `qa/self-test.mjs` | **Reticle testing Reticle** — an OUTER Reticle drives the Builder UI, whose QA fires the INNER Reticle on the preview. The recursive loop. |
 
-This is the integration shape from `docs/integration.md` → the builder: `reticle serve --drive <preview>` +
+This is the integration shape from `docs/platform-integration.md` → the builder: `reticle serve --drive <preview>` +
 verify, here exercised in-process so the whole loop runs from one `node` command.
 
 ## The six silent-failure classes (what an AI builder actually ships)

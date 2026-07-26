@@ -19,10 +19,10 @@ packages/babel-plugin  @reticlehq/babel-plugin — stamps data-reticle-source (s
 packages/next          @reticlehq/next         — Next.js source mapping (keeps SWC) via withReticle (CJS)
 packages/test          @reticlehq/test         — spec runner + matchers for CI (peer vitest)
 packages/eslint-plugin @reticlehq/eslint-plugin — dev-only lint rule: state changed ⇒ signal fired
-apps/demo              @reticlehq/demo         — Vite/React fixture used to dogfood Reticle
+apps/bench-app         @reticlehq/bench-app    — Vite/React fixture used to dogfood Reticle
 apps/api               @reticlehq/api          — Express backend exercising real-world behaviors (CJS-ish .mjs)
 apps/next-smoke        @reticlehq/next-smoke   — Next.js 15 app verifying Reticle on Next
-docs/                  — user-facing docs (getting-started, usage, token-efficiency, local-install)
+docs/                  — user-facing docs (getting-started, usage, token-efficiency, local-registry)
 SKILL.md               — PUBLIC skill for users integrating Reticle into their own project (the canonical paste-URL)
 plan/                  — research/design docs only, no code (ALWAYS gitignored)
 ```

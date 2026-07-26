@@ -62,3 +62,25 @@ the model to wander mid-loop — the failure mode the Layer-B profile work alrea
 every one), but this is a cost measurement, not a capability one — it says nothing about whether Reticle
 helps an agent fix bugs (the ablation says it doesn't, on this fixture), only that v2.2.0 made the WITH
 loop cheaper in round-trips than v2.1.0.
+
+## Reproduce
+
+The trap: a Reticle MCP proxy CONNECTS to whatever daemon already owns its port and only spawns a new
+one if the port is free — so a stale published daemon on the port silently substitutes the wrong build.
+Always start from a clean, dedicated port so the local proxy spawns the local daemon.
+
+1. Build: `pnpm -r --filter "@reticlehq/*" build` (dist must be the branch build).
+2. Point `.mcp.json` → `mcpServers.reticle` at a dedicated port no other daemon uses:
+   `{ "command": "node", "args": ["packages/server/dist/cli.js", "mcp"], "env": { "RETICLE_PORT": "4480" } }`
+3. `bash bench/fix-loop/setup-daemon.sh 4480` — frees the port + boots the bench-app against it.
+4. Restart Claude Code (or reconnect the MCP) so the proxy re-reads `.mcp.json` and spawns the fresh
+   local daemon on the clean port.
+5. Verify the daemon identity before spending agent budget: `reticle_tools` must NOT list the retired
+   `reticle_version_info`/`reticle_apply_update`/`reticle_rollback`; `reticle_sessions` shows the
+   bench-app; one `act_and_wait` returns `summary` + `honesty` fields.
+6. Run the cells, same protocol as `results.md` (WITH-Reticle only, same model/prompts as the baseline):
+   per bug, `inject(id)` → fix-agent drives the live app via the reticle MCP → record
+   `{fixed, tokens, toolCalls}` from usage → `revert(id)`. Helpers live in `bench/harness/inject.mjs`
+   (see `run-fix-loop.mjs`).
+7. Teardown: `bash bench/fix-loop/setup-daemon.sh --teardown 4480`, restore `.mcp.json`, restart Claude
+   Code, and confirm `git status --short apps/bench-app` is clean (every injection reverted).

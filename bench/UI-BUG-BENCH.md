@@ -1,6 +1,6 @@
 # UI-bug benchmark (visual + state) — brutally honest
 
-> Tougher bugs than the Layer-A suite: each leaves the element PRESENT with the correct role + name, so a DOM/a11y snapshot reports "fine." Fair 3-tool comparison — each tool observes its NATIVE way. Reported with no flattering: where a competitor matches Reticle, it is said plainly. Harness: `harness/visual-bug-bench.mjs`; injector: `apps/demo/src/reticle-bug-injector.ts`; raw: `raw/visual-bug-bench.json`.
+> Tougher bugs than the Layer-A suite: each leaves the element PRESENT with the correct role + name, so a DOM/a11y snapshot reports "fine." Fair 3-tool comparison — each tool observes its NATIVE way. Reported with no flattering: where a competitor matches Reticle, it is said plainly. Harness: `harness/visual-bug-bench.mjs`; injector: `apps/bench-app/src/reticle-bug-injector.ts`; raw: `raw/visual-bug-bench.json`.
 
 ## Batch 1 — visually-broken / off-theme but DOM-present (DETECTION PARITY, ergonomic gap)
 

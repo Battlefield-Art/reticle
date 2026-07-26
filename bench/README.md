@@ -2,7 +2,7 @@
 
 Compares **Playwright MCP**, **Chrome DevTools MCP**, and **Reticle** across detection, regression-run cost, and UI/state bugs. Everything here is measured by the harness; nothing is hand-entered.
 
-**Start here: [`SCORECARD.md`](SCORECARD.md)** — the honest one-page standing across all layers (wins, ties, and caveats). Depth lives in: `METRIC.md` (chased metric: VE gate + RRE), `LAYER-B.md` (real agent loop + Layer C / RRE), `UI-BUG-BENCH.md` (UI/state bugs — visual = parity, state-desync = Reticle-only), and `METHODOLOGY.md` (full design: controls, scenarios, fairness). Gate: `pnpm bench` / `bench:full` / `bench:gate` (fail on regression vs the last `history.jsonl` row).
+**Start here: [`SCORECARD.md`](SCORECARD.md)** — the honest one-page standing across all layers (wins, ties, and caveats). Depth lives in: `METRIC.md` (chased metric: VE gate + RRE), `agent-loop-and-replay.md` (real agent loop + Layer C / RRE), `UI-BUG-BENCH.md` (UI/state bugs — visual = parity, state-desync = Reticle-only), and `METHODOLOGY.md` (full design: controls, scenarios, fairness). Gate: `pnpm bench` / `bench:full` / `bench:gate` (fail on regression vs the last `history.jsonl` row).
 
 ## Layout
 
@@ -14,10 +14,9 @@ harness/                  all runnable code
   adapters.mjs            per-tool login/navigate/act/observe, every call measured
   inject.mjs              deterministic regression injector (git-revert)
   run-observation.mjs     Layer A: observation-cost suite (10x3), writes raw/observation-results.json
-  agent-loop.mjs          Layer B: real Claude tool-use loop, authoritative usage tokens (needs API key)
+  claude-agent-loop.mjs   Layer B: real Claude tool-use loop, authoritative usage tokens (needs API key)
   analyze.mjs             Phase 4 aggregates -> raw/analysis.json
-  charts.mjs diagrams.mjs Phase 5 SVG generators
-  svg2png.mjs             SVG -> PNG via headless Chromium
+  charts.mjs              Phase 5 SVG chart generator
   capture-screens.mjs     real failure-state screenshots + console/network evidence
   probe.mjs schema-dump.mjs   connectivity + tool-schema probes
 raw/                      measured outputs (observation-results.json, analysis.json, snapshot-*, run-meta.json)
@@ -57,11 +56,11 @@ node bench/harness/run-observation.mjs
 
 # 5. analysis + visuals
 node bench/harness/analyze.mjs
-node bench/harness/charts.mjs && node bench/harness/diagrams.mjs && node bench/harness/svg2png.mjs
+node bench/harness/charts.mjs
 node bench/harness/capture-screens.mjs
 
 # 6. Layer B — full agent loop (authoritative usage tokens). REQUIRES a key.
-ANTHROPIC_API_KEY=sk-... node bench/harness/agent-loop.mjs
+ANTHROPIC_API_KEY=sk-... node bench/harness/claude-agent-loop.mjs
 
 # 7. Layer C — deterministic regression suite (no API key). Records each flow once, then replays it
 #    with NO model and asserts a declared consequence. This is the RRE / regression story + the

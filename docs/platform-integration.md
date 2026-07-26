@@ -63,7 +63,7 @@ Reticle embeds a **dev/preview-only** SDK (`@reticlehq/browser`, Apache-2.0, tre
 | **2 — program-state truth** | `registerStore('app', store)` (1/store, pass the store itself so mutations emit diffs) + `reticle.signal('order:saved', …)` (1/consequence) + `data-testid`s | UI-vs-store desync, dead handlers, blast-radius, source mapping | **Easy–Medium** (an afternoon, once) |
 | **3 — governance (optional)** | `registerCapabilities(...)` (signals/stores/risk zones) + recorded flows with success oracles | risk policy + sharper verdicts | **Medium**, optional |
 
-Copyable patterns: `apps/demo/src/reticle-dev.ts`, `apps/next-smoke/app/reticle-dev.tsx`. Without instrumentation, Layer-1 checks still work via the driven browser; Layers 2–3 are what no out-of-page tool can see.
+Copyable patterns: `apps/bench-app/src/reticle-dev.ts`, `apps/next-smoke/app/reticle-dev.tsx`. Without instrumentation, Layer-1 checks still work via the driven browser; Layers 2–3 are what no out-of-page tool can see.
 
 ---
 
@@ -80,7 +80,7 @@ Copyable patterns: `apps/demo/src/reticle-dev.ts`, `apps/next-smoke/app/reticle-
 | UI-vs-store desync — the total lies | reads the store, contradicts the display |
 | Blast-radius — an action corrupts unrelated state | `state { hold:true }` invariant |
 
-Live, clickable demo of each: `apps/generated-app/` (set `BUG_MODE=…`). Proven in CI: `packages/server/src/runs/generated-app-bugs.test.ts`.
+Live, clickable demo of each: `apps/vibe-builder-demo/` (set `BUG_MODE=…`). Proven in CI: `packages/server/src/runs/generated-app-bugs.test.ts`.
 
 ---
 

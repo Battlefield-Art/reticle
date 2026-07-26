@@ -1,15 +1,15 @@
 {
   "metric": "daemon memory / port / child-process retention under sequential and concurrent load",
   "config": {
-    "sessions": 8,
-    "concurrency": 4,
+    "sessions": 12,
+    "concurrency": 8,
     "app": "http://localhost:4312/"
   },
   "memory": {
-    "rss_start_mb": 151,
-    "rss_after_sequential_mb": 151,
-    "rss_after_concurrent_mb": 151,
-    "slope_mb_per_session": 0
+    "rss_start_mb": 48,
+    "rss_after_sequential_mb": 88,
+    "rss_after_concurrent_mb": 90,
+    "slope_mb_per_session": 3.636
   },
   "ports": {
     "daemon_port_still_listening": true,
@@ -21,74 +21,98 @@
     "surviving_children_after_stop": 0
   },
   "sequential": {
-    "total": 8,
-    "ok": 8,
+    "total": 12,
+    "ok": 12,
     "failures": []
   },
   "concurrent": {
-    "total": 8,
-    "ok": 8,
+    "total": 16,
+    "ok": 16,
     "failures": []
   },
   "samples": [
     {
       "phase": "sequential",
       "i": 0,
-      "rss_mb": 151,
+      "rss_mb": 48,
       "children": 1
     },
     {
       "phase": "sequential",
       "i": 1,
-      "rss_mb": 151,
+      "rss_mb": 49,
       "children": 1
     },
     {
       "phase": "sequential",
       "i": 2,
-      "rss_mb": 151,
+      "rss_mb": 49,
       "children": 1
     },
     {
       "phase": "sequential",
       "i": 3,
-      "rss_mb": 151,
+      "rss_mb": 50,
       "children": 1
     },
     {
       "phase": "sequential",
       "i": 4,
-      "rss_mb": 151,
+      "rss_mb": 50,
       "children": 1
     },
     {
       "phase": "sequential",
       "i": 5,
-      "rss_mb": 151,
+      "rss_mb": 50,
       "children": 1
     },
     {
       "phase": "sequential",
       "i": 6,
-      "rss_mb": 151,
+      "rss_mb": 50,
       "children": 1
     },
     {
       "phase": "sequential",
       "i": 7,
-      "rss_mb": 151,
+      "rss_mb": 88,
+      "children": 1
+    },
+    {
+      "phase": "sequential",
+      "i": 8,
+      "rss_mb": 88,
+      "children": 1
+    },
+    {
+      "phase": "sequential",
+      "i": 9,
+      "rss_mb": 88,
+      "children": 1
+    },
+    {
+      "phase": "sequential",
+      "i": 10,
+      "rss_mb": 88,
+      "children": 1
+    },
+    {
+      "phase": "sequential",
+      "i": 11,
+      "rss_mb": 88,
       "children": 1
     },
     {
       "phase": "concurrent",
       "i": 0,
-      "rss_mb": 151,
+      "rss_mb": 89,
       "children": 1
     },
     {
       "phase": "concurrent",
       "i": 1,
-      "rss_mb": 151,
+      "rss_mb": 90,
       "children": 1
     }
   ]

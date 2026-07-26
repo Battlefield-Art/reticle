@@ -43,9 +43,7 @@ export function BuildLogStream(): React.ReactElement {
       try {
         const frame: unknown = JSON.parse(String(ev.data));
         const step =
-          typeof frame === 'object' && frame !== null && 'step' in frame
-            ? String(frame.step)
-            : '';
+          typeof frame === 'object' && frame !== null && 'step' in frame ? String(frame.step) : '';
         if (step.length === 0) return;
         setSteps((prev) => [...prev, step]);
         if (step === DONE_LABEL) setStatus(DONE_LABEL);

@@ -10,7 +10,7 @@
 // exits 0 — it never fabricates numbers. Run AFTER `inject` wiring is in place; this
 // reuses adapters' server spawn config + the same scenario definitions as Layer A.
 //
-//   ANTHROPIC_API_KEY=sk-... node bench/harness/agent-loop.mjs [scenarioId]
+//   ANTHROPIC_API_KEY=sk-... node bench/harness/claude-agent-loop.mjs [scenarioId]
 //
 import { writeFileSync } from 'node:fs';
 import { McpStdioClient } from './mcp-client.mjs';

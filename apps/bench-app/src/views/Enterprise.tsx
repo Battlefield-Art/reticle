@@ -116,9 +116,12 @@ export function Enterprise(): React.ReactElement {
   // Background network churn against the real API (default ~20 req/sec).
   useEffect(() => {
     if (cfg.pollHz === 0) return;
-    const id = setInterval(() => {
-      void health().then(() => setPolls((n) => n + 1));
-    }, Math.max(1, Math.round(1000 / cfg.pollHz)));
+    const id = setInterval(
+      () => {
+        void health().then(() => setPolls((n) => n + 1));
+      },
+      Math.max(1, Math.round(1000 / cfg.pollHz)),
+    );
     return () => clearInterval(id);
   }, [cfg.pollHz]);
 

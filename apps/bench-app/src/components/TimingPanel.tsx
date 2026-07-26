@@ -98,7 +98,9 @@ export function TimingPanel(): React.ReactElement {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
-      <div data-testid={SEARCH_RESULT_TESTID}>{matches === null ? 'no search yet' : `${String(matches)} matches`}</div>
+      <div data-testid={SEARCH_RESULT_TESTID}>
+        {matches === null ? 'no search yet' : `${String(matches)} matches`}
+      </div>
       <div className="row" style={{ gap: 8 }}>
         <button
           type="button"

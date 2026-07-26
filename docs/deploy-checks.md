@@ -74,7 +74,7 @@ covered file cannot "finish" without re-verifying:
 reticle gate --since origin/main    # exit 1 unless passing artifacts cover the affected flows
 ```
 
-Use both: `gate` in the agent's Stop hook (see `integrate-with-claude-code`), `verify` at the deploy.
+Use both: `gate` in the agent's Stop hook (see `agent-cheatsheet`), `verify` at the deploy.
 They read the same run artifacts, so a green gate locally and a green check on the PR mean the same thing.
 
 ## Honest limits

@@ -9,8 +9,7 @@ import { createBuilderApi } from './qa/builder-api.mjs';
  * API, served from one Vite dev server (the analogue of a builder's preview pod). The frontend is
  * instrumented with the Reticle SDK (see src/main.ts) so a QA agent can observe real DOM/network/console/
  * state — not pixels. Bug class is chosen per-request via the `?bug=` URL param (the page forwards it
- * as an `x-bug` header), so ONE running preview serves all six silent-failure classes. This mirrors
- * `apps/generated-app/server.mjs` but as a real instrumented, bundler-built app.
+ * as an `x-bug` header), so ONE running preview serves all six silent-failure classes.
  */
 
 const BUG_MODES = [

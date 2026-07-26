@@ -1,4 +1,4 @@
-# Suite wall-time: sequential vs parallel (§5.12 / W14.2)
+# Suite wall-time: sequential vs parallel
 
 Runs the **real** `reticle_flow_verify` handler twice against a live app — sequential (one shared tab)
 vs `{ parallel: N }` (one leased isolated context per flow) — and reports wall-time, speedup, and how the
@@ -44,10 +44,10 @@ wrongly treated the contaminated sequential run as ground truth.
 
 Each lease pays a fixed cost: launch an isolated context, navigate, and wait for the SDK to register.
 With only four short flows that setup dominates. The speedup grows with suite size and flow duration —
-which is exactly the 200-flow dashboard case W14.2 targets. Treat 2.38× as the floor for a tiny suite,
+which is exactly the planned 200-flow dashboard case. Treat 2.38× as the floor for a tiny suite,
 not the ceiling.
 
-## Wall-time budget (§5.12)
+## Wall-time budget
 
 The script enforces a tracked budget: `SUITE_BUDGET_MS_PER_FLOW` (default 1500ms) × flow count, and exits
 non-zero on a blown budget as well as on a verification regression.

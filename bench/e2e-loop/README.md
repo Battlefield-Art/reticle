@@ -1,4 +1,4 @@
-# The end-to-end loop (§5.1)
+# The end-to-end loop
 
 The release's headline demo, written as a runnable assertion instead of a story:
 
@@ -28,7 +28,7 @@ Writing the demo exposed three real breaks that unit tests could not:
 
 1. **`verify` → `gate` was not connected at all.** Run artifacts were persisted only by the optional
    `serve --http` endpoint, while `reticle gate` decides from `RunStore.latest()`. So the documented CI
-   path could pass verification and the gate would still block — §5.1's "agent fixes → gate unblocks"
+   path could pass verification and the gate would still block — the planned "agent fixes → gate unblocks"
    was impossible. `reticle verify` now persists its artifact (best-effort; a disk failure must not turn
    a passing verification into a failure).
 2. **`reticle verify` ignored `RETICLE_PORT`** and always bound the default 4400, so it crashed with

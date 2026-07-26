@@ -58,6 +58,6 @@ Even without a pause, action/observe/assert results carry a `control` block when
 
 ## Tell your agent to honor it
 
-Add this to your operating prompt / `CLAUDE.md` (see the [Claude Code integration prompts](integrate-with-claude-code.md)):
+Add this to your operating prompt / `CLAUDE.md` (see the [agent cheat-sheet](agent-cheatsheet.md)):
 
 > The human may pause you or send guidance from the Reticle panel. On any `reticle_act` result with `paused: true`, stop, read `guidance`, adjust, then call `reticle_session {action:"resume"}`. Treat a `control.guidance` field on any result as a live instruction from the human.
