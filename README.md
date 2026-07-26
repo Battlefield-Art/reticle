@@ -188,8 +188,6 @@ Then say _"save that as a flow"_ — and it replays deterministically on every l
 
 Built in the open, for the long run. Everyone who stars, forks, or contributes is credited below.
 
-<a href="https://star-history.com/#reticlehq/reticle&Date"><img src="https://api.star-history.com/svg?repos=reticlehq/reticle&type=Date" alt="Star history" width="600" /></a>
-
 <a href="https://github.com/reticlehq/reticle/graphs/contributors"><img src="https://contrib.rocks/image?repo=reticlehq/reticle" alt="Contributors" /></a>
 
 </div>
