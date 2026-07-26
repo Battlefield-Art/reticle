@@ -1,6 +1,6 @@
 {
   "name": "@reticlehq/protocol",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "Deprecated alias for @reticlehq/core. The Reticle wire contract moved into the core foundation; this alias is no longer published (unpublished after v2.0.0) — import from @reticlehq/core.",
   "type": "module",
@@ -33,7 +33,8 @@
   "bugs": "https://github.com/reticlehq/reticle/issues",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "NOTICE"
   ],
   "sideEffects": false,
   "keywords": [
@@ -44,5 +45,8 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

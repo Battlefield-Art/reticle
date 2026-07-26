@@ -107,8 +107,8 @@ async function bootFixtures() {
   );
   spawnFixture('api', 'node', ['apps/api/server.mjs'], { API_PORT });
   // The benchmark fixture is @reticlehq/bench-app (login + dashboard: compose/deployments/diagnostics)
-  // — the app these flows drive. (@reticlehq/demo was rebuilt into a minimal task app and no longer
-  // has those views.) Its embedded SDK dials RETICLE_PORT, which must match the daemon each script spawns.
+  // — the app these flows drive. Its embedded SDK dials RETICLE_PORT, which must match the daemon each
+  // script spawns.
   const pairingToken = readOrCreatePairingToken();
   spawnFixture(
     'bench-app',

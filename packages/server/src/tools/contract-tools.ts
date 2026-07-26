@@ -30,6 +30,11 @@ export const CONTRACT_TOOLS: ToolDef[] = [
       source: z
         .string()
         .describe('live = real-time from the browser; disk = last saved contract.json'),
+      // fromDisk carries when the contract was generated; both paths carry the app's declared governance
+      // (owner/safety/scope) when present. Undeclared, they were stripped on a validating profile — a
+      // governance-gated app lost its policy block, and disk reads lost their freshness stamp.
+      generatedAt: z.number().optional(),
+      governance: z.unknown().optional(),
     },
     handler: async (deps, args) => {
       if (args[FROM_DISK_ARG] === true) {

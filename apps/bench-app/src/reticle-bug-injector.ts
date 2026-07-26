@@ -6,35 +6,46 @@
  * app's own STATE reveals the break. This is the data that separates "the element exists" from "a user
  * can actually use it, and the program did the right thing."
  *
- *   ?reticle-bug=<id>[,<id>...]
+ * ?reticle-bug=<id>[,<id>...]
  *
  * The catalog is organised as a handful of generic installers driven by lookup tables, so a new bug is
  * one table row, not a new function:
  *
- *   CSS_BUGS      — a control loses interactivity/visibility via computed style (opacity:0, 0×0,
- *                   recolor) or the whole page is re-tinted (a paint-only regression). Caught by a
- *                   geometry/computed-style read (both tools) or a pixel diff (screenshot only).
- *   OCCLUDE       — a transparent overlay covers a control so clicks land on the overlay, not it.
- *   TAMPER        — an action writes store state it should not (blast radius) or writes a WRONG value
- *                   (a business-logic invariant: a KPI number, a created row's field). The corruption
- *                   is off-screen, so no DOM/pixel tool can see it; only reading the store proves it.
- *   CONSOLE_LEAKS — an action logs a console.error while the UI still renders fine.
- *   EXTRA_FETCH   — an action fires a request it must NOT (a forbidden endpoint / privacy beacon) or
- *                   fires its own request one extra time (double-submit). Caught by a network count.
- *   DOM_TEXT      — a displayed label/number is silently wrong (a mock-data / copy regression).
+ * CSS_BUGS — a control loses interactivity/visibility via computed style (opacity:0, 0×0,
+ * recolor) or the whole page is re-tinted (a paint-only regression). Caught by a
+ * geometry/computed-style read (both tools) or a pixel diff (screenshot only).
+ * OCCLUDE — a transparent overlay covers a control so clicks land on the overlay, not it.
+ * TAMPER — an action writes store state it should not (blast radius) or writes a WRONG value
+ * (a business-logic invariant: a KPI number, a created row's field). The corruption
+ * is off-screen, so no DOM/pixel tool can see it; only reading the store proves it.
+ * CONSOLE_LEAKS — an action logs a console.error while the UI still renders fine.
+ * EXTRA_FETCH — an action fires a request it must NOT (a forbidden endpoint / privacy beacon) or
+ * fires its own request one extra time (double-submit). Caught by a network count.
+ * DOM_TEXT — a displayed label/number is silently wrong (a mock-data / copy regression).
  *
  * Two always-on desync installers keep the DOM self-consistent while lying about the truth:
- *   state-desync  — the Deployments nav badge is forced to a wrong count while the store holds the real
- *                   one. Only reading the store reveals the mismatch.
- *   status-stale  — the top deployment row shows a status the store does NOT hold (a failed/in-flight
- *                   deploy rendered as "live"). The pill is fully self-consistent, so a screenshot/a11y
- *                   tool sees a healthy deploy; only the store reveals the lie.
- *   render-storm  — re-renders `series` subscribers ~60×/s with identical output: React commits every
- *                   tick but the DOM never mutates. Only the React commit meter sees it.
+ * state-desync — the Deployments nav badge is forced to a wrong count while the store holds the real
+ * one. Only reading the store reveals the mismatch.
+ * status-stale — the top deployment row shows a status the store does NOT hold (a failed/in-flight
+ * deploy rendered as "live"). The pill is fully self-consistent, so a screenshot/a11y
+ * tool sees a healthy deploy; only the store reveals the lie.
+ * render-storm — re-renders `series` subscribers ~60×/s with identical output: React commits every
+ * tick but the DOM never mutates. Only the React commit meter sees it.
  *
  * Tree-shaken out of production; never imported there.
  */
 
+import { reticle } from '@reticlehq/browser';
+import { Sig } from './lib/reticle-bridge.js';
+import { AUTH_TOKEN_KEY, SESSION_ID_KEY } from './lib/persisted-session.js';
+import {
+  IFRAME_TESTID,
+  SHADOW_BUTTON_TESTID,
+  SHADOW_LABEL_TESTID,
+  SHADOW_TAG,
+} from './components/DeepPanels.js';
+import { STREAM_URLS } from './components/BuildLogStream.js';
+import { TIMING_CONFIG } from './components/TimingPanel.js';
 import { useApp } from './store/store.js';
 import type { Deployment } from './data/seed.js';
 
@@ -272,6 +283,570 @@ const DOUBLE_FETCH: Record<string, DoubleFetch> = {
   'double-fault-500': { method: 'GET', urlContains: '/api/broken/500' },
 };
 
+/**
+ * net-status — the hidden-500 class. The request genuinely FAILS (or answers the wrong shape) but
+ * the app swallows it and renders success anyway. This is the flagship "looks fine, isn't" case: the DOM
+ * is correct, the screenshot is correct, and only the wire tells the truth.
+ *
+ * `status` rewrites the response the app sees; `contentType` answers the wrong media type with a 200;
+ * `emptyBody` returns 200 with nothing in it (the app falls back to stale cache).
+ */
+interface NetStatusBug {
+  urlContains: string;
+  status?: number;
+  contentType?: string;
+  emptyBody?: boolean;
+}
+const NET_STATUS: Record<string, NetStatusBug> = {
+  'swallowed-500-generate': { urlContains: '/api/generate-script', status: 500 },
+  'swallowed-500-login': { urlContains: '/api/login', status: 500 },
+  'empty-200-deployments': { urlContains: '/api/deployments', status: 200, emptyBody: true },
+  'wrong-content-type': { urlContains: '/api/generate-script', contentType: 'text/html' },
+};
+
+/** net-status payload bugs: the REQUEST body is wrong (a field dropped, or a stale value sent). */
+interface NetPayloadBug {
+  urlContains: string;
+  /** Remove this key from the outgoing JSON body. */
+  dropField?: string;
+  /** Overwrite this key with a stale/wrong value. */
+  overwrite?: { field: string; value: string };
+}
+const NET_PAYLOAD: Record<string, NetPayloadBug> = {
+  'payload-missing-field': { urlContains: '/api/generate-script', dropField: 'prompt' },
+  'payload-wrong-value': {
+    urlContains: '/api/deploy',
+    overwrite: { field: 'service', value: 'stale-previous-session' },
+  },
+};
+
+/**
+ * net-hang — the in-flight oracle. The request never resolves. `uiDone` is the nastier variant:
+ * the app optimistically renders completion and never reconciles, so the DOM says "done" while the wire
+ * is still waiting forever. `abort` drops the request mid-flight with no retry and no surfaced error.
+ */
+interface NetHangBug {
+  urlContains: string;
+  /** Let the UI render success even though nothing came back. */
+  uiDone?: boolean;
+  /** Abort mid-flight instead of hanging forever. */
+  abort?: boolean;
+}
+const NET_HANG: Record<string, NetHangBug> = {
+  'hung-generate': { urlContains: '/api/generate-script' },
+  'hung-but-ui-done': { urlContains: '/api/generate-script', uiDone: true },
+  'slow-then-drop': { urlContains: '/api/generate-script', abort: true },
+};
+
+/** Rewrite/stall responses per the net-status + net-hang registries. One fetch wrap serves both. */
+function installNetFaults(bugs: ReadonlySet<string>): void {
+  const statuses = [...bugs]
+    .map((id) => NET_STATUS[id])
+    .filter((b): b is NetStatusBug => b !== undefined);
+  const payloads = [...bugs]
+    .map((id) => NET_PAYLOAD[id])
+    .filter((b): b is NetPayloadBug => b !== undefined);
+  const hangs = [...bugs].map((id) => NET_HANG[id]).filter((b): b is NetHangBug => b !== undefined);
+  if (statuses.length === 0 && payloads.length === 0 && hangs.length === 0) return;
+
+  const base = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = input instanceof Request ? input.url : String(input);
+
+    // net-hang: never resolve (or abort), so the request stays pending on the wire forever.
+    const hang = hangs.find((h) => url.includes(h.urlContains));
+    if (hang !== undefined) {
+      if (hang.uiDone === true) {
+        // Optimistic completion the app never reconciles: hand back a fake OK while the REAL request is
+        // left hanging, so the DOM reads "done" and the wire never finishes.
+        void base(input, init).catch(() => undefined);
+        return new Response(JSON.stringify({ result: 'done (optimistic)' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (hang.abort === true) return Promise.reject(new DOMException('aborted', 'AbortError'));
+      return new Promise<Response>(() => undefined); // never settles
+    }
+
+    // net-status payload: mutate the OUTGOING body before it leaves.
+    const payload = payloads.find((pl) => url.includes(pl.urlContains));
+    let outInit = init;
+    if (payload !== undefined && typeof init?.body === 'string') {
+      try {
+        // JSON.parse returns `any`; narrow at the boundary instead of trusting it (no-explicit-any).
+        const parsed: unknown = JSON.parse(init.body);
+        if (typeof parsed !== 'object' || parsed === null) throw new Error('not an object body');
+        const body = parsed as Record<string, unknown>;
+        if (payload.dropField !== undefined) delete body[payload.dropField];
+        if (payload.overwrite !== undefined)
+          body[payload.overwrite.field] = payload.overwrite.value;
+        outInit = { ...init, body: JSON.stringify(body) };
+      } catch {
+        // not JSON — leave the request untouched rather than corrupting it
+      }
+    }
+
+    const response = await base(input, outInit);
+
+    // net-status: rewrite what the APP sees, while the real wire status stays observable to Reticle.
+    const rewrite = statuses.find((s) => url.includes(s.urlContains));
+    if (rewrite === undefined) return response;
+    const body = rewrite.emptyBody === true ? '' : await response.clone().text();
+    return new Response(body, {
+      status: rewrite.status ?? response.status,
+      headers: {
+        'content-type':
+          rewrite.contentType ?? response.headers.get('content-type') ?? 'application/json',
+      },
+    });
+  };
+}
+
+/**
+ * silent-removal — a NON-INTERACTIVE element quietly unmounts. Nothing errors, nothing shifts
+ * visibly enough to notice, and no click breaks: a crawler that only exercises controls is structurally
+ * blind to it. Only a saved baseline notices the absence.
+ */
+const SILENT_REMOVAL: Record<string, string> = {
+  'kpi-card-removed': 'kpi-services',
+  'footer-status-removed': 'session-pill',
+};
+
+function installSilentRemoval(bugs: ReadonlySet<string>): void {
+  const targets = [...bugs]
+    .map((id) => SILENT_REMOVAL[id])
+    .filter((v): v is string => v !== undefined);
+  if (targets.length === 0) return;
+  const strip = (): void => {
+    for (const testid of targets) {
+      document.querySelector(`[data-testid="${testid}"]`)?.remove();
+    }
+  };
+  strip();
+  // React re-renders would restore it; keep removing so the element stays gone for the whole run.
+  new MutationObserver(strip).observe(document.documentElement, { childList: true, subtree: true });
+}
+
+/**
+ * perf — the layout-shift / long-task blind spot. These are invisible to a DOM assertion and to a
+ * screenshot taken after things settle: the damage is in WHEN the page moved, not in what it ends up
+ * looking like.
+ */
+const PERF_BUGS = {
+  /** Inject a banner 300ms after load so settled content is shoved down (CLS). */
+  CLS_LATE_BANNER: 'cls-late-banner',
+  /** KPI cards render heightless, then reflow to full height (CLS). */
+  CLS_IMAGELESS_JUMP: 'cls-imageless-jump',
+  /** A synchronous 400ms loop on Diagnostics nav — main thread blocked (long task). */
+  LONGTASK_ON_NAV: 'longtask-on-nav',
+} as const;
+
+function installPerfFaults(bugs: ReadonlySet<string>): void {
+  if (bugs.has(PERF_BUGS.CLS_LATE_BANNER)) {
+    setTimeout(() => {
+      const banner = document.createElement('div');
+      banner.setAttribute('data-testid', 'late-banner');
+      banner.style.cssText = 'height:96px;background:#fde68a;width:100%;';
+      banner.textContent = 'Scheduled maintenance tonight';
+      document.body.insertBefore(banner, document.body.firstChild);
+    }, 300);
+  }
+
+  if (bugs.has(PERF_BUGS.CLS_IMAGELESS_JUMP)) {
+    const squash = (): boolean => {
+      const grid = document.querySelector('[data-testid="kpi-deploys"]')?.parentElement;
+      if (grid instanceof HTMLElement && grid.dataset['squashed'] !== 'done') {
+        grid.dataset['squashed'] = 'done';
+        const original = grid.style.minHeight;
+        grid.style.minHeight = '0px';
+        for (const child of Array.from(grid.children)) {
+          if (child instanceof HTMLElement) child.style.height = '0px';
+        }
+        // Reflow to full height a beat later — the jump IS the bug.
+        setTimeout(() => {
+          for (const child of Array.from(grid.children)) {
+            if (child instanceof HTMLElement) child.style.height = '';
+          }
+          grid.style.minHeight = original;
+        }, 400);
+        return true;
+      }
+      return false;
+    };
+    // Wait for the grid to exist before squashing it.
+    //
+    // This used to fire once at 100ms, when the app is still on the LOGIN screen — the KPI grid it
+    // targets only renders on Overview, after sign-in. querySelector returned null, squash did
+    // nothing, and the fault never happened. The registry counted it as a bug both tools missed;
+    // there was nothing to miss. A seeded bug that cannot occur is worse than no seeded bug, because
+    // it reads as coverage.
+    const deadline = Date.now() + 15000;
+    const attempt = (): void => {
+      if (squash()) return;
+      if (Date.now() < deadline) setTimeout(attempt, 150);
+    };
+    setTimeout(attempt, 100);
+  }
+
+  if (bugs.has(PERF_BUGS.LONGTASK_ON_NAV)) {
+    document.addEventListener(
+      'click',
+      (e) => {
+        const el = e.target instanceof Element ? e.target.closest('[data-testid]') : null;
+        if (el?.getAttribute('data-testid') !== 'nav-diagnostics') return;
+        // Block the main thread synchronously — a real long task, not a fake mark.
+        const until = Date.now() + 400;
+        while (Date.now() < until) {
+          /* busy-wait: this is the regression */
+        }
+      },
+      true,
+    );
+  }
+}
+
+/**
+ * routing — the view renders correctly but the URL is wrong. Deep links and the back button
+ * break while every DOM assertion still passes, so only a route oracle catches it.
+ *
+ * TWO of the spec's four routing bugs are deliberately absent, both for the same reason — they would
+ * report "caught" on a CLEAN build, which the standing rule forbids:
+ *
+ * - `route-double-push`: injectable and genuinely broken (verified: one click = 2 history entries, so
+ * Back strands you), but NEITHER harness can see it. Reticle's route observer drops a push whose URL
+ * is unchanged (`route.ts`: `if (to.href === from) return;`) — correct behaviour that fixes a real
+ * back-nav drop — and Playwright only sees the final URL, which is right. A bug nobody can catch adds
+ * no signal to a comparison suite. Recorded as a known blind spot instead of scored.
+ * - `deeplink-dead`: NOT here either. The app has no
+ * URL→view hydration at all, so a direct /deployments load ALREADY falls back to overview on a clean
+ * build — injecting it would trip the clean-build-zero gate. It needs the app to support deep links first.
+ */
+interface RouteBug {
+  /** Suppress the URL update for this view (renders, never navigates). */
+  stuck?: string;
+  /** Push this path instead of the real one, for the given view. */
+  wrong?: { view: string; push: string };
+}
+const ROUTE_BUGS: Record<string, RouteBug> = {
+  'route-stuck-deployments': { stuck: '/deployments' },
+  'route-wrong-target': { wrong: { view: '/diagnostics', push: '/overview' } },
+};
+
+function installRouteFaults(bugs: ReadonlySet<string>): void {
+  const active = [...bugs]
+    .map((id) => ROUTE_BUGS[id])
+    .filter((b): b is RouteBug => b !== undefined);
+  if (active.length === 0) return;
+  const base = history.pushState.bind(history);
+  history.pushState = (data: unknown, unused: string, url?: string | URL | null): void => {
+    const path = String(url ?? '');
+    for (const bug of active) {
+      if (bug.stuck !== undefined && path.includes(bug.stuck)) return; // renders, never navigates
+      if (bug.wrong !== undefined && path.includes(bug.wrong.view)) {
+        base(data, unused, bug.wrong.push);
+        return;
+      }
+    }
+    base(data, unused, url);
+  };
+}
+
+/**
+ * signal — Tier-1 coverage. The network call succeeds, the DOM updates, the store is correct;
+ * only the app's own declared SIGNAL is wrong or missing. A DOM/pixel tool has nothing to compare
+ * against, which is why this whole category is reticle-only rather than a fair fight.
+ *
+ * Patched on the `reticle` singleton rather than on the app's `emit` helper, so every call site is
+ * covered by one interception instead of one edit per site.
+ */
+interface SignalBug {
+  /** Swallow this signal entirely — the action happens, nothing is announced. */
+  suppress?: string;
+  /** Fire this signal twice for one action (a downstream counter double-counts). */
+  double?: string;
+  /** Emit under a typo'd name; listeners waiting on the real name never wake. */
+  rename?: { from: string; to: string };
+}
+const SIGNAL_BUGS: Record<string, SignalBug> = {
+  'signal-missing-generate': { suppress: Sig.COMPOSE_GENERATED },
+  'signal-missing-deploy': { suppress: Sig.DEPLOY_CREATED },
+  'signal-double-fire': { double: Sig.COMPOSE_GENERATED },
+  'signal-wrong-name': { rename: { from: Sig.COMPOSE_GENERATED, to: 'compose:generate' } },
+};
+
+function installSignalFaults(bugs: ReadonlySet<string>): void {
+  const active = [...bugs]
+    .map((id) => SIGNAL_BUGS[id])
+    .filter((b): b is SignalBug => b !== undefined);
+  if (active.length === 0) return;
+  const base = reticle.signal.bind(reticle);
+  reticle.signal = (name: string, data: Record<string, unknown> = {}): void => {
+    for (const bug of active) {
+      if (bug.suppress === name) return;
+      if (bug.double === name) {
+        base(name, data);
+        base(name, data);
+        return;
+      }
+      if (bug.rename?.from === name) {
+        base(bug.rename.to, data);
+        return;
+      }
+    }
+    base(name, data);
+  };
+}
+
+/**
+ * storage — persistence truth. The UI is completely correct in every one of these: sign-in
+ * succeeds, the avatar appears, sign-out returns you to the login screen. The lie only shows up on the
+ * NEXT page load, or to the server. A tool that judges the rendered page cannot see any of it.
+ *
+ * Patched at the Storage/cookie seam rather than in persisted-session.ts, because that is how these
+ * fail in real code: a write that silently does not land, lands in the wrong store, or uses a
+ * pre-rename key — never a missing function call.
+ */
+interface StorageBug {
+  /** Drop writes for this key (the value is never persisted). */
+  dropWrite?: string;
+  /** Drop deletes for this key (sign-out clears the UI, the token survives). */
+  dropRemove?: string;
+  /** Persist this key into localStorage instead of sessionStorage (outlives the tab). */
+  wrongStore?: string;
+  /** Write under a stale key name; every reader looks for the current one and finds nothing. */
+  renameKey?: { from: string; to: string };
+  /** Swallow the cookie write — the client looks signed in, the server disagrees. */
+  dropCookie?: boolean;
+}
+const STORAGE_BUGS: Record<string, StorageBug> = {
+  'token-not-persisted': { dropWrite: AUTH_TOKEN_KEY },
+  'logout-leaves-token': { dropRemove: AUTH_TOKEN_KEY },
+  'session-in-localstorage': { wrongStore: SESSION_ID_KEY },
+  'stale-cache-key': { renameKey: { from: AUTH_TOKEN_KEY, to: `${AUTH_TOKEN_KEY}.v1` } },
+  'cookie-not-set': { dropCookie: true },
+};
+
+function installStorageFaults(bugs: ReadonlySet<string>): void {
+  const active = [...bugs]
+    .map((id) => STORAGE_BUGS[id])
+    .filter((b): b is StorageBug => b !== undefined);
+  if (active.length === 0) return;
+
+  const localSet = localStorage.setItem.bind(localStorage);
+  const localRemove = localStorage.removeItem.bind(localStorage);
+  const sessionSet = sessionStorage.setItem.bind(sessionStorage);
+
+  localStorage.setItem = (key: string, value: string): void => {
+    for (const bug of active) {
+      if (bug.dropWrite === key) return;
+      if (bug.renameKey?.from === key) {
+        localSet(bug.renameKey.to, value);
+        return;
+      }
+    }
+    localSet(key, value);
+  };
+  localStorage.removeItem = (key: string): void => {
+    for (const bug of active) if (bug.dropRemove === key) return;
+    localRemove(key);
+  };
+  sessionStorage.setItem = (key: string, value: string): void => {
+    for (const bug of active) {
+      if (bug.wrongStore === key) {
+        localSet(key, value); // lands in the wrong store: survives the tab close it must not survive
+        return;
+      }
+    }
+    sessionSet(key, value);
+  };
+
+  if (active.some((b) => b.dropCookie === true)) {
+    // `cookie` is defined on Document.prototype, NOT on the document's immediate prototype
+    // (HTMLDocument.prototype), so getPrototypeOf(document) found no descriptor and the patch silently
+    // did nothing — the bug never fired and the check passed on the buggy build.
+    const desc = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie');
+    if (desc?.set !== undefined && desc.get !== undefined) {
+      Object.defineProperty(document, 'cookie', {
+        configurable: true,
+        get: desc.get.bind(document),
+        set: () => {
+          /* swallowed — the client believes it is signed in, the server never sees a session */
+        },
+      });
+    }
+  }
+}
+
+/**
+ * Storage survives navigation within an origin, so one bug's writes leak into the next bug's run — a
+ * buggy `logout-leaves-token` deliberately leaves a token behind, which then makes a LATER storage
+ * check pass for the wrong reason. `?reticle-reset-storage` wipes all three stores before the app
+ * mounts, giving every storage run a known starting state. Explicit test infrastructure, dev-only,
+ * and never on unless the harness asks for it.
+ */
+const RESET_STORAGE_PARAM = 'reticle-reset-storage';
+
+function resetStorageIfAsked(params: URLSearchParams): void {
+  if (!params.has(RESET_STORAGE_PARAM)) return;
+  localStorage.clear();
+  sessionStorage.clear();
+  for (const entry of document.cookie.split('; ')) {
+    const name = entry.split('=')[0];
+    if (name !== undefined && name.length > 0) document.cookie = `${name}=; path=/; Max-Age=0`;
+  }
+}
+
+/**
+ * timing — fake-clock territory. The bug is entirely in WHEN something happens, so any check
+ * that looks immediately after the action sees a perfectly correct page. Only waiting past the
+ * deadline and looking again reveals it.
+ *
+ * `toast-never-dismisses` overrides the store's dismiss action rather than patching setTimeout: the
+ * timer still fires exactly on schedule, it just no longer does anything — which is how this fails in
+ * real code (a stale closure, an id that no longer matches) rather than a clock that stopped.
+ */
+function installTimingFaults(bugs: ReadonlySet<string>): void {
+  if (bugs.has('toast-never-dismisses')) {
+    useApp.setState({
+      dismissToast: () => {
+        /* the 4.2s timer fires and does nothing — the toast stays on screen forever */
+      },
+    });
+  }
+}
+
+/**
+ * deep-dom — shadow root + iframe piercing. Everything here is INSIDE a boundary the top-level
+ * document does not expose: `document.querySelectorAll('[data-testid]')` finds none of it, and the
+ * parent console never sees the frame's error. Reticle's snapshot walks `element.shadowRoot` and a
+ * same-origin `contentDocument`, so the content is reachable — that reach is exactly what is measured.
+ *
+ * Note for check authors: `reticle_query` resolves testids through Testing Library, which does NOT
+ * cross a shadow boundary. These must be read via `reticle_snapshot`.
+ */
+function installDeepDomFaults(bugs: ReadonlySet<string>): void {
+  const wrongLabel = bugs.has('shadow-label-typo');
+  const deadControl = bugs.has('shadow-control-dead');
+  const staleIframe = bugs.has('iframe-stale-data');
+  const throwIframe = bugs.has('iframe-console-leak');
+  if (!wrongLabel && !deadControl && !staleIframe && !throwIframe) return;
+
+  const patch = (): void => {
+    const host = document.querySelector(SHADOW_TAG);
+    const root = host?.shadowRoot ?? null;
+    if (root !== null) {
+      if (wrongLabel) {
+        const label = root.querySelector(`[data-testid="${SHADOW_LABEL_TESTID}"]`);
+        // Plausible, and wrong: a human skims past it and every top-level DOM assertion still passes.
+        // Guarded for the same reason as the control below: writing textContent is a mutation, and
+        // this runs from a MutationObserver, so an unconditional write is an endless loop.
+        if (label !== null && label.textContent !== 'All systems nominel') {
+          label.textContent = 'All systems nominel';
+        }
+      }
+      if (deadControl) {
+        const button = root.querySelector(`[data-testid="${SHADOW_BUTTON_TESTID}"]`);
+        // Replacing the node drops its listener while leaving an identical-looking control behind.
+        //
+        // Marked so it happens EXACTLY ONCE. `replaceWith` is itself a DOM mutation, and this runs
+        // from a MutationObserver on document.body — so an unguarded replace re-triggered the
+        // observer, which replaced the node again, forever. The control churned continuously, which
+        // is a far more extreme fault than the intended "listener quietly dropped": no ref could
+        // survive long enough to click it, so the check reported the control as unresolvable rather
+        // than dead. Worse, the miss LOOKED like a catch — a click that never lands produces zero
+        // requests, the same signature as the dead control under test.
+        if (button !== null && !button.hasAttribute('data-bench-dead')) {
+          const clone = button.cloneNode(true) as Element;
+          clone.setAttribute('data-bench-dead', '1');
+          button.replaceWith(clone);
+        }
+      }
+    }
+    const frame = document.querySelector<HTMLIFrameElement>(`[data-testid="${IFRAME_TESTID}"]`);
+    if (frame !== null) {
+      const url = new URL(frame.src, location.origin);
+      let changed = false;
+      if (staleIframe && url.searchParams.get('count') !== STALE_IFRAME_COUNT) {
+        url.searchParams.set('count', STALE_IFRAME_COUNT); // frozen at a value that was true once
+        changed = true;
+      }
+      if (throwIframe && !url.searchParams.has('throw')) {
+        url.searchParams.set('throw', '1');
+        changed = true;
+      }
+      if (changed) frame.src = url.toString();
+    }
+  };
+
+  // The panels mount with the Diagnostics view, not at install time, so re-apply as the DOM arrives.
+  const observer = new MutationObserver(patch);
+  observer.observe(document.body, { childList: true, subtree: true });
+  patch();
+}
+
+/** The stale count the iframe freezes at — deliberately not the real deployment count. */
+const STALE_IFRAME_COUNT = '3';
+
+/**
+ * streams — SSE / WebSocket. A stream failure is invisible to anything that inspects a MOMENT:
+ * the connection is open and healthy, the DOM is rendered and correct, nothing throws. The app is just
+ * never told, or is told something it silently drops. Only the frame timeline shows it.
+ *
+ * Each variant is produced by pointing the app at the server's own broken mode, so the stream really
+ * does stall / really does emit an unparseable frame — nothing is faked client-side.
+ */
+/**
+ * chart — the data reaches the store intact and the CHART is wrong.
+ *
+ * This is the one dashboard widget whose correctness is geometry rather than text. `AreaChart` maps
+ * the series through `y(v) = pad + (1 - (v - min) / span) * ...`, so the failure is arithmetic:
+ *
+ *  - an EMPTY series makes `Math.max(...[])` return -Infinity and `Math.min(...[])` +Infinity, so
+ *    every coordinate is NaN and the browser draws nothing;
+ *  - a SINGLE-POINT series makes `step = (w - pad*2) / (data.length - 1)` divide by zero.
+ *
+ * Both are ordinary product bugs — a filter that matched nothing, a range that selected one day —
+ * and neither is visible to a state read (the store is exactly what the app was told) or to a
+ * screenshot compared against a baseline that was also blank. The store stays HONEST here on
+ * purpose: the whole point is that `series` and the plotted geometry disagree.
+ */
+function installChartFaults(bugs: ReadonlySet<string>): void {
+  if (bugs.has('chart-empty-series')) useApp.setState({ series: [] });
+  if (bugs.has('chart-single-point')) useApp.setState({ series: [42] });
+}
+
+function installStreamFaults(bugs: ReadonlySet<string>): void {
+  if (bugs.has('sse-silent-stop')) {
+    // Opens, then says nothing. The UI sits on "streaming…" forever and the request looks fine.
+    STREAM_URLS.sse = `${STREAM_URLS.sse}?silent=1`;
+  }
+  if (bugs.has('sse-malformed-frame')) {
+    // One frame mid-stream is not valid JSON; the client drops it and the log is quietly incomplete.
+    STREAM_URLS.sse = `${STREAM_URLS.sse}?malformed=1`;
+  }
+  if (bugs.has('ws-wrong-payload')) {
+    // The echo answers on a channel nobody subscribed to, so the reply is correctly ignored — and the
+    // UI never updates, with no error anywhere to explain why.
+    STREAM_URLS.ws = `${STREAM_URLS.ws}?wrongChannel=1`;
+  }
+}
+
+/**
+ * timing, the count-over-time half. Both of these render identically and return identical
+ * results; only the NUMBER of requests differs, which no single observation can reveal.
+ */
+function installRequestTimingFaults(bugs: ReadonlySet<string>): void {
+  if (bugs.has('debounce-broken')) {
+    // Debounce removed: one request per keystroke instead of one per settled query.
+    TIMING_CONFIG.debounceMs = 0;
+  }
+  if (bugs.has('retry-storm')) {
+    // No sane bound. A correct client gives up after 3; this one keeps asking a failing endpoint.
+    TIMING_CONFIG.maxAttempts = 12;
+  }
+}
+
 /** DOM-text bugs → a testid whose displayed label/number is silently overwritten with a wrong value. */
 const DOM_TEXT: Record<string, { testid: string; wrong: string }> = {
   'brand-typo': { testid: 'brand', wrong: 'Retcile mission control' },
@@ -479,7 +1054,10 @@ function installDoubleFetch(bugs: ReadonlySet<string>): void {
  * network, the console, or the app's state can catch it.
  */
 export function installBugInjector(): void {
-  const raw = new URLSearchParams(window.location.search).get(BUG_PARAM);
+  const params = new URLSearchParams(window.location.search);
+  // Before the early return: a CLEAN run carries no bug id but still needs the known starting state.
+  resetStorageIfAsked(params);
+  const raw = params.get(BUG_PARAM);
   if (raw === null || raw.length === 0) return;
   const bugs = new Set(
     raw
@@ -495,6 +1073,17 @@ export function installBugInjector(): void {
   if (bugs.has('status-stale')) installStatusDesync();
   if (bugs.has('render-storm')) installRenderStorm();
   installClickBugs(bugs);
+  installNetFaults(bugs);
+  installRouteFaults(bugs);
+  installSignalFaults(bugs);
+  installStorageFaults(bugs);
+  installTimingFaults(bugs);
+  installDeepDomFaults(bugs);
+  installStreamFaults(bugs);
+  installChartFaults(bugs);
+  installRequestTimingFaults(bugs);
+  installSilentRemoval(bugs);
+  installPerfFaults(bugs);
   installDoubleFetch(bugs);
   installDomTextBugs(bugs);
 }

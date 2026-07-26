@@ -56,6 +56,7 @@ npx @reticlehq/server init
 It detects your framework, package manager, and React version, then:
 
 - **registers the Reticle MCP server once, globally, for each agent you have installed** — Claude Code (`claude mcp add reticle -s user`) and/or Cursor (`~/.cursor/mcp.json`) — so every project on this machine gets it; you never re-add it per project,
+- **writes a verification rule into your agent's instruction file** — `CLAUDE.md`, `.cursor/rules/reticle.mdc`, or `AGENTS.md` — so the agent knows to verify a feature with Reticle _after building it_, not only when you remember to ask (idempotent; appended below anything you already have),
 - installs the SDK kit (`@reticlehq/react`) and the right build plugin (`@reticlehq/vite-plugin` or `@reticlehq/next`) as dev dependencies,
 - **Vite:** adds the `reticle()` plugin to your config — which wires source mapping _and_ `reticle.connect()` for you, so there is nothing else to edit,
 - **Next / other:** creates the dev component and prints the exact `withReticle` / mount / connect snippets to paste (it never half-edits a build config).
@@ -362,7 +363,7 @@ onSaved(() => reticle.signal('order:saved', { id, total }));
 
 ```ts
 import { registerStore } from '@reticlehq/react';
-registerStore('cart', () => useCart.getState());
+registerStore('cart', useCart); // pass the store itself → auto STATE_CHANGE diffs
 // agent: reticle_state({ store: 'cart' })  → { stores: { cart: {...} } }
 ```
 
@@ -380,9 +381,9 @@ registerCapabilities({
 
 > **Multi-domain apps:** prefer `registerReticleDomain({ testids, signals, stores })` co-located in one `reticle.ts` per domain — each self-registers and `reticle_capabilities()` assembles the union, so there's no central map to forget. See [integration-patterns.md](integration-patterns.md).
 
-> Watch the agent work: pass `present: true` to `reticle.connect()` for a glowing border, a cursor that flies to targets, and a HUD; the agent can call `reticle_narrate({ text })` to show its intent. See [usage §16](usage.md#16-presenter-mode-narration--fake-clock-watch--control).
+> Watch the agent work: pass `present: true` to `reticle.connect()` for a glowing border, a cursor that flies to targets, and a HUD; the agent can call `reticle_session {action:"narrate"}({ text })` to show its intent. See [usage §16](usage.md#16-presenter-mode-narration--fake-clock-watch--control).
 
-> **Hover-gated UI (tooltips, hover menus, pointer drag)?** Synthetic events can't trigger native `onMouseEnter`. Enable **real input** by launching your browser with `--remote-debugging-port=9222` and setting `RETICLE_CDP_URL` in the MCP server `env` — Reticle then drives real pointer input and `reticle_act` reports `inputMode:"real"`. See [usage §18](usage.md#18-real-input-mode--native-hover--drag-m58).
+> **Hover-gated UI (tooltips, hover menus, pointer drag)?** Synthetic events can't trigger native `onMouseEnter`. Enable **real input** by launching your browser with `--remote-debugging-port=9222` and setting `RETICLE_CDP_URL` in the MCP server `env` — Reticle then drives real pointer input and `reticle_act` reports `inputMode:"real"`. See [usage §18](usage.md#18-real-input-mode--native-hover--drag).
 
 ---
 

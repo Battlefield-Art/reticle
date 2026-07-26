@@ -2,8 +2,13 @@
 // Used to drive Playwright MCP / Chrome DevTools MCP / Reticle MCP WITHOUT an LLM,
 // so we can capture the exact tool-response payloads, wall-clock latency, and
 // whether a failure signal is present. This is the "observation-cost" layer and
-// needs no API key. The agent-loop layer (agent-loop.mjs) is separate.
+// needs no API key. The agent-loop layer (claude-agent-loop.mjs) is separate.
 import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export class McpStdioClient {
   constructor(command, args, env = {}) {
@@ -103,6 +108,15 @@ export class McpStdioClient {
       .filter((c) => c.type === 'text')
       .map((c) => c.text)
       .join('\n');
+    // A protocol-level tool error (unknown/renamed tool) arrives as a SUCCESSFUL JSON-RPC result
+    // carrying isError:true, so the transport's reject path never fires and every caller here read
+    // "MCP error -32602: Tool ... not found" as ordinary output. Nine bench harnesses called
+    // reticle_record_start/stop for an unknown number of commits after those were consolidated into
+    // reticle_record{action}, recorded nothing, saved nothing, and still printed an RRE ratio over
+    // the wreckage. Fail loudly instead: a benchmark that cannot call its tool has no number to give.
+    if (result?.isError === true) {
+      throw new Error(`tool ${name} failed: ${text.slice(0, 300)}`);
+    }
     return { result, latencyMs, text };
   }
 
@@ -114,3 +128,21 @@ export class McpStdioClient {
     }
   }
 }
+
+/**
+ * The reticle CLI entrypoint, resolved once.
+ *
+ * This lived as a hand-written path literal in three call sites, all of which still said
+ * `packages/core/dist/cli.js` after the CLI moved to `packages/server`. Nothing referenced a missing
+ * file until spawn time, where it surfaced only as `mcp process exited code=1` — so the head-to-head
+ * suite was simply unrunnable, with no error that named the cause. Resolved and existence-checked here
+ * so a future move fails loudly, in one place.
+ */
+export const RETICLE_CLI = (() => {
+  const p = path.join(REPO_ROOT, 'packages', 'server', 'dist', 'cli.js');
+  if (!existsSync(p))
+    throw new Error(
+      `reticle CLI not found at ${p} — run \`pnpm build\` first (or fix RETICLE_CLI if the CLI moved).`,
+    );
+  return p;
+})();

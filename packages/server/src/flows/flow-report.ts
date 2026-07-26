@@ -10,10 +10,10 @@ import { SUCCESS_STEP_TOOL } from './flow-success.js';
 /**
  * Render a HUMAN-facing confidence report for a replayed flow — the artifact a developer reads to
  * trust the test without re-running it. It answers the three confidence questions in one page:
- *   WHY    — the declared business intent (+ whether it is actually asserted).
- *   WHAT   — the journey: a mermaid flow diagram + a per-step page → action → consequence table.
- *   PROOF  — the verdict (pass/drift/fail), the observed evidence (signals/network), and the
- *            measured cost (deterministic replay tokens vs an LLM re-drive).
+ * WHY — the declared business intent (+ whether it is actually asserted).
+ * WHAT — the journey: a mermaid flow diagram + a per-step page → action → consequence table.
+ * PROOF — the verdict (pass/drift/fail), the observed evidence (signals/network), and the
+ * measured cost (deterministic replay tokens vs an LLM re-drive).
  *
  * Pure: no IO, no clock. Markdown out (mermaid is the one place mermaid earns its tokens — a human
  * renders it). Token figures are passed in (measured by the caller), never faked.

@@ -1,6 +1,6 @@
 {
   "name": "reticle-monorepo",
-  "version": "0.0.0",
+  "version": "2.2.0",
   "private": true,
   "description": "Reticle — the proof layer for AI agents. Observe and verify a running web app over MCP, no screenshots.",
   "packageManager": "pnpm@10.33.2",
@@ -15,6 +15,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test:unit",
     "test:unit": "turbo run test:unit",
+    "test:e2e": "bash apps/e2e/run-ci.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "bench": "node bench/harness/bench-all.mjs",
@@ -22,7 +23,8 @@
     "bench:gate": "node bench/harness/gate.mjs",
     "publish": "pnpm build && pnpm -r publish --access public --no-git-checks",
     "publish:dry-run": "pnpm build && pnpm -r publish --access public --no-git-checks --dry-run",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "docs:api": "typedoc"
   },
   "pnpm": {
     "overrides": {
@@ -38,6 +40,7 @@
   "devDependencies": {
     "@eslint/js": "^9.18.0",
     "@reticlehq/core": "workspace:*",
+    "@reticlehq/eslint-plugin": "workspace:*",
     "@reticlehq/next": "workspace:*",
     "@reticlehq/server": "workspace:*",
     "@types/node": "^22.10.0",
@@ -48,6 +51,7 @@
     "playwright": "^1.60.0",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",
+    "typedoc": "^0.28.20",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0",
     "vitest": "^3.2.6",

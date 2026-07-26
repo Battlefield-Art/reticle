@@ -84,7 +84,7 @@ export const SESSION_HEALTH = {
 export const SESSION_LIFECYCLE = {
   /**
    * Default agent-idle window before the panel hands back to the human as WAITING. The agent signals
-   * this IMMEDIATELY via reticle_yield; this reaper is only the slow backstop for a forgotten yield, so
+   * this IMMEDIATELY via reticle_session {action:"yield"}; this reaper is only the slow backstop for a forgotten yield, so
    * it's deliberately long (a short window would auto-end a session mid slow-step). reticle_session-tunable.
    */
   IDLE_END_MS: 300_000,
@@ -107,7 +107,7 @@ export const SESSION_LIFECYCLE = {
 
 /**
  * Coding-agent session hygiene thresholds. Coding agents (Claude Code, Codex, Cursor) often
- * complete their task and close their context without calling reticle_end_session. These constants
+ * complete their task and close their context without calling reticle_session {action:"end"}. These constants
  * drive two passive reminder layers: a one-time session_lease on first call, and recurring
  * session_age_warning fields after WARN_AFTER_MS.
  */

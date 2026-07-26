@@ -31,6 +31,8 @@ export class FakeBrowser {
   handlesCapabilities = true;
   /** When false, ACT results omit a testid (element has no data-testid → unstable step). */
   actHasTestid = true;
+  /** Provenance the real browser captures alongside the anchor; undefined = app built without it. */
+  actSource: { file: string; line: number } | undefined = undefined;
   /** when false, ACT reports settled:false + settleReason:'timeout' (throttled-tab path). */
   actSettled = true;
   /** When false, QUERY by testid returns no match (testid not in current DOM at replay). */
@@ -97,6 +99,7 @@ export class FakeBrowser {
         settleReason: this.actSettled ? null : 'timeout',
         effect: { dispatched: true },
         ...(this.actHasTestid ? { testid: 'pay-btn' } : {}),
+        ...(this.actSource === undefined ? {} : { source: this.actSource }),
       };
     } else if (name === ReticleCommand.ACT_SEQUENCE) {
       const steps = (Array.isArray(args['steps']) ? args['steps'] : []) as Record<
@@ -109,6 +112,7 @@ export class FakeBrowser {
           ref: s['ref'],
           action: s['action'],
           ...(this.actHasTestid ? { testid: 'pay-btn' } : {}),
+          ...(this.actSource === undefined ? {} : { source: this.actSource }),
         })),
       };
     } else if (name === ReticleCommand.QUERY) {

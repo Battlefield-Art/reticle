@@ -1,14 +1,16 @@
 /**
  * Action tools — reticle_act, reticle_act_sequence, reticle_act_and_wait — plus the native-input machinery
  * (asBox / tryRealInput). Split out of tools.ts to keep that file under the line cap; assembled back
- * into the tool list there via ...ACT_TOOLS.
+ * into the tool list there via...ACT_TOOLS.
  */
 import { z } from 'zod';
 import { compileActStep, compileSequenceStep } from '../flows/replay.js';
 import {
   ActionType,
   ActionWarning,
+  AnchorKind,
   DANGEROUS_ACTION_CONFIRM_ARG,
+  DEFAULT_ASSERT_TIMEOUT_MS,
   InputMode,
   InputModeReason,
   ReticleCommand,
@@ -20,11 +22,31 @@ import { isPointerAction } from '../input/real-input.js';
 import { leanActResult } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
-import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
+import { causalSummary } from '../capsule/causal-summary.js';
+import { buildDivergenceCapsule } from '../capsule/capsule.js';
+import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
+import { HonestyGrade, buildHonestyBlock } from '../honesty/honesty.js';
+import { buildCoverageStatement, blindSpotsFromState } from '../honesty/blind-spots.js';
+import { CapsuleStore, capsuleId } from '../capsule/capsule-store.js';
+import type { ExpectedLink } from '../capsule/divergence.js';
+import {
+  evaluatePredicate,
+  waitForPredicate,
+  provenExpectedLinks,
+  PredicateSchema,
+} from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
-import { pausedShortCircuit, withControl } from '../session/control-envelope.js';
-import { asString, asNumber, asRecord } from './tools-helpers.js';
+import { pausedShortCircuit, pausedOutputShape, withControl } from '../session/control-envelope.js';
+import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
 import { type ToolDef, type ToolDeps, sessionIdShape, commandOrThrow } from './tool-kit.js';
+
+/** The strongest consequence grade a set of expected links proves (signal > net > state > presence). */
+function gradeOf(links: readonly ExpectedLink[]): HonestyGrade {
+  if (links.some((l) => l.kind === 'signal')) return HonestyGrade.SIGNAL;
+  if (links.some((l) => l.kind === 'net')) return HonestyGrade.NET;
+  if (links.some((l) => l.kind === 'state')) return HonestyGrade.STATE;
+  return HonestyGrade.PRESENCE;
+}
 
 /** Narrow an INSPECT result's `box` into a positive-area ElementBox (else undefined). */
 function asBox(value: unknown): ElementBox | undefined {
@@ -66,7 +88,7 @@ async function tryRealInput(
   deps: ToolDeps,
   session: Session,
   ref: string,
-  action: string,
+  action: ActionType,
   args: Record<string, unknown>,
 ): Promise<RealActResult> {
   const provider = deps.realInput;
@@ -152,6 +174,20 @@ async function tryRealInput(
   }
 }
 
+/**
+ * Narrow the wire's `action` to a real ActionType, or undefined.
+ *
+ * It used to be `asString(args['action']) ?? ''`, so an unknown or missing action became the empty
+ * string and travelled on — reaching the browser as a command it could not perform, and reported back
+ * as a generic failure rather than "that is not an action". Validate at the boundary, per the project's
+ * unknown-plus-narrowing rule, so a typo is rejected where it can still be explained.
+ */
+function asActionType(value: unknown): ActionType | undefined {
+  const raw = asString(value);
+  if (raw === undefined) return undefined;
+  return (Object.values(ActionType) as string[]).includes(raw) ? (raw as ActionType) : undefined;
+}
+
 export const ACT_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.ACT,
@@ -196,8 +232,19 @@ export const ACT_TOOLS: ToolDef[] = [
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
+      // This tool short-circuits to pausedShortCircuit while the human has paused; declare its fields
+      // or the whole pause payload — including drained-once guidance — is stripped on validating clients.
+      ...pausedOutputShape,
     },
     handler: async (deps, args) => {
+      // Validate the REQUEST before touching a session: a malformed action is the caller's error and
+      // should be reported as such, not after resolving a session and marking an act cursor.
+      const action = asActionType(args['action']);
+      if (action === undefined) {
+        throw new Error(
+          `unknown action '${String(args['action'])}' — expected one of: ${Object.values(ActionType).join(', ')}`,
+        );
+      }
       const session = deps.sessions.resolve(asString(args['sessionId']));
       // Live-control: refuse to drive the page while the human has paused us (before any work).
       const paused = pausedShortCircuit(session);
@@ -206,48 +253,67 @@ export const ACT_TOOLS: ToolDef[] = [
       const since = session.elapsed();
       session.markActCursor(since); // honesty: wait_for/assert default their floor to this cursor
       const ref = asString(args['ref']) ?? '';
-      const action = asString(args['action']) ?? '';
 
-      // drive native pointer input when a provider is available; otherwise fall back.
-      const real = await tryRealInput(deps, session, ref, action, args);
-      if (real.result !== undefined) {
-        if (deps.recordings.active().length > 0) {
-          deps.recordings.capture(compileActStep(args, real.result));
+      // Open the journal's action-attribution window BEFORE dispatching, so it covers the native path
+      // too. It used to open only on the synthetic path, and the native path returned above it — so a
+      // hover, a drag or any native:true click produced events with no actionId. Session.pushEvent
+      // treats an unattributed ref-bearing event as ambient background churn, so an action's OWN
+      // effects were learned as noise; past the ambient threshold the settle oracle then filtered that
+      // region out entirely and reported settled while the app was still working. A false green
+      // manufactured by the machinery that exists to prevent false greens.
+      session.beginAction(ReticleTool.ACT, asRecord(args));
+      let settledOutcome: boolean | undefined;
+      try {
+        // drive native pointer input when a provider is available; otherwise fall back.
+        const real = await tryRealInput(deps, session, ref, action, args);
+        if (real.result !== undefined) {
+          if (deps.recordings.active().length > 0) {
+            deps.recordings.capture(compileActStep(args, real.result));
+          }
+          settledOutcome = real.settled ?? undefined;
+          return withControl(session, {
+            since,
+            inputMode: InputMode.REAL,
+            dispatched: true,
+            settled: real.settled,
+            settleReason: null,
+            result: leanActResult(real.result),
+            ...healthEnvelope(session),
+          });
         }
+
+        const result = await session.command(ReticleCommand.ACT, {
+          ref: args['ref'],
+          action: args['action'],
+          args: args['args'] ?? {},
+        });
+        if (!result.ok) throw new Error(result.error ?? 'act failed');
+        if (deps.recordings.active().length > 0) {
+          deps.recordings.capture(compileActStep(args, result.result));
+        }
+        // lift dispatch/settle status to the envelope (a settle timeout is NOT a failure).
+        const r = asRecord(result.result);
+        if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
         return withControl(session, {
           since,
-          inputMode: InputMode.REAL,
-          dispatched: true,
-          settled: real.settled,
-          settleReason: null,
-          result: leanActResult(real.result),
+          inputMode: InputMode.SYNTHETIC,
+          // #2: never a silent real→synthetic fallback — say WHY (unless real input isn't configured).
+          ...(real.reason !== undefined ? { inputModeReason: real.reason } : {}),
+          dispatched: r['dispatched'] ?? true,
+          settled: r['settled'] ?? null,
+          settleReason: r['settleReason'] ?? null,
+          result: leanActResult(result.result),
+          ...(real.fellBack === true ? { warning: ActionWarning.REAL_INPUT_FELL_BACK } : {}),
           ...healthEnvelope(session),
         });
+      } finally {
+        // Close the window on every exit (settle or throw), recording the action + settle outcome.
+        session.finishAction(
+          undefined,
+          settledOutcome,
+          settledOutcome === true ? session.elapsed() - since : undefined,
+        );
       }
-
-      const result = await session.command(ReticleCommand.ACT, {
-        ref: args['ref'],
-        action: args['action'],
-        args: args['args'] ?? {},
-      });
-      if (!result.ok) throw new Error(result.error ?? 'act failed');
-      if (deps.recordings.active().length > 0) {
-        deps.recordings.capture(compileActStep(args, result.result));
-      }
-      // lift dispatch/settle status to the envelope (a settle timeout is NOT a failure).
-      const r = asRecord(result.result);
-      return withControl(session, {
-        since,
-        inputMode: InputMode.SYNTHETIC,
-        // #2: never a silent real→synthetic fallback — say WHY (unless real input isn't configured).
-        ...(real.reason !== undefined ? { inputModeReason: real.reason } : {}),
-        dispatched: r['dispatched'] ?? true,
-        settled: r['settled'] ?? null,
-        settleReason: r['settleReason'] ?? null,
-        result: leanActResult(result.result),
-        ...(real.fellBack === true ? { warning: ActionWarning.REAL_INPUT_FELL_BACK } : {}),
-        ...healthEnvelope(session),
-      });
     },
   },
   {
@@ -269,6 +335,8 @@ export const ACT_TOOLS: ToolDef[] = [
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
+      // Short-circuits to pausedShortCircuit while paused — declare its fields (drained-once guidance).
+      ...pausedOutputShape,
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -277,18 +345,24 @@ export const ACT_TOOLS: ToolDef[] = [
       if (paused !== undefined) return paused;
       const since = session.elapsed();
       session.markActCursor(since); // honesty: a later wait_for/assert floors at this cursor
-      const result = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: args['steps'] });
-      if (!result.ok) throw new Error(result.error ?? 'act_sequence failed');
-      if (deps.recordings.active().length > 0) {
-        deps.recordings.capture(compileSequenceStep(args, result.result));
+      session.beginAction(ReticleTool.ACT_SEQUENCE, asRecord(args));
+      try {
+        const result = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: args['steps'] });
+        if (!result.ok) throw new Error(result.error ?? 'act_sequence failed');
+        if (deps.recordings.active().length > 0) {
+          deps.recordings.capture(compileSequenceStep(args, result.result));
+        }
+        const r = asRecord(result.result); // per-step settle status lives in result.steps[]
+        return withControl(session, {
+          since,
+          dispatched: r['count'] !== undefined,
+          result: leanActResult(result.result),
+          ...healthEnvelope(session),
+        });
+      } finally {
+        // Per-step settle lives in steps[]; the sequence action records without a single settle bool.
+        session.finishAction();
       }
-      const r = asRecord(result.result); // per-step settle status lives in result.steps[]
-      return withControl(session, {
-        since,
-        dispatched: r['count'] !== undefined,
-        result: leanActResult(result.result),
-        ...healthEnvelope(session),
-      });
     },
   },
   {
@@ -336,11 +410,49 @@ export const ACT_TOOLS: ToolDef[] = [
         pass: z.boolean(),
         evidence: z.unknown().optional(),
         failureReason: z.string().optional(),
+        // The STRUCTURED cause — observed / expected / assertion — is what the repair literature ranks
+        // above the prose failureReason (structured feedback beat narrative by 10.5pp) and above a bare
+        // pointer. `verdict` is `await waitForPredicate(...)`, whose EvalResult carries these on a
+        // failure; without declaring them here the strict object schema silently dropped them from
+        // structuredContent on the validating `full` profile — reticle_assert declares them (it spreads
+        // the verdict at top level), so act_and_wait was losing the highest-value signal that assert kept.
+        observed: z.string().optional(),
+        expected: z.string().optional(),
+        assertion: z.string().optional(),
       }),
       trace: z
         .unknown()
         .describe(
           'Reaction digest: { window_ms, summary } of what the app did (DOM/network/route/console/signal counts). The full per-event timeline is one reticle_observe { since } away.',
+        ),
+      summary: z
+        .unknown()
+        .describe(
+          'Bounded causal summary: net {total,errors,headline}, consoleErrors, statePathsChanged, storageKeysChanged, stateDiffs [{path,from,to}], storageDiffs [{key,from,to}], route, signals, layoutShift, longTasks — real before→after diffs (capped), not just readings.',
+        ),
+      // Promoted out of `effect` on RED only — the file:line the failure came from, the first thing a
+      // repair wants. Undeclared, it was stripped on the validating profile exactly like the structured
+      // cause above was, losing the highest-value pointer on the one path (a failed verdict) that has it.
+      source: z
+        .string()
+        .optional()
+        .describe('Present only on a FAILED verdict: `file:line` of the acted element.'),
+      capsule: z
+        .unknown()
+        .optional()
+        .describe(
+          'Present only on a FAILED verdict: the divergence capsule { summary, firstDivergence (declared vs observed), blastRadius (undeclared side effects) } — the fault, located, no re-exploration needed.',
+        ),
+      capsuleSaved: z
+        .string()
+        .optional()
+        .describe(
+          'Present only on a FAILED verdict when the fail-to-pass capsule was persisted: its id, replayable as a regression flow once the bug goes green.',
+        ),
+      honesty: z
+        .unknown()
+        .describe(
+          'The verdict trust block { grade, attribution, coverage, integrity, envelope? } — a green never looks stronger than this. Gate on grade ≥ net AND integrity.clean. Fields that were not measured are OMITTED rather than reported as zero, so treat an absent `envelope` as "not sampled", never as a failure.',
         ),
       since: z
         .number()
@@ -350,6 +462,8 @@ export const ACT_TOOLS: ToolDef[] = [
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
+      // Short-circuits to pausedShortCircuit while paused — declare its fields (drained-once guidance).
+      ...pausedOutputShape,
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -362,33 +476,122 @@ export const ACT_TOOLS: ToolDef[] = [
         args['until'] !== undefined
           ? PredicateSchema.parse(args['until'])
           : ({ kind: 'settled' } as const);
-      const timeout = asNumber(args['timeout_ms']) ?? 4000;
+      const timeout = asNumber(args['timeout_ms']) ?? DEFAULT_ASSERT_TIMEOUT_MS;
 
       const since = session.elapsed();
       session.markActCursor(since);
-      const actResult = await session.command(ReticleCommand.ACT, {
-        ref: args['ref'],
-        action: args['action'],
-        args: args['args'] ?? {},
-      });
-      if (!actResult.ok) throw new Error(actResult.error ?? 'act failed');
+      // The attribution window stays open across the settle wait below, so post-dispatch async events
+      // (the whole point of act_and_wait) attribute to this action. finishAction fires after the wait.
+      session.beginAction(ReticleTool.ACT_AND_WAIT, asRecord(args));
+      let settledOutcome: boolean | undefined;
+      try {
+        const actResult = await session.command(ReticleCommand.ACT, {
+          ref: args['ref'],
+          action: args['action'],
+          args: args['args'] ?? {},
+        });
+        if (!actResult.ok) throw new Error(actResult.error ?? 'act failed');
 
-      // Honesty: floor the predicate at this act's cursor so a stale buffered event can't satisfy it.
-      const verdict =
-        timeout > 0
-          ? await waitForPredicate(session, until, timeout, since)
-          : await evaluatePredicate(session, until, since);
+        // Honesty: floor the predicate at this act's cursor so a stale buffered event can't satisfy it.
+        const verdict =
+          timeout > 0
+            ? await waitForPredicate(session, until, timeout, since)
+            : await evaluatePredicate(session, until, since);
 
-      const trace = summarizeReaction(
-        buildReactionReport(session.eventsSince(since), session.elapsed() - since),
-      );
-      return withControl(session, {
-        effect: leanActResult(actResult.result),
-        verdict,
-        trace,
-        since,
-        ...healthEnvelope(session),
-      });
+        const r = asRecord(actResult.result);
+        if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
+        // Where the acted element is written. Captured at act time alongside the anchor, so it is
+        // available even when the action unmounted its own target.
+        const actedSource = sourceOf(r['source']);
+        // Remembered on the session so a LATER assertion can name a file even when its failure has no
+        // element to point at — a signal that never fired, a request that was never made.
+        session.markActSource(
+          actedSource === undefined ? undefined : `${actedSource.file}:${String(actedSource.line)}`,
+        );
+        const windowEvents = session.eventsSince(since);
+        const trace = summarizeReaction(
+          buildReactionReport(windowEvents, session.elapsed() - since),
+        );
+        // The bounded Tier-1 causal summary — net/console/state/storage diffs the trace's counts miss.
+        // ponytail: Layer B validation of this result-shape change is pending — additive + bounded.
+        // On RED only, attach the Tier-2 divergence capsule (first-divergence + blast radius). Red-only,
+        // so the common green path — what the loop optimizes — is unchanged; on red, diagnosis is the point.
+        const links = predicateToExpectedLinks(until);
+        const capsule = verdict.pass ? undefined : buildDivergenceCapsule(links, windowEvents);
+        // Grade from what the verdict PROVED, not what it declared. A green anyOf holds on one branch, so
+        // grading off `links` (every branch) would let a presence-only OR report grade `signal` — a false
+        // green in the gate itself. `provenExpectedLinks` narrows a green to the branch that actually held;
+        // on red we keep the declared links (the capsule wants the full expected surface).
+        const gradedLinks = verdict.pass ? await provenExpectedLinks(session, until, since) : links;
+        // Honesty: the grade this verdict actually proved + capture integrity — a green never looks
+        // stronger than this block. Grade from the strongest asserted consequence; integrity from evictions.
+        // Coverage: cross-origin frames / other blind spots the SDK reported during this window mean the
+        // verdict didn't see everything — say so, never imply full coverage.
+        const coverage = buildCoverageStatement(blindSpotsFromState(session.blindSpots()));
+        const honesty = buildHonestyBlock({
+          grade: gradeOf(gradedLinks),
+          attribution: 'window',
+          truncated: session.bufferHealth().dropped > 0,
+          coveragePartial: coverage.coverage === 'partial',
+          ...(coverage.note === undefined ? {} : { blindSpots: [coverage.note] }),
+        });
+        //: a red assertion is the ONE moment the evidence explaining it is in hand. Persist it as a
+        // replayable fail-to-pass capsule so the bug survives the turn — and becomes a regression flow
+        // the moment it goes green. Best-effort: capturing evidence must never fail the run that found it.
+        let capsuleSaved: string | undefined;
+        if (!verdict.pass && capsule !== undefined) {
+          const id = capsuleId(deps.now(), asString(args['ref']) ?? 'assert');
+          const expectedText = links
+            .map((l) => ('name' in l ? `${l.kind} ${l.name}` : l.kind))
+            .join(' AND ');
+          const saved = await new CapsuleStore(deps.fs, deps.reticleRoot).save({
+            version: 1,
+            id,
+            createdAt: deps.now(),
+            origin: 'failed-assert',
+            expected: expectedText.length > 0 ? expectedText : 'declared consequence',
+            observed: capsule.firstDivergence?.observed ?? verdict.failureReason ?? 'not observed',
+            steps: [
+              {
+                tool: ReticleTool.ACT,
+                anchor: {
+                  kind: AnchorKind.TESTID,
+                  value:
+                    asString(asRecord(actResult.result)['testid']) ?? asString(args['ref']) ?? '',
+                  // Carried so the saved capsule — which outlives this turn and becomes a regression
+                  // flow when it goes green — still knows which file the failure came from.
+                  ...(actedSource === undefined ? {} : { source: actedSource }),
+                },
+                action: (asString(args['action']) ?? ActionType.CLICK) as ActionType,
+              },
+            ],
+          });
+          if (saved) capsuleSaved = id;
+        }
+        return withControl(session, {
+          effect: leanActResult(actResult.result),
+          verdict,
+          // Promoted out of `effect` on red only. On green nobody needs it and it is noise; on red it
+          // is the first thing the agent wants, and burying a file:line inside the effect block is
+          // most of the way to not reporting it at all.
+          ...(verdict.pass || actedSource === undefined
+            ? {}
+            : { source: `${actedSource.file}:${String(actedSource.line)}` }),
+          trace,
+          ...(capsuleSaved === undefined ? {} : { capsuleSaved }),
+          summary: causalSummary(windowEvents),
+          honesty,
+          ...(capsule === undefined ? {} : { capsule }),
+          since,
+          ...healthEnvelope(session),
+        });
+      } finally {
+        session.finishAction(
+          undefined,
+          settledOutcome,
+          settledOutcome === true ? session.elapsed() - since : undefined,
+        );
+      }
     },
   },
 ];

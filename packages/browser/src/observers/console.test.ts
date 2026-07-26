@@ -35,8 +35,44 @@ describe('installConsole', () => {
     expect(events[0]?.data.message).toBe('boom 42');
   });
 
+  it('captures the stack of an Error argument to console.error', () => {
+    const { emit, events } = collect();
+    teardown = installConsole(emit);
+
+    console.error('failed:', new Error('kaboom'));
+
+    expect(events[0]?.type).toBe(EventType.CONSOLE_ERROR);
+    expect(typeof events[0]?.data['stack']).toBe('string');
+    expect(events[0]?.data['stack']).toContain('kaboom');
+  });
+
+  it('does not attach a stack when console.error has no Error argument', () => {
+    const { emit, events } = collect();
+    teardown = installConsole(emit);
+
+    console.error('just a string');
+
+    expect(events[0]?.data['stack']).toBeUndefined();
+  });
+
+  it('captures console.info and console.debug lean (no stack), excluded from summaries downstream', () => {
+    const { emit, events } = collect();
+    teardown = installConsole(emit);
+
+    // Reach the methods via globalThis so this test never trips the no-console lint rule.
+    const c = globalThis.console;
+    c.info('info line', 1);
+    c.debug('debug line');
+
+    expect(events).toHaveLength(2);
+    expect(events[0]?.type).toBe(EventType.CONSOLE_INFO);
+    expect(events[0]?.data.message).toBe('info line 1');
+    expect(events[0]?.data['stack']).toBeUndefined();
+    expect(events[1]?.type).toBe(EventType.CONSOLE_DEBUG);
+    expect(events[1]?.data.message).toBe('debug line');
+  });
+
   it('restores the original console methods (identity) on teardown', () => {
-    /* eslint-disable no-console -- asserting console.log identity, not logging */
     const beforeLog = console.log;
     const beforeWarn = console.warn;
     const beforeError = console.error;
@@ -46,6 +82,5 @@ describe('installConsole', () => {
     expect(console.log).toBe(beforeLog);
     expect(console.warn).toBe(beforeWarn);
     expect(console.error).toBe(beforeError);
-    /* eslint-enable no-console */
   });
 });

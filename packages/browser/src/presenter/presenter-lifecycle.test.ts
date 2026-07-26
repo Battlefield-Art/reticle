@@ -220,11 +220,15 @@ describe("presenter v2 border:'busy' back-compat", () => {
     p.status('one');
     expect(dataOn()).toBe('1');
     t += 1000;
-    await wait(FAST_IDLE_MS + FAST_FADE_MS + 20);
-    await flush();
+    // POLL for the fade to COMPLETE, do not race a fixed sleep against it. The fade is driven by
+    // native timers, and `wait(idle + fade + 20)` assumed they always fire inside that window — under
+    // parallel test load they do not, so this asserted "still fading" as a failure only in CI. Waiting
+    // for the terminal state up to a generous bound tests the invariant (it eventually goes idle),
+    // not the machine's timer latency.
+    const settled = await until(() => p.glowPhase() === 'idle', 2000);
+    expect(settled, 'glow never reached idle within the bound').toBe(true);
     expect(flips.enters).toBe(1);
     expect(flips.exits).toBe(1);
-    expect(p.glowPhase()).toBe('idle');
     expect(dataOn()).toBe('0');
     flips.stop();
     p.destroy();

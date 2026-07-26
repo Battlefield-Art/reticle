@@ -43,9 +43,9 @@ Then persist it to disk so it's committed and any agent can read it:
 **(a) Agent-recorded** — the agent drives, then saves:
 
 ```jsonc
-reticle_record_start({ recordingName: "create-task" })
+reticle_record {action:"start"}({ recordingName: "create-task" })
 reticle_act({ ref: "e7", action: "click" })        // … drive the golden path …
-reticle_record_stop({ recordingName: "create-task" })
+reticle_record {action:"stop"}({ recordingName: "create-task" })
 reticle_flow_save({ flowName: "create-task" })          // → .reticle/flows/create-task.json
 ```
 
@@ -76,8 +76,8 @@ Each step binds to a **semantic anchor**, never a `eXX` ref: a `testid`/`signal`
 ## Run a flow
 
 ```jsonc
-reticle_flow_list()                                    // → flows on disk
-reticle_flow_load({ flowName: "create-task" })   // → the flow JSON
+reticle_flow {action:"list"}()                                    // → flows on disk
+reticle_flow {action:"load"}({ flowName: "create-task" })   // → the flow JSON
 reticle_flow_replay({ flowName: "create-task" }) // re-resolve each anchor against the LIVE DOM, run it
 ```
 
@@ -153,11 +153,11 @@ With `apply: false` the flow file is **never modified** — you get the proposed
 | Tool | Args | Returns |
 | --- | --- | --- |
 | `reticle_contract_save` | `{ sessionId? }` | writes `.reticle/contract.json` |
-| `reticle_record_start` / `reticle_record_stop` | `{ recordingName }` | start/stop capturing the agent's acts |
+| `reticle_record {action:"start"}` / `reticle_record {action:"stop"}` | `{ recordingName }` | start/stop capturing the agent's acts |
 | `reticle_flow_save` | `{ flowName }` | persist the recording → `.reticle/flows/<flowName>.json` |
 | `reticle_flow_save_recorded` | `{ flowName? }` | persist a human-recorded (toolbar) flow |
-| `reticle_flow_list` | `{}` | flows on disk |
-| `reticle_flow_load` | `{ flowName }` | the flow JSON |
+| `reticle_flow {action:"list"}` | `{}` | flows on disk |
+| `reticle_flow {action:"load"}` | `{ flowName }` | the flow JSON |
 | `reticle_flow_replay` | `{ flowName }` | `{ status, steps, decision? }` (decision on drift/fail) |
 | `reticle_flow_verify` | `{ names?, sessionId? }` | suite verdict `{ status, passed, failed, failures[] }` |
 | `reticle_flow_heal` | `{ flowName, apply? }` | propose / apply nearest-match rebind |

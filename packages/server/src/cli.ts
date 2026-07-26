@@ -1,7 +1,21 @@
 #!/usr/bin/env node
 import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
-import { RETICLE_DEFAULT_PORT, ReticleEnv } from '@reticlehq/core';
+import { join } from 'node:path';
+import {
+  handleWatch,
+  handleCapsules,
+  handleGate,
+  loadNamedFlows,
+  resolveChangedFiles,
+} from './cli-flow-commands.js';
+import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv } from '@reticlehq/core';
+import { createNodeFileSystem } from './project/fs-port.js';
+import { affectedSavedFlows } from './flows/flow-sources.js';
+
+import { checkForUpdate } from './update/update-checker.js';
+import { applyUpdate, rollback } from './update/updater.js';
+
 import { start, startDaemon } from './index.js';
 import { SERVER_VERSION } from './server-version.js';
 import { log } from './log.js';
@@ -137,6 +151,62 @@ function handleLicense(): void {
   log('reticle_license', { ...describeLicense(Date.now()) });
 }
 
+/**
+ * `reticle affected <file...>` — print which saved flows must re-verify for the given changed files.
+ * Environment-side (costs the agent nothing per turn); the foundation of watch/gate. Never throws:
+ * a load error is logged, not fatal.
+ */
+
+async function handleAffected(files: string[], since: string | undefined): Promise<void> {
+  try {
+    const fs = createNodeFileSystem();
+    const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
+    const changed = await resolveChangedFiles(files, since);
+    const result = affectedSavedFlows(await loadNamedFlows(fs, reticleRoot), changed);
+    log('reticle_affected', {
+      changedFiles: changed,
+      affected: result.affected,
+      unknownProvenance: result.unknownProvenance,
+    });
+  } catch (error) {
+    log('reticle_affected_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/** `reticle update` — install the latest server version and restart (moved off the MCP surface). */
+async function handleUpdate(): Promise<void> {
+  try {
+    const manifest = await checkForUpdate(SERVER_VERSION, () => Date.now());
+    if (!manifest.updateAvailable || manifest.latestVersion === undefined) {
+      log('reticle_update', {
+        ok: false,
+        message: 'already on the latest version',
+        version: SERVER_VERSION,
+      });
+      return;
+    }
+    log('reticle_update', { ok: true, from: SERVER_VERSION, to: manifest.latestVersion });
+    await applyUpdate(manifest.latestVersion); // calls process.exit; Claude Code restarts
+  } catch (error) {
+    log('reticle_update_failed', { error: error instanceof Error ? error.message : String(error) });
+    process.exitCode = 1;
+  }
+}
+
+/** `reticle rollback` — restore the previous server version and restart. */
+async function handleRollback(): Promise<void> {
+  try {
+    await rollback(); // calls process.exit
+  } catch (error) {
+    log('reticle_rollback_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    process.exitCode = 1;
+  }
+}
+
 /** Ensure a daemon is reachable on `port` (probe the real port; spawn + wait only if nothing's there). */
 function ensureDaemon(port: number): Promise<void> {
   return probeDaemon(port).then((listening) => {
@@ -262,7 +332,7 @@ function handleDaemonInner(parsed: {
 /**
  * MCP proxy mode: ensures the daemon is running, then bridges Claude Code's
  * stdin/stdout to the daemon's SSE endpoint. This is the recommended way to
- * configure Reticle in .mcp.json — users never need to manage the daemon manually.
+ * configure Reticle in.mcp.json — users never need to manage the daemon manually.
  *
  * Pass --drive <url> to have the daemon launch its own Playwright browser at that
  * URL. The agent then has full autonomous control without relying on the user's browser.
@@ -355,6 +425,24 @@ function main(): void {
       break;
     case 'verify':
       handleVerify(parsed);
+      break;
+    case 'capsules':
+      void handleCapsules();
+      break;
+    case 'affected':
+      void handleAffected(parsed.files, parsed.since);
+      break;
+    case 'gate':
+      void handleGate(parsed.files, parsed.since);
+      break;
+    case 'watch':
+      handleWatch();
+      break;
+    case 'update':
+      void handleUpdate();
+      break;
+    case 'rollback':
+      void handleRollback();
       break;
     case 'mcp':
       handleMcp(parsed);

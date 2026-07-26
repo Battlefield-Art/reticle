@@ -1,6 +1,6 @@
 {
   "name": "@reticlehq/test",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Reticle test runner: reticleTest spec registry + a runner that drives Reticle tools without MCP/stdio.",
   "type": "module",
   "main": "./dist/index.js",
@@ -51,5 +51,8 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

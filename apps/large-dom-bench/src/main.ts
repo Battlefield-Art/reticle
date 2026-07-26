@@ -1,6 +1,7 @@
 import { reticle, SESSION_AUTO, registerCapabilities, registerStore } from '@reticlehq/browser';
 
 declare const __RETICLE_PORT__: number;
+declare const __RETICLE_TOKEN__: string;
 
 /**
  * Large-DOM benchmark fixture. Renders a deliberately large, NON-virtualized grid so a full a11y snapshot
@@ -89,7 +90,13 @@ function installReticle(): void {
   const present = !params.has('nopresent');
   const session = params.get('session') ?? SESSION_AUTO;
   const reticlePort = typeof __RETICLE_PORT__ !== 'undefined' ? __RETICLE_PORT__ : 4455;
-  reticle.connect({ session, present, url: `ws://localhost:${reticlePort}/reticle` });
+  const token = __RETICLE_TOKEN__;
+  reticle.connect({
+    session,
+    present,
+    url: `ws://localhost:${reticlePort}/reticle`,
+    ...(token.length > 0 ? { token } : {}),
+  });
   registerStore('grid', () => ({
     approvedCount: state.approvedCount,
     rowCount: state.rows.length,

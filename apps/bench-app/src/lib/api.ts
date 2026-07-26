@@ -1,7 +1,14 @@
-/** Thin client for the demo backend (apps/api on :8787). Real fetches → real Reticle network events. */
-const BASE = 'http://localhost:8787';
+/** Thin client for the demo backend (apps/api on:8787). Real fetches → real Reticle network events. */
+export const API_BASE = 'http://localhost:8787';
+const BASE = API_BASE;
 
 let token = '';
+
+/** The bearer the API requires. Exported so other callers (the TanStack panel) authenticate the same
+ *  way rather than inventing a second auth path. */
+export function authToken(): string {
+  return token;
+}
 
 export interface ApiResult {
   method: string;
@@ -58,6 +65,12 @@ export async function generateScript(
     return { ...data, r };
   }
   return { script: '', source: 'error', r };
+}
+
+/** Cheap unauthenticated GET — the background-poll target for the enterprise-scale fixture. */
+export async function health(): Promise<ApiResult> {
+  const { r } = await timed('GET', '/api/health');
+  return r;
 }
 
 /** Each fault is a distinct real failure mode (404/500/cors/wrong-format/wrong-data). */

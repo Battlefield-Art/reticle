@@ -27,17 +27,18 @@
   "navigation": [
     {
       "group": "Get started",
-      "pages": ["getting-started", "local-install", "integrate-with-claude-code"]
+      "pages": ["getting-started", "local-registry"]
     },
     {
       "group": "Integrate",
       "pages": [
-        "integration",
+        "platform-integration",
         "integration-patterns",
         "flows",
         "testing",
         "multi-agent-testing",
-        "human-control"
+        "human-control",
+        "deploy-checks"
       ]
     },
     {

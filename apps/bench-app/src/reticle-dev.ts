@@ -1,15 +1,16 @@
 import { reticle, SESSION_AUTO } from '@reticlehq/browser';
 import { install as installReactAdapter } from '@reticlehq/react';
-import { registerCapabilities, registerStore } from '@reticlehq/browser';
+import { registerCapabilities, registerStore, tanstackQueryStore } from '@reticlehq/browser';
 import { Sig } from './lib/reticle-bridge.js';
 import { useApp } from './store/store.js';
+import { queryClient } from './lib/query-client.js';
 
 /**
  * Dev-only Reticle wiring. Wires the proof layer into this running dashboard:
- *  - connect() opens the presenter (glow + cursor + HUD) and the bridge.
- *  - registerStore('app', …) → reticle_state reads the live zustand store (the reliable layer).
- *  - registerCapabilities(…) → reticle_capabilities advertises the WHOLE testable surface (testids,
- *    signals, store, named flows) so a fresh agent learns what to drive without reading source.
+ * - connect opens the presenter (glow + cursor + HUD) and the bridge.
+ * - registerStore('app', …) → reticle_state reads the live zustand store (the reliable layer).
+ * - registerCapabilities(…) → reticle_capabilities advertises the WHOLE testable surface (testids,
+ * signals, store, named flows) so a fresh agent learns what to drive without reading source.
  * Tree-shaken out of production; never imported there.
  */
 
@@ -91,7 +92,10 @@ export function installReticle(): void {
   const present = !params.has('nopresent');
   const session = params.get('session') ?? SESSION_AUTO;
   const reticlePort: number = typeof __RETICLE_PORT__ !== 'undefined' ? __RETICLE_PORT__ : 4400;
-  const token = import.meta.env.VITE_RETICLE_TOKEN;
+  // The daemon requires its pairing token on the websocket hello; vite.config injects it (env wins).
+  const injectedToken = typeof __RETICLE_TOKEN__ !== 'undefined' ? __RETICLE_TOKEN__ : '';
+  const envToken = import.meta.env.VITE_RETICLE_TOKEN;
+  const token = typeof envToken === 'string' && envToken.length > 0 ? envToken : injectedToken;
   const configuredUrl = import.meta.env.VITE_RETICLE_WS_URL;
   const url =
     typeof configuredUrl === 'string' && configuredUrl.length > 0
@@ -102,10 +106,20 @@ export function installReticle(): void {
     session,
     present,
     url,
+    // SSE/WebSocket frames are only captured with body capture on — a chatty stream is the
+    // high-volume case, so the SDK makes it opt-in. The streams bugs are invisible without it.
+    captureNetworkBodies: true,
     ...(allowNonLocalhost ? { allowNonLocalhost: true } : {}),
     ...(typeof token === 'string' && token.length > 0 ? { token } : {}),
   });
-  registerStore('app', () => useApp.getState());
+  // Pass the store itself (not a getter) so Reticle wires subscribe too — every mutation emits a
+  // STATE_CHANGE path diff, which is what fills `stateDiffs` in the causal summary.
+  registerStore('app', useApp);
+  // The TanStack Query cache, via the adapter. Registered because server state is where "the screen
+  // is plausible and the network is silent" is the NORMAL failure: a mutation that forgets to
+  // invalidate leaves the UI rendering a number that was correct a moment ago, and no request fires
+  // for anything outside the app to notice. The cache's freshness metadata is the only witness.
+  registerStore('queries', tanstackQueryStore(queryClient));
   registerCapabilities({
     testids: TESTIDS,
     signals: Object.values(Sig),

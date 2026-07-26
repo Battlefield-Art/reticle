@@ -23,7 +23,7 @@ export interface ReviewMark {
 /**
  * Per-session store of human review marks (the "annotate the bug where you see it" inbox). A mark is
  * added when a HUMAN_MARK event arrives, listed by the agent via reticle_review, and retired with
- * resolve() when the agent claims the fix — distinct from the live-control inbox, which is drained
+ * resolve when the agent claims the fix — distinct from the live-control inbox, which is drained
  * (delivered-once) on read. Marks persist (read does not consume) so the agent can list, fix, and
  * THEN resolve, and a fix can be verified against the same mark.
  *
@@ -55,7 +55,7 @@ export class ReviewStore {
     return mark;
   }
 
-  /** All marks still awaiting a fix, oldest first. Reading never consumes — resolve() retires a mark. */
+  /** All marks still awaiting a fix, oldest first. Reading never consumes — resolve retires a mark. */
   pending(): ReviewMark[] {
     return this.#marks.filter((m) => m.status === MarkStatus.PENDING).map((m) => ({ ...m }));
   }

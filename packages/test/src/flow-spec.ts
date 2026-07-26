@@ -94,7 +94,7 @@ export function flowToSpec(flow: FlowFile, opts?: FlowSpecOptions): FlowSpec {
   };
 }
 
-/** An ERROR spec for a flow file that failed to load. Its run() returns a FAIL with no steps. */
+/** An ERROR spec for a flow file that failed to load. Its run returns a FAIL with no steps. */
 function errorSpec(name: string, code: FlowErrorCode): FlowSpec {
   const result: SpecRunResult = {
     outcome: SpecOutcome.FAIL,

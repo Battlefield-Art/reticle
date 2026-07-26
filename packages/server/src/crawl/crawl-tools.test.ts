@@ -5,9 +5,10 @@ import {
   type CommandResult,
   type ReticleEvent,
 } from '@reticlehq/core';
-import { TOOLS, type ToolDeps } from '../tools/tools.js';
+import { z } from 'zod';
+import { TOOLS, type ToolDef, type ToolDeps } from '../tools/tools.js';
 import { ReticleTool } from '../tools/tool-names.js';
-import type { CrawlReport } from './crawl.js';
+import { CAPPED_SNAPSHOT_NOTE, type CrawlReport } from './crawl.js';
 import type { Session, SessionManager } from '../session/session.js';
 
 /** Scripted session: one interactive control whose click does nothing (a dead control). */
@@ -50,5 +51,60 @@ describe('reticle_crawl tool', () => {
     expect(r.stepsRun).toBe(1);
     expect(r.counts.deadControls).toBe(1);
     expect(r.anomalies[0]?.kind).toBe(CrawlAnomalyKind.DEAD_CONTROL);
+  });
+});
+
+/**
+ * An undeclared field is stripped from structuredContent, so a schema-aware client never sees it —
+ * the handler returns it, the text block carries it, and the structured result silently loses it.
+ * This repo has now been bitten by that three times: `attrs` on query, `presentRegions` on the
+ * zero-match hint, and the `source` pointer on crawl anomalies.
+ *
+ * This pins the crawl schema against the shape crawl actually produces, so adding a field to the
+ * report without declaring it fails here rather than in a user's client.
+ */
+describe('the crawl output schema declares everything crawl returns', () => {
+  const report: Required<CrawlReport> = {
+    interactiveFound: 1,
+    stepsRun: 1,
+    anomalies: [
+      {
+        kind: CrawlAnomalyKind.DEAD_CONTROL,
+        ref: 'e1',
+        desc: 'button "Save"',
+        detail: 'clicked but the app did nothing',
+        source: 'src/components/Toolbar.tsx:44',
+      },
+    ],
+    counts: { consoleErrors: 0, failedRequests: 0, deadControls: 1 },
+    visited: ['button "Save"'],
+    truncated: false,
+    coverageNote: CAPPED_SNAPSHOT_NOTE,
+  };
+
+  const tool = (): ToolDef => {
+    const found = TOOLS.find((t) => t.name === ReticleTool.CRAWL);
+    if (found === undefined) throw new Error('reticle_crawl is not on the surface');
+    return found;
+  };
+
+  it('declares every top-level field of the report', () => {
+    const declared = new Set(Object.keys(tool().outputSchema ?? {}));
+    for (const key of Object.keys(report)) expect(declared).toContain(key);
+  });
+
+  it('declares every field of an anomaly', () => {
+    const anomalySchema = (tool().outputSchema ?? {})['anomalies'];
+    const parsed = z.array(z.unknown()).safeParse(report.anomalies);
+    expect(parsed.success).toBe(true);
+    // Round-trip the real shape through the declared schema: a missing key is dropped, so an
+    // undeclared field shows up as an absent key rather than a validation error.
+    const roundTripped = (anomalySchema as z.ZodType).parse(report.anomalies) as Record<
+      string,
+      unknown
+    >[];
+    for (const key of Object.keys(report.anomalies[0] ?? {})) {
+      expect(Object.keys(roundTripped[0] ?? {})).toContain(key);
+    }
   });
 });

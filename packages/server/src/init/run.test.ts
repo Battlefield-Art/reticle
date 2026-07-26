@@ -49,7 +49,7 @@ describe('resolveLockfiles — package-manager detection in a monorepo', () => {
     const io = { exists: (p: string) => p === '/repo/pnpm-lock.yaml' };
     const set = resolveLockfiles(
       new Set(['package.json', 'vite.config.ts']),
-      '/repo/apps/demo',
+      '/repo/apps/bench-app',
       io,
     );
     expect(set.has('pnpm-lock.yaml')).toBe(true);

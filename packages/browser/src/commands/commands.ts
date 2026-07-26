@@ -26,8 +26,8 @@ import { refs } from '../dom/refs.js';
 import { hitTestOccluder } from '../dom/occlusion.js';
 import { readStorage } from '../observers/storage.js';
 import { identifyComponent, readComponentState } from '../registry/adapters.js';
-import { readStores, readStoresRaw, storeNames } from '../registry/stores.js';
-import { sanitizeForTransport } from '../security/serialization.js';
+import { readStoresWithTruncation, readStoresRaw, storeNames } from '../registry/stores.js';
+import { sanitizeWithReport } from '../security/serialization.js';
 import { getCapabilities } from '../registry/capabilities.js';
 import { freezeClock, advanceClock, resetClock, isClockFrozen } from '../timers/clock.js';
 import { scrollContainer } from '../actions/scroll.js';
@@ -35,7 +35,7 @@ import { scrollContainer } from '../actions/scroll.js';
 export type CommandHandler = (args: Record<string, unknown>) => unknown;
 
 /** Query param appended on a hard reload to bypass the browser cache. */
-const RELOAD_CACHE_BUST_PARAM = '_reticle_reload';
+export const RELOAD_CACHE_BUST_PARAM = '_reticle_reload';
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
@@ -61,6 +61,9 @@ function queryFromArgs(args: Record<string, unknown>): ElementQuery {
     testid: str(args['testid']),
     alt: str(args['alt']),
     scope: str(args['scope']),
+    attrs: Array.isArray(args['attrs'])
+      ? args['attrs'].filter((a): a is string => typeof a === 'string')
+      : undefined,
   };
 }
 
@@ -152,25 +155,33 @@ function readState(
     const selection = path !== undefined ? selectPath(base, path) : { found: true, value: base };
     const selected =
       selection.found && depth !== undefined ? capDepth(selection.value, depth) : selection.value;
+    const projected = sanitizeWithReport(selected);
     return {
       store,
       path,
       found: selection.found,
-      value: sanitizeForTransport(selected),
+      value: projected.value,
+      // Even a SCOPED read can hit the caps when the selected sub-tree is itself large; saying so is
+      // what keeps "the list is short" distinguishable from "I shortened the list".
+      ...(projected.truncation === undefined ? {} : { truncation: projected.truncation }),
       ...('availableKeys' in selection ? { availableKeys: selection.availableKeys } : {}),
       storeNames: names,
     };
   }
 
-  const stores = readStores(store);
+  const { stores, truncation } = readStoresWithTruncation(store);
   const result: {
     stores: Record<string, unknown>;
     storeNames: string[];
     component?: ComponentStateResult;
+    truncation?: Record<string, unknown>;
   } = {
     stores,
     storeNames: names,
   };
+  // The whole-store read is where a large store silently became a small one. Present only when a cap
+  // actually fired, so an intact read is unchanged and the field's presence is the warning.
+  if (truncation !== undefined) result.truncation = truncation;
   if (ref !== undefined && ref.length > 0) {
     const el = refs.resolve(ref);
     if (el === null) {
@@ -217,7 +228,10 @@ export function createCommandRegistry(): Map<string, CommandHandler> {
       mode: (str(args['mode']) as SnapshotMode | undefined) ?? SnapshotMode.FULL,
     }),
   );
-  reg.set(ReticleCommand.QUERY, (args) => runQuery(queryFromArgs(args)));
+  reg.set(ReticleCommand.QUERY, (args) => {
+    const limit = args['limit'];
+    return runQuery(queryFromArgs(args), typeof limit === 'number' ? limit : undefined);
+  });
   reg.set(ReticleCommand.MATCH, (args) =>
     matchQuery(
       ElementQuerySchema.parse(record(args['query'])),

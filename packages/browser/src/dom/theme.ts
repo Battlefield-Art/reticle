@@ -16,7 +16,7 @@ interface ThemePalette {
 
 let cached: ThemePalette | null = null;
 
-/** Resolve any CSS color string to canonical computed `rgb(...)`/`rgba(...)`, or null if not a color. */
+/** Resolve any CSS color string to canonical computed `rgb...)`/`rgba...)`, or null if not a color. */
 function toRgb(value: string): string | null {
   if (value.length === 0) return null;
   const probe = document.createElement('span');
@@ -31,7 +31,7 @@ function toRgb(value: string): string | null {
   return rgb;
 }
 
-/** Collect `--token: value` declarations from every :root/html rule across the app's stylesheets. */
+/** Collect `--token: value` declarations from every:root/html rule across the app's stylesheets. */
 function collectTokens(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const sheet of Array.from(document.styleSheets)) {

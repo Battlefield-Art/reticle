@@ -19,10 +19,10 @@ packages/babel-plugin  @reticlehq/babel-plugin — stamps data-reticle-source (s
 packages/next          @reticlehq/next         — Next.js source mapping (keeps SWC) via withReticle (CJS)
 packages/test          @reticlehq/test         — spec runner + matchers for CI (peer vitest)
 packages/eslint-plugin @reticlehq/eslint-plugin — dev-only lint rule: state changed ⇒ signal fired
-apps/demo              @reticlehq/demo         — Vite/React fixture used to dogfood Reticle
+apps/bench-app         @reticlehq/bench-app    — Vite/React fixture used to dogfood Reticle
 apps/api               @reticlehq/api          — Express backend exercising real-world behaviors (CJS-ish .mjs)
 apps/next-smoke        @reticlehq/next-smoke   — Next.js 15 app verifying Reticle on Next
-docs/                  — user-facing docs (getting-started, usage, token-efficiency, local-install)
+docs/                  — user-facing docs (getting-started, usage, token-efficiency, local-registry)
 SKILL.md               — PUBLIC skill for users integrating Reticle into their own project (the canonical paste-URL)
 plan/                  — research/design docs only, no code (ALWAYS gitignored)
 ```
@@ -63,4 +63,8 @@ This is **one git repo** at the root (pnpm + turbo monorepo). The TS library pac
 
 ## Pre/post-coding checklist
 
-**Before coding:** scan for existing code to reuse → identify the constants you'll need and add them first → write the failing test. **After coding:** refactor with tests green → check file < 500 lines → run `pnpm lint && pnpm typecheck && pnpm test:unit` → confirm no `any`, no free strings, no `console.log`.
+**Before coding:** scan for existing code to reuse → identify the constants you'll need and add them first → write the failing test. **After coding:** refactor with tests green → check file < 500 lines → run `pnpm lint && pnpm typecheck && pnpm test:unit` **before committing, not chained after it** → confirm no `any`, no free strings, no `console.log`.
+
+**Touching the tool surface, the wire contract, or an observer?** Also run `pnpm test:e2e` (boots api + bench-app + next-smoke, ~20 min). The unit gate cannot see cross-package drift: a tool rename once left four e2e specs dead across a whole framework and nothing caught it, because the battery is not part of `test:unit`. `e2e-surface-drift.test.ts` now catches the name-lookup half of that in the fast gate; the rest still needs the battery.
+
+**Timing assertions are a bug.** Two flaky tests this build both asserted a DURATION when the invariant was a BOUND. If the property is "cost is fixed", assert the bound (output size, truncation flag) or use a generous per-test timeout — never `Date.now() - t < N`, which is a statement about the machine and fails only under parallel load, i.e. only in CI.

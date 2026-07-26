@@ -1,4 +1,23 @@
-import { RING_BUFFER_DEFAULTS, type ReticleEvent } from '@reticlehq/core';
+import { EventType, RING_BUFFER_DEFAULTS, type ReticleEvent } from '@reticlehq/core';
+
+/**
+ * The high-volume, low-signal floor. These fire continuously on any live page (count-up text, CSS
+ * animation frames, React commits, health heartbeats, scroll) and are the ONLY thing that should be
+ * sacrificed when the buffer is full. Everything else — a failed request, a console error, a domain
+ * signal, a truncation/blind-spot marker — is scarce evidence a verdict depends on, and a churning
+ * region must never be able to push it out of the window.
+ */
+const CHURN_TYPES: ReadonlySet<string> = new Set<string>([
+  EventType.DOM_TEXT,
+  EventType.ANIM_START,
+  EventType.ANIM_END,
+  EventType.RENDER_COMMIT,
+  EventType.PAGE_HEALTH,
+  EventType.SCROLL_POSITION,
+]);
+
+/** How far forward to look for a churn event to sacrifice before falling back to plain FIFO. */
+const CHURN_SCAN_LIMIT = 256;
 
 interface RingBufferOptions {
   maxEvents?: number;
@@ -8,15 +27,15 @@ interface RingBufferOptions {
 
 /**
  * Bounded, time-aware event store per session. The single data structure that powers
- * observe()/wait_for()/assert() — it lets us look both backward (recent buffer) and
+ * observe/wait_for/assert — it lets us look both backward (recent buffer) and
  * forward (await new events).
  *
- * Eviction advances a HEAD index instead of shift()/splice() — O(1) per dropped event (was O(n) per
+ * Eviction advances a HEAD index instead of shift/splice — O(1) per dropped event (was O(n) per
  * shift, i.e. O(n) per push at steady state under the DOM/animation floods). The dead prefix is
  * compacted away once it dominates, so the backing arrays stay bounded (amortized O(1)).
  *
  * `now` is injected so the buffer is deterministically testable (inject the clock, never call
- * Date.now() inside logic).
+ * Date.now inside logic).
  */
 export class RingBuffer {
   readonly #maxEvents: number;
@@ -74,13 +93,33 @@ export class RingBuffer {
   #evict(now: number): void {
     const cutoff = now - this.#maxAgeMs;
     const before = this.#liveCount();
-    // Drop from the head for cap, then bytes, then age — advancing #head is O(1) each (no shift).
+    // Cap/byte pressure: sacrifice the CHURN floor before scarce evidence. The head is usually churn on
+    // a busy page, so this stays the O(1) head-advance; only when the oldest event is worth keeping do we
+    // look forward (bounded) for a churn event to drop instead.
+    // Byte pressure keeps at least ONE event: a single event larger than the whole byte budget would
+    // otherwise be pushed and then immediately self-evicted, so a waiter for it never saw it and only
+    // `dropped` moved. Bytes is a soft cap and per-value serialization already bounds any one event, so
+    // keeping the sole survivor over the budget is the correct trade. The count cap (maxEvents, ~2000)
+    // is a hard bound and stays `> maxEvents`.
     while (
       this.#liveCount() > this.#maxEvents ||
-      (this.#totalBytes > this.#maxBytes && this.#liveCount() > 0)
+      (this.#totalBytes > this.#maxBytes && this.#liveCount() > 1)
     ) {
-      this.#totalBytes -= this.#eventBytes[this.#head] ?? 0;
-      this.#head += 1;
+      if (CHURN_TYPES.has(this.#events[this.#head]?.type ?? '')) {
+        this.#totalBytes -= this.#eventBytes[this.#head] ?? 0;
+        this.#head += 1;
+        continue;
+      }
+      const victim = this.#findChurnAfterHead();
+      if (victim === -1) {
+        // Buffer genuinely full of high-signal events — fall back to FIFO so it stays bounded.
+        this.#totalBytes -= this.#eventBytes[this.#head] ?? 0;
+        this.#head += 1;
+        continue;
+      }
+      this.#totalBytes -= this.#eventBytes[victim] ?? 0;
+      this.#events.splice(victim, 1); // order preserved; victim > #head so the head stays valid
+      this.#eventBytes.splice(victim, 1);
     }
     while (this.#liveCount() > 0 && (this.#events[this.#head]?.t ?? cutoff) < cutoff) {
       this.#totalBytes -= this.#eventBytes[this.#head] ?? 0;
@@ -93,6 +132,15 @@ export class RingBuffer {
       this.#eventBytes = this.#eventBytes.slice(this.#head);
       this.#head = 0;
     }
+  }
+
+  /** First churn event after the head, or -1 if none within the bounded scan (keeps eviction cheap). */
+  #findChurnAfterHead(): number {
+    const end = Math.min(this.#events.length, this.#head + CHURN_SCAN_LIMIT);
+    for (let i = this.#head + 1; i < end; i++) {
+      if (CHURN_TYPES.has(this.#events[i]?.type ?? '')) return i;
+    }
+    return -1;
   }
 
   /** Snapshot of buffer health for the agent — live events held and cumulative drops since connect. */

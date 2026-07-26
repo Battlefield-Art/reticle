@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please report security issues privately to **hey@reticle.ai** — do not open a public issue for an undisclosed vulnerability.
+Please report security issues privately to **hey@reticle.sh** — do not open a public issue for an undisclosed vulnerability.
 
 Include, where possible:
 

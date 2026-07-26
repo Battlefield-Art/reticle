@@ -6,11 +6,70 @@ import {
   reconcileNet,
   projectNetCall,
   projectConsoleLog,
+  isConsoleEvent,
+  eventMatchesFilters,
+  OBSERVE_FILTER_BUCKETS,
 } from './event-filters.js';
 
-function ev(type: EventType, data: Record<string, unknown>, t = 1): ReticleEvent {
+function ev(type: EventType, data: Record<string, unknown> = {}, t = 1): ReticleEvent {
   return { t, type, sessionId: 's', data };
 }
+
+describe('eventMatchesFilters (observe filters allowlist)', () => {
+  it('keeps net.request when the documented bucket name "net" is passed', () => {
+    // The whole point: the schema advertises bucket names, not raw types. Passing the documented
+    // value must keep the matching events — before the fix this returned false and the agent got
+    // an empty (false-green) timeline.
+    expect(eventMatchesFilters(ev(EventType.NET_REQUEST), ['net'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.DOM_ADDED), ['dom'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.CONSOLE_ERROR), ['console'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.SIGNAL), ['signal'])).toBe(true);
+  });
+
+  it('excludes events outside the requested bucket', () => {
+    expect(eventMatchesFilters(ev(EventType.DOM_ADDED), ['net'])).toBe(false);
+    expect(eventMatchesFilters(ev(EventType.NET_REQUEST), ['console'])).toBe(false);
+  });
+
+  it('also accepts a raw event type, so both spellings work', () => {
+    expect(eventMatchesFilters(ev(EventType.NET_REQUEST), ['net.request'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.DOM_TEXT), ['dom.text'])).toBe(true);
+  });
+
+  it('an unknown filter entry narrows rather than throws', () => {
+    expect(eventMatchesFilters(ev(EventType.NET_REQUEST), ['nonsense'])).toBe(false);
+  });
+
+  it('an Object.prototype key as a filter does not crash the matcher', () => {
+    // The map is a plain object, so `map['toString']` is the inherited function, not undefined —
+    // a bare index would then call `.includes` on a function and throw. These must fall through to
+    // the raw-type comparison and simply not match.
+    for (const proto of ['toString', 'hasOwnProperty', 'constructor', '__proto__']) {
+      expect(eventMatchesFilters(ev(EventType.NET_REQUEST), [proto])).toBe(false);
+    }
+  });
+
+  it('"console" bucket covers uncaught errors, not just console.error', () => {
+    expect(eventMatchesFilters(ev(EventType.ERROR_UNCAUGHT), ['console'])).toBe(true);
+  });
+
+  it('perf / state / storage resolve as buckets too', () => {
+    expect(eventMatchesFilters(ev(EventType.PERF), ['perf'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.STATE_CHANGE), ['state'])).toBe(true);
+    expect(eventMatchesFilters(ev(EventType.STORAGE_CHANGE), ['storage'])).toBe(true);
+  });
+
+  it('every advertised bucket name resolves to at least one real event type', () => {
+    // The bug this guards: the schema advertised names that equalled no event type, so filtering
+    // returned nothing. Any future bucket added to the description must map to something real.
+    for (const [bucket, types] of Object.entries(OBSERVE_FILTER_BUCKETS)) {
+      expect(types.length, `bucket "${bucket}" maps to no event types`).toBeGreaterThan(0);
+      for (const t of types) {
+        expect(eventMatchesFilters(ev(t as EventType), [bucket])).toBe(true);
+      }
+    }
+  });
+});
 
 describe('reconcileNet (in-flight / hung requests)', () => {
   it('keeps a completed request and drops its matching pending (no double-count)', () => {
@@ -78,6 +137,33 @@ describe('compact projections (token leanness)', () => {
       level: 'error',
       text: 'uncaught x',
     });
+    expect(projectConsoleLog(ev(EventType.CONSOLE_INFO, { message: 'fyi' }))).toEqual({
+      level: 'info',
+      text: 'fyi',
+    });
+    expect(projectConsoleLog(ev(EventType.CONSOLE_DEBUG, { message: 'dbg' }))).toEqual({
+      level: 'debug',
+      text: 'dbg',
+    });
+  });
+
+  it('reconcileNet folds CDP-authoritative headers onto the matching request (driven fidelity)', () => {
+    const merged = reconcileNet([
+      ev(EventType.NET_REQUEST, { id: '1', method: 'GET', url: '/api/x', status: 200 }),
+      ev(
+        EventType.NET_DETAIL,
+        { url: '/api/x', method: 'GET', status: 200, headers: { etag: 'v9' } },
+        2,
+      ),
+    ]);
+    const call = projectNetCall(merged[0] as ReticleEvent);
+    expect(call.headers).toEqual({ etag: 'v9' });
+  });
+
+  it('isConsoleEvent includes info/debug so reticle_console can surface them', () => {
+    expect(isConsoleEvent(ev(EventType.CONSOLE_INFO, { message: 'i' }))).toBe(true);
+    expect(isConsoleEvent(ev(EventType.CONSOLE_DEBUG, { message: 'd' }))).toBe(true);
+    expect(isConsoleEvent(ev(EventType.NET_REQUEST, {}))).toBe(false);
   });
 });
 
@@ -120,5 +206,49 @@ describe('near-miss hint builders', () => {
     const hint = consoleEmptyHint(all);
     expect(hint.totalInWindow).toBe(5);
     expect(hint.byLevel).toEqual({ log: 2, warn: 1, error: 2 });
+  });
+});
+
+/**
+ * An error's stack is the only localization signal a console failure has. The browser already goes
+ * out of its way to capture it for console.error only (log/warn stay lean), and the projection then
+ * threw it away — so the agent was told "something threw" and had to go find where on its own.
+ *
+ * Trimmed to the frames that identify the origin: a full stack is mostly framework internals, and
+ * padding a failure report with them measurably hurts more than it helps.
+ */
+describe('console projections keep the origin of an error', () => {
+  const stack = [
+    'Error: total is NaN',
+    '    at computeTotal (/src/lib/cart.ts:42:11)',
+    '    at Cart (/src/views/Cart.tsx:88:20)',
+    '    at renderWithHooks (/node_modules/react-dom/cjs/react-dom.development.js:14985:18)',
+    '    at mountIndeterminateComponent (/node_modules/react-dom/cjs/react-dom.development.js:17811:13)',
+  ].join('\n');
+
+  it('carries the stack for an error that has one', () => {
+    const view = projectConsoleLog(ev(EventType.CONSOLE_ERROR, { message: 'boom', stack }));
+    expect(view.stack).toContain('computeTotal (/src/lib/cart.ts:42:11)');
+  });
+
+  it('trims to the top frames rather than shipping the whole framework trace', () => {
+    const view = projectConsoleLog(ev(EventType.CONSOLE_ERROR, { message: 'boom', stack }));
+    expect(view.stack).not.toContain('mountIndeterminateComponent');
+  });
+
+  it('omits stack entirely when the event has none, rather than emitting an empty field', () => {
+    const view = projectConsoleLog(ev(EventType.CONSOLE_INFO, { message: 'fyi' }));
+    expect('stack' in view).toBe(false);
+  });
+
+  it('carries the file and line of an uncaught error', () => {
+    const view = projectConsoleLog(
+      ev(EventType.ERROR_UNCAUGHT, {
+        message: 'x is not a function',
+        source: '/src/App.tsx',
+        line: 17,
+      }),
+    );
+    expect(view.source).toBe('/src/App.tsx:17');
   });
 });

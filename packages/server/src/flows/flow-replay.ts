@@ -17,6 +17,7 @@ import {
 import type { EvalResult, Predicate } from '../events/predicate.js';
 import { asRecord, asString } from '../tools/tools-helpers.js';
 import { replayActionArgs, ambiguousTestidNote, queryRefs } from './replay.js';
+import { ReticleTool } from '../tools/tool-names.js';
 
 /**
  * The session surface flow-replay needs: QUERY to re-resolve a testid anchor against the live
@@ -25,6 +26,15 @@ import { replayActionArgs, ambiguousTestidNote, queryRefs } from './replay.js';
  */
 export interface FlowReplaySession {
   command(name: string, args?: Record<string, unknown>): Promise<CommandResult>;
+  /**
+   * Attribution window around each replayed step. Optional so a minimal test double still satisfies the
+   * interface, but a real session MUST supply it: without a window the step's own effects carry no
+   * actionId, and Session.pushEvent classifies an unattributed ref-bearing event as ambient background
+   * churn. A 15-step flow can therefore teach the settle oracle to ignore every region the app reacts
+   * in — and this is the CI path, so the result is a green suite over an app that is still working.
+   */
+  beginAction?(tool: string, args: Record<string, unknown>): void;
+  finishAction?(error?: string, settled?: boolean, settleMs?: number): void;
   eventsSince(cursor: number): ReticleEvent[];
   onEvent(listener: (event: ReticleEvent) => void): () => void;
   /** Buffer clock (ms since connect) — required by the predicate engine's `settled` check. */
@@ -305,11 +315,20 @@ async function runComponentStep(
     };
   }
   const ref = refs[0] ?? '';
-  const act = await session.command(ReticleCommand.ACT, {
-    ref,
-    action: step.action ?? '',
-    args: replayActionArgs(step.args, confirmDangerous),
-  });
+  // Attribute the step's effects to the step. Without this window they arrive with no actionId and are
+  // learned as ambient churn on the very regions the flow exercises.
+  session.beginAction?.(ReticleTool.FLOW_REPLAY, { ref, action: step.action ?? '' });
+  let act;
+  try {
+    act = await session.command(ReticleCommand.ACT, {
+      ref,
+      action: step.action ?? '',
+      args: replayActionArgs(step.args, confirmDangerous),
+    });
+  } finally {
+    // Close on every exit so a throwing step cannot leak the window onto the next step's events.
+    session.finishAction?.();
+  }
   const result: FlowStepResult = { step: index, tool: step.tool, anchor: label, ok: act.ok };
   if (!act.ok) result.error = act.error ?? 'command failed';
   return result;
@@ -337,11 +356,17 @@ async function runTestidStep(
   }
   const ref = refs[0] ?? '';
   const note = refs.length > 1 ? ambiguousTestidNote(value) : undefined;
-  const act = await session.command(ReticleCommand.ACT, {
-    ref,
-    action: step.action ?? '',
-    args: replayActionArgs(step.args, confirmDangerous),
-  });
+  session.beginAction?.(ReticleTool.FLOW_REPLAY, { ref, action: step.action ?? '' });
+  let act;
+  try {
+    act = await session.command(ReticleCommand.ACT, {
+      ref,
+      action: step.action ?? '',
+      args: replayActionArgs(step.args, confirmDangerous),
+    });
+  } finally {
+    session.finishAction?.();
+  }
   const result: FlowStepResult = { step: index, tool: step.tool, anchor: value, ok: act.ok };
   if (!act.ok) {
     result.error = act.error ?? 'command failed';
@@ -402,8 +427,18 @@ async function runSignalStep(
   name: string,
   waitForSignal: WaitForSignal,
   signalTimeoutMs: number,
+  since: number,
 ): Promise<FlowStepResult> {
-  const verdict = await waitForSignal(session, { kind: 'signal', name }, signalTimeoutMs);
+  // Scope to THIS replay's floor, not the whole buffer.
+  //
+  // A signal step is a pure wait — the signal is fired by the PRECEDING act step — so a per-step floor
+  // would miss it (false negative). But the default whole-buffer read (since=0) was too loose in the
+  // one place it matters most: reticle_flow_verify replays every saved flow back-to-back in ONE
+  // session, so a signal an EARLIER flow emitted (`auth:granted`, `nav:changed`) sat in the buffer and
+  // satisfied a LATER flow's signal step even when that flow's own action never fired it — a
+  // cross-flow false green on the exact suite-verify path the regression-cost claim rests on. The
+  // replay-start floor excludes prior flows/runs while still seeing this run's adjacent-step signal.
+  const verdict = await waitForSignal(session, { kind: 'signal', name }, signalTimeoutMs, since);
   if (verdict.pass) return { step: index, tool: step.tool, anchor: name, ok: true };
   return {
     step: index,
@@ -440,6 +475,9 @@ export async function replayFlow(
       .filter((a) => a.kind === AnchorKind.TESTID)
       .map((a) => (a.kind === AnchorKind.TESTID ? a.value : '')),
   );
+  // Floor for signal steps: signals that fire during THIS replay, never a prior flow/run in the same
+  // session. Captured once, before any step, so a back-to-back suite verify cannot cross-satisfy.
+  const replayFloor = session.elapsed();
   let index = 0;
   for (const step of flow.steps) {
     const label = anchorLabel(step.anchor);
@@ -449,7 +487,15 @@ export async function replayFlow(
     const cursorBefore = session.elapsed();
     let result: FlowStepResult;
     if (step.anchor.kind === AnchorKind.SIGNAL) {
-      result = await runSignalStep(session, step, index, label, waitForSignal, signalTimeoutMs);
+      result = await runSignalStep(
+        session,
+        step,
+        index,
+        label,
+        waitForSignal,
+        signalTimeoutMs,
+        replayFloor,
+      );
     } else if (step.anchor.kind === AnchorKind.COMPONENT) {
       result = await runComponentStep(session, step, index, step.anchor, confirmDangerous, sleep);
     } else {
@@ -475,6 +521,10 @@ export async function replayFlow(
       session.eventsSince(cursorBefore).filter((e) => e.t >= cursorBefore),
     );
     if (consequence !== undefined) result.consequence = consequence;
+    // Per-step wall time from the session's injected clock (dispatch → here, post-settle). Only set when
+    // the clock actually advanced, so a fixed-clock fake reads durationMs-free (additive, non-breaking).
+    const durationMs = session.elapsed() - cursorBefore;
+    if (durationMs > 0) result.durationMs = durationMs;
     results.push(result);
     if (result.drift !== undefined || !result.ok) break;
     index += 1;

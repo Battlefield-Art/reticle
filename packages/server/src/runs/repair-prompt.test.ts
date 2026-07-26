@@ -85,3 +85,22 @@ describe('buildRepairPackets', () => {
     expect(packets[0]?.flow).toBe('a');
   });
 });
+
+describe('deviation composition into the repair packet', () => {
+  it('appends the deviation headline to `actual` when the report flagged something', () => {
+    const packet = buildRepairPacket(
+      replay(ReplayStatus.DRIFT, {
+        deviation: { deviations: [{ route: '/billing' }], headline: '1 deviation: /billing' },
+      }),
+    );
+    expect(packet?.actual).toContain('deviation: 1 deviation: /billing');
+  });
+
+  it('leaves `actual` unchanged when the deviation report is nominal or absent', () => {
+    const nominal = buildRepairPacket(
+      replay(ReplayStatus.DRIFT, { deviation: { deviations: [], headline: '3 segments nominal' } }),
+    );
+    expect(nominal?.actual).not.toContain('deviation:');
+    expect(buildRepairPacket(replay(ReplayStatus.DRIFT))?.actual).not.toContain('deviation:');
+  });
+});

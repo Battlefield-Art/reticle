@@ -47,11 +47,25 @@ function suggestedPrompt(
  * Build a repair packet for a failed replay, or undefined when the flow passed. The actual cause is
  * the decision's whatChanged, falling back to the replay error or a generic message.
  */
+/** The deviation report's headline when it flagged something — narrows the replay's `unknown` deviation. */
+export function deviationHeadline(deviation: unknown): string | undefined {
+  if (typeof deviation !== 'object' || deviation === null) return undefined;
+  const d = deviation as { headline?: unknown; deviations?: unknown };
+  if (Array.isArray(d.deviations) && d.deviations.length > 0 && typeof d.headline === 'string') {
+    return d.headline;
+  }
+  return undefined;
+}
+
 export function buildRepairPacket(replay: FlowReplayResult): RepairPacket | undefined {
   if (replay.status === ReplayStatus.OK) return undefined;
 
   const decision = replay.decision;
-  const actual = decision?.whatChanged ?? replay.error?.message ?? 'the flow failed';
+  const baseActual = decision?.whatChanged ?? replay.error?.message ?? 'the flow failed';
+  // Compose the deviation report's headline into the packet — it names the anomalous segment.
+  const deviationNote = deviationHeadline(replay.deviation);
+  const actual =
+    deviationNote === undefined ? baseActual : `${baseActual} — deviation: ${deviationNote}`;
   const where = decision?.whereInSource;
   const sourceLocation = parseSource(where);
   const step = failingStepNumber(replay.steps);

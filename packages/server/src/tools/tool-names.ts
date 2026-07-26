@@ -1,12 +1,16 @@
-/** MCP tool names exposed to the coding agent (plan/05). No free strings. */
+import { FlowStepTool } from '@reticlehq/core';
+
+/** MCP tool names exposed to the coding agent. No free strings. The three that appear in a persisted
+ *  flow (ACT / ACT_SEQUENCE / ACT_AND_WAIT) come from core's FlowStepTool — one source shared with the
+ *  browser recorder and the flow schema, so a rename can't desync the recorder from the replayer. */
 export const ReticleTool = {
   SESSIONS: 'reticle_sessions',
   SNAPSHOT: 'reticle_snapshot',
   QUERY: 'reticle_query',
   INSPECT: 'reticle_inspect',
-  ACT: 'reticle_act',
-  ACT_SEQUENCE: 'reticle_act_sequence',
-  ACT_AND_WAIT: 'reticle_act_and_wait',
+  ACT: FlowStepTool.ACT,
+  ACT_SEQUENCE: FlowStepTool.ACT_SEQUENCE,
+  ACT_AND_WAIT: FlowStepTool.ACT_AND_WAIT,
   OBSERVE: 'reticle_observe',
   WAIT_FOR: 'reticle_wait_for',
   NETWORK: 'reticle_network',
@@ -44,7 +48,7 @@ export const ReticleTool = {
   PROJECT: 'reticle_project',
   /** explicitly record a run outcome (the manual companion to auto-recording). */
   RUN_RECORD: 'reticle_run_record',
-  /** capture a pixel screenshot (CDP/driven browser) → .reticle/visual/<name>.png. */
+  /** capture a pixel screenshot (CDP/driven browser) →.reticle/visual/<name>.png. */
   SCREENSHOT: 'reticle_screenshot',
   /** stub/intercept network on the driven page (500, offline, delay) for error/edge-state testing. */
   NETWORK_MOCK: 'reticle_network_mock',
@@ -56,8 +60,9 @@ export const ReticleTool = {
   CRAWL: 'reticle_crawl',
   /** scroll a virtualized list until a queried row mounts, then return it. */
   SCROLL_TO: 'reticle_scroll_to',
-  /** Session lifecycle: tune the presenter session (e.g. idle-end window) for the app's needs. */
-  SESSION: 'reticle_session',
+  /** Session lifecycle: tune the presenter session (e.g. idle-end window) for the app's needs.
+   * Member of the consolidated reticle_session {action:"tune"} — no longer advertised alone. */
+  SESSION_TUNE: 'reticle_session_tune',
   /** Live-control: end the session (→ ended + push PRESENTER). Handlers live in the tools facet. */
   END_SESSION: 'reticle_end_session',
   /** Live-control: hand the session back to the human between turns (→ waiting/ask, revivable). */
@@ -74,17 +79,22 @@ export const ReticleTool = {
   NAVIGATE: 'reticle_navigate',
   /** Reload the connected browser tab (soft or hard). */
   REFRESH: 'reticle_refresh',
-  /** Report running version, latest available, changelog, and breaking changes. */
-  VERSION_INFO: 'reticle_version_info',
-  /** Install the latest server version and restart (Claude Code reconnects automatically). */
-  APPLY_UPDATE: 'reticle_apply_update',
-  /** Restore the previous server version and restart. */
-  ROLLBACK: 'reticle_rollback',
   /** Export a verification-run artifact (.reticle/runs/<id>.json) — the OEM/CI-consumable verdict. */
   RUN_EXPORT: 'reticle_run_export',
+  /** Consolidated families — one action-dispatched tool per family; members below stay
+   * defined (handlers intact) but are no longer advertised separately. */
+  BASELINE: 'reticle_baseline',
+  SESSION: 'reticle_session',
+  RECORD: 'reticle_record',
+  FLOW: 'reticle_flow',
+  LEASE: 'reticle_lease',
   /** Lease a fresh isolated headless context from the shared browser pool (one per flow). */
   LEASE_ACQUIRE: 'reticle_lease_acquire',
   /** Release a previously leased context, freeing the pool slot. */
   LEASE_RELEASE: 'reticle_lease_release',
+  /** Meta: discover tool definitions on demand instead of paying for all of them every turn. */
+  TOOLS: 'reticle_tools',
+  /** Meta: invoke any tool by name — the escape hatch that keeps a trimmed profile a trim, not a removal. */
+  RUN: 'reticle_run',
 } as const;
 export type ReticleTool = (typeof ReticleTool)[keyof typeof ReticleTool];

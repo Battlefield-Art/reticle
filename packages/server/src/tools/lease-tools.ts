@@ -80,6 +80,28 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
  * an agent's very next call could race and hit "no connected session"). Returns whether it connected
  * in time. `isConnected`, `sleeper`, and `attempts` are injected so this is fast to unit-test.
  */
+/**
+ * Acquire a leased, SDK-connected context for a caller that is not the lease TOOL (the parallel suite).
+ * Returns the session id plus its release; the caller must release in a finally so a crashed flow never
+ * leaks a pool slot and starves the rest of the suite.
+ */
+export async function acquireLeasedSession(
+  pool: {
+    acquire: (
+      url: string,
+      opts: { sessionId: string },
+    ) => Promise<{ sessionId: string; release: () => Promise<void> }>;
+  },
+  hasSession: (id: string) => boolean,
+  url: string,
+  projectId?: string,
+): Promise<{ sessionId: string; release: () => Promise<void> }> {
+  const sessionId = newLeaseId();
+  const lease = await pool.acquire(appendReticleParams(url, sessionId, projectId), { sessionId });
+  await waitForLeasedSession(() => hasSession(lease.sessionId));
+  return { sessionId: lease.sessionId, release: () => lease.release() };
+}
+
 export async function waitForLeasedSession(
   isConnected: () => boolean,
   sleeper: (ms: number) => Promise<void> = sleep,

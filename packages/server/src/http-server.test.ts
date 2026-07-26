@@ -95,8 +95,8 @@ describe('GET /status', () => {
 });
 
 /**
- * A no-op McpServer good enough to drive the SSE presence path. connect() starts the transport so the
- * SSE response headers flush (the client GET resolves); close() is a noop.
+ * A no-op McpServer good enough to drive the SSE presence path. connect starts the transport so the
+ * SSE response headers flush (the client GET resolves); close is a noop.
  */
 function fakeMcpServer(): McpServer {
   return {
@@ -114,7 +114,7 @@ function openSse(port: number): Promise<http.ClientRequest> {
     const req = http.get({ host: '127.0.0.1', port, path: MCP_SSE_PATH, agent: false }, () =>
       resolve(req),
     );
-    req.on('error', () => undefined); // destroy() surfaces as ECONNRESET — expected, ignore
+    req.on('error', () => undefined); // destroy surfaces as ECONNRESET — expected, ignore
   });
 }
 

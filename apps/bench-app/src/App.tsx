@@ -7,8 +7,10 @@ import { CommandPalette } from './components/CommandPalette.js';
 import { Login } from './components/Login.js';
 import { Overview } from './views/Overview.js';
 import { Deployments } from './views/Deployments.js';
+import { Hostile } from './views/Hostile.js';
 import { Compose } from './views/Compose.js';
 import { Diagnostics } from './views/Diagnostics.js';
+import { Enterprise } from './views/Enterprise.js';
 
 export function App(): React.ReactElement {
   const auth = useApp((s) => s.auth);
@@ -39,6 +41,8 @@ export function App(): React.ReactElement {
           {view === 'deployments' ? <Deployments /> : null}
           {view === 'compose' ? <Compose /> : null}
           {view === 'diagnostics' ? <Diagnostics /> : null}
+          {view === 'hostile' ? <Hostile /> : null}
+          {view === 'enterprise' ? <Enterprise /> : null}
         </div>
       </div>
       <Toasts />

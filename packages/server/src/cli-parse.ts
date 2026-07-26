@@ -12,8 +12,13 @@ export const CLI_USAGE = `usage:
   reticle status [--port N]
   reticle open  [url] [--port N]                        (show the app: reuse the connected tab, else open one)
   reticle verify <url> [--headed] [--timeout N] [--storage-state <file>]  (one-shot: drive the URL, verify saved flows, exit 0=pass)
+  reticle affected [--since <ref>] [file...]           (which saved flows must re-verify for the changed files)
+  reticle gate [--since <ref>] [file...]               (exit non-zero unless passing artifacts cover the affected flows)
+  reticle watch [url]                                  (on save, report which saved flows must re-verify)
   reticle drive <url> [--headed]                       (foreground mode — for debugging)
   reticle mcp   [--port N] [--drive <url>] [--headed]  (MCP stdio proxy — auto-starts daemon if needed)
+  reticle update                                       (install the latest server version and restart)
+  reticle rollback                                     (restore the previous server version and restart)
   reticle license                                      (show enterprise license status: active | eval | missing)`;
 
 const INIT_COMMAND = 'init';
@@ -23,6 +28,12 @@ const STATUS_COMMAND = 'status';
 const OPEN_COMMAND = 'open';
 const DRIVE_COMMAND = 'drive';
 const VERIFY_COMMAND = 'verify';
+const AFFECTED_COMMAND = 'affected';
+const CAPSULES_COMMAND = 'capsules';
+const GATE_COMMAND = 'gate';
+const WATCH_COMMAND = 'watch';
+const UPDATE_COMMAND = 'update';
+const ROLLBACK_COMMAND = 'rollback';
 const MCP_COMMAND = 'mcp';
 const LICENSE_COMMAND = 'license';
 const VERSION_COMMAND = 'version';
@@ -69,6 +80,12 @@ export type CliResult =
     }
   | { kind: 'drive'; port: number; driveUrl: string; headless: boolean }
   | { kind: 'verify'; url: string; headless: boolean; timeoutMs?: number; storageState?: string }
+  | { kind: 'affected'; files: string[]; since?: string }
+  | { kind: 'capsules' }
+  | { kind: 'gate'; files: string[]; since?: string }
+  | { kind: 'watch'; url?: string }
+  | { kind: 'update' }
+  | { kind: 'rollback' }
   | { kind: 'mcp'; port: number; driveUrl?: string; headless: boolean }
   | { kind: 'error'; message: string };
 
@@ -253,6 +270,24 @@ function parseInitFlags(args: string[]): InitFlags {
 }
 
 /** Pure CLI arg parser — exported for unit tests. argv = process.argv.slice(2). */
+const SINCE_FLAG = '--since';
+
+/** Parse `[--since <ref>] [file...]` shared by `affected` and `gate`. */
+function parseTargetArgs(rest: string[]): { files: string[]; since?: string } {
+  const files: string[] = [];
+  let since: string | undefined;
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    if (arg === SINCE_FLAG) {
+      since = rest[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg !== undefined && !arg.startsWith('-')) files.push(arg);
+  }
+  return since === undefined ? { files } : { files, since };
+}
+
 export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
   if (argv.length === 0) return { kind: 'serve', port: defaultPort, headless: true, http: false };
 
@@ -327,6 +362,35 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
         ...(r.storageState !== undefined ? { storageState: r.storageState } : {}),
       };
     }
+    case CAPSULES_COMMAND:
+      return { kind: 'capsules' };
+    case AFFECTED_COMMAND: {
+      const t = parseTargetArgs(rest);
+      if (t.files.length === 0 && t.since === undefined) {
+        return { kind: 'error', message: 'usage: reticle affected [--since <ref>] [file...]' };
+      }
+      return {
+        kind: 'affected',
+        files: t.files,
+        ...(t.since === undefined ? {} : { since: t.since }),
+      };
+    }
+    case GATE_COMMAND: {
+      const t = parseTargetArgs(rest);
+      if (t.files.length === 0 && t.since === undefined) {
+        return { kind: 'error', message: 'usage: reticle gate [--since <ref>] [file...]' };
+      }
+      return { kind: 'gate', files: t.files, ...(t.since === undefined ? {} : { since: t.since }) };
+    }
+    case WATCH_COMMAND: {
+      // `reticle watch [url]` — on file save, report which saved flows must re-verify.
+      const url = rest.find((arg) => !arg.startsWith('-'));
+      return url === undefined ? { kind: 'watch' } : { kind: 'watch', url };
+    }
+    case UPDATE_COMMAND:
+      return { kind: 'update' };
+    case ROLLBACK_COMMAND:
+      return { kind: 'rollback' };
     case MCP_COMMAND: {
       const r = parseServeFlags(rest, defaultPort);
       if (r.kind === 'error') return r;

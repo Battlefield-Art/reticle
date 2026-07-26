@@ -1,6 +1,8 @@
 import { ElementState, REDACTED_VALUE, type ElementDescriptor } from '@reticlehq/core';
 import { refs } from './refs.js';
+import { inspectChart } from './chart.js';
 import { isSensitiveKey } from '../security/serialization.js';
+import { formatSource, sourceFromDom } from './source.js';
 
 /** Roles whose accessible name comes from their text content. */
 const NAME_FROM_CONTENT = new Set([
@@ -154,11 +156,13 @@ function ariaBool(el: Element, attr: string): boolean | undefined {
   return value === 'true';
 }
 
-/** The set of states relevant to assertions. */
-export function getStates(el: Element): ElementState[] {
+/**
+ * The set of states relevant to assertions. `visible` is an O(depth) forced-style walk; callers that
+ * already computed it (describe) pass it in so it isn't resolved twice per element.
+ */
+export function getStates(el: Element, visible: boolean = isVisible(el)): ElementState[] {
   const states: ElementState[] = [ElementState.PRESENT];
-  if (isVisible(el)) states.push(ElementState.VISIBLE);
-  else states.push(ElementState.HIDDEN);
+  states.push(visible ? ElementState.VISIBLE : ElementState.HIDDEN);
 
   const disabledProp =
     (el instanceof HTMLButtonElement ||
@@ -221,28 +225,44 @@ export function getValue(el: Element): string | undefined {
   return valueNow ?? undefined;
 }
 
-/** Whether the element is actually visible (not display:none/hidden/aria-hidden/opacity:0). */
-export function isVisible(el: Element): boolean {
-  if (!el.isConnected) return false;
-  let node: Element | null = el;
-  while (node !== null) {
-    if (node.getAttribute('aria-hidden') === 'true') return false;
-    if (node instanceof HTMLElement && node.hidden) return false;
-    const view = node.ownerDocument.defaultView;
-    if (view !== null) {
-      const style = view.getComputedStyle(node);
-      if (
-        style.display === 'none' ||
-        style.visibility === 'hidden' ||
-        style.visibility === 'collapse'
-      ) {
-        return false;
-      }
-      if (Number.parseFloat(style.opacity || '1') === 0) return false;
+/** Whether the element's OWN box hides it — one forced-style resolution, no ancestor walk. */
+function selfHidden(el: Element): boolean {
+  if (el.getAttribute('aria-hidden') === 'true') return true;
+  if (el instanceof HTMLElement && el.hidden) return true;
+  const view = el.ownerDocument.defaultView;
+  if (view !== null) {
+    const style = view.getComputedStyle(el);
+    if (
+      style.display === 'none' ||
+      style.visibility === 'hidden' ||
+      style.visibility === 'collapse'
+    ) {
+      return true;
     }
-    node = node.parentElement;
+    if (Number.parseFloat(style.opacity || '1') === 0) return true;
   }
-  return true;
+  return false;
+}
+
+/**
+ * Whether the element is actually visible (not display:none/hidden/aria-hidden/opacity:0), walking to
+ * root. This is an O(depth) forced-style walk PER node; `memo` (optional, scoped to ONE synchronous
+ * query pass) caches the full inherited result per element so a broad state-filtered query stops
+ * re-resolving getComputedStyle up the same ancestor chain for every sibling. Sound because the DOM is
+ * static for the pass's duration — the cache MUST be a per-call Map, never module-level (that would go
+ * stale the instant the app mutates, the same trap the shadow-root note in query.ts documents).
+ */
+export function isVisible(el: Element, memo?: Map<Element, boolean>): boolean {
+  if (!el.isConnected) return false;
+  const cached = memo?.get(el);
+  if (cached !== undefined) return cached;
+  const parent = el.parentElement;
+  // Each cached boolean already folds in that node's own aria-hidden/[hidden]/display/visibility/opacity,
+  // so inherited visibility composes by AND up the chain and a sibling short-circuits at the first
+  // cached ancestor.
+  const result = !selfHidden(el) && (parent === null || isVisible(parent, memo));
+  if (memo !== undefined) memo.set(el, result);
+  return result;
 }
 
 const MAX_TEXT = 80;
@@ -252,19 +272,34 @@ function getVisibleText(el: Element): string {
   return text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT)}…` : text;
 }
 
-/** Build the compact descriptor surfaced to the agent. */
-export function describe(el: Element): ElementDescriptor {
+/** Build the compact descriptor surfaced to the agent. `memo` (optional) shares the per-call
+ * visibility cache with the query's state filter so ancestors aren't re-walked per element. */
+export function describe(el: Element, memo?: Map<Element, boolean>): ElementDescriptor {
   const value = getValue(el);
   const text = getVisibleText(el);
   const name = getAccessibleName(el);
+  const visible = isVisible(el, memo); // O(depth) style walk — computed ONCE and reused by getStates
   const base: ElementDescriptor = {
     ref: refs.refFor(el),
     role: getRole(el),
     name,
-    states: getStates(el),
-    visible: isVisible(el),
+    states: getStates(el, visible),
+    visible,
   };
   if (value !== undefined && value.length > 0) base.value = value;
   if (text.length > 0 && text !== name) base.text = text;
+  // DOM-only lookup on purpose: describe() runs once per matched element, so the adapter's fiber walk
+  // would turn a broad query into thousands of tree traversals. The stamped attribute answers the
+  // same question for a fraction of the cost, and single-element paths that can afford the better
+  // answer (inspect, act, review) use sourceFor() instead.
+  const source = formatSource(sourceFromDom(el));
+  if (source !== undefined) base.source = source;
+  // Chart faults, only when there are any. Gated on the element actually containing plot geometry so
+  // the common case — every non-chart element on the page — pays one querySelector miss and nothing
+  // else, and a HEALTHY chart adds no bytes to the wire either.
+  if (el.querySelector('path, polyline, polygon') !== null) {
+    const faults = inspectChart(el).findings;
+    if (faults.length > 0) base.chart = faults;
+  }
   return base;
 }

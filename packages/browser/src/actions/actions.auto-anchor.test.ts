@@ -44,11 +44,43 @@ describe('act result — auto-anchor fallback (component/source when no testid)'
     expect(res.source).toEqual({ file: 'src/Deployments.tsx', line: 107 });
   });
 
-  it('a testid still wins — no component noise on the result', async () => {
+  /**
+   * ANCHOR and SOURCE answer different questions, and collapsing them cost us the more valuable one.
+   *
+   *   anchor — how do I find this element again on the next run?   (testid wins; stays lean)
+   *   source — where in the codebase is this element defined?       (always worth carrying)
+   *
+   * The original rule was "a testid wins, so skip the component walk", which silently made source
+   * conditional on the element NOT having a testid. The perverse result: an app that followed
+   * Reticle's own advice and added data-testid everywhere got fewer source pointers than an
+   * uninstrumented one. Since locating the right file is the most valuable thing we can hand an
+   * agent, the anchor's leanness is not worth paying for with it.
+   */
+  it('carries source even when a testid is present', async () => {
     registerAdapter({
       name: 'aa-fake',
-      identify: (): ComponentInfo | null => ({ componentStack: ['Whatever'] }),
+      identify: (el: Element): ComponentInfo | null => {
+        const owner = el.closest('[data-component]');
+        const name = owner?.getAttribute('data-component');
+        if (name === null || name === undefined) return null;
+        return { componentStack: [name], source: { file: 'src/Topbar.tsx', line: 31 } };
+      },
     });
+    document.body.innerHTML =
+      '<div data-component="Topbar" data-src="src/Topbar.tsx:31">' +
+      '<button data-testid="new-deploy">Open panel</button></div>';
+    const btn = document.querySelector('button') as HTMLButtonElement;
+    const res = await executeAction(refs.refFor(btn), 'click', {});
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error('expected ok');
+    expect(res.testid).toBe('new-deploy');
+    expect(res.source).toEqual({ file: 'src/Topbar.tsx', line: 31 });
+    expect(res.component).toBe('Topbar');
+  });
+
+  it('still reports the testid as the anchor when no source is discoverable', async () => {
+    registerAdapter({ name: 'aa-fake', identify: (): ComponentInfo | null => null });
     document.body.innerHTML = '<button data-testid="new-deploy">Open panel</button>';
     const btn = document.querySelector('button') as HTMLButtonElement;
     const res = await executeAction(refs.refFor(btn), 'click', {});
@@ -56,6 +88,6 @@ describe('act result — auto-anchor fallback (component/source when no testid)'
     expect(res.ok).toBe(true);
     if (!res.ok) throw new Error('expected ok');
     expect(res.testid).toBe('new-deploy');
-    expect(res.component).toBeUndefined();
+    expect(res.source).toBeUndefined();
   });
 });

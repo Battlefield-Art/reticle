@@ -1,5 +1,5 @@
 /**
- * The self-heal state machine — load → replay → collect confident proposals → (apply ? verify+write :
+ * The self-heal state machine — load → replay → collect confident proposals → (apply ? verify+write:
  * dry). Split out of flow-tools.ts (which keeps only the FLOW_HEAL ToolDef) as a sibling of
  * flow-replay-run.ts. Never silently rewrites: only proposals that cleared HEAL_CONFIDENCE_MIN are
  * eligible, and only when apply:true; before persisting it re-verifies the success consequence still

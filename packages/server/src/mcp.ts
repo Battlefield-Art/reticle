@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { isToonable, resultToToon } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from './tools/tools.js';
+import type { ToolDef } from './tools/tools.js';
 import { filterTools, TOOL_PROFILE, type ToolProfile } from './tools/profiles.js';
 import { buildDynamicTools } from './tools/dynamic-tools.js';
 import { runTool, SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
@@ -9,6 +10,7 @@ import { sessionEnvelopeShape } from './tools/tool-kit.js';
 import { buildErrorPayload } from './tools/error-recovery.js';
 import { log } from './log.js';
 import { SERVER_VERSION } from './server-version.js';
+import { MCP_SERVER_NAME } from './init/mcp.js';
 
 /**
  * Merge the runtime-spliced envelope (health/lease/age/control) into a session-bound tool's declared
@@ -24,7 +26,7 @@ export function withSessionEnvelope(
   return { ...sessionEnvelopeShape, ...outputSchema };
 }
 
-const SERVER_INFO = { name: 'reticle', version: SERVER_VERSION };
+const SERVER_INFO = { name: MCP_SERVER_NAME, version: SERVER_VERSION };
 
 /** First sentence of a description (purpose only) for lean profiles — keeps per-turn def cost
  * down. Cuts at the first sentence-ending period or newline; falls back to a 160-char cap. The
@@ -38,15 +40,46 @@ function firstSentence(description: string): string {
 }
 
 /**
+ * Parameters carrying the recursive predicate grammar. Advertised compactly in lean profiles.
+ *
+ * `PredicateSchema` is a 12-variant discriminated union whose `allOf`/`anyOf`/`not` members embed the
+ * union again. Zod's JSON-Schema emitter inlines that recursion rather than emitting one `$ref`, so a
+ * single tool ships the word "kind" 48 times and `reticle_wait_for` alone costs 6,571 characters.
+ * Across the three tools that take a predicate that is 72% of the entire advertised input schema — a
+ * cost re-sent on every request, forever, to describe a grammar most calls use one variant of.
+ */
+const PREDICATE_PARAMS = new Set(['predicate', 'until']);
+
+/**
+ * What a lean profile advertises in place of the full predicate union.
+ *
+ * Safe to loosen because it is NOT the validation boundary: every handler taking a predicate calls
+ * `PredicateSchema.parse()` itself (observe-tools.ts:203, :279, act-tools.ts:442), so a malformed
+ * predicate still fails strictly and structurally — the agent gets a zod error naming the bad field
+ * rather than a silently accepted one. What changes is only how many bytes we spend describing the
+ * grammar up front versus letting the agent fetch it from `reticle_tools` when it needs a variant it
+ * has not used before.
+ */
+const COMPACT_PREDICATE_DESCRIPTION =
+  'Predicate object: { kind, ...fields }. kind is one of element | text | net | route | console | ' +
+  'animation | signal | state | settled | allOf | anyOf | not. Call reticle_tools for the full ' +
+  'field grammar of a kind.';
+
+/**
  * Lean copy of a tool's zod input shape for lean profiles: each parameter's description is
- * truncated to its first sentence via zod's own `.describe()` (which returns a new schema, so the
+ * truncated to its first sentence via zod's own `.describe` (which returns a new schema, so the
  * shared shape is never mutated). The per-parameter prose is the bulk of the re-sent-every-turn
  * schema cost; the first clause keeps each param's purpose and any enum hints. Params without a
- * description pass through unchanged.
+ * description pass through unchanged. Predicate params are replaced wholesale — see above.
  */
 function leanZodShape(shape: z.ZodRawShape): z.ZodRawShape {
   const out: z.ZodRawShape = {};
   for (const [key, schema] of Object.entries(shape)) {
+    if (PREDICATE_PARAMS.has(key)) {
+      const compact = z.record(z.unknown()).describe(COMPACT_PREDICATE_DESCRIPTION);
+      out[key] = schema.isOptional() ? compact.optional() : compact;
+      continue;
+    }
     const desc = schema.description;
     out[key] = typeof desc === 'string' ? schema.describe(firstSentence(desc)) : schema;
   }
@@ -93,6 +126,25 @@ type ReticleRegisterTool = (
   }>,
 ) => void;
 
+/**
+ * The tools a profile advertises directly.
+ *
+ * Exported so it can be TESTED. A previous guard re-implemented this decision in the test and was
+ * therefore insensitive to it — every profile appeared to reach every tool, so reverting the fix here
+ * left the suite green. Exercise the real function or the guard is theatre.
+ *
+ * Every TRIMMED profile keeps the meta-tools, so a tool that is not advertised is still reachable via
+ * reticle_run. Without them a trim is not a trim but a hard removal: under `standard`, 11 tools were
+ * uncallable — including reticle_annotate, which reticle_flow_save's own description tells the agent to
+ * call. `full` advertises everything and needs no hatch.
+ */
+export function advertisedTools(profile: ToolProfile): ToolDef[] {
+  if (profile === TOOL_PROFILE.DYNAMIC) return buildDynamicTools(TOOLS);
+  if (profile === TOOL_PROFILE.FULL) return TOOLS;
+  const base = filterTools(TOOLS, profile === TOOL_PROFILE.HYBRID ? TOOL_PROFILE.CORE : profile);
+  return [...base, ...buildDynamicTools(TOOLS)];
+}
+
 export function createMcpServer(
   deps: ToolDeps,
   profile: ToolProfile = TOOL_PROFILE.HYBRID,
@@ -105,18 +157,38 @@ export function createMcpServer(
   // `dynamic` advertises only the 2 meta-tools (reticle_tools + reticle_run); real tools load on demand.
   // core/standard advertise the filtered set with terse descriptions (first sentence + trimmed
   // param prose) — the full prose is re-sent every turn, and the first clause carries the purpose.
-  const advertised =
-    profile === TOOL_PROFILE.DYNAMIC
-      ? buildDynamicTools(TOOLS)
-      : profile === TOOL_PROFILE.HYBRID
-        ? [...filterTools(TOOLS, TOOL_PROFILE.CORE), ...buildDynamicTools(TOOLS)]
-        : filterTools(TOOLS, profile);
+  // Every TRIMMED profile keeps the meta-tools, so a tool that is not advertised is still reachable
+  // through reticle_run. Without them a trim is not a trim, it is a hard removal: under `standard`,
+  // 11 tools were unreachable with no escape hatch — including reticle_annotate, which
+  // reticle_flow_save's own description instructs the agent to call. `full` advertises everything
+  // directly and needs no hatch.
+  const advertised = advertisedTools(profile);
   const terse =
     profile === TOOL_PROFILE.CORE ||
     profile === TOOL_PROFILE.STANDARD ||
     profile === TOOL_PROFILE.HYBRID;
   for (const tool of advertised) {
-    const outputSchema = withSessionEnvelope(tool.name, tool.outputSchema);
+    // Output schemas are now the largest slice of the per-request tax (55.6% of the hybrid payload
+    // after the predicate fix) and we are the only one of the three MCP servers that sends them.
+    //
+    // Trimming their prose was tried and MEASURED ZERO: the field descriptions were already written
+    // as single sentences, so first-sentence truncation had nothing to remove. Recorded here so the
+    // next person does not spend the same hour. The remaining cost is structural — the shapes
+    // themselves — and dropping them is NOT the answer: the type contract is what makes
+    // `structuredContent` verifiable, and it has already caught a real defect (a broad reticle_query
+    // failing output validation outright instead of returning a degraded result).
+    //
+    // Lean profiles therefore DROP the advertised outputSchema entirely, and that is safe — verified
+    // against the SDK, not assumed. A tool registered with NO outputSchema still returns its
+    // `structuredContent` unchanged (the SDK does not require a declared schema to carry it), so a
+    // client that wants the typed object still gets it; only client-side VALIDATION of that object is
+    // lost, which the MCP spec makes optional and which the agent, reading the text block, never did.
+    // If anything the object is MORE complete without a schema — with one, the SDK drops fields the
+    // schema does not list, which is the very reason the session envelope had to be spliced in. The
+    // handler below is unchanged, so `full`/`dynamic` (non-terse) keep the schema for validating
+    // clients. This removes the single largest remaining slice of the per-request tax (~36% of the
+    // hybrid payload) with no loss the agent can observe.
+    const outputSchema = terse ? undefined : withSessionEnvelope(tool.name, tool.outputSchema);
     const config = {
       description: terse ? firstSentence(tool.description) : tool.description,
       inputSchema: terse ? leanZodShape(tool.inputSchema) : tool.inputSchema,

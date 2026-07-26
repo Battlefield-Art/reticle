@@ -12,7 +12,7 @@ import type { ToolDef, ToolDeps } from '../tools/tools.js';
  */
 export const SESSION_TOOLS: ToolDef[] = [
   {
-    name: ReticleTool.SESSION,
+    name: ReticleTool.SESSION_TUNE,
     description:
       'Tune the presenter session for this app. { idleEndMs } sets how long the session stays open after you go quiet before the panel shows the human you are WAITING (your turn). Default 5min — the SLOW backstop; signal handback IMMEDIATELY with reticle_yield instead of waiting for this. Lower it for snappier auto-handback, raise it for a slow app where long gaps between your tool calls are normal. Enforced SERVER-SIDE (immune to background-tab throttling); it also fires if you (the MCP client) disconnect — so a forgotten or crashed session never leaves the HUD reading "live". Going quiet then acting again revives the session automatically. Returns { applied, idleEndMs }.',
     inputSchema: {

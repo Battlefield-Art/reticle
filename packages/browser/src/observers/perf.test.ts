@@ -6,7 +6,7 @@ import type { Emit } from './types.js';
 /** Controllable PerformanceObserver double (jsdom has none). One instance per observed entry type. */
 class FakePerformanceObserver {
   static instances: FakePerformanceObserver[] = [];
-  /** Entry types whose observe() should throw, simulating an unsupported type in this browser. */
+  /** Entry types whose observe should throw, simulating an unsupported type in this browser. */
   static throwOnTypes = new Set<string>();
   observedType = '';
   disconnectCount = 0;

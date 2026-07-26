@@ -1,9 +1,13 @@
 /** @reticlehq/eslint-plugin — flat-config plugin export. */
 
 import { requireSignalOnMutation } from './require-signal-on-mutation.js';
-import { PLUGIN_NAME, RULE_NAME } from './constants.js';
+import { noInternalTags } from './no-internal-tags.js';
+import { PLUGIN_NAME, RULE_NAME, INTERNAL_TAGS_RULE_NAME } from './constants.js';
 
-export const rules = { [RULE_NAME]: requireSignalOnMutation } as const;
+export const rules = {
+  [RULE_NAME]: requireSignalOnMutation,
+  [INTERNAL_TAGS_RULE_NAME]: noInternalTags,
+} as const;
 
 const plugin = {
   meta: { name: PLUGIN_NAME },
@@ -14,8 +18,11 @@ const plugin = {
 // recommended flat config: turns the rule on with empty (no-op) defaults.
 plugin.configs.recommended = {
   plugins: { [PLUGIN_NAME]: plugin },
-  rules: { [`${PLUGIN_NAME}/${RULE_NAME}`]: 'warn' },
+  rules: {
+    [`${PLUGIN_NAME}/${RULE_NAME}`]: 'warn',
+    [`${PLUGIN_NAME}/${INTERNAL_TAGS_RULE_NAME}`]: 'error',
+  },
 };
 
 export default plugin;
-export { requireSignalOnMutation };
+export { requireSignalOnMutation, noInternalTags };

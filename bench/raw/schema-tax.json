@@ -1,0 +1,37 @@
+{
+  "metric": "per-request MCP tool-schema tax (tokens paid on every request before any work)",
+  "measured_at_utc": null,
+  "results": {
+    "reticle_dynamic": {
+      "tool_count": 2,
+      "schema_chars": 1263,
+      "schema_tokens": 282
+    },
+    "reticle_hybrid": {
+      "tool_count": 14,
+      "schema_chars": 12535,
+      "schema_tokens": 2832
+    },
+    "reticle_standard": {
+      "tool_count": 32,
+      "schema_chars": 25625,
+      "schema_tokens": 5763
+    },
+    "reticle_full": {
+      "tool_count": 41,
+      "schema_chars": 97040,
+      "schema_tokens": 22520
+    },
+    "playwright_mcp": {
+      "tool_count": 23,
+      "schema_chars": 17084,
+      "schema_tokens": 3725
+    },
+    "chrome_devtools_mcp": {
+      "tool_count": 29,
+      "schema_chars": 23291,
+      "schema_tokens": 5116
+    }
+  },
+  "finding": "reticle default (hybrid) = 2832 tok vs playwright_mcp = 3725 tok (ratio 0.76x). reticle dynamic = 282 tok."
+}

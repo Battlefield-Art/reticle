@@ -49,11 +49,12 @@ describe('record -> compile -> replay', () => {
 
   it('compiles a testid-bound program (stable) and keeps the reaction report', async () => {
     browser.actHasTestid = true;
-    await callTool(deps, ReticleTool.RECORD_START, { recordingName: 'flow' });
+    await callTool(deps, ReticleTool.RECORD, { action: 'start', recordingName: 'flow' });
     await callTool(deps, ReticleTool.ACT, { ref: 'e7', action: 'click' });
     browser.emit(EventType.NET_REQUEST, { method: 'POST', url: '/api/order', status: 200 });
     await waitUntil(() => bridge.sessions.resolve('demo').eventsSince(0).length >= 1);
-    const rec = (await callTool(deps, ReticleTool.RECORD_STOP, {
+    const rec = (await callTool(deps, ReticleTool.RECORD, {
+      action: 'stop',
       recordingName: 'flow',
     })) as RecordStopResult;
     expect(rec.program.version).toBe(1);
@@ -69,9 +70,10 @@ describe('record -> compile -> replay', () => {
 
   it('flags steps with no testid as unstable and warns', async () => {
     browser.actHasTestid = false;
-    await callTool(deps, ReticleTool.RECORD_START, { name: 'noid' });
+    await callTool(deps, ReticleTool.RECORD, { action: 'start', name: 'noid' });
     await callTool(deps, ReticleTool.ACT, { ref: 'e7', action: 'click' });
-    const rec = (await callTool(deps, ReticleTool.RECORD_STOP, {
+    const rec = (await callTool(deps, ReticleTool.RECORD, {
+      action: 'stop',
       name: 'noid',
     })) as RecordStopResult;
     expect(rec.program.steps[0]?.stable).toBe(false);
@@ -81,9 +83,9 @@ describe('record -> compile -> replay', () => {
   });
 
   it('replay re-resolves by testid and re-runs each step', async () => {
-    await callTool(deps, ReticleTool.RECORD_START, { name: 'rerun' });
+    await callTool(deps, ReticleTool.RECORD, { action: 'start', name: 'rerun' });
     await callTool(deps, ReticleTool.ACT, { ref: 'e7', action: 'click' });
-    await callTool(deps, ReticleTool.RECORD_STOP, { name: 'rerun' });
+    await callTool(deps, ReticleTool.RECORD, { action: 'stop', name: 'rerun' });
 
     browser.received.length = 0;
     const replay = (await callTool(deps, ReticleTool.REPLAY, { name: 'rerun' })) as ReplayResult;
@@ -102,9 +104,9 @@ describe('record -> compile -> replay', () => {
   });
 
   it('replay stops with ok:false when a testid does not resolve', async () => {
-    await callTool(deps, ReticleTool.RECORD_START, { recordingName: 'gone' });
+    await callTool(deps, ReticleTool.RECORD, { action: 'start', recordingName: 'gone' });
     await callTool(deps, ReticleTool.ACT, { ref: 'e7', action: 'click' });
-    await callTool(deps, ReticleTool.RECORD_STOP, { recordingName: 'gone' });
+    await callTool(deps, ReticleTool.RECORD, { action: 'stop', recordingName: 'gone' });
 
     browser.queryResolves = false;
     const replay = (await callTool(deps, ReticleTool.REPLAY, {
@@ -117,11 +119,12 @@ describe('record -> compile -> replay', () => {
   });
 
   it('captures and replays an act_sequence step', async () => {
-    await callTool(deps, ReticleTool.RECORD_START, { recordingName: 'seq' });
+    await callTool(deps, ReticleTool.RECORD, { action: 'start', recordingName: 'seq' });
     await callTool(deps, ReticleTool.ACT_SEQUENCE, {
       steps: [{ ref: 'e7', action: 'click' }],
     });
-    const rec = (await callTool(deps, ReticleTool.RECORD_STOP, {
+    const rec = (await callTool(deps, ReticleTool.RECORD, {
+      action: 'stop',
       recordingName: 'seq',
     })) as RecordStopResult;
     expect(rec.program.steps[0]?.tool).toBe('reticle_act_sequence');

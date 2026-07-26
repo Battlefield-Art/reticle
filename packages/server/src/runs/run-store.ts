@@ -57,7 +57,7 @@ export class RunStore {
     }
     await this.#fs.mkdir(reticleDirPaths(this.#root).runs);
     // Atomic publish: write a temp file then rename, so a crash mid-write never leaves a half-written
-    // artifact (a partial .json would otherwise read back as MALFORMED).
+    // artifact (a partial.json would otherwise read back as MALFORMED).
     const path = runPath(this.#root, run.runId);
     const tmp = `${path}${TMP_EXT}`;
     await this.#fs.writeFile(tmp, `${JSON.stringify(run, null, JSON_INDENT)}\n`);
@@ -111,7 +111,7 @@ export class RunStore {
     return { ok: true, run: result.data };
   }
 
-  /** List run ids on disk (filenames minus .json). Empty when the runs dir is absent. */
+  /** List run ids on disk (filenames minus.json). Empty when the runs dir is absent. */
   async list(): Promise<RunId[]> {
     const dir = reticleDirPaths(this.#root).runs;
     if (!(await this.#fs.exists(dir))) return [];
@@ -137,5 +137,23 @@ export class RunStore {
       }
     }
     return best;
+  }
+
+  /**
+   * The two most-recent runs by createdAt as `[previous, current]` (oldest-first), or undefined when
+   * fewer than two readable runs exist. Powers reticle_run_export's `format:"diff"` (run-to-run deltas).
+   */
+  async latestTwo(): Promise<[ReticleVerificationRun, ReticleVerificationRun] | undefined> {
+    const runs: ReticleVerificationRun[] = [];
+    for (const id of await this.list()) {
+      const result = await this.read(id);
+      if (result.ok) runs.push(result.run);
+    }
+    if (runs.length < 2) return undefined;
+    runs.sort((a, b) => a.createdAt - b.createdAt);
+    const previous = runs[runs.length - 2];
+    const current = runs[runs.length - 1];
+    if (previous === undefined || current === undefined) return undefined;
+    return [previous, current];
   }
 }

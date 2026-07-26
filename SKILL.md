@@ -189,7 +189,7 @@ MCP tools only appear in Copilot **Agent mode**.
 
 **Do not add this hook by default.** Killing the daemon after every turn is the most common cause of the "Failed to reconnect to reticle: -32000" error: the daemon is stopped, Claude Code immediately reconnects, and the new daemon sometimes takes longer than expected to boot — the proxy times out and exits with code 1, which Claude Code reports as -32000.
 
-Reticle doesn't need the hook. `reticle_yield` (mandatory — see Rules) signals turn end in-band, and the server flips the panel to "waiting" automatically if the agent goes quiet.
+Reticle doesn't need the hook. `reticle_session {action:"yield"}` (mandatory — see Rules) signals turn end in-band, and the server flips the panel to "waiting" automatically if the agent goes quiet.
 
 Only add this if the user explicitly asks for the daemon to stop between turns:
 
@@ -238,15 +238,33 @@ Then describe your app's testable surface so the agent knows what to drive (fill
 
 ```ts
 // src/reticle-dev.ts — self-guards on import.meta.env.DEV, so it's a no-op in prod
-import { registerCapabilities } from '@reticlehq/react';
+import { registerCapabilities, registerStore } from '@reticlehq/react';
+import { useApp } from './store'; // your zustand/Redux store
 if (import.meta.env.DEV) {
+  // Register your store(s). This is the highest-value line in this file: it is what lets the agent
+  // check what the app BELIEVES, not just what it rendered — the class of bug a screenshot cannot see.
+  registerStore('app', useApp); // zustand or Redux: pass the store itself
   registerCapabilities({
     testids: [], // your data-testid values, e.g. ['login-btn', 'submit-form']
     signals: [], // your reticle.signal() names, e.g. ['auth:login']
-    stores: [], // your registerStore() names
+    stores: ['app'],
   });
 }
 ```
+
+**Registering the store is the step people skip, and it is the one that matters.** Pass the store itself (not `() => store.getState()`) — the store form wires `subscribe` too, so every mutation emits a state diff automatically; the getter form is read-only and silently produces empty diffs.
+
+Which libraries work:
+
+| Library | How |
+| --- | --- |
+| zustand, Redux, Redux Toolkit | `registerStore('app', store)` — no adapter needed |
+| **TanStack Query** | `registerStore('queries', tanstackQueryStore(queryClient))` |
+| Jotai | `registerStore('app', jotaiStore(getDefaultStore(), { cart, user }))` |
+| XState / Valtio / MobX | `xstateStore(actor)` / `valtioStore(...)` / `mobxStore(...)` |
+| React Context / useState / useReducer | `useReticleStore('cart', cart)` from `@reticlehq/react/store` |
+
+Register TanStack Query even if you register nothing else: a stale cache served as fresh fires **no network request**, so the network log shows silence and the DOM shows a plausible number — the cache is the only witness. Adapters come from `@reticlehq/browser`.
 
 Then load it once from your entry file — add this line near the top of `src/main.tsx` (the dynamic `import()` keeps it out of the production bundle):
 
@@ -275,18 +293,21 @@ import { useEffect } from 'react';
 export function ReticleDev() {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
-    void import('@reticlehq/react').then(({ reticle, install, registerCapabilities }) => {
-      install();
-      // The bridge requires a pairing token. Vite users get it auto-injected; hand-wired Next passes it
-      // in: set RETICLE_TOKEN for the daemon and expose the same value as NEXT_PUBLIC_RETICLE_TOKEN.
-      const token = process.env.NEXT_PUBLIC_RETICLE_TOKEN;
-      reticle.connect(token ? { token } : {});
-      registerCapabilities({
-        testids: [], // your data-testid values
-        signals: [], // your reticle.signal() names
-        stores: [], // your registerStore() names
-      });
-    });
+    void import('@reticlehq/react').then(
+      ({ reticle, install, registerCapabilities, registerStore }) => {
+        install();
+        // The bridge requires a pairing token. Vite users get it auto-injected; hand-wired Next passes it
+        // in: set RETICLE_TOKEN for the daemon and expose the same value as NEXT_PUBLIC_RETICLE_TOKEN.
+        const token = process.env.NEXT_PUBLIC_RETICLE_TOKEN;
+        reticle.connect(token ? { token } : {});
+        registerStore('app', useApp); // your store — see the table above for non-zustand libraries
+        registerCapabilities({
+          testids: [], // your data-testid values
+          signals: [], // your reticle.signal() names
+          stores: ['app'],
+        });
+      },
+    );
   }, []);
   return null;
 }
@@ -344,7 +365,7 @@ Fill in `framework` from Q1. **Leave `port` out** — it defaults to `4400` and 
 
 Tell the user: **"Run `npm run dev` (your normal dev server) and open the app in your browser."**
 
-Once they confirm the app is open, call `reticle_run({ tool: "reticle_wait_ready" })` (or poll `reticle_sessions()`), then `reticle_sessions()`. You should see a session whose URL matches the app's localhost address.
+Once they confirm the app is open, poll `reticle_sessions()` until your tab appears (the first live call already blocks for the session). You should see a session whose URL matches the app's localhost address.
 
 ### No session appeared? Work this checklist in order
 
@@ -374,7 +395,7 @@ When a session is confirmed, tell the user:
 
 ## Phase 1 — Connect
 
-Just ran `reticle init` or started the dev server? Block until the app's SDK connects first, so your first real call doesn't lose the race with the WebSocket — call **`reticle_run({ tool: "reticle_wait_ready" })`** (in the default `hybrid` profile `reticle_wait_ready` isn't advertised directly; reach it via `reticle_run`), or just poll **`reticle_sessions()`** until your tab appears. Then, with `reticle_sessions()`, there are three possible states:
+Just ran `reticle init` or started the dev server? Block until the app's SDK connects first, so your first real call doesn't lose the race with the WebSocket — just poll **`reticle_sessions()`** (readiness is server-internal now — the first live call blocks until the SDK connects) until your tab appears. Then, with `reticle_sessions()`, there are three possible states:
 
 **A. One session → proceed.**
 
@@ -401,7 +422,7 @@ reticle_network({ sessionId, limit: 10 })
 reticle_console({ sessionId, limit: 20 })
 ```
 
-> **Default `hybrid` profile:** only the ~14 core verify tools are advertised directly. Anything else the skill names — `reticle_wait_ready`, `reticle_capabilities`, `reticle_yield`, `reticle_review`, `reticle_inspect`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list params first with `reticle_tools`). To advertise them all directly instead, set `RETICLE_TOOL_PROFILE=standard` (flows + extras) or `=full` (everything).
+> **Default `hybrid` profile:** only the ~14 core verify tools are advertised directly. Anything else the skill names — `reticle_capabilities`, `reticle_session {action:"yield"}`, `reticle_session {action:"review"}`, `reticle_inspect`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list params first with `reticle_tools`). To advertise them all directly instead, set `RETICLE_TOOL_PROFILE=standard` (flows + extras) or `=full` (everything).
 
 Build a mental model:
 
@@ -450,6 +471,37 @@ Then pick a mode:
    ```
 5. Record: ✅ pass / ❌ fail / ⚠️ partial
 
+### Plan then batch — do NOT ping-pong act-by-act
+
+The repeat loop is cheap (~175 tok); the expensive part is the FIRST drive of a surface you have not seen. Every extra round-trip pays the advertised tool surface again, so the way to make a first drive cheap is fewer, bigger hops — not smaller ones.
+
+**Do this** — state the whole journey, then assert its consequence once:
+
+```
+reticle_act_sequence({ sessionId, steps: [
+  { ref: emailRef,    action: "fill",   args: { value: "a@b.com" } },
+  { ref: passwordRef, action: "fill",   args: { value: "hunter2"  } },
+  { ref: submitRef,   action: "click" }
+]})
+→ reticle_assert({ sessionId, since, predicate: { kind: "allOf", predicates: [
+    { kind: "signal",  name: "auth:granted" },
+    { kind: "net",     method: "POST", urlContains: "/api/login", status: 200 },
+    { kind: "console", level: "error", absent: true }
+  ]}})
+```
+
+**Not this** — act, look, act, look:
+
+```
+act(fill email) → snapshot → act(fill password) → snapshot → act(click) → snapshot → assert
+```
+
+Both verify the same thing. The second costs several times more and gives the model more chances to wander off-plan mid-journey.
+
+**Declare before you act.** Name the consequence you expect _before_ the action, in `until`/`mustHold` — never after seeing the result. An oracle written after the fact can be rationalized into agreeing with whatever happened; one written before cannot. `reticle_act_and_wait({ ref, action, until })` is the one-hop version of exactly this.
+
+**Record the first drive.** If you had to explore to find a journey, save it (`reticle_flow_save`) so the exploration is paid once, ever — every later run replays it deterministically for ~175 tok with no LLM.
+
 ### Smoke
 
 Walk every testid in `capabilities.testids`. For each one that is visible and interactable:
@@ -468,11 +520,11 @@ For flows worth re-checking forever — the actual test suite — record them, t
 
 1. Record + assert the business outcome (not just clicks):
    ```
-   reticle_record_start({ recordingName: "ship-deploy" })
+   reticle_record {action:"start"}({ recordingName: "ship-deploy" })
    → drive the flow with reticle_act
    → reticle_annotate({ flow: "ship-deploy", kind: "intent", text: "ship a deploy to production" })
    → reticle_annotate({ flow: "ship-deploy", kind: "success-state", signal: "deploy:shipped" })
-   → reticle_record_stop({ recordingName: "ship-deploy" }) → reticle_flow_save({ flowName: "ship-deploy" })
+   → reticle_record {action:"stop"}({ recordingName: "ship-deploy" }) → reticle_flow_save({ flowName: "ship-deploy" })
    ```
 2. After any change, re-verify EVERY saved flow at once:
 
@@ -492,19 +544,19 @@ Reticle's edge over a DOM/screenshot tool is **efficiency and robustness**, not 
 - **UI-vs-state desync** (the UI shows one value, the store holds another — e.g. a count that didn't refresh, or a value corrupted in the store but rendered in no view): `reticle_state({ sessionId, store, path })` returns it directly. A pure snapshot can't see it; an agent spelunking framework internals can, but at far higher cost — measured head-to-head, Reticle-MCP caught a never-rendered store tamper in **4 tool calls / 45s** where a Playwright-MCP agent needed **45 calls / ~9min** reverse-engineering the React fiber.
 - **Present-but-unusable / off-theme controls**: `reticle_inspect` returns `occluded` (covered by an overlay), `styles.cursor`/`opacity`, `box` (0×0), and `theme.offTheme` (color off the design-token palette) — the "is it actually usable / on-brand?" read, in one call.
 
-### Consume the human's bug reports (`reticle_review`)
+### Consume the human's bug reports (`reticle_session {action:"review"}`)
 
-The dev can click **"Flag a bug"** in the running app, point at an element, and type what's wrong. Each flag becomes a **mark** you drain with `reticle_review`:
+The dev can click **"Flag a bug"** in the running app, point at an element, and type what's wrong. Each flag becomes a **mark** you drain with `reticle_session {action:"review"}`:
 
 ```
-reticle_review({ sessionId })
+reticle_session {action:"review"}({ sessionId })
 → { marks: [{ id: "m1", note: "this button is misaligned", label: "button \"Pay\"",
               source: { file: "src/Checkout.tsx", line: 42 },
-              fix: "Open src/Checkout.tsx:42 and fix: this button is misaligned. Then reticle_review { resolve: \"m1\" }" }],
+              fix: "Open src/Checkout.tsx:42 and fix: this button is misaligned. Then reticle_session {action:"review"} { resolve: \"m1\" }" }],
     pendingCount: 1 }
 ```
 
-Check it at the start of a session and whenever the human may have flagged something. Open the `source` file:line, apply the fix the `note` asks for, verify, then `reticle_review({ resolve: "m1" })`. Reading never consumes a mark, so you can list → fix → verify → resolve.
+Check it at the start of a session and whenever the human may have flagged something. Open the `source` file:line, apply the fix the `note` asks for, verify, then `reticle_session {action:"review"}({ resolve: "m1" })`. Reading never consumes a mark, so you can list → fix → verify → resolve.
 
 ---
 
@@ -534,7 +586,7 @@ If something failed, call `reticle_inspect({ sessionId, ref })` on the failing e
 
 ## Rules (always apply in Test mode)
 
-- **Always close the session when you stop driving.** The human may be watching the browser, so the panel must reflect your real state — never leave it reading "live" when you've stopped. The moment you finish a turn or need the human, call `reticle_yield({ mode: "waiting" })`, or `reticle_yield({ mode: "ask", note: "<your question>" })` when you're blocked on them. Call `reticle_end_session()` only when the whole task is done. The session revives automatically on your next action, so this is cheap and safe to do every time. (A server-side idle fallback flips the panel to "waiting" if you forget, but signal it yourself — it's immediate and it can say _why_.)
+- **Always close the session when you stop driving.** The human may be watching the browser, so the panel must reflect your real state — never leave it reading "live" when you've stopped. The moment you finish a turn or need the human, call `reticle_session {action:"yield"}({ mode: "waiting" })`, or `reticle_session {action:"yield"}({ mode: "ask", note: "<your question>" })` when you're blocked on them. Call `reticle_session {action:"end"}()` only when the whole task is done. The session revives automatically on your next action, so this is cheap and safe to do every time. (A server-side idle fallback flips the panel to "waiting" if you forget, but signal it yourself — it's immediate and it can say _why_.)
 - Always pass `since` in `reticle_assert` — scopes to post-action events, prevents stale buffer fakes.
 - Always assert `{ kind: "console", level: "error", absent: true }` — silent errors are the most common thing agents miss.
 - Batch net + element + signal + console into one `allOf` — don't call `reticle_assert` four times.

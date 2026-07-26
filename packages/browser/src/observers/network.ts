@@ -1,86 +1,23 @@
-import { EventType, REDACTED_VALUE } from '@reticlehq/core';
 import {
-  isSensitiveKey,
-  sanitizeForTransport,
-  safeStringify,
-  scrubKnownSecrets,
-} from '../security/serialization.js';
+  BlindSpotKind,
+  EventType,
+  RETICLE_WS_PATH,
+  StreamTransport,
+  StreamDirection,
+} from '@reticlehq/core';
+import { captureMethod } from '../patching/capture-method.js';
 import type { Emit, Teardown } from './types.js';
+import { isCapturableType, projectBody, withBodyDeadline } from './network-body.js';
+import { redactUrl } from './network-redact.js';
+
+// Redaction moved to its own cohesive module (network.ts is at its line cap); re-exported so callers
+// and the existing test suite keep importing it from here.
+export { redactUrl };
 
 /** Config for the network observer. Body capture is OFF by default and dev-only opt-in. */
 export interface NetworkOptions {
   /** Capture request/response bodies (text-like content only, redacted, per-body capped). */
   captureBodies?: boolean;
-}
-
-/**
- * Per-body character cap. Bodies ride the same ring buffer as the DOM/route/console timeline, so an
- * uncapped body could evict the whole behavioral history; the small cap keeps a few large responses
- * from starving the timeline (the separate-budget concern in the scalability audit).
- */
-const MAX_BODY_CHARS = 8192;
-/** Only text-like bodies are worth capturing; binary (images/fonts/octet-stream) is skipped. */
-const CAPTURABLE_CONTENT =
-  /application\/json|text\/|application\/xml|x-www-form-urlencoded|graphql/i;
-
-function isCapturableType(contentType: string | null): boolean {
-  return contentType !== null && CAPTURABLE_CONTENT.test(contentType);
-}
-
-/**
- * An `Authorization: Bearer …` / `Basic …` credential. The token side requires credential shape — 16+
- * chars AND at least one digit or symbol — so ordinary prose ("Basic subscription includes…", "Bearer
- * capacity exceeded") is NOT mangled, only actual opaque tokens are.
- */
-const AUTH_SCHEME_TOKEN =
-  /\b(Bearer|Basic)\s+(?=[A-Za-z0-9._~+/=-]{16,})(?=[A-Za-z0-9._~+/=-]*[\d._~+/=-])[A-Za-z0-9._~+/=-]+/gi;
-
-/**
- * Redact credentials in ANY text body (form-urlencoded, text/plain, xml, or JSON that failed to parse).
- * sanitizeForTransport only redacts KEYS inside a parsed object, so a `password=secret` form post or a
- * `Bearer <token>` string would otherwise ship verbatim. Redacts the value of any `key=value` / `key: value`
- * pair whose key is sensitive, plus credential-shaped auth-scheme tokens.
- */
-function redactText(text: string): string {
-  return (
-    text
-      // Auth-scheme tokens FIRST: `Authorization: Bearer <token>` — the key/value rule below would
-      // otherwise consume just "Bearer" as Authorization's value (it stops at whitespace) and leave the
-      // token behind, so the scheme rule must run before it.
-      .replace(AUTH_SCHEME_TOKEN, (_m: string, scheme: string) => `${scheme} ${REDACTED_VALUE}`)
-      .replace(
-        /([A-Za-z0-9_.-]+)(\s*[=:]\s*"?)([^&\s,;"}]+)/g,
-        (match: string, key: string, sep: string) =>
-          isSensitiveKey(key) ? `${key}${sep}${REDACTED_VALUE}` : match,
-      )
-  );
-}
-
-/**
- * Redact + cap a body for the agent transcript. JSON is parsed and run through the same
- * sanitizeForTransport redaction used for state (sensitive keys -> [REDACTED]); every other text body
- * (and JSON that didn't parse) goes through redactText so form/plain-text credentials can't leak.
- * Returns the (possibly truncated) body plus whether it was cut.
- */
-function projectBody(
-  text: string,
-  contentType: string | null,
-): { body: string; truncated: boolean } {
-  let out: string;
-  if (contentType !== null && /json|graphql/i.test(contentType)) {
-    try {
-      out = safeStringify(sanitizeForTransport(JSON.parse(text)));
-    } catch {
-      out = redactText(text); // looked like JSON but wasn't — still redact key/value + auth tokens
-    }
-  } else {
-    out = redactText(text);
-  }
-  // Key-based redaction can't see a secret sitting in a VALUE under a benign key — scan the projected
-  // text for high-confidence secret shapes (JWTs, provider keys) as a backstop, JSON or not.
-  out = scrubKnownSecrets(out);
-  const truncated = out.length > MAX_BODY_CHARS;
-  return { body: truncated ? out.slice(0, MAX_BODY_CHARS) : out, truncated };
 }
 
 /** The byte size of a binary frame (ArrayBuffer / Blob / typed-array view), or undefined if unknown. */
@@ -92,7 +29,7 @@ function binaryFrameBytes(data: unknown): number | undefined {
 }
 
 /** Project one SSE/WebSocket frame: byte size + shape; the (capped, redacted) payload only when body
- *  capture is on and it is a string frame. Binary frames report their byte size, not just a bare type. */
+ * capture is on and it is a string frame. Binary frames report their byte size, not just a bare type. */
 function frameFields(data: unknown, captureBodies: boolean): Record<string, unknown> {
   if (typeof data !== 'string') {
     const bytes = binaryFrameBytes(data);
@@ -132,83 +69,13 @@ function projectRequestBody(body: unknown, captureBodies: boolean): Record<strin
   return truncated ? { requestBody: out, requestBodyTruncated: true } : { requestBody: out };
 }
 
-/** A path segment name that is typically followed by a single-use secret token in the NEXT segment. */
-const SENSITIVE_PATH_SEGMENT =
-  /^(reset|verify|verification|confirm|activate|invite|magic|magiclink|token|key|oauth|unsubscribe|password)$/i;
-/** Only mask a following segment that looks token-like — short ids/words (`reset/form`) are left alone. */
-const PATH_TOKEN_MIN_LENGTH = 12;
-
-/**
- * Redact credential-bearing values so they don't leak into the agent transcript / flow / run
- * artifacts: query params (`?access_token=…`, signed-URL keys) via the shared `isSensitiveKey` regex,
- * AND path-embedded tokens (`/reset/<token>`, `/invite/<token>`) that live in the path, not the query.
- * The hash is preserved and the URL is returned byte-for-byte when nothing matched.
- */
-export function redactUrl(raw: string): string {
-  const hashStart = raw.indexOf('#');
-  const hash = hashStart === -1 ? '' : raw.slice(hashStart);
-  const beforeHash = hashStart === -1 ? raw : raw.slice(0, hashStart);
-  const queryStart = beforeHash.indexOf('?');
-  const pathPart = queryStart === -1 ? beforeHash : beforeHash.slice(0, queryStart);
-  const query = queryStart === -1 ? '' : beforeHash.slice(queryStart + 1);
-
-  let changed = false;
-
-  // Credentials in the authority (`scheme://user:pass@host`) never belong in a transcript.
-  let authority = pathPart;
-  const userinfo = /^([a-z][a-z0-9+.-]*:\/\/)[^/@]+@/i.exec(pathPart);
-  if (userinfo !== null) {
-    authority = `${userinfo[1] ?? ''}${REDACTED_VALUE}@${pathPart.slice(userinfo[0].length)}`;
-    changed = true;
-  }
-
-  let newQuery = query;
-  if (query !== '') {
-    const params = new URLSearchParams(query);
-    for (const key of [...params.keys()]) {
-      if (isSensitiveKey(key)) {
-        params.set(key, REDACTED_VALUE);
-        changed = true;
-      }
-    }
-    newQuery = params.toString();
-  }
-
-  const segments = authority.split('/');
-  for (let i = 0; i + 1 < segments.length; i++) {
-    const name = segments[i];
-    const next = segments[i + 1];
-    if (
-      name !== undefined &&
-      next !== undefined &&
-      next.length >= PATH_TOKEN_MIN_LENGTH &&
-      SENSITIVE_PATH_SEGMENT.test(name)
-    ) {
-      segments[i + 1] = REDACTED_VALUE;
-      changed = true;
-    }
-  }
-
-  // OAuth implicit flow puts the access_token in the FRAGMENT (`#access_token=…`), and hash-routers carry
-  // `?token=…` in the hash — redact sensitive params there too, leaving plain anchors (`#section`) alone.
-  let newHash = hash;
-  if (hash.length > 1) {
-    newHash = hash.replace(/([A-Za-z0-9_.-]+)=([^&\s]+)/g, (m: string, key: string) =>
-      isSensitiveKey(key) ? `${key}=${REDACTED_VALUE}` : m,
-    );
-    if (newHash !== hash) changed = true;
-  }
-
-  if (!changed) return raw;
-  const queryOut = queryStart === -1 ? '' : `?${newQuery}`;
-  return `${segments.join('/')}${queryOut}${newHash}`;
-}
-
 interface XhrMeta {
   id: string;
   method: string;
   url: string;
   start: number;
+  rawUrl: string;
+  initiatorStack?: string | undefined;
   reqBody?: Document | XMLHttpRequestBodyInit | null;
 }
 
@@ -243,13 +110,133 @@ function methodOf(input: RequestInfo | URL, init: RequestInit | undefined): stri
   return 'GET';
 }
 
+/**
+ * The first app-code frame that fired a request — the in-page answer to a CDP initiator, as file:line.
+ * Captured from a fresh Error.stack at call time, skipping Reticle's own wrapper frames. Feeds the
+ * causal chain (which code path made this request). Capped; undefined when no stack is available.
+ * ponytail: one stack unwind per request — cheap next to fetch itself; revisit only if a profiler flags it.
+ */
+/**
+ * Frames to skip: Reticle's own wrappers + engine-internal frames with no app source location.
+ * Anchored to Reticle's actual module paths (`@reticlehq/…`, the SDK's own `.ts` files) — a bare
+ * `reticle` alternative matched ANY app whose bundle URL merely contained the word (including this
+ * repo's own dogfood fixtures served under `/reticle/`), silently dropping their initiatorStack.
+ */
+const NON_APP_FRAME =
+  /@reticlehq|reticle\.ts|network\.ts|transport\.ts|<anonymous>|new Promise|node:internal/i;
+
+/** Pure: the first real app-code frame in a stack string, capped. Exported for unit testing. */
+export function firstAppFrame(stack: string | undefined): string | undefined {
+  if (stack === undefined) return undefined;
+  for (const line of stack.split('\n').slice(1)) {
+    if (NON_APP_FRAME.test(line)) continue;
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    return trimmed.slice(0, 300);
+  }
+  return undefined;
+}
+
+function initiatorFrame(): string | undefined {
+  return firstAppFrame(new Error().stack);
+}
+
+/** The timing fields we lift from a resource entry — TTFB is the perf signal a duration alone hides. */
+export interface NetTiming {
+  ttfbMs?: number;
+  transferSize?: number;
+}
+
+/**
+ * Pure: derive TTFB + transfer size from a PerformanceResourceTiming entry. TTFB = responseStart -
+ * requestStart; cross-origin responses zero those (Timing-Allow-Origin), so we omit rather than report a
+ * bogus 0. Exported for unit testing (jsdom doesn't post real resource entries).
+ */
+export function extractTiming(entry: PerformanceResourceTiming | undefined): NetTiming {
+  if (entry === undefined) return {};
+  const timing: NetTiming = {};
+  if (entry.responseStart > 0 && entry.requestStart > 0) {
+    timing.ttfbMs = Math.round(entry.responseStart - entry.requestStart);
+  }
+  if (entry.transferSize > 0) timing.transferSize = entry.transferSize;
+  return timing;
+}
+
+/** Best-effort lookup of the most-recent resource-timing entry for a URL. */
+function resourceTiming(rawUrl: string): NetTiming {
+  try {
+    const entries = performance.getEntriesByName(rawUrl, 'resource');
+    return extractTiming(entries[entries.length - 1] as PerformanceResourceTiming | undefined);
+  } catch {
+    return {};
+  }
+}
+
 /** Patch fetch + XMLHttpRequest to emit net.request events. Fully reversible. */
+/**
+ * True for Reticle's OWN bridge connection, which must never be instrumented.
+ *
+ * The transport resolves `WebSocket` at call time, so a reconnect after instrumentation constructs a
+ * PATCHED socket. From then on emitting an event calls transport.send -> the patched send emits a
+ * NET_STREAM event -> which calls transport.send again, until the stack blows and the page is dead.
+ * Keyed on the bridge PATH rather than the host: an app's own socket on the same origin must still be
+ * observed, otherwise this guard would blind the stream category it exists to protect.
+ */
+function isBridgeSocket(url: string): boolean {
+  try {
+    return new URL(url, location.href).pathname === RETICLE_WS_PATH;
+  } catch {
+    return url.includes(RETICLE_WS_PATH);
+  }
+}
+
+/**
+ * Whether a function is the platform's own fetch rather than someone's wrapper.
+ *
+ * `Function.prototype.toString` on a built-in yields "[native code]"; a JS wrapper yields its source.
+ * Called off the prototype deliberately, so a wrapper cannot hide behind its own `toString`.
+ *
+ * Two known limits, both stated in tests rather than left to be discovered:
+ *   - a BOUND wrapper (`window.fetch = mine.bind(x)`) also reports "[native code]", so it is missed.
+ *     Nothing in the platform separates the two.
+ *   - a POLYFILLED fetch reads as wrapped and IS reported — correctly, since a polyfill is a layer we
+ *     cannot see through, though it will look like a false positive to anyone triaging it.
+ *
+ * Both failure modes are safe: we under-report on the first and over-report on the second, and
+ * over-reporting a coverage caveat is the direction this library errs in everywhere else.
+ */
+function isNativeFetch(fn: typeof window.fetch): boolean {
+  try {
+    return Function.prototype.toString.call(fn).includes('native code');
+  } catch {
+    return false;
+  }
+}
+
+/** Wrappers this module installed, so a re-install does not report itself as a foreign wrapper. */
+const OURS = new WeakSet<typeof window.fetch>();
+
 export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown {
   const captureBodies = opts.captureBodies === true;
   // Keep the true original for teardown identity, plus a window-bound copy to invoke
   // (fetch throws "Illegal invocation" if called with the wrong `this`).
   const origFetch = window.fetch;
   const callFetch = origFetch.bind(window);
+
+  // Declare it if we are not the first to wrap fetch.
+  //
+  // Wrappers chain outermost-first, and we record `init.body` when OUR wrapper runs — so anything
+  // installed EARLIER sits below us and mutates the request after we have read it. That is a real
+  // blind spot (an auth/analytics interceptor started before connect(), a polyfill, a service worker
+  // is worse still) and it is not fixable from in here: there is no "patch last" primitive, and
+  // racing for outermost loses to whatever loads after us.
+  //
+  // So it is reported rather than hidden, on the same contract as the cross-origin-iframe sensor —
+  // say what we cannot see, so a green verdict never implies we saw it. `isOurs` keeps a re-install
+  // from blaming the app for our own wrapper.
+  if (!isNativeFetch(origFetch) && !OURS.has(origFetch)) {
+    emit(EventType.BLIND_SPOT, { kind: BlindSpotKind.WRAPPED_NETWORK, count: 1 });
+  }
 
   // Correlation id so a NET_PENDING (emitted at request START) can be matched to its
   // NET_REQUEST completion. A request that never completes leaves an unmatched NET_PENDING —
@@ -262,36 +249,78 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     const id = nextId();
     const start = performance.now();
     const method = methodOf(input, init);
-    const url = redactUrl(urlOf(input));
-    emit(EventType.NET_PENDING, { id, method, url, initiator: 'fetch' });
+    const rawUrl = urlOf(input);
+    const url = redactUrl(rawUrl);
+    const initiatorStack = initiatorFrame();
+    const initiatorFields = initiatorStack === undefined ? {} : { initiatorStack };
+    emit(EventType.NET_PENDING, { id, method, url, initiator: 'fetch', ...initiatorFields });
     try {
       const res = await callFetch(input, init);
+      // The app's fetch resolves HERE — at headers — like a native fetch. durationMs is measured to
+      // headers-received, so it stays honest whether or not we read the body.
+      const headersAt = performance.now();
       const contentType = res.headers.get('content-type');
-      // Read a CLONE so the app's response stream stays untouched. Dev-only opt-in; only text-like
-      // bodies; a read failure never breaks the observation.
-      let responseBodyFields: Record<string, unknown> = {};
+      const emitRequest = (responseBodyFields: Record<string, unknown>): void => {
+        emit(EventType.NET_REQUEST, {
+          id,
+          method,
+          url,
+          status: res.status,
+          ok: res.ok,
+          durationMs: Math.round(headersAt - start),
+          initiator: 'fetch',
+          ...initiatorFields,
+          ...resourceTiming(rawUrl),
+          ...netResponseMeta(res.statusText, contentType, res.headers.get('content-length')),
+          ...projectRequestBody(init?.body, captureBodies),
+          ...responseBodyFields,
+        });
+      };
       if (captureBodies && isCapturableType(contentType)) {
+        // ONLY the body read can make the app wait (a chunked response with no content-length can be
+        // arbitrarily long). Clone synchronously so the app's stream is untouched, then read + emit from
+        // a DETACHED promise — the app already has res, so our bounded read is invisible to it. Without
+        // body capture (the DEFAULT) we emit synchronously below, exactly as before: no latency, no
+        // deferral, NET_REQUEST in order.
+        //
+        // Tradeoff, opt-in path only: under captureBodies the NET_REQUEST for THIS call lands after the
+        // bounded body read (≤ the deadline), so it can arrive out of order vs a later request's
+        // NET_PENDING, and a BARE `assert { net, count }` fired the instant the app's fetch resolves may
+        // see the count not-yet-incremented. Use `wait_for` for count/settle assertions when body
+        // capture is on (it already polls until the event lands). The default path has neither caveat.
+        let clone: Response | undefined;
         try {
-          const { body, truncated } = projectBody(await res.clone().text(), contentType);
-          responseBodyFields = truncated
-            ? { responseBody: body, responseBodyTruncated: true }
-            : { responseBody: body };
+          clone = res.clone();
         } catch {
-          /* body not readable (already locked/consumed) — skip, keep the envelope */
+          /* already consumed/locked — emit the envelope with no body */
         }
+        // The whole IIFE is guarded: emit is the SDK's already-try/catch'd sink today, but a detached
+        // promise must never be able to surface an unhandledrejection into the host page even if a
+        // future caller passes a throwing emit. A body we can't read is simply dropped.
+        void (async () => {
+          let responseBodyFields: Record<string, unknown> = {};
+          if (clone !== undefined) {
+            try {
+              const text = await withBodyDeadline(clone.text());
+              if (text !== undefined) {
+                const { body, truncated } = projectBody(text, contentType);
+                responseBodyFields = truncated
+                  ? { responseBody: body, responseBodyTruncated: true }
+                  : { responseBody: body };
+              }
+            } catch {
+              /* body not readable — skip, keep the envelope */
+            }
+          }
+          try {
+            emitRequest(responseBodyFields);
+          } catch {
+            /* observation is best-effort; never reject into the page */
+          }
+        })().catch(() => undefined);
+      } else {
+        emitRequest({});
       }
-      emit(EventType.NET_REQUEST, {
-        id,
-        method,
-        url,
-        status: res.status,
-        ok: res.ok,
-        durationMs: Math.round(performance.now() - start),
-        initiator: 'fetch',
-        ...netResponseMeta(res.statusText, contentType, res.headers.get('content-length')),
-        ...projectRequestBody(init?.body, captureBodies),
-        ...responseBodyFields,
-      });
       return res;
     } catch (error) {
       emit(EventType.NET_REQUEST, {
@@ -303,17 +332,19 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
         error: error instanceof Error ? error.message : String(error),
         durationMs: Math.round(performance.now() - start),
         initiator: 'fetch',
+        ...initiatorFields,
       });
       throw error;
     }
   };
+  // Remember it, so a later install recognises our own wrapper instead of reporting the app.
+  OURS.add(window.fetch);
+  const patchedFetch = window.fetch;
 
   const meta = new WeakMap<XMLHttpRequest, XhrMeta>();
   const proto = XMLHttpRequest.prototype;
-  /* eslint-disable @typescript-eslint/unbound-method -- captured to re-invoke via .call(this) */
-  const origOpen = proto.open;
-  const origSend = proto.send;
-  /* eslint-enable @typescript-eslint/unbound-method */
+  const origOpen = captureMethod(proto, 'open');
+  const origSend = captureMethod(proto, 'send');
   const callOpen = origOpen as (this: XMLHttpRequest, ...args: unknown[]) => void;
 
   proto.open = function (
@@ -326,13 +357,15 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
       id: nextId(),
       method: method.toUpperCase(),
       url: redactUrl(String(url)),
+      rawUrl: String(url),
       start: 0,
     });
     callOpen.call(this, method, url, ...rest);
   };
+  const patchedOpen = captureMethod(proto, 'open');
 
-  // A reused XHR calls send() repeatedly; attach the completion listener ONCE per instance and read the
-  // request identity from `meta` at fire time. Adding a fresh closure each send() would leave stale
+  // A reused XHR calls send repeatedly; attach the completion listener ONCE per instance and read the
+  // request identity from `meta` at fire time. Adding a fresh closure each send would leave stale
   // listeners that re-fire on later completions, emitting duplicate, mislabeled events.
   const listenerAttached = new WeakSet<XMLHttpRequest>();
   proto.send = function (
@@ -343,7 +376,16 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     if (m !== undefined) {
       m.start = performance.now();
       m.reqBody = body ?? null;
-      emit(EventType.NET_PENDING, { id: m.id, method: m.method, url: m.url, initiator: 'xhr' });
+      m.initiatorStack = initiatorFrame(); // the app's xhr.send call site
+      const initiatorFields =
+        m.initiatorStack === undefined ? {} : { initiatorStack: m.initiatorStack };
+      emit(EventType.NET_PENDING, {
+        id: m.id,
+        method: m.method,
+        url: m.url,
+        initiator: 'xhr',
+        ...initiatorFields,
+      });
       if (!listenerAttached.has(this)) {
         listenerAttached.add(this);
         this.addEventListener('loadend', () => {
@@ -371,6 +413,8 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
             ok: this.status >= 200 && this.status < 400,
             durationMs: Math.round(performance.now() - cur.start),
             initiator: 'xhr',
+            ...(cur.initiatorStack === undefined ? {} : { initiatorStack: cur.initiatorStack }),
+            ...resourceTiming(cur.rawUrl),
             ...netResponseMeta(
               this.statusText,
               xhrContentType,
@@ -384,60 +428,130 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     }
     origSend.call(this, body ?? null);
   };
+  const patchedSend = captureMethod(proto, 'send');
 
   // SSE + WebSocket frame capture — gated behind body capture, since a chatty stream is the
   // high-volume case. Subclass the native constructors so the app's own usage is unchanged.
   const origEventSource = window.EventSource;
   const origWebSocket = window.WebSocket;
+  let patchedEventSource: typeof window.EventSource | undefined;
+  let patchedWebSocket: typeof window.WebSocket | undefined;
   if (captureBodies && typeof origEventSource === 'function') {
     window.EventSource = class extends origEventSource {
       constructor(u: string | URL, init?: EventSourceInit) {
         super(u, init);
         const url = redactUrl(String(u));
-        emit(EventType.NET_STREAM, { transport: 'sse', direction: 'open', url });
+        emit(EventType.NET_STREAM, {
+          transport: StreamTransport.SSE,
+          direction: StreamDirection.OPEN,
+          url,
+        });
         this.addEventListener('message', (ev: MessageEvent) => {
           emit(EventType.NET_STREAM, {
-            transport: 'sse',
-            direction: 'in',
+            transport: StreamTransport.SSE,
+            direction: StreamDirection.IN,
             url,
             ...frameFields(ev.data, captureBodies),
           });
         });
       }
     };
+    patchedEventSource = window.EventSource;
   }
   if (captureBodies && typeof origWebSocket === 'function') {
     window.WebSocket = class extends origWebSocket {
+      /** Reticle's own bridge socket is never observed — see isBridgeSocket. */
+      readonly #isBridge: boolean;
       constructor(u: string | URL, protocols?: string | string[]) {
         super(u, protocols);
+        this.#isBridge = isBridgeSocket(String(u));
+        if (this.#isBridge) return;
         const url = redactUrl(String(u));
-        emit(EventType.NET_STREAM, { transport: 'ws', direction: 'open', url });
+        emit(EventType.NET_STREAM, {
+          transport: StreamTransport.WS,
+          direction: StreamDirection.OPEN,
+          url,
+        });
         this.addEventListener('message', (ev: MessageEvent) => {
           emit(EventType.NET_STREAM, {
-            transport: 'ws',
-            direction: 'in',
+            transport: StreamTransport.WS,
+            direction: StreamDirection.IN,
             url,
             ...frameFields(ev.data, captureBodies),
           });
         });
       }
       send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
+        if (this.#isBridge) {
+          super.send(data);
+          return;
+        }
         emit(EventType.NET_STREAM, {
-          transport: 'ws',
-          direction: 'out',
+          transport: StreamTransport.WS,
+          direction: StreamDirection.OUT,
           url: redactUrl(this.url),
           ...frameFields(data, captureBodies),
         });
         super.send(data);
       }
     };
+    patchedWebSocket = window.WebSocket;
+  }
+
+  // navigator.sendBeacon — fire-and-forget analytics/telemetry, invisible to fetch/XHR wrapping. A page
+  // that beacons a "checkout completed" event should show it. Patch the instance's prototype (via
+  // getPrototypeOf, robust whether or not the Navigator global exists); the descriptor read avoids an
+  // unbound-method access; the send is synchronous so we emit one completed NET_REQUEST with its result.
+  const navProto = (
+    typeof navigator !== 'undefined' ? Object.getPrototypeOf(navigator) : null
+  ) as Navigator | null;
+  const origBeacon = (
+    navProto === null ? undefined : Object.getOwnPropertyDescriptor(navProto, 'sendBeacon')?.value
+  ) as BeaconFn | undefined;
+  let patchedBeacon: BeaconFn | undefined;
+  if (navProto !== null && origBeacon !== undefined) {
+    patchedBeacon = function (this: Navigator, url: string | URL, data?: BodyInit | null): boolean {
+      const id = nextId();
+      const redacted = redactUrl(String(url));
+      const initiatorStack = initiatorFrame();
+      const sent = origBeacon.call(this, url, data);
+      // sendBeacon returns whether the payload was QUEUED, not an HTTP result — the response never
+      // surfaces to JS. Fabricating status 200 lied to an agent asserting on status. Report status 0
+      // (no HTTP response observed) and carry the real signal in `queued`.
+      emit(EventType.NET_REQUEST, {
+        id,
+        method: 'POST',
+        url: redacted,
+        status: 0,
+        ok: sent,
+        queued: sent,
+        durationMs: 0,
+        initiator: 'beacon',
+        ...(initiatorStack === undefined ? {} : { initiatorStack }),
+      });
+      return sent;
+    };
+    navProto.sendBeacon = patchedBeacon;
   }
 
   return () => {
-    window.fetch = origFetch;
-    proto.open = origOpen;
-    proto.send = origSend;
-    window.EventSource = origEventSource;
-    window.WebSocket = origWebSocket;
+    // Restore each slot ONLY if it still holds OUR wrapper. Between connect() and disconnect() the app
+    // (or Sentry/analytics/a router) may have wrapped fetch/XHR/EventSource/WebSocket/sendBeacon ON TOP
+    // of ours; blindly writing the original back would silently uninstall their instrumentation — the
+    // dev-only SDK breaking the app it only meant to observe.
+    if (window.fetch === patchedFetch) window.fetch = origFetch;
+    if (captureMethod(proto, 'open') === patchedOpen) proto.open = origOpen;
+    if (captureMethod(proto, 'send') === patchedSend) proto.send = origSend;
+    if (patchedEventSource !== undefined && window.EventSource === patchedEventSource) {
+      window.EventSource = origEventSource;
+    }
+    if (patchedWebSocket !== undefined && window.WebSocket === patchedWebSocket) {
+      window.WebSocket = origWebSocket;
+    }
+    if (navProto !== null && origBeacon !== undefined && navProto.sendBeacon === patchedBeacon) {
+      navProto.sendBeacon = origBeacon;
+    }
   };
 }
+
+type BeaconFn = (this: Navigator, url: string | URL, data?: BodyInit | null) => boolean;

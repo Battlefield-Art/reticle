@@ -1,10 +1,11 @@
 /**
  * Read / record / replay tools — baselines + diff, recordings + replay, narrate, clock, state,
- * explore. Split out of tools.ts; assembled back via ...READ_TOOLS.
+ * explore. Split out of tools.ts; assembled back via...READ_TOOLS.
  */
 import { z } from 'zod';
 import { EventType, ReticleCommand, REPLAY_PROGRAM_VERSION, SnapshotMode } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
+import { proposeConsequences } from '../oracles/propose-consequences.js';
 import type { CompiledProgram } from '../flows/recordings.js';
 import { replayProgram } from '../flows/replay.js';
 import { diffLines } from '../project/baselines.js';
@@ -129,6 +130,12 @@ export const READ_TOOLS: ToolDef[] = [
       recordingName: z.string(),
       program: z.unknown(),
       warning: z.string().optional(),
+      proposedConsequences: z
+        .array(z.unknown())
+        .optional()
+        .describe(
+          'Ranked mustHold proposals derived from the recorded window (signal > net/state/route > presence, weak flagged) — accept one as a flow success/until to turn the recording into a real oracle.',
+        ),
     },
     handler: (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -144,6 +151,8 @@ export const READ_TOOLS: ToolDef[] = [
       deps.recordings.saveCompiled(program);
       const unstable = rec.steps.filter((s) => !s.stable).length;
       const report = buildReactionReport(events, session.elapsed() - rec.cursor);
+      // Self-generating oracles: propose ranked mustHold from what the recorded window actually did.
+      const proposedConsequences = proposeConsequences(events);
       return Promise.resolve({
         recordingName: name,
         program,
@@ -152,6 +161,7 @@ export const READ_TOOLS: ToolDef[] = [
               warning: `${String(unstable)} step(s) not bound to a testid; replay may be brittle (in-session only)`,
             }
           : {}),
+        ...(proposedConsequences.length > 0 ? { proposedConsequences } : {}),
         ...report,
         cost: costHint(report, events.length),
       });
@@ -294,6 +304,19 @@ export const READ_TOOLS: ToolDef[] = [
       component: z
         .object({ ok: z.boolean(), reason: z.string().optional(), state: z.unknown().optional() })
         .optional(),
+      // Truncation report — present ONLY when a transport cap trimmed the value. Declared so a
+      // schema-strict client on the `full` profile KEEPS it: this is a false-green GUARD, and dropping
+      // it would hand back a partial store with no marker, which is the exact silent truncation the
+      // report exists to prevent (re-introduced for structuredContent consumers if it is not here).
+      truncation: z
+        .object({
+          droppedItems: z.number(),
+          truncatedValues: z.number(),
+          note: z.string(),
+        })
+        .partial()
+        .optional()
+        .describe('Present only when a cap trimmed the value — the read is NOT the whole store.'),
     },
     handler: async (deps, args) => {
       const store = asString(args['store']);
@@ -370,6 +393,12 @@ export const READ_TOOLS: ToolDef[] = [
       consoleErrors: z.number(),
       hint: z.string(),
       buffer: z.unknown().optional(),
+      truncated: z
+        .boolean()
+        .optional()
+        .describe(
+          'True when the page exceeded the snapshot cap, so `interactive` is a document-order PREFIX — a floor on the controls that exist, not a total. Narrow with `scope` to reach the rest.',
+        ),
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -378,7 +407,7 @@ export const READ_TOOLS: ToolDef[] = [
         scope: args['scope'],
       });
       if (!result.ok) throw new Error(result.error ?? 'snapshot failed');
-      const snap = (result.result ?? {}) as { tree?: string };
+      const snap = (result.result ?? {}) as { tree?: string; truncated?: boolean };
       const consoleErrors = session
         .eventsSince(0)
         .filter(
@@ -386,6 +415,10 @@ export const READ_TOOLS: ToolDef[] = [
         ).length;
       return {
         interactive: parseInteractive(snap.tree ?? ''),
+        // The walk stops at its node cap and returns a document-order prefix, so an inventory taken
+        // from a big page is a floor, not a census — and this is the tool crawl's description points
+        // agents at first for "a non-destructive list of what is here".
+        ...(snap.truncated === true ? { truncated: true } : {}),
         consoleErrors,
         hint: 'act on each ref, observe the reaction, and report failed requests / console errors / dead controls',
         // Buffer-honesty: the console-error count spans the whole buffer, which evicts — signal it.

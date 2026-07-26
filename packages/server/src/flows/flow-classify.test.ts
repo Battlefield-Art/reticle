@@ -73,7 +73,7 @@ describe('classifyFlowAssertions', () => {
   });
 });
 
-/** flow() variant that also declares a business intent. */
+/** flow variant that also declares a business intent. */
 function intentFlow(steps: FlowStep[], intent: string, success?: FlowExpect): FlowFile {
   return { ...flow(steps, success), intent };
 }

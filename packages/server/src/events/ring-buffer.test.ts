@@ -31,6 +31,16 @@ describe('RingBuffer', () => {
     expect(buf.bufferHealth().dropped).toBe(1);
   });
 
+  it('keeps a single event that alone exceeds maxBytes (never self-evicts the sole survivor)', () => {
+    // The bug: an event bigger than the whole byte budget was pushed, then immediately evicted by byte
+    // pressure — so a waiter for it never saw it and only `dropped` moved. Bytes is a soft cap; the last
+    // event must survive.
+    const buf = new RingBuffer({ maxAgeMs: 1_000_000, maxEvents: 100, maxBytes: 50 });
+    buf.push({ ...ev(1), data: { text: 'x'.repeat(500) } }, 1); // one event, way over the 50-byte cap
+    expect(buf.since(0).map((e) => e.t)).toEqual([1]);
+    expect(buf.bufferHealth().dropped).toBe(0);
+  });
+
   it('bulk age-eviction drops all expired events in one pass with correct counts', () => {
     const buf = new RingBuffer({ maxAgeMs: 100, maxEvents: 1000 });
     for (let t = 0; t < 50; t += 1) buf.push(ev(t), t); // 50 events at t=0..49
@@ -62,5 +72,45 @@ describe('RingBuffer', () => {
     [10, 20, 30, 40].forEach((t) => buf.push(ev(t), t));
     expect(buf.since(25).map((e) => e.t)).toEqual([30, 40]);
     expect(buf.window(15, 40).map((e) => e.t)).toEqual([30, 40]); // now=40, from=25
+  });
+});
+
+describe('priority-aware eviction (churn must not evict scarce evidence)', () => {
+  const ev = (type: EventType, t: number, data: Record<string, unknown> = {}): ReticleEvent => ({
+    t,
+    type,
+    sessionId: 's',
+    data,
+  });
+
+  it('a DOM/animation flood does NOT evict a failed request or a console error', () => {
+    // The hostile-page case: a chat/ticker region churns thousands of low-signal events. Under a plain
+    // FIFO cap the one failed request scrolls out of the buffer and the verdict goes blind.
+    const buf = new RingBuffer({ maxEvents: 50 });
+    buf.push(ev(EventType.NET_REQUEST, 1, { url: '/api/save', status: 500, ok: false }), 1);
+    buf.push(ev(EventType.CONSOLE_ERROR, 2, { message: 'boom' }), 2);
+    for (let i = 0; i < 500; i++)
+      buf.push(ev(EventType.DOM_TEXT, 3 + i, { text: String(i) }), 3 + i);
+
+    const live = buf.since(0);
+    expect(live.some((e) => e.type === EventType.NET_REQUEST)).toBe(true);
+    expect(live.some((e) => e.type === EventType.CONSOLE_ERROR)).toBe(true);
+    expect(live.length).toBeLessThanOrEqual(50);
+  });
+
+  it('still evicts when the buffer is full of high-signal events (no unbounded growth)', () => {
+    const buf = new RingBuffer({ maxEvents: 10 });
+    for (let i = 0; i < 100; i++) buf.push(ev(EventType.SIGNAL, i, { name: `s${String(i)}` }), i);
+    expect(buf.since(0).length).toBeLessThanOrEqual(10);
+    expect(buf.bufferHealth().dropped).toBeGreaterThan(0);
+  });
+
+  it('keeps events time-ordered after a churn eviction (since/window stay correct)', () => {
+    const buf = new RingBuffer({ maxEvents: 20 });
+    buf.push(ev(EventType.NET_REQUEST, 1, { status: 500 }), 1);
+    for (let i = 0; i < 100; i++) buf.push(ev(EventType.DOM_TEXT, 2 + i), 2 + i);
+    const live = buf.since(0);
+    const times = live.map((e) => e.t);
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
   });
 });

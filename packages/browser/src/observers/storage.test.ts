@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { readStorage, type StorageSnapshot } from './storage.js';
+import { installStorage, readStorage, type StorageSnapshot } from './storage.js';
 
 describe('readStorage', () => {
   beforeEach(() => {
@@ -55,6 +55,42 @@ describe('readStorage', () => {
       expect(snap).toHaveProperty('cookies');
     } finally {
       if (realLocal) Object.defineProperty(window, 'localStorage', realLocal);
+    }
+  });
+});
+
+/**
+ * A throwing observation must never escape into the app.
+ *
+ * The patched `setItem` builds its payload INSIDE the app's call stack — reading the old value,
+ * resolving the area, redacting. Guarding only the transport hop left all of that exposed, so a throw
+ * there surfaced as an exception from `localStorage.setItem` AFTER the write had already succeeded.
+ * The app sees a failure that did not happen, caused entirely by the observability SDK.
+ */
+describe('a failing observation cannot break the host app', () => {
+  it('setItem still succeeds and still writes when emit throws', () => {
+    const teardown = installStorage(() => {
+      throw new Error('observer blew up');
+    });
+    try {
+      expect(() => localStorage.setItem('k', 'v')).not.toThrow();
+      expect(localStorage.getItem('k')).toBe('v');
+    } finally {
+      teardown();
+      localStorage.removeItem('k');
+    }
+  });
+
+  it('removeItem still succeeds and still removes when emit throws', () => {
+    localStorage.setItem('gone', 'x');
+    const teardown = installStorage(() => {
+      throw new Error('observer blew up');
+    });
+    try {
+      expect(() => localStorage.removeItem('gone')).not.toThrow();
+      expect(localStorage.getItem('gone')).toBeNull();
+    } finally {
+      teardown();
     }
   });
 });

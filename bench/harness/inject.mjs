@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // One source of truth for the fixture app the benches boot (bench-all.mjs boots @reticlehq/bench-app).
-// The views moved here from apps/demo; keep this in sync with bench-all's fixture so the injector and
-// the runner never target different apps again.
+// Keep this in sync with bench-all's fixture so the injector and the runner never target different
+// apps again.
 const FIXTURE_APP = `${ROOT}/apps/bench-app`;
 const F = {
   store: `${FIXTURE_APP}/src/store/store.ts`,
@@ -36,12 +36,14 @@ const REGRESSIONS = {
   'signal-contract-violation': {
     files: [F.store],
     apply() {
-      // Drop the NAV_CHANGED domain signal: the view still switches (DOM correct), but the
-      // event contract is silently broken — invisible to DOM/network/console tools.
+      // Emit the WRONG domain signal on navigation (plausible copy-paste bug): the view still switches
+      // (DOM correct) and A signal fires, but NAV_CHANGED specifically never does — the contract is
+      // silently broken, invisible to DOM/network/console. Comment-free so source-reading can't cheat:
+      // the marker is real-looking code, not a self-label.
       replaceOnce(
         F.store,
         '    emit(Sig.NAV_CHANGED, { view });',
-        '    /* NAV_CHANGED signal dropped (regression) — view still switches */',
+        '    emit(Sig.FILTER_CHANGED, { view });',
       );
     },
   },
@@ -70,11 +72,13 @@ const REGRESSIONS = {
   'broken-form-validation': {
     files: [F.modal],
     apply() {
-      // Empty service no longer blocked: guard removed + submit enabled.
+      // Empty service no longer blocked: the guard checks the raw (un-trimmed) length so a whitespace
+      // or empty-after-trim service slips through, and submit is enabled. Comment-free (an off-by-a-
+      // method bug), so source-reading gets no self-labeled giveaway.
       replaceOnce(
         F.modal,
         '    if (service.trim().length === 0) return;\n',
-        '    /* validation guard removed (regression) */\n',
+        '    if (service.length === -1) return;\n',
       );
       replaceOnce(F.modal, 'disabled={service.trim().length === 0}', 'disabled={false}');
     },
@@ -82,11 +86,13 @@ const REGRESSIONS = {
   'cross-component-regression': {
     files: [F.store],
     apply() {
-      // Filter input (component A) silently stops affecting the deploy table (component B).
+      // Filter input (component A) silently stops affecting the deploy table (component B): the setter
+      // re-assigns the current filter and drops the incoming patch. Comment-free (a plausible no-op
+      // bug), so source-reading gets no giveaway — the marker is real-looking code, not a self-label.
       replaceOnce(
         F.store,
         '    set({ filter: { ...get().filter, ...patch } });',
-        '    set({ filter: { ...get().filter } }); /* patch dropped (regression) */',
+        '    set({ filter: get().filter });',
       );
     },
   },
@@ -114,8 +120,34 @@ const REGRESSIONS = {
   },
 };
 
+// The unique marker string each regression injects. A bug is FIXED iff its marker is gone from its
+// files — sound for any fix (revert or rewrite), since removing the buggy code is necessary to fix it.
+// Used by the fix-loop ablation's deterministic re-check (bench/fix-loop).
+export const INJECTION_SIGNATURES = {
+  'silent-dom-regression': ['kpis.slice(0, -1)'],
+  'signal-contract-violation': ['emit(Sig.FILTER_CHANGED, { view })'],
+  'route-transition-break': ["view === 'compose' ? get().view : view"],
+  'missing-modal': ['set({ newDeployOpen: false })'],
+  'broken-form-validation': ['if (service.length === -1) return;', 'disabled={false}'],
+  'cross-component-regression': ['set({ filter: get().filter })'],
+  'layout-shift': ["gridTemplateColumns: '1fr 1fr 1fr'"],
+  'network-timeout': ['fault-timeout'],
+};
+
 export function listRegressions() {
   return Object.keys(REGRESSIONS);
+}
+
+/** The marker strings for a regression (empty if none registered — that bug isn't fix-loop-checkable). */
+export function signaturesOf(id) {
+  return INJECTION_SIGNATURES[id] ?? [];
+}
+
+/** The source files a regression touches. */
+export function filesOf(id) {
+  const r = REGRESSIONS[id];
+  if (!r) throw new Error(`unknown regression ${id}`);
+  return r.files;
 }
 
 export function inject(id) {

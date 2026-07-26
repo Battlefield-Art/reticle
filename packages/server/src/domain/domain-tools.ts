@@ -3,6 +3,8 @@ import type { FlowFile } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import { readContract } from '../project/reticle-dir.js';
 import { buildDomainModel } from './domain-model.js';
+import { proposeInstrumentation } from '../oracles/self-instrument.js';
+import { instrumentationGapsForFlows } from '../oracles/flow-instrument-gaps.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 
 /**
@@ -57,6 +59,12 @@ export const DOMAIN_TOOLS: ToolDef[] = [
           'Flow names worst-risk first (run history + assertion quality). Test these first.',
         ),
       summary: z.string(),
+      instrumentation: z
+        .array(z.unknown())
+        .optional()
+        .describe(
+          'Ready-to-apply instrumentation proposals for gaps that have a source location — { file, line, insert, rationale }. Apply, re-verify, and the app’s observability compounds.',
+        ),
     },
     handler: async (deps: ToolDeps) => {
       const names = await deps.flows.list();
@@ -68,7 +76,13 @@ export const DOMAIN_TOOLS: ToolDef[] = [
       const contract = await readContract(deps.fs, deps.reticleRoot);
       const project = await deps.project.read();
       const runs = project.ok ? project.file.runs : [];
-      return buildDomainModel(flows, contract.ok ? contract.capabilities : null, runs);
+      const model = buildDomainModel(flows, contract.ok ? contract.capabilities : null, runs);
+      // Self-instrumentation: turn located gaps (unasserted flows with a source stamp) into apply-ready diffs.
+      const stepsByName = new Map(flows.map((f) => [f.name, f.steps]));
+      const instrumentation = proposeInstrumentation(
+        instrumentationGapsForFlows(model.gaps.unassertedFlows, stepsByName),
+      );
+      return instrumentation.length > 0 ? { ...model, instrumentation } : model;
     },
   },
 ];

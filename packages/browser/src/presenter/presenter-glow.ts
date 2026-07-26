@@ -74,7 +74,7 @@ export class GlowController {
 
   /**
    * Record agent activity. Idempotent while busy — only the first activity from idle/fading flips the
-   * glow on (no strobe). `ms` lets log() read the clock exactly once per row.
+   * glow on (no strobe). `ms` lets log read the clock exactly once per row.
    */
   markActivity(ms: number = this.#now()): void {
     this.#lastActivityMs = ms;

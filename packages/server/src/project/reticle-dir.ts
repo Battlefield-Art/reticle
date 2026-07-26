@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import type { FlowName, SessionId } from '@reticlehq/core';
 import {
   CONTRACT_FILE_VERSION,
   ContractFileSchema,
@@ -11,22 +12,34 @@ import {
 } from '@reticlehq/core';
 import type { FileSystemPort } from './fs-port.js';
 
-/** Resolved absolute paths inside a `.reticle/` root. Pure: join() only, no IO, no cwd. */
+/** Resolved absolute paths inside a `.reticle/` root. Pure: join only, no IO, no cwd. */
 export interface ReticleDirPaths {
-  /** .../.reticle */
+  /**.../.reticle */
   root: string;
-  /** .../.reticle/contract.json */
+  /**.../.reticle/contract.json */
   contract: string;
-  /** .../.reticle/flows */
+  /**.../.reticle/flows */
   flows: string;
-  /** .../.reticle/baselines */
+  /**.../.reticle/baselines */
   baselines: string;
-  /** .../.reticle/project.json (cross-run outcome memory) */
+  /**.../.reticle/project.json (cross-run outcome memory) */
   project: string;
-  /** .../.reticle/visual (PNG baselines + diffs) */
+  /**.../.reticle/visual (PNG baselines + diffs) */
   visual: string;
-  /** .../.reticle/runs (verification-run artifacts) */
+  /**.../.reticle/runs (verification-run artifacts) */
   runs: string;
+  /**.../.reticle/sessions (durable causal journal, one dir per session) */
+  sessions: string;
+  /**.../.reticle/envelopes.json (learned per-route expected envelopes) */
+  envelopes: string;
+  /**.../.reticle/ambient.json (learned ambient-churn region map) */
+  ambient: string;
+  /** .../.reticle/capsules (fail-to-pass bug capsules) */
+  capsules: string;
+  /**.../.reticle/flake.json (per-flow flake ledger) */
+  flake: string;
+  /**.../.reticle/assertion-tiers.json (last-passing assertion tiers; anti-reward-hacking baseline) */
+  tiers: string;
 }
 
 export function reticleDirPaths(root: string): ReticleDirPaths {
@@ -38,12 +51,42 @@ export function reticleDirPaths(root: string): ReticleDirPaths {
     project: join(root, ReticleDir.PROJECT_FILE),
     visual: join(root, ReticleDir.VISUAL_SUBDIR),
     runs: join(root, ReticleDir.RUNS_SUBDIR),
+    sessions: join(root, ReticleDir.SESSIONS_SUBDIR),
+    envelopes: join(root, ReticleDir.ENVELOPES_FILE),
+    ambient: join(root, ReticleDir.AMBIENT_FILE),
+    capsules: join(root, ReticleDir.CAPSULES_SUBDIR),
+    flake: join(root, ReticleDir.FLAKE_FILE),
+    tiers: join(root, ReticleDir.TIERS_FILE),
   };
 }
 
-/** The verification-run artifact path for `runId` (.reticle/runs/<runId>.json). */
+/** The verification-run artifact path for `runId`.reticle/runs/<runId>.json). */
 export function runPath(root: string, runId: string): string {
   return join(root, ReticleDir.RUNS_SUBDIR, `${runId}.json`);
+}
+
+/** The journal directory for `sessionId` (.reticle/sessions/<id>). Guard the id first. */
+export function sessionDirPath(root: string, sessionId: string): string {
+  return join(root, ReticleDir.SESSIONS_SUBDIR, sessionId);
+}
+
+/** The append-only event ledger path for a session (.reticle/sessions/<id>/events.jsonl). */
+export function journalEventsPath(root: string, sessionId: string): string {
+  return join(sessionDirPath(root, sessionId), ReticleDir.JOURNAL_EVENTS_FILE);
+}
+
+/** The append-only action ledger path for a session (.reticle/sessions/<id>/actions.jsonl). */
+export function journalActionsPath(root: string, sessionId: string): string {
+  return join(sessionDirPath(root, sessionId), ReticleDir.JOURNAL_ACTIONS_FILE);
+}
+
+/**
+ * A sessionId must be a single safe path segment before it is joined into a disk path — same guard as
+ * run/flow ids (rejects '../', slashes, absolute, dotfiles). Session labels are user/tab-supplied, so
+ * this guard runs before any journal write.
+ */
+export function isValidSessionId(sessionId: string): sessionId is SessionId {
+  return FLOW_NAME_PATTERN.test(sessionId) && !sessionId.includes('..');
 }
 
 /**
@@ -54,12 +97,12 @@ export function isValidRunId(runId: string): runId is RunId {
   return FLOW_NAME_PATTERN.test(runId) && !runId.includes('..');
 }
 
-/** The PNG baseline path for `name` (.reticle/visual/<name>.png). */
+/** The PNG baseline path for `name`.reticle/visual/<name>.png). */
 export function visualPath(root: string, name: string): string {
   return join(root, ReticleDir.VISUAL_SUBDIR, `${name}.png`);
 }
 
-/** The overlay-diff PNG path for `name` (.reticle/visual/<name>.diff.png). */
+/** The overlay-diff PNG path for `name`.reticle/visual/<name>.diff.png). */
 export function visualDiffPath(root: string, name: string): string {
   return join(root, ReticleDir.VISUAL_SUBDIR, `${name}.diff.png`);
 }
@@ -70,7 +113,7 @@ export function visualDiffPath(root: string, name: string): string {
  * apps' flows of the same name; without one it's the flat legacy path (`.reticle/flows/<name>.json`),
  * which is also where pre-existing (untagged) flows stay. Callers pass ONLY a validated projectId.
  */
-export function flowPath(root: string, name: string, projectId?: string): string {
+export function flowPath(root: string, name: FlowName, projectId?: string): string {
   const flowsDir = join(root, ReticleDir.FLOWS_SUBDIR);
   return projectId === undefined
     ? join(flowsDir, `${name}.json`)
@@ -87,7 +130,7 @@ export function flowDir(root: string, projectId?: string): string {
  * A flow name must be a single safe path segment — rejects '../', '/', '\\', absolute, dotfiles.
  * Guards every disk op before a path is ever joined, so a traversal name never escapes .reticle/.
  */
-export function isValidFlowName(name: string): boolean {
+export function isValidFlowName(name: string): name is FlowName {
   return FLOW_NAME_PATTERN.test(name) && !name.includes('..');
 }
 
@@ -95,7 +138,7 @@ export function baselinePath(root: string, name: string): string {
   return join(root, ReticleDir.BASELINES_SUBDIR, `${name}.json`);
 }
 
-/** Idempotent: creates .reticle/, .reticle/flows/, .reticle/baselines/ (recursive mkdir → safe to re-run). */
+/** Idempotent: creates .reticle/,.reticle/flows/,.reticle/baselines/ (recursive mkdir → safe to re-run). */
 export async function ensureReticleDir(fs: FileSystemPort, root: string): Promise<void> {
   const p = reticleDirPaths(root);
   await fs.mkdir(p.root);

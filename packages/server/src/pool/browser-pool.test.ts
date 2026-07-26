@@ -207,6 +207,48 @@ describe('BrowserPool', () => {
     expect(pool.activeCount()).toBe(1);
   });
 
+  it('does not resurrect a lease when the browser crashes DURING goto (occupancy stays consistent)', async () => {
+    // The race: onDisconnected fires (clearing #active, zeroing #occupied) while an in-flight acquire's
+    // goto is resolving. If that acquire then registered its lease, it would resurrect a dead entry with
+    // the slot count out of sync — drifting below #active.size and eventually exceeding the cap.
+    const browsers: FakeBrowser[] = [];
+    let crashDuringGoto = false;
+    const launch: Launcher = () => {
+      const b = new FakeBrowser();
+      const realNewContext = b.newContext.bind(b);
+      b.newContext = async (): Promise<PooledContext> => {
+        const c = await realNewContext();
+        const realNewPage = c.newPage.bind(c);
+        c.newPage = async (): Promise<PooledPage> => {
+          const p = await realNewPage();
+          const realGoto = p.goto.bind(p);
+          p.goto = (url: string): Promise<unknown> => {
+            if (crashDuringGoto) b.crash(); // the browser dies while we "navigate"
+            return realGoto(url);
+          };
+          return p;
+        };
+        return c;
+      };
+      browsers.push(b);
+      return Promise.resolve(b);
+    };
+    const pool = new BrowserPool(launch, { maxContexts: 2, genSessionId: counterIds() });
+
+    await pool.acquire('http://x/a'); // browser up, one live lease
+    crashDuringGoto = true;
+    await expect(pool.acquire('http://x/b')).rejects.toThrow(/crashed/);
+
+    // Crash reset occupancy to 0 and dropped the first lease; the failed acquire left no phantom entry.
+    expect(pool.activeCount()).toBe(0);
+
+    // Occupancy is not corrupted: a fresh acquire (relaunch) still succeeds within the cap.
+    crashDuringGoto = false;
+    const lease = await pool.acquire('http://x/c');
+    expect(lease.sessionId).toBeDefined();
+    expect(pool.activeCount()).toBe(1);
+  });
+
   it('sweepExpired reclaims a lease untouched past the TTL; touch keeps it alive', async () => {
     const { launch } = fakeLauncher();
     let clock = 1000;

@@ -8,7 +8,7 @@ import { ReticleDir, ReticleEnv } from '@reticlehq/core';
  * Auto-provisioned bridge pairing token. The daemon reads-or-creates a per-user secret at
  * ~/.reticle/pairing-token; the bridge then requires it, so a rogue localhost app (which, running in a
  * browser sandbox, cannot read the file) can no longer register/drive sessions just by being on a
- * loopback origin. The build plugins read the same file Node-side and inject it into connect(), so a
+ * loopback origin. The build plugins read the same file Node-side and inject it into connect, so a
  * legitimately-served app stays zero-config.
  */
 

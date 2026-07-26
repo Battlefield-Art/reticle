@@ -33,7 +33,7 @@ export interface ToolDeps {
   realInput?: RealInputProvider;
   /** injected filesystem seam (tests pass a fake/temp-dir adapter). */
   fs: FileSystemPort;
-  /** absolute .reticle path (index.ts computes cwd()/.reticle). */
+  /** absolute.reticle path (index.ts computes cwd/.reticle). */
   reticleRoot: string;
   /** injected clock for the contract's generatedAt stamp. */
   now: () => number;
@@ -73,13 +73,22 @@ export const sessionEnvelopeShape: z.ZodRawShape = {
   session_lease: z.unknown().optional(),
   session_age_warning: z.unknown().optional(),
   control: z.unknown().optional(),
+  // `warning` rides alongside `session` whenever the tab is THROTTLED (healthEnvelope splices both).
+  // It was declared on reticle_act's schema but nowhere else, so on a validating profile every other
+  // session-bound tool (observe, assert, wait_for, act_sequence, act_and_wait, snapshot, query, …)
+  // silently dropped it — a throttled tab, where drives can no-op, returned a healthy-looking result.
+  // That is exactly what invoke-tool.ts's health splice exists to prevent, so it belongs in the shared
+  // envelope, not per-tool.
+  warning: z.string().optional(),
 };
 
 /** Unwrap a browser command result or throw its error so the agent sees a clean failure. */
 export async function commandOrThrow(
   deps: ToolDeps,
   sessionId: string | undefined,
-  name: string,
+  // ReticleCommand, not string: the union already exists and every caller passes a member. Typed as
+  // `string` a sessionId/name swap compiled cleanly and failed at runtime with a stringly error.
+  name: ReticleCommand,
   args: Record<string, unknown>,
 ): Promise<unknown> {
   const session = deps.sessions.resolve(sessionId);

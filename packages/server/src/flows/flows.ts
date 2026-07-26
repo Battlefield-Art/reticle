@@ -1,3 +1,4 @@
+import { asFlowName, type FlowName } from '@reticlehq/core';
 import {
   AnchorKind,
   DEGRADED_ANCHOR_ROLE,
@@ -29,7 +30,7 @@ import { flowDir, flowPath, reticleDirPaths, isValidFlowName } from '../project/
 const safeProjectId = (projectId?: string): string | undefined =>
   projectId !== undefined && isValidFlowName(projectId) ? projectId : undefined;
 
-/** A monotonic clock injected for createdAt — never call Date.now() inside the store (rule 7). */
+/** A monotonic clock injected for createdAt — never call Date.now inside the store (rule 7). */
 export interface Clock {
   now(): number;
 }
@@ -51,23 +52,28 @@ function degradedAnchor(): FlowAnchor {
  * null when neither is present (caller falls back to degraded). The on-disk anchor carries the
  * component name + source location — re-resolvable by `reticle_query by:'component'` at replay.
  */
+/** The `source` location carried on a normalized step's args, or undefined if absent/malformed. */
+function sourceArg(
+  src: Record<string, unknown>,
+): { file: string; line: number; column?: number } | undefined {
+  const source = asRecord(src['source']);
+  const file = source['file'];
+  const line = source['line'];
+  if (typeof file !== 'string' || file.length === 0 || typeof line !== 'number') return undefined;
+  const out: { file: string; line: number; column?: number } = { file, line };
+  if (typeof source['column'] === 'number') out.column = source['column'];
+  return out;
+}
+
 function componentAnchor(src: Record<string, unknown>): FlowAnchor | null {
   const component = asString(src['component']);
-  const source = asRecord(src['source']);
-  const hasSource = typeof source['file'] === 'string' && typeof source['line'] === 'number';
-  if (component === undefined && !hasSource) return null;
+  const source = sourceArg(src);
+  if (component === undefined && source === undefined) return null;
   const anchor: Extract<FlowAnchor, { kind: typeof AnchorKind.COMPONENT }> = {
     kind: AnchorKind.COMPONENT,
   };
   if (component !== undefined) anchor.component = component;
-  if (hasSource) {
-    const out: { file: string; line: number; column?: number } = {
-      file: source['file'] as string,
-      line: source['line'] as number,
-    };
-    if (typeof source['column'] === 'number') out.column = source['column'];
-    anchor.source = out;
-  }
+  if (source !== undefined) anchor.source = source;
   return anchor;
 }
 
@@ -76,7 +82,13 @@ function anchorForStep(args: Record<string, unknown>): { anchor: FlowAnchor; deg
   const by = asString(args['by']);
   const value = asString(args['value']);
   if (by === QueryBy.TESTID && value !== undefined) {
-    return { anchor: { kind: AnchorKind.TESTID, value }, degraded: false };
+    const anchor: Extract<FlowAnchor, { kind: typeof AnchorKind.TESTID }> = {
+      kind: AnchorKind.TESTID,
+      value,
+    };
+    const source = sourceArg(args);
+    if (source !== undefined) anchor.source = source;
+    return { anchor, degraded: false };
   }
   if (by === QueryBy.COMPONENT) {
     const anchor = componentAnchor(args);
@@ -185,8 +197,8 @@ export class FlowStore {
   }
 
   /**
-   * The single byte-stable flow serializer: 2-space indent + one trailing newline. save(),
-   * saveFlow() and heal() all route through it so an unchanged flow that round-trips through any
+   * The single byte-stable flow serializer: 2-space indent + one trailing newline. save,
+   * saveFlow and heal all route through it so an unchanged flow that round-trips through any
    * of them produces byte-identical on-disk content (locked by the byte-stability tests).
    */
   #serialize(flow: FlowFile): string {
@@ -233,7 +245,7 @@ export class FlowStore {
   /**
    * Persist an already-anchored FlowFile captured in-page (no recompilation). The
    * browser resolved every semantic anchor at capture time; here we only validate the name +
-   * re-run FlowFileSchema before writing. save() is left untouched.
+   * re-run FlowFileSchema before writing. save is left untouched.
    */
   async saveFlow(flow: FlowFile, projectId?: string): Promise<FlowResult<SaveSummary>> {
     if (!isValidFlowName(flow.name)) return { ok: false, code: FlowErrorCode.INVALID_NAME };
@@ -245,7 +257,10 @@ export class FlowStore {
     if (!parsed.success) return { ok: false, code: FlowErrorCode.PARSE_FAILED };
     const valid = parsed.data;
     await this.#fs.mkdir(flowDir(this.#root, pid));
-    await this.#fs.writeFile(flowPath(this.#root, valid.name, pid), this.#serialize(valid));
+    await this.#fs.writeFile(
+      flowPath(this.#root, asFlowName(valid.name), pid),
+      this.#serialize(valid),
+    );
     const degraded = valid.steps.filter((s) => s.degraded === true).length;
     return {
       ok: true,
@@ -262,7 +277,7 @@ export class FlowStore {
    * Apply confident testid rebinds to an on-disk flow (the reticle_flow_heal
    * apply path). Loads + validates the flow (so it gets NOT_FOUND / PARSE_FAILED for free), then
    * rewrites ONLY the named steps' testid anchors — preserving createdAt + every other field — and
-   * re-serializes byte-stably via the same #serialize() that save() uses. The name guard runs
+   * re-serializes byte-stably via the same #serialize that save uses. The name guard runs
    * FIRST, before any path is joined, so a traversal name never reaches the disk.
    *
    * This writer is PURE of the confidence policy: it trusts the changes it is handed (the tool only
@@ -308,6 +323,11 @@ export class FlowStore {
    * flows PLUS legacy flat (untagged/global) ones. Without one (CLI/CI/contract callers): EVERY flow
    * in the store — flat plus every per-project subdir — so a repo-wide replay/audit misses nothing.
    */
+  /**
+   * All flow names on disk, INCLUDING any that fail the path-segment guard — an invalid name must reach
+   * the caller as a reportable error, never be silently filtered away. Callers that build a path from a
+   * name must validate first; `flowPath` takes a branded FlowName precisely so the compiler insists.
+   */
   async list(projectId?: string): Promise<string[]> {
     const flowsDir = reticleDirPaths(this.#root).flows;
     const pid = safeProjectId(projectId);
@@ -331,22 +351,22 @@ export class FlowStore {
   }
 
   /** The path a flow actually lives at: nested (per-project) if present, else legacy flat, else null. */
-  async #resolveReadPath(name: string, pid: string | undefined): Promise<string | null> {
+  async #resolveReadPath(name: FlowName, pid: string | undefined): Promise<string | null> {
     if (pid !== undefined) {
       const nested = flowPath(this.#root, name, pid);
       if (await this.#fs.exists(nested)) return nested;
     }
     const flat = flowPath(this.#root, name);
     if (await this.#fs.exists(flat)) return flat;
-    // No projectId (CLI/CI/contract callers, e.g. reticle_domain): mirror list()'s subdir union on
+    // No projectId (CLI/CI/contract callers, e.g. reticle_domain): mirror list's subdir union on
     // the read side too — a flow saved under .reticle/flows/<projectId>/ must still load, else it is
     // listed and then silently dropped by `if (loaded.ok)` (reticle_domain reports flowCount:0).
     if (pid === undefined) return this.#resolveNestedPath(name);
     return null;
   }
 
-  /** Scan the per-project subdirs for a flow by name — the read-side of list()'s no-pid union. */
-  async #resolveNestedPath(name: string): Promise<string | null> {
+  /** Scan the per-project subdirs for a flow by name — the read-side of list's no-pid union. */
+  async #resolveNestedPath(name: FlowName): Promise<string | null> {
     const flowsDir = reticleDirPaths(this.#root).flows;
     if (!(await this.#fs.exists(flowsDir))) return null;
     let entries: string[];
@@ -394,7 +414,7 @@ export class FlowStore {
 
   /**
    * Delete a flow's file so a renamed/obsolete flow stops lingering in the replay list. Resolves the
-   * same path `load()` would (per-project copy, else legacy flat, else a subdir scan for the no-pid
+   * same path `load` would (per-project copy, else legacy flat, else a subdir scan for the no-pid
    * caller), then removes it. NOT_FOUND when nothing resolves — deleting an absent flow is an error,
    * not a silent no-op, so a typo doesn't read as success.
    */

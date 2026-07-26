@@ -73,14 +73,14 @@ async function detectFor(flow) {
   await a.start();
   try {
     // 1. record clean
-    await a.c.callTool('reticle_record_start', { recordingName: flow.name });
+    await a.c.callTool('reticle_record', { action: 'start', recordingName: flow.name });
     await runSteps(a, flow);
-    await a.c.callTool('reticle_record_stop', { recordingName: flow.name });
+    await a.c.callTool('reticle_record', { action: 'stop', recordingName: flow.name });
     const saved = await a.c.callTool('reticle_flow_save', { flowName: flow.name });
     const stepCount = JSON.parse(saved.text || '{}').stepCount ?? null;
 
     // 2. baseline replay on the healthy app
-    await a.c.callTool('reticle_refresh', { hard: true });
+    await a.refresh();
     await sleep(1500);
     const baseline = await replayOnce(a, flow);
 

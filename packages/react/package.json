@@ -1,6 +1,6 @@
 {
   "name": "@reticlehq/react",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Reticle React adapter — maps a DOM ref to its component stack and source file via the fiber tree.",
   "type": "module",
   "main": "./dist/index.js",
@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./store": {
+      "types": "./dist/store.d.ts",
+      "default": "./dist/store.js"
     }
   },
   "scripts": {
@@ -32,7 +36,10 @@
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
-    "jsdom": "^26.0.0"
+    "jsdom": "^26.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
   },
   "license": "Apache-2.0",
   "author": "Reticle contributors",
@@ -45,7 +52,8 @@
   "bugs": "https://github.com/reticlehq/reticle/issues",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "NOTICE"
   ],
   "sideEffects": false,
   "keywords": [
@@ -56,5 +64,8 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

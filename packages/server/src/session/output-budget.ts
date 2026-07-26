@@ -23,6 +23,16 @@ interface CostHint {
 const LARGE_TIMELINE_EVENTS = 80;
 const LARGE_TIMELINE_BYTES = 8000;
 
+/**
+ * Default cap for reticle_network / reticle_console when the caller passes no `limit`. Those tools
+ * default `since` to 0 (the whole session), so a long-lived or event-flooded session produced an
+ * UNBOUNDED result — a measured 1-hour flood is ~72,000 calls / ~1M tokens in a single tool result.
+ * Capping to the most-recent N (with `total`/`droppedOldest` disclosed, so nothing is hidden and the
+ * agent can page with since/until or a higher explicit limit) bounds the cost without changing the
+ * window. 200 comfortably covers a real flow's traffic while killing the pathological case.
+ */
+export const DEFAULT_QUERY_LIMIT = 200;
+
 /** Keep only the most recent `maxEvents` events; report how many older ones were dropped. */
 export function applyEventBudget(
   events: ReticleEvent[],

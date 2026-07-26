@@ -30,13 +30,13 @@ export const JUnit = {
 export const DEFAULT_JUNIT_SUITE_NAME = 'reticle';
 
 /**
- * Skip reason `t.expectInputModeReal()` raises when the active input mode is 'synthetic'.
+ * Skip reason `t.expectInputModeReal` raises when the active input mode is 'synthetic'.
  * The runner turns the ReticleSkip carrying this into status:'skip' (never a silent pass).
  */
 export const SKIP_REASON_REAL_INPUT = 'real input not active — run via reticle drive';
 
-/** Default wait window for assertion matchers (reticle_assert timeout_ms). */
-export const DEFAULT_ASSERT_TIMEOUT_MS = 4000;
+/** Default wait window for assertion matchers — re-exported from core so it matches the server default. */
+export { DEFAULT_ASSERT_TIMEOUT_MS } from '@reticlehq/core';
 
 /** Predicate `kind` discriminants the matchers build. Mirrors @reticlehq/server's Predicate union. */
 export const PredicateKind = {
@@ -56,7 +56,7 @@ export const NO_ELEMENT_FOR_TESTID = 'no element for testid';
 
 /**
  * Default testid the input-mode probe resolves to when no act has run yet. Apps that opt into
- * `expectInputModeReal()` before any act should tag a stable benign element with this testid;
+ * `expectInputModeReal` before any act should tag a stable benign element with this testid;
  * the probe runs a non-mutating SCROLL_INTO_VIEW against it purely to read the reported inputMode.
  */
 export const PROBE_TESTID = 'reticle-root';

@@ -207,7 +207,7 @@ export function reclaimStaleDaemons(
 
 /**
  * Spawn the reticle daemon as a detached background process, redirecting output to the log file.
- * Writes the PID file from the parent before returning so callers can call isRunning()
+ * Writes the PID file from the parent before returning so callers can call isRunning
  * immediately without a race window.
  */
 export function spawnDaemon(

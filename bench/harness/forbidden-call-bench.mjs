@@ -50,7 +50,7 @@ await a.start();
 let result;
 try {
   // Record: login → Compose → type a prompt → Generate. Declare the "must never call" consequence.
-  await a.c.callTool('reticle_record_start', { recordingName: FLOW });
+  await a.c.callTool('reticle_record', { action: 'start', recordingName: FLOW });
   await a.login();
   await a.gotoView('compose');
   await sleep(300);
@@ -69,11 +69,11 @@ try {
     kind: 'success-state',
     net: NET,
   });
-  await a.c.callTool('reticle_record_stop', { recordingName: FLOW });
+  await a.c.callTool('reticle_record', { action: 'stop', recordingName: FLOW });
   await a.c.callTool('reticle_flow_save', { flowName: FLOW });
 
   // Baseline: healthy app — the forbidden endpoint is never called → the count:0 oracle holds.
-  await a.c.callTool('reticle_refresh', { hard: true });
+  await a.refresh();
   await sleep(1500);
   const baseline = await replayOnce(a);
 

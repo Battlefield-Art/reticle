@@ -101,7 +101,7 @@ If `mutate` throws, the mutation never happened — so **the signal is not emitt
 
 > **The documented exception:** genuinely view-level signals — render or async completions like `diff:shown` or `caption:generated`, which aren't store state — legitimately stay in your components. Only commit-point signals belong in the store layer.
 
-Pair this with store registration so the agent can _read_ state instead of you emitting a signal per fact: `registerStore('workspace', () => useWorkspace.getState())`, then `reticle_state({ store: 'workspace' })`.
+Pair this with store registration so the agent can _read_ state instead of you emitting a signal per fact: `registerStore('workspace', useWorkspace)`, then `reticle_state({ store: 'workspace' })`.
 
 ## 4 — Self-registering domains (`registerReticleDomain`)
 
@@ -158,7 +158,7 @@ Or turn it on with the shipped preset (warns, with empty no-op defaults you then
 
 Reticle observes and drives a tab through the in-page SDK plus (optionally) CDP. It **cannot bring to front or recover a browser tab the OS won't let it script** — e.g. a backgrounded tab, or a non-default browser (Dia, etc.) reporting `hidden:true` / `throttled:true`.
 
-When that happens, `reticle_sessions` and every act/assert result carry a `session.recommendation` saying so. The escape hatch is **`reticle drive <url>`** (add `--headed` to watch) — Reticle launches and owns a guaranteed-scriptable browser. See [usage §18](usage.md#18-real-input-mode--native-hover--drag-m58) for the full note.
+When that happens, `reticle_sessions` and every act/assert result carry a `session.recommendation` saying so. The escape hatch is **`reticle drive <url>`** (add `--headed` to watch) — Reticle launches and owns a guaranteed-scriptable browser. See [usage §18](usage.md#18-real-input-mode--native-hover--drag) for the full note.
 
 ## Checklist
 

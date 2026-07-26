@@ -1,4 +1,4 @@
-// HONESTY-CRITICAL: prove 0.3.7 cross-run memory works through the FULL path — a real browser
+// HONESTY-CRITICAL: prove cross-run memory works through the FULL path — a real browser
 // session + real FlowStore/ProjectStore on real disk. Record a flow, replay it twice, and verify
 // .reticle/project.json accumulates flow_replay run records AND reticle_project returns a diff-vs-last.
 import { chromium } from 'playwright';
@@ -19,12 +19,12 @@ await p.goto('http://localhost:3100/',{waitUntil:'networkidle'});
 for(let i=0;i<200&&server.bridge.sessions.count()===0;i++) await sleep(50);
 const refOf=async(by,value)=>{for(let i=0;i<30;i++){const r=(await T('reticle_query',{by,value})).elements?.[0]?.ref;if(r)return r;await sleep(100);}throw new Error('not found '+value);};
 
-console.log('\n=== 0.3.7 RUNHISTORY: replay → .reticle/project.json → reticle_project diff (real browser) ===');
+console.log('\n=== RUNHISTORY: replay → .reticle/project.json → reticle_project diff (real browser) ===');
 
 // Record + save a one-step flow.
-await T('reticle_record_start',{recordingName:'addtask'});
+await T('reticle_record',{action:'start',recordingName:'addtask'});
 await T('reticle_act',{ref:await refOf('testid','add-task'),action:'click'});
-await T('reticle_record_stop',{recordingName:'addtask'});
+await T('reticle_record',{action:'stop',recordingName:'addtask'});
 await T('reticle_flow_save',{flowName:'addtask'});
 
 // Replay twice — each replay should auto-record a run.
@@ -44,10 +44,14 @@ chk('reticle_project returns scoped runs', Array.isArray(proj.runs)&&proj.runs.l
 chk('reticle_project returns lastRun', proj.lastRun&&proj.lastRun.name==='addtask', JSON.stringify(proj.lastRun)?.slice(0,80));
 chk('reticle_project returns a diff-vs-last block', proj.diff&&typeof proj.diff.regressed==='boolean', JSON.stringify(proj.diff)?.slice(0,100));
 
-// 3) reticle_run_record appends a manual run that lastRun then sees.
-await T('reticle_run_record',{name:'addtask',status:'pass',summary:'manual smoke'});
-const after=await T('reticle_project',{name:'addtask'});
-chk('reticle_run_record appends a manual run', after.lastRun?.kind==='manual'&&after.lastRun?.summary==='manual smoke', JSON.stringify(after.lastRun)?.slice(0,100));
+// 3) SKIPPED: reticle_run_record is retired from the MCP surface — deliberately, and the capability
+// is NOT lost. tools.ts RETIRED_FROM_SURFACE records the reason: flow_replay already auto-records run
+// outcomes (flow-replay-run.ts calls project.recordRun), so a manual append was redundant. The
+// handler still exists and still works; it is simply not advertised.
+//
+// This assertion exercised the retired tool, so it is skipped rather than rewritten: what it covered
+// — that a run lands in project history — is covered by the flow_replay path above.
+console.log('   ⏭  skipped: reticle_run_record is retired from the surface; flow_replay auto-records');
 
 console.log(`\n${fail===0?'✅ RUNHISTORY VERIFIED':'❌ FAILED'} (${pass} passed, ${fail} failed)`);
 await b.close(); await server.close(); nfs.rmSync(path.dirname(reticleRoot),{recursive:true,force:true}); process.exit(fail===0?0:1);

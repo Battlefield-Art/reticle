@@ -28,3 +28,23 @@ export function asNumber(value: unknown): number | undefined {
 export function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
+
+/**
+ * A `{ file, line }` source location off an untrusted result payload, or undefined.
+ *
+ * The browser sends this alongside an act's anchor so a failure can name the file to open. Validated
+ * rather than cast: it crosses the wire, and a half-formed location rendered as "undefined:NaN" is
+ * worse than no location at all — it looks like an answer.
+ */
+export function sourceOf(
+  value: unknown,
+): { file: string; line: number; column?: number } | undefined {
+  if (value === null || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const file = record['file'];
+  const line = record['line'];
+  if (typeof file !== 'string' || file.length === 0 || typeof line !== 'number') return undefined;
+  const out: { file: string; line: number; column?: number } = { file, line };
+  if (typeof record['column'] === 'number') out.column = record['column'];
+  return out;
+}

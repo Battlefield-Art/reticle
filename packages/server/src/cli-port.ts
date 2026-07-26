@@ -2,10 +2,10 @@
  * Port resolution for the reticle CLI. Split out so it can be unit-tested independently.
  *
  * Priority (highest → lowest):
- *   1. --port flag  (parsed by parseCliArgs, already overrides defaultPort)
- *   2. RETICLE_PORT env var
- *   3. .reticle.json "port" field in the cwd  ← per-project isolation
- *   4. RETICLE_DEFAULT_PORT (4400)
+ * 1. --port flag (parsed by parseCliArgs, already overrides defaultPort)
+ * 2. RETICLE_PORT env var
+ * 3..reticle.json "port" field in the cwd ← per-project isolation
+ * 4. RETICLE_DEFAULT_PORT (4400)
  */
 
 import { readFileSync } from 'node:fs';
@@ -23,7 +23,7 @@ export function readProjectPort(cwd: string): number | undefined {
       if (typeof p === 'number' && Number.isInteger(p) && p > 0 && p < 65536) return p;
     }
   } catch {
-    // .reticle.json absent or unreadable — fall through to default
+    //.reticle.json absent or unreadable — fall through to default
   }
   return undefined;
 }
@@ -42,9 +42,32 @@ export function readProjectId(cwd: string): string | undefined {
       if (typeof id === 'string' && id.length > 0) return id;
     }
   } catch {
-    // .reticle.json absent or unreadable — no default scope
+    //.reticle.json absent or unreadable — no default scope
   }
   return undefined;
+}
+
+/**
+ * Whether the durable causal journal is enabled. On by default (the journal IS the loop); off only via
+ * explicit opt-out — `.reticle.json` `"journal": false`, or `RETICLE_JOURNAL` set to `0`/`false`. The env
+ * wins so CI/tests can force it off without editing the project file.
+ */
+export function readJournalEnabled(cwd: string, env: string | undefined): boolean {
+  if (env !== undefined) {
+    const v = env.trim().toLowerCase();
+    if (v === '0' || v === 'false' || v === 'off') return false;
+    if (v === '1' || v === 'true' || v === 'on') return true;
+  }
+  try {
+    const raw = readFileSync(`${cwd}/.reticle.json`, 'utf8');
+    const config: unknown = JSON.parse(raw);
+    if (typeof config === 'object' && config !== null) {
+      if ((config as Record<string, unknown>)['journal'] === false) return false;
+    }
+  } catch {
+    //.reticle.json absent or unreadable — journaling stays on by default
+  }
+  return true;
 }
 
 /**

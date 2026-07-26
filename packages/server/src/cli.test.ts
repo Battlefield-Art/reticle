@@ -60,6 +60,51 @@ describe('parseCliArgs', () => {
     });
   });
 
+  it('parses `affected <file...>` into the changed-file list', () => {
+    expect(parseCliArgs(['affected', 'src/a.ts', 'src/b.tsx'], PORT)).toEqual({
+      kind: 'affected',
+      files: ['src/a.ts', 'src/b.tsx'],
+    });
+  });
+
+  it('rejects `affected` with no files', () => {
+    expect(parseCliArgs(['affected'], PORT).kind).toBe('error');
+  });
+
+  it('parses `gate <file...>` into the changed-file list', () => {
+    expect(parseCliArgs(['gate', 'src/a.ts'], PORT)).toEqual({ kind: 'gate', files: ['src/a.ts'] });
+  });
+
+  it('parses `--since <ref>` on affected/gate (with or without explicit files)', () => {
+    expect(parseCliArgs(['gate', '--since', 'main'], PORT)).toEqual({
+      kind: 'gate',
+      files: [],
+      since: 'main',
+    });
+    expect(parseCliArgs(['affected', '--since', 'HEAD~1', 'src/a.ts'], PORT)).toEqual({
+      kind: 'affected',
+      files: ['src/a.ts'],
+      since: 'HEAD~1',
+    });
+  });
+
+  it('rejects `gate` with no files', () => {
+    expect(parseCliArgs(['gate'], PORT).kind).toBe('error');
+  });
+
+  it('parses the lifecycle commands moved to the CLI', () => {
+    expect(parseCliArgs(['update'], PORT)).toEqual({ kind: 'update' });
+    expect(parseCliArgs(['rollback'], PORT)).toEqual({ kind: 'rollback' });
+  });
+
+  it('parses `watch [url]` with and without a url', () => {
+    expect(parseCliArgs(['watch', 'http://localhost:3000'], PORT)).toEqual({
+      kind: 'watch',
+      url: 'http://localhost:3000',
+    });
+    expect(parseCliArgs(['watch'], PORT)).toEqual({ kind: 'watch' });
+  });
+
   it('serve with no flags uses the default port', () => {
     expect(parseCliArgs(['serve'], PORT)).toEqual({
       kind: 'serve',

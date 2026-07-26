@@ -14,15 +14,17 @@ import type { Session, SessionManager } from '../session/session.js';
 const ROOT = '/tmp/reticle-invoke-test/.reticle';
 const now = (): number => 0;
 
-/** A throttled fake session (complete enough to drive real read-only handlers) whose health()
- *  carries the un-scriptable recommendation. */
+/** A throttled fake session (complete enough to drive real read-only handlers) whose health
+ * carries the un-scriptable recommendation. */
 function throttledSession(overrides: Partial<Session> = {}): Session {
   const stub: Partial<Session> = {
     id: 'demo',
     url: 'http://localhost:5173/app',
     command: () => Promise.resolve({ kind: 'command_result', id: 'c', ok: true, result: {} }),
     eventsSince: () => [],
+    queryEvents: () => Promise.resolve([]),
     bufferHealth: () => ({ total: 0, dropped: 0 }),
+    blindSpots: () => ({}),
     health: () => ({
       lastSeenMs: 99_999,
       throttled: true,
@@ -125,6 +127,20 @@ describe('runTool — universal session-health invariant', () => {
     const all = new Set(TOOLS.map((t) => t.name));
     for (const n of [...SESSION_BOUND_TOOLS, ...SESSION_EXEMPT_TOOLS])
       expect(all.has(n)).toBe(true);
+  });
+
+  it('8: touches the AUTO-SELECTED session lease when sessionId is omitted (not the raw undefined arg)', async () => {
+    // The leak: with no sessionId the raw arg is undefined, so pool.touch was skipped — yet the handler
+    // auto-selects and drives a real leased session, whose lease then never refreshes and the reaper can
+    // reclaim it mid-drive. Touch must target the RESOLVED session id.
+    const touched: string[] = [];
+    const session = throttledSession({ id: 'auto-picked' });
+    const deps = fakeDeps(session);
+    (deps as { pool?: { touch(id: string): void } }).pool = {
+      touch: (id: string) => touched.push(id),
+    };
+    await runTool(stubTool(ReticleTool.ACT, { ok: true }), deps, {}); // no sessionId
+    expect(touched).toEqual(['auto-picked']);
   });
 
   it('7: real handlers — previously-bare tools now carry health through runTool', async () => {

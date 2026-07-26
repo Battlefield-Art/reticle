@@ -12,6 +12,7 @@
 import type { Browser, Page } from 'playwright';
 import { ActionType, DriveErrorCode, DRIVE_PLAYWRIGHT_MISSING_MSG } from '@reticlehq/core';
 import { installNetworkMocks, type MockRule } from './network-mock.js';
+import { attachNetworkDetail, type NetworkDetail } from './network-detail.js';
 
 /** Viewport CSS-px box as returned by the INSPECT command (getBoundingClientRect). */
 export interface ElementBox {
@@ -51,7 +52,7 @@ export interface RealInputProvider {
   /** Drive a native gesture for `action` at the element `box`. */
   perform(
     sessionUrl: string,
-    action: string,
+    action: ActionType,
     box: ElementBox,
     args: RealInputArgs,
   ): Promise<RealInputResult>;
@@ -105,7 +106,7 @@ export function boxCenter(box: ElementBox): { cx: number; cy: number } {
  * Which actions are driven by native pointer input. fill/type stay synthetic unless a
  * provider explicitly runs them.
  */
-export function isPointerAction(action: string): boolean {
+export function isPointerAction(action: ActionType): boolean {
   return (
     action === ActionType.HOVER ||
     action === ActionType.CLICK ||
@@ -128,7 +129,7 @@ type ConnectFn = (url: string) => Promise<Browser>;
  */
 export async function performGesture(
   page: Page,
-  action: string,
+  action: ActionType,
   box: ElementBox,
   args: RealInputArgs,
   sleep: SleepFn,
@@ -204,8 +205,17 @@ interface CdpProviderOptions {
   cdpUrl: string;
   /** Injected so the settle delay is deterministic in tests; defaults to a real Node timer. */
   sleep?: SleepFn;
-  /** Injected connector so unit tests can stub Playwright without import(). */
+  /** Injected connector so unit tests can stub Playwright without import. */
   connect?: ConnectFn;
+  /**
+   * Sink for CDP-authoritative network detail. Optional, so the capture stays opt-in.
+   *
+   * This used to exist only on the LAUNCHED provider, which gated wire-level network visibility on
+   * whether Reticle happened to open the browser. That is the wrong axis: owning the browser says
+   * nothing about being able to see its network, and both providers speak CDP. The authoritative
+   * request body is the one thing an in-page fetch wrapper structurally cannot get.
+   */
+  onNetworkDetail?: (detail: NetworkDetail) => void;
 }
 
 const nodeSleep: SleepFn = (ms) =>
@@ -223,20 +233,43 @@ export class CdpRealInputProvider implements RealInputProvider {
   readonly #cdpUrl: string;
   readonly #sleep: SleepFn;
   readonly #connect: ConnectFn;
+  readonly #onNetworkDetail: ((detail: NetworkDetail) => void) | undefined;
+  /** Pages already listening. #pageFor resolves on EVERY call, so without this each action would add
+   *  another listener and every response would be emitted once per action taken so far. */
+  readonly #listening = new WeakSet<object>();
   #browser: Browser | undefined;
 
   constructor(options: CdpProviderOptions) {
     this.#cdpUrl = options.cdpUrl;
     this.#sleep = options.sleep ?? nodeSleep;
     this.#connect = options.connect ?? cdpConnect;
+    this.#onNetworkDetail = options.onNetworkDetail;
+  }
+
+  /** Attach the response listener the first time we see a page; a no-op afterwards. */
+  #listen(page: Page): void {
+    const sink = this.#onNetworkDetail;
+    if (sink === undefined || this.#listening.has(page)) return;
+    this.#listening.add(page);
+    attachNetworkDetail(page, sink);
   }
 
   async #ensureBrowser(): Promise<Browser | undefined> {
-    if (this.#browser !== undefined) return this.#browser;
+    if (this.#browser !== undefined) {
+      // A cached browser can be DEAD: CDP dropped (the page was closed, the debugged Chrome exited,
+      // the network blipped). The old code cached it forever, so every later call handed back a
+      // corpse and the whole drive path went silently unavailable until the daemon restarted.
+      // Playwright's Browser exposes isConnected(); a test fake may not, so only an EXPLICIT false
+      // drops the cache — a fake without the method is assumed live.
+      const alive = this.#browser.isConnected?.() ?? true;
+      if (alive) return this.#browser;
+      this.#browser = undefined; // fall through and reconnect
+    }
     try {
       this.#browser = await this.#connect(this.#cdpUrl);
       return this.#browser;
     } catch {
+      this.#browser = undefined; // a failed reconnect must not leave a stale handle behind
       return undefined;
     }
   }
@@ -244,11 +277,12 @@ export class CdpRealInputProvider implements RealInputProvider {
   async #pageFor(sessionUrl: string): Promise<Page | undefined> {
     const browser = await this.#ensureBrowser();
     if (browser === undefined) return undefined;
-    const pages = browser.contexts().flatMap((c) => c.pages());
-    const exact = pages.find((p) => p.url() === sessionUrl);
-    if (exact !== undefined) return exact;
-    const target = stripVolatile(sessionUrl);
-    return pages.find((p) => stripVolatile(p.url()) === target);
+    const page = selectPage(
+      browser.contexts().flatMap((c) => c.pages()),
+      sessionUrl,
+    );
+    if (page !== undefined) this.#listen(page);
+    return page;
   }
 
   async isAvailableFor(sessionUrl: string): Promise<boolean> {
@@ -261,7 +295,7 @@ export class CdpRealInputProvider implements RealInputProvider {
 
   async perform(
     sessionUrl: string,
-    action: string,
+    action: ActionType,
     box: ElementBox,
     args: RealInputArgs,
   ): Promise<RealInputResult> {
@@ -301,13 +335,13 @@ export class CdpRealInputProvider implements RealInputProvider {
   }
 }
 
-/** Injected launcher so unit tests stub Playwright without import(). */
+/** Injected launcher so unit tests stub Playwright without import. */
 export type LaunchFn = (headless: boolean) => Promise<Browser>;
 
 /**
  * Force a driven page's already-loaded SDK to connect to our loopback bridge with a pairing token,
- * overriding the app's own (often localhost-only) reticle.connect() — so a hosted preview verifies with
- * no app redeploy. connect() is a no-op once connected, so re-invoking it is safe.
+ * overriding the app's own (often localhost-only) reticle.connect — so a hosted preview verifies with
+ * no app redeploy. connect is a no-op once connected, so re-invoking it is safe.
  */
 export interface InjectConnectOptions {
   token: string;
@@ -321,10 +355,16 @@ export interface LaunchedProviderOptions {
   sleep?: SleepFn;
   /** Injected launcher so unit tests can stub Playwright; defaults to dynamic import('playwright'). */
   launch?: LaunchFn;
-  /** When set, re-invoke the page's reticle.connect() with these after load (drive-a-hosted-preview). */
+  /** When set, re-invoke the page's reticle.connect with these after load (drive-a-hosted-preview). */
   injectConnect?: InjectConnectOptions;
   /** Path to a Playwright storageState JSON (cookies/localStorage) — starts the page authenticated. */
   storageState?: string;
+  /**
+   * Sink for CDP-authoritative network detail. When set, every driven-page response is captured
+   * as a NET_DETAIL and handed here — the daemon routes it onto the driven session's journal so the
+   * inside-app view never loses fidelity to the outside-in view. Omitted → no network detail captured.
+   */
+  onNetworkDetail?: (detail: NetworkDetail) => void;
 }
 
 const INJECT_CONNECT_WAIT_MS = 8_000;
@@ -355,6 +395,7 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
   readonly #launch: LaunchFn;
   readonly #injectConnect: InjectConnectOptions | undefined;
   readonly #storageState: string | undefined;
+  readonly #onNetworkDetail: ((detail: NetworkDetail) => void) | undefined;
   #browser: Browser | undefined;
   #page: Page | undefined;
 
@@ -365,6 +406,7 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
     this.#launch = options.launch ?? launchedChromium;
     this.#injectConnect = options.injectConnect;
     this.#storageState = options.storageState;
+    this.#onNetworkDetail = options.onNetworkDetail;
   }
 
   async navigate(): Promise<void> {
@@ -373,6 +415,8 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
       this.#storageState !== undefined ? { storageState: this.#storageState } : undefined,
     );
     this.#page = page;
+    // Capture CDP-authoritative response detail into the driven session's journal (best-effort).
+    if (this.#onNetworkDetail !== undefined) attachNetworkDetail(page, this.#onNetworkDetail);
     try {
       await page.goto(this.#driveUrl);
     } catch (e) {
@@ -385,7 +429,7 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
   }
 
   /**
-   * Wait for the page's Reticle singleton to exist, then re-invoke connect() with our token + loopback
+   * Wait for the page's Reticle singleton to exist, then re-invoke connect with our token + loopback
    * URL so a hosted (non-localhost) preview pairs to our bridge without the app being reconfigured.
    * Best-effort: a page with no SDK simply never exposes the global, and we move on.
    */
@@ -412,7 +456,7 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
 
   perform(
     _sessionUrl: string,
-    action: string,
+    action: ActionType,
     box: ElementBox,
     args: RealInputArgs,
   ): Promise<RealInputResult> {
@@ -438,6 +482,30 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
 }
 
 /** Drop hash/query so a page whose URL drifted by fragment still correlates to the session. */
+/**
+ * Correlate a session URL to one driven page, or refuse.
+ *
+ * Exact match first, query string included — that is the only fully reliable signal. The stripped
+ * fallback exists for a real case (an app pushState's to /overview, so the page's URL no longer
+ * equals the session's) but it is only sound when UNAMBIGUOUS.
+ *
+ * Returning the first loose match was a false-green generator: the benchmark fixture selects a bug
+ * purely by query string, so two pages differing only there stripped to the same key, and a visual
+ * diff happily compared the wrong page to itself and reported "0.00% changed, matched" for pixels
+ * that demonstrably differed. Ambiguity now yields undefined, which callers already surface as
+ * "no driven page" rather than as a passing comparison.
+ */
+export function selectPage<T extends { url(): string }>(
+  pages: readonly T[],
+  sessionUrl: string,
+): T | undefined {
+  const exact = pages.find((p) => p.url() === sessionUrl);
+  if (exact !== undefined) return exact;
+  const target = stripVolatile(sessionUrl);
+  const loose = pages.filter((p) => stripVolatile(p.url()) === target);
+  return loose.length === 1 ? loose[0] : undefined;
+}
+
 function stripVolatile(url: string): string {
   const hash = url.indexOf('#');
   const base = hash >= 0 ? url.slice(0, hash) : url;

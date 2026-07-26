@@ -27,6 +27,9 @@ function input(partial: Partial<PlanInput>): PlanInput {
     viteConfig: partial.viteConfig ?? null,
     nextConfigFile: partial.nextConfigFile ?? null,
     nextReticleDevExists: partial.nextReticleDevExists ?? false,
+    claudeMdContent: partial.claudeMdContent,
+    agentsMdContent: partial.agentsMdContent,
+    cursorRuleExists: partial.cursorRuleExists,
     options: partial.options ?? { port: undefined, mcp: true, install: false },
   };
 }
@@ -45,6 +48,74 @@ function step(plan: ReturnType<typeof buildPlan>, title: string) {
   if (s === undefined) throw new Error(`no step ${title}`);
   return s;
 }
+
+const AGENT_RULE_STEP = 'Agent verification rule';
+
+describe('buildPlan — agent verification rule (makes the agent USE Reticle)', () => {
+  it('writes the rule into CLAUDE.md when the Claude CLI is present', () => {
+    const s = step(buildPlan(input({ claudeCli: true, claudeMdContent: null })), AGENT_RULE_STEP);
+    expect(s.status).toBe(StepStatus.APPLY);
+    expect(s.write?.path).toBe('CLAUDE.md');
+    expect(s.write?.content).toContain('Verifying with Reticle');
+    expect(s.write?.content).toContain('reticle gate');
+  });
+
+  it('appends to an existing CLAUDE.md, preserving it', () => {
+    const s = step(
+      buildPlan(input({ claudeCli: true, claudeMdContent: '# House rules\n\nBe terse.\n' })),
+      AGENT_RULE_STEP,
+    );
+    expect(s.status).toBe(StepStatus.APPLY);
+    expect(s.write?.content.startsWith('# House rules')).toBe(true);
+  });
+
+  it('is ALREADY (idempotent) when CLAUDE.md already carries the managed block', () => {
+    // Seed a CLAUDE.md that already contains the block by round-tripping one apply.
+    const first = step(
+      buildPlan(input({ claudeCli: true, claudeMdContent: null })),
+      AGENT_RULE_STEP,
+    ).write?.content;
+    const s = step(
+      buildPlan(input({ claudeCli: true, claudeMdContent: first ?? '' })),
+      AGENT_RULE_STEP,
+    );
+    expect(s.status).toBe(StepStatus.ALREADY);
+  });
+
+  it('writes a Cursor .mdc rule when Cursor is present', () => {
+    const s = step(
+      buildPlan(input({ claudeCli: false, cursorPresent: true, cursorRuleExists: false })),
+      AGENT_RULE_STEP,
+    );
+    expect(s.status).toBe(StepStatus.APPLY);
+    expect(s.write?.path).toBe('.cursor/rules/reticle.mdc');
+    expect(s.write?.content).toContain('alwaysApply: true');
+  });
+
+  it('Cursor rule step is ALREADY when the .mdc already exists', () => {
+    const s = step(
+      buildPlan(input({ claudeCli: false, cursorPresent: true, cursorRuleExists: true })),
+      AGENT_RULE_STEP,
+    );
+    expect(s.status).toBe(StepStatus.ALREADY);
+  });
+
+  it('falls back to AGENTS.md when neither Claude nor Cursor is detected', () => {
+    const s = step(
+      buildPlan(input({ claudeCli: false, cursorPresent: false, agentsMdContent: null })),
+      AGENT_RULE_STEP,
+    );
+    expect(s.status).toBe(StepStatus.APPLY);
+    expect(s.write?.path).toBe('AGENTS.md');
+  });
+
+  it('is skipped entirely under --no-mcp (rule rides with the tool wiring)', () => {
+    const plan = buildPlan(
+      input({ options: { port: undefined, mcp: false, install: false }, claudeCli: false }),
+    );
+    expect(maybeStep(plan, AGENT_RULE_STEP)).toBeUndefined();
+  });
+});
 
 describe('buildPlan — MCP (global, per detected agent)', () => {
   it('registers with Claude via an exec step when the claude CLI is present', () => {

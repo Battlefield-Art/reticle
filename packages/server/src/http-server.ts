@@ -17,7 +17,7 @@ export interface SharedServer {
    * Register a factory that creates a fresh McpServer per SSE connection.
    * The MCP SDK's Protocol layer only supports one transport per Server instance,
    * so each concurrent Claude Code client needs its own McpServer.
-   * Must be called before listen().
+   * Must be called before listen.
    */
   attachMcp(factory: () => McpServer): void;
   /** Register the JSON the daemon returns from GET /status (live sessions + health for `reticle status`). */
@@ -34,12 +34,12 @@ export interface SharedServer {
 
 /**
  * Creates a shared HTTP server that handles both the WebSocket bridge (browser SDK) and the
- * SSE MCP transport (Claude/agent). Does NOT call listen() — caller controls that.
+ * SSE MCP transport (Claude/agent). Does NOT call listen — caller controls that.
  *
  * Routes:
- *   GET  /mcp/sse       → establishes SSE MCP session
- *   POST /mcp/message   → routes MCP messages to an active SSE session
- *   WS   /reticle          → browser SDK connections (via WebSocketServer)
+ * GET /mcp/sse → establishes SSE MCP session
+ * POST /mcp/message → routes MCP messages to an active SSE session
+ * WS /reticle → browser SDK connections (via WebSocketServer)
  */
 export function createSharedServer(options: { token?: string } = {}): SharedServer {
   type McpFactory = () => McpServer;

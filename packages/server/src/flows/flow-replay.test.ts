@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  asRef,
   ActionType,
   AnchorKind,
   DANGEROUS_ACTION_CONFIRM_ARG,
@@ -47,7 +48,12 @@ class FakeSession implements FlowReplaySession {
     private readonly events: ReticleEvent[] = [],
     private readonly actOk: (ref: string) => boolean = PASS,
     private readonly stores: Record<string, unknown> = {},
+    // Injected clock: successive elapsed readings. Defaults to a fixed 0 (no advancing clock) so
+    // existing tests are unaffected; pass a rising sequence to exercise per-step durationMs.
+    private readonly elapsedReadings?: number[],
   ) {}
+
+  #elapsedCall = 0;
 
   command(name: string, args: Record<string, unknown> = {}): Promise<CommandResult> {
     if (name === ReticleCommand.QUERY) {
@@ -92,12 +98,15 @@ class FakeSession implements FlowReplaySession {
   }
 
   elapsed(): number {
-    return 0;
+    if (this.elapsedReadings === undefined) return 0;
+    const value = this.elapsedReadings[this.#elapsedCall] ?? this.elapsedReadings.at(-1) ?? 0;
+    this.#elapsedCall += 1;
+    return value;
   }
 }
 
 function el(ref: string, testid: string): ElementDescriptor {
-  return { ref, role: 'button', name: testid, states: [], visible: true };
+  return { ref: asRef(ref), role: 'button', name: testid, states: [], visible: true };
 }
 
 function present(testids: string[]): QueryEmptyHint {
@@ -149,6 +158,20 @@ describe('replayFlow — anchor re-resolution + legible drift', () => {
       { ref: 'e-chat-send', action: ActionType.CLICK },
       { ref: 'e-chat-input', action: ActionType.FILL },
     ]);
+  });
+
+  it('records per-step durationMs from the injected clock (and omits it when the clock is fixed)', async () => {
+    const script = (testid: string): QueryScript => ({ elements: [el(`e-${testid}`, testid)] });
+    // Readings: [replayFloor, cursorBefore, post-settle]. The first is consumed by the replay-start
+    // floor (captured once, for signal-step scoping); the step's duration is the last two: 10→35 = 25ms.
+    const timed = new FakeSession(script, [], PASS, {}, [0, 10, 35]);
+    const steps = await replayFlow(timed, flow([testidStep('chat-send')]), waitForPredicate, FAST);
+    expect(steps[0]?.durationMs).toBe(25);
+
+    // Fixed-clock fake (default): durationMs stays absent — additive, never a spurious 0.
+    const untimed = new FakeSession(script);
+    const s2 = await replayFlow(untimed, flow([testidStep('chat-send')]), waitForPredicate, FAST);
+    expect(s2[0]?.durationMs).toBeUndefined();
   });
 
   it('captures the page (route) each step ran on — the journey trail', async () => {
@@ -263,7 +286,13 @@ describe('replayFlow — anchor re-resolution + legible drift', () => {
     // The element's role/name differ from record time, but the testid matches → resolves.
     const script = (): QueryScript => ({
       elements: [
-        { ref: 'e1', role: 'link', name: 'totally different label', states: [], visible: true },
+        {
+          ref: asRef('e1'),
+          role: 'link',
+          name: 'totally different label',
+          states: [],
+          visible: true,
+        },
       ],
     });
     const session = new FakeSession(script);
@@ -354,6 +383,24 @@ describe('replayFlow — anchor re-resolution + legible drift', () => {
     expect(waitSpy).toHaveBeenCalledTimes(1);
     const predicate = waitSpy.mock.calls[0]?.[1] as Predicate;
     expect(predicate).toEqual({ kind: 'signal', name: 'order-placed' });
+  });
+
+  it('6b: a signal step is scoped to the REPLAY floor, not the whole buffer', async () => {
+    // The cross-flow false green: reticle_flow_verify replays flows back-to-back in one session, so a
+    // signal an EARLIER flow emitted sat in the buffer and satisfied a LATER flow's signal step with a
+    // whole-buffer (since=0) read, even though this flow's own action never fired it. The step must be
+    // scoped to a floor captured at THIS replay's start. First elapsed() reading is that floor.
+    const session = new FakeSession(() => ({ elements: [] }), [signalEvent('shared')], PASS, {}, [
+      42, // replay floor
+      99,
+    ]);
+    const waitSpy = vi.fn((_s: unknown, _p: unknown, _t: unknown, _since?: number) =>
+      Promise.resolve({ pass: true }),
+    );
+    await replayFlow(session, flow([signalStep('shared')]), waitSpy, FAST);
+    // The 4th argument to the wait fn is the `since` floor — it must be the replay-start reading (42),
+    // never 0/undefined (the whole-buffer read that let a prior flow's signal cross-satisfy this one).
+    expect(waitSpy.mock.calls[0]?.[3]).toBe(42);
   });
 
   it('7: an unobserved signal drifts (not a blind fail) and stops', async () => {

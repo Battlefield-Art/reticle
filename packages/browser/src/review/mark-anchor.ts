@@ -2,10 +2,10 @@ import { MarkAnchorStrategy } from '@reticlehq/core';
 import { AnchorStrategy, synthesizeAnchor, type AnchorInput } from '../dom/auto-anchor.js';
 import { getAccessibleName, getRole } from '../dom/a11y.js';
 import { identifyComponent } from '../registry/adapters.js';
+import { sourceFor } from '../dom/source.js';
 
 /** Attribute names — defined locally per the recorder/query convention (no shared free string). */
 const TESTID_ATTR = 'data-testid';
-const SOURCE_ATTR = 'data-reticle-source';
 
 /**
  * The element address carried by a human review mark: a re-resolvable anchor (auto-anchor's most
@@ -27,27 +27,6 @@ const STRATEGY: Record<AnchorStrategy, MarkAnchorStrategy> = {
   [AnchorStrategy.ROLE]: MarkAnchorStrategy.ROLE,
   [AnchorStrategy.POSITION]: MarkAnchorStrategy.POSITION,
 };
-
-/** Parse a `data-reticle-source="file:line:column"` value into `{ file, line }` (column dropped). */
-function parseSourceAttr(value: string | null): { file: string; line: number } | undefined {
-  if (value === null) return undefined;
-  const m = /^(.*):(\d+):(\d+)$/.exec(value);
-  if (m === null) return undefined;
-  const file = m[1];
-  const line = Number(m[2]);
-  if (file === undefined || file.length === 0 || !Number.isFinite(line)) return undefined;
-  return { file, line };
-}
-
-/** Best source for the element: the framework adapter's, else the nearest babel-stamped attribute. */
-function sourceFor(
-  el: Element,
-  adapterSource: { file: string; line: number } | undefined,
-): { file: string; line: number } | undefined {
-  if (adapterSource !== undefined) return { file: adapterSource.file, line: adapterSource.line };
-  const host = el.closest(`[${SOURCE_ATTR}]`);
-  return host !== null ? parseSourceAttr(host.getAttribute(SOURCE_ATTR)) : undefined;
-}
 
 /** A short, human-legible label for the element: `role "name"`, falling back to role / tag name. */
 function labelFor(el: Element, role: string, name: string): string {

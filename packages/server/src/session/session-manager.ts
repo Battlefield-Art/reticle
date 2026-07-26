@@ -12,7 +12,7 @@ interface ResolveScope {
 }
 
 /** The scheme://host:port of a URL, or undefined if it can't be parsed. Used to compare origins. */
-function originOf(url: string | undefined): string | undefined {
+export function originOf(url: string | undefined): string | undefined {
   if (url === undefined) return undefined;
   try {
     return new URL(url).origin;
@@ -102,13 +102,13 @@ export class SessionManager {
    * one connected, returns that.
    *
    * With none and multiple connected, applies smart auto-selection:
-   *   1. Prefer non-throttled sessions (not hidden + recently heard from).
-   *   2. Within each tier, prefer lowest lastSeenMs (most recently active SDK heartbeat).
-   *   3. If two or more non-throttled sessions are within 1 s of each other, throw —
-   *      genuinely ambiguous, agent must specify sessionId.
-   *   4. If ALL sessions are throttled (e.g. user is working in their editor on another
-   *      desktop), skip the gap check and pick the freshest heartbeat. This lets the agent
-   *      keep working in the background without requiring sessionId every time.
+   * 1. Prefer non-throttled sessions (not hidden + recently heard from).
+   * 2. Within each tier, prefer lowest lastSeenMs (most recently active SDK heartbeat).
+   * 3. If two or more non-throttled sessions are within 1 s of each other, throw —
+   * genuinely ambiguous, agent must specify sessionId.
+   * 4. If ALL sessions are throttled (e.g. user is working in their editor on another
+   * desktop), skip the gap check and pick the freshest heartbeat. This lets the agent
+   * keep working in the background without requiring sessionId every time.
    */
   resolve(sessionId?: string, scope?: ResolveScope): Session {
     if (sessionId !== undefined) {

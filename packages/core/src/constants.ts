@@ -61,6 +61,8 @@ export const ReticleEnv = {
   IDLE_SHUTDOWN: 'RETICLE_IDLE_SHUTDOWN_MS',
   /** Directory holding the auto-provisioned pairing token. Defaults to ~/.reticle; relocatable for CI. */
   PAIRING_TOKEN_DIR: 'RETICLE_PAIRING_TOKEN_DIR',
+  /** Force the durable causal journal off (`0`/`false`/`off`) or on (`1`/`true`/`on`); default on. */
+  JOURNAL: 'RETICLE_JOURNAL',
 } as const;
 
 /** Hard transport bounds shared by the browser and bridge. */
@@ -81,6 +83,9 @@ export const TRANSPORT_LIMITS = {
   MAX_COMMAND_NAME_LENGTH: 128,
   MAX_REF_LENGTH: 128,
   MAX_ERROR_LENGTH: 4096,
+  /** Cap on a captured stack trace before it crosses the wire — the console observer and both React
+   *  error hooks (error-boundary, hydration-error) all truncate to this, so it is one fact. */
+  MAX_STACK_LENGTH: 4000,
   MAX_SERIALIZE_DEPTH: 8,
   MAX_COLLECTION_ITEMS: 200,
   MAX_OBJECT_KEYS: 200,
@@ -93,6 +98,15 @@ export const TRANSPORT_LIMITS = {
 
 /** Replacement used when sensitive data is removed before crossing the bridge. */
 export const REDACTED_VALUE = '[REDACTED]';
+
+/**
+ * The attribute the build plugin stamps on JSX host elements as `file:line:column`, so the browser SDK
+ * and the React adapter can map a DOM node back to its source file (the source-pointer feature, needed
+ * on React 19 which dropped _debugSource). Read here by both packages — it was duplicated as a local
+ * const in dom/source.ts AND dom/query.ts and inlined as a literal in the React adapter. The stamper
+ * (@reticlehq/babel-plugin, separate build tooling) stamps this same literal and MUST match it.
+ */
+export const DATA_RETICLE_SOURCE_ATTR = 'data-reticle-source';
 
 /** Explicit opt-in argument required for potentially destructive actions. */
 export const DANGEROUS_ACTION_CONFIRM_ARG = 'confirmDangerous';
@@ -108,13 +122,29 @@ export const ReticleDir = {
   BASELINES_SUBDIR: 'baselines',
   /** cross-run memory — outcomes of past runs (the "did it behave like last time?" file). */
   PROJECT_FILE: 'project.json',
-  /** opt-in pixel baselines — .reticle/visual/<name>.png + <name>.diff.png. */
+  /** opt-in pixel baselines —.reticle/visual/<name>.png + <name>.diff.png. */
   VISUAL_SUBDIR: 'visual',
-  /** verification-run artifacts — .reticle/runs/<runId>.json (the OEM/CI-consumable verdict). */
+  /** verification-run artifacts —.reticle/runs/<runId>.json (the OEM/CI-consumable verdict). */
   RUNS_SUBDIR: 'runs',
+  /** fail-to-pass bug capsules —.reticle/capsules/<id>.json (a minimal failing flow + its evidence). */
+  CAPSULES_SUBDIR: 'capsules',
+  /** durable causal journal —.reticle/sessions/<id>/{events,actions}.jsonl (the substrate). */
+  SESSIONS_SUBDIR: 'sessions',
+  /** append-only event ledger inside a session dir (one ReticleEvent per line). */
+  JOURNAL_EVENTS_FILE: 'events.jsonl',
+  /** append-only action ledger inside a session dir (one JournalAction per line). */
+  JOURNAL_ACTIONS_FILE: 'actions.jsonl',
+  /** learned expected-envelopes per route, accumulated across runs (the deviation-report baseline). */
+  ENVELOPES_FILE: 'envelopes.json',
+  /** learned ambient (action-less churn) region map — excluded from settle/summaries/envelopes. */
+  AMBIENT_FILE: 'ambient.json',
+  /** per-flow flake ledger — replay outcomes that decide intermittent-failure quarantine. */
+  FLAKE_FILE: 'flake.json',
+  /** Per-flow assertion tiers recorded on each PASSING replay — the gate's anti-downgrade baseline. */
+  TIERS_FILE: 'assertion-tiers.json',
   /**
    * Auto-provisioned bridge pairing token, stored at ~/.reticle/pairing-token (mode 0600). Written by
-   * the daemon, read Node-side by the build plugins to inject into connect(). A browser sandbox cannot
+   * the daemon, read Node-side by the build plugins to inject into connect. A browser sandbox cannot
    * read it, so a rogue localhost app can't present it — that's what stops cross-app session hijack.
    */
   PAIRING_TOKEN_FILE: 'pairing-token',
@@ -170,6 +200,11 @@ export const CRAWL_DEFAULTS = {
   FAILED_STATUS: 400,
 } as const;
 
+/** Default max wait for reticle_assert / reticle_wait_for / reticle_act_and_wait when the caller gives
+ *  no `timeout_ms`. One fact, shared by the server tools and the @reticlehq/test matchers so the test
+ *  package's assumption can't silently diverge from the server default. */
+export const DEFAULT_ASSERT_TIMEOUT_MS = 4000;
+
 /** How long to wait between npm registry update checks (24 h). */
 export const UpdateCheckIntervalMs = 24 * 60 * 60 * 1000;
 
@@ -212,21 +247,48 @@ export const EventType = {
   CONSOLE_LOG: 'console.log',
   CONSOLE_WARN: 'console.warn',
   CONSOLE_ERROR: 'console.error',
+  CONSOLE_INFO: 'console.info',
+  CONSOLE_DEBUG: 'console.debug',
   ERROR_UNCAUGHT: 'error.uncaught',
   VISIBLE_SHOWN: 'visible.shown',
-  VISIBLE_HIDDEN: 'visible.hidden',
   ANIM_START: 'anim.start',
   ANIM_END: 'anim.end',
   SCROLL_POSITION: 'scroll.position',
   REVEAL_SHOWN: 'reveal.shown',
   SIGNAL: 'signal',
   STATE_CHANGE: 'state.change',
+  /** a write to localStorage/sessionStorage/cookies — `data: { area, key, old?, new? }` (values redacted). */
+  STORAGE_CHANGE: 'storage.change',
   /** page-level visibility/focus health (distinct from element-level VISIBLE_*). */
   PAGE_HEALTH: 'page.health',
+  /** aggregated React commits over a throttle window (dev builds) — `data: { commits }`. Commit storms /
+   * wasted re-renders show up here without a per-render flood. */
+  RENDER_COMMIT: 'render.commit',
+  /** element focus moved — `data: { to, from, toBody }`. Focus dropping to body after an act is a regression. */
+  FOCUS_CHANGE: 'focus.change',
   /** browser → bridge: a human recording compiled in-page. */
   FLOW_RECORDED: 'flow.recorded',
   /** synthetic: browser transport queue overflowed; events were dropped. `data: { dropped: number }`. */
   TRANSPORT_OVERFLOW: 'transport.overflow',
+  /**
+   * synthetic: a per-channel cap truncated a batch (e.g. a DOM mutation flood). `data: { channel, dropped }`.
+   * Marks downstream rollups/envelopes as built on incomplete data — a ledger that lies at scale is worse
+   * than no ledger, so truncation is never silent.
+   */
+  TRUNCATED: 'truncated',
+  /**
+   * synthetic: the SDK detected a region it CANNOT observe (a cross-origin iframe, a closed shadow root).
+   * `data: { kind: BlindSpotKind, count }`. Surfaced on results as `coverage: partial` so a green never
+   * implies it saw everything.
+   */
+  BLIND_SPOT: 'blind-spot',
+  /**
+   * synthetic (driven only): CDP/Playwright-authoritative network detail for a response the in-page
+   * fetch/XHR wrapper also saw — full response headers + authoritative status/mimeType the page-side
+   * wrapper can't reach. `data: { url, method?, status, headers, resourceType? }`. Merged onto the
+   * matching in-page NET_REQUEST so the driven view never loses fidelity to an outside-in tool.
+   */
+  NET_DETAIL: 'net.detail',
   /**
    * Live-control: browser → bridge. A human acted on the presenter panel.
    * `data: { kind: HumanControlKind; text?: string }`. Rides the existing EventMessage.
@@ -241,6 +303,89 @@ export const EventType = {
   HUMAN_MARK: 'human.mark',
 } as const;
 export type EventType = (typeof EventType)[keyof typeof EventType];
+
+/**
+ * Named phenomena the perception layer detects deterministically over the journal — capsules and
+ * deviation reports lead with these names, not raw events. The library grows in later releases; the
+ * mechanism (versioned matchers + evidence templates) lands now.
+ */
+export const PhenomenonType = {
+  /** An act dispatched but the app did nothing — no DOM/net/route/signal in its window. */
+  DEAD_CLICK: 'dead-click',
+  /** A click landed before hydration attached handlers — a silent no-op. */
+  PRE_HYDRATION_CLICK: 'pre-hydration-click',
+  /** A 5xx response that occurred while the page was hidden — looks fine, isn't. */
+  HIDDEN_500: 'hidden-500',
+  /** A request started and never completed within the window — a hung/in-flight request. */
+  HUNG_REQUEST: 'hung-request',
+  /** A React error boundary caught and swallowed — a fine-looking fallback over a broken feature. */
+  SWALLOWED_ERROR: 'swallowed-error',
+} as const;
+export type PhenomenonType = (typeof PhenomenonType)[keyof typeof PhenomenonType];
+
+/** Signal the React adapter fires once hydration commits (handlers attached). Shared browser↔server. */
+export const RETICLE_HYDRATION_SIGNAL = 'reticle:hydration-complete';
+
+/**
+ * The registered-store name the React adapter uses for render stats, read via reticle_state. It crosses
+ * the wire as a store id AND the browser SDK special-cases it as reticle-owned (so it isn't flagged as
+ * an unregistered store), so the name is one fact in core — a rename in the adapter must not silently
+ * stop the SDK's owned-store matching.
+ */
+export const RETICLE_RENDERS_STORE = '__reticle_renders';
+
+/**
+ * Signal the React adapter fires when an error boundary catches (dev-only). Carried on the signal channel
+ * (the SDK's public emit surface) so the server sees a boundary that swallowed — the purest "looks fine,
+ * isn't", invisible to every other channel. `data: { message, stack?, componentStack? }`.
+ */
+export const RETICLE_ERROR_BOUNDARY_SIGNAL = 'reticle:error-boundary';
+
+/**
+ * Signal the React adapter fires on a hydration mismatch — server-rendered markup that disagrees with the
+ * client's first render. React reports these as *recoverable* errors (`hydrateRoot(el, App,
+ * { onRecoverableError })`); a mismatch silently discards the SSR DOM and re-renders on the client, so the
+ * page "looks fine" while event handlers, form state, or scroll position were lost — invisible to DOM/
+ * network/console. `data: { message, stack?, componentStack? }`.
+ */
+export const RETICLE_HYDRATION_ERROR_SIGNAL = 'reticle:hydration-error';
+
+/** The observation channel a TRUNCATED event names, so downstream knows WHICH data is incomplete. */
+export const TruncationChannel = {
+  DOM: 'dom',
+} as const;
+export type TruncationChannel = (typeof TruncationChannel)[keyof typeof TruncationChannel];
+
+/**
+ * A region the SDK cannot see into — surfaced (never hidden) so a result's coverage reads honestly.
+ * Crosses the wire in a BLIND_SPOT event's `kind`, so it lives in core (the contract), not the server.
+ */
+export const BlindSpotKind = {
+  CLOSED_SHADOW_ROOT: 'closed-shadow-root',
+  CROSS_ORIGIN_IFRAME: 'cross-origin-iframe',
+  VIRTUALIZED_UNMOUNTED: 'virtualized-unmounted',
+  /**
+   * Something wrapped `fetch` before we did, so the request we record is not necessarily the request
+   * that leaves. Wrappers chain outermost-first: anything installed EARLIER sits below us and mutates
+   * after we have read `init.body`. An interceptor initialised before connect(), or a polyfill, does
+   * exactly that. Unfixable from inside the page — there is no "patch last" primitive — so it is
+   * declared instead, and a verdict over it reports partial coverage rather than implying we saw the wire.
+   */
+  WRAPPED_NETWORK: 'wrapped-network',
+} as const;
+export type BlindSpotKind = (typeof BlindSpotKind)[keyof typeof BlindSpotKind];
+
+/**
+ * How an event was linked to the action it is attributed to. `window` means the SDK stamped the
+ * currently-active action's id onto every event observed between that action's dispatch and its
+ * settle — a time-window heuristic, not proven dataflow. It is the only tier available until
+ * commit-stream linking upgrades it; the label stays on so a chain is never presented as dataflow
+ * truth (see plan risk register).
+ */
+export const EventAttribution = {
+  WINDOW: 'window',
+} as const;
+export type EventAttribution = (typeof EventAttribution)[keyof typeof EventAttribution];
 
 /** The web-perf metrics carried in an EventType.PERF event's `metric` field. */
 export const PerfMetric = {
@@ -378,7 +523,7 @@ export const QueryBy = {
   TESTID: 'testid',
   ALT: 'alt',
   /** Resolve by component identity / source location (auto-anchors — addresses any element with
-   * no hand-added testid). Pair with ElementQuery.component and/or .source. */
+   * no hand-added testid). Pair with ElementQuery.component and/or.source. */
   COMPONENT: 'component',
 } as const;
 export type QueryBy = (typeof QueryBy)[keyof typeof QueryBy];

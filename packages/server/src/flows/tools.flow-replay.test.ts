@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  asFlowName,
   ActionType,
   DANGEROUS_ACTION_CONFIRM_ARG,
   FlowErrorCode,
@@ -177,7 +178,7 @@ describe('reticle_flow_replay handler — temp dir, never touches the repo', () 
 
   it('D: a corrupt flow file returns status error with a parse-failed code', async () => {
     await fs.mkdir(join(root, 'flows'));
-    await fs.writeFile(flowPath(root, 'bad'), '{ not: a flow');
+    await fs.writeFile(flowPath(root, asFlowName('bad')), '{ not: a flow');
     const session = scriptedSession(() => ({ elements: [] }));
     const deps = fakeDeps(fs, root, session);
 

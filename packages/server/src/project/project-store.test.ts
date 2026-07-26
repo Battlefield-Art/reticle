@@ -148,4 +148,17 @@ describe('ProjectStore — temp-dir filesystem, never touches the repo', () => {
     const r = await store.read();
     expect(r).toEqual({ ok: false, reason: ProjectReadError.MALFORMED });
   });
+
+  it('12: concurrent recordRun calls all persist — no lost update (parallel flow_verify)', async () => {
+    // Before the per-file lock, N concurrent read-append-write calls each read the same base and the
+    // last save clobbered the rest, so a parallel suite recorded a fraction of its runs.
+    const N = 20;
+    await Promise.all(
+      Array.from({ length: N }, (_v, i) => store.recordRun({ ...RUN, name: `flow-${String(i)}` })),
+    );
+    const r = await store.read();
+    if (!r.ok) throw new Error('expected ok');
+    expect(r.file.runs).toHaveLength(N);
+    expect(new Set(r.file.runs.map((x) => x.name)).size).toBe(N); // every distinct run survived
+  });
 });

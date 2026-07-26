@@ -11,7 +11,7 @@ import { z } from 'zod';
 const DAEMON_REGISTRY_PREFIX = 'daemon-';
 const DAEMON_REGISTRY_SUFFIX = '.json';
 
-/** The registry filename for a daemon on `port` (sibling of daemon-<port>.pid / .log). */
+/** The registry filename for a daemon on `port` (sibling of daemon-<port>.pid /.log). */
 export function daemonRegistryFileName(port: number): string {
   return `${DAEMON_REGISTRY_PREFIX}${String(port)}${DAEMON_REGISTRY_SUFFIX}`;
 }
@@ -38,10 +38,10 @@ export type DaemonRegistryEntry = z.infer<typeof DaemonRegistryEntrySchema>;
 /**
  * Pick the daemon port an app should connect to, given the registry entries, the app's projectId, and
  * a liveness probe. Pure so both the vite and next plugins share one rule and it's unit-testable:
- *   1. drop dead daemons (crashed, stale entry);
- *   2. among the living, prefer the one whose projectId matches the app's — lowest port wins on a tie;
- *   3. return null when nothing matches, so the caller falls back to the default port (never guesses a
- *      mismatched daemon — a wrong auto-connect is worse than the honest default).
+ * 1. drop dead daemons (crashed, stale entry);
+ * 2. among the living, prefer the one whose projectId matches the app's — lowest port wins on a tie;
+ * 3. return null when nothing matches, so the caller falls back to the default port (never guesses a
+ * mismatched daemon — a wrong auto-connect is worse than the honest default).
  */
 export function pickDaemonPort(
   entries: readonly DaemonRegistryEntry[],

@@ -28,7 +28,7 @@ export interface AnnotatorDeps {
 }
 
 /** Single base attribute on every UI node (varied by VALUE) so `closest('[data-reticle-mark]')`
- *  catches the FAB, popover, and pins in one check, and the SDK's observers ignore them all. */
+ * catches the FAB, popover, and pins in one check, and the SDK's observers ignore them all. */
 const MARK_ATTR = 'data-reticle-mark';
 const ACTIVE_ATTR = 'data-reticle-mark-active';
 const Z = 2147483640;

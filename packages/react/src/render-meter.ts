@@ -16,10 +16,44 @@
  * complete minimal hook. MUST be installed before `react-dom` initializes (React reads the hook at
  * renderer-inject time) — import this as the first side-effect in the app entry, before React.
  */
+import { RETICLE_RENDERS_STORE } from '@reticlehq/core';
 import { registerStore } from '@reticlehq/browser';
+import { HYDRATION_COMPLETE_SIGNAL, createHydrationTracker } from './hydration.js';
+import { createCommitAggregator } from './commit-aggregator.js';
 
 const HOOK_KEY = '__REACT_DEVTOOLS_GLOBAL_HOOK__';
-const RENDER_STORE = '__reticle_renders';
+const RENDER_STORE = RETICLE_RENDERS_STORE;
+
+// Fire the hydration-complete signal (once, on the first commit) via the SDK instance if it is present.
+// Structural access avoids importing the whole Reticle type into this tooling module.
+const hydration = createHydrationTracker(() => {
+  const instance = (globalThis as { __reticleInstance?: { signal?: (name: string) => void } })
+    .__reticleInstance;
+  instance?.signal?.(HYDRATION_COMPLETE_SIGNAL);
+});
+
+// Access the SDK instance structurally (avoids importing the whole Reticle type into this tooling module).
+function reticleInstance(): { renderCommit?: (n: number) => void } | undefined {
+  return (globalThis as { __reticleInstance?: { renderCommit?: (n: number) => void } })
+    .__reticleInstance;
+}
+
+// Emit the render stream as aggregated RENDER_COMMIT events, throttled to one flush per frame so a commit
+// storm is one event of magnitude N, never a per-render flood. requestAnimationFrame when available.
+const commitStream = createCommitAggregator({
+  schedule: (fn) => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => fn());
+    else setTimeout(fn, 16);
+  },
+  flush: (n) => reticleInstance()?.renderCommit?.(n),
+});
+
+/** One React commit: bump the counter, fire hydration on the first, and feed the throttled stream. */
+function onReactCommit(): void {
+  commits += 1;
+  hydration.onCommit();
+  commitStream.onCommit();
+}
 
 interface DevtoolsHook {
   supportsFiber?: boolean;
@@ -69,9 +103,7 @@ export function installRenderMeter(): void {
         renderers: new Map(),
         inject: () => 1,
         onScheduleFiberRoot: noop,
-        onCommitFiberRoot: () => {
-          commits += 1;
-        },
+        onCommitFiberRoot: onReactCommit,
         onPostCommitFiberRoot: noop,
         onCommitFiberUnmount: noop,
       };
@@ -81,7 +113,7 @@ export function installRenderMeter(): void {
           ? existing.onCommitFiberRoot.bind(existing)
           : undefined;
       existing.onCommitFiberRoot = (...args: unknown[]) => {
-        commits += 1;
+        onReactCommit();
         if (original !== undefined) {
           try {
             original(...args);

@@ -2,13 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ContractReadError, type CapabilitiesContract } from '@reticlehq/core';
+import { asFlowName, ContractReadError, type CapabilitiesContract } from '@reticlehq/core';
 import {
   baselinePath,
   ensureReticleDir,
   flowPath,
+  isValidSessionId,
+  journalActionsPath,
+  journalEventsPath,
   reticleDirPaths,
   readContract,
+  sessionDirPath,
   writeContract,
 } from './reticle-dir.js';
 import { createNodeFileSystem, type FileSystemPort } from './fs-port.js';
@@ -134,12 +138,27 @@ describe('reticle-dir — temp-dir filesystem, never touches the repo', () => {
     expect(p.contract.endsWith(join('.reticle', 'contract.json'))).toBe(true);
     expect(p.flows.endsWith(join('.reticle', 'flows'))).toBe(true);
     expect(p.baselines.endsWith(join('.reticle', 'baselines'))).toBe(true);
-    expect(flowPath(root, 'checkout').endsWith(join('.reticle', 'flows', 'checkout.json'))).toBe(
-      true,
-    );
+    expect(
+      flowPath(root, asFlowName('checkout')).endsWith(join('.reticle', 'flows', 'checkout.json')),
+    ).toBe(true);
     expect(baselinePath(root, 'home').endsWith(join('.reticle', 'baselines', 'home.json'))).toBe(
       true,
     );
+  });
+
+  it('15: journal paths compose under sessions/<id> and guard the id', () => {
+    expect(reticleDirPaths(root).sessions.endsWith(join('.reticle', 'sessions'))).toBe(true);
+    expect(sessionDirPath(root, 'demo').endsWith(join('.reticle', 'sessions', 'demo'))).toBe(true);
+    expect(journalEventsPath(root, 'demo').endsWith(join('sessions', 'demo', 'events.jsonl'))).toBe(
+      true,
+    );
+    expect(
+      journalActionsPath(root, 'demo').endsWith(join('sessions', 'demo', 'actions.jsonl')),
+    ).toBe(true);
+    expect(isValidSessionId('unique-123')).toBe(true);
+    expect(isValidSessionId('alianpost')).toBe(true);
+    expect(isValidSessionId('../escape')).toBe(false);
+    expect(isValidSessionId('a/b')).toBe(false);
   });
 
   // ---- INVALID ----

@@ -16,7 +16,7 @@ export function readInputMode(actResult: unknown): InputMode | undefined {
 }
 
 /**
- * Tracks the most recent act's inputMode across a spec so `expectInputModeReal()` can read it
+ * Tracks the most recent act's inputMode across a spec so `expectInputModeReal` can read it
  * without re-touching the page. The context records every act through `record`.
  */
 export class InputModeTracker {

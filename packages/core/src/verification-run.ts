@@ -7,7 +7,7 @@
  *
  * Conventions match the rest of `@reticlehq/core`: enums are `as const` objects narrowed with
  * `z.nativeEnum`, timestamps are epoch-ms NUMBERS (the clock is injected — never read inside pure
- * logic), no `any` (opaque evidence is `z.unknown()`), and every domain string is a named constant.
+ * logic), no `any` (opaque evidence is `z.unknown`), and every domain string is a named constant.
  */
 
 import { z } from 'zod';

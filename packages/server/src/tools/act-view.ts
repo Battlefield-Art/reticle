@@ -4,10 +4,10 @@
  * almost always at a non-informative default. We drop a field ONLY when it equals its
  * uninformative default, so absence always means "the boring value" and no real signal is lost:
  *
- *   - success defaults — `dispatched`/`targetMatched`/`visible`/`enabled` are `true` on a clean
- *     action; only their `false` (action missed, hit a hidden/disabled element) carries signal;
- *   - `false` defaults — `occluded`/`scrolledIntoView`/`defaultPrevented`/`valueChanged`;
- *   - `null` defaults — `occludedBy`/`focusMoved` (no overlay / no focus change).
+ * - success defaults — `dispatched`/`targetMatched`/`visible`/`enabled` are `true` on a clean
+ * action; only their `false` (action missed, hit a hidden/disabled element) carries signal;
+ * - `false` defaults — `occluded`/`scrolledIntoView`/`defaultPrevented`/`valueChanged`;
+ * - `null` defaults — `occludedBy`/`focusMoved` (no overlay / no focus change).
  *
  * A clean click therefore collapses to its consequence alone (e.g. `{ domMutatedWithin: 8 }`),
  * matching the leanness of a bare browser-driver click. This runs at the serialization boundary;

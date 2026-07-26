@@ -1,9 +1,9 @@
 /**
  * Observe / wait / assert tools — reticle_observe, reticle_wait_for, reticle_assert, reticle_network,
- * reticle_console, reticle_animations. Split out of tools.ts; assembled back via ...OBSERVE_TOOLS.
+ * reticle_console, reticle_animations. Split out of tools.ts; assembled back via...OBSERVE_TOOLS.
  */
 import { z } from 'zod';
-import { ReticleCommand } from '@reticlehq/core';
+import { ReticleCommand, DEFAULT_ASSERT_TIMEOUT_MS } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport } from '../events/reaction.js';
 import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
@@ -11,15 +11,23 @@ import {
   matchNet,
   matchConsole,
   isConsoleEvent,
+  eventMatchesFilters,
   netEmptyHint,
   consoleEmptyHint,
   reconcileNet,
   projectNetCall,
   projectConsoleLog,
 } from '../events/event-filters.js';
-import { applyEventBudget, costHint, withSizeCost } from '../session/output-budget.js';
+import {
+  applyEventBudget,
+  costHint,
+  withSizeCost,
+  DEFAULT_QUERY_LIMIT,
+} from '../session/output-budget.js';
 import { healthEnvelope, bufferEnvelope } from '../session/session-health.js';
+import type { Session } from '../session/session.js';
 import { isPresenceOnlyAssertion, PRESENCE_ONLY_ADVICE } from './assert-grade.js';
+import { buildCoverageStatement, blindSpotsFromState } from '../honesty/blind-spots.js';
 import { withControl } from '../session/control-envelope.js';
 import { asString, asNumber } from './tools-helpers.js';
 import { type ToolDef, sessionIdShape, commandOrThrow } from './tool-kit.js';
@@ -37,6 +45,23 @@ const bufferOutputShape = {
     ),
 };
 
+/**
+ * Where to look when a failure has no element.
+ *
+ * "the signal never fired", "the request was never made", "the store did not change" have no DOM node
+ * to map to a component, so the file:line that covers element failures leaves exactly the failures
+ * that most need explaining with nowhere to send the agent. The handler that should have fired the
+ * signal lives with the control that was clicked, and the act path captured that control's source —
+ * so a failing assertion can point there instead of at nothing.
+ *
+ * RED only: on a pass this is noise on the path the agent walks most.
+ */
+function lastActSourceOnFailure(session: Session, pass: boolean): { source?: string } {
+  if (pass) return {};
+  const source = session.lastActSource();
+  return source === undefined ? {} : { source };
+}
+
 export const OBSERVE_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.OBSERVE,
@@ -53,11 +78,23 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Cursor from a prior reticle_act or reticle_observe call. Scopes the event window to exactly that span.',
         ),
+      until: z
+        .number()
+        .optional()
+        .describe('Upper cursor bound. With `since`, returns the span "between action A and B".'),
+      actionId: z
+        .string()
+        .optional()
+        .describe(
+          'Keep only events attributed to this action — answers "what did action N cause".',
+        ),
       filters: z
         .array(z.string())
         .optional()
         .describe(
-          'Event type allowlist: dom | net | route | console | animation | signal. Omit to return all types.',
+          'Event type allowlist — the cheapest way to shrink a large timeline. Use a bucket name — ' +
+            'dom | net | route | console | animation | signal | perf | state | storage — or a raw ' +
+            'type (e.g. "net.request"). Omit to return all types.',
         ),
       max_events: z
         .number()
@@ -68,6 +105,9 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       ...sessionIdShape,
     },
     outputSchema: {
+      // The observed window's duration — buildReactionReport returns it on every call; without it in
+      // the schema, a validating profile stripped it and the agent lost "over how long" the counts hold.
+      window_ms: z.number(),
       events: z.array(z.unknown()),
       summary: z.object({
         total: z.number(),
@@ -96,15 +136,20 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .optional(),
       ...bufferOutputShape,
     },
-    handler: (deps, args) => {
+    handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      const since = asNumber(args['since']);
+      const explicitSince = asNumber(args['since']);
       const windowMs = asNumber(args['window_ms']) ?? 2000;
-      const events =
-        since !== undefined ? session.eventsSince(since) : session.eventsInWindow(windowMs);
+      // Explicit since wins; else look back one window. Journal-backed so it survives buffer eviction.
+      const since = explicitSince ?? Math.max(0, session.elapsed() - windowMs);
+      const events = await session.queryEvents({
+        since,
+        until: asNumber(args['until']),
+        actionId: asString(args['actionId']),
+      });
       const filters = Array.isArray(args['filters']) ? (args['filters'] as string[]) : undefined;
       const filtered =
-        filters === undefined ? events : events.filter((e) => filters.includes(e.type));
+        filters === undefined ? events : events.filter((e) => eventMatchesFilters(e, filters));
       // Output budget: cap to the most recent N (no silent caps — droppedOldest is surfaced in cost).
       const { events: budgeted, droppedOldest } = applyEventBudget(
         filtered,
@@ -112,14 +157,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       );
       const report = buildReactionReport(budgeted, windowMs);
       // carry session health — a throttled tab means the observed timeline may be incomplete.
-      return Promise.resolve(
-        withControl(session, {
-          ...report,
-          cost: costHint(report, budgeted.length, droppedOldest),
-          ...healthEnvelope(session),
-          ...bufferEnvelope(session),
-        }),
-      );
+      return withControl(session, {
+        ...report,
+        cost: costHint(report, budgeted.length, droppedOldest),
+        ...healthEnvelope(session),
+        ...bufferEnvelope(session),
+      });
     },
   },
   {
@@ -144,6 +187,31 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
+      buffer: z
+        .object({ held: z.number(), dropped: z.number(), note: z.string() })
+        .optional()
+        .describe(
+          'Present ONLY when the ring buffer evicted events during this window. A passing assertion — especially an absence one — may then be a false negative: the evidence that would have failed it could have been dropped. Absence of this block means the buffer was intact and the verdict is trustworthy.',
+        ),
+      observed: z
+        .string()
+        .optional()
+        .describe(
+          'What was actually seen — the structured half of failureReason, for the agent rather than a log.',
+        ),
+      expected: z.string().optional().describe('What the oracle required.'),
+      assertion: z
+        .string()
+        .optional()
+        .describe(
+          'Which oracle judged it, e.g. element.state — lets an agent branch on the failure KIND without parsing prose.',
+        ),
+      source: z
+        .string()
+        .optional()
+        .describe(
+          'On a FAILING assertion, the `file:line` of the control last acted on — where the code that should have produced the missing signal/request/state change lives. Present only when an act preceded this assertion.',
+        ),
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -153,11 +221,17 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const verdict = await waitForPredicate(
         session,
         predicate,
-        asNumber(args['timeout_ms']) ?? 4000,
+        asNumber(args['timeout_ms']) ?? DEFAULT_ASSERT_TIMEOUT_MS,
         since,
       );
-      // match reticle_assert — wrap with control + session health (throttle matters most while blocking).
-      return withControl(session, { ...verdict, ...healthEnvelope(session) });
+      // match reticle_assert — wrap with control + session health (throttle matters most while blocking)
+      // and the buffer envelope, so a verdict reached over an evicted window says so.
+      return withControl(session, {
+        ...verdict,
+        ...lastActSourceOnFailure(session, verdict.pass),
+        ...healthEnvelope(session),
+        ...bufferEnvelope(session),
+      });
     },
   },
   {
@@ -190,9 +264,44 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .string()
         .optional()
         .describe('Present on a PASSING presence-only assertion — nudges toward a consequence.'),
+      observed: z
+        .string()
+        .optional()
+        .describe(
+          'What was actually seen — the structured half of failureReason, for the agent rather than a log.',
+        ),
+      expected: z.string().optional().describe('What the oracle required.'),
+      assertion: z
+        .string()
+        .optional()
+        .describe(
+          'Which oracle judged it, e.g. element.state — lets an agent branch on the failure KIND without parsing prose.',
+        ),
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
+      buffer: z
+        .object({ held: z.number(), dropped: z.number(), note: z.string() })
+        .optional()
+        .describe(
+          'Present ONLY when the ring buffer evicted events during this window. A passing assertion — especially an absence one — may then be a false negative: the evidence that would have failed it could have been dropped. Absence of this block means the buffer was intact and the verdict is trustworthy.',
+        ),
+      source: z
+        .string()
+        .optional()
+        .describe(
+          'On a FAILING assertion, the `file:line` of the control last acted on — where the code that should have produced the missing signal/request/state change lives. Present only when an act preceded this assertion.',
+        ),
+      coverage: z
+        .string()
+        .optional()
+        .describe(
+          'Present ONLY when part of the page was unobservable (cross-origin iframe, closed shadow root). A PASSING assertion is then scoped to what could be seen — treat it as "no failure found in the observed region", never as "the page is correct".',
+        ),
+      coverage_spots: z
+        .array(z.object({ kind: z.string(), count: z.number() }))
+        .optional()
+        .describe('Which regions were unobservable, when coverage is partial.'),
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -208,7 +317,40 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       // toward a consequence. Never on a failing verdict (moot) or when a signal/net is asserted.
       const advice =
         verdict.pass && isPresenceOnlyAssertion(predicate) ? { advice: PRESENCE_ONLY_ADVICE } : {};
-      return withControl(session, { ...verdict, ...advice, ...healthEnvelope(session) });
+      // A verdict reached over an evicted buffer can be a FALSE NEGATIVE: "no console error" may
+      // simply mean the error aged out. reticle_console has always disclosed this on the same window;
+      // the verdict path — the one an agent actually gates on — did not. Omitted when nothing dropped.
+      // Coverage, on the verdict an agent actually gates on.
+      //
+      // Scope caveat, stated because it is a real limitation and not a bug: blind spots are tracked
+      // per SESSION, not per assertion window. So a cross-origin iframe seen once marks every later
+      // verdict in that session partial, including ones about a region it cannot affect. That errs
+      // toward over-warning, which is the correct direction for an honesty signal — the failure this
+      // guards against is a green that implies coverage it never had, and the opposite error (a
+      // needless caveat) costs the agent a sentence.
+      //
+      // act_and_wait has always disclosed this; plain assert did not — so a GREEN assert on a page
+      // with a cross-origin iframe or a closed shadow root read as "the page is correct" when the
+      // honest claim is "nothing failed in the part I could see". That is the false-green shape this
+      // project exists to prevent, sitting on the most-used verdict path. Omitted entirely when
+      // coverage is full, so an intact page pays nothing and the field's PRESENCE is the warning.
+      const spots = blindSpotsFromState(session.blindSpots());
+      const statement = buildCoverageStatement(spots);
+      const coverage =
+        statement.coverage === 'partial'
+          ? {
+              coverage: statement.note ?? 'partial',
+              coverage_spots: statement.spots.map((sp) => ({ kind: sp.kind, count: sp.count })),
+            }
+          : {};
+      return withControl(session, {
+        ...verdict,
+        ...advice,
+        ...coverage,
+        ...lastActSourceOnFailure(session, verdict.pass),
+        ...healthEnvelope(session),
+        ...bufferEnvelope(session),
+      });
     },
   },
   {
@@ -222,6 +364,14 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Cursor from a prior reticle_act — scopes the query to requests fired after that act.',
         ),
+      until: z
+        .number()
+        .optional()
+        .describe('Upper cursor bound — with `since`, the span between two acts.'),
+      actionId: z
+        .string()
+        .optional()
+        .describe('Keep only requests attributed to this action — "what did action N request".'),
       method: z
         .string()
         .optional()
@@ -232,7 +382,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .number()
         .optional()
         .describe(
-          'Keep only the most recent N matching calls (older are dropped and counted in droppedOldest) — cuts tokens on a wide window.',
+          'Keep only the most recent N matching calls (older are dropped and counted in droppedOldest) — cuts tokens on a wide window. Defaults to 200 when omitted; pass a higher number for more, or scope with since/until.',
         ),
       ...sessionIdShape,
     },
@@ -247,7 +397,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       cost: z.object({ bytes: z.number(), tokens: z.number() }).optional(),
       ...bufferOutputShape,
     },
-    handler: (deps, args) => {
+    handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
       const since = asNumber(args['since']) ?? 0;
       const method = asString(args['method']);
@@ -256,22 +406,28 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const limit = asNumber(args['limit']);
       const buffer = bufferEnvelope(session);
       // Completed calls + unresolved in-flight requests (a hung request shows as pending).
-      const allNet = reconcileNet(session.eventsSince(since));
+      const allNet = reconcileNet(
+        await session.queryEvents({
+          since,
+          until: asNumber(args['until']),
+          actionId: asString(args['actionId']),
+        }),
+      );
       const matched = allNet.filter((e) => matchNet(e, method, urlContains, status));
       // zero-match filter returns what DID fire, not a bare [].
       if (matched.length === 0 && allNet.length > 0) {
-        return Promise.resolve(
-          withSizeCost({ calls: matched, hint: netEmptyHint(allNet), ...buffer }),
-        );
+        return withSizeCost({ calls: matched, hint: netEmptyHint(allNet), ...buffer });
       }
-      const { events: budgeted, droppedOldest } = applyEventBudget(matched, limit);
+      // Default the cap so an omitted `limit` can't dump a whole flooded session (since defaults to 0).
+      const { events: budgeted, droppedOldest } = applyEventBudget(
+        matched,
+        limit ?? DEFAULT_QUERY_LIMIT,
+      );
       const calls = budgeted.map(projectNetCall);
-      return Promise.resolve(
-        withSizeCost(
-          droppedOldest > 0
-            ? { calls, total: matched.length, droppedOldest, ...buffer }
-            : { calls, ...buffer },
-        ),
+      return withSizeCost(
+        droppedOldest > 0
+          ? { calls, total: matched.length, droppedOldest, ...buffer }
+          : { calls, ...buffer },
       );
     },
   },
@@ -290,11 +446,19 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Cursor from a prior reticle_act — scopes the query to log entries after that act.',
         ),
+      until: z
+        .number()
+        .optional()
+        .describe('Upper cursor bound — with `since`, the span between two acts.'),
+      actionId: z
+        .string()
+        .optional()
+        .describe('Keep only log entries attributed to this action — "what did action N log".'),
       limit: z
         .number()
         .optional()
         .describe(
-          'Keep only the most recent N matching entries (older are dropped and counted in droppedOldest) — cuts tokens when a page spams the console.',
+          'Keep only the most recent N matching entries (older are dropped and counted in droppedOldest) — cuts tokens when a page spams the console. Defaults to 200 when omitted; pass a higher number for more, or scope with since/until.',
         ),
       ...sessionIdShape,
     },
@@ -309,28 +473,34 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       cost: z.object({ bytes: z.number(), tokens: z.number() }).optional(),
       ...bufferOutputShape,
     },
-    handler: (deps, args) => {
+    handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
       const since = asNumber(args['since']) ?? 0;
       const level = asString(args['level']);
       const limit = asNumber(args['limit']);
       const buffer = bufferEnvelope(session);
-      const allConsole = session.eventsSince(since).filter(isConsoleEvent);
+      const allConsole = (
+        await session.queryEvents({
+          since,
+          until: asNumber(args['until']),
+          actionId: asString(args['actionId']),
+        })
+      ).filter(isConsoleEvent);
       const matched = allConsole.filter((e) => matchConsole(e, level));
       // zero matches at this level → report what levels ARE present (not a bare []).
       if (matched.length === 0 && allConsole.length > 0) {
-        return Promise.resolve(
-          withSizeCost({ logs: matched, hint: consoleEmptyHint(allConsole), ...buffer }),
-        );
+        return withSizeCost({ logs: matched, hint: consoleEmptyHint(allConsole), ...buffer });
       }
-      const { events: budgeted, droppedOldest } = applyEventBudget(matched, limit);
+      // Default the cap so an omitted `limit` can't dump a whole flooded session (since defaults to 0).
+      const { events: budgeted, droppedOldest } = applyEventBudget(
+        matched,
+        limit ?? DEFAULT_QUERY_LIMIT,
+      );
       const logs = budgeted.map(projectConsoleLog);
-      return Promise.resolve(
-        withSizeCost(
-          droppedOldest > 0
-            ? { logs, total: matched.length, droppedOldest, ...buffer }
-            : { logs, ...buffer },
-        ),
+      return withSizeCost(
+        droppedOldest > 0
+          ? { logs, total: matched.length, droppedOldest, ...buffer }
+          : { logs, ...buffer },
       );
     },
   },

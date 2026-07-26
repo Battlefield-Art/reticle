@@ -118,6 +118,9 @@ export class Bridge {
   #pendingConnections = 0;
   #onReplay: ReplayRequestHandler | undefined;
   #onSessionReady: SessionReadyHandler | undefined;
+  #onSessionCreate: ((session: Session) => void) | undefined;
+  /** Fired when a session is removed — flushes its journal tail + persists what it learned. */
+  #onSessionEnd: ((session: Session) => Promise<void>) | undefined;
 
   constructor(options: BridgeOptions) {
     const host = options.host ?? LOOPBACK_HOST;
@@ -166,7 +169,7 @@ export class Bridge {
           done(allowed, 403, 'Forbidden');
         },
       });
-      // In shared-server mode the daemon owns listen(); but a WebSocketServer bound to a server that
+      // In shared-server mode the daemon owns listen; but a WebSocketServer bound to a server that
       // fails to listen (EADDRINUSE) surfaces the error on the WS instance too. Without a listener
       // that is an unhandled 'error' that can crash/hang the process — so absorb it here and reject
       // `ready`, mirroring the standalone branch. The daemon's own listen handler reports the failure.
@@ -276,6 +279,7 @@ export class Bridge {
         clearTimeout(helloTimer);
         releasePending();
         session = new Session(parsed, socket, this.#clock);
+        this.#onSessionCreate?.(session); // attach the durable journal before any events stream in
         const replaced = this.sessions.add(session);
         replaced?.disconnect('session replaced by a newer connection');
         log('session_connected', { sessionId: session.id, url: session.url });
@@ -301,8 +305,12 @@ export class Bridge {
       clearTimeout(helloTimer);
       releasePending();
       if (session !== undefined) {
-        if (this.sessions.remove(session)) {
-          log('session_disconnected', { sessionId: session.id });
+        const ended = session;
+        if (this.sessions.remove(ended)) {
+          log('session_disconnected', { sessionId: ended.id });
+          // Best-effort teardown: flush the journal tail + persist ambient learning. Never awaited here
+          // (the socket is already closing) and never allowed to reject into the close handler.
+          void this.#onSessionEnd?.(ended).catch(() => undefined);
         }
       }
     });
@@ -346,6 +354,19 @@ export class Bridge {
   /** Register a callback fired when a browser session connects (to push it the replayable flows). */
   attachSessionReady(handler: SessionReadyHandler): void {
     this.#onSessionReady = handler;
+  }
+
+  /** Register a callback fired the instant a session is created — used to attach the durable journal. */
+  /**
+   * Teardown handler fired when a session is removed (tab closed/disconnected). Without it the journal's
+   * batched tail (< one flush batch) never reaches disk and the learned ambient map is discarded.
+   */
+  attachSessionEnd(handler: (session: Session) => Promise<void>): void {
+    this.#onSessionEnd = handler;
+  }
+
+  attachSessionCreate(handler: (session: Session) => void): void {
+    this.#onSessionCreate = handler;
   }
 
   close(): Promise<void> {

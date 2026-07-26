@@ -2,7 +2,7 @@
  * BrowserPool — one headless browser, many cheap isolated contexts.
  *
  * The "10 agents test 10 flows" scenario does NOT mean 10 Chromiums (each ~hundreds of MB). It means
- * ONE launched browser and N `newContext()` calls (each ~a few MB, fully isolated cookies/storage).
+ * ONE launched browser and N `newContext` calls (each ~a few MB, fully isolated cookies/storage).
  * The pool owns that single browser, hands out per-flow leases, caps concurrency so a machine is
  * never overwhelmed (over-cap acquires queue FIFO), and transparently relaunches if the browser dies.
  *
@@ -36,7 +36,7 @@ export interface PooledBrowser {
 /** Produces a freshly launched browser. Injected so tests can supply a fake. */
 export type Launcher = () => Promise<PooledBrowser>;
 
-/** A leased context+page for one flow. `release()` frees the slot and closes the context. */
+/** A leased context+page for one flow. `release` frees the slot and closes the context. */
 export interface Lease {
   readonly sessionId: string;
   readonly url: string;
@@ -56,7 +56,7 @@ interface BrowserPoolOptions {
   genSessionId: () => string;
   /** Injected clock (ms). Defaults to Date.now; tests pass a controllable one. */
   now?: () => number;
-  /** A lease untouched for longer than this is reclaimed by sweepExpired(). */
+  /** A lease untouched for longer than this is reclaimed by sweepExpired. */
   leaseTtlMs?: number;
   /** Per-lease navigation timeout — a page that won't load fails its own lease, never blocks a slot. */
   navTimeoutMs?: number;
@@ -108,6 +108,11 @@ export class BrowserPool {
   }
 
   /** Currently leased contexts. */
+  /** Max simultaneous leases — the ceiling the parallel suite sizes its concurrency to. */
+  capacity(): number {
+    return this.#max;
+  }
+
   activeCount(): number {
     return this.#active.size;
   }
@@ -170,6 +175,11 @@ export class BrowserPool {
         void this.#release(sessionId);
       });
       await page.goto(url, { timeoutMs: this.#navTimeout });
+      // The browser can crash WHILE goto is resolving; #onCrash then clears #active and zeroes
+      // #occupied. Registering the lease now would resurrect a dead entry against a crashed browser with
+      // the slot count out of sync (drifting below #active.size, eventually exceeding the cap). If we're
+      // no longer the live browser, bail — the catch below closes the context and returns the slot.
+      if (this.#browser !== browser) throw new Error('browser crashed during navigation');
       this.#active.set(sessionId, { context, page, url, touchedAt: this.#now() });
       return {
         sessionId,
@@ -260,12 +270,20 @@ export class BrowserPool {
     if (this.#browser !== undefined && this.#browser.isConnected()) return this.#browser;
     // De-dupe concurrent launches: the first acquire to find no browser starts one; the rest await it.
     if (this.#launching === undefined) {
-      this.#launching = this.#launch().then((b) => {
-        b.onDisconnected(() => this.#onCrash(b));
-        this.#browser = b;
-        this.#launching = undefined;
-        return b;
-      });
+      // The in-flight promise MUST be cleared on failure as well as success. It used to be cleared only
+      // in the success callback, so the first failed launch — Chromium not downloaded, a transient
+      // EAGAIN — left a permanently rejected promise here, and every subsequent acquire for the daemon's
+      // lifetime re-returned that same stale rejection. Running `npx playwright install` did not help;
+      // only restarting the daemon did. A retry must be allowed to actually retry.
+      this.#launching = this.#launch()
+        .then((b) => {
+          b.onDisconnected(() => this.#onCrash(b));
+          this.#browser = b;
+          return b;
+        })
+        .finally(() => {
+          this.#launching = undefined;
+        });
     }
     return this.#launching;
   }

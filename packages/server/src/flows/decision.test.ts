@@ -6,6 +6,7 @@ import {
   ReplayStatus,
   type FlowFile,
   type FlowReplayResult,
+  type FlowStepResult,
 } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import { buildDecision, buildSuiteVerdict } from './decision.js';
@@ -186,5 +187,59 @@ describe('buildSuiteVerdict — the autonomous regression check', () => {
     expect(v.failures[0]?.nextAction).toContain('here'); // the rebind suggestion
     expect(v.summary).toContain('2/3 flows pass');
     expect(v.summary).toContain('b');
+  });
+});
+
+/**
+ * `whereInSource` used to fall back to the step's page when it had no source, so a field whose name
+ * promises a code location returned "/checkout" — rendered by the report writer as
+ * "**Where:** `/checkout`". An agent cannot tell that apart from a file path, and a locator that is
+ * sometimes a route is worse than no locator, because it cannot be trusted when it IS a path.
+ *
+ * A testid-anchored step can now carry source too: the act path captures provenance alongside the
+ * anchor, so having a data-testid no longer costs the step its file:line.
+ */
+describe('whereInSource points at code or says nothing', () => {
+  function failingStep(): FlowStepResult {
+    return {
+      step: 0,
+      tool: ReticleTool.ACT,
+      anchor: 'new-deploy',
+      ok: false,
+      page: '/deployments',
+    };
+  }
+
+  it('does not pass a route off as a source location', () => {
+    const result: FlowReplayResult = {
+      name: 'verify',
+      status: ReplayStatus.ERROR,
+      steps: [failingStep()],
+    };
+    const f = flow({
+      steps: [{ tool: ReticleTool.ACT, anchor: { kind: AnchorKind.TESTID, value: 'new-deploy' } }],
+    });
+    expect(buildDecision(result, f).whereInSource).toBeUndefined();
+  });
+
+  it('reports source recorded on a testid anchor', () => {
+    const result: FlowReplayResult = {
+      name: 'verify',
+      status: ReplayStatus.ERROR,
+      steps: [failingStep()],
+    };
+    const f = flow({
+      steps: [
+        {
+          tool: ReticleTool.ACT,
+          anchor: {
+            kind: AnchorKind.TESTID,
+            value: 'new-deploy',
+            source: { file: 'src/components/Topbar.tsx', line: 31 },
+          },
+        },
+      ],
+    });
+    expect(buildDecision(result, f).whereInSource).toBe('src/components/Topbar.tsx:31');
   });
 });

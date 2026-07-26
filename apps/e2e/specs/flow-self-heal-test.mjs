@@ -13,9 +13,9 @@ await p.goto('http://localhost:3100/',{waitUntil:'networkidle'});
 for(let i=0;i<200&&server.bridge.sessions.count()===0;i++) await sleep(50);
 const refOf=async(by,v)=>{for(let i=0;i<30;i++){const r=(await T('reticle_query',{by,value:v})).elements?.[0]?.ref;if(r)return r;await sleep(100);}throw new Error('nf '+v);};
 console.log('\n=== self-healing rebind (real browser) ===');
-await T('reticle_record_start',{recordingName:'ht'});
+await T('reticle_record',{action:'start',recordingName:'ht'});
 await T('reticle_act',{ref:await refOf('testid','add-task'),action:'click'});
-await T('reticle_record_stop',{recordingName:'ht'});
+await T('reticle_record',{action:'stop',recordingName:'ht'});
 await T('reticle_flow_save',{flowName:'ht'});
 const file=path.join(reticleRoot,'flows','ht.json');
 // corrupt the testid

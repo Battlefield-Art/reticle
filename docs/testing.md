@@ -40,7 +40,7 @@ Any failed matcher throws with the structured evidence (near-miss, failure reaso
 ## Deterministic + honest
 
 - **`t.clock`** bakes `reticle_clock` into the spec, so time-gated UI (a 5s auto-dismiss, a 500ms hover dwell) is tested deterministically instead of racing real timers.
-- **`t.expectInputModeReal()`** — a hover/drag spec asserts native input is active; if it's running synthetic (no CDP), the spec is **skipped with a reason**, never silently passing on a no-op. Enable real input headless with `reticle drive` (see [usage §18](usage.md#18-real-input-mode--native-hover--drag-m58)).
+- **`t.expectInputModeReal()`** — a hover/drag spec asserts native input is active; if it's running synthetic (no CDP), the spec is **skipped with a reason**, never silently passing on a no-op. Enable real input headless with `reticle drive` (see [usage §18](usage.md#18-real-input-mode--native-hover--drag)).
 
 ## Run a suite (headless, the same path CI uses)
 

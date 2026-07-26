@@ -113,7 +113,6 @@ describe('runSpecs', () => {
     const spec: ReticleSpec = {
       name: 'plain',
       fn: () => {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error -- deliberately a non-Error throw
         throw 'plain string';
       },
     };

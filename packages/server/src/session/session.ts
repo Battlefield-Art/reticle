@@ -17,6 +17,16 @@ import {
   type ReticleEvent,
 } from '@reticlehq/core';
 import { RingBuffer } from '../events/ring-buffer.js';
+import type { JournalReader, JournalRecorder } from '../journal/journal-recorder.js';
+import {
+  filterEvents,
+  mergeEventsBySeq,
+  type EventQueryOptions,
+} from '../journal/journal-query.js';
+import { type AmbientCounts } from '../journal/ambient.js';
+import { ObservedState } from './observed-state.js';
+import { LiveControl, type InboxMessage } from './live-control.js';
+export type { InboxMessage } from './live-control.js'; // moved; still part of Session's surface
 import { ReviewStore, type ReviewMark } from './review-store.js';
 import { buildSessionRecommendation } from './session-recommendation.js';
 import { buildPresenterArgs } from './presenter-args.js';
@@ -66,14 +76,11 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 8000;
 /** Prefix on correlated command ids (c1, c2, …) — distinguishes them from mark ids. */
 const COMMAND_ID_PREFIX = 'c';
 
+/** Prefix on minted action ids (a1, a2, …) — the journal's action identity, independent of commands. */
+const ACTION_ID_PREFIX = 'a';
+
 /** ws readyState for an OPEN socket — guard fire-and-forget pushes against a closing tab. */
 const WS_OPEN = 1;
-
-/** Live-control: a human note queued for the agent, stamped with session-relative elapsed time. */
-export interface InboxMessage {
-  text: string;
-  t: number;
-}
 
 /**
  * One connected browser tab. Owns its socket, a ring buffer of observations, and the
@@ -95,22 +102,30 @@ export class Session {
   readonly #pending = new Map<string, PendingCommand>();
   readonly #listeners = new Set<(event: ReticleEvent) => void>();
   #seq = 0;
+  #actionSeq = 0;
   #lastSeenAt: number;
   #hidden = false;
   #focused = true;
-  #state: SessionState = SessionState.ACTIVE;
   #lastActCursor: number | undefined;
+  #lastActSource: string | undefined;
   /** Liveness: wall-clock of the last AGENT command (distinct from browser chatter / lastSeen). */
   #lastAgentActivityAt: number;
   /** Server-side mirror of the agent-tuned idle window, so the reaper honors reticle_session. */
   #idleEndMs: number = SESSION_LIFECYCLE.IDLE_END_MS;
   /** True when the reaper/disconnect ended this session — such an end is revivable; explicit ends are not. */
   #autoEnded = false;
-  readonly #inbox: InboxMessage[] = [];
+  readonly #live = new LiveControl();
   /** Human review marks: mistakes the human pinned to elements, for the agent to drain and fix. */
   readonly #review = new ReviewStore();
   /** Whether the session_lease has already been returned (fire-once per session). */
   #firstCommandDone = false;
+  /** Durable causal-journal recorder; undefined when journaling is off (opt-out or not yet attached). */
+  #journal: JournalRecorder | undefined;
+  #activeActionId: string | undefined; // action window, held independently of the journal
+  /** Read side of the journal, for queries that must survive ring-buffer eviction. */
+  #journalReader: JournalReader | undefined;
+  /** What this session has learned by watching its own stream: ambient churn + blind-spot levels. */
+  readonly #observed = new ObservedState();
 
   constructor(hello: HelloMessage, socket: WebSocket, clock: Clock) {
     this.id = hello.sessionId;
@@ -226,8 +241,86 @@ export class Session {
     }
     const t = this.elapsed();
     const stamped: ReticleEvent = { ...event, t, sessionId: this.id };
-    this.#buffer.push(stamped, t, byteSize);
-    for (const listener of this.#listeners) listener(stamped);
+    // The recorder attributes the event to the in-flight action (if any) and journals it durably; the
+    // returned event carries actionId/attribution so the buffer + all queries see the same causal link.
+    // Falls back to the session's own window so attribution survives the journal being switched off.
+    const seen = this.#journal?.observe(stamped) ?? stamped;
+    const fallback = this.#activeActionId;
+    const attributed =
+      seen.actionId === undefined && fallback !== undefined
+        ? { ...seen, actionId: fallback }
+        : seen;
+    this.#observed.observe(attributed);
+    this.#buffer.push(attributed, t, byteSize);
+    for (const listener of this.#listeners) listener(attributed);
+  }
+
+  /** Latest count per blind-spot kind; survives buffer eviction. See ObservedState for why. */
+  blindSpots(): Readonly<Record<string, number>> {
+    return this.#observed.blindSpots();
+  }
+
+  /** Learned ambient-churn counts (PredicateSession hook the settle oracle reads). */
+  ambientCounts(): AmbientCounts {
+    return this.#observed.ambientCounts();
+  }
+
+  /** Only what THIS session observed — what teardown accumulates onto the persisted map. */
+  ownAmbientCounts(): AmbientCounts {
+    return this.#observed.ownAmbientCounts();
+  }
+
+  /** Seed the ambient map from the persisted per-app `.reticle/ambient.json` (sharpens across sessions). */
+  seedAmbient(counts: AmbientCounts): void {
+    this.#observed.seedAmbient(counts);
+  }
+
+  /**
+   * Attach the durable causal-journal recorder (off by default; wired at session creation). The optional
+   * reader is the query fall-through source — pass it to make `queryEvents` survive buffer eviction.
+   */
+  setJournal(recorder: JournalRecorder, reader?: JournalReader): void {
+    this.#journal = recorder;
+    this.#journalReader = reader;
+  }
+
+  /**
+   * Journal-backed event query: the ring buffer's events, merged with the durable journal **only when
+   * the buffer has evicted** (so a healthy session pays no disk cost), then filtered by since/until/
+   * actionId. This is how "what did action N cause" is answered after the buffer has dropped the
+   * evidence — the substrate's whole point. The sync `eventsSince`/`window` stay for the hot path.
+   */
+  async queryEvents(options: EventQueryOptions): Promise<ReticleEvent[]> {
+    if (this.#journalReader !== undefined && this.#buffer.bufferHealth().dropped > 0) {
+      const durable = await this.#journalReader.readEvents();
+      return filterEvents(mergeEventsBySeq(durable, this.#buffer.since(0)), options);
+    }
+    return filterEvents(this.#buffer.since(options.since ?? 0), options);
+  }
+
+  /**
+   * Open an action-attribution window: events observed until finishAction attribute to the returned
+   * action id. Ids are minted independently of command correlation ids so the journal is self-contained.
+   */
+  beginAction(tool: string, args: Record<string, unknown>): string {
+    this.#actionSeq += 1;
+    const actionId = `${ACTION_ID_PREFIX}${String(this.#actionSeq)}`;
+    // Held here, not only in the journal: with the journal off every event was unattributed, and
+    // pushEvent reads that as ambient churn the settle oracle then ignores. See action-attribution test.
+    this.#activeActionId = actionId;
+    this.#journal?.beginAction(actionId, tool, args);
+    return actionId;
+  }
+
+  /** Close the active action window, persisting its action record with the settle outcome. */
+  finishAction(effect?: unknown, settled?: boolean, settledInMs?: number): void {
+    this.#activeActionId = undefined;
+    this.#journal?.finishAction(effect, settled, settledInMs);
+  }
+
+  /** Flush any buffered journal events to disk (call on session end). */
+  async flushJournal(): Promise<void> {
+    await this.#journal?.flush();
   }
 
   eventsSince(cursor: number): ReticleEvent[] {
@@ -247,6 +340,16 @@ export class Session {
     return this.#lastActCursor;
   }
 
+  /** Remember where the last acted control is written (`file:line`), for failures with no element. */
+  markActSource(source: string | undefined): void {
+    this.#lastActSource = source;
+  }
+
+  /** Where the last acted control is written, or undefined if nothing has acted yet. */
+  lastActSource(): string | undefined {
+    return this.#lastActSource;
+  }
+
   // ── Server-authoritative liveness (immune to browser-tab throttling) ──────────────
 
   /**
@@ -257,7 +360,7 @@ export class Session {
    */
   markAgentActivity(): void {
     this.#lastAgentActivityAt = this.#clock();
-    if (this.#state === SessionState.ENDED && this.#autoEnded) {
+    if (this.#live.isEnded() && this.#autoEnded) {
       this.#autoEnded = false;
       this.setState(SessionState.ACTIVE);
     }
@@ -284,7 +387,7 @@ export class Session {
    * already ended.
    */
   autoEnd(text?: string, tone: PresenterTone = PresenterTone.WARN): void {
-    if (this.#state === SessionState.ENDED) return;
+    if (this.#live.isEnded()) return;
     this.#autoEnded = true;
     this.setState(SessionState.ENDED, text, tone);
   }
@@ -358,15 +461,15 @@ export class Session {
   // ── Live-control: state machine + human→agent inbox (server-owned) ───────────────
 
   getState(): SessionState {
-    return this.#state;
+    return this.#live.state();
   }
 
   isPaused(): boolean {
-    return this.#state === SessionState.PAUSED;
+    return this.#live.isPaused();
   }
 
   isEnded(): boolean {
-    return this.#state === SessionState.ENDED;
+    return this.#live.isEnded();
   }
 
   /**
@@ -375,30 +478,28 @@ export class Session {
    * summary) so a transition never emits two PRESENTER commands.
    */
   setState(next: SessionState, text?: string, tone?: PresenterTone): void {
-    this.#state = next;
-    this.pushPresenter(this.#state, text, tone);
+    this.#live.setState(next);
+    this.pushPresenter(next, text, tone);
   }
 
-  /** Push a human note onto the inbox; empty/whitespace-only text is ignored. Stamped with elapsed t. */
+  /** Push a human note onto the inbox (see LiveControl). */
   pushMessage(text: string): void {
-    const trimmed = text.trim();
-    if (trimmed.length === 0) return;
-    this.#inbox.push({ text: trimmed, t: this.elapsed() });
+    this.#live.push(text, this.elapsed());
   }
 
-  /** Return the queued human notes AND clear the inbox (delivered-once). */
+  /** Queued human notes, cleared as they are read (delivered-once). */
   drainInbox(): InboxMessage[] {
-    return this.#inbox.splice(0, this.#inbox.length);
+    return this.#live.drain();
   }
 
   /** Diagnostic read of the inbox depth (does not clear). */
   inboxSize(): number {
-    return this.#inbox.length;
+    return this.#live.size();
   }
 
   // ── Human review marks: the "annotate the bug where you see it" inbox (server-owned) ──────────
 
-  /** Human marks still awaiting a fix (oldest first). Reading does not consume — resolveMark() does. */
+  /** Human marks still awaiting a fix (oldest first). Reading does not consume — resolveMark does. */
   pendingMarks(): ReviewMark[] {
     return this.#review.pending();
   }
@@ -419,30 +520,14 @@ export class Session {
   }
 
   /**
-   * Apply a narrowed human control. `setState` is called only on a GENUINE change, so each real
-   * transition pushes exactly one PRESENTER command; no-ops (e.g. resume on active, pause after
-   * end) push nothing. `ended` is terminal — pause/resume after end are no-ops.
+   * Apply a narrowed human control. LiveControl decides the transition; this applies it, so a real
+   * change pushes exactly one PRESENTER command and a no-op pushes none.
    */
   applyHumanControl(data: HumanControlData): void {
-    if (this.#state === SessionState.ENDED) {
-      // Terminal: end is idempotent; pause/resume are no-ops.
-      return;
-    }
-    switch (data.kind) {
-      case HumanControlKind.PAUSE:
-        if (this.#state !== SessionState.PAUSED) this.setState(SessionState.PAUSED);
-        return;
-      case HumanControlKind.RESUME:
-        if (this.#state !== SessionState.ACTIVE) this.setState(SessionState.ACTIVE);
-        return;
-      case HumanControlKind.END:
-        this.setState(SessionState.ENDED);
-        return;
-      case HumanControlKind.MESSAGE:
-        if (data.text !== undefined) this.pushMessage(data.text);
-        return;
-      default:
-        return;
+    const next = this.#live.nextStateFor(data);
+    if (next !== undefined) this.setState(next);
+    if (data.kind === HumanControlKind.MESSAGE && data.text !== undefined) {
+      this.pushMessage(data.text);
     }
   }
 
@@ -470,7 +555,7 @@ export class Session {
       sessionId: this.id,
       opened_at: this.#startedAt,
       IMPORTANT:
-        'MANDATORY: the moment you stop driving — finishing a reply or waiting on the human — call reticle_yield (mode:"waiting", or "ask" with your question) so the panel never falsely reads "live". Call reticle_end_session only when the whole task is done. The session revives on your next action.',
+        'MANDATORY: the moment you stop driving — finishing a reply or waiting on the human — call reticle_session {action:"yield", mode:"waiting"} (or mode:"ask" with your question) so the panel never falsely reads "live". Call reticle_session {action:"end"} only when the whole task is done. The session revives on your next action.',
     };
   }
 

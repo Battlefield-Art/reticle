@@ -42,7 +42,10 @@ describe('reticle_session tool', () => {
     const sessions: Partial<SessionManager> = { resolve: () => session };
     const deps = { sessions: sessions as SessionManager } as ToolDeps;
 
-    const r = (await tool(ReticleTool.SESSION).handler(deps, { idleEndMs: 600000 })) as {
+    const r = (await tool(ReticleTool.SESSION).handler(deps, {
+      action: 'tune',
+      idleEndMs: 600000,
+    })) as {
       applied: boolean;
       idleEndMs: number;
     };
@@ -57,7 +60,7 @@ describe('reticle_session tool', () => {
     const sessions: Partial<SessionManager> = { resolve: () => session };
     const deps = { sessions: sessions as SessionManager } as ToolDeps;
 
-    await tool(ReticleTool.SESSION).handler(deps, {});
+    await tool(ReticleTool.SESSION).handler(deps, { action: 'tune' });
     expect(serverIdleEndMs).toEqual([]);
   });
 });

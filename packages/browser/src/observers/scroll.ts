@@ -1,5 +1,6 @@
-import { EventType } from '@reticlehq/core';
+import { EventType, ScrollDirection } from '@reticlehq/core';
 import { refs } from '../dom/refs.js';
+import { nativeSetTimeout, nativeClearTimeout } from '../timers/native-timers.js';
 import type { Emit, Teardown } from './types.js';
 
 const THROTTLE_MS = 100;
@@ -9,20 +10,39 @@ const REVEAL_SELECTOR = '[data-reticle-reveal], [data-reveal], section';
 export function installScroll(emit: Emit): Teardown {
   let lastEmit = 0;
   let lastY = 0;
+  let trailingTimer: number | undefined;
 
-  const onScroll = (): void => {
-    const now = performance.now();
-    if (now - lastEmit < THROTTLE_MS) return;
-    lastEmit = now;
+  const emitPosition = (): void => {
+    lastEmit = performance.now();
     const y = window.scrollY;
     const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
     emit(EventType.SCROLL_POSITION, {
       x: window.scrollX,
       y,
       percent: Math.round((y / max) * 100),
-      direction: y >= lastY ? 'down' : 'up',
+      direction: y >= lastY ? ScrollDirection.DOWN : ScrollDirection.UP,
     });
     lastY = y;
+  };
+
+  const onScroll = (): void => {
+    const elapsed = performance.now() - lastEmit;
+    if (elapsed >= THROTTLE_MS) {
+      if (trailingTimer !== undefined) {
+        nativeClearTimeout(trailingTimer);
+        trailingTimer = undefined;
+      }
+      emitPosition();
+      return;
+    }
+    // Leading-edge only dropped the FINAL, resting position — an agent asserting "scrolled to the
+    // footer" saw the last mid-scroll sample, not where the page settled. Schedule a trailing emit.
+    if (trailingTimer === undefined) {
+      trailingTimer = nativeSetTimeout(() => {
+        trailingTimer = undefined;
+        emitPosition();
+      }, THROTTLE_MS - elapsed);
+    }
   };
   window.addEventListener('scroll', onScroll, { passive: true });
 
@@ -42,11 +62,19 @@ export function installScroll(emit: Emit): Teardown {
       },
       { threshold: 0.25 },
     );
-    for (const el of document.querySelectorAll(REVEAL_SELECTOR)) io.observe(el);
+    const observer = io;
+    // Observe reveal targets present at install. Reveal-on-scroll sections are in the initial DOM by
+    // design (they exist hidden and animate in on scroll), so this covers the real case. Watching the
+    // whole body subtree for LATE-mounted reveal targets was tried and reverted: a second body-wide
+    // MutationObserver on EVERY app — running querySelectorAll(section,...) per mutation batch — is
+    // disproportionate overhead for a niche signal. Dynamically-mounted reveal targets are simply not
+    // tracked (an honest blind spot, consistent with the rest of the SDK).
+    for (const el of document.querySelectorAll(REVEAL_SELECTOR)) observer.observe(el);
   }
 
   return () => {
     window.removeEventListener('scroll', onScroll);
+    if (trailingTimer !== undefined) nativeClearTimeout(trailingTimer);
     io?.disconnect();
   };
 }

@@ -1,4 +1,5 @@
 import { SessionState } from '@reticlehq/core';
+import { z } from 'zod';
 import type { Session } from './session.js';
 
 /** Live-control: the control block spliced onto tool results so the agent sees human steering. */
@@ -21,6 +22,18 @@ interface PausedResult {
   guidance: string[];
   hint: string;
 }
+
+/**
+ * outputSchema fields every action tool that can short-circuit on pause MUST declare, or a validating
+ * profile strips the WHOLE pause payload — and because `guidance` is drained-once, that loses the
+ * human's message entirely (not merely hides it). Declared here beside PausedResult so the schema and
+ * the runtime shape are the same source; spread into each act tool's outputSchema.
+ */
+export const pausedOutputShape: z.ZodRawShape = {
+  paused: z.boolean().optional(),
+  guidance: z.array(z.string()).optional(),
+  hint: z.string().optional(),
+};
 
 /** The optional `control` key `withControl` may add — keeps callers' return types honest. */
 type ControlSpread = { control?: ControlEnvelope };
@@ -45,7 +58,7 @@ export function buildControlEnvelope(session: Session): ControlEnvelope | undefi
  * PAUSE short-circuit. When the session is paused, drain the inbox and refuse the action so the
  * human's pause cannot be driven through. Returns undefined when the action may proceed.
  *
- * `drainInbox()` is the SOLE sink for guidance — draining here means the same message can never
+ * `drainInbox` is the SOLE sink for guidance — draining here means the same message can never
  * also surface in a piggyback, guaranteeing delivered-once.
  */
 export function pausedShortCircuit(session: Session): PausedResult | undefined {

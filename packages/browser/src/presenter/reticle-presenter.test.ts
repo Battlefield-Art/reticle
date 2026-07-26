@@ -10,7 +10,7 @@ import {
 } from '@reticlehq/core';
 
 // Capture the deps Reticle passes to Transport so tests can drive #handleCommand without a real
-// WebSocket server. connect() still calls transport.connect(), which we stub to a no-op.
+// WebSocket server. connect still calls transport.connect, which we stub to a no-op.
 type HandleCommand = (command: CommandMessage) => Promise<{ ok: boolean; result?: unknown }>;
 interface CapturedDeps {
   handleCommand: HandleCommand | undefined;

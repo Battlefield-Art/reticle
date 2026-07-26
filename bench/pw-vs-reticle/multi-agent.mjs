@@ -19,13 +19,13 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { McpStdioClient } from '../harness/mcp-client.mjs';
+import { McpStdioClient, RETICLE_CLI as CLI } from '../harness/mcp-client.mjs';
 import { BUGS, APP_ORIGIN, bugUrl } from './bugs.mjs';
 import { ensureApp } from './run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..', '..');
-const CLI = path.join(REPO, 'packages', 'core', 'dist', 'cli.js');
+
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = process.env.BENCH_RETICLE_PORT ?? '4460';
 const MAX_BROWSERS = Number(process.env.MAX_BROWSERS ?? 8); // hard cap on concurrent chrome/contexts

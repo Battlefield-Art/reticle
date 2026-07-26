@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { clearSession, newSession, persistSession } from '../lib/persisted-session.js';
+import { isEnterpriseEnabled } from '../lib/enterprise-config.js';
 import { emit, Sig } from '../lib/reticle-bridge.js';
 import {
   seedActivity,
@@ -11,7 +13,13 @@ import {
   type Kpi,
 } from '../data/seed.js';
 
-export type ViewId = 'overview' | 'deployments' | 'compose' | 'diagnostics';
+export type ViewId =
+  | 'overview'
+  | 'deployments'
+  | 'compose'
+  | 'diagnostics'
+  | 'hostile'
+  | 'enterprise';
 export type EnvFilter = Env | 'all';
 
 export interface Toast {
@@ -48,6 +56,7 @@ interface AppState {
 
   setView: (v: ViewId) => void;
   setAuth: (email: string) => void;
+  signOut: () => void;
   setFilter: (patch: Partial<{ query: string; env: EnvFilter }>) => void;
   select: (id: number | null) => void;
   openDrawer: (id: number) => void;
@@ -68,7 +77,9 @@ let logSeq = 1;
 let depSeq = 9000;
 
 export const useApp = create<AppState>((set, get) => ({
-  view: 'overview',
+  // The enterprise-scale fixture boots straight into its view when its URL knob is present, so a
+  // benchmark reaches it in one navigation. Every other URL is untouched.
+  view: isEnterpriseEnabled() ? 'enterprise' : 'overview',
   auth: null,
   deployments: seedDeployments(),
   kpis: seedKpis(),
@@ -96,7 +107,13 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setAuth: (email) => {
     set({ auth: { email } });
+    // Persist BEFORE announcing: a listener that reloads on auth:granted must find the token there.
+    persistSession(newSession());
     emit(Sig.AUTH_GRANTED, { email });
+  },
+  signOut: () => {
+    set({ auth: null, view: 'overview' });
+    clearSession();
   },
   setFilter: (patch) => {
     set({ filter: { ...get().filter, ...patch } });

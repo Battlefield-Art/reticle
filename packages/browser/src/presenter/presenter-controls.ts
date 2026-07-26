@@ -35,7 +35,7 @@ const RUN_FILENAME = 'reticle-run.json';
 /** Border fade-out delay after a session ends (native timer; presenter-only tunable). */
 export const ENDED_FADE_MS = 4000;
 /** Max composer height (px) before it scrolls. One source for both the CSS cap and the JS auto-grow
- *  clamp — they measure the same border-box, so the scrollbar appears exactly when growth stops. */
+ * clamp — they measure the same border-box, so the scrollbar appears exactly when growth stops. */
 const MSG_MAX_H = 96;
 
 /**
@@ -313,7 +313,7 @@ export class ControlPanel {
   }
 
   /** Grow the composer to fit its content (up to the CSS max-height), then shrink back — soothing,
-   *  no scrollbar until it's genuinely long. Driven on input and after a send clears the field. */
+   * no scrollbar until it's genuinely long. Driven on input and after a send clears the field. */
   #autosize(): void {
     const el = this.#refs.input;
     if (el === undefined) return;
@@ -322,7 +322,7 @@ export class ControlPanel {
   }
 
   /** Render the replayable-flow chips from the server push. Each ▶ click re-runs that flow, no agent.
-   *  Takes the raw wire value and narrows it here (the panel is the consumer of this push). */
+   * Takes the raw wire value and narrows it here (the panel is the consumer of this push). */
   setFlows(flows: unknown): void {
     const list: unknown[] = Array.isArray(flows) ? (flows as unknown[]) : [];
     this.#flowItems = list

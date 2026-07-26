@@ -9,8 +9,11 @@ import {
   ReticleEnv,
   LOOPBACK_HOST,
   ReplayStatus,
+  EventType,
 } from '@reticlehq/core';
 import type { FlowReplayResult } from '@reticlehq/core';
+import { originOf } from './session/session-manager.js';
+import type { NetworkDetail } from './input/network-detail.js';
 import { replayNamedFlow } from './flows/flow-tools.js';
 import { createSharedServer } from './http-server.js';
 import { resolveBridgeSecurityWithAutoToken } from './bridge-security.js';
@@ -21,7 +24,7 @@ import { FlowStore } from './flows/flows.js';
 import { buildFlowChips } from './flows/flow-scope.js';
 import { ProjectStore } from './project/project-store.js';
 import { AnnotationStore } from './flows/annotation-store.js';
-import { createNodeFileSystem } from './project/fs-port.js';
+import { createNodeFileSystem, type FileSystemPort } from './project/fs-port.js';
 import { ReticleRunner } from './runs/reticle-runner.js';
 import { createRunnerPort } from './runs/runner-port.js';
 import { RunStore } from './runs/run-store.js';
@@ -34,7 +37,11 @@ import { cpus } from 'node:os';
 import { BrowserPool } from './pool/browser-pool.js';
 import { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launcher.js';
 import { LeaseReaper } from './pool/lease-reaper.js';
-import { readProjectId } from './cli-port.js';
+import { readJournalEnabled, readProjectId } from './cli-port.js';
+import { makeJournalAttach } from './journal/attach-journal.js';
+import { makeSessionEnd } from './journal/session-end.js';
+import { AmbientStore } from './journal/ambient-store.js';
+import { pruneSessions } from './journal/retention.js';
 import type {
   OwnedRealInputProvider,
   RealInputProvider,
@@ -114,7 +121,7 @@ export {
 export type { ReticleDirPaths, ReadContractResult } from './project/reticle-dir.js';
 export { createNodeFileSystem } from './project/fs-port.js';
 export type { FileSystemPort } from './project/fs-port.js';
-// Replay/Verify API — the programmatic surface an OEM/CI pipeline drives (see docs/integration.md).
+// Replay/Verify API — the programmatic surface an OEM/CI pipeline drives (see docs/platform-integration.md).
 export { ReticleRunner } from './runs/reticle-runner.js';
 export type { RunnerPort, VerifyOptions } from './runs/reticle-runner.js';
 export { createRunnerPort, defaultRunId } from './runs/runner-port.js';
@@ -193,7 +200,7 @@ export interface StartOptions {
   httpVerifyToken?: string;
 }
 
-/** Default localhost port for the verify HTTP endpoint (see docs/integration.md). */
+/** Default localhost port for the verify HTTP endpoint (see docs/platform-integration.md). */
 export const RETICLE_VERIFY_DEFAULT_PORT = 7331;
 
 export interface RunningServer {
@@ -227,9 +234,80 @@ function createBrowserPool(headless: boolean): BrowserPool {
   return new BrowserPool(playwrightLauncher({ headless }), { maxContexts, genSessionId });
 }
 
-/** Start the Reticle bridge (browser WS endpoint) and, by default, the MCP stdio server. */
 /**
- * Resolve the drive/real-input provider from options — shared by start() and startDaemon() so the
+ * Route CDP-authoritative network detail onto the driven session's journal.
+ *
+ * The page and the SDK session share an origin, so a NET_DETAIL is pushed to the matching connected
+ * session. Shared by both entry points: `startDaemon` previously omitted it entirely, so on the path
+ * users actually take, CDP network detail was collected and then dropped on the floor.
+ */
+function makeNetworkDetailRouter(bridge: Bridge, driveUrl: string | undefined) {
+  const driveOrigin = originOf(driveUrl ?? '');
+  return (detail: NetworkDetail): void => {
+    // Route by the DOCUMENT that issued the request, not by the request's own origin.
+    //
+    // Matching the request's origin only works for same-origin calls. An app on one origin calling an
+    // API on another — most API calls — produced a detail matching no session, and it was dropped
+    // without a trace. The drive-URL fallback papered over it on the launched path and did nothing on
+    // the CDP-attach path, where driveUrl is undefined and the fallback compares against ''.
+    const pageOrigin = originOf(detail.pageUrl ?? '');
+    const requestOrigin = originOf(detail.url);
+    for (const session of bridge.sessions.all()) {
+      const origin = originOf(session.url);
+      // originOf returns `string | undefined`, NEVER '' — so the old `!== ''` guards were dead, and a
+      // bare `origin === requestOrigin` matched `undefined === undefined` when BOTH the session URL and
+      // the detail URL were unparseable. That routed a NET_DETAIL (with its response headers, incl.
+      // set-cookie) onto an unrelated session. Require a DEFINED origin; undefined operands then simply
+      // fail to match any of the three candidates.
+      const matches =
+        origin !== undefined &&
+        (origin === pageOrigin || origin === requestOrigin || origin === driveOrigin);
+      if (matches) {
+        session.pushEvent({
+          t: 0,
+          type: EventType.NET_DETAIL,
+          sessionId: session.id,
+          data: { ...detail },
+        });
+      }
+    }
+  };
+}
+
+/**
+ * Wire journal capture, ambient seeding and the journal-tail flush onto a bridge.
+ *
+ * Both entry points need all three, and both used to hand-roll them. `startDaemon` only ever wired the
+ * first, so on the path every user actually takes (`reticle serve` / `reticle mcp`) the journal tail was
+ * dropped at session end and the learned ambient map was never persisted OR seeded — meaning ambient
+ * learning could not converge across sessions and the last events of every session were lost. The two
+ * call sites had already drifted once before, which is why this is one function rather than a
+ * copy-paste both are asked to keep in step.
+ */
+function attachJournal(
+  bridge: Bridge,
+  deps: { fs: FileSystemPort; reticleRoot: string; enabled: boolean },
+): void {
+  const journalAttach = makeJournalAttach(deps);
+  const ambientStore = new AmbientStore(deps.fs, deps.reticleRoot);
+  bridge.attachSessionCreate((session) => {
+    journalAttach(session);
+    // Seed the learned ambient map so a fresh session starts knowing which regions churn, instead of
+    // re-learning from zero. Best-effort + async: a late seed still helps, a failure is silent.
+    if (deps.enabled) {
+      void ambientStore
+        .load()
+        .then((counts) => session.seedAmbient(counts))
+        .catch(() => undefined);
+    }
+  });
+  // Teardown: flush the journal tail to disk + persist what this session learned.
+  bridge.attachSessionEnd(makeSessionEnd(deps));
+  if (deps.enabled) void pruneSessions(deps.fs, deps.reticleRoot);
+}
+
+/**
+ * Resolve the drive/real-input provider from options — shared by start and startDaemon so the
  * precedence (driveUrl launch+own → CDP attach → none) and the storageState/injectConnect plumbing
  * live in ONE place. `onNavigateError` is the entrypoint's own cleanup (close the bridge/shared server)
  * so a failed launch never leaks a WS port. A past divergence between the two paths let daemon mode
@@ -238,6 +316,7 @@ function createBrowserPool(headless: boolean): BrowserPool {
 async function resolveRealInput(
   options: StartOptions,
   onNavigateError: () => Promise<void>,
+  onNetworkDetail?: (detail: NetworkDetail) => void,
 ): Promise<{ realInput?: RealInputProvider; owned?: { dispose: () => Promise<void> } }> {
   const driveUrl = options.driveUrl;
   if (driveUrl !== undefined && driveUrl.length > 0) {
@@ -252,6 +331,7 @@ async function resolveRealInput(
           headless: opts.headless,
           ...(injectConnect !== undefined ? { injectConnect } : {}),
           ...(storageState !== undefined ? { storageState } : {}),
+          ...(onNetworkDetail !== undefined ? { onNetworkDetail } : {}),
         }));
     const launched = factory({ driveUrl, headless });
     try {
@@ -264,12 +344,18 @@ async function resolveRealInput(
   }
   const cdpUrl = options.cdpUrl ?? process.env[ReticleEnv.CDP_URL];
   if (cdpUrl !== undefined && cdpUrl.length > 0) {
-    const cdp = new CdpRealInputProvider({ cdpUrl });
+    // Same network sink as the launched path. Whether Reticle opened the browser or attached to one
+    // someone else opened has no bearing on whether it can read that browser's network.
+    const cdp = new CdpRealInputProvider({
+      cdpUrl,
+      ...(onNetworkDetail !== undefined ? { onNetworkDetail } : {}),
+    });
     return { realInput: cdp, owned: cdp };
   }
   return {};
 }
 
+/** Start the Reticle bridge (browser WS endpoint) and, by default, the MCP stdio server. */
 export async function start(options: StartOptions = {}): Promise<RunningServer> {
   const port = options.port ?? RETICLE_DEFAULT_PORT;
   const security = await resolveBridgeSecurityWithAutoToken(options);
@@ -289,13 +375,22 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
   // drive precedence: driveUrl (launch+own a browser) → CDP (attach) → none.
   let pool: BrowserPool | undefined;
   let leaseReaper: LeaseReaper | undefined;
-  const { realInput, owned } = await resolveRealInput(options, () => bridge.close());
+  // Route CDP-authoritative network detail (drive path only) onto the driven session's journal: the
+  // page and the SDK session share an origin, so a NET_DETAIL is pushed to the matching connected session.
+  const routeNetworkDetail = makeNetworkDetailRouter(bridge, options.driveUrl);
+  const { realInput, owned } = await resolveRealInput(
+    options,
+    () => bridge.close(),
+    routeNetworkDetail,
+  );
 
   if (options.mcp !== false) {
-    // cwd()/Date.now() are confined to start() — never inside reticle-dir.ts's pure logic (rule 7).
+    // cwd/Date.now are confined to start — never inside reticle-dir.ts's pure logic (rule 7).
     const fs = createNodeFileSystem();
     const reticleRoot = options.reticleRoot ?? join(process.cwd(), ReticleDir.ROOT);
     const now = options.now ?? ((): number => Date.now());
+    const journalEnabled = readJournalEnabled(process.cwd(), process.env[ReticleEnv.JOURNAL]);
+    attachJournal(bridge, { fs, reticleRoot, enabled: journalEnabled });
     const flows = new FlowStore(fs, reticleRoot, { now });
     const project = new ProjectStore(fs, reticleRoot, { now });
     const annotations = new AnnotationStore();
@@ -345,7 +440,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
 
 /**
  * Start the Reticle bridge in daemon mode: a single HTTP server handles both the WebSocket
- * bridge (browser SDK) and the SSE MCP transport (Claude/agent). Unlike start(), the MCP
+ * bridge (browser SDK) and the SSE MCP transport (Claude/agent). Unlike start, the MCP
  * connection is not tied to the process lifetime — Claude reconnects across sessions while
  * browser sessions persist in the daemon.
  */
@@ -355,7 +450,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   const security = await resolveBridgeSecurityWithAutoToken(options);
   const shared = createSharedServer(security.token === undefined ? {} : { token: security.token });
   const bridge = new Bridge({ port, server: shared.httpServer, ...security });
-  // The daemon owns listen() (below), so the real bind error is reported there; absorb bridge.ready's
+  // The daemon owns listen (below), so the real bind error is reported there; absorb bridge.ready's
   // mirror rejection so a port collision can't surface as an unhandled promise rejection.
   void bridge.ready.catch(() => undefined);
   // `reticle status` GETs this for a live, at-a-glance view of connected tabs + their health.
@@ -385,11 +480,17 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     bridge.sessions.setDefaultScope({ projectId: activeProjectId });
   }
 
-  const { realInput, owned } = await resolveRealInput(options, () => shared.close());
+  const { realInput, owned } = await resolveRealInput(
+    options,
+    () => shared.close(),
+    makeNetworkDetailRouter(bridge, options.driveUrl),
+  );
 
   const fs = createNodeFileSystem();
   const reticleRoot = options.reticleRoot ?? join(process.cwd(), ReticleDir.ROOT);
   const now = options.now ?? ((): number => Date.now());
+  const journalEnabled = readJournalEnabled(process.cwd(), process.env[ReticleEnv.JOURNAL]);
+  attachJournal(bridge, { fs, reticleRoot, enabled: journalEnabled });
   const flows = new FlowStore(fs, reticleRoot, { now });
   const project = new ProjectStore(fs, reticleRoot, { now });
   const annotations = new AnnotationStore();

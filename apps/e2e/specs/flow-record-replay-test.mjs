@@ -17,15 +17,15 @@ for(let i=0;i<200&&server.bridge.sessions.count()===0;i++) await sleep(50);
 const refOf=async(by,value)=>{for(let i=0;i<30;i++){const r=(await T('reticle_query',{by,value})).elements?.[0]?.ref;if(r)return r;await sleep(100);}throw new Error('not found '+value);};
 console.log('\n=== record → .reticle/ flow → replay → drift (real browser) ===');
 // record + save
-await T('reticle_record_start',{recordingName:'addtask'});
+await T('reticle_record',{action:'start',recordingName:'addtask'});
 await T('reticle_act',{ref:await refOf('testid','add-task'),action:'click'});
-await T('reticle_record_stop',{recordingName:'addtask'});
+await T('reticle_record',{action:'stop',recordingName:'addtask'});
 const saved=await T('reticle_flow_save',{flowName:'addtask'});
 const flowFile=path.join(reticleRoot,'flows','addtask.json');
 chk('flow saved to .reticle/flows/addtask.json on disk', nfs.existsSync(flowFile), flowFile);
 const raw=nfs.readFileSync(flowFile,'utf8');
 chk('flow anchors on testid (no eXX refs leaked)', raw.includes('add-task') && !/"e\d+"/.test(raw), raw.includes('"testid"')?'has testid anchors':'no testid');
-const list=await T('reticle_flow_list',{});
+const list=await T('reticle_flow',{action:'list'});
 chk('reticle_flow_list returns the saved flow', JSON.stringify(list).includes('addtask'));
 // replay happy path
 const rep=await T('reticle_flow_replay',{flowName:'addtask'});

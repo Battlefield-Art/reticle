@@ -7,6 +7,7 @@ import { isValidRunId } from '../project/reticle-dir.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 import { RunStore } from './run-store.js';
 import { renderRunReport } from './render-report.js';
+import { diffRuns } from './run-diff.js';
 
 /**
  * The verification-run export tool. `reticle_run_export` reads a persisted ReticleVerificationRun artifact
@@ -19,25 +20,40 @@ export const RUN_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.RUN_EXPORT,
     description:
-      'Export a verification-run artifact (the OEM/CI-consumable verdict) from .reticle/runs/. With { runId } returns that specific run; without it returns the most recent. With { format: "report" } returns a legible ✓/✗ text summary (flows, checks, risks, repair, why-it-failed) instead of the raw run. Returns { run } | { report } or { error, reason } when none exists.',
+      'Export a verification-run artifact (the OEM/CI-consumable verdict) from .reticle/runs/. With { runId } returns that specific run; without it returns the most recent. With { format: "report" } returns a legible ✓/✗ text summary; with { format: "diff" } returns the run-to-run delta between the two most-recent runs (per-flow duration deltas past a noise floor, status changes, new/removed flows, verdict change, headline). Returns { run } | { report } | { diff } or { error, reason } when none exists.',
     inputSchema: {
       runId: z
         .string()
         .optional()
         .describe('The run id to export. Omit to return the most recent run.'),
       format: z
-        .enum(['json', 'report'])
+        .enum(['json', 'report', 'diff'])
         .optional()
-        .describe('json (default) returns the full run; report returns a legible text summary.'),
+        .describe(
+          'json (default) returns the full run; report returns a legible text summary; diff returns the delta vs the previous run.',
+        ),
       ...sessionIdShape,
     },
     outputSchema: {
       run: z.unknown().optional(),
       report: z.string().optional(),
+      diff: z.unknown().optional(),
       error: z.string().optional(),
     },
     handler: async (deps: ToolDeps, args: Record<string, unknown>) => {
       const store = new RunStore(deps.fs, deps.reticleRoot);
+      // format:"diff" is a whole-history operation (two most-recent runs), not a single-run read.
+      if (asString(args['format']) === 'diff') {
+        const pair = await store.latestTwo();
+        if (pair === undefined) {
+          return {
+            error:
+              'need at least two verification runs to diff — produce another with the verify flow',
+            reason: RunReadError.MISSING,
+          };
+        }
+        return { diff: diffRuns(pair[0], pair[1]) };
+      }
       const runId = asString(args['runId']);
       let run: ReticleVerificationRun;
       if (runId !== undefined) {

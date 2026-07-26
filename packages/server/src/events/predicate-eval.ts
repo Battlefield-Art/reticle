@@ -89,6 +89,21 @@ export interface EvalResult {
   pass: boolean;
   evidence?: unknown;
   failureReason?: string;
+  /**
+   * The failure, structured — what was seen, what was required, and which oracle judged it.
+   *
+   * `failureReason` says the same thing in prose, and prose is the WRONG shape for this: measured on
+   * three seeded bugs, an agent handed observed/expected/assertion alongside the source pointer used
+   * fewer tool calls than one handed the pointer alone, and the repair literature has structured
+   * feedback beating rich natural-language feedback by 10.5pp. The prose stays for humans reading a
+   * log; these three fields are for the agent.
+   *
+   * Optional because they are populated per oracle, not globally — see the note in predicate.ts on
+   * which classes carry them today.
+   */
+  observed?: string;
+  expected?: string;
+  assertion?: string;
 }
 
 function str(value: unknown): string | undefined {
@@ -104,8 +119,17 @@ function num(value: unknown): number | undefined {
  */
 export function matchValue(got: unknown, want: unknown): boolean {
   if (want === '*') return got !== undefined;
-  if (typeof want === 'object' && want !== null && !Array.isArray(want)) {
-    for (const [op, val] of Object.entries(want as Record<string, unknown>)) {
+  // An object is an OPERATOR container only if it actually carries a `$`-prefixed operator. An empty
+  // `{}` (or an object with no `$` key) used to enter this branch, iterate zero recognized operators,
+  // and `return true` — so `equals: {}` / `dataMatches: {status: {}}` was a green assertion that
+  // passed against ANYTHING, undefined included: the exact false green the oracle exists to catch.
+  // Without an operator it is a literal to compare, and falls through to strict equality below.
+  const ops =
+    typeof want === 'object' && want !== null && !Array.isArray(want)
+      ? Object.entries(want as Record<string, unknown>)
+      : undefined;
+  if (ops !== undefined && ops.some(([op]) => op.startsWith('$'))) {
+    for (const [op, val] of ops) {
       const n = typeof got === 'number' ? got : NaN;
       switch (op) {
         case '$gte':
@@ -177,12 +201,21 @@ export function evalNet(
       : {
           pass: false,
           failureReason: `expected ${String(p.count)} network call(s) matching ${JSON.stringify({ method: p.method, urlContains: p.urlContains, status: p.status })}, saw ${String(matches.length)}`,
+          observed: `${String(matches.length)} matching network call(s)`,
+          expected: `exactly ${String(p.count)} matching ${JSON.stringify({ method: p.method, urlContains: p.urlContains, status: p.status })}`,
+          assertion: 'net.count',
         };
   }
   const hit = matches[0];
   return hit !== undefined
     ? { pass: true, evidence: hit.data }
-    : { pass: false, failureReason: `no network call matched ${JSON.stringify(p)}` };
+    : {
+        pass: false,
+        failureReason: `no network call matched ${JSON.stringify(p)}`,
+        observed: 'no matching network call in the window',
+        expected: `at least one call matching ${JSON.stringify(p)}`,
+        assertion: 'net.present',
+      };
 }
 
 export function evalRoute(
@@ -192,14 +225,32 @@ export function evalRoute(
   const routes = events.filter((e) => e.type === EventType.ROUTE_CHANGE);
   const last = routes.at(-1);
   if (last === undefined) {
-    return { pass: false, failureReason: 'no route change observed' };
+    return {
+      pass: false,
+      failureReason: 'no route change observed',
+      observed: 'no route change in the window',
+      expected: `a route change to ${p.pathname ?? p.contains ?? 'any route'}`,
+      assertion: 'route.changed',
+    };
   }
   const pathname = str(last.data['pathname']) ?? str(last.data['to']) ?? '';
   if (p.pathname !== undefined && pathname !== p.pathname) {
-    return { pass: false, failureReason: `route is '${pathname}', expected '${p.pathname}'` };
+    return {
+      pass: false,
+      failureReason: `route is '${pathname}', expected '${p.pathname}'`,
+      observed: `route '${pathname}'`,
+      expected: `route '${p.pathname}'`,
+      assertion: 'route.pathname',
+    };
   }
   if (p.contains !== undefined && !pathname.includes(p.contains)) {
-    return { pass: false, failureReason: `route '${pathname}' does not contain '${p.contains}'` };
+    return {
+      pass: false,
+      failureReason: `route '${pathname}' does not contain '${p.contains}'`,
+      observed: `route '${pathname}'`,
+      expected: `a route containing '${p.contains}'`,
+      assertion: 'route.contains',
+    };
   }
   return { pass: true, evidence: last.data };
 }
@@ -223,6 +274,9 @@ export function evalConsole(
     return {
       pass: false,
       failureReason: `console level '${p.level}' is not captured — Reticle instruments console.log, console.warn, console.error only`,
+      observed: `level '${p.level}' is not instrumented, so no event of it can ever exist`,
+      expected: 'a level Reticle captures: log, warn, or error',
+      assertion: 'console.uninstrumented-level',
     };
   }
   const matches = events.filter((e) => {
@@ -245,12 +299,21 @@ export function evalConsole(
       : {
           pass: false,
           failureReason: `expected no ${p.level ?? 'console'} entries but found ${String(matches.length)}`,
+          observed: `${String(matches.length)} ${p.level ?? 'console'} entr${matches.length === 1 ? 'y' : 'ies'}`,
+          expected: `no ${p.level ?? 'console'} entries`,
+          assertion: 'console.absent',
           evidence: matches.map((e) => e.data),
         };
   }
   return matches.length > 0
     ? { pass: true, evidence: matches.map((e) => e.data) }
-    : { pass: false, failureReason: `no ${p.level ?? 'console'} entries found` };
+    : {
+        pass: false,
+        failureReason: `no ${p.level ?? 'console'} entries found`,
+        observed: `no ${p.level ?? 'console'} entries in the window`,
+        expected: `at least one ${p.level ?? 'console'} entry`,
+        assertion: 'console.present',
+      };
 }
 
 export function evalAnimation(
@@ -266,7 +329,13 @@ export function evalAnimation(
   });
   return hit !== undefined
     ? { pass: true, evidence: hit.data }
-    : { pass: false, failureReason: `no animation matched ${JSON.stringify(p)}` };
+    : {
+        pass: false,
+        failureReason: `no animation matched ${JSON.stringify(p)}`,
+        observed: 'no matching animation in the window',
+        expected: `an animation matching ${JSON.stringify(p)}`,
+        assertion: 'animation.present',
+      };
 }
 
 export function evalSignal(
@@ -297,6 +366,18 @@ export function evalSignal(
       sameName.length > 0
         ? `signal '${p.name ?? '(any)'}' fired ${String(sameName.length)}x but data didn't match`
         : `no signal matched ${JSON.stringify(p)}`,
+    observed:
+      sameName.length > 0
+        ? `signal '${p.name ?? '(any)'}' fired ${String(sameName.length)}x, payload: ${JSON.stringify(sameName[0])}`
+        : `signal '${p.name ?? '(any)'}' never fired in the window`,
+    expected:
+      p.dataMatches === undefined
+        ? `signal '${p.name ?? '(any)'}' to fire`
+        : `signal '${p.name ?? '(any)'}' with payload matching ${JSON.stringify(p.dataMatches)}`,
+    // Two distinct failures behind one prose line: never fired at all, versus fired with the wrong
+    // payload. They call for different fixes, so the agent should not have to tell them apart by
+    // reading the sentence.
+    assertion: sameName.length > 0 ? 'signal.payload' : 'signal.absent',
     evidence: sameName.length > 0 ? { nearMiss: sameName } : undefined,
   };
 }
@@ -346,24 +427,35 @@ export function evalSettled(
   // still in flight — the page is NOT settled no matter how quiet the DOM has gone. Without this,
   // a slow save reads as "settled" the instant its spinner stops mutating the DOM: the exact
   // false-green `settled` exists to prevent.
-  const doneIds = new Set<string>();
-  for (const e of events) {
-    if (e.type === EventType.NET_REQUEST) {
-      const id = str(e.data['id']);
-      if (id !== undefined) doneIds.add(id);
-    }
-  }
-  let inFlight = 0;
+  //
+  // COUNT per id, don't just set-membership: a retry that reuses a request id (two NET_PENDING, one
+  // NET_REQUEST) would mark the id "done" and hide the second, still-flying request — an in-flight
+  // UNDERCOUNT that greens settle while a request is live. In-flight for an id is pendings minus
+  // completions (floored at 0); unkeyed pendings each count as one.
+  const pendingById = new Map<string, number>();
+  const doneById = new Map<string, number>();
+  let unkeyedPending = 0;
   for (const e of events) {
     if (e.type === EventType.NET_PENDING) {
       const id = str(e.data['id']);
-      if (id === undefined || !doneIds.has(id)) inFlight += 1;
+      if (id === undefined) unkeyedPending += 1;
+      else pendingById.set(id, (pendingById.get(id) ?? 0) + 1);
+    } else if (e.type === EventType.NET_REQUEST) {
+      const id = str(e.data['id']);
+      if (id !== undefined) doneById.set(id, (doneById.get(id) ?? 0) + 1);
     }
+  }
+  let inFlight = unkeyedPending;
+  for (const [id, pending] of pendingById) {
+    inFlight += Math.max(0, pending - (doneById.get(id) ?? 0));
   }
   if (inFlight > 0) {
     return {
       pass: false,
       failureReason: `not settled: ${String(inFlight)} request(s) still in flight`,
+      observed: `${String(inFlight)} request(s) still in flight`,
+      expected: 'no requests in flight',
+      assertion: 'settled.in-flight',
       evidence: { settled: false, inFlight },
     };
   }
@@ -389,6 +481,9 @@ export function evalSettled(
   return {
     pass: false,
     failureReason: `not settled: last activity (${String(lastType)}) ${String(quietForMs)}ms ago, need ${String(quietMs)}ms quiet`,
+    observed: `last activity was ${String(lastType)}, ${String(quietForMs)}ms ago`,
+    expected: `${String(quietMs)}ms of quiet`,
+    assertion: 'settled.quiet',
     evidence: { quietForMs, lastActivity: lastType },
   };
 }

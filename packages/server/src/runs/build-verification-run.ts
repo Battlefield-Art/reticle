@@ -2,7 +2,7 @@
  * The verification-run assembler. A PURE mapping from already-produced verification results
  * (flow-replay outcomes, standalone checks, risks, evidence, repair packets) into the stable
  * ReticleVerificationRun artifact, with a deterministic verdict computed here. The clock is injected
- * (the single `createdAt` site — never Date.now() in logic, per rule 7). Gathering the inputs from a
+ * (the single `createdAt` site — never Date.now in logic, per rule 7). Gathering the inputs from a
  * live session is a separate adapter concern; this file owns the shape + the verdict rules so both
  * the MCP path and the programmatic Replay/Verify API produce byte-identical verdicts.
  */

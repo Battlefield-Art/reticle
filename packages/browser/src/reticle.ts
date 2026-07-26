@@ -14,7 +14,11 @@ import {
   type HelloMessage,
   type ReticleEvent,
 } from '@reticlehq/core';
-import { createCommandRegistry, type CommandHandler } from './commands/commands.js';
+import {
+  createCommandRegistry,
+  RELOAD_CACHE_BUST_PARAM,
+  type CommandHandler,
+} from './commands/commands.js';
 import { Transport, type CommandOutcome } from './transport/transport.js';
 import { adapterNames } from './registry/adapters.js';
 import {
@@ -23,6 +27,10 @@ import {
   type CapabilitiesInput,
 } from './registry/capabilities.js';
 import { installDom } from './observers/dom.js';
+import { installStorage } from './observers/storage.js';
+import { installStoreState } from './observers/state.js';
+import { installFocus } from './observers/focus.js';
+import { installBlindSpots } from './observers/blind-spots.js';
 import { installNetwork } from './observers/network.js';
 import { installPerf } from './observers/perf.js';
 import { installRoute } from './observers/route.js';
@@ -105,7 +113,7 @@ export interface ReticleConnectOptions {
 
 /**
  * Runtime backstop for the dev-only SDK: block connecting when the build reports production, unless
- * explicitly overridden. Pure so it's testable; connect() reads NODE_ENV safely (process may be absent
+ * explicitly overridden. Pure so it's testable; connect reads NODE_ENV safely (process may be absent
  * in a raw browser). This is defense-in-depth — the primary guard is the consumer gating the import
  * behind `import.meta.env.DEV` so the SDK is dead-code-eliminated from prod bundles entirely.
  */
@@ -172,9 +180,21 @@ export function resolveSessionLabel(option: string | undefined, gen: () => strin
 // Re-exported from the protocol (the wire contract) so callers/tests can import it from the SDK too.
 export { RETICLE_URL_PARAM };
 
+/** Remove the `_reticle_reload` cache-buster a hard REFRESH left behind, via a native replaceState. */
+function stripReloadCacheBustParam(): void {
+  try {
+    const current = new URL(window.location.href);
+    if (!current.searchParams.has(RELOAD_CACHE_BUST_PARAM)) return;
+    current.searchParams.delete(RELOAD_CACHE_BUST_PARAM);
+    window.history.replaceState(window.history.state, '', current.toString());
+  } catch {
+    /* best-effort URL hygiene — never block connect() on it */
+  }
+}
+
 /**
  * Extract Reticle identity overrides from a `location.search` string. Pure (takes the string, not the
- * window) so it's testable without a DOM. Explicit connect() options still win over these.
+ * window) so it's testable without a DOM. Explicit connect options still win over these.
  */
 export function reticleParamsFromSearch(search: string): { session?: string; projectId?: string } {
   const params = new URLSearchParams(search);
@@ -203,6 +223,29 @@ export function resolveConnectIdentity(
   return {
     session: explicitSession ?? url.session,
     projectId: projectId !== undefined && projectId.length > 0 ? projectId : undefined,
+  };
+}
+
+/**
+ * Assemble an event envelope. Pure: `seq` (monotonic per session) and `t` (elapsed clock) are
+ * injected, never read here — so it is unit-testable and honors the clock-injection rule. The
+ * causing action's id is attributed server-side by the settle window, so it is not stamped here.
+ */
+export function buildEvent(args: {
+  seq: number;
+  t: number;
+  type: EventType;
+  sessionId: string;
+  data: Record<string, unknown>;
+  ref?: string | undefined;
+}): ReticleEvent {
+  return {
+    t: args.t,
+    seq: args.seq,
+    type: args.type,
+    sessionId: args.sessionId,
+    ref: args.ref,
+    data: args.data,
   };
 }
 
@@ -243,6 +286,11 @@ export class Reticle {
       return;
     }
 
+    // A `hard` REFRESH left a cache-busting `_reticle_reload=<nonce>` in the address bar. Strip it now
+    // (before the route observer installs, so it emits no spurious ROUTE_CHANGE) — otherwise every hard
+    // reload permanently pollutes the URL the app and the agent see.
+    stripReloadCacheBustParam();
+
     const url = options.url ?? bridgeWsUrl(RETICLE_DEFAULT_PORT);
     const policy = connectionPolicy(
       window.location.hostname,
@@ -278,8 +326,14 @@ export class Reticle {
       onConnected: () => this.#presenter?.sessionStart(),
       // Liveness fallback: if the bridge stays unreachable (the agent killed the server process),
       // no server-pushed end can arrive — so end the run we're presenting ourselves. A returning
-      // agent revives it via the normal sessionStart() path on its next command.
+      // agent revives it via the normal sessionStart path on its next command.
       onConnectionLost: () => {
+        // Restore real timers. A frozen clock is driven by the agent through the bridge; once the
+        // bridge is gone nothing can ever advance it, so leaving it installed pins Date.now and
+        // queues every setTimeout into a scheduler that will never run. Concretely that kills every
+        // lodash debounce/throttle in the app (now - lastCall stays 0), so search boxes, autosave
+        // and resize handlers stop firing until a reload — with nothing on screen explaining why.
+        resetClock();
         if (this.#presenter?.sessionActive === true) {
           this.#presenter.setState(SessionState.ENDED, BRIDGE_LOST_SUMMARY);
         }
@@ -305,6 +359,10 @@ export class Reticle {
       installAnimation(emit),
       installScroll(emit),
       installDom(emit),
+      installStorage(emit), // storage WRITES → STORAGE_CHANGE diffs (pull remains the fallback)
+      installStoreState(emit), // subscribed-store mutations → STATE_CHANGE path diffs
+      installFocus(emit), // element focus movement → FOCUS_CHANGE (focus-to-body = a regression)
+      installBlindSpots(emit), // cross-origin iframes the SDK can't see → BLIND_SPOT (coverage: partial)
       installHealth(emit), // page visibility/focus health + heartbeat
     ];
 
@@ -375,6 +433,15 @@ export class Reticle {
     this.#emit(EventType.STATE_CHANGE, { name, value });
   }
 
+  /**
+   * Report an aggregated count of React commits (the @reticlehq/react render meter calls this on a
+   * throttle). Emits a single RENDER_COMMIT event per window so commit storms are observable without a
+   * per-render flood. Dev-only, like the whole SDK.
+   */
+  renderCommit(commits: number): void {
+    if (commits > 0) this.#emit(EventType.RENDER_COMMIT, { commits });
+  }
+
   /** Advertise the app's testable surface so the agent learns it without reading source. */
   describe(input: CapabilitiesInput): void {
     registerCapabilities(input);
@@ -405,18 +472,28 @@ export class Reticle {
   }
 
   readonly #emit = (type: EventType, data: Record<string, unknown>, ref?: string): void => {
-    const event: ReticleEvent = {
+    const event = buildEvent({
+      seq: this.#eventCount,
       t: Math.round(performance.now() - this.#start),
       type,
       sessionId: this.#session,
-      ref,
       data,
-    };
-    this.#transport?.sendEvent(event);
-    this.#eventCount += 1;
-    this.#overlay?.update({ connected: true, events: this.#eventCount });
-    // On a route change, re-scope the HUD's replay-flow chips to the page we're now on.
-    if (type === EventType.ROUTE_CHANGE) this.#presenter?.refilterFlows();
+      ref,
+    });
+    // Guarded because #emit runs INLINE IN THE APP'S CALL STACK: every monkey-patch calls it from
+    // inside the function it replaced. An exception here does not surface as an SDK error — it
+    // propagates out of history.pushState (crashing a router's navigate), out of localStorage.setItem
+    // after the write already succeeded, or out of console.log before the message reaches the console.
+    // A dev-only observability SDK must never be able to break the app it is observing.
+    try {
+      this.#transport?.sendEvent(event);
+      this.#eventCount += 1;
+      this.#overlay?.update({ connected: true, events: this.#eventCount });
+      // On a route change, re-scope the HUD's replay-flow chips to the page we're now on.
+      if (type === EventType.ROUTE_CHANGE) this.#presenter?.refilterFlows();
+    } catch {
+      /* observation is best-effort; the host app's control flow is not */
+    }
   };
 
   #hello(): HelloMessage {

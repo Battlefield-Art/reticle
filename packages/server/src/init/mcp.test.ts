@@ -20,7 +20,7 @@ describe('claudeAddCommand', () => {
 
   it('is portless — never bakes a port into the global registration', () => {
     // A single global entry serves every project; the port is resolved per-project from
-    // .reticle.json at runtime. Baking --port here would pin all projects to one port.
+    //.reticle.json at runtime. Baking --port here would pin all projects to one port.
     const c = claudeAddCommand();
     expect(c.args).not.toContain('--port');
     expect(c.display).not.toContain('--port');

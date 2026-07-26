@@ -1,6 +1,12 @@
 // Master report: synthesizes every measured artifact into one scorecard answering the sales
-// objections. Reads results-full52.json (#1/#3/#4), results-multiagent.json (#5),
+// objections. Reads results.json (#1/#3/#4), results-multiagent.json (#5),
 // results-mcp.json (#6-proxy), results-author.json (#2). Missing files degrade gracefully.
+//
+// The bug count is DERIVED from the rows, never written down. It used to be a hardcoded "52" in the
+// header while `results-full52.json` — a snapshot of a long-superseded registry — was preferred over
+// the live results, so `pnpm bench` could grow the suite to 85 and regenerate this file, and it would
+// still confidently describe the old run. A number that a reader cannot tell is stale is worse than
+// no number.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,16 +14,36 @@ import { fileURLToPath } from 'node:url';
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const load = (f) =>
   existsSync(path.join(dir, f)) ? JSON.parse(readFileSync(path.join(dir, f), 'utf8')) : null;
-const matrix = load('results-full52.json') ?? load('results.json');
+const matrix = load('results.json') ?? load('results-full52.json');
 const multi = load('results-multiagent.json');
 const mcp = load('results-mcp.json');
 const author = load('results-author.json');
+/** Why a category ships silently in a real app. Categories without an entry render as `—`. */
+const CATEGORY_WHY = {
+  state:
+    'a count/label/status the DOM shows but the store contradicts — stale selectors, half-applied optimistic updates, over-reaching reducers (blast radius). Looks plausible on screen.',
+  'business-logic':
+    'a wrong value in the store while off-screen (bad author/timestamp/KPI) — exactly what unit tests target but DOM E2E misses.',
+  'net-status':
+    'the request failed and the UI rendered success over it. The screen is the wrong place to look for a status code.',
+  signal:
+    'the app never emitted the domain event it promised. There is no pixel for a signal that did not fire.',
+  streams:
+    'an SSE/stream stopped or sent a malformed frame; the last good render stays on screen and looks fine.',
+  perf: 'layout shift and long tasks are invisible in a settled screenshot — the damage is over by the time you look.',
+  'deep-dom': 'the truth is inside a frame or shadow root a selector does not reach.',
+};
+
 const n = (x, d = 0) => (typeof x === 'number' ? x.toFixed(d) : x);
 const L = [];
 
 L.push('# Reticle vs Playwright — master scorecard\n');
+const bugCount =
+  matrix === null
+    ? 0
+    : new Set(matrix.rows.filter((r) => r.variant === 'buggy').map((r) => r.bug)).size;
 L.push(
-  'Fixture: `apps/bench-app`, a complex dashboard with **52 injected bugs** across UI-visual, UI-paint, state, console, network, mock-data, business-logic, and regression. One section per objection.\n',
+  `Fixture: \`apps/bench-app\`, a complex dashboard with **${bugCount} injected bugs** across UI-visual, UI-paint, state, console, network, mock-data, business-logic, and regression. One section per objection.\n`,
 );
 
 // ── #1 + #3 + #4 (detection matrix, deterministic, no LLM) ─────────────────────────────
@@ -50,12 +76,14 @@ if (matrix) {
     '| Category Playwright structurally cannot catch | Count | Why it ships silently in real apps |',
   );
   L.push('|---|--:|---|');
-  L.push(
-    `| state / UI-store desync | ${(byCat['state'] ?? []).length} | a count/label/status the DOM shows but the store contradicts — stale selectors, half-applied optimistic updates, over-reaching reducers (blast radius). Looks plausible on screen. |`,
-  );
-  L.push(
-    `| business-logic | ${(byCat['business-logic'] ?? []).length} | a wrong value in the store while off-screen (bad author/timestamp/KPI) — exactly what unit tests target but DOM E2E misses. |`,
-  );
+  // Every category present, not a curated two. This table used to hardcode `state` and
+  // `business-logic` rows while the prose above counted ALL reticle-only bugs, so it read as an
+  // enumeration and summed to 14 against a stated 26 — the missing dozen (net-status, signal,
+  // streams, perf) were the newer categories nobody went back to add a row for. A table that
+  // silently drops rows is worse than one that admits it does not know the reason.
+  for (const [cat, bugsInCat] of Object.entries(byCat).sort((a, b) => b[1].length - a[1].length)) {
+    L.push(`| ${cat} | ${bugsInCat.length} | ${CATEGORY_WHY[cat] ?? '—'} |`);
+  }
   L.push(
     `\nReticle-only bugs (deterministic single-view harness): \`${rOnly.map((r) => r.bug).join('`, `')}\`\n`,
   );
@@ -74,7 +102,7 @@ if (matrix) {
   );
   L.push(`| **False positives (clean build)** | **${rFP}** | **${pFP}** |`);
   L.push(
-    `| **Total wall-time, whole 52-bug suite** | **${n(rMs / 1000, 0)}s** | **${n(pMs / 1000, 0)}s** (${n(pMs / rMs, 1)}× slower) |`,
+    `| **Total wall-time, whole ${bugCount}-bug suite** | **${n(rMs / 1000, 0)}s** | **${n(pMs / 1000, 0)}s** (${n(pMs / rMs, 1)}× slower) |`,
   );
   L.push(
     `| Avg output consumed / bug | ${matrix.agg?.['reticle-script']?.avgBytes ?? '?'} B | ${matrix.agg?.['playwright-script']?.avgBytes ?? '?'} B |`,

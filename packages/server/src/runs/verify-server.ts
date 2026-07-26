@@ -14,7 +14,7 @@ import { handleVerifyRequest, type VerifyHttpRequest } from './verify-http.js';
 const LOCALHOST = LOOPBACK_HOST;
 const MAX_BODY_BYTES = 1_000_000;
 /** Cap how long a single request (and its headers) may take, so a slow/stuck client can't tie up the
- *  endpoint indefinitely (slow-loris hardening). */
+ * endpoint indefinitely (slow-loris hardening). */
 const REQUEST_TIMEOUT_MS = 30_000;
 const HEADERS_TIMEOUT_MS = 10_000;
 /** Partner pipelines send the token here (localhost-bound, so this is defence-in-depth, not the wall). */

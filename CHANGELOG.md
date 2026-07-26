@@ -4,6 +4,39 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-07-26
+
+The causal-evidence release: every verdict now carries _why_, verification becomes part of "done", and the layer stops trusting evidence it doesn't have. Faster on long sessions and big DOMs, and the published packages are brought to OSS-library standard (licensing, packaging, CI security). No breaking changes — schema additions stay back-compatible and on-disk flow files remain version 1.
+
+### Added
+
+- **`reticle init` writes a verification rule into your coding agent's instruction file** (`CLAUDE.md` / `.cursor/rules/reticle.mdc` with `alwaysApply` / `AGENTS.md`), so the agent verifies a feature with Reticle _after building it_ — not only when you remember to ask. Idempotent and rides with the MCP registration. (`@reticlehq/server`)
+- **Causal evidence on results:** a bounded causal summary on `reticle_act_and_wait` (net/console/state/storage/route/signals + settle time), a first-divergence capsule on a red result (the attributed chain effect→handlers→requests→state→DOM, with `file:line`), and a ranked deviation report as the default output after a replay. Blind-spot/coverage lines make partial visibility explicit rather than silent. (`@reticlehq/server`, `@reticlehq/browser`)
+- **The verify loop:** `reticle affected <files>` maps changed files to the flows that cover them; `reticle gate` exits non-zero unless passing artifacts cover the affected, non-flaky flows — with anti-reward-hacking (a downgraded or deleted assertion on a changed file is a finding, not a silent pass); `reticle watch` reports affected flows on save. (`@reticlehq/server`)
+
+### Security
+
+- **Captured HTTP response/request headers are redacted before they reach the journal or the agent.** On the driven (CDP) path, `Set-Cookie`, `Cookie`, and `Authorization` were written to `.reticle/` in cleartext and streamed into the model's context; credential headers are now redacted by key and every other header value swept for known secret shapes, like request bodies already were. `cookie`/`set-cookie` joined the sensitive-key set (boundary-anchored, so app cookie names like `cookieConsent` stay visible). (`@reticlehq/server`, `@reticlehq/core`)
+- **The enterprise license gate fails CLOSED in production.** A release with no resolvable issuer key (a mis-built build where the baked key was never stamped) previously ran every `ee/` feature FREE with no key and no warning; in production it now denies, and `reticle license` reports the build as MISCONFIGURED. Dev/eval still runs free so a contributor is never blocked. (`@reticlehq/server`)
+- **Supply-chain / CI hardening:** Dependabot for npm + Actions, all GitHub Actions pinned to commit SHAs, least-privilege workflow tokens, a CodeQL scan, and the publish workflow now runs the full test gate and refuses to publish from any ref but `main` on a manual dispatch.
+
+### Fixed
+
+- **A run of false greens in the verifier's own trust plumbing** — the class the product exists to prevent. An `anyOf` predicate that greened via its presence branch no longer grades its honesty block as `signal`/`net` (a `minGrade` gate could have trusted a green that proved only presence); a flow's per-step signal can no longer be satisfied by an EARLIER flow's signal in a back-to-back suite; and six fields the handlers returned (`warning` on a throttled tab, the human-pause `guidance`, the RED `file:line` `source`, `window_ms`, a flow's `name`, capability `governance`) are no longer silently dropped by validating tool profiles. (`@reticlehq/server`)
+- **Serialization / state-selection correctness:** an invalid `Date` in app state no longer crashes the whole state read (degrades to null); a truncated string or dropped object key is now reported instead of read as complete; a typed array serializes to an array, not an index-keyed object; `selectPath` no longer resolves prototype keys (`constructor`/`__proto__`) or non-canonical indices (`items.01`), and bounds its near-miss key list; `matchValue({})` no longer matches everything; and `settled`'s in-flight count is correct when a request id is reused. (`@reticlehq/browser`, `@reticlehq/core`, `@reticlehq/server`)
+- **The ring buffer keeps a single event larger than its whole byte budget** instead of pushing then immediately self-evicting it (a waiter could never see it). (`@reticlehq/server`)
+- **A second hardening pass closed more false-green and data-loss edges:** a scoped query/snapshot/assert whose scope has unmounted no longer silently widens to the whole page (a `scopeMissing` signal keeps "scope gone" distinct from "element absent", and an absence check is satisfied when the scope itself is the thing that vanished); the durable journal no longer drops an event when a read observes an in-flight append mid-line; parallel `reticle_flow_verify` no longer loses run-history or anti-gaming-baseline writes to a concurrent overwrite; the annotator's own "flag a bug" overlay no longer leaks into snapshots or the DOM/animation event streams; and the browser SDK's transport can no longer throw into the host app's bootstrap (mixed-content `WebSocket`) or reconnect-storm on a terminal `1008` close. (`@reticlehq/browser`, `@reticlehq/server`, `@reticlehq/core`)
+
+### Changed
+
+- **Long sessions and big DOMs are materially cheaper.** `reticle_observe`/`_network`/`_console` no longer re-read and re-parse the whole durable journal on every call once the ring buffer has evicted (a parsed-tail cache — measured ~1.5s CPU + ~300MB/call on a 1-hour session, now O(new events)); `reticle_network`/`_console` default their output to the most-recent 200 (with the total disclosed) so a flooded session can't return a million-token result; `waitForPredicate` skips the extra near-miss DOM scans on interim polls and paces rechecks so an event flood can't saturate the app's main thread; and the ref registry amortizes its eviction instead of a full sweep per mint on a 10k-element page. (`@reticlehq/server`, `@reticlehq/browser`)
+
+### Packaging
+
+- **`@reticlehq/core` is Apache-2.0** end to end (package.json, LICENSE, NOTICE, and the root license overview now agree) — it is the wire contract every embeddable SDK package depends on, so the "Apache-2.0, safe to embed" promise depends on it.
+- **`@reticlehq/babel-plugin` is now CommonJS,** so a standard `babel.config.js` can `require()` it on any Node version (it previously threw `ERR_REQUIRE_ESM` on older Node).
+- Every published package declares `engines` (`node >=20`); Apache `NOTICE` files now ship in their tarballs; `@reticlehq/server` ships the enterprise license alongside the FSL one; and `@reticlehq/test` gained a README (its npm page was blank).
+
 ## [2.1.0] — 2026-07-18
 
 This release turns Reticle's eyes on the parts of a running app a screenshot fundamentally can't see — the **network tab, client-side storage, and web-perf** — and hardens credential redaction across all of it so none of that new visibility leaks a secret into the agent transcript. It also lands a round of verifier-honesty fixes and a performance pass on the event buffer. No breaking changes — every addition is back-compatible and on-disk flow files remain version 1.

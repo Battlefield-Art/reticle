@@ -31,8 +31,8 @@ Plain-language legend, so the numbers below make sense even if you've never writ
 | Dimension | Reticle | Playwright MCP | DevTools MCP | Honest verdict |
 | --- | --- | --- | --- | --- |
 | **Detection — Observation-cost** (10 scripted regressions, catch-rate gate) | **RCR 1.0, VE 12.27** (avg 815 tok) | RCR 0.9, VE 6.97 | RCR 0.8, VE 10.55 | Reticle catches all (det 1.0); competitors miss 1–2 each. VE **clears the best external tool** — Reticle is the only tool at full detection AND the lowest VE-qualifying cost. (`METRIC.md`) |
-| **Detection — Agent-loop** (real gpt-4o agent loop, authoritative usage) | **5/5 @ ~55k tok** | 4/5 @ ~30k | 3/5 @ ~32k | Reticle most accurate; ~1.7× tokens. (`LAYER-B.md`) |
-| **Regression-run cost — Replay** (replay a known flow) | **~175 tok, deterministic** | ~30,249 (LLM re-drive) | ~32,296 | **128–184× cheaper per run**, compounding. (`LAYER-B.md` Layer C) |
+| **Detection — Agent-loop** (real gpt-4o agent loop, authoritative usage) | **5/5 @ ~55k tok** | 4/5 @ ~30k | 3/5 @ ~32k | Reticle most accurate; ~1.7× tokens. (`agent-loop-and-replay.md`) |
+| **Regression-run cost — Replay** (replay a known flow) | **~175 tok, deterministic** | ~30,249 (LLM re-drive) | ~32,296 | **128–184× cheaper per run**, compounding. (`agent-loop-and-replay.md` Layer C) |
 | **Suite-scale RRE — Replay** (re-verify a K-flow suite, per run) | **47 tok at K=2 AND K=4 — constant in K** (`reticle_flow_verify`) | K × ~30,249 | K × ~32,296 | **The chased metric, compounding: 1287× at 2 flows → 2574× at 4 → grows with suite size.** One consolidated verdict (passing counted, only failures detailed) ⇒ agent read-cost is ~flat in K; competitors re-drive every flow. (`suite-rre`) |
 | **Regression detection — Replay** | selector 3/3, consequence 2/2 (green-but-wrong) | no replay | no replay | Reticle-only: deterministic replay catches + names the fix. |
 | **State-oracle regression — Replay** (dead Ship handler; store never changes) | **1/1 CAUGHT @ ~472 tok (64×)** | no replay | no replay | Reticle-only: a `state` success-oracle (`deployments.0.status==live`) fails when the store didn't change, with no testid drift — the button is present and clicks fine. (`replay-detect-state`) |
@@ -61,7 +61,7 @@ The table above is the controlled lab. We also ran Reticle against a **real prod
 - **Tier-1, demonstrated live:** only Reticle read program state (`authenticated`, `userId`, `activeProjectId`) and asserted login from the app's own signal — the others cannot.
 - **A real bug, caught on the first pass (uninstrumented):** `GET /projects` and `/recovery/incidents` returning `500 — column "deleted_at" does not exist` (a missing migration). The page rendered fine; a screenshot would call it "done." Reproduced honestly, then fixed.
 
-Full walkthrough + the from-scratch explainer: [`docs/benchmarks.md`](../docs/benchmarks.md) §5.
+Full walkthrough + the from-scratch explainer: [`docs/benchmarks.md`](../docs/benchmarks.md) Part 5.
 
 ## The one honest sentence
 

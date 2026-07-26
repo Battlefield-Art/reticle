@@ -9,12 +9,13 @@ import {
 import { refs } from '../dom/refs.js';
 import { getAccessibleName, isVisible, getStates } from '../dom/a11y.js';
 import { elementHasHoverHandlers, identifyComponent } from '../registry/adapters.js';
+import { captureValueSetter } from '../patching/capture-method.js';
 import { nativeSetTimeout, settle } from '../timers/native-timers.js';
 
 /**
  * Best-effort evidence of whether/why an action landed, so the agent can separate
  * "my action missed" vs "app didn't react" vs "tool didn't dispatch". All probes are
- * cheap and best-effort (see docs/usage.md §3).
+ * cheap and best-effort (see docs/usage.md).
  */
 interface ActionEffect {
   /** We reached dispatch (no throw before it). Typed `true`: if we never dispatch we throw. */
@@ -76,8 +77,7 @@ interface ActionResult {
 function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): boolean {
   const proto =
     el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- setter is invoked via .call(el)
-  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  const setter = captureValueSetter(proto);
   if (setter !== undefined) {
     setter.call(el, value);
   } else {
@@ -111,12 +111,18 @@ interface CapturedAnchor {
  * unmount the target (login submit, a close button), after which it has no readable attribute — so
  * reading the anchor post-settle would silently degrade the recorded step. We read it up front while
  * the element is still mounted.
+ *
+ * The component walk runs even when a testid is present. It used to be skipped, on the reasoning that
+ * a testid is the better anchor and the walk is wasted work — true for anchoring, but it also threw
+ * away the source pointer, which answers a different question (where is this defined?) and is the
+ * most useful thing we can give an agent that has to fix the thing we just broke. Acts are
+ * agent-initiated and rare, so the walk's cost is not on any hot path.
  */
 function anchorOf(el: Element): CapturedAnchor {
   const testid = el.getAttribute('data-testid') ?? undefined;
-  if (testid !== undefined) return { testid };
   const info = identifyComponent(el);
   const out: CapturedAnchor = {};
+  if (testid !== undefined) out.testid = testid;
   const component = info?.componentStack[0];
   if (component !== undefined) out.component = component;
   if (info?.source !== undefined) out.source = info.source;
@@ -141,18 +147,26 @@ const result = (
     settleReason,
     effect,
   };
-  if (anchor.testid !== undefined) {
-    base.testid = anchor.testid;
-  } else {
-    // No testid — carry the auto-anchor so the recorded step stays stable, not degraded.
-    if (anchor.component !== undefined) base.component = anchor.component;
-    if (anchor.source !== undefined) base.source = anchor.source;
-  }
+  // Anchor and provenance are reported side by side rather than as alternatives: the testid says how
+  // to find this element next run, the component/source says where it is written. A step is anchored
+  // by the testid when it has one (see the flow compiler) and that is unchanged — what changed is
+  // that having a testid no longer erases the answer to "which file do I open?".
+  if (anchor.testid !== undefined) base.testid = anchor.testid;
+  if (anchor.component !== undefined) base.component = anchor.component;
+  if (anchor.source !== undefined) base.source = anchor.source;
   if (warning !== undefined) base.warning = warning;
   return base;
 };
 
-const FILL_LIKE = new Set<string>([ActionType.FILL, ActionType.TYPE, ActionType.CLEAR]);
+// SELECT is fill-like for the purpose of `valueChanged`: selecting a value with NO matching <option>
+// leaves el.value unchanged (or ''), and valueChanged:false is the only signal an agent gets that the
+// select silently did nothing. Without it a no-op SELECT reported plain success — a false green.
+const FILL_LIKE = new Set<string>([
+  ActionType.FILL,
+  ActionType.TYPE,
+  ActionType.CLEAR,
+  ActionType.SELECT,
+]);
 const isFillLike = (action: string): boolean => FILL_LIKE.has(action);
 
 /** Actions that resolve to a point and so benefit from off-viewport scroll + occlusion hit-test. */
@@ -275,7 +289,7 @@ async function dispatchFor(
       return false; // FocusEvents are not cancelable.
     case ActionType.BLUR:
       // Fire a bubbling focusout so React 19's delegated root listener runs onBlur
-      // (commit-on-blur). el.blur() alone only works if the element was truly focused.
+      // (commit-on-blur). el.blur alone only works if the element was truly focused.
       el.blur();
       el.dispatchEvent(new FocusEvent('blur'));
       el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
@@ -296,7 +310,9 @@ async function dispatchFor(
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
         return setNativeValue(el, '');
       }
-      return false;
+      // Consistent with TYPE/SELECT/CHECK: clearing a non-field is not a silent success. Throwing
+      // surfaces the mismatch instead of reporting ok:true for an action that did nothing.
+      throw new Error(`cannot clear a <${el.tagName.toLowerCase()}>`);
     case ActionType.SELECT:
       if (el instanceof HTMLSelectElement) {
         el.value = asString(args['value']);
@@ -316,7 +332,7 @@ async function dispatchFor(
       const form = el instanceof HTMLFormElement ? el : el.closest('form');
       if (form === null) throw new Error('no form to submit');
       form.requestSubmit();
-      return false; // requestSubmit() returns void; the internal submit event is unobservable.
+      return false; // requestSubmit returns void; the internal submit event is unobservable.
     }
     case ActionType.PRESS: {
       const key = asString(args['key'], 'Enter');
@@ -349,7 +365,9 @@ async function dispatchFor(
     }
     case ActionType.DRAG: {
       const toRef = asString(args['toRef']);
-      const resolved = toRef !== undefined ? refs.resolve(toRef) : null;
+      // asString falls back to '' (never undefined), so the old `!== undefined` was always true and
+      // handed '' to refs.resolve. A drag with no target ref is a free drag — resolve nothing.
+      const resolved = toRef !== '' ? refs.resolve(toRef) : null;
       return await dragElement(el, resolved instanceof HTMLElement ? resolved : null, args['data']);
     }
     default:
@@ -398,7 +416,7 @@ export async function executeAction(
     // bounded settle — microtask + one BOUNDED frame so React's commit (and the resulting DOM
     // mutations → dom.added/dom.text/dom.attr events) flush before we return, landing inside
     // observe({ since }). Bounded so a throttled/background tab never hangs; a settle timeout NEVER
-    // rejects (only a real dispatch failure thrown above does). settle() can never throw.
+    // rejects (only a real dispatch failure thrown above does). settle can never throw.
     const outcome = await settle();
     settled = outcome.settled;
     settleReason = outcome.settled ? null : SettleReason.TIMEOUT;

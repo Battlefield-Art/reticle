@@ -1,4 +1,5 @@
 import { useApp, type ViewId } from '../store/store.js';
+import { isEnterpriseEnabled } from '../lib/enterprise-config.js';
 import { IconBug, IconGrid, IconRocket, IconSparkles } from './icons.js';
 
 interface NavDef {
@@ -12,7 +13,13 @@ const NAV: NavDef[] = [
   { id: 'deployments', label: 'Deployments', icon: IconRocket },
   { id: 'compose', label: 'Compose', icon: IconSparkles },
   { id: 'diagnostics', label: 'Diagnostics', icon: IconBug },
+  // The hostile fixture: reachable by click so the overhead A/B works with the SDK disabled too.
+  { id: 'hostile', label: 'Hostile', icon: IconBug },
 ];
+
+// The enterprise-scale fixture is opt-in: without its URL knob the nav item is not even rendered,
+// so no existing benchmark sees an extra button or an extra DOM node.
+const NAV_ENTERPRISE: NavDef = { id: 'enterprise', label: 'Enterprise', icon: IconGrid };
 
 export function Sidebar(): React.ReactElement {
   const view = useApp((s) => s.view);
@@ -30,7 +37,7 @@ export function Sidebar(): React.ReactElement {
       </div>
 
       <div className="nav-section">Workspace</div>
-      {NAV.map(({ id, label, icon: Ico }) => (
+      {(isEnterpriseEnabled() ? [...NAV, NAV_ENTERPRISE] : NAV).map(({ id, label, icon: Ico }) => (
         <button
           key={id}
           type="button"

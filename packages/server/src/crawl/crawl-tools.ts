@@ -39,6 +39,9 @@ export const CRAWL_TOOLS: ToolDef[] = [
           'Active session ID from reticle_sessions. Omit when only one browser session is open.',
         ),
     },
+    // An UNDECLARED field is stripped from structuredContent, so a schema-aware client never sees it
+    // even though the handler returns it. Everything crawl produces has to be listed here or it is
+    // silently lost — which is how the source pointer and the visited list were being dropped.
     outputSchema: {
       interactiveFound: z.number(),
       stepsRun: z.number(),
@@ -48,9 +51,20 @@ export const CRAWL_TOOLS: ToolDef[] = [
           ref: z.string(),
           desc: z.string(),
           detail: z.string().optional(),
+          source: z
+            .string()
+            .optional()
+            .describe('Where the control is written, as `file:line` — open this to fix it.'),
         }),
       ),
       counts: z.record(z.number()),
+      visited: z.array(z.string()).describe('The controls actually clicked, in order.'),
+      coverageNote: z
+        .string()
+        .optional()
+        .describe(
+          'Present only when the page exceeded one snapshot, so controls past the cap were never listed. When present, a zero-anomaly result does NOT mean the app is clean.',
+        ),
       truncated: z.boolean(),
     },
     handler: (deps: ToolDeps, args) => {

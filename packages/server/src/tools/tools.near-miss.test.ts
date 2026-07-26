@@ -13,8 +13,10 @@ function sessionWith(events: ReticleEvent[]): Session {
   const stub: Partial<Session> = {
     id: 'demo',
     eventsSince: () => events,
+    queryEvents: () => Promise.resolve(events),
     health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
     bufferHealth: () => ({ total: events.length, dropped: 0 }),
+    blindSpots: () => ({}),
     getState: () => undefined as never,
     drainInbox: () => [],
   };
@@ -110,6 +112,23 @@ describe('token budget on reticle_network / reticle_console', () => {
     expect(r.cost?.bytes).toBeGreaterThan(0);
   });
 
+  it('reticle_network: no explicit limit still caps at the default (200), disclosing total', async () => {
+    // Guards the unbounded-output fix: since defaults to 0 (whole session), an omitted limit used to
+    // dump every call — a flooded session was ~1M tokens in one result. The default cap bounds it and
+    // total/droppedOldest disclose the cut, so nothing is hidden.
+    const many = Array.from({ length: 250 }, (_, i) =>
+      ev(EventType.NET_REQUEST, { url: `/${String(i)}`, status: 200 }),
+    );
+    const r = (await tool(ReticleTool.NETWORK).handler(depsWith(many), {})) as {
+      calls: unknown[];
+      total?: number;
+      droppedOldest?: number;
+    };
+    expect(r.calls).toHaveLength(200);
+    expect(r.total).toBe(250);
+    expect(r.droppedOldest).toBe(50);
+  });
+
   it('reticle_console: limit keeps the most recent N entries', async () => {
     const deps = depsWith([
       ev(EventType.CONSOLE_ERROR, { message: 'a' }),
@@ -133,9 +152,11 @@ describe('buffer honesty — a negative result after eviction is not silent', ()
     const stub: Partial<Session> = {
       id: 'demo',
       eventsSince: () => events,
+      queryEvents: () => Promise.resolve(events),
       eventsInWindow: () => events,
       health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
       bufferHealth: () => ({ total: events.length, dropped }),
+      blindSpots: () => ({}),
       elapsed: () => 0,
       lastActCursor: () => undefined,
       getState: () => undefined as never,

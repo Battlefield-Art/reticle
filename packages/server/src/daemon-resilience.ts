@@ -2,11 +2,11 @@
  * Process-level resilience for the long-running daemon. The daemon serves many agents at once, so a
  * single stray error must not take the whole fleet down:
  *
- *  - unhandledRejection (a fire-and-forget promise nobody awaited — the common case in async WS/pool
- *    code) → LOG and keep running. One agent's async slip-up can't crash the daemon for everyone.
- *  - uncaughtException (a synchronous throw escaped all try/catch) → the process state is undefined
- *    per Node's guidance, so LOG a clear reason and exit cleanly; the next `reticle mcp` respawns a fresh
- *    daemon, which beats crashing silently or limping along corrupt.
+ * - unhandledRejection (a fire-and-forget promise nobody awaited — the common case in async WS/pool
+ * code) → LOG and keep running. One agent's async slip-up can't crash the daemon for everyone.
+ * - uncaughtException (a synchronous throw escaped all try/catch) → the process state is undefined
+ * per Node's guidance, so LOG a clear reason and exit cleanly; the next `reticle mcp` respawns a fresh
+ * daemon, which beats crashing silently or limping along corrupt.
  */
 
 export interface ProcessLike {

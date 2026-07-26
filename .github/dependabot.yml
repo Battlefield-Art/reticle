@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # npm dependencies across the pnpm workspace. Grouped so a routine week is one PR, not twenty.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      # Non-breaking bumps land together; majors come as individual PRs so they're reviewed on purpose.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    # The published SDK carries zod as a real dependency; treat its majors as deliberate, reviewed changes.
+    ignore:
+      - dependency-name: zod
+        update-types:
+          - version-update:semver-major
+
+  # Keep the GitHub Actions themselves current AND pinned — Dependabot updates the pinned SHAs for us.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch

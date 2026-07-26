@@ -13,10 +13,16 @@ const noSleep = (): Promise<void> => Promise.resolve();
 interface RefScript {
   events?: { type: EventType; data?: Record<string, unknown> }[];
   dispatched?: boolean;
+  /** What the browser captured alongside the anchor when this control was clicked. */
+  source?: { file: string; line: number };
 }
 
 /** A scripted CrawlSession: SNAPSHOT returns `tree`; each ACT pushes that ref's scripted events. */
-function fakeSession(tree: string, perRef: Record<string, RefScript>): CrawlSession {
+function fakeSession(
+  tree: string,
+  perRef: Record<string, RefScript>,
+  snapshotTruncated = false,
+): CrawlSession {
   let clock = 0;
   const buffer: ReticleEvent[] = [];
   const ok = (result: unknown): Promise<CommandResult> =>
@@ -25,14 +31,18 @@ function fakeSession(tree: string, perRef: Record<string, RefScript>): CrawlSess
     elapsed: () => clock,
     eventsSince: (since) => buffer.filter((e) => e.t > since),
     command: (name, args = {}) => {
-      if (name === ReticleCommand.SNAPSHOT) return ok({ tree });
+      if (name === ReticleCommand.SNAPSHOT) return ok({ tree, truncated: snapshotTruncated });
       if (name === ReticleCommand.ACT) {
         const ref = typeof args['ref'] === 'string' ? args['ref'] : '';
         clock += 1;
         for (const e of perRef[ref]?.events ?? []) {
           buffer.push({ t: clock, type: e.type, sessionId: 's', data: e.data ?? {} });
         }
-        return ok({ dispatched: perRef[ref]?.dispatched ?? true });
+        const src = perRef[ref]?.source;
+        return ok({
+          dispatched: perRef[ref]?.dispatched ?? true,
+          ...(src === undefined ? {} : { source: src }),
+        });
       }
       return ok({});
     },
@@ -129,5 +139,71 @@ describe('crawl — autonomous smart-monkey', () => {
     const r = await crawl(session, {}, noSleep);
     expect(r.stepsRun).toBe(2);
     expect(r.visited).toEqual(['button "Dup"', 'button "Dup"']);
+  });
+});
+
+/**
+ * A crawl report is the output most likely to be read as a work list — it sweeps a whole app and
+ * hands back everything broken. "e42 does nothing" is a work item that starts with a search, and the
+ * location costs nothing to include: the crawl already clicks each control, and the act result
+ * carries the source captured alongside its anchor.
+ */
+describe('crawl anomalies name the file the control is written in', () => {
+  it('attaches source to a dead control', async () => {
+    const session = fakeSession(tree(['button "Save" (ref=e1)']), {
+      e1: { events: [], source: { file: 'src/components/Toolbar.tsx', line: 44 } },
+    });
+    const r = await crawl(session, {}, noSleep);
+    expect(r.anomalies[0]?.kind).toBe(CrawlAnomalyKind.DEAD_CONTROL);
+    expect(r.anomalies[0]?.source).toBe('src/components/Toolbar.tsx:44');
+  });
+
+  it('attaches source to a console error and a failed request alike', async () => {
+    const session = fakeSession(tree(['button "Pay" (ref=e1)']), {
+      e1: {
+        events: [
+          { type: EventType.CONSOLE_ERROR, data: { message: 'boom' } },
+          { type: EventType.NET_REQUEST, data: { method: 'POST', url: '/api/pay', status: 500 } },
+        ],
+        source: { file: 'src/views/Checkout.tsx', line: 88 },
+      },
+    });
+    const r = await crawl(session, {}, noSleep);
+    expect(r.anomalies.length).toBeGreaterThanOrEqual(2);
+    for (const a of r.anomalies) expect(a.source).toBe('src/views/Checkout.tsx:88');
+  });
+
+  it('omits source when the app was not built with the stamp', async () => {
+    const session = fakeSession(tree(['button "Save" (ref=e1)']), { e1: { events: [] } });
+    const r = await crawl(session, {}, noSleep);
+    expect(r.anomalies[0]?.source).toBeUndefined();
+  });
+});
+
+/**
+ * A crawl that swept a PREFIX of the page must not report like one that swept the page.
+ *
+ * The snapshot walk stops at its node cap and returns elements in document order, so on a large page
+ * the controls past the cap were never listed — not merely unclicked. `interactiveFound` was that
+ * post-cap count and `truncated` meant only "the step budget ran out", so a data grid with 900
+ * controls could report 18 found, 18 clicked, 0 anomalies, truncated:false. That reads as "this app
+ * is clean" and it is the strongest possible false green: the tool description promises it clicked
+ * every reachable control.
+ */
+describe('crawl does not present a capped sweep as a complete one', () => {
+  it('flags truncated when the snapshot itself was capped, even though every listed control was clicked', async () => {
+    const session = fakeSession(tree(['button "Save" (ref=e1)']), { e1: domActivity }, true);
+    const r = await crawl(session, {}, noSleep);
+    expect(r.stepsRun).toBe(1);
+    expect(r.interactiveFound).toBe(1);
+    expect(r.truncated).toBe(true);
+    expect(r.coverageNote).toBeDefined();
+  });
+
+  it('says nothing extra when the whole page fitted in one snapshot', async () => {
+    const session = fakeSession(tree(['button "Save" (ref=e1)']), { e1: domActivity }, false);
+    const r = await crawl(session, {}, noSleep);
+    expect(r.truncated).toBe(false);
+    expect(r.coverageNote).toBeUndefined();
   });
 });

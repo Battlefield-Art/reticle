@@ -20,7 +20,7 @@ const WAIT_READY_MAX_MS = 30000;
  * Live-control agent tools: the agent's side of the human-in-the-loop control surface.
  *
  * - reticle_end_session: terminal stop. Sets state `ended` and syncs the panel (PRESENTER) with an
- *   optional summary. Idempotent — ending an already-ended session is a safe no-op.
+ * optional summary. Idempotent — ending an already-ended session is a safe no-op.
  * - reticle_resume: clears a human pause. Sets state `active` and syncs the panel.
  * - reticle_messages: explicit poll — drains and returns the queued human notes.
  *

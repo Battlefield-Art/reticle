@@ -114,6 +114,30 @@ describe('action effect: valueChanged', () => {
     expect(r.effect.valueChanged).toBe(true);
     expect(input.value).toBe('');
   });
+
+  it('select to a REAL option reports valueChanged=true', async () => {
+    document.body.innerHTML =
+      '<select><option value="a">A</option><option value="b">B</option></select>';
+    const r = await executeAction(refOf('select'), 'select', { value: 'b' });
+    expect(r.effect.valueChanged).toBe(true);
+    expect((document.querySelector('select') as HTMLSelectElement).value).toBe('b');
+  });
+
+  it('select to a NON-EXISTENT option does not take the requested value (detectable no-op)', async () => {
+    // The false green: the select silently rejects the invalid value, but the action used to report
+    // plain success with valueChanged hardcoded false. Now SELECT is fill-like, so the value delta is
+    // reported AND the resulting value proves the requested option never took.
+    document.body.innerHTML = '<select><option value="a">A</option></select>';
+    const sel = document.querySelector('select') as HTMLSelectElement;
+    const r = await executeAction(refs.refFor(sel), 'select', { value: 'does-not-exist' });
+    expect(sel.value).not.toBe('does-not-exist'); // the invalid option was rejected
+    expect(r.effect.valueChanged).toBe(true); // a -> '' — a real, agent-visible change, not a fake false
+  });
+
+  it('clear on a non-field element THROWS instead of reporting silent success', async () => {
+    document.body.innerHTML = '<div>not a field</div>';
+    await expect(executeAction(refOf('div'), 'clear')).rejects.toThrow(/cannot clear/);
+  });
 });
 
 describe('action effect: domMutatedWithin', () => {

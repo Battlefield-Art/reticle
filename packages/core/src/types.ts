@@ -1,3 +1,4 @@
+import type { Ref } from './brand.js';
 import { z } from 'zod';
 import {
   AnnotationKind,
@@ -26,6 +27,11 @@ export const ElementQuerySchema = z.object({
   alt: z.string().optional(),
   /** Component display name (auto-anchor resolution). The nearest enclosing component of the target. */
   component: z.string().optional(),
+  /**
+   * Attribute names to project onto each match (e.g. `['href']` to inventory links, `['src']` for
+   * images). Without this the descriptor carries only semantics, so URLs are unreachable.
+   */
+  attrs: z.array(z.string()).optional(),
   /** Source location of the target element (auto-anchor resolution) — the precise, granular match. */
   source: z
     .object({ file: z.string(), line: z.number(), column: z.number().optional() })
@@ -37,19 +43,60 @@ export type ElementQuery = z.infer<typeof ElementQuerySchema>;
 
 /** Compact semantic descriptor of one element surfaced to the agent. */
 export interface ElementDescriptor {
-  ref: string;
+  /** Branded: minted by the browser's ref registry, so it cannot be confused with another id kind. */
+  ref: Ref;
   role: string;
   name: string;
   value?: string;
   states: ElementState[];
   visible: boolean;
   text?: string;
+  /**
+   * Attributes explicitly requested via `ElementQuery.attrs`. Absent attributes are omitted (so
+   * "missing" and "present but blank" stay distinguishable) and credential-bearing names are redacted.
+   */
+  attrs?: Record<string, string>;
+  /**
+   * Where this element is written, as `file:line` — the nearest `data-reticle-source` stamped by the
+   * build plugin in dev. Absent in production builds and in apps that do not use the plugin, so an
+   * agent must treat it as a shortcut rather than a guarantee.
+   *
+   * A compact string rather than `{file, line}` because a descriptor can repeat hundreds of times in
+   * one response and every consumer either opens an editor or prints it.
+   */
+  source?: string;
+  /**
+   * Chart geometry faults found inside this element — PRESENT ONLY WHEN SOMETHING IS WRONG.
+   *
+   * A chart is the one dashboard surface where the store and the screen diverge invisibly: every
+   * other widget renders text a comparison can read, while a chart renders coordinates that a correct
+   * `series` can still turn into a blank or NaN-filled path. Reported on the descriptor rather than
+   * behind a new tool so it costs nothing to ask for — the agent already queries the chart element,
+   * and a healthy chart adds zero bytes because the field is omitted.
+   */
+  chart?: ChartFault[];
+}
+
+/** One chart geometry fault. `kind` is what an agent branches on; `sample` is bounded for the wire. */
+export interface ChartFault {
+  kind: 'non-finite-coordinates' | 'empty-geometry' | 'degenerate-geometry';
+  tag: string;
+  attr: string;
+  sample: string;
 }
 
 export interface MatchResult {
   matched: boolean;
   count: number;
   elements: ElementDescriptor[];
+  /**
+   * True when a `scope` was given but resolved to nothing (the container was unmounted or the selector
+   * matched no element). The search returns zero matches WITHOUT falling back to the whole page, and
+   * this flag says why — so "element absent" and "scope vanished" stay distinguishable. Without it, a
+   * scoped assertion silently widened to the body (a phantom positive) or read a gone scope as a
+   * confirmed absence (a false negative); both are the false-green shape this tool exists to prevent.
+   */
+  scopeMissing?: boolean;
 }
 
 /**
@@ -82,7 +129,17 @@ export interface QueryEmptyHint {
 /** Result of the QUERY command / reticle_query tool. `hint` present ONLY on zero matches. */
 export interface QueryResult {
   elements: ElementDescriptor[];
+  /**
+   * How many elements MATCHED, which is not the same as how many are in `elements`.
+   *
+   * Descriptors are expensive to build and the transport caps collections, so beyond a point matches
+   * are counted but not described. Reporting the count separately is what keeps "how many are there?"
+   * an exact answer instead of a description of the cap.
+   */
+  count: number;
   hint?: QueryEmptyHint;
+  /** See MatchResult.scopeMissing — a provided scope resolved to nothing; the search did not widen. */
+  scopeMissing?: boolean;
 }
 
 /** One named flow advertised by the app (mirrors the browser CapabilityFlow). */
@@ -257,7 +314,7 @@ export type AnnotateResult =
  * (success-state). All optional; exactly the fields the compiled kind needs are set.
  */
 export interface AnnotatePatch {
-  /** index of the step whose .expect is set (assert-signal / assert-visible). */
+  /** index of the step whose.expect is set (assert-signal / assert-visible). */
   stepIndex?: number;
   stepExpect?: FlowExpect;
   /** the testid pushed into flow.dynamic[] (mark-dynamic). */

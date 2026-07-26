@@ -102,4 +102,20 @@ describe('reticle_run_export (MCP persona)', () => {
     const out = (await tool.handler(deps, { runId: 'nope' })) as { error?: string };
     expect(out.error).toContain("no run 'nope'");
   });
+
+  it('format:"diff" errors when fewer than two runs exist', async () => {
+    if (tool === undefined) return;
+    const out = (await tool.handler(deps, { format: 'diff' })) as { error?: string };
+    expect(out.error).toContain('at least two');
+  });
+
+  it('format:"diff" returns the run-to-run delta once a second run exists', async () => {
+    if (tool === undefined) return;
+    // A later run so latestTwo sees [run-a, run-b] oldest-first.
+    await new RunStore(deps.fs, root).write(buildVerificationRun(failingRun('run-b'), () => 2000));
+    const out = (await tool.handler(deps, { format: 'diff' })) as {
+      diff?: { headline?: string };
+    };
+    expect(typeof out.diff?.headline).toBe('string');
+  });
 });

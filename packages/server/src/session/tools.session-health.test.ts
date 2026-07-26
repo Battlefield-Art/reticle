@@ -13,7 +13,7 @@ import type { Session, SessionInfo, SessionManager } from './session.js';
 
 const SESSION_URL = 'http://localhost:5173/app';
 
-/** A minimal fake Session whose health()/throttled() are configurable per test. */
+/** A minimal fake Session whose health/throttled are configurable per test. */
 function fakeSession(throttled: boolean): Session {
   const command = (): Promise<CommandResult> =>
     Promise.resolve({
@@ -35,13 +35,17 @@ function fakeSession(throttled: boolean): Session {
     url: SESSION_URL,
     elapsed: () => 0,
     markActCursor: () => undefined,
+    beginAction: () => 'a1',
+    finishAction: () => undefined,
     lastActCursor: () => undefined,
     eventsSince: () => [],
+    queryEvents: () => Promise.resolve([]),
     eventsInWindow: () => [],
     onEvent: () => () => undefined,
     command,
     health: () => health,
     bufferHealth: () => ({ total: 0, dropped: 0 }),
+    blindSpots: () => ({}),
     throttled: () => throttled,
     // Live-control: a clean active session — no pause short-circuit, no piggyback.
     getState: () => SessionState.ACTIVE,

@@ -4,6 +4,11 @@ import { ReticleTool } from '../tools/tool-names.js';
 import { sessionIdShape } from '../tools/tool-kit.js';
 import { asString } from '../tools/tools-helpers.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
+import { RunStore } from '../runs/run-store.js';
+import {
+  diffRuns as diffVerificationRuns,
+  type RunDiff as VerificationRunDiff,
+} from '../runs/run-diff.js';
 
 /** The diff between the two most-recent runs for a name — the "did it behave like last time?" answer. */
 interface RunDiff {
@@ -60,11 +65,25 @@ function lastTwoFor(runs: RunRecord[], name: string): [RunRecord, RunRecord] | u
  * (the manual companion to the auto-record on reticle_flow_replay). Both keep the agent's "did this
  * behave like last run?" question answerable without re-deriving it from raw observations.
  */
+
+/**
+ * The per-flow diff between the two most-recent verification ARTIFACTS (.reticle/runs), or undefined when
+ * fewer than two exist. Never throws — a missing/unreadable artifact must not break reading run history.
+ */
+async function lastTwoRunArtifacts(deps: ToolDeps): Promise<VerificationRunDiff | undefined> {
+  try {
+    const pair = await new RunStore(deps.fs, deps.reticleRoot).latestTwo();
+    return pair === undefined ? undefined : diffVerificationRuns(pair[0], pair[1]);
+  } catch {
+    return undefined;
+  }
+}
+
 export const PROJECT_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.PROJECT,
     description:
-      'Read cross-run history from .reticle/project.json — the memory of how past runs behaved. With { name } it also returns the last run for that flow plus a diff-vs-last summary (status change, regressed flag, consoleErrors/driftSteps deltas) so you can answer "did it behave like last time?". Returns { runs, learned?, lastRun?, diff? } or { error, reason } when no/invalid history exists.',
+      'Read cross-run history from .reticle/project.json — the memory of how past runs behaved. With { name } it also returns the last run for that flow plus a diff-vs-last summary (status change, regressed flag, consoleErrors/driftSteps deltas) so you can answer "did it behave like last time?". Returns { runs, learned?, lastRun?, diff?, runDiff? } — `diff` is the lightweight status/console/drift delta vs the previous run of that NAME; `runDiff` is the per-flow duration/status delta between the two most-recent full verification artifacts ("step 3: 412ms -> 987ms (+140%), +2 requests"). Or { error, reason } when no/invalid history exists.',
     inputSchema: {
       name: z.string().optional().describe('Filter runs by this name. Omit to return all runs.'),
       ...sessionIdShape,
@@ -72,6 +91,7 @@ export const PROJECT_TOOLS: ToolDef[] = [
     outputSchema: {
       runs: z.array(z.unknown()),
       diff: z.unknown().optional(),
+      runDiff: z.unknown().optional(),
     },
     handler: async (deps: ToolDeps, args) => {
       const read = await deps.project.read();
@@ -90,11 +110,18 @@ export const PROJECT_TOOLS: ToolDef[] = [
       }
       const lastRun = await deps.project.lastRun(name);
       const pair = lastTwoFor(read.file.runs, name);
+      //: the RICH run diff (per-flow duration deltas past a noise floor, status changes, new/removed
+      // flows, verdict change) over the last two verification ARTIFACTS. That lives alongside — not
+      // instead of — the lightweight RunRecord diff above: `diff` answers "did this named run behave like
+      // last time?" from project.json, while `runDiff` answers "what changed between the last two full
+      // verification runs?" from .reticle/runs. Best-effort: no artifacts simply means no runDiff.
+      const runDiff = await lastTwoRunArtifacts(deps);
       return {
         runs: read.file.runs.filter((r) => r.name === name),
         learned: read.file.learned,
         lastRun,
         ...(pair !== undefined ? { diff: diffRuns(pair[0], pair[1]) } : {}),
+        ...(runDiff === undefined ? {} : { runDiff }),
       };
     },
   },

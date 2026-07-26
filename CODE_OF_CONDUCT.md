@@ -28,7 +28,7 @@ This Code of Conduct applies within all project spaces — the repository, issue
 
 ## Enforcement
 
-Instances of unacceptable behavior may be reported to the project maintainers at **hey@reticle.ai**. All reports will be reviewed and investigated promptly and fairly. Maintainers are obligated to respect the privacy and security of the reporter of any incident.
+Instances of unacceptable behavior may be reported to the project maintainers at **hey@reticle.sh**. All reports will be reviewed and investigated promptly and fairly. Maintainers are obligated to respect the privacy and security of the reporter of any incident.
 
 Maintainers who do not follow or enforce the Code of Conduct in good faith may face temporary or permanent repercussions as determined by other members of the project's leadership.
 

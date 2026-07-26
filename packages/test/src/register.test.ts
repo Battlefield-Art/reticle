@@ -29,6 +29,10 @@ function memoryFs(files: Record<string, string>): FileSystemPort {
       store.set(path, data);
       return Promise.resolve();
     },
+    appendFile: (path, data) => {
+      store.set(path, (store.get(path) ?? '') + data);
+      return Promise.resolve();
+    },
     readFileBytes: (path) => {
       const v = store.get(path);
       if (v === undefined)
@@ -61,6 +65,7 @@ function memoryFs(files: Record<string, string>): FileSystemPort {
       store.delete(path);
       return Promise.resolve();
     },
+    stat: () => Promise.resolve({ mtimeMs: 0 }),
     isNotFound: (error) => (error as { code?: string } | undefined)?.code === 'ENOENT',
   };
 }

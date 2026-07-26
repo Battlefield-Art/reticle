@@ -61,15 +61,20 @@ export function compileActStep(args: Record<string, unknown>, res: unknown): Rec
   const testid = asString(r['testid']);
   const action = asString(args['action']) ?? '';
   const actArgs = replayActionArgs(args['args']);
+  const source = sourceFromResult(r);
   if (testid !== undefined) {
-    return {
-      tool: ReticleTool.ACT,
-      stable: true,
-      args: { by: QueryBy.TESTID, value: testid, action, args: actArgs },
+    // The testid anchors the step; source rides along purely so a failure can name a file. Carrying
+    // both was the point of separating anchor from provenance at capture time.
+    const testidArgs: Record<string, unknown> = {
+      by: QueryBy.TESTID,
+      value: testid,
+      action,
+      args: actArgs,
     };
+    if (source !== undefined) testidArgs['source'] = source;
+    return { tool: ReticleTool.ACT, stable: true, args: testidArgs };
   }
   const component = asString(r['component']);
-  const source = sourceFromResult(r);
   if (component !== undefined || source !== undefined) {
     const componentArgs: Record<string, unknown> = { by: QueryBy.COMPONENT, action, args: actArgs };
     if (component !== undefined) componentArgs['component'] = component;
@@ -163,16 +168,30 @@ export async function replayProgram(
             args: replayActionArgs(sub['args'], confirmDangerous),
           });
         }
-        const r = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: liveSteps });
+        // Attribute the step's effects to the step: unattributed effects are learned as ambient
+        // churn on the regions the flow exercises, which teaches the settle oracle to ignore them.
+        session.beginAction(ReticleTool.REPLAY, { steps: liveSteps.length });
+        let r;
+        try {
+          r = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: liveSteps });
+        } finally {
+          session.finishAction();
+        }
         results.push(buildResult(step.tool, r.ok, r.error, notes));
         if (!r.ok) break;
       } else {
         const { ref, note } = await resolveRef(session, step.args);
-        const r = await session.command(ReticleCommand.ACT, {
-          ref,
-          action: asString(step.args['action']) ?? '',
-          args: replayActionArgs(step.args['args'], confirmDangerous),
-        });
+        session.beginAction(ReticleTool.REPLAY, { ref });
+        let r;
+        try {
+          r = await session.command(ReticleCommand.ACT, {
+            ref,
+            action: asString(step.args['action']) ?? '',
+            args: replayActionArgs(step.args['args'], confirmDangerous),
+          });
+        } finally {
+          session.finishAction();
+        }
         results.push(buildResult(step.tool, r.ok, r.error, note !== undefined ? [note] : []));
         if (!r.ok) break;
       }

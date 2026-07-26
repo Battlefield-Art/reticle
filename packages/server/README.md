@@ -14,4 +14,8 @@ Point your agent at it (e.g. Claude Code `.mcp.json`):
 
 Tools: `reticle_snapshot`, `reticle_query`, `reticle_inspect`, `reticle_act`, `reticle_act_sequence`, `reticle_observe`, `reticle_wait_for`, `reticle_assert`, `reticle_network`, `reticle_console`, `reticle_animations`, `reticle_baseline_save`/`_list`, `reticle_diff`, `reticle_record_start`/`_stop`, `reticle_explore`, `reticle_sessions`.
 
-See the [main README](https://github.com/reticlehq/reticle). MIT.
+See the [main README](https://github.com/reticlehq/reticle).
+
+## License
+
+[FSL-1.1-ALv2](./LICENSE) (source-available: free for any use except reselling Reticle itself; converts to Apache-2.0 after two years). Files under `dist/ee/` are enterprise features covered by the [Reticle Enterprise License](./LICENSE-ENTERPRISE) — free for development, testing, and evaluation; a license key activates them in production.

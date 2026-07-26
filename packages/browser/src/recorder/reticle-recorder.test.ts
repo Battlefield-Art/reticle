@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Stub the transport so connect() never opens a real socket (mirrors reticle-presenter.test.ts).
+// Stub the transport so connect never opens a real socket (mirrors reticle-presenter.test.ts).
 vi.mock('../transport/transport.js', () => {
   class FakeTransport {
     connect(): void {

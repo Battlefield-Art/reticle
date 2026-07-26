@@ -47,6 +47,10 @@ function memoryFs(): FileSystemPort {
       files.set(path, data);
       return Promise.resolve();
     },
+    appendFile(path, data) {
+      files.set(path, (files.get(path) ?? '') + data);
+      return Promise.resolve();
+    },
     readFileBytes(path) {
       const v = files.get(path);
       if (v === undefined) {
@@ -81,6 +85,9 @@ function memoryFs(): FileSystemPort {
     rm(path) {
       files.delete(path);
       return Promise.resolve();
+    },
+    stat() {
+      return Promise.resolve({ mtimeMs: 0 });
     },
     isNotFound(error) {
       return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';

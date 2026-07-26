@@ -1,5 +1,9 @@
 import { registerAdapter, type ComponentInfo, type ComponentSource } from '@reticlehq/browser';
-import { ComponentStateReason, type ComponentStateResult } from '@reticlehq/core';
+import {
+  ComponentStateReason,
+  DATA_RETICLE_SOURCE_ATTR,
+  type ComponentStateResult,
+} from '@reticlehq/core';
 
 interface Hook {
   memoizedState: unknown;
@@ -105,8 +109,8 @@ export function identify(el: Element): ComponentInfo | null {
 }
 
 function sourceFromAttribute(el: Element): ComponentSource | undefined {
-  const stamped = el.closest('[data-reticle-source]');
-  const raw = stamped?.getAttribute('data-reticle-source');
+  const stamped = el.closest(`[${DATA_RETICLE_SOURCE_ATTR}]`);
+  const raw = stamped?.getAttribute(DATA_RETICLE_SOURCE_ATTR);
   if (raw === null || raw === undefined) return undefined;
   const match = /^(.*):(\d+):(\d+)$/.exec(raw);
   if (match === null) return undefined;
@@ -231,6 +235,32 @@ export {
   getRenderStats,
   type RenderStats,
 } from './render-meter.js';
+export {
+  HYDRATION_COMPLETE_SIGNAL,
+  createHydrationTracker,
+  type HydrationTracker,
+} from './hydration.js';
+export {
+  buildErrorBoundaryData,
+  reticleOnCaughtError,
+  type ErrorBoundaryData,
+} from './error-boundary.js';
+export {
+  buildHydrationErrorData,
+  isHydrationMismatch,
+  reticleOnRecoverableError,
+  type HydrationErrorData,
+} from './hydration-error.js';
+export { createCommitAggregator, type CommitAggregator } from './commit-aggregator.js';
+
+// Zero-install component read: a self-contained fiber walker that runs INSIDE a page over CDP, for a
+// page that never installed the SDK. react-devtools-mcp parity, reusing our own algorithm.
+export {
+  readComponentAt,
+  buildReaderExpression,
+  parseComponentRead,
+  type CdpComponentRead,
+} from './cdp-reader.js';
 
 // This package IS the React kit: one install gives an app dev the full browser-side surface
 // (the `reticle` instance + all sensing) plus this React adapter. Re-exporting the sensor here is

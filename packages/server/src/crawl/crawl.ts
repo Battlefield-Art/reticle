@@ -8,13 +8,29 @@ import {
   type CommandResult,
   type ReticleEvent,
 } from '@reticlehq/core';
-import { parseInteractive, asRecord, asNumber, asString } from '../tools/tools-helpers.js';
+import {
+  parseInteractive,
+  asRecord,
+  asNumber,
+  asString,
+  sourceOf,
+} from '../tools/tools-helpers.js';
+import { ReticleTool } from '../tools/tool-names.js';
 
 /** The slice of Session the crawler needs — so tests inject a fake without a live browser. */
 export interface CrawlSession {
   command(name: string, args?: Record<string, unknown>): Promise<CommandResult>;
   elapsed(): number;
   eventsSince(cursor: number): ReticleEvent[];
+  /**
+   * Attribution window around each click. Optional so a caller can supply a minimal session, but a real
+   * session MUST provide it: without a window the click's own effects carry no actionId, and an
+   * unattributed ref-bearing event is learned as ambient background churn. A crawl clicks up to 25
+   * controls, so it can single-handedly teach the settle oracle to ignore the regions the app actually
+   * reacts in — turning a later `{kind:"settled"}` into a false green.
+   */
+  beginAction?(tool: string, args: Record<string, unknown>): void;
+  finishAction?(error?: string, settled?: boolean, settleMs?: number): void;
 }
 
 type CrawlSleep = (ms: number) => Promise<void>;
@@ -25,7 +41,20 @@ export interface CrawlAnomaly {
   ref: string;
   desc: string;
   detail: string;
+  /**
+   * Where the control is written, as `file:line`.
+   *
+   * A crawl reports problems across a whole app, so it is the output most likely to be read as a
+   * work list — and "e42 does nothing" is a work list item that starts with a search. The location
+   * comes free: the crawl already clicks each control, and an act result carries the source captured
+   * alongside its anchor. Absent in production builds and apps without the build plugin.
+   */
+  source?: string;
 }
+
+/** Said out loud when the page was larger than one snapshot, so a clean sweep cannot mean "all clear". */
+export const CAPPED_SNAPSHOT_NOTE =
+  'the page exceeded one snapshot, so controls past the cap were never seen — interactiveFound is a floor, not a total; re-run with a narrower `scope` to cover the rest';
 
 export interface CrawlReport {
   interactiveFound: number;
@@ -34,8 +63,10 @@ export interface CrawlReport {
   counts: { consoleErrors: number; failedRequests: number; deadControls: number };
   /** Descriptions of the controls actually clicked. */
   visited: string[];
-  /** True when there were more controls than maxSteps allowed (coverage was bounded). */
+  /** True when coverage was bounded — by the step budget, or by the page exceeding one snapshot. */
   truncated: boolean;
+  /** Present only when the snapshot itself was capped, i.e. controls exist that were never listed. */
+  coverageNote?: string;
 }
 
 export interface CrawlOptions {
@@ -91,8 +122,14 @@ export async function crawl(
     mode: 'interactive',
     ...(opts.scope !== undefined ? { scope: opts.scope } : {}),
   });
-  const tree = snap.ok ? (((snap.result ?? {}) as { tree?: string }).tree ?? '') : '';
+  const snapshot = snap.ok ? ((snap.result ?? {}) as { tree?: string; truncated?: boolean }) : {};
+  const tree = snapshot.tree ?? '';
   const items = parseInteractive(tree);
+  // The snapshot walk stops at its node cap and returns a DOCUMENT-ORDER PREFIX, so on a large page
+  // the controls it never reached are not merely unclicked — they were never seen. Reporting
+  // `interactiveFound` without this would state a control count that is really a cap, and
+  // `truncated:false` would positively assert that nothing was cut.
+  const coverageCapped = snapshot.truncated === true;
 
   const anomalies: CrawlAnomaly[] = [];
   const visited: string[] = [];
@@ -111,13 +148,23 @@ export async function crawl(
     visited.push(item.desc);
 
     const since = session.elapsed();
-    const act = await session.command(ReticleCommand.ACT, {
-      ref: item.ref,
-      action: ActionType.CLICK,
-      args: opts.confirmDangerous === true ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
-    });
-    await sleep(settleMs);
+    session.beginAction?.(ReticleTool.CRAWL, { ref: item.ref, action: ActionType.CLICK });
+    let act;
+    try {
+      act = await session.command(ReticleCommand.ACT, {
+        ref: item.ref,
+        action: ActionType.CLICK,
+        args: opts.confirmDangerous === true ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
+      });
+      await sleep(settleMs);
+    } finally {
+      // Close on every exit so a throw cannot leak the window onto the next control's events.
+      session.finishAction?.();
+    }
     const events = session.eventsSince(since);
+    // Captured at act time, so it survives a click that unmounts its own control.
+    const src = sourceOf(asRecord(act?.result)['source']);
+    const source = src === undefined ? {} : { source: `${src.file}:${String(src.line)}` };
 
     const errs = events.filter(isConsoleError);
     for (const e of errs) {
@@ -127,6 +174,7 @@ export async function crawl(
         ref: item.ref,
         desc: item.desc,
         detail: asString(e.data['message']) ?? e.type,
+        ...source,
       });
     }
 
@@ -140,6 +188,7 @@ export async function crawl(
         ref: item.ref,
         desc: item.desc,
         detail: `${method} ${url} → ${status ?? ''}`.trim(),
+        ...source,
       });
     }
 
@@ -152,6 +201,7 @@ export async function crawl(
         ref: item.ref,
         desc: item.desc,
         detail: 'clicked but the app did nothing (no DOM/network/route/signal change)',
+        ...source,
       });
     }
   }
@@ -162,6 +212,10 @@ export async function crawl(
     anomalies,
     counts,
     visited,
-    truncated: items.length > stepsRun,
+    // True when coverage was bounded for EITHER reason: the step budget ran out, or the page was
+    // bigger than one snapshot. Conflating "I stopped early" with "I saw everything" is what turns a
+    // partial sweep into "all controls healthy".
+    truncated: items.length > stepsRun || coverageCapped,
+    ...(coverageCapped ? { coverageNote: CAPPED_SNAPSHOT_NOTE } : {}),
   };
 }

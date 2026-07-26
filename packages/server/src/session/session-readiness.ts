@@ -32,7 +32,7 @@ export const RETICLE_LOOP_GUIDE =
   'OBSERVE: reticle_observe / reticle_wait_for / reticle_network / reticle_console · ASSERT: reticle_assert over program ' +
   'truth, not just the DOM · REGRESS: reticle_record_start → reticle_replay, or reticle_flow_verify for the whole ' +
   'suite. The human can flag bugs from the panel — drain them with reticle_review and resolve each once fixed. ' +
-  'MANDATORY: the moment you stop driving — finishing your reply or waiting on the human — call reticle_yield ' +
+  'MANDATORY: the moment you stop driving — finishing your reply or waiting on the human — call reticle_session {action:"yield"} ' +
   '(mode:"waiting", or mode:"ask" with the question) so the panel shows your real state; reticle_end_session ' +
   'only when the whole task is done. Never leave the panel reading "live" when you have actually stopped.';
 

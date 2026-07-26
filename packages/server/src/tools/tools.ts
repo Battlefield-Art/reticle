@@ -19,8 +19,8 @@ import { VIEWPORT_TOOLS } from '../input/viewport-tools.js';
 import { SESSION_TOOLS } from '../session/session-tools.js';
 import { ANNOTATE_TOOLS } from '../flows/annotate-tools.js';
 import { LIVE_CONTROL_TOOLS } from '../session/live-control-tools.js';
-import { UPDATE_TOOLS } from '../update/update-tools.js';
 import { type ToolDef, sessionIdShape, commandOrThrow } from './tool-kit.js';
+import { applyMerges, type MergePlan } from './merge-tools.js';
 import { ACT_TOOLS } from './act-tools.js';
 import { OBSERVE_TOOLS } from './observe-tools.js';
 import { READ_TOOLS } from './read-tools.js';
@@ -32,7 +32,7 @@ export type { ToolDef, ToolDeps } from './tool-kit.js';
 /** Per-server last-snapshot cache backing reticle_snapshot's diff:true delta mode (route-invalidated). */
 const SNAPSHOT_CACHE = new SnapshotCache();
 
-export const TOOLS: ToolDef[] = [
+const RAW_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.SESSIONS,
     description:
@@ -128,11 +128,41 @@ export const TOOLS: ToolDef[] = [
         .object({ bytes: z.number(), tokens: z.number() })
         .optional()
         .describe('Estimated size of this result — re-scope if large.'),
+      // buildSnapshot has always returned these; leaving them undeclared stripped them from
+      // structuredContent, so a schema-aware client saw a tree that ended abruptly with no way to
+      // tell a small page from a capped one. Every "that element isn't rendered" conclusion drawn
+      // from a capped tree inherits the omission.
+      nodes: z.number().optional().describe('How many nodes this tree actually contains.'),
+      truncated: z
+        .boolean()
+        .optional()
+        .describe(
+          'True when the page exceeded the snapshot cap. The tree is then a document-order PREFIX: an element being absent from it does NOT mean it is absent from the page.',
+        ),
+      note: z
+        .string()
+        .optional()
+        .describe(
+          'Present when a diff was computed over a capped tree — "unchanged" is then partial.',
+        ),
+      scopeMissing: z
+        .boolean()
+        .optional()
+        .describe(
+          'True when a scope was given but resolved to nothing — the tree is EMPTY on purpose, not because the page is empty. Do not read an absent element as absent from the page; re-check the scope.',
+        ),
     },
-    handler: (deps, args) => {
-      const sessionId = asString(args['sessionId']);
+    // async so a synchronous resolve() failure (no session connected) surfaces as a REJECTED promise —
+    // the handler contract every caller relies on — not a throw that escapes a direct invocation.
+    handler: async (deps, args) => {
+      // Resolve ONCE and key the diff cache on the RESOLVED session id. Keying on `sessionId ?? 'default'`
+      // meant two different auto-selected sessions (agent omits sessionId) shared the 'default' slot, so
+      // diff:true computed a delta against the WRONG session's prior snapshot — a cross-session false
+      // change. Pass the resolved id to the command too, so the cache key and the snapshotted session
+      // can't drift apart via a second auto-selection.
+      const resolved = deps.sessions.resolve(asString(args['sessionId']));
       const mode = asString(args['mode']) ?? SnapshotMode.FULL;
-      return commandOrThrow(deps, sessionId, ReticleCommand.SNAPSHOT, {
+      return commandOrThrow(deps, resolved.id, ReticleCommand.SNAPSHOT, {
         scope: args['scope'],
         mode,
       }).then((raw) =>
@@ -140,7 +170,7 @@ export const TOOLS: ToolDef[] = [
           applySnapshotDelta(
             raw,
             {
-              sessionId: sessionId ?? 'default',
+              sessionId: resolved.id,
               scope: asString(args['scope']) ?? '',
               mode,
               diff: args['diff'] === true,
@@ -154,7 +184,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: ReticleTool.QUERY,
     description:
-      'Find elements by Testing-Library semantics. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentTestids[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
+      'Find elements by Testing-Library semantics, INCLUDING inside open shadow roots. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `attrs:["href"]` to project attributes (link/image URLs) onto each match. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
     inputSchema: {
       by: z.string().describe('Query strategy: role | text | label | placeholder | testid | alt'),
       value: z
@@ -172,6 +202,12 @@ export const TOOLS: ToolDef[] = [
         .string()
         .optional()
         .describe('CSS selector or element ref to restrict the search to a subtree.'),
+      attrs: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Attribute names to return per match, e.g. ['href'] to inventory links or ['src'] for images. Absent attributes are omitted; credential-bearing names are redacted.",
+        ),
       limit: z
         .number()
         .optional()
@@ -196,10 +232,40 @@ export const TOOLS: ToolDef[] = [
             value: z.string().optional(),
             states: z.array(z.string()),
             visible: z.boolean(),
+            attrs: z
+              .record(z.string())
+              .optional()
+              .describe(
+                'Present only for attributes requested via `attrs` and found on the element.',
+              ),
+            source: z
+              .string()
+              .optional()
+              .describe(
+                'Where this element is written, as `file:line` — open this to change it. Present when the app is built with the Reticle plugin in dev; absent in production builds.',
+              ),
+            chart: z
+              .array(
+                z.object({
+                  kind: z.string(),
+                  tag: z.string(),
+                  attr: z.string(),
+                  sample: z.string(),
+                }),
+              )
+              .optional()
+              .describe(
+                'Chart geometry faults, present ONLY when the element is a broken chart. kind is non-finite-coordinates | empty-geometry | degenerate-geometry. A healthy chart omits this. Declared here so structuredContent carries it on validating profiles rather than dropping it.',
+              ),
           }),
         )
         .optional(),
-      count: z.number().optional().describe('Match count — present when count_only is set.'),
+      count: z
+        .number()
+        .optional()
+        .describe(
+          'How many elements MATCHED — always exact, even when the returned list was capped. Never derive a count from elements.length.',
+        ),
       total: z
         .number()
         .optional()
@@ -208,7 +274,25 @@ export const TOOLS: ToolDef[] = [
       hint: z
         .object({
           route: z.string(),
-          presentTestids: z.array(z.string()),
+          // The browser emits presentRegions and it was NOT declared here, so zod stripped it from
+          // structuredContent on every zero-match result — the successor field was invisible while its
+          // deprecated predecessor was the only thing an agent could see. An undeclared field is a
+          // silent data loss, which is exactly what this schema exists to prevent.
+          presentRegions: z
+            .array(
+              z.object({
+                role: z.string(),
+                name: z.string().optional(),
+                childCount: z.number(),
+                // `sample` is the orientation payload an agent actually reads ("there is a list with
+                // 847 rows, first three are …"). It was omitted from the first version of this
+                // declaration, which repeated the original sin one level down.
+                sample: z.array(z.string()),
+              }),
+            )
+            .optional()
+            .describe('Structural clusters on the page — what IS here, to diagnose the miss.'),
+          presentTestids: z.array(z.string()).optional(),
           knownEmptyState: z.boolean(),
         })
         .optional()
@@ -219,6 +303,12 @@ export const TOOLS: ToolDef[] = [
         .object({ bytes: z.number(), tokens: z.number() })
         .optional()
         .describe('Estimated size of this result — narrow with `name`/`scope`/`limit` if large.'),
+      scopeMissing: z
+        .boolean()
+        .optional()
+        .describe(
+          'True when a `scope` was given but resolved to nothing — zero matches then means the scope is gone, NOT that the element is absent. The search did not widen to the whole page. Re-check the scope before concluding anything.',
+        ),
     },
     handler: (deps, args) =>
       commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.QUERY, {
@@ -226,6 +316,10 @@ export const TOOLS: ToolDef[] = [
         value: args['value'],
         name: args['name'],
         scope: args['scope'],
+        // The handler forwards an explicit allowlist, so a new input is silently dropped unless it is
+        // added here — the browser saw no `attrs` and returned undefined while the unit tests, which
+        // call matchQuery directly, passed. Schema plus implementation is not the whole wire.
+        attrs: args['attrs'],
       }).then((result) =>
         withSizeCost(
           paginateQueryResult(result, asNumber(args['limit']), args['count_only'] === true),
@@ -270,8 +364,27 @@ export const TOOLS: ToolDef[] = [
       // large inspect payload's fields to strings, which a strict shape would reject; the full object
       // is always present in the text content the agent reads.
       theme: z.unknown().optional(),
+      /**
+       * Where this element is written, as `file:line`. Present when the app is built with the
+       * Reticle build plugin in dev; absent in production builds.
+       */
+      source: z.string().optional(),
+      /**
+       * Component identity from the framework adapter (@reticlehq/react).
+       *
+       * Declared to match what the handler actually returns. It previously declared
+       * `{ name, sourceFile }` while the runtime returned `{ componentStack, source }` — the SDK
+       * passes structured content through, so the real shape won and the declaration was simply
+       * wrong. An agent reads this schema to decide what to ask for, which makes a wrong schema worse
+       * than a missing one.
+       */
       component: z
-        .object({ name: z.string().optional(), sourceFile: z.string().optional() })
+        .object({
+          componentStack: z.array(z.string()).optional(),
+          source: z
+            .object({ file: z.string(), line: z.number(), column: z.number().optional() })
+            .optional(),
+        })
         .optional(),
     },
     handler: (deps, args) =>
@@ -304,10 +417,77 @@ export const TOOLS: ToolDef[] = [
   ...LIVE_CONTROL_TOOLS,
   // reticle_navigate / reticle_refresh — browser navigation tools. See browser-tools.ts.
   ...BROWSER_TOOLS,
-  // reticle_version_info / reticle_apply_update / reticle_rollback — update lifecycle tools.
-  ...UPDATE_TOOLS,
   ...ACT_TOOLS,
   ...OBSERVE_TOOLS,
   ...READ_TOOLS,
   ...LEASE_TOOLS,
 ];
+
+/**
+ * surface consolidation. Tool defs are re-sent EVERY turn, so the advertised count is a per-turn
+ * tax multiplied by loop length. Sibling families collapse into one action-dispatched tool; the member
+ * handlers stay defined above and are simply no longer advertised separately.
+ *
+ * Guardrail (from the plan): the 12-tool core hot-set keeps its EXACT names and shapes and is never
+ * merged — sessions/navigate/snapshot/query/act/act_and_wait/observe/network/console/wait_for/assert/state.
+ */
+const MERGE_PLANS: MergePlan[] = [
+  {
+    name: ReticleTool.BASELINE,
+    description:
+      'Semantic-state baselines: { action: "save" } snapshots the current state under a name, "list" returns saved names, "diff" compares the live page against a saved baseline (REMOVED/ADDED elements + console-error count).',
+    members: {
+      save: ReticleTool.BASELINE_SAVE,
+      list: ReticleTool.BASELINE_LIST,
+      diff: ReticleTool.DIFF,
+    },
+  },
+  {
+    name: ReticleTool.RECORD,
+    description:
+      'Timeline recording: { action: "start" } begins recording under a name, "stop" ends it and returns the reaction report plus a compiled replayable program.',
+    members: { start: ReticleTool.RECORD_START, stop: ReticleTool.RECORD_STOP },
+  },
+  {
+    name: ReticleTool.FLOW,
+    description:
+      'Saved-flow management: { action: "list" } names every saved flow, "load" reads+validates one by flowName, "delete" removes one. The hot verbs (flow_save, flow_replay, flow_verify, flow_heal) stay separate.',
+    members: {
+      list: ReticleTool.FLOW_LIST,
+      load: ReticleTool.FLOW_LOAD,
+      delete: ReticleTool.FLOW_DELETE,
+    },
+  },
+  {
+    name: ReticleTool.SESSION,
+    description:
+      'Session lifecycle and the human channel, by action: "tune" adjusts the presenter session (e.g. idle-end window); "yield" hands control back to the human between turns (mode: waiting|ask) and is MANDATORY before you stop driving; "end" terminates the session for good; "resume" clears a human pause; "messages" drains the human→agent inbox; "review" lists/resolves the mistakes a human pinned to elements; "narrate" states your intent on the presenter HUD.',
+    members: {
+      tune: ReticleTool.SESSION_TUNE,
+      yield: ReticleTool.YIELD,
+      end: ReticleTool.END_SESSION,
+      resume: ReticleTool.RESUME,
+      messages: ReticleTool.MESSAGES,
+      review: ReticleTool.REVIEW,
+      narrate: ReticleTool.NARRATE,
+    },
+  },
+  {
+    name: ReticleTool.LEASE,
+    description:
+      'Isolated headless contexts from the shared pool: { action: "acquire" } leases one and navigates it to the app URL, "release" closes it and frees the slot.',
+    members: { acquire: ReticleTool.LEASE_ACQUIRE, release: ReticleTool.LEASE_RELEASE },
+  },
+];
+
+/**
+ * Retired from the MCP surface entirely (capability preserved elsewhere, per the plan):
+ * - run_record: auto-recording on flow_replay already persists run outcomes.
+ */
+const RETIRED_FROM_SURFACE: string[] = [
+  ReticleTool.RUN_RECORD, // auto-recording on flow_replay already persists run outcomes
+  ReticleTool.REFRESH, // absorbed into reticle_navigate { reload: true }
+  ReticleTool.WAIT_READY, // server-internal: the first live call already blocks for the session
+];
+
+export const TOOLS: ToolDef[] = applyMerges(RAW_TOOLS, MERGE_PLANS, RETIRED_FROM_SURFACE);

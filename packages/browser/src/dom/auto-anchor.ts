@@ -8,16 +8,16 @@
  * adapter, fills it in) and returns the chosen anchor + whether it is stable. No DOM, no fiber here.
  *
  * Priority (most → least durable). Each tier is only used when the one above is unavailable:
- *   1. testid           — explicit, author-chosen, the gold standard. Stable.
- *   2. component@source  — component display name + source file:line. Survives text/markup/style
- *                          changes; uniquely identifies WHERE in the source the element comes from.
- *                          Stable (a move that changes the source line is a real change worth re-pinning).
- *   3. component+role/name — component name plus role/accessible-name when no source is available.
- *                          Stable enough: the component identity anchors it, role/name disambiguate.
- *   4. role+name         — semantic but content-dependent: an accessible name can change with copy.
- *                          NOT marked stable (a healed locator could drift to a renamed element).
- *   5. role / position   — last resort. NOT stable; surfaced so the element is still addressable, but
- *                          a flow built on it should be flagged (the recorder marks the step degraded).
+ * 1. testid — explicit, author-chosen, the gold standard. Stable.
+ * 2. component@source — component display name + source file:line. Survives text/markup/style
+ * changes; uniquely identifies WHERE in the source the element comes from.
+ * Stable (a move that changes the source line is a real change worth re-pinning).
+ * 3. component+role/name — component name plus role/accessible-name when no source is available.
+ * Stable enough: the component identity anchors it, role/name disambiguate.
+ * 4. role+name — semantic but content-dependent: an accessible name can change with copy.
+ * NOT marked stable (a healed locator could drift to a renamed element).
+ * 5. role / position — last resort. NOT stable; surfaced so the element is still addressable, but
+ * a flow built on it should be flagged (the recorder marks the step degraded).
  *
  * The point: tiers 1–3 are "stable" (a flow anchored on them can be trusted to re-resolve to the
  * same element); tiers 4–5 are best-effort. Today most elements without a testid fall to role/text
