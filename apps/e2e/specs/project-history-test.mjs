@@ -1,4 +1,4 @@
-// HONESTY-CRITICAL: prove 0.3.7 cross-run memory works through the FULL path — a real browser
+// HONESTY-CRITICAL: prove cross-run memory works through the FULL path — a real browser
 // session + real FlowStore/ProjectStore on real disk. Record a flow, replay it twice, and verify
 // .reticle/project.json accumulates flow_replay run records AND reticle_project returns a diff-vs-last.
 import { chromium } from 'playwright';
@@ -19,7 +19,7 @@ await p.goto('http://localhost:3100/',{waitUntil:'networkidle'});
 for(let i=0;i<200&&server.bridge.sessions.count()===0;i++) await sleep(50);
 const refOf=async(by,value)=>{for(let i=0;i<30;i++){const r=(await T('reticle_query',{by,value})).elements?.[0]?.ref;if(r)return r;await sleep(100);}throw new Error('not found '+value);};
 
-console.log('\n=== 0.3.7 RUNHISTORY: replay → .reticle/project.json → reticle_project diff (real browser) ===');
+console.log('\n=== RUNHISTORY: replay → .reticle/project.json → reticle_project diff (real browser) ===');
 
 // Record + save a one-step flow.
 await T('reticle_record',{action:'start',recordingName:'addtask'});
