@@ -61,7 +61,9 @@ for (let i = 0; i < 40 && sid === undefined; i += 1) {
 if (sid === undefined) throw new Error('no Reticle session — is apps/bench-app running?');
 
 async function condition(label, url) {
-  const before = new Set(((await call('reticle_sessions', {}))?.sessions ?? []).map((s) => s.sessionId));
+  const before = new Set(
+    ((await call('reticle_sessions', {}))?.sessions ?? []).map((s) => s.sessionId),
+  );
   await call('reticle_navigate', { sessionId: sid, url });
   for (let i = 0; i < 30; i += 1) {
     const all = (await call('reticle_sessions', {}))?.sessions ?? [];
@@ -110,8 +112,9 @@ async function condition(label, url) {
     elements: found.length,
     viaQuery: found.filter((r) => r.viaQuery !== undefined).length,
     viaInspect: found.filter((r) => r.viaInspect !== undefined).length,
-    recoverableByAnyRoute: found.filter((r) => r.viaQuery !== undefined || r.viaInspect !== undefined)
-      .length,
+    recoverableByAnyRoute: found.filter(
+      (r) => r.viaQuery !== undefined || r.viaInspect !== undefined,
+    ).length,
   };
   console.log(
     `${label.padEnd(22)} elements=${String(summary.elements)}  ` +

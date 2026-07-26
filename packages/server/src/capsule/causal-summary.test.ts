@@ -57,7 +57,9 @@ describe('causalSummary', () => {
   });
 
   it('omits optional fields on a quiet green act', () => {
-    const summary = causalSummary([e(EventType.NET_REQUEST, { method: 'GET', url: '/api/ok', status: 200, ok: true })]);
+    const summary = causalSummary([
+      e(EventType.NET_REQUEST, { method: 'GET', url: '/api/ok', status: 200, ok: true }),
+    ]);
     expect(summary.net).toEqual({ total: 1, errors: 0 });
     expect(summary.route).toBeUndefined();
     expect(summary.layoutShift).toBeUndefined();

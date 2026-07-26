@@ -4,7 +4,10 @@ import { instrumentationGapsForFlows, lastSource } from './flow-instrument-gaps.
 import { proposeInstrumentation } from './self-instrument.js';
 
 function componentStep(file: string, line: number): FlowStep {
-  return { action: ActionType.CLICK, anchor: { kind: AnchorKind.COMPONENT, source: { file, line } } } as FlowStep;
+  return {
+    action: ActionType.CLICK,
+    anchor: { kind: AnchorKind.COMPONENT, source: { file, line } },
+  } as FlowStep;
 }
 function testidStep(): FlowStep {
   return { action: ActionType.CLICK, anchor: { kind: AnchorKind.TESTID, value: 'x' } } as FlowStep;
@@ -12,7 +15,10 @@ function testidStep(): FlowStep {
 
 describe('lastSource', () => {
   it('returns the last component-anchor source', () => {
-    expect(lastSource([componentStep('a.tsx', 1), componentStep('b.tsx', 42)])).toEqual({ file: 'b.tsx', line: 42 });
+    expect(lastSource([componentStep('a.tsx', 1), componentStep('b.tsx', 42)])).toEqual({
+      file: 'b.tsx',
+      line: 42,
+    });
   });
   it('is undefined when no step carries a source stamp', () => {
     expect(lastSource([testidStep()])).toBeUndefined();
@@ -33,7 +39,11 @@ describe('instrumentationGapsForFlows', () => {
       },
     ]);
     // and it composes into a ready-to-apply diff
-    expect(proposeInstrumentation(gaps)[0]).toMatchObject({ file: 'Checkout.tsx', line: 114, insert: "reticle.signal('checkout:done');" });
+    expect(proposeInstrumentation(gaps)[0]).toMatchObject({
+      file: 'Checkout.tsx',
+      line: 114,
+      insert: "reticle.signal('checkout:done');",
+    });
   });
 
   it('skips flows with no stamped source (nothing to locate)', () => {

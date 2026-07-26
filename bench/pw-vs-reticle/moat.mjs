@@ -82,7 +82,14 @@ const verdict = (harness, bug, variant) =>
 const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'none'];
 
 /** A bug is a MEASURED moat case when reticle caught it, playwright did not, and neither tripped clean. */
-const measured = { moat: [], parity: [], competitorOnly: [], bothMissed: [], unclean: [], traps: [] };
+const measured = {
+  moat: [],
+  parity: [],
+  competitorOnly: [],
+  bothMissed: [],
+  unclean: [],
+  traps: [],
+};
 
 for (const bug of BUGS) {
   const rBuggy = verdict('reticle-script', bug.id, 'buggy');
@@ -108,10 +115,10 @@ for (const bug of BUGS) {
   // correct outcome is that NEITHER tool fires. Counting those as "missed by both" would file the two
   // tools' best behaviour under open coverage gaps, and would quietly reward a tool for firing on them.
   if (bug.trap === true) {
-    measured.traps.push({ ...entry, heldFor: [
-      ...(rBuggy.caught ? [] : ['reticle']),
-      ...(pBuggy.caught ? [] : ['playwright']),
-    ] });
+    measured.traps.push({
+      ...entry,
+      heldFor: [...(rBuggy.caught ? [] : ['reticle']), ...(pBuggy.caught ? [] : ['playwright'])],
+    });
     continue;
   }
   if (rBuggy.caught && !pBuggy.caught) measured.moat.push(entry);
@@ -120,22 +127,35 @@ for (const bug of BUGS) {
   else measured.bothMissed.push(entry);
 }
 
-const bySeverity = (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity);
+const bySeverity = (a, b) =>
+  SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity);
 
 const lines = [];
 lines.push('# What Reticle catches that a Playwright script does not');
 lines.push('');
-lines.push('Generated from a measured run. Every row below is a bug where **Reticle caught it, the');
-lines.push('Playwright script did not, and neither tool flagged the clean build**. Labels in the registry');
+lines.push(
+  'Generated from a measured run. Every row below is a bug where **Reticle caught it, the',
+);
+lines.push(
+  'Playwright script did not, and neither tool flagged the clean build**. Labels in the registry',
+);
 lines.push('are ignored here — only the run counts.');
 lines.push('');
-lines.push('> **Read this with the caveat it deserves.** An earlier version of this suite scored six bugs');
-lines.push('> as Reticle-only because the Playwright branch returned "not supported" while the APIs to');
-lines.push('> catch them existed and simply were not called. Two of those six are now scored as parity.');
-lines.push('> A moat claim is only as strong as the adversarial pass on the COMPETITOR\'s harness.');
+lines.push(
+  '> **Read this with the caveat it deserves.** An earlier version of this suite scored six bugs',
+);
+lines.push(
+  '> as Reticle-only because the Playwright branch returned "not supported" while the APIs to',
+);
+lines.push(
+  '> catch them existed and simply were not called. Two of those six are now scored as parity.',
+);
+lines.push("> A moat claim is only as strong as the adversarial pass on the COMPETITOR's harness.");
 lines.push('');
-lines.push(`## Measured: ${measured.moat.length} Reticle-only · ${measured.parity.length} parity · ` +
-  `${measured.competitorOnly.length} Playwright-only · ${measured.bothMissed.length} missed by both`);
+lines.push(
+  `## Measured: ${measured.moat.length} Reticle-only · ${measured.parity.length} parity · ` +
+    `${measured.competitorOnly.length} Playwright-only · ${measured.bothMissed.length} missed by both`,
+);
 lines.push('');
 
 for (const sev of SEVERITY_ORDER) {
@@ -146,7 +166,8 @@ for (const sev of SEVERITY_ORDER) {
   lines.push('| bug | what breaks | why a script outside the page cannot see it |');
   lines.push('|---|---|---|');
   for (const m of group) {
-    const why = STRUCTURAL_REASON[m.category] ?? '(no structural claim recorded — treat as unproven)';
+    const why =
+      STRUCTURAL_REASON[m.category] ?? '(no structural claim recorded — treat as unproven)';
     lines.push(`| \`${m.id}\` | ${m.intent} | ${why} |`);
   }
   lines.push('');
@@ -161,7 +182,9 @@ if (measured.competitorOnly.length > 0) {
     lines.push(`- \`${m.id}\` (${m.severity}) — ${m.intent}`);
     lines.push(`  - reticle observed: ${m.reticleNote}`);
     const why = LOSS_REASON[m.category];
-    lines.push(`  - **why we lose:** ${why ?? '(no structural reason recorded — treat as a gap to close, not a limit)'}`);
+    lines.push(
+      `  - **why we lose:** ${why ?? '(no structural reason recorded — treat as a gap to close, not a limit)'}`,
+    );
   }
   lines.push('');
 }
@@ -170,11 +193,18 @@ if (measured.traps.length > 0) {
   lines.push('## False-positive traps (not firing is the PASS)');
   lines.push('');
   lines.push('Bug-shaped things that are not bugs: a live-updating timestamp, an infinite ambient');
-  lines.push('animation. A tool that flags these is unusable on a real app, so silence is the correct');
+  lines.push(
+    'animation. A tool that flags these is unusable on a real app, so silence is the correct',
+  );
   lines.push('result and these are excluded from every catch count above.');
   lines.push('');
   for (const m of measured.traps) {
-    const held = m.heldFor.length === 2 ? 'both held' : m.heldFor.length === 0 ? 'BOTH FIRED — false positive' : `${m.heldFor.join('/')} held, the other FIRED`;
+    const held =
+      m.heldFor.length === 2
+        ? 'both held'
+        : m.heldFor.length === 0
+          ? 'BOTH FIRED — false positive'
+          : `${m.heldFor.join('/')} held, the other FIRED`;
     lines.push(`- \`${m.id}\` — ${m.intent} — **${held}**`);
   }
   lines.push('');
@@ -192,7 +222,9 @@ if (measured.bothMissed.length > 0) {
 if (measured.unclean.length > 0) {
   lines.push('## Excluded: tripped the clean build');
   lines.push('');
-  lines.push('A check that fires on a healthy build proves nothing about either tool, so these are');
+  lines.push(
+    'A check that fires on a healthy build proves nothing about either tool, so these are',
+  );
   lines.push('excluded from every count above rather than being counted as catches.');
   lines.push('');
   for (const m of measured.unclean) lines.push(`- \`${m.id}\` (${m.severity})`);

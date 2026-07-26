@@ -3,20 +3,22 @@ import { buildHydrationErrorData, isHydrationMismatch } from './hydration-error.
 
 describe('isHydrationMismatch', () => {
   it('recognizes React 19 hydration-mismatch messages', () => {
-    expect(isHydrationMismatch(new Error('Hydration failed because the server rendered HTML...'))).toBe(
+    expect(
+      isHydrationMismatch(new Error('Hydration failed because the server rendered HTML...')),
+    ).toBe(true);
+    expect(isHydrationMismatch(new Error('Text content does not match server-rendered HTML'))).toBe(
       true,
     );
     expect(
-      isHydrationMismatch(new Error("Text content does not match server-rendered HTML")),
+      isHydrationMismatch(new Error('There was an error while hydrating this Suspense boundary')),
     ).toBe(true);
-    expect(isHydrationMismatch(new Error('There was an error while hydrating this Suspense boundary'))).toBe(
-      true,
-    );
   });
 
   it('recognizes minified hydration error codes (#418/#423/#425)', () => {
     expect(
-      isHydrationMismatch(new Error('Minified React error #418; visit https://react.dev/errors/418')),
+      isHydrationMismatch(
+        new Error('Minified React error #418; visit https://react.dev/errors/418'),
+      ),
     ).toBe(true);
     expect(isHydrationMismatch(new Error('Minified React error #423'))).toBe(true);
     expect(isHydrationMismatch(new Error('Minified React error #425'))).toBe(true);

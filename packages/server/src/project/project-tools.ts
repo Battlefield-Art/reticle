@@ -5,7 +5,10 @@ import { sessionIdShape } from '../tools/tool-kit.js';
 import { asString } from '../tools/tools-helpers.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 import { RunStore } from '../runs/run-store.js';
-import { diffRuns as diffVerificationRuns, type RunDiff as VerificationRunDiff } from '../runs/run-diff.js';
+import {
+  diffRuns as diffVerificationRuns,
+  type RunDiff as VerificationRunDiff,
+} from '../runs/run-diff.js';
 
 /** The diff between the two most-recent runs for a name — the "did it behave like last time?" answer. */
 interface RunDiff {

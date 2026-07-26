@@ -9,7 +9,11 @@
 // Requires the server built: pnpm --filter @reticlehq/server build
 
 import { TOOLS } from '../../packages/server/dist/tools/tools.js';
-import { filterTools, TOOL_PROFILE, CORE_TOOL_NAMES } from '../../packages/server/dist/tools/profiles.js';
+import {
+  filterTools,
+  TOOL_PROFILE,
+  CORE_TOOL_NAMES,
+} from '../../packages/server/dist/tools/profiles.js';
 import { measure } from '../harness/tokenizer.mjs';
 
 /** What actually crosses to the model per turn: each tool's name + description + input schema. */
@@ -33,7 +37,13 @@ const rows = [];
 for (const [profile, label] of PROFILES) {
   const tools = filterTools(TOOLS, profile);
   const m = measure(advertisedPayload(tools));
-  rows.push({ profile, label, tools: tools.length, tokens: m.tokens_o200k ?? null, chars: m.chars });
+  rows.push({
+    profile,
+    label,
+    tools: tools.length,
+    tokens: m.tokens_o200k ?? null,
+    chars: m.chars,
+  });
 }
 
 // hybrid/dynamic advertise only the 2 meta-tools directly (the rest are fetched on demand), so their
@@ -44,9 +54,13 @@ const hybridTools = filterTools(TOOLS, TOOL_PROFILE.FULL).filter(
 const hybrid = measure(advertisedPayload(hybridTools));
 
 console.log('\n=== First-drive / advertised-surface cost (per TURN, o200k proxy) ===\n');
-console.log(`${'profile'.padEnd(34)} ${'tools'.padStart(5)} ${'tokens'.padStart(8)} ${'chars'.padStart(8)}`);
+console.log(
+  `${'profile'.padEnd(34)} ${'tools'.padStart(5)} ${'tokens'.padStart(8)} ${'chars'.padStart(8)}`,
+);
 for (const r of rows) {
-  console.log(`${r.label.padEnd(34)} ${String(r.tools).padStart(5)} ${String(r.tokens).padStart(8)} ${String(r.chars).padStart(8)}`);
+  console.log(
+    `${r.label.padEnd(34)} ${String(r.tools).padStart(5)} ${String(r.tokens).padStart(8)} ${String(r.chars).padStart(8)}`,
+  );
 }
 // The 2 meta-tools (reticle_tools / reticle_run) are injected by the dynamic layer, not present in
 // TOOLS — so this is the measured FLOOR for hybrid; the real figure is this plus their two small schemas.

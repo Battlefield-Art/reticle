@@ -18,7 +18,10 @@ import { RecordingStore } from '../../packages/server/dist/flows/recordings.js';
 import { AnnotationStore } from '../../packages/server/dist/flows/annotation-store.js';
 import { createNodeFileSystem } from '../../packages/server/dist/project/fs-port.js';
 import { BrowserPool } from '../../packages/server/dist/pool/browser-pool.js';
-import { playwrightLauncher, resolveMaxContexts } from '../../packages/server/dist/pool/playwright-launcher.js';
+import {
+  playwrightLauncher,
+  resolveMaxContexts,
+} from '../../packages/server/dist/pool/playwright-launcher.js';
 import { cpus } from 'node:os';
 
 const APP_URL = process.argv[2] ?? 'http://localhost:4312';
@@ -50,7 +53,12 @@ const deps = {
   reticleRoot,
   now,
 };
-const server = { close: async () => { await pool.close?.(); await bridge.close(); } };
+const server = {
+  close: async () => {
+    await pool.close?.();
+    await bridge.close();
+  },
+};
 
 /** Open the app in a leased context once so `deps.sessions` knows the app URL for the parallel path. */
 async function seedSession() {
@@ -64,7 +72,9 @@ async function seedSession() {
 
 const seed = await seedSession();
 const live = deps.sessions.list();
-console.log(`seeded session(s): ${String(live.length)} — ${live.map((s) => s.url).join(', ') || '(none)'}`);
+console.log(
+  `seeded session(s): ${String(live.length)} — ${live.map((s) => s.url).join(', ') || '(none)'}`,
+);
 if (live.length === 0) {
   console.error('no session registered — is the bench-app pointed at this daemon port?');
   await seed.release();

@@ -199,7 +199,10 @@ describe('reticle_annotate handler — temp dir, never touches the repo', () => 
     });
     await tool(ReticleTool.FLOW_SAVE).handler(deps, { flowName: 'checkout' });
 
-    const loaded = (await tool(ReticleTool.FLOW).handler(deps, { action: 'load', flowName: 'checkout' })) as {
+    const loaded = (await tool(ReticleTool.FLOW).handler(deps, {
+      action: 'load',
+      flowName: 'checkout',
+    })) as {
       steps: { expect?: { signal?: string } }[];
       dynamic?: { kind: string; value?: string }[];
       success?: { signal?: string };
@@ -223,7 +226,10 @@ describe('reticle_annotate handler — temp dir, never touches the repo', () => 
     });
     await tool(ReticleTool.FLOW_SAVE).handler(deps, { flowName: 'dm' });
 
-    const loaded = (await tool(ReticleTool.FLOW).handler(deps, { action: 'load', flowName: 'dm' })) as {
+    const loaded = (await tool(ReticleTool.FLOW).handler(deps, {
+      action: 'load',
+      flowName: 'dm',
+    })) as {
       steps: { expect?: { signalData?: Record<string, unknown> } }[];
     };
     expect(loaded.steps[0]?.expect?.signalData).toEqual({ count: 2 });

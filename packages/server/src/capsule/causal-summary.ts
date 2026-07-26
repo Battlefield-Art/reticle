@@ -2,7 +2,7 @@ import { EventType, PerfMetric, type ReticleEvent } from '@reticlehq/core';
 
 /**
  * The causal summary (Tier 1) — the bounded ~50–100 token block on EVERY act, green included: what the
- * app did in the act's window, as counts + a headline, not a raw event dump. Diffs come from the 
+ * app did in the act's window, as counts + a headline, not a raw event dump. Diffs come from the
  * storage/state events; attribution from. Pure composition over the attributed event window.
  */
 export interface StateDiff {

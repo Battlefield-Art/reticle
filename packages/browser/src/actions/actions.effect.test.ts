@@ -116,7 +116,8 @@ describe('action effect: valueChanged', () => {
   });
 
   it('select to a REAL option reports valueChanged=true', async () => {
-    document.body.innerHTML = '<select><option value="a">A</option><option value="b">B</option></select>';
+    document.body.innerHTML =
+      '<select><option value="a">A</option><option value="b">B</option></select>';
     const r = await executeAction(refOf('select'), 'select', { value: 'b' });
     expect(r.effect.valueChanged).toBe(true);
     expect((document.querySelector('select') as HTMLSelectElement).value).toBe('b');

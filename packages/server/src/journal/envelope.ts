@@ -103,7 +103,10 @@ function metricValue(segment: SegmentRollup, metric: EnvelopeMetric): number {
 }
 
 /** Fold one observed segment into the envelope as a new sample. */
-export function addSegmentToEnvelope(envelope: RouteEnvelope, segment: SegmentRollup): RouteEnvelope {
+export function addSegmentToEnvelope(
+  envelope: RouteEnvelope,
+  segment: SegmentRollup,
+): RouteEnvelope {
   const stats = { ...envelope.stats };
   for (const metric of ENVELOPE_METRICS) {
     stats[metric] = addStat(stats[metric], metricValue(segment, metric));

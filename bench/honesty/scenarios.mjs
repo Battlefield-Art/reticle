@@ -53,7 +53,10 @@ export const HONESTY_SCENARIOS = [
     name: 'clean-signal-green (control)',
     desc: 'Green act, strong signal grade, full coverage, no truncation — nothing to disclose',
     grade: 'signal',
-    events: [ev(EventType.SIGNAL, { name: 'nav:changed' }), ev(EventType.ROUTE_CHANGE, { pathname: '/next' })],
+    events: [
+      ev(EventType.SIGNAL, { name: 'nav:changed' }),
+      ev(EventType.ROUTE_CHANGE, { pathname: '/next' }),
+    ],
     reality: { coverageGap: false, truncated: false, weakGrade: false },
   },
 ];

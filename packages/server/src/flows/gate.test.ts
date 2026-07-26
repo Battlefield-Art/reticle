@@ -3,7 +3,10 @@ import { gateDecision } from './gate.js';
 
 describe('gateDecision', () => {
   it('passes when every affected flow has a passing artifact', () => {
-    const result = gateDecision({ affected: ['checkout', 'login'], passing: ['checkout', 'login', 'search'] });
+    const result = gateDecision({
+      affected: ['checkout', 'login'],
+      passing: ['checkout', 'login', 'search'],
+    });
     expect(result.pass).toBe(true);
     expect(result.uncovered).toEqual([]);
   });
@@ -22,7 +25,11 @@ describe('gateDecision', () => {
   });
 
   it('still blocks a non-flaky uncovered flow even when another is quarantined', () => {
-    const result = gateDecision({ affected: ['checkout', 'billing'], passing: [], flaky: ['checkout'] });
+    const result = gateDecision({
+      affected: ['checkout', 'billing'],
+      passing: [],
+      flaky: ['checkout'],
+    });
     expect(result.pass).toBe(false);
     expect(result.uncovered).toEqual(['billing']);
     expect(result.quarantined).toEqual(['checkout']);

@@ -44,14 +44,18 @@ describe('tool reachability across profiles', () => {
   it('every trimmed profile ADVERTISES the escape hatch — without it a trim is a hard removal', () => {
     for (const profile of TRIMMED) {
       const names = advertisedTools(profile).map((t) => t.name);
-      expect(names, `profile '${profile}' must advertise ${ReticleTool.RUN}`).toContain(ReticleTool.RUN);
+      expect(names, `profile '${profile}' must advertise ${ReticleTool.RUN}`).toContain(
+        ReticleTool.RUN,
+      );
       expect(names).toContain(ReticleTool.TOOLS);
     }
   });
 
   it('a trimmed profile advertises FEWER tools than full, or the trim buys nothing', () => {
     for (const profile of TRIMMED) {
-      expect(advertisedTools(profile).length).toBeLessThan(advertisedTools(TOOL_PROFILE.FULL).length);
+      expect(advertisedTools(profile).length).toBeLessThan(
+        advertisedTools(TOOL_PROFILE.FULL).length,
+      );
     }
   });
 

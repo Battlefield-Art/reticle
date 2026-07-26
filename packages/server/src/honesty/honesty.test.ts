@@ -25,14 +25,17 @@ describe('buildHonestyBlock', () => {
       blindSpots: ['2 cross-origin frames'],
     });
     expect(block.integrity.clean).toBe(false);
-    expect(block.integrity.issues).toEqual(['capture truncated', 'blind spot: 2 cross-origin frames']);
+    expect(block.integrity.issues).toEqual([
+      'capture truncated',
+      'blind spot: 2 cross-origin frames',
+    ]);
   });
 
   it('flags an immature envelope as insufficient', () => {
     // `envelope` is optional now — it is omitted when nothing was sampled — so read it defensively.
-    expect(buildHonestyBlock({ grade: HonestyGrade.NET, envelopeSamples: 2 }).envelope?.sufficient).toBe(
-      false,
-    );
+    expect(
+      buildHonestyBlock({ grade: HonestyGrade.NET, envelopeSamples: 2 }).envelope?.sufficient,
+    ).toBe(false);
   });
 });
 
@@ -40,7 +43,9 @@ describe('meetsHonestyBar', () => {
   const clean = buildHonestyBlock({ grade: HonestyGrade.NET, envelopeSamples: 5 });
 
   it('passes when the grade meets the minimum and integrity is clean', () => {
-    expect(meetsHonestyBar(clean, { minGrade: HonestyGrade.NET, requireIntegrityClean: true }).ok).toBe(true);
+    expect(
+      meetsHonestyBar(clean, { minGrade: HonestyGrade.NET, requireIntegrityClean: true }).ok,
+    ).toBe(true);
   });
 
   it('fails a presence-only green against a net-minimum bar', () => {

@@ -26,9 +26,17 @@ describe('proposeConsequences', () => {
 
   it('extracts the pathname for a net proposal', () => {
     const proposals = proposeConsequences([
-      e(EventType.NET_REQUEST, { method: 'GET', url: 'http://host:3000/api/cart?x=1', status: 200 }),
+      e(EventType.NET_REQUEST, {
+        method: 'GET',
+        url: 'http://host:3000/api/cart?x=1',
+        status: 200,
+      }),
     ]);
-    expect(proposals[0]?.predicate).toMatchObject({ kind: 'net', method: 'GET', urlContains: '/api/cart' });
+    expect(proposals[0]?.predicate).toMatchObject({
+      kind: 'net',
+      method: 'GET',
+      urlContains: '/api/cart',
+    });
   });
 
   it('flags a presence-only proposal as weak', () => {

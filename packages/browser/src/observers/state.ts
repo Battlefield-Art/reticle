@@ -29,7 +29,8 @@ export function diffState(prev: unknown, next: unknown): StateChange[] {
   }
   const changes: StateChange[] = [];
   for (const key of new Set([...Object.keys(prev), ...Object.keys(next)])) {
-    if (!Object.is(prev[key], next[key])) changes.push({ path: key, old: prev[key], new: next[key] });
+    if (!Object.is(prev[key], next[key]))
+      changes.push({ path: key, old: prev[key], new: next[key] });
   }
   return changes;
 }

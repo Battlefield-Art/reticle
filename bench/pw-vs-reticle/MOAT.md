@@ -1,20 +1,15 @@
 # What Reticle catches that a Playwright script does not
 
-Generated from a measured run. Every row below is a bug where **Reticle caught it, the
-Playwright script did not, and neither tool flagged the clean build**. Labels in the registry
-are ignored here — only the run counts.
+Generated from a measured run. Every row below is a bug where **Reticle caught it, the Playwright script did not, and neither tool flagged the clean build**. Labels in the registry are ignored here — only the run counts.
 
-> **Read this with the caveat it deserves.** An earlier version of this suite scored six bugs
-> as Reticle-only because the Playwright branch returned "not supported" while the APIs to
-> catch them existed and simply were not called. Two of those six are now scored as parity.
-> A moat claim is only as strong as the adversarial pass on the COMPETITOR's harness.
+> **Read this with the caveat it deserves.** An earlier version of this suite scored six bugs as Reticle-only because the Playwright branch returned "not supported" while the APIs to catch them existed and simply were not called. Two of those six are now scored as parity. A moat claim is only as strong as the adversarial pass on the COMPETITOR's harness.
 
 ## Measured: 26 Reticle-only · 56 parity · 1 Playwright-only · 0 missed by both
 
 ### CRITICAL severity (17)
 
 | bug | what breaks | why a script outside the page cannot see it |
-|---|---|---|
+| --- | --- | --- |
 | `state-desync` | the Deployments nav badge count agrees with the store (also shown as the toolbar "N of N") | the app's store is a JS object inside the page. Playwright can evaluate() into the page, but it has no idea which object is the store, what shape it has, or when it changed — the app has to tell someone. Reticle is told at registration. |
 | `mutation-leak` | generating a script does not corrupt the top deployment's internal build checksum (never rendered) | the app's store is a JS object inside the page. Playwright can evaluate() into the page, but it has no idea which object is the store, what shape it has, or when it changed — the app has to tell someone. Reticle is told at registration. |
 | `generate-blast-filter` | generating a script does not overwrite the top deployment's internal cost figure (never rendered) | the app's store is a JS object inside the page. Playwright can evaluate() into the page, but it has no idea which object is the store, what shape it has, or when it changed — the app has to tell someone. Reticle is told at registration. |
@@ -36,7 +31,7 @@ are ignored here — only the run counts.
 ### HIGH severity (6)
 
 | bug | what breaks | why a script outside the page cannot see it |
-|---|---|---|
+| --- | --- | --- |
 | `sse-silent-stop` | the build-log stream actually delivers frames, not just an open connection | SSE/WebSocket FRAMES delivered vs rendered. Playwright exposes WS frames (so those are scored as parity), but comparing frames received against DOM produced needs both halves at once. |
 | `sse-malformed-frame` | every frame the stream delivers is actually rendered — none silently dropped | SSE/WebSocket FRAMES delivered vs rendered. Playwright exposes WS frames (so those are scored as parity), but comparing frames received against DOM produced needs both halves at once. |
 | `signal-missing-generate` | generating a script announces compose:generated exactly once | a declared domain signal has no DOM representation at all. Nothing renders when it fails to fire. |
@@ -47,13 +42,13 @@ are ignored here — only the run counts.
 ### MEDIUM severity (1)
 
 | bug | what breaks | why a script outside the page cannot see it |
-|---|---|---|
+| --- | --- | --- |
 | `iframe-stale-data` | the iframe panel shows the CURRENT deployment count, not a frozen one | content inside an open shadow root or a same-origin frame. Playwright pierces shadow roots in its locators, so most of this class is parity; only the store-vs-frame comparison is not. |
 
 ### LOW severity (2)
 
 | bug | what breaks | why a script outside the page cannot see it |
-|---|---|---|
+| --- | --- | --- |
 | `cls-late-banner` | the page does not shove content down after it has settled (CLS under 0.1) | layout-shift and long-task are PerformanceObserver metrics. Playwright CAN read them — these are scored on measurement, and where it does read them the bug is scored as parity. |
 | `cls-imageless-jump` | the KPI row renders at its final height (no reflow jump) | layout-shift and long-task are PerformanceObserver metrics. Playwright CAN read them — these are scored on measurement, and where it does read them the bug is scored as parity. |
 
@@ -67,10 +62,7 @@ Published deliberately. A benchmark that never reports a loss is not measuring.
 
 ## False-positive traps (not firing is the PASS)
 
-Bug-shaped things that are not bugs: a live-updating timestamp, an infinite ambient
-animation. A tool that flags these is unusable on a real app, so silence is the correct
-result and these are excluded from every catch count above.
+Bug-shaped things that are not bugs: a live-updating timestamp, an infinite ambient animation. A tool that flags these is unusable on a real app, so silence is the correct result and these are excluded from every catch count above.
 
 - `trap-timestamp-region` — a live-updating timestamp must not make a stable neighbour read as changed — **both held**
 - `trap-ambient-animation` — an infinite ambient animation must not stop the page from settling — **both held**
-

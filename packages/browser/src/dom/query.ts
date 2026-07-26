@@ -39,7 +39,10 @@ const COMPONENT_CANDIDATE_SELECTOR = `[${SOURCE_ATTR}], [${TESTID_ATTR}], button
  * whole page, or a scoped query silently widens into a phantom match. `scope === undefined` (no scope)
  * legitimately searches the body.
  */
-function resolveContainer(scope: string | undefined): { container: HTMLElement | null; scopeMissing: boolean } {
+function resolveContainer(scope: string | undefined): {
+  container: HTMLElement | null;
+  scopeMissing: boolean;
+} {
   if (scope === undefined) return { container: document.body, scopeMissing: false };
   const byRef = refs.resolve(scope);
   if (byRef instanceof HTMLElement) return { container: byRef, scopeMissing: false };
@@ -313,7 +316,9 @@ function resolveLabelledBy(el: Element): string | undefined {
   if (ids === null) return undefined;
   const text = ids
     .split(/\s+/)
-    .map((id) => (id.length > 0 ? (el.ownerDocument.getElementById(id)?.textContent?.trim() ?? '') : ''))
+    .map((id) =>
+      id.length > 0 ? (el.ownerDocument.getElementById(id)?.textContent?.trim() ?? '') : '',
+    )
     .filter((t) => t.length > 0)
     .join(' ');
   return text.length > 0 ? text : undefined;
@@ -413,7 +418,12 @@ export function runQuery(query: ElementQuery, limit?: number): QueryResult {
   const result = matchQuery(query, undefined, limit);
   const scopeFields = result.scopeMissing === true ? { scopeMissing: true as const } : {};
   if (result.elements.length === 0) {
-    return { elements: result.elements, count: result.count, hint: buildEmptyHint(query), ...scopeFields };
+    return {
+      elements: result.elements,
+      count: result.count,
+      hint: buildEmptyHint(query),
+      ...scopeFields,
+    };
   }
   return { elements: result.elements, count: result.count, ...scopeFields };
 }

@@ -14,13 +14,19 @@ describe('computeCoverage', () => {
   });
 
   it('is vacuously 100% when nothing is declared', () => {
-    const cov = computeCoverage({ testids: [], signals: [], flows: [] }, { testids: [], signals: [], flows: [] });
+    const cov = computeCoverage(
+      { testids: [], signals: [], flows: [] },
+      { testids: [], signals: [], flows: [] },
+    );
     expect(cov.overallPct).toBe(100);
     expect(cov.testids.pct).toBe(100);
   });
 
   it('ignores exercised members that were never declared', () => {
-    const cov = computeCoverage({ testids: ['a'], signals: [], flows: [] }, { testids: ['a', 'ghost'], signals: [], flows: [] });
+    const cov = computeCoverage(
+      { testids: ['a'], signals: [], flows: [] },
+      { testids: ['a', 'ghost'], signals: [], flows: [] },
+    );
     expect(cov.testids).toEqual({ total: 1, covered: 1, pct: 100, uncovered: [] });
   });
 });

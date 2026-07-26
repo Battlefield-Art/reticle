@@ -177,7 +177,10 @@ export async function replayNamedFlow(
   if (status === ReplayStatus.OK) {
     await new AssertionTiersStore(deps.fs, deps.reticleRoot).recordPassing(
       name,
-      loaded.value.steps.map((s, i) => ({ step: i, ...(s.expect === undefined ? {} : { expect: s.expect }) })),
+      loaded.value.steps.map((s, i) => ({
+        step: i,
+        ...(s.expect === undefined ? {} : { expect: s.expect }),
+      })),
       // Record what this flow COVERS so a later deletion can be scoped to the files that changed.
       toFlowSources([{ name, steps: loaded.value.steps }])[0]?.sources ?? [],
     );

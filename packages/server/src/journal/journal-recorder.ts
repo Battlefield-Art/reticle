@@ -64,7 +64,8 @@ export class JournalRecorder {
     if (active !== undefined) {
       out = { ...event, actionId: active.actionId, attribution: EventAttribution.WINDOW };
       if (typeof event.seq === 'number') {
-        active.seqFrom = active.seqFrom === undefined ? event.seq : Math.min(active.seqFrom, event.seq);
+        active.seqFrom =
+          active.seqFrom === undefined ? event.seq : Math.min(active.seqFrom, event.seq);
         active.seqTo = active.seqTo === undefined ? event.seq : Math.max(active.seqTo, event.seq);
       }
     }

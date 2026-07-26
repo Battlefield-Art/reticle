@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { FlowErrorCode, RecordedSaveError, ReplayStatus, type FlowReplayResult } from '@reticlehq/core';
+import {
+  FlowErrorCode,
+  RecordedSaveError,
+  ReplayStatus,
+  type FlowReplayResult,
+} from '@reticlehq/core';
 import type { FlowFile } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import { asNumber, asString } from '../tools/tools-helpers.js';
@@ -36,7 +41,6 @@ async function syncSavedFlowToCloud(flow: FlowFile, projectId: string | undefine
     log('cloud-flow-sync-failed', { flow: flow.name, status: result.status, error: result.error });
   }
 }
-
 
 /**
  * The URL a leased context should open: the app's ORIGIN, not the live tab's current location.
@@ -343,7 +347,12 @@ export const FLOW_TOOLS: ToolDef[] = [
       const parallelArg = asNumber(args['parallel']);
       const pool = deps.pool;
       const appUrl = leasableAppUrl(deps, sessionId);
-      if (parallelArg !== undefined && pool !== undefined && appUrl !== undefined && requested.length > 0) {
+      if (
+        parallelArg !== undefined &&
+        pool !== undefined &&
+        appUrl !== undefined &&
+        requested.length > 0
+      ) {
         const concurrency = resolveConcurrency(requested.length, pool.capacity(), parallelArg);
         const outcomes = await mapWithConcurrency(requested, concurrency, async (flowName) => {
           const lease = await acquireLeasedSession(
@@ -360,7 +369,10 @@ export const FLOW_TOOLS: ToolDef[] = [
         });
         return buildSuiteVerdict(
           outcomes.map((o, i) => ({
-            replay: o.ok && o.value !== undefined ? o.value : leaseFailureReplay(requested[i] ?? '', o.error),
+            replay:
+              o.ok && o.value !== undefined
+                ? o.value
+                : leaseFailureReplay(requested[i] ?? '', o.error),
           })),
         );
       }

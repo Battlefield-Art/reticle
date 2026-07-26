@@ -1,12 +1,6 @@
 # Fix-loop ablation — run log
 
-Real cells executed via the harness (`run-fix-loop.mjs` pattern) with live Claude Code subagents as the
-`fixAgent` and the deterministic `verify.isFixed` oracle. Each cell: inject the bug → agent fixes →
-deterministic re-check (`verify.mjs`: injected marker gone) → revert (bench-app verified git-clean after
-every cell). The WITH-RETICLE cells drove the **live, `feat/v2.2.0`-instrumented** bench-app on
-`localhost:4313` (session connected to the branch daemon on 4460, separate from the operator's cloud-app
-session on 4320, which was never touched). The WITHOUT-RETICLE cells read source only — no app boot, no
-Reticle tools.
+Real cells executed via the harness (`run-fix-loop.mjs` pattern) with live Claude Code subagents as the `fixAgent` and the deterministic `verify.isFixed` oracle. Each cell: inject the bug → agent fixes → deterministic re-check (`verify.mjs`: injected marker gone) → revert (bench-app verified git-clean after every cell). The WITH-RETICLE cells drove the **live, `feat/v2.2.0`-instrumented** bench-app on `localhost:4313` (session connected to the branch daemon on 4460, separate from the operator's cloud-app session on 4320, which was never touched). The WITHOUT-RETICLE cells read source only — no app boot, no Reticle tools.
 
 ## Run — full n=8 matrix, both conditions (2026-07-21, general-purpose subagents, single model)
 
@@ -33,45 +27,25 @@ visible = a human/agent can see the defect in the DOM/UI; invisible = DOM/consol
 
 **Delta (n=8, single model, capable code-reading agent):**
 
-| condition | fixed rate | avg tokens | avg tool calls |
-| --- | --- | --- | --- |
-| without-reticle | **8/8 (100%)** | 35,149 | 4.4 |
-| with-reticle | **8/8 (100%)** | 48,955 | 28.1 |
+| condition       | fixed rate     | avg tokens | avg tool calls |
+| --------------- | -------------- | ---------- | -------------- |
+| without-reticle | **8/8 (100%)** | 35,149     | 4.4            |
+| with-reticle    | **8/8 (100%)** | 48,955     | 28.1           |
 
-Reticle cost more on **every single bug** — ~1.39× tokens and ~6.4× tool calls — because live-driving the
-app (navigate, snapshot, act, observe, re-verify after HMR) is inherently more calls than reading source.
+Reticle cost more on **every single bug** — ~1.39× tokens and ~6.4× tool calls — because live-driving the app (navigate, snapshot, act, observe, re-verify after HMR) is inherently more calls than reading source.
 
 ## Honest reading (per the plan: "publish honestly either way")
 
-- **Both conditions fixed all 8 bugs.** With a *capable code-reading agent*, WITHOUT Reticle was cheaper on
-  every bug. The agent localized each regression — even the invisible dropped-signal one — by grep/code
-  archaeology, while the Reticle agent additionally paid navigation + live-observation + post-HMR re-verify
-  overhead.
-- **Reticle did not win on cost even on its home turf.** `signal-contract-violation` is the one truly
-  *invisible* bug (DOM/console/network all healthy). WITHOUT still fixed it (35k tok) by reading the store
-  and noticing the dropped `emit(NAV_CHANGED)`. WITH fixed it too (58k tok) and additionally *proved* the
-  regression live: `reticle_assert { kind:"signal", name:"nav:changed" } → pass:false` and
-  `reticle_observe → signals:0` while every other channel read healthy. That confirmation is the product
-  thesis in action — but a strong agent reached the same source fix without it.
-- **What this ablation does NOT measure (the real edge):** these agents can read the whole ~small fixture
-  and reason to the fix. Reticle's expected advantage is on (a) *weaker/cheaper* agents that cannot
-  code-archaeologize a large unfamiliar app, (b) apps too large to hold in context where "which of 40k
-  lines broke" needs runtime narrowing, and (c) *acceptance/regression-gating in CI* where the deterministic
-  live assertion — not the source fix — is the deliverable. None of those are captured by "one capable model,
-  one tiny fixture, fix-the-injected-bug."
-- **Verdict for the release:** on this benchmark Reticle is a **cost regression, not a fix-rate gain**, and we
-  publish that. The honest pitch is *deterministic proof of invisible/consequence regressions*, not *cheaper
-  bug-fixing by a strong agent*. The number to chase next is (a) a weaker fix model and (b) a large app where
-  source-only localization fails.
+- **Both conditions fixed all 8 bugs.** With a _capable code-reading agent_, WITHOUT Reticle was cheaper on every bug. The agent localized each regression — even the invisible dropped-signal one — by grep/code archaeology, while the Reticle agent additionally paid navigation + live-observation + post-HMR re-verify overhead.
+- **Reticle did not win on cost even on its home turf.** `signal-contract-violation` is the one truly _invisible_ bug (DOM/console/network all healthy). WITHOUT still fixed it (35k tok) by reading the store and noticing the dropped `emit(NAV_CHANGED)`. WITH fixed it too (58k tok) and additionally _proved_ the regression live: `reticle_assert { kind:"signal", name:"nav:changed" } → pass:false` and `reticle_observe → signals:0` while every other channel read healthy. That confirmation is the product thesis in action — but a strong agent reached the same source fix without it.
+- **What this ablation does NOT measure (the real edge):** these agents can read the whole ~small fixture and reason to the fix. Reticle's expected advantage is on (a) _weaker/cheaper_ agents that cannot code-archaeologize a large unfamiliar app, (b) apps too large to hold in context where "which of 40k lines broke" needs runtime narrowing, and (c) _acceptance/regression-gating in CI_ where the deterministic live assertion — not the source fix — is the deliverable. None of those are captured by "one capable model, one tiny fixture, fix-the-injected-bug."
+- **Verdict for the release:** on this benchmark Reticle is a **cost regression, not a fix-rate gain**, and we publish that. The honest pitch is _deterministic proof of invisible/consequence regressions_, not _cheaper bug-fixing by a strong agent_. The number to chase next is (a) a weaker fix model and (b) a large app where source-only localization fails.
 
 ## Run — full n=8 × 2 matrix, WEAKER model (2026-07-21, haiku fix-agents)
 
-The strong-model run above left the thesis untested: a capable agent code-archaeologized every bug, so
-Reticle's live-proof edge never had to carry weight. The thesis says the edge should appear on a *weaker*
-agent that cannot read its way to the fix. So we re-ran the full matrix with `haiku` fix-agents.
+The strong-model run above left the thesis untested: a capable agent code-archaeologized every bug, so Reticle's live-proof edge never had to carry weight. The thesis says the edge should appear on a _weaker_ agent that cannot read its way to the fix. So we re-ran the full matrix with `haiku` fix-agents.
 
-`fixed` = the deterministic marker oracle (`verify.isFixed`). `behavior` notes where the marker passed but
-the fix is actually wrong/partial — the oracle's blind spot.
+`fixed` = the deterministic marker oracle (`verify.isFixed`). `behavior` notes where the marker passed but the fix is actually wrong/partial — the oracle's blind spot.
 
 | bug | condition | fixed | tokens | tool calls | behavior note |
 | --- | --- | --- | --- | --- | --- |
@@ -79,55 +53,40 @@ the fix is actually wrong/partial — the oracle's blind spot.
 | silent-dom-regression | **with** | ✅ | 39,511 | 17 | live re-check forced haiku to confirm the card rendered |
 | signal-contract-violation | without | ✅ | 30,341 | 5 | found via the in-source `(regression)` comment |
 | signal-contract-violation | **with** | ✅ | 54,291 | 63 | fixed, but 63 calls — heavy MCP thrashing |
-| route-transition-break | without | ✅ | 29,990 | 6 | |
-| route-transition-break | **with** | ✅ | 42,182 | 25 | |
-| missing-modal | without | ✅ | 33,304 | 9 | |
-| missing-modal | **with** | ✅ | 51,741 | 35 | |
-| broken-form-validation | without | ✅ | 26,835 | 4 | |
+| route-transition-break | without | ✅ | 29,990 | 6 |  |
+| route-transition-break | **with** | ✅ | 42,182 | 25 |  |
+| missing-modal | without | ✅ | 33,304 | 9 |  |
+| missing-modal | **with** | ✅ | 51,741 | 35 |  |
+| broken-form-validation | without | ✅ | 26,835 | 4 |  |
 | broken-form-validation | **with** | ❌ | 43,782 | 22 | fixed the button but left the submit-handler guard removed — partial |
-| cross-component-regression | without | ✅ | 30,972 | 7 | |
-| cross-component-regression | **with** | ✅ | 38,572 | 19 | |
-| layout-shift | without | ✅ | 29,715 | 8 | |
+| cross-component-regression | without | ✅ | 30,972 | 7 |  |
+| cross-component-regression | **with** | ✅ | 38,572 | 19 |  |
+| layout-shift | without | ✅ | 29,715 | 8 |  |
 | layout-shift | **with** | ⚠️ | 45,969 | 21 | marker passed BUT over-edited styles.css (`.grid-kpi` 4→2 cols) — a **wrong-fix** the oracle can't see |
-| network-timeout | without | ✅ | 27,664 | 4 | |
-| network-timeout | **with** | ✅ | 49,235 | 38 | |
+| network-timeout | without | ✅ | 27,664 | 4 |  |
+| network-timeout | **with** | ✅ | 49,235 | 38 |  |
 
 **Weak-model delta (n=8, haiku):**
 
-| condition | marker-fixed | behaviorally correct | avg tokens | avg tool calls |
-| --- | --- | --- | --- | --- |
-| without-reticle | 7/8 | 7/8 | 29,477 | 5.9 |
-| with-reticle | 7/8 | **6/8** (1 wrong-fix) | 45,660 | 30.0 |
+| condition       | marker-fixed | behaviorally correct  | avg tokens | avg tool calls |
+| --------------- | ------------ | --------------------- | ---------- | -------------- |
+| without-reticle | 7/8          | 7/8                   | 29,477     | 5.9            |
+| with-reticle    | 7/8          | **6/8** (1 wrong-fix) | 45,660     | 30.0           |
 
 ## Cross-model verdict (the honest result)
 
-**The thesis did not hold on this bench, even with a weak model.** Reticle did not lift the fix rate at
-either capability tier, and it cost ~5–6× the tool calls (opus 4.4→28.1; haiku 5.9→30.0). Two real
-observations, pointing opposite ways, net to no advantage here:
+**The thesis did not hold on this bench, even with a weak model.** Reticle did not lift the fix rate at either capability tier, and it cost ~5–6× the tool calls (opus 4.4→28.1; haiku 5.9→30.0). Two real observations, pointing opposite ways, net to no advantage here:
 
-- **One point FOR Reticle:** `silent-dom` — haiku *failed* WITHOUT (claimed a fix it never applied) but
-  *succeeded* WITH, because the forced live re-check made it confirm the DOM actually changed. Reticle's
-  verification loop catches the weak model's "claim without applying" failure mode. n=1, but real.
-- **One point AGAINST:** `layout-shift` — driving the live app, haiku *over-edited* (touched `styles.css`
-  it shouldn't have), a collateral regression the marker oracle scores as a pass. WITH-Reticle a weak model
-  has more surface to break, and did.
+- **One point FOR Reticle:** `silent-dom` — haiku _failed_ WITHOUT (claimed a fix it never applied) but _succeeded_ WITH, because the forced live re-check made it confirm the DOM actually changed. Reticle's verification loop catches the weak model's "claim without applying" failure mode. n=1, but real.
+- **One point AGAINST:** `layout-shift` — driving the live app, haiku _over-edited_ (touched `styles.css` it shouldn't have), a collateral regression the marker oracle scores as a pass. WITH-Reticle a weak model has more surface to break, and did.
 
 **Why this bench cannot settle the thesis (the actual takeaway):**
-1. **Fixture too small.** `apps/bench-app` is a handful of short files; every bug localizes by reading one
-   store file. Source-only wins because there is barely any source. The thesis needs an app whose source
-   does NOT fit in context, where runtime narrowing is the only way in.
-2. **Self-labeling injections.** Several bugs leave a literal `/* … (regression) */` comment in the touched
-   code — a giveaway that hands the answer to any source-reader and inflates every WITHOUT-Reticle cell.
-   Fair injections must be behavior-only, no in-source marker on the buggy line.
-3. **Marker oracle ≠ behavior oracle.** `isFixed` checks a string is gone; it cannot see partial fixes
-   (broken-form) or wrong-fixes (layout-shift). The real number needs the app booted and asserted (with
-   Reticle) — behavioral verification is the v2 upgrade the README already flagged.
 
-**Next measurement (to actually test the thesis):** a large-app fixture (source > context) + comment-free
-injections + a behavioral pass/fail oracle. Only then does "can't read your way to it" bind, which is the
-one condition under which Reticle's inside-the-app proof is supposed to win. Until that exists, the honest
-public claim stays: *deterministic proof of invisible/consequence regressions in CI*, not *cheaper or
-higher-yield bug-fixing by an agent* — the ablation does not support the latter at any tier tested.
+1. **Fixture too small.** `apps/bench-app` is a handful of short files; every bug localizes by reading one store file. Source-only wins because there is barely any source. The thesis needs an app whose source does NOT fit in context, where runtime narrowing is the only way in.
+2. **Self-labeling injections.** Several bugs leave a literal `/* … (regression) */` comment in the touched code — a giveaway that hands the answer to any source-reader and inflates every WITHOUT-Reticle cell. Fair injections must be behavior-only, no in-source marker on the buggy line.
+3. **Marker oracle ≠ behavior oracle.** `isFixed` checks a string is gone; it cannot see partial fixes (broken-form) or wrong-fixes (layout-shift). The real number needs the app booted and asserted (with Reticle) — behavioral verification is the v2 upgrade the README already flagged.
+
+**Next measurement (to actually test the thesis):** a large-app fixture (source > context) + comment-free injections + a behavioral pass/fail oracle. Only then does "can't read your way to it" bind, which is the one condition under which Reticle's inside-the-app proof is supposed to win. Until that exists, the honest public claim stays: _deterministic proof of invisible/consequence regressions in CI_, not _cheaper or higher-yield bug-fixing by an agent_ — the ablation does not support the latter at any tier tested.
 
 ## Reproduce
 

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { EventAttribution, EventType, type JournalAction, type ReticleEvent } from '@reticlehq/core';
+import {
+  EventAttribution,
+  EventType,
+  type JournalAction,
+  type ReticleEvent,
+} from '@reticlehq/core';
 import { JournalRecorder, type JournalSink } from './journal-recorder.js';
 
 function evt(seq: number): ReticleEvent {
@@ -7,7 +12,11 @@ function evt(seq: number): ReticleEvent {
 }
 
 /** A fake sink that records batches and actions in call order, for asserting attribution + ordering. */
-function fakeSink(): JournalSink & { events: ReticleEvent[]; actions: JournalAction[]; log: string[] } {
+function fakeSink(): JournalSink & {
+  events: ReticleEvent[];
+  actions: JournalAction[];
+  log: string[];
+} {
   const events: ReticleEvent[] = [];
   const actions: JournalAction[] = [];
   const log: string[] = [];

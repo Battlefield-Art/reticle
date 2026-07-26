@@ -53,7 +53,8 @@ describe('RouteEnvelope', () => {
 
   it('flags a duration regression once the envelope is established', () => {
     let env = emptyEnvelope('/checkout');
-    for (const d of [100, 110, 95, 105, 100]) env = addSegmentToEnvelope(env, seg({ durationMs: d }));
+    for (const d of [100, 110, 95, 105, 100])
+      env = addSegmentToEnvelope(env, seg({ durationMs: d }));
     const deviations = compareSegment(env, seg({ durationMs: 900 }));
     expect(deviations).toHaveLength(1);
     expect(deviations[0]?.metric).toBe('durationMs');
@@ -62,7 +63,8 @@ describe('RouteEnvelope', () => {
 
   it('does not flag a segment doing LESS than expected (only increases matter)', () => {
     let env = emptyEnvelope('/checkout');
-    for (const d of [500, 520, 480, 510, 500]) env = addSegmentToEnvelope(env, seg({ durationMs: d }));
+    for (const d of [500, 520, 480, 510, 500])
+      env = addSegmentToEnvelope(env, seg({ durationMs: d }));
     expect(compareSegment(env, seg({ durationMs: 50 }))).toEqual([]);
   });
 
@@ -76,7 +78,10 @@ describe('RouteEnvelope', () => {
       { durationMs: 100, net: 2 },
     ];
     for (const s of samples) {
-      env = addSegmentToEnvelope(env, seg({ durationMs: s.durationMs, net: { total: s.net, errors: 0 } }));
+      env = addSegmentToEnvelope(
+        env,
+        seg({ durationMs: s.durationMs, net: { total: s.net, errors: 0 } }),
+      );
     }
     const deviations = compareSegment(env, seg({ durationMs: 900, net: { total: 40, errors: 0 } }));
     expect(deviations.length).toBeGreaterThanOrEqual(2);

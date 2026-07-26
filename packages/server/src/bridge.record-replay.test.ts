@@ -53,7 +53,8 @@ describe('record -> compile -> replay', () => {
     await callTool(deps, ReticleTool.ACT, { ref: 'e7', action: 'click' });
     browser.emit(EventType.NET_REQUEST, { method: 'POST', url: '/api/order', status: 200 });
     await waitUntil(() => bridge.sessions.resolve('demo').eventsSince(0).length >= 1);
-    const rec = (await callTool(deps, ReticleTool.RECORD, { action: 'stop',
+    const rec = (await callTool(deps, ReticleTool.RECORD, {
+      action: 'stop',
       recordingName: 'flow',
     })) as RecordStopResult;
     expect(rec.program.version).toBe(1);
@@ -71,7 +72,8 @@ describe('record -> compile -> replay', () => {
     browser.actHasTestid = false;
     await callTool(deps, ReticleTool.RECORD, { action: 'start', name: 'noid' });
     await callTool(deps, ReticleTool.ACT, { ref: 'e7', action: 'click' });
-    const rec = (await callTool(deps, ReticleTool.RECORD, { action: 'stop',
+    const rec = (await callTool(deps, ReticleTool.RECORD, {
+      action: 'stop',
       name: 'noid',
     })) as RecordStopResult;
     expect(rec.program.steps[0]?.stable).toBe(false);
@@ -121,7 +123,8 @@ describe('record -> compile -> replay', () => {
     await callTool(deps, ReticleTool.ACT_SEQUENCE, {
       steps: [{ ref: 'e7', action: 'click' }],
     });
-    const rec = (await callTool(deps, ReticleTool.RECORD, { action: 'stop',
+    const rec = (await callTool(deps, ReticleTool.RECORD, {
+      action: 'stop',
       recordingName: 'seq',
     })) as RecordStopResult;
     expect(rec.program.steps[0]?.tool).toBe('reticle_act_sequence');

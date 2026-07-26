@@ -35,7 +35,11 @@ function sourceFiles(dir: string, acc: string[] = []): string[] {
       continue;
     }
     // Test harnesses are fixtures, not dispatch paths the product takes.
-    if (entry.endsWith('.ts') && !entry.endsWith('.test.ts') && !entry.endsWith('.test-harness.ts')) {
+    if (
+      entry.endsWith('.ts') &&
+      !entry.endsWith('.test.ts') &&
+      !entry.endsWith('.test-harness.ts')
+    ) {
       acc.push(relative(SRC, full));
     }
   }

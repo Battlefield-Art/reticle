@@ -92,7 +92,10 @@ describe('transport stops retrying on a 1008 policy-violation close', () => {
     t.connect();
     expect(FakeWebSocket.instances).toHaveLength(1);
 
-    FakeWebSocket.instances[0]?.closeWith(1008, 'protocol version mismatch — upgrade @reticlehq/browser');
+    FakeWebSocket.instances[0]?.closeWith(
+      1008,
+      'protocol version mismatch — upgrade @reticlehq/browser',
+    );
 
     // No new socket even after many retry windows.
     vi.advanceTimersByTime(10_000);

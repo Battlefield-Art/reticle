@@ -128,7 +128,11 @@ describe('a diff over a capped tree does not claim the page is unchanged', () =>
     const cache = new SnapshotCache();
     const raw = { tree: 'a\nb', status: { route: '/' }, truncated: true };
     applySnapshotDelta(raw, opts, cache); // prime
-    const out = applySnapshotDelta(raw, opts, cache) as { mode: string; truncated?: boolean; note?: string };
+    const out = applySnapshotDelta(raw, opts, cache) as {
+      mode: string;
+      truncated?: boolean;
+      note?: string;
+    };
     expect(out.mode).toBe('unchanged');
     expect(out.truncated).toBe(true);
     expect(out.note).toBeDefined();
@@ -150,7 +154,11 @@ describe('a diff over a capped tree does not claim the page is unchanged', () =>
     const cache = new SnapshotCache();
     const raw = { tree: 'a\nb', status: { route: '/' }, truncated: false };
     applySnapshotDelta(raw, opts, cache);
-    const out = applySnapshotDelta(raw, opts, cache) as { mode: string; truncated?: boolean; note?: string };
+    const out = applySnapshotDelta(raw, opts, cache) as {
+      mode: string;
+      truncated?: boolean;
+      note?: string;
+    };
     expect(out.mode).toBe('unchanged');
     expect(out.truncated).toBeUndefined();
     expect(out.note).toBeUndefined();

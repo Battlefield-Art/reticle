@@ -141,9 +141,15 @@ console.log(`  window                  : ${wallS.toFixed(1)}s x ${String(REPEATS
 console.log(`  full (observers + HUD)  : ${busy(fullS)}`);
 console.log(`  observers only (no HUD) : ${busy(observersS)}`);
 console.log(`  Reticle absent          : ${busy(noneS)}`);
-console.log(`  presenter HUD costs     : ${presenterPct >= 0 ? '+' : ''}${presenterPct.toFixed(2)} pp  (opt out with present:false)`);
-console.log(`  measured difference     : ${overheadPct >= 0 ? '+' : ''}${overheadPct.toFixed(2)} pp of main thread`);
-console.log(`  method noise floor      : ±${noiseFloorPct.toFixed(2)} pp (same-condition run-to-run spread)`);
+console.log(
+  `  presenter HUD costs     : ${presenterPct >= 0 ? '+' : ''}${presenterPct.toFixed(2)} pp  (opt out with present:false)`,
+);
+console.log(
+  `  measured difference     : ${overheadPct >= 0 ? '+' : ''}${overheadPct.toFixed(2)} pp of main thread`,
+);
+console.log(
+  `  method noise floor      : ±${noiseFloorPct.toFixed(2)} pp (same-condition run-to-run spread)`,
+);
 if (resolved) {
   console.log(`  instrumentation overhead: ${overheadPct.toFixed(2)} pp — resolved above noise`);
 } else {

@@ -31,8 +31,14 @@ const ENTRY_POINTS = ['start', 'startDaemon'] as const;
 
 /** Every helper that installs session-lifecycle wiring. Both entry points must call each one. */
 const REQUIRED_WIRING = [
-  { call: 'attachJournal(', why: 'journal capture + ambient seeding + journal-tail flush at session end' },
-  { call: 'makeNetworkDetailRouter(', why: 'CDP-authoritative network detail routed onto the session' },
+  {
+    call: 'attachJournal(',
+    why: 'journal capture + ambient seeding + journal-tail flush at session end',
+  },
+  {
+    call: 'makeNetworkDetailRouter(',
+    why: 'CDP-authoritative network detail routed onto the session',
+  },
 ] as const;
 
 describe('start() and startDaemon() lifecycle parity', () => {

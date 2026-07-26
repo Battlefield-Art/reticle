@@ -29,7 +29,9 @@ describe('mergeTools (surface consolidation)', () => {
     expect(merged.name).toBe('reticle_baseline');
     const action = merged.inputSchema['action'];
     expect(action).toBeDefined();
-    expect(() => z.object({ action: action as z.ZodTypeAny }).parse({ action: 'save' })).not.toThrow();
+    expect(() =>
+      z.object({ action: action as z.ZodTypeAny }).parse({ action: 'save' }),
+    ).not.toThrow();
     expect(() => z.object({ action: action as z.ZodTypeAny }).parse({ action: 'nope' })).toThrow();
   });
 
@@ -72,7 +74,11 @@ describe('applyMerges (assembly-point consolidation)', () => {
     {
       name: 'reticle_baseline',
       description: 'baseline family',
-      members: { save: 'reticle_baseline_save', list: 'reticle_baseline_list', diff: 'reticle_diff' },
+      members: {
+        save: 'reticle_baseline_save',
+        list: 'reticle_baseline_list',
+        diff: 'reticle_diff',
+      },
     },
   ];
 
@@ -90,7 +96,9 @@ describe('applyMerges (assembly-point consolidation)', () => {
   it('the merged tool still reaches every original handler', async () => {
     const out = applyMerges(raw, plans);
     const baseline = out.find((t) => t.name === 'reticle_baseline');
-    expect(await baseline?.handler(deps, { action: 'diff' })).toMatchObject({ ran: 'reticle_diff' });
+    expect(await baseline?.handler(deps, { action: 'diff' })).toMatchObject({
+      ran: 'reticle_diff',
+    });
   });
 
   it('throws on a plan naming a member that does not exist (a typo must not silently drop capability)', () => {

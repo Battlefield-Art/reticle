@@ -178,7 +178,8 @@ const server = createServer(app);
 // wrongChannel=1 answers on a channel nobody subscribed to, so the reply is silently ignored.
 const wss = new WebSocketServer({ server, path: '/ws/echo' });
 wss.on('connection', (socket, req) => {
-  const wrongChannel = new URL(req.url, 'http://localhost').searchParams.get('wrongChannel') === '1';
+  const wrongChannel =
+    new URL(req.url, 'http://localhost').searchParams.get('wrongChannel') === '1';
   socket.on('message', (raw) => {
     let channel = 'deployments';
     try {

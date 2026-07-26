@@ -131,7 +131,7 @@ function handleStatus(port: number): void {
     log('reticle_status', { port, running: false });
     return;
   }
- // The daemon is up — ask it for live sessions + health so status is at-a-glance, not just a pid.
+  // The daemon is up — ask it for live sessions + health so status is at-a-glance, not just a pid.
   void fetchStatus(port).then((payload) => {
     if (payload === undefined) {
       log('reticle_status', { port, running: true, pid });
@@ -169,7 +169,9 @@ async function handleAffected(files: string[], since: string | undefined): Promi
       unknownProvenance: result.unknownProvenance,
     });
   } catch (error) {
-    log('reticle_affected_failed', { error: error instanceof Error ? error.message : String(error) });
+    log('reticle_affected_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -178,7 +180,11 @@ async function handleUpdate(): Promise<void> {
   try {
     const manifest = await checkForUpdate(SERVER_VERSION, () => Date.now());
     if (!manifest.updateAvailable || manifest.latestVersion === undefined) {
-      log('reticle_update', { ok: false, message: 'already on the latest version', version: SERVER_VERSION });
+      log('reticle_update', {
+        ok: false,
+        message: 'already on the latest version',
+        version: SERVER_VERSION,
+      });
       return;
     }
     log('reticle_update', { ok: true, from: SERVER_VERSION, to: manifest.latestVersion });
@@ -194,7 +200,9 @@ async function handleRollback(): Promise<void> {
   try {
     await rollback(); // calls process.exit
   } catch (error) {
-    log('reticle_rollback_failed', { error: error instanceof Error ? error.message : String(error) });
+    log('reticle_rollback_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     process.exitCode = 1;
   }
 }
@@ -270,8 +278,8 @@ function handleDaemonInner(parsed: {
   startDaemon(options)
     .then((server) => {
       log('reticle_daemon_ready', { port: parsed.port, pid: process.pid });
- // Publish to the discovery registry so a build plugin can find this daemon by projectId — no
- // hand-reconciled port. Written from the child (only it knows its cwd); removePid drops it.
+      // Publish to the discovery registry so a build plugin can find this daemon by projectId — no
+      // hand-reconciled port. Written from the child (only it knows its cwd); removePid drops it.
       const registryProjectId = readProjectId(process.cwd());
       writeDaemonRegistry(parsed.port, {
         pid: process.pid,
@@ -279,8 +287,8 @@ function handleDaemonInner(parsed: {
         startedAt: Date.now(),
         ...(registryProjectId !== undefined ? { projectId: registryProjectId } : {}),
       });
- // The daemon serves many agents — keep it alive through one agent's stray async error; only a
- // genuine uncaught throw takes it down (cleanly, so the next `reticle mcp` respawns it fresh).
+      // The daemon serves many agents — keep it alive through one agent's stray async error; only a
+      // genuine uncaught throw takes it down (cleanly, so the next `reticle mcp` respawns it fresh).
       installDaemonResilience(process, log, () => {
         removePid(parsed.port);
         process.exit(1);
@@ -301,8 +309,8 @@ function handleDaemonInner(parsed: {
       };
       process.on('SIGTERM', shutdown);
       process.on('SIGINT', shutdown);
- // Self-shut-down when idle so a detached daemon (and any headless Chromium it launched) never
- // lingers on the user's machine after the editor closes. Reuses the same clean shutdown path.
+      // Self-shut-down when idle so a detached daemon (and any headless Chromium it launched) never
+      // lingers on the user's machine after the editor closes. Reuses the same clean shutdown path.
       const idleShutdown = new IdleShutdown({
         graceMs: resolveIdleShutdownMs(process.env[ReticleEnv.IDLE_SHUTDOWN]),
         isIdle: server.isIdle ?? (() => false),
@@ -331,8 +339,8 @@ function handleDaemonInner(parsed: {
  */
 function handleMcp(opts: { port: number; driveUrl?: string; headless: boolean }): void {
   const { port, driveUrl, headless } = opts;
- // Probe the port first — a daemon with a stale PID file is still usable.
- // Only spawn when nothing is actually listening on the port.
+  // Probe the port first — a daemon with a stale PID file is still usable.
+  // Only spawn when nothing is actually listening on the port.
   probeDaemon(port)
     .then((listening) => {
       if (!listening) {

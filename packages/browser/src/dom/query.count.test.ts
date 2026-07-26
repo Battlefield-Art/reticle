@@ -10,35 +10,41 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-suite('a state-filtered query resolves visibility once per element, not per ancestor per sibling', () => {
-  it('is correct AND does not re-walk shared ancestors for every candidate', () => {
-    // 30 buttons nested 8 levels deep under a shared chain. Without the per-call memo, isVisible would
-    // force getComputedStyle for every ancestor of every candidate (≈30×8). The memo caches each
-    // ancestor once, so the total is bounded near (candidates + unique ancestors), far below the product.
-    const depth = 8;
-    let html = '';
-    for (let i = 0; i < depth; i += 1) html += `<div>`;
-    html += Array.from({ length: 30 }, (_v, i) => `<button data-testid="row">b${String(i)}</button>`).join('');
-    for (let i = 0; i < depth; i += 1) html += `</div>`;
-    document.body.innerHTML = html;
+suite(
+  'a state-filtered query resolves visibility once per element, not per ancestor per sibling',
+  () => {
+    it('is correct AND does not re-walk shared ancestors for every candidate', () => {
+      // 30 buttons nested 8 levels deep under a shared chain. Without the per-call memo, isVisible would
+      // force getComputedStyle for every ancestor of every candidate (≈30×8). The memo caches each
+      // ancestor once, so the total is bounded near (candidates + unique ancestors), far below the product.
+      const depth = 8;
+      let html = '';
+      for (let i = 0; i < depth; i += 1) html += `<div>`;
+      html += Array.from(
+        { length: 30 },
+        (_v, i) => `<button data-testid="row">b${String(i)}</button>`,
+      ).join('');
+      for (let i = 0; i < depth; i += 1) html += `</div>`;
+      document.body.innerHTML = html;
 
-    const spy = vi.spyOn(window, 'getComputedStyle');
-    const result = matchQuery({ by: 'testid', value: 'row' }, 'visible');
+      const spy = vi.spyOn(window, 'getComputedStyle');
+      const result = matchQuery({ by: 'testid', value: 'row' }, 'visible');
 
-    expect(result.count).toBe(30); // every visible match counted — correctness preserved
-    // 30 candidates × (8 ancestors + self) would be ~270 without the memo; with it, each unique node's
-    // style resolves at most once. Assert we are well under the naive product.
-    expect(spy.mock.calls.length).toBeLessThan(30 * depth);
-  });
+      expect(result.count).toBe(30); // every visible match counted — correctness preserved
+      // 30 candidates × (8 ancestors + self) would be ~270 without the memo; with it, each unique node's
+      // style resolves at most once. Assert we are well under the naive product.
+      expect(spy.mock.calls.length).toBeLessThan(30 * depth);
+    });
 
-  it('still filters out a hidden candidate whose ancestor is display:none', () => {
-    document.body.innerHTML =
-      '<div style="display:none"><button data-testid="row">hidden</button></div>' +
-      '<div><button data-testid="row">shown</button></div>';
-    const result = matchQuery({ by: 'testid', value: 'row' }, 'visible');
-    expect(result.count).toBe(1); // only the shown one — inherited visibility via the memo is correct
-  });
-});
+    it('still filters out a hidden candidate whose ancestor is display:none', () => {
+      document.body.innerHTML =
+        '<div style="display:none"><button data-testid="row">hidden</button></div>' +
+        '<div><button data-testid="row">shown</button></div>';
+      const result = matchQuery({ by: 'testid', value: 'row' }, 'visible');
+      expect(result.count).toBe(1); // only the shown one — inherited visibility via the memo is correct
+    });
+  },
+);
 
 function renderButtons(n: number): void {
   document.body.innerHTML = Array.from(
@@ -66,7 +72,9 @@ suite('a query counts every match and describes a bounded prefix', () => {
 
   it('describes no more than the transport can carry', () => {
     renderButtons(CAP * 3);
-    expect(matchQuery({ by: 'testid', value: 'row-action' }).elements.length).toBeLessThanOrEqual(CAP);
+    expect(matchQuery({ by: 'testid', value: 'row-action' }).elements.length).toBeLessThanOrEqual(
+      CAP,
+    );
   });
 
   it('runQuery carries the count through — the server reports totals from it', () => {

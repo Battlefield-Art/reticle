@@ -38,7 +38,11 @@ describe('createWatchBatcher', () => {
   it('starts a fresh window for changes after a flush', () => {
     const scheduler = manualScheduler();
     const flushes: string[][] = [];
-    const batcher = createWatchBatcher({ debounceMs: 50, schedule: scheduler.schedule, onFlush: (f) => flushes.push(f) });
+    const batcher = createWatchBatcher({
+      debounceMs: 50,
+      schedule: scheduler.schedule,
+      onFlush: (f) => flushes.push(f),
+    });
 
     batcher.onChange('a.ts');
     scheduler.fire();
@@ -51,7 +55,11 @@ describe('createWatchBatcher', () => {
   it('does not flush an empty window', () => {
     const scheduler = manualScheduler();
     const flushes: string[][] = [];
-    createWatchBatcher({ debounceMs: 50, schedule: scheduler.schedule, onFlush: (f) => flushes.push(f) });
+    createWatchBatcher({
+      debounceMs: 50,
+      schedule: scheduler.schedule,
+      onFlush: (f) => flushes.push(f),
+    });
     scheduler.fire(); // never fired since nothing scheduled
     expect(flushes).toEqual([]);
   });

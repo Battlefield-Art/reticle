@@ -18,12 +18,19 @@ export interface DivergenceCapsule {
 }
 
 /** Observed signal/state changes the flow never declared — the side effects. */
-function blastRadius(expected: readonly ExpectedLink[], observed: readonly ReticleEvent[]): string[] {
+function blastRadius(
+  expected: readonly ExpectedLink[],
+  observed: readonly ReticleEvent[],
+): string[] {
   const declaredSignals = new Set(
-    expected.filter((l): l is Extract<ExpectedLink, { kind: 'signal' }> => l.kind === 'signal').map((l) => l.name),
+    expected
+      .filter((l): l is Extract<ExpectedLink, { kind: 'signal' }> => l.kind === 'signal')
+      .map((l) => l.name),
   );
   const declaredStates = new Set(
-    expected.filter((l): l is Extract<ExpectedLink, { kind: 'state' }> => l.kind === 'state').map((l) => l.name),
+    expected
+      .filter((l): l is Extract<ExpectedLink, { kind: 'state' }> => l.kind === 'state')
+      .map((l) => l.name),
   );
   const radius: string[] = [];
   const add = (value: string): void => {

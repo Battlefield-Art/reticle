@@ -18,7 +18,8 @@ export const AGENTS_MD_PATH = 'AGENTS.md';
 export const CURSOR_RULE_PATH = '.cursor/rules/reticle.mdc';
 
 /** Markers delimiting the managed block so a re-run is idempotent and the block stays updatable. */
-const RULE_BEGIN = '<!-- reticle:begin (managed by `reticle init` — edit outside these markers) -->';
+const RULE_BEGIN =
+  '<!-- reticle:begin (managed by `reticle init` — edit outside these markers) -->';
 const RULE_END = '<!-- reticle:end -->';
 
 /** The rule body (markdown). States WHEN to verify, HOW, and never-weaken-a-check. */

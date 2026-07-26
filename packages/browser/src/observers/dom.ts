@@ -65,7 +65,11 @@ export function installDom(emit: Emit): Teardown {
     for (const record of records) {
       if (record.type === 'attributes') {
         const target = record.target;
-        if (target instanceof Element && record.attributeName !== null && !isReticleOverlay(target)) {
+        if (
+          target instanceof Element &&
+          record.attributeName !== null &&
+          !isReticleOverlay(target)
+        ) {
           if (changed >= MAX_PER_BATCH) {
             dropped += 1;
             continue;

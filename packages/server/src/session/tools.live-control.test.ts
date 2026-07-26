@@ -291,7 +291,9 @@ describe('live-control: read tools stay open while paused', () => {
 describe('live-control: agent tools', () => {
   it('reticle_resume after pause lets the next act execute', async () => {
     const session = fakeSession({ state: SessionState.PAUSED });
-    const resume = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'resume',})) as {
+    const resume = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), {
+      action: 'resume',
+    })) as {
       ok: boolean;
     };
     expect(resume.ok).toBe(true);
@@ -303,7 +305,9 @@ describe('live-control: agent tools', () => {
 
   it('reticle_resume returns ok and pushes PRESENTER', async () => {
     const session = fakeSession({ state: SessionState.PAUSED });
-    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'resume',})) as {
+    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), {
+      action: 'resume',
+    })) as {
       ok: boolean;
     };
     expect(res.ok).toBe(true);
@@ -314,7 +318,8 @@ describe('live-control: agent tools', () => {
 
   it('reticle_end_session sets ended and pushes PRESENTER', async () => {
     const session = fakeSession({ state: SessionState.ACTIVE });
-    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'end',
+    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), {
+      action: 'end',
       summary: 'done',
     })) as { ended: boolean; sessionId: string };
     expect(res).toEqual({ ended: true, sessionId: 'demo' });
@@ -325,7 +330,7 @@ describe('live-control: agent tools', () => {
 
   it('reticle_end_session works with no summary', async () => {
     const session = fakeSession({ state: SessionState.ACTIVE });
-    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'end',})) as {
+    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'end' })) as {
       ended: boolean;
       sessionId: string;
     };
@@ -335,7 +340,7 @@ describe('live-control: agent tools', () => {
 
   it('reticle_end_session is idempotent', async () => {
     const session = fakeSession({ state: SessionState.ENDED });
-    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'end',})) as {
+    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'end' })) as {
       ended: boolean;
       sessionId: string;
     };
@@ -344,7 +349,10 @@ describe('live-control: agent tools', () => {
 
   it('reticle_yield mode:waiting hands back with a waiting tone (revivable)', async () => {
     const session = fakeSession({ state: SessionState.ACTIVE });
-    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'yield', mode: 'waiting' })) as {
+    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), {
+      action: 'yield',
+      mode: 'waiting',
+    })) as {
       yielded: boolean;
       mode: string;
       sessionId: string;
@@ -359,7 +367,8 @@ describe('live-control: agent tools', () => {
 
   it('reticle_yield mode:ask carries the question and an ask tone', async () => {
     const session = fakeSession({ state: SessionState.ACTIVE });
-    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'yield',
+    const res = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), {
+      action: 'yield',
       mode: 'ask',
       note: 'Use Stripe or Paddle?',
     })) as { yielded: boolean; mode: string; sessionId: string };
@@ -371,14 +380,18 @@ describe('live-control: agent tools', () => {
 
   it('reticle_messages drains the inbox', async () => {
     const session = fakeSession({ inbox: ['m1', 'm2'] });
-    const first = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'messages',})) as {
+    const first = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), {
+      action: 'messages',
+    })) as {
       messages: InboxMessage[];
     };
     expect(first.messages).toEqual([
       { text: 'm1', t: 0 },
       { text: 'm2', t: 0 },
     ]);
-    const second = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), { action: 'messages',})) as {
+    const second = (await tool(ReticleTool.SESSION).handler(fakeDeps(session), {
+      action: 'messages',
+    })) as {
       messages: InboxMessage[];
     };
     expect(second.messages).toEqual([]);

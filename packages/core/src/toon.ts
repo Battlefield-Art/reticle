@@ -141,7 +141,8 @@ function encodeLine(el: ToonElement, depth: number): string {
   const states = encodeStates(Array.isArray(el.states) ? el.states : [], el.visible);
   const ref = toText(el.ref) || '?';
   const parts: string[] = [indent + type, ref, encodeName(el.name), ...(states ? [states] : [])];
-  if (typeof el.value === 'string' && el.value.length > 0) parts.push(`val=${encodeValue(el.value)}`);
+  if (typeof el.value === 'string' && el.value.length > 0)
+    parts.push(`val=${encodeValue(el.value)}`);
   if (el.childCount !== undefined) parts.push(`count=${String(el.childCount)}`);
   return parts.join(' ');
 }

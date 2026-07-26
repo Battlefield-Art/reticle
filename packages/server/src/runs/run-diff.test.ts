@@ -7,7 +7,11 @@ import {
 } from '@reticlehq/core';
 import { diffRuns } from './run-diff.js';
 
-function flow(name: string, durationMs: number, status: string = RunFlowStatus.PASS): RunFlowResult {
+function flow(
+  name: string,
+  durationMs: number,
+  status: string = RunFlowStatus.PASS,
+): RunFlowResult {
   return { name, status: status as RunFlowResult['status'], steps: 1, durationMs };
 }
 
@@ -20,7 +24,12 @@ describe('diffRuns', () => {
   it('reports a duration regression past the noise floor with the percent delta', () => {
     const diff = diffRuns(run([flow('checkout', 400)]), run([flow('checkout', 960)]));
     expect(diff.flows).toHaveLength(1);
-    expect(diff.flows[0]).toMatchObject({ name: 'checkout', durationDeltaMs: 560, durationDeltaPct: 140, regressed: true });
+    expect(diff.flows[0]).toMatchObject({
+      name: 'checkout',
+      durationDeltaMs: 560,
+      durationDeltaPct: 140,
+      regressed: true,
+    });
     expect(diff.headline).toContain('checkout');
   });
 
@@ -39,7 +48,10 @@ describe('diffRuns', () => {
   });
 
   it('reports new and removed flows', () => {
-    const diff = diffRuns(run([flow('a', 100), flow('b', 100)]), run([flow('a', 100), flow('c', 100)]));
+    const diff = diffRuns(
+      run([flow('a', 100), flow('b', 100)]),
+      run([flow('a', 100), flow('c', 100)]),
+    );
     expect(diff.newFlows).toEqual(['c']);
     expect(diff.removedFlows).toEqual(['b']);
   });

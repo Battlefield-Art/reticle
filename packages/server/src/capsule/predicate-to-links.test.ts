@@ -7,9 +7,9 @@ describe('predicateToExpectedLinks', () => {
     expect(predicateToExpectedLinks({ kind: 'signal', name: 'order:placed' })).toEqual([
       { kind: 'signal', name: 'order:placed' },
     ]);
-    expect(predicateToExpectedLinks({ kind: 'net', urlContains: '/api/order', status: 200 })).toEqual([
-      { kind: 'net', urlContains: '/api/order', status: 200 },
-    ]);
+    expect(
+      predicateToExpectedLinks({ kind: 'net', urlContains: '/api/order', status: 200 }),
+    ).toEqual([{ kind: 'net', urlContains: '/api/order', status: 200 }]);
     expect(predicateToExpectedLinks({ kind: 'state', store: 'cart', path: 'count' })).toEqual([
       { kind: 'state', name: 'cart' },
     ]);

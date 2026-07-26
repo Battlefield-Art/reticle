@@ -139,7 +139,11 @@ describe('reticle_act_and_wait reports where the failure came from', () => {
       ref: 'e7',
       action: 'click',
       timeout_ms: 50,
-      until: { kind: 'element', query: { role: 'dialog', name: 'never appears' }, state: 'visible' },
+      until: {
+        kind: 'element',
+        query: { role: 'dialog', name: 'never appears' },
+        state: 'visible',
+      },
     })) as { verdict: { pass: boolean }; source?: string };
 
   it('names the file:line on a failing action', async () => {
@@ -201,7 +205,9 @@ describe('coverage reflects blind spots reported before this act', () => {
     await bridge.close();
   });
 
-  const actOnce = async (): Promise<{ honesty: { coverage: { pct?: number; partial: boolean } } }> =>
+  const actOnce = async (): Promise<{
+    honesty: { coverage: { pct?: number; partial: boolean } };
+  }> =>
     (await callTool(deps, 'reticle_act_and_wait', {
       ref: 'e7',
       action: 'click',

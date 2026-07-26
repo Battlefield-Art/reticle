@@ -80,16 +80,20 @@ describe('leaseFailureReplay — a flow that never ran is never a pass', () => {
  * valid values are, which is the difference between a diagnosable error and a confusing one.
  */
 describe('act rejects an unknown action at the wire boundary', () => {
-  const actTool = (): { handler: (deps: unknown, args: Record<string, unknown>) => Promise<unknown> } => {
+  const actTool = (): {
+    handler: (deps: unknown, args: Record<string, unknown>) => Promise<unknown>;
+  } => {
     const tool = TOOLS.find((t) => t.name === ReticleTool.ACT);
     if (tool === undefined) throw new Error('reticle_act missing from the surface');
-    return tool as unknown as { handler: (d: unknown, a: Record<string, unknown>) => Promise<unknown> };
+    return tool as unknown as {
+      handler: (d: unknown, a: Record<string, unknown>) => Promise<unknown>;
+    };
   };
 
   it('names the offending value AND the legal ones, instead of failing generically', async () => {
-    await expect(
-      actTool().handler({}, { ref: 'e1', action: 'clcik' }),
-    ).rejects.toThrow(/unknown action 'clcik'.*click/s);
+    await expect(actTool().handler({}, { ref: 'e1', action: 'clcik' })).rejects.toThrow(
+      /unknown action 'clcik'.*click/s,
+    );
   });
 
   it('rejects a missing action rather than dispatching an empty one', async () => {

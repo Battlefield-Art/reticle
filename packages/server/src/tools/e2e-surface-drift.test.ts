@@ -97,9 +97,10 @@ describe('e2e specs do not reference tools that no longer exist', () => {
 
   it('every KNOWN_REMOVED entry is actually removed — stale exemptions rot', () => {
     for (const [name, why] of KNOWN_REMOVED) {
-      expect(advertised.has(name), `${name} is back on the surface; drop its exemption (${why})`).toBe(
-        false,
-      );
+      expect(
+        advertised.has(name),
+        `${name} is back on the surface; drop its exemption (${why})`,
+      ).toBe(false);
     }
   });
 });

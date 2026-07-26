@@ -257,7 +257,10 @@ export class FlowStore {
     if (!parsed.success) return { ok: false, code: FlowErrorCode.PARSE_FAILED };
     const valid = parsed.data;
     await this.#fs.mkdir(flowDir(this.#root, pid));
-    await this.#fs.writeFile(flowPath(this.#root, asFlowName(valid.name), pid), this.#serialize(valid));
+    await this.#fs.writeFile(
+      flowPath(this.#root, asFlowName(valid.name), pid),
+      this.#serialize(valid),
+    );
     const degraded = valid.steps.filter((s) => s.degraded === true).length;
     return {
       ok: true,

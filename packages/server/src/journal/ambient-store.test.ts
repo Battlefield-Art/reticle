@@ -32,7 +32,11 @@ describe('AmbientStore', () => {
     await mkdir(root, { recursive: true });
     await writeFile(join(root, 'ambient.json'), '{ nope', 'utf8');
     expect(await new AmbientStore(fs, root).load()).toEqual({});
-    await writeFile(join(root, 'ambient.json'), JSON.stringify({ version: 9, regions: {} }), 'utf8');
+    await writeFile(
+      join(root, 'ambient.json'),
+      JSON.stringify({ version: 9, regions: {} }),
+      'utf8',
+    );
     expect(await new AmbientStore(fs, root).load()).toEqual({});
   });
 });

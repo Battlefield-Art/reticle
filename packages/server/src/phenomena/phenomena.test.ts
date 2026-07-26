@@ -22,7 +22,15 @@ function e(type: EventType, data: Record<string, unknown>): ReticleEvent {
   return { t: seq, seq, type, sessionId: 'demo', data };
 }
 function action(over: Partial<JournalAction>): JournalAction {
-  return { v: JOURNAL_FILE_VERSION, actionId: 'a1', tool: 'reticle_act', args: {}, tRange: { from: 0, to: 1 }, at: 0, ...over };
+  return {
+    v: JOURNAL_FILE_VERSION,
+    actionId: 'a1',
+    tool: 'reticle_act',
+    args: {},
+    tRange: { from: 0, to: 1 },
+    at: 0,
+    ...over,
+  };
 }
 
 describe('detectHungRequests', () => {
@@ -34,7 +42,10 @@ describe('detectHungRequests', () => {
     ];
     const findings = detectHungRequests(events);
     expect(findings).toHaveLength(1);
-    expect(findings[0]).toMatchObject({ phenomenon: PhenomenonType.HUNG_REQUEST, evidence: { id: 'n2', url: '/b' } });
+    expect(findings[0]).toMatchObject({
+      phenomenon: PhenomenonType.HUNG_REQUEST,
+      evidence: { id: 'n2', url: '/b' },
+    });
   });
 });
 
@@ -62,14 +73,23 @@ describe('detectDeadClicks', () => {
     ];
     const findings = detectDeadClicks(actions);
     expect(findings).toHaveLength(1);
-    expect(findings[0]).toMatchObject({ phenomenon: PhenomenonType.DEAD_CLICK, evidence: { actionId: 'a2' } });
+    expect(findings[0]).toMatchObject({
+      phenomenon: PhenomenonType.DEAD_CLICK,
+      evidence: { actionId: 'a2' },
+    });
   });
 });
 
 describe('detectPreHydrationClicks', () => {
   const hydrationAt = (t: number): ReticleEvent => {
     seq += 1;
-    return { t, seq, type: EventType.SIGNAL, sessionId: 'demo', data: { name: RETICLE_HYDRATION_SIGNAL } };
+    return {
+      t,
+      seq,
+      type: EventType.SIGNAL,
+      sessionId: 'demo',
+      data: { name: RETICLE_HYDRATION_SIGNAL },
+    };
   };
 
   it('flags a click dispatched before the hydration-complete signal', () => {
@@ -80,7 +100,10 @@ describe('detectPreHydrationClicks', () => {
     ];
     const findings = detectPreHydrationClicks(events, actions);
     expect(findings).toHaveLength(1);
-    expect(findings[0]).toMatchObject({ phenomenon: PhenomenonType.PRE_HYDRATION_CLICK, evidence: { actionId: 'a1' } });
+    expect(findings[0]).toMatchObject({
+      phenomenon: PhenomenonType.PRE_HYDRATION_CLICK,
+      evidence: { actionId: 'a1' },
+    });
   });
 
   it('does not guess when there is no hydration signal (not a React app)', () => {
@@ -92,11 +115,17 @@ describe('detectPreHydrationClicks', () => {
 describe('detectSwallowedErrors', () => {
   it('flags an error-boundary signal, carrying its detail as evidence', () => {
     const events = [
-      e(EventType.SIGNAL, { name: RETICLE_ERROR_BOUNDARY_SIGNAL, data: { message: 'render blew up' } }),
+      e(EventType.SIGNAL, {
+        name: RETICLE_ERROR_BOUNDARY_SIGNAL,
+        data: { message: 'render blew up' },
+      }),
     ];
     const findings = detectSwallowedErrors(events);
     expect(findings).toHaveLength(1);
-    expect(findings[0]).toMatchObject({ phenomenon: PhenomenonType.SWALLOWED_ERROR, evidence: { message: 'render blew up' } });
+    expect(findings[0]).toMatchObject({
+      phenomenon: PhenomenonType.SWALLOWED_ERROR,
+      evidence: { message: 'render blew up' },
+    });
   });
 
   it('ignores ordinary app signals', () => {

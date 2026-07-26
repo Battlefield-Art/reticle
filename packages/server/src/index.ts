@@ -263,7 +263,12 @@ function makeNetworkDetailRouter(bridge: Bridge, driveUrl: string | undefined) {
         origin !== undefined &&
         (origin === pageOrigin || origin === requestOrigin || origin === driveOrigin);
       if (matches) {
-        session.pushEvent({ t: 0, type: EventType.NET_DETAIL, sessionId: session.id, data: { ...detail } });
+        session.pushEvent({
+          t: 0,
+          type: EventType.NET_DETAIL,
+          sessionId: session.id,
+          data: { ...detail },
+        });
       }
     }
   };
@@ -373,7 +378,11 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
   // Route CDP-authoritative network detail (drive path only) onto the driven session's journal: the
   // page and the SDK session share an origin, so a NET_DETAIL is pushed to the matching connected session.
   const routeNetworkDetail = makeNetworkDetailRouter(bridge, options.driveUrl);
-  const { realInput, owned } = await resolveRealInput(options, () => bridge.close(), routeNetworkDetail);
+  const { realInput, owned } = await resolveRealInput(
+    options,
+    () => bridge.close(),
+    routeNetworkDetail,
+  );
 
   if (options.mcp !== false) {
     // cwd/Date.now are confined to start — never inside reticle-dir.ts's pure logic (rule 7).

@@ -84,7 +84,10 @@ describe('capsuleId / minimalSteps', () => {
 
   it('trims the reproduction to the failing step (everything after it is noise)', () => {
     const steps = [step('a'), step('b'), step('c')];
-    expect(minimalSteps(steps, 1).map((s) => s.anchor)).toEqual([steps[0]?.anchor, steps[1]?.anchor]);
+    expect(minimalSteps(steps, 1).map((s) => s.anchor)).toEqual([
+      steps[0]?.anchor,
+      steps[1]?.anchor,
+    ]);
   });
 
   it('keeps every step when the failing index is unknown', () => {

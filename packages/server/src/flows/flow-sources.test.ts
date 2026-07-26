@@ -11,7 +11,10 @@ function componentStep(file: string, sub?: FlowStep[]): FlowStep {
 }
 
 function testidStep(): FlowStep {
-  return { action: ActionType.CLICK, anchor: { kind: AnchorKind.TESTID, value: 'cta' } } as FlowStep;
+  return {
+    action: ActionType.CLICK,
+    anchor: { kind: AnchorKind.TESTID, value: 'cta' },
+  } as FlowStep;
 }
 
 describe('flowSources', () => {

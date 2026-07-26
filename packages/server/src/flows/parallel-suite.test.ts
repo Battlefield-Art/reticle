@@ -16,13 +16,17 @@ describe('mapWithConcurrency (parallel suite scheduler)', () => {
   it('never exceeds the concurrency cap', async () => {
     let inFlight = 0;
     let peak = 0;
-    await mapWithConcurrency(Array.from({ length: 12 }, (_, i) => i), 3, async () => {
-      inFlight += 1;
-      peak = Math.max(peak, inFlight);
-      await tick(5);
-      inFlight -= 1;
-      return true;
-    });
+    await mapWithConcurrency(
+      Array.from({ length: 12 }, (_, i) => i),
+      3,
+      async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await tick(5);
+        inFlight -= 1;
+        return true;
+      },
+    );
     expect(peak).toBeLessThanOrEqual(3);
     expect(peak).toBeGreaterThan(1); // actually parallel, not accidentally serialized
   });
@@ -39,11 +43,15 @@ describe('mapWithConcurrency (parallel suite scheduler)', () => {
 
   it('runs every item exactly once', async () => {
     const seen: number[] = [];
-    await mapWithConcurrency(Array.from({ length: 25 }, (_, i) => i), 4, async (item) => {
-      seen.push(item);
-      await tick(1);
-      return item;
-    });
+    await mapWithConcurrency(
+      Array.from({ length: 25 }, (_, i) => i),
+      4,
+      async (item) => {
+        seen.push(item);
+        await tick(1);
+        return item;
+      },
+    );
     expect(seen.sort((a, b) => a - b)).toEqual(Array.from({ length: 25 }, (_, i) => i));
   });
 

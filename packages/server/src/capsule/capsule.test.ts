@@ -21,7 +21,11 @@ describe('buildDivergenceCapsule', () => {
       e(EventType.STATE_CHANGE, { name: 'toast.error' }), // undeclared → blast radius
     ];
     const capsule = buildDivergenceCapsule(expected, observed);
-    expect(capsule.firstDivergence?.expected).toEqual({ kind: 'net', urlContains: '/api/order', status: 200 });
+    expect(capsule.firstDivergence?.expected).toEqual({
+      kind: 'net',
+      urlContains: '/api/order',
+      status: 200,
+    });
     expect(capsule.summary.net.errors).toBe(1);
     expect(capsule.blastRadius).toEqual(['signal analytics:tracked', 'state toast.error']);
   });

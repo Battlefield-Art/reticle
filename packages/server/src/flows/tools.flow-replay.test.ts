@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { asFlowName,
+import {
+  asFlowName,
   ActionType,
   DANGEROUS_ACTION_CONFIRM_ARG,
   FlowErrorCode,

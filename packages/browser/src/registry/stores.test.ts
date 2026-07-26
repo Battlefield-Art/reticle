@@ -127,7 +127,11 @@ describe('silent store registration', () => {
 
   it('does NOT warn when a subscribe function is supplied', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    registerStore('observable', () => ({ count: 1 }), () => () => undefined);
+    registerStore(
+      'observable',
+      () => ({ count: 1 }),
+      () => () => undefined,
+    );
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });

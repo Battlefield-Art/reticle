@@ -1,5 +1,10 @@
 import type { SegmentRollup } from './rollups.js';
-import { compareSegment, type Deviation, type RouteEnvelope, MIN_ENVELOPE_SAMPLES } from './envelope.js';
+import {
+  compareSegment,
+  type Deviation,
+  type RouteEnvelope,
+  MIN_ENVELOPE_SAMPLES,
+} from './envelope.js';
 
 /**
  * The deviation report — the push default. After any drive or replay, this is what the agent gets
@@ -24,7 +29,9 @@ export interface DeviationReport {
 
 function headlineFor(report: Omit<DeviationReport, 'headline'>): string {
   const truncNote =
-    report.truncatedSegments > 0 ? ` (${String(report.truncatedSegments)} truncated — counts partial)` : '';
+    report.truncatedSegments > 0
+      ? ` (${String(report.truncatedSegments)} truncated — counts partial)`
+      : '';
   if (report.insufficientSamples) {
     return `envelope too new (need ${String(MIN_ENVELOPE_SAMPLES)} runs) — see causal summary${truncNote}`;
   }

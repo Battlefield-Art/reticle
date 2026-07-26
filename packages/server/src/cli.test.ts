@@ -76,7 +76,11 @@ describe('parseCliArgs', () => {
   });
 
   it('parses `--since <ref>` on affected/gate (with or without explicit files)', () => {
-    expect(parseCliArgs(['gate', '--since', 'main'], PORT)).toEqual({ kind: 'gate', files: [], since: 'main' });
+    expect(parseCliArgs(['gate', '--since', 'main'], PORT)).toEqual({
+      kind: 'gate',
+      files: [],
+      since: 'main',
+    });
     expect(parseCliArgs(['affected', '--since', 'HEAD~1', 'src/a.ts'], PORT)).toEqual({
       kind: 'affected',
       files: ['src/a.ts'],
@@ -94,7 +98,10 @@ describe('parseCliArgs', () => {
   });
 
   it('parses `watch [url]` with and without a url', () => {
-    expect(parseCliArgs(['watch', 'http://localhost:3000'], PORT)).toEqual({ kind: 'watch', url: 'http://localhost:3000' });
+    expect(parseCliArgs(['watch', 'http://localhost:3000'], PORT)).toEqual({
+      kind: 'watch',
+      url: 'http://localhost:3000',
+    });
     expect(parseCliArgs(['watch'], PORT)).toEqual({ kind: 'watch' });
   });
 

@@ -201,7 +201,13 @@ describe('buildSuiteVerdict — the autonomous regression check', () => {
  */
 describe('whereInSource points at code or says nothing', () => {
   function failingStep(): FlowStepResult {
-    return { step: 0, tool: ReticleTool.ACT, anchor: 'new-deploy', ok: false, page: '/deployments' };
+    return {
+      step: 0,
+      tool: ReticleTool.ACT,
+      anchor: 'new-deploy',
+      ok: false,
+      page: '/deployments',
+    };
   }
 
   it('does not pass a route off as a source location', () => {

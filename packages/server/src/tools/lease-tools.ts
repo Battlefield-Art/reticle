@@ -86,7 +86,12 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
  * leaks a pool slot and starves the rest of the suite.
  */
 export async function acquireLeasedSession(
-  pool: { acquire: (url: string, opts: { sessionId: string }) => Promise<{ sessionId: string; release: () => Promise<void> }> },
+  pool: {
+    acquire: (
+      url: string,
+      opts: { sessionId: string },
+    ) => Promise<{ sessionId: string; release: () => Promise<void> }>;
+  },
   hasSession: (id: string) => boolean,
   url: string,
   projectId?: string,

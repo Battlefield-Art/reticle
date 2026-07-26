@@ -38,7 +38,13 @@ describe('makeJournalAttach', () => {
     const s = target('demo');
     attach(s);
     expect(s.recorder).toBeDefined();
-    const evt: ReticleEvent = { t: 0, seq: 0, type: EventType.DOM_ADDED, sessionId: 'demo', data: {} };
+    const evt: ReticleEvent = {
+      t: 0,
+      seq: 0,
+      type: EventType.DOM_ADDED,
+      sessionId: 'demo',
+      data: {},
+    };
     s.recorder?.observe(evt);
     await s.recorder?.flush();
     const text = await readFile(join(root, 'sessions', 'demo', 'events.jsonl'), 'utf8');

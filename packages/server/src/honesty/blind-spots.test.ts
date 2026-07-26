@@ -9,7 +9,9 @@ function ev(type: EventType, data: Record<string, unknown>, t = 1): ReticleEvent
 describe('buildCoverageStatement', () => {
   it('reports full coverage when nothing went unobserved', () => {
     expect(buildCoverageStatement([])).toEqual({ coverage: 'full', spots: [] });
-    expect(buildCoverageStatement([{ kind: BlindSpotKind.CROSS_ORIGIN_IFRAME, count: 0 }]).coverage).toBe('full');
+    expect(
+      buildCoverageStatement([{ kind: BlindSpotKind.CROSS_ORIGIN_IFRAME, count: 0 }]).coverage,
+    ).toBe('full');
   });
 
   it('reports partial coverage with a legible note listing what was unobserved', () => {
@@ -18,7 +20,9 @@ describe('buildCoverageStatement', () => {
       { kind: BlindSpotKind.CLOSED_SHADOW_ROOT, count: 1 },
     ]);
     expect(statement.coverage).toBe('partial');
-    expect(statement.note).toBe('partial — 2 cross-origin frames unobserved, 1 closed shadow root unobserved');
+    expect(statement.note).toBe(
+      'partial — 2 cross-origin frames unobserved, 1 closed shadow root unobserved',
+    );
   });
 
   it('drops zero-count spots from the note', () => {

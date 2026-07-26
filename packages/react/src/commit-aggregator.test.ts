@@ -20,7 +20,10 @@ describe('createCommitAggregator', () => {
   it('flushes the accumulated commit count once per window', () => {
     const scheduler = manualScheduler();
     const flushes: number[] = [];
-    const agg = createCommitAggregator({ schedule: scheduler.schedule, flush: (n) => flushes.push(n) });
+    const agg = createCommitAggregator({
+      schedule: scheduler.schedule,
+      flush: (n) => flushes.push(n),
+    });
 
     agg.onCommit();
     agg.onCommit();
@@ -34,7 +37,10 @@ describe('createCommitAggregator', () => {
   it('starts a fresh window after a flush', () => {
     const scheduler = manualScheduler();
     const flushes: number[] = [];
-    const agg = createCommitAggregator({ schedule: scheduler.schedule, flush: (n) => flushes.push(n) });
+    const agg = createCommitAggregator({
+      schedule: scheduler.schedule,
+      flush: (n) => flushes.push(n),
+    });
 
     agg.onCommit();
     scheduler.fire();

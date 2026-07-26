@@ -6,7 +6,7 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [2.2.0] — 2026-07-26
 
-The causal-evidence release: every verdict now carries *why*, verification becomes part of "done", and the layer stops trusting evidence it doesn't have. Faster on long sessions and big DOMs, and the published packages are brought to OSS-library standard (licensing, packaging, CI security). No breaking changes — schema additions stay back-compatible and on-disk flow files remain version 1.
+The causal-evidence release: every verdict now carries _why_, verification becomes part of "done", and the layer stops trusting evidence it doesn't have. Faster on long sessions and big DOMs, and the published packages are brought to OSS-library standard (licensing, packaging, CI security). No breaking changes — schema additions stay back-compatible and on-disk flow files remain version 1.
 
 ### Added
 

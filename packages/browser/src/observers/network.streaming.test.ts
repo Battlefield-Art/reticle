@@ -124,20 +124,16 @@ describe('body projection is bounded by input size, not just output size', () =>
    * timeout catches exactly that and is immune to how loaded the machine is; the output-size
    * assertion below carries the rest.
    */
-  it(
-    'projects a very large text body without scanning all of it',
-    async () => {
-      hugeBody(4_000_000, 'text/csv');
-      const { emit, events } = collect();
-      teardowns.push(installNetwork(emit, { captureBodies: true }));
-      await window.fetch('/api/export.csv');
-      await flushBody();
-      const withBody = events.find((e) => e.data['responseBody'] !== undefined);
-      expect(String(withBody?.data['responseBody']).length).toBeLessThanOrEqual(8192);
-      expect(withBody?.data['responseBodyTruncated']).toBe(true);
-    },
-    10_000,
-  );
+  it('projects a very large text body without scanning all of it', async () => {
+    hugeBody(4_000_000, 'text/csv');
+    const { emit, events } = collect();
+    teardowns.push(installNetwork(emit, { captureBodies: true }));
+    await window.fetch('/api/export.csv');
+    await flushBody();
+    const withBody = events.find((e) => e.data['responseBody'] !== undefined);
+    expect(String(withBody?.data['responseBody']).length).toBeLessThanOrEqual(8192);
+    expect(withBody?.data['responseBodyTruncated']).toBe(true);
+  }, 10_000);
 
   it('marks an over-large body as truncated — never reports a clipped read as complete', async () => {
     hugeBody(4_000_000, 'text/plain');

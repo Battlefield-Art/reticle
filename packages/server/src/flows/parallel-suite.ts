@@ -38,7 +38,10 @@ export async function mapWithConcurrency<I, T>(
       try {
         results[index] = { ok: true, value: await fn(item, index) };
       } catch (error) {
-        results[index] = { ok: false, error: error instanceof Error ? error.message : String(error) };
+        results[index] = {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
     }
   };

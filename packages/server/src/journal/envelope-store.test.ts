@@ -8,7 +8,16 @@ import { EnvelopeStore } from './envelope-store.js';
 import type { SegmentRollup } from './rollups.js';
 
 function seg(route: string, durationMs: number): SegmentRollup {
-  return { route, from: 0, to: durationMs, durationMs, actions: 1, net: { total: 2, errors: 0 }, consoleErrors: 0, statePathsChanged: [] };
+  return {
+    route,
+    from: 0,
+    to: durationMs,
+    durationMs,
+    actions: 1,
+    net: { total: 2, errors: 0 },
+    consoleErrors: 0,
+    statePathsChanged: [],
+  };
 }
 
 describe('EnvelopeStore', () => {
@@ -47,7 +56,11 @@ describe('EnvelopeStore', () => {
 
   it('degrades to an empty map on a wrong schema version', async () => {
     await mkdir(root, { recursive: true });
-    await writeFile(join(root, 'envelopes.json'), JSON.stringify({ version: 99, routes: {} }), 'utf8');
+    await writeFile(
+      join(root, 'envelopes.json'),
+      JSON.stringify({ version: 99, routes: {} }),
+      'utf8',
+    );
     expect((await new EnvelopeStore(fs, root).load()).size).toBe(0);
   });
 });

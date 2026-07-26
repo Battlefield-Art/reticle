@@ -23,7 +23,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const collect = (): { emit: (t: EventType, d: Record<string, unknown>) => void; events: { type: EventType; data: Record<string, unknown> }[] } => {
+const collect = (): {
+  emit: (t: EventType, d: Record<string, unknown>) => void;
+  events: { type: EventType; data: Record<string, unknown> }[];
+} => {
   const events: { type: EventType; data: Record<string, unknown> }[] = [];
   return { emit: (type, data) => events.push({ type, data }), events };
 };
@@ -34,14 +37,12 @@ const blindSpots = (events: { type: EventType; data: Record<string, unknown> }[]
 describe('a fetch wrapper installed before us is declared, not hidden', () => {
   it('reports a blind spot when fetch is already patched at install', () => {
     // Someone else's wrapper — a plain function, not native code.
-    vi.stubGlobal('fetch', (() => Promise.resolve(new Response())));
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response()));
 
     const { emit, events } = collect();
     teardowns.push(installNetwork(emit, {}));
 
-    const spot = blindSpots(events).find(
-      (e) => e.data['kind'] === BlindSpotKind.WRAPPED_NETWORK,
-    );
+    const spot = blindSpots(events).find((e) => e.data['kind'] === BlindSpotKind.WRAPPED_NETWORK);
     expect(spot).toBeDefined();
     expect(spot?.data['count']).toBe(1);
   });

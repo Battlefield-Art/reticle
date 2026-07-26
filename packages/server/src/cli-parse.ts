@@ -369,7 +369,11 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
       if (t.files.length === 0 && t.since === undefined) {
         return { kind: 'error', message: 'usage: reticle affected [--since <ref>] [file...]' };
       }
-      return { kind: 'affected', files: t.files, ...(t.since === undefined ? {} : { since: t.since }) };
+      return {
+        kind: 'affected',
+        files: t.files,
+        ...(t.since === undefined ? {} : { since: t.since }),
+      };
     }
     case GATE_COMMAND: {
       const t = parseTargetArgs(rest);

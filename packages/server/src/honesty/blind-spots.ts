@@ -24,7 +24,8 @@ export interface CoverageStatement {
 
 const LABEL: Record<BlindSpotKind, (n: number) => string> = {
   [BlindSpotKind.CLOSED_SHADOW_ROOT]: (n) => `${String(n)} closed shadow root${n === 1 ? '' : 's'}`,
-  [BlindSpotKind.CROSS_ORIGIN_IFRAME]: (n) => `${String(n)} cross-origin frame${n === 1 ? '' : 's'}`,
+  [BlindSpotKind.CROSS_ORIGIN_IFRAME]: (n) =>
+    `${String(n)} cross-origin frame${n === 1 ? '' : 's'}`,
   [BlindSpotKind.VIRTUALIZED_UNMOUNTED]: (n) =>
     `${String(n)} virtualized unmounted row${n === 1 ? '' : 's'}`,
   // Not a count of things — a single fact about the page. Phrased so the coverage line reads as a

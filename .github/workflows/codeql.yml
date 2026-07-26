@@ -10,7 +10,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: "27 4 * * 1" # Mondays, off the hour to avoid the load spike
+    - cron: '27 4 * * 1' # Mondays, off the hour to avoid the load spike
 
 permissions:
   contents: read

@@ -4,7 +4,11 @@ import { isCrossOriginFrame, countCrossOriginFrames } from './blind-spots.js';
 import type { Emit, Teardown } from './types.js';
 
 /** A minimal iframe stand-in — enough surface for the pure predicate. */
-function frame(src: string | null, contentDocument: unknown, throwOnAccess = false): HTMLIFrameElement {
+function frame(
+  src: string | null,
+  contentDocument: unknown,
+  throwOnAccess = false,
+): HTMLIFrameElement {
   return {
     getAttribute: (n: string) => (n === 'src' ? src : null),
     get contentDocument() {

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { asFlowName,
+import {
+  asFlowName,
   ActionType,
   AnchorKind,
   DEGRADED_ANCHOR_ROLE,

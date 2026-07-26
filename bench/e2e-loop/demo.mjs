@@ -60,7 +60,11 @@ try {
 
   // 3. The layer names what that edit put at risk — with no agent reasoning involved.
   const affected = cli(['affected', COVERED_FILE]);
-  record('affected names the at-risk flows', affected.out.includes('affected'), affected.out.trim().slice(0, 120));
+  record(
+    'affected names the at-risk flows',
+    affected.out.includes('affected'),
+    affected.out.trim().slice(0, 120),
+  );
 
   // 4. Verification goes RED on the change.
   const red = cli(['verify', APP_URL, '--timeout', '30000']);

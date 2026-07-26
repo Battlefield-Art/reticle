@@ -17,7 +17,7 @@ class FakeWebSocket {
   send(): void {}
   close(): void {
     this.readyState = 3;
-    this.onclose?.({ code: 1006, reason: "" });
+    this.onclose?.({ code: 1006, reason: '' });
   }
   open(): void {
     this.readyState = FakeWebSocket.OPEN;

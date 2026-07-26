@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { WebSocket } from 'ws';
-import { EventType, MessageKind, RETICLE_PROTOCOL_VERSION, type HelloMessage } from '@reticlehq/core';
+import {
+  EventType,
+  MessageKind,
+  RETICLE_PROTOCOL_VERSION,
+  type HelloMessage,
+} from '@reticlehq/core';
 import { Session } from './session.js';
 
 const hello = (): HelloMessage => ({

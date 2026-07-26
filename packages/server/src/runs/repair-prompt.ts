@@ -64,7 +64,8 @@ export function buildRepairPacket(replay: FlowReplayResult): RepairPacket | unde
   const baseActual = decision?.whatChanged ?? replay.error?.message ?? 'the flow failed';
   // Compose the deviation report's headline into the packet — it names the anomalous segment.
   const deviationNote = deviationHeadline(replay.deviation);
-  const actual = deviationNote === undefined ? baseActual : `${baseActual} — deviation: ${deviationNote}`;
+  const actual =
+    deviationNote === undefined ? baseActual : `${baseActual} — deviation: ${deviationNote}`;
   const where = decision?.whereInSource;
   const sourceLocation = parseSource(where);
   const step = failingStepNumber(replay.steps);

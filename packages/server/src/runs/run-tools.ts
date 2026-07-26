@@ -47,7 +47,8 @@ export const RUN_TOOLS: ToolDef[] = [
         const pair = await store.latestTwo();
         if (pair === undefined) {
           return {
-            error: 'need at least two verification runs to diff — produce another with the verify flow',
+            error:
+              'need at least two verification runs to diff — produce another with the verify flow',
             reason: RunReadError.MISSING,
           };
         }

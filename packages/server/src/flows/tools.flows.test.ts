@@ -142,7 +142,10 @@ describe('reticle_flow_save / reticle_flow_load handlers', () => {
     };
     expect(saved).toMatchObject({ name: 'checkout', stepCount: 1 });
 
-    const loaded = (await tool(ReticleTool.FLOW).handler(deps, { action: 'load', flowName: 'checkout' })) as {
+    const loaded = (await tool(ReticleTool.FLOW).handler(deps, {
+      action: 'load',
+      flowName: 'checkout',
+    })) as {
       flowName: string;
       steps: { anchor: { kind: string; value?: string } }[];
     };
@@ -151,7 +154,7 @@ describe('reticle_flow_save / reticle_flow_load handlers', () => {
 
     // FLOW_LIST returns {name, path} objects (matches its outputSchema — schema-validating MCP
     // clients reject bare strings).
-    const list = (await tool(ReticleTool.FLOW).handler(deps, { action: 'list',})) as {
+    const list = (await tool(ReticleTool.FLOW).handler(deps, { action: 'list' })) as {
       flows: { name: string; path: string }[];
     };
     expect(list.flows.map((f) => f.name)).toEqual(['checkout']);
@@ -172,7 +175,8 @@ describe('reticle_flow_save / reticle_flow_load handlers', () => {
     );
     const deps = fakeDeps(memoryFs(), recordings);
     await tool(ReticleTool.FLOW_SAVE).handler(deps, { flowName: 'withexpect' });
-    const loaded = (await tool(ReticleTool.FLOW).handler(deps, { action: 'load',
+    const loaded = (await tool(ReticleTool.FLOW).handler(deps, {
+      action: 'load',
       flowName: 'withexpect',
     })) as {
       steps: { expect?: { signal?: string } }[];

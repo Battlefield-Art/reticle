@@ -8,7 +8,16 @@ import { reportAndAccumulate } from './deviation-service.js';
 import type { SegmentRollup } from './rollups.js';
 
 function seg(route: string, durationMs: number): SegmentRollup {
-  return { route, from: 0, to: durationMs, durationMs, actions: 1, net: { total: 2, errors: 0 }, consoleErrors: 0, statePathsChanged: [] };
+  return {
+    route,
+    from: 0,
+    to: durationMs,
+    durationMs,
+    actions: 1,
+    net: { total: 2, errors: 0 },
+    consoleErrors: 0,
+    statePathsChanged: [],
+  };
 }
 
 describe('reportAndAccumulate — the push-default loop', () => {

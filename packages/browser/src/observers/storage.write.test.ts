@@ -28,7 +28,12 @@ describe('installStorage — storage write events', () => {
     localStorage.setItem('cart', '3-items');
     const changes = events.filter((e) => e.type === EventType.STORAGE_CHANGE);
     expect(changes).toHaveLength(2);
-    expect(changes[1]?.data).toMatchObject({ area: 'local', key: 'cart', old: '2-items', new: '3-items' });
+    expect(changes[1]?.data).toMatchObject({
+      area: 'local',
+      key: 'cart',
+      old: '2-items',
+      new: '3-items',
+    });
   });
 
   it('redacts the value of a credential-bearing key', () => {

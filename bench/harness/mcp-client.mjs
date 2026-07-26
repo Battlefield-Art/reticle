@@ -141,6 +141,8 @@ export class McpStdioClient {
 export const RETICLE_CLI = (() => {
   const p = path.join(REPO_ROOT, 'packages', 'server', 'dist', 'cli.js');
   if (!existsSync(p))
-    throw new Error(`reticle CLI not found at ${p} — run \`pnpm build\` first (or fix RETICLE_CLI if the CLI moved).`);
+    throw new Error(
+      `reticle CLI not found at ${p} — run \`pnpm build\` first (or fix RETICLE_CLI if the CLI moved).`,
+    );
   return p;
 })();

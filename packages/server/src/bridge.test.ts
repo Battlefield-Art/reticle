@@ -137,7 +137,10 @@ describe('bridge round-trip (north-star)', () => {
     await callTool(deps, 'reticle_record', { action: 'start', recordingName: 'flow' });
     browser.emit(EventType.NET_REQUEST, { method: 'GET', url: '/api/x', status: 200 });
     await waitUntil(() => bridge.sessions.resolve('demo').eventsSince(0).length >= 4);
-    const rec = (await callTool(deps, 'reticle_record', { action: 'stop', recordingName: 'flow' })) as {
+    const rec = (await callTool(deps, 'reticle_record', {
+      action: 'stop',
+      recordingName: 'flow',
+    })) as {
       summary: { network: number };
     };
     expect(rec.summary.network).toBeGreaterThanOrEqual(1);

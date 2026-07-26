@@ -339,7 +339,11 @@ describe('an invalid Date does not crash the whole state read', () => {
       also: 'here',
     };
     expect(() => sanitizeForTransport(state)).not.toThrow();
-    expect(sanitizeForTransport(state)).toEqual({ ok: 1, poison: '[UNSERIALIZABLE]', also: 'here' });
+    expect(sanitizeForTransport(state)).toEqual({
+      ok: 1,
+      poison: '[UNSERIALIZABLE]',
+      also: 'here',
+    });
   });
 
   it('reads each property getter exactly once (no double side effects)', () => {

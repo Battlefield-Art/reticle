@@ -8,10 +8,14 @@ function e(type: EventType, over: Partial<ReticleEvent> = {}): ReticleEvent {
   return { t: seq, seq, type, sessionId: 'demo', data: {}, ...over };
 }
 function route(pathname: string): ReticleEvent {
-  return e(EventType.ROUTE_CHANGE, { data: { from: '', to: pathname, pathname, search: '', hash: '' } });
+  return e(EventType.ROUTE_CHANGE, {
+    data: { from: '', to: pathname, pathname, search: '', hash: '' },
+  });
 }
 function net(status: number, ok: boolean): ReticleEvent {
-  return e(EventType.NET_REQUEST, { data: { id: 'r', method: 'GET', url: '/x', status, ok, durationMs: 1, initiator: 'fetch' } });
+  return e(EventType.NET_REQUEST, {
+    data: { id: 'r', method: 'GET', url: '/x', status, ok, durationMs: 1, initiator: 'fetch' },
+  });
 }
 
 describe('computeSegments', () => {

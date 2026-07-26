@@ -26,12 +26,18 @@ import { watch } from 'node:fs';
 import { log } from './log.js';
 /** Load the {name, steps} of every saved flow for the active project. */
 /** Explicit files plus, when --since is given, the git-changed files since that ref. */
-export async function resolveChangedFiles(files: string[], since: string | undefined): Promise<string[]> {
+export async function resolveChangedFiles(
+  files: string[],
+  since: string | undefined,
+): Promise<string[]> {
   if (since === undefined) return files;
   return [...new Set([...files, ...(await changedFilesSince(since, process.cwd()))])];
 }
 
-export async function loadNamedFlows(fs: FileSystemPort, reticleRoot: string): Promise<NamedFlow[]> {
+export async function loadNamedFlows(
+  fs: FileSystemPort,
+  reticleRoot: string,
+): Promise<NamedFlow[]> {
   const projectId = readProjectId(process.cwd());
   const store = new FlowStore(fs, reticleRoot, { now: () => Date.now() });
   const flows: NamedFlow[] = [];
@@ -64,7 +70,7 @@ async function emitBuddyStatus(
     );
     const quarantined = await new FlakeStore(fs, reticleRoot).flakyFlows();
     const flaky = new Set(quarantined);
- // A deviation is an at-risk flow with no passing artifact — and a quarantined flake is not a deviation.
+    // A deviation is an at-risk flow with no passing artifact — and a quarantined flake is not a deviation.
     const deviations = affected.filter((n) => !passingNames.has(n) && !flaky.has(n));
     log('reticle_buddy', {
       status: formatBuddyStatus({
@@ -75,7 +81,7 @@ async function emitBuddyStatus(
       }),
     });
   } catch {
- // never let the ambient line break the watcher
+    // never let the ambient line break the watcher
   }
 }
 
@@ -105,17 +111,20 @@ export function handleWatch(): void {
           await emitBuddyStatus(fs, reticleRoot, flows, result.affected);
         })
         .catch((error) => {
-          log('reticle_watch_failed', { error: error instanceof Error ? error.message : String(error) });
+          log('reticle_watch_failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
         });
     },
   });
   log('reticle_watch_started', { cwd: process.cwd() });
- // Print the ambient line once at startup so the human sees where they stand before touching anything.
+  // Print the ambient line once at startup so the human sees where they stand before touching anything.
   void loadNamedFlows(fs, reticleRoot)
     .then((flows) => emitBuddyStatus(fs, reticleRoot, flows, []))
     .catch(() => undefined);
   watch(process.cwd(), { recursive: true }, (_event, filename) => {
-    if (typeof filename === 'string' && WATCHED_EXTENSIONS.test(filename)) batcher.onChange(filename);
+    if (typeof filename === 'string' && WATCHED_EXTENSIONS.test(filename))
+      batcher.onChange(filename);
   });
 }
 
@@ -139,7 +148,9 @@ export async function handleCapsules(): Promise<void> {
       })),
     });
   } catch (error) {
-    log('reticle_capsules_failed', { error: error instanceof Error ? error.message : String(error) });
+    log('reticle_capsules_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     process.exitCode = 1;
   }
 }
@@ -161,10 +172,10 @@ export async function handleGate(files: string[], since: string | undefined): Pr
       .filter((f) => f.status === RunFlowStatus.PASS || f.status === RunFlowStatus.HEALED)
       .map((f) => f.name);
     const flaky = await new FlakeStore(fs, reticleRoot).flakyFlows();
- // Anti-reward-hacking: diff each flow's CURRENT assertions against what it asserted the last
- // time it passed. A mustHold that dropped from a real consequence to a fakeable presence check is a
- // green bought by weakening the test — and a flow that covered a changed file but no longer exists
- // is coverage deleted rather than satisfied. Both block.
+    // Anti-reward-hacking: diff each flow's CURRENT assertions against what it asserted the last
+    // time it passed. A mustHold that dropped from a real consequence to a fakeable presence check is a
+    // green bought by weakening the test — and a flow that covered a changed file but no longer exists
+    // is coverage deleted rather than satisfied. Both block.
     const baseline = await new AssertionTiersStore(fs, reticleRoot).load();
     const byName = new Map(allFlows.map((f) => [f.name, f]));
     const downgraded = Object.entries(baseline)
@@ -178,17 +189,17 @@ export async function handleGate(files: string[], since: string | undefined): Pr
         return { flow: name, steps: detectDowngrades(before.steps, after).map((d) => d.step) };
       })
       .filter((d) => d.steps.length > 0);
- // A flow with a recorded passing baseline that has since vanished, while its files changed.
- // A flow that PASSED covering these files and has since vanished is coverage DELETED, not satisfied —
- // and it can never appear in `affected` (that is derived from flows that still exist), so it must be
- // matched against the baseline's own recorded sources. Missing this made deleting a flow turn the
- // gate green, which is precisely the gaming move exists to stop.
+    // A flow with a recorded passing baseline that has since vanished, while its files changed.
+    // A flow that PASSED covering these files and has since vanished is coverage DELETED, not satisfied —
+    // and it can never appear in `affected` (that is derived from flows that still exist), so it must be
+    // matched against the baseline's own recorded sources. Missing this made deleting a flow turn the
+    // gate green, which is precisely the gaming move exists to stop.
     const changedSet = new Set(changed);
     const deleted = Object.entries(baseline)
       .filter(([name, entry]) => !byName.has(name) && entry.sources.some((f) => changedSet.has(f)))
       .map(([name]) => name);
     const result = gateDecision({ affected, passing, flaky, downgraded, deleted });
- // Verified-surface coverage over flows: how much of the saved suite this run actually exercised.
+    // Verified-surface coverage over flows: how much of the saved suite this run actually exercised.
     const coverage = computeCoverage(
       { testids: [], signals: [], flows: allFlows.map((f) => f.name) },
       { testids: [], signals: [], flows: passing },
@@ -199,7 +210,11 @@ export async function handleGate(files: string[], since: string | undefined): Pr
       quarantined: result.quarantined,
       ...(result.downgraded.length > 0 ? { downgraded: result.downgraded } : {}),
       ...(result.deleted.length > 0 ? { deletedCoverage: result.deleted } : {}),
-      coverage: { pct: coverage.flows.pct, covered: coverage.flows.covered, total: coverage.flows.total },
+      coverage: {
+        pct: coverage.flows.pct,
+        covered: coverage.flows.covered,
+        total: coverage.flows.total,
+      },
     });
     if (!result.pass) process.exitCode = 1;
   } catch (error) {

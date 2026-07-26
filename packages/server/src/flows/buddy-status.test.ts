@@ -33,7 +33,12 @@ describe('formatBuddyStatus (buddy channel)', () => {
   });
 
   it('surfaces flaky quarantine without letting it read as a failure', () => {
-    const clean = formatBuddyStatus({ total: 41, passing: 41, deviations: [], quarantined: ['x', 'y'] });
+    const clean = formatBuddyStatus({
+      total: 41,
+      passing: 41,
+      deviations: [],
+      quarantined: ['x', 'y'],
+    });
     expect(clean.startsWith('✓')).toBe(true); // quarantined flakes do not turn the line red
     expect(clean).toContain('2 flaky quarantined');
   });

@@ -54,7 +54,8 @@ const LIMIT = limitArg === -1 ? BUGS.length : Number(process.argv[limitArg + 1])
  * something other than what it claims.
  */
 const NO_SOURCE = process.argv.includes('--nosource');
-const withCondition = (url) => (NO_SOURCE ? `${url}${url.includes('?') ? '&' : '/?'}nosource=1` : url);
+const withCondition = (url) =>
+  NO_SOURCE ? `${url}${url.includes('?') ? '&' : '/?'}nosource=1` : url;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const parseText = (t) => {
@@ -77,8 +78,7 @@ const sameRun = (a, b) => {
 };
 
 /** The file a source string names, dropping the `:line` suffix. */
-const fileOf = (source) =>
-  typeof source === 'string' ? source.replace(/:\d+$/, '') : undefined;
+const fileOf = (source) => (typeof source === 'string' ? source.replace(/:\d+$/, '') : undefined);
 
 /**
  * Ground-truth files are repo-relative (`apps/bench-app/src/...`); the stamp is relative to the app's
@@ -234,10 +234,18 @@ async function main() {
     JSON.stringify({ summary, rows }, null, 2),
   );
 
-  console.log(`\n=== Source-pointer coverage (Reticle${NO_SOURCE ? ', STAMPS STRIPPED — control' : ''}) ===\n`);
-  console.log(`scorable bugs        ${String(summary.scorable)} / ${String(summary.bugsAttempted)}`);
-  console.log(`carries a source     ${String(summary.sourcePresent)}  (${String(summary.coveragePct)}%)`);
-  console.log(`names the right file ${String(summary.sourceCorrect)}  (${String(summary.accuracyPct)}% of those present)`);
+  console.log(
+    `\n=== Source-pointer coverage (Reticle${NO_SOURCE ? ', STAMPS STRIPPED — control' : ''}) ===\n`,
+  );
+  console.log(
+    `scorable bugs        ${String(summary.scorable)} / ${String(summary.bugsAttempted)}`,
+  );
+  console.log(
+    `carries a source     ${String(summary.sourcePresent)}  (${String(summary.coveragePct)}%)`,
+  );
+  console.log(
+    `names the right file ${String(summary.sourceCorrect)}  (${String(summary.accuracyPct)}% of those present)`,
+  );
   console.log(
     `excluded             noAnchor=${String(summary.excluded.noAnchor)} ` +
       `notFound=${String(summary.excluded.elementNotFound)} error=${String(summary.excluded.error)}`,
@@ -246,7 +254,9 @@ async function main() {
   if (wrong.length > 0) {
     console.log('\nreported a source that does not match ground truth:');
     for (const r of wrong.slice(0, 15)) {
-      console.log(`  ${r.bug}: got ${String(r.reported)}, expected one of ${r.truthFiles.join(', ')}`);
+      console.log(
+        `  ${r.bug}: got ${String(r.reported)}, expected one of ${r.truthFiles.join(', ')}`,
+      );
     }
   }
   console.log(`\nwritten to bench/raw/${NO_SOURCE ? 'diagnosis-nosource.json' : 'diagnosis.json'}`);

@@ -23,7 +23,10 @@ function hello(): HelloMessage {
 }
 
 const noopSocket = { send: () => undefined, close: () => undefined } as unknown as WebSocket;
-const noopSink: JournalSink = { appendEvents: () => Promise.resolve(), appendAction: () => Promise.resolve() };
+const noopSink: JournalSink = {
+  appendEvents: () => Promise.resolve(),
+  appendAction: () => Promise.resolve(),
+};
 
 function evt(seq: number): ReticleEvent {
   return { t: seq, seq, type: EventType.DOM_ADDED, sessionId: 'demo', data: {} };
@@ -67,7 +70,10 @@ describe('Session.queryEvents', () => {
   it('filters by actionId against the merged set', async () => {
     const reader: JournalReader = {
       readEvents: () =>
-        Promise.resolve([{ ...evt(0), actionId: 'a1' }, { ...evt(1), actionId: 'a2' }]),
+        Promise.resolve([
+          { ...evt(0), actionId: 'a1' },
+          { ...evt(1), actionId: 'a2' },
+        ]),
     };
     const session = newSession(reader);
     for (let i = 0; i <= RING_BUFFER_DEFAULTS.MAX_EVENTS; i += 1) session.pushEvent(evt(i + 10));

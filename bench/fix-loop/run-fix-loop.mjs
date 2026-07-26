@@ -53,7 +53,12 @@ export async function runAblation(fixAgent, bugs = listRegressions()) {
       toolCalls: rows.reduce((s, c) => s + c.toolCalls, 0),
     };
   }
-  return { cells, summary, checkableBugs: checkable.length, skipped: bugs.length - checkable.length };
+  return {
+    cells,
+    summary,
+    checkableBugs: checkable.length,
+    skipped: bugs.length - checkable.length,
+  };
 }
 
 // ── Runnable self-check: no agent, no API budget. Proves the deterministic scaffolding is sound. ──

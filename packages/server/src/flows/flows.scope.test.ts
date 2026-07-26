@@ -68,7 +68,10 @@ describe('FlowStore — per-project storage (shared-daemon isolation)', () => {
     await store.saveFlow(flow('a-only'), 'app-a');
     await store.saveFlow(flow('b-only'), 'app-b');
     await mkdir(reticleDirPaths(root).flows, { recursive: true });
-    await writeFile(flowPath(root, asFlowName('shared-legacy')), `${JSON.stringify(flow('shared-legacy'))}\n`);
+    await writeFile(
+      flowPath(root, asFlowName('shared-legacy')),
+      `${JSON.stringify(flow('shared-legacy'))}\n`,
+    );
     expect(await store.list('app-a')).toEqual(['a-only', 'shared-legacy']);
     expect(await store.list('app-b')).toEqual(['b-only', 'shared-legacy']);
   });
@@ -77,7 +80,10 @@ describe('FlowStore — per-project storage (shared-daemon isolation)', () => {
     await store.saveFlow(flow('a-only'), 'app-a');
     await store.saveFlow(flow('b-only'), 'app-b');
     await mkdir(reticleDirPaths(root).flows, { recursive: true });
-    await writeFile(flowPath(root, asFlowName('flat-one')), `${JSON.stringify(flow('flat-one'))}\n`);
+    await writeFile(
+      flowPath(root, asFlowName('flat-one')),
+      `${JSON.stringify(flow('flat-one'))}\n`,
+    );
     expect(await store.list()).toEqual(['a-only', 'b-only', 'flat-one']);
   });
 

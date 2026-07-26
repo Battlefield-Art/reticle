@@ -112,18 +112,27 @@ try {
     comparable: s.ok === p.ok && s.ok === FLOWS,
   };
   mkdirSync(join(HERE, '..', 'raw'), { recursive: true });
-  writeFileSync(join(HERE, '..', 'raw', 'cross-tool-parallel.json'), JSON.stringify(result, null, 2));
+  writeFileSync(
+    join(HERE, '..', 'raw', 'cross-tool-parallel.json'),
+    JSON.stringify(result, null, 2),
+  );
 
-  console.log(`\n=== Playwright: serial vs parallel (${FLOWS} journeys, width ${PARALLELISM}) ===\n`);
+  console.log(
+    `\n=== Playwright: serial vs parallel (${FLOWS} journeys, width ${PARALLELISM}) ===\n`,
+  );
   console.log(`serial    ${s.ms} ms  (${s.ok}/${s.count} journeys completed)`);
   console.log(`parallel  ${p.ms} ms  (${p.ok}/${p.count} journeys completed)`);
   console.log(`speedup   ${speedup.toFixed(2)}x`);
   if (!result.comparable) {
     console.log('\nNOT COMPARABLE: the two modes completed different numbers of journeys.');
-    console.log('A speedup over fewer completions is not a speedup. Fix the fixture before quoting this.');
+    console.log(
+      'A speedup over fewer completions is not a speedup. Fix the fixture before quoting this.',
+    );
     process.exitCode = 1;
   }
-  console.log('\nCompare against bench/parallel-suite/measure.mjs (Reticle serial vs leased-parallel).');
+  console.log(
+    '\nCompare against bench/parallel-suite/measure.mjs (Reticle serial vs leased-parallel).',
+  );
   console.log('Both use one browser and N isolated contexts, so the mechanism is like-for-like.');
 } finally {
   await browser.close();

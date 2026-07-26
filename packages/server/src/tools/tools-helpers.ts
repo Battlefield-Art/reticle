@@ -36,7 +36,9 @@ export function asRecord(value: unknown): Record<string, unknown> {
  * rather than cast: it crosses the wire, and a half-formed location rendered as "undefined:NaN" is
  * worse than no location at all — it looks like an answer.
  */
-export function sourceOf(value: unknown): { file: string; line: number; column?: number } | undefined {
+export function sourceOf(
+  value: unknown,
+): { file: string; line: number; column?: number } | undefined {
   if (value === null || typeof value !== 'object') return undefined;
   const record = value as Record<string, unknown>;
   const file = record['file'];

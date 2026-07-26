@@ -8,7 +8,13 @@ import {
   type CommandResult,
   type ReticleEvent,
 } from '@reticlehq/core';
-import { parseInteractive, asRecord, asNumber, asString, sourceOf } from '../tools/tools-helpers.js';
+import {
+  parseInteractive,
+  asRecord,
+  asNumber,
+  asString,
+  sourceOf,
+} from '../tools/tools-helpers.js';
 import { ReticleTool } from '../tools/tool-names.js';
 
 /** The slice of Session the crawler needs — so tests inject a fake without a live browser. */

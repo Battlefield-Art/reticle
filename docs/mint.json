@@ -27,10 +27,7 @@
   "navigation": [
     {
       "group": "Get started",
-      "pages": [
-        "getting-started",
-        "local-registry"
-      ]
+      "pages": ["getting-started", "local-registry"]
     },
     {
       "group": "Integrate",
@@ -46,24 +43,15 @@
     },
     {
       "group": "Concepts",
-      "pages": [
-        "architecture",
-        "benchmarks",
-        "token-efficiency"
-      ]
+      "pages": ["architecture", "benchmarks", "token-efficiency"]
     },
     {
       "group": "Reference",
-      "pages": [
-        "usage",
-        "agent-cheatsheet"
-      ]
+      "pages": ["usage", "agent-cheatsheet"]
     },
     {
       "group": "Enterprise",
-      "pages": [
-        "enterprise"
-      ]
+      "pages": ["enterprise"]
     }
   ],
   "footerSocials": {

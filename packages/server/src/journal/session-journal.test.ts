@@ -132,13 +132,17 @@ describe('SessionJournal — durable JSONL over a temp dir', () => {
     let fileText = '';
     const controllable: FileSystemPort = {
       ...fs,
-      readFile: (path) => (path.endsWith('events.jsonl') ? Promise.resolve(fileText) : fs.readFile(path)),
+      readFile: (path) =>
+        path.endsWith('events.jsonl') ? Promise.resolve(fileText) : fs.readFile(path),
       // Serve the bounded read (the production fast path) from the same in-memory content. Events here
       // are ASCII, so a char offset equals a byte offset.
       readFileFrom: (path, byteOffset) => {
         if (!path.endsWith('events.jsonl')) return Promise.resolve({ text: '', size: 0 });
         const size = Buffer.byteLength(fileText, 'utf8');
-        const text = byteOffset >= size ? '' : Buffer.from(fileText, 'utf8').subarray(byteOffset).toString('utf8');
+        const text =
+          byteOffset >= size
+            ? ''
+            : Buffer.from(fileText, 'utf8').subarray(byteOffset).toString('utf8');
         return Promise.resolve({ text, size });
       },
       appendFile: (path, data) => {

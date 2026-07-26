@@ -61,13 +61,23 @@ const TEST_BLOCKS = new Set(['describe', 'it', 'test', 'suite', 'bench']);
  */
 const ALLOWED = new Set([
   'M2', // Welford's streaming-variance accumulator
-  'H1', 'H2', 'H3', // heading levels
-  'P1', 'P2', 'P3', // priority labels
-  'S3', 'EC2', // AWS services
-  'ES5', 'ES6', // ECMAScript editions
+  'H1',
+  'H2',
+  'H3', // heading levels
+  'P1',
+  'P2',
+  'P3', // priority labels
+  'S3',
+  'EC2', // AWS services
+  'ES5',
+  'ES6', // ECMAScript editions
   'IE11', // browser
-  'Q1', 'Q2', 'Q3', 'Q4', // quarters
-  'L1', 'L2', // cache levels
+  'Q1',
+  'Q2',
+  'Q3',
+  'Q4', // quarters
+  'L1',
+  'L2', // cache levels
 ]);
 
 export const noInternalTags = createRule({

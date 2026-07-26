@@ -5,7 +5,8 @@ describe('prefixTrim', () => {
   it('drops leading setup steps, keeping the minimal failing suffix', async () => {
     const steps = ['login', 'browse', 'addToCart', 'submit'];
     // The bug reproduces as long as `submit` is still in the flow.
-    const stillFails = (c: readonly string[]): Promise<boolean> => Promise.resolve(c.includes('submit'));
+    const stillFails = (c: readonly string[]): Promise<boolean> =>
+      Promise.resolve(c.includes('submit'));
     expect(await prefixTrim(steps, stillFails)).toEqual(['submit']);
   });
 

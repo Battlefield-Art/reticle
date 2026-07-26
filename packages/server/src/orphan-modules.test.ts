@@ -70,7 +70,7 @@ describe('no undeclared orphan modules', () => {
   it('every declared entry is still an orphan — a wired one must be removed from the list', () => {
     const stale: string[] = [];
     for (const declared of Object.keys(DECLARED_UNWIRED)) {
-      const specifier = `${(declared.replace(/\.ts$/, '').split('/').pop() ?? '')}.js`;
+      const specifier = `${declared.replace(/\.ts$/, '').split('/').pop() ?? ''}.js`;
       const imported = corpus.some(
         (c) => c.path !== declared && !c.path.endsWith('.test.ts') && c.text.includes(specifier),
       );

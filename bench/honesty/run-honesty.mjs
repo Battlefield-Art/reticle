@@ -78,7 +78,10 @@ function run() {
 
   // Gate demo: a CI harness requiring "grade >= net AND integrity clean". v2.1.0 can't gate (no block).
   const gateSample = HONESTY_SCENARIOS.find((s) => s.name === 'presence-only-green');
-  const gate = meetsHonestyBar(v22Honesty(gateSample), { minGrade: 'net', requireIntegrityClean: true });
+  const gate = meetsHonestyBar(v22Honesty(gateSample), {
+    minGrade: 'net',
+    requireIntegrityClean: true,
+  });
 
   return {
     rows,

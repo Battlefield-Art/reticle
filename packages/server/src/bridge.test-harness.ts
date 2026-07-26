@@ -112,7 +112,7 @@ export class FakeBrowser {
           ref: s['ref'],
           action: s['action'],
           ...(this.actHasTestid ? { testid: 'pay-btn' } : {}),
-        ...(this.actSource === undefined ? {} : { source: this.actSource }),
+          ...(this.actSource === undefined ? {} : { source: this.actSource }),
         })),
       };
     } else if (name === ReticleCommand.QUERY) {

@@ -72,5 +72,7 @@ if (flipped.length === 0 && onlyIn.length === 0) {
 }
 // A flip is not necessarily a regression — the harness may have been fixed between runs — but it must
 // be explained rather than averaged away.
-console.log('\nNOT byte-identical: each flip above needs an explanation before the numbers are quoted.');
+console.log(
+  '\nNOT byte-identical: each flip above needs an explanation before the numbers are quoted.',
+);
 process.exit(1);

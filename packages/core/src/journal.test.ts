@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { JOURNAL_FILE_VERSION, JournalActionSchema } from './journal.js';
 
 function action(): Record<string, unknown> {
-  return { v: JOURNAL_FILE_VERSION, actionId: 'c3', tool: 'reticle_act', tRange: { from: 10, to: 42 }, at: 10 };
+  return {
+    v: JOURNAL_FILE_VERSION,
+    actionId: 'c3',
+    tool: 'reticle_act',
+    tRange: { from: 10, to: 42 },
+    at: 10,
+  };
 }
 
 describe('JournalActionSchema', () => {

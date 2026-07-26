@@ -40,13 +40,17 @@ describe('ReticleEventSchema causal spine', () => {
 
   it('rejects an oversized actionId', () => {
     expect(
-      ReticleEventSchema.safeParse({ ...event(), actionId: 'a'.repeat(TRANSPORT_LIMITS.MAX_REF_LENGTH + 1) })
-        .success,
+      ReticleEventSchema.safeParse({
+        ...event(),
+        actionId: 'a'.repeat(TRANSPORT_LIMITS.MAX_REF_LENGTH + 1),
+      }).success,
     ).toBe(false);
   });
 
   it('rejects an unknown attribution label', () => {
-    expect(ReticleEventSchema.safeParse({ ...event(), attribution: 'guessed' }).success).toBe(false);
+    expect(ReticleEventSchema.safeParse({ ...event(), attribution: 'guessed' }).success).toBe(
+      false,
+    );
   });
 });
 
