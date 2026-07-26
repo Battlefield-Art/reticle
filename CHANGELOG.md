@@ -4,7 +4,15 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
-A verifier-honesty and hardening pass: the layer stops trusting evidence it doesn't have (a batch of false-green fixes), the enterprise gate and credential redaction are tightened, several hot paths get faster on long sessions and big DOMs, and the published packages are brought to OSS-library standard (licensing, packaging, CI security). No breaking changes — schema additions stay back-compatible and on-disk flow files remain version 1.
+## [2.2.0] — 2026-07-26
+
+The causal-evidence release: every verdict now carries *why*, verification becomes part of "done", and the layer stops trusting evidence it doesn't have. Faster on long sessions and big DOMs, and the published packages are brought to OSS-library standard (licensing, packaging, CI security). No breaking changes — schema additions stay back-compatible and on-disk flow files remain version 1.
+
+### Added
+
+- **`reticle init` writes a verification rule into your coding agent's instruction file** (`CLAUDE.md` / `.cursor/rules/reticle.mdc` with `alwaysApply` / `AGENTS.md`), so the agent verifies a feature with Reticle _after building it_ — not only when you remember to ask. Idempotent and rides with the MCP registration. (`@reticlehq/server`)
+- **Causal evidence on results:** a bounded causal summary on `reticle_act_and_wait` (net/console/state/storage/route/signals + settle time), a first-divergence capsule on a red result (the attributed chain effect→handlers→requests→state→DOM, with `file:line`), and a ranked deviation report as the default output after a replay. Blind-spot/coverage lines make partial visibility explicit rather than silent. (`@reticlehq/server`, `@reticlehq/browser`)
+- **The verify loop:** `reticle affected <files>` maps changed files to the flows that cover them; `reticle gate` exits non-zero unless passing artifacts cover the affected, non-flaky flows — with anti-reward-hacking (a downgraded or deleted assertion on a changed file is a finding, not a silent pass); `reticle watch` reports affected flows on save. (`@reticlehq/server`)
 
 ### Security
 
@@ -17,6 +25,7 @@ A verifier-honesty and hardening pass: the layer stops trusting evidence it does
 - **A run of false greens in the verifier's own trust plumbing** — the class the product exists to prevent. An `anyOf` predicate that greened via its presence branch no longer grades its honesty block as `signal`/`net` (a `minGrade` gate could have trusted a green that proved only presence); a flow's per-step signal can no longer be satisfied by an EARLIER flow's signal in a back-to-back suite; and six fields the handlers returned (`warning` on a throttled tab, the human-pause `guidance`, the RED `file:line` `source`, `window_ms`, a flow's `name`, capability `governance`) are no longer silently dropped by validating tool profiles. (`@reticlehq/server`)
 - **Serialization / state-selection correctness:** an invalid `Date` in app state no longer crashes the whole state read (degrades to null); a truncated string or dropped object key is now reported instead of read as complete; a typed array serializes to an array, not an index-keyed object; `selectPath` no longer resolves prototype keys (`constructor`/`__proto__`) or non-canonical indices (`items.01`), and bounds its near-miss key list; `matchValue({})` no longer matches everything; and `settled`'s in-flight count is correct when a request id is reused. (`@reticlehq/browser`, `@reticlehq/core`, `@reticlehq/server`)
 - **The ring buffer keeps a single event larger than its whole byte budget** instead of pushing then immediately self-evicting it (a waiter could never see it). (`@reticlehq/server`)
+- **A second hardening pass closed more false-green and data-loss edges:** a scoped query/snapshot/assert whose scope has unmounted no longer silently widens to the whole page (a `scopeMissing` signal keeps "scope gone" distinct from "element absent", and an absence check is satisfied when the scope itself is the thing that vanished); the durable journal no longer drops an event when a read observes an in-flight append mid-line; parallel `reticle_flow_verify` no longer loses run-history or anti-gaming-baseline writes to a concurrent overwrite; the annotator's own "flag a bug" overlay no longer leaks into snapshots or the DOM/animation event streams; and the browser SDK's transport can no longer throw into the host app's bootstrap (mixed-content `WebSocket`) or reconnect-storm on a terminal `1008` close. (`@reticlehq/browser`, `@reticlehq/server`, `@reticlehq/core`)
 
 ### Changed
 
