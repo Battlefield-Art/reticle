@@ -56,6 +56,7 @@ npx @reticlehq/server init
 It detects your framework, package manager, and React version, then:
 
 - **registers the Reticle MCP server once, globally, for each agent you have installed** — Claude Code (`claude mcp add reticle -s user`) and/or Cursor (`~/.cursor/mcp.json`) — so every project on this machine gets it; you never re-add it per project,
+- **writes a verification rule into your agent's instruction file** — `CLAUDE.md`, `.cursor/rules/reticle.mdc`, or `AGENTS.md` — so the agent knows to verify a feature with Reticle _after building it_, not only when you remember to ask (idempotent; appended below anything you already have),
 - installs the SDK kit (`@reticlehq/react`) and the right build plugin (`@reticlehq/vite-plugin` or `@reticlehq/next`) as dev dependencies,
 - **Vite:** adds the `reticle()` plugin to your config — which wires source mapping _and_ `reticle.connect()` for you, so there is nothing else to edit,
 - **Next / other:** creates the dev component and prints the exact `withReticle` / mount / connect snippets to paste (it never half-edits a build config).

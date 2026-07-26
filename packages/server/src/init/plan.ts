@@ -7,6 +7,14 @@
 import { Framework, installCommand, installCommandParts, type Detection } from './detect.js';
 import { claudeAddCommand, mcpManual } from './mcp.js';
 import { mergeCursorConfig, CursorMergeStatus, cursorServerEntry } from './cursor.js';
+import {
+  mergeMarkedInstruction,
+  cursorRuleFile,
+  AgentRuleStatus,
+  CLAUDE_MD_PATH,
+  AGENTS_MD_PATH,
+  CURSOR_RULE_PATH,
+} from './agent-rules.js';
 import { patchViteConfig, VitePatchKind } from './vite-config.js';
 import {
   viteManual,
@@ -92,6 +100,12 @@ export interface PlanInput {
   svelteKitHooksExists?: boolean;
   /** Whether .reticle.json already exists in the project root (idempotency). */
   reticleConfigExists?: boolean;
+  /** Current project-root CLAUDE.md content (for the idempotent agent-rule merge), or null/undefined. */
+  claudeMdContent?: string | null | undefined;
+  /** Current project-root AGENTS.md content (cross-agent fallback rule), or null/undefined. */
+  agentsMdContent?: string | null | undefined;
+  /** Whether .cursor/rules/reticle.mdc already exists (agent-rule idempotency). */
+  cursorRuleExists?: boolean | undefined;
   options: {
     port: number | undefined;
     mcp: boolean;
@@ -174,6 +188,78 @@ function mcpSteps(input: PlanInput): Step[] {
       status: StepStatus.MANUAL,
       detail: mcpManual(),
     },
+  ];
+}
+
+const AGENT_RULE_TITLE = 'Agent verification rule';
+const AGENT_RULE_DETAIL = 'teach the agent to verify features with Reticle after building them';
+
+function claudeRuleStep(input: PlanInput): Step | null {
+  if (!input.claudeCli) return null;
+  const r = mergeMarkedInstruction(input.claudeMdContent);
+  if (r.status === AgentRuleStatus.ALREADY) {
+    return {
+      title: AGENT_RULE_TITLE,
+      target: CLAUDE_MD_PATH,
+      status: StepStatus.ALREADY,
+      detail: 'Reticle rule already in CLAUDE.md',
+    };
+  }
+  return {
+    title: AGENT_RULE_TITLE,
+    target: CLAUDE_MD_PATH,
+    status: StepStatus.APPLY,
+    detail: AGENT_RULE_DETAIL,
+    write: { path: CLAUDE_MD_PATH, content: r.content },
+  };
+}
+
+function cursorRuleStep(input: PlanInput): Step | null {
+  if (!input.cursorPresent) return null;
+  if (input.cursorRuleExists === true) {
+    return {
+      title: AGENT_RULE_TITLE,
+      target: CURSOR_RULE_PATH,
+      status: StepStatus.ALREADY,
+      detail: 'Reticle rule already in .cursor/rules',
+    };
+  }
+  return {
+    title: AGENT_RULE_TITLE,
+    target: CURSOR_RULE_PATH,
+    status: StepStatus.APPLY,
+    detail: AGENT_RULE_DETAIL,
+    write: { path: CURSOR_RULE_PATH, content: cursorRuleFile() },
+  };
+}
+
+/**
+ * The behavioral rule that makes the agent actually USE Reticle. Written into the detected agent's
+ * instruction file (Claude / Cursor, or both), falling back to the cross-agent AGENTS.md when neither
+ * is detected. Rides with the MCP wiring — `--no-mcp` opts out of registering the tools AND the rule.
+ */
+function agentRuleSteps(input: PlanInput): Step[] {
+  if (!input.options.mcp) return [];
+  const detected = [claudeRuleStep(input), cursorRuleStep(input)].filter(
+    (s): s is Step => s !== null,
+  );
+  if (detected.length > 0) return detected;
+  const r = mergeMarkedInstruction(input.agentsMdContent);
+  return [
+    r.status === AgentRuleStatus.ALREADY
+      ? {
+          title: AGENT_RULE_TITLE,
+          target: AGENTS_MD_PATH,
+          status: StepStatus.ALREADY,
+          detail: 'Reticle rule already in AGENTS.md',
+        }
+      : {
+          title: AGENT_RULE_TITLE,
+          target: AGENTS_MD_PATH,
+          status: StepStatus.APPLY,
+          detail: AGENT_RULE_DETAIL,
+          write: { path: AGENTS_MD_PATH, content: r.content },
+        },
   ];
 }
 
@@ -331,7 +417,12 @@ function reticleConfigStep(input: PlanInput): Step {
 }
 
 export function buildPlan(input: PlanInput): Plan {
-  const steps: Step[] = [...mcpSteps(input), installStep(input), reticleConfigStep(input)];
+  const steps: Step[] = [
+    ...mcpSteps(input),
+    ...agentRuleSteps(input),
+    installStep(input),
+    reticleConfigStep(input),
+  ];
   if (input.detection.framework === Framework.VITE) {
     steps.push(...viteSteps(input));
   } else if (input.detection.framework === Framework.NEXT) {

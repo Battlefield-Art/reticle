@@ -148,6 +148,10 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     nextReticleDevExists: io.exists(NEXT_RETICLE_DEV),
     svelteKitHooksExists: io.exists(SVELTEKIT_HOOKS),
     reticleConfigExists: io.exists('.reticle.json'),
+    // Read the agent instruction files so the rule merge stays idempotent across re-runs.
+    claudeMdContent: io.readFile('CLAUDE.md'),
+    agentsMdContent: io.readFile('AGENTS.md'),
+    cursorRuleExists: io.exists('.cursor/rules/reticle.mdc'),
     options: { port: options.port, mcp: options.mcp, install: options.install, projectId },
   };
 }
