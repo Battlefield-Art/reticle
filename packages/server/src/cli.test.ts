@@ -347,7 +347,12 @@ describe('parseCliArgs', () => {
   });
 
   it('mcp returns mcp result on default port', () => {
-    expect(parseCliArgs(['mcp'], PORT)).toEqual({ kind: 'mcp', port: PORT, headless: true });
+    expect(parseCliArgs(['mcp'], PORT)).toEqual({
+      kind: 'mcp',
+      port: PORT,
+      headless: true,
+      http: false,
+    });
   });
 
   it('mcp --port overrides the port', () => {
@@ -355,6 +360,7 @@ describe('parseCliArgs', () => {
       kind: 'mcp',
       port: 5000,
       headless: true,
+      http: false,
     });
   });
 
@@ -364,6 +370,7 @@ describe('parseCliArgs', () => {
       port: PORT,
       driveUrl: 'http://localhost:3000',
       headless: true,
+      http: false,
     });
   });
 
@@ -373,6 +380,20 @@ describe('parseCliArgs', () => {
       port: PORT,
       driveUrl: 'http://localhost:3000',
       headless: false,
+      http: false,
+    });
+  });
+
+  it('mcp --http forwards the HTTP-verify flags (previously dropped)', () => {
+    expect(
+      parseCliArgs(['mcp', '--http', '--http-port', '9100', '--http-token', 't'], PORT),
+    ).toEqual({
+      kind: 'mcp',
+      port: PORT,
+      headless: true,
+      http: true,
+      httpPort: 9100,
+      httpToken: 't',
     });
   });
 

@@ -3,6 +3,7 @@ import { ProjectReadError, RunKind, RunStatus, type RunRecord } from '@reticlehq
 import { ReticleTool } from '../tools/tool-names.js';
 import { sessionIdShape } from '../tools/tool-kit.js';
 import { asString } from '../tools/tools-helpers.js';
+import { fetchProjectRegressionFromCloud, resolveCloudConfig } from '../cloud/cloud-sync.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 import { RunStore } from '../runs/run-store.js';
 import {
@@ -48,6 +49,26 @@ function numericDelta(before: number | undefined, after: number | undefined): nu
   return (after ?? 0) - (before ?? 0);
 }
 
+/**
+ * Pull the team's server-side regression memory when logged in. This is what keeps a context-lost or
+ * brand-new agent (whose local project.json may be empty) oriented: the same reticle_project call folds in
+ * "what's broken vs before" from the cloud. Absent creds / unreachable → undefined (agent stays local).
+ */
+async function cloudRegression(deps: ToolDeps, sessionId: string | undefined): Promise<unknown> {
+  const config = resolveCloudConfig(process.env);
+  if (config === null) return undefined;
+  let projectId: string | undefined;
+  try {
+    projectId = deps.sessions.resolve(sessionId).projectId;
+  } catch {
+    projectId = undefined;
+  }
+  const report = await fetchProjectRegressionFromCloud(config, projectId, (url, init) =>
+    fetch(url, init),
+  );
+  return report ?? undefined;
+}
+
 /** The two most-recent runs for `name`, oldest-first, or undefined if there are fewer than two. */
 function lastTwoFor(runs: RunRecord[], name: string): [RunRecord, RunRecord] | undefined {
   const matching = runs.filter((r) => r.name === name);
@@ -83,7 +104,7 @@ export const PROJECT_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.PROJECT,
     description:
-      'Read cross-run history from .reticle/project.json — the memory of how past runs behaved. With { name } it also returns the last run for that flow plus a diff-vs-last summary (status change, regressed flag, consoleErrors/driftSteps deltas) so you can answer "did it behave like last time?". Returns { runs, learned?, lastRun?, diff?, runDiff? } — `diff` is the lightweight status/console/drift delta vs the previous run of that NAME; `runDiff` is the per-flow duration/status delta between the two most-recent full verification artifacts ("step 3: 412ms -> 987ms (+140%), +2 requests"). Or { error, reason } when no/invalid history exists.',
+      'Read cross-run history from .reticle/project.json — the memory of how past runs behaved. With { name } it also returns the last run for that flow plus a diff-vs-last summary (status change, regressed flag, consoleErrors/driftSteps deltas) so you can answer "did it behave like last time?". `diff` is the lightweight status/console/drift delta vs the previous run of that NAME; `runDiff` is the per-flow duration/status delta between the two most-recent full verification artifacts ("step 3: 412ms -> 987ms (+140%), +2 requests"). When logged in to Reticle Cloud, also returns `cloud`: the team\'s server-side regression report (broken/changed flows vs before) — the durable memory a fresh or context-lost agent can rely on even when local history is empty. Returns { runs, learned?, lastRun?, diff?, runDiff?, cloud? } or { error, reason, cloud? }.',
     inputSchema: {
       name: z.string().optional().describe('Filter runs by this name. Omit to return all runs.'),
       ...sessionIdShape,
@@ -92,21 +113,25 @@ export const PROJECT_TOOLS: ToolDef[] = [
       runs: z.array(z.unknown()),
       diff: z.unknown().optional(),
       runDiff: z.unknown().optional(),
+      cloud: z.unknown().optional(),
     },
     handler: async (deps: ToolDeps, args) => {
+      const cloud = await cloudRegression(deps, asString(args['sessionId']));
+      const withCloud = <T extends object>(obj: T): T =>
+        cloud === undefined ? obj : { ...obj, cloud };
       const read = await deps.project.read();
       if (!read.ok) {
-        return {
+        return withCloud({
           error:
             read.reason === ProjectReadError.MISSING
               ? 'no .reticle/project.json yet — run a flow (reticle_flow_replay) or reticle_run_record first'
               : '.reticle/project.json is malformed — it will self-heal on the next recorded run',
           reason: read.reason,
-        };
+        });
       }
       const name = asString(args['name']);
       if (name === undefined) {
-        return { runs: read.file.runs, learned: read.file.learned };
+        return withCloud({ runs: read.file.runs, learned: read.file.learned });
       }
       const lastRun = await deps.project.lastRun(name);
       const pair = lastTwoFor(read.file.runs, name);
@@ -116,13 +141,13 @@ export const PROJECT_TOOLS: ToolDef[] = [
       // last time?" from project.json, while `runDiff` answers "what changed between the last two full
       // verification runs?" from .reticle/runs. Best-effort: no artifacts simply means no runDiff.
       const runDiff = await lastTwoRunArtifacts(deps);
-      return {
+      return withCloud({
         runs: read.file.runs.filter((r) => r.name === name),
         learned: read.file.learned,
         lastRun,
         ...(pair !== undefined ? { diff: diffRuns(pair[0], pair[1]) } : {}),
         ...(runDiff === undefined ? {} : { runDiff }),
-      };
+      });
     },
   },
   {

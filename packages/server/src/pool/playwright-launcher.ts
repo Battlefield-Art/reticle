@@ -35,6 +35,10 @@ function wrapBrowser(browser: Browser): PooledBrowser {
   };
 }
 
+/** The fix for the most common first-run failure: Chromium isn't installed for Playwright. */
+export const CHROMIUM_MISSING_HINT =
+  'Chromium is not installed for Playwright. Run: npx playwright install chromium';
+
 /** A Launcher that boots a real headless Chromium and adapts it to the pool's interface. */
 export function playwrightLauncher(opts: { headless?: boolean } = {}): Launcher {
   const headless = opts.headless ?? true;
@@ -45,7 +49,16 @@ export function playwrightLauncher(opts: { headless?: boolean } = {}): Launcher 
   // (where it's meaningful) instead of at import-time (where it kills unrelated features).
   return async () => {
     const { chromium } = await import('playwright');
-    return wrapBrowser(await chromium.launch({ headless }));
+    try {
+      return wrapBrowser(await chromium.launch({ headless }));
+    } catch (err) {
+      // Turn Playwright's raw "Executable doesn't exist" into the one command that fixes it.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/executable doesn.?t exist|playwright install|browsertype\.launch/i.test(msg)) {
+        throw new Error(CHROMIUM_MISSING_HINT);
+      }
+      throw err;
+    }
   };
 }
 

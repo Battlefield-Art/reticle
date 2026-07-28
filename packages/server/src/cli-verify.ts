@@ -26,6 +26,7 @@ import {
   type ReticleVerificationRun,
 } from '@reticlehq/core';
 import { start, type RunningServer } from './index.js';
+import { resolveCloudConfig, syncRunToCloud, SyncOutcome } from './cloud/cloud-sync.js';
 import { ReticleRunner } from './runs/reticle-runner.js';
 import { createRunnerPort } from './runs/runner-port.js';
 import { RunStore } from './runs/run-store.js';
@@ -52,7 +53,8 @@ const MSG_NO_SESSION =
   ' (for a non-localhost preview: allowNonLocalhost + a pairing token).';
 const MSG_NO_FLOWS =
   'No saved flows to verify (.reticle/flows is empty) — refusing to report a pass for verifying nothing.\n' +
-  '  Record a flow first (reticle_record_start → act → reticle_flow_save), then re-run verify.';
+  '  Flows are recorded interactively by an agent (reticle_record_start → act → reticle_flow_save via the\n' +
+  '  MCP tools), then committed to .reticle/flows/. In CI, check those files in and re-run `reticle verify`.';
 const MSG_VERIFY_PREFIX = 'verify failed: ';
 
 /** The live capabilities runVerify needs — faked in tests so the logic runs without a browser. */
@@ -108,6 +110,7 @@ export async function runVerify(args: VerifyArgs, ports: VerifyPorts): Promise<v
       return;
     }
     const run = await conn.verify();
+    await pushRunToCloud(run, ports); // best-effort; opt-in; never changes the verdict or exit code
     ports.out(renderRunReport(run));
     ports.exit(run.verdict.status === VerdictStatus.PASS ? EXIT_PASS : EXIT_FAIL);
   } catch (error) {
@@ -115,6 +118,25 @@ export async function runVerify(args: VerifyArgs, ports: VerifyPorts): Promise<v
     ports.exit(EXIT_FAIL);
   } finally {
     await conn.close().catch(() => undefined);
+  }
+}
+
+/**
+ * Best-effort push of a finished run to the cloud dashboard. Opt-in: only fires when the user has set
+ * RETICLE_CLOUD_URL + RETICLE_CLOUD_KEY (the "shifted to server" step). Absent → no-op, nothing leaves the
+ * machine (the no-phone-home default). A push failure NEVER changes the verdict or exit code — the run is
+ * already reported locally; the cloud copy is an enhancement.
+ */
+async function pushRunToCloud(run: ReticleVerificationRun, ports: VerifyPorts): Promise<void> {
+  const config = resolveCloudConfig(process.env);
+  if (config === null) return;
+  const result = await syncRunToCloud(run, config, (url, init) => fetch(url, init));
+  if (result.outcome === SyncOutcome.SYNCED) {
+    ports.out(`↑ run ${run.runId} recorded on the Reticle Cloud dashboard`);
+  } else {
+    ports.fail(
+      `cloud run sync failed (${result.status ?? result.error ?? 'error'}); run kept locally`,
+    );
   }
 }
 
@@ -159,6 +181,9 @@ interface LiveOpts {
   reticleRoot: string;
   projectName: string;
   now: () => number;
+  /** Bridge port the driven browser's SDK must dial — must match the app's configured port
+   *  (--port / RETICLE_PORT / .reticle.json), or a custom-port app never connects. */
+  port: number;
   storageState?: string;
 }
 
@@ -181,7 +206,7 @@ async function openLiveConnection(opts: LiveOpts): Promise<VerifyConnection> {
   // `reticle verify` boots its OWN daemon. Hardcoding the default port meant it crashed with EADDRINUSE
   // on any machine already running a daemon — i.e. every developer machine — so honour RETICLE_PORT.
   const envPort = Number(process.env[ReticleEnv.PORT]);
-  const port = Number.isFinite(envPort) && envPort > 0 ? envPort : RETICLE_DEFAULT_PORT;
+  const port = Number.isFinite(envPort) && envPort > 0 ? envPort : opts.port;
   const { origin, loopback } = urlParts(opts.url);
   const pairing = loopback
     ? {}
@@ -237,6 +262,8 @@ export function handleVerify(parsed: {
   headless: boolean;
   timeoutMs?: number;
   storageState?: string;
+  /** Bridge port — parseCliArgs already resolves --port / RETICLE_PORT / .reticle.json into this. */
+  port?: number;
 }): void {
   const now = (): number => Date.now();
   const reticleRoot = join(process.cwd(), ReticleDir.ROOT);
@@ -249,6 +276,7 @@ export function handleVerify(parsed: {
         reticleRoot,
         projectName,
         now,
+        port: parsed.port ?? RETICLE_DEFAULT_PORT,
         ...(parsed.storageState !== undefined ? { storageState: parsed.storageState } : {}),
       }),
     out: (line) => process.stdout.write(`${line}\n`),
