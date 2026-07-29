@@ -28,24 +28,28 @@ pnpm install
 ## Repository layout
 
 ```
-packages/protocol      @reticlehq/protocol     — shared wire contract, constants, zod schemas
+packages/core          @reticlehq/core         — wire contract, constants, zod schemas (deps: zod)
+packages/protocol      @reticlehq/protocol     — thin deprecated alias re-exporting @reticlehq/core (remove in v3)
 packages/browser       @reticlehq/browser      — instrumentation SDK embedded in the app (DOM-side)
 packages/server        @reticlehq/server       — bridge + MCP server, the `reticle` CLI (Node-side)
 packages/react         @reticlehq/react        — React adapter: DOM ref -> component -> source file
+packages/vite-plugin   @reticlehq/vite-plugin  — Vite integration: stamps source + auto-injects connect()
 packages/babel-plugin  @reticlehq/babel-plugin — stamps data-reticle-source (source mapping, React 19)
 packages/next          @reticlehq/next         — Next.js source mapping (keeps SWC) via withReticle (CJS)
-apps/bench-app         @reticlehq/bench-app   — Vite/React dashboard used to dogfood Reticle
-apps/api              @reticlehq/api          — Express backend exercising real-world behaviors
-apps/next-smoke       @reticlehq/next-smoke   — Next.js 15 app verifying Reticle on Next
+packages/test          @reticlehq/test         — spec runner + matchers for CI (peer vitest)
+packages/eslint-plugin @reticlehq/eslint-plugin — dev-only lint rule: state changed ⇒ signal fired
+apps/bench-app         @reticlehq/bench-app    — Vite/React dashboard used to dogfood Reticle
+apps/api               @reticlehq/api          — Express backend exercising real-world behaviors
+apps/next-smoke        @reticlehq/next-smoke   — Next.js 15 app verifying Reticle on Next
 docs/                  — user-facing docs (getting-started, usage, token-efficiency, local-registry)
 SKILL.md              — public skill for users integrating Reticle into their own project (the canonical paste-URL)
 ```
 
-The TypeScript library packages (`-protocol`, `-browser`, `-server`, `-react`) are **strict TypeScript** and are the focus of the build/lint/test gates. `@reticlehq/babel-plugin` / `@reticlehq/next` are plain CJS tooling, and `apps/api` / `apps/next-smoke` are local fixtures — these are excluded from the gates.
+The TypeScript library packages (`-core`, `-browser`, `-server`, `-react`) are **strict TypeScript** and are the focus of the build/lint/test gates. `@reticlehq/babel-plugin` / `@reticlehq/next` are plain CJS tooling, and `apps/api` / `apps/next-smoke` are local fixtures — these are excluded from the gates.
 
 ### Service boundaries (who owns what)
 
-- **`@reticlehq/protocol` is the contract.** Any message that crosses browser ↔ bridge ↔ agent is defined there as a constant + zod schema. Browser and server depend on it; it depends on nothing. Never inline a wire string in `browser` or `server` — add it to `protocol`.
+- **`@reticlehq/core` is the contract.** Any message that crosses browser ↔ bridge ↔ agent is defined there as a constant + zod schema. It sits at the bottom of the graph (deps: `zod` only); everything depends on it, it depends on nothing. Never inline a wire string in `browser` or `server` — add it to `core`. (`@reticlehq/protocol` is a thin deprecated alias re-exporting `core`; import from `core` in new code.)
 - **`@reticlehq/browser` only touches the DOM/page.** It never imports Node APIs.
 - **`@reticlehq/server` only runs in Node.** It never imports DOM APIs.
 - **`@reticlehq/react` is optional enrichment.** Core must work without it.
@@ -79,7 +83,7 @@ We write tests first: **RED → GREEN → REFACTOR.**
 
 1. **RED** — write a failing test that pins the behavior you want.
 2. **GREEN** — write the minimum code to make it pass.
-3. **REFACTOR** — clean up with the test green; check the file is still under the 500-line cap.
+3. **REFACTOR** — clean up with the test green; check the file is still under the 600-line cap.
 
 Every behavior change ships with a test. Bug fixes start with a test that reproduces the bug.
 
@@ -91,10 +95,10 @@ These are enforced by lint and review. A PR that violates them will be asked to 
 
 1. **Equality:** `===` / `!==` always. `eqeqeq` is an error.
 2. **No `any`.** Use `unknown` + zod narrowing at boundaries. `no-explicit-any` is an error.
-3. **No free strings.** Every domain / wire / UI string is a named constant. Wire strings live in `@reticlehq/protocol`, never inlined in `browser` or `server`.
+3. **No free strings.** Every domain / wire / UI string is a named constant. Wire strings live in `@reticlehq/core`, never inlined in `browser` or `server`.
 4. **No non-null `!`.** Use optional chaining + explicit null checks.
 5. **Tests first** (see above).
-6. **500-line file cap.** Over it = a cohesion failure; split before adding.
+6. **600-line file cap.** Over it = a cohesion failure; split before adding.
 7. **Inject the clock.** Never call `Date.now()` / `Math.random()` inside pure logic — pass them in.
 8. **Scope every data access to the authenticated principal.**
 9. **Design tokens are the only place design values live.**

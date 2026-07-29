@@ -14,8 +14,8 @@ Closes #
 
 - [ ] Tests added/updated (RED → GREEN); the change is covered by a test that would fail without it
 - [ ] `pnpm lint && pnpm typecheck && pnpm test:unit` all pass locally
-- [ ] No `any`, no free strings (wire strings live in `@reticlehq/protocol`), no non-null `!`
+- [ ] No `any`, no free strings (wire strings live in `@reticlehq/core`), no non-null `!`
 - [ ] No `console.log` or internal tracking codes left in the diff
-- [ ] Each changed file is under the 500-line cap
+- [ ] Each changed file is under the 600-line cap
 - [ ] Docs and `CHANGELOG.md` updated if this is user-facing (entry under `[Unreleased]`)
 - [ ] Security-affecting? Auth/redaction/trust-boundary changes keep the localhost-only, no-telemetry, no-arbitrary-JS posture and are covered by a test
