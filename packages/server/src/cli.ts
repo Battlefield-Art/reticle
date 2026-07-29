@@ -207,7 +207,8 @@ function handleTelemetry(action: TelemetryAction): void {
   const state = describeTelemetry();
   line(`telemetry    ${state.enabled ? 'enabled' : 'disabled'}  (${state.reason})`);
   line(`policy       ${state.policyUrl}`);
-  if (state.enabled) line('opt out      reticle telemetry disable  (or RETICLE_TELEMETRY=0 / DO_NOT_TRACK=1)');
+  if (state.enabled)
+    line('opt out      reticle telemetry disable  (or RETICLE_TELEMETRY=0 / DO_NOT_TRACK=1)');
 }
 
 /**

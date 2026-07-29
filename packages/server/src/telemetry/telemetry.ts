@@ -120,9 +120,17 @@ export const describeTelemetry = (
     return { enabled: false, reason: 'disabled by environment variable', policyUrl: POLICY_URL };
   }
   if (existsSync(join(dir, 'telemetry-opt-out'))) {
-    return { enabled: false, reason: 'disabled via `reticle telemetry disable`', policyUrl: POLICY_URL };
+    return {
+      enabled: false,
+      reason: 'disabled via `reticle telemetry disable`',
+      policyUrl: POLICY_URL,
+    };
   }
-  return { enabled: true, reason: 'anonymous usage metrics only — no code, no PII', policyUrl: POLICY_URL };
+  return {
+    enabled: true,
+    reason: 'anonymous usage metrics only — no code, no PII',
+    policyUrl: POLICY_URL,
+  };
 };
 
 /** Persist (or lift) the machine-wide opt-out — `reticle telemetry disable` / `enable`. */

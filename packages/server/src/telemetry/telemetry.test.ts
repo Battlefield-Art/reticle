@@ -6,7 +6,10 @@ import { TelemetryEventSchema, TelemetryEventKind } from '@reticlehq/core';
 import { createTelemetry, describeTelemetry, setTelemetryEnabled } from './telemetry.js';
 
 /** A key so the emitter is live in tests — dev builds ship an empty embedded key (telemetry off). */
-const TEST_ENV = { RETICLE_TELEMETRY_KEY: 'phc_test', RETICLE_TELEMETRY_URL: 'http://example.test' };
+const TEST_ENV = {
+  RETICLE_TELEMETRY_KEY: 'phc_test',
+  RETICLE_TELEMETRY_URL: 'http://example.test',
+};
 
 /** The PostHog batch envelope the emitter builds (asserted, not assumed — this IS the wire). */
 interface CapturedBatch {
@@ -43,21 +46,21 @@ describe('telemetry emitter', () => {
   });
 
   it('respects the DO_NOT_TRACK convention', () => {
-    expect(
-      createTelemetry({ version: '1', env: { ...TEST_ENV, DO_NOT_TRACK: '1' } }).enabled,
-    ).toBe(false);
+    expect(createTelemetry({ version: '1', env: { ...TEST_ENV, DO_NOT_TRACK: '1' } }).enabled).toBe(
+      false,
+    );
   });
 
   it('is a no-op under vitest (a test run must never phone home)', () => {
-    expect(
-      createTelemetry({ version: '1', env: { ...TEST_ENV, VITEST: 'true' } }).enabled,
-    ).toBe(false);
+    expect(createTelemetry({ version: '1', env: { ...TEST_ENV, VITEST: 'true' } }).enabled).toBe(
+      false,
+    );
   });
 
   it('is a no-op when no PostHog key is available', () => {
-    expect(
-      createTelemetry({ version: '1', env: { RETICLE_TELEMETRY_KEY: '' } }).enabled,
-    ).toBe(false);
+    expect(createTelemetry({ version: '1', env: { RETICLE_TELEMETRY_KEY: '' } }).enabled).toBe(
+      false,
+    );
   });
 
   it('sends a PostHog batch whose payload satisfies the core wire schema', async () => {
