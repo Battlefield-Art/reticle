@@ -16,7 +16,7 @@
  */
 import { spawn } from 'node:child_process';
 import { randomUUID, createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { TelemetryEventKind, TELEMETRY_EVENT_VERSION, type TelemetryEvent } from '@reticlehq/core';
@@ -25,6 +25,10 @@ import { SERVER_VERSION } from '../server-version.js';
 const RETICLE_DIR = join(homedir(), '.reticle');
 const ID_FILE = join(RETICLE_DIR, 'telemetry-id');
 const NOTICE_FILE = join(RETICLE_DIR, 'telemetry-notice-shown');
+/** Presence of this file = a persistent, machine-wide opt-out (`reticle telemetry disable`). */
+const OPT_OUT_FILE = join(RETICLE_DIR, 'telemetry-opt-out');
+/** Where the full disclosure lives — printed in the first-run notice and `reticle telemetry status`. */
+const POLICY_URL = 'https://github.com/reticlehq/reticle/blob/main/docs/telemetry.md';
 /** PostHog batch-capture endpoint (US cloud). `RETICLE_TELEMETRY_URL` overrides the host (EU/self-host). */
 const DEFAULT_URL = 'https://us.i.posthog.com';
 const TELEMETRY_PATH = '/batch/';
@@ -98,12 +102,38 @@ const showNoticeOnce = (): void => {
     mkdirSync(RETICLE_DIR, { recursive: true });
     writeFileSync(NOTICE_FILE, '1', 'utf8');
     process.stderr.write(
-      'reticle: collecting anonymous usage metrics (no code, no PII). ' +
-        'Opt out any time with RETICLE_TELEMETRY=0.\n',
+      'reticle: anonymous usage telemetry helps improve reticle — no code, no PII, ' +
+        `and your app's data never leaves your machine (${POLICY_URL}). ` +
+        'Opt out any time: reticle telemetry disable\n',
     );
   } catch {
     /* notice is a courtesy; never fail on it */
   }
+};
+
+/** The current telemetry state and which control set it — what `reticle telemetry status` prints. */
+export const describeTelemetry = (
+  env: NodeJS.ProcessEnv = process.env,
+  dir: string = RETICLE_DIR,
+): { enabled: boolean; reason: string; policyUrl: string } => {
+  if (isDisabled(env)) {
+    return { enabled: false, reason: 'disabled by environment variable', policyUrl: POLICY_URL };
+  }
+  if (existsSync(join(dir, 'telemetry-opt-out'))) {
+    return { enabled: false, reason: 'disabled via `reticle telemetry disable`', policyUrl: POLICY_URL };
+  }
+  return { enabled: true, reason: 'anonymous usage metrics only — no code, no PII', policyUrl: POLICY_URL };
+};
+
+/** Persist (or lift) the machine-wide opt-out — `reticle telemetry disable` / `enable`. */
+export const setTelemetryEnabled = (enabled: boolean, dir: string = RETICLE_DIR): void => {
+  const optOutFile = join(dir, 'telemetry-opt-out');
+  if (enabled) {
+    rmSync(optOutFile, { force: true });
+    return;
+  }
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(optOutFile, '1', 'utf8');
 };
 
 export interface Telemetry {
@@ -139,6 +169,11 @@ export const createTelemetry = (opts: {
 }): Telemetry => {
   const env = opts.env ?? process.env;
   if (isDisabled(env)) return NOOP;
+  try {
+    if (existsSync(OPT_OUT_FILE)) return NOOP; // the persistent `reticle telemetry disable` opt-out
+  } catch {
+    /* unreadable home dir — fall through; the env-var opt-outs above still apply */
+  }
   const apiKey = env[Env.KEY] ?? POSTHOG_KEY;
   if (apiKey === '') return NOOP; // no key baked in (dev/test build) — nowhere to send, stay silent
 

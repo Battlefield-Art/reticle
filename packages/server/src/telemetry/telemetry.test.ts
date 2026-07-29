@@ -1,6 +1,9 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { TelemetryEventSchema, TelemetryEventKind } from '@reticlehq/core';
-import { createTelemetry } from './telemetry.js';
+import { createTelemetry, describeTelemetry, setTelemetryEnabled } from './telemetry.js';
 
 /** A key so the emitter is live in tests — dev builds ship an empty embedded key (telemetry off). */
 const TEST_ENV = { RETICLE_TELEMETRY_KEY: 'phc_test', RETICLE_TELEMETRY_URL: 'http://example.test' };
@@ -112,6 +115,21 @@ describe('telemetry emitter', () => {
     const body = JSON.parse(args[3] ?? '{}') as CapturedBatch;
     expect(body.api_key).toBe('phc_test');
     expect(body.batch[0]?.event).toBe(TelemetryEventKind.INVOKE);
+  });
+
+  it('persists and lifts the machine-wide opt-out (`reticle telemetry disable`/`enable`)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'reticle-telemetry-'));
+    try {
+      expect(describeTelemetry({}, dir).enabled).toBe(true);
+      setTelemetryEnabled(false, dir);
+      expect(describeTelemetry({}, dir).enabled).toBe(false);
+      setTelemetryEnabled(true, dir);
+      expect(describeTelemetry({}, dir).enabled).toBe(true);
+      // The env-var opt-out wins regardless of the file state.
+      expect(describeTelemetry({ RETICLE_TELEMETRY: '0' }, dir).enabled).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('never rejects when the network throws (best-effort)', async () => {

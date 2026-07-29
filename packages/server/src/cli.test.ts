@@ -247,6 +247,19 @@ describe('parseCliArgs', () => {
     expect(parseCliArgs(['license'], PORT)).toEqual({ kind: 'license' });
   });
 
+  it('telemetry parses its actions and defaults to status', () => {
+    expect(parseCliArgs(['telemetry'], PORT)).toEqual({ kind: 'telemetry', action: 'status' });
+    expect(parseCliArgs(['telemetry', 'disable'], PORT)).toEqual({
+      kind: 'telemetry',
+      action: 'disable',
+    });
+    expect(parseCliArgs(['telemetry', 'enable'], PORT)).toEqual({
+      kind: 'telemetry',
+      action: 'enable',
+    });
+    expect(parseCliArgs(['telemetry', 'nuke'], PORT).kind).toBe('error');
+  });
+
   it('version (and the -v/--version flags) returns a version result', () => {
     expect(parseCliArgs(['version'], PORT)).toEqual({ kind: 'version' });
     expect(parseCliArgs(['--version'], PORT)).toEqual({ kind: 'version' });

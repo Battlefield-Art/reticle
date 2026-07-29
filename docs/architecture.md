@@ -70,7 +70,7 @@ The same verification runs over and over — every commit, every CI run. Reticle
 
 ### 4. Dev-only, localhost-only, your app data stays local
 
-The SDK is tree-shaken out of production builds and connects only to a local bridge. The bridge binds to loopback by default; exposing it beyond localhost _requires_ a pairing token (the server refuses to bind a non-loopback host without one). Every environment variable that gates a security control is a single named constant, so a typo can't silently disable auth. Nothing from the app under test — no DOM, network, console, state, or source — ever leaves your machine. The CLI reports anonymous, opt-out usage metrics only (a random id + event names like `invoke`/`session_start`; no code, no PII); disable with `RETICLE_TELEMETRY=0` or `DO_NOT_TRACK=1`.
+The SDK is tree-shaken out of production builds and connects only to a local bridge. The bridge binds to loopback by default; exposing it beyond localhost _requires_ a pairing token (the server refuses to bind a non-loopback host without one). Every environment variable that gates a security control is a single named constant, so a typo can't silently disable auth. Nothing from the app under test — no DOM, network, console, state, or source — ever leaves your machine. The CLI reports anonymous, opt-out usage metrics only (a random id + event names like `invoke`/`session_start`; no code, no PII — see [telemetry](telemetry.md)); opt out with `reticle telemetry disable`, `RETICLE_TELEMETRY=0`, or `DO_NOT_TRACK=1`.
 
 ---
 

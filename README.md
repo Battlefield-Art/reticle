@@ -207,7 +207,7 @@ A pnpm + turbo monorepo — each audience installs only what it needs (apps embe
 
 ## Status & safety
 
-**Dev-only** and **localhost-only** by design: the SDK is tree-shaken out of production builds, the bridge binds to localhost, and **no app data ever leaves your machine** — Reticle observes _your_ app on _your_ machine. The CLI reports anonymous, opt-out usage metrics only (a random id + event names; no code, no PII) — disable with `RETICLE_TELEMETRY=0` or `DO_NOT_TRACK=1`.
+**Dev-only** and **localhost-only** by design: the SDK is tree-shaken out of production builds, the bridge binds to localhost, and **no app data ever leaves your machine** — Reticle observes _your_ app on _your_ machine. The CLI reports anonymous, opt-out usage metrics only (a random id + event names; no code, no PII — [full policy](docs/telemetry.md)); opt out with `reticle telemetry disable`.
 
 ## License
 

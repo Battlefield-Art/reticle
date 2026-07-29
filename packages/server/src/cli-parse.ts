@@ -21,6 +21,7 @@ export const CLI_USAGE = `usage:
   reticle update                                       (install the latest server version and restart)
   reticle rollback                                     (restore the previous server version and restart)
   reticle license                                      (show enterprise license status: active | eval | missing)
+  reticle telemetry [status|enable|disable]            (anonymous usage metrics — status shows what's sent + the policy)
 
 Cloud (link this project to Reticle Cloud — runs/flows recorded on the dashboard):
   reticle login --email <e> [--code <c>] [--org <n>]   (sign in: mails a code, then exchanges it)
@@ -47,6 +48,14 @@ const ROLLBACK_COMMAND = 'rollback';
 const MCP_COMMAND = 'mcp';
 const LICENSE_COMMAND = 'license';
 const VERSION_COMMAND = 'version';
+const TELEMETRY_COMMAND = 'telemetry';
+/** The `reticle telemetry` sub-actions. Bare `reticle telemetry` means `status`. */
+export const TelemetryAction = {
+  STATUS: 'status',
+  ENABLE: 'enable',
+  DISABLE: 'disable',
+} as const;
+export type TelemetryAction = (typeof TelemetryAction)[keyof typeof TelemetryAction];
 export const DAEMON_INNER_COMMAND = '_daemon';
 
 export const HEADED_FLAG = '--headed';
@@ -77,6 +86,7 @@ export type CliResult =
   | { kind: 'stop'; port: number; quiet: boolean }
   | { kind: 'status'; port: number }
   | { kind: 'license' }
+  | { kind: 'telemetry'; action: TelemetryAction }
   | { kind: 'version' }
   | { kind: 'help' }
   | { kind: 'doctor'; port: number }
@@ -355,6 +365,17 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
     }
     case LICENSE_COMMAND:
       return { kind: 'license' };
+    case TELEMETRY_COMMAND: {
+      const action = rest[0] ?? TelemetryAction.STATUS;
+      if (
+        action !== TelemetryAction.STATUS &&
+        action !== TelemetryAction.ENABLE &&
+        action !== TelemetryAction.DISABLE
+      ) {
+        return { kind: 'error', message: `unknown telemetry action: ${action}` };
+      }
+      return { kind: 'telemetry', action };
+    }
     case OPEN_COMMAND: {
       const port = parsePortFlag(rest, defaultPort);
       // The first non-flag arg is the url (optional — omitting reuses a connected tab).

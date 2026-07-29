@@ -19,7 +19,12 @@ import { applyUpdate, rollback } from './update/updater.js';
 import { start, startDaemon } from './index.js';
 import { isCloudCommand, runCloudCommand } from './cloud-cli.js';
 import { SERVER_VERSION } from './server-version.js';
-import { getTelemetry, TelemetryEventKind } from './telemetry/telemetry.js';
+import {
+  getTelemetry,
+  TelemetryEventKind,
+  describeTelemetry,
+  setTelemetryEnabled,
+} from './telemetry/telemetry.js';
 import { log } from './log.js';
 import {
   readPid,
@@ -51,6 +56,7 @@ import {
   HTTP_TOKEN_FLAG,
   parseCliArgs,
   CLI_USAGE,
+  TelemetryAction,
 } from './cli-parse.js';
 
 // Re-exported so existing imports (and the CLI tests) keep resolving from './cli.js'.
@@ -184,6 +190,24 @@ function handleVersion(): void {
 /** `reticle license` — show enterprise activation resolved from the environment (offline; nothing leaves). */
 function handleLicense(): void {
   log('reticle_license', { ...describeLicense(Date.now()) });
+}
+
+/**
+ * `reticle telemetry [status|enable|disable]` — the user-facing control for anonymous usage metrics.
+ * `disable` persists a machine-wide opt-out (survives shells, unlike RETICLE_TELEMETRY=0); `status`
+ * says what's on, why, and where the full policy lives. Human-readable to stdout, like `doctor`.
+ */
+function handleTelemetry(action: TelemetryAction): void {
+  const line = (s: string): void => {
+    process.stdout.write(`${s}\n`);
+  };
+  if (action !== TelemetryAction.STATUS) {
+    setTelemetryEnabled(action === TelemetryAction.ENABLE);
+  }
+  const state = describeTelemetry();
+  line(`telemetry    ${state.enabled ? 'enabled' : 'disabled'}  (${state.reason})`);
+  line(`policy       ${state.policyUrl}`);
+  if (state.enabled) line('opt out      reticle telemetry disable  (or RETICLE_TELEMETRY=0 / DO_NOT_TRACK=1)');
 }
 
 /**
@@ -481,6 +505,9 @@ function main(): void {
       break;
     case 'license':
       handleLicense();
+      break;
+    case 'telemetry':
+      handleTelemetry(parsed.action);
       break;
     case 'version':
       handleVersion();
