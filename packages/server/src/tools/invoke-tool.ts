@@ -1,4 +1,5 @@
 import { healthEnvelope } from '../session/session-health.js';
+import { getTelemetry, TelemetryEventKind } from '../telemetry/telemetry.js';
 import { asString } from './tools-helpers.js';
 import { ReticleTool } from './tool-names.js';
 import type { Session } from '../session/session.js';
@@ -76,6 +77,9 @@ export async function runTool(
   deps: ToolDeps,
   args: Record<string, unknown>,
 ): Promise<unknown> {
+  // Both dispatch paths (MCP + programmatic) pass through here — the one place "which tool is mostly
+  // used" can be counted. Fire-and-forget: telemetry never delays or fails a tool call.
+  void getTelemetry().emit(TelemetryEventKind.TOOL, { tool: tool.name });
   const rawSessionId = asString(args['sessionId']);
   const bound = SESSION_BOUND_TOOLS.has(tool.name);
 

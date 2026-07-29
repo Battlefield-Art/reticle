@@ -7,6 +7,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
+# The battery is not a user — keep its daemons/tool calls out of the adoption metrics.
+export RETICLE_TELEMETRY=0
+
 # Provision the bridge pairing token BEFORE the dev servers boot. next-smoke's withReticle reads it at
 # `next dev` config load (before any per-spec bridge exists) to inline into its client connect; the
 # per-spec bridges (start()) read the same file. Mirrors the real daemon-first workflow.

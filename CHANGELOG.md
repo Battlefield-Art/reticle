@@ -4,6 +4,24 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+## [2.2.1] — 2026-07-29
+
+Patch release: anonymous, opt-out adoption telemetry — built transparent-first (a complete public policy, a one-line first-run notice, and a persistent `reticle telemetry disable`) — plus two contributed daemon/SDK fixes. No breaking changes; on-disk flow files stay version 1.
+
+### Added
+
+- **Anonymous usage telemetry (opt-out).** The CLI reports adoption events only — `install` (first run), `invoke`, `session_start`/`session_end` (with duration), and per-tool usage — keyed by a locally minted random UUID and a one-way hash of the project path. No code, no PII, no app data: nothing from the app under test ever leaves the machine. Sends are best-effort and non-blocking (a lost metric never touches a verification), quick CLI commands hand the send to a detached child so they exit at full speed, and ingestion is personless (no person profiles are ever created). Disabled automatically under vitest and in the e2e battery, so test runs never count as users. (`@reticlehq/server`, `@reticlehq/core`)
+- **`reticle telemetry [status|enable|disable]`.** `status` prints what's on, why, and where the policy lives; `disable` persists a machine-wide opt-out that survives shells and reboots. `RETICLE_TELEMETRY=0` and the cross-tool `DO_NOT_TRACK` convention are honored everywhere and take precedence. The complete disclosure — every field sent and every field that never is — lives at [`docs/telemetry.md`](docs/telemetry.md). (`@reticlehq/server`)
+
+### Fixed
+
+- **`spawnDaemon` closes its log file descriptor and reports a failed spawn** instead of leaking the fd and silently swallowing the error. Thanks @DevChiniwala. (#58) (`@reticlehq/server`)
+- **SDK-internal diagnostics use a pre-bound native `console.warn`,** so an app that patches the console can no longer recurse into (or mute) the SDK's own warnings. Thanks @DevChiniwala. (#59) (`@reticlehq/browser`)
+
+### Changed
+
+- **The docs no longer claim "no telemetry."** The accurate promise — **no app data ever leaves your machine**, plus anonymous opt-out usage metrics — is now stated where users look (README, usage, enterprise FAQ, architecture) and detailed in [`docs/telemetry.md`](docs/telemetry.md).
+
 ## [2.2.0] — 2026-07-26
 
 The causal-evidence release: every verdict now carries _why_, verification becomes part of "done", and the layer stops trusting evidence it doesn't have. Faster on long sessions and big DOMs, and the published packages are brought to OSS-library standard (licensing, packaging, CI security). No breaking changes — schema additions stay back-compatible and on-disk flow files remain version 1.

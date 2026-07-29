@@ -19,6 +19,12 @@ import { applyUpdate, rollback } from './update/updater.js';
 import { start, startDaemon } from './index.js';
 import { isCloudCommand, runCloudCommand } from './cloud-cli.js';
 import { SERVER_VERSION } from './server-version.js';
+import {
+  getTelemetry,
+  TelemetryEventKind,
+  describeTelemetry,
+  setTelemetryEnabled,
+} from './telemetry/telemetry.js';
 import { log } from './log.js';
 import {
   readPid,
@@ -50,6 +56,7 @@ import {
   HTTP_TOKEN_FLAG,
   parseCliArgs,
   CLI_USAGE,
+  TelemetryAction,
 } from './cli-parse.js';
 
 // Re-exported so existing imports (and the CLI tests) keep resolving from './cli.js'.
@@ -186,6 +193,24 @@ function handleLicense(): void {
 }
 
 /**
+ * `reticle telemetry [status|enable|disable]` — the user-facing control for anonymous usage metrics.
+ * `disable` persists a machine-wide opt-out (survives shells, unlike RETICLE_TELEMETRY=0); `status`
+ * says what's on, why, and where the full policy lives. Human-readable to stdout, like `doctor`.
+ */
+function handleTelemetry(action: TelemetryAction): void {
+  const line = (s: string): void => {
+    process.stdout.write(`${s}\n`);
+  };
+  if (action !== TelemetryAction.STATUS) {
+    setTelemetryEnabled(action === TelemetryAction.ENABLE);
+  }
+  const state = describeTelemetry();
+  line(`telemetry    ${state.enabled ? 'enabled' : 'disabled'}  (${state.reason})`);
+  line(`policy       ${state.policyUrl}`);
+  if (state.enabled) line('opt out      reticle telemetry disable  (or RETICLE_TELEMETRY=0 / DO_NOT_TRACK=1)');
+}
+
+/**
  * `reticle affected <file...>` — print which saved flows must re-verify for the given changed files.
  * Environment-side (costs the agent nothing per turn); the foundation of watch/gate. Never throws:
  * a load error is logged, not fatal.
@@ -312,6 +337,10 @@ function handleDaemonInner(parsed: {
   startDaemon(options)
     .then((server) => {
       log('reticle_daemon_ready', { port: parsed.port, pid: process.pid });
+      // A live daemon IS an active session (the numerator of "active sessions" + DAU/WAU/MAU). Pair the
+      // START here with an END (carrying duration) on any clean shutdown below — best-effort, non-blocking.
+      const sessionStartedAt = Date.now();
+      void getTelemetry().emit(TelemetryEventKind.SESSION_START);
       // Publish to the discovery registry so a build plugin can find this daemon by projectId — no
       // hand-reconciled port. Written from the child (only it knows its cwd); removePid drops it.
       const registryProjectId = readProjectId(process.cwd());
@@ -328,6 +357,9 @@ function handleDaemonInner(parsed: {
         process.exit(1);
       });
       const shutdown = (): void => {
+        void getTelemetry().emit(TelemetryEventKind.SESSION_END, {
+          sessionMs: Date.now() - sessionStartedAt,
+        });
         server
           .close()
           .then(() => {
@@ -436,6 +468,12 @@ function handleLegacyDrive(parsed: { port: number; driveUrl: string; headless: b
 
 function main(): void {
   const argv = process.argv.slice(2);
+  // Every invocation passes through here — the single chokepoint for the "how often is it used / how
+  // many distinct machines + projects" metrics. Fire-and-forget: a metric must never delay or fail a run.
+  const telemetry = getTelemetry();
+  // `detach` so a quick command (`version`/`gate`) exits immediately instead of waiting out the POST.
+  if (telemetry.firstRun) void telemetry.emit(TelemetryEventKind.INSTALL, { detach: true });
+  void telemetry.emit(TelemetryEventKind.INVOKE, { detach: true });
   // Cloud subcommands (login/link/project/config/push) are a distinct family with their own async client;
   // handle them before the local typed parser so `reticle login` etc. work as one tool.
   if (isCloudCommand(argv[0])) {
@@ -467,6 +505,9 @@ function main(): void {
       break;
     case 'license':
       handleLicense();
+      break;
+    case 'telemetry':
+      handleTelemetry(parsed.action);
       break;
     case 'version':
       handleVersion();

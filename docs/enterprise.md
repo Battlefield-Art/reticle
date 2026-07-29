@@ -43,7 +43,7 @@ The honest one-pager a security review needs. Reticle is built so the answer to 
 | --- | --- |
 | Does the SDK ship to production? | **No** — dev/preview-only, tree-shaken from production builds. |
 | Where does the server run? | **Localhost** — the bridge binds `127.0.0.1`; the verify endpoint is localhost-bound + token-guarded (constant-time), with request/body-size/timeout limits. |
-| Does anything phone home? | **No telemetry.** Nothing is sent to Reticle — including license checks (offline Ed25519). |
+| Does anything phone home? | **No app data, ever.** License checks are offline (Ed25519). The CLI sends anonymous, opt-out usage metrics only (random id + event names — no code, no PII; see [telemetry](telemetry.md)); disable fleet-wide with `RETICLE_TELEMETRY=0` or per-machine with `reticle telemetry disable`. |
 | Where do artifacts live? | Your disk: `.reticle/runs/<id>.json` (atomic writes, bounded retention), `.reticle/flows/`, `.reticle/contract.json`. You own them. |
 | What can the server read? | The DOM/network/console/routing/state of the app under test — locally. |
 | Leak risk downstream? | The **`prod-preview` profile** redacts source `file:line`, raw bodies, and app-state values. |

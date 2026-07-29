@@ -28,3 +28,4 @@ export * from './redaction.js'; // isSensitiveKey / scrubKnownSecrets — the sh
 export * from './state-select.js'; // selectPath / capDepth — shared by browser SDK + server fallback
 export * from './toon.js'; // TOON encoding used by the server's result encoder
 export * from './upgrade.js'; // self-update policy shared by the CLI
+export * from './telemetry.js'; // anonymous adoption telemetry wire contract (DAU/WAU/MAU/installs)
