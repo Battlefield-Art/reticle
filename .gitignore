@@ -91,3 +91,6 @@ leads/
 # Playwright CLI benchmark disk artifacts (snapshots/console logs)
 .playwright-cli/
 /docs-api/
+
+# local reticle workspace (session artifacts, visual baselines, run residue)
+.reticle/
