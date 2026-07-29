@@ -4,6 +4,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+### Fixed
+
+- **`withFileLock` reclaims a path's chain entry once it settles,** guarded by pointer identity so a queued successor is never dropped — previously every unique file path locked in a long-running daemon occupied a Map slot forever. Thanks @DevChiniwala. (#63) (`@reticlehq/server`)
+
 ## [2.2.1] — 2026-07-29
 
 Patch release: anonymous, opt-out adoption telemetry — built transparent-first (a complete public policy, a one-line first-run notice, and a persistent `reticle telemetry disable`) — plus two contributed daemon/SDK fixes. No breaking changes; on-disk flow files stay version 1.
@@ -15,8 +19,8 @@ Patch release: anonymous, opt-out adoption telemetry — built transparent-first
 
 ### Fixed
 
-- **`spawnDaemon` closes its log file descriptor and reports a failed spawn** instead of leaking the fd and silently swallowing the error. Thanks @DevChiniwala. (#58) (`@reticlehq/server`)
-- **SDK-internal diagnostics use a pre-bound native `console.warn`,** so an app that patches the console can no longer recurse into (or mute) the SDK's own warnings. Thanks @DevChiniwala. (#59) (`@reticlehq/browser`)
+- **`spawnDaemon` no longer leaks a file descriptor or leaves a ghost daemon.** The parent's copy of the log fd is closed after `spawn` duplicates it into the child; a silent spawn failure (`child.pid === undefined`) returns `false` and unlinks the empty pidfile instead of reporting success, so discovery never sees a ghost and the next spawn can't hit `EEXIST`; and a synchronous `openSync`/`spawn` throw cleans up the lock fd + pidfile rather than leaving them behind. Thanks @DevChiniwala. (#58) (`@reticlehq/server`)
+- **SDK-internal warnings no longer pollute the agent's `CONSOLE_WARN` stream.** After `installConsole` patches `console.warn` to observe the app, three SDK diagnostics were emitting spurious `CONSOLE_WARN` events into the observation stream, indistinguishable from the app's own warnings. They now call a native `console.warn` captured at module load, so they reach the developer console without entering the agent's event stream. Thanks @DevChiniwala. (#59) (`@reticlehq/browser`)
 
 ### Changed
 
