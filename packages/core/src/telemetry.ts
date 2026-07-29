@@ -1,8 +1,9 @@
 /**
- * Anonymous product telemetry — the wire contract for how the OSS `reticle` runtime reports ADOPTION
- * (not verification results) to Reticle Cloud: is it installed, how often is it invoked, how many
- * distinct machines/projects run it, when is it uninstalled. This is what turns "npm downloads" (which
- * an investor discounts) into DAU/WAU/MAU, active sessions, and retention.
+ * Anonymous product telemetry — the contract for how the OSS `reticle` runtime reports ADOPTION
+ * (not verification results): is it installed, how often is it invoked, which tools get used, how many
+ * distinct machines/projects run it. This is what turns "npm downloads" (which an investor discounts)
+ * into DAU/WAU/MAU, active sessions, and retention. Uninstall/churn is deliberately NOT an event —
+ * npm 7+/pnpm run no uninstall lifecycle scripts, so churn is inferred server-side from inactivity.
  *
  * Privacy is structural, not a policy: the ONLY identifiers on the wire are a random per-machine UUID
  * (`anonymousId`, minted locally, never derived from anything personal) and a one-way HASH of the
@@ -13,7 +14,7 @@
  */
 import { z } from 'zod';
 
-/** Bump when the event shape changes so the cloud can reject/upgrade old senders. */
+/** Bump when the event shape changes so the analytics side can segment old senders. */
 export const TELEMETRY_EVENT_VERSION = 1;
 
 /** The lifecycle moments that answer the adoption questions. One event = one moment. */
@@ -26,13 +27,10 @@ export const TelemetryEventKind = {
   SESSION_START: 'session_start',
   /** A session ended (carries its duration) — powers active-session-length + churn-within-session. */
   SESSION_END: 'session_end',
-  /** `npm uninstall` / removal — the "when people uninstall it" signal investors asked for. */
-  UNINSTALL: 'uninstall',
+  /** One MCP tool call (carries the tool name) — powers "which tool is mostly used". */
+  TOOL: 'tool',
 } as const;
 export type TelemetryEventKind = (typeof TelemetryEventKind)[keyof typeof TelemetryEventKind];
-
-/** Max events accepted in one batch POST — a spooled sender must never flood the ingest door. */
-export const TELEMETRY_BATCH_LIMIT = 50;
 
 /**
  * One anonymous telemetry event. `anonymousId` and the optional hashed `projectId` are the only
@@ -55,11 +53,7 @@ export const TelemetryEventSchema = z.object({
   os: z.string().min(1).max(32),
   /** Only on `session_end`: how long the session was active, in ms. */
   sessionMs: z.number().int().nonnegative().optional(),
+  /** Only on `tool`: the MCP tool name invoked (e.g. `reticle_act`). Low cardinality by construction. */
+  tool: z.string().min(1).max(64).optional(),
 });
 export type TelemetryEvent = z.infer<typeof TelemetryEventSchema>;
-
-/** The batch envelope the ingest door accepts. Capped so one caller can't push an unbounded array. */
-export const TelemetryBatchSchema = z.object({
-  events: z.array(TelemetryEventSchema).min(1).max(TELEMETRY_BATCH_LIMIT),
-});
-export type TelemetryBatch = z.infer<typeof TelemetryBatchSchema>;

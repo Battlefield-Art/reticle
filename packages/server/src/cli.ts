@@ -19,7 +19,7 @@ import { applyUpdate, rollback } from './update/updater.js';
 import { start, startDaemon } from './index.js';
 import { isCloudCommand, runCloudCommand } from './cloud-cli.js';
 import { SERVER_VERSION } from './server-version.js';
-import { createTelemetry, TelemetryEventKind, type Telemetry } from './telemetry/telemetry.js';
+import { getTelemetry, TelemetryEventKind } from './telemetry/telemetry.js';
 import { log } from './log.js';
 import {
   readPid,
@@ -316,7 +316,7 @@ function handleDaemonInner(parsed: {
       // A live daemon IS an active session (the numerator of "active sessions" + DAU/WAU/MAU). Pair the
       // START here with an END (carrying duration) on any clean shutdown below — best-effort, non-blocking.
       const sessionStartedAt = Date.now();
-      void telemetry?.emit(TelemetryEventKind.SESSION_START);
+      void getTelemetry().emit(TelemetryEventKind.SESSION_START);
       // Publish to the discovery registry so a build plugin can find this daemon by projectId — no
       // hand-reconciled port. Written from the child (only it knows its cwd); removePid drops it.
       const registryProjectId = readProjectId(process.cwd());
@@ -333,7 +333,7 @@ function handleDaemonInner(parsed: {
         process.exit(1);
       });
       const shutdown = (): void => {
-        void telemetry?.emit(TelemetryEventKind.SESSION_END, {
+        void getTelemetry().emit(TelemetryEventKind.SESSION_END, {
           sessionMs: Date.now() - sessionStartedAt,
         });
         server
@@ -442,19 +442,14 @@ function handleLegacyDrive(parsed: { port: number; driveUrl: string; headless: b
     });
 }
 
-/**
- * The process-wide telemetry emitter, created once at `main()`. Anonymous + opt-out (see telemetry.ts).
- * Held at module scope so the daemon lifecycle below can pair SESSION_START/END against the same id.
- */
-let telemetry: Telemetry | undefined;
-
 function main(): void {
   const argv = process.argv.slice(2);
   // Every invocation passes through here — the single chokepoint for the "how often is it used / how
   // many distinct machines + projects" metrics. Fire-and-forget: a metric must never delay or fail a run.
-  telemetry = createTelemetry({ version: SERVER_VERSION });
-  if (telemetry.firstRun) void telemetry.emit(TelemetryEventKind.INSTALL);
-  void telemetry.emit(TelemetryEventKind.INVOKE);
+  const telemetry = getTelemetry();
+  // `detach` so a quick command (`version`/`gate`) exits immediately instead of waiting out the POST.
+  if (telemetry.firstRun) void telemetry.emit(TelemetryEventKind.INSTALL, { detach: true });
+  void telemetry.emit(TelemetryEventKind.INVOKE, { detach: true });
   // Cloud subcommands (login/link/project/config/push) are a distinct family with their own async client;
   // handle them before the local typed parser so `reticle login` etc. work as one tool.
   if (isCloudCommand(argv[0])) {

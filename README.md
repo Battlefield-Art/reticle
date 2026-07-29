@@ -21,7 +21,7 @@ It makes your agent **test its own work on every edit** — reading the running 
 
 **[⚡ Install in 30 seconds](#install-in-30-seconds)** · [How it works](#how-it-works) · [Why not Playwright / DevTools / a browser agent](#why-not-playwright-mcp-a-browser-agent-or-devtools) · [The numbers](#the-numbers) · [Docs](docs/getting-started.md)
 
-`dev-only` · `localhost-only` · `no telemetry` · `Apache-2.0 SDK` · works with Claude Code, Cursor, and any MCP agent
+`dev-only` · `localhost-only` · `your app data stays local` · `Apache-2.0 SDK` · works with Claude Code, Cursor, and any MCP agent
 
 </div>
 
@@ -207,7 +207,7 @@ A pnpm + turbo monorepo — each audience installs only what it needs (apps embe
 
 ## Status & safety
 
-**Dev-only** and **localhost-only** by design: the SDK is tree-shaken out of production builds, the bridge binds to localhost, and there is **no telemetry.** It observes _your_ app on _your_ machine — nothing leaves it.
+**Dev-only** and **localhost-only** by design: the SDK is tree-shaken out of production builds, the bridge binds to localhost, and **no app data ever leaves your machine** — Reticle observes _your_ app on _your_ machine. The CLI reports anonymous, opt-out usage metrics only (a random id + event names; no code, no PII) — disable with `RETICLE_TELEMETRY=0` or `DO_NOT_TRACK=1`.
 
 ## License
 

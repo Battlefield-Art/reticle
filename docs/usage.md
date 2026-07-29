@@ -700,7 +700,7 @@ Reticle is cheap by design ([benchmark](token-efficiency.md)), but keep it that 
 ## 15. Security & privacy
 
 - **Dev-only, localhost-only by default.** The bridge binds `127.0.0.1`; the SDK is meant for dev builds.
-- **No telemetry.** Nothing phones home. Baselines/recordings are local.
+- **No app data leaves your machine.** Baselines/recordings are local. The CLI sends anonymous, opt-out usage metrics only (random id + event names — no code, no PII); disable with `RETICLE_TELEMETRY=0` or `DO_NOT_TRACK=1`.
 - **Network bodies aren't captured by default** — only method/url/status/timing. Body capture is opt-in and runs through a redactor (drop `password`/`token`/`secret`/… + your patterns).
 - **Additive & reversible.** Reticle patches `fetch`/History/console defensively and restores them on disconnect; it will not break the app under test.
 
