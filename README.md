@@ -192,6 +192,14 @@ Built in the open, for the long run. Everyone who stars, forks, or contributes i
 
 </div>
 
+## 💬 Feedback
+
+Reticle is built in the open, and we'd love to hear from you.
+
+Whether you've found a bug, have an idea for a new feature, or want to share your experience using Reticle, send us an email at **hey@reticle.sh**.
+
+Every email is read by the team, and many of our improvements come directly from community feedback.
+
 ## What's inside
 
 A pnpm + turbo monorepo — each audience installs only what it needs (apps embed `@reticlehq/react`; agents run `@reticlehq/server`):
