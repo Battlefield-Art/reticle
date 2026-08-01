@@ -67,6 +67,62 @@ async function buildOpts(
   return args['fullPage'] === true ? { fullPage: true } : {};
 }
 
+/**
+ * Ask the desktop shell to photograph its own window.
+ *
+ * Returns undefined for a plain web page (no capture helper) and for a desktop app that did not
+ * install `@reticlehq/browser/electron-main`. Deliberately NOT a screen-region capture: photographing
+ * the glass returns whatever window is on top, which would save a picture of the user's editor as a
+ * visual baseline — the exact false green Reticle exists to eliminate.
+ */
+async function desktopCapture(
+  deps: ToolDeps,
+  sessionId: string | undefined,
+): Promise<Uint8Array | undefined> {
+  const session = deps.sessions.resolve(sessionId);
+  // A session that cannot take commands (no live browser behind it) simply has no pixels to give.
+  if (typeof session.command !== 'function') return undefined;
+  const res = await session.command(ReticleCommand.CAPTURE, {});
+  if (!res.ok) return undefined;
+  const r = asRecord(res.result);
+  if (r['ok'] !== true) return undefined;
+  const png = asString(r['png']);
+  if (png === undefined || png.length === 0) return undefined;
+  const bytes = Buffer.from(png, 'base64');
+  return bytes.byteLength > 0 ? new Uint8Array(bytes) : undefined;
+}
+
+/**
+ * Get pixels for a session, by whichever route exists.
+ *
+ * A driven/attached browser is captured through CDP — exact, and the only route that can do
+ * `fullPage`. A desktop app has no CDP endpoint, so its own shell is asked instead. CDP is tried
+ * FIRST and the desktop path is a genuine fallback, not an either/or: with a CDP endpoint attached
+ * to one app and the screenshot aimed at a different (desktop) session, CDP fails and the shell
+ * capture is still correct.
+ *
+ * `clip`/`ref`/`fullPage` are honoured only on the CDP path — the shell photographs the whole
+ * window. Scoping is left to the caller rather than cropped here, so a clip never silently becomes
+ * a full-window image.
+ */
+async function capture(
+  deps: ToolDeps,
+  sessionId: string | undefined,
+  args: Record<string, unknown>,
+): Promise<{ png?: Uint8Array; reason?: string }> {
+  const provider = screenshotProvider(deps);
+  if (provider !== undefined) {
+    const session = deps.sessions.resolve(sessionId);
+    const png = await provider.screenshot(session.url, await buildOpts(deps, sessionId, args));
+    if (png !== undefined) return { png };
+  }
+  const png = await desktopCapture(deps, sessionId);
+  if (png !== undefined) return { png };
+  return {
+    reason: provider === undefined ? VisualReason.NO_PROVIDER : VisualReason.CAPTURE_FAILED,
+  };
+}
+
 function rectsFrom(value: unknown): VisualRect[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const rects: VisualRect[] = [];
@@ -119,12 +175,11 @@ export const VISUAL_TOOLS: ToolDef[] = [
       recommendation: z.string().optional(),
     },
     handler: async (deps: ToolDeps, args) => {
-      const provider = screenshotProvider(deps);
-      if (provider === undefined) return noProvider;
       const sessionId = asString(args['sessionId']);
-      const session = deps.sessions.resolve(sessionId);
-      const png = await provider.screenshot(session.url, await buildOpts(deps, sessionId, args));
-      if (png === undefined) return { ok: false, reason: VisualReason.CAPTURE_FAILED };
+      const { png, reason } = await capture(deps, sessionId, args);
+      if (png === undefined) {
+        return reason === VisualReason.NO_PROVIDER ? noProvider : { ok: false, reason };
+      }
       const name = asString(args['name']) ?? 'default';
       const store = new VisualStore(deps.fs, deps.reticleRoot);
       const path = await store.saveBaseline(name, png);
@@ -161,20 +216,16 @@ export const VISUAL_TOOLS: ToolDef[] = [
       reason: z.string().optional(),
     },
     handler: async (deps: ToolDeps, args) => {
-      const provider = screenshotProvider(deps);
-      if (provider === undefined) return noProvider;
       const baseline = asString(args['baseline']) ?? '';
       const store = new VisualStore(deps.fs, deps.reticleRoot);
       const baselineBytes = await store.readBaseline(baseline);
       if (baselineBytes === undefined) return { ok: false, reason: VisualReason.BASELINE_MISSING };
 
       const sessionId = asString(args['sessionId']);
-      const session = deps.sessions.resolve(sessionId);
-      const current = await provider.screenshot(
-        session.url,
-        await buildOpts(deps, sessionId, args),
-      );
-      if (current === undefined) return { ok: false, reason: VisualReason.CAPTURE_FAILED };
+      const { png: current, reason } = await capture(deps, sessionId, args);
+      if (current === undefined) {
+        return reason === VisualReason.NO_PROVIDER ? noProvider : { ok: false, reason };
+      }
 
       const masks = rectsFrom(args['masks']);
       const threshold = asNumber(args['threshold']);

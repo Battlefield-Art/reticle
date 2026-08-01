@@ -552,6 +552,15 @@ export const ReticleCommand = {
    * AGENT-driven pause/end keeps the presenter in sync. `args: { state, text? }`.
    */
   PRESENTER: 'presenter',
+  /**
+   * Ask the DESKTOP shell to photograph its own window and return `{ png: <base64> }`.
+   *
+   * A desktop webview has no CDP endpoint, so pixels must come from the runtime itself. Electron's
+   * `webContents.capturePage()` reads the window's backing store, which is why this beats capturing
+   * a screen region: it is correct even when the window is behind the editor, and needs no
+   * screen-recording permission. Answered only when the app installed the capture helper.
+   */
+  CAPTURE: 'capture',
   /** Navigate the page to a new URL. `args: { url: string }`. */
   NAVIGATE: 'navigate',
   /** Reload the page. `args: { hard?: boolean }` — hard clears the cache via location replace trick. */

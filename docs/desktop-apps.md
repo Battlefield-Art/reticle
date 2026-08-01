@@ -50,21 +50,45 @@ passed 25/27.
 | storage, animations, observe, explore | ✅ | ✅ | |
 | baseline (semantic), record → replay, crawl | ✅ | ✅ | `crawl` found real anomalies in both |
 | navigate (reload) | ✅ | ✅ | |
-| **screenshot / visual_diff** | ✅ | ❌ | Electron only — see below |
+| **screenshot / visual_diff** | ✅ | ❌ | Electron: one line in main — see below |
 | network_mock, viewport | ❌ | ❌ | need a Reticle-driven browser |
 
 ### Screenshots
 
-**Electron: works, with one flag.** An Electron renderer is Chromium, so it speaks CDP. Start the app
-with `--remote-debugging-port=9222` and the daemon with `RETICLE_CDP_URL=http://127.0.0.1:9222`, and
-`reticle_screenshot` / `reticle_visual_diff` work exactly as on the web. No extra packages.
+**Electron: one line in the main process.**
+
+```js
+const { installReticleCapture } = require('@reticlehq/browser/electron-main');
+const win = new BrowserWindow({ ... });
+installReticleCapture(win);
+```
+
+That is all — no CDP flag, no extra packages, works on a packaged `file://` renderer.
+`reticle_screenshot` and `reticle_visual_diff` then work on your app.
+
+Alternatively, since an Electron renderer *is* Chromium, `--remote-debugging-port=9222` +
+`RETICLE_CDP_URL=http://127.0.0.1:9222` also works and additionally enables `fullPage` (the
+main-process route captures the window as composited, so it cannot scroll-stitch).
+
+**Why the main process, and not a screen capture.** `webContents.capturePage()` reads the window's
+own backing store. Capturing a screen *region* instead was tried and deliberately rejected: it
+photographs whatever is on top, so an app window behind your editor yields a picture of the editor —
+saved as a visual baseline that a later diff would trust. A screenshot tool that can silently return
+another window's pixels manufactures exactly the false green Reticle exists to eliminate. One caveat
+remains: a fully occluded or minimized window is only partially composited, so parts of the capture
+may come back blank. Bring the window forward for a complete image — but it is never the wrong window.
 
 **Tauri: not available.** Its webview is WKWebView on macOS and WebKitGTK on Linux — neither speaks
-CDP — and Tauri's core exposes no capture API, so there is nothing for Reticle to call. Two escapes
-exist, both outside Reticle: on **Windows** Tauri uses WebView2, which is Chromium and does support
-`--remote-debugging-port`, so the Electron recipe above should apply; and the community
+CDP — and Tauri's core exposes no capture API, so there is nothing for Reticle to call. Verified, not
+assumed: the process opens no debug port and `tauri` exports no capture function. Three escapes exist,
+all outside Reticle: on **Windows** Tauri uses WebView2, which is Chromium and supports
+`--remote-debugging-port`, so the CDP recipe should apply; the community
 [`tauri-plugin-playwright`](https://crates.io/crates/tauri-plugin-playwright) adds a Rust plugin that
-captures the OS window via CoreGraphics. Plain Playwright cannot drive a WKWebView.
+captures the OS window via CoreGraphics; and an app can expose its own capture command. Plain
+Playwright cannot drive a WKWebView at all.
+
+If you add a native capture to a Tauri app, expose it as `window.__reticleIpc.capture()` returning a
+base64 PNG and Reticle will use it — that is the same contract the Electron helper fulfils.
 
 ### Routing: use a hash router
 

@@ -25,6 +25,7 @@ import { themeReport } from '../dom/theme.js';
 import { refs } from '../dom/refs.js';
 import { hitTestOccluder } from '../dom/occlusion.js';
 import { readStorage } from '../observers/storage.js';
+import { captureDesktopWindow } from '../dom/desktop-capture.js';
 import { identifyComponent, readComponentState } from '../registry/adapters.js';
 import { readStoresWithTruncation, readStoresRaw, storeNames } from '../registry/stores.js';
 import { sanitizeWithReport } from '../security/serialization.js';
@@ -270,6 +271,7 @@ export function createCommandRegistry(): Map<string, CommandHandler> {
   );
   reg.set(ReticleCommand.STORAGE_READ, (args) => readStorage(str(args['area'])));
   reg.set(ReticleCommand.CAPABILITIES, () => getCapabilities());
+  reg.set(ReticleCommand.CAPTURE, () => captureDesktopWindow());
   reg.set(ReticleCommand.SCROLL, (args) => {
     const dy = args['dy'];
     const fraction = args['fraction'];

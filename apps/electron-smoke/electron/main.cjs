@@ -8,6 +8,10 @@
  * Both must reach the bridge. The second is the one that used to crash the bridge's upgrade handler.
  */
 const { app, BrowserWindow, ipcMain } = require('electron');
+// The screenshot half of Reticle's desktop support. One line, main process only: it registers a
+// handler that hands Reticle the window's own backing store, so a capture is correct even when this
+// window is behind the editor.
+const { installReticleCapture } = require('@reticlehq/browser/electron-main');
 const path = require('node:path');
 
 const DEV_SERVER_URL = 'http://localhost:5174';
@@ -63,6 +67,8 @@ function createWindow() {
       sandbox: false,
     },
   });
+  installReticleCapture(win);
+
   // Forward renderer console to the terminal — a desktop renderer has no visible console unless you
   // open devtools, so a Reticle connect failure would otherwise be completely silent.
   win.webContents.on('console-message', (...args) => {

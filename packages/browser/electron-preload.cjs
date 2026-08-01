@@ -81,10 +81,25 @@ function observe(original, channelFromArg, name) {
 // Patch ipcRenderer.invoke itself. Every contextBridge API is ultimately a thin wrapper around this
 // one function, so patching here covers the app's whole IPC surface no matter what it named things —
 // and it happens before the app's own `exposeInMainWorld` captures the reference.
-ipcRenderer.invoke = observe(ipcRenderer.invoke.bind(ipcRenderer), true, 'invoke');
+const originalInvoke = ipcRenderer.invoke.bind(ipcRenderer);
+ipcRenderer.invoke = observe(originalInvoke, true, 'invoke');
+
+/** Channel the main-process helper answers. Must match CAPTURE_CHANNEL in electron-main.cjs. */
+const CAPTURE_CHANNEL = '__reticle:capture';
 
 contextBridge.exposeInMainWorld(RETICLE_IPC_GLOBAL, {
   subscribe(callback) {
     sink = typeof callback === 'function' ? callback : null;
+  },
+  /**
+   * Screenshot this window. Resolves to a base64 PNG, or null when the app did not install the
+   * main-process helper (`@reticlehq/browser/electron-main`) — there is no handler to answer, and a
+   * missing screenshot must read as missing, never as a blank image.
+   *
+   * Uses the ORIGINAL invoke: this is Reticle's own plumbing, and recording it as an app IPC call
+   * would put `ipc://__reticle:capture` in the agent's own network evidence.
+   */
+  capture() {
+    return originalInvoke(CAPTURE_CHANNEL).catch(() => null);
   },
 });

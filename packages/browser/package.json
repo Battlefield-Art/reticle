@@ -1,7 +1,7 @@
 {
   "name": "@reticlehq/browser",
   "version": "2.2.1",
-  "description": "Reticle browser SDK — installs observers, builds semantic snapshots, executes actions, talks to the bridge.",
+  "description": "Reticle browser SDK \u2014 installs observers, builds semantic snapshots, executes actions, talks to the bridge.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,7 +10,8 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./electron-preload": "./electron-preload.cjs"
+    "./electron-preload": "./electron-preload.cjs",
+    "./electron-main": "./electron-main.cjs"
   },
   "scripts": {
     "build": "tsc -b",
@@ -39,6 +40,7 @@
   "files": [
     "dist",
     "electron-preload.cjs",
+    "electron-main.cjs",
     "README.md",
     "NOTICE"
   ],

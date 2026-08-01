@@ -19,6 +19,9 @@ declare const __RETICLE_PORT__: number;
  * it opens, silently.
  */
 if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    console.warn('GEOM ' + JSON.stringify({ screenX: window.screenX, screenY: window.screenY, innerWidth: window.innerWidth, innerHeight: window.innerHeight, outerWidth: window.outerWidth, outerHeight: window.outerHeight, dpr: window.devicePixelRatio }));
+  }, 1500);
   install();
   reticle.connect({
     url: bridgeWsUrl(__RETICLE_PORT__),
