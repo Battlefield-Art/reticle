@@ -30,10 +30,48 @@ Your app **connects to the daemon**, not the other way round. So the workflow is
 3. That's it. `reticle status` now lists your window as a session, and the agent drives it.
 
 `reticle open` has nothing to open for a desktop app and will say so. There is no headless mode and
-no `reticle drive` for desktop — those launch a browser, which is not what you are testing. The
-screenshot-dependent tools (`reticle_screenshot`, `reticle_visual_diff`, `reticle_network_mock`,
-`reticle_viewport`) need a driven browser and are unavailable here. Everything else — snapshot,
-query, act, observe, network, console, state, assert, flows — works unchanged.
+no `reticle drive` for desktop — those launch a browser, which is not what you are testing.
+
+## What works, measured
+
+Every tool below was run against both demo apps against a live daemon. Electron passed 27/27; Tauri
+passed 25/27.
+
+| Capability | Electron | Tauri | Note |
+| --- | --- | --- | --- |
+| sessions, snapshot, query, inspect | ✅ | ✅ | `inspect` returns `src/App.tsx:104` on both |
+| capabilities, state (live store) | ✅ | ✅ | `reticle_state` reads the real store |
+| act (click/fill/type/select) | ✅ | ✅ | |
+| act_and_wait, wait_for, assert | ✅ | ✅ | signal / state / route / net / console predicates |
+| console errors | ✅ | ✅ | catches what the UI never shows |
+| network — HTTP | ✅ | ✅ | on `file://` a relative URL has no origin; use an absolute one |
+| network — IPC | ✅ | ✅ | `ipc://<channel>`, incl. failures |
+| route | ✅ | ✅ | use a **hash** router — see below |
+| storage, animations, observe, explore | ✅ | ✅ | |
+| baseline (semantic), record → replay, crawl | ✅ | ✅ | `crawl` found real anomalies in both |
+| navigate (reload) | ✅ | ✅ | |
+| **screenshot / visual_diff** | ✅ | ❌ | Electron only — see below |
+| network_mock, viewport | ❌ | ❌ | need a Reticle-driven browser |
+
+### Screenshots
+
+**Electron: works, with one flag.** An Electron renderer is Chromium, so it speaks CDP. Start the app
+with `--remote-debugging-port=9222` and the daemon with `RETICLE_CDP_URL=http://127.0.0.1:9222`, and
+`reticle_screenshot` / `reticle_visual_diff` work exactly as on the web. No extra packages.
+
+**Tauri: not available.** Its webview is WKWebView on macOS and WebKitGTK on Linux — neither speaks
+CDP — and Tauri's core exposes no capture API, so there is nothing for Reticle to call. Two escapes
+exist, both outside Reticle: on **Windows** Tauri uses WebView2, which is Chromium and does support
+`--remote-debugging-port`, so the Electron recipe above should apply; and the community
+[`tauri-plugin-playwright`](https://crates.io/crates/tauri-plugin-playwright) adds a Rust plugin that
+captures the OS window via CoreGraphics. Plain Playwright cannot drive a WKWebView.
+
+### Routing: use a hash router
+
+A packaged renderer runs on `file://`, where `pushState('/settings')` rewrites the URL to
+`file:///settings` — a path that does not exist, so the next reload lands on a blank page and the app
+is gone. This is why HashRouter is the standard choice for packaged Electron/Tauri apps. Reticle's
+route observer handles both, and a `{ kind: 'route', contains: … }` assertion matches the fragment.
 
 ## Electron
 

@@ -1,10 +1,6 @@
-import { useEffect, useState } from 'react';
-
-interface Todo {
-  id: number;
-  title: string;
-  done: boolean;
-}
+import { useEffect } from 'react';
+import { reticle } from '@reticlehq/browser';
+import { useApp, type Todo } from './store.js';
 
 /** The preload's contextBridge surface. Every call here is a main-process round trip, not HTTP. */
 interface DesktopApi {
@@ -17,40 +13,52 @@ function api(): DesktopApi {
   return (window as unknown as { api: DesktopApi }).api;
 }
 
+const STORAGE_KEY = 'electron-smoke:last-action';
+
 export function App(): React.ReactElement {
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [draft, setDraft] = useState('');
-  const [status, setStatus] = useState('loading…');
+  const { todos, status, route, lastError } = useApp();
+  const store = useApp;
 
   useEffect(() => {
     void api()
       .loadTodos()
       .then((loaded) => {
-        setTodos(loaded);
-        setStatus(`${String(loaded.length)} todos`);
+        store.getState().setTodos(loaded);
+        store.getState().setStatus(`${String(loaded.length)} todos`);
+        reticle.signal('todos:loaded', { count: loaded.length });
       });
-  }, []);
+  }, [store]);
+
+  const remember = (action: string): void => {
+    localStorage.setItem(STORAGE_KEY, action);
+  };
 
   const add = (): void => {
+    const draft = (document.getElementById('draft') as HTMLInputElement | null)?.value ?? '';
     void api()
       .addTodo(draft)
       .then((todo) => {
-        setTodos((current) => [...current, todo]);
-        setDraft('');
-        setStatus('added');
+        store.getState().addTodo(todo);
+        store.getState().setStatus('added');
+        remember('add');
+        reticle.signal('todo:added', { id: todo.id });
       })
-      .catch(() => setStatus('could not add'));
+      .catch((err: unknown) => {
+        store.getState().setStatus('could not add');
+        store.getState().setLastError(err instanceof Error ? err.message : String(err));
+      });
   };
 
   /**
    * The planted false green. The IPC call ALWAYS rejects, but this handler updates the list and the
    * status line first and swallows the error — so the screen reads "archived" and a screenshot, a DOM
    * assertion, and a human glance all agree the feature works. Only the IPC record disagrees:
-   *   reticle_network → ipc://api.archiveTodo  ok:false  "archive is not implemented in the backend"
+   *   reticle_network → ipc://todos:archive  ok:false  "archive is not implemented in the backend"
    */
   const archive = (id: number): void => {
-    setTodos((current) => current.filter((todo) => todo.id !== id));
-    setStatus('archived');
+    store.getState().removeTodo(id);
+    store.getState().setStatus('archived');
+    remember('archive');
     void api()
       .archiveTodo(id)
       .catch(() => {
@@ -58,30 +66,90 @@ export function App(): React.ReactElement {
       });
   };
 
+  /** Exercises the console observer: an uncaught error the UI never shows. */
+  const breakSomething = (): void => {
+    console.error('checkout total mismatch: expected 42, got 41');
+    store.getState().setLastError('checkout total mismatch');
+  };
+
+  /**
+   * Exercises the route observer without pulling in a router.
+   *
+   * HASH routing, not `pushState('/settings')`, and that is not a style choice: a packaged desktop
+   * renderer runs on `file://`, where pushing an absolute path rewrites the URL to `file:///settings`
+   * — a path that does not exist, so the next reload lands on a blank page and the app is gone. This
+   * is why HashRouter is the standard choice for packaged Electron/Tauri apps.
+   */
+  const go = (next: string): void => {
+    location.hash = next;
+    store.getState().setRoute(next);
+  };
+
+  /** A real HTTP call, so the network observer is exercised alongside IPC. */
+  const fetchStats = (): void => {
+    void fetch('/stats.json')
+      .then((res) => res.json())
+      .then(() => store.getState().setStatus('stats loaded'))
+      .catch(() => store.getState().setStatus('stats failed'));
+  };
+
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: 32, maxWidth: 560 }}>
+    <main style={{ fontFamily: 'system-ui, sans-serif', padding: 32, maxWidth: 620 }}>
+      <style>{`
+        @keyframes reticle-pulse { from { opacity: .35 } to { opacity: 1 } }
+        .pulse { animation: reticle-pulse 900ms ease-in-out infinite alternate; }
+      `}</style>
       <h1>Electron todos</h1>
       <p data-testid="status">{status}</p>
+      <p data-testid="route">route: {route}</p>
+      {lastError !== null && (
+        <p data-testid="last-error" className="pulse" style={{ color: '#b00' }}>
+          {lastError}
+        </p>
+      )}
+
       <div style={{ display: 'flex', gap: 8 }}>
         <input
+          id="draft"
+          data-testid="draft"
           aria-label="New todo"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
           placeholder="What needs doing?"
           style={{ flex: 1, padding: 8 }}
         />
-        <button onClick={add}>Add</button>
+        <button data-testid="add" onClick={add}>
+          Add
+        </button>
       </div>
-      <ul>
+
+      <ul data-testid="todo-list">
         {todos.map((todo) => (
           <li key={todo.id} style={{ margin: '8px 0' }}>
             {todo.title}
-            <button onClick={() => archive(todo.id)} style={{ marginLeft: 12 }}>
+            <button
+              data-testid={`archive-${String(todo.id)}`}
+              onClick={() => archive(todo.id)}
+              style={{ marginLeft: 12 }}
+            >
               Archive
             </button>
           </li>
         ))}
       </ul>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 24, flexWrap: 'wrap' }}>
+        <button data-testid="break" onClick={breakSomething}>
+          Break something
+        </button>
+        <button data-testid="go-settings" onClick={() => go('#/settings')}>
+          Go to settings
+        </button>
+        <button data-testid="go-home" onClick={() => go('#/')}>
+          Go home
+        </button>
+        <button data-testid="fetch-stats" onClick={fetchStats}>
+          Fetch stats
+        </button>
+      </div>
     </main>
   );
 }

@@ -1,9 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { reticle } from '@reticlehq/browser';
+import { reticle, registerCapabilities, registerStore } from '@reticlehq/browser';
 import { bridgeWsUrl } from '@reticlehq/core';
 import { install } from '@reticlehq/react';
 import { App } from './App.js';
+import { useApp } from './store.js';
 
 declare const __RETICLE_TOKEN__: string;
 declare const __RETICLE_PORT__: number;
@@ -27,6 +28,28 @@ if (typeof window !== 'undefined') {
     token: __RETICLE_TOKEN__,
     allowInProduction: true,
     overlay: true,
+    // Presenter mode: the full HUD (glow border, cursor, narration, tally). 'overlay' alone renders
+    // only the small 'Reticle ● N events' chip — which is why the HUD looked empty while the
+    // counter kept climbing.
+    present: true,
+  });
+  // The reliable layer: reticle_state reads this live, so an assertion never depends on the DOM.
+  registerStore('app', useApp);
+  registerCapabilities({
+    testids: [
+      'status',
+      'route',
+      'last-error',
+      'draft',
+      'add',
+      'todo-list',
+      'break',
+      'go-settings',
+      'go-home',
+      'fetch-stats',
+    ],
+    signals: ['todos:loaded', 'todo:added'],
+    stores: ['app'],
   });
 }
 

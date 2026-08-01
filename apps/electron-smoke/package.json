@@ -11,7 +11,8 @@
   "main": "electron/main.cjs",
   "dependencies": {
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@reticlehq/browser": "workspace:*",

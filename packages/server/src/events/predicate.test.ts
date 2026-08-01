@@ -156,6 +156,40 @@ describe('predicate engine', () => {
     ).toBe(false);
   });
 
+  /**
+   * A hash router keeps the whole route in the fragment, so `pathname` never moves off '/' (or, in a
+   * packaged desktop app on file://, off the long path to index.html). Matching `contains` against
+   * pathname alone made a route assertion permanently unsatisfiable for every HashRouter app — and
+   * HashRouter is the standard choice for packaged Electron/Tauri renderers, where pushing an
+   * absolute path would rewrite the URL to a file that does not exist.
+   */
+  it('route contains matches the fragment, not just the pathname (hash routers)', async () => {
+    const session = new FakeSession([
+      ev(EventType.ROUTE_CHANGE, {
+        pathname: '/Users/me/app/dist/index.html',
+        search: '',
+        hash: '#/settings',
+        to: 'file:///Users/me/app/dist/index.html#/settings',
+      }),
+    ]);
+    expect((await evaluatePredicate(session, { kind: 'route', contains: 'settings' })).pass).toBe(
+      true,
+    );
+    // A route the app never went to still fails — the match did not become vacuous.
+    expect((await evaluatePredicate(session, { kind: 'route', contains: 'billing' })).pass).toBe(
+      false,
+    );
+  });
+
+  it('route contains still matches a query string', async () => {
+    const session = new FakeSession([
+      ev(EventType.ROUTE_CHANGE, { pathname: '/search', search: '?q=widgets', hash: '' }),
+    ]);
+    expect((await evaluatePredicate(session, { kind: 'route', contains: 'q=widgets' })).pass).toBe(
+      true,
+    );
+  });
+
   it('allOf requires every sub-predicate, anyOf requires one', async () => {
     const session = new FakeSession([
       ev(EventType.NET_REQUEST, { method: 'POST', url: '/api/order', status: 200 }),

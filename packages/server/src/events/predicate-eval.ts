@@ -243,11 +243,17 @@ export function evalRoute(
       assertion: 'route.pathname',
     };
   }
-  if (p.contains !== undefined && !pathname.includes(p.contains)) {
+  // `contains` matches the WHOLE route — path + query + fragment — while `pathname` above stays an
+  // exact path match. A hash router keeps the entire route in the fragment, so matching pathname
+  // alone made `contains` unsatisfiable for every HashRouter app; that is the standard router for a
+  // packaged Electron/Tauri renderer, where an absolute pushState would rewrite the URL to a
+  // nonexistent file.
+  const fullRoute = `${pathname}${str(last.data['search']) ?? ''}${str(last.data['hash']) ?? ''}`;
+  if (p.contains !== undefined && !fullRoute.includes(p.contains)) {
     return {
       pass: false,
-      failureReason: `route '${pathname}' does not contain '${p.contains}'`,
-      observed: `route '${pathname}'`,
+      failureReason: `route '${fullRoute}' does not contain '${p.contains}'`,
+      observed: `route '${fullRoute}'`,
       expected: `a route containing '${p.contains}'`,
       assertion: 'route.contains',
     };
