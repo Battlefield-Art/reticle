@@ -15,6 +15,8 @@ export type Predicate =
       method?: string;
       urlContains?: string;
       status?: number;
+      /** Did the call succeed? The honest field for IPC, which has no status code. */
+      ok?: boolean;
       since?: number;
       count?: number;
     }
@@ -47,6 +49,7 @@ export const PredicateSchema = z.lazy(() =>
       method: z.string().optional(),
       urlContains: z.string().optional(),
       status: z.number().optional(),
+      ok: z.boolean().optional(),
       since: z.number().optional(),
       count: z.number().int().nonnegative().optional(),
     }),
@@ -175,6 +178,21 @@ function dataMatches(actual: Record<string, unknown>, pattern: Record<string, un
   return true;
 }
 
+/**
+ * Did this call succeed, as the app experienced it?
+ *
+ * `ok` is authoritative when present — IPC sets it explicitly, because an IPC call has no status
+ * code and the 200/500 Reticle derives is a convenience, not a fact. Falling back to the HTTP status
+ * keeps ordinary web requests working without the observer having to set the field everywhere.
+ *
+ * This exists so an agent can assert on the OUTCOME rather than on a number Reticle invented.
+ */
+function callSucceeded(data: Record<string, unknown>): boolean {
+  if (typeof data['ok'] === 'boolean') return data['ok'];
+  const status = num(data['status']);
+  return status === undefined || status < 400;
+}
+
 export function evalNet(
   events: ReticleEvent[],
   p: Extract<Predicate, { kind: 'net' }>,
@@ -190,6 +208,7 @@ export function evalNet(
       return false;
     }
     if (p.status !== undefined && num(d['status']) !== p.status) return false;
+    if (p.ok !== undefined && callSucceeded(d) !== p.ok) return false;
     return true;
   });
   // `count` (exact) turns presence into a cardinality assertion — catches the double-submit /

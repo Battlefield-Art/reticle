@@ -42,7 +42,10 @@ interface PreloadRecord {
 }
 
 interface PreloadChannel {
-  subscribe: (callback: (record: PreloadRecord) => void) => void;
+  /** Returns a token identifying this subscription (-1 if the callback was rejected). */
+  subscribe: (callback: (record: PreloadRecord) => void) => number;
+  /** Real removal. Older preloads predate this, so it is optional and absence is tolerated. */
+  unsubscribe?: (token: number) => void;
 }
 
 /**
@@ -98,7 +101,7 @@ export function installIpc(emit: Emit): Teardown {
     | undefined;
   if (typeof channel?.subscribe !== 'function') return () => undefined;
 
-  channel.subscribe((record) => {
+  const token = channel.subscribe((record) => {
     observeSafely(() => {
       const url = `${IPC_URL_SCHEME}${record.channel}`;
       if (record.phase === 'start') {
@@ -124,10 +127,10 @@ export function installIpc(emit: Emit): Teardown {
     });
   });
 
-  // Detaching the sink is the teardown — the preload's patch stays, but stops reporting.
+  // A REAL removal, so teardown leaves the app as it found it. The preload's `invoke` patch stays
+  // deliberately — it is a pass-through with no effect once no subscriber remains, and un-patching
+  // mid-flight would strand any call already inside the wrapper.
   return () => {
-    channel.subscribe(() => {
-      /* detached */
-    });
+    channel.unsubscribe?.(token);
   };
 }

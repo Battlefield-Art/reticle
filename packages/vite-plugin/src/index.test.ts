@@ -194,3 +194,45 @@ describe('desktop injection site', () => {
     ).not.toContain('reticle.connect');
   });
 });
+
+describe('desktop injection cannot fail silently', () => {
+  /**
+   * The failure this guards against actually happened twice while building desktop mode: the entry
+   * match missed, nothing was injected, and the packaged app shipped with no connect() in it. The
+   * app LOOKED wired. A build that cannot instrument must fail loudly rather than produce a binary
+   * that silently reports nothing.
+   */
+  it('fails the build when the entry was never found', () => {
+    const plugin = reticle({ desktop: true });
+    expect(() => plugin.buildEnd?.()).toThrow(/could not inject/i);
+  });
+
+  it('is satisfied once the entry has been injected', () => {
+    const plugin = reticle({ desktop: true });
+    plugin.resolveId('/src/main.tsx', '/app/index.html');
+    plugin.transform('const a = 1;', '/app/src/main.tsx');
+    expect(() => plugin.buildEnd?.()).not.toThrow();
+  });
+
+  it('says nothing on the web path, where injection is a script tag', () => {
+    expect(() => reticle().buildEnd?.()).not.toThrow();
+  });
+
+  it('says nothing when injection was explicitly disabled', () => {
+    expect(() => reticle({ desktop: true, inject: false }).buildEnd?.()).not.toThrow();
+  });
+
+  /**
+   * Suffix matching alone would inject into `/other/src/main.tsx` for an entry of `/src/main.tsx`.
+   * When the resolved root is known, the comparison is exact instead.
+   */
+  it('does not inject into a different file that merely shares a suffix', () => {
+    const plugin = reticle({ desktop: true });
+    plugin.configResolved?.({ root: '/app' });
+    plugin.resolveId('/src/main.tsx', '/app/index.html');
+    const wrong = plugin.transform('const a = 1;', '/other/src/main.tsx');
+    expect(wrong?.code ?? '').not.toContain('reticle.connect');
+    const right = plugin.transform('const a = 1;', '/app/src/main.tsx');
+    expect(right?.code ?? '').toContain('reticle.connect');
+  });
+});

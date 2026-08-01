@@ -105,7 +105,8 @@ describe('diagnoseDesktop — Electron', () => {
     const findings = diagnoseDesktop(
       project({
         'package.json': electronPkg,
-        'electron/main.cjs': 'const { installReticleCapture } = require("@reticlehq/electron/main")',
+        'electron/main.cjs':
+          'const { installReticleCapture } = require("@reticlehq/electron/main")',
         'electron/preload.cjs': 'require("@reticlehq/electron/preload")',
       }),
       4400,
@@ -116,9 +117,66 @@ describe('diagnoseDesktop — Electron', () => {
   it('finds the preload next to whatever main the package.json declares', () => {
     const findings = diagnoseDesktop(
       project({
-        'package.json': JSON.stringify({ main: 'app/desktop/main.cjs', devDependencies: { electron: '^34' } }),
+        'package.json': JSON.stringify({
+          main: 'app/desktop/main.cjs',
+          devDependencies: { electron: '^34' },
+        }),
         'app/desktop/main.cjs': 'require("@reticlehq/electron/main")',
         'app/desktop/preload.cjs': 'require("@reticlehq/electron/preload")',
+      }),
+      4400,
+    );
+    expect(findings).toEqual([]);
+  });
+});
+
+describe('diagnoseDesktop — must not cry wolf on a bundled preload', () => {
+  /**
+   * electron-vite and Electron Forge BUNDLE the preload — which is the setup this project
+   * recommends, because it keeps sandboxing on. There is then no `preload.cjs` sibling to read:
+   * `main` points into a build directory and the require is inlined at build time.
+   *
+   * Reporting "preload missing" there is worse than saying nothing: it tells someone who did the
+   * right thing to change it. A checker that cannot see must say so, not guess.
+   */
+  it('stays silent when the preload cannot be located at all', () => {
+    const findings = diagnoseDesktop(
+      project({
+        'package.json': JSON.stringify({
+          main: 'out/main/index.js',
+          devDependencies: { electron: '^34', 'electron-vite': '^2' },
+        }),
+        'out/main/index.js': '// bundled output, the require is inlined',
+      }),
+      4400,
+    );
+    expect(codes(findings)).not.toContain(DesktopFinding.ELECTRON_PRELOAD_MISSING);
+  });
+
+  it('still reports a preload it CAN see that lacks the shim', () => {
+    const findings = diagnoseDesktop(
+      project({
+        'package.json': JSON.stringify({
+          main: 'electron/main.cjs',
+          devDependencies: { electron: '^34' },
+        }),
+        'electron/main.cjs': 'require("@reticlehq/electron/main")',
+        'electron/preload.cjs': 'const { contextBridge } = require("electron")',
+      }),
+      4400,
+    );
+    expect(codes(findings)).toContain(DesktopFinding.ELECTRON_PRELOAD_MISSING);
+  });
+
+  it('finds a preload kept in a src/ directory rather than beside main', () => {
+    const findings = diagnoseDesktop(
+      project({
+        'package.json': JSON.stringify({
+          main: 'dist/main.js',
+          devDependencies: { electron: '^34' },
+        }),
+        'dist/main.js': 'require("@reticlehq/electron/main")',
+        'src/preload.ts': 'require("@reticlehq/electron/preload")',
       }),
       4400,
     );

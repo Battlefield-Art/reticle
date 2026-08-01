@@ -121,16 +121,29 @@ function dirOf(path: string): string {
   return cut < 0 ? '' : path.slice(0, cut + 1);
 }
 
+/**
+ * Where a preload SOURCE might live, in the order worth trying.
+ *
+ * Beside `main` first (the unbundled layout), then the usual source directories — a bundled setup
+ * points `main` at `out/` or `dist/` while the real preload stays in `src/` or `electron/`.
+ */
+function preloadCandidates(mainDir: string): string[] {
+  const names = ['preload.cjs', 'preload.js', 'preload.mjs', 'preload.ts', 'preload.mts'];
+  const dirs = [mainDir, 'electron/', 'src/', 'src/preload/', 'src/main/', ''];
+  return dirs.flatMap((dir) => names.map((name) => `${dir}${name}`));
+}
+
 function diagnoseElectron(read: ReadFile, main: string): DesktopDiagnosis[] {
   const findings: DesktopDiagnosis[] = [];
   const dir = dirOf(main);
-  // The preload sits next to whatever `main` the package.json declares — not at a guessed path.
-  const preloadPath = [`${dir}preload.cjs`, `${dir}preload.js`, `${dir}preload.mjs`].find(
-    (candidate) => read(candidate) !== undefined,
-  );
+  const preloadPath = preloadCandidates(dir).find((candidate) => read(candidate) !== undefined);
   const preload = preloadPath === undefined ? undefined : read(preloadPath);
 
-  if (preload === undefined || !preload.includes(PRELOAD_REQUIRE)) {
+  // A preload we cannot LOCATE is not a preload we know is broken. electron-vite and Forge bundle it
+  // — the recommended setup, because it keeps sandboxing on — so `main` points into a build
+  // directory and the require is inlined with no source to read. Reporting "missing" there tells
+  // someone who did the right thing to undo it, which is worse than staying quiet.
+  if (preload !== undefined && !preload.includes(PRELOAD_REQUIRE)) {
     findings.push({
       code: DesktopFinding.ELECTRON_PRELOAD_MISSING,
       file: preloadPath ?? `${dir}preload.cjs`,

@@ -25,13 +25,20 @@ afterEach(() => {
  * channel — this stands in for `@reticlehq/electron/preload`.
  */
 function fakePreload(): (record: Record<string, unknown>) => void {
-  let sink: ((record: Record<string, unknown>) => void) | null = null;
+  // Mirrors the real preload: many subscribers, keyed by token, with a real removal.
+  const sinks = new Map<number, (record: Record<string, unknown>) => void>();
+  let token = 0;
   Reflect.set(window, '__reticleIpc', {
     subscribe: (callback: (record: Record<string, unknown>) => void) => {
-      sink = callback;
+      token += 1;
+      sinks.set(token, callback);
+      return token;
     },
+    unsubscribe: (id: number) => sinks.delete(id),
   });
-  return (record) => sink?.(record);
+  return (record) => {
+    for (const sink of sinks.values()) sink(record);
+  };
 }
 
 describe('IPC observer — Electron (reports arrive from the preload shim)', () => {
@@ -94,6 +101,37 @@ describe('IPC observer — Electron (reports arrive from the preload shim)', () 
 
     push({ phase: 'start', id: 'i4', channel: 'todos:load' });
     expect(all).toEqual([]);
+  });
+
+  /**
+   * A single-slot sink meant a second connect() in the same renderer silently stole the first one's
+   * subscription, and "teardown" was really "overwrite with a no-op" — so tearing one session down
+   * killed reporting for the other. Both must be able to observe, and each must remove only itself.
+   */
+  it('supports two independent subscribers, and removing one leaves the other reporting', () => {
+    const push = fakePreload();
+    const first = recorder();
+    const second = recorder();
+    const stopFirst = installIpc(first.emit);
+    teardowns.push(installIpc(second.emit));
+
+    push({ phase: 'start', id: 'i1', channel: 'todos:load' });
+    expect(first.all).toHaveLength(1);
+    expect(second.all).toHaveLength(1);
+
+    stopFirst();
+    push({ phase: 'start', id: 'i2', channel: 'todos:load' });
+    expect(first.all, 'the torn-down subscriber must stop').toHaveLength(1);
+    expect(second.all, 'the surviving subscriber must keep reporting').toHaveLength(2);
+  });
+
+  it('tolerates an older preload with no unsubscribe rather than throwing', () => {
+    const sinks: ((record: Record<string, unknown>) => void)[] = [];
+    Reflect.set(window, '__reticleIpc', {
+      subscribe: (cb: (record: Record<string, unknown>) => void) => sinks.push(cb),
+    });
+    const { emit } = recorder();
+    expect(() => installIpc(emit)()).not.toThrow();
   });
 
   it('is inert with no preload shim (Tauri, and any plain web page)', () => {

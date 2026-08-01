@@ -70,6 +70,10 @@ export interface ReticleVitePlugin {
   resolveId: (id: string, importer?: string) => string | null;
   load: (id: string) => string | null;
   transformIndexHtml: (html: string) => HtmlTag[];
+  /** Vite hands over the resolved config; used to resolve the HTML entry exactly. */
+  configResolved?: (config: { root?: string }) => void;
+  /** Build-time post-condition: desktop injection must have happened. */
+  buildEnd?: () => void;
 }
 
 interface HtmlTag {
@@ -85,12 +89,22 @@ interface HtmlTag {
  * (`/Users/me/app/src/main.tsx`). A suffix match is what bridges them. Any query suffix
  * (`?html-proxy`, `?t=...`) is stripped first so a re-transformed module still matches.
  */
-function isHtmlEntry(id: string, specifier: string | undefined): boolean {
+function isHtmlEntry(id: string, specifier: string | undefined, root: string | undefined): boolean {
   if (specifier === undefined) return false;
   const clean = (value: string): string => value.split('?')[0] ?? value;
   const target = clean(specifier);
   const candidate = clean(id);
-  return candidate === target || candidate.endsWith(target.startsWith('/') ? target : `/${target}`);
+  if (candidate === target) return true;
+  // EXACT when the resolved root is known: Vite reports the HTML's script as a root-relative
+  // specifier (`/src/main.tsx`) while `transform` sees the absolute path, and joining the two is a
+  // real resolution rather than a guess. Suffix matching alone would also inject into
+  // `/other/src/main.tsx`, a different file that merely ends the same way.
+  if (root !== undefined && target.startsWith('/')) {
+    return candidate === `${root.replace(/\/$/, '')}${target}`;
+  }
+  // Fallback for the rare case Vite never reported a root — still better than not injecting, and the
+  // buildEnd post-condition means a wrong match cannot pass unnoticed as "nothing happened".
+  return candidate.endsWith(target.startsWith('/') ? target : `/${target}`);
 }
 
 function shouldStamp(id: string): boolean {
@@ -161,8 +175,14 @@ export function connectModuleSource(options: ReticleVitePluginOptions): string {
  * import { reticle } from '@reticlehq/vite-plugin';
  * export default defineConfig({ plugins: [react(), reticle()] });
  *
- * `apply: 'serve'` means Vite drops the plugin entirely from `vite build` — production bundles
- * are never instrumented. Gating is the tool's job, not a user-managed env check.
+ * `apply: 'serve'` means Vite drops the plugin entirely from `vite build`, so a web production
+ * bundle is never instrumented — gating is the tool's job, not a user-managed env check.
+ *
+ * `desktop: true` is the ONE documented exception, and it inverts that guarantee deliberately: a
+ * packaged Electron/Tauri renderer IS a production build with no dev server, so serve-only gating
+ * would ship an app with no connect() at all. The cost is that the flag hands gating back to the
+ * caller — keep it behind your own dev-only build target so an instrumented bundle can never reach
+ * a release binary.
  */
 export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlugin {
   const sourceMapping = options.sourceMapping !== false;
@@ -182,6 +202,10 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
    * the bundle simply ships with no connect() in it. Hence `isHtmlEntry`'s suffix comparison.
    */
   let htmlEntrySpecifier: string | undefined;
+  /** Vite's resolved project root, for exact entry resolution. Undefined until configResolved. */
+  let root: string | undefined;
+  /** Whether connect() actually reached a module — asserted at buildEnd, never assumed. */
+  let injected = false;
   /**
    * Resolve port + token at the moment of injection, not at plugin construction. By the time a
    * module is served or built the daemon is up and has written its pairing token; resolving early
@@ -204,7 +228,8 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       // Desktop injection: prepend connect() to the HTML's own entry module. It is a REAL module, so
       // its bare `@reticlehq/react` import resolves through the normal pipeline in both dev and
       // build — which a virtual <script src> only ever did in dev.
-      if (desktop && inject && isHtmlEntry(id, htmlEntrySpecifier)) {
+      if (desktop && inject && isHtmlEntry(id, htmlEntrySpecifier, root)) {
+        injected = true;
         const withConnect = `${connectModuleSource(resolveLazy())}\n${code}`;
         const stamped = sourceMapping && shouldStamp(id) ? stamp(withConnect, id) : null;
         return stamped ?? { code: withConnect, map: null };
@@ -230,6 +255,23 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     load(id) {
       if (!inject || id !== RETICLE_CONNECT_MODULE) return null;
       return connectModuleSource(resolveLazy());
+    },
+    configResolved(config) {
+      root = config.root;
+    },
+    /**
+     * Desktop injection is silent when it misses — the bundle simply has no connect() in it and the
+     * app looks wired while reporting nothing. That happened twice while this was being built. A
+     * build that could not instrument must fail loudly instead of shipping a binary that lies.
+     */
+    buildEnd() {
+      if (!desktop || !inject || injected) return;
+      throw new Error(
+        `[${RETICLE_VITE_PLUGIN_NAME}] could not inject reticle.connect(): the HTML entry module was ` +
+          'never matched, so this build carries no instrumentation. Check that index.html references ' +
+          'your entry with a <script type="module" src="...">, or pass `inject: false` and call ' +
+          'reticle.connect() yourself.',
+      );
     },
     transformIndexHtml() {
       // Desktop injects via the entry module instead (see transform) — a tag here would be a dead

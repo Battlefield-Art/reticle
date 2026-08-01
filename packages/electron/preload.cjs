@@ -27,16 +27,30 @@ const {
   RETICLE_CAPTURE_CHANNEL,
 } = require('@reticlehq/core/desktop-contract');
 
-/** Set by the renderer through `subscribe`. Until then, records are dropped — connect() runs later. */
-let sink = null;
+/**
+ * Renderer-side subscribers, keyed by a token.
+ *
+ * A Map rather than one slot, and a token rather than the callback itself, for two reasons. A single
+ * slot meant a second `connect()` in the same renderer silently STOLE the first one's subscription —
+ * and "unsubscribing" was really "overwrite with a no-op", so an SDK teardown left the app in a
+ * different state than it found it. Tokens rather than function identity because a callback crosses
+ * `contextBridge` as a proxy, so the reference the preload holds is not the one the renderer passes
+ * back and `delete(callback)` would never match.
+ *
+ * Empty until a renderer subscribes, so records before `connect()` are dropped rather than queued —
+ * the SDK only wants activity from the moment it is watching.
+ */
+const sinks = new Map();
+let sinkToken = 0;
 let seq = 0;
 
 function report(record) {
-  if (sink === null) return;
-  try {
-    sink(record);
-  } catch {
-    /* the renderer's sink is best-effort; it must never break the app's IPC call */
+  for (const sink of sinks.values()) {
+    try {
+      sink(record);
+    } catch {
+      /* a renderer sink is best-effort; it must never break the app's IPC call */
+    }
   }
 }
 
@@ -88,8 +102,22 @@ const originalInvoke = ipcRenderer.invoke.bind(ipcRenderer);
 ipcRenderer.invoke = observe(originalInvoke, true, 'invoke');
 
 contextBridge.exposeInMainWorld(RETICLE_IPC_GLOBAL, {
+  /** Start receiving records. Returns a token to hand back to `unsubscribe`. */
   subscribe(callback) {
-    sink = typeof callback === 'function' ? callback : null;
+    if (typeof callback !== 'function') return -1;
+    sinkToken += 1;
+    sinks.set(sinkToken, callback);
+    return sinkToken;
+  },
+  /**
+   * Stop receiving records. A real removal, so an SDK teardown leaves the app as it found it.
+   *
+   * The `ipcRenderer.invoke` patch itself is deliberately NOT reverted: it is a pass-through with no
+   * observable effect once no sinks remain, and un-patching it mid-flight would strand any call that
+   * had already started inside the wrapper.
+   */
+  unsubscribe(token) {
+    sinks.delete(token);
   },
   /**
    * Screenshot this window. Resolves to a base64 PNG, or null when the app did not install the

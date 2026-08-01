@@ -938,3 +938,53 @@ describe('element failures carry observed/expected/assertion', () => {
     expect(never.assertion).toBe('signal.absent');
   });
 });
+
+describe('net predicate: ok — asserting on outcome, not a fabricated status', () => {
+  const ipcFail = ev(EventType.NET_REQUEST, {
+    method: 'ipc',
+    url: 'ipc://todos:archive',
+    ok: false,
+    status: 500,
+    error: 'archive is not implemented',
+  });
+  const httpOk = ev(EventType.NET_REQUEST, { method: 'POST', url: '/api/save', status: 200 });
+
+  /**
+   * IPC has no status code. Reticle derives 200/500 so existing filters keep working, but making an
+   * agent assert `status: 500` means asserting on a number Reticle invented — the assertion is about
+   * Reticle's encoding rather than the app's behaviour. `ok` is the honest field.
+   */
+  it('matches a failed call without naming a status', async () => {
+    const session = new FakeSession([ipcFail]);
+    expect((await evaluatePredicate(session, { kind: 'net', ok: false })).pass).toBe(true);
+    expect((await evaluatePredicate(session, { kind: 'net', ok: true })).pass).toBe(false);
+  });
+
+  it('treats a 2xx HTTP call as ok even though it never sets the field', async () => {
+    const session = new FakeSession([httpOk]);
+    expect((await evaluatePredicate(session, { kind: 'net', ok: true })).pass).toBe(true);
+    expect((await evaluatePredicate(session, { kind: 'net', ok: false })).pass).toBe(false);
+  });
+
+  it('treats a 4xx/5xx HTTP call as not ok', async () => {
+    const session = new FakeSession([
+      ev(EventType.NET_REQUEST, { method: 'GET', url: '/api/x', status: 404 }),
+    ]);
+    expect((await evaluatePredicate(session, { kind: 'net', ok: false })).pass).toBe(true);
+  });
+
+  it('composes with the other net filters', async () => {
+    const session = new FakeSession([ipcFail, httpOk]);
+    const result = await evaluatePredicate(session, {
+      kind: 'net',
+      urlContains: 'ipc://todos:archive',
+      ok: false,
+    });
+    expect(result.pass).toBe(true);
+  });
+
+  it('still honours an explicit status, so nothing that worked before changes', async () => {
+    const session = new FakeSession([ipcFail]);
+    expect((await evaluatePredicate(session, { kind: 'net', status: 500 })).pass).toBe(true);
+  });
+});
