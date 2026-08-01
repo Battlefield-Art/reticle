@@ -10,6 +10,7 @@ import {
   SessionState,
   TRANSPORT_LIMITS,
   isLoopbackHostname,
+  isLocalPage,
   type CommandMessage,
   type HelloMessage,
   type ReticleEvent,
@@ -32,6 +33,7 @@ import { installStoreState } from './observers/state.js';
 import { installFocus } from './observers/focus.js';
 import { installBlindSpots } from './observers/blind-spots.js';
 import { installNetwork } from './observers/network.js';
+import { installIpc } from './observers/ipc.js';
 import { installPerf } from './observers/perf.js';
 import { installRoute } from './observers/route.js';
 import { installConsole } from './observers/console.js';
@@ -130,6 +132,8 @@ export function connectionPolicy(
   bridgeUrl: string,
   allowNonLocalhost: boolean,
   token: string | undefined,
+  /** The page's protocol. Desktop webviews (file:, app:, tauri:) are local despite a non-loopback host. */
+  pageProtocol = 'http:',
 ): { allowed: boolean; reason?: string } {
   let bridge: URL;
   try {
@@ -150,7 +154,7 @@ export function connectionPolicy(
   if (remoteBridge && bridge.protocol !== 'wss:') {
     return { allowed: false, reason: 'a non-local Reticle bridge must use wss://' };
   }
-  const remote = !isLoopbackHostname(pageHostname) || remoteBridge;
+  const remote = !isLocalPage(pageProtocol, pageHostname) || remoteBridge;
   if (!remote) return { allowed: true };
   if (!allowNonLocalhost) {
     return {
@@ -298,6 +302,7 @@ export class Reticle {
       url,
       options.allowNonLocalhost === true,
       options.token,
+      window.location.protocol,
     );
     if (!policy.allowed) {
       globalThis.console.warn(`[Reticle] ${policy.reason ?? 'connection blocked'}`);
@@ -354,6 +359,8 @@ export class Reticle {
     const emit = this.#emit;
     this.#teardowns = [
       installNetwork(emit, { captureBodies: options.captureNetworkBodies === true }),
+      // Desktop backends are reached over IPC, not HTTP — inert on a plain web page.
+      installIpc(emit),
       installPerf(emit),
       installRoute(emit),
       installConsole(emit),

@@ -9,7 +9,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./electron-preload": "./electron-preload.cjs"
   },
   "scripts": {
     "build": "tsc -b",
@@ -37,6 +38,7 @@
   "bugs": "https://github.com/reticlehq/reticle/issues",
   "files": [
     "dist",
+    "electron-preload.cjs",
     "README.md",
     "NOTICE"
   ],

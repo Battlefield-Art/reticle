@@ -111,6 +111,37 @@ describe('Bridge security boundary', () => {
     expect(bridge.sessions.get('nobrowser')).toBeDefined();
   });
 
+  // Desktop webviews (Electron, Tauri) send an OPAQUE Origin — one whose URL.origin is the string
+  // "null". They carry no attributable hostname, so they are treated exactly like a missing Origin:
+  // the pairing token is the gate. Parsing them must never throw inside the WS handshake.
+  const OPAQUE_ORIGINS = ['tauri://localhost', 'app://.', 'file://', 'null'];
+
+  for (const origin of OPAQUE_ORIGINS) {
+    it(`rejects the opaque desktop origin ${origin} when no token is configured`, async () => {
+      const { port } = await makeBridge();
+      await expect(openSocket(port, origin)).rejects.toThrow(/Unexpected server response: 403/);
+    });
+
+    it(`accepts the opaque desktop origin ${origin} when a token is configured`, async () => {
+      const { bridge, port } = await makeBridge({ token: 'shared-secret' });
+      const socket = await openSocket(port, origin);
+      socket.send(JSON.stringify(hello('desktop', 'shared-secret')));
+      await waitUntil(() => bridge.sessions.count() === 1);
+      expect(bridge.sessions.get('desktop')).toBeDefined();
+    });
+  }
+
+  it('allow-lists an opaque desktop origin verbatim when binding beyond localhost', async () => {
+    const { bridge, port } = await makeBridge({
+      token: 'shared-secret',
+      allowedOrigins: ['tauri://localhost'],
+    });
+    const socket = await openSocket(port, 'tauri://localhost');
+    socket.send(JSON.stringify(hello('tauri', 'shared-secret')));
+    await waitUntil(() => bridge.sessions.count() === 1);
+    expect(bridge.sessions.get('tauri')).toBeDefined();
+  });
+
   it('requires a token before binding beyond localhost', () => {
     expect(() => new Bridge({ port: 0, host: '0.0.0.0' })).toThrow(/pairing token/);
   });

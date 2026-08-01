@@ -297,7 +297,12 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
       const { sessions } = summarizeStatus(await fetchStatus(port));
       const decision = decideOpen(sessions, url);
       if (decision.action === 'need-url') {
-        log('reticle_open', { port, error: 'no app connected — pass a url: reticle open <url>' });
+        log('reticle_open', {
+          port,
+          error:
+            'no app connected — pass a url: reticle open <url>. Desktop app (Electron/Tauri)? ' +
+            'There is no url to open: start it as you normally would and it connects to this bridge itself.',
+        });
         return;
       }
       if (decision.action === 'reuse') {

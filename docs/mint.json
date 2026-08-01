@@ -33,6 +33,7 @@
       "group": "Integrate",
       "pages": [
         "platform-integration",
+        "desktop-apps",
         "integration-patterns",
         "flows",
         "testing",

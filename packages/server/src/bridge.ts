@@ -12,6 +12,8 @@ import {
   RETICLE_PROTOCOL_VERSION,
   TRANSPORT_LIMITS,
   isLoopbackHostname,
+  isOpaqueOrigin,
+  OPAQUE_ORIGIN,
 } from '@reticlehq/core';
 import { Session, SessionManager } from './session/session.js';
 import { tokensMatch } from './token-auth.js';
@@ -60,9 +62,18 @@ interface BridgeOptions {
   server?: http.Server;
 }
 
+/**
+ * Canonical comparable form of a WS `Origin`. Web origins collapse to scheme://host[:port]. An
+ * OPAQUE origin — a desktop webview (`tauri://localhost`, `app://.`) or `file://`, whose `URL.origin`
+ * is the string "null" — is kept VERBATIM instead, so it survives into the allow-list and can be
+ * compared. Collapsing those to "null" would both merge every desktop scheme into one bucket and
+ * feed an unparseable string to `new URL`. Returns null only for a header that is not an origin.
+ */
 function normalizeOrigin(origin: string): string | null {
+  if (origin === OPAQUE_ORIGIN) return OPAQUE_ORIGIN;
   try {
-    return new URL(origin).origin;
+    const web = new URL(origin).origin;
+    return web === OPAQUE_ORIGIN ? origin : web;
   } catch {
     return null;
   }
@@ -328,6 +339,10 @@ export class Bridge {
     const normalized = normalizeOrigin(origin);
     if (normalized === null) return false;
     if (this.#allowedOrigins.has(normalized)) return true;
+    // A desktop webview (Electron, Tauri) or a file:// document sends an opaque Origin: no host to
+    // check, so it is exactly as attributable as a missing Origin — defer to the token, as above.
+    // Without this branch `new URL` throws INSIDE the WS upgrade handler, crashing the process.
+    if (isOpaqueOrigin(normalized)) return this.#token !== undefined;
     return isLoopbackHostname(new URL(normalized).hostname);
   }
 

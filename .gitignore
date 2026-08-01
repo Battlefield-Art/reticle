@@ -45,6 +45,10 @@ build/
 .next/
 .turbo/
 *.tsbuildinfo
+# Rust build output for the Tauri smoke app (multi-GB; never committed)
+apps/tauri-smoke/src-tauri/target/
+apps/tauri-smoke/src-tauri/Cargo.lock
+apps/tauri-smoke/src-tauri/gen/
 
 # Test / coverage
 coverage/

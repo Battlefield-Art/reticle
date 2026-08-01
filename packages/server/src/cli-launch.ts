@@ -1,6 +1,6 @@
 import * as http from 'node:http';
 import { spawn } from 'node:child_process';
-import { LOOPBACK_HOST, STATUS_PATH } from '@reticlehq/core';
+import { isOpaqueOrigin, LOOPBACK_HOST, STATUS_PATH } from '@reticlehq/core';
 
 /**
  * CLI launch + status helpers — the daemon-introspection (`reticle status`) and the one-command
@@ -86,7 +86,11 @@ type OpenDecision =
 
 function sameOrigin(a: string, b: string): boolean {
   try {
-    return new URL(a).origin === new URL(b).origin;
+    const origin = new URL(a).origin;
+    // Two opaque origins (desktop webviews, file:// docs) BOTH stringify to "null", so comparing them
+    // would call every desktop app the same app and reuse the wrong session. Never match on opaque.
+    if (isOpaqueOrigin(origin)) return false;
+    return origin === new URL(b).origin;
   } catch {
     return false;
   }

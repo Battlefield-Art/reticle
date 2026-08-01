@@ -75,6 +75,44 @@ describe('connectionPolicy', () => {
   it('rejects non-WebSocket bridge URLs', () => {
     expect(connectionPolicy('localhost', 'javascript:alert(1)', true, 'token').allowed).toBe(false);
   });
+
+  // A desktop webview is not a remote website — it is a local app whose document happens not to be
+  // served over http://localhost. The localhost gate exists to stop a REMOTE PAGE driving a local
+  // bridge; applying it to file:// or tauri:// blocks the desktop case it was never aimed at.
+  const DESKTOP_PAGES: { label: string; protocol: string; hostname: string }[] = [
+    { label: 'packaged Electron (loadFile)', protocol: 'file:', hostname: '' },
+    { label: 'Electron custom protocol', protocol: 'app:', hostname: '.' },
+    { label: 'Tauri macOS/Linux', protocol: 'tauri:', hostname: 'localhost' },
+    { label: 'Tauri Windows', protocol: 'http:', hostname: 'tauri.localhost' },
+  ];
+
+  for (const page of DESKTOP_PAGES) {
+    it(`allows a local desktop webview to reach a loopback bridge: ${page.label}`, () => {
+      expect(
+        connectionPolicy(
+          page.hostname,
+          'ws://127.0.0.1:4400/reticle',
+          false,
+          undefined,
+          page.protocol,
+        ),
+      ).toEqual({ allowed: true });
+    });
+  }
+
+  it('still blocks a remote https page even though its bridge is loopback', () => {
+    expect(
+      connectionPolicy('evil.example', 'ws://127.0.0.1:4400/reticle', false, undefined, 'https:')
+        .allowed,
+    ).toBe(false);
+  });
+
+  it('does not let a desktop protocol unlock a REMOTE bridge — that still needs the opt-in', () => {
+    expect(
+      connectionPolicy('localhost', 'wss://bridge.example/reticle', false, 'token', 'tauri:')
+        .allowed,
+    ).toBe(false);
+  });
 });
 
 describe('shouldBlockProduction', () => {

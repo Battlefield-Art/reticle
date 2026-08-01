@@ -6,6 +6,7 @@ import {
   StreamDirection,
 } from '@reticlehq/core';
 import { captureMethod } from '../patching/capture-method.js';
+import { ipcNetOverrides, TAURI_RESPONSE_HEADER_NAME } from './ipc.js';
 import type { Emit, Teardown } from './types.js';
 import { isCapturableType, projectBody, withBodyDeadline } from './network-body.js';
 import { redactUrl } from './network-redact.js';
@@ -274,6 +275,11 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
           ...netResponseMeta(res.statusText, contentType, res.headers.get('content-length')),
           ...projectRequestBody(init?.body, captureBodies),
           ...responseBodyFields,
+          // A Tauri `invoke` arrives here as an ordinary fetch to its ipc:// protocol, and answers
+          // HTTP 200 even when the Rust command returned Err. These overrides come LAST so the
+          // command's real verdict wins over the transport's — otherwise every failed command reads
+          // as a successful request.
+          ...(ipcNetOverrides(url, res.headers.get(TAURI_RESPONSE_HEADER_NAME)) ?? {}),
         });
       };
       if (captureBodies && isCapturableType(contentType)) {
