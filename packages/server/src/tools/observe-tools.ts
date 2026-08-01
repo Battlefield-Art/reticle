@@ -27,7 +27,12 @@ import {
 } from '../session/output-budget.js';
 import { healthEnvelope, bufferEnvelope } from '../session/session-health.js';
 import type { Session } from '../session/session.js';
-import { isPresenceOnlyAssertion, PRESENCE_ONLY_ADVICE } from './assert-grade.js';
+import {
+  assertsDerivedIpcStatus,
+  DERIVED_IPC_STATUS_ADVICE,
+  isPresenceOnlyAssertion,
+  PRESENCE_ONLY_ADVICE,
+} from './assert-grade.js';
 import { buildCoverageStatement, blindSpotsFromState } from '../honesty/blind-spots.js';
 import { withControl } from '../session/control-envelope.js';
 import { asString, asNumber } from './tools-helpers.js';
@@ -335,8 +340,16 @@ export const OBSERVE_TOOLS: ToolDef[] = [
           : await evaluatePredicate(session, predicate, since);
       // A GREEN presence-only assertion is the dangerous case (a wrong element can fake it) — nudge
       // toward a consequence. Never on a failing verdict (moot) or when a signal/net is asserted.
-      const advice =
-        verdict.pass && isPresenceOnlyAssertion(predicate) ? { advice: PRESENCE_ONLY_ADVICE } : {};
+      // Two nudges, both only on a GREEN verdict (a failing one is moot): a presence-only assertion
+      // a wrong element can fake, and an assertion pinned to a status Reticle derived rather than one
+      // a server sent. Neither blocks — the assertion still passes; they steer the next one.
+      const advice = !verdict.pass
+        ? {}
+        : isPresenceOnlyAssertion(predicate)
+          ? { advice: PRESENCE_ONLY_ADVICE }
+          : assertsDerivedIpcStatus(predicate)
+            ? { advice: DERIVED_IPC_STATUS_ADVICE }
+            : {};
       // A verdict reached over an evicted buffer can be a FALSE NEGATIVE: "no console error" may
       // simply mean the error aged out. reticle_console has always disclosed this on the same window;
       // the verdict path — the one an agent actually gates on — did not. Omitted when nothing dropped.

@@ -27,6 +27,14 @@ const NODE_MODULES = 'node_modules';
  */
 export const RETICLE_CONNECT_MODULE = '/@reticle-connect';
 
+/**
+ * How long after serving the HTML to wait before concluding the entry was never injected.
+ *
+ * Generous on purpose: the browser has to request the entry, and a cold dev server transforming a
+ * large app can take a moment. A false warning would train people to ignore a real one.
+ */
+const DEV_INJECTION_GRACE_MS = 10_000;
+
 export interface ReticleVitePluginOptions {
   /** Bridge WebSocket port. Defaults to the SDK default; only baked into connect when non-default. */
   port?: number;
@@ -58,6 +66,11 @@ export interface ReticleVitePluginOptions {
    * or `process.env.NODE_ENV !== 'production'` in vite.config) so it cannot reach a release binary.
    */
   desktop?: boolean;
+  /**
+   * Where a diagnostic goes. Defaults to the console; injected so the dev-mode injection check is
+   * testable without capturing global console output.
+   */
+  onWarn?: (message: string) => void;
 }
 
 /** Structural Vite plugin shape — avoids a hard dependency on `vite` while staying assignable to its `Plugin`. */
@@ -71,9 +84,11 @@ export interface ReticleVitePlugin {
   load: (id: string) => string | null;
   transformIndexHtml: (html: string) => HtmlTag[];
   /** Vite hands over the resolved config; used to resolve the HTML entry exactly. */
-  configResolved?: (config: { root?: string }) => void;
+  configResolved?: (config: { root?: string; command?: string }) => void;
   /** Build-time post-condition: desktop injection must have happened. */
   buildEnd?: () => void;
+  /** Runs the dev-mode injection check immediately. Test seam for the deferred timer. */
+  checkInjectedForTest?: () => void;
 }
 
 interface HtmlTag {
@@ -204,6 +219,9 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
   let htmlEntrySpecifier: string | undefined;
   /** Vite's resolved project root, for exact entry resolution. Undefined until configResolved. */
   let root: string | undefined;
+  /** 'serve' | 'build'. The dev check only applies to serve; buildEnd covers the other. */
+  let command: string | undefined;
+  const warn = options.onWarn ?? ((message: string) => globalThis.console.warn(message));
   /** Whether connect() actually reached a module — asserted at buildEnd, never assumed. */
   let injected = false;
   /**
@@ -217,6 +235,19 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     const token = withPort.token ?? readPairingToken();
     return token !== undefined ? { ...withPort, token } : withPort;
   };
+  /** The one message, so the build error and the dev warning cannot drift apart. */
+  const notInjectedMessage = (): string =>
+    `[${RETICLE_VITE_PLUGIN_NAME}] could not inject reticle.connect(): the HTML entry module was ` +
+    'never matched, so this app carries no instrumentation and will never connect. Check that ' +
+    'index.html references your entry with a <script type="module" src="...">, or pass ' +
+    '`inject: false` and call reticle.connect() yourself.';
+
+  /** Warn (never throw) in dev — a running dev server should report the fault, not die of it. */
+  const checkInjected = (): void => {
+    if (!desktop || !inject || injected) return;
+    warn(notInjectedMessage());
+  };
+
   return {
     name: RETICLE_VITE_PLUGIN_NAME,
     // Web: serve-only, so a production bundle can never carry the SDK — gating is the tool's job.
@@ -258,6 +289,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     },
     configResolved(config) {
       root = config.root;
+      command = config.command;
     },
     /**
      * Desktop injection is silent when it misses — the bundle simply has no connect() in it and the
@@ -266,14 +298,17 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
      */
     buildEnd() {
       if (!desktop || !inject || injected) return;
-      throw new Error(
-        `[${RETICLE_VITE_PLUGIN_NAME}] could not inject reticle.connect(): the HTML entry module was ` +
-          'never matched, so this build carries no instrumentation. Check that index.html references ' +
-          'your entry with a <script type="module" src="...">, or pass `inject: false` and call ' +
-          'reticle.connect() yourself.',
-      );
+      throw new Error(notInjectedMessage());
     },
+    checkInjectedForTest: checkInjected,
     transformIndexHtml() {
+      // In serve, the HTML is sent BEFORE the browser requests the entry module, so the check has to
+      // be deferred — asserting here would fire on every healthy start. Unref'd so a dev server is
+      // never held open by it.
+      if (desktop && inject && command === 'serve') {
+        const timer = setTimeout(checkInjected, DEV_INJECTION_GRACE_MS);
+        (timer as { unref?: () => void }).unref?.();
+      }
       // Desktop injects via the entry module instead (see transform) — a tag here would be a dead
       // URL in a packaged build.
       if (!inject || desktop) return [];

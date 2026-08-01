@@ -1,3 +1,5 @@
+import { RETICLE_IPC_GLOBAL } from '@reticlehq/core';
+
 /**
  * Setup RCA for desktop apps.
  *
@@ -133,20 +135,58 @@ function preloadCandidates(mainDir: string): string[] {
   return dirs.flatMap((dir) => names.map((name) => `${dir}${name}`));
 }
 
+/**
+ * Where a BUNDLED preload's output lands. electron-vite's default layout mirrors `out/main` with
+ * `out/preload`; Forge and hand-rolled setups favour `dist`/`build`.
+ */
+function bundledPreloadCandidates(mainDir: string): string[] {
+  const roots = [mainDir.replace(/main\/?$/, ''), 'out/', 'dist/', 'build/', '.vite/build/'];
+  const names = [
+    'preload/index.js',
+    'preload/index.mjs',
+    'preload/index.cjs',
+    'preload.js',
+    'preload.mjs',
+    'preload.cjs',
+  ];
+  return roots.flatMap((root) => names.map((name) => `${root}${name}`));
+}
+
+/**
+ * Is the preload wired, judged from whatever evidence exists?
+ *
+ * Source first (the require is right there). Failing that, the BUILD OUTPUT: bundling inlines the
+ * shim, and the shim carries the contract's own window global — finding that string in the artifact
+ * proves the preload is wired even though the require has been compiled away. Undefined means no
+ * evidence either way, and an unknown must never be reported as a fault.
+ */
+function preloadWired(
+  read: ReadFile,
+  mainDir: string,
+): { wired: boolean; file: string } | undefined {
+  for (const candidate of preloadCandidates(mainDir)) {
+    const source = read(candidate);
+    if (source !== undefined) return { wired: source.includes(PRELOAD_REQUIRE), file: candidate };
+  }
+  for (const candidate of bundledPreloadCandidates(mainDir)) {
+    const built = read(candidate);
+    if (built !== undefined) {
+      return { wired: built.includes(RETICLE_IPC_GLOBAL), file: candidate };
+    }
+  }
+  return undefined;
+}
+
 function diagnoseElectron(read: ReadFile, main: string): DesktopDiagnosis[] {
   const findings: DesktopDiagnosis[] = [];
   const dir = dirOf(main);
-  const preloadPath = preloadCandidates(dir).find((candidate) => read(candidate) !== undefined);
-  const preload = preloadPath === undefined ? undefined : read(preloadPath);
+  // Undefined = no source AND no build output to judge from. An unknown is not a fault.
+  const preload = preloadWired(read, dir);
 
-  // A preload we cannot LOCATE is not a preload we know is broken. electron-vite and Forge bundle it
-  // — the recommended setup, because it keeps sandboxing on — so `main` points into a build
-  // directory and the require is inlined with no source to read. Reporting "missing" there tells
-  // someone who did the right thing to undo it, which is worse than staying quiet.
-  if (preload !== undefined && !preload.includes(PRELOAD_REQUIRE)) {
+  if (preload !== undefined && !preload.wired) {
     findings.push({
       code: DesktopFinding.ELECTRON_PRELOAD_MISSING,
-      file: preloadPath ?? `${dir}preload.cjs`,
+      file: preload.file,
       problem:
         'the preload never installs the Reticle IPC shim, so every ipcRenderer.invoke is invisible — reticle_network will report nothing and read as "this app makes no backend calls"',
       fix: `add as the FIRST line:  require('${PRELOAD_REQUIRE}')`,

@@ -236,3 +236,42 @@ describe('desktop injection cannot fail silently', () => {
     expect(right?.code ?? '').toContain('reticle.connect');
   });
 });
+
+describe('desktop injection is loud in dev too, not only in build', () => {
+  /**
+   * `buildEnd` covers the dangerous case — a packaged binary that ships uninstrumented. Dev had no
+   * equivalent: a missed injection just meant no session ever appeared, and nothing said why. That
+   * is the same silent failure, only with a shorter blast radius, so it gets the same treatment.
+   *
+   * The check is deferred rather than immediate because in `serve` the HTML is sent BEFORE the
+   * browser requests the entry module — asserting at html time would fire on every healthy start.
+   */
+  it('warns after serving HTML if the entry was never injected', () => {
+    const warnings: string[] = [];
+    const plugin = reticle({ desktop: true, onWarn: (m) => warnings.push(m) });
+    plugin.configResolved?.({ root: '/app', command: 'serve' });
+    plugin.transformIndexHtml('<html></html>');
+    plugin.checkInjectedForTest?.();
+    expect(warnings.join(' ')).toMatch(/could not inject/i);
+  });
+
+  it('stays quiet when the entry was injected', () => {
+    const warnings: string[] = [];
+    const plugin = reticle({ desktop: true, onWarn: (m) => warnings.push(m) });
+    plugin.configResolved?.({ root: '/app', command: 'serve' });
+    plugin.transformIndexHtml('<html></html>');
+    plugin.resolveId('/src/main.tsx', '/app/index.html');
+    plugin.transform('const a = 1;', '/app/src/main.tsx');
+    plugin.checkInjectedForTest?.();
+    expect(warnings).toEqual([]);
+  });
+
+  it('never warns on the web path', () => {
+    const warnings: string[] = [];
+    const plugin = reticle({ onWarn: (m) => warnings.push(m) });
+    plugin.configResolved?.({ root: '/app', command: 'serve' });
+    plugin.transformIndexHtml('<html></html>');
+    plugin.checkInjectedForTest?.();
+    expect(warnings).toEqual([]);
+  });
+});

@@ -46,6 +46,35 @@ function walk(predicate: Predicate): PredicateKinds {
  * — the weak pattern worth nudging. A predicate that mixes in a consequence, or that checks something
  * other than presence (route/console/settled), is not flagged.
  */
+/**
+ * Advice for an assertion pinned to a status Reticle derived rather than one a server sent.
+ */
+export const DERIVED_IPC_STATUS_ADVICE =
+  'This asserts on a status code Reticle DERIVED — IPC has none. Prefer `{ ok: false }`, which ' +
+  'describes what the app did rather than how Reticle encoded it, and cannot drift if that encoding ' +
+  'changes. The `error` field carries the message the main process or Rust command actually returned.';
+
+/**
+ * Does this predicate pin an IPC call to a status code?
+ *
+ * The 200/500 on an IPC record is a convenience so `reticle_network { status }` keeps working across
+ * runtimes — it is not something any server sent. An assertion built on it is really an assertion
+ * about Reticle's encoding, and would silently stop meaning what it meant if that encoding changed.
+ * Recognised by the `ipc://` scheme, so a genuine HTTP status is never second-guessed.
+ */
+export function assertsDerivedIpcStatus(predicate: Predicate): boolean {
+  if (predicate.kind === 'allOf' || predicate.kind === 'anyOf') {
+    return predicate.predicates.some(assertsDerivedIpcStatus);
+  }
+  if (predicate.kind === 'not') return assertsDerivedIpcStatus(predicate.predicate);
+  if (predicate.kind !== 'net') return false;
+  return (
+    predicate.status !== undefined &&
+    predicate.ok === undefined &&
+    (predicate.urlContains ?? '').startsWith('ipc://')
+  );
+}
+
 export function isPresenceOnlyAssertion(predicate: Predicate): boolean {
   const kinds = walk(predicate);
   return kinds.presence && !kinds.consequence;

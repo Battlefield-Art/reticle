@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isPresenceOnlyAssertion } from './assert-grade.js';
+import { isPresenceOnlyAssertion, assertsDerivedIpcStatus } from './assert-grade.js';
 import type { Predicate } from '../events/predicate.js';
 
 describe('isPresenceOnlyAssertion', () => {
@@ -54,6 +54,44 @@ describe('isPresenceOnlyAssertion', () => {
       isPresenceOnlyAssertion({
         kind: 'not',
         predicate: { kind: 'element', query: { text: 'x' } },
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('derived-status advice — steering off a number Reticle invented', () => {
+  /**
+   * IPC has no status code. Reticle derives 200/500 so the existing filters keep working, but an
+   * agent that asserts `status: 500` is asserting on Reticle's own encoding rather than on what the
+   * app did — and if that derivation ever changes, the assertion silently stops meaning what it
+   * meant. `ok` is the field that describes the app. Nudge, do not break: the assertion still passes.
+   */
+  it('advises `ok` when a net assertion pins a status on an IPC call', () => {
+    expect(assertsDerivedIpcStatus({ kind: 'net', urlContains: 'ipc://save', status: 500 })).toBe(
+      true,
+    );
+  });
+
+  it('says nothing when the assertion already uses ok', () => {
+    expect(assertsDerivedIpcStatus({ kind: 'net', urlContains: 'ipc://save', ok: false })).toBe(
+      false,
+    );
+  });
+
+  it('says nothing about a real HTTP status, which the server genuinely sent', () => {
+    expect(assertsDerivedIpcStatus({ kind: 'net', urlContains: '/api/save', status: 500 })).toBe(
+      false,
+    );
+  });
+
+  it('reaches into allOf/anyOf, where a weak clause is easiest to miss', () => {
+    expect(
+      assertsDerivedIpcStatus({
+        kind: 'allOf',
+        predicates: [
+          { kind: 'console', level: 'error', absent: true },
+          { kind: 'net', urlContains: 'ipc://save', status: 500 },
+        ],
       }),
     ).toBe(true);
   });

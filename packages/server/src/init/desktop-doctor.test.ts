@@ -183,3 +183,49 @@ describe('diagnoseDesktop — must not cry wolf on a bundled preload', () => {
     expect(findings).toEqual([]);
   });
 });
+
+describe('diagnoseDesktop — verifying a bundled preload from its ARTIFACT', () => {
+  const bundledPkg = JSON.stringify({
+    main: 'out/main/index.js',
+    devDependencies: { electron: '^34', 'electron-vite': '^2' },
+  });
+
+  /**
+   * Staying silent on a bundled preload stopped the false alarm, but it also meant the recommended
+   * setup could never be verified at all. It can be: bundling INLINES the shim, and the shim carries
+   * the contract's own window global. Finding that string in the build output is proof the preload
+   * is wired — checking the artifact instead of the source it was built from.
+   */
+  it('accepts a bundled preload whose output carries the contract marker', () => {
+    const findings = diagnoseDesktop(
+      project({
+        'package.json': bundledPkg,
+        'out/main/index.js': 'require("@reticlehq/electron/main")',
+        'out/preload/index.js': 'contextBridge.exposeInMainWorld("__reticleIpc", {...})',
+      }),
+      4400,
+    );
+    expect(codes(findings)).not.toContain(DesktopFinding.ELECTRON_PRELOAD_MISSING);
+  });
+
+  /** A build output we CAN read and which lacks the marker is a genuine miss, not an unknown. */
+  it('reports a bundled preload whose output lacks the marker', () => {
+    const findings = diagnoseDesktop(
+      project({
+        'package.json': bundledPkg,
+        'out/main/index.js': 'require("@reticlehq/electron/main")',
+        'out/preload/index.js': 'contextBridge.exposeInMainWorld("api", {...})',
+      }),
+      4400,
+    );
+    expect(codes(findings)).toContain(DesktopFinding.ELECTRON_PRELOAD_MISSING);
+  });
+
+  it('still says nothing when there is neither a source nor a build output to read', () => {
+    const findings = diagnoseDesktop(
+      project({ 'package.json': bundledPkg, 'out/main/index.js': 'require("@reticlehq/electron/main")' }),
+      4400,
+    );
+    expect(codes(findings)).not.toContain(DesktopFinding.ELECTRON_PRELOAD_MISSING);
+  });
+});
