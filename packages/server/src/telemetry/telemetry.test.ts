@@ -11,6 +11,14 @@ const TEST_ENV = {
   RETICLE_TELEMETRY_URL: 'http://example.test',
 };
 
+/**
+ * A cwd OUTSIDE this repository. Telemetry is disabled whenever it runs from a Reticle source
+ * checkout — developing the library is not using it — and these tests run from inside one, so they
+ * must state plainly that they are simulating a user's project. Without this every emitter test
+ * would assert against a no-op and pass for the wrong reason.
+ */
+const USER_PROJECT = '/tmp/some-user-app';
+
 /** The PostHog batch envelope the emitter builds (asserted, not assumed — this IS the wire). */
 interface CapturedBatch {
   api_key: string;
@@ -97,7 +105,12 @@ describe('telemetry emitter', () => {
 
   it('carries the tool name on TOOL events', async () => {
     const { impl, calls } = recordingFetch();
-    const t = createTelemetry({ version: '1', env: TEST_ENV, fetchImpl: impl });
+    const t = createTelemetry({
+      cwd: USER_PROJECT,
+      version: '1',
+      env: TEST_ENV,
+      fetchImpl: impl,
+    });
     await t.emit(TelemetryEventKind.TOOL, { tool: 'reticle_act' });
     const item = calls[0]?.body.batch[0];
     expect(item?.event).toBe(TelemetryEventKind.TOOL);
@@ -107,6 +120,7 @@ describe('telemetry emitter', () => {
   it('hands a detached emit to a disowned child instead of fetching in-process', async () => {
     const spawns: Array<{ command: string; args: string[] }> = [];
     const t = createTelemetry({
+      cwd: USER_PROJECT,
       version: '1',
       env: TEST_ENV,
       spawnImpl: (command, args) => spawns.push({ command, args }),
@@ -123,13 +137,13 @@ describe('telemetry emitter', () => {
   it('persists and lifts the machine-wide opt-out (`reticle telemetry disable`/`enable`)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'reticle-telemetry-'));
     try {
-      expect(describeTelemetry({}, dir).enabled).toBe(true);
+      expect(describeTelemetry({}, dir, USER_PROJECT).enabled).toBe(true);
       setTelemetryEnabled(false, dir);
-      expect(describeTelemetry({}, dir).enabled).toBe(false);
+      expect(describeTelemetry({}, dir, USER_PROJECT).enabled).toBe(false);
       setTelemetryEnabled(true, dir);
-      expect(describeTelemetry({}, dir).enabled).toBe(true);
+      expect(describeTelemetry({}, dir, USER_PROJECT).enabled).toBe(true);
       // The env-var opt-out wins regardless of the file state.
-      expect(describeTelemetry({ RETICLE_TELEMETRY: '0' }, dir).enabled).toBe(false);
+      expect(describeTelemetry({ RETICLE_TELEMETRY: '0' }, dir, USER_PROJECT).enabled).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -137,7 +151,12 @@ describe('telemetry emitter', () => {
 
   it('never rejects when the network throws (best-effort)', async () => {
     const failing = (() => Promise.reject(new Error('offline'))) as unknown as typeof fetch;
-    const t = createTelemetry({ version: '1', env: TEST_ENV, fetchImpl: failing });
+    const t = createTelemetry({
+      cwd: USER_PROJECT,
+      version: '1',
+      env: TEST_ENV,
+      fetchImpl: failing,
+    });
     await expect(t.emit(TelemetryEventKind.INVOKE)).resolves.toBeUndefined();
   });
 });

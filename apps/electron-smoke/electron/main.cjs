@@ -17,6 +17,18 @@ const path = require('node:path');
 const DEV_SERVER_URL = 'http://localhost:5174';
 const FROM_FILE = process.env['RETICLE_DEMO_FILE'] === '1';
 
+/**
+ * Headless mode for CI. An Electron "headless" app is simply a window that is never shown: the
+ * renderer still runs, still executes JS, still talks to the main process, and still connects to the
+ * Reticle bridge — a display is a rendering concern, not a scripting one.
+ *
+ * `backgroundThrottling: false` is the load-bearing part. Chromium throttles timers and rAF in a
+ * window that is not visible, which would make the app react in slow motion and turn every settle
+ * wait into a flake. `offscreen` is deliberately NOT used: it changes the compositing path and
+ * `capturePage` behaves differently, and a hidden-but-composited window screenshots correctly.
+ */
+const HEADLESS = process.env['RETICLE_HEADLESS'] === '1';
+
 /** In-memory "backend". The renderer can only reach it over IPC — never over HTTP. */
 const todos = [
   { id: 1, title: 'Wire Reticle into an Electron app', done: true },
@@ -56,6 +68,7 @@ function createWindow() {
     width: 900,
     height: 700,
     title: 'Reticle Electron smoke',
+    show: !HEADLESS,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -65,6 +78,8 @@ function createWindow() {
       // bundle the preload (electron-vite and Forge do this by default, and the require is inlined at
       // build time, so sandboxing can stay on), or turn the sandbox off as this unbundled demo does.
       sandbox: false,
+      // Never let an unshown window run its timers in slow motion — see HEADLESS above.
+      backgroundThrottling: false,
     },
   });
   installReticleCapture(win);

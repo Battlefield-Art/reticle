@@ -57,6 +57,8 @@ const DETACHED_SEND_SCRIPT =
   '.catch(()=>{}).finally(()=>process.exit(0))';
 
 /** Env var names — mirror cloud-sync's `RETICLE_*` convention. */
+import { isReticleSourceCheckout } from './dev-repo.js';
+
 const Env = {
   DISABLE: 'RETICLE_TELEMETRY', // "0" / "false" / "off" → disabled
   DO_NOT_TRACK: 'DO_NOT_TRACK', // the cross-tool opt-out convention (any truthy value)
@@ -66,10 +68,14 @@ const Env = {
   VITEST: 'VITEST', // set by vitest — unit tests must never phone home
 } as const;
 
-const isDisabled = (env: NodeJS.ProcessEnv): boolean => {
+const isDisabled = (env: NodeJS.ProcessEnv, cwd: string = process.cwd()): boolean => {
   const off = new Set(['0', 'false', 'off', 'no']);
   if (off.has((env[Env.DISABLE] ?? '').toLowerCase())) return true;
   if (env[Env.VITEST] !== undefined) return true; // a test run is not a user
+  // Developing Reticle is not using Reticle. The `.env` carrying RETICLE_TELEMETRY=0 is gitignored,
+  // so it only exists on the machine that made it — a fresh clone would phone home on a
+  // contributor's first `reticle serve`. The repo marker is committed, so this guarantee travels.
+  if (isReticleSourceCheckout(cwd)) return true;
   const dnt = env[Env.DO_NOT_TRACK];
   return typeof dnt === 'string' && dnt !== '' && dnt !== '0';
 };
@@ -115,8 +121,18 @@ const showNoticeOnce = (): void => {
 export const describeTelemetry = (
   env: NodeJS.ProcessEnv = process.env,
   dir: string = RETICLE_DIR,
+  cwd: string = process.cwd(),
 ): { enabled: boolean; reason: string; policyUrl: string } => {
-  if (isDisabled(env)) {
+  // Report the reason that ACTUALLY applies. Saying "environment variable" when the real cause is
+  // the source-checkout guard would send a contributor hunting for a variable that is not set.
+  if (isReticleSourceCheckout(cwd)) {
+    return {
+      enabled: false,
+      reason: 'this is a Reticle source checkout — developing it is not using it',
+      policyUrl: POLICY_URL,
+    };
+  }
+  if (isDisabled(env, cwd)) {
     return { enabled: false, reason: 'disabled by environment variable', policyUrl: POLICY_URL };
   }
   if (existsSync(join(dir, 'telemetry-opt-out'))) {
@@ -176,7 +192,8 @@ export const createTelemetry = (opts: {
   spawnImpl?: (command: string, args: string[]) => void;
 }): Telemetry => {
   const env = opts.env ?? process.env;
-  if (isDisabled(env)) return NOOP;
+  const cwd = opts.cwd ?? process.cwd();
+  if (isDisabled(env, cwd)) return NOOP;
   try {
     if (existsSync(OPT_OUT_FILE)) return NOOP; // the persistent `reticle telemetry disable` opt-out
   } catch {

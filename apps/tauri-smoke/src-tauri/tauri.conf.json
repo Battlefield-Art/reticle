@@ -14,7 +14,8 @@
       {
         "title": "Reticle Tauri smoke",
         "width": 900,
-        "height": 700
+        "height": 700,
+        "label": "main"
       }
     ],
     "security": {

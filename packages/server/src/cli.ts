@@ -10,6 +10,7 @@ import {
   resolveChangedFiles,
 } from './cli-flow-commands.js';
 import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv } from '@reticlehq/core';
+import { loadDotEnv } from './telemetry/dev-repo.js';
 import { createNodeFileSystem } from './project/fs-port.js';
 import { affectedSavedFlows } from './flows/flow-sources.js';
 
@@ -473,6 +474,9 @@ function handleLegacyDrive(parsed: { port: number; driveUrl: string; headless: b
 }
 
 function main(): void {
+  // Before anything reads process.env — notably the telemetry gate and the bridge's security
+  // options — fold in a project-local `.env`. Values already in the environment always win.
+  loadDotEnv(process.cwd());
   const argv = process.argv.slice(2);
   // Every invocation passes through here — the single chokepoint for the "how often is it used / how
   // many distinct machines + projects" metrics. Fire-and-forget: a metric must never delay or fail a run.
