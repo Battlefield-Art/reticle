@@ -18,28 +18,42 @@ describe('commandTimeoutMessage — an 8s timeout should say what to DO', () => 
   });
 
   /**
-   * The case this exists for. macOS suspends a WKWebView whose window is occluded or on another
-   * Space: the session stays connected and every command times out with nothing saying why. Eight
-   * seconds of silence followed by "timed out" sends someone hunting through their own app code for
-   * a bug that is not there.
+   * The case this exists for: a Tauri window hidden BEFORE its webview was first presented never
+   * loads its page, so every command times out with nothing saying why. Eight seconds of silence
+   * followed by "timed out" sends someone hunting through their own app code for a bug that is not
+   * there.
    */
-  it('explains the macOS suspension for a Tauri session that has gone quiet', () => {
+  it('explains the hidden-before-load trap for a Tauri session that has gone quiet', () => {
     const message = commandTimeoutMessage('snapshot', 8000, {
       url: TAURI,
       hidden: true,
       runtime: 'tauri',
     });
     expect(message).toContain('WKWebView');
-    expect(message).toMatch(/Space|visible/);
+    expect(message).toMatch(/on_page_load/);
     // It must still carry the original fact — the advice is added, never substituted.
     expect(message).toContain("command 'snapshot' timed out after 8000ms");
   });
 
   /**
-   * Electron has `backgroundThrottling: false`, so an occluded Electron window keeps running. Blaming
-   * occlusion there would send the user to move a window that was never the problem.
+   * The advice used to blame occlusion, which is measurably false: a LOADED Tauri webview answers
+   * while minimized, app-hidden, occluded and on another Space. Telling someone to go move a window
+   * costs them the hour this message exists to save, so the wrong cause must not come back.
    */
-  it('does not blame occlusion on Electron, which is immune to it', () => {
+  it('does not blame occlusion or Spaces, which do not suspend a loaded webview', () => {
+    const message = commandTimeoutMessage('snapshot', 8000, {
+      url: TAURI,
+      hidden: true,
+      runtime: 'tauri',
+    });
+    expect(message).not.toMatch(/Space|occlud|suspend/i);
+  });
+
+  /**
+   * Electron shows its window before hiding it, so it never hits this. Diagnosing it there would
+   * send the user to change code that was never the problem.
+   */
+  it('does not offer the Tauri diagnosis on Electron', () => {
     const message = commandTimeoutMessage('snapshot', 8000, {
       url: ELECTRON,
       hidden: true,
@@ -48,7 +62,7 @@ describe('commandTimeoutMessage — an 8s timeout should say what to DO', () => 
     expect(message).not.toContain('WKWebView');
   });
 
-  it('says nothing about suspension when the page reports itself visible', () => {
+  it('says nothing when the page reports itself visible', () => {
     const message = commandTimeoutMessage('snapshot', 8000, {
       url: TAURI,
       hidden: false,

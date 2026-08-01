@@ -4,15 +4,18 @@ import { isOpaqueOrigin } from '@reticlehq/core';
  * Turn a bare command timeout into something the reader can act on.
  *
  * The default message — `command 'snapshot' timed out after 8000ms` — is eight seconds of silence
- * followed by a fact with no cause. On macOS the most likely cause for a Tauri app is not a bug in
- * the app at all: an occluded window, or one on another Space, has its WKWebView SUSPENDED by the
- * OS. The session stays connected, so nothing looks wrong, and the developer goes hunting through
- * their own code for a fault that is not there.
+ * followed by a fact with no cause. For a Tauri app the cause is usually not a bug in the app: its
+ * window was hidden before the webview had ever been PRESENTED, and a webview that has never been
+ * presented never loads its page. The session stays connected, so nothing looks wrong, and the
+ * developer goes hunting through their own code for a fault that is not there.
  *
- * The advice is ADDED, never substituted — the original fact still leads. And it is only offered
- * when the page itself reported a runtime that can suffer it: Electron sets
- * `backgroundThrottling: false` and is immune, and blaming occlusion there would send someone to
- * move a window that was never the problem.
+ * This advice previously blamed occlusion — "macOS suspends an occluded or off-Space WKWebView" —
+ * which is false, and was the kind of wrong steer this function exists to prevent. A LOADED Tauri
+ * webview keeps answering while minimized, app-hidden, occluded, and on another Space. Only the
+ * ordering matters, so that is what the message now says.
+ *
+ * The advice is ADDED, never substituted — the original fact still leads — and only for a runtime
+ * that can actually suffer it, since misdirecting an Electron user costs them the same hour.
  */
 
 /** What the page told us about its shell, via PAGE_HEALTH. Undefined before the first report. */
@@ -26,14 +29,13 @@ export interface TimeoutContext {
   runtime?: PageRuntime;
 }
 
-const SUSPENSION_ADVICE =
-  'The page last reported itself hidden, and this is a WebKit (Tauri) window: macOS SUSPENDS a ' +
-  'WKWebView whose window is occluded or on another Space, so the session stays connected while ' +
-  'every command times out. Bring the window onto the Space you are looking at. There is no ' +
-  'backgroundThrottling equivalent to disable this; on Linux CI use `xvfb-run` so the window is ' +
-  'always visible.';
+const HIDDEN_BEFORE_LOAD_ADVICE =
+  'The page last reported itself hidden, and this is a WKWebView (Tauri) window. A webview hidden ' +
+  'BEFORE its first page load never presents, so it never runs the page and answers nothing. Hide ' +
+  'the window from `on_page_load` rather than from `setup` — see `reticle_tauri::on_page_load`, ' +
+  'which does exactly that for RETICLE_HEADLESS=1. Once the page HAS loaded, hiding it is safe.';
 
-/** True when this session is a WebKit desktop shell — the only runtime that suffers the suspension. */
+/** True when this session is a WebKit desktop shell — the only runtime that suffers this. */
 function isWebKitDesktop(context: TimeoutContext): boolean {
   if (context.runtime === 'tauri') return true;
   // A `tauri://` origin is unambiguous even before the first health report lands.
@@ -48,5 +50,5 @@ export function commandTimeoutMessage(
 ): string {
   const base = `command '${name}' timed out after ${String(timeoutMs)}ms`;
   if (!context.hidden || !isWebKitDesktop(context)) return base;
-  return `${base}. ${SUSPENSION_ADVICE}`;
+  return `${base}. ${HIDDEN_BEFORE_LOAD_ADVICE}`;
 }

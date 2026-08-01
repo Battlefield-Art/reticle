@@ -11,14 +11,47 @@
  * eliminate. Electron's `webContents.capturePage()` reads the window's own backing store instead:
  * correct while occluded, correct while backgrounded, and needing no screen-recording permission.
  *
- * The app opts in with one line in its main process (`@reticlehq/electron/main`). Absent
- * that, this returns `{ ok: false }` and the tool reports no-provider rather than guessing.
+ * Both desktop runtimes can do this, each through its own shell API — `webContents.capturePage()` on
+ * Electron, `WKWebView.takeSnapshot` on Tauri/macOS. Neither reads the screen, so both stay correct
+ * with the window occluded, hidden, or running headless with nothing on screen at all.
+ *
+ * The app opts in with one line in its main process (`@reticlehq/electron/main`) or one Rust command
+ * (`reticle-tauri`). Absent that, this returns `{ ok: false }` and the tool reports no-provider
+ * rather than guessing.
  */
 
-import { RETICLE_IPC_GLOBAL } from '@reticlehq/core';
+import { RETICLE_IPC_GLOBAL, RETICLE_TAURI_CAPTURE_COMMAND } from '@reticlehq/core';
 
 interface CaptureChannel {
   capture?: () => Promise<string | null>;
+}
+
+/** Tauri's own bridge object. The SDK reads `invoke` off it; it never patches it (it is read-only). */
+interface TauriInternals {
+  invoke?: (command: string, args?: unknown) => Promise<unknown>;
+}
+
+const TAURI_INTERNALS_GLOBAL = '__TAURI_INTERNALS__';
+
+/**
+ * Tauri's capture path, used when no preload-installed channel exists.
+ *
+ * Electron can install `RETICLE_IPC_GLOBAL` from its preload, which runs before app code. Tauri has
+ * no preload stage at all, so requiring the same global would mean every Tauri app hand-writing a
+ * frontend shim — a setup step that silently yields "no screenshots" when forgotten. Invoking the
+ * command directly removes the JavaScript side entirely: the app registers one Rust command and the
+ * SDK finds it. Absent that command the invoke rejects, and this reports no-provider like any other.
+ */
+function tauriCapture(): (() => Promise<string | null>) | undefined {
+  const internals = (window as unknown as Record<string, unknown>)[TAURI_INTERNALS_GLOBAL] as
+    | TauriInternals
+    | undefined;
+  if (typeof internals?.invoke !== 'function') return undefined;
+  const invoke = internals.invoke.bind(internals);
+  return async () => {
+    const path = await invoke(RETICLE_TAURI_CAPTURE_COMMAND);
+    return typeof path === 'string' ? path : null;
+  };
 }
 
 export interface CaptureResult {
@@ -39,11 +72,12 @@ export async function captureDesktopWindow(): Promise<CaptureResult> {
   const channel = (window as unknown as Record<string, unknown>)[RETICLE_IPC_GLOBAL] as
     | CaptureChannel
     | undefined;
-  if (typeof channel?.capture !== 'function') {
+  const capture = typeof channel?.capture === 'function' ? channel.capture : tauriCapture();
+  if (capture === undefined) {
     return { ok: false, reason: 'no desktop capture helper installed' };
   }
   try {
-    const path = await channel.capture();
+    const path = await capture();
     return typeof path === 'string' && path.length > 0
       ? { ok: true, path }
       : { ok: false, reason: 'capture returned no image' };

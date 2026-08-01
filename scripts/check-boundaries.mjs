@@ -16,7 +16,7 @@
 // Wired into `pnpm lint` and CI so a regression fails the build. To add a new package, tag it in
 // `SIDE` below; an untagged package is treated as isomorphic and is checked accordingly.
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -115,11 +115,17 @@ export function findViolations(manifests, side = SIDE) {
   return violations;
 }
 
-/** Read every package.json manifest under the given packages directory. */
+/**
+ * Read every package.json manifest under the given packages directory.
+ *
+ * A directory without one is not an error: `packages/tauri` is a Rust crate, which has a Cargo
+ * manifest and no npm one. It has no JavaScript dependency edges, so there is nothing here to check.
+ */
 function readManifests(packagesDir) {
   return readdirSync(packagesDir, { withFileTypes: true })
     .filter((e) => e.isDirectory())
     .map((e) => join(packagesDir, e.name, 'package.json'))
+    .filter((p) => existsSync(p))
     .map((p) => JSON.parse(readFileSync(p, 'utf8')));
 }
 

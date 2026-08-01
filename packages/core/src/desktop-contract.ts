@@ -33,6 +33,15 @@ export const RETICLE_CAPTURE_CHANNEL = '__reticle:capture';
 export const RETICLE_CAPTURE_FILE_PREFIX = 'reticle-capture-';
 
 /**
+ * The Tauri command name `reticle-tauri` registers, invoked by the SDK when no preload is present.
+ *
+ * Tauri has no preload stage — there is no place to install a capture global before app code runs.
+ * So the SDK invokes this command directly through Tauri's own internals, which means a Tauri app
+ * gets screenshots by adding ONE Rust command and nothing at all on the JavaScript side.
+ */
+export const RETICLE_TAURI_CAPTURE_COMMAND = 'reticle_capture';
+
+/**
  * Every value the generated CommonJS shim must expose, as `name → value`.
  *
  * The generator walks THIS record rather than a hand-written list, so adding a constant above and
@@ -42,4 +51,5 @@ export const DESKTOP_CONTRACT = {
   RETICLE_IPC_GLOBAL,
   RETICLE_CAPTURE_CHANNEL,
   RETICLE_CAPTURE_FILE_PREFIX,
+  RETICLE_TAURI_CAPTURE_COMMAND,
 } as const;

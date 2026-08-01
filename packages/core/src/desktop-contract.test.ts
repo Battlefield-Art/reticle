@@ -44,3 +44,35 @@ describe('desktop contract generation', () => {
     expect(readFileSync(built, 'utf8')).toBe(renderDesktopContract(DESKTOP_CONTRACT));
   });
 });
+
+/**
+ * The Rust side of the contract, which no generator can reach.
+ *
+ * `reticle-tauri` writes the capture file and the daemon decides whether to read it, and the two
+ * agree only on a shared filename prefix. They are in different languages and different build
+ * systems, so nothing but this test stands between a rename here and screenshots that go on being
+ * written while the daemon silently refuses every one of them.
+ */
+describe('desktop contract — the Rust capture helper', () => {
+  const CRATE = join(process.cwd(), '..', 'tauri', 'src', 'capture.rs');
+
+  it('spells the capture prefix exactly as the daemon requires', () => {
+    if (!existsSync(CRATE)) return; // the crate is not part of the TypeScript build
+    const source = readFileSync(CRATE, 'utf8');
+    expect(source).toContain(`{CAPTURE_FILE_PREFIX}`);
+  });
+
+  it('defines that prefix as the value the daemon checks for', () => {
+    const lib = join(process.cwd(), '..', 'tauri', 'src', 'lib.rs');
+    if (!existsSync(lib)) return;
+    expect(readFileSync(lib, 'utf8')).toContain(
+      `const CAPTURE_FILE_PREFIX: &str = "${DESKTOP_CONTRACT.RETICLE_CAPTURE_FILE_PREFIX}";`,
+    );
+  });
+
+  it('registers the command name the SDK invokes', () => {
+    const capture = existsSync(CRATE) ? readFileSync(CRATE, 'utf8') : '';
+    if (capture === '') return;
+    expect(capture).toContain(`pub async fn ${DESKTOP_CONTRACT.RETICLE_TAURI_CAPTURE_COMMAND}(`);
+  });
+});
