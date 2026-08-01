@@ -3,7 +3,12 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv } from '@reticlehq/core';
-import { reticle, RETICLE_VITE_PLUGIN_NAME, RETICLE_CONNECT_MODULE } from './index.js';
+import {
+  reticle,
+  RETICLE_VITE_PLUGIN_NAME,
+  RETICLE_CONNECT_MODULE,
+  connectModuleSource,
+} from './index.js';
 
 // The attribute the babel plugin stamps (mirrors DATA_RETICLE_SOURCE_ATTR in core).
 const SOURCE_ATTR = 'data-reticle-source';
@@ -124,5 +129,68 @@ describe('reticle vite plugin', () => {
   it('an explicit projectId option overrides the derived one', () => {
     const code = reticle({ projectId: 'my-fixed-id' }).load?.(RETICLE_CONNECT_MODULE);
     expect(code).toContain('my-fixed-id');
+  });
+});
+
+describe('desktop mode', () => {
+  /**
+   * A packaged Electron/Tauri renderer is a PRODUCTION Vite build loaded from `file://` or a custom
+   * protocol — there is no dev server. `apply: 'serve'` therefore drops the plugin entirely and the
+   * app ships with no `connect()` at all, which is why the desktop demos had to hand-wire it. Desktop
+   * mode is the opt-in that says "this build is a dev desktop shell, instrument it too".
+   */
+  it('applies to build (not just serve) so a packaged renderer is instrumented', () => {
+    expect(reticle({ desktop: true }).apply).toBe(undefined);
+    expect(reticle().apply).toBe('serve');
+  });
+
+  it('allows the SDK to run in a production-mode renderer, which desktop always is', () => {
+    expect(connectModuleSource({ desktop: true })).toContain('allowInProduction');
+    expect(connectModuleSource({})).not.toContain('allowInProduction');
+  });
+
+  it('still honours an explicit inject:false in desktop mode', () => {
+    const plugin = reticle({ desktop: true, inject: false });
+    expect(plugin.transformIndexHtml('')).toEqual([]);
+  });
+
+  it('leaves web behaviour untouched — no desktop keys leak into a normal connect', () => {
+    // A non-default port, because the default one is deliberately omitted from the connect args.
+    const web = connectModuleSource({ port: 4401 });
+    expect(web).toContain('4401');
+    expect(web).not.toContain('allowInProduction');
+  });
+});
+
+describe('desktop injection site', () => {
+  /**
+   * In a build Vite routes the HTML entry through an html-proxy id rather than the plain file path.
+   * An `endsWith('.html')` check silently misses it, and the bundle ships with no connect() at all —
+   * the app looks wired and connects to nothing. Both spellings must be recognised.
+   */
+  it('recognises the html entry in both dev and build id shapes', () => {
+    for (const importer of ['/app/index.html', '/app/index.html?html-proxy&index=0.js']) {
+      const plugin = reticle({ desktop: true });
+      // resolveId sees the SPECIFIER; transform later sees the ABSOLUTE resolved path.
+      plugin.resolveId('/src/main.tsx', importer);
+      const out = plugin.transform('const a = 1;', '/Users/me/app/src/main.tsx');
+      expect(out?.code, `importer ${importer}`).toContain('reticle.connect');
+    }
+  });
+
+  it('does not inject into a module the HTML never referenced', () => {
+    const plugin = reticle({ desktop: true });
+    plugin.resolveId('/src/main.tsx', '/app/index.html');
+    expect(
+      plugin.transform('const a = 1;', '/Users/me/app/src/other.ts')?.code ?? '',
+    ).not.toContain('reticle.connect');
+  });
+
+  it('never injects on the web path, even into the html entry', () => {
+    const plugin = reticle();
+    plugin.resolveId('/src/main.tsx', '/app/index.html');
+    expect(
+      plugin.transform('const a = 1;', '/Users/me/app/src/main.tsx')?.code ?? '',
+    ).not.toContain('reticle.connect');
   });
 });

@@ -1,27 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { reticle, readPairingToken } from '@reticlehq/vite-plugin';
+import { reticle } from '@reticlehq/vite-plugin';
 
 /**
- * Renderer build.
+ * The whole Reticle integration for the renderer, in one line.
  *
- * `base: './'` matters: the packaged mode loads index.html over file://, where an absolute
+ * `desktop: true` does the two things a desktop shell needs and a web app must never get: the plugin
+ * also runs for `vite build` (a packaged renderer is a production build with no dev server, so the
+ * default serve-only gating would ship an app with no connect() at all), and connect() is called
+ * with `allowInProduction` so the SDK's production backstop does not refuse to start.
+ *
+ * `base: './'` is a plain Electron requirement: index.html is loaded over file://, where an absolute
  * /assets/... path resolves against the filesystem root and every script 404s.
- *
- * The Reticle plugin runs with `inject: false` — it still stamps data-reticle-source so the agent can
- * map a DOM node to a file:line, but this app calls `reticle.connect()` itself (see src/main.tsx)
- * because it needs to pass `ipcBridges`, and because the plugin's auto-inject is dev-server-only
- * while the packaged mode has no dev server. The pairing token is read Node-side here and baked in,
- * exactly as the plugin would have done.
  */
 export default defineConfig({
   base: './',
-  plugins: [react(), reticle({ inject: false })],
+  plugins: [react(), reticle({ desktop: true })],
   server: { port: 5174, strictPort: true },
   build: { outDir: 'dist' },
-  define: {
-    __RETICLE_TOKEN__: JSON.stringify(readPairingToken() ?? ''),
-    // Defaults to the SDK's port; RETICLE_PORT points the demo at a daemon you started yourself.
-    __RETICLE_PORT__: Number(process.env['RETICLE_PORT'] ?? 4400),
-  },
 });

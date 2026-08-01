@@ -43,15 +43,31 @@ export interface ReticleVitePluginOptions {
   sourceMapping?: boolean;
   /** Auto-inject the dev-gated reticle.connect call. Default true. */
   inject?: boolean;
+  /**
+   * This build is an Electron/Tauri renderer. Changes two things a desktop shell needs and a web app
+   * must not get:
+   *
+   *  - The plugin also applies to `vite build`. A packaged desktop renderer IS a production build
+   *    loaded from `file://` or a custom protocol — there is no dev server — so the default
+   *    `apply: 'serve'` drops the plugin entirely and the app ships with no `connect()` at all.
+   *  - `connect()` is called with `allowInProduction`, because that same renderer reports
+   *    NODE_ENV=production and the SDK's prod backstop would otherwise refuse to start.
+   *
+   * Off by default and never inferred: turning it on means an instrumented production BUNDLE, which
+   * is exactly what a web app must never ship. Keep it behind your own dev-only build (a dev target,
+   * or `process.env.NODE_ENV !== 'production'` in vite.config) so it cannot reach a release binary.
+   */
+  desktop?: boolean;
 }
 
 /** Structural Vite plugin shape — avoids a hard dependency on `vite` while staying assignable to its `Plugin`. */
 export interface ReticleVitePlugin {
   name: string;
-  apply: 'serve';
+  /** Absent in desktop mode, where the plugin must also run for `vite build`. */
+  apply?: 'serve';
   enforce: 'pre';
   transform: (code: string, id: string) => { code: string; map: string | null } | null;
-  resolveId: (id: string) => string | null;
+  resolveId: (id: string, importer?: string) => string | null;
   load: (id: string) => string | null;
   transformIndexHtml: (html: string) => HtmlTag[];
 }
@@ -60,6 +76,21 @@ interface HtmlTag {
   tag: string;
   attrs: Record<string, string>;
   injectTo: 'body';
+}
+
+/**
+ * Is this resolved module id the one the HTML referenced?
+ *
+ * `resolveId` sees the specifier (`/src/main.tsx`); `transform` sees the absolute path
+ * (`/Users/me/app/src/main.tsx`). A suffix match is what bridges them. Any query suffix
+ * (`?html-proxy`, `?t=...`) is stripped first so a re-transformed module still matches.
+ */
+function isHtmlEntry(id: string, specifier: string | undefined): boolean {
+  if (specifier === undefined) return false;
+  const clean = (value: string): string => value.split('?')[0] ?? value;
+  const target = clean(specifier);
+  const candidate = clean(id);
+  return candidate === target || candidate.endsWith(target.startsWith('/') ? target : `/${target}`);
 }
 
 function shouldStamp(id: string): boolean {
@@ -106,12 +137,15 @@ export function readPairingToken(): string | undefined {
 
 /** Build the `reticle.connect` argument literal — only includes keys the user set. */
 function connectArgs(options: ReticleVitePluginOptions): string {
-  const args: Record<string, string | number> = {};
+  const args: Record<string, string | number | boolean> = {};
   const port = options.port ?? RETICLE_DEFAULT_PORT;
   if (port !== RETICLE_DEFAULT_PORT) args['url'] = bridgeWsUrl(port);
   if (options.session !== undefined) args['session'] = options.session;
   if (options.projectId !== undefined) args['projectId'] = options.projectId;
   if (options.token !== undefined) args['token'] = options.token;
+  // A desktop renderer is a production build by construction; without this the SDK's prod backstop
+  // refuses to connect and the app is silently uninstrumented.
+  if (options.desktop === true) args['allowInProduction'] = true;
   return Object.keys(args).length > 0 ? JSON.stringify(args) : '';
 }
 
@@ -133,39 +167,74 @@ export function connectModuleSource(options: ReticleVitePluginOptions): string {
 export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlugin {
   const sourceMapping = options.sourceMapping !== false;
   const inject = options.inject !== false;
+  const desktop = options.desktop === true;
   // Resolve the stable projectId once (explicit option, else derived from package.json + cwd) so the
   // app is identifiable across port changes with zero config.
   const resolved: ReticleVitePluginOptions = {
     ...options,
     projectId: resolveProjectId(options.projectId, process.cwd()),
   };
+  /**
+   * The specifier the HTML points at, e.g. `/src/main.tsx`.
+   *
+   * Stored UNRESOLVED, because that is what `resolveId` receives — while `transform` is handed the
+   * absolute resolved path. Comparing the two directly never matches, and the failure is silent:
+   * the bundle simply ships with no connect() in it. Hence `isHtmlEntry`'s suffix comparison.
+   */
+  let htmlEntrySpecifier: string | undefined;
+  /**
+   * Resolve port + token at the moment of injection, not at plugin construction. By the time a
+   * module is served or built the daemon is up and has written its pairing token; resolving early
+   * would bake in `undefined` and the app would fail auth on every connect.
+   */
+  const resolveLazy = (): ReticleVitePluginOptions => {
+    const port = resolved.port ?? discoverDaemonPort(resolved.projectId);
+    const withPort = port !== undefined ? { ...resolved, port } : resolved;
+    const token = withPort.token ?? readPairingToken();
+    return token !== undefined ? { ...withPort, token } : withPort;
+  };
   return {
     name: RETICLE_VITE_PLUGIN_NAME,
-    apply: 'serve',
+    // Web: serve-only, so a production bundle can never carry the SDK — gating is the tool's job.
+    // Desktop: a packaged renderer IS a production build with no dev server, so the plugin must also
+    // run for `vite build` or the shipped app has no connect() at all.
+    ...(options.desktop === true ? {} : { apply: 'serve' as const }),
     enforce: 'pre',
     transform(code, id) {
+      // Desktop injection: prepend connect() to the HTML's own entry module. It is a REAL module, so
+      // its bare `@reticlehq/react` import resolves through the normal pipeline in both dev and
+      // build — which a virtual <script src> only ever did in dev.
+      if (desktop && inject && isHtmlEntry(id, htmlEntrySpecifier)) {
+        const withConnect = `${connectModuleSource(resolveLazy())}\n${code}`;
+        const stamped = sourceMapping && shouldStamp(id) ? stamp(withConnect, id) : null;
+        return stamped ?? { code: withConnect, map: null };
+      }
       if (!sourceMapping || !shouldStamp(id)) return null;
       return stamp(code, id);
     },
-    resolveId(id) {
+    resolveId(id, importer) {
+      // Desktop: remember the module the HTML points at, so `transform` can prepend connect() into
+      // it. A packaged build has no dev server, so the serve-time trick below — a <script src> at a
+      // virtual URL — would emit a tag pointing at a file that does not exist. That shipped an app
+      // with a dead script and NO instrumentation, which is worse than not injecting at all.
+      // `includes`, not `endsWith`: in a BUILD Vite rewrites the html entry through an html-proxy
+      // id (`/index.html?html-proxy&index=0.js`), so an endsWith check silently never matches and
+      // nothing is injected — which is exactly how this shipped a bundle with no connect() in it.
+      if (desktop && inject && importer !== undefined && importer.includes('.html')) {
+        htmlEntrySpecifier = id;
+      }
       // Return the id verbatim so Vite serves it back to load (the bare imports inside it then
       // go through normal resolution). No NUL prefix: the browser requests it as a URL.
       return inject && id === RETICLE_CONNECT_MODULE ? RETICLE_CONNECT_MODULE : null;
     },
     load(id) {
       if (!inject || id !== RETICLE_CONNECT_MODULE) return null;
-      // Resolve the daemon port lazily per request (like the token): an explicit port wins; else find
-      // the daemon serving THIS projectId in the discovery registry, so no hand-reconciled port. Falls
-      // back to the default when nothing matches (connectArgs omits url ⇒ SDK uses the default).
-      const port = resolved.port ?? discoverDaemonPort(resolved.projectId);
-      const withPort = port !== undefined ? { ...resolved, port } : resolved;
-      // Read the token lazily per request: by the time the browser loads the app the daemon is up and
-      // has written it. An explicit token option still wins. Undefined ⇒ omitted (page reloads once up).
-      const token = withPort.token ?? readPairingToken();
-      return connectModuleSource(token !== undefined ? { ...withPort, token } : withPort);
+      return connectModuleSource(resolveLazy());
     },
     transformIndexHtml() {
-      if (!inject) return [];
+      // Desktop injects via the entry module instead (see transform) — a tag here would be a dead
+      // URL in a packaged build.
+      if (!inject || desktop) return [];
       return [
         { tag: 'script', attrs: { type: 'module', src: RETICLE_CONNECT_MODULE }, injectTo: 'body' },
       ];

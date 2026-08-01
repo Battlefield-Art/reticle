@@ -128,14 +128,25 @@ route observer handles both, and a `{ kind: 'route', contains: … }` assertion 
 
 Two steps. The first is the ordinary web setup; the second is the only desktop-specific part.
 
-**1. The renderer** — the same as any Vite/webpack app:
+**1. The renderer** — one line in `vite.config.ts`, exactly like a web app:
 
 ```ts
-// src/main.tsx
-import { reticle } from '@reticlehq/browser';
+import { reticle } from '@reticlehq/vite-plugin';
 
-if (import.meta.env.DEV) reticle.connect();
+export default defineConfig({
+  base: './',                                   // file:// needs relative asset paths
+  plugins: [react(), reticle({ desktop: true })],
+});
 ```
+
+`desktop: true` does the two things a desktop shell needs and a web app must never get: the plugin
+also runs for `vite build` (a packaged renderer is a production build with **no dev server**, so the
+default serve-only gating would ship an app with no `connect()` at all), and `connect()` is called
+with `allowInProduction` so the SDK's production backstop does not refuse to start. Keep it behind
+your own dev-only build so an instrumented bundle can never reach a release binary.
+
+Nothing to add in your app code. (You can still call `reticle.connect()` by hand and pass
+`inject: false` if you want control.)
 
 **2. The preload** — one line, before you expose anything:
 
