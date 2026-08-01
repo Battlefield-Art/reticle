@@ -1,19 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { reticle, readPairingToken } from '@reticlehq/vite-plugin';
+import { reticle } from '@reticlehq/vite-plugin';
 
 /**
- * Tauri frontend build. `inject: false` keeps the plugin's source stamping (DOM node → file:line)
- * while this app calls `reticle.connect()` itself — Tauri's `invoke` is auto-detected, but the
- * connect has to survive a `frontendDist` build too, where the plugin's serve-only inject is absent.
+ * The whole Reticle integration for the Tauri frontend, in one line — same as a web app.
+ *
+ * `desktop: true` makes the plugin also run for `vite build` (a `frontendDist` build has no dev
+ * server) and passes `allowInProduction`, since that build reports NODE_ENV=production.
+ *
+ * The one genuinely Tauri-specific step is not here and cannot be: the CSP in
+ * src-tauri/tauri.conf.json must allow the bridge WebSocket in `connect-src`, or the webview blocks
+ * the connection before it opens. `reticle doctor` checks exactly that.
  */
 export default defineConfig({
-  plugins: [react(), reticle({ inject: false })],
-  // Tauri expects a fixed port it can point the webview at, and a hard failure if it is taken.
+  plugins: [react(), reticle({ desktop: true })],
   server: { port: 5175, strictPort: true },
-  define: {
-    __RETICLE_TOKEN__: JSON.stringify(readPairingToken() ?? ''),
-    // Defaults to the SDK's port; RETICLE_PORT points the demo at a daemon you started yourself.
-    __RETICLE_PORT__: Number(process.env['RETICLE_PORT'] ?? 4400),
-  },
 });

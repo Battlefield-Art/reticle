@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { pathToFileURL } from 'node:url';
-import { realpathSync, existsSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   handleWatch,
@@ -42,6 +42,7 @@ import { IdleShutdown, resolveIdleShutdownMs } from './idle-shutdown.js';
 import { fetchStatus, summarizeStatus, decideOpen, openInBrowser } from './cli-launch.js';
 import { handleVerify } from './cli-verify.js';
 import { runInit } from './init/run.js';
+import { handleDoctor } from './cli-doctor.js';
 import { buildNodeIo } from './init/node-io.js';
 import { describeLicense } from './license/license.js';
 import { readProjectPort, readProjectId } from './cli-port.js';
@@ -148,39 +149,6 @@ function handleStatus(port: number): void {
     }
     log('reticle_status', { port, running: true, pid, ...summarizeStatus(payload) });
   });
-}
-
-/**
- * `reticle doctor` — collapse the ~6 independent first-run failure modes into one command. Checks the
- * Chromium install (the #1 silent failure), whether a daemon is up on the resolved bridge port, and
- * reminds the user which port the app must dial. Human-readable to stdout (not the JSON log).
- */
-async function handleDoctor(port: number): Promise<void> {
-  const line = (s: string): void => {
-    process.stdout.write(`${s}\n`);
-  };
-  line('reticle doctor');
-  line(`  node         ${process.version}`);
-  try {
-    const { chromium } = await import('playwright');
-    const path = chromium.executablePath();
-    line(
-      existsSync(path)
-        ? '  chromium     ✓ installed'
-        : '  chromium     ✗ missing — run: npx playwright install chromium',
-    );
-  } catch {
-    line('  chromium     ✗ missing — run: npx playwright install chromium');
-  }
-  const pid = readPid(port);
-  if (pid !== null && isAlive(pid)) {
-    line(`  daemon       ✓ running on :${port} (pid ${pid})`);
-  } else {
-    line(
-      `  daemon       ✗ not running on :${port} — your agent runs \`reticle mcp\` (or \`reticle serve\`)`,
-    );
-  }
-  line(`  bridge port  ${port}  (your app must dial THIS port — not your dev-server port)`);
 }
 
 /** Print the running package version (resolved once in server-version.ts). */
