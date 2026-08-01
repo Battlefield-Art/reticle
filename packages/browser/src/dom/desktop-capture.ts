@@ -24,8 +24,15 @@ interface CaptureChannel {
 
 export interface CaptureResult {
   ok: boolean;
-  /** Base64 PNG, without a data: prefix. Present only when ok. */
-  png?: string;
+  /**
+   * Filesystem path of the captured PNG, written by the desktop shell.
+   *
+   * A path, not the image bytes: the SDK's transport sanitizer caps every string at 64KB, so a
+   * base64 PNG came back SILENTLY TRUNCATED and was saved as a "successful" screenshot that no
+   * decoder could read. The daemon and the app always share a machine here (the bridge is loopback),
+   * so handing over a path keeps the image off the event wire entirely.
+   */
+  path?: string;
   reason?: string;
 }
 
@@ -37,9 +44,9 @@ export async function captureDesktopWindow(): Promise<CaptureResult> {
     return { ok: false, reason: 'no desktop capture helper installed' };
   }
   try {
-    const png = await channel.capture();
-    return typeof png === 'string' && png.length > 0
-      ? { ok: true, png }
+    const path = await channel.capture();
+    return typeof path === 'string' && path.length > 0
+      ? { ok: true, path }
       : { ok: false, reason: 'capture returned no image' };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };

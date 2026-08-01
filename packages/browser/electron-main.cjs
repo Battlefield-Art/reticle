@@ -17,9 +17,19 @@
  * Dev-only, like the rest of Reticle. Gate the require behind your dev check so it never ships.
  */
 const { ipcMain } = require('electron');
+const { writeFile } = require('node:fs/promises');
+const { tmpdir } = require('node:os');
+const { join } = require('node:path');
 
 /** Channel the preload shim invokes. Must match CAPTURE_CHANNEL in electron-preload.cjs. */
 const CAPTURE_CHANNEL = '__reticle:capture';
+
+/**
+ * Temp-file name prefix for a capture. The server only reads paths inside the OS temp dir whose
+ * basename starts with this, so a compromised renderer cannot point the daemon at an arbitrary file.
+ */
+const CAPTURE_FILE_PREFIX = 'reticle-capture-';
+let captureSeq = 0;
 
 /**
  * Let Reticle screenshot this window. Safe to call for several windows; the handler is registered
@@ -35,7 +45,19 @@ function installReticleCapture(win) {
         const image = await contents.capturePage();
         // An empty image means the window had nothing to compose yet; report it as no-image rather
         // than handing back a 0-byte PNG that a diff would treat as a real, blank baseline.
-        return image.isEmpty() ? null : image.toPNG().toString('base64');
+        if (image.isEmpty()) return null;
+        // Write to a temp FILE and return its path, rather than base64 over the bridge. The SDK's
+        // transport sanitizer caps every string at 64KB, so a real screenshot came back silently
+        // truncated — an invalid PNG that still reported `saved: true`. The daemon and the app are
+        // always on the same machine here (the bridge is loopback), so a path is the honest channel:
+        // no size cap, no chunking, and nothing large on the event wire.
+        captureSeq += 1;
+        const file = join(
+          tmpdir(),
+          `${CAPTURE_FILE_PREFIX}${String(process.pid)}-${String(captureSeq)}.png`,
+        );
+        await writeFile(file, image.toPNG());
+        return file;
       } catch {
         return null;
       }
@@ -46,4 +68,4 @@ function installReticleCapture(win) {
 
 installReticleCapture._registered = false;
 
-module.exports = { installReticleCapture, CAPTURE_CHANNEL };
+module.exports = { installReticleCapture, CAPTURE_CHANNEL, CAPTURE_FILE_PREFIX };

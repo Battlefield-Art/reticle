@@ -5,6 +5,12 @@ import { sessionIdShape } from '../tools/tool-kit.js';
 import { asNumber, asRecord, asString } from '../tools/tools-helpers.js';
 import { diffPng, type VisualRect } from './visual-diff.js';
 import { VisualStore } from './visual-store.js';
+import { readFile, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, dirname } from 'node:path';
+
+/** Must match CAPTURE_FILE_PREFIX in @reticlehq/browser/electron-main.cjs. */
+const CAPTURE_FILE_PREFIX = 'reticle-capture-';
 import type { ElementBox, RealInputProvider, ScreenshotOpts } from '../input/real-input.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 
@@ -86,10 +92,35 @@ async function desktopCapture(
   if (!res.ok) return undefined;
   const r = asRecord(res.result);
   if (r['ok'] !== true) return undefined;
-  const png = asString(r['png']);
-  if (png === undefined || png.length === 0) return undefined;
-  const bytes = Buffer.from(png, 'base64');
-  return bytes.byteLength > 0 ? new Uint8Array(bytes) : undefined;
+  const path = asString(r['path']);
+  if (path === undefined || !isCapturePath(path)) return undefined;
+  try {
+    const bytes = await readFile(path);
+    await unlink(path).catch(() => undefined);
+    return isCompletePng(bytes) ? new Uint8Array(bytes) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Only read a capture the shell wrote: inside the OS temp dir, with Reticle's own filename prefix.
+ * The path arrives from the PAGE, and the daemon must not become a file-read oracle for whatever a
+ * compromised renderer names.
+ */
+function isCapturePath(path: string): boolean {
+  return dirname(path) === tmpdir() && basename(path).startsWith(CAPTURE_FILE_PREFIX);
+}
+
+/**
+ * A PNG is complete only if it ends with IEND. This check exists because a truncated image once
+ * sailed through as a saved baseline: the tool answered `saved: true` with a path, and the file was
+ * undecodable. A screenshot that cannot be read must fail loudly, never bank a corrupt baseline that
+ * a later visual_diff will compare against.
+ */
+function isCompletePng(bytes: Buffer): boolean {
+  if (bytes.byteLength < 12) return false;
+  return bytes.subarray(bytes.byteLength - 8, bytes.byteLength - 4).toString('ascii') === 'IEND';
 }
 
 /**
