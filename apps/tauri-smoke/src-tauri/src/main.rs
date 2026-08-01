@@ -71,6 +71,12 @@ fn report_headless_mode() {
     );
 }
 
+// A `RETICLE_KEEP_AWAKE` knob was built here and removed. It set `always_on_top` + `set_focus` to
+// stop the window being occluded, and it does NOT work: with the window on another macOS Space the
+// webview stays suspended and every Reticle command still times out at 8s. Shipping the flag would
+// have offered a fix that quietly does nothing — the same failure shape as the hidden-window
+// "headless" mode removed above. Only real visibility on the ACTIVE Space keeps a WKWebView alive.
+
 fn main() {
     tauri::Builder::default()
         .setup(|_app| {

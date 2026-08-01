@@ -109,9 +109,18 @@ Measured, at the same moment, both windows off-screen:
 | Tauri (no equivalent setting) | ❌ times out | `command 'snapshot' timed out after 8000ms` |
 
 Consistent with the headless experiments, where hiding the window, parking it fully off screen, and
-leaving a one-pixel sliver all produced the same 8s timeouts. Caveat on the causal claim: this was
-observed, not isolated — macOS Spaces could not be manipulated from the test harness, so there is no
-clean before/after on a single window.
+leaving a one-pixel sliver all produced the same 8s timeouts — the same suspension reached four ways.
+
+**`alwaysOnTop` does not rescue it.** That was the obvious workaround and it was built and measured:
+setting `always_on_top` + `set_focus` from Rust leaves the webview just as suspended, because it does
+not move the window to the Space you are looking at. Only real visibility on the ACTIVE Space keeps a
+WKWebView alive.
+
+The comparison above is controlled — same daemon, same moment, both apps freshly started and both
+off-screen — and the only SDK change between a passing Tauri run and a failing one was a single
+unrelated constant, so this is a platform behaviour rather than a Reticle regression. What is still
+*not* isolated is the exact trigger: macOS Spaces cannot be driven from the harness, so there is no
+before/after on one window moving between visible and hidden.
 
 **What to do about it**
 - **Local dev on macOS:** keep the Tauri window visible on the Space you are working on. It is the
