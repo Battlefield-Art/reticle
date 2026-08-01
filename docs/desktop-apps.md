@@ -39,7 +39,7 @@ passed 25/27.
 
 | Capability | Electron | Tauri | Note |
 | --- | --- | --- | --- |
-| sessions, snapshot, query, inspect | ✅ | ✅ | `inspect` returns `src/App.tsx:104` on both |
+| sessions, snapshot, query, inspect | ✅ | ✅ | `inspect` returns `src/App.tsx:104` in a dev build; a packaged production renderer has no source map, so it reports `n/a` |
 | capabilities, state (live store) | ✅ | ✅ | `reticle_state` reads the real store |
 | act (click/fill/type/select) | ✅ | ✅ | |
 | act_and_wait, wait_for, assert | ✅ | ✅ | signal / state / route / net / console predicates |
@@ -53,6 +53,9 @@ passed 25/27.
 | **screenshot / visual_diff** | ✅ | ❌ | Electron: one line in main — see below |
 | **drivable while window occluded** | ✅ | ❌ | macOS suspends an off-Space WKWebView — see above |
 | network_mock, viewport | ❌ | ❌ | need a Reticle-driven browser |
+
+Every Tauri ✅ above is conditional on **the window being visible on the active Space** — see the
+liveness constraint below. Electron carries no such condition.
 
 ### Screenshots
 
@@ -149,8 +152,8 @@ Both attached to the same running Electron app, same task ("archive a todo, then
 
 | tool | ~tokens | ms | verdict |
 | --- | --- | --- | --- |
-| reticle (lean) | **277** | 1368 | caught the failure |
-| playwright-mcp | 992 | **968** | blind to it — no network/IPC in its output |
+| reticle (lean) | **350** | 1364 | caught the failure |
+| playwright-mcp | 1069 | **980** | blind to it — no network/IPC in its output |
 | playwright-mcp → Tauri | — | — | cannot attach (no CDP in WKWebView) |
 
 Playwright MCP is faster. It is also structurally unable to see an IPC failure, because its channel

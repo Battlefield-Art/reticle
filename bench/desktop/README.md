@@ -26,18 +26,23 @@ with the click — a false green in the benchmark itself.
 
 ## Result (macOS, Electron 34, `@playwright/mcp` 0.0.78)
 
-| tool | calls | bytes | ~tokens | ms | verdict |
-| --- | --- | --- | --- | --- | --- |
-| reticle | 3 | 3998 | 1000 | 1369 | **CAUGHT** — `ui-advanced-request-failed: IPC ipc://todos:archive → 500` |
-| reticle (lean) | 3 | 1106 | **277** | 1368 | **CAUGHT** — `ipc://todos:archive → 500` |
-| playwright-mcp | 3 | 3969 | 992 | **968** | blind to the failure — no network/IPC in any output |
-| pw-mcp → Tauri | 1 | 167 | 42 | 198 | **cannot attach** — WKWebView exposes no CDP endpoint |
+| tool | calls | ~tokens | ms | verdict |
+| --- | --- | --- | --- | --- |
+| reticle | 3 | 981 | 1375 | **CAUGHT** — `ui-advanced-request-failed: IPC ipc://todos:archive → 500` |
+| reticle (lean) | 3 | **350** | 1364 | **CAUGHT** — `ipc://todos:archive → 500` |
+| playwright-mcp | 3 | 1069 | **980** | blind to the failure — no network/IPC in any output |
+| pw-mcp → Tauri | 1 | 42 | 181 | **cannot attach** — WKWebView exposes no CDP endpoint |
 
 `~tokens` is bytes/4 of tool OUTPUT — what the agent's context window actually pays for.
 
+**Run-to-run variance.** Two runs a session apart gave lean-Reticle 277 and 350 tokens, and
+Playwright 992 and 1069, so the ratio moves between roughly 3.1× and 3.6×. Output size depends on how
+many todos are on screen when the snapshot is taken, which the preceding steps change. Treat the
+order of magnitude as the result and not the third digit; the verdict column was identical in both.
+
 ### What this does and does not show
 
-**Playwright MCP is faster.** 968ms vs 1368ms, and that is a real advantage. Most of Reticle's extra
+**Playwright MCP is faster.** 980ms vs 1364ms, and that is a real advantage. Most of Reticle's extra
 time is the deliberate settle wait after the click.
 
 **It is also structurally blind here.** The claim is not "Playwright guessed wrong" — it is that
