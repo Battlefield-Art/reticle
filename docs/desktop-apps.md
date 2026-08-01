@@ -51,6 +51,7 @@ passed 25/27.
 | baseline (semantic), record → replay, crawl | ✅ | ✅ | `crawl` found real anomalies in both |
 | navigate (reload) | ✅ | ✅ | |
 | **screenshot / visual_diff** | ✅ | ❌ | Electron: one line in main — see below |
+| **drivable while window occluded** | ✅ | ❌ | macOS suspends an off-Space WKWebView — see above |
 | network_mock, viewport | ❌ | ❌ | need a Reticle-driven browser |
 
 ### Screenshots
@@ -89,6 +90,35 @@ Playwright cannot drive a WKWebView at all.
 
 If you add a native capture to a Tauri app, expose it as `window.__reticleIpc.capture()` returning a
 base64 PNG and Reticle will use it — that is the same contract the Electron helper fulfils.
+
+### The Tauri macOS liveness constraint — read this before choosing Tauri
+
+**A Tauri app on macOS is only drivable while its window is on the active Space and not occluded.**
+Move to another Space, fullscreen your editor, or bury the window, and WKWebView is suspended: the
+session stays connected and every Reticle command times out at 8s. There is no `backgroundThrottling`
+switch of the kind Chromium gives Electron, so an app cannot opt out.
+
+This is the one place desktop is genuinely NOT like React/Next. A browser tab is drivable whatever
+else is on screen; a Tauri window is not.
+
+Measured, at the same moment, both windows off-screen:
+
+| | occluded | evidence |
+| --- | --- | --- |
+| Electron (`backgroundThrottling: false`) | ✅ responds | full snapshot returned |
+| Tauri (no equivalent setting) | ❌ times out | `command 'snapshot' timed out after 8000ms` |
+
+Consistent with the headless experiments, where hiding the window, parking it fully off screen, and
+leaving a one-pixel sliver all produced the same 8s timeouts. Caveat on the causal claim: this was
+observed, not isolated — macOS Spaces could not be manipulated from the test harness, so there is no
+clean before/after on a single window.
+
+**What to do about it**
+- **Local dev on macOS:** keep the Tauri window visible on the Space you are working on. It is the
+  only requirement, and everything works when it holds.
+- **CI on Linux:** `xvfb-run -a pnpm tauri dev`. The whole display is virtual, so the window is
+  always "visible" and nothing is ever suspended. This is the reliable configuration.
+- **Electron:** unaffected either way.
 
 ### Headless
 
