@@ -90,6 +90,33 @@ Playwright cannot drive a WKWebView at all.
 If you add a native capture to a Tauri app, expose it as `window.__reticleIpc.capture()` returning a
 base64 PNG and Reticle will use it — that is the same contract the Electron helper fulfils.
 
+### Headless
+
+**Electron: yes.** `show: false` plus `backgroundThrottling: false` in `webPreferences`. The second
+one is load-bearing — Chromium runs an unshown window's timers in slow motion, which turns every
+settle wait into a flake. Screenshots still work, because `capturePage` reads the backing store
+rather than the screen. Verified with a full tool drive against a window that was never shown.
+
+**Tauri: use a virtual display, not a hidden window.** `xvfb-run -a pnpm tauri dev` on Linux. Hiding
+or moving the window off screen does NOT work and is worth stating precisely, because it fails
+silently: macOS marks such a window occluded, WKWebView stops executing JavaScript, and every command
+times out — the app is not headless, it is asleep. There is no `backgroundThrottling` equivalent.
+Three variants were tried (hide, full-offscreen, 1px sliver) and all three suspend. On macOS, run
+headful.
+
+### How it compares to Playwright MCP
+
+Both attached to the same running Electron app, same task ("archive a todo, then verify it worked"):
+
+| tool | ~tokens | ms | verdict |
+| --- | --- | --- | --- |
+| reticle (lean) | **277** | 1368 | caught the failure |
+| playwright-mcp | 992 | **968** | blind to it — no network/IPC in its output |
+| playwright-mcp → Tauri | — | — | cannot attach (no CDP in WKWebView) |
+
+Playwright MCP is faster. It is also structurally unable to see an IPC failure, because its channel
+is the accessibility tree. Full method, numbers and caveats: [`bench/desktop`](../bench/desktop).
+
 ### Routing: use a hash router
 
 A packaged renderer runs on `file://`, where `pushState('/settings')` rewrites the URL to
