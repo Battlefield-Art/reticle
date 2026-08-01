@@ -74,6 +74,16 @@ function isMutating(call: NetCall): boolean {
 const ACKNOWLEDGED = /error|fail|invalid|reject|denied|unable|could not|couldn't/i;
 
 /**
+ * Wording that blames the USER — bad credentials, no permission, wrong input. Distinct from
+ * ACKNOWLEDGED, which merely means "a failure was recorded": an app can honestly report a failure
+ * ("server error, try again") without misattributing it.
+ */
+const BLAMES_USER = /denied|invalid|unauthor|forbidden|incorrect|wrong |not allowed|not permitted/i;
+
+/** A server-fault status: the user cannot fix it and should never be asked to. */
+const SERVER_FAULT_MIN = 500;
+
+/**
  * Did the app record the failure in its OWN state — the layer the UI renders from?
  *
  * Without this, "the UI moved while a request failed" fires on correct code: a handler that catches
@@ -91,6 +101,9 @@ const ACKNOWLEDGED = /error|fail|invalid|reject|denied|unable|could not|couldn't
  */
 function failureAcknowledged(events: readonly ReticleEvent[]): boolean {
   return events.some((e) => {
+    // A failure-shaped SIGNAL is an acknowledgement too. An app that fires `auth:denied` has plainly
+    // not proceeded as if it succeeded, whatever its state paths happen to be named.
+    if (e.type === EventType.SIGNAL) return ACKNOWLEDGED.test(asString(e.data['name']) ?? '');
     if (e.type !== EventType.STATE_CHANGE) return false;
     const path = asString(e.data['path']) ?? '';
     const value = e.data['value'];
@@ -114,14 +127,43 @@ export function findContradictions(events: readonly ReticleEvent[]): Contradicti
   // ── The app claimed success while its own request failed ────────────────────────────────────
   // A signal is the sharper claim: the app did not merely LOOK right, it explicitly asserted
   // success. When both hold it is one fact, so only the sharper one is reported.
-  if (failed.length > 0 && signals.length > 0) {
+  // ── The server faulted and the app blamed the user ──────────────────────────────────────────
+  // Checked BEFORE the success-claim rules, because it is the sharper reading of the same events:
+  // the app did not claim success, it claimed the wrong failure. Telling someone their password is
+  // wrong while the backend is down sends them to fix something they cannot fix.
+  const serverFaults = settled.filter(
+    (c) => !c.ok && c.status !== undefined && c.status >= SERVER_FAULT_MIN,
+  );
+  const userBlame = [
+    ...signals.filter((name) => BLAMES_USER.test(name)),
+    ...events
+      .filter((e) => e.type === EventType.STATE_CHANGE)
+      .map((e) => asString(e.data['value']) ?? '')
+      .filter((value) => BLAMES_USER.test(value)),
+  ];
+  const misattributed = serverFaults.length > 0 && userBlame.length > 0;
+  if (misattributed) {
+    found.push({
+      kind: ContradictionKind.FAILURE_MISATTRIBUTED,
+      claim: `the app told the user they were at fault (${userBlame.map((b) => `"${b}"`).join(', ')})`,
+      counter:
+        'the server returned a 5xx — the user cannot fix this and the real fault is unreported',
+      detail: serverFaults.map(describe).join('; '),
+    });
+  }
+
+  // A failure-shaped signal is not a success claim, so it must not be read as one: saying "the app
+  // claimed success" about an app that plainly reported a failure is true in outline and wrong in
+  // its reasoning, which is how a checker stops being believed.
+  const successSignals = signals.filter((name) => !ACKNOWLEDGED.test(name));
+  if (failed.length > 0 && successSignals.length > 0) {
     found.push({
       kind: ContradictionKind.SIGNAL_CONTRADICTED,
-      claim: `the app fired ${signals.map((s) => `"${s}"`).join(', ')}`,
+      claim: `the app fired ${successSignals.map((s) => `"${s}"`).join(', ')}`,
       counter: `${String(failed.length)} request(s) in the same window failed`,
       detail: failed.map(describe).join('; '),
     });
-  } else if (failed.length > 0 && advanced && !failureAcknowledged(events)) {
+  } else if (failed.length > 0 && advanced && !misattributed && !failureAcknowledged(events)) {
     found.push({
       kind: ContradictionKind.UI_ADVANCED_REQUEST_FAILED,
       claim: 'the UI moved forward (DOM/store/route changed)',

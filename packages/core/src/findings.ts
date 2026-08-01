@@ -26,6 +26,12 @@ export const ContradictionKind = {
   DUPLICATE_REQUEST: 'duplicate-request',
   /** The UI advanced while a request was still in flight, so `settled` was reported over a live call. */
   REQUEST_NEVER_SETTLED: 'request-never-settled',
+  /**
+   * The SERVER faulted (5xx) and the app blamed the USER — "invalid credentials" for a broken
+   * backend, "not permitted" for a crashed service. The user is told to fix something they cannot
+   * fix, and the real fault is never reported. A support ticket that costs hours to trace back.
+   */
+  FAILURE_MISATTRIBUTED: 'failure-misattributed',
 } as const;
 export type ContradictionKind = (typeof ContradictionKind)[keyof typeof ContradictionKind];
 

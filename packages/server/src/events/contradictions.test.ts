@@ -157,3 +157,94 @@ describe('findContradictions — cross-channel disagreement', () => {
     expect(kinds([failedCall()])).toEqual([]);
   });
 });
+
+describe('failure misattributed — the server broke, the app blamed the user', () => {
+  const serverFault = (url = '/api/login'): ReticleEvent =>
+    ev(EventType.NET_REQUEST, { id: 'n1', method: 'POST', url, status: 500, ok: false });
+
+  /**
+   * Found on a bug this project did not write for this feature: bench-app's `swallowed-500-login`
+   * forces /api/login to 500, and the app answers `auth:denied` — the user is told their password is
+   * wrong while the backend is down. They cannot fix it, and the real fault is never reported.
+   */
+  it('catches a 5xx answered with a user-fault signal', () => {
+    const found = findContradictions([
+      serverFault(),
+      ev(EventType.SIGNAL, { name: 'auth:denied' }),
+    ]);
+    expect(found.map((c) => c.kind)).toContain(ContradictionKind.FAILURE_MISATTRIBUTED);
+  });
+
+  it('catches it from state as well as from a signal', () => {
+    const found = findContradictions([
+      serverFault(),
+      ev(EventType.STATE_CHANGE, { name: 'app', path: 'error', value: 'Invalid credentials' }),
+    ]);
+    expect(found.map((c) => c.kind)).toContain(ContradictionKind.FAILURE_MISATTRIBUTED);
+  });
+
+  /** A 4xx genuinely IS the user's fault. Blaming them there is correct, not a contradiction. */
+  it('stays silent when the status actually blames the client', () => {
+    const clientFault = ev(EventType.NET_REQUEST, {
+      id: 'n2',
+      method: 'POST',
+      url: '/api/login',
+      status: 401,
+      ok: false,
+    });
+    const found = findContradictions([clientFault, ev(EventType.SIGNAL, { name: 'auth:denied' })]);
+    expect(found.map((c) => c.kind)).not.toContain(ContradictionKind.FAILURE_MISATTRIBUTED);
+  });
+
+  it('stays silent when a 5xx is reported honestly as a server problem', () => {
+    const found = findContradictions([
+      serverFault(),
+      ev(EventType.STATE_CHANGE, { name: 'app', path: 'error', value: 'Server error, try again' }),
+    ]);
+    expect(found.map((c) => c.kind)).not.toContain(ContradictionKind.FAILURE_MISATTRIBUTED);
+  });
+
+  /**
+   * A failure-shaped signal is not a success claim. Reporting SIGNAL_CONTRADICTED here would say
+   * "the app claimed success" about an app that plainly did not — the finding would be true in
+   * outline and wrong in its reasoning, which is how a checker loses trust.
+   */
+  it('does not call a failure signal a contradicted success claim', () => {
+    const found = findContradictions([
+      serverFault(),
+      ev(EventType.SIGNAL, { name: 'auth:denied' }),
+    ]);
+    expect(found.map((c) => c.kind)).not.toContain(ContradictionKind.SIGNAL_CONTRADICTED);
+  });
+});
+
+describe('one fact, one finding', () => {
+  /**
+   * A misattributed failure and "the UI advanced while a request failed" describe the SAME failed
+   * call. Reporting both makes the output read as two problems and buries the sharper one, which is
+   * how a report stops being actionable.
+   */
+  it('reports only the sharper misattribution, not the generic UI-advanced claim too', () => {
+    const found = findContradictions([
+      ev(EventType.NET_REQUEST, {
+        id: 'n1',
+        method: 'POST',
+        url: '/api/login',
+        status: 500,
+        ok: false,
+      }),
+      ev(EventType.SIGNAL, { name: 'auth:denied' }),
+      domChanged(),
+    ]);
+    expect(found.map((c) => c.kind)).toEqual([ContradictionKind.FAILURE_MISATTRIBUTED]);
+  });
+
+  it('treats a failure-shaped signal as the app acknowledging the failure', () => {
+    const found = findContradictions([
+      failedCall(),
+      ev(EventType.SIGNAL, { name: 'save:failed' }),
+      domChanged(),
+    ]);
+    expect(found).toEqual([]);
+  });
+});
