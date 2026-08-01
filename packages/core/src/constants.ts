@@ -174,13 +174,6 @@ export const VISUAL_PIXEL_THRESHOLD = 0.1;
  * Autonomous "smart monkey" anomaly classes reticle_crawl reports after clicking a
  * reachable control. Named so the agent (and tests) branch on cause, never on message text.
  */
-export const CrawlAnomalyKind = {
-  CONSOLE_ERROR: 'console-error', // the click logged a console.error / uncaught error
-  FAILED_REQUEST: 'failed-request', // it fired a request that returned >= 400
-  DEAD_CONTROL: 'dead-control', // it dispatched but the app did NOTHING (no DOM/net/route/signal)
-} as const;
-export type CrawlAnomalyKind = (typeof CrawlAnomalyKind)[keyof typeof CrawlAnomalyKind];
-
 /**
  * Bounds for reticle_scroll_to — how many viewport scrolls to try before giving up on
  * a virtualized/windowed list (which only renders visible rows, so a plain reticle_query misses

@@ -2,6 +2,7 @@ import {
   ActionType,
   CRAWL_DEFAULTS,
   CrawlAnomalyKind,
+  ContradictionKind,
   DANGEROUS_ACTION_CONFIRM_ARG,
   EventType,
   ReticleCommand,
@@ -16,6 +17,7 @@ import {
   sourceOf,
 } from '../tools/tools-helpers.js';
 import { ReticleTool } from '../tools/tool-names.js';
+import { findContradictions } from '../events/contradictions.js';
 
 /** The slice of Session the crawler needs — so tests inject a fake without a live browser. */
 export interface CrawlSession {
@@ -36,7 +38,13 @@ export interface CrawlSession {
 type CrawlSleep = (ms: number) => Promise<void>;
 
 export interface CrawlAnomaly {
-  kind: CrawlAnomalyKind;
+  /**
+   * A single-channel fault (something bad in one stream) or a CONTRADICTION (two channels
+   * disagreeing about the same click). The second kind is why an autonomous crawl is worth more
+   * than a human clicking the same buttons: a person sees only the screen, so a UI that advanced
+   * while its write failed looks like success to them and always will.
+   */
+  kind: CrawlAnomalyKind | ContradictionKind;
   /** The control that triggered it. */
   ref: string;
   desc: string;
@@ -60,7 +68,12 @@ export interface CrawlReport {
   interactiveFound: number;
   stepsRun: number;
   anomalies: CrawlAnomaly[];
-  counts: { consoleErrors: number; failedRequests: number; deadControls: number };
+  counts: {
+    consoleErrors: number;
+    failedRequests: number;
+    deadControls: number;
+    contradictions: number;
+  };
   /** Descriptions of the controls actually clicked. */
   visited: string[];
   /** True when coverage was bounded — by the step budget, or by the page exceeding one snapshot. */
@@ -133,7 +146,7 @@ export async function crawl(
 
   const anomalies: CrawlAnomaly[] = [];
   const visited: string[] = [];
-  const counts = { consoleErrors: 0, failedRequests: 0, deadControls: 0 };
+  const counts = { consoleErrors: 0, failedRequests: 0, deadControls: 0, contradictions: 0 };
   const seen = new Set<string>();
 
   let stepsRun = 0;
@@ -188,6 +201,19 @@ export async function crawl(
         ref: item.ref,
         desc: item.desc,
         detail: `${method} ${url} → ${status ?? ''}`.trim(),
+        ...source,
+      });
+    }
+
+    // CONTRADICTIONS: the channels disagree about what this click did. Reported per control, so a
+    // crawl of an unknown app surfaces its false greens without anyone knowing where to look.
+    for (const c of findContradictions(events)) {
+      counts.contradictions += 1;
+      anomalies.push({
+        kind: c.kind,
+        ref: item.ref,
+        desc: item.desc,
+        detail: `${c.claim}, but ${c.counter} — ${c.detail}`,
         ...source,
       });
     }

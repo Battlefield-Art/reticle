@@ -76,7 +76,7 @@ describe('the crawl output schema declares everything crawl returns', () => {
         source: 'src/components/Toolbar.tsx:44',
       },
     ],
-    counts: { consoleErrors: 0, failedRequests: 0, deadControls: 1 },
+    counts: { consoleErrors: 0, failedRequests: 0, deadControls: 1, contradictions: 0 },
     visited: ['button "Save"'],
     truncated: false,
     coverageNote: CAPPED_SNAPSHOT_NOTE,

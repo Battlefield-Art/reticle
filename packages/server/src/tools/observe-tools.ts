@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ReticleCommand, DEFAULT_ASSERT_TIMEOUT_MS } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport } from '../events/reaction.js';
+import { findContradictions } from '../events/contradictions.js';
 import { evaluatePredicate, waitForPredicate, PredicateSchema } from '../events/predicate.js';
 import {
   matchNet,
@@ -120,6 +121,21 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         animations: z.number(),
         signals: z.number(),
       }),
+      // Cross-channel disagreement in this window. Omitted when there is none, so a clean action
+      // costs zero tokens and a contradiction is impossible to scroll past.
+      contradictions: z
+        .array(
+          z.object({
+            kind: z.string(),
+            claim: z.string(),
+            counter: z.string(),
+            detail: z.string(),
+          }),
+        )
+        .optional()
+        .describe(
+          'Channels that DISAGREE about this action — e.g. the UI advanced while its request failed. Each is a false green: the screen looks right and the app is wrong.',
+        ),
       cost: z.object({
         events: z.number(),
         bytes: z.number(),
@@ -156,9 +172,13 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         asNumber(args['max_events']),
       );
       const report = buildReactionReport(budgeted, windowMs);
+      // Run over the FILTERED-but-unbudgeted window: a contradiction must not vanish because the
+      // timeline was capped for tokens. Detection is cheap; the events are already in hand.
+      const contradictions = findContradictions(filtered);
       // carry session health — a throttled tab means the observed timeline may be incomplete.
       return withControl(session, {
         ...report,
+        ...(contradictions.length > 0 ? { contradictions } : {}),
         cost: costHint(report, budgeted.length, droppedOldest),
         ...healthEnvelope(session),
         ...bufferEnvelope(session),
