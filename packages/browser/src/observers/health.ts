@@ -2,10 +2,25 @@ import { EventType, HealthReason, SESSION_HEALTH } from '@reticlehq/core';
 import { nativeSetInterval } from '../timers/native-timers.js';
 import type { Emit, Teardown } from './types.js';
 
-function snapshotHealth(): { hidden: boolean; focused: boolean } {
+/**
+ * Which shell this page runs in. Reported with health because it is what makes a timeout
+ * diagnosable: an occluded WKWebView is SUSPENDED by macOS, so the session stays connected while
+ * every command times out — and a URL cannot tell a Tauri dev server from a plain localhost app, so
+ * the runtime has to come from the page itself.
+ */
+function detectRuntime(): 'electron' | 'tauri' | 'web' {
+  const w = window as unknown as Record<string, unknown>;
+  if (w['__TAURI_INTERNALS__'] !== undefined || w['__TAURI__'] !== undefined) return 'tauri';
+  if (navigator.userAgent.includes('Electron') || w['__reticleIpc'] !== undefined)
+    return 'electron';
+  return 'web';
+}
+
+function snapshotHealth(): { hidden: boolean; focused: boolean; runtime: string } {
   return {
     hidden: document.visibilityState === 'hidden',
     focused: document.hasFocus(),
+    runtime: detectRuntime(),
   };
 }
 

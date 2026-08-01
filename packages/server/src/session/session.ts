@@ -1,4 +1,9 @@
 import type { WebSocket } from 'ws';
+import { commandTimeoutMessage, type PageRuntime } from './command-timeout.js';
+import { readHealthEvent, type SessionHealth } from './session-health.js';
+
+export type { SessionHealth };
+import { PendingCommands } from './pending-commands.js';
 import {
   EventType,
   HumanControlDataSchema,
@@ -54,21 +59,6 @@ export interface SessionInfo {
   review_suggestion?: string;
 }
 
-/** The health block spliced onto act/assert results. */
-export interface SessionHealth {
-  lastSeenMs: number;
-  throttled: boolean;
-  focused: boolean;
-  /** present only when hidden/throttled — points at the `reticle drive` escape hatch. */
-  recommendation?: string;
-}
-
-type PendingCommand = {
-  resolve: (result: CommandResult) => void;
-  reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
-};
-
 type Clock = () => number;
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 8000;
@@ -99,12 +89,13 @@ export class Session {
   readonly #clock: Clock;
   readonly #startedAt: number;
   readonly #buffer = new RingBuffer();
-  readonly #pending = new Map<string, PendingCommand>();
+  readonly #pending = new PendingCommands();
   readonly #listeners = new Set<(event: ReticleEvent) => void>();
-  #seq = 0;
   #actionSeq = 0;
   #lastSeenAt: number;
   #hidden = false;
+  /** Which shell the page reported (PAGE_HEALTH). Undefined until the first report lands. */
+  #runtime: PageRuntime | undefined;
   #focused = true;
   #lastActCursor: number | undefined;
   #lastActSource: string | undefined;
@@ -156,10 +147,18 @@ export class Session {
     return this.#clock() - this.#lastSeenAt;
   }
 
-  /** Record the latest page visibility/focus state from a PAGE_HEALTH event. */
-  applyHealth(hidden: boolean, focused: boolean): void {
+  /**
+   * Record the latest page visibility/focus state from a PAGE_HEALTH event.
+   *
+   * `runtime` is optional so an older SDK (which does not report it) still works — it simply loses
+   * the desktop-specific timeout diagnosis rather than breaking.
+   */
+  applyHealth(hidden: boolean, focused: boolean, runtime?: string): void {
     this.#hidden = hidden;
     this.#focused = focused;
+    if (runtime === 'electron' || runtime === 'tauri' || runtime === 'web') {
+      this.#runtime = runtime;
+    }
   }
 
   /** Throttled if the tab is hidden OR we have not heard from it recently. */
@@ -217,10 +216,12 @@ export class Session {
   /** Re-stamp an incoming event with server-relative time, buffer it, and fan out. */
   pushEvent(event: ReticleEvent, byteSize?: number): void {
     if (event.type === EventType.PAGE_HEALTH) {
-      const data = event.data;
-      const hidden = typeof data['hidden'] === 'boolean' ? data['hidden'] : this.#hidden;
-      const focused = typeof data['focused'] === 'boolean' ? data['focused'] : this.#focused;
-      this.applyHealth(hidden, focused);
+      const report = readHealthEvent(event.data);
+      this.applyHealth(
+        report.hidden ?? this.#hidden,
+        report.focused ?? this.#focused,
+        report.runtime,
+      );
     }
     if (event.type === EventType.HUMAN_CONTROL) {
       // Narrow unknown at the boundary; an invalid/unknown control is ignored (never thrown).
@@ -412,8 +413,7 @@ export class Session {
     args: Record<string, unknown> = {},
     timeoutMs: number = DEFAULT_COMMAND_TIMEOUT_MS,
   ): Promise<CommandResult> {
-    this.#seq += 1;
-    const id = `${COMMAND_ID_PREFIX}${String(this.#seq)}`;
+    const id = this.#pending.nextId(COMMAND_ID_PREFIX);
     const payload = JSON.stringify({
       kind: MessageKind.COMMAND,
       id,
@@ -421,31 +421,26 @@ export class Session {
       name,
       args,
     });
-    return new Promise<CommandResult>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.#pending.delete(id);
-        reject(new Error(`command '${name}' timed out after ${String(timeoutMs)}ms`));
-      }, timeoutMs);
-      this.#pending.set(id, { resolve, reject, timer });
-      this.#socket.send(payload);
-    });
+    // The timeout message is built LAZILY: health can change while a command is in flight, and the
+    // diagnosis should describe the page as it was when the command actually gave up.
+    const awaited = this.#pending.track(id, timeoutMs, () =>
+      commandTimeoutMessage(name, timeoutMs, {
+        url: this.url,
+        hidden: this.#hidden,
+        ...(this.#runtime === undefined ? {} : { runtime: this.#runtime }),
+      }),
+    );
+    this.#socket.send(payload);
+    return awaited;
   }
 
   handleResult(result: CommandResult): void {
-    const pending = this.#pending.get(result.id);
-    if (pending === undefined) return;
-    clearTimeout(pending.timer);
-    this.#pending.delete(result.id);
-    pending.resolve(result);
+    this.#pending.settle(result);
   }
 
   /** Reject everything still in flight — used on disconnect. */
   rejectAll(reason: string): void {
-    for (const [id, pending] of this.#pending) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error(reason));
-      this.#pending.delete(id);
-    }
+    this.#pending.rejectAll(reason);
   }
 
   /** End this transport without letting a stale socket remove its replacement session. */
@@ -574,8 +569,9 @@ export class Session {
   /** Fire-and-forget command send — NOT registered in #pending (no correlated result expected). */
   #post(name: string, args: Record<string, unknown>): void {
     if (this.#socket.readyState !== WS_OPEN) return;
-    this.#seq += 1;
-    const id = `${COMMAND_ID_PREFIX}${String(this.#seq)}`;
+    // Shares the same counter as tracked commands, so a fire-and-forget id can never collide with
+    // one that IS awaiting a reply.
+    const id = this.#pending.nextId(COMMAND_ID_PREFIX);
     const payload = JSON.stringify({
       kind: MessageKind.COMMAND,
       id,

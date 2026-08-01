@@ -1,0 +1,58 @@
+import type { CommandResult } from '@reticlehq/core';
+
+/**
+ * The in-flight command table for one session: correlate a reply to its request, time out the ones
+ * that never come back, and fail the rest when the socket drops.
+ *
+ * Extracted from Session because it is a self-contained mechanism with its own invariant — every
+ * entry is either resolved, rejected, or timed out exactly once, and its timer is always cleared —
+ * and because Session had grown past the file-size cap. Nothing here knows about health, events, or
+ * the browser; it takes the timeout message as a callback so the diagnosis stays with the code that
+ * can explain it.
+ */
+
+interface PendingCommand {
+  resolve: (result: CommandResult) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+export class PendingCommands {
+  readonly #pending = new Map<string, PendingCommand>();
+  #seq = 0;
+
+  /** Next correlation id. Monotonic per session, so a reply can never match an earlier command. */
+  nextId(prefix: string): string {
+    this.#seq += 1;
+    return `${prefix}${String(this.#seq)}`;
+  }
+
+  /** Register a command and arm its timeout. `describeTimeout` runs only if the reply never lands. */
+  track(id: string, timeoutMs: number, describeTimeout: () => string): Promise<CommandResult> {
+    return new Promise<CommandResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#pending.delete(id);
+        reject(new Error(describeTimeout()));
+      }, timeoutMs);
+      this.#pending.set(id, { resolve, reject, timer });
+    });
+  }
+
+  /** Resolve the command this reply belongs to. Unknown ids are ignored, never thrown on. */
+  settle(result: CommandResult): void {
+    const pending = this.#pending.get(result.id);
+    if (pending === undefined) return;
+    clearTimeout(pending.timer);
+    this.#pending.delete(result.id);
+    pending.resolve(result);
+  }
+
+  /** Reject everything still in flight — used on disconnect, so no caller waits on a dead socket. */
+  rejectAll(reason: string): void {
+    for (const [id, pending] of this.#pending) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(reason));
+      this.#pending.delete(id);
+    }
+  }
+}

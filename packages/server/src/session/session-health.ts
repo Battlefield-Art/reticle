@@ -1,5 +1,17 @@
 import { BUFFER_EVICTION_WARNING, THROTTLED_WARNING } from '@reticlehq/core';
-import type { Session, SessionHealth } from './session.js';
+import type { Session } from './session.js';
+
+/**
+ * The health block spliced onto act/assert results. Defined here rather than in session.ts: this is
+ * the module that builds it, and session.ts was over the file-size cap.
+ */
+export interface SessionHealth {
+  lastSeenMs: number;
+  throttled: boolean;
+  focused: boolean;
+  /** present only when hidden/throttled — points at the `reticle drive` escape hatch. */
+  recommendation?: string;
+}
 
 /** The evidence-completeness block spliced onto observe/network/console results. */
 interface BufferEnvelope {
@@ -47,4 +59,24 @@ export function refuseIfThrottled(session: Session, refuse: unknown): void {
   if (refuse === true && session.throttled()) {
     throw new Error(`refusing to act: ${THROTTLED_WARNING}`);
   }
+}
+
+/** The page's own visibility/runtime report, narrowed out of an untrusted PAGE_HEALTH payload. */
+export interface HealthReport {
+  hidden: boolean | undefined;
+  focused: boolean | undefined;
+  runtime: string | undefined;
+}
+
+/**
+ * Narrow a PAGE_HEALTH payload. Every field is optional on the wire — an older SDK does not report
+ * `runtime` at all — so each is returned as undefined rather than defaulted here, letting the caller
+ * keep its previous value instead of silently flipping a session to "visible" on a partial report.
+ */
+export function readHealthEvent(data: Record<string, unknown>): HealthReport {
+  return {
+    hidden: typeof data['hidden'] === 'boolean' ? data['hidden'] : undefined,
+    focused: typeof data['focused'] === 'boolean' ? data['focused'] : undefined,
+    runtime: typeof data['runtime'] === 'string' ? data['runtime'] : undefined,
+  };
 }
