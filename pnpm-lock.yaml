@@ -167,6 +167,9 @@ importers:
       '@reticlehq/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@reticlehq/electron':
+        specifier: workspace:*
+        version: link:../../packages/electron
       '@reticlehq/react':
         specifier: workspace:*
         version: link:../../packages/react
@@ -443,6 +446,15 @@ importers:
       zod-to-json-schema:
         specifier: ^3.24.0
         version: 3.25.2(zod@3.25.76)
+
+  packages/electron:
+    dependencies:
+      '@reticlehq/core':
+        specifier: workspace:*
+        version: link:../core
+      electron:
+        specifier: '>=22'
+        version: 34.5.8
 
   packages/eslint-plugin:
     dependencies:

@@ -3,7 +3,7 @@
  * Reticle's Electron preload shim. Add ONE line at the top of your preload, before you expose
  * anything:
  *
- *     require('@reticlehq/browser/electron-preload');
+ *     require('@reticlehq/electron/preload');
  *
  * ...and every `ipcRenderer.invoke` your app makes becomes a Reticle-visible request
  * (`ipc://<channel>`), so net assertions and settle-waiting cover the main-process hop.
@@ -20,9 +20,12 @@
  * Dev-only, like the rest of Reticle. Gate the require behind your dev check so it never ships.
  */
 const { contextBridge, ipcRenderer } = require('electron');
-
-/** Channel the renderer-side SDK looks for. Must match RETICLE_IPC_GLOBAL in src/observers/ipc.ts. */
-const RETICLE_IPC_GLOBAL = '__reticleIpc';
+// The ONE definition of these strings, generated from @reticlehq/core's TypeScript source so a CJS
+// preload and the ESM renderer cannot drift apart. Previously hand-copied into six files.
+const {
+  RETICLE_IPC_GLOBAL,
+  RETICLE_CAPTURE_CHANNEL,
+} = require('@reticlehq/core/desktop-contract');
 
 /** Set by the renderer through `subscribe`. Until then, records are dropped — connect() runs later. */
 let sink = null;
@@ -84,22 +87,19 @@ function observe(original, channelFromArg, name) {
 const originalInvoke = ipcRenderer.invoke.bind(ipcRenderer);
 ipcRenderer.invoke = observe(originalInvoke, true, 'invoke');
 
-/** Channel the main-process helper answers. Must match CAPTURE_CHANNEL in electron-main.cjs. */
-const CAPTURE_CHANNEL = '__reticle:capture';
-
 contextBridge.exposeInMainWorld(RETICLE_IPC_GLOBAL, {
   subscribe(callback) {
     sink = typeof callback === 'function' ? callback : null;
   },
   /**
    * Screenshot this window. Resolves to a base64 PNG, or null when the app did not install the
-   * main-process helper (`@reticlehq/browser/electron-main`) — there is no handler to answer, and a
+   * main-process helper (`@reticlehq/electron/main`) — there is no handler to answer, and a
    * missing screenshot must read as missing, never as a blank image.
    *
    * Uses the ORIGINAL invoke: this is Reticle's own plumbing, and recording it as an app IPC call
    * would put `ipc://__reticle:capture` in the agent's own network evidence.
    */
   capture() {
-    return originalInvoke(CAPTURE_CHANNEL).catch(() => null);
+    return originalInvoke(RETICLE_CAPTURE_CHANNEL).catch(() => null);
   },
 });

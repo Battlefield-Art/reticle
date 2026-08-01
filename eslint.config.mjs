@@ -17,6 +17,9 @@ export default tseslint.config(
       'apps/next-smoke/**',
       'apps/e2e/**',
       'packages/next/**',
+      // Plain CommonJS, like packages/next: an Electron preload must be CJS (a sandboxed one cannot
+      // load ESM at all), so the TypeScript rules — no-require-imports above all — do not apply.
+      'packages/electron/**',
     ],
   },
   js.configs.recommended,

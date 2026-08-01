@@ -10,7 +10,7 @@
  *
  * Dev-only: a shipping app gates this require behind its own dev check.
  */
-require('@reticlehq/browser/electron-preload');
+require('@reticlehq/electron/preload');
 
 const { contextBridge, ipcRenderer } = require('electron');
 

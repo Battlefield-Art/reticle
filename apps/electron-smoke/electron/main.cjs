@@ -11,7 +11,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 // The screenshot half of Reticle's desktop support. One line, main process only: it registers a
 // handler that hands Reticle the window's own backing store, so a capture is correct even when this
 // window is behind the editor.
-const { installReticleCapture } = require('@reticlehq/browser/electron-main');
+const { installReticleCapture } = require('@reticlehq/electron/main');
 const path = require('node:path');
 
 const DEV_SERVER_URL = 'http://localhost:5174';
@@ -74,7 +74,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       // A SANDBOXED preload cannot resolve node_modules — only a few Electron builtins — so the
-      // `require('@reticlehq/browser/electron-preload')` in preload.cjs would fail. Two ways out:
+      // `require('@reticlehq/electron/preload')` in preload.cjs would fail. Two ways out:
       // bundle the preload (electron-vite and Forge do this by default, and the require is inlined at
       // build time, so sandboxing can stay on), or turn the sandbox off as this unbundled demo does.
       sandbox: false,

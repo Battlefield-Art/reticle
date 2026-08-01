@@ -11,12 +11,11 @@
  * eliminate. Electron's `webContents.capturePage()` reads the window's own backing store instead:
  * correct while occluded, correct while backgrounded, and needing no screen-recording permission.
  *
- * The app opts in with one line in its main process (`@reticlehq/browser/electron-main`). Absent
+ * The app opts in with one line in its main process (`@reticlehq/electron/main`). Absent
  * that, this returns `{ ok: false }` and the tool reports no-provider rather than guessing.
  */
 
-/** Global the Electron preload shim exposes. Must match RETICLE_IPC_GLOBAL in electron-preload.cjs. */
-const RETICLE_IPC_GLOBAL = '__reticleIpc';
+import { RETICLE_IPC_GLOBAL } from '@reticlehq/core';
 
 interface CaptureChannel {
   capture?: () => Promise<string | null>;

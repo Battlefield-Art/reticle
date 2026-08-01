@@ -1,7 +1,7 @@
 {
   "name": "@reticlehq/core",
   "version": "2.2.1",
-  "description": "The Reticle foundation: the shared wire contract — types, zod schemas, constants, messages, and the isomorphic kernel that every Reticle package (browser SDK, server, kits, test harness) imports. Depends only on zod.",
+  "description": "The Reticle foundation: the shared wire contract \u2014 types, zod schemas, constants, messages, and the isomorphic kernel that every Reticle package (browser SDK, server, kits, test harness) imports. Depends only on zod.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,10 +10,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./schema/*.json": "./dist/schema/*.json"
+    "./schema/*.json": "./dist/schema/*.json",
+    "./desktop-contract": "./dist/desktop-contract.cjs"
   },
   "scripts": {
-    "build": "tsc -b && node scripts/gen-schema.mjs",
+    "build": "tsc -b && node scripts/gen-schema.mjs && node scripts/gen-desktop-contract.mjs",
     "typecheck": "tsc -b",
     "lint": "eslint src",
     "test:unit": "vitest run src --passWithNoTests",

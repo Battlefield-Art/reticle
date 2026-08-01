@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { ReticleCommand, VISUAL_NO_PROVIDER_RECOMMENDATION, VisualReason } from '@reticlehq/core';
+import {
+  ReticleCommand,
+  RETICLE_CAPTURE_FILE_PREFIX,
+  VISUAL_NO_PROVIDER_RECOMMENDATION,
+  VisualReason,
+} from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import { sessionIdShape } from '../tools/tool-kit.js';
 import { asNumber, asRecord, asString } from '../tools/tools-helpers.js';
@@ -8,9 +13,6 @@ import { VisualStore } from './visual-store.js';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname } from 'node:path';
-
-/** Must match CAPTURE_FILE_PREFIX in @reticlehq/browser/electron-main.cjs. */
-const CAPTURE_FILE_PREFIX = 'reticle-capture-';
 import type { ElementBox, RealInputProvider, ScreenshotOpts } from '../input/real-input.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 
@@ -77,7 +79,7 @@ async function buildOpts(
  * Ask the desktop shell to photograph its own window.
  *
  * Returns undefined for a plain web page (no capture helper) and for a desktop app that did not
- * install `@reticlehq/browser/electron-main`. Deliberately NOT a screen-region capture: photographing
+ * install `@reticlehq/electron/main`. Deliberately NOT a screen-region capture: photographing
  * the glass returns whatever window is on top, which would save a picture of the user's editor as a
  * visual baseline — the exact false green Reticle exists to eliminate.
  */
@@ -109,7 +111,7 @@ async function desktopCapture(
  * compromised renderer names.
  */
 function isCapturePath(path: string): boolean {
-  return dirname(path) === tmpdir() && basename(path).startsWith(CAPTURE_FILE_PREFIX);
+  return dirname(path) === tmpdir() && basename(path).startsWith(RETICLE_CAPTURE_FILE_PREFIX);
 }
 
 /**

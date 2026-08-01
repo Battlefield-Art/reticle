@@ -39,8 +39,8 @@ export interface DesktopDiagnosis {
 export type ReadFile = (path: string) => string | undefined;
 
 const TAURI_CONF = 'src-tauri/tauri.conf.json';
-const PRELOAD_REQUIRE = '@reticlehq/browser/electron-preload';
-const CAPTURE_REQUIRE = '@reticlehq/browser/electron-main';
+const PRELOAD_REQUIRE = '@reticlehq/electron/preload';
+const CAPTURE_REQUIRE = '@reticlehq/electron/main';
 
 function parseJson(text: string | undefined): Record<string, unknown> | undefined {
   if (text === undefined) return undefined;

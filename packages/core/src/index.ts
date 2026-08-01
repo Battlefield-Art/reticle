@@ -19,6 +19,7 @@ export * from './types.js';
 export * from './brand.js'; // RunId / SessionId / Ref brands + validators
 export * from './net.js'; // NetInitiator / ipc:// scheme — network + desktop-IPC call vocabulary
 export * from './findings.js'; // crawl anomalies + cross-channel contradictions
+export * from './desktop-contract.js'; // the Electron preload/main/renderer/daemon string contract
 export * from './consequence.js';
 export * from './notices.js';
 export * from './journal.js';

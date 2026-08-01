@@ -94,7 +94,7 @@ describe('diagnoseDesktop — Electron', () => {
       project({
         'package.json': electronPkg,
         'electron/main.cjs': 'require("electron")',
-        'electron/preload.cjs': 'require("@reticlehq/browser/electron-preload")',
+        'electron/preload.cjs': 'require("@reticlehq/electron/preload")',
       }),
       4400,
     );
@@ -105,8 +105,8 @@ describe('diagnoseDesktop — Electron', () => {
     const findings = diagnoseDesktop(
       project({
         'package.json': electronPkg,
-        'electron/main.cjs': 'const { installReticleCapture } = require("@reticlehq/browser/electron-main")',
-        'electron/preload.cjs': 'require("@reticlehq/browser/electron-preload")',
+        'electron/main.cjs': 'const { installReticleCapture } = require("@reticlehq/electron/main")',
+        'electron/preload.cjs': 'require("@reticlehq/electron/preload")',
       }),
       4400,
     );
@@ -117,8 +117,8 @@ describe('diagnoseDesktop — Electron', () => {
     const findings = diagnoseDesktop(
       project({
         'package.json': JSON.stringify({ main: 'app/desktop/main.cjs', devDependencies: { electron: '^34' } }),
-        'app/desktop/main.cjs': 'require("@reticlehq/browser/electron-main")',
-        'app/desktop/preload.cjs': 'require("@reticlehq/browser/electron-preload")',
+        'app/desktop/main.cjs': 'require("@reticlehq/electron/main")',
+        'app/desktop/preload.cjs': 'require("@reticlehq/electron/preload")',
       }),
       4400,
     );

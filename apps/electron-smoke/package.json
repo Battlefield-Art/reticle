@@ -26,6 +26,7 @@
     "electron": "^34.0.0",
     "vite": "^8.0.16",
     "wait-on": "^8.0.2",
-    "@reticlehq/core": "workspace:*"
+    "@reticlehq/core": "workspace:*",
+    "@reticlehq/electron": "workspace:*"
   }
 }

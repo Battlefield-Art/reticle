@@ -33,7 +33,7 @@ import { installStoreState } from './observers/state.js';
 import { installFocus } from './observers/focus.js';
 import { installBlindSpots } from './observers/blind-spots.js';
 import { installNetwork } from './observers/network.js';
-import { installIpc } from './observers/ipc.js';
+import { installIpc, ipcNetOverrides } from './observers/ipc.js';
 import { installPerf } from './observers/perf.js';
 import { installRoute } from './observers/route.js';
 import { installConsole } from './observers/console.js';
@@ -358,7 +358,12 @@ export class Reticle {
 
     const emit = this.#emit;
     this.#teardowns = [
-      installNetwork(emit, { captureBodies: options.captureNetworkBodies === true }),
+      // Composition happens HERE, not inside the network observer: the network observer knows
+      // nothing about desktop IPC, and the IPC observer knows nothing about fetch plumbing.
+      installNetwork(emit, {
+        captureBodies: options.captureNetworkBodies === true,
+        reinterpret: ipcNetOverrides,
+      }),
       // Desktop backends are reached over IPC, not HTTP — inert on a plain web page.
       installIpc(emit),
       installPerf(emit),

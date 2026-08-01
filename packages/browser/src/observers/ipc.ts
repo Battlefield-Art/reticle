@@ -1,4 +1,10 @@
-import { EventType, IPC_URL_SCHEME, IpcStatus, NetInitiator } from '@reticlehq/core';
+import {
+  EventType,
+  IPC_URL_SCHEME,
+  IpcStatus,
+  NetInitiator,
+  RETICLE_IPC_GLOBAL,
+} from '@reticlehq/core';
 import type { Emit, Teardown } from './types.js';
 import { observeSafely } from './types.js';
 
@@ -19,14 +25,11 @@ import { observeSafely } from './types.js';
  *
  *  - **Electron**: `contextBridge.exposeInMainWorld` hands the renderer a deeply frozen,
  *    non-configurable object. Calls are observed in the PRELOAD, by
- *    `@reticlehq/browser/electron-preload`, and pushed to the channel this file subscribes to.
+ *    `@reticlehq/electron/preload`, and pushed to the channel this file subscribes to.
  *  - **Tauri v2**: `__TAURI_INTERNALS__.invoke` is `writable: false, configurable: false`. It does
  *    not need patching — an `invoke` travels as a real `fetch` to Tauri's `ipc://` custom protocol,
  *    which the network observer already sees. See `ipcNetOverrides`.
  */
-
-/** Global the Electron preload shim exposes. Must match RETICLE_IPC_GLOBAL in electron-preload.cjs. */
-const RETICLE_IPC_GLOBAL = '__reticleIpc';
 
 /** One report from the preload shim: a call starting, or the same call settling. */
 interface PreloadRecord {
@@ -50,6 +53,9 @@ interface PreloadChannel {
 export const TAURI_RESPONSE_HEADER_NAME = 'Tauri-Response';
 const TAURI_RESPONSE_ERROR = 'error';
 
+/** Rust/IPC vocabulary rather than HTTP's, so the text never claims a transport status it lacks. */
+const IPC_STATUS_TEXT = { OK: 'Ok', ERROR: 'Err' } as const;
+
 /** Tauri's IPC endpoint, e.g. `ipc://localhost/archive_todo`. The last segment is the command. */
 const TAURI_IPC_URL = /^ipc:\/\/[^/]*\/(.+)$/;
 
@@ -60,12 +66,12 @@ const TAURI_IPC_URL = /^ipc:\/\/[^/]*\/(.+)$/;
  */
 export function ipcNetOverrides(
   url: string,
-  responseHeader: string | null,
-): Record<string, unknown> | null {
+  header: (name: string) => string | null,
+): Record<string, unknown> | undefined {
   const match = TAURI_IPC_URL.exec(url);
   const command = match?.[1];
-  if (command === undefined) return null;
-  const ok = responseHeader !== TAURI_RESPONSE_ERROR;
+  if (command === undefined) return undefined;
+  const ok = header(TAURI_RESPONSE_HEADER_NAME) !== TAURI_RESPONSE_ERROR;
   return {
     // Normalize `ipc://localhost/archive_todo` to `ipc://archive_todo`, so a Tauri command and an
     // Electron channel read identically to the agent and to a saved flow's assertions.
@@ -74,6 +80,11 @@ export function ipcNetOverrides(
     method: NetInitiator.IPC,
     ok,
     status: ok ? IpcStatus.OK : IpcStatus.ERROR,
+    // Overwrite the TRANSPORT's statusText. Tauri's fetch genuinely answered 200/"OK", so letting it
+    // through beside a synthetic 500 produced a record that contradicted itself — `status: 500,
+    // statusText: "OK"` reads as nonsense to anyone seeing it cold. The record must tell one story,
+    // and the story that matters is the command's verdict, not the pipe it travelled down.
+    statusText: ok ? IPC_STATUS_TEXT.OK : IPC_STATUS_TEXT.ERROR,
   };
 }
 

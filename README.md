@@ -17,9 +17,13 @@ It makes your agent **test its own work on every edit** — reading the running 
 
 <a href="https://reticle.sh"><img src="assets/readme/demo-montage.webp" alt="Reticle in action: an AI agent verifying a real running app from the inside, returning pass/fail verdicts with evidence and the file:line to fix" width="820" /></a>
 
-[![npm](https://img.shields.io/npm/v/@reticlehq/react?color=8b7bff&labelColor=15131f&logo=npm)](https://www.npmjs.com/package/@reticlehq/react) [![downloads](https://img.shields.io/npm/dm/@reticlehq/react?color=5fd9f5&labelColor=15131f)](https://www.npmjs.com/package/@reticlehq/react) [![stars](https://img.shields.io/github/stars/reticlehq/reticle?color=ff9f87&labelColor=15131f&logo=github)](https://github.com/reticlehq/reticle/stargazers) [![license](https://img.shields.io/badge/license-Apache--2.0%20%2B%20FSL-46d6a0?labelColor=15131f)](LICENSE) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/reticlehq/reticle/badge)](https://securityscorecards.dev/viewer/?uri=github.com/reticlehq/reticle) [![types](https://img.shields.io/npm/types/@reticlehq/react?color=5fd9f5&labelColor=15131f)](https://www.npmjs.com/package/@reticlehq/react)
+[![npm](https://img.shields.io/npm/v/@reticlehq/react?color=8b7bff&labelColor=15131f&logo=npm)](https://www.npmjs.com/package/@reticlehq/react) [![downloads](https://img.shields.io/npm/dm/@reticlehq/react?color=5fd9f5&labelColor=15131f)](https://www.npmjs.com/package/@reticlehq/react) [![stars](https://img.shields.io/github/stars/reticlehq/reticle?color=ff9f87&labelColor=15131f&logo=github)](https://github.com/reticlehq/reticle/stargazers) [![license](https://img.shields.io/badge/license-Apache--2.0%20%2B%20FSL-46d6a0?labelColor=15131f)](LICENSE) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/reticlehq/reticle/badge)](https://securityscorecards.dev/viewer/?uri=github.com/reticlehq/reticle) [![types](https://img.shields.io/npm/types/@reticlehq/react?color=5fd9f5&labelColor=15131f)](https://www.npmjs.com/package/@reticlehq/react) [![Discord](https://img.shields.io/badge/Discord-join-8b7bff?labelColor=15131f&logo=discord&logoColor=white)](https://discord.gg/7kS66x494)
 
-**[⚡ Install in 30 seconds](#install-in-30-seconds)** · [How it works](#how-it-works) · [Why not Playwright / DevTools / a browser agent](#why-not-playwright-mcp-a-browser-agent-or-devtools) · [The numbers](#the-numbers) · [Docs](docs/getting-started.md)
+### [💬 Build the open-source Reticle with us on Discord →](https://discord.gg/7kS66x494)
+
+Where the work happens in the open: what's being built this cycle, what's up for grabs, and design calls before they land.
+
+**[⚡ Install in 30 seconds](#install-in-30-seconds)** · [How it works](#how-it-works) · [Why not Playwright / DevTools / a browser agent](#why-not-playwright-mcp-a-browser-agent-or-devtools) · [The numbers](#the-numbers) · [Docs](docs/getting-started.md) · [Discord](https://discord.gg/7kS66x494)
 
 `dev-only` · `localhost-only` · `your app data stays local` · `Apache-2.0 SDK` · works with Claude Code, Cursor, and any MCP agent
 
@@ -192,13 +196,18 @@ Built in the open, for the long run. Everyone who stars, forks, or contributes i
 
 </div>
 
-## 💬 Feedback
+## 💬 Community
 
-Reticle is built in the open, and we'd love to hear from you.
+Reticle is built in the open. Pick the channel that fits:
 
-Whether you've found a bug, have an idea for a new feature, or want to share your experience using Reticle, send us an email at **hey@reticle.sh**.
-
-Every email is read by the team, and many of our improvements come directly from community feedback.
+| You want to… | Go here |
+| --- | --- |
+| See what's being built now, ask a question, claim work | **[Discord](https://discord.gg/7kS66x494)** — `#roadmap`, `#help`, `#contributors` |
+| Report a bug or request a feature | [Open an issue](https://github.com/reticlehq/reticle/issues/new/choose) |
+| Find something to work on | [`good first issue`](https://github.com/reticlehq/reticle/labels/good%20first%20issue) · [`help wanted`](https://github.com/reticlehq/reticle/labels/help%20wanted) |
+| Know where the project is headed | [ROADMAP](ROADMAP.md) · [what shipped](CHANGELOG.md) · [how we release](RELEASING.md) |
+| Send a change | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Report a vulnerability, or reach the team privately | [SECURITY.md](SECURITY.md) · **hey@reticle.sh** |
 
 ## What's inside
 
@@ -225,7 +234,7 @@ A per-package model, so it's safe to embed in your app and fair to build a busin
 - **Server / CLI / MCP → FSL-1.1-ALv2.** `server` and `test` are free for any use except offering Reticle itself as a competing hosted service; each release converts to Apache-2.0 after two years.
 - **Enterprise features → Reticle Enterprise License.** Source-available under `packages/server/src/ee/`; free to evaluate, a key is required in production.
 
-New here? See [CONTRIBUTING.md](CONTRIBUTING.md), [GOVERNANCE.md](GOVERNANCE.md), and the [ROADMAP](ROADMAP.md). Contributions are certified under the [DCO](https://developercertificate.org) — just `git commit -s`. OEM / commercial licensing: **[hey@reticle.sh](mailto:hey@reticle.sh)**
+New here? See [CONTRIBUTING.md](CONTRIBUTING.md), [GOVERNANCE.md](GOVERNANCE.md), [RELEASING.md](RELEASING.md), and the [ROADMAP](ROADMAP.md). Contributions are certified under the [DCO](https://developercertificate.org) — just `git commit -s`. OEM / commercial licensing: **[hey@reticle.sh](mailto:hey@reticle.sh)**
 
 <div align="center">
 

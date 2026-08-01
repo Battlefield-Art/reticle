@@ -22,7 +22,7 @@ afterEach(() => {
 /**
  * The renderer CANNOT patch a contextBridge API: `exposeInMainWorld` installs a deeply frozen,
  * non-configurable object. So Electron IPC is observed in the preload and pushed through this
- * channel — this stands in for `@reticlehq/browser/electron-preload`.
+ * channel — this stands in for `@reticlehq/electron/preload`.
  */
 function fakePreload(): (record: Record<string, unknown>) => void {
   let sink: ((record: Record<string, unknown>) => void) | null = null;
@@ -105,17 +105,19 @@ describe('IPC observer — Electron (reports arrive from the preload shim)', () 
 
 describe('ipcNetOverrides — a Tauri invoke arrives as a fetch to its ipc:// protocol', () => {
   it('leaves an ordinary HTTP request alone', () => {
-    expect(ipcNetOverrides('https://api.example/users', null)).toBeNull();
-    expect(ipcNetOverrides('/api/users', 'error')).toBeNull();
+    expect(ipcNetOverrides('https://api.example/users', () => null)).toBeUndefined();
+    expect(ipcNetOverrides('/api/users', () => 'error')).toBeUndefined();
   });
 
   it('normalizes the command URL and reports Ok', () => {
-    expect(ipcNetOverrides('ipc://localhost/load_todos', 'ok')).toEqual({
+    expect(ipcNetOverrides('ipc://localhost/load_todos', () => 'ok')).toEqual({
       url: `${IPC_URL_SCHEME}load_todos`,
       initiator: NetInitiator.IPC,
       method: NetInitiator.IPC,
       ok: true,
       status: IpcStatus.OK,
+      // Overwrites the transport's own statusText so the record cannot contradict itself.
+      statusText: 'Ok',
     });
   });
 
@@ -124,7 +126,7 @@ describe('ipcNetOverrides — a Tauri invoke arrives as a fetch to its ipc:// pr
    * translating the header a failed Rust command is recorded as a successful request — a false green.
    */
   it('turns a Tauri-Response: error into a failed call despite the HTTP 200', () => {
-    expect(ipcNetOverrides('ipc://localhost/archive_todo', 'error')).toMatchObject({
+    expect(ipcNetOverrides('ipc://localhost/archive_todo', () => 'error')).toMatchObject({
       url: `${IPC_URL_SCHEME}archive_todo`,
       ok: false,
       status: IpcStatus.ERROR,
@@ -132,6 +134,29 @@ describe('ipcNetOverrides — a Tauri invoke arrives as a fetch to its ipc:// pr
   });
 
   it('treats a missing header as success (a non-Tauri producer on the same scheme)', () => {
-    expect(ipcNetOverrides('ipc://localhost/whatever', null)).toMatchObject({ ok: true });
+    expect(ipcNetOverrides('ipc://localhost/whatever', () => null)).toMatchObject({ ok: true });
+  });
+});
+
+describe('an IPC record must not contradict itself', () => {
+  /**
+   * A Tauri IPC failure used to be emitted as `status: 500` while the transport's own
+   * `statusText: "OK"` passed straight through, because the underlying fetch really did answer 200.
+   * The resulting record read as nonsense to anyone looking at it cold, and "OK" next to 500 is
+   * exactly the kind of internal contradiction this project exists to eliminate — in its own output.
+   *
+   * The synthetic status stays (it is what makes `reticle_network { status: 500 }` work uniformly),
+   * but the record must describe ONE consistent story.
+   */
+  it('clears a transport statusText that would disagree with the command verdict', () => {
+    const failed = ipcNetOverrides('ipc://localhost/archive_todo', () => 'error');
+    expect(failed?.['status']).toBe(IpcStatus.ERROR);
+    expect(failed?.['statusText']).toBe('Err');
+  });
+
+  it('describes a successful command consistently too', () => {
+    const ok = ipcNetOverrides('ipc://localhost/load_todos', () => 'ok');
+    expect(ok?.['status']).toBe(IpcStatus.OK);
+    expect(ok?.['statusText']).toBe('Ok');
   });
 });

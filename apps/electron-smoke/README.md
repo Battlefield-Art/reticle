@@ -40,7 +40,7 @@ That gap is the reason the IPC observer exists. See [docs/desktop-apps.md](../..
 
 Two lines total:
 
-- `electron/preload.cjs` — `require('@reticlehq/browser/electron-preload')` on the first line. This
+- `electron/preload.cjs` — `require('@reticlehq/electron/preload')` on the first line. This
   must be in the preload: a `contextBridge` object reaches the renderer deeply frozen and
   non-configurable, so the page cannot instrument it.
 - `src/main.tsx` — `reticle.connect()`, the same call any web app makes.

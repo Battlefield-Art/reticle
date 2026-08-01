@@ -62,7 +62,7 @@ liveness constraint below. Electron carries no such condition.
 **Electron: one line in the main process.**
 
 ```js
-const { installReticleCapture } = require('@reticlehq/browser/electron-main');
+const { installReticleCapture } = require('@reticlehq/electron/main');
 const win = new BrowserWindow({ ... });
 installReticleCapture(win);
 ```
@@ -192,9 +192,13 @@ Nothing to add in your app code. (You can still call `reticle.connect()` by hand
 
 **2. The preload** — one line, before you expose anything:
 
+```bash
+npm i -D @reticlehq/electron
+```
+
 ```js
 // electron/preload.cjs
-require('@reticlehq/browser/electron-preload');
+require('@reticlehq/electron/preload');
 
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
@@ -298,7 +302,7 @@ desktop renderer has no visible console otherwise). A refused connect always log
 **Tauri: nothing connects and the app console shows a CSP violation.**
 The `connect-src` above is missing or does not include your daemon's port.
 
-**Electron: `module not found: @reticlehq/browser/electron-preload`.**
+**Electron: `module not found: @reticlehq/electron/preload`.**
 The preload is sandboxed. Bundle it, or set `sandbox: false` — see [Electron](#electron).
 
 **IPC calls do not appear, but the app works.**

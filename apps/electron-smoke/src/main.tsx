@@ -10,7 +10,7 @@ import { useApp } from './store.js';
  * and the surface it can drive — which no plugin can infer.
  *
  * The two Electron-specific lines live where they have to: `electron/preload.cjs` requires
- * `@reticlehq/browser/electron-preload` (IPC observation), and `electron/main.cjs` calls
+ * `@reticlehq/electron/preload` (IPC observation), and `electron/main.cjs` calls
  * `installReticleCapture(win)` (screenshots).
  */
 registerStore('app', useApp);

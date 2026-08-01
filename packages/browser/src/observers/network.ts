@@ -6,7 +6,6 @@ import {
   StreamDirection,
 } from '@reticlehq/core';
 import { captureMethod } from '../patching/capture-method.js';
-import { ipcNetOverrides, TAURI_RESPONSE_HEADER_NAME } from './ipc.js';
 import type { Emit, Teardown } from './types.js';
 import { isCapturableType, projectBody, withBodyDeadline } from './network-body.js';
 import { redactUrl } from './network-redact.js';
@@ -16,9 +15,24 @@ import { redactUrl } from './network-redact.js';
 export { redactUrl };
 
 /** Config for the network observer. Body capture is OFF by default and dev-only opt-in. */
+/**
+ * Reinterpret a completed request's fields from its response.
+ *
+ * The seam exists so this observer stays ignorant of desktop IPC. A Tauri `invoke` arrives here as an
+ * ordinary fetch to an `ipc://` protocol, and the header that says whether the Rust command
+ * succeeded means nothing to a network observer — so the knowledge lives in the IPC observer and is
+ * passed IN, rather than this module importing it. Returns undefined to leave the record untouched.
+ */
+export type NetResponseReinterpreter = (
+  url: string,
+  header: (name: string) => string | null,
+) => Record<string, unknown> | undefined;
+
 export interface NetworkOptions {
   /** Capture request/response bodies (text-like content only, redacted, per-body capped). */
   captureBodies?: boolean;
+  /** Optional hook that reinterprets a completed request — see NetResponseReinterpreter. */
+  reinterpret?: NetResponseReinterpreter;
 }
 
 /** The byte size of a binary frame (ArrayBuffer / Blob / typed-array view), or undefined if unknown. */
@@ -219,6 +233,7 @@ const OURS = new WeakSet<typeof window.fetch>();
 
 export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown {
   const captureBodies = opts.captureBodies === true;
+  const reinterpret = opts.reinterpret;
   // Keep the true original for teardown identity, plus a window-bound copy to invoke
   // (fetch throws "Illegal invocation" if called with the wrong `this`).
   const origFetch = window.fetch;
@@ -275,11 +290,9 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
           ...netResponseMeta(res.statusText, contentType, res.headers.get('content-length')),
           ...projectRequestBody(init?.body, captureBodies),
           ...responseBodyFields,
-          // A Tauri `invoke` arrives here as an ordinary fetch to its ipc:// protocol, and answers
-          // HTTP 200 even when the Rust command returned Err. These overrides come LAST so the
-          // command's real verdict wins over the transport's — otherwise every failed command reads
-          // as a successful request.
-          ...(ipcNetOverrides(url, res.headers.get(TAURI_RESPONSE_HEADER_NAME)) ?? {}),
+          // Applied LAST so a reinterpreted verdict wins over the transport's own fields — a Tauri
+          // command that returned Err still travelled down a fetch that answered HTTP 200.
+          ...(reinterpret?.(url, (name) => res.headers.get(name)) ?? {}),
         });
       };
       if (captureBodies && isCapturableType(contentType)) {

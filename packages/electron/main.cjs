@@ -2,7 +2,7 @@
 /**
  * Reticle's Electron MAIN-process helper — the screenshot half of desktop support.
  *
- *     const { installReticleCapture } = require('@reticlehq/browser/electron-main');
+ *     const { installReticleCapture } = require('@reticlehq/electron/main');
  *     const win = new BrowserWindow({ ... });
  *     installReticleCapture(win);
  *
@@ -20,15 +20,13 @@ const { ipcMain } = require('electron');
 const { writeFile } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
+// Generated from @reticlehq/core's TypeScript source, so the main process, the preload and the
+// daemon agree by construction rather than by three people copying the same string.
+const {
+  RETICLE_CAPTURE_CHANNEL,
+  RETICLE_CAPTURE_FILE_PREFIX,
+} = require('@reticlehq/core/desktop-contract');
 
-/** Channel the preload shim invokes. Must match CAPTURE_CHANNEL in electron-preload.cjs. */
-const CAPTURE_CHANNEL = '__reticle:capture';
-
-/**
- * Temp-file name prefix for a capture. The server only reads paths inside the OS temp dir whose
- * basename starts with this, so a compromised renderer cannot point the daemon at an arbitrary file.
- */
-const CAPTURE_FILE_PREFIX = 'reticle-capture-';
 let captureSeq = 0;
 
 /**
@@ -38,7 +36,7 @@ let captureSeq = 0;
 function installReticleCapture(win) {
   if (win === null || win === undefined) return;
   if (!installReticleCapture._registered) {
-    ipcMain.handle(CAPTURE_CHANNEL, async (event) => {
+    ipcMain.handle(RETICLE_CAPTURE_CHANNEL, async (event) => {
       const contents = event.sender;
       if (contents === null || contents === undefined || contents.isDestroyed()) return null;
       try {
@@ -54,7 +52,7 @@ function installReticleCapture(win) {
         captureSeq += 1;
         const file = join(
           tmpdir(),
-          `${CAPTURE_FILE_PREFIX}${String(process.pid)}-${String(captureSeq)}.png`,
+          `${RETICLE_CAPTURE_FILE_PREFIX}${String(process.pid)}-${String(captureSeq)}.png`,
         );
         await writeFile(file, image.toPNG());
         return file;
@@ -68,4 +66,4 @@ function installReticleCapture(win) {
 
 installReticleCapture._registered = false;
 
-module.exports = { installReticleCapture, CAPTURE_CHANNEL, CAPTURE_FILE_PREFIX };
+module.exports = { installReticleCapture };

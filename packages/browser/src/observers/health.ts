@@ -1,4 +1,4 @@
-import { EventType, HealthReason, SESSION_HEALTH } from '@reticlehq/core';
+import { EventType, HealthReason, RETICLE_IPC_GLOBAL, SESSION_HEALTH } from '@reticlehq/core';
 import { nativeSetInterval } from '../timers/native-timers.js';
 import type { Emit, Teardown } from './types.js';
 
@@ -11,7 +11,7 @@ import type { Emit, Teardown } from './types.js';
 function detectRuntime(): 'electron' | 'tauri' | 'web' {
   const w = window as unknown as Record<string, unknown>;
   if (w['__TAURI_INTERNALS__'] !== undefined || w['__TAURI__'] !== undefined) return 'tauri';
-  if (navigator.userAgent.includes('Electron') || w['__reticleIpc'] !== undefined)
+  if (navigator.userAgent.includes('Electron') || w[RETICLE_IPC_GLOBAL] !== undefined)
     return 'electron';
   return 'web';
 }
