@@ -70,8 +70,19 @@ function isMutating(call: NetCall): boolean {
   return MUTATING_METHODS.includes(call.method);
 }
 
-/** State paths/values that read as the app recording a failure rather than hiding one. */
+/**
+ * State paths/values that read as the app recording a failure rather than hiding one.
+ *
+ * English-only, and knowingly so — this is the softest edge in the file. It is a fallback for when
+ * the structural check below cannot decide, not the primary signal.
+ */
 const ACKNOWLEDGED = /error|fail|invalid|reject|denied|unable|could not|couldn't/i;
+
+/**
+ * Below this length an error string is too generic to be evidence — "no", "err", a bare code — and
+ * could coincide with unrelated state text.
+ */
+const MIN_ECHOED_ERROR_LENGTH = 8;
 
 /**
  * Wording that blames the USER — bad credentials, no permission, wrong input. Distinct from
@@ -100,6 +111,21 @@ const SERVER_FAULT_MIN = 500;
  * one — a false alarm costs a glance, a missed false green ships.
  */
 function failureAcknowledged(events: readonly ReticleEvent[]): boolean {
+  // STRUCTURAL first, and language-independent: if the app put the failed call's OWN error text into
+  // its state, it plainly knows the call failed — whatever language it says so in. The lexical
+  // patterns below are English-only, so without this a German or Japanese app that surfaces its
+  // failure perfectly well would be reported as hiding it.
+  const errors = events
+    .filter((e) => e.type === EventType.NET_REQUEST && e.data['ok'] !== true)
+    .map((e) => asString(e.data['error']))
+    .filter((text): text is string => text !== undefined && text.length >= MIN_ECHOED_ERROR_LENGTH);
+  const echoesAnError = events.some((e) => {
+    if (e.type !== EventType.STATE_CHANGE) return false;
+    const value = asString(e.data['value']);
+    return value !== undefined && errors.some((text) => value.includes(text));
+  });
+  if (echoesAnError) return true;
+
   return events.some((e) => {
     // A failure-shaped SIGNAL is an acknowledgement too. An app that fires `auth:denied` has plainly
     // not proceeded as if it succeeded, whatever its state paths happen to be named.

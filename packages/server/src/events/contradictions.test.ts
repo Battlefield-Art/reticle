@@ -248,3 +248,60 @@ describe('one fact, one finding', () => {
     expect(found).toEqual([]);
   });
 });
+
+describe('acknowledgement without relying on English', () => {
+  const failed500 = (): ReticleEvent =>
+    ev(EventType.NET_REQUEST, {
+      id: 'n1',
+      method: 'POST',
+      url: '/api/save',
+      status: 500,
+      ok: false,
+      error: 'Datenbank nicht erreichbar',
+    });
+
+  /**
+   * The lexical patterns are English-only, so a German or Japanese app that surfaces its failure
+   * perfectly well would still be reported as hiding it. The structural signal costs nothing and is
+   * language-independent: if the app put the FAILED CALL'S OWN error text into its state, it plainly
+   * knows the call failed, whatever language it says so in.
+   */
+  it('accepts the failed call’s own error text echoed into state, in any language', () => {
+    const found = findContradictions([
+      failed500(),
+      ev(EventType.STATE_CHANGE, {
+        name: 'app',
+        path: 'meldung',
+        value: 'Datenbank nicht erreichbar',
+      }),
+      domChanged(),
+    ]);
+    expect(found).toEqual([]);
+  });
+
+  it('still reports when the state moved but never echoed the failure', () => {
+    const found = findContradictions([
+      failed500(),
+      ev(EventType.STATE_CHANGE, { name: 'app', path: 'zustand', value: 'gespeichert' }),
+      domChanged(),
+    ]);
+    expect(found.map((c) => c.kind)).toEqual([ContradictionKind.UI_ADVANCED_REQUEST_FAILED]);
+  });
+
+  it('does not match on a trivially short error string', () => {
+    const shortErr = ev(EventType.NET_REQUEST, {
+      id: 'n2',
+      method: 'POST',
+      url: '/api/save',
+      status: 500,
+      ok: false,
+      error: 'no',
+    });
+    const found = findContradictions([
+      shortErr,
+      ev(EventType.STATE_CHANGE, { name: 'app', path: 'x', value: 'now saved' }),
+      domChanged(),
+    ]);
+    expect(found.map((c) => c.kind)).toEqual([ContradictionKind.UI_ADVANCED_REQUEST_FAILED]);
+  });
+});
