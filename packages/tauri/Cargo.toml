@@ -4,6 +4,17 @@ version = "0.1.0"
 edition = "2021"
 description = "Reticle screenshots and headless mode for a Tauri app"
 license = "MIT"
+# crates.io shows these on the crate page; `repository` is also what links the published crate back
+# to the source a reader can verify it against.
+repository = "https://github.com/reticlehq/reticle"
+homepage = "https://reticle.dev"
+documentation = "https://docs.rs/reticle-tauri"
+readme = "README.md"
+keywords = ["tauri", "testing", "screenshot", "verification", "agent"]
+categories = ["development-tools::testing", "gui"]
+# Ship only what a consumer compiles. Excludes the local build output, which would otherwise be
+# packed into the .crate and rejected for size.
+exclude = ["target/", "Cargo.lock"]
 
 [dependencies]
 tauri = "2"
