@@ -126,20 +126,13 @@ Fair question, and the honest answer is: **they all stand outside the browser lo
 
 > **Use both.** Playwright is the right tool for a site you don't own, many browsers, or true pixels. Reticle is your cheap, deterministic, state-aware inner loop while the agent codes. Full [when-to-use-which](docs/getting-started.md) in the docs.
 
-### "Why can't Anthropic or Cursor just build this in?"
+### Your coding agent isn't built for this
 
-The question everyone should ask, so here is the straight answer rather than a dodge.
+Not a criticism — it's the job description. A coding agent is optimised to **produce a change**: read the code, reason about it, write the edit. Its feedback loop closes on the code it just wrote.
 
-**They're already building part of it, and they should.** Claude has a Chrome extension; agents are getting browser control. That is the _outside-in_ half — drive a page, read the DOM, watch the network — and it will keep getting better.
+Verification is the opposite motion. It means going and finding out whether the change did what it claimed, in the running app, and being willing to come back with **no**. A builder is optimistic by construction — that is what makes it good at building, and it is exactly why it says "Feature complete" and moves on.
 
-What it structurally can't reach is **inside your app's module graph**:
-
-- **Your store, your signals, your React commits, your Electron/Tauri IPC.** CDP and an extension see the DOM and the wire. They cannot see a Zustand value, a custom `order:saved` signal, or an IPC call to a Rust backend — those only exist to code running _inside_ the app. Reaching them means shipping an SDK into your dependency graph, which is a different product, and a place a model vendor generally does not want to be.
-- **`file:line`.** Knowing a click failed is half the job. Mapping the failing element back to `src/checkout/PayButton.tsx:42` needs a build-time source stamp — again, inside your project.
-- **The hard part isn't reading channels, it's judging them.** Five feeds are easy to collect. Deciding that two of them _disagree_ — the UI advanced while the write failed — with rules narrow enough not to cry wolf, is the actual work. That's a detector, not a data source.
-- **Neutrality.** This works with Claude Code, Cursor, OpenCode and any MCP agent. A vendor's version works with that vendor's agent. Teams don't want their verification layer to pick their model.
-
-And if a vendor does build all of it? Then the category was real, and the useful position was the in-app layer and the detector — not the browser driving. We'd rather say that plainly than pretend it's impossible.
+So the gap isn't something your agent forgot. It's a different job, and nothing in the write-code loop does it. Reticle is that second motion: it opens the app, checks the claim against what actually happened, and hands the answer back — so the optimism gets checked before it reaches you.
 
 ## The numbers
 
