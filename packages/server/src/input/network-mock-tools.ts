@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CDP_NO_PROVIDER_RECOMMENDATION, VisualReason } from '@reticlehq/core';
+import { CDP_NO_PROVIDER_REASON, CDP_NO_PROVIDER_RECOMMENDATION } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import { sessionIdShape } from '../tools/tool-kit.js';
 import { asString } from '../tools/tools-helpers.js';
@@ -81,7 +81,7 @@ export const NETWORK_MOCK_TOOLS: ToolDef[] = [
           applied: false,
           count: 0,
           ok: false,
-          reason: VisualReason.NO_PROVIDER,
+          reason: CDP_NO_PROVIDER_REASON,
           recommendation: CDP_NO_PROVIDER_RECOMMENDATION,
         };
       }

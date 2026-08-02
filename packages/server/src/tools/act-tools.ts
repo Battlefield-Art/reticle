@@ -478,6 +478,11 @@ export const ACT_TOOLS: ToolDef[] = [
       const timeout = asNumber(args['timeout_ms']) ?? DEFAULT_ASSERT_TIMEOUT_MS;
 
       const since = session.elapsed();
+      // `dropped` is cumulative for the SESSION, so comparing against a pre-action reading is what
+      // asks "did the buffer lose anything while THIS action was observed?" — the question the
+      // honesty block means. Reading the raw total pinned every later verdict to `unknown` after a
+      // single early eviction (measured on the Next.js demo at dropped:51, windows intact).
+      const droppedBefore = session.bufferHealth().dropped;
       session.markActCursor(since);
       // The attribution window stays open across the settle wait below, so post-dispatch async events
       // (the whole point of act_and_wait) attribute to this action. finishAction fires after the wait.
@@ -530,7 +535,7 @@ export const ACT_TOOLS: ToolDef[] = [
         const honesty = buildHonestyBlock({
           grade: gradeOf(gradedLinks),
           attribution: 'window',
-          truncated: session.bufferHealth().dropped > 0,
+          truncated: session.bufferHealth().dropped > droppedBefore,
           coveragePartial: coverage.coverage === 'partial',
           ...(coverage.note === undefined ? {} : { blindSpots: [coverage.note] }),
         });

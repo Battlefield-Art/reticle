@@ -133,3 +133,31 @@ describe('precedence between competing faults', () => {
     expect(v.verified).toBe(Verified.UNKNOWN);
   });
 });
+
+/**
+ * `dropped` is CUMULATIVE for the session, so reading it raw asks "has this session ever lost an
+ * event" rather than "was this action's window complete". Measured on the Next.js demo at
+ * `dropped: 51`: every action's own window was intact, and every one still reported an untrustworthy
+ * capture — which pinned `verified` to `unknown` permanently, silently destroying the field's value
+ * on exactly the long-running sessions it matters most for.
+ *
+ * The rule below is unchanged; what changed is the input. These pin the consequence so the scoping
+ * cannot regress into a session-lifetime read again.
+ */
+describe('a stale eviction from earlier in the session must not condemn later actions', () => {
+  it('is YES when nothing was dropped DURING this action', () => {
+    // dropped-during is false → integrity clean, even on a session that evicted plenty earlier.
+    const v = decideVerified({ pass: true, honesty: clean(), settled: true });
+    expect(v.verified).toBe(Verified.YES);
+  });
+
+  it('is UNKNOWN when the buffer lost events during THIS action', () => {
+    const v = decideVerified({
+      pass: true,
+      honesty: dirty('capture truncated'),
+      settled: true,
+    });
+    expect(v.verified).toBe(Verified.UNKNOWN);
+    expect(v.because).toContain('capture truncated');
+  });
+});

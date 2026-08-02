@@ -31,5 +31,17 @@ export type Verified = (typeof Verified)[keyof typeof Verified];
  * the wrong KIND of question and goes looking for a screenshot tool, when the requirement is simply
  * a driven browser.
  */
+/**
+ * The machine-readable half of the same correction.
+ *
+ * `network_mock` and `viewport` returned `reason: "no-visual-provider"`, so an agent gating on the
+ * code — the field that exists precisely to be matched on — was gating on a false statement: neither
+ * tool captures anything visual. Fixing only the human-readable recommendation would have left the
+ * lie in the part machines read, which is the wrong half to leave wrong.
+ *
+ * Safe to introduce: nothing outside this repo matches the old code, and the visual tools keep it.
+ */
+export const CDP_NO_PROVIDER_REASON = 'no-cdp-provider';
+
 export const CDP_NO_PROVIDER_RECOMMENDATION =
   'this needs a Reticle-driven browser (it is applied through CDP, which the always-on SDK cannot do) — start with `reticle drive <url>` or set RETICLE_CDP_URL';

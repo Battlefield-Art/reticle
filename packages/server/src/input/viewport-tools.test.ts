@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { VisualReason } from '@reticlehq/core';
+import { CDP_NO_PROVIDER_REASON } from '@reticlehq/core';
 import { VIEWPORT_TOOLS } from './viewport-tools.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import type { RealInputProvider } from './real-input.js';
@@ -35,7 +35,9 @@ describe('reticle_viewport tool', () => {
     })) as ViewportResult;
     expect(res.applied).toBe(false);
     expect(res.ok).toBe(false);
-    expect(res.reason).toBe(VisualReason.NO_PROVIDER);
+    // NOT the visual code: this tool mocks requests / resizes windows, and an agent gating on
+    // "no-visual-provider" here would be matching on a false statement about what it asked for.
+    expect(res.reason).toBe(CDP_NO_PROVIDER_REASON);
   });
 
   it('pins the viewport on the driven page and echoes the size', async () => {
