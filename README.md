@@ -244,7 +244,24 @@ Not observed today: **IndexedDB**, **Web Workers**, and anything inside a closed
 
 ### Does it work with my state library?
 
-`registerStore` duck-types on `{ getState, subscribe }`, so **zustand and Redux work with no adapter at all**. Shipped adapters cover **TanStack Query, Jotai, XState, Valtio and MobX**, and a generic `pushStore` handles Context or anything hand-rolled — you push, Reticle reads. Recoil has no adapter yet; the generic path still works. None of the adapters import their library, so they add no dependency and no weight for an app that doesn't use them.
+`registerStore` duck-types on `{ getState, subscribe }`, so **zustand and Redux work with no adapter at all**. Shipped adapters cover **TanStack Query, Jotai, XState, Valtio and MobX**, and a generic `pushStore` handles Context or anything hand-rolled — you push, Reticle reads. None of the adapters import their library, so they add no dependency and no weight for an app that doesn't use them.
+
+**Missing yours? It's ~9 lines — and a genuinely good first PR.** An adapter is a pure function returning `{ getState, subscribe }`; because it takes an already-constructed store and uses structural types, it never imports the library it supports. Here is the whole Valtio one:
+
+```ts
+export function valtioStore<T extends object>(
+  proxy: T,
+  snapshot: (p: T) => unknown,
+  subscribe: (p: T, listener: () => void) => () => void,
+): StoreLike {
+  return {
+    getState: () => snapshot(proxy),
+    subscribe: (listener) => subscribe(proxy, listener),
+  };
+}
+```
+
+**Recoil** is the obvious gap — nobody has written one yet. Add it (or Effector, Nanostores, Signals, whatever you use) in [`store-adapters.ts`](packages/browser/src/registry/store-adapters.ts) with a test beside it, and open a PR — see [CONTRIBUTING.md](CONTRIBUTING.md), or say hello in [`#contributors`](https://discord.gg/7kS66x494) first. Until then the generic `pushStore` path covers you.
 
 ## Go deeper
 
