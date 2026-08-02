@@ -235,17 +235,39 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     const token = withPort.token ?? readPairingToken();
     return token !== undefined ? { ...withPort, token } : withPort;
   };
-  /** The one message, so the build error and the dev warning cannot drift apart. */
+  /**
+   * The BUILD message. A build always runs every transform, so "my transform never ran" and "the
+   * bundle has no connect()" are the same statement there, and stating it as a certainty is correct.
+   */
   const notInjectedMessage = (): string =>
     `[${RETICLE_VITE_PLUGIN_NAME}] could not inject reticle.connect(): the HTML entry module was ` +
     'never matched, so this app carries no instrumentation and will never connect. Check that ' +
     'index.html references your entry with a <script type="module" src="...">, or pass ' +
     '`inject: false` and call reticle.connect() yourself.';
 
-  /** Warn (never throw) in dev — a running dev server should report the fault, not die of it. */
+  /**
+   * The DEV message, which must be weaker — and this is the whole reason the two are separate.
+   *
+   * In serve, `injected` records "my transform ran THIS session", which is not the same as "the app
+   * has no connect()". Vite serves an unchanged module straight from its transform cache, so on a
+   * warm cache the transform never runs, the flag stays false, and the old wording announced that
+   * the app "will never connect" while the served entry demonstrably contained the injection —
+   * verified by fetching it from the dev server. A false alarm, in the tool whose entire argument is
+   * that it does not raise them.
+   *
+   * So dev reports what it actually knows: unconfirmed, with the benign explanation first.
+   */
+  const unconfirmedInjectionMessage = (): string =>
+    `[${RETICLE_VITE_PLUGIN_NAME}] could not confirm reticle.connect() was injected: the HTML entry ` +
+    'module was not transformed this session. That is expected when Vite served it from its ' +
+    'transform cache. If the app does not appear in `reticle status`, restart the dev server with ' +
+    '`--force` to bypass the cache, then check that index.html references your entry with a ' +
+    '<script type="module" src="...">.';
+
+  /** Warn (never throw) in dev — a running dev server should report the doubt, not die of it. */
   const checkInjected = (): void => {
     if (!desktop || !inject || injected) return;
-    warn(notInjectedMessage());
+    warn(unconfirmedInjectionMessage());
   };
 
   return {

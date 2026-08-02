@@ -25,10 +25,9 @@ import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
 import { causalSummary } from '../capsule/causal-summary.js';
 import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
-import { HonestyGrade, buildHonestyBlock } from '../honesty/honesty.js';
+import { buildHonestyBlock } from '../honesty/honesty.js';
 import { buildCoverageStatement, blindSpotsFromState } from '../honesty/blind-spots.js';
 import { CapsuleStore, capsuleId } from '../capsule/capsule-store.js';
-import type { ExpectedLink } from '../capsule/divergence.js';
 import {
   evaluatePredicate,
   waitForPredicate,
@@ -39,28 +38,8 @@ import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js'
 import { pausedShortCircuit, pausedOutputShape, withControl } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
 import { type ToolDef, type ToolDeps, sessionIdShape, commandOrThrow } from './tool-kit.js';
+import { asActionType, asBox, gradeOf } from './act-helpers.js';
 
-/** The strongest consequence grade a set of expected links proves (signal > net > state > presence). */
-function gradeOf(links: readonly ExpectedLink[]): HonestyGrade {
-  if (links.some((l) => l.kind === 'signal')) return HonestyGrade.SIGNAL;
-  if (links.some((l) => l.kind === 'net')) return HonestyGrade.NET;
-  if (links.some((l) => l.kind === 'state')) return HonestyGrade.STATE;
-  return HonestyGrade.PRESENCE;
-}
-
-/** Narrow an INSPECT result's `box` into a positive-area ElementBox (else undefined). */
-function asBox(value: unknown): ElementBox | undefined {
-  const b = asRecord(asRecord(value)['box']);
-  const x = asNumber(b['x']);
-  const y = asNumber(b['y']);
-  const w = asNumber(b['width']);
-  const h = asNumber(b['height']);
-  if (x === undefined || y === undefined || w === undefined || h === undefined) return undefined;
-  if (w <= 0 || h <= 0) return undefined; // zero-area (display:none) ⇒ native click would miss
-  return { x, y, width: w, height: h };
-}
-
-/** Outcome of a real-input attempt — real success (result set) or synthetic with a reason. */
 interface RealActResult {
   /** Defined only on a successful native action; `undefined` means the synthetic path runs. */
   result: unknown;
@@ -182,19 +161,19 @@ async function tryRealInput(
  * as a generic failure rather than "that is not an action". Validate at the boundary, per the project's
  * unknown-plus-narrowing rule, so a typo is rejected where it can still be explained.
  */
-function asActionType(value: unknown): ActionType | undefined {
-  const raw = asString(value);
-  if (raw === undefined) return undefined;
-  return (Object.values(ActionType) as string[]).includes(raw) ? (raw as ActionType) : undefined;
-}
 
 export const ACT_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.ACT,
+    example: { ref: 'e42', action: 'fill', args: { value: 'hello' } },
     description:
       'Execute one action against a ref: click|dblclick|hover|focus|fill|type|clear|select|check|uncheck|submit|press|scrollIntoView. Returns immediately with a `since` cursor — observe the reaction with reticle_observe. Carries effect:{dispatched,targetMatched,visible,enabled,focusMoved,valueChanged,domMutatedWithin,occluded,occludedBy,scrolledIntoView} to tell "action missed" from "app didn\'t react"; dispatched=landed, settled=a real frame flushed, and a settle timeout never fails the tool. Fields at their uninformative default are OMITTED so a clean action collapses to its consequence: an absent dispatched/targetMatched/visible/enabled means true, an absent occluded/scrolledIntoView/valueChanged/defaultPrevented means false, an absent focusMoved/occludedBy means null. occluded=true means the click point is covered by another element (a real user could not click it) — synthetic dispatch still delivered the event; scrolledIntoView=true means an off-viewport target was scrolled in first. inputMode is "real" (native CDP, no synthetic effect block) or "synthetic"; clicks default to the occlusion-honest synthetic path even when CDP is configured — pass args.native:true to force a trusted native click (file pickers, clipboard). inputModeReason explains any real→synthetic choice so it is never silent. Full model (real-input, throttled tabs, `reticle drive`): docs/usage.md §18.',
     inputSchema: {
-      ref: z.string().describe("Element ref from reticle_snapshot or reticle_query (e.g. 'e42')."),
+      ref: z
+        .string()
+        .describe(
+          `Element ref (e.g. 'e42') from reticle_snapshot/reticle_query — stable until the element leaves the DOM, so no re-snapshot between actions.`,
+        ),
       action: z
         .string()
         .describe(
@@ -367,6 +346,7 @@ export const ACT_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.ACT_AND_WAIT,
+    example: { ref: 'e42', action: 'click', until: { kind: 'signal', name: 'todos:loaded' } },
     description:
       'Act on a ref, then wait for a predicate to hold — one hop for the act->observe->assert loop. ' +
       'Omit `until` to wait for the page to settle (network + DOM idle) — use this instead of a fixed sleep. ' +
@@ -375,7 +355,11 @@ export const ACT_TOOLS: ToolDef[] = [
       'cursor; pass it to reticle_observe for the full per-event timeline when the counts are not enough). ' +
       'timeout_ms 0 evaluates the predicate once without waiting.',
     inputSchema: {
-      ref: z.string().describe('Element ref from reticle_snapshot or reticle_query.'),
+      ref: z
+        .string()
+        .describe(
+          `Element ref (e.g. 'e42') from reticle_snapshot/reticle_query — stable until the element leaves the DOM, so no re-snapshot between actions.`,
+        ),
       action: z
         .string()
         .describe(

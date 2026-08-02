@@ -35,29 +35,8 @@ export type { InboxMessage } from './live-control.js'; // moved; still part of S
 import { ReviewStore, type ReviewMark } from './review-store.js';
 import { buildSessionRecommendation } from './session-recommendation.js';
 import { buildPresenterArgs } from './presenter-args.js';
-
-export interface SessionInfo {
-  sessionId: string;
-  url: string;
-  /** Stable build-stamped project identity; absent for v1.0 SDKs that don't send it. */
-  projectId?: string;
-  title: string;
-  adapters: string[];
-  hasCapabilities: boolean;
-  /** ms since the SDK last reported anything (silence ⇒ likely throttled). */
-  lastSeenMs: number;
-  hidden: boolean;
-  focused: boolean;
-  throttled: boolean;
-  /** present only when hidden/throttled — points at the `reticle drive` escape hatch. */
-  recommendation?: string;
-  stale?: boolean;
-  cleanup_suggestion?: string;
-  /** present only when the human has flagged bugs on this tab — count of pending review marks. */
-  pendingMarks?: number;
-  /** present with pendingMarks — nudges the agent to drain them with reticle_review. */
-  review_suggestion?: string;
-}
+import type { SessionInfo } from './session-info.js';
+export type { SessionInfo } from './session-info.js';
 
 type Clock = () => number;
 
@@ -256,6 +235,16 @@ export class Session {
     for (const listener of this.#listeners) listener(attributed);
   }
 
+  /** Refs the agent has driven — the denominator side of reticle_coverage. See ObservedState. */
+  recordActedRef(ref: string): void {
+    this.#observed.recordActedRef(ref);
+  }
+
+  /** Every ref driven so far this session. */
+  actedRefs(): ReadonlySet<string> {
+    return this.#observed.actedRefs();
+  }
+
   /** Latest count per blind-spot kind; survives buffer eviction. See ObservedState for why. */
   blindSpots(): Readonly<Record<string, number>> {
     return this.#observed.blindSpots();
@@ -413,6 +402,14 @@ export class Session {
     args: Record<string, unknown> = {},
     timeoutMs: number = DEFAULT_COMMAND_TIMEOUT_MS,
   ): Promise<CommandResult> {
+    // Recorded HERE rather than at the tool call sites: this is the one place every driven action
+    // passes through, so act_sequence and flow replay count too. Doing it per-tool missed both, and
+    // an under-counted "exercised" reports worse coverage than reality — the safe direction, but
+    // still wrong, and it made the number depend on which tool the agent happened to use.
+    if (name === ReticleCommand.ACT) {
+      const ref = args['ref'];
+      if (typeof ref === 'string') this.recordActedRef(ref);
+    }
     const id = this.#pending.nextId(COMMAND_ID_PREFIX);
     const payload = JSON.stringify({
       kind: MessageKind.COMMAND,
@@ -571,6 +568,14 @@ export class Session {
     if (this.#socket.readyState !== WS_OPEN) return;
     // Shares the same counter as tracked commands, so a fire-and-forget id can never collide with
     // one that IS awaiting a reply.
+    // Recorded HERE rather than at the tool call sites: this is the one place every driven action
+    // passes through, so act_sequence and flow replay count too. Doing it per-tool missed both, and
+    // an under-counted "exercised" reports worse coverage than reality — the safe direction, but
+    // still wrong, and it made the number depend on which tool the agent happened to use.
+    if (name === ReticleCommand.ACT) {
+      const ref = args['ref'];
+      if (typeof ref === 'string') this.recordActedRef(ref);
+    }
     const id = this.#pending.nextId(COMMAND_ID_PREFIX);
     const payload = JSON.stringify({
       kind: MessageKind.COMMAND,

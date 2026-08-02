@@ -49,6 +49,22 @@ export interface ToolDef {
    * compose tool calls safely. Also drives TOON encoding for snapshot/query results.
    */
   outputSchema?: z.ZodRawShape;
+  /**
+   * One concrete, valid call — the shape, not the prose.
+   *
+   * A schema tells an agent the FIELD NAMES; it does not tell it how they compose, and under a lean
+   * profile only the first sentence of the description survives. So an agent reads "execute one
+   * action against a ref", sees `ref` / `action` / `args`, and guesses `{ action, testid }`. The
+   * guess fails inside the MCP SDK's own validation — BEFORE this package's error handling runs — so
+   * what comes back is a raw zod dump: the validator's internal state, naming no field and showing
+   * no correct shape. Two of those round trips cost more than the lean snapshot saves, which means
+   * arg-guessing quietly refunds the entire token advantage.
+   *
+   * Rendered into the advertised description, so it survives the terse profiles where it matters
+   * most. `tool-examples.test.ts` parses every one of these against its OWN inputSchema, because an
+   * example that does not validate is worse than none at all.
+   */
+  example?: Record<string, unknown>;
   handler: (deps: ToolDeps, args: Record<string, unknown>) => Promise<unknown>;
 }
 

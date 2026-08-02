@@ -34,6 +34,7 @@ const DEFAULT_RECORDING = 'default';
 export const ANNOTATE_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.ANNOTATE,
+    example: { kind: 'assert-signal', name: 'todos:loaded' },
     description:
       'Attach a STRUCTURED annotation to the active recording, compiling it into the flow. kind: ' +
       'assert-signal { name, dataMatches? } → the last step asserts that signal; assert-visible ' +

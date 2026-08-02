@@ -73,6 +73,26 @@ export class ObservedState {
   }
 
   /** Latest reported count per blind-spot kind, for the whole session. */
+  /**
+   * Refs the agent has driven, for the exercised/untouched split `reticle_coverage` reports.
+   *
+   * Kept here beside the blind-spot counts because both are per-session observed facts that must
+   * SURVIVE buffer eviction. Deriving "what did I touch" from the event buffer instead would mean an
+   * action fifty steps ago silently stops counting, so "untouched" would quietly come to mean
+   * "recently untouched" — a number that reads as thorough while drifting toward the opposite.
+   */
+  readonly #actedRefs = new Set<string>();
+
+  /** Record a driven ref. Idempotent. */
+  recordActedRef(ref: string): void {
+    if (ref.length > 0) this.#actedRefs.add(ref);
+  }
+
+  /** Every ref driven so far this session. */
+  actedRefs(): ReadonlySet<string> {
+    return this.#actedRefs;
+  }
+
   blindSpots(): Readonly<Record<string, number>> {
     return this.#blindSpots;
   }

@@ -42,7 +42,8 @@ function directText(el: Element): string {
 interface SnapshotStatus {
   route: string;
   title: string;
-  visibleDialogs: string[];
+  /** Open dialogs, OMITTED when there are none — absence means "no dialog is up". */
+  visibleDialogs?: string[];
 }
 
 export interface SnapshotResult {
@@ -202,11 +203,21 @@ function collectDialogs(root: ParentNode): string[] {
   return names;
 }
 
+/**
+ * Status for a snapshot, with uninformative defaults OMITTED.
+ *
+ * `reticle_act` already follows this rule — "fields at their uninformative default are omitted so a
+ * clean action collapses to its consequence" — and snapshot did not, so every response carried
+ * `visibleDialogs: []` whether or not a dialog existed. An empty array is the overwhelmingly common
+ * case, so the field was almost pure repetition; a reader learns nothing from its presence and
+ * everything from it.
+ */
 function buildStatus(root: ParentNode): SnapshotStatus {
+  const visibleDialogs = collectDialogs(root);
   return {
     route: `${location.pathname}${location.search}${location.hash}`,
     title: document.title,
-    visibleDialogs: collectDialogs(root),
+    ...(visibleDialogs.length > 0 ? { visibleDialogs } : {}),
   };
 }
 

@@ -8,6 +8,7 @@ import type { ToolDef } from './tools.js';
 export const BROWSER_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.NAVIGATE,
+    example: { url: '/settings' },
     description:
       'Navigate the connected browser tab to a URL, or reload it in place with { reload: true } (add { hard: true } to bypass the cache). The SDK reconnects automatically after the page loads. Use reticle_sessions to confirm the new tab is connected before acting.',
     inputSchema: {

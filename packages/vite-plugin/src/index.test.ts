@@ -246,13 +246,23 @@ describe('desktop injection is loud in dev too, not only in build', () => {
    * The check is deferred rather than immediate because in `serve` the HTML is sent BEFORE the
    * browser requests the entry module — asserting at html time would fire on every healthy start.
    */
-  it('warns after serving HTML if the entry was never injected', () => {
+  /**
+   * In dev the flag means "my transform ran this session", which is NOT "the app has no connect()":
+   * Vite serves an unchanged module from its transform cache, so a warm cache leaves the flag false
+   * while the served entry really is instrumented. The warning must therefore report doubt, not a
+   * verdict — the build path keeps the certainty, because a build always runs every transform.
+   */
+  it('reports UNCONFIRMED injection in dev, never a false verdict', () => {
     const warnings: string[] = [];
     const plugin = reticle({ desktop: true, onWarn: (m) => warnings.push(m) });
     plugin.configResolved?.({ root: '/app', command: 'serve' });
     plugin.transformIndexHtml('<html></html>');
     plugin.checkInjectedForTest?.();
-    expect(warnings.join(' ')).toMatch(/could not inject/i);
+    const text = warnings.join(' ');
+    expect(text).toMatch(/could not confirm/i);
+    expect(text, 'dev must not claim the app will never connect').not.toMatch(/will never connect/i);
+    // The benign cause has to be named, or every warm-cache start reads as a broken integration.
+    expect(text).toMatch(/cache/i);
   });
 
   it('stays quiet when the entry was injected', () => {

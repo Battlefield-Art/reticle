@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { encodeResult, withSessionEnvelope } from './mcp.js';
+import { advertisedTools, encodeResult, firstSentence, withSessionEnvelope } from './mcp.js';
+import { TOOL_PROFILE } from './tools/profiles.js';
 import { TOOLS } from './tools/tools.js';
 import { SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
 import { ReticleTool } from './tools/tool-names.js';
@@ -116,4 +117,52 @@ describe('lean profiles drop the advertised outputSchema without losing structur
     await client.close();
     await server.close();
   });
+});
+
+/**
+ * Lean profiles trim each description to its first sentence, and the splitter looked for the first
+ * `". "`. "e.g. " satisfies that, so every description carrying an example was cut off inside the
+ * abbreviation — `reticle_act`'s ref reached the agent as "…reticle_query (e.g." and stopped, losing
+ * both the example and the ref-lifetime contract stated after it. It degraded only the DEFAULT
+ * profile, which is the one whose raw strings nobody reads.
+ *
+ * These call `firstSentence` directly. The first version of this test read the tool definitions
+ * instead, which are trimmed LATER during registration — so it exercised none of the trimming and
+ * would have passed with the bug fully present. A guard that cannot fail is worse than no guard.
+ */
+describe('firstSentence does not cut inside an abbreviation', () => {
+  it('keeps the text that follows "e.g."', () => {
+    const trimmed = firstSentence(
+      "Element ref (e.g. 'e42') from reticle_snapshot — stable until the element leaves the DOM.",
+    );
+    expect(trimmed).toContain("e.g. 'e42'");
+    expect(trimmed).toContain('leaves the DOM');
+  });
+
+  it.each(['i.e.', 'etc.', 'vs.', 'cf.'])('does not stop at "%s"', (abbr) => {
+    expect(firstSentence(`Alpha ${abbr} beta gamma.`)).toContain('gamma');
+  });
+
+  it('still stops at a real sentence end', () => {
+    expect(firstSentence('First one. Second one.')).toBe('First one.');
+  });
+
+  /**
+   * A description may legitimately END on an abbreviation ("GET | POST | … etc."). What must never
+   * happen is TRIMMING creating one, so this only flags text the trim actually shortened.
+   */
+  it.each(advertisedTools(TOOL_PROFILE.HYBRID).map((tool) => [tool.name, tool] as const))(
+    '%s: trimming never creates a dangling abbreviation',
+    (_name, tool) => {
+      const texts = [
+        tool.description,
+        ...Object.values(tool.inputSchema).map((s) => s.description ?? ''),
+      ].filter((text) => text.length > 0);
+      for (const text of texts) {
+        const trimmed = firstSentence(text);
+        if (trimmed === text) continue;
+        expect(trimmed.trimEnd()).not.toMatch(/\b(e\.g|i\.e|etc|vs|cf)\.$/);
+      }
+    },
+  );
 });

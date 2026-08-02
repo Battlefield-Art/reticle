@@ -44,6 +44,8 @@ export const ReticleTool = {
   FLOW_HEAL: 'reticle_flow_heal',
   /** structured annotation → compiles into the recording's expect/dynamic/success. */
   ANNOTATE: 'reticle_annotate',
+  AFFECTED: 'reticle_affected',
+  COVERAGE: 'reticle_coverage',
   /** read cross-run history (.reticle/project.json) + diff-vs-last for a name. */
   PROJECT: 'reticle_project',
   /** explicitly record a run outcome (the manual companion to auto-recording). */

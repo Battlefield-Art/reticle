@@ -31,10 +31,36 @@ const SERVER_INFO = { name: MCP_SERVER_NAME, version: SERVER_VERSION };
 /** First sentence of a description (purpose only) for lean profiles — keeps per-turn def cost
  * down. Cuts at the first sentence-ending period or newline; falls back to a 160-char cap. The
  * first clause retains the essentials (enum hints like "role | text | label" live there). */
-function firstSentence(description: string): string {
+/**
+ * Append the tool's example call to whatever description survived trimming.
+ *
+ * Costs a handful of tokens per turn and buys back the failed round trips an agent spends guessing
+ * how the fields compose — which is a far worse trade in the other direction.
+ */
+function withExample(description: string, example?: Record<string, unknown>): string {
+  return example === undefined ? description : `${description} e.g. ${JSON.stringify(example)}`;
+}
+
+/**
+ * Abbreviations whose internal period is NOT a sentence end.
+ *
+ * The splitter looked for the first `". "`, which "e.g. " satisfies — so every lean-profile
+ * description containing one was cut off mid-abbreviation. `reticle_act`'s ref parameter reached the
+ * agent as "Element ref from reticle_snapshot or reticle_query (e.g." and stopped: the example gone,
+ * and any contract stated after it gone too. Silent, and it degraded the DEFAULT profile only, which
+ * is the one nobody reads the raw strings for.
+ */
+const ABBREVIATIONS = ['e.g.', 'i.e.', 'etc.', 'vs.', 'cf.'];
+
+export function firstSentence(description: string): string {
   const nl = description.indexOf('\n');
   const base = nl >= 0 ? description.slice(0, nl) : description;
-  const dot = base.search(/\.\s/);
+  // Mask abbreviations with an equal-length filler so offsets stay valid in the original string.
+  const masked = ABBREVIATIONS.reduce(
+    (text, abbr) => text.split(abbr).join('\u0000'.repeat(abbr.length)),
+    base,
+  );
+  const dot = masked.search(/\.\s/);
   const sentence = dot >= 0 ? base.slice(0, dot + 1) : base;
   return sentence.length > 160 ? `${sentence.slice(0, 159)}…` : sentence;
 }
@@ -190,7 +216,10 @@ export function createMcpServer(
     // hybrid payload) with no loss the agent can observe.
     const outputSchema = terse ? undefined : withSessionEnvelope(tool.name, tool.outputSchema);
     const config = {
-      description: terse ? firstSentence(tool.description) : tool.description,
+      description: withExample(
+        terse ? firstSentence(tool.description) : tool.description,
+        tool.example,
+      ),
       inputSchema: terse ? leanZodShape(tool.inputSchema) : tool.inputSchema,
       ...(outputSchema !== undefined ? { outputSchema } : {}),
     };

@@ -68,9 +68,25 @@ function lastActSourceOnFailure(session: Session, pass: boolean): { source?: str
   return source === undefined ? {} : { source };
 }
 
+/**
+ * Drop `sessionId` from an event in a response the caller scoped to ONE session.
+ *
+ * The caller passed that id in the request, so echoing it on every event is the request quoted back
+ * once per row. Measured on a live app it was 25% of a four-event `reticle_observe` payload, and it
+ * grows linearly with the timeline — a fifty-event window spends ~2.5KB restating a fact the caller
+ * supplied. The id stays on the wire between SDK and bridge, where events from different sessions
+ * really do interleave; it is only redundant at this boundary.
+ */
+function withoutConstantSessionId(event: unknown): unknown {
+  if (typeof event !== 'object' || event === null) return event;
+  const { sessionId: _sessionId, ...rest } = event as Record<string, unknown>;
+  return rest;
+}
+
 export const OBSERVE_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.OBSERVE,
+    example: { since: 0 },
     description:
       'Return the timeline of everything the app did in a window (DOM/network/route/console/animation/signal), with a summary. Use after an action. Pass `max_events` to cap the timeline to the most recent N (older events are dropped and counted in cost.droppedOldest). Every result carries a `cost:{events,bytes}` hint so you can self-budget your next call.',
     inputSchema: {
@@ -183,6 +199,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       // carry session health — a throttled tab means the observed timeline may be incomplete.
       return withControl(session, {
         ...report,
+        events: report.events.map(withoutConstantSessionId),
         ...(contradictions.length > 0 ? { contradictions } : {}),
         cost: costHint(report, budgeted.length, droppedOldest),
         ...healthEnvelope(session),
@@ -192,6 +209,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.WAIT_FOR,
+    example: { predicate: { kind: 'state', path: 'todos.length', equals: 3 } },
     description:
       'Block until a predicate is satisfied (or already true in the recent buffer), else time out. Returns matching evidence or a near-miss diagnosis. By default it only counts events since your last act, so a signal buffered BEFORE the action can never fake a pass; pass `since` (an observe/act cursor) to widen or narrow that window explicitly.',
     inputSchema: {
@@ -261,6 +279,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.ASSERT,
+    example: { predicate: { kind: 'signal', name: 'todos:loaded' } },
     description:
       'Evaluate a predicate (optionally waiting up to timeout_ms). Returns { pass, evidence, failureReason? }. The end of every verify loop. Prefer a { signal } or { net } consequence over { element }/{ text } presence — a passing presence-only assertion returns `advice` because a wrong/healed element can fake it. By default it only counts events since your last act, so a stale buffered signal can never fake a pass; pass `since` (an observe/act cursor) to set the window explicitly.',
     inputSchema: {
@@ -388,6 +407,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.NETWORK,
+    example: { urlContains: '/api/todos', method: 'POST' },
     description:
       'Filtered list of network calls. Fast path for "did POST /x return 200?". A zero-match filter returns a `hint` { totalInWindow, present[] } of the calls that DID fire, so a miss is diagnosable. Desktop IPC (`ipc://`) has no status code — the 200/500 there is derived, so filter on `ok` for those.',
     inputSchema: {
@@ -466,6 +486,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.CONSOLE,
+    example: { level: 'error' },
     description:
       'Console/error log. Fast path for "were there any errors during this flow?". When a level filter matches nothing, returns a `hint` { totalInWindow, byLevel } so 0 errors is distinguishable from a silent page.',
     inputSchema: {

@@ -187,6 +187,7 @@ function rectsFrom(value: unknown): VisualRect[] | undefined {
 export const VISUAL_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.SCREENSHOT,
+    example: { name: 'home' },
     description:
       'Capture a pixel screenshot of the DRIVEN page (needs `reticle drive`/RETICLE_CDP_URL — the SDK has no screenshotter) and save it as a visual baseline at .reticle/visual/<name>.png. { fullPage } for the whole scroll height, { ref } or { clip:{x,y,width,height} } for one element/region. Returns { saved:true, name, path, bytes } or { ok:false, reason } when no driven browser is attached.',
     inputSchema: {
@@ -233,6 +234,7 @@ export const VISUAL_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.VISUAL_DIFF,
+    example: { baseline: 'home' },
     description:
       'Perceptually diff the DRIVEN page against a saved visual baseline (see reticle_screenshot). { masks:[{x,y,width,height}] } neutralizes volatile regions; { maxRatio } sets the pass tolerance (default 0). Returns { matched, changedPixels, totalPixels, ratio, region?, diffPath, dimensionMismatch } — the overlay diff is written to .reticle/visual/<baseline>.diff.png — or { ok:false, reason } (no-provider / baseline-missing).',
     inputSchema: {

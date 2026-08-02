@@ -15,6 +15,7 @@ export const SESSION_BOUND_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.SNAPSHOT,
   ReticleTool.QUERY,
   ReticleTool.INSPECT,
+  ReticleTool.COVERAGE,
   ReticleTool.ACT,
   ReticleTool.ACT_SEQUENCE,
   ReticleTool.ACT_AND_WAIT,
