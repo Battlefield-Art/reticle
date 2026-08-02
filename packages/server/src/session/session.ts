@@ -235,17 +235,17 @@ export class Session {
     for (const listener of this.#listeners) listener(attributed);
   }
 
-  /** Refs the agent has driven — the denominator side of reticle_coverage. See ObservedState. */
+  // Passthroughs to ObservedState, which owns the per-session facts that must SURVIVE buffer
+  // eviction: refs the agent drove, and what the layer could not see. See observed-state.ts.
   recordActedRef(ref: string): void {
     this.#observed.recordActedRef(ref);
   }
-
-  /** Every ref driven so far this session. */
   actedRefs(): ReadonlySet<string> {
     return this.#observed.actedRefs();
   }
-
-  /** Latest count per blind-spot kind; survives buffer eviction. See ObservedState for why. */
+  noteRateLimited(dropped: number): void {
+    this.#observed.noteRateLimited(dropped);
+  }
   blindSpots(): Readonly<Record<string, number>> {
     return this.#observed.blindSpots();
   }

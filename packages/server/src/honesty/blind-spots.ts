@@ -23,11 +23,16 @@ export interface CoverageStatement {
 }
 
 const LABEL: Record<BlindSpotKind, (n: number) => string> = {
-  [BlindSpotKind.CLOSED_SHADOW_ROOT]: (n) => `${String(n)} closed shadow root${n === 1 ? '' : 's'}`,
+  [BlindSpotKind.CLOSED_SHADOW_ROOT]: (n) =>
+    `${String(n)} closed shadow root${n === 1 ? '' : 's'} unobserved`,
   [BlindSpotKind.CROSS_ORIGIN_IFRAME]: (n) =>
-    `${String(n)} cross-origin frame${n === 1 ? '' : 's'}`,
+    `${String(n)} cross-origin frame${n === 1 ? '' : 's'} unobserved`,
   [BlindSpotKind.VIRTUALIZED_UNMOUNTED]: (n) =>
-    `${String(n)} virtualized unmounted row${n === 1 ? '' : 's'}`,
+    `${String(n)} virtualized unmounted row${n === 1 ? '' : 's'} unobserved`,
+  // Not "some rows we could not see" — the events never reached the observer, so this window is a
+  // SAMPLE of what the app did. Phrased as a caveat on what the whole result MEANS.
+  [BlindSpotKind.RATE_LIMITED]: (n) =>
+    `${String(n)} event${n === 1 ? '' : 's'} dropped by the bridge rate cap, so this window is SAMPLED — raise RETICLE_MAX_MESSAGES_PER_SECOND for a busy app`,
   // Not a count of things — a single fact about the page. Phrased so the coverage line reads as a
   // caveat on what the network view MEANS, not as a tally.
   [BlindSpotKind.WRAPPED_NETWORK]: () =>
@@ -38,7 +43,11 @@ const LABEL: Record<BlindSpotKind, (n: number) => string> = {
 export function buildCoverageStatement(spots: readonly BlindSpot[]): CoverageStatement {
   const present = spots.filter((s) => s.count > 0);
   if (present.length === 0) return { coverage: 'full', spots: [] };
-  const note = `partial — ${present.map((s) => `${LABEL[s.kind](s.count)} unobserved`).join(', ')}`;
+  // Each label carries its own ending. Appending a blanket " unobserved" here produced
+  // "...may differ from what was sent unobserved" for the wrapped-network caveat, which is a
+  // sentence rather than a count — and the same dangle appeared the moment a second prose-shaped
+  // spot (rate-limited sampling) was added.
+  const note = `partial — ${present.map((s) => LABEL[s.kind](s.count)).join(', ')}`;
   return { coverage: 'partial', note, spots: present };
 }
 

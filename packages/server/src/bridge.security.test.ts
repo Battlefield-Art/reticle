@@ -7,6 +7,7 @@ import {
   MessageKind,
   TRANSPORT_LIMITS,
 } from '@reticlehq/core';
+import { BlindSpotKind } from '@reticlehq/core';
 import { Bridge } from './bridge.js';
 import { SessionManager } from './session/session-manager.js';
 
@@ -198,7 +199,7 @@ describe('Bridge security boundary', () => {
     await waitUntil(() => bridge.sessions.resolve('same-id').eventsSince(0).length === 1);
   });
 
-  it('caps concurrent sessions and message rate', async () => {
+  it('caps concurrent sessions', async () => {
     const limitedSessions = await makeBridge({ maxSessions: 1 });
     const first = await openSocket(limitedSessions.port);
     first.send(JSON.stringify(hello('one')));
@@ -207,14 +208,55 @@ describe('Bridge security boundary', () => {
     const sessionLimitClose = waitForClose(second);
     second.send(JSON.stringify(hello('two')));
     expect(await sessionLimitClose).toBe(1013);
+  });
 
+  /**
+   * Above the message cap the bridge SAMPLES; it does not disconnect.
+   *
+   * It used to close with 1008 — a policy code the SDK correctly never retries — so a burst left the
+   * app running and Reticle blind from that instant, silently, with the reason only in the page
+   * console. Measured: each request emits two messages (pending + settled), so the cap binds at ~500
+   * requests/second, which a dashboard burst reaches and a streaming app lives above. Going blind
+   * when it sees too much is the one behaviour an observability layer cannot have.
+   */
+  it('samples events above the rate cap instead of disconnecting', async () => {
     const rateLimited = await makeBridge({ maxMessagesPerSecond: 2 });
     const noisy = await openSocket(rateLimited.port);
     noisy.send(JSON.stringify(hello('noisy')));
-    noisy.send(JSON.stringify({ kind: MessageKind.COMMAND_RESULT, id: 'c1', ok: true }));
-    const rateClose = waitForClose(noisy);
-    noisy.send(JSON.stringify({ kind: MessageKind.COMMAND_RESULT, id: 'c2', ok: true }));
-    expect(await rateClose).toBe(1008);
+    await waitUntil(() => rateLimited.bridge.sessions.count() === 1);
+
+    for (let i = 0; i < 30; i += 1) {
+      noisy.send(
+        JSON.stringify({
+          kind: MessageKind.EVENT,
+          event: { t: i, type: 'dom.added', sessionId: 'noisy' },
+        }),
+      );
+    }
+    await waitUntil(() => {
+      const session = rateLimited.bridge.sessions.get('noisy');
+      return session !== undefined && (session.blindSpots()[BlindSpotKind.RATE_LIMITED] ?? 0) > 0;
+    });
+
+    // Still connected, and honest about what it missed.
+    expect(rateLimited.bridge.sessions.count(), 'the session must survive a burst').toBe(1);
+    expect(noisy.readyState, 'the socket must stay open').toBe(WebSocket.OPEN);
+    const spots = rateLimited.bridge.sessions.get('noisy')?.blindSpots() ?? {};
+    expect(spots[BlindSpotKind.RATE_LIMITED], 'sampling must be reported').toBeGreaterThan(0);
+  });
+
+  /**
+   * Only EVENTS may be dropped. A dropped hello strands the session and a dropped command_result
+   * hangs the agent's in-flight call, so the cap must bound observation without breaking protocol.
+   */
+  it('never drops control traffic, however fast it arrives', async () => {
+    const rateLimited = await makeBridge({ maxMessagesPerSecond: 1 });
+    const noisy = await openSocket(rateLimited.port);
+    noisy.send(JSON.stringify(hello('ctrl')));
+    // The hello itself is already over a cap of 1; the session must still exist.
+    await waitUntil(() => rateLimited.bridge.sessions.count() === 1);
+    expect(rateLimited.bridge.sessions.get('ctrl')).toBeDefined();
+    expect(noisy.readyState).toBe(WebSocket.OPEN);
   });
 
   it('caps and expires unauthenticated pending handshakes', async () => {

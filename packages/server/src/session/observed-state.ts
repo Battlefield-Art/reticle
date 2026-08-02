@@ -1,4 +1,4 @@
-import { EventType, type ReticleEvent } from '@reticlehq/core';
+import { BlindSpotKind, EventType, type ReticleEvent } from '@reticlehq/core';
 import { ambientKeyOf, type AmbientCounts } from '../journal/ambient.js';
 
 /**
@@ -91,6 +91,17 @@ export class ObservedState {
   /** Every ref driven so far this session. */
   actedRefs(): ReadonlySet<string> {
     return this.#actedRefs;
+  }
+
+  /**
+   * Record bridge-side sampling as a blind spot.
+   *
+   * Every other blind spot is reported BY the SDK, which cannot report this one: the events were
+   * dropped before they reached the observer. Recording it here keeps the honesty contract intact —
+   * a verdict over a sampled window says `coverage: partial` rather than implying it saw everything.
+   */
+  noteRateLimited(dropped: number): void {
+    this.#blindSpots[BlindSpotKind.RATE_LIMITED] = dropped;
   }
 
   blindSpots(): Readonly<Record<string, number>> {

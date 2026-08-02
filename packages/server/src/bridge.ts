@@ -28,13 +28,19 @@ type SessionReadyHandler = (session: Session) => void;
 const WS_CLOSE = {
   TOO_MANY_HANDSHAKES: [1013, 'too many pending handshakes'],
   HELLO_TIMEOUT: [1008, 'hello timeout'],
-  RATE_EXCEEDED: [1008, 'message rate exceeded'],
   INVALID_MESSAGE: [1008, 'invalid message'],
   HELLO_DUPLICATE: [1008, 'hello already received'],
   AUTH_FAILED: [1008, 'authentication failed'],
   SESSION_LIMIT: [1013, 'session limit reached'],
   PROTOCOL_MISMATCH: [1008, 'protocol version mismatch — upgrade @reticlehq/browser'],
 } as const;
+
+/** Parse a positive integer env override; anything else (unset, zero, junk) falls through to the default. */
+function positiveIntFromEnv(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
 
 /** The flow name if this event is a panel ▶ replay request, else undefined. Pure boundary narrowing. */
 function replayRequest(event: { type: string; data: Record<string, unknown> }): string | undefined {
@@ -161,8 +167,13 @@ export class Bridge {
           'origin check and no connection can be established.',
       );
     }
+    // Explicit option wins; then the env override, so a genuinely busy app can raise the ceiling
+    // instead of accepting sampled coverage. Free and local — the daemon runs on the same machine,
+    // so a higher cap costs nobody anything, which is also why this is not a paid knob.
     this.#maxMessagesPerSecond =
-      options.maxMessagesPerSecond ?? TRANSPORT_LIMITS.MAX_MESSAGES_PER_SECOND;
+      options.maxMessagesPerSecond ??
+      positiveIntFromEnv(process.env[ReticleEnv.MAX_MESSAGES_PER_SECOND]) ??
+      TRANSPORT_LIMITS.MAX_MESSAGES_PER_SECOND;
     this.#maxSessions = options.maxSessions ?? TRANSPORT_LIMITS.MAX_SESSIONS;
     this.#maxPendingConnections =
       options.maxPendingConnections ?? TRANSPORT_LIMITS.MAX_PENDING_CONNECTIONS;
@@ -246,6 +257,7 @@ export class Bridge {
       socket.close(...WS_CLOSE.HELLO_TIMEOUT);
     }, this.#helloTimeoutMs);
 
+    let droppedByRate = 0;
     socket.on('message', (raw) => {
       const now = this.#clock();
       if (now - messageWindowStartedAt >= 1000) {
@@ -253,15 +265,7 @@ export class Bridge {
         messagesInWindow = 0;
       }
       messagesInWindow += 1;
-      if (messagesInWindow > this.#maxMessagesPerSecond) {
-        log('message_rate_exceeded', {});
-        // Remembered so the NEXT tool call can explain the disappearance. Without it the agent is
-        // told to check that the app is running with the SDK enabled — which is exactly wrong here:
-        // the app is running and instrumented, and the bridge hung up on it.
-        this.sessions.noteClosure(WS_CLOSE.RATE_EXCEEDED[1], Date.now());
-        socket.close(...WS_CLOSE.RATE_EXCEEDED);
-        return;
-      }
+      const overRate = messagesInWindow > this.#maxMessagesPerSecond;
 
       const text = rawToString(raw);
       const parsed = this.#parse(text);
@@ -273,6 +277,21 @@ export class Bridge {
           return;
         }
         socket.close(...WS_CLOSE.INVALID_MESSAGE);
+        return;
+      }
+
+      // Over the cap we SAMPLE — we never disconnect. Going blind is the one thing an observability
+      // layer must not do when it sees too much, and the close was a policy code the SDK correctly
+      // never retries: the app kept running and Reticle was blind from that instant, on exactly the
+      // busiest apps. Measured: each request emits two messages (pending + settled), so the cap binds
+      // at ~500 requests/second — a dashboard burst reaches it, a streaming app lives above it.
+      //
+      // Only EVENTS are dropped. A dropped hello would strand the session and a dropped
+      // command_result would hang the agent's in-flight call, so control traffic is always processed
+      // however fast it arrives — the cap exists to bound observation, not to break the protocol.
+      if (overRate && parsed.kind === MessageKind.EVENT) {
+        droppedByRate += 1;
+        if (session !== undefined) session.noteRateLimited(droppedByRate);
         return;
       }
 

@@ -45,3 +45,35 @@ export const CDP_NO_PROVIDER_REASON = 'no-cdp-provider';
 
 export const CDP_NO_PROVIDER_RECOMMENDATION =
   'this needs a Reticle-driven browser (it is applied through CDP, which the always-on SDK cannot do) — start with `reticle drive <url>` or set RETICLE_CDP_URL';
+
+/**
+ * A region the SDK cannot see into — surfaced (never hidden) so a result's coverage reads honestly.
+ * Crosses the wire in a BLIND_SPOT event's `kind`, so it lives in core (the contract), not the server.
+ */
+export const BlindSpotKind = {
+  CLOSED_SHADOW_ROOT: 'closed-shadow-root',
+  /**
+   * The bridge sampled: events arrived faster than its per-second cap, so some were dropped.
+   *
+   * This replaces DISCONNECTING, which is the one thing an observability layer must not do when it
+   * sees too much. Measured: every network request emits two messages (pending + settled), so the cap
+   * binds at ~500 requests/second — reachable by a dashboard burst and continuous for a streaming app.
+   * Going blind there meant the biggest, most complex apps were exactly the ones Reticle could not
+   * watch, and the failure was silent.
+   *
+   * Reported like any other blind spot, so a verdict over a sampled window says `coverage: partial`
+   * instead of implying it saw everything.
+   */
+  RATE_LIMITED: 'rate-limited',
+  CROSS_ORIGIN_IFRAME: 'cross-origin-iframe',
+  VIRTUALIZED_UNMOUNTED: 'virtualized-unmounted',
+  /**
+   * Something wrapped `fetch` before we did, so the request we record is not necessarily the request
+   * that leaves. Wrappers chain outermost-first: anything installed EARLIER sits below us and mutates
+   * after we have read `init.body`. An interceptor initialised before connect(), or a polyfill, does
+   * exactly that. Unfixable from inside the page — there is no "patch last" primitive — so it is
+   * declared instead, and a verdict over it reports partial coverage rather than implying we saw the wire.
+   */
+  WRAPPED_NETWORK: 'wrapped-network',
+} as const;
+export type BlindSpotKind = (typeof BlindSpotKind)[keyof typeof BlindSpotKind];

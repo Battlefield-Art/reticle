@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { EventType, PerfMetric, BlindSpotKind } from './constants.js';
+import { EventType, PerfMetric } from './constants.js';
+import { BlindSpotKind } from './verified-constants.js';
 import { HumanControlDataSchema, HumanMarkDataSchema } from './messages.js';
 
 /**

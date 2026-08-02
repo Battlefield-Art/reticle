@@ -54,6 +54,14 @@ export const ReticleEnv = {
   CDP_URL: 'RETICLE_CDP_URL',
   /** Max simultaneous leased headless contexts in the browser pool (resource cap). */
   MAX_CONTEXTS: 'RETICLE_MAX_CONTEXTS',
+  /**
+   * Inbound events per second before the bridge starts SAMPLING (never disconnecting).
+   *
+   * Raise it for a legitimately busy app — a streaming dashboard, a live grid — rather than accept
+   * partial coverage. Free and local: the daemon runs on the same machine, so a higher ceiling costs
+   * nothing to anyone.
+   */
+  MAX_MESSAGES_PER_SECOND: 'RETICLE_MAX_MESSAGES_PER_SECOND',
   /** Bearer token required by the optional `reticle serve --http` verify endpoint. */
   VERIFY_TOKEN: 'RETICLE_VERIFY_TOKEN',
   /** Ms of continuous idleness (no agent, no browser session, no lease) before the daemon self-exits;
@@ -353,24 +361,6 @@ export const TruncationChannel = {
 } as const;
 export type TruncationChannel = (typeof TruncationChannel)[keyof typeof TruncationChannel];
 
-/**
- * A region the SDK cannot see into — surfaced (never hidden) so a result's coverage reads honestly.
- * Crosses the wire in a BLIND_SPOT event's `kind`, so it lives in core (the contract), not the server.
- */
-export const BlindSpotKind = {
-  CLOSED_SHADOW_ROOT: 'closed-shadow-root',
-  CROSS_ORIGIN_IFRAME: 'cross-origin-iframe',
-  VIRTUALIZED_UNMOUNTED: 'virtualized-unmounted',
-  /**
-   * Something wrapped `fetch` before we did, so the request we record is not necessarily the request
-   * that leaves. Wrappers chain outermost-first: anything installed EARLIER sits below us and mutates
-   * after we have read `init.body`. An interceptor initialised before connect(), or a polyfill, does
-   * exactly that. Unfixable from inside the page — there is no "patch last" primitive — so it is
-   * declared instead, and a verdict over it reports partial coverage rather than implying we saw the wire.
-   */
-  WRAPPED_NETWORK: 'wrapped-network',
-} as const;
-export type BlindSpotKind = (typeof BlindSpotKind)[keyof typeof BlindSpotKind];
 
 /**
  * How an event was linked to the action it is attributed to. `window` means the SDK stamped the
