@@ -46,6 +46,7 @@ export const ReticleTool = {
   ANNOTATE: 'reticle_annotate',
   AFFECTED: 'reticle_affected',
   COVERAGE: 'reticle_coverage',
+  VERIFY_CHANGE: 'reticle_verify_change',
   /** read cross-run history (.reticle/project.json) + diff-vs-last for a name. */
   PROJECT: 'reticle_project',
   /** explicitly record a run outcome (the manual companion to auto-recording). */

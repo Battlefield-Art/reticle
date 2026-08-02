@@ -14,6 +14,7 @@ import { RUN_TOOLS } from '../runs/run-tools.js';
 import { VISUAL_TOOLS } from '../visual/visual-tools.js';
 import { AFFECTED_TOOLS } from '../flows/affected-tools.js';
 import { COVERAGE_TOOLS } from './coverage-tools.js';
+import { VERIFY_CHANGE_TOOLS } from '../flows/verify-change-tools.js';
 import { CRAWL_TOOLS } from '../crawl/crawl-tools.js';
 import { SCROLL_TOOLS } from '../input/scroll-tools.js';
 import { NETWORK_MOCK_TOOLS } from '../input/network-mock-tools.js';
@@ -427,6 +428,8 @@ const RAW_TOOLS: ToolDef[] = [
   ...AFFECTED_TOOLS,
   // reticle_coverage — which controls were driven vs never touched. Unadvertised; via reticle_run.
   ...COVERAGE_TOOLS,
+  // reticle_verify_change — "did my change break anything" in one call. See verify-change-tools.ts.
+  ...VERIFY_CHANGE_TOOLS,
   // Live-control: reticle_end_session / reticle_resume / reticle_messages. See live-control-tools.ts.
   ...LIVE_CONTROL_TOOLS,
   // reticle_navigate / reticle_refresh — browser navigation tools. See browser-tools.ts.
