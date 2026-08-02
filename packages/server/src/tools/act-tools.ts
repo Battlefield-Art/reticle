@@ -8,7 +8,6 @@ import { compileActStep, compileSequenceStep } from '../flows/replay.js';
 import {
   ActionType,
   ActionWarning,
-  AnchorKind,
   DANGEROUS_ACTION_CONFIRM_ARG,
   DEFAULT_ASSERT_TIMEOUT_MS,
   InputMode,
@@ -24,11 +23,12 @@ import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
 import { causalSummary } from '../capsule/causal-summary.js';
 import { findContradictions } from '../events/contradictions.js';
+import { decideVerified } from '../honesty/verified.js';
+import { saveFailedAssertCapsule } from './act-capsule.js';
 import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import { buildHonestyBlock } from '../honesty/honesty.js';
 import { buildCoverageStatement, blindSpotsFromState } from '../honesty/blind-spots.js';
-import { CapsuleStore, capsuleId } from '../capsule/capsule-store.js';
 import {
   evaluatePredicate,
   waitForPredicate,
@@ -434,6 +434,14 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           'Present only on a FAILED verdict when the fail-to-pass capsule was persisted: its id, replayable as a regression flow once the bug goes green.',
         ),
+      verified: z
+        .string()
+        .describe(
+          'THE field to gate on: "yes" | "no" | "unknown". Read this first and read `because` for the reason. "unknown" is NOT failure — it means the evidence could not decide (dirty capture, nothing asserted at a real grade, or the page never settled), which calls for a better check rather than a code change. Everything else on this result is the evidence this was derived from.',
+        ),
+      because: z
+        .string()
+        .describe('One sentence naming the deciding evidence behind `verified`.'),
       contradictions: z
         .array(z.unknown())
         .optional()
@@ -526,41 +534,28 @@ export const ACT_TOOLS: ToolDef[] = [
           coveragePartial: coverage.coverage === 'partial',
           ...(coverage.note === undefined ? {} : { blindSpots: [coverage.note] }),
         });
-        //: a red assertion is the ONE moment the evidence explaining it is in hand. Persist it as a
-        // replayable fail-to-pass capsule so the bug survives the turn — and becomes a regression flow
-        // the moment it goes green. Best-effort: capturing evidence must never fail the run that found it.
-        let capsuleSaved: string | undefined;
-        if (!verdict.pass && capsule !== undefined) {
-          const id = capsuleId(deps.now(), asString(args['ref']) ?? 'assert');
-          const expectedText = links
-            .map((l) => ('name' in l ? `${l.kind} ${l.name}` : l.kind))
-            .join(' AND ');
-          const saved = await new CapsuleStore(deps.fs, deps.reticleRoot).save({
-            version: 1,
-            id,
-            createdAt: deps.now(),
-            origin: 'failed-assert',
-            expected: expectedText.length > 0 ? expectedText : 'declared consequence',
-            observed: capsule.firstDivergence?.observed ?? verdict.failureReason ?? 'not observed',
-            steps: [
-              {
-                tool: ReticleTool.ACT,
-                anchor: {
-                  kind: AnchorKind.TESTID,
-                  value:
-                    asString(asRecord(actResult.result)['testid']) ?? asString(args['ref']) ?? '',
-                  // Carried so the saved capsule — which outlives this turn and becomes a regression
-                  // flow when it goes green — still knows which file the failure came from.
-                  ...(actedSource === undefined ? {} : { source: actedSource }),
-                },
-                action: (asString(args['action']) ?? ActionType.CLICK) as ActionType,
-              },
-            ],
-          });
-          if (saved) capsuleSaved = id;
-        }
+        const capsuleSaved = await saveFailedAssertCapsule({
+          deps,
+          verdict,
+          capsule,
+          links,
+          args,
+          actResult,
+          ...(actedSource === undefined ? {} : { actedSource }),
+        });
         const contradictions = findContradictions(windowEvents);
+        // The single field an agent reads. Everything below it is the evidence it was derived from;
+        // this is the only one that has to be interpreted, and now it interprets itself.
+        const decision = decideVerified({
+          pass: verdict.pass,
+          honesty,
+          contradictions,
+          // `settled` is genuinely optional: a wait that declared no predicate never measured it, and
+          // passing `false` there would report "never settled" about something never asked to settle.
+          ...(settledOutcome === undefined ? {} : { settled: settledOutcome }),
+        });
         return withControl(session, {
+          ...decision,
           effect: leanActResult(actResult.result),
           verdict,
           // Promoted out of `effect` on red only. On green nobody needs it and it is noise; on red it
