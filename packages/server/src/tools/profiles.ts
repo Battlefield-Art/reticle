@@ -8,7 +8,7 @@ import type { ToolDef } from './tools.js';
  *
  * MEASURED surface sizes (assert them with profile-reachability.test.ts rather than trusting prose —
  * every count previously written here was wrong, and the token figures below derive from those counts):
- *   core 15 · standard 32 · hybrid 15 · full 41 · dynamic 2
+ *   core 15 · standard 32 · hybrid 15 · full 43 · dynamic 2
  * core and hybrid are both 14 because a trimmed profile now also advertises the two meta-tools, which
  * is what keeps an un-advertised tool reachable through reticle_run.
  *
@@ -37,22 +37,37 @@ export type ToolProfile = (typeof TOOL_PROFILE)[keyof typeof TOOL_PROFILE];
 export const TOOL_PROFILE_ENV = 'RETICLE_TOOL_PROFILE';
 
 // The set an agent needs to verify a change end-to-end. Tool DEFINITIONS are re-sent every turn, so a
-// smaller surface compounds. Measured per-turn surface cost (bench/first-drive, o200k proxy):
-// core 6,479 tok · standard 13,951 · full 20,441 — the hybrid default is far cheaper per turn than
-// advertising everything. STALE: these were measured against a 12/40/56-tool surface that no longer
-// exists (it is now 14/32/41 after the merge and the escape-hatch change), so treat the ratio as
-// directional and the absolute numbers as needing a re-measure before they are quoted anywhere.
+// smaller surface compounds.
+//
+// MEASURED per-turn `tools/list` cost — the bytes an MCP client re-sends EVERY turn — taken off the
+// real wire (spawn `mcp`, read tools/list, measure the serialized result), not estimated:
+//
+//   dynamic     2 tools    1,531 B   ~383 tok/turn
+//   core       15 tools   14,104 B  ~3,526 tok/turn
+//   hybrid     15 tools   14,104 B  ~3,526 tok/turn
+//   standard   32 tools   26,769 B  ~6,692 tok/turn
+//   full       43 tools  105,061 B ~26,265 tok/turn
+//
+// These REPLACE the previous figures (core 6,479 / standard 13,951 / full 20,441), which the comment
+// itself flagged as stale. Two of the three moved in opposite directions, which is why re-measuring
+// mattered: the lean profiles got much CHEAPER because they now drop the advertised outputSchema,
+// while `full` got much more EXPENSIVE because it still carries it — the gap between lean and full is
+// 7.4x, not the ~3x the old numbers implied.
+//
+// Where the remaining cost sits, on the hybrid default: inputSchema is 76% of the payload (parameter
+// descriptions are half of that), tool descriptions are 12%, and outputSchema is already ~0. So the
+// next real saving is in parameter prose, not in dropping more tools.
 //
 // There is a floor, though: an 8-tool cut (dropping act/navigate/wait_for/sessions) was MEASURED to
-// regress real-agent accuracy 5/5 → 3/5, because the model loses scaffolding and wanders on harder
-// flows. These 12 are the lean sweet spot. Direct network/console stay (far more discoverable than
-// observe-with-filters → fewer turns, better verdicts).
+// regress real-agent accuracy 5/5 -> 3/5, because the model loses scaffolding and wanders on harder
+// flows. Direct network/console stay (far more discoverable than observe-with-filters -> fewer turns,
+// better verdicts).
 //
-// Evidence status: the original 5/5 figure came from a single gpt-4o run and is STALE as a
-// justification. Current-model evidence is indirect but real — the cost-delta run
-// (bench/fix-loop/COST-DELTA.md) drove this hybrid default on a current model and fixed 4/4 cells with
-// ~25% FEWER tool calls than the baseline. A formal core-vs-hybrid A/B on a current model is
-// still UNRUN; do not quote the 5/5 number as if it were current. See bench/agent-loop-and-replay.md.
+// Evidence status: the 5/5 figure came from a single gpt-4o run and is STALE as a justification.
+// Current-model evidence is indirect but real — the cost-delta run (bench/fix-loop/COST-DELTA.md)
+// drove this hybrid default on a current model and fixed 4/4 cells with ~25% FEWER tool calls than
+// the baseline. A formal core-vs-hybrid A/B on a current model is still UNRUN; do not quote the 5/5
+// number as if it were current. See bench/agent-loop-and-replay.md.
 export const CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   ReticleTool.SESSIONS,
   ReticleTool.NAVIGATE,
