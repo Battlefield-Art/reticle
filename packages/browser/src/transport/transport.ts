@@ -59,7 +59,8 @@ function subscribeDocumentVisible(handler: () => void): () => void {
 }
 
 const RECONNECT_DELAY_MS = 1000;
-const MAX_QUEUE = 500;
+/** Offline queue cap. Exported so tests overflow the real bound instead of a mirrored copy of it. */
+export const MAX_QUEUE = 500;
 /**
  * Standard WebSocket close code 1008 ("policy violation") — the bridge sends it for TERMINAL refusals:
  * a protocol-version mismatch (the browser package is older than the bridge and must be upgraded),
@@ -241,7 +242,7 @@ export class Transport {
     const result = CommandMessageSchema.safeParse(parsed);
     if (!result.success) return;
     const command = result.data;
-    this.#sessionId ??= this.#deps.hello().sessionId;
+    // #sessionId is set in onopen, which always precedes any inbound command on the same socket.
     if (command.sessionId !== undefined && command.sessionId !== this.#sessionId) return;
     let outcome: CommandOutcome;
     try {
@@ -279,6 +280,8 @@ export class Transport {
       // Full offline queue: drop the OLDEST and keep the newest (ring), so after reconnect the agent
       // replays RECENT activity instead of 500 stale events with the latest lost. Remember what went
       // so the loss can be declared on reconnect — an unmarked hole reads as "the app did nothing".
+      // Only an evicted EVENT counts: a dropped COMMAND_RESULT is a reply the agent already gave up
+      // waiting for, not a hole in what the app was observed to do.
       const evicted = this.#queue.shift();
       if (evicted?.event !== undefined) {
         this.#dropped += 1;

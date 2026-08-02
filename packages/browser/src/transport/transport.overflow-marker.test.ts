@@ -7,7 +7,7 @@ import {
   type HelloMessage,
   type ReticleEvent,
 } from '@reticlehq/core';
-import { Transport } from './transport.js';
+import { MAX_QUEUE, Transport } from './transport.js';
 
 /**
  * The offline queue drops the OLDEST events once it is full. Those events are gone: they are not in
@@ -53,8 +53,6 @@ const hello = (): HelloMessage => ({
   hasCapabilities: false,
 });
 
-/** The transport's offline queue cap — mirrored here so the tests can overflow it deliberately. */
-const MAX_QUEUE = 500;
 const OVERFLOW_BY = 3;
 
 const evt = (seq: number): ReticleEvent => ({
