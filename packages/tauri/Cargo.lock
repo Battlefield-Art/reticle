@@ -2447,11 +2447,15 @@ name = "reticle-tauri"
 version = "0.1.0"
 dependencies = [
  "block2",
+ "cairo-rs",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-web-kit",
  "tauri",
+ "webkit2gtk",
+ "webview2-com",
+ "windows",
 ]
 
 [[package]]

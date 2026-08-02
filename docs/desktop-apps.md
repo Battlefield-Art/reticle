@@ -77,7 +77,15 @@ tauri::Builder::default()
 
 Nothing on the JavaScript side: the SDK invokes the command through Tauri's own internals, because Tauri has no preload stage where a shim could be installed. `reticle_screenshot` and `reticle_visual_diff` then work on your app, including headless.
 
-`reticle_capture` calls `WKWebView.takeSnapshot`, which — like Electron's `capturePage()` — renders the webview rather than reading the screen. So it needs no screen-recording permission, cannot return another window's pixels, and is correct with nothing on screen at all. macOS only for now; the Windows (WebView2 `CapturePreview`) and Linux (WebKitGTK `WebViewSnapshot`) equivalents exist but are not implemented, and report no-provider rather than guessing.
+`reticle_capture` renders the webview rather than reading the screen — like Electron's `capturePage()` — so it needs no screen-recording permission, cannot return another window's pixels, and is correct with nothing on screen at all. Each platform uses its own webview API:
+
+| Platform   | API                                      |
+| ---------- | ---------------------------------------- |
+| macOS      | `WKWebView.takeSnapshot`                 |
+| Windows    | WebView2 `CapturePreview`                |
+| Linux, BSD | WebKitGTK `webkit_web_view_get_snapshot` |
+
+All three capture the visible viewport, so a baseline taken on a developer's Mac is comparable against the same app in Linux CI. On a platform with no webview API to call, capture reports no-provider rather than returning a plausible wrong image.
 
 An app that already has its own capture can expose `window.__reticleIpc.capture()` returning a PNG path instead; the SDK prefers it over the built-in command.
 

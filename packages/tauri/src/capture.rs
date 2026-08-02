@@ -1,7 +1,31 @@
 //! The capture command, in its own module because `#[tauri::command]` re-exports a macro beside the
 //! function — at the crate root that collides with the function's own re-export.
+//!
+//! Each platform reaches its webview through a different API, but all three share the property that
+//! matters: they render the WEBVIEW, never the screen. Capturing a screen region instead was tried
+//! and rejected — it photographs the glass, so a window sitting behind the editor yields a picture of
+//! the editor, banked as a visual baseline a later diff would trust. None of these can do that, none
+//! needs a screen-recording permission, and all three are correct with nothing on screen at all.
 
-use crate::{CAPTURE_FILE_PREFIX, SNAPSHOT_TIMEOUT};
+use crate::CAPTURE_FILE_PREFIX;
+
+#[cfg(target_os = "macos")]
+#[path = "capture/macos.rs"]
+mod platform;
+
+#[cfg(windows)]
+#[path = "capture/windows.rs"]
+mod platform;
+
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "openbsd",
+    target_os = "netbsd"
+))]
+#[path = "capture/linux.rs"]
+mod platform;
 
 /// Capture the webview and return the path of the PNG written to the OS temp directory.
 ///
@@ -23,69 +47,30 @@ fn nanos() -> u128 {
         .unwrap_or(0)
 }
 
-/// macOS: `WKWebView.takeSnapshot`, which renders the webview's own contents.
+#[cfg(any(
+    target_os = "macos",
+    windows,
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "openbsd",
+    target_os = "netbsd"
+))]
+use platform::snapshot_png;
+
+/// Anywhere with no webview API to call — say so, rather than return a plausible wrong image.
 ///
-/// Capturing a screen *region* instead was tried and rejected: it photographs the glass, so a window
-/// sitting behind the editor yields a picture of the editor, banked as a visual baseline a later
-/// diff would trust. This path cannot do that — it never reads the screen, needs no screen-recording
-/// permission, and is correct with nothing on screen at all.
-#[cfg(target_os = "macos")]
-fn snapshot_png(window: &tauri::WebviewWindow) -> Result<Vec<u8>, String> {
-    use block2::RcBlock;
-    use objc2_app_kit::NSImage;
-    use objc2_foundation::NSError;
-    use objc2_web_kit::WKWebView;
-
-    let (sender, receiver) = std::sync::mpsc::channel::<Result<Vec<u8>, String>>();
-    window
-        .with_webview(move |webview| {
-            // SAFETY: on macOS `inner()` is the `WKWebView` backing this window, and the closure runs
-            // on the main thread, which is where WebKit requires its objects to be touched.
-            let wk: &WKWebView = unsafe { &*(webview.inner() as *const WKWebView) };
-            let handler = RcBlock::new(move |image: *mut NSImage, error: *mut NSError| {
-                let _ = sender.send(encode_png(image, error));
-            });
-            unsafe { wk.takeSnapshotWithConfiguration_completionHandler(None, &handler) };
-        })
-        .map_err(|error| error.to_string())?;
-
-    receiver
-        .recv_timeout(SNAPSHOT_TIMEOUT)
-        .map_err(|_| "webview snapshot timed out".to_string())?
-}
-
-#[cfg(target_os = "macos")]
-fn encode_png(
-    image: *mut objc2_app_kit::NSImage,
-    error: *mut objc2_foundation::NSError,
-) -> Result<Vec<u8>, String> {
-    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep};
-    use objc2_foundation::NSDictionary;
-
-    if !error.is_null() {
-        // SAFETY: WebKit hands back a live NSError here; it is only read.
-        return Err(unsafe { &*error }.localizedDescription().to_string());
-    }
-    if image.is_null() {
-        return Err("webview returned no snapshot".into());
-    }
-    // SAFETY: non-null, and owned by the completion handler for the duration of this call.
-    let image = unsafe { &*image };
-    let tiff = image.TIFFRepresentation().ok_or("snapshot had no bitmap")?;
-    let rep = NSBitmapImageRep::imageRepWithData(&tiff).ok_or("snapshot bitmap was unreadable")?;
-    let png = unsafe {
-        rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new())
-    }
-    .ok_or("snapshot could not be encoded as PNG")?;
-    Ok(png.to_vec())
-}
-
-/// Everywhere else: say so, rather than return a picture of whatever is in front of the window.
-///
-/// Windows (WebView2 `CapturePreview`) and Linux (WebKitGTK `WebViewSnapshot`) both have an
-/// equivalent API; neither is implemented yet. Reporting no-provider makes the tool answer
-/// "no screenshots here", which is a result an agent can act on — unlike a plausible wrong image.
-#[cfg(not(target_os = "macos"))]
+/// Reporting no-provider makes the tool answer "no screenshots here", which is a result an agent can
+/// act on. A picture of the wrong thing is not.
+#[cfg(not(any(
+    target_os = "macos",
+    windows,
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "openbsd",
+    target_os = "netbsd"
+)))]
 fn snapshot_png(_window: &tauri::WebviewWindow) -> Result<Vec<u8>, String> {
-    Err("reticle-tauri can only capture a webview on macOS so far".into())
+    Err("reticle-tauri cannot capture a webview on this platform".into())
 }

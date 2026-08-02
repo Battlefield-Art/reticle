@@ -12,8 +12,9 @@
  * correct while occluded, correct while backgrounded, and needing no screen-recording permission.
  *
  * Both desktop runtimes can do this, each through its own shell API — `webContents.capturePage()` on
- * Electron, `WKWebView.takeSnapshot` on Tauri/macOS. Neither reads the screen, so both stay correct
- * with the window occluded, hidden, or running headless with nothing on screen at all.
+ * Electron, and on Tauri the platform's own webview snapshot (`WKWebView.takeSnapshot`, WebView2
+ * `CapturePreview`, or WebKitGTK's snapshot). None of them reads the screen, so all stay correct with
+ * the window occluded, hidden, or running headless with nothing on screen at all.
  *
  * The app opts in with one line in its main process (`@reticlehq/electron/main`) or one Rust command
  * (`reticle-tauri`). Absent that, this returns `{ ok: false }` and the tool reports no-provider
