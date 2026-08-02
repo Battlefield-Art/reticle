@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { TOOLS } from './tools.js';
-import { CORE_TOOL_NAMES } from './profiles.js';
+import { CORE_TOOL_NAMES, TOOL_PROFILE } from './profiles.js';
+import { advertisedConfig, advertisedTools } from '../mcp.js';
+import { ReticleTool } from './tool-names.js';
 
 /**
  * Examples are the fix for the one failure an agent cannot recover from on its own.
@@ -60,4 +62,51 @@ describe('the core surface leaves nothing to guess', () => {
       expect(tool.example).toBeDefined();
     },
   );
+});
+
+/**
+ * A capability an agent cannot find is a capability that does not exist.
+ *
+ * Four separate times this surface turned out to already HAVE the cheap or high-signal option and
+ * simply never say so where a lean profile could see it: `snapshot { diff }`, `state { depth }`,
+ * `query { count_only }`, and the bug-catching predicate fields. Each was documented in prose that
+ * the first-sentence trim discards, so the full profile knew and the DEFAULT profile did not.
+ *
+ * These pin the ones that pay for themselves many times over, against the advertised text rather
+ * than the raw definition — the trim is exactly what used to hide them.
+ */
+describe('cost-saving and bug-catching options are discoverable in the DEFAULT profile', () => {
+  const advertised = advertisedTools(TOOL_PROFILE.HYBRID);
+  const shown = (name: string): string => {
+    const tool = advertised.find((t) => t.name === name);
+    if (tool === undefined) return '';
+    const config = advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID);
+    return `${config.description} ${JSON.stringify(tool.example ?? {})}`;
+  };
+
+  it.each([
+    // [tool, the option, why it must be visible]
+    [ReticleTool.QUERY, 'count_only', 'a count instead of every descriptor — ~30x smaller'],
+    [ReticleTool.SNAPSHOT, 'diff', 'only what changed since the last look'],
+    [ReticleTool.SNAPSHOT, 'interactive', 'controls only — ~3x smaller'],
+    [ReticleTool.STATE, 'depth', 'the store SHAPE instead of every value — ~47x smaller'],
+  ])('%s advertises `%s` (%s)', (tool, option, _why) => {
+    expect(shown(tool)).toContain(option);
+  });
+
+  /** The checks that catch a bug rather than confirm an expectation. Worth their bytes. */
+  it.each([
+    ['net.count', 'a double-submit / retry storm'],
+    ['console.absent', 'an action that worked while logging a caught error'],
+    ['absent', 'something that should have disappeared and did not'],
+  ])('the predicate grammar advertises %s (%s)', (option, _why) => {
+    const predicateText = advertised
+      .flatMap((tool) =>
+        Object.entries(advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID).inputSchema)
+          .filter(([key]) => key === 'predicate' || key === 'until')
+          .map(([, schema]) => schema.description ?? ''),
+      )
+      .join(' ');
+    expect(predicateText).toContain(option);
+  });
 });

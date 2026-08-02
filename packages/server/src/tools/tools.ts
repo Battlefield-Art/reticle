@@ -86,7 +86,7 @@ const RAW_TOOLS: ToolDef[] = [
     name: ReticleTool.SNAPSHOT,
     example: { diff: true },
     description:
-      'Semantic accessibility snapshot of the page or a subtree. Refs (`e42`) are stable: the same element keeps its ref across snapshots and only stops resolving once it leaves the DOM — re-snapshot after a navigation or if a ref fails to resolve, not between ordinary actions. mode: full|interactive|status. Use to see what is on screen right now. The result carries cost:{ bytes, tokens } (estimated) — if it is large, re-scope (pass `scope`) or use mode:interactive/status instead of reading the whole tree. Pass diff:true after your first snapshot to get back ONLY what changed since your last look (mode:delta with added/removed, or mode:unchanged) — far fewer tokens and no stale tree to mis-read; a route change resets it to a full snapshot automatically.',
+      'Semantic accessibility snapshot of the page or a subtree — `mode:"interactive"` returns only the controls, ~3x smaller. Refs (`e42`) are stable: the same element keeps its ref across snapshots and only stops resolving once it leaves the DOM — re-snapshot after a navigation or if a ref fails to resolve, not between ordinary actions. mode: full|interactive|status. Use to see what is on screen right now. The result carries cost:{ bytes, tokens } (estimated) — if it is large, re-scope (pass `scope`) or use mode:interactive/status instead of reading the whole tree. Pass diff:true after your first snapshot to get back ONLY what changed since your last look (mode:delta with added/removed, or mode:unchanged) — far fewer tokens and no stale tree to mis-read; a route change resets it to a full snapshot automatically.',
     inputSchema: {
       scope: z
         .string()
@@ -188,7 +188,7 @@ const RAW_TOOLS: ToolDef[] = [
     name: ReticleTool.QUERY,
     example: { by: 'testid', value: 'todo-list' },
     description:
-      'Find elements by Testing-Library semantics, INCLUDING inside open shadow roots. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `attrs:["href"]` to project attributes (link/image URLs) onto each match. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
+      'Find elements by Testing-Library semantics, INCLUDING open shadow roots — `count_only:true` gives just the count (~30x smaller); `limit` caps descriptors. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `attrs:["href"]` to project attributes (link/image URLs) onto each match. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
     inputSchema: {
       by: z.string().describe('Query strategy: role | text | label | placeholder | testid | alt'),
       value: z

@@ -99,8 +99,23 @@ const PREDICATE_KINDS =
   'Predicate object: { kind, ...fields }. kind is one of element | text | net | route | console | ' +
   'animation | signal | state | settled | allOf | anyOf | not.';
 
-/** Said once per turn: where to get the per-kind field grammar. Pure navigation, safe to not repeat. */
-const PREDICATE_FIELD_GRAMMAR_HINT = ' Call reticle_tools for the full field grammar of a kind.';
+/**
+ * Said once per turn: the bug-catching options, and where to get the rest of the field grammar.
+ *
+ * `net.count`, `console.absent` and `absent` are the three predicate options that catch a class of
+ * bug rather than confirm an expectation — a double-submit, an action that "worked" while logging a
+ * caught error, something that should have disappeared and did not. They sat behind a
+ * `reticle_tools` round trip, so an agent only found them if it already knew to look, which is the
+ * wrong way round for the checks most likely to catch what nobody suspected.
+ *
+ * Anchored to one tool rather than repeated on all six: these are ADDITIONAL capability, not what
+ * makes a basic predicate correct, so one mention per turn is enough to make them reachable without
+ * paying for six.
+ */
+const PREDICATE_FIELD_GRAMMAR_HINT =
+  ' Bug-catching options: net.count (exact request count — catches double-submit), ' +
+  'console.absent:true (action completed with a CLEAN console), absent:true on element/text ' +
+  '(it should be gone). Call reticle_tools for the full field grammar of a kind.';
 
 const COMPACT_PREDICATE_DESCRIPTION = `${PREDICATE_KINDS}${PREDICATE_FIELD_GRAMMAR_HINT}`;
 
