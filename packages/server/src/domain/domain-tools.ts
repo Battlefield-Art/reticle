@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { asNumber } from '../tools/tools-helpers.js';
 import type { FlowFile } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import { readContract } from '../project/reticle-dir.js';
@@ -13,12 +14,22 @@ import type { ToolDef, ToolDeps } from '../tools/tools.js';
  * GAPS (declared signals/testids no flow verifies). An agent reads this once instead of crawling
  * the whole app or reading all the source — and it points straight at untested intent.
  */
+/** Flows detailed when the caller does not ask for a specific count. */
+const DEFAULT_FLOW_DETAIL_LIMIT = 25;
+
 export const DOMAIN_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.DOMAIN,
     description:
       'Read the app domain model BEFORE testing: every saved flow with its assertion grade, the consequence that MUST hold for it (mustHold = what it actually tests), the anchors/signals it exercises, plus GAPS — declared signals/testids that NO flow asserts (untested intent), and flows that assert no observable consequence. Use this to decide what to test and where the real risk is, instead of crawling the whole app. Reads .reticle/flows/ + .reticle/contract.json (no browser needed).',
-    inputSchema: {},
+    inputSchema: {
+      limit: z
+        .number()
+        .optional()
+        .describe(
+          'Most-recent N flows to detail. Defaults to 25 — the per-flow list grows with every saved flow (measured at ~11KB / ~2,700 tokens at 22 flows) and a large project would spend most of an agent context on flows it is not asking about. `flowCount` is always the true total, and the gaps/coverage summary is computed over ALL flows regardless, so capping the detail never changes the analysis.',
+        ),
+    },
     outputSchema: {
       flowCount: z.number(),
       flows: z.array(
@@ -43,6 +54,12 @@ export const DOMAIN_TOOLS: ToolDef[] = [
         signals: z.array(z.string()),
         stores: z.array(z.string()),
       }),
+      flowsTruncated: z
+        .number()
+        .optional()
+        .describe(
+          'How many flows were omitted from `flows` by `limit`. Absent means the listing is complete. gaps/coverage always cover every flow.',
+        ),
       coverage: z.object({
         asserted: z.number(),
         presenceOnly: z.number(),
@@ -66,7 +83,7 @@ export const DOMAIN_TOOLS: ToolDef[] = [
           'Ready-to-apply instrumentation proposals for gaps that have a source location — { file, line, insert, rationale }. Apply, re-verify, and the app’s observability compounds.',
         ),
     },
-    handler: async (deps: ToolDeps) => {
+    handler: async (deps: ToolDeps, args) => {
       const names = await deps.flows.list();
       const flows: FlowFile[] = [];
       for (const name of names) {
@@ -82,7 +99,14 @@ export const DOMAIN_TOOLS: ToolDef[] = [
       const instrumentation = proposeInstrumentation(
         instrumentationGapsForFlows(model.gaps.unassertedFlows, stepsByName),
       );
-      return instrumentation.length > 0 ? { ...model, instrumentation } : model;
+      // The per-flow detail is capped; `flowCount`, `gaps` and `coverage` are computed over every
+      // flow, so the ANALYSIS is never truncated — only the listing an agent reads past is.
+      const cap = asNumber(args['limit']) ?? DEFAULT_FLOW_DETAIL_LIMIT;
+      const capped =
+        model.flows.length > cap
+          ? { ...model, flows: model.flows.slice(-cap), flowsTruncated: model.flows.length - cap }
+          : model;
+      return instrumentation.length > 0 ? { ...capped, instrumentation } : capped;
     },
   },
 ];

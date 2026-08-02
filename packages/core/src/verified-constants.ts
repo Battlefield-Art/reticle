@@ -21,3 +21,15 @@ export const Verified = {
   UNKNOWN: 'unknown',
 } as const;
 export type Verified = (typeof Verified)[keyof typeof Verified];
+
+/**
+ * Actionable companion to NO_PROVIDER for the tools that genuinely intercept or capture through CDP
+ * — network mocking and viewport control — which is NOT "visual capture".
+ *
+ * They used to return VISUAL_NO_PROVIDER_RECOMMENDATION verbatim, so asking to stub a request was
+ * answered with "visual capture needs a driven browser". An agent reading that concludes it asked
+ * the wrong KIND of question and goes looking for a screenshot tool, when the requirement is simply
+ * a driven browser.
+ */
+export const CDP_NO_PROVIDER_RECOMMENDATION =
+  'this needs a Reticle-driven browser (it is applied through CDP, which the always-on SDK cannot do) — start with `reticle drive <url>` or set RETICLE_CDP_URL';

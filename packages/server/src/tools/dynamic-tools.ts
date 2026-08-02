@@ -102,6 +102,22 @@ export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
       if (target === undefined) {
         return { error: `unknown tool '${name}'`, available: allTools.map((t) => t.name) };
       }
+      // The escape hatch is where a typo is MOST likely, because an unadvertised tool's parameters
+      // are not in front of the agent at all — and it is the one path the SDK's own validation never
+      // sees, since `reticle_run`'s own args (`tool`, `args`) are perfectly valid. Left unchecked,
+      // `reticle_run { tool: "reticle_clock", args: { action: "freeze" } }` returned
+      // `{"frozen":false}`: a well-formed answer to a question nobody asked.
+      const declared = new Set(Object.keys(target.inputSchema));
+      const unknown = Object.keys(callArgs).filter((key) => !declared.has(key));
+      if (unknown.length > 0) {
+        return {
+          error: `unknown ${unknown.length === 1 ? 'parameter' : 'parameters'} for ${name}: ${unknown.join(', ')} — NOT applied, so any result would be an answer to a different question`,
+          tool: name,
+          params: paramInfo(target.inputSchema),
+          ...(target.example === undefined ? {} : { example: target.example }),
+          hint: 'fix the arguments and call reticle_run again',
+        };
+      }
       try {
         return await runTool(target, deps, callArgs);
       } catch (error) {

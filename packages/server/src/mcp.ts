@@ -256,11 +256,38 @@ export function advertisedConfig(
  */
 type InputValidator = (tool: unknown, args: unknown, toolName: string) => Promise<unknown>;
 
-export function installFriendlyArgErrors(server: McpServer, examples: Map<string, string>): void {
+/** Argument keys the tool never declared. Empty when the tool's shape is unknown to us. */
+function unknownKeys(args: unknown, allowed?: ReadonlySet<string>): string[] {
+  if (allowed === undefined || typeof args !== 'object' || args === null) return [];
+  return Object.keys(args as Record<string, unknown>).filter((key) => !allowed.has(key));
+}
+
+export function installFriendlyArgErrors(
+  server: McpServer,
+  examples: Map<string, string>,
+  allowedKeys: Map<string, ReadonlySet<string>> = new Map(),
+): void {
   const target = server as unknown as { validateToolInput?: InputValidator };
   const original = target.validateToolInput;
   if (typeof original !== 'function') return;
   target.validateToolInput = async (tool, args, toolName) => {
+    // An UNKNOWN key is the failure zod cannot catch, because object schemas are non-strict: the key
+    // is silently dropped and the tool answers as if it had not been asked. Measured live —
+    // `reticle_clock { action: "freeze" }` returned `{"frozen":false}`, which reads as a fact about
+    // the app ("the clock is not frozen") when it means "you named the parameter wrong". That is a
+    // false NEGATIVE the caller cannot detect from the reply, in every tool at once.
+    const unknown = unknownKeys(args, allowedKeys.get(toolName));
+    if (unknown.length > 0) {
+      const example = examples.get(toolName);
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Unknown ${unknown.length === 1 ? 'parameter' : 'parameters'} for ${toolName}: ${unknown.join(', ')}. ` +
+          `They were NOT applied — a result computed without them would look like an answer. ` +
+          (example === undefined
+            ? `Call reticle_tools { names: ["${toolName}"] } for its parameters.`
+            : `A valid call looks like: ${toolName} ${example}`),
+      );
+    }
     try {
       return await original.call(server, tool, args, toolName);
     } catch (error) {
@@ -302,6 +329,9 @@ export function createMcpServer(
         .filter((tool) => tool.example !== undefined)
         .map((tool) => [tool.name, JSON.stringify(tool.example)]),
     ),
+    // Every tool in TOOLS, not just the advertised ones: reticle_run dispatches to the full table,
+    // so an unadvertised tool reached through the hatch must be just as strict.
+    new Map(TOOLS.map((tool) => [tool.name, new Set(Object.keys(tool.inputSchema))])),
   );
   for (const tool of advertised) {
     // Output schemas are now the largest slice of the per-request tax (55.6% of the hybrid payload

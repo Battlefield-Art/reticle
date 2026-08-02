@@ -60,13 +60,19 @@ export const COVERAGE_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.COVERAGE,
     description:
-      'Which interactive controls you have driven this session, and which you have NOT. Returns { total, exercised, untouched:[{ref,label}] } over the controls currently on the page. Use it to decide whether verification is finished: an untouched list that still holds the controls your change affects means you are not done. This is about what you did not TOUCH — distinct from the `coverage` field on an action result, which reports what the layer could not SEE.',
+      'Which interactive controls you have driven this session, and which you have NOT. Returns { total, exercised, untouched:[{ref,label}], alsoDroveGone? } over the controls currently on the page. Use it to decide whether verification is finished: an untouched list that still holds the controls your change affects means you are not done. This is about what you did not TOUCH — distinct from the `coverage` field on an action result, which reports what the layer could not SEE.',
     example: {},
     inputSchema: { ...sessionIdShape },
     outputSchema: {
       total: z.number(),
       exercised: z.number(),
       untouched: z.array(z.object({ ref: z.string(), label: z.string() })),
+      alsoDroveGone: z
+        .number()
+        .optional()
+        .describe(
+          'Controls you drove that are no longer on the page — usually because the action SUCCEEDED and removed them (archive/delete/submit/navigate). Counted separately so `exercised: 0` never appears immediately after real work.',
+        ),
     },
     handler: async (deps: ToolDeps, args) => {
       const sessionId = asString(args['sessionId']);
@@ -80,11 +86,19 @@ export const COVERAGE_TOOLS: ToolDef[] = [
 
       const acted = session.actedRefs();
       const controls = parseControls(tree);
+      const present = new Set(controls.map((control) => control.ref));
       const untouched = controls.filter((control) => !acted.has(control.ref));
+      // Drives that landed on controls no longer in the DOM. Without this the number is biased
+      // against the actions that WORKED: archive, delete, submit and navigate all remove their own
+      // control, so clicking one and asking again reported `exercised: 0` — measured on the Electron
+      // demo right after a successful archive. An agent reading "0" concludes it has done nothing
+      // and re-drives ground it already covered.
+      const drovenGone = [...acted].filter((ref) => !present.has(ref)).length;
       return {
         total: controls.length,
         exercised: controls.length - untouched.length,
         untouched,
+        ...(drovenGone > 0 ? { alsoDroveGone: drovenGone } : {}),
       };
     },
   },

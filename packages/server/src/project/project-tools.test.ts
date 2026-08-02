@@ -131,4 +131,44 @@ describe('project tools — temp dir, never touches the repo', () => {
     expect(res.lastRun).toBeDefined();
     expect(res.diff).toBeUndefined();
   });
+
+  /**
+   * The run history is append-only and unbounded. Measured on this repo it had reached 176 runs and
+   * ~20KB (~5,000 tokens) — a large slice of an agent's context for data it mostly does not read, and
+   * it only grows. The cap must never be silent: `totalRuns` is what tells a caller the list was cut.
+   */
+    describe('reticle_project bounds an unbounded history, and says so', () => {
+    it('returns the most recent N and reports the true total', async () => {
+      for (let i = 0; i < 30; i += 1) {
+        await deps.project.recordRun({
+          kind: RunKind.MANUAL,
+          name: `run-${String(i)}`,
+          status: RunStatus.PASS,
+        });
+      }
+      const res = (await tool(ReticleTool.PROJECT).handler(deps, { limit: 5 })) as {
+        runs: { name: string }[];
+        totalRuns: number;
+      };
+      expect(res.runs).toHaveLength(5);
+      expect(res.totalRuns, 'the cap must never hide how much exists').toBe(30);
+      // Most RECENT, and still in the order they happened.
+      expect(res.runs.map((r) => r.name)).toEqual(['run-25', 'run-26', 'run-27', 'run-28', 'run-29']);
+    });
+
+    it('caps by default, so a huge history cannot arrive unasked', async () => {
+      for (let i = 0; i < 40; i += 1) {
+        await deps.project.recordRun({
+          kind: RunKind.MANUAL,
+          name: `r${String(i)}`,
+          status: RunStatus.PASS,
+        });
+      }
+      const res = (await tool(ReticleTool.PROJECT).handler(deps, {})) as {
+        runs: unknown[];
+        totalRuns: number;
+      };
+      expect(res.runs.length).toBeLessThan(res.totalRuns);
+    });
+  });
 });

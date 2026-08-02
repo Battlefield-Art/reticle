@@ -301,3 +301,78 @@ describe('a wrong-shaped call is answered with a correct one', () => {
     expect(typeof server).toBe('object');
   });
 });
+
+/**
+ * An unknown parameter is the failure zod cannot catch: object schemas are non-strict, so the key is
+ * dropped and the tool answers as if it had not been asked.
+ *
+ * Measured live on the Electron demo: `reticle_clock { action: "freeze" }` returned
+ * `{"frozen":false}` — a well-formed NEGATIVE that reads as a fact about the app ("the clock is not
+ * frozen") when it means "you named the parameter wrong". The correct call, `{ freeze: true }`,
+ * returned `{"frozen":true}`. A caller cannot tell those two replies apart, which makes every tool a
+ * false-negative generator for one typo.
+ */
+describe('an unknown parameter is refused, never silently dropped', () => {
+  const openServer = async (): Promise<{
+    client: import('@modelcontextprotocol/sdk/client/index.js').Client;
+    close: () => Promise<void>;
+  }> => {
+    const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+    const server = createMcpServer(
+      { sessions: { resolve: () => ({ id: 'x' }) } } as unknown as ToolDeps,
+      TOOL_PROFILE.HYBRID,
+    );
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await server.connect(st);
+    const client = new Client({ name: 'c', version: '0' });
+    await client.connect(ct);
+    return {
+      client,
+      close: async () => {
+        await client.close();
+        await server.close();
+      },
+    };
+  };
+
+  const text = (result: unknown): string => {
+    const content = (result as { content?: unknown }).content;
+    return (Array.isArray(content) ? content : [])
+      .map((b) => (typeof b === 'object' && b !== null ? String((b as { text?: unknown }).text) : ''))
+      .join(' ');
+  };
+
+  it('rejects a misspelled parameter instead of computing without it', async () => {
+    const { client, close } = await openServer();
+    const result = await client.callTool({
+      name: ReticleTool.SNAPSHOT,
+      arguments: { mdoe: 'interactive' },
+    });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain('mdoe');
+    expect(text(result), 'it must say the value was not applied').toMatch(/NOT applied/i);
+    await close();
+  });
+
+  it('shows a valid call alongside the refusal', async () => {
+    const { client, close } = await openServer();
+    const result = await client.callTool({
+      name: ReticleTool.SNAPSHOT,
+      arguments: { mdoe: 'interactive' },
+    });
+    expect(text(result)).toContain('A valid call looks like');
+    await close();
+  });
+
+  it('still accepts a correctly-spelled call', async () => {
+    const { client, close } = await openServer();
+    const result = await client.callTool({
+      name: ReticleTool.SNAPSHOT,
+      arguments: { mode: 'interactive' },
+    });
+    // It may fail for lack of a real session, but NOT for an unknown parameter.
+    expect(text(result)).not.toMatch(/Unknown parameter/i);
+    await close();
+  });
+});

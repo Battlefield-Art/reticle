@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { VISUAL_NO_PROVIDER_RECOMMENDATION, VisualReason } from '@reticlehq/core';
+import { CDP_NO_PROVIDER_RECOMMENDATION, VisualReason } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import { sessionIdShape } from '../tools/tool-kit.js';
 import { asString } from '../tools/tools-helpers.js';
@@ -52,7 +52,7 @@ export const VIEWPORT_TOOLS: ToolDef[] = [
           height: 0,
           ok: false,
           reason: VisualReason.NO_PROVIDER,
-          recommendation: VISUAL_NO_PROVIDER_RECOMMENDATION,
+          recommendation: CDP_NO_PROVIDER_RECOMMENDATION,
         };
       }
       const width = clampDim(args['width']);
