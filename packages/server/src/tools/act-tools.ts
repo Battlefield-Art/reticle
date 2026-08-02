@@ -23,6 +23,7 @@ import { leanActResult } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
 import { causalSummary } from '../capsule/causal-summary.js';
+import { findContradictions } from '../events/contradictions.js';
 import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import { buildHonestyBlock } from '../honesty/honesty.js';
@@ -433,6 +434,12 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           'Present only on a FAILED verdict when the fail-to-pass capsule was persisted: its id, replayable as a regression flow once the bug goes green.',
         ),
+      contradictions: z
+        .array(z.unknown())
+        .optional()
+        .describe(
+          'Channels that DISAGREE about this action — the UI advanced while its write failed, a success signal fired over a failed request, a response changed nothing, a duplicate fired, a request never settled. OMITTED when clean. Treat any entry as a finding even when the verdict is green: a passing assertion and a contradicted channel is exactly the false green this exists to catch.',
+        ),
       honesty: z
         .unknown()
         .describe(
@@ -552,6 +559,7 @@ export const ACT_TOOLS: ToolDef[] = [
           });
           if (saved) capsuleSaved = id;
         }
+        const contradictions = findContradictions(windowEvents);
         return withControl(session, {
           effect: leanActResult(actResult.result),
           verdict,
@@ -564,6 +572,16 @@ export const ACT_TOOLS: ToolDef[] = [
           trace,
           ...(capsuleSaved === undefined ? {} : { capsuleSaved }),
           summary: causalSummary(windowEvents),
+          // Cross-channel disagreement, reported WITH the action that caused it.
+          //
+          // This is the one finding here a human structurally cannot make — they watch one channel,
+          // the screen, so a UI that advanced while its write failed looks like success to them and
+          // always will. It ran only inside reticle_observe, which means it was found only when the
+          // agent already suspected something and thought to go looking. That inverts the value: the
+          // whole point is catching what NOBODY suspected. It now travels with the action, so an
+          // agent cannot miss it by not asking. Omitted entirely when clean, so a healthy action
+          // pays nothing.
+          ...(contradictions.length > 0 ? { contradictions } : {}),
           honesty,
           ...(capsule === undefined ? {} : { capsule }),
           since,

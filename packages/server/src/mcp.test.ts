@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { advertisedTools, encodeResult, firstSentence, withSessionEnvelope } from './mcp.js';
+import {
+  advertisedConfig,
+  advertisedTools,
+  encodeResult,
+  firstSentence,
+  withSessionEnvelope,
+} from './mcp.js';
 import { TOOL_PROFILE } from './tools/profiles.js';
 import { TOOLS } from './tools/tools.js';
 import { SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
@@ -165,4 +171,47 @@ describe('firstSentence does not cut inside an abbreviation', () => {
       }
     },
   );
+});
+
+/**
+ * The predicate grammar is 211 B and rode on SIX advertised tools — 1,266 B, 23% of all parameter
+ * prose, re-sent every turn to state one thing six times. It is now spelled out once and referenced
+ * after that. Both halves matter: drop the full grammar and the agent cannot write a predicate at
+ * all; keep six copies and every turn pays for five of them.
+ */
+describe('the predicate grammar is stated once per turn, not six times', () => {
+  const advertised = advertisedTools(TOOL_PROFILE.HYBRID);
+  const withPredicate = advertised.filter((tool) =>
+    Object.keys(tool.inputSchema).some((k) => k === 'predicate' || k === 'until'),
+  );
+
+  it('has several predicate-bearing tools (otherwise this proves nothing)', () => {
+    expect(withPredicate.length).toBeGreaterThan(1);
+  });
+
+  /** The REAL advertised text, via the same builder registration uses. */
+  const predicateTexts = (): string[] =>
+    advertised.flatMap((tool) =>
+      Object.entries(advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID).inputSchema)
+        .filter(([key]) => key === 'predicate' || key === 'until')
+        .map(([, schema]) => schema.description ?? ''),
+    );
+
+  it('spells the full kind list exactly once across the advertised surface', () => {
+    expect(predicateTexts().filter((d) => d.includes('allOf | anyOf | not'))).toHaveLength(1);
+  });
+
+  it('points every other predicate parameter at the one that has it', () => {
+    expect(predicateTexts().filter((d) => d.includes('same grammar as')).length).toBe(
+      withPredicate.length - 1,
+    );
+  });
+
+  it('still names a real advertised tool in the cross-reference', () => {
+    const names = new Set(advertised.map((tool) => tool.name));
+    for (const text of predicateTexts().filter((d) => d.includes('same grammar as'))) {
+      const named = /same grammar as (reticle_[a-z_]+)/.exec(text)?.[1] ?? '';
+      expect(names, `${named} is referenced but not advertised`).toContain(named);
+    }
+  });
 });

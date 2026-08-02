@@ -92,17 +92,32 @@ const COMPACT_PREDICATE_DESCRIPTION =
   'field grammar of a kind.';
 
 /**
+ * Every predicate parameter after the first says this instead.
+ *
+ * The grammar above is 211 B and appeared on SIX advertised tools — 1,266 B, 23% of all parameter
+ * prose, re-sent every turn to state one thing six times. It is spelled out once (on the first tool
+ * that carries a predicate, which the ordering makes deterministic) and referenced thereafter, so
+ * the full grammar is still in context on every turn without being repeated into it.
+ */
+const PREDICATE_SEE_FIRST = (first: string): string =>
+  `Predicate object — same grammar as ${first}'s.`;
+
+/**
  * Lean copy of a tool's zod input shape for lean profiles: each parameter's description is
  * truncated to its first sentence via zod's own `.describe` (which returns a new schema, so the
  * shared shape is never mutated). The per-parameter prose is the bulk of the re-sent-every-turn
  * schema cost; the first clause keeps each param's purpose and any enum hints. Params without a
  * description pass through unchanged. Predicate params are replaced wholesale — see above.
  */
-function leanZodShape(shape: z.ZodRawShape): z.ZodRawShape {
+function leanZodShape(shape: z.ZodRawShape, predicateAnchor?: string): z.ZodRawShape {
   const out: z.ZodRawShape = {};
   for (const [key, schema] of Object.entries(shape)) {
     if (PREDICATE_PARAMS.has(key)) {
-      const compact = z.record(z.unknown()).describe(COMPACT_PREDICATE_DESCRIPTION);
+      const text =
+        predicateAnchor === undefined
+          ? COMPACT_PREDICATE_DESCRIPTION
+          : PREDICATE_SEE_FIRST(predicateAnchor);
+      const compact = z.record(z.unknown()).describe(text);
       out[key] = schema.isOptional() ? compact.optional() : compact;
       continue;
     }
@@ -171,6 +186,40 @@ export function advertisedTools(profile: ToolProfile): ToolDef[] {
   return [...base, ...buildDynamicTools(TOOLS)];
 }
 
+/**
+ * Exactly what gets advertised for one tool under a profile: trimmed description, lean input shape,
+ * and (non-lean only) the output schema.
+ *
+ * Exported so tests assert on the REAL advertised text rather than on the tool definitions, which
+ * are trimmed later and would make a guard that cannot fail — a mistake already made once here, with
+ * an abbreviation test that read raw defs and would have passed with the bug fully present.
+ */
+export function advertisedConfig(
+  tool: ToolDef,
+  advertised: readonly ToolDef[],
+  profile: ToolProfile,
+): { description: string; inputSchema: z.ZodRawShape; outputSchema?: z.ZodRawShape } {
+  const terse =
+    profile === TOOL_PROFILE.CORE ||
+    profile === TOOL_PROFILE.STANDARD ||
+    profile === TOOL_PROFILE.HYBRID;
+  // The first advertised tool carrying a predicate spells the grammar out; the rest point at it.
+  const anchor = advertised.find((t) =>
+    Object.keys(t.inputSchema).some((k) => PREDICATE_PARAMS.has(k)),
+  )?.name;
+  const outputSchema = terse ? undefined : withSessionEnvelope(tool.name, tool.outputSchema);
+  return {
+    description: withExample(
+      terse ? firstSentence(tool.description) : tool.description,
+      tool.example,
+    ),
+    inputSchema: terse
+      ? leanZodShape(tool.inputSchema, tool.name === anchor ? undefined : anchor)
+      : tool.inputSchema,
+    ...(outputSchema !== undefined ? { outputSchema } : {}),
+  };
+}
+
 export function createMcpServer(
   deps: ToolDeps,
   profile: ToolProfile = TOOL_PROFILE.HYBRID,
@@ -189,10 +238,6 @@ export function createMcpServer(
   // reticle_flow_save's own description instructs the agent to call. `full` advertises everything
   // directly and needs no hatch.
   const advertised = advertisedTools(profile);
-  const terse =
-    profile === TOOL_PROFILE.CORE ||
-    profile === TOOL_PROFILE.STANDARD ||
-    profile === TOOL_PROFILE.HYBRID;
   for (const tool of advertised) {
     // Output schemas are now the largest slice of the per-request tax (55.6% of the hybrid payload
     // after the predicate fix) and we are the only one of the three MCP servers that sends them.
@@ -214,15 +259,7 @@ export function createMcpServer(
     // handler below is unchanged, so `full`/`dynamic` (non-terse) keep the schema for validating
     // clients. This removes the single largest remaining slice of the per-request tax (~36% of the
     // hybrid payload) with no loss the agent can observe.
-    const outputSchema = terse ? undefined : withSessionEnvelope(tool.name, tool.outputSchema);
-    const config = {
-      description: withExample(
-        terse ? firstSentence(tool.description) : tool.description,
-        tool.example,
-      ),
-      inputSchema: terse ? leanZodShape(tool.inputSchema) : tool.inputSchema,
-      ...(outputSchema !== undefined ? { outputSchema } : {}),
-    };
+    const config = advertisedConfig(tool, advertised, profile);
     registerTool(tool.name, config, async (args: Record<string, unknown>) => {
       try {
         const result = await runTool(tool, deps, args);
