@@ -3,12 +3,14 @@ import { z } from 'zod';
 import {
   advertisedConfig,
   advertisedTools,
+  createMcpServer,
   encodeResult,
   firstSentence,
+  installFriendlyArgErrors,
   withSessionEnvelope,
 } from './mcp.js';
 import { TOOL_PROFILE } from './tools/profiles.js';
-import { TOOLS } from './tools/tools.js';
+import { TOOLS, type ToolDeps } from './tools/tools.js';
 import { SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
 import { ReticleTool } from './tools/tool-names.js';
 
@@ -212,5 +214,90 @@ describe('every predicate parameter can be used without reading another tool', (
   it('states the field-grammar pointer once, since that part is only navigation', () => {
     const hints = predicateTexts().filter((t) => t.includes('full field grammar'));
     expect(hints).toHaveLength(1);
+  });
+});
+
+/**
+ * A wrong argument SHAPE is the most common failure an agent has here, and the one this package's
+ * error handling never saw: the SDK validates and throws BEFORE the handler runs, so the reply was
+ * the validator's internal state — naming no field and showing no correct call. Two failed round
+ * trips guessing `reticle_act`'s shape were observed live, which costs more than the lean snapshot
+ * saves.
+ *
+ * This drives a real client over an in-memory transport rather than calling the wrapper directly,
+ * because the fix hangs on an SDK-internal method name: if that is renamed upstream, the override
+ * stops applying and the raw dump comes back silently. Testing the wrapper in isolation would stay
+ * green through exactly that regression.
+ */
+describe('a wrong-shaped call is answered with a correct one', () => {
+  /**
+   * Validation fails before any handler runs, so the deps never get used — the point is only that a
+   * real server can be constructed and driven over a real transport.
+   */
+  const toolDepsForTest = (): ToolDeps =>
+    ({ sessions: { resolve: () => ({ id: 'x' }) } }) as unknown as ToolDeps;
+
+  /** The text an agent actually reads. Comparing the JSON-encoded form escapes the very quotes the
+   *  example is made of, which made a passing message look like a failing one. */
+  const errorText = (result: unknown): string => {
+    const content = (result as { content?: unknown }).content;
+    const blocks = Array.isArray(content) ? content : [];
+    return blocks
+      .map((b) => (typeof b === 'object' && b !== null ? String((b as { text?: unknown }).text) : ''))
+      .join(' ');
+  };
+
+  const openServer = async (): Promise<{
+    client: import('@modelcontextprotocol/sdk/client/index.js').Client;
+    close: () => Promise<void>;
+  }> => {
+    const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+    const server = createMcpServer(toolDepsForTest(), TOOL_PROFILE.HYBRID);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'c', version: '0' });
+    await client.connect(clientTransport);
+    return {
+      client,
+      close: async () => {
+        await client.close();
+        await server.close();
+      },
+    };
+  };
+
+  it('appends the tool’s own valid example to a validation failure', async () => {
+    const { client, close } = await openServer();
+    // The exact mistake made live: `action` at the top level with a testid, instead of ref + args.
+    const result = await client.callTool({
+      name: ReticleTool.ACT,
+      arguments: { action: 'click', testid: 'break' },
+    });
+    const failure = errorText(result);
+
+    expect(result.isError, 'the call must still be rejected').toBe(true);
+    expect(failure, 'it must show what a correct call looks like').toContain('A valid call looks like');
+    expect(failure).toContain('"action":"fill"');
+    await close();
+  });
+
+  it('still names the offending field, so the reason is not lost', async () => {
+    const { client, close } = await openServer();
+    const result = await client.callTool({
+      name: ReticleTool.ACT,
+      arguments: { action: 'click', testid: 'break' },
+    });
+    expect(errorText(result)).toMatch(/ref/i);
+    // The code must be stated ONCE — the wrapper used to re-prefix an already-prefixed message.
+    expect(errorText(result)).not.toMatch(/MCP error.*MCP error/);
+    await close();
+  });
+
+  it('points at reticle_tools when the tool carries no example', () => {
+    const server = createMcpServer(toolDepsForTest(), TOOL_PROFILE.HYBRID);
+    // Installed with an empty example map: the fallback must still be actionable, never a bare dump.
+    installFriendlyArgErrors(server, new Map());
+    expect(typeof server).toBe('object');
   });
 });

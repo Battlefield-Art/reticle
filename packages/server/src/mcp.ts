@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { isToonable, resultToToon } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from './tools/tools.js';
@@ -236,6 +237,46 @@ export function advertisedConfig(
   };
 }
 
+/**
+ * Replace the SDK's arg-validation error with one an agent can act on.
+ *
+ * A wrong argument SHAPE is the most common failure an agent has here, and it is the one this
+ * package's otherwise-good error handling never sees: the SDK validates and throws before the
+ * handler runs, so what comes back is the validator's internal state — `{"code":"invalid_type",
+ * "expected":"string","received":...}` — naming no field and showing no correct call. Observed live:
+ * two failed round trips guessing `reticle_act`'s shape, which costs more than the lean snapshot
+ * saves. Advertised examples reduced the guessing; this removes the dead end that remains.
+ *
+ * The zod detail is KEPT — it names the offending field — and the tool's own example is appended, so
+ * the reply says both what was wrong and exactly what a correct call looks like.
+ *
+ * This wraps an SDK-internal method, so a rename upstream would silently restore the raw dump. That
+ * is why `mcp.test.ts` drives a real client over an in-memory transport and asserts on the message
+ * an agent actually receives, rather than testing this function directly.
+ */
+type InputValidator = (tool: unknown, args: unknown, toolName: string) => Promise<unknown>;
+
+export function installFriendlyArgErrors(server: McpServer, examples: Map<string, string>): void {
+  const target = server as unknown as { validateToolInput?: InputValidator };
+  const original = target.validateToolInput;
+  if (typeof original !== 'function') return;
+  target.validateToolInput = async (tool, args, toolName) => {
+    try {
+      return await original.call(server, tool, args, toolName);
+    } catch (error) {
+      // McpError.message already carries "MCP error -32602: "; re-wrapping would print it twice.
+      const raw = error instanceof Error ? error.message : String(error);
+      const detail = raw.replace(/^MCP error -?\d+:\s*/, '');
+      const example = examples.get(toolName);
+      const help =
+        example === undefined
+          ? ` Call reticle_tools { names: ["${toolName}"] } for its parameters.`
+          : ` A valid call looks like: ${toolName} ${example}`;
+      throw new McpError(ErrorCode.InvalidParams, `${detail}${help}`);
+    }
+  };
+}
+
 export function createMcpServer(
   deps: ToolDeps,
   profile: ToolProfile = TOOL_PROFILE.HYBRID,
@@ -254,6 +295,14 @@ export function createMcpServer(
   // reticle_flow_save's own description instructs the agent to call. `full` advertises everything
   // directly and needs no hatch.
   const advertised = advertisedTools(profile);
+  installFriendlyArgErrors(
+    server,
+    new Map(
+      advertised
+        .filter((tool) => tool.example !== undefined)
+        .map((tool) => [tool.name, JSON.stringify(tool.example)]),
+    ),
+  );
   for (const tool of advertised) {
     // Output schemas are now the largest slice of the per-request tax (55.6% of the hybrid payload
     // after the predicate fix) and we are the only one of the three MCP servers that sends them.
