@@ -306,7 +306,13 @@ export type Annotation = z.infer<typeof AnnotationSchema>;
  */
 export type AnnotateResult =
   | { ok: true; target: AnnotationTarget; compiled: string }
-  | { ok: false; code: AnnotationErrorCode };
+  /**
+   * A failure carries its own way out. `code` alone told the caller WHAT was wrong and never what to
+   * do, and the recovery hints elsewhere only attach to THROWN messages — a structured `{ ok: false }`
+   * got none. So an agent hitting `annotate_no_recording` had no way to learn that a recording has to
+   * be started first, and simply stopped annotating.
+   */
+  | { ok: false; code: AnnotationErrorCode; recovery?: string };
 
 /**
  * The patch a compiled annotation produces. The caller applies it to the

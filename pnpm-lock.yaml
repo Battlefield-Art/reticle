@@ -481,12 +481,6 @@ importers:
         specifier: 15.5.21
         version: 15.5.21(@babel/core@7.29.7)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
 
-  packages/protocol:
-    dependencies:
-      '@reticlehq/core':
-        specifier: workspace:*
-        version: link:../core
-
   packages/react:
     dependencies:
       '@reticlehq/browser':

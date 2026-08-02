@@ -3,7 +3,7 @@ name: Publish to npm
 # Publishes the public @reticlehq/* packages (core, browser, react, server, vite-plugin, next,
 # babel-plugin, test, eslint-plugin) when a GitHub Release is published, or on manual dispatch.
 # `pnpm -r publish` walks the workspace in dependency order, skips `private` packages (the retired
-# `@reticlehq/protocol` alias is marked private so it is never republished), and skips any version
+# private packages are never republished), and skips any version
 # already on npm — so a partial/failed run is safe to re-trigger.
 #
 # NPM_TOKEN (an npm "Automation" token) lives in the "Production" GitHub Environment, so

@@ -25,11 +25,11 @@ export const RECOVERY = {
     'The target tab is backgrounded/throttled, so actions may silently no-op. Ask the human to bring ' +
     'the tab to the front, or run `reticle drive <url>` for a guaranteed scriptable context.',
   MISSING_BASELINE:
-    'That baseline does not exist yet. Call reticle_baseline_list to see saved names, or reticle_baseline_save ' +
-    'to capture one before diffing against it.',
+    'That baseline does not exist yet. Call reticle_baseline { action: "list" } to see saved names, or ' +
+    'reticle_baseline { action: "save", name } to capture one before diffing against it.',
   MISSING_RECORDING:
-    'No recording by that name is in progress. Start one with reticle_record_start before annotating, ' +
-    'stopping, or saving it.',
+    'No recording by that name is in progress. Start one with reticle_record { action: "start", name } ' +
+    'before annotating, stopping, or saving it.',
   TOKEN_REQUIRED:
     'The bridge binds beyond localhost and requires a pairing token. Set the same token in the SDK ' +
     'init (@reticlehq/core) and the Reticle server config, then reconnect.',

@@ -10,7 +10,6 @@ Reticle is the **proof layer for AI agents** — it verifies a running web app f
 
 ```
 packages/core          @reticlehq/core         — bottom-of-graph foundation: wire contract, constants, zod schemas (deps: zod)
-packages/protocol      @reticlehq/protocol     — thin deprecated alias re-exporting @reticlehq/core (remove in v3)
 packages/browser       @reticlehq/browser      — instrumentation SDK embedded in the app (DOM-side)
 packages/server        @reticlehq/server       — bridge + MCP server, the `reticle` CLI (Node-side)
 packages/react         @reticlehq/react        — React adapter: DOM ref -> component -> source file
@@ -31,7 +30,7 @@ This is **one git repo** at the root (pnpm + turbo monorepo). The TS library pac
 
 ## Service boundaries (who owns what)
 
-- **`@reticlehq/core` is the contract.** Any message that crosses browser ↔ bridge ↔ agent is defined there as a constant + zod schema. It sits at the bottom of the graph (deps: `zod` only); everything depends on it, it depends on nothing. Never inline a wire string in `browser` or `server` — add it to `core`. (`@reticlehq/protocol` is a thin deprecated alias re-exporting `core`; import from `core` in new code.)
+- **`@reticlehq/core` is the contract.** Any message that crosses browser ↔ bridge ↔ agent is defined there as a constant + zod schema. It sits at the bottom of the graph (deps: `zod` only); everything depends on it, it depends on nothing. Never inline a wire string in `browser` or `server` — add it to `core`.
 - **`@reticlehq/browser` only touches the DOM/page.** It never imports Node APIs.
 - **`@reticlehq/server` only runs in Node.** It never imports DOM APIs.
 - **`@reticlehq/react` is optional enrichment.** Core must work without it.

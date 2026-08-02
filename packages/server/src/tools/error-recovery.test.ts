@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RECOVERY, buildErrorPayload, recoveryFor } from './error-recovery.js';
+import { TOOLS } from './tools.js';
 
 describe('recoveryFor — every known error carries an actionable next move', () => {
   it('maps the no-session footgun to a concrete recovery', () => {
@@ -56,5 +57,25 @@ describe('buildErrorPayload — the MCP-boundary envelope', () => {
     const unknown = buildErrorPayload('save failed: disk_full');
     expect(unknown).toEqual({ error: 'save failed: disk_full' });
     expect('recovery' in unknown).toBe(false);
+  });
+});
+
+/**
+ * A recovery hint is only useful if the tool it names can actually be called.
+ *
+ * Two hints told the agent to call `reticle_record_start` and `reticle_baseline_list`. Both had been
+ * folded into action-dispatched tools by MERGE_PLANS and are no longer advertised, so the one message
+ * whose whole job is "here is the way out" pointed at a door that is not there. Nothing caught it:
+ * the strings are prose, and prose is not type-checked.
+ */
+describe('every tool a recovery hint names must still be advertised', () => {
+  const advertised = new Set(TOOLS.map((tool) => tool.name));
+
+  it.each(Object.entries(RECOVERY))('%s names only reachable tools', (_name, hint) => {
+    for (const mentioned of hint.match(/reticle_[a-z_]+/g) ?? []) {
+      expect(advertised, `${mentioned} is named by a recovery hint but is not advertised`).toContain(
+        mentioned,
+      );
+    }
   });
 });

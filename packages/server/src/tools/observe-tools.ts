@@ -389,7 +389,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.NETWORK,
     description:
-      'Filtered list of network calls. Fast path for "did POST /x return 200?". A zero-match filter returns a `hint` { totalInWindow, present[] } of the calls that DID fire, so a miss is diagnosable.',
+      'Filtered list of network calls. Fast path for "did POST /x return 200?". A zero-match filter returns a `hint` { totalInWindow, present[] } of the calls that DID fire, so a miss is diagnosable. Desktop IPC (`ipc://`) has no status code — the 200/500 there is derived, so filter on `ok` for those.',
     inputSchema: {
       since: z
         .number()

@@ -1,5 +1,16 @@
 import { z } from 'zod';
 import { AnnotationErrorCode, AnnotationSchema, type AnnotateResult } from '@reticlehq/core';
+import { RECOVERY } from '../tools/error-recovery.js';
+
+/**
+ * An unknown kind is almost always a free-text annotation, which this tool deliberately refuses to
+ * guess into a predicate. Naming the six kinds turns a dead end into one retry.
+ */
+const UNKNOWN_KIND_RECOVERY =
+  'Annotations are structured, never free text. Pass one of: ' +
+  '{ kind: "assert-signal", name }, { kind: "assert-visible", testid }, ' +
+  '{ kind: "assert-state", statePath }, { kind: "mark-dynamic", testid }, ' +
+  '{ kind: "success-state", signal|testid }, or { kind: "intent", text }.';
 import { ReticleTool } from '../tools/tool-names.js';
 import { asString } from '../tools/tools-helpers.js';
 import { compileAnnotation } from './annotate.js';
@@ -118,6 +129,7 @@ export const ANNOTATE_TOOLS: ToolDef[] = [
     },
     outputSchema: {
       ok: z.boolean(),
+      recovery: z.string().optional(),
       target: z.string().optional(),
       compiled: z.string().optional(),
       code: z.string().optional(),
@@ -128,13 +140,21 @@ export const ANNOTATE_TOOLS: ToolDef[] = [
       // Structured boundary: a free NL string / unknown kind fails the schema → UNKNOWN_KIND.
       const parsed = AnnotationSchema.safeParse(args);
       if (!parsed.success) {
-        return Promise.resolve({ ok: false, code: AnnotationErrorCode.UNKNOWN_KIND });
+        return Promise.resolve({
+          ok: false,
+          code: AnnotationErrorCode.UNKNOWN_KIND,
+          recovery: UNKNOWN_KIND_RECOVERY,
+        });
       }
 
       const stepCount = deps.recordings.stepCount(name);
       const compiled = deps.recordings.getCompiled(name) !== undefined;
       if (stepCount === undefined && !compiled) {
-        return Promise.resolve({ ok: false, code: AnnotationErrorCode.NO_ACTIVE_RECORDING });
+        return Promise.resolve({
+          ok: false,
+          code: AnnotationErrorCode.NO_ACTIVE_RECORDING,
+          recovery: RECOVERY.MISSING_RECORDING,
+        });
       }
 
       const outcome = compileAnnotation(parsed.data, stepCount ?? 0);

@@ -44,7 +44,6 @@ export const SIDE = Object.freeze({
   '@reticlehq/test': 'node',
   // Isomorphic foundation — imported by every side, imports none of them.
   '@reticlehq/core': 'iso',
-  '@reticlehq/protocol': 'iso',
 });
 
 /** Node-runtime npm packages a browser/build/iso package must never depend on (a "needs a server" proxy). */
@@ -134,7 +133,7 @@ function selfTest() {
   const bad = [
     { name: '@reticlehq/browser', dependencies: { ws: '^8', '@reticlehq/server': 'workspace:*' } },
     { name: '@reticlehq/server', dependencies: { '@reticlehq/react': 'workspace:*' } },
-    { name: '@reticlehq/protocol', dependencies: { '@reticlehq/browser': 'workspace:*' } },
+    { name: '@reticlehq/core', dependencies: { '@reticlehq/browser': 'workspace:*' } },
   ];
   const v = findViolations(bad);
   const got = new Set(v.map((x) => `${x.from}->${x.to}`));
@@ -142,7 +141,7 @@ function selfTest() {
     '@reticlehq/browser->ws',
     '@reticlehq/browser->@reticlehq/server',
     '@reticlehq/server->@reticlehq/react',
-    '@reticlehq/protocol->@reticlehq/browser',
+    '@reticlehq/core->@reticlehq/browser',
   ];
   const missing = expected.filter((e) => !got.has(e));
   if (missing.length > 0) {

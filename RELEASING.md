@@ -12,7 +12,7 @@ Every published `@reticlehq/*` package shares **one version, bumped in lockstep*
 - **minor** — a new tool, a new predicate kind, a new adapter, a new CLI flag. Additive: existing calls behave identically.
 - **major** — a tool renamed or removed, an output field removed, a wire message changed incompatibly, a saved flow that no longer replays. Ships with a [MIGRATION.md](MIGRATION.md) entry.
 
-A deprecation gets one minor release of warning before removal in the next major (see `@reticlehq/protocol`, deprecated in v2, removed in v3).
+A deprecation gets one minor release of warning before removal in the next major.
 
 ## Cadence
 
