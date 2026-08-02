@@ -59,6 +59,62 @@ It works because Reticle runs **inside** the app rather than looking at it from 
 
 You never write test syntax. You say what should be true in plain English; the agent does the rest.
 
+## Install in 30 seconds
+
+**Easiest — paste one line into your agent:**
+
+```text
+Follow https://raw.githubusercontent.com/reticlehq/reticle/main/SKILL.md
+```
+
+It auto-detects whether Reticle is set up, runs the wizard the first time, and verifies your app every time after. Works with Claude Code, Cursor, OpenCode, and any MCP agent.
+
+**Or via CLI** — auto-detects your framework, installs the kit + build plugin, and registers the MCP server for every agent in one shot:
+
+```bash
+npx @reticlehq/server init
+```
+
+**Or register the MCP server directly in Claude Code** (then restart it):
+
+```bash
+claude mcp add reticle -s user -- npx @reticlehq/server mcp
+```
+
+<details>
+<summary><b>Manual setup — install + wire it yourself</b></summary>
+
+<br/>
+
+**1. Install** the SDK kit + your framework's build plugin (the kit re-exports the browser sensor):
+
+```bash
+npm i -D @reticlehq/react @reticlehq/vite-plugin        # Vite; or pnpm / yarn / bun
+# Next.js instead? npm i -D @reticlehq/react @reticlehq/next
+```
+
+**2. Register the MCP server** — `npx @reticlehq/server mcp` _is_ the server:
+
+```jsonc
+// .mcp.json
+{ "mcpServers": { "reticle": { "command": "npx", "args": ["@reticlehq/server", "mcp"] } } }
+```
+
+**3. Connect the dev-only SDK** from your app entry (tree-shaken out of production):
+
+```ts
+// main.tsx — dev only
+import { reticle } from '@reticlehq/react';
+if (import.meta.env.DEV) reticle.connect({ session: 'my-app' });
+// React? add `import { install } from "@reticlehq/react"; install()` before connect for component → file:line.
+```
+
+Full walkthrough → [Getting Started](docs/getting-started.md).
+
+</details>
+
+## How it works
+
 > **You:** "Verify login works: it should call `/api/login`, land on the dashboard, and set the signed-in user."
 >
 > **Agent, via Reticle:** clicks **Sign in** → `POST /api/login → 200 (14 ms)` → dashboard rendered → store now holds `auth: { email: "admin@…" }` → **✅ PASS**, with that evidence attached. Had it failed, you'd get the failing check **and the `file:line`** instead of a guess.
@@ -88,8 +144,6 @@ reticle_assert({
 ```
 
 </details>
-
-## How it works
 
 ```mermaid
 flowchart LR
@@ -191,60 +245,6 @@ Not observed today: **IndexedDB**, **Web Workers**, and anything inside a closed
 ### Does it work with my state library?
 
 `registerStore` duck-types on `{ getState, subscribe }`, so **zustand and Redux work with no adapter at all**. Shipped adapters cover **TanStack Query, Jotai, XState, Valtio and MobX**, and a generic `pushStore` handles Context or anything hand-rolled — you push, Reticle reads. Recoil has no adapter yet; the generic path still works. None of the adapters import their library, so they add no dependency and no weight for an app that doesn't use them.
-
-## Install in 30 seconds
-
-**Easiest — paste one line into your agent:**
-
-```text
-Follow https://raw.githubusercontent.com/reticlehq/reticle/main/SKILL.md
-```
-
-It auto-detects whether Reticle is set up, runs the wizard the first time, and verifies your app every time after. Works with Claude Code, Cursor, OpenCode, and any MCP agent.
-
-**Or via CLI** — auto-detects your framework, installs the kit + build plugin, and registers the MCP server for every agent in one shot:
-
-```bash
-npx @reticlehq/server init
-```
-
-**Or register the MCP server directly in Claude Code** (then restart it):
-
-```bash
-claude mcp add reticle -s user -- npx @reticlehq/server mcp
-```
-
-<details>
-<summary><b>Manual setup — install + wire it yourself</b></summary>
-
-<br/>
-
-**1. Install** the SDK kit + your framework's build plugin (the kit re-exports the browser sensor):
-
-```bash
-npm i -D @reticlehq/react @reticlehq/vite-plugin        # Vite; or pnpm / yarn / bun
-# Next.js instead? npm i -D @reticlehq/react @reticlehq/next
-```
-
-**2. Register the MCP server** — `npx @reticlehq/server mcp` _is_ the server:
-
-```jsonc
-// .mcp.json
-{ "mcpServers": { "reticle": { "command": "npx", "args": ["@reticlehq/server", "mcp"] } } }
-```
-
-**3. Connect the dev-only SDK** from your app entry (tree-shaken out of production):
-
-```ts
-// main.tsx — dev only
-import { reticle } from '@reticlehq/react';
-if (import.meta.env.DEV) reticle.connect({ session: 'my-app' });
-// React? add `import { install } from "@reticlehq/react"; install()` before connect for component → file:line.
-```
-
-Full walkthrough → [Getting Started](docs/getting-started.md).
-
-</details>
 
 ## Go deeper
 
