@@ -23,11 +23,16 @@ Nothing on the JavaScript side. Tauri has no preload stage where a shim could be
 
 `reticle_capture` writes a PNG to the OS temp directory and returns its path; `reticle_screenshot` and `reticle_visual_diff` work from there. Each platform uses its own webview API:
 
-| Platform   | API                                      |
-| ---------- | ---------------------------------------- |
-| macOS      | `WKWebView.takeSnapshot`                 |
-| Windows    | WebView2 `CapturePreview`                |
-| Linux, BSD | WebKitGTK `webkit_web_view_get_snapshot` |
+| Platform   | API                                      | Status                          |
+| ---------- | ---------------------------------------- | ------------------------------- |
+| macOS      | `WKWebView.takeSnapshot`                 | Verified against a running app  |
+| Linux, BSD | WebKitGTK `webkit_web_view_get_snapshot` | Snapshot + PNG encoding verified under `xvfb`; not yet driven through a full Tauri app |
+| Windows    | WebView2 `CapturePreview`                | **Untested — compiles, never executed** |
+
+The Windows path is written and type-checked against the real `webview2-com` API (which caught two
+genuine type errors), but nobody has run it on Windows. It is shipped rather than withheld so it can
+be tried, and labelled rather than listed flatly so that trying it is a choice. If it works for you,
+say so and this row changes; treat a green from it as unconfirmed until then.
 
 It renders the webview, not the screen. Capturing a screen region instead would photograph whatever is on top — an app window behind your editor yields a picture of the editor, banked as a visual baseline a later diff would trust. This path cannot do that, needs no screen-recording permission, and is correct with nothing on screen at all.
 

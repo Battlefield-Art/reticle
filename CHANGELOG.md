@@ -4,6 +4,21 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-08-02
+
+### Behaviour changes — read these before upgrading
+
+Four changes alter what an existing caller gets back. None is a rename, so nothing fails to compile; they change RESULTS, which is the kind of change worth reading twice.
+
+- **Unknown tool parameters are now REFUSED, not ignored.** Pass a key a tool does not declare and the call fails with that tool's own valid example, instead of the key being silently dropped. This is the one change that can break a working script, and it is worth it: `reticle_clock` with a misspelled parameter used to return `{"frozen":false}` — a well-formed NEGATIVE that reads as a fact about the app, when it meant "you named the parameter wrong". Silently ignoring input was never a documented contract, and it made every tool a false-negative generator for one typo.
+- **The bridge SAMPLES above its message-rate cap instead of disconnecting.** A burst used to close the socket permanently (a policy code the SDK never retries), leaving the app running and Reticle blind. Events above the cap are now dropped and reported as a `rate-limited` blind spot, so a verdict over a sampled window says `coverage: partial`. Raise `RETICLE_MAX_MESSAGES_PER_SECOND` for a legitimately busy app.
+- **`reticle_project` and `reticle_domain` cap their output** (25 by default) and report `totalRuns` / `flowsTruncated`. `project` was returning the entire run history — 176 runs and ~5,000 tokens on this repo, growing with every run.
+- **`reticle_network_mock` and `reticle_viewport` return `no-cdp-provider`**, not `no-visual-provider`. Nothing outside this repo matched the old code; if you gate on the reason string, update it.
+
+### Known limitation
+
+`reticle-tauri`'s **Windows** capture path compiles and is type-checked against the real WebView2 API, but has never been executed on Windows. It ships labelled rather than withheld so it can be tried — treat a green from it as unconfirmed until someone reports otherwise.
+
 ### Added
 
 - **`reticle hunt <dir>` — the arithmetic behind the core claim.** Detection already existed: `reticle_crawl` drives every reachable control and reports contradictions, and it has twice found real bugs nobody planted (`swallowed-500-login`, and `ui-advanced-request-failed` on a control whose assertion was green). What was missing was the step that turns those into evidence. Point it at a directory of crawl reports — one per already-merged, already-green checkout — and it answers the sentence worth putting in front of someone: _"N of M merged, already-green changes carried a candidate false green."_ No control arm is needed, because those changes SHIPPED, which makes this the cheapest credible proof available and tells you where to power the eventual A/B. Two honesty properties are enforced by test: a checkout that drove ZERO controls is excluded from the denominator rather than counted as clean (the arithmetic equivalent of a green because no test ran), and every flag is reported as a _candidate_ with the checkout named, because a number that skips manual confirmation is exactly the kind of evidence this project exists to distrust. (`@reticlehq/server`)
