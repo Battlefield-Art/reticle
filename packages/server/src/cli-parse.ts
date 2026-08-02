@@ -40,6 +40,7 @@ const OPEN_COMMAND = 'open';
 const DRIVE_COMMAND = 'drive';
 const VERIFY_COMMAND = 'verify';
 const AFFECTED_COMMAND = 'affected';
+const HUNT_COMMAND = 'hunt';
 const CAPSULES_COMMAND = 'capsules';
 const GATE_COMMAND = 'gate';
 const WATCH_COMMAND = 'watch';
@@ -103,6 +104,7 @@ export type CliResult =
   | { kind: 'drive'; port: number; driveUrl: string; headless: boolean }
   | { kind: 'verify'; url: string; headless: boolean; timeoutMs?: number; storageState?: string }
   | { kind: 'affected'; files: string[]; since?: string }
+  | { kind: 'hunt'; dir: string }
   | { kind: 'capsules' }
   | { kind: 'gate'; files: string[]; since?: string }
   | { kind: 'watch'; url?: string }
@@ -413,6 +415,12 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
     }
     case CAPSULES_COMMAND:
       return { kind: 'capsules' };
+    case HUNT_COMMAND: {
+      const dir = rest.find((a) => !a.startsWith('-'));
+      return dir === undefined
+        ? { kind: 'error', message: 'usage: reticle hunt <dir-of-crawl-reports>' }
+        : { kind: 'hunt', dir };
+    }
     case AFFECTED_COMMAND: {
       const t = parseTargetArgs(rest);
       if (t.files.length === 0 && t.since === undefined) {

@@ -41,6 +41,7 @@ import { installDaemonResilience } from './daemon-resilience.js';
 import { IdleShutdown, resolveIdleShutdownMs } from './idle-shutdown.js';
 import { fetchStatus, summarizeStatus, decideOpen, openInBrowser } from './cli-launch.js';
 import { handleVerify } from './cli-verify.js';
+import { summarizeHunt, type HuntAnomaly, type HuntRun } from './hunt/hunt-report.js';
 import { runInit } from './init/run.js';
 import { handleDoctor } from './cli-doctor.js';
 import { buildNodeIo } from './init/node-io.js';
@@ -199,6 +200,41 @@ async function handleAffected(files: string[], since: string | undefined): Promi
     });
   } catch (error) {
     log('reticle_affected_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * `reticle hunt <dir>` — aggregate crawl reports from many checkouts into one number.
+ *
+ * Detection already exists (`reticle_crawl`). This is the arithmetic that turns a pile of runs into
+ * the claim worth making: over N already-merged, already-green changes, how many carried a candidate
+ * false green? No control arm is needed, because those changes SHIPPED — the counterfactual is
+ * already established, which is what makes this the cheapest credible evidence available.
+ *
+ * Each file in <dir> is one crawl result. Producing them is a shell loop over a commit range:
+ * check out, boot the app, `reticle_crawl`, write the JSON here.
+ */
+async function handleHunt(dir: string): Promise<void> {
+  try {
+    const fs = createNodeFileSystem();
+    const names: string[] = await fs.readdir(dir);
+    const runs: HuntRun[] = [];
+    for (const name of names.filter((n) => n.endsWith('.json'))) {
+      const raw = await fs.readFile(join(dir, name));
+      if (raw === undefined) continue;
+      const parsed: unknown = JSON.parse(raw);
+      const report = parsed as { anomalies?: HuntAnomaly[]; stepsRun?: number; label?: string };
+      runs.push({
+        label: report.label ?? name.replace(/\.json$/, ''),
+        anomalies: report.anomalies ?? [],
+        ...(report.stepsRun === undefined ? {} : { stepsRun: report.stepsRun }),
+      });
+    }
+    log('reticle_hunt', { ...summarizeHunt(runs) });
+  } catch (error) {
+    log('reticle_hunt_failed', {
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -510,6 +546,9 @@ function main(): void {
       break;
     case 'affected':
       void handleAffected(parsed.files, parsed.since);
+      break;
+    case 'hunt':
+      void handleHunt(parsed.dir);
       break;
     case 'gate':
       void handleGate(parsed.files, parsed.since);
