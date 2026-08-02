@@ -86,21 +86,23 @@ const PREDICATE_PARAMS = new Set(['predicate', 'until']);
  * grammar up front versus letting the agent fetch it from `reticle_tools` when it needs a variant it
  * has not used before.
  */
-const COMPACT_PREDICATE_DESCRIPTION =
-  'Predicate object: { kind, ...fields }. kind is one of element | text | net | route | console | ' +
-  'animation | signal | state | settled | allOf | anyOf | not. Call reticle_tools for the full ' +
-  'field grammar of a kind.';
-
 /**
- * Every predicate parameter after the first says this instead.
+ * The kind list — the part an agent needs to WRITE a predicate. Carried on every predicate parameter.
  *
- * The grammar above is 211 B and appeared on SIX advertised tools — 1,266 B, 23% of all parameter
- * prose, re-sent every turn to state one thing six times. It is spelled out once (on the first tool
- * that carries a predicate, which the ordering makes deterministic) and referenced thereafter, so
- * the full grammar is still in context on every turn without being repeated into it.
+ * An earlier version put this on one tool and pointed the other five at it ("same grammar as
+ * reticle_act_and_wait's"), which saved 790 B/turn. It was the wrong trade: it made writing a
+ * predicate require joining two tool descriptions, and accuracy is worth more here than the bytes.
+ * Only the "where to get field details" sentence is stated once now — that one IS a pointer, so
+ * making it a pointer costs nothing.
  */
-const PREDICATE_SEE_FIRST = (first: string): string =>
-  `Predicate object — same grammar as ${first}'s.`;
+const PREDICATE_KINDS =
+  'Predicate object: { kind, ...fields }. kind is one of element | text | net | route | console | ' +
+  'animation | signal | state | settled | allOf | anyOf | not.';
+
+/** Said once per turn: where to get the per-kind field grammar. Pure navigation, safe to not repeat. */
+const PREDICATE_FIELD_GRAMMAR_HINT = ' Call reticle_tools for the full field grammar of a kind.';
+
+const COMPACT_PREDICATE_DESCRIPTION = `${PREDICATE_KINDS}${PREDICATE_FIELD_GRAMMAR_HINT}`;
 
 /**
  * Lean copy of a tool's zod input shape for lean profiles: each parameter's description is
@@ -113,11 +115,10 @@ function leanZodShape(shape: z.ZodRawShape, predicateAnchor?: string): z.ZodRawS
   const out: z.ZodRawShape = {};
   for (const [key, schema] of Object.entries(shape)) {
     if (PREDICATE_PARAMS.has(key)) {
-      const text =
-        predicateAnchor === undefined
-          ? COMPACT_PREDICATE_DESCRIPTION
-          : PREDICATE_SEE_FIRST(predicateAnchor);
-      const compact = z.record(z.unknown()).describe(text);
+      // Every tool keeps the kinds; only the navigation hint is anchored to one.
+      const compact = z
+        .record(z.unknown())
+        .describe(predicateAnchor === undefined ? COMPACT_PREDICATE_DESCRIPTION : PREDICATE_KINDS);
       out[key] = schema.isOptional() ? compact.optional() : compact;
       continue;
     }

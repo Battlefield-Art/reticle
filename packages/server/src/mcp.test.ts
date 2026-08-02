@@ -174,20 +174,16 @@ describe('firstSentence does not cut inside an abbreviation', () => {
 });
 
 /**
- * The predicate grammar is 211 B and rode on SIX advertised tools — 1,266 B, 23% of all parameter
- * prose, re-sent every turn to state one thing six times. It is now spelled out once and referenced
- * after that. Both halves matter: drop the full grammar and the agent cannot write a predicate at
- * all; keep six copies and every turn pays for five of them.
+ * Every predicate parameter must stay SELF-SUFFICIENT.
+ *
+ * A previous version stated the kinds on one tool and pointed the other five at it, saving 790 B per
+ * turn. That was the wrong trade: writing a predicate then required joining two tool descriptions,
+ * and a fumbled join is a wrong call, which costs far more than the bytes saved. Only the "call
+ * reticle_tools for field details" sentence is anchored now — that one is navigation, so stating it
+ * once loses nothing.
  */
-describe('the predicate grammar is stated once per turn, not six times', () => {
+describe('every predicate parameter can be used without reading another tool', () => {
   const advertised = advertisedTools(TOOL_PROFILE.HYBRID);
-  const withPredicate = advertised.filter((tool) =>
-    Object.keys(tool.inputSchema).some((k) => k === 'predicate' || k === 'until'),
-  );
-
-  it('has several predicate-bearing tools (otherwise this proves nothing)', () => {
-    expect(withPredicate.length).toBeGreaterThan(1);
-  });
 
   /** The REAL advertised text, via the same builder registration uses. */
   const predicateTexts = (): string[] =>
@@ -197,21 +193,24 @@ describe('the predicate grammar is stated once per turn, not six times', () => {
         .map(([, schema]) => schema.description ?? ''),
     );
 
-  it('spells the full kind list exactly once across the advertised surface', () => {
-    expect(predicateTexts().filter((d) => d.includes('allOf | anyOf | not'))).toHaveLength(1);
+  it('covers several tools (otherwise this proves nothing)', () => {
+    expect(predicateTexts().length).toBeGreaterThan(1);
   });
 
-  it('points every other predicate parameter at the one that has it', () => {
-    expect(predicateTexts().filter((d) => d.includes('same grammar as')).length).toBe(
-      withPredicate.length - 1,
-    );
-  });
-
-  it('still names a real advertised tool in the cross-reference', () => {
-    const names = new Set(advertised.map((tool) => tool.name));
-    for (const text of predicateTexts().filter((d) => d.includes('same grammar as'))) {
-      const named = /same grammar as (reticle_[a-z_]+)/.exec(text)?.[1] ?? '';
-      expect(names, `${named} is referenced but not advertised`).toContain(named);
+  it('carries the kind list on EVERY predicate parameter', () => {
+    for (const text of predicateTexts()) {
+      expect(text, 'a predicate param must name its kinds').toContain('allOf | anyOf | not');
     }
+  });
+
+  it('never sends the agent to another tool to learn the grammar', () => {
+    for (const text of predicateTexts()) {
+      expect(text).not.toMatch(/same grammar as/i);
+    }
+  });
+
+  it('states the field-grammar pointer once, since that part is only navigation', () => {
+    const hints = predicateTexts().filter((t) => t.includes('full field grammar'));
+    expect(hints).toHaveLength(1);
   });
 });
