@@ -25,6 +25,7 @@ const { join } = require('node:path');
 const {
   RETICLE_CAPTURE_CHANNEL,
   RETICLE_CAPTURE_FILE_PREFIX,
+  RETICLE_FULL_PAGE_UNSUPPORTED,
 } = require('@reticlehq/core/desktop-contract');
 
 let captureSeq = 0;
@@ -77,7 +78,10 @@ function installReticleCapture(win) {
   win.on?.('closed', () => windows.delete(win));
 
   if (!registered) {
-    ipcMain.handle(RETICLE_CAPTURE_CHANNEL, async (event) => {
+    ipcMain.handle(RETICLE_CAPTURE_CHANNEL, async (event, options) => {
+      // `capturePage()` reads the composited window, so there is no full-document render to ask for.
+      // Saying so beats handing back a viewport the caller thinks covers the whole scroll height.
+      if (options && options.fullPage === true) throw new Error(RETICLE_FULL_PAGE_UNSUPPORTED);
       const contents = usableContents(event.sender);
       if (contents === null) return null;
       try {

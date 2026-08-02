@@ -11,7 +11,11 @@ use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_
 use windows::Win32::System::Com::{IStream, STATFLAG_NONAME, STREAM_SEEK_SET};
 use windows::Win32::UI::Shell::SHCreateMemStream;
 
-pub fn snapshot_png(window: &tauri::WebviewWindow) -> Result<Vec<u8>, String> {
+pub fn snapshot_png(window: &tauri::WebviewWindow, full_page: bool) -> Result<Vec<u8>, String> {
+    // This API composites what is on screen; there is no offscreen full-document render to ask for.
+    if full_page {
+        return Err(crate::FULL_PAGE_UNSUPPORTED.into());
+    }
     let (sender, receiver) = std::sync::mpsc::channel::<Result<Vec<u8>, String>>();
     window
         .with_webview(move |webview| {

@@ -2,7 +2,11 @@
 
 use crate::SNAPSHOT_TIMEOUT;
 
-pub fn snapshot_png(window: &tauri::WebviewWindow) -> Result<Vec<u8>, String> {
+pub fn snapshot_png(window: &tauri::WebviewWindow, full_page: bool) -> Result<Vec<u8>, String> {
+    // This API composites what is on screen; there is no offscreen full-document render to ask for.
+    if full_page {
+        return Err(crate::FULL_PAGE_UNSUPPORTED.into());
+    }
     use block2::RcBlock;
     use objc2_app_kit::NSImage;
     use objc2_foundation::NSError;

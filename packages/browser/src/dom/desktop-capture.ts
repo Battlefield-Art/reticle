@@ -21,11 +21,21 @@
  * rather than guessing.
  */
 
-import { RETICLE_IPC_GLOBAL, RETICLE_TAURI_CAPTURE_COMMAND } from '@reticlehq/core';
+import { RETICLE_IPC_GLOBAL, RETICLE_TAURI_CAPTURE_COMMAND, VisualReason } from '@reticlehq/core';
 
 interface CaptureChannel {
-  capture?: () => Promise<string | null>;
+  capture?: (fullPage?: boolean) => Promise<string | null>;
 }
+
+/**
+ * What a shell returns when it can photograph the viewport but not the whole scroll height.
+ *
+ * Only WebKitGTK can render a full document offscreen; `capturePage()` and `takeSnapshot` both give
+ * what is composited. Downgrading silently would be the worst option available: the caller asked for
+ * the content below the fold, would get an image without it, and would bank it as a baseline that a
+ * later diff reports as matching. So the shells say so, and the tool reports the reason.
+ */
+const FULL_PAGE_UNSUPPORTED_MARKER = VisualReason.FULL_PAGE_UNSUPPORTED;
 
 /** Tauri's own bridge object. The SDK reads `invoke` off it; it never patches it (it is read-only). */
 interface TauriInternals {
@@ -49,8 +59,8 @@ function tauriCapture(): (() => Promise<string | null>) | undefined {
     | undefined;
   if (typeof internals?.invoke !== 'function') return undefined;
   const invoke = internals.invoke.bind(internals);
-  return async () => {
-    const path = await invoke(RETICLE_TAURI_CAPTURE_COMMAND);
+  return async (fullPage?: boolean) => {
+    const path = await invoke(RETICLE_TAURI_CAPTURE_COMMAND, { fullPage: fullPage === true });
     return typeof path === 'string' ? path : null;
   };
 }
@@ -69,7 +79,7 @@ export interface CaptureResult {
   reason?: string;
 }
 
-export async function captureDesktopWindow(): Promise<CaptureResult> {
+export async function captureDesktopWindow(fullPage = false): Promise<CaptureResult> {
   const channel = (window as unknown as Record<string, unknown>)[RETICLE_IPC_GLOBAL] as
     | CaptureChannel
     | undefined;
@@ -78,11 +88,14 @@ export async function captureDesktopWindow(): Promise<CaptureResult> {
     return { ok: false, reason: 'no desktop capture helper installed' };
   }
   try {
-    const path = await capture();
+    const path = await capture(fullPage);
     return typeof path === 'string' && path.length > 0
       ? { ok: true, path }
       : { ok: false, reason: 'capture returned no image' };
   } catch (error) {
-    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    const reason = error instanceof Error ? error.message : String(error);
+    return reason.includes(FULL_PAGE_UNSUPPORTED_MARKER)
+      ? { ok: false, reason: FULL_PAGE_UNSUPPORTED_MARKER }
+      : { ok: false, reason };
   }
 }

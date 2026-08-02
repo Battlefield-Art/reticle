@@ -8,15 +8,20 @@ use crate::SNAPSHOT_TIMEOUT;
 
 use webkit2gtk::{gio, glib, SnapshotOptions, SnapshotRegion, WebViewExt};
 
-pub fn snapshot_png(window: &tauri::WebviewWindow) -> Result<Vec<u8>, String> {
+pub fn snapshot_png(window: &tauri::WebviewWindow, full_page: bool) -> Result<Vec<u8>, String> {
     let (sender, receiver) = std::sync::mpsc::channel::<Result<Vec<u8>, String>>();
     window
         .with_webview(move |webview| {
-            // `Visible` rather than `FullDocument`: the other platforms capture the viewport, and a
-            // screenshot that silently means something different per OS would make a visual baseline
-            // captured on a developer's Mac fail against the same app in Linux CI.
+            // Viewport by default, so a baseline captured here matches one captured on macOS or
+            // Windows. WebKitGTK is the only one of the three that can render the whole document
+            // offscreen, so `fullPage` is honoured here and refused there — never silently downgraded.
+            let region = if full_page {
+                SnapshotRegion::FullDocument
+            } else {
+                SnapshotRegion::Visible
+            };
             webview.inner().snapshot(
-                SnapshotRegion::Visible,
+                region,
                 SnapshotOptions::NONE,
                 None::<&gio::Cancellable>,
                 move |result| {

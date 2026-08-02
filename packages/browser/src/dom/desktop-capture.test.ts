@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RETICLE_IPC_GLOBAL, RETICLE_TAURI_CAPTURE_COMMAND } from '@reticlehq/core';
+import { RETICLE_IPC_GLOBAL, RETICLE_TAURI_CAPTURE_COMMAND, VisualReason } from '@reticlehq/core';
 import { captureDesktopWindow } from './desktop-capture.js';
 
 const TAURI_INTERNALS = '__TAURI_INTERNALS__';
@@ -38,7 +38,7 @@ describe('desktop capture — Tauri, through its own invoke', () => {
     Reflect.set(window, TAURI_INTERNALS, { invoke });
 
     await expect(captureDesktopWindow()).resolves.toEqual({ ok: true, path: PNG_PATH });
-    expect(invoke).toHaveBeenCalledWith(RETICLE_TAURI_CAPTURE_COMMAND);
+    expect(invoke).toHaveBeenCalledWith(RETICLE_TAURI_CAPTURE_COMMAND, { fullPage: false });
   });
 
   it('reports no-provider when the app never registered the command', async () => {
@@ -60,6 +60,51 @@ describe('desktop capture — Tauri, through its own invoke', () => {
   it('treats a non-string invoke result as no image rather than a path', async () => {
     Reflect.set(window, TAURI_INTERNALS, { invoke: () => Promise.resolve(null) });
     await expect(captureDesktopWindow()).resolves.toMatchObject({ ok: false });
+  });
+});
+
+describe('full-page capture is refused, never silently downgraded', () => {
+  /**
+   * The failure this prevents: a caller asks for the whole scroll height, the shell can only give
+   * the composited viewport, and an image WITHOUT the content below the fold gets banked as a
+   * baseline. Every later diff of that baseline is green about a region it never captured.
+   */
+  it('surfaces a shell refusal as the full-page reason, not as a generic error', async () => {
+    Reflect.set(window, RETICLE_IPC_GLOBAL, {
+      capture: () =>
+        Promise.reject(
+          new Error(`Error invoking remote method: ${VisualReason.FULL_PAGE_UNSUPPORTED}`),
+        ),
+    });
+    await expect(captureDesktopWindow(true)).resolves.toEqual({
+      ok: false,
+      reason: VisualReason.FULL_PAGE_UNSUPPORTED,
+    });
+  });
+
+  it('asks the shell for a full page only when the caller did', async () => {
+    const capture = vi.fn().mockResolvedValue(PNG_PATH);
+    Reflect.set(window, RETICLE_IPC_GLOBAL, { capture });
+
+    await captureDesktopWindow();
+    expect(capture).toHaveBeenLastCalledWith(false);
+    await captureDesktopWindow(true);
+    expect(capture).toHaveBeenLastCalledWith(true);
+  });
+
+  it('passes the flag to Tauri as a command argument', async () => {
+    const invoke = vi.fn().mockResolvedValue(PNG_PATH);
+    Reflect.set(window, TAURI_INTERNALS, { invoke });
+
+    await captureDesktopWindow(true);
+    expect(invoke).toHaveBeenCalledWith(RETICLE_TAURI_CAPTURE_COMMAND, { fullPage: true });
+  });
+
+  it('keeps an ordinary failure as itself rather than reading it as a refusal', async () => {
+    Reflect.set(window, RETICLE_IPC_GLOBAL, {
+      capture: () => Promise.reject(new Error('window is gone')),
+    });
+    await expect(captureDesktopWindow(true)).resolves.toMatchObject({ reason: 'window is gone' });
   });
 });
 

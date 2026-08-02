@@ -31,7 +31,9 @@ Nothing on the JavaScript side. Tauri has no preload stage where a shim could be
 
 It renders the webview, not the screen. Capturing a screen region instead would photograph whatever is on top — an app window behind your editor yields a picture of the editor, banked as a visual baseline a later diff would trust. This path cannot do that, needs no screen-recording permission, and is correct with nothing on screen at all.
 
-All three capture the visible viewport, so a baseline taken on one platform is comparable with the same app on another. On a platform with no webview API to call, capture reports no-provider rather than returning a plausible wrong image.
+All three capture the visible viewport by default, so a baseline taken on one platform is comparable with the same app on another. On a platform with no webview API to call, capture reports no-provider rather than returning a plausible wrong image.
+
+**`fullPage` is Linux-only.** WebKitGTK can render a whole document offscreen; `takeSnapshot` and `CapturePreview` only give what is composited. Asked for it, macOS and Windows refuse with `full-page-unsupported` rather than quietly returning the viewport — an image missing everything below the fold, banked as a full-page baseline, stays green forever about a region it never captured.
 
 ### Headless
 

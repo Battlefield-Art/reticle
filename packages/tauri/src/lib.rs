@@ -27,6 +27,14 @@ const CAPTURE_FILE_PREFIX: &str = "reticle-capture-";
 /// How long to wait for the webview to hand back a snapshot before giving up.
 const SNAPSHOT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// Returned when `fullPage` is asked of a platform that can only give the composited viewport.
+///
+/// The SDK matches on this exact text, and `desktop-contract.test.ts` pins it to the daemon's
+/// `VisualReason.FULL_PAGE_UNSUPPORTED`. Refusing beats downgrading: a caller who asked for the
+/// whole scroll height and silently got the visible part banks a baseline that says nothing about
+/// the content below the fold, and a later diff calls it a match.
+pub const FULL_PAGE_UNSUPPORTED: &str = "full-page-unsupported";
+
 /// Environment variable that asks for a window nobody can see.
 const HEADLESS_ENV: &str = "RETICLE_HEADLESS";
 

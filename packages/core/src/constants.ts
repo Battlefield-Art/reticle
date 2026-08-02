@@ -160,6 +160,10 @@ export const VisualReason = {
   CAPTURE_FAILED: 'capture-failed', // the page could not be screenshotted
   BASELINE_MISSING: 'baseline-missing', // reticle_visual_diff with no saved baseline of that name
   DIMENSION_MISMATCH: 'dimension-mismatch', // current vs baseline differ in size — can't pixel-diff
+  // { fullPage } asked of a shell that can only photograph the viewport. Reported rather than
+  // quietly downgraded: a caller who asked for the whole scroll height and silently got the visible
+  // part would bank a baseline that says nothing about the content below the fold.
+  FULL_PAGE_UNSUPPORTED: 'full-page-unsupported',
 } as const;
 export type VisualReason = (typeof VisualReason)[keyof typeof VisualReason];
 

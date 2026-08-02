@@ -33,8 +33,11 @@ mod platform;
 /// came back SILENTLY TRUNCATED and was banked as a "successful" screenshot no decoder could read.
 /// The daemon and the app always share a machine, so a path keeps the image off the event wire.
 #[tauri::command]
-pub async fn reticle_capture(window: tauri::WebviewWindow) -> Result<String, String> {
-    let png = snapshot_png(&window)?;
+pub async fn reticle_capture(
+    window: tauri::WebviewWindow,
+    full_page: Option<bool>,
+) -> Result<String, String> {
+    let png = snapshot_png(&window, full_page == Some(true))?;
     let path = std::env::temp_dir().join(format!("{CAPTURE_FILE_PREFIX}{}.png", nanos()));
     std::fs::write(&path, png).map_err(|error| error.to_string())?;
     Ok(path.to_string_lossy().into_owned())
@@ -71,6 +74,6 @@ use platform::snapshot_png;
     target_os = "openbsd",
     target_os = "netbsd"
 )))]
-fn snapshot_png(_window: &tauri::WebviewWindow) -> Result<Vec<u8>, String> {
+fn snapshot_png(_window: &tauri::WebviewWindow, _full_page: bool) -> Result<Vec<u8>, String> {
     Err("reticle-tauri cannot capture a webview on this platform".into())
 }

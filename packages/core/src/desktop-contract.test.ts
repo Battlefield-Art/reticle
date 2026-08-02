@@ -70,6 +70,14 @@ describe('desktop contract — the Rust capture helper', () => {
     );
   });
 
+  it('spells the full-page refusal exactly as the daemon reads it', () => {
+    const lib = join(process.cwd(), '..', 'tauri', 'src', 'lib.rs');
+    if (!existsSync(lib)) return;
+    expect(readFileSync(lib, 'utf8')).toContain(
+      `pub const FULL_PAGE_UNSUPPORTED: &str = "${DESKTOP_CONTRACT.RETICLE_FULL_PAGE_UNSUPPORTED}";`,
+    );
+  });
+
   it('registers the command name the SDK invokes', () => {
     const capture = existsSync(CRATE) ? readFileSync(CRATE, 'utf8') : '';
     if (capture === '') return;

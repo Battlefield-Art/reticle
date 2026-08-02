@@ -86,22 +86,29 @@ async function buildOpts(
 async function desktopCapture(
   deps: ToolDeps,
   sessionId: string | undefined,
-): Promise<Uint8Array | undefined> {
+  fullPage: boolean,
+): Promise<{ png?: Uint8Array; reason?: VisualReason }> {
   const session = deps.sessions.resolve(sessionId);
   // A session that cannot take commands (no live browser behind it) simply has no pixels to give.
-  if (typeof session.command !== 'function') return undefined;
-  const res = await session.command(ReticleCommand.CAPTURE, {});
-  if (!res.ok) return undefined;
+  if (typeof session.command !== 'function') return {};
+  const res = await session.command(ReticleCommand.CAPTURE, { fullPage });
+  if (!res.ok) return {};
   const r = asRecord(res.result);
-  if (r['ok'] !== true) return undefined;
+  if (r['ok'] !== true) {
+    // The shell refused a full-page capture it cannot do. That is a different answer from "capture
+    // broke", and the caller has to hear it — otherwise they read `fullPage` as honoured.
+    return r['reason'] === VisualReason.FULL_PAGE_UNSUPPORTED
+      ? { reason: VisualReason.FULL_PAGE_UNSUPPORTED }
+      : {};
+  }
   const path = asString(r['path']);
-  if (path === undefined || !isCapturePath(path)) return undefined;
+  if (path === undefined || !isCapturePath(path)) return {};
   try {
     const bytes = await readFile(path);
     await unlink(path).catch(() => undefined);
-    return isCompletePng(bytes) ? new Uint8Array(bytes) : undefined;
+    return isCompletePng(bytes) ? { png: new Uint8Array(bytes) } : {};
   } catch {
-    return undefined;
+    return {};
   }
 }
 
@@ -134,9 +141,13 @@ function isCompletePng(bytes: Buffer): boolean {
  * to one app and the screenshot aimed at a different (desktop) session, CDP fails and the shell
  * capture is still correct.
  *
- * `clip`/`ref`/`fullPage` are honoured only on the CDP path — the shell photographs the whole
- * window. Scoping is left to the caller rather than cropped here, so a clip never silently becomes
- * a full-window image.
+ * `clip`/`ref` are honoured only on the CDP path — the shell photographs the whole window. Scoping is
+ * left to the caller rather than cropped here, so a clip never silently becomes a full-window image.
+ *
+ * `fullPage` is different, because it cannot be emulated by cropping: only WebKitGTK (Tauri on Linux)
+ * can render a full document offscreen. Where the shell cannot, it REFUSES and this reports
+ * `full-page-unsupported` — a viewport image returned as though it were the whole scroll height is a
+ * baseline that says nothing about the content below the fold, and a later diff would call it green.
  */
 async function capture(
   deps: ToolDeps,
@@ -149,8 +160,9 @@ async function capture(
     const png = await provider.screenshot(session.url, await buildOpts(deps, sessionId, args));
     if (png !== undefined) return { png };
   }
-  const png = await desktopCapture(deps, sessionId);
-  if (png !== undefined) return { png };
+  const desktop = await desktopCapture(deps, sessionId, args['fullPage'] === true);
+  if (desktop.png !== undefined) return { png: desktop.png };
+  if (desktop.reason !== undefined) return { reason: desktop.reason };
   return {
     reason: provider === undefined ? VisualReason.NO_PROVIDER : VisualReason.CAPTURE_FAILED,
   };

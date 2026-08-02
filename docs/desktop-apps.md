@@ -85,7 +85,9 @@ Nothing on the JavaScript side: the SDK invokes the command through Tauri's own 
 | Windows    | WebView2 `CapturePreview`                |
 | Linux, BSD | WebKitGTK `webkit_web_view_get_snapshot` |
 
-All three capture the visible viewport, so a baseline taken on a developer's Mac is comparable against the same app in Linux CI. On a platform with no webview API to call, capture reports no-provider rather than returning a plausible wrong image.
+All three capture the visible viewport by default, so a baseline taken on a developer's Mac is comparable against the same app in Linux CI. On a platform with no webview API to call, capture reports no-provider rather than returning a plausible wrong image.
+
+**`{ fullPage: true }` works on Tauri/Linux only.** WebKitGTK can render the whole document offscreen; `takeSnapshot` (macOS) and `CapturePreview` (Windows) only give what is composited, and Electron's `capturePage()` is the same. Asked for a full page they cannot produce, all of them return `{ ok:false, reason:'full-page-unsupported' }` rather than quietly handing back the viewport — a baseline that omits everything below the fold, while every later diff of it reports green about a region that was never captured. No baseline is written on a refusal.
 
 An app that already has its own capture can expose `window.__reticleIpc.capture()` returning a PNG path instead; the SDK prefers it over the built-in command.
 

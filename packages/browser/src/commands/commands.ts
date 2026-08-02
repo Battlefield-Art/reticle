@@ -271,7 +271,7 @@ export function createCommandRegistry(): Map<string, CommandHandler> {
   );
   reg.set(ReticleCommand.STORAGE_READ, (args) => readStorage(str(args['area'])));
   reg.set(ReticleCommand.CAPABILITIES, () => getCapabilities());
-  reg.set(ReticleCommand.CAPTURE, () => captureDesktopWindow());
+  reg.set(ReticleCommand.CAPTURE, (args) => captureDesktopWindow(args['fullPage'] === true));
   reg.set(ReticleCommand.SCROLL, (args) => {
     const dy = args['dy'];
     const fraction = args['fraction'];

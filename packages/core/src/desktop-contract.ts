@@ -1,3 +1,5 @@
+import { VisualReason } from './constants.js';
+
 /**
  * The desktop wiring contract — the single source of truth for the strings that let an Electron
  * app's three worlds recognise each other.
@@ -42,6 +44,14 @@ export const RETICLE_CAPTURE_FILE_PREFIX = 'reticle-capture-';
 export const RETICLE_TAURI_CAPTURE_COMMAND = 'reticle_capture';
 
 /**
+ * What a shell answers when asked for `fullPage` it cannot produce.
+ *
+ * Shared with `VisualReason.FULL_PAGE_UNSUPPORTED` rather than re-spelled, because the Electron
+ * preload (CommonJS) and the daemon must agree on it without sharing a module graph.
+ */
+export const RETICLE_FULL_PAGE_UNSUPPORTED: string = VisualReason.FULL_PAGE_UNSUPPORTED;
+
+/**
  * Every value the generated CommonJS shim must expose, as `name → value`.
  *
  * The generator walks THIS record rather than a hand-written list, so adding a constant above and
@@ -52,4 +62,5 @@ export const DESKTOP_CONTRACT = {
   RETICLE_CAPTURE_CHANNEL,
   RETICLE_CAPTURE_FILE_PREFIX,
   RETICLE_TAURI_CAPTURE_COMMAND,
+  RETICLE_FULL_PAGE_UNSUPPORTED,
 } as const;

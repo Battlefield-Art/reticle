@@ -25,6 +25,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const {
   RETICLE_IPC_GLOBAL,
   RETICLE_CAPTURE_CHANNEL,
+  RETICLE_FULL_PAGE_UNSUPPORTED,
 } = require('@reticlehq/core/desktop-contract');
 
 /**
@@ -127,7 +128,18 @@ contextBridge.exposeInMainWorld(RETICLE_IPC_GLOBAL, {
    * Uses the ORIGINAL invoke: this is Reticle's own plumbing, and recording it as an app IPC call
    * would put `ipc://__reticle:capture` in the agent's own network evidence.
    */
-  capture() {
-    return originalInvoke(RETICLE_CAPTURE_CHANNEL).catch(() => null);
+  capture(fullPage) {
+    return originalInvoke(RETICLE_CAPTURE_CHANNEL, { fullPage: fullPage === true }).catch(
+      (error) => {
+        // A missing handler must stay `null` ("this app installed no capture helper"). An explicit
+        // refusal is different information and has to reach the tool, or `fullPage` would silently
+        // come back as a viewport image the caller believes is the whole page.
+        const message = String((error && error.message) || error);
+        if (message.includes(RETICLE_FULL_PAGE_UNSUPPORTED)) {
+          throw new Error(RETICLE_FULL_PAGE_UNSUPPORTED);
+        }
+        return null;
+      },
+    );
   },
 });
