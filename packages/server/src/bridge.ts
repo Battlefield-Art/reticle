@@ -255,6 +255,10 @@ export class Bridge {
       messagesInWindow += 1;
       if (messagesInWindow > this.#maxMessagesPerSecond) {
         log('message_rate_exceeded', {});
+        // Remembered so the NEXT tool call can explain the disappearance. Without it the agent is
+        // told to check that the app is running with the SDK enabled — which is exactly wrong here:
+        // the app is running and instrumented, and the bridge hung up on it.
+        this.sessions.noteClosure(WS_CLOSE.RATE_EXCEEDED[1], Date.now());
         socket.close(...WS_CLOSE.RATE_EXCEEDED);
         return;
       }

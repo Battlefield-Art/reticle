@@ -54,6 +54,9 @@ function scopeMissError(scope?: ResolveScope): string {
  * tool targets when the agent omits an explicit sessionId. Extracted from session.ts so each file
  * stays one cohesive unit (Session = one tab; SessionManager = the registry over all tabs).
  */
+/** How many bridge-initiated closes to remember for diagnosis. */
+const MAX_REMEMBERED_CLOSURES = 5;
+
 export class SessionManager {
   readonly #sessions = new Map<string, Session>();
   /**
@@ -110,6 +113,31 @@ export class SessionManager {
    * desktop), skip the gap check and pick the freshest heartbeat. This lets the agent
    * keep working in the background without requiring sessionId every time.
    */
+  /**
+   * Why a session recently went away, when the bridge closed it rather than the tab.
+   *
+   * The bridge enforces a message-rate cap and closes the socket on breach with `1008 message rate
+   * exceeded` — a policy violation, so the SDK does not retry. The app keeps running and Reticle is
+   * blind from that moment. Measured on the bench app: 2600 requests fired in one tick disconnected
+   * the session permanently, and the only trace was a line in the PAGE console, which no agent reads.
+   *
+   * Without this the agent is told "no browser session connected — check your app is running with
+   * @reticlehq/browser enabled", which is precisely wrong: the app IS running and instrumented. It
+   * was hung up on. Keeping the last few reasons turns an unexplained disappearance into a fact.
+   */
+  readonly #recentClosures: { at: number; reason: string }[] = [];
+
+  /** Record a bridge-initiated close so `resolve` can explain a session that vanished. */
+  noteClosure(reason: string, at: number): void {
+    this.#recentClosures.push({ at, reason });
+    if (this.#recentClosures.length > MAX_REMEMBERED_CLOSURES) this.#recentClosures.shift();
+  }
+
+  /** The most recent bridge-initiated close, if any. */
+  lastClosure(): { at: number; reason: string } | undefined {
+    return this.#recentClosures[this.#recentClosures.length - 1];
+  }
+
   resolve(sessionId?: string, scope?: ResolveScope): Session {
     if (sessionId !== undefined) {
       const found = this.#sessions.get(sessionId);
@@ -120,7 +148,12 @@ export class SessionManager {
       return found;
     }
     if (this.#sessions.size === 0) {
-      throw new Error(NO_SESSION_CONNECTED_ERROR);
+      const closure = this.lastClosure();
+      throw new Error(
+        closure === undefined
+          ? NO_SESSION_CONNECTED_ERROR
+          : `${NO_SESSION_CONNECTED_ERROR} NOTE: the bridge closed a session recently — "${closure.reason}". The app is probably still running; it was disconnected, and the SDK does not retry after a policy close. Reload the page to reconnect.`,
+      );
     }
     // Scope to the agent's active project FIRST, so a stray tab from another app/origin (e.g. a
     // leftover dashboard on a different port) is structurally unselectable — it never enters the

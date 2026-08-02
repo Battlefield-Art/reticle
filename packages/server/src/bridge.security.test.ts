@@ -8,6 +8,7 @@ import {
   TRANSPORT_LIMITS,
 } from '@reticlehq/core';
 import { Bridge } from './bridge.js';
+import { SessionManager } from './session/session-manager.js';
 
 const bridges: Bridge[] = [];
 const sockets: WebSocket[] = [];
@@ -237,5 +238,33 @@ describe('Bridge security boundary', () => {
     const closed = waitForClose(socket);
     socket.send(Buffer.alloc(TRANSPORT_LIMITS.MAX_MESSAGE_BYTES + 1));
     expect(await closed).toBe(1009);
+  });
+});
+
+/**
+ * The bridge closes a socket that exceeds the message-rate cap with a POLICY code, so the SDK does
+ * not retry: the app keeps running and Reticle is blind from that moment on.
+ *
+ * Measured on the bench app — 2600 requests fired in one tick disconnected the session permanently,
+ * and the only trace was a line in the PAGE console, which no agent reads. The agent saw "no browser
+ * session connected — check your app is running with @reticlehq/browser enabled", which is exactly
+ * wrong: the app IS running and instrumented. It was hung up on. An unexplained disappearance is the
+ * worst shape of error, because every recovery it suggests is the wrong one.
+ */
+describe('a session closed by the bridge explains itself to the agent', () => {
+  it('surfaces the close reason on the next resolve, instead of blaming the app', () => {
+    const sessions = new SessionManager();
+    sessions.noteClosure('message rate exceeded', 1000);
+    expect(() => sessions.resolve()).toThrow(/message rate exceeded/);
+  });
+
+  it('says the app is probably still running, so the agent does not go restart it', () => {
+    const sessions = new SessionManager();
+    sessions.noteClosure('message rate exceeded', 1000);
+    expect(() => sessions.resolve()).toThrow(/still running/);
+  });
+
+  it('keeps the plain message when nothing was closed', () => {
+    expect(() => new SessionManager().resolve()).not.toThrow(/bridge closed/);
   });
 });
