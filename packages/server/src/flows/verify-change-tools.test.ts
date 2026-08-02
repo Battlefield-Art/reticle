@@ -113,3 +113,92 @@ describe('reticle_verify_change — it delegates rather than reimplements', () =
     spy.mockRestore();
   });
 });
+
+/**
+ * A suite that goes green while a channel disagrees is the exact false green this product exists to
+ * catch, and a regression replay is where it is most likely to hide: the flow was recorded when the
+ * app worked, so it still "passes" while the write underneath it fails.
+ */
+describe('reticle_verify_change — a green suite is not the end of the check', () => {
+  const sessionWith = (events: unknown[], tree: string, acted: string[]): ToolDeps =>
+    ({
+      ...depsWithNoFlows(),
+      sessions: {
+        resolve: () => ({
+          elapsed: () => 0,
+          eventsSince: () => events,
+          actedRefs: () => new Set(acted),
+          command: () => Promise.resolve({ ok: true, result: { tree } }),
+        }),
+      },
+    }) as unknown as ToolDeps;
+
+  const passingSuite = { status: 'pass', total: 1, passed: 1, failed: 0 };
+
+  it('reports NO when a contradiction appeared during a passing replay', async () => {
+    const verify = FLOW_TOOLS.find((t) => t.name === ReticleTool.FLOW_VERIFY);
+    if (verify === undefined) throw new Error('flow_verify missing');
+    vi.spyOn(verify, 'handler').mockResolvedValue(passingSuite);
+    const affectedSpy = vi
+      .spyOn(await import('./flow-sources.js'), 'affectedSavedFlows')
+      .mockReturnValue({ affected: ['checkout'], unknownProvenance: [] });
+    const contradictionSpy = vi
+      .spyOn(await import('../events/contradictions.js'), 'findContradictions')
+      .mockReturnValue([{ kind: 'ui-advanced-request-failed' }] as never);
+
+    const result = (await tool.handler(sessionWith([], '', []), {
+      files: ['src/Checkout.tsx'],
+    })) as Record<string, unknown>;
+
+    expect(result['verified']).toBe(Verified.NO);
+    expect(String(result['because'])).toContain('ui-advanced-request-failed');
+    affectedSpy.mockRestore();
+    contradictionSpy.mockRestore();
+  });
+
+  it('reports which controls the covering flows never drove', async () => {
+    const verify = FLOW_TOOLS.find((t) => t.name === ReticleTool.FLOW_VERIFY);
+    if (verify === undefined) throw new Error('flow_verify missing');
+    vi.spyOn(verify, 'handler').mockResolvedValue(passingSuite);
+    const affectedSpy = vi
+      .spyOn(await import('./flow-sources.js'), 'affectedSavedFlows')
+      .mockReturnValue({ affected: ['checkout'], unknownProvenance: [] });
+
+    const tree = '- button "Pay" (ref=e1)\n- button "Cancel" (ref=e2)';
+    const result = (await tool.handler(sessionWith([], tree, ['e1']), {
+      files: ['src/Checkout.tsx'],
+    })) as Record<string, unknown>;
+
+    expect(result['verified']).toBe(Verified.YES);
+    expect(result['untouched']).toEqual([{ ref: 'e2', label: 'button "Cancel"' }]);
+    affectedSpy.mockRestore();
+  });
+
+  /**
+   * The trap this field exists for: with `parallel`, flows run in leased contexts, so the events and
+   * driven refs on the resolved session belong to something else. Reporting "no contradictions" from
+   * the wrong session would be a false green manufactured by the false-green detector, so an absent
+   * `contradictions` means "none found" ONLY when `measured` says it was looked for.
+   */
+  it('says what it measured, so an absent finding is never read as a clean result', async () => {
+    const verify = FLOW_TOOLS.find((t) => t.name === ReticleTool.FLOW_VERIFY);
+    if (verify === undefined) throw new Error('flow_verify missing');
+    vi.spyOn(verify, 'handler').mockResolvedValue(passingSuite);
+    const affectedSpy = vi
+      .spyOn(await import('./flow-sources.js'), 'affectedSavedFlows')
+      .mockReturnValue({ affected: ['checkout'], unknownProvenance: [] });
+
+    const parallelRun = (await tool.handler(sessionWith([], '', []), {
+      files: ['src/Checkout.tsx'],
+      parallel: 4,
+    })) as Record<string, unknown>;
+    expect(parallelRun['measured']).toEqual(['flows']);
+    expect(parallelRun['contradictions']).toBeUndefined();
+
+    const sequentialRun = (await tool.handler(sessionWith([], '', []), {
+      files: ['src/Checkout.tsx'],
+    })) as Record<string, unknown>;
+    expect(sequentialRun['measured']).toContain('contradictions');
+    affectedSpy.mockRestore();
+  });
+});

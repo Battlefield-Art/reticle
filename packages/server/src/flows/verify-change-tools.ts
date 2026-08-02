@@ -6,6 +6,9 @@ import { asNumber, asRecord, asString } from '../tools/tools-helpers.js';
 import { loadNamedFlows, resolveChangedFiles } from '../cli-flow-commands.js';
 import { affectedSavedFlows } from './flow-sources.js';
 import { FLOW_TOOLS } from './flow-tools.js';
+import { findContradictions } from '../events/contradictions.js';
+import { parseControls } from '../tools/coverage-tools.js';
+import { ReticleCommand, SnapshotMode } from '@reticlehq/core';
 
 /**
  * `reticle_verify_change` — the regression loop in one call.
@@ -68,6 +71,23 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
       flowsRun: z.array(z.string()),
       suite: z.unknown().optional(),
       unknownProvenance: z.array(z.string()),
+      contradictions: z
+        .array(z.unknown())
+        .optional()
+        .describe(
+          'Channels that disagreed DURING the replay. Any entry forces verified:"no" even when every flow passed — a suite that goes green over a failed write is the false green this exists to catch. OMITTED when clean; see `measured` when it could not be looked for.',
+        ),
+      untouched: z
+        .array(z.unknown())
+        .optional()
+        .describe(
+          'Controls on the page that the covering flows never drove. A green over a small untouched list is stronger evidence than the same green over a large one.',
+        ),
+      measured: z
+        .array(z.string())
+        .describe(
+          'What was actually looked for. An absent `contradictions` means "none found" ONLY if "contradictions" appears here — otherwise it was never measured.',
+        ),
     },
     handler: async (deps: ToolDeps, args) => {
       const files = Array.isArray(args['files'])
@@ -100,6 +120,15 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
         };
       }
 
+      const provenanceNote =
+        unknownProvenance.length > 0
+          ? ` (${String(unknownProvenance.length)} of them re-run only because Reticle cannot tell which sources they cover)`
+          : '';
+
+      // Marked BEFORE the replay so the contradiction sweep afterwards reads exactly the window the
+      // flows produced, and never events from whatever the agent did before calling this.
+      const cursor = cursorBeforeReplay(deps, args);
+
       const verify = FLOW_TOOLS.find((tool) => tool.name === ReticleTool.FLOW_VERIFY);
       if (verify === undefined) throw new Error('reticle_flow_verify is not registered');
       const suite = asRecord(
@@ -112,12 +141,9 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
 
       const failed = suite.failed ?? 0;
       const passed = suite.passed ?? 0;
-      const provenanceNote =
-        unknownProvenance.length > 0
-          ? ` (${String(unknownProvenance.length)} of them re-run only because Reticle cannot tell which sources they cover)`
-          : '';
 
-      if (suite.status !== PASS || failed > 0) {
+      const failedSuite = suite.status !== PASS || failed > 0;
+      if (failedSuite) {
         return {
           verified: Verified.NO,
           because: `${String(failed)} of ${String(suite.total ?? affected.length)} covering flows failed${provenanceNote}`,
@@ -125,17 +151,87 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
           flowsRun: affected,
           suite,
           unknownProvenance,
+          measured: ['flows'],
+        };
+      }
+
+      // The suite went green. That is exactly when the remaining two channels are worth reading:
+      // a replay that passes while a write fails is the false green this whole product is about.
+      const extra = await inspectAfterReplay(deps, args, cursor);
+      if (extra.contradictions.length > 0) {
+        const kinds = extra.contradictions.map((c) => c.kind).join(', ');
+        return {
+          verified: Verified.NO,
+          because: `every covering flow passed, but channels disagreed during the replay (${kinds}) — a green suite over a failed write is the false green worth looking at${provenanceNote}`,
+          changedFiles,
+          flowsRun: affected,
+          suite,
+          unknownProvenance,
+          contradictions: extra.contradictions,
+          ...(extra.untouched === undefined ? {} : { untouched: extra.untouched }),
+          measured: extra.measured,
         };
       }
 
       return {
         verified: Verified.YES,
-        because: `all ${String(passed)} flows covering these files passed${provenanceNote}`,
+        because: `all ${String(passed)} flows covering these files passed${provenanceNote}${extra.untouched === undefined ? '' : `, with ${String(extra.untouched.length)} controls left undriven`}`,
         changedFiles,
         flowsRun: affected,
         suite,
         unknownProvenance,
+        ...(extra.untouched === undefined ? {} : { untouched: extra.untouched }),
+        measured: extra.measured,
       };
     },
   },
 ];
+
+/** The event cursor to sweep from, or 0 when there is no readable session (nothing to sweep). */
+function cursorBeforeReplay(deps: ToolDeps, args: Record<string, unknown>): number {
+  try {
+    return deps.sessions.resolve(asString(args['sessionId'])).elapsed();
+  } catch {
+    return 0;
+  }
+}
+
+interface AfterReplay {
+  contradictions: { kind: string }[];
+  untouched?: { ref: string; label: string }[];
+  measured: string[];
+}
+
+/**
+ * Read the two channels a suite verdict cannot see: did anything DISAGREE during the replay, and
+ * what did the flows never touch.
+ *
+ * Both are skipped when the flows ran in parallel leased contexts, because the events and driven
+ * refs then belong to those leases rather than to the session read here. Reporting "no
+ * contradictions" from the wrong session would be a false green produced by the false-green
+ * detector, so `measured` states what was actually looked for and the caller is never left to infer
+ * it from an absent field.
+ */
+async function inspectAfterReplay(
+  deps: ToolDeps,
+  args: Record<string, unknown>,
+  cursor: number,
+): Promise<AfterReplay> {
+  if (asNumber(args['parallel']) !== undefined) {
+    return { contradictions: [], measured: ['flows'] };
+  }
+  try {
+    const session = deps.sessions.resolve(asString(args['sessionId']));
+    const contradictions = findContradictions(session.eventsSince(cursor)) as { kind: string }[];
+    const snapshot = await session.command(ReticleCommand.SNAPSHOT, {
+      mode: SnapshotMode.INTERACTIVE,
+    });
+    const tree = snapshot.ok ? (asString(asRecord(snapshot.result)['tree']) ?? '') : '';
+    const acted = session.actedRefs();
+    const untouched = parseControls(tree).filter((c) => !acted.has(c.ref));
+    return { contradictions, untouched, measured: ['flows', 'contradictions', 'coverage'] };
+  } catch {
+    // A session that went away after the replay is not evidence of cleanliness.
+    return { contradictions: [], measured: ['flows'] };
+  }
+}
