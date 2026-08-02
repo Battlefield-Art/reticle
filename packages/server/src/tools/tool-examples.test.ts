@@ -110,3 +110,37 @@ describe('cost-saving and bug-catching options are discoverable in the DEFAULT p
     expect(predicateText).toContain(option);
   });
 });
+
+/**
+ * The sessionId guidance has to tell the agent to OMIT it.
+ *
+ * It used to read "omit when only ONE browser session is open", which is not how resolution works —
+ * the manager scopes to the project, prefers the active non-throttled tab, and refuses rather than
+ * guesses when genuinely ambiguous. Verified live: with three sessions connected (an app plus two
+ * pool leases) omitting sessionId resolves correctly. But the wording said otherwise, so the agent
+ * listed and filtered sessions by hand before every call — roughly ten times in one session. A
+ * sentence that makes a working default look unsafe costs more than a missing feature.
+ */
+describe('session resolution is advertised as the default, not the exception', () => {
+  const advertised = advertisedTools(TOOL_PROFILE.HYBRID);
+  const sessionParam = (name: string): string => {
+    const tool = advertised.find((t) => t.name === name);
+    if (tool === undefined) return '';
+    const shape = advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID).inputSchema;
+    return shape['sessionId']?.description ?? '';
+  };
+
+  it('tells the agent to omit it', () => {
+    expect(sessionParam(ReticleTool.SNAPSHOT).toLowerCase()).toContain('omit');
+  });
+
+  it('never re-introduces the "only one session" condition that caused the hand-filtering', () => {
+    for (const tool of advertised) {
+      const text = sessionParam(tool.name);
+      if (text === '') continue;
+      expect(text, `${tool.name} must not condition omission on a single session`).not.toMatch(
+        /omit when only one/i,
+      );
+    }
+  });
+});

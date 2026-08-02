@@ -73,7 +73,7 @@ export const sessionIdShape = {
     .string()
     .optional()
     .describe(
-      'Active session ID from reticle_sessions. Omit when only one browser session is open — Reticle resolves it automatically.',
+      'OMIT THIS unless you mean a specific tab — Reticle scopes to your project, prefers the active one, and refuses rather than guesses when ambiguous. Pass an id from reticle_sessions only to target a particular tab. The previous wording ("omit when only ONE session is open") was wrong and cost real turns: with three sessions connected — an app plus two pool leases — resolution is still unambiguous, but that sentence sent the agent off to list and filter sessions by hand before every single call.',
     ),
 };
 
