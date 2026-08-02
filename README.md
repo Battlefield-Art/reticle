@@ -11,9 +11,9 @@
 
 ✗ &nbsp;a silent `500` under a page that looks perfect &nbsp; ✗ &nbsp;a flow that used to work, now broken &nbsp; ✗ &nbsp;mock data where the real API should be
 
-### Reticle is the proof layer for AI agents.
+### Reticle is a proofreader for AI-written code.
 
-It makes your agent **test its own work on every edit** — reading the running _program_ (network, store state, signals, the React commit stream), not a screenshot — and hands back a **pass/fail verdict with the `file:line` to fix.**
+Your agent writes code. Reticle checks it against the **real running app** — the network calls, the store, the console, the things a screenshot can never show — and hands back **pass, fail, or "couldn't tell", with the `file:line` to fix.** The agent fixes and retries until it passes, before you ever open the app.
 
 <a href="https://reticle.sh"><img src="assets/readme/demo-montage.webp" alt="Reticle in action: an AI agent verifying a real running app from the inside, returning pass/fail verdicts with evidence and the file:line to fix" width="820" /></a>
 
@@ -23,7 +23,7 @@ It makes your agent **test its own work on every edit** — reading the running 
 
 Where the work happens in the open: what's being built this cycle, what's up for grabs, and design calls before they land.
 
-**[⚡ Install in 30 seconds](#install-in-30-seconds)** · [How it works](#how-it-works) · [Why not Playwright / DevTools / a browser agent](#why-not-playwright-mcp-a-browser-agent-or-devtools) · [The numbers](#the-numbers) · [Docs](docs/getting-started.md) · [Discord](https://discord.gg/7kS66x494)
+**[⚡ Install in 30 seconds](#install-in-30-seconds)** · [How it works](#how-it-works) · [vs Playwright / DevTools](#cant-playwright--devtools--a-browser-agent-already-do-this) · [The numbers](#the-numbers) · [Docs](docs/getting-started.md) · [Discord](https://discord.gg/7kS66x494)
 
 `dev-only` · `localhost-only` · `your app data stays local` · `Apache-2.0 SDK` · works with Claude Code, Cursor, and any MCP agent
 
@@ -33,22 +33,47 @@ Where the work happens in the open: what's being built this cycle, what's up for
 
 ## The problem
 
-Your agent edits code, **assumes** it worked, and moves on. It doesn't run your Playwright suite between every change — so the broken modal, the silent `500`, the store that says `deployed` when the deploy failed all ship, and you find them by hand. You've become your agent's QA.
+Your agent writes code, **assumes** it worked, and moves on. It never opens the app.
 
-The truth is right there in the running app — the network response, the store state, the signal that fired — but it **never reaches the screen.** A screenshot sees a page that looks perfect. Your agent sees nothing at all.
+So the broken modal, the silent `500`, the "Deploy succeeded" over a deploy that failed — they all ship, and you find them by clicking around afterwards. **You've become your agent's QA.**
+
+The maddening part: the truth was right there in the running app the whole time. The failed response, the store that still says `0`, the error in the console. It just never reaches the screen — so a screenshot shows a page that looks perfect, and your agent sees nothing at all.
 
 <p align="center">
   <img src="assets/readme/silent-failures.png" alt="An e-commerce page looks perfectly shipped, but underneath: mock data, a dead click, a hidden 500 — the failures the UI completely hid." width="560" />
 </p>
 
-## What Reticle is
+## What Reticle does
 
-Reticle embeds a tiny **dev-only** SDK in your app and exposes its runtime to your agent over **MCP**. The agent drives the _real_ running app and, in one call, asserts over the **network, store state, custom signals, console, and the React render stream** — then gets back a verdict:
+**It proofreads your agent's work, on the running app, before you ever see it.**
+
+```
+your agent writes code  →  Reticle checks the app it produced  →  verdict goes back to the agent
+        ↑                                                                      │
+        └──────────────────  it fixes and tries again, until it passes  ───────┘
+```
+
+That's the whole idea. The agent stops guessing that it worked, and gets told — with the evidence, and the `file:line` to fix.
+
+It works because Reticle runs **inside** the app rather than looking at it from outside. It can see what the page never displays: the network response behind the click, the value in your store, the signal your code fired, the error in the console. Then it answers one question — _did the thing you claimed actually happen?_ — and hands back **yes**, **no**, or an honest **"I couldn't tell."**
+
+You never write test syntax. You say what should be true in plain English; the agent does the rest.
+
+> **You:** "Verify login works: it should call `/api/login`, land on the dashboard, and set the signed-in user."
+>
+> **Agent, via Reticle:** clicks **Sign in** → `POST /api/login → 200 (14 ms)` → dashboard rendered → store now holds `auth: { email: "admin@…" }` → **✅ PASS**, with that evidence attached. Had it failed, you'd get the failing check **and the `file:line`** instead of a guess.
+
+Say _"save that as a flow"_ and it replays on every later edit — no model, no flake — so today's fix can't quietly break last week's feature.
 
 <img src="assets/readme/readme-done-lie.png" alt="Your agent says 'Fixed it.' It wasn't — POST /api/order returned 500. The agent never opened the app; Reticle does." width="820" />
 
+<details>
+<summary><b>What that looks like underneath (one call, ~33 tokens, no screenshot)</b></summary>
+
+<br/>
+
 ```jsonc
-// The agent clicked "Pay". Did the right things actually happen? One call, ~33 tokens, no screenshot:
+// The agent clicked "Pay". Did the right things actually happen?
 reticle_assert({
   predicate: { allOf: [
     { kind: "net",     method: "POST", urlContains: "/api/order", status: 200 },
@@ -62,7 +87,7 @@ reticle_assert({
 //     source: { file: "src/checkout/PayButton.tsx", line: 42 } }   ← caught before you ever saw it
 ```
 
-No test syntax to learn — you describe the outcome in plain English, the agent does the rest. **Playwright gates releases. Reticle gates edits.**
+</details>
 
 ## How it works
 
@@ -78,9 +103,9 @@ flowchart LR
 
 One call checks many things at once and comes back with **proof** — deterministic (structured events, not a vision model), cheap (any model, no screenshot), and pointed at the code. Record that journey once and Reticle **replays it deterministically on every later edit: no model, 0% flake, ~47 tokens for a whole suite** — a regression net that runs _inside_ the agent's loop instead of waiting for CI.
 
-## Why not Playwright MCP, a browser agent, or DevTools?
+## "Can't Playwright / DevTools / a browser agent already do this?"
 
-They all look at the app from _outside the browser_. On the app you're building, that's the wrong side of the glass — the bugs that matter never reach the pixels or the DOM.
+Fair question, and the honest answer is: **they all stand outside the browser looking in.** For a site you don't own, that's exactly right. For the app you're building, it's the wrong side of the glass — the bugs that matter never reach the pixels or the DOM.
 
 | Tool | What it sees | What it misses on the app you own |
 | --- | --- | --- |
@@ -101,6 +126,21 @@ They all look at the app from _outside the browser_. On the app you're building,
 
 > **Use both.** Playwright is the right tool for a site you don't own, many browsers, or true pixels. Reticle is your cheap, deterministic, state-aware inner loop while the agent codes. Full [when-to-use-which](docs/getting-started.md) in the docs.
 
+### "Why can't Anthropic or Cursor just build this in?"
+
+The question everyone should ask, so here is the straight answer rather than a dodge.
+
+**They're already building part of it, and they should.** Claude has a Chrome extension; agents are getting browser control. That is the _outside-in_ half — drive a page, read the DOM, watch the network — and it will keep getting better.
+
+What it structurally can't reach is **inside your app's module graph**:
+
+- **Your store, your signals, your React commits, your Electron/Tauri IPC.** CDP and an extension see the DOM and the wire. They cannot see a Zustand value, a custom `order:saved` signal, or an IPC call to a Rust backend — those only exist to code running _inside_ the app. Reaching them means shipping an SDK into your dependency graph, which is a different product, and a place a model vendor generally does not want to be.
+- **`file:line`.** Knowing a click failed is half the job. Mapping the failing element back to `src/checkout/PayButton.tsx:42` needs a build-time source stamp — again, inside your project.
+- **The hard part isn't reading channels, it's judging them.** Five feeds are easy to collect. Deciding that two of them _disagree_ — the UI advanced while the write failed — with rules narrow enough not to cry wolf, is the actual work. That's a detector, not a data source.
+- **Neutrality.** This works with Claude Code, Cursor, OpenCode and any MCP agent. A vendor's version works with that vendor's agent. Teams don't want their verification layer to pick their model.
+
+And if a vendor does build all of it? Then the category was real, and the useful position was the in-app layer and the detector — not the browser driving. We'd rather say that plainly than pretend it's impossible.
+
 ## The numbers
 
 We injected **88 real regressions** into a controlled app and ran Reticle head-to-head against a Playwright script. Every number is produced by a committed harness — reproduce it with `pnpm bench`.
@@ -119,6 +159,45 @@ The gap is widest exactly where it hurts: **26 vs 9** on the bugs that corrupt d
 > **The proof that mattered most:** before we instrumented anything, Reticle's _first_ pass on our own production dashboard flagged two live `500`s (`GET /projects`, `/recovery/incidents`) that the UI completely hid. The page looked perfect. A screenshot would have called it done.
 
 → [Full scorecard, including where we lose](bench/SCORECARD.md) · [Confidence, claim by claim](bench/CONFIDENCE.md) · [What Reticle catches that Playwright can't, and why](bench/pw-vs-reticle/MOAT.md)
+
+## What it catches, what it doesn't, and what it costs
+
+A verification tool that oversells its reach is worse than none, so here are the edges — including the ones we lose.
+
+### Where it fits, and where it doesn't
+
+| Bug class | Reticle | Why |
+| --- | :-: | --- |
+| Silent failed request under a healthy-looking UI | **strong** | it reads the response, tied to the click |
+| State that disagrees with the screen | **strong** | it reads the store, not the rendered number |
+| Stale cache — UI showing data the server has since changed | **strong** | a stale-cache bug fires **no network request**; outside-in tools see silence and call it healthy. The TanStack Query adapter reads the cache itself |
+| Double-submit / retry storm | **strong** | request cardinality (`net { count: 1 }`) |
+| A write that failed while the UI moved on | **strong** | this is the contradiction detector's core case |
+| Races around one action | **partial** | it detects `request-never-settled` and `duplicate-request` within an action's window; it is not a scheduler-level race analyser |
+| Event-sourced write conflicts, cross-tab consistency | **weak** | these live in your backend's ordering, not in the browser. Reticle can tell you the client's story disagrees with itself; it can't referee two writers |
+| Cross-browser rendering, visual regressions on a site you don't own | **not the tool** | that's Playwright |
+
+### What it can and can't observe
+
+Observed: DOM, network (including **WebSocket and SSE frames**), console, routing, `localStorage` / `sessionStorage` / cookies, app state, custom signals, React commits, and Electron/Tauri IPC.
+
+Not observed today: **IndexedDB**, **Web Workers**, and anything inside a closed shadow root or a cross-origin iframe.
+
+**The part that matters more than the list:** when Reticle can't see something, it _says so_. A result carries `coverage: partial` and names the reason — a closed shadow root, a cross-origin frame, a `fetch` someone wrapped before we did, events dropped because the app out-ran the sampling cap. And a verdict is `yes` / `no` / **`unknown`** — where `unknown` means "the evidence couldn't decide", never a quiet pass. You should trust it exactly as far as it claims, which is the point.
+
+### What it costs
+
+|  |  |
+| --- | --- |
+| **Production bundle** | **Zero.** The SDK is imported behind `import.meta.env.DEV` and dead-code-eliminated from prod builds; a runtime guard refuses to connect under `NODE_ENV=production` as defence in depth |
+| **Dev bundle** | a dev dependency, like your test runner — it never reaches users |
+| **Runtime** | observers coalesce aggressively — rendering 5,000 list rows produced **41 events**, not 5,000 |
+| **Memory** | a bounded ring buffer (2,000 events / 60 s), plus a capped ref registry — both fixed ceilings, not growth with app lifetime |
+| **Network** | localhost WebSocket to a daemon on your machine. **No app data leaves the machine** |
+
+### Does it work with my state library?
+
+`registerStore` duck-types on `{ getState, subscribe }`, so **zustand and Redux work with no adapter at all**. Shipped adapters cover **TanStack Query, Jotai, XState, Valtio and MobX**, and a generic `pushStore` handles Context or anything hand-rolled — you push, Reticle reads. Recoil has no adapter yet; the generic path still works. None of the adapters import their library, so they add no dependency and no weight for an app that doesn't use them.
 
 ## Install in 30 seconds
 
@@ -174,15 +253,9 @@ Full walkthrough → [Getting Started](docs/getting-started.md).
 
 </details>
 
-## Use it in plain English
+## Go deeper
 
-> **You:** "Verify login works: it should call `/api/login`, land on the dashboard, and set the signed-in user."
->
-> **Agent, via Reticle:** clicks **Sign in** → `POST /api/login → 200 (14 ms)` → dashboard rendered → store now holds `auth: { email: "admin@…" }` → **✅ PASS**, with that evidence attached. Had it failed, you'd get the failing check **and the `file:line`** instead of a guess.
-
-Then say _"save that as a flow"_ — and it replays deterministically on every later edit, no model, 0% flake. Your acceptance criteria and "I just eyeball it" steps become checks the agent runs automatically, including the long tail nobody ever automated.
-
-→ [Getting Started](docs/getting-started.md) · [Full guide: every tool, predicate & the flow DSL](docs/usage.md) · [One browser, a fleet of agents in parallel](docs/multi-agent-testing.md)
+→ [Getting Started](docs/getting-started.md) · [Full guide: every tool, predicate & the flow DSL](docs/usage.md) · [One browser, a fleet of agents in parallel](docs/multi-agent-testing.md) · [Desktop apps (Electron & Tauri)](docs/desktop-apps.md)
 
 ---
 
