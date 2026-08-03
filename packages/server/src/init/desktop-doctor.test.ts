@@ -223,7 +223,10 @@ describe('diagnoseDesktop — verifying a bundled preload from its ARTIFACT', ()
 
   it('still says nothing when there is neither a source nor a build output to read', () => {
     const findings = diagnoseDesktop(
-      project({ 'package.json': bundledPkg, 'out/main/index.js': 'require("@reticlehq/electron/main")' }),
+      project({
+        'package.json': bundledPkg,
+        'out/main/index.js': 'require("@reticlehq/electron/main")',
+      }),
       4400,
     );
     expect(codes(findings)).not.toContain(DesktopFinding.ELECTRON_PRELOAD_MISSING);

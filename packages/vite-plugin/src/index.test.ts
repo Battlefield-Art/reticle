@@ -260,7 +260,9 @@ describe('desktop injection is loud in dev too, not only in build', () => {
     plugin.checkInjectedForTest?.();
     const text = warnings.join(' ');
     expect(text).toMatch(/could not confirm/i);
-    expect(text, 'dev must not claim the app will never connect').not.toMatch(/will never connect/i);
+    expect(text, 'dev must not claim the app will never connect').not.toMatch(
+      /will never connect/i,
+    );
     // The benign cause has to be named, or every warm-cache start reads as a broken integration.
     expect(text).toMatch(/cache/i);
   });

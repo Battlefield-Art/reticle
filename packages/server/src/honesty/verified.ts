@@ -65,7 +65,8 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (honesty.grade === HonestyGrade.NONE) {
     return {
       verified: Verified.UNKNOWN,
-      because: 'nothing was asserted at a real grade, so passing proves nothing — assert a signal, request, or state path',
+      because:
+        'nothing was asserted at a real grade, so passing proves nothing — assert a signal, request, or state path',
     };
   }
 
@@ -73,7 +74,8 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (settled === false) {
     return {
       verified: Verified.UNKNOWN,
-      because: 'the page never settled, so the reaction window may have closed before the app finished',
+      because:
+        'the page never settled, so the reaction window may have closed before the app finished',
     };
   }
 

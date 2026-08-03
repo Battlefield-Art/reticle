@@ -361,7 +361,6 @@ export const TruncationChannel = {
 } as const;
 export type TruncationChannel = (typeof TruncationChannel)[keyof typeof TruncationChannel];
 
-
 /**
  * How an event was linked to the action it is attributed to. `window` means the SDK stamped the
  * currently-active action's id onto every event observed between that action's dispatch and its

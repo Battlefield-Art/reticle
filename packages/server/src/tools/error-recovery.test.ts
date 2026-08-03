@@ -73,9 +73,10 @@ describe('every tool a recovery hint names must still be advertised', () => {
 
   it.each(Object.entries(RECOVERY))('%s names only reachable tools', (_name, hint) => {
     for (const mentioned of hint.match(/reticle_[a-z_]+/g) ?? []) {
-      expect(advertised, `${mentioned} is named by a recovery hint but is not advertised`).toContain(
-        mentioned,
-      );
+      expect(
+        advertised,
+        `${mentioned} is named by a recovery hint but is not advertised`,
+      ).toContain(mentioned);
     }
   });
 });

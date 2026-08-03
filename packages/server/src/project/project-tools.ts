@@ -123,7 +123,9 @@ export const PROJECT_TOOLS: ToolDef[] = [
       totalRuns: z
         .number()
         .optional()
-        .describe('How many runs exist in total. Compare against runs.length to see if it was capped.'),
+        .describe(
+          'How many runs exist in total. Compare against runs.length to see if it was capped.',
+        ),
       diff: z.unknown().optional(),
       runDiff: z.unknown().optional(),
       cloud: z.unknown().optional(),

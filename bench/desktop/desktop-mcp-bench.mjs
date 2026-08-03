@@ -5,7 +5,9 @@
 // So the interesting axis is not speed, it is whether the tool can tell the truth.
 import { spawn } from 'node:child_process';
 
-const RETICLE_CLI = process.env['RETICLE_CLI'] ?? new URL('../../packages/server/dist/cli.js', import.meta.url).pathname;
+const RETICLE_CLI =
+  process.env['RETICLE_CLI'] ??
+  new URL('../../packages/server/dist/cli.js', import.meta.url).pathname;
 const PW_MCP = process.env['PW_MCP_CLI'] ?? 'node_modules/@playwright/mcp/cli.js';
 
 function client(cmd, args) {
@@ -22,7 +24,10 @@ function client(cmd, args) {
       try {
         const m = JSON.parse(line);
         const r = waiters.get(m.id);
-        if (r) { waiters.delete(m.id); r(m); }
+        if (r) {
+          waiters.delete(m.id);
+          r(m);
+        }
       } catch {}
     }
   });
@@ -58,11 +63,23 @@ function measure(stats, label, text) {
  */
 async function resetApp() {
   const { proc, send } = client('node', [RETICLE_CLI, 'mcp', '--port', '4400']);
-  await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'reset', version: '0' } });
+  await send('initialize', {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'reset', version: '0' },
+  });
   proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
-  const sessions = await send('tools/call', { name: 'reticle_run', arguments: { tool: 'reticle_sessions', args: {} } });
-  const sid = JSON.parse(sessions.result?.content?.map((c) => c.text).join('') ?? '{}').sessions.find((s) => s.url.startsWith('file:'))?.sessionId;
-  await send('tools/call', { name: 'reticle_run', arguments: { tool: 'reticle_navigate', args: { reload: true, sessionId: sid } } });
+  const sessions = await send('tools/call', {
+    name: 'reticle_run',
+    arguments: { tool: 'reticle_sessions', args: {} },
+  });
+  const sid = JSON.parse(
+    sessions.result?.content?.map((c) => c.text).join('') ?? '{}',
+  ).sessions.find((s) => s.url.startsWith('file:'))?.sessionId;
+  await send('tools/call', {
+    name: 'reticle_run',
+    arguments: { tool: 'reticle_navigate', args: { reload: true, sessionId: sid } },
+  });
   proc.kill();
   await new Promise((r) => setTimeout(r, 4000));
 }
@@ -70,18 +87,32 @@ async function resetApp() {
 async function benchReticle() {
   const { proc, send } = client('node', [RETICLE_CLI, 'mcp', '--port', '4400']);
   const stats = { tool: 'reticle', calls: 0, bytes: 0, steps: [], ms: 0, verdict: '' };
-  await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'bench', version: '0' } });
+  await send('initialize', {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'bench', version: '0' },
+  });
   proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
 
-  const sessions = await send('tools/call', { name: 'reticle_run', arguments: { tool: 'reticle_sessions', args: {} } });
+  const sessions = await send('tools/call', {
+    name: 'reticle_run',
+    arguments: { tool: 'reticle_sessions', args: {} },
+  });
   const sessText = sessions.result?.content?.map((c) => c.text).join('') ?? '';
   const sid = JSON.parse(sessText).sessions.find((s) => s.url.startsWith('file:'))?.sessionId;
 
   const call = async (tool, args) => {
-    const r = await send('tools/call', { name: 'reticle_run', arguments: { tool, args: { ...args, sessionId: sid } } });
+    const r = await send('tools/call', {
+      name: 'reticle_run',
+      arguments: { tool, args: { ...args, sessionId: sid } },
+    });
     const text = r.result?.content?.map((c) => c.text).join('') ?? '';
     measure(stats, tool, text);
-    try { return JSON.parse(text); } catch { return {}; }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {};
+    }
   };
 
   const t0 = Date.now();
@@ -96,9 +127,7 @@ async function benchReticle() {
   stats.ms = Date.now() - t0;
 
   const c = obs.contradictions?.[0];
-  stats.verdict = c
-    ? `CAUGHT — ${c.kind}: ${c.detail}`
-    : 'reported success (missed it)';
+  stats.verdict = c ? `CAUGHT — ${c.kind}: ${c.detail}` : 'reported success (missed it)';
   proc.kill();
   return stats;
 }
@@ -106,13 +135,23 @@ async function benchReticle() {
 async function benchPlaywright() {
   const { proc, send } = client('node', [PW_MCP, '--cdp-endpoint', 'http://127.0.0.1:9222']);
   const stats = { tool: 'playwright-mcp', calls: 0, bytes: 0, steps: [], ms: 0, verdict: '' };
-  const init = await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'bench', version: '0' } });
-  if (init.error) { stats.verdict = `could not attach: ${init.error.message}`; proc.kill(); return stats; }
+  const init = await send('initialize', {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'bench', version: '0' },
+  });
+  if (init.error) {
+    stats.verdict = `could not attach: ${init.error.message}`;
+    proc.kill();
+    return stats;
+  }
   proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
 
   const call = async (name, args) => {
     const r = await send('tools/call', { name, arguments: args });
-    const text = r.result?.content?.map((c) => c.text ?? '').join('') ?? (r.error ? JSON.stringify(r.error) : '');
+    const text =
+      r.result?.content?.map((c) => c.text ?? '').join('') ??
+      (r.error ? JSON.stringify(r.error) : '');
     measure(stats, name, text);
     return { text, error: r.error };
   };
@@ -120,9 +159,16 @@ async function benchPlaywright() {
   const t0 = Date.now();
   // 1. see the page
   const snap = await call('browser_snapshot', {});
-  if (snap.error) { stats.verdict = `snapshot failed: ${JSON.stringify(snap.error).slice(0, 120)}`; stats.ms = Date.now() - t0; proc.kill(); return stats; }
+  if (snap.error) {
+    stats.verdict = `snapshot failed: ${JSON.stringify(snap.error).slice(0, 120)}`;
+    stats.ms = Date.now() - t0;
+    proc.kill();
+    return stats;
+  }
   // 2. act — Playwright MCP wants element + ref from its own snapshot
-  const refMatch = /Archive[^\n]*?\[ref=([^\]]+)\]/.exec(snap.text) ?? /\[ref=([^\]]+)\][^\n]*Archive/.exec(snap.text);
+  const refMatch =
+    /Archive[^\n]*?\[ref=([^\]]+)\]/.exec(snap.text) ??
+    /\[ref=([^\]]+)\][^\n]*Archive/.exec(snap.text);
   const pwRef = refMatch?.[1];
   if (pwRef) await call('browser_click', { element: 'Archive button', ref: pwRef });
   await new Promise((r) => setTimeout(r, 900));
@@ -134,7 +180,9 @@ async function benchPlaywright() {
   // the failed call, so no strategy built on its output can distinguish success from a lying UI.
   const everything = (snap.text ?? '') + (after.text ?? '');
   const sawTheFailure = /archive_todo|todos:archive|500|ipc:/i.test(everything);
-  const uiLooksDone = !/Wire Reticle into an Electron app/.test(after.text ?? '') || /archived/i.test(after.text ?? '');
+  const uiLooksDone =
+    !/Wire Reticle into an Electron app/.test(after.text ?? '') ||
+    /archived/i.test(after.text ?? '');
   stats.verdict = sawTheFailure
     ? 'saw the failed call'
     : `blind to the failure — no network/IPC in any output${uiLooksDone ? '; UI reads as success (FALSE GREEN)' : ''}`;
@@ -146,15 +194,31 @@ async function benchPlaywright() {
 async function benchReticleTargeted() {
   const { proc, send } = client('node', [RETICLE_CLI, 'mcp', '--port', '4400']);
   const stats = { tool: 'reticle (lean)', calls: 0, bytes: 0, steps: [], ms: 0, verdict: '' };
-  await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'bench', version: '0' } });
+  await send('initialize', {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'bench', version: '0' },
+  });
   proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
-  const sessions = await send('tools/call', { name: 'reticle_run', arguments: { tool: 'reticle_sessions', args: {} } });
-  const sid = JSON.parse(sessions.result?.content?.map((c) => c.text).join('') ?? '{}').sessions.find((s) => s.url.startsWith('file:'))?.sessionId;
+  const sessions = await send('tools/call', {
+    name: 'reticle_run',
+    arguments: { tool: 'reticle_sessions', args: {} },
+  });
+  const sid = JSON.parse(
+    sessions.result?.content?.map((c) => c.text).join('') ?? '{}',
+  ).sessions.find((s) => s.url.startsWith('file:'))?.sessionId;
   const call = async (tool, args) => {
-    const r = await send('tools/call', { name: 'reticle_run', arguments: { tool, args: { ...args, sessionId: sid } } });
+    const r = await send('tools/call', {
+      name: 'reticle_run',
+      arguments: { tool, args: { ...args, sessionId: sid } },
+    });
     const text = r.result?.content?.map((c) => c.text).join('') ?? '';
     measure(stats, tool, text);
-    try { return JSON.parse(text); } catch { return {}; }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {};
+    }
   };
   const t0 = Date.now();
   const q = await call('reticle_query', { by: 'role', value: 'button', name: 'Archive' });
@@ -163,9 +227,10 @@ async function benchReticleTargeted() {
   await new Promise((r) => setTimeout(r, 900));
   const failed = await call('reticle_network', { status: 500, since: act.since });
   stats.ms = Date.now() - t0;
-  stats.verdict = (failed.calls?.length ?? 0) > 0
-    ? `CAUGHT — ${failed.calls[0].url} → ${String(failed.calls[0].status)}`
-    : 'reported success (missed it)';
+  stats.verdict =
+    (failed.calls?.length ?? 0) > 0
+      ? `CAUGHT — ${failed.calls[0].url} → ${String(failed.calls[0].status)}`
+      : 'reported success (missed it)';
   proc.kill();
   return stats;
 }
@@ -175,18 +240,21 @@ async function benchPlaywrightTauri() {
   const { proc, send } = client('node', [PW_MCP, '--cdp-endpoint', 'http://127.0.0.1:9333']);
   const stats = { tool: 'pw-mcp→Tauri', calls: 0, bytes: 0, steps: [], ms: 0, verdict: '' };
   const t0 = Date.now();
-  await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'bench', version: '0' } });
+  await send('initialize', {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'bench', version: '0' },
+  });
   proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   const r = await send('tools/call', { name: 'browser_snapshot', arguments: {} });
-  const text = r.result?.content?.map((c) => c.text ?? '').join('') ?? JSON.stringify(r.error ?? {});
+  const text =
+    r.result?.content?.map((c) => c.text ?? '').join('') ?? JSON.stringify(r.error ?? {});
   measure(stats, 'browser_snapshot', text);
   stats.ms = Date.now() - t0;
   stats.verdict = 'CANNOT ATTACH — WKWebView exposes no CDP endpoint';
   proc.kill();
   return stats;
 }
-
-
 
 // Each contender starts from an identical, freshly reloaded app.
 await resetApp();

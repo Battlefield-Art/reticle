@@ -79,16 +79,13 @@ Nothing on the JavaScript side: the SDK invokes the command through Tauri's own 
 
 `reticle_capture` renders the webview rather than reading the screen — like Electron's `capturePage()` — so it needs no screen-recording permission, cannot return another window's pixels, and is correct with nothing on screen at all. Each platform uses its own webview API:
 
-| Platform   | API                                      | Status                          |
-| ---------- | ---------------------------------------- | ------------------------------- |
-| macOS      | `WKWebView.takeSnapshot`                 | Verified against a running app  |
+| Platform | API | Status |
+| --- | --- | --- |
+| macOS | `WKWebView.takeSnapshot` | Verified against a running app |
 | Linux, BSD | WebKitGTK `webkit_web_view_get_snapshot` | Snapshot + PNG encoding verified under `xvfb`; not yet driven through a full Tauri app |
-| Windows    | WebView2 `CapturePreview`                | **Untested — compiles, never executed** |
+| Windows | WebView2 `CapturePreview` | **Untested — compiles, never executed** |
 
-The Windows path is written and type-checked against the real `webview2-com` API (which caught two
-genuine type errors), but nobody has run it on Windows. It is shipped rather than withheld so it can
-be tried, and labelled rather than listed flatly so that trying it is a choice. If it works for you,
-say so and this row changes; treat a green from it as unconfirmed until then.
+The Windows path is written and type-checked against the real `webview2-com` API (which caught two genuine type errors), but nobody has run it on Windows. It is shipped rather than withheld so it can be tried, and labelled rather than listed flatly so that trying it is a choice. If it works for you, say so and this row changes; treat a green from it as unconfirmed until then.
 
 All three capture the visible viewport by default, so a baseline taken on a developer's Mac is comparable against the same app in Linux CI. On a platform with no webview API to call, capture reports no-provider rather than returning a plausible wrong image.
 

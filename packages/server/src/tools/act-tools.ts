@@ -439,9 +439,7 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           'THE field to gate on: "yes" | "no" | "unknown". Read this first and read `because` for the reason. "unknown" is NOT failure — it means the evidence could not decide (dirty capture, nothing asserted at a real grade, or the page never settled), which calls for a better check rather than a code change. Everything else on this result is the evidence this was derived from.',
         ),
-      because: z
-        .string()
-        .describe('One sentence naming the deciding evidence behind `verified`.'),
+      because: z.string().describe('One sentence naming the deciding evidence behind `verified`.'),
       contradictions: z
         .array(z.unknown())
         .optional()

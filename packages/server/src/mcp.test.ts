@@ -243,7 +243,9 @@ describe('a wrong-shaped call is answered with a correct one', () => {
     const content = (result as { content?: unknown }).content;
     const blocks = Array.isArray(content) ? content : [];
     return blocks
-      .map((b) => (typeof b === 'object' && b !== null ? String((b as { text?: unknown }).text) : ''))
+      .map((b) =>
+        typeof b === 'object' && b !== null ? String((b as { text?: unknown }).text) : '',
+      )
       .join(' ');
   };
 
@@ -277,7 +279,9 @@ describe('a wrong-shaped call is answered with a correct one', () => {
     const failure = errorText(result);
 
     expect(result.isError, 'the call must still be rejected').toBe(true);
-    expect(failure, 'it must show what a correct call looks like').toContain('A valid call looks like');
+    expect(failure, 'it must show what a correct call looks like').toContain(
+      'A valid call looks like',
+    );
     expect(failure).toContain('"action":"fill"');
     await close();
   });
@@ -339,7 +343,9 @@ describe('an unknown parameter is refused, never silently dropped', () => {
   const text = (result: unknown): string => {
     const content = (result as { content?: unknown }).content;
     return (Array.isArray(content) ? content : [])
-      .map((b) => (typeof b === 'object' && b !== null ? String((b as { text?: unknown }).text) : ''))
+      .map((b) =>
+        typeof b === 'object' && b !== null ? String((b as { text?: unknown }).text) : '',
+      )
       .join(' ');
   };
 
