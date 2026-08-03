@@ -1,5 +1,6 @@
 import {
   CommandMessageSchema,
+  EventType,
   MessageKind,
   SESSION_LIFECYCLE,
   type CommandMessage,
@@ -31,11 +32,6 @@ interface TransportDeps {
    */
   onConnectionLost?: () => void;
   /**
-   * Called with the cumulative drop count each time the outbound queue overflows. The
-   * caller (Reticle) emits a synthetic TRANSPORT_OVERFLOW event so the agent learns about gaps.
-   */
-  onOverflow?: (dropped: number) => void;
-  /**
    * Fired once when the VERY FIRST connection keeps failing (never opened) — i.e. the bridge is
    * unreachable at this URL, most often a wrong port or a container/WSL network boundary. Distinct
    * from onConnectionLost (which is about losing an ALREADY-established session). The caller surfaces
@@ -63,7 +59,8 @@ function subscribeDocumentVisible(handler: () => void): () => void {
 }
 
 const RECONNECT_DELAY_MS = 1000;
-const MAX_QUEUE = 500;
+/** Offline queue cap. Exported so tests overflow the real bound instead of a mirrored copy of it. */
+export const MAX_QUEUE = 500;
 /**
  * Standard WebSocket close code 1008 ("policy violation") — the bridge sends it for TERMINAL refusals:
  * a protocol-version mismatch (the browser package is older than the bridge and must be upgraded),
@@ -75,10 +72,20 @@ const WS_POLICY_VIOLATION = 1008;
 /** Warn that the bridge is unreachable after this many consecutive failed INITIAL connects (~3s). */
 const UNREACHABLE_WARN_AFTER = 3;
 
+/**
+ * An outbound message waiting for the socket. EVENT messages also carry their envelope coordinates:
+ * evicting one is an observation gap the agent has to be told about, and the marker that declares it
+ * can only be positioned correctly if we remember what it displaced.
+ */
+interface QueuedMessage {
+  text: string;
+  event?: { seq: number | undefined; t: number } | undefined;
+}
+
 /** WebSocket client to the bridge. Reconnects across reloads; buffers events while down. */
 export class Transport {
   #ws: WebSocket | undefined;
-  #queue: string[] = [];
+  #queue: QueuedMessage[] = [];
   #closed = false;
   /** When the current continuous outage began (nativeNow), or undefined while connected. */
   #disconnectedSince: number | undefined;
@@ -90,7 +97,13 @@ export class Transport {
   #initialFailures = 0;
   /** Whether the unreachable warning has fired (fire-once). */
   #warnedUnreachable = false;
-  #overflowCount = 0;
+  /** Events the offline queue has evicted since the last gap marker reached the bridge. */
+  #dropped = 0;
+  /**
+   * Envelope coordinates of the most recent evicted event — the pending marker's tombstone. Set while
+   * a gap is undeclared, cleared once the bridge has been told about it.
+   */
+  #gap: { seq: number | undefined; t: number } | undefined;
   /** Session id, cached from the first hello(). Stable for a Transport's life — no need to rebuild the
    * whole HelloMessage (url/title/adapters) on every inbound command just to read it. */
   #sessionId: string | undefined;
@@ -146,8 +159,13 @@ export class Transport {
       this.#everConnected = true; // a real connection happened ⇒ never warn "unreachable"
       // HELLO is SDK-owned schema data. Preserve its pairing token; the generic sanitizer
       // intentionally redacts fields named "token" from app-controlled payloads.
-      ws.send(JSON.stringify(this.#deps.hello()));
-      for (const msg of this.#queue) ws.send(msg);
+      const greeting = this.#deps.hello();
+      this.#sessionId ??= greeting.sessionId;
+      ws.send(JSON.stringify(greeting));
+      // Declare any gap BEFORE replaying the backlog. The queue evicts its OLDEST entries, so the
+      // hole always precedes everything that survived it.
+      this.#sendGapMarker(ws, greeting.sessionId);
+      for (const msg of this.#queue) ws.send(msg.text);
       this.#queue = [];
       this.#deps.onConnected?.();
     };
@@ -224,7 +242,7 @@ export class Transport {
     const result = CommandMessageSchema.safeParse(parsed);
     if (!result.success) return;
     const command = result.data;
-    this.#sessionId ??= this.#deps.hello().sessionId;
+    // #sessionId is set in onopen, which always precedes any inbound command on the same socket.
     if (command.sessionId !== undefined && command.sessionId !== this.#sessionId) return;
     let outcome: CommandOutcome;
     try {
@@ -247,23 +265,58 @@ export class Transport {
   }
 
   sendEvent(event: ReticleEvent): void {
-    this.#sendRaw(safeStringify({ kind: MessageKind.EVENT, event }));
+    this.#sendRaw(safeStringify({ kind: MessageKind.EVENT, event }), {
+      seq: event.seq,
+      t: event.t,
+    });
   }
 
-  #sendRaw(text: string): void {
+  #sendRaw(text: string, event?: QueuedMessage['event']): void {
     if (this.#ws !== undefined && this.#ws.readyState === WebSocket.OPEN) {
       this.#ws.send(text);
       return;
     }
     if (this.#queue.length >= MAX_QUEUE) {
       // Full offline queue: drop the OLDEST and keep the newest (ring), so after reconnect the agent
-      // replays RECENT activity instead of 500 stale events with the latest lost. The overflow
-      // counter still signals that a gap occurred.
-      this.#queue.shift();
-      this.#overflowCount += 1;
-      this.#deps.onOverflow?.(this.#overflowCount);
+      // replays RECENT activity instead of 500 stale events with the latest lost. Remember what went
+      // so the loss can be declared on reconnect — an unmarked hole reads as "the app did nothing".
+      // Only an evicted EVENT counts: a dropped COMMAND_RESULT is a reply the agent already gave up
+      // waiting for, not a hole in what the app was observed to do.
+      const evicted = this.#queue.shift();
+      if (evicted?.event !== undefined) {
+        this.#dropped += 1;
+        this.#gap = evicted.event;
+      }
     }
-    this.#queue.push(text);
+    this.#queue.push({ text, event });
+  }
+
+  /**
+   * Tell the bridge the offline queue swallowed events, then consider the gap declared.
+   *
+   * Written straight to the open socket instead of going back through `sendEvent`, for two reasons
+   * that both bite at exactly the moment the marker matters. The queue is full when a drop happens,
+   * so a queued marker would evict another real event — every declared gap widening the gap it
+   * declares. And it would re-enter `#sendRaw` from inside the eviction branch, between the `shift`
+   * and the `push`, growing the queue by one on every later send. Writing here makes both impossible.
+   *
+   * The marker inherits the seq/t of the last event it displaced. That event never reaches the
+   * bridge, so the coordinates are free, and the server orders a session by `seq` — a marker minted
+   * at reconnect would carry the highest seq and blame a segment that never had a hole in it.
+   */
+  #sendGapMarker(ws: WebSocket, sessionId: string): void {
+    const gap = this.#gap;
+    if (gap === undefined) return;
+    const marker: ReticleEvent = {
+      t: gap.t,
+      seq: gap.seq,
+      type: EventType.TRANSPORT_OVERFLOW,
+      sessionId,
+      data: { dropped: this.#dropped },
+    };
+    ws.send(safeStringify({ kind: MessageKind.EVENT, event: marker }));
+    this.#gap = undefined;
+    this.#dropped = 0;
   }
 
   close(): void {

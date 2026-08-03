@@ -4,6 +4,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+### Fixed
+
+- **A bridge outage no longer opens a silent hole in the ledger.** When the SDK's offline queue filled during an outage it discarded its oldest events and told no one: `TRANSPORT_OVERFLOW` was defined in the contract and consumed by the server's segment rollup, but nothing ever emitted it, so the hook had been dead in every release. The gap then read as "the app did nothing" — and because the segment was never marked truncated, its understated counts were folded into the learned deviation envelope in `.reticle/envelopes.json`, so one blip could quietly raise the bar a later regression is judged against. The transport now declares each gap exactly once on reconnect, ahead of the replayed backlog, carrying the seq/`t` of the last event it displaced so the marker sorts at the hole instead of at the end of the session. Thanks @hardikguptaofficialgit. (#66) (`@reticlehq/browser`)
+
 ## [2.3.0] - 2026-08-02
 
 ### Behaviour changes — read these before upgrading
@@ -116,7 +120,6 @@ Four changes alter what an existing caller gets back. None is a rename, so nothi
 - **The bridge no longer crashes on a desktop webview's Origin.** A WebSocket handshake carrying an opaque origin — `tauri://localhost`, `app://.`, `file://` — reached `new URL('null')` inside the `verifyClient` handler and threw, an uncaught exception in the HTTP upgrade path. Opaque origins are now kept verbatim (so they can be allow-listed at all, which normalization previously made impossible) and, carrying no attributable host, are gated on the pairing token exactly as a missing `Origin` already was. (#64) (`@reticlehq/server`)
 - **The SDK no longer refuses to start inside a desktop app.** The localhost gate exists to stop a remote website driving a developer's local bridge, but it read a `file://`, `tauri://` or `http://tauri.localhost` page as remote and blocked the connection outright. A local desktop webview is now recognized as local; a remote page reaching a loopback bridge is still blocked, and a remote _bridge_ still requires the explicit opt-in plus a token. (#64) (`@reticlehq/browser`, `@reticlehq/core`)
 - **`reticle open` explains itself on desktop.** With no app connected it suggested passing a URL, which does not exist for an Electron or Tauri app; it now says to start the app normally and let it connect. Its reuse check also no longer treats two different desktop apps as the same app — both opaque origins compared equal. (#64) (`@reticlehq/server`)
-
 - **`withFileLock` reclaims a path's chain entry once it settles,** guarded by pointer identity so a queued successor is never dropped — previously every unique file path locked in a long-running daemon occupied a Map slot forever. Thanks @DevChiniwala. (#63) (`@reticlehq/server`)
 
 ## [2.2.1] — 2026-07-29
