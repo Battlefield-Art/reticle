@@ -3,10 +3,11 @@
   "version": "0.2.2",
   "private": true,
   "type": "module",
-  "description": "Committed end-to-end battery: boots api+bench-app+next-smoke and drives Reticle in a real (headless) browser. The product's regression safety net.",
+  "description": "Committed end-to-end batteries: the web battery boots api+bench-app+next-smoke and drives Reticle in a real headless browser; the desktop battery starts a real Electron main process and a packaged Tauri binary. The product regression safety net.",
   "scripts": {
     "e2e": "node run.mjs",
-    "e2e:ci": "bash run-ci.sh"
+    "e2e:ci": "bash run-ci.sh",
+    "e2e:desktop": "bash run-desktop.sh"
   },
   "dependencies": {
     "@reticlehq/server": "workspace:*",

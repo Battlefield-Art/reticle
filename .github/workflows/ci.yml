@@ -36,6 +36,77 @@ jobs:
         continue-on-error: true
       - run: pnpm format:check
 
+  # `reticle-tauri` is Rust, so NONE of the gates above can see it — and it had no job at all, which
+  # meant the Windows capture backend had never been compiled by CI even though publish-crate.yml
+  # claimed it was. Linux builds natively here (its webkit2gtk build scripts cannot cross-compile)
+  # and Windows is cross-checked; macOS gets its own runner below.
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Rust
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add clippy rustfmt
+          rustup target add x86_64-pc-windows-msvc
+          rustc --version && cargo --version
+      # The Linux capture path compiles natively here, and it needs the same system libraries a
+      # Tauri app needs. Without these the crate does not build at all.
+      - name: Install WebKitGTK build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libwebkit2gtk-4.1-dev libglib2.0-dev libcairo2-dev libsoup-3.0-dev
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/tauri/target
+          key: cargo-linux-${{ hashFiles('packages/tauri/Cargo.lock') }}
+          restore-keys: cargo-linux-
+      - name: Format
+        working-directory: packages/tauri
+        run: cargo fmt --check
+      - name: Lint (Linux capture path, natively)
+        working-directory: packages/tauri
+        run: cargo clippy --all-targets -- -D warnings
+      # Cross-CHECK the Windows path. It does not link here, but it does type-check `capture/
+      # windows.rs` against the real `webview2-com` / `windows` bindings — verified to actually
+      # compile that module, not skip it. Without this, an API bump in either crate is discovered by
+      # a Windows user rather than by CI.
+      - name: Check the Windows capture path
+        working-directory: packages/tauri
+        run: cargo check --target x86_64-pc-windows-msvc
+
+  # macOS gets its own runner rather than a cross-check: `capture/macos.rs` talks to WKWebView
+  # through objc2, and the interesting failures there (a missing feature flag on an objc2 crate, a
+  # renamed selector) are exactly what a native build catches.
+  rust-macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Rust
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add clippy
+          rustc --version && cargo --version
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/tauri/target
+          key: cargo-macos-${{ hashFiles('packages/tauri/Cargo.lock') }}
+          restore-keys: cargo-macos-
+      - name: Lint (macOS capture path, natively)
+        working-directory: packages/tauri
+        run: cargo clippy --all-targets -- -D warnings
+
   e2e:
     runs-on: ubuntu-latest
     needs: verify
@@ -83,3 +154,51 @@ jobs:
           path: /tmp/e2e-*.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # The desktop battery: a REAL Electron main process and a PACKAGED Tauri binary, each dialing the
+  # bridge the way a desktop app actually does. Its own job because it needs things the web battery
+  # does not — an Electron install, a Rust toolchain, WebKitGTK, and a display — and none of the
+  # three HTTP servers that battery boots.
+  #
+  # This exists because v2.3.0 shipped Electron and Tauri support with no automated coverage at all:
+  # the unit gate cannot boot a main process, and run-ci.sh boots no desktop runtime. Every bug the
+  # two specs pin was found by driving these apps by hand.
+  desktop-e2e:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Set up Rust
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+      # Tauri's own build needs these; xvfb and libgbm are what let a never-shown window be CREATED
+      # at all on a headless runner — "headless" here means unshown, not display-less.
+      - name: Install desktop runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libwebkit2gtk-4.1-dev libglib2.0-dev libcairo2-dev libsoup-3.0-dev \
+            xvfb libgbm1 libnss3 libasound2t64
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/tauri-smoke/src-tauri/target
+          key: cargo-smoke-${{ hashFiles('apps/tauri-smoke/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-smoke-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # Electron needs --no-sandbox on a CI runner (no user namespaces), and both runtimes need a
+      # display to create a window even when that window is never shown.
+      - name: Run desktop battery (Electron + packaged Tauri, headless)
+        run: xvfb-run -a pnpm test:e2e:desktop
+        env:
+          ELECTRON_DISABLE_SANDBOX: '1'

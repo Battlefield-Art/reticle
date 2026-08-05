@@ -89,7 +89,8 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       # The Linux capture path is what compiles natively here. The macOS and Windows paths are behind
-      # cfg gates and are covered by `cargo check --target` in CI, not by this job.
+      # cfg gates and are covered by the `rust` / `rust-macos` jobs in ci.yml (a Windows
+      # `cargo check --target` and a native macOS clippy), not by this job.
       - name: Build
         if: steps.check.outputs.already-published == 'false'
         run: cargo build --release

@@ -45,6 +45,7 @@ try {
         cwd: path.join(ROOT, 'apps/tauri-smoke/src-tauri'),
         env: { ...env, RETICLE_HEADLESS: '1' },
       }),
+    urlIncludes: 'tauri://',
   });
   const { tool, refOf, sessionId, server, log } = session;
 
