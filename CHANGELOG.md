@@ -4,9 +4,13 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-08-05
+
+Desktop release: Electron and Tauri are supported surfaces with a committed battery behind them rather than a hand-run number in the docs, and CI compiles the Rust for the first time. Also a feedback channel so an agent can report a bad verdict, a round of false-green fixes found by driving the desktop apps by hand, and an honesty pass on which frameworks we actually claim to support. No breaking API changes; on-disk flow files stay version 1.
+
 ### Behaviour changes — read these before upgrading
 
-Eight changes alter what an existing caller gets back. Seven change RESULTS rather than names, so nothing fails to compile; the last one is a pure rename, and it is a rename of analytics event names rather than of anything in the API.
+Nine changes alter what an existing caller gets back. Seven change RESULTS rather than names, so nothing fails to compile; one is a pure rename, and it is a rename of analytics event names rather than of anything in the API; the last narrows which frameworks we claim to support.
 
 - **Unknown tool parameters are now REFUSED, not ignored.** Pass a key a tool does not declare and the call fails with that tool's own valid example, instead of the key being silently dropped. This is the one change that can break a working script, and it is worth it: `reticle_clock` with a misspelled parameter used to return `{"frozen":false}` — a well-formed NEGATIVE that reads as a fact about the app, when it meant "you named the parameter wrong". Silently ignoring input was never a documented contract, and it made every tool a false-negative generator for one typo.
 - **The bridge SAMPLES above its message-rate cap instead of disconnecting.** A burst used to close the socket permanently (a policy code the SDK never retries), leaving the app running and Reticle blind. Events above the cap are now dropped and reported as a `rate-limited` blind spot, so a verdict over a sampled window says `coverage: partial`. Raise `RETICLE_MAX_MESSAGES_PER_SECOND` for a legitimately busy app.
@@ -17,6 +21,8 @@ Eight changes alter what an existing caller gets back. Seven change RESULTS rath
 - **A one-way Electron `ipcRenderer.send` now appears in `reticle_network`**, where nothing appeared before. It carries `oneWay: true` and NO `ok`/`status`, because the renderer cannot learn the outcome — so a filter counting IPC calls will see more of them, and an `{ ok }` filter still will not claim them either way.
 
 - **EVERY TELEMETRY EVENT WAS RENAMED, AND THE PER-TOOL-CALL EVENT IS GONE.** This changes nothing for users of Reticle — it is opt-out anonymous metrics either way — but it breaks every existing analytics chart. Old names (`install`, `invoke`, `session_start`, `session_end`, `tool`, `feedback`) stop being emitted; the new taxonomy is listed in [`docs/telemetry.md`](docs/telemetry.md). Charts that must span the change need both names, or a filter on the event-version property `v` (now `3`). `invoke` in particular is not comparable to `cli_command_run` even after renaming, because `invoke` double-counted every daemon spawn.
+
+- **`SKILL.md` no longer offers Vue, Svelte or SvelteKit, and now offers Astro.** Those three were on the framework list users pick from with no app and no CI gate behind any of them — the SDK is framework-agnostic and all three may well work, but nothing proved it and nothing would have reported it breaking. If you picked one of them, pick "Plain HTML / vanilla" instead; the wiring is the same `connect()` call. Astro moves the other way: it had an app and an integration gate the whole time and was never offered, so it is on the list now, alongside Remix. `reticle init` still wires SvelteKit — that path is real and is the only one that can register a session there — but the plan now opens with an UNVERIFIED step saying so, instead of emitting wiring that reads as a support claim. (`SKILL.md`, `@reticlehq/server`)
 
 ### Known limitation
 
