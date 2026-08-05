@@ -46,11 +46,11 @@ export function flowErrorMessage(code: FlowErrorCode): string {
     case FlowErrorCode.INVALID_NAME:
       return 'invalid flow name — use a single safe segment (letters/digits/-/_), no path separators';
     case FlowErrorCode.NOT_FOUND:
-      return 'no such flow on disk — run reticle_flow_list to see saved flows';
+      return 'no such flow on disk — run reticle_flow{action:"list"} to see saved flows';
     case FlowErrorCode.PARSE_FAILED:
       return 'flow file is malformed — fix or regenerate it with reticle_flow_save';
     case FlowErrorCode.NO_RECORDING:
-      return 'no compiled recording by that name — record one (reticle_record_start/stop) first';
+      return 'no compiled recording by that name — record one (reticle_record{action:"start"|"stop"}) first';
   }
 }
 

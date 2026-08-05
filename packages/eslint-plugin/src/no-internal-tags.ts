@@ -78,6 +78,13 @@ const ALLOWED = new Set([
   'Q4', // quarters
   'L1',
   'L2', // cache levels
+  // The JavaScript engine. Omitting it made the rule fire on ordinary writing about heap growth and
+  // GC in a JavaScript codebase — the most likely place this rule runs, and the fastest way to get it
+  // switched off. Found by running the rule over directories the linter had never reached.
+  'V8',
+  'H4',
+  'H5',
+  'H6', // heading levels — H1-H3 were already here; stopping at 3 was an oversight, not a rule
 ]);
 
 export const noInternalTags = createRule({

@@ -119,7 +119,7 @@ export const LEASE_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.LEASE_ACQUIRE,
     description:
-      'Lease a fresh isolated headless browser context from the shared pool and navigate it to the app URL (the app must already be running and embed @reticlehq/core). Returns the sessionId the leased tab registers — pass it to other tools. The pool keeps all leases in ONE browser and caps concurrency; if at capacity this waits for a free slot. Release with reticle_lease_release when the flow is done.',
+      'Lease a fresh isolated headless browser context from the shared pool and navigate it to the app URL (the app must already be running and embed @reticlehq/core). Returns the sessionId the leased tab registers — pass it to other tools. The pool keeps all leases in ONE browser and caps concurrency; if at capacity this waits for a free slot. Release with reticle_lease{action:"release"} when the flow is done.',
     inputSchema: {
       url: z
         .string()
@@ -148,7 +148,7 @@ export const LEASE_TOOLS: ToolDef[] = [
       if (pool === undefined) throw new Error(POOL_UNAVAILABLE);
       const url = asString(args['url']);
       if (url === undefined || url.length === 0)
-        throw new Error('reticle_lease_acquire requires a url');
+        throw new Error('reticle_lease{action:"acquire"} requires a url');
       const projectId = asString(args['projectId']);
       const sessionId = newLeaseId();
       const navUrl = appendReticleParams(url, sessionId, projectId);
@@ -185,7 +185,9 @@ export const LEASE_TOOLS: ToolDef[] = [
     description:
       'Release a leased browser context by sessionId, closing it and freeing the pool slot for a queued acquire. Call this when a flow finishes so the pool stays within its concurrency cap.',
     inputSchema: {
-      sessionId: z.string().describe('The leased sessionId returned by reticle_lease_acquire.'),
+      sessionId: z
+        .string()
+        .describe('The leased sessionId returned by reticle_lease{action:"acquire"}.'),
     },
     outputSchema: {
       released: z.boolean(),
@@ -196,7 +198,7 @@ export const LEASE_TOOLS: ToolDef[] = [
       if (pool === undefined) throw new Error(POOL_UNAVAILABLE);
       const sessionId = asString(args['sessionId']);
       if (sessionId === undefined || sessionId.length === 0) {
-        throw new Error('reticle_lease_release requires a sessionId');
+        throw new Error('reticle_lease{action:"release"} requires a sessionId');
       }
       await pool.release(sessionId);
       return { released: true, leased: pool.activeCount() };

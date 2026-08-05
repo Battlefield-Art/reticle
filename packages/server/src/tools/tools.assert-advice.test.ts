@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { LastAct } from '../session/last-act.js';
 import {
   EventType,
   ReticleCommand,
@@ -30,13 +31,13 @@ function depsWith(opts: { matched?: boolean; events?: ReticleEvent[] }): ToolDep
         result: name === ReticleCommand.MATCH ? matchResult : {},
       }),
     eventsSince: () => opts.events ?? [],
-    lastActCursor: () => 0,
     health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
     // A verdict now carries the buffer-honesty block, so the fake has to be able to report it.
     // An intact buffer keeps the block omitted, which is what these advice assertions expect.
     bufferHealth: () => ({ total: 0, dropped: 0 }),
+    lastAct: new LastAct(),
+    queryEvents: () => Promise.resolve([]),
     blindSpots: () => ({}),
-    lastActSource: () => undefined,
     getState: () => SessionState.ACTIVE,
     drainInbox: () => [],
   };

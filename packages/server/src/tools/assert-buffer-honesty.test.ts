@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LastAct } from '../session/last-act.js';
 import { BUFFER_EVICTION_WARNING, SessionState } from '@reticlehq/core';
 import { TOOLS, type ToolDef, type ToolDeps } from './tools.js';
 import { ReticleTool } from './tool-names.js';
@@ -19,13 +20,16 @@ import type { Session, SessionManager } from '../session/session.js';
 function depsWithBuffer(dropped: number, lastActSource?: string): ToolDeps {
   const session: Partial<Session> = {
     id: 'demo',
-    lastActSource: () => lastActSource,
+    lastAct: ((): LastAct => {
+      const a = new LastAct();
+      a.markSource(lastActSource);
+      return a;
+    })(),
     bufferHealth: () => ({ total: 12, dropped }),
     blindSpots: () => ({}),
     eventsSince: () => [],
     queryEvents: () => Promise.resolve([]),
     elapsed: () => 1000,
-    lastActCursor: () => 0,
     health: () => ({ lastSeenMs: 5, throttled: false, focused: true, hidden: false }),
     getState: () => SessionState.ACTIVE,
     drainInbox: () => [],

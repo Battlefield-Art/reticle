@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LastAct } from './last-act.js';
 import { SessionState, UNSCRIPTABLE_TAB_RECOMMENDATION } from '@reticlehq/core';
 import type { CommandResult } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from '../tools/tools.js';
@@ -34,10 +35,9 @@ function fakeSession(throttled: boolean): Session {
     id: 'demo',
     url: SESSION_URL,
     elapsed: () => 0,
-    markActCursor: () => undefined,
+    lastAct: new LastAct(),
     beginAction: () => 'a1',
     finishAction: () => undefined,
-    lastActCursor: () => undefined,
     eventsSince: () => [],
     queryEvents: () => Promise.resolve([]),
     eventsInWindow: () => [],

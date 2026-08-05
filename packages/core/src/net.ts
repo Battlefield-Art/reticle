@@ -33,3 +33,13 @@ export const IpcStatus = {
   OK: 200,
   ERROR: 500,
 } as const;
+
+/**
+ * `202 Accepted` — the server took the request and has NOT finished processing it.
+ *
+ * The only status in HTTP whose meaning is "no outcome yet". Folding it into the 2xx success band is
+ * how an asynchronous workflow gets verified at exactly the moment nothing has been decided:
+ * measured on a logistics console, a dispatch answered 202, the UI rendered success, the page
+ * settled, and the server reverted the shipment 1.2s later.
+ */
+export const HTTP_ACCEPTED = 202;

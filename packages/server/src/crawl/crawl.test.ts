@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ContradictionKind,
   CrawlAnomalyKind,
   EventType,
   ReticleCommand,
   type CommandResult,
   type ReticleEvent,
 } from '@reticlehq/core';
-import { crawl, type CrawlSession } from './crawl.js';
+import { crawl, type CrawlSession, legitimatelyInert } from './crawl.js';
 
 const noSleep = (): Promise<void> => Promise.resolve();
 
@@ -56,7 +57,11 @@ describe('crawl — autonomous smart-monkey', () => {
   it('1: a healthy app yields zero anomalies and visits every control', async () => {
     const session = fakeSession(tree(['button "Save" (ref=e1)', 'link "Home" (ref=e2)']), {
       e1: domActivity,
-      e2: { events: [{ type: EventType.ROUTE_CHANGE }] },
+      // A healthy nav RENDERS its destination. This fixture used to emit a bare ROUTE_CHANGE and
+      // nothing else, which measured against a real dashboard is not what a working link looks like
+      // (a working one emitted domAdded + two requests) — it is precisely what a link to a BLANK
+      // page looks like. Left as it was, the fixture asserted that arriving nowhere is healthy.
+      e2: { events: [{ type: EventType.ROUTE_CHANGE }, { type: EventType.DOM_ADDED }] },
     });
     const r = await crawl(session, {}, noSleep);
     expect(r.interactiveFound).toBe(2);
@@ -64,6 +69,22 @@ describe('crawl — autonomous smart-monkey', () => {
     expect(r.anomalies).toEqual([]);
     expect(r.truncated).toBe(false);
     expect(r.visited).toEqual(['button "Save"', 'link "Home"']);
+  });
+
+  /**
+   * The counter-test to the fixture change above, and the defect it exists for.
+   *
+   * A real merchant dashboard had NINE nav links that route to a blank page. `crawl` drove all nine
+   * and reported `deadControls: 0` — correct by its own definition, because a route change is
+   * activity and the control plainly worked. What was missing was any check on where it ARRIVED.
+   */
+  it('1b: a link that routes to a blank page is an anomaly, though the control is not dead', async () => {
+    const session = fakeSession(tree(['link "Invoices" (ref=e1)']), {
+      e1: { events: [{ type: EventType.ROUTE_CHANGE }] },
+    });
+    const r = await crawl(session, {}, noSleep);
+    expect(r.counts.deadControls).toBe(0); // the link worked — it navigated
+    expect(r.anomalies.map((a) => a.kind)).toEqual([ContradictionKind.ROUTE_RENDERED_NOTHING]);
   });
 
   it('2: a console error during a click is reported with its control', async () => {
@@ -205,5 +226,33 @@ describe('crawl does not present a capped sweep as a complete one', () => {
     const r = await crawl(session, {}, noSleep);
     expect(r.truncated).toBe(false);
     expect(r.coverageNote).toBeUndefined();
+  });
+});
+
+describe('a control that is SUPPOSED to do nothing is not an anomaly', () => {
+  /**
+   * Measured on a shipments console: all three of the crawler's anomalies were controls behaving
+   * correctly — a `[disabled]` button, an already `[checked]` radio, and a text input. An anomaly
+   * list that is 100% false on a real app is worse than none: the agent spends its budget disproving
+   * it and learns to skip the field.
+   */
+  it.each([
+    '- button "Hold selected" [disabled]',
+    '- radio "all" [checked]',
+    '- checkbox "select ATL-100000" [checked]',
+    '- textbox "ref…"',
+    '- searchbox "Search"',
+    '- combobox "Carrier"',
+  ])('treats %s as legitimately inert', (desc) => {
+    expect(legitimatelyInert(desc)).toBe(true);
+  });
+
+  it.each([
+    '- button "Totally Dead"',
+    '- radio "draft"',
+    '- link "Settlements"',
+    '- checkbox "select ATL-100001"',
+  ])('still judges %s — a dead one of these is a real finding', (desc) => {
+    expect(legitimatelyInert(desc)).toBe(false);
   });
 });

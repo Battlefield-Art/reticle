@@ -123,6 +123,20 @@ function failedRequests(events: ReticleEvent[], floor: number): ReticleEvent[] {
  * orchestration over a CrawlSession: no browser/Node imports, fully unit-testable with a fake.
  * Single-pass by design (no re-discovery) so it always terminates and never explodes on navigation.
  */
+
+/**
+ * Controls whose correct behaviour IS to do nothing when clicked.
+ *
+ * Read off the same descriptor the crawler already has, so no extra round trip: `[disabled]` is inert
+ * by definition, an already `[checked]` radio/checkbox is idempotent, and clicking a text field
+ * focuses it rather than changing anything.
+ */
+export function legitimatelyInert(desc: string): boolean {
+  if (desc.includes('[disabled]')) return true;
+  if (desc.includes('[checked]')) return true;
+  return /\b(textbox|searchbox|combobox|spinbutton)\b/.test(desc);
+}
+
 export async function crawl(
   session: CrawlSession,
   opts: CrawlOptions,
@@ -219,8 +233,23 @@ export async function crawl(
     }
 
     // DEAD: the click dispatched but the app produced no activity and no error to explain it.
+    //
+    // Unless the control is SUPPOSED to be inert. Measured on a shipments console: every one of the
+    // crawler's three anomalies was a control behaving correctly — a `[disabled]` button, an already
+    // `[checked]` radio, and a text input (a click focuses it; mutating would be the surprise). An
+    // anomaly list that is 100% false on a real app is worse than no anomaly list, because the agent
+    // spends its budget disproving it and learns to skip the field.
+    //
+    // Deliberately NOT fixed by counting focus as activity: focus moving is not the app reacting, and
+    // treating it as such would make a genuinely dead button that takes focus look alive — trading
+    // noise for the false negative this check exists to catch.
     const dispatched = asRecord(act.result)['dispatched'] !== false && act.ok;
-    if (dispatched && errs.length === 0 && !events.some(isActivity)) {
+    if (
+      dispatched &&
+      errs.length === 0 &&
+      !events.some(isActivity) &&
+      !legitimatelyInert(item.desc)
+    ) {
       counts.deadControls += 1;
       anomalies.push({
         kind: CrawlAnomalyKind.DEAD_CONTROL,

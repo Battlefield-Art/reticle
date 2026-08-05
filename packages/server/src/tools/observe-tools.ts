@@ -33,7 +33,8 @@ import {
   isPresenceOnlyAssertion,
   PRESENCE_ONLY_ADVICE,
 } from './assert-grade.js';
-import { buildCoverageStatement, blindSpotsFromState } from '../honesty/blind-spots.js';
+import { assertVerdict } from './assert-verdict.js';
+import { bodiesNotCaptured } from '../honesty/uncaptured-bodies.js';
 import { withControl } from '../session/control-envelope.js';
 import { asString, asNumber } from './tools-helpers.js';
 import { type ToolDef, sessionIdShape, commandOrThrow } from './tool-kit.js';
@@ -64,7 +65,7 @@ const bufferOutputShape = {
  */
 function lastActSourceOnFailure(session: Session, pass: boolean): { source?: string } {
   if (pass) return {};
-  const source = session.lastActSource();
+  const source = session.lastAct.source();
   return source === undefined ? {} : { source };
 }
 
@@ -92,8 +93,15 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     inputSchema: {
       window_ms: z
         .number()
+        .positive()
+        // A non-positive window silently produced a FUTURE cursor, so the tool returned zero events
+        // and echoed the nonsense value back — indistinguishable from a genuinely quiet page. An
+        // agent that fumbles this argument gets a clean "nothing happened" instead of being told the
+        // question was malformed, which is the exact confusion this layer exists to refuse.
         .optional()
-        .describe('Time window to look back. Default: 2000ms. Ignored when `since` is provided.'),
+        .describe(
+          'Time window to look back, in ms (must be > 0). Default: 2000. Ignored when `since` is provided.',
+        ),
       since: z
         .number()
         .optional()
@@ -120,6 +128,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         ),
       max_events: z
         .number()
+        .nonnegative()
         .optional()
         .describe(
           'Cap the timeline to the most recent N events. Older events are counted in cost.droppedOldest.',
@@ -195,7 +204,18 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const report = buildReactionReport(budgeted, windowMs);
       // Run over the FILTERED-but-unbudgeted window: a contradiction must not vanish because the
       // timeline was capped for tokens. Detection is cheap; the events are already in hand.
-      const contradictions = findContradictions(filtered);
+      // The act that opened this window is not in `args` — observe is a separate call — so its action
+      // and in-target mutation count are read back off the session. Without them the "this click did
+      // nothing" check is unreachable on the ordinary act-then-observe flow, which is most of them.
+      // Only when the act actually falls inside the window being judged — judging a click with a
+      // window that starts after it would accuse a control of doing nothing during a period it was
+      // never asked about.
+      const actCursor = session.lastAct.cursor();
+      const judgingTheAct = actCursor !== undefined && actCursor >= since;
+      const contradictions = findContradictions(
+        filtered,
+        judgingTheAct ? session.lastAct.effect() : {},
+      );
       // carry session health — a throttled tab means the observed timeline may be incomplete.
       return withControl(session, {
         ...report,
@@ -260,7 +280,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const session = deps.sessions.resolve(asString(args['sessionId']));
       const predicate = PredicateSchema.parse(args['predicate']);
       // Honesty: explicit since wins; else default to the last act's cursor; else the whole buffer.
-      const since = asNumber(args['since']) ?? session.lastActCursor() ?? 0;
+      const since = asNumber(args['since']) ?? session.lastAct.cursor() ?? 0;
       const verdict = await waitForPredicate(
         session,
         predicate,
@@ -352,7 +372,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const predicate = PredicateSchema.parse(args['predicate']);
       const timeout = asNumber(args['timeout_ms']) ?? 0;
       // Honesty: explicit since wins; else default to the last act's cursor; else the whole buffer.
-      const since = asNumber(args['since']) ?? session.lastActCursor() ?? 0;
+      const since = asNumber(args['since']) ?? session.lastAct.cursor() ?? 0;
       const verdict =
         timeout > 0
           ? await waitForPredicate(session, predicate, timeout, since)
@@ -369,34 +389,16 @@ export const OBSERVE_TOOLS: ToolDef[] = [
           : assertsDerivedIpcStatus(predicate)
             ? { advice: DERIVED_IPC_STATUS_ADVICE }
             : {};
-      // A verdict reached over an evicted buffer can be a FALSE NEGATIVE: "no console error" may
-      // simply mean the error aged out. reticle_console has always disclosed this on the same window;
-      // the verdict path — the one an agent actually gates on — did not. Omitted when nothing dropped.
-      // Coverage, on the verdict an agent actually gates on.
-      //
-      // Scope caveat, stated because it is a real limitation and not a bug: blind spots are tracked
-      // per SESSION, not per assertion window. So a cross-origin iframe seen once marks every later
-      // verdict in that session partial, including ones about a region it cannot affect. That errs
-      // toward over-warning, which is the correct direction for an honesty signal — the failure this
-      // guards against is a green that implies coverage it never had, and the opposite error (a
-      // needless caveat) costs the agent a sentence.
-      //
-      // act_and_wait has always disclosed this; plain assert did not — so a GREEN assert on a page
-      // with a cross-origin iframe or a closed shadow root read as "the page is correct" when the
-      // honest claim is "nothing failed in the part I could see". That is the false-green shape this
-      // project exists to prevent, sitting on the most-used verdict path. Omitted entirely when
-      // coverage is full, so an intact page pays nothing and the field's PRESENCE is the warning.
-      const spots = blindSpotsFromState(session.blindSpots());
-      const statement = buildCoverageStatement(spots);
-      const coverage =
-        statement.coverage === 'partial'
-          ? {
-              coverage: statement.note ?? 'partial',
-              coverage_spots: statement.spots.map((sp) => ({ kind: sp.kind, count: sp.count })),
-            }
-          : {};
+      const { decision, contradictions, coverage } = await assertVerdict(
+        session,
+        predicate,
+        verdict.pass,
+        since,
+      );
       return withControl(session, {
+        ...decision,
         ...verdict,
+        ...(contradictions.length > 0 ? { contradictions } : {}),
         ...advice,
         ...coverage,
         ...lastActSourceOnFailure(session, verdict.pass),
@@ -431,8 +433,15 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe('HTTP method filter: GET | POST | PUT | DELETE | PATCH etc.'),
       urlContains: z.string().optional().describe('Substring that the request URL must contain.'),
       status: z.number().optional().describe('HTTP status code filter (e.g. 200, 404, 500).'),
+      ok: z
+        .boolean()
+        .optional()
+        .describe(
+          'Outcome filter: false keeps only calls that FAILED, true only those that succeeded. The filter to use for desktop IPC (`ipc://`), whose status code is derived. A still-pending call matches neither.',
+        ),
       limit: z
         .number()
+        .nonnegative()
         .optional()
         .describe(
           'Keep only the most recent N matching calls (older are dropped and counted in droppedOldest) — cuts tokens on a wide window. Defaults to 200 when omitted; pass a higher number for more, or scope with since/until.',
@@ -447,6 +456,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe('Total matches before `limit` — present only when capped.'),
       droppedOldest: z.number().optional().describe('How many older matches `limit` dropped.'),
       hint: z.object({ totalInWindow: z.number(), present: z.array(z.string()) }).optional(),
+      bodiesNotCaptured: z
+        .string()
+        .optional()
+        .describe(
+          'Present when a POST/PUT/PATCH was returned and body capture is OFF — an absent body means unseen, not empty. Carries the one-line fix.',
+        ),
       cost: z.object({ bytes: z.number(), tokens: z.number() }).optional(),
       ...bufferOutputShape,
     },
@@ -456,6 +471,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const method = asString(args['method']);
       const urlContains = asString(args['urlContains']);
       const status = asNumber(args['status']);
+      const ok = typeof args['ok'] === 'boolean' ? args['ok'] : undefined;
       const limit = asNumber(args['limit']);
       const buffer = bufferEnvelope(session);
       // Completed calls + unresolved in-flight requests (a hung request shows as pending).
@@ -466,7 +482,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
           actionId: asString(args['actionId']),
         }),
       );
-      const matched = allNet.filter((e) => matchNet(e, method, urlContains, status));
+      const matched = allNet.filter((e) => matchNet(e, method, urlContains, status, ok));
       // zero-match filter returns what DID fire, not a bare [].
       if (matched.length === 0 && allNet.length > 0) {
         return withSizeCost({ calls: matched, hint: netEmptyHint(allNet), ...buffer });
@@ -477,11 +493,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         limit ?? DEFAULT_QUERY_LIMIT,
       );
       const calls = budgeted.map(projectNetCall);
-      return withSizeCost(
-        droppedOldest > 0
-          ? { calls, total: matched.length, droppedOldest, ...buffer }
-          : { calls, ...buffer },
-      );
+      return withSizeCost({
+        calls,
+        ...(droppedOldest > 0 ? { total: matched.length, droppedOldest } : {}),
+        ...bodiesNotCaptured(calls),
+        ...buffer,
+      });
     },
   },
   {
@@ -510,6 +527,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe('Keep only log entries attributed to this action — "what did action N log".'),
       limit: z
         .number()
+        .nonnegative()
         .optional()
         .describe(
           'Keep only the most recent N matching entries (older are dropped and counted in droppedOldest) — cuts tokens when a page spams the console. Defaults to 200 when omitted; pass a higher number for more, or scope with since/until.',

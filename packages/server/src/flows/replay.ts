@@ -74,6 +74,23 @@ export function compileActStep(args: Record<string, unknown>, res: unknown): Rec
     if (source !== undefined) testidArgs['source'] = source;
     return { tool: ReticleTool.ACT, stable: true, args: testidArgs };
   }
+  // Role + NAME before component: a component/source anchor names the JSX site, so every row's copy
+  // of the same control collapses onto it. The accessible name separates them, and it is also the
+  // only stable anchor an app with no testids has. Measured: three rows' checkboxes compiled to one
+  // identical component anchor and replayed onto a single element.
+  const role = asString(r['role']);
+  const name = asString(r['name']);
+  if (role !== undefined && name !== undefined) {
+    const roleArgs: Record<string, unknown> = {
+      by: QueryBy.ROLE,
+      value: role,
+      name,
+      action,
+      args: actArgs,
+    };
+    if (source !== undefined) roleArgs['source'] = source;
+    return { tool: ReticleTool.ACT, stable: true, args: roleArgs };
+  }
   const component = asString(r['component']);
   if (component !== undefined || source !== undefined) {
     const componentArgs: Record<string, unknown> = { by: QueryBy.COMPONENT, action, args: actArgs };
@@ -117,10 +134,26 @@ export function compileSequenceStep(args: Record<string, unknown>, res: unknown)
   return { tool: ReticleTool.ACT_SEQUENCE, stable, args: { steps: subSteps } };
 }
 
-/** Resolve a recorded sub-step's element to a live ref via testid query, else fall back to its stored ref. */
+/**
+ * Resolve a recorded step's element to a live ref, by whichever anchor the compiler chose.
+ *
+ * Every anchor the compiler can EMIT must be resolvable here. It could not be: `compileActStep`
+ * emits `by: component` steps (and marks them `stable: true`), and this function only understood
+ * `testid` — so every component-anchored step failed with "no testid or ref to resolve", and the
+ * `stable` flag on it was a claim the replayer could not honour. Measured on a console with 5 steps:
+ * the 2 with testids replayed, the 3 without were unreplayable, and the flow reported ok:false at
+ * the first of them.
+ */
 async function resolveRef(
   session: Session,
-  step: { by?: unknown; value?: unknown; ref?: unknown },
+  step: {
+    by?: unknown;
+    value?: unknown;
+    ref?: unknown;
+    name?: unknown;
+    component?: unknown;
+    source?: unknown;
+  },
 ): Promise<{ ref: string; note?: string }> {
   const by = asString(step.by);
   const value = asString(step.value);
@@ -132,9 +165,48 @@ async function resolveRef(
     if (ref === undefined) throw new Error(`testid '${value}' did not resolve in current page`);
     return refs.length > 1 ? { ref, note: ambiguousTestidNote(value) } : { ref };
   }
+  // Role + accessible NAME: the anchor that distinguishes one row's control from another's, which
+  // neither a testid-less app nor a shared JSX source location can do.
+  if (by === QueryBy.ROLE && value !== undefined) {
+    const name = asString(step.name);
+    const query: Record<string, unknown> = { by, value, ...(name === undefined ? {} : { name }) };
+    const result = await session.command(ReticleCommand.QUERY, query);
+    if (!result.ok) throw new Error(result.error ?? 'query failed');
+    const ref = queryRefs(result)[0];
+    if (ref === undefined) {
+      throw new Error(`${value} named '${String(name)}' did not resolve in current page`);
+    }
+    return { ref };
+  }
+  if (by === QueryBy.COMPONENT) {
+    const component = asString(step.component);
+    const source = step.source;
+    const query: Record<string, unknown> = {
+      by,
+      ...(component === undefined ? {} : { component, value: component }),
+      ...(source === undefined ? {} : { source }),
+    };
+    const result = await session.command(ReticleCommand.QUERY, query);
+    if (!result.ok) throw new Error(result.error ?? 'query failed');
+    const refs = queryRefs(result);
+    const ref = refs[0];
+    if (ref === undefined) {
+      throw new Error(`component '${String(component)}' did not resolve in current page`);
+    }
+    // A source location identifies a JSX SITE, not an instance: one `<input>` inside a row renders
+    // once per row and every one of them shares this anchor. Saying so is the difference between a
+    // replay that repeated itself and a replay that reports it might have.
+    return refs.length > 1
+      ? {
+          ref,
+          note: `component anchor matched ${String(refs.length)} elements — replayed the first`,
+        }
+      : { ref };
+  }
   const ref = asString(step.ref);
-  if (ref === undefined || ref.length === 0)
-    throw new Error('step has no testid or ref to resolve');
+  if (ref === undefined || ref.length === 0) {
+    throw new Error('step has no resolvable anchor (testid, role+name, component) and no ref');
+  }
   return { ref, note: 'replayed by stale ref (not portable across sessions)' };
 }
 

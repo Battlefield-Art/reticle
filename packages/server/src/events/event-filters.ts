@@ -44,12 +44,20 @@ export function eventMatchesFilters(e: ReticleEvent, filters: readonly string[])
   return false;
 }
 
-/** Match a net.request event against optional method/url/status filters (reticle_network). */
+/**
+ * Match a net.request event against optional method/url/status/ok filters (reticle_network).
+ *
+ * `ok` is the filter the tool's own description points at for desktop IPC, whose 200/500 is derived
+ * rather than sent by any server. A still-PENDING call never matches an `ok` filter in either
+ * direction: unresolved is not the same as failed, and answering "yes, it failed" about a request
+ * still in flight is the false green this whole surface exists to prevent.
+ */
 export function matchNet(
   e: ReticleEvent,
   method: string | undefined,
   urlContains: string | undefined,
   status: number | undefined,
+  ok?: boolean,
 ): boolean {
   const d = e.data;
   if (method !== undefined && asString(d['method'])?.toUpperCase() !== method.toUpperCase()) {
@@ -59,6 +67,7 @@ export function matchNet(
     return false;
   }
   if (status !== undefined && asNumber(d['status']) !== status) return false;
+  if (ok !== undefined && d['ok'] !== ok) return false;
   return true;
 }
 
@@ -102,6 +111,14 @@ interface NetCallView {
   ms?: number;
   /** Authoritative response headers merged from the driven (CDP) path — present only when driven. */
   headers?: Record<string, string>;
+  /**
+   * A fire-and-forget desktop IPC send (`ipcRenderer.send`): dispatched, outcome unknowable.
+   *
+   * Carried into the projection on purpose. Such a record has no `status` and no `ok`, and without
+   * this flag a reader has no way to tell "the outcome is unknown" from "the fields were dropped" —
+   * which is the reading that turns an unverifiable call into an assumed success.
+   */
+  oneWay?: boolean;
 }
 export function projectNetCall(e: ReticleEvent): NetCallView {
   const status = e.data['status'];
@@ -125,6 +142,7 @@ export function projectNetCall(e: ReticleEvent): NetCallView {
     view.bodyTruncated = true;
   }
   if (ms !== undefined) view.ms = ms;
+  if (e.data['oneWay'] === true) view.oneWay = true;
   const headers = e.data['headers'];
   if (headers !== null && typeof headers === 'object') {
     view.headers = headers as Record<string, string>;

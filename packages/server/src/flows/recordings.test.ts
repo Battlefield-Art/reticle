@@ -90,3 +90,55 @@ describe('RecordingStore', () => {
     expect(act.args['ref']).toBe('e9');
   });
 });
+
+describe('anchor priority — which handle survives a replay', () => {
+  const step = (result: Record<string, unknown>) =>
+    compileActStep({ action: 'click', ref: 'e7' }, result);
+
+  it('prefers a testid above everything', () => {
+    const args = step({ testid: 'save', role: 'button', name: 'Save', component: 'Form' }).args;
+    expect(args['by']).toBe('testid');
+    expect(args['value']).toBe('save');
+  });
+
+  /**
+   * A component/source anchor names the JSX SITE. One `<input>` written inside a row renders once per
+   * row, so every row's copy collapses onto the same anchor — measured on a shipments console, three
+   * different rows' checkboxes compiled identically and a replay resolved all three to one element
+   * (91 matches, first taken). The accessible name separates them.
+   */
+  it('prefers role+name over a component anchor, because a name identifies the INSTANCE', () => {
+    const args = step({
+      role: 'checkbox',
+      name: 'select ATL-100001',
+      component: 'ShipmentsTable',
+      source: { file: 'src/ShipmentsTable.tsx', line: 204 },
+    }).args;
+    expect(args['by']).toBe('role');
+    expect(args['value']).toBe('checkbox');
+    expect(args['name']).toBe('select ATL-100001');
+    // Provenance still rides along — it answers "which file?", not "which element?".
+    expect(args['source']).toBeDefined();
+  });
+
+  it('falls back to the component anchor when the element has no accessible name', () => {
+    const args = step({
+      component: 'ShipmentsTable',
+      source: { file: 'src/ShipmentsTable.tsx', line: 204 },
+    }).args;
+    expect(args['by']).toBe('component');
+  });
+
+  it('records an unstable ref only when there is no anchor at all', () => {
+    const compiled = step({});
+    expect(compiled.stable).toBe(false);
+    expect(compiled.args['ref']).toBe('e7');
+  });
+
+  it('does not claim a role anchor when the name is empty', () => {
+    // A nameless control cannot be addressed by role+name; saying otherwise compiles an anchor that
+    // resolves to the wrong element or to nothing.
+    const args = step({ role: 'button', component: 'Toolbar' }).args;
+    expect(args['by']).toBe('component');
+  });
+});

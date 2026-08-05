@@ -14,6 +14,23 @@ describe('buildCoverageStatement', () => {
     ).toBe('full');
   });
 
+  it('names an un-instrumented Electron renderer, so an empty network view cannot read as clean', () => {
+    const statement = buildCoverageStatement([{ kind: BlindSpotKind.UNOBSERVED_IPC, count: 1 }]);
+    expect(statement.coverage).toBe('partial');
+    expect(statement.note).toContain('@reticlehq/electron/preload');
+  });
+
+  it('degrades an unknown kind to its name instead of throwing on the verdict path', () => {
+    // An SDK newer than the daemon can report a kind this LABEL table has never heard of. Indexing
+    // it and calling the result threw a TypeError, which turned "there is something I could not
+    // see" into a crashed assert — strictly worse than either the caveat or the silence.
+    const statement = buildCoverageStatement([
+      { kind: 'a-kind-from-the-future' as BlindSpotKind, count: 3 },
+    ]);
+    expect(statement.coverage).toBe('partial');
+    expect(statement.note).toContain('a-kind-from-the-future');
+  });
+
   it('reports partial coverage with a legible note listing what was unobserved', () => {
     const statement = buildCoverageStatement([
       { kind: BlindSpotKind.CROSS_ORIGIN_IFRAME, count: 2 },

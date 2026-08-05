@@ -78,7 +78,10 @@ function componentAnchor(src: Record<string, unknown>): FlowAnchor | null {
 }
 
 /** Pick the on-disk anchor for a normalized step: testid > component(auto) > degraded role. */
-function anchorForStep(args: Record<string, unknown>): { anchor: FlowAnchor; degraded: boolean } {
+export function anchorForStep(args: Record<string, unknown>): {
+  anchor: FlowAnchor;
+  degraded: boolean;
+} {
   const by = asString(args['by']);
   const value = asString(args['value']);
   if (by === QueryBy.TESTID && value !== undefined) {
@@ -89,6 +92,20 @@ function anchorForStep(args: Record<string, unknown>): { anchor: FlowAnchor; deg
     const source = sourceArg(args);
     if (source !== undefined) anchor.source = source;
     return { anchor, degraded: false };
+  }
+  // Role + NAME is a real anchor, not a degraded placeholder.
+  //
+  // The vocabulary has always described `{ kind:'role', role, name }` as an addressable anchor, and
+  // nothing ever produced one — the only ROLE anchor written to disk was the degraded placeholder
+  // that means "add a data-testid". So a step the recorder anchored by accessible name arrived here
+  // and had that name thrown away, which is precisely the anchor that distinguishes one row's
+  // control from another's when a shared JSX source location cannot.
+  if (by === QueryBy.ROLE && value !== undefined) {
+    const name = asString(args['name']);
+    if (name !== undefined && name.length > 0) {
+      // The schema carries role + name only; provenance lives on the step, not the anchor.
+      return { anchor: { kind: AnchorKind.ROLE, role: value, name }, degraded: false };
+    }
   }
   if (by === QueryBy.COMPONENT) {
     const anchor = componentAnchor(args);

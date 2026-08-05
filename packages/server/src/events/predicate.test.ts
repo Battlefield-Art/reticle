@@ -409,6 +409,72 @@ describe('predicate engine', () => {
   });
 });
 
+/**
+ * A response whose BODY is still arriving is not a finished request.
+ *
+ * `fetch` resolves at HEADERS. Measured on a Next.js App Router page: the RSC payload's NET_REQUEST
+ * landed 16 ms in, the shell and a Suspense fallback rendered, and the boundary's real content
+ * arrived 889 ms later. In between, NOTHING was observed — and quiet is exactly what `settled` tests
+ * for, so it passed with "loading rows…" still on screen and zero rows rendered. A green on every
+ * streaming boundary, which on Next is the default rendering path.
+ */
+describe('settled waits for a streaming response body, not just the request', () => {
+  const streamOpen = (id: string, t: number): ReticleEvent =>
+    ev(EventType.NET_STREAM, { transport: 'fetch', direction: 'open', url: '/rsc', id }, t);
+  const streamClose = (id: string, t: number): ReticleEvent =>
+    ev(EventType.NET_STREAM, { transport: 'fetch', direction: 'close', url: '/rsc', id }, t);
+  const completed = (id: string, t: number): ReticleEvent =>
+    ev(EventType.NET_REQUEST, { id, method: 'GET', url: '/rsc', status: 200, ok: true }, t);
+
+  it('does NOT settle while the body is still open, however quiet the page is', async () => {
+    // The exact shape of the Next.js window: request done, shell painted, then silence.
+    const session = new FakeSession(
+      [completed('n1', 16), streamOpen('n1', 16), ev(EventType.DOM_ADDED, {}, 20)],
+      undefined,
+      2000, // long since the last event — quiet by any measure
+    );
+    const r = await evaluatePredicate(session, { kind: 'settled' });
+    expect(r.pass).toBe(false);
+    expect(r.observed).toContain('streaming');
+  });
+
+  it('settles once the body closes', async () => {
+    const session = new FakeSession(
+      [completed('n1', 16), streamOpen('n1', 16), streamClose('n1', 889)],
+      undefined,
+      2000,
+    );
+    expect((await evaluatePredicate(session, { kind: 'settled' })).pass).toBe(true);
+  });
+
+  it('reports both causes when a request is in flight AND a body is streaming', async () => {
+    const session = new FakeSession(
+      [
+        completed('n1', 16),
+        streamOpen('n1', 16),
+        ev(EventType.NET_PENDING, { id: 'n2', method: 'POST', url: '/save' }, 20),
+      ],
+      undefined,
+      2000,
+    );
+    const r = await evaluatePredicate(session, { kind: 'settled' });
+    expect(r.pass).toBe(false);
+    expect(r.observed).toContain('in flight');
+    expect(r.observed).toContain('streaming');
+  });
+
+  it('ignores a stream event with no id rather than blocking forever', async () => {
+    // SSE/WebSocket frames carry no request id. They must not be mistaken for an unclosed body, or
+    // any app with a live socket could never settle again.
+    const session = new FakeSession(
+      [ev(EventType.NET_STREAM, { transport: 'sse', direction: 'open', url: '/feed' }, 10)],
+      undefined,
+      2000,
+    );
+    expect((await evaluatePredicate(session, { kind: 'settled' })).pass).toBe(true);
+  });
+});
+
 describe('settled predicate (deterministic waiting)', () => {
   it('passes when there has been no network/DOM/animation activity since the floor', async () => {
     // Only a non-activity event (signal) in the buffer → nothing to settle → quiet.
@@ -715,6 +781,109 @@ class CoalesceSession implements PredicateSession {
 }
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+/**
+ * An exact-cardinality assertion cannot be satisfied EARLY.
+ *
+ * Found by driving a real merchant dashboard: a Refund confirm fires two POSTs 59 ms apart, and
+ * `until: { kind:'net', method:'POST', urlContains:'/refund', count:1 }` returned
+ * `pass: true, matched: 1`. `evalNet` counts occurrences correctly — the WAIT had stopped looking,
+ * because it resolves the moment a check passes. So `count: 1` silently meant "at least 1", the
+ * assertion `count` exists to avoid, in a tool whose product is the absence of false greens.
+ */
+describe('net count is exact, not "at least" — the double-submit must not pass', () => {
+  /** A session whose events arrive over TIME, as a real one's do, rather than all up front. */
+  class LiveSession implements PredicateSession {
+    readonly #events: ReticleEvent[] = [];
+    readonly #listeners = new Set<(event: ReticleEvent) => void>();
+    elapsed(): number {
+      return 0;
+    }
+    command(): Promise<CommandResult> {
+      return Promise.resolve({ kind: 'command_result', id: 'x', ok: true, result: {} });
+    }
+    eventsSince(cursor = 0): ReticleEvent[] {
+      return this.#events.filter((e) => e.t >= cursor);
+    }
+    onEvent(listener: (event: ReticleEvent) => void): () => void {
+      this.#listeners.add(listener);
+      return () => {
+        this.#listeners.delete(listener);
+      };
+    }
+    push(event: ReticleEvent): void {
+      this.#events.push(event);
+      for (const l of this.#listeners) l(event);
+    }
+  }
+
+  const post = (t: number): ReticleEvent =>
+    ev(
+      EventType.NET_REQUEST,
+      { method: 'POST', url: '/api/v1/payments/pay_1/refund', status: 200 },
+      t,
+    );
+
+  it('FAILS when the second POST lands 59ms after the first', async () => {
+    const session = new LiveSession();
+    const verdict = waitForPredicate(
+      session,
+      { kind: 'net', method: 'POST', urlContains: '/refund', count: 1 },
+      5000,
+    );
+    session.push(post(10));
+    setTimeout(() => session.push(post(69)), 59); // the double-submit, at the gap measured live
+    const r = await verdict;
+
+    expect(r.pass).toBe(false);
+    expect(r.observed).toContain('2'); // and it says WHAT it saw, not just that it failed
+  });
+
+  it('still passes when exactly one really did fire, without burning the timeout', async () => {
+    const session = new LiveSession();
+    const started = Date.now();
+    const verdict = waitForPredicate(
+      session,
+      { kind: 'net', method: 'POST', urlContains: '/refund', count: 1 },
+      10_000,
+    );
+    session.push(post(10));
+    const r = await verdict;
+
+    expect(r.pass).toBe(true);
+    // An honest "exactly one" costs one short hold, not 10s of dead wall-clock on the agent's
+    // most-used verdict path.
+    expect(Date.now() - started).toBeLessThan(3000);
+  });
+
+  it('leaves a presence-only net predicate resolving on the first match', async () => {
+    // No `count` means "at least one", which IS satisfiable early. Holding those back would make
+    // every ordinary net wait pay the confirmation delay for nothing.
+    const session = new LiveSession();
+    const verdict = waitForPredicate(
+      session,
+      { kind: 'net', method: 'POST', urlContains: '/refund' },
+      10_000,
+    );
+    session.push(post(10));
+    expect((await verdict).pass).toBe(true);
+  });
+
+  it('holds for a count nested inside allOf', async () => {
+    const session = new LiveSession();
+    const verdict = waitForPredicate(
+      session,
+      {
+        kind: 'allOf',
+        predicates: [{ kind: 'net', method: 'POST', urlContains: '/refund', count: 1 }],
+      },
+      5000,
+    );
+    session.push(post(10));
+    setTimeout(() => session.push(post(69)), 59);
+    expect((await verdict).pass).toBe(false);
+  });
+});
 
 describe('waitForPredicate coalescing', () => {
   it('a burst of events triggers at most one trailing re-check, not one per event', async () => {

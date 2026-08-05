@@ -162,3 +162,33 @@ describe('normalizeOptions', () => {
     expect([...n.signalCallees]).toEqual(['a', 'b']);
   });
 });
+
+// ── Characterizing the sharp edge of bare-name matching ─────────────────────────────────────────
+//
+// NOT a bug report: `DEFAULT_MUTATORS` is empty, so the rule is a no-op until someone configures it,
+// and matching by name while ignoring the object is deliberate and documented.
+//
+// It is pinned because the consequence is easy to meet and easy to forget. `set` is zustand's
+// mutator and the README's own example entry, and it also matches every `Map`, `Set`,
+// `URLSearchParams` and `Headers` call in the same file — a function that only builds a lookup Map
+// is reported as an unsignalled mutation. These cases fix that behaviour in place so any future
+// change to it is a decision rather than an accident, and the README now warns where users meet it.
+const REALISTIC: [{ mutators: string[]; signalCallee: string }] = [
+  { mutators: ['set', 'setState'], signalCallee: 'reticleSignal' },
+];
+
+ruleTester.run(`${RULE_NAME} (ordinary code)`, requireSignalOnMutation, {
+  valid: [],
+  invalid: [
+    {
+      code: `function group(rows){ const by = new Map(); for (const r of rows) by.set(r.id, r); return by; }`,
+      options: REALISTIC,
+      errors: [{ messageId: MessageId.MUTATION_WITHOUT_SIGNAL }],
+    },
+    {
+      code: `function withPage(u, p){ const url = new URL(u); url.searchParams.set('page', p); return url; }`,
+      options: REALISTIC,
+      errors: [{ messageId: MessageId.MUTATION_WITHOUT_SIGNAL }],
+    },
+  ],
+});

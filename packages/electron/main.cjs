@@ -17,7 +17,7 @@
  * Dev-only, like the rest of Reticle. Gate the require behind your dev check so it never ships.
  */
 const { ipcMain } = require('electron');
-const { writeFile, readdir, unlink } = require('node:fs/promises');
+const { writeFile, readdir, stat, unlink } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 // Generated from @reticlehq/core's TypeScript source, so the main process, the preload and the
@@ -34,14 +34,22 @@ let registered = false;
 /** Windows this app registered, so a capture survives its requester being destroyed. */
 const windows = new Set();
 
-/** The webContents to photograph: the requester if it is alive, else any window we know of. */
+/**
+ * The webContents to photograph: the requester if it is alive, else the ONE remaining window.
+ *
+ * The fallback exists for a window that closed mid-command — answering "no image" there reports a
+ * capture failure with no cause. But it only applies when exactly one window is left, because with
+ * two the choice is a guess: picking "any" window silently returns a picture of a DIFFERENT window
+ * and reports it as a successful capture of the one that was asked for, which is the same
+ * photographed-the-wrong-thing failure that ruled out capturing a screen region in the first place.
+ * Ambiguous means no image, and no image is a result the caller can act on.
+ */
 function usableContents(sender) {
   if (sender !== null && sender !== undefined && !sender.isDestroyed()) return sender;
-  for (const win of windows) {
-    const contents = win?.webContents;
-    if (contents !== undefined && !contents.isDestroyed()) return contents;
-  }
-  return null;
+  const alive = [...windows]
+    .map((win) => win?.webContents)
+    .filter((contents) => contents !== undefined && contents !== null && !contents.isDestroyed());
+  return alive.length === 1 ? alive[0] : null;
 }
 
 /**
@@ -51,15 +59,28 @@ function usableContents(sender) {
  * command that timed out, or a path the daemon rejected all leave a ~300KB PNG in the temp directory
  * forever. Sweeping our own prefix on each capture bounds that to one file at a time, with no timer
  * to leak and no cleanup handler to forget. Best-effort — a failed sweep must never fail a capture.
+ *
+ * Only files older than STALE_CAPTURE_MS are swept. Deleting every sibling unconditionally raced
+ * with CONCURRENT captures: with two screenshots in flight, the second one's sweep unlinked the
+ * first one's PNG before the daemon had read it, and the daemon then answered `no-visual-provider`
+ * — which reads as "this app installed no capture helper" when the helper is installed and working.
  */
+const STALE_CAPTURE_MS = 60_000;
+
 async function sweepOldCaptures(dir, keepFile) {
   const mine = `${RETICLE_CAPTURE_FILE_PREFIX}${String(process.pid)}-`;
+  const cutoff = Date.now() - STALE_CAPTURE_MS;
   try {
     const entries = await readdir(dir);
     await Promise.all(
       entries
         .filter((name) => name.startsWith(mine) && join(dir, name) !== keepFile)
-        .map((name) => unlink(join(dir, name)).catch(() => undefined)),
+        .map(async (name) => {
+          const file = join(dir, name);
+          const info = await stat(file).catch(() => undefined);
+          if (info !== undefined && info.mtimeMs < cutoff)
+            await unlink(file).catch(() => undefined);
+        }),
     );
   } catch {
     /* the temp dir is unreadable; a capture is still worth attempting */

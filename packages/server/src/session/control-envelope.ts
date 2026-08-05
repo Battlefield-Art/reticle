@@ -11,10 +11,10 @@ interface ControlEnvelope {
 
 /**
  * Agent-readable hint returned when an action is refused mid-pause. Named, not free — the agent's
- * recovery path (address the guidance, then reticle_resume) lives here in exactly one place.
+ * recovery path (address the guidance, then reticle_session{action:"resume"}) lives here in exactly one place.
  */
 export const PAUSE_HINT =
-  'Paused by the human. Address the guidance, then call reticle_resume (or wait for the human to resume).';
+  'Paused by the human. Address the guidance, then call reticle_session{action:"resume"} (or wait for the human to resume).';
 
 /** Shape returned by the short-circuit when an action tool refuses while paused. */
 interface PausedResult {

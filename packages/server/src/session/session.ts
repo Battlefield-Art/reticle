@@ -38,6 +38,7 @@ export type { InboxMessage } from './live-control.js'; // moved; still part of S
 import { ReviewStore, type ReviewMark } from './review-store.js';
 import { buildSessionRecommendation } from './session-recommendation.js';
 import { buildPresenterArgs } from './presenter-args.js';
+import { buildSessionLease, type SessionLease } from './session-lease.js';
 import type { SessionInfo } from './session-info.js';
 export type { SessionInfo } from './session-info.js';
 
@@ -535,20 +536,11 @@ export class Session {
     this.#post(ReticleCommand.NARRATE, { text, level: 'info' });
   }
 
-  /**
-   * Returns the one-time session lease block on the very first agent command, then undefined
-   * forever after. The lease carries an IMPORTANT reminder to call reticle_end_session. Coding agents
-   * (Claude Code, Codex) read tool results — they will see this and remember to clean up.
-   */
-  takeSessionLease(): { sessionId: string; opened_at: number; IMPORTANT: string } | undefined {
+  /** The one-time lease block on the first agent command, then undefined forever after. */
+  takeSessionLease(): SessionLease | undefined {
     if (this.#firstCommandDone) return undefined;
     this.#firstCommandDone = true;
-    return {
-      sessionId: this.id,
-      opened_at: this.#startedAt,
-      IMPORTANT:
-        'MANDATORY: the moment you stop driving — finishing a reply or waiting on the human — call reticle_session {action:"yield", mode:"waiting"} (or mode:"ask" with your question) so the panel never falsely reads "live". Call reticle_session {action:"end"} only when the whole task is done. The session revives on your next action.',
-    };
+    return buildSessionLease(this.id, this.#startedAt);
   }
 
   /**

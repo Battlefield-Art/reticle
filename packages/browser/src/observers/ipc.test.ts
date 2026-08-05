@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { EventType, IPC_URL_SCHEME, IpcStatus, NetInitiator } from '@reticlehq/core';
+import { BlindSpotKind, EventType, IPC_URL_SCHEME, IpcStatus, NetInitiator } from '@reticlehq/core';
 import { installIpc, ipcNetOverrides } from './ipc.js';
+
+/** Pretend to be (or not be) an Electron renderer for one test. Restored by the caller. */
+function setUserAgent(value: string): () => void {
+  const original = Object.getOwnPropertyDescriptor(navigator, 'userAgent');
+  Object.defineProperty(navigator, 'userAgent', { value, configurable: true });
+  return () => {
+    if (original === undefined) Reflect.deleteProperty(navigator, 'userAgent');
+    else Object.defineProperty(navigator, 'userAgent', original);
+  };
+}
 
 interface Emitted {
   type: EventType;
@@ -84,6 +94,51 @@ describe('IPC observer — Electron (reports arrive from the preload shim)', () 
     expect(all[1]?.data['status']).toBe(IpcStatus.ERROR);
   });
 
+  /**
+   * `ipcRenderer.send` is fire-and-forget: the renderer never learns whether the main process
+   * handled it. Before this, one-way sends were not observed AT ALL — an app built on
+   * `send` + `on('reply')` had every backend call invisible while coverage still read full. They are
+   * observed now, but as DISPATCHED: inventing a 200 would be the false green in the other direction.
+   */
+  it('records a one-way send with no verdict — no ok, no status', () => {
+    const push = fakePreload();
+    const { emit, all } = recorder();
+    teardowns.push(installIpc(emit));
+
+    push({ phase: 'end', id: 'i9', channel: 'window:minimize', oneWay: true, durationMs: 0 });
+
+    // The call itself, plus a blind spot declaring that its outcome is unobservable. Both are
+    // required: without the record the call is invisible, and without the blind spot a verdict over
+    // it reads as a clean green, since no channel can disagree with a channel that reports nothing.
+    const call = all.find((e) => e.type === EventType.NET_REQUEST);
+    expect(call?.data['url']).toBe(`${IPC_URL_SCHEME}window:minimize`);
+    expect(call?.data['oneWay']).toBe(true);
+    expect(call?.data).not.toHaveProperty('ok');
+    expect(call?.data).not.toHaveProperty('status');
+
+    const spot = all.find((e) => e.type === EventType.BLIND_SPOT);
+    expect(spot?.data['kind']).toBe(BlindSpotKind.VERDICTLESS_SEND);
+  });
+
+  it('still reports a one-way send that THREW at the call site as a real failure', () => {
+    const push = fakePreload();
+    const { emit, all } = recorder();
+    teardowns.push(installIpc(emit));
+
+    push({
+      phase: 'end',
+      id: 'i10',
+      channel: 'window:minimize',
+      oneWay: true,
+      ok: false,
+      error: 'port closed',
+    });
+
+    expect(all[0]?.data['ok']).toBe(false);
+    expect(all[0]?.data['status']).toBe(IpcStatus.ERROR);
+    expect(all[0]?.data['error']).toBe('port closed');
+  });
+
   it('never lets a throwing emit escape into the app', () => {
     const push = fakePreload();
     teardowns.push(
@@ -141,6 +196,46 @@ describe('IPC observer — Electron (reports arrive from the preload shim)', () 
   });
 });
 
+describe('an Electron renderer with no preload declares the blind spot instead of reading clean', () => {
+  it('emits UNOBSERVED_IPC when the shim is missing but this IS Electron', () => {
+    // Without this, a forgotten preload line makes reticle_network report nothing forever — which
+    // reads as "this app makes no backend calls" and makes every `assert { net }` vacuously true.
+    const restore = setUserAgent('Mozilla/5.0 Electron/34.0.0 Chrome/130');
+    const { emit, all } = recorder();
+    try {
+      teardowns.push(installIpc(emit));
+      expect(all).toEqual([
+        { type: EventType.BLIND_SPOT, data: { kind: BlindSpotKind.UNOBSERVED_IPC, count: 1 } },
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
+  it('says nothing on a plain web page — no IPC there to be blind to', () => {
+    const restore = setUserAgent('Mozilla/5.0 Chrome/130');
+    const { emit, all } = recorder();
+    try {
+      teardowns.push(installIpc(emit));
+      expect(all).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+
+  it('says nothing when the shim IS installed', () => {
+    const restore = setUserAgent('Mozilla/5.0 Electron/34.0.0 Chrome/130');
+    const { emit, all } = recorder();
+    try {
+      fakePreload();
+      teardowns.push(installIpc(emit));
+      expect(all).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe('ipcNetOverrides — a Tauri invoke arrives as a fetch to its ipc:// protocol', () => {
   it('leaves an ordinary HTTP request alone', () => {
     expect(ipcNetOverrides('https://api.example/users', () => null)).toBeUndefined();
@@ -174,6 +269,36 @@ describe('ipcNetOverrides — a Tauri invoke arrives as a fetch to its ipc:// pr
   it('treats a missing header as success (a non-Tauri producer on the same scheme)', () => {
     expect(ipcNetOverrides('ipc://localhost/whatever', () => null)).toMatchObject({ ok: true });
   });
+
+  /**
+   * Tauri v2 on Windows (and Android) needs a real http origin, so `invoke` travels to
+   * `http://ipc.localhost/<command>` rather than the `ipc://` custom scheme. Matching only the
+   * custom scheme left every Windows command recorded as an ordinary HTTP 200 — so the
+   * `Tauri-Response` translation never ran and a failed Rust command read as a success. This is
+   * the same hostname `reticle doctor` already tells people to allow in their CSP.
+   */
+  it('recognises the Windows/Android http form, so a failed command is not banked as a 200', () => {
+    expect(ipcNetOverrides('http://ipc.localhost/load_todos', () => 'ok')).toMatchObject({
+      url: `${IPC_URL_SCHEME}load_todos`,
+      initiator: NetInitiator.IPC,
+      ok: true,
+    });
+    expect(ipcNetOverrides('http://ipc.localhost/archive_todo', () => 'error')).toMatchObject({
+      url: `${IPC_URL_SCHEME}archive_todo`,
+      ok: false,
+      status: IpcStatus.ERROR,
+      statusText: 'Err',
+    });
+  });
+
+  it('does not treat a lookalike host as Tauri IPC', () => {
+    // `ipc.localhost.evil.com` is a REMOTE host that merely starts with the reserved label. Treating
+    // it as IPC would let a remote page's request masquerade as a local command in the evidence.
+    expect(ipcNetOverrides('http://ipc.localhost.evil.com/archive_todo', () => 'error')).toBe(
+      undefined,
+    );
+    expect(ipcNetOverrides('http://notipc.localhost/archive_todo', () => 'error')).toBe(undefined);
+  });
 });
 
 describe('an IPC record must not contradict itself', () => {
@@ -196,5 +321,65 @@ describe('an IPC record must not contradict itself', () => {
     const ok = ipcNetOverrides('ipc://localhost/load_todos', () => 'ok');
     expect(ok?.['status']).toBe(IpcStatus.OK);
     expect(ok?.['statusText']).toBe('Ok');
+  });
+});
+
+describe('IPC payloads — a desktop app has no other API surface', () => {
+  /**
+   * Every payload-based check — a batch whose ok envelope hides per-item failures, a money value
+   * written back at the wrong scale — was web-only on Electron, because this observer reported only
+   * channel, ok and duration and dropped the payloads the preload was already holding.
+   */
+  const batch = {
+    phase: 'end',
+    id: 'i1',
+    channel: 'todos:bulkDone',
+    ok: true,
+    durationMs: 9,
+    requestBody: '[[1,2,3]]',
+    responseBody: '{"results":[{"id":1,"ok":true},{"id":3,"ok":false}]}',
+    responseSize: 52,
+  };
+
+  it('forwards the payloads when capture is on', () => {
+    const push = fakePreload();
+    const { emit, all } = recorder();
+    teardowns.push(installIpc(emit, { captureBodies: true }));
+    push(batch);
+    const settled = all.find((e) => e.type === EventType.NET_REQUEST);
+    expect(settled?.data['requestBody']).toBe(batch.requestBody);
+    expect(settled?.data['responseBody']).toBe(batch.responseBody);
+  });
+
+  it('withholds the payloads when capture is off, but ALWAYS reports the size', () => {
+    const push = fakePreload();
+    const { emit, all } = recorder();
+    teardowns.push(installIpc(emit));
+    push(batch);
+    const settled = all.find((e) => e.type === EventType.NET_REQUEST);
+    expect(settled?.data['responseBody']).toBeUndefined();
+    expect(settled?.data['requestBody']).toBeUndefined();
+    // The size is what lets a verdict say "this write's payload went unread" — without it, an unread
+    // payload and an empty one are indistinguishable, which is the whole failure being prevented.
+    expect(settled?.data['responseSize']).toBe(52);
+  });
+
+  it('marks a payload the preload had to cut', () => {
+    const push = fakePreload();
+    const { emit, all } = recorder();
+    teardowns.push(installIpc(emit, { captureBodies: true }));
+    push({ ...batch, responseBodyTruncated: true });
+    const settled = all.find((e) => e.type === EventType.NET_REQUEST);
+    expect(settled?.data['responseBodyTruncated']).toBe(true);
+  });
+
+  it('carries nothing extra for a call the preload could not serialize', () => {
+    const push = fakePreload();
+    const { emit, all } = recorder();
+    teardowns.push(installIpc(emit, { captureBodies: true }));
+    push({ phase: 'end', id: 'i2', channel: 'todos:load', ok: true, durationMs: 3 });
+    const settled = all.find((e) => e.type === EventType.NET_REQUEST);
+    expect(settled?.data['responseBody']).toBeUndefined();
+    expect(settled?.data['responseSize']).toBeUndefined();
   });
 });

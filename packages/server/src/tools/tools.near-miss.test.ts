@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LastAct } from '../session/last-act.js';
 import { EventType, type ReticleEvent } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from './tools.js';
 import { ReticleTool } from './tool-names.js';
@@ -158,7 +159,7 @@ describe('buffer honesty — a negative result after eviction is not silent', ()
       bufferHealth: () => ({ total: events.length, dropped }),
       blindSpots: () => ({}),
       elapsed: () => 0,
-      lastActCursor: () => undefined,
+      lastAct: new LastAct(),
       getState: () => undefined as never,
       drainInbox: () => [],
     };

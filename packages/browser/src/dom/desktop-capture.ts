@@ -22,6 +22,8 @@
  */
 
 import { RETICLE_IPC_GLOBAL, RETICLE_TAURI_CAPTURE_COMMAND, VisualReason } from '@reticlehq/core';
+import { nativeFrame } from '../timers/native-timers.js';
+import { RETICLE_OVERLAY } from './dom-ignore.js';
 
 interface CaptureChannel {
   capture?: (fullPage?: boolean) => Promise<string | null>;
@@ -79,6 +81,45 @@ export interface CaptureResult {
   reason?: string;
 }
 
+/**
+ * Take Reticle's own UI out of the shot, then put it back.
+ *
+ * The shell photographs the composited window, so anything Reticle mounted is IN the picture — and
+ * the presenter panel is the worst possible thing to bank into a visual baseline, because it renders
+ * live session state: an event tally, a log tail, a run badge. A baseline captured with it is a
+ * baseline of Reticle's own UI as much as the app's, and the next `reticle_visual_diff` reports a
+ * change that belongs entirely to the observer. That is measuring the instrument.
+ *
+ * Two frames, not one: the first lets the style change apply, the second lets the compositor present
+ * it — capture before that and the shell photographs the pre-hide window anyway. Both are BOUNDED
+ * frames, which is load-bearing rather than defensive: a headless Tauri window is hidden, and a
+ * hidden webview never fires `requestAnimationFrame` at all, so a raw double-rAF here deadlocked
+ * every capture until the command timed out at 8s. Restoration runs in a `finally`, so a capture
+ * that throws still leaves the panel on screen for the human watching.
+ */
+async function withReticleUiHidden<T>(capture: () => Promise<T>): Promise<T> {
+  // The SAME selector the snapshot layer already uses to keep Reticle's own DOM out of what the
+  // agent reads — the presenter panel, the cursor, the glow, and the annotator's "flag a bug"
+  // button. One definition: a root that leaked into snapshots once would otherwise leak into
+  // baselines the second time someone added one.
+  const roots = [...document.querySelectorAll<HTMLElement>(RETICLE_OVERLAY)];
+  const previous = roots.map((el) => el.style.visibility);
+  // `visibility`, not `display`: it keeps the element's box, so hiding cannot reflow the app
+  // underneath and change the very layout the screenshot is meant to record.
+  for (const el of roots) el.style.visibility = 'hidden';
+  try {
+    if (roots.length > 0) {
+      await nativeFrame();
+      await nativeFrame();
+    }
+    return await capture();
+  } finally {
+    roots.forEach((el, i) => {
+      el.style.visibility = previous[i] ?? '';
+    });
+  }
+}
+
 export async function captureDesktopWindow(fullPage = false): Promise<CaptureResult> {
   const channel = (window as unknown as Record<string, unknown>)[RETICLE_IPC_GLOBAL] as
     | CaptureChannel
@@ -88,7 +129,7 @@ export async function captureDesktopWindow(fullPage = false): Promise<CaptureRes
     return { ok: false, reason: 'no desktop capture helper installed' };
   }
   try {
-    const path = await capture(fullPage);
+    const path = await withReticleUiHidden(() => capture(fullPage));
     return typeof path === 'string' && path.length > 0
       ? { ok: true, path }
       : { ok: false, reason: 'capture returned no image' };

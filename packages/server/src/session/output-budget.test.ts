@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { LastAct } from './last-act.js';
 import { EventType, SessionState, type ReticleEvent } from '@reticlehq/core';
 import {
   applyEventBudget,
@@ -110,6 +111,7 @@ function fakeDeps(events: ReticleEvent[]): ToolDeps {
   const stub: Partial<Session> = {
     id: 'demo',
     elapsed: () => 0,
+    lastAct: new LastAct(),
     eventsInWindow: () => events,
     eventsSince: () => events,
     queryEvents: () => Promise.resolve(events),

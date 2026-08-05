@@ -28,7 +28,7 @@ describe('reticle_wait_ready tool', () => {
     expect(res.ready).toBe(true);
     expect(res.sessionCount).toBe(1);
     expect(res.loop).toMatch(/reticle_act/);
-    expect(res.loop).toMatch(/reticle_review/);
+    expect(res.loop).toMatch(/reticle_session\{action:"review"\}/);
     expect('recovery' in res).toBe(false);
   });
 

@@ -26,6 +26,33 @@ const CAPTURABLE_CONTENT =
 const STREAMING_CONTENT = /event-stream|x-ndjson|application\/stream/i;
 
 /**
+ * Content types that stay OPEN by design — watching them would make every first settle pay the full
+ * watch bound for a stream doing exactly its job. Real SSE is covered by the EventSource observer.
+ */
+const ENDLESS_BY_DESIGN = /event-stream/i;
+
+/**
+ * Is this response body still arriving after the request itself resolved?
+ *
+ * STRUCTURAL, not a content-type allowlist. The first version listed `x-component|x-ndjson|
+ * application/stream` — which is to say "Next.js RSC, plus two guesses". It closed the exact defect
+ * it was written against and left every other streamed response as invisible as before: a chunked
+ * `application/json` from a token API, a streamed HTML document, an export assembled server-side.
+ * Fixing one app's symptom and calling the class solved is how a false green comes back wearing
+ * different clothes.
+ *
+ * The real signal is on the wire: a response with a BODY and no `content-length` is being sent
+ * chunked, which is the definition of "the server is still writing". `content-length` present means
+ * the size was known up front and the body cannot grow.
+ *
+ * Deliberately independent of content type, with one exception above for streams that never end.
+ */
+export function isStreamingBody(contentType: string | null, contentLength: string | null): boolean {
+  if (contentType !== null && ENDLESS_BY_DESIGN.test(contentType)) return false;
+  return contentLength === null;
+}
+
+/**
  * Longest the SDK will wait on a response-body clone before emitting without it.
  *
  * Two layers protect the app. `text/event-stream` and friends are skipped outright, which covers the

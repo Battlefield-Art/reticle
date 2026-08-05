@@ -302,6 +302,39 @@ const POLL_INTERVAL_MS = 150;
 const MIN_RECHECK_GAP_MS = 25;
 
 /**
+ * How long an exact-count predicate keeps watching AFTER it first reads true.
+ *
+ * A count only rises while a window is open, so "exactly N" is a statement about the END of one and
+ * cannot be settled early — yet every wait here resolves the moment a check passes. Live, on a real
+ * payments dashboard: a Refund confirm fired TWO POSTs 59 ms apart, and
+ * `until: { kind:'net', method:'POST', urlContains:'/refund', count:1 }` returned
+ * `pass: true, matched: 1`. Not a counting bug — `evalNet` counts occurrences correctly. The wait had
+ * already stopped looking. So `count: 1` silently meant "at least 1", which is the assertion the
+ * caller wrote `count` specifically to avoid, and the branch implementing it claims to catch "the
+ * double-submit / useEffect-double-fire / retry-storm regression class".
+ *
+ * 300 ms is chosen against the measured defect: the observed double-submit gap was 59 ms, a React
+ * double-effect fires within one commit, and a retry storm is faster still. It is a real ceiling, not
+ * a proof — a duplicate arriving 400 ms later still passes. Widening it costs every exact-count
+ * assertion that latency, so this trades an unbounded false green for a bounded one and says so.
+ */
+const COUNT_CONFIRM_MS = 300;
+
+/**
+ * Does this predicate assert an exact cardinality anywhere inside it?
+ *
+ * Only these hold after passing. A presence-only predicate ("at least one") IS satisfiable early and
+ * must stay that way, or every ordinary wait pays the confirmation delay for nothing.
+ */
+function assertsExactCount(predicate: Predicate): boolean {
+  if (predicate.kind === 'allOf' || predicate.kind === 'anyOf') {
+    return predicate.predicates.some(assertsExactCount);
+  }
+  if (predicate.kind === 'not') return assertsExactCount(predicate.predicate);
+  return predicate.kind === 'net' && predicate.count !== undefined;
+}
+
+/**
  * Evaluate now, else wait for it to become true (on each event + a poll) until timeout. `since` is
  * the event-time floor (see evaluatePredicate) so a waiter cannot resolve on a stale buffered event.
  */
@@ -318,6 +351,10 @@ export function waitForPredicate(
       failureReason: error instanceof Error ? error.message : String(error),
     });
     let cooldownTimer: ReturnType<typeof setTimeout> | undefined;
+    // An exact-count wait keeps watching after it first reads true — see COUNT_CONFIRM_MS.
+    const holdsForCount = assertsExactCount(predicate);
+    let confirming = false;
+    let confirmTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (result: EvalResult): void => {
       if (done) return;
       done = true;
@@ -325,6 +362,7 @@ export function waitForPredicate(
       clearInterval(interval);
       clearTimeout(timer);
       if (cooldownTimer !== undefined) clearTimeout(cooldownTimer);
+      if (confirmTimer !== undefined) clearTimeout(confirmTimer);
       resolve(result);
     };
     // Coalesce re-checks: at most ONE evaluatePredicate is ever in flight (each can be a browser
@@ -351,7 +389,23 @@ export function waitForPredicate(
       // final timeout eval below runs with full diagnostics.
       void evaluatePredicate(session, predicate, since, false)
         .then((r) => {
-          if (r.pass) finish(r);
+          if (!r.pass) return;
+          // "Exactly N" cannot be concluded from a passing sample — the count can still rise. Hold,
+          // re-evaluate WITH diagnostics, and let that second read be the verdict: if an N+1th
+          // arrived in the meantime it now fails, carrying observed/expected rather than a bare no.
+          if (!holdsForCount) {
+            finish(r);
+            return;
+          }
+          if (confirming) return;
+          confirming = true;
+          confirmTimer = setTimeout(() => {
+            void evaluatePredicate(session, predicate, since)
+              .then(finish)
+              .catch((error: unknown) => {
+                finish(failed(error));
+              });
+          }, COUNT_CONFIRM_MS);
         })
         .catch((error: unknown) => {
           finish(failed(error));

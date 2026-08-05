@@ -86,10 +86,19 @@ export function tanstackQueryStore(client: QueryClientLike): StoreLike {
   };
 }
 
-/** The minimum of a Jotai vanilla store this adapter touches. */
-interface JotaiStoreLike {
-  get: (atom: object) => unknown;
-  sub: (atom: object, listener: () => void) => () => void;
+/**
+ * The minimum of a Jotai vanilla store this adapter touches, generic in the ATOM type.
+ *
+ * `atom: object` was rejected by TypeScript for a real store and the reason is contravariance, not
+ * pedantry: Jotai's `get` is `<Value>(atom: Atom<Value>) => Value`, and a function that requires an
+ * `Atom` cannot stand in for one that accepts any `object`. So `jotaiStore(createStore(), …)` did
+ * not compile — the adapter was advertised, shipped, and unusable from TypeScript without a cast,
+ * which the shape-matched fake in the sibling test could never reveal because the fake was written
+ * to the same belief the adapter was.
+ */
+interface JotaiStoreLike<A> {
+  get: (atom: A) => unknown;
+  sub: (atom: A, listener: () => void) => () => void;
 }
 
 /**
@@ -103,7 +112,7 @@ interface JotaiStoreLike {
  * registerStore('app', jotaiStore(getDefaultStore(), { cart: cartAtom, user: userAtom }));
  * ```
  */
-export function jotaiStore(store: JotaiStoreLike, atoms: Record<string, object>): StoreLike {
+export function jotaiStore<A>(store: JotaiStoreLike<A>, atoms: Record<string, A>): StoreLike {
   return {
     getState: (): Record<string, unknown> => {
       const out: Record<string, unknown> = {};

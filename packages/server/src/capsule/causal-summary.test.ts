@@ -8,6 +8,49 @@ function e(type: EventType, data: Record<string, unknown>): ReticleEvent {
   return { t: seq, seq, type, sessionId: 'demo', data };
 }
 
+/**
+ * A store that ends consistent can have been inconsistent on the way there, and a from→to pair
+ * cannot say so. Measured on a real merchant dashboard: an account switch moved `accountId`
+ * immediately and `payments` 160 ms later, so for 160 ms the header named one tenant while the rows
+ * belonged to another. Both diffs were reported and nothing said they were 160 ms apart — and
+ * waiting for the page to settle is, by construction, waiting for that evidence to disappear.
+ */
+describe('state diffs carry WHEN, so settling cannot hide a transient', () => {
+  const at = (t: number, path: string, from: unknown, to: unknown): ReticleEvent => ({
+    t,
+    seq: t,
+    type: EventType.STATE_CHANGE,
+    sessionId: 'demo',
+    data: { name: 'dashboard', path, old: from, value: to },
+  });
+
+  it('reports the gap between two paths of the same store', () => {
+    const summary = causalSummary([
+      at(12, 'accountId', 'acc_002', 'acc_001'),
+      at(172, 'payments', '[old rows]', '[new rows]'),
+    ]);
+    expect(summary.stateDiffs.map((d) => [d.path, d.atMs])).toEqual([
+      ['accountId', 12],
+      ['payments', 172],
+    ]);
+    // The 160 ms in which the UI showed a MIXTURE — the whole signature of the defect.
+    expect(summary.stateSettleMs).toBe(160);
+  });
+
+  it('omits the span when the store moved atomically', () => {
+    // An app that updates every path in one tick pays nothing, so the field's PRESENCE is the signal.
+    const summary = causalSummary([
+      at(12, 'accountId', 'acc_002', 'acc_001'),
+      at(12, 'payments', '[old]', '[new]'),
+    ]);
+    expect(summary.stateSettleMs).toBeUndefined();
+  });
+
+  it('omits the span for a single change — there is no interval to describe', () => {
+    expect(causalSummary([at(12, 'accountId', 'a', 'b')]).stateSettleMs).toBeUndefined();
+  });
+});
+
 describe('causalSummary', () => {
   it('composes counts, diffs, route, signals, and perf from the window', () => {
     const summary = causalSummary([
@@ -39,7 +82,7 @@ describe('causalSummary', () => {
       e(EventType.STATE_CHANGE, { name: 'app', path: 'cart.count', old: 0, value: 1 }),
       e(EventType.STORAGE_CHANGE, { area: 'local', key: 'token', old: 'a', new: 'b' }),
     ]);
-    expect(summary.stateDiffs).toEqual([{ path: 'cart.count', from: 0, to: 1 }]);
+    expect(summary.stateDiffs).toMatchObject([{ path: 'cart.count', from: 0, to: 1 }]);
     expect(summary.storageDiffs).toEqual([{ key: 'token', from: 'a', to: 'b' }]);
     // The lean name lists stay for the compact index.
     expect(summary.statePathsChanged).toEqual(['app']); // the store name, as the observer emits it

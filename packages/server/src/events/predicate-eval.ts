@@ -474,14 +474,37 @@ export function evalSettled(
   for (const [id, pending] of pendingById) {
     inFlight += Math.max(0, pending - (doneById.get(id) ?? 0));
   }
-  if (inFlight > 0) {
+
+  // A completed request whose BODY is still streaming is not a finished request. `fetch` resolves at
+  // HEADERS, so on a Next.js App Router page the RSC payload reported complete 16 ms in while the
+  // Suspense boundary's content arrived 889 ms later — and the silence between them read as a settled
+  // page with a loading spinner still on screen. An OPEN with no CLOSE is in flight, counted the same
+  // way as a pending with no completion.
+  const openStreams = new Set<string>();
+  for (const e of events) {
+    if (e.type !== EventType.NET_STREAM) continue;
+    const id = str(e.data['id']);
+    if (id === undefined) continue;
+    const direction = str(e.data['direction']);
+    if (direction === 'open') openStreams.add(id);
+    else if (direction === 'close') openStreams.delete(id);
+  }
+  const streaming = openStreams.size;
+
+  if (inFlight + streaming > 0) {
+    const what =
+      streaming === 0
+        ? `${String(inFlight)} request(s) still in flight`
+        : inFlight === 0
+          ? `${String(streaming)} response body(ies) still streaming`
+          : `${String(inFlight)} request(s) in flight and ${String(streaming)} response body(ies) still streaming`;
     return {
       pass: false,
-      failureReason: `not settled: ${String(inFlight)} request(s) still in flight`,
-      observed: `${String(inFlight)} request(s) still in flight`,
-      expected: 'no requests in flight',
+      failureReason: `not settled: ${what}`,
+      observed: what,
+      expected: 'no requests in flight and no response bodies still streaming',
       assertion: 'settled.in-flight',
-      evidence: { settled: false, inFlight },
+      evidence: { settled: false, inFlight, ...(streaming > 0 ? { streaming } : {}) },
     };
   }
 

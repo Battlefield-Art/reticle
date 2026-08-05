@@ -12,6 +12,7 @@
  */
 
 import { isConsequenceKind, isPresenceKind } from '@reticlehq/core';
+import { HonestyGrade } from '../honesty/honesty.js';
 import type { Predicate } from '../events/predicate.js';
 
 export const PRESENCE_ONLY_ADVICE =
@@ -78,4 +79,24 @@ export function assertsDerivedIpcStatus(predicate: Predicate): boolean {
 export function isPresenceOnlyAssertion(predicate: Predicate): boolean {
   const kinds = walk(predicate);
   return kinds.presence && !kinds.consequence;
+}
+
+/**
+ * The tier a predicate actually proves, for the honesty block on a verdict.
+ *
+ * A signal or a network consequence is evidence the APP produced; a state read is one step removed;
+ * presence of an element is the weakest, because a wrong or healed element can satisfy it. The
+ * verdict carries this so "it passed" is always qualified by what it passed on.
+ */
+export function gradeOfPredicate(predicate: Predicate): HonestyGrade {
+  switch (predicate.kind) {
+    case 'signal':
+      return HonestyGrade.SIGNAL;
+    case 'net':
+      return HonestyGrade.NET;
+    case 'state':
+      return HonestyGrade.STATE;
+    default:
+      return HonestyGrade.PRESENCE;
+  }
 }

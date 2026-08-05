@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LastAct } from '../session/last-act.js';
 import { ActionWarning, InputMode, InputModeReason, SessionState } from '@reticlehq/core';
 import type { CommandResult } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from '../tools/tools.js';
@@ -65,10 +66,9 @@ function fakeSession(state: FakeSessionState): Session {
     id: 'demo',
     url: SESSION_URL,
     elapsed: () => 0,
-    markActCursor: () => undefined,
+    lastAct: new LastAct(),
     beginAction: () => 'a1',
     finishAction: () => undefined,
-    lastActCursor: () => undefined,
     command,
     health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
     throttled: () => false,

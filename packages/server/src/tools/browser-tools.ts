@@ -16,7 +16,9 @@ export const BROWSER_TOOLS: ToolDef[] = [
       reload: z
         .boolean()
         .optional()
-        .describe('Reload the current page instead of navigating (replaces reticle_refresh).'),
+        .describe(
+          'Reload the current page instead of navigating (replaces the former standalone refresh tool).',
+        ),
       hard: z
         .boolean()
         .optional()

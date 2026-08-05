@@ -9,6 +9,7 @@ import { captureMethod } from '../patching/capture-method.js';
 import type { Emit, Teardown } from './types.js';
 import { isCapturableType, projectBody, withBodyDeadline } from './network-body.js';
 import { redactUrl } from './network-redact.js';
+import { watchStreamedBody } from './network-stream.js';
 
 // Redaction moved to its own cohesive module (network.ts is at its line cap); re-exported so callers
 // and the existing test suite keep importing it from here.
@@ -276,6 +277,8 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
       // headers-received, so it stays honest whether or not we read the body.
       const headersAt = performance.now();
       const contentType = res.headers.get('content-type');
+      // The request is done; the BODY may not be. Watch it so settle cannot pass mid-stream.
+      watchStreamedBody(emit, res, id, url, contentType, res.headers.get('content-length'));
       const emitRequest = (responseBodyFields: Record<string, unknown>): void => {
         emit(EventType.NET_REQUEST, {
           id,

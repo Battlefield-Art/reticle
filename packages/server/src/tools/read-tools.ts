@@ -25,12 +25,14 @@ export const READ_TOOLS: ToolDef[] = [
       name: z
         .string()
         .describe(
-          'Label for this baseline snapshot (e.g. "dashboard-initial"). Use the same name in reticle_diff to compare.',
+          'Label for this baseline snapshot (e.g. "dashboard-initial"). Use the same name in reticle_baseline{action:"diff"} to compare.',
         ),
       ...sessionIdShape,
     },
     outputSchema: {
-      baseline: z.string().describe('Saved baseline name — pass to reticle_diff to compare.'),
+      baseline: z
+        .string()
+        .describe('Saved baseline name — pass to reticle_baseline{action:"diff"} to compare.'),
       lineCount: z.number(),
     },
     handler: async (deps, args) => {
@@ -52,12 +54,12 @@ export const READ_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.DIFF,
     description:
-      'Diff current semantic state vs a saved baseline: REMOVED/ADDED elements + console-error count. Call reticle_baseline_list to list saved baselines, reticle_baseline_save to create one. Pass `baseline` (name from reticle_baseline_list). Answers "did anything silently go missing/break?".',
+      'Diff current semantic state vs a saved baseline: REMOVED/ADDED elements + console-error count. Call reticle_baseline{action:"list"} to list saved baselines, reticle_baseline{action:"save"} to create one. Pass `baseline` (name from reticle_baseline{action:"list"}). Answers "did anything silently go missing/break?".',
     inputSchema: {
       baseline: z
         .string()
         .describe(
-          'Baseline name to compare against. Call reticle_baseline_list to get available names; names are created by reticle_baseline_save.',
+          'Baseline name to compare against. Call reticle_baseline{action:"list"} to get available names; names are created by reticle_baseline{action:"save"}.',
         ),
       ...sessionIdShape,
     },
@@ -100,7 +102,7 @@ export const READ_TOOLS: ToolDef[] = [
       recordingName: z
         .string()
         .describe(
-          'Identifier for this recording. Pass the same name to reticle_record_stop and reticle_replay.',
+          'Identifier for this recording. Pass the same name to reticle_record{action:"stop"} and reticle_replay.',
         ),
       ...sessionIdShape,
     },
@@ -123,7 +125,7 @@ export const READ_TOOLS: ToolDef[] = [
     inputSchema: {
       recordingName: z
         .string()
-        .describe('Identifier of an active recording started with reticle_record_start.'),
+        .describe('Identifier of an active recording started with reticle_record{action:"start"}.'),
       ...sessionIdShape,
     },
     outputSchema: {
@@ -174,7 +176,9 @@ export const READ_TOOLS: ToolDef[] = [
     inputSchema: {
       recordingName: z
         .string()
-        .describe('Name of a compiled recording (from reticle_record_stop) to re-execute.'),
+        .describe(
+          'Name of a compiled recording (from reticle_record{action:"stop"}) to re-execute.',
+        ),
       confirmDangerous: z
         .boolean()
         .optional()

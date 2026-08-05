@@ -19,7 +19,10 @@ import {
   type QueryResult,
   TRANSPORT_LIMITS,
 } from '@reticlehq/core';
+import { isFrame, isHtmlElement } from './realm.js';
+import { capturedRootOf } from './shadow-registry.js';
 import { describe, getStates, isVisible } from './a11y.js';
+import { isIgnored } from './dom-ignore.js';
 import { isSensitiveKey } from '../security/serialization.js';
 import { getCapabilities } from '../registry/capabilities.js';
 import { identifyComponent } from '../registry/adapters.js';
@@ -45,10 +48,10 @@ function resolveContainer(scope: string | undefined): {
 } {
   if (scope === undefined) return { container: document.body, scopeMissing: false };
   const byRef = refs.resolve(scope);
-  if (byRef instanceof HTMLElement) return { container: byRef, scopeMissing: false };
+  if (isHtmlElement(byRef)) return { container: byRef, scopeMissing: false };
   try {
     const found = document.querySelector(scope);
-    if (found instanceof HTMLElement) return { container: found, scopeMissing: false };
+    if (isHtmlElement(found)) return { container: found, scopeMissing: false };
   } catch {
     // invalid selector — treat as a missing scope, never a whole-page search
   }
@@ -169,18 +172,54 @@ function findIn(container: HTMLElement, query: ElementQuery): HTMLElement[] {
  * A closed root is deliberately unreachable — `element.shadowRoot` is null by design, and the SDK
  * reports that as a blind spot rather than pretending to see through it.
  */
-function openShadowRootsUnder(root: HTMLElement): ShadowRoot[] {
-  const found: ShadowRoot[] = [];
-  const walk = (node: ParentNode): void => {
+/**
+ * A same-origin `<iframe>`'s body, or null when the document is unreachable.
+ *
+ * Cross-origin access THROWS in some engines and yields null in others, so both are handled — and
+ * both mean the same thing here: not ours to read. That case is not a silent skip, it is reported
+ * separately as a declared blind spot.
+ */
+function readableFrameBody(frame: HTMLIFrameElement): HTMLElement | null {
+  try {
+    return frame.contentDocument?.body ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** How deep to follow frames-inside-frames before giving up. Real consoles nest one, maybe two. */
+const FRAME_DEPTH_MAX = 3;
+
+/**
+ * Every root beneath the scope that the page can read but `querySelectorAll` will not reach:
+ * open shadow roots, and the documents of SAME-ORIGIN iframes.
+ *
+ * The iframe half was measured missing: a same-origin frame whose text the page could read straight
+ * off `contentDocument` returned zero matches from `query`, and coverage said nothing about it — the
+ * worst combination, an absent-element answer for content that is right there. Cross-origin frames
+ * are a genuinely different case and stay unread; they are declared instead.
+ */
+function embeddedRootsUnder(root: HTMLElement): HTMLElement[] {
+  const found: HTMLElement[] = [];
+  const walk = (node: ParentNode, depth: number): void => {
     for (const el of node.querySelectorAll<HTMLElement>('*')) {
-      const shadow = el.shadowRoot;
+      const shadow = el.shadowRoot ?? capturedRootOf(el);
       if (shadow !== null) {
-        found.push(shadow);
-        walk(shadow); // nested web components
+        // A ShadowRoot is a DocumentFragment; the Testing-Library queries accept any HTMLElement-like
+        // container, and every call site only reads from it.
+        found.push(shadow as unknown as HTMLElement);
+        walk(shadow, depth); // nested web components
+        continue;
       }
+      if (depth >= FRAME_DEPTH_MAX) continue;
+      if (!isFrame(el)) continue;
+      const body = readableFrameBody(el);
+      if (body === null) continue; // cross-origin — declared, not searched
+      found.push(body);
+      walk(body, depth + 1);
     }
   };
-  walk(root);
+  walk(root, 0);
   return found;
 }
 
@@ -215,16 +254,20 @@ function findCandidates(query: ElementQuery): { candidates: HTMLElement[]; scope
   const collect = (els: HTMLElement[]): void => {
     for (const el of els) {
       if (seen.has(el)) continue; // reachable from both host and root — count once
+      // Reticle's OWN UI is not part of the app under test. `snapshot` has always excluded it; query
+      // did not, so the presenter panel and the annotator answered `by: role` like app controls —
+      // measured on a real merchant dashboard, 7 of the 40 buttons an agent could see were ours
+      // ("Pause", "End", "Minimise the panel", "Export", "Flag a bug for the agent"). Two of those
+      // share a NAME with a real control on that page, so an agent resolving "Export" could drive the
+      // observer instead of the app and then reason about the result. Filtered here, at the one
+      // collection point, so every entry path (by role/text/testid, shadow roots, scoped) is covered.
+      if (isIgnored(el)) continue;
       seen.add(el);
       out.push(el);
     }
   };
   collect(findIn(container, query));
-  for (const shadow of openShadowRootsUnder(container)) {
-    // A ShadowRoot is a DocumentFragment; the Testing-Library queries accept any HTMLElement-like
-    // container, and every call site below only reads from it.
-    collect(findIn(shadow as unknown as HTMLElement, query));
-  }
+  for (const embedded of embeddedRootsUnder(container)) collect(findIn(embedded, query));
   return { candidates: out, scopeMissing };
 }
 
@@ -390,6 +433,7 @@ function buildEmptyHint(query: ElementQuery): QueryEmptyHint {
   const all = container.querySelectorAll(`[${TESTID_ATTR}]`);
   const present: string[] = [];
   for (const el of Array.from(all)) {
+    if (isIgnored(el)) continue; // the "what IS here" hint must not advertise Reticle's own UI either
     const id = el.getAttribute(TESTID_ATTR);
     if (id !== null && id.length > 0 && !present.includes(id)) {
       present.push(id);

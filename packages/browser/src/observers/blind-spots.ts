@@ -1,15 +1,46 @@
 import { EventType, BlindSpotKind } from '@reticlehq/core';
 import type { Emit, Teardown } from './types.js';
+import { countUnmountedRows } from '../dom/virtualized.js';
+import { isCaptured } from '../dom/shadow-registry.js';
+import { sameOriginFrameBodies } from './frames.js';
 import { nativeClearTimeout, nativeSetTimeout } from '../timers/native-timers.js';
 
 /**
  * Blind-spot sensor. The SDK instruments the DOM, but a cross-origin iframe is a wall it cannot
  * see through — its contents, network, and console are invisible. Left unstated, a green verdict would
  * imply the whole page was verified. This detects cross-origin frames and emits a BLIND_SPOT event so the
- * server can mark results `coverage: partial` instead of lying by omission. Closed shadow roots and
- * virtualized-unmounted rows are the other kinds (detected elsewhere / by their tools); this sensor owns
- * the iframe case, the one that is cheaply and reliably detectable from the page.
+ * server can mark results `coverage: partial` instead of lying by omission. This sensor owns the three
+ * kinds cheaply and reliably detectable from the page: cross-origin frames, closed shadow roots, and
+ * virtualized-unmounted rows.
  */
+
+/**
+ * Elements rendering content nobody outside them can read.
+ *
+ * `attachShadow({mode:'closed'})` makes `el.shadowRoot` null FOREVER, for every caller — Reticle,
+ * Playwright's accessibility snapshot, a screenshot-reading model, all of them. There is no API that
+ * recovers it, so the only honest behaviour is to say the region exists and is unreadable.
+ *
+ * It is not directly detectable either, so this infers it: a custom element (a dash in the tag name is
+ * the spec's own rule) that has NO light-DOM children and no text, yet occupies layout space, is
+ * painting from somewhere. Nothing else produces that combination — an empty custom element that
+ * renders nothing measures zero and is skipped.
+ */
+export function countClosedShadowRoots(): number {
+  let count = 0;
+  for (const el of document.querySelectorAll<HTMLElement>('*')) {
+    if (!el.tagName.includes('-')) continue;
+    if (el.shadowRoot !== null) continue; // open — readable, not a blind spot
+    // A closed root attached AFTER the SDK installed was captured from attachShadow's return value,
+    // so it is readable too. Only what was genuinely missed is declared.
+    if (isCaptured(el)) continue;
+    if (el.children.length > 0) continue;
+    if ((el.textContent ?? '').trim().length > 0) continue;
+    if (el.offsetHeight <= 0 && el.offsetWidth <= 0) continue;
+    count += 1;
+  }
+  return count;
+}
 
 /**
  * Whether a frame is cross-origin (unobservable). A same-origin frame exposes its `contentDocument`; a
@@ -38,6 +69,16 @@ function currentCount(): number {
 }
 
 /**
+ * Same-origin frames — observed for DOM, NOT for network.
+ *
+ * Their `fetch` lives in the frame's own realm, which the top realm's patch never sees. Left
+ * undeclared, `settled` can read true while a frame request is still in flight.
+ */
+function uninstrumentedFrameCount(): number {
+  return sameOriginFrameBodies(document).length;
+}
+
+/**
  * Watch the page for cross-origin iframes and emit BLIND_SPOT whenever the count CHANGES (install +
  * on any added/removed frame). Only the delta is emitted — never a per-mutation flood — so a static
  * embed reports once. Reversible: disconnects the observer on teardown.
@@ -51,13 +92,22 @@ function currentCount(): number {
 const RECHECK_DEBOUNCE_MS = 250;
 
 export function installBlindSpots(emit: Emit): Teardown {
-  let last = -1;
+  // Every kind is counted the same way and emitted on CHANGE only, so a static embed or a steady list
+  // reports once instead of flooding. Virtualized rows matter most: without them an assertion over a
+  // 10,000-row grid is a claim about the ~29 on screen, delivered as full coverage.
+  const sensors = [
+    { kind: BlindSpotKind.CROSS_ORIGIN_IFRAME, count: currentCount },
+    { kind: BlindSpotKind.UNINSTRUMENTED_FRAME, count: uninstrumentedFrameCount },
+    { kind: BlindSpotKind.CLOSED_SHADOW_ROOT, count: countClosedShadowRoots },
+    { kind: BlindSpotKind.VIRTUALIZED_UNMOUNTED, count: countUnmountedRows },
+  ] as const;
+  const last = new Map<string, number>();
   const report = (): void => {
-    const count = currentCount();
-    if (count === last) return;
-    last = count;
-    if (count > 0) {
-      emit(EventType.BLIND_SPOT, { kind: BlindSpotKind.CROSS_ORIGIN_IFRAME, count });
+    for (const sensor of sensors) {
+      const count = sensor.count();
+      if (count === last.get(sensor.kind)) continue;
+      last.set(sensor.kind, count);
+      if (count > 0) emit(EventType.BLIND_SPOT, { kind: sensor.kind, count });
     }
   };
   report();

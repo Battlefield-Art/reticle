@@ -8,6 +8,7 @@ import {
   projectConsoleLog,
   isConsoleEvent,
   eventMatchesFilters,
+  matchNet,
   OBSERVE_FILTER_BUCKETS,
 } from './event-filters.js';
 
@@ -68,6 +69,44 @@ describe('eventMatchesFilters (observe filters allowlist)', () => {
         expect(eventMatchesFilters(ev(t as EventType), [bucket])).toBe(true);
       }
     }
+  });
+});
+
+describe('matchNet ok filter (the documented way to find a failed desktop IPC call)', () => {
+  const ok = ev(EventType.NET_REQUEST, {
+    method: 'ipc',
+    url: 'ipc://todos:load',
+    status: 200,
+    ok: true,
+  });
+  const failed = ev(EventType.NET_REQUEST, {
+    method: 'ipc',
+    url: 'ipc://todos:archive',
+    status: 500,
+    ok: false,
+  });
+
+  it('keeps only the failed call when ok:false is asked for', () => {
+    // reticle_network's own description tells the agent to filter IPC on `ok`, because the 200/500
+    // there is derived. Without this the filter was ignored and a "show me what failed" query came
+    // back listing calls that SUCCEEDED — a false green on the exact desktop path it documents.
+    expect(matchNet(failed, undefined, undefined, undefined, false)).toBe(true);
+    expect(matchNet(ok, undefined, undefined, undefined, false)).toBe(false);
+  });
+
+  it('keeps only the successful call when ok:true is asked for', () => {
+    expect(matchNet(ok, undefined, undefined, undefined, true)).toBe(true);
+    expect(matchNet(failed, undefined, undefined, undefined, true)).toBe(false);
+  });
+
+  it('leaves every call in place when ok is omitted', () => {
+    expect(matchNet(ok, undefined, undefined, undefined, undefined)).toBe(true);
+    expect(matchNet(failed, undefined, undefined, undefined, undefined)).toBe(true);
+  });
+
+  it('excludes a still-pending call from ok:false — unresolved is not failed', () => {
+    const pending = ev(EventType.NET_PENDING, { method: 'ipc', url: 'ipc://todos:add' });
+    expect(matchNet(pending, undefined, undefined, undefined, false)).toBe(false);
   });
 });
 

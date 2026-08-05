@@ -16,7 +16,7 @@
  * complete minimal hook. MUST be installed before `react-dom` initializes (React reads the hook at
  * renderer-inject time) — import this as the first side-effect in the app entry, before React.
  */
-import { RETICLE_RENDERS_STORE } from '@reticlehq/core';
+import { RETICLE_RENDER_PREHOOK, RETICLE_RENDERS_STORE } from '@reticlehq/core';
 import { registerStore } from '@reticlehq/browser';
 import { HYDRATION_COMPLETE_SIGNAL, createHydrationTracker } from './hydration.js';
 import { createCommitAggregator } from './commit-aggregator.js';
@@ -66,6 +66,17 @@ interface DevtoolsHook {
 }
 
 let commits = 0;
+
+/**
+ * Take over a count that started before this module existed.
+ *
+ * The pre-hook has been counting since page parse; discarding that and starting at zero would report
+ * a freshly-loaded app as having rendered nothing, which is the same "empty vs unseen" confusion the
+ * rest of this layer refuses to make.
+ */
+function seedCommits(prior: number): void {
+  if (Number.isFinite(prior) && prior > commits) commits = prior;
+}
 let installed = false;
 
 function noop(): void {
@@ -96,6 +107,21 @@ export function installRenderMeter(): void {
   installed = true;
   try {
     const root = globalThis as unknown as Record<string, DevtoolsHook | undefined>;
+    // Adopt the pre-hook if the Vite plugin installed one.
+    //
+    // Installing the hook from here is a race this module cannot win under the plugin's auto-inject:
+    // it arrives as a module script, which runs after the app's entry, and React reads the hook when
+    // react-dom evaluates. The pre-hook runs during parse instead and has been counting since then —
+    // so the honest thing is to take its numbers rather than start from zero and report a quiet page.
+    const pre = (globalThis as Record<string, unknown>)[RETICLE_RENDER_PREHOOK] as
+      | { commits: number; sinks: ((...args: unknown[]) => void)[] }
+      | undefined;
+    if (pre !== undefined) {
+      seedCommits(pre.commits);
+      pre.sinks.push(onReactCommit);
+      registerStore(RENDER_STORE, () => getRenderStats());
+      return;
+    }
     const existing = root[HOOK_KEY];
     if (existing === undefined) {
       root[HOOK_KEY] = {

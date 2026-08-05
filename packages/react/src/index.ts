@@ -220,13 +220,26 @@ export function hasHoverHandlers(el: Element): boolean {
   return HOVER_HANDLER_KEYS.some((k) => typeof p[k] === 'function');
 }
 
+import { installRenderMeter } from './render-meter.js';
+
 let installed = false;
 
-/** Register the React adapter so `reticle.inspect` returns component stack + source file. */
+/**
+ * Wire up React support: the adapter for `reticle.inspect`, and the render meter.
+ *
+ * The meter used to be an export nobody called. `docs/usage.md` advertises
+ * `reticle_state({ store: "__reticle_renders", path: "commits" })` for React commit counts, and the
+ * store was never registered on any app — measured on two independent ones, `stores` listed only the
+ * app's own. An agent asking for render counts got silence, indistinguishable from an idle page.
+ *
+ * It belongs here because this is the one function an app calls to say "I am React". Requiring a
+ * second, separately-imported call for a documented capability is how a feature ships dead.
+ */
 export function install(): void {
   if (installed) return;
   installed = true;
   registerAdapter({ name: 'react', identify, readState, hasHoverHandlers });
+  installRenderMeter();
 }
 
 export {

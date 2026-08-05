@@ -17,6 +17,7 @@ import {
 import type { EvalResult, Predicate } from '../events/predicate.js';
 import { asRecord, asString } from '../tools/tools-helpers.js';
 import { replayActionArgs, ambiguousTestidNote, queryRefs } from './replay.js';
+import { runRoleStep, runComponentStep } from './flow-step-runners.js';
 import { ReticleTool } from '../tools/tool-names.js';
 
 /**
@@ -113,7 +114,7 @@ const ANCHOR_SETTLE_ATTEMPTS = 8;
 const ANCHOR_SETTLE_DELAY_MS = 150;
 
 /** Injected sleeper so tests drive replay with a no-op clock; production waits on a real timer. */
-type Sleep = (ms: number) => Promise<void>;
+export type Sleep = (ms: number) => Promise<void>;
 const realSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Extract the live element refs + the zero-match near-miss hint from a QUERY command result. */
@@ -180,7 +181,7 @@ function testidDrift(value: string, hint: QueryEmptyHint | undefined): Drift {
  * so a present anchor costs one query; a genuinely missing one costs the full (bounded) settle and
  * then drifts. The last result's near-miss hint is returned for the drift record.
  */
-async function resolveQuery(
+export async function resolveQuery(
   session: FlowReplaySession,
   queryArgs: Record<string, unknown>,
   sleep: Sleep,
@@ -260,7 +261,7 @@ function summarizeConsequence(events: ReticleEvent[]): string | undefined {
 }
 
 /** A compact, legible label for a component auto-anchor (component@file:line, or its best part). */
-function componentLabel(
+export function componentLabel(
   anchor: Extract<FlowAnchor, { kind: typeof AnchorKind.COMPONENT }>,
 ): string {
   if (anchor.source !== undefined) {
@@ -280,58 +281,13 @@ function anchorLabel(anchor: FlowAnchor): string {
 }
 
 /** QUERY args for a component auto-anchor — source (precise) + component name (coarse) as given. */
-function componentQueryArgs(
+export function componentQueryArgs(
   anchor: Extract<FlowAnchor, { kind: typeof AnchorKind.COMPONENT }>,
 ): Record<string, unknown> {
   const args: Record<string, unknown> = { by: QueryBy.COMPONENT };
   if (anchor.component !== undefined) args['component'] = anchor.component;
   if (anchor.source !== undefined) args['source'] = anchor.source;
   return args;
-}
-
-/** Run one component-anchored step: re-resolve via QUERY by:'component', ACT on the live ref, else drift. */
-async function runComponentStep(
-  session: FlowReplaySession,
-  step: FlowStep,
-  index: number,
-  anchor: Extract<FlowAnchor, { kind: typeof AnchorKind.COMPONENT }>,
-  confirmDangerous: boolean,
-  sleep: Sleep,
-): Promise<FlowStepResult> {
-  const label = componentLabel(anchor);
-  const { refs } = await resolveQuery(session, componentQueryArgs(anchor), sleep);
-  if (refs.length === 0) {
-    return {
-      step: index,
-      tool: step.tool,
-      anchor: label,
-      ok: false,
-      drift: {
-        reasonKind: DriftReason.COMPONENT_NOT_FOUND,
-        reason: `component anchor "${label}" not found`,
-        anchor: label,
-        nearest: null,
-      },
-    };
-  }
-  const ref = refs[0] ?? '';
-  // Attribute the step's effects to the step. Without this window they arrive with no actionId and are
-  // learned as ambient churn on the very regions the flow exercises.
-  session.beginAction?.(ReticleTool.FLOW_REPLAY, { ref, action: step.action ?? '' });
-  let act;
-  try {
-    act = await session.command(ReticleCommand.ACT, {
-      ref,
-      action: step.action ?? '',
-      args: replayActionArgs(step.args, confirmDangerous),
-    });
-  } finally {
-    // Close on every exit so a throwing step cannot leak the window onto the next step's events.
-    session.finishAction?.();
-  }
-  const result: FlowStepResult = { step: index, tool: step.tool, anchor: label, ok: act.ok };
-  if (!act.ok) result.error = act.error ?? 'command failed';
-  return result;
 }
 
 /** Run one testid-anchored step: re-resolve via QUERY, then ACT on the live ref, else drift. */
@@ -498,6 +454,10 @@ export async function replayFlow(
       );
     } else if (step.anchor.kind === AnchorKind.COMPONENT) {
       result = await runComponentStep(session, step, index, step.anchor, confirmDangerous, sleep);
+    } else if (step.anchor.kind === AnchorKind.ROLE && step.anchor.name !== undefined) {
+      // A NAMED role anchor addresses one element. The nameless one is the degraded placeholder and
+      // keeps its old path, where it fails legibly rather than querying a role as if it were a testid.
+      result = await runRoleStep(session, step, index, step.anchor, confirmDangerous, sleep);
     } else {
       result = await runTestidStep(session, step, index, label, dynamic, confirmDangerous, sleep);
     }

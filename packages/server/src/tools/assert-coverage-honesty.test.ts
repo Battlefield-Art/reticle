@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SessionState } from '@reticlehq/core';
+import { LastAct } from '../session/last-act.js';
+import { EventType, SessionState, Verified, type ReticleEvent } from '@reticlehq/core';
 import { TOOLS, type ToolDef, type ToolDeps } from './tools.js';
 import { ReticleTool } from './tool-names.js';
 import type { Session, SessionManager } from '../session/session.js';
@@ -20,13 +21,12 @@ import type { Session, SessionManager } from '../session/session.js';
 function depsWithBlindSpots(blindSpots: Record<string, number>): ToolDeps {
   const session: Partial<Session> = {
     id: 'demo',
-    lastActSource: () => undefined,
     bufferHealth: () => ({ total: 5, dropped: 0 }),
+    lastAct: new LastAct(),
     blindSpots: () => blindSpots,
     eventsSince: () => [],
     queryEvents: () => Promise.resolve([]),
     elapsed: () => 1000,
-    lastActCursor: () => 0,
     health: () => ({ lastSeenMs: 5, throttled: false, focused: true, hidden: false }),
     getState: () => SessionState.ACTIVE,
     drainInbox: () => [],
@@ -89,5 +89,53 @@ describe('reticle_assert discloses partial coverage', () => {
     )) as Record<string, unknown>;
 
     expect('coverage' in result).toBe(false);
+  });
+});
+
+describe('reticle_assert carries the verdict, not just pass', () => {
+  // Measured on a shipments console: a dispatch answered 202 Accepted, the row rendered "dispatched"
+  // optimistically, and an assert taken right after returned a bare `pass: true`. The server reverted
+  // the write 1.2s later. The 202 machinery that exists to report this as `verified: "unknown"` lived
+  // only in act_and_wait — the tool an agent actually calls never consulted it.
+  /** A console-absence assertion over a window we control, so only the WRITE varies. */
+  const runAssert = async (events: ReticleEvent[]): Promise<unknown> => {
+    const session: Partial<Session> = {
+      id: 'demo',
+      bufferHealth: () => ({ total: 5, dropped: 0 }),
+      lastAct: new LastAct(),
+      blindSpots: () => ({}),
+      eventsSince: () => events,
+      queryEvents: () => Promise.resolve(events),
+      elapsed: () => 1000,
+      health: () => ({ lastSeenMs: 5, throttled: false, focused: true, hidden: false }),
+      getState: () => SessionState.ACTIVE,
+      drainInbox: () => [],
+    };
+    const sessions: Partial<SessionManager> = { resolve: () => session as Session };
+    const deps = { sessions: sessions as SessionManager } as unknown as ToolDeps;
+    return tool(ReticleTool.ASSERT).handler(deps, absentConsole);
+  };
+
+  // The real shape: the row rendered "dispatched" optimistically AND the write came back 202. A 202
+  // with no UI movement is a different finding (`response-ignored`) and would mask what is tested here.
+  const acceptedWrite = [
+    { type: EventType.DOM_TEXT, t: 5, data: { text: 'dispatched', old: 'draft' } },
+    {
+      type: EventType.NET_REQUEST,
+      t: 10,
+      data: { method: 'POST', url: '/api/dispatch', status: 202, ok: true },
+    },
+  ] as unknown as ReticleEvent[];
+
+  it('reports unknown when a write was only ACCEPTED, even though the assertion passed', async () => {
+    const result = (await runAssert(acceptedWrite)) as Record<string, unknown>;
+    expect(result['pass']).toBe(true);
+    expect(result['verified']).toBe(Verified.UNKNOWN);
+    expect(String(result['because'])).toContain('202');
+  });
+
+  it('reports yes on a clean window', async () => {
+    const result = (await runAssert([])) as Record<string, unknown>;
+    expect(result['verified']).toBe(Verified.YES);
   });
 });

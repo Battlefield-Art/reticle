@@ -9,6 +9,17 @@ export interface StateDiff {
   path: string;
   from: unknown;
   to: unknown;
+  /**
+   * WHEN this path moved, in the session's elapsed ms.
+   *
+   * The whole reason a transient was invisible. A store that ends internally consistent can have been
+   * inconsistent on the way there, and a from→to pair cannot express that — measured on a real
+   * merchant dashboard, an account switch moved `accountId` immediately and `payments` 160 ms later,
+   * so for 160 ms the header named one tenant while the rows belonged to another. Both diffs were
+   * reported; nothing said they were 160 ms apart, and waiting for the page to settle is by
+   * construction waiting for the evidence to disappear. The timestamp was on the event all along.
+   */
+  atMs: number;
 }
 export interface StorageDiff {
   key: string;
@@ -22,6 +33,16 @@ export interface CausalSummary {
   storageKeysChanged: string[];
   /** Before→after for each changed store path — the diffs, not just the names. Values capped. */
   stateDiffs: StateDiff[];
+  /**
+   * How long the store took to stop moving: last state change − first, in ms. Present only when more
+   * than one path changed, because with a single change there is no interval to describe.
+   *
+   * A FACT, not a verdict. Many apps update progressively and that is fine; calling every stagger a
+   * defect would make this a noise generator. But a non-zero value is the exact window in which the
+   * UI showed a MIXTURE of old and new, and that window is where the tenant-mismatch class of bug
+   * lives — so it is stated once, cheaply, and the agent decides.
+   */
+  stateSettleMs?: number;
   /** Before→after for each changed storage key. Values capped. */
   storageDiffs: StorageDiff[];
   route?: string;
@@ -50,6 +71,19 @@ function capValue(value: unknown): unknown {
   } catch {
     return '[unserializable]';
   }
+}
+
+/**
+ * The span over which the store was still moving — and therefore possibly self-inconsistent.
+ *
+ * Omitted for 0 or 1 diffs (no interval) and for a spread of 0 (everything landed in one tick), so a
+ * store that updates atomically pays nothing and the field's PRESENCE is what carries the meaning.
+ */
+function stateSettle(diffs: readonly StateDiff[]): { stateSettleMs?: number } {
+  if (diffs.length < 2) return {};
+  const times = diffs.map((d) => d.atMs);
+  const spread = Math.max(...times) - Math.min(...times);
+  return spread > 0 ? { stateSettleMs: spread } : {};
 }
 
 export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
@@ -93,7 +127,12 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
         const hasAfter = 'value' in data || 'new' in data;
         if (typeof path === 'string' && path.length > 0 && ('old' in data || hasAfter)) {
           const after = 'value' in data ? data['value'] : data['new'];
-          stateDiffs.push({ path, from: capValue(data['old']), to: capValue(after) });
+          stateDiffs.push({
+            path,
+            from: capValue(data['old']),
+            to: capValue(after),
+            atMs: event.t,
+          });
         }
         break;
       }
@@ -129,6 +168,7 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
     statePathsChanged,
     storageKeysChanged,
     stateDiffs,
+    ...stateSettle(stateDiffs),
     storageDiffs,
     ...(route === undefined ? {} : { route }),
     signals,

@@ -27,6 +27,68 @@ describe('desktop capture — Electron, through the preload-installed channel', 
   });
 });
 
+describe("Reticle's own UI is not banked into the baseline", () => {
+  /** The presenter panel renders live session state — an event tally, a log tail, a run badge. */
+  function mountPanel(): HTMLElement {
+    const panel = document.createElement('div');
+    panel.setAttribute('data-reticle-overlay', '');
+    document.body.append(panel);
+    return panel;
+  }
+
+  afterEach(() => {
+    document.querySelectorAll('[data-reticle-overlay],[data-reticle-mark]').forEach((el) => {
+      el.remove();
+    });
+  });
+
+  it("hides the annotator's button too, not just the presenter panel", async () => {
+    // The annotator mounts by DEFAULT alongside the presenter, and it leaked into snapshots once
+    // already for exactly this reason. Both are covered by the one selector the snapshot layer uses.
+    const mark = document.createElement('div');
+    mark.setAttribute('data-reticle-mark', '');
+    document.body.append(mark);
+    let visibilityDuringCapture = '';
+    Reflect.set(window, RETICLE_IPC_GLOBAL, {
+      capture: () => {
+        visibilityDuringCapture = mark.style.visibility;
+        return Promise.resolve(PNG_PATH);
+      },
+    });
+
+    await expect(captureDesktopWindow()).resolves.toEqual({ ok: true, path: PNG_PATH });
+    expect(visibilityDuringCapture).toBe('hidden');
+    mark.remove();
+  });
+
+  it('hides Reticle-owned roots while the shell photographs the window', async () => {
+    const panel = mountPanel();
+    let visibilityDuringCapture = '';
+    Reflect.set(window, RETICLE_IPC_GLOBAL, {
+      capture: () => {
+        visibilityDuringCapture = panel.style.visibility;
+        return Promise.resolve(PNG_PATH);
+      },
+    });
+
+    await expect(captureDesktopWindow()).resolves.toEqual({ ok: true, path: PNG_PATH });
+    // Banked with the panel visible, every later visual_diff reports a change that belongs to the
+    // observer, not the app — the instrument measuring itself.
+    expect(visibilityDuringCapture).toBe('hidden');
+  });
+
+  it('puts the panel back even when the capture fails', async () => {
+    const panel = mountPanel();
+    panel.style.visibility = 'visible';
+    Reflect.set(window, RETICLE_IPC_GLOBAL, {
+      capture: () => Promise.reject(new Error('window is gone')),
+    });
+
+    await expect(captureDesktopWindow()).resolves.toMatchObject({ ok: false });
+    expect(panel.style.visibility).toBe('visible');
+  });
+});
+
 describe('desktop capture — Tauri, through its own invoke', () => {
   /**
    * Electron installs the capture global from a preload, which runs before app code. Tauri has NO

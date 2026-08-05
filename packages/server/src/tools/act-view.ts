@@ -41,3 +41,16 @@ export function leanActResult(result: unknown): unknown {
   if (effect === null || typeof effect !== 'object') return result;
   return { ...r, effect: leanEffect(effect as Record<string, unknown>) };
 }
+
+/**
+ * DOM mutations the browser counted inside the acted element's own subtree.
+ *
+ * Nested under `effect` and OMITTED when zero (the lean-result rule drops uninformative defaults), so
+ * an absent field means zero rather than "not measured" — which is exactly the case that matters.
+ */
+export function mutatedWithin(result: Record<string, unknown>): number | undefined {
+  const effect = result['effect'];
+  if (typeof effect !== 'object' || effect === null) return undefined;
+  const value = (effect as Record<string, unknown>)['domMutatedWithin'];
+  return typeof value === 'number' ? value : 0;
+}

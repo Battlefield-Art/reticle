@@ -171,7 +171,7 @@ function buildSummary(
   topRisk: { name: string; reason: string } | undefined,
 ): string {
   if (flowCount === 0) {
-    return 'No saved flows yet — record the critical journeys (reticle_record_start) so the agent learns the app.';
+    return 'No saved flows yet — record the critical journeys (reticle_record{action:"start"}) so the agent learns the app.';
   }
   const parts = [
     `${String(flowCount)} flow${flowCount === 1 ? '' : 's'}: ${String(coverage.asserted)} asserted, ${String(coverage.presenceOnly)} presence-only, ${String(coverage.assertionFree)} assertion-free`,

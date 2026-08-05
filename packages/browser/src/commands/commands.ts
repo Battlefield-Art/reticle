@@ -23,6 +23,7 @@ import {
 import { describe } from '../dom/a11y.js';
 import { themeReport } from '../dom/theme.js';
 import { refs } from '../dom/refs.js';
+import { isButton, isInput } from '../dom/realm.js';
 import { hitTestOccluder } from '../dom/occlusion.js';
 import { readStorage } from '../observers/storage.js';
 import { captureDesktopWindow } from '../dom/desktop-capture.js';
@@ -94,13 +95,8 @@ function inspect(ref: string): unknown {
     tag: el.tagName.toLowerCase(),
     href: el.getAttribute('href') ?? undefined,
     formAction:
-      el instanceof HTMLButtonElement || el instanceof HTMLInputElement
-        ? (el.form?.getAttribute('action') ?? undefined)
-        : undefined,
-    formText:
-      el instanceof HTMLButtonElement || el instanceof HTMLInputElement
-        ? (el.form?.textContent ?? undefined)
-        : undefined,
+      isButton(el) || isInput(el) ? (el.form?.getAttribute('action') ?? undefined) : undefined,
+    formText: isButton(el) || isInput(el) ? (el.form?.textContent ?? undefined) : undefined,
     box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
     // True when another element sits over this one's center point — the click would hit the overlay,
     // not this control (a z-index/overlay bug the DOM tree cannot show).

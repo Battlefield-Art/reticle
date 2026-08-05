@@ -68,7 +68,7 @@ describe('reticle_review tool — human marks ingested from HUMAN_MARK events', 
     expect(mark?.note).toBe('Submit button is misaligned');
     expect(mark?.source).toEqual({ file: 'src/Checkout.tsx', line: 42 });
     expect(mark?.fix).toContain('src/Checkout.tsx:42');
-    expect(mark?.fix).toContain('reticle_review { resolve:');
+    expect(mark?.fix).toContain('reticle_session { action: "review", resolve:');
 
     const resolved = (await reviewTool().handler(depsFor(session), {
       resolve: mark?.id,
@@ -104,7 +104,7 @@ describe('reticle_review tool — human marks ingested from HUMAN_MARK events', 
     const info = session.info();
     expect(info.pendingMarks).toBe(2);
     expect(info.review_suggestion).toMatch(/flagged 2 issues/);
-    expect(info.review_suggestion).toMatch(/reticle_review/);
+    expect(info.review_suggestion).toMatch(/reticle_session\{action:"review"\}/);
 
     // Resolving a mark drops the count; resolving all removes the fields again.
     const pending = session.pendingMarks();

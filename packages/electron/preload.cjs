@@ -5,8 +5,9 @@
  *
  *     require('@reticlehq/electron/preload');
  *
- * ...and every `ipcRenderer.invoke` your app makes becomes a Reticle-visible request
- * (`ipc://<channel>`), so net assertions and settle-waiting cover the main-process hop.
+ * ...and every `ipcRenderer.invoke`, `sendSync` and `send` your app makes becomes a Reticle-visible
+ * request (`ipc://<channel>`), so net assertions and settle-waiting cover the main-process hop.
+ * A one-way `send` is recorded as DISPATCHED with no outcome, because that is all the renderer knows.
  *
  * Why a preload shim and not renderer-side patching, like every other Reticle observer:
  * `contextBridge.exposeInMainWorld` hands the renderer a DEEPLY FROZEN object, installed on `window`
@@ -55,6 +56,38 @@ function report(record) {
   }
 }
 
+/**
+ * Longest payload reported per IPC call, matching the HTTP body cap.
+ *
+ * A desktop app's ENTIRE API surface is IPC. The web side has recorded request/response bodies for a
+ * long time — which is what lets Reticle catch a batch whose 200 hides per-item failures, or a refund
+ * posting a major-unit number into a minor-unit field. On Electron none of that could ever fire,
+ * because this shim reported only channel, ok and duration and dropped the payloads it was already
+ * holding. Every payload-based check was silently web-only on the platform this release is about.
+ */
+const IPC_BODY_MAX = 8192;
+
+/**
+ * Serialize an IPC payload, or report why it could not be.
+ *
+ * Size is computed even when the body is not forwarded, because "a write returned ok and its payload
+ * went unread" is a caveat the verdict layer needs and it cannot infer it from an absent field.
+ */
+function payload(value) {
+  if (value === undefined) return undefined;
+  try {
+    const text = JSON.stringify(value);
+    if (typeof text !== 'string') return undefined;
+    return text.length > IPC_BODY_MAX
+      ? { text: text.slice(0, IPC_BODY_MAX), size: text.length, truncated: true }
+      : { text, size: text.length };
+  } catch {
+    // Circular, or carrying something structured-cloneable but not JSON-able. Not an error — the
+    // call is still reported, just without a readable payload.
+    return undefined;
+  }
+}
+
 /** Wrap one invoke-style function so each call reports a start and an end. */
 function observe(original, channelFromArg, name) {
   return function reticleObservedIpc(...args) {
@@ -62,7 +95,10 @@ function observe(original, channelFromArg, name) {
     const channel = channelFromArg && typeof args[0] === 'string' ? args[0] : name;
     const startedAt = Date.now();
     report({ phase: 'start', id, channel });
-    const finish = (ok, error) => {
+    // The arguments after the channel name ARE the request payload.
+    const request = payload(channelFromArg ? args.slice(1) : args);
+    const finish = (ok, error, value) => {
+      const response = payload(value);
       report({
         phase: 'end',
         id,
@@ -70,6 +106,14 @@ function observe(original, channelFromArg, name) {
         ok,
         durationMs: Date.now() - startedAt,
         ...(error === undefined ? {} : { error }),
+        ...(request === undefined ? {} : { requestBody: request.text, requestSize: request.size }),
+        ...(response === undefined
+          ? {}
+          : {
+              responseBody: response.text,
+              responseSize: response.size,
+              ...(response.truncated === true ? { responseBodyTruncated: true } : {}),
+            }),
       });
     };
     let result;
@@ -80,12 +124,12 @@ function observe(original, channelFromArg, name) {
       throw err;
     }
     if (result === null || typeof result !== 'object' || typeof result.then !== 'function') {
-      finish(true);
+      finish(true, undefined, result);
       return result;
     }
     return result.then(
       (value) => {
-        finish(true);
+        finish(true, undefined, value);
         return value;
       },
       (err) => {
@@ -96,11 +140,60 @@ function observe(original, channelFromArg, name) {
   };
 }
 
-// Patch ipcRenderer.invoke itself. Every contextBridge API is ultimately a thin wrapper around this
-// one function, so patching here covers the app's whole IPC surface no matter what it named things —
-// and it happens before the app's own `exposeInMainWorld` captures the reference.
+/**
+ * Wrap a ONE-WAY send. It has no verdict to wait for, so it is recorded as DISPATCHED and never as
+ * succeeded: `ok` and `status` are omitted entirely rather than defaulted to true/200.
+ *
+ * That distinction is the whole point. `ipcRenderer.send` hands the message to the main process and
+ * returns; whether the handler ran, threw, or does not exist is information the renderer never gets.
+ * Recording it as a 200 would manufacture a verdict nobody produced — so `reticle_network { ok }`
+ * matches it in NEITHER direction, and the record carries `oneWay: true` so a reader can see why
+ * there is no outcome rather than assume one.
+ *
+ * Only a throw at the call site (a closed port, a serialization failure) is a real failure the
+ * renderer can observe, and that one IS reported as `ok: false`.
+ */
+function observeOneWay(original, name) {
+  return function reticleObservedOneWayIpc(...args) {
+    const id = `i${String(++seq)}`;
+    const channel = typeof args[0] === 'string' ? args[0] : name;
+    try {
+      const result = original.apply(this, args);
+      report({ phase: 'end', id, channel, oneWay: true, durationMs: 0 });
+      return result;
+    } catch (err) {
+      report({
+        phase: 'end',
+        id,
+        channel,
+        oneWay: true,
+        ok: false,
+        durationMs: 0,
+        error: String(err && err.message ? err.message : err),
+      });
+      throw err;
+    }
+  };
+}
+
+// Patch the three entry points an app's IPC actually leaves through, before its own
+// `exposeInMainWorld` captures the references.
+//
+// `invoke` alone is NOT the whole surface — that claim used to be in this comment and it was wrong.
+// A `send` + `on('reply')` pair is a mainstream Electron pattern, and an app built that way had
+// EVERY backend call invisible while `coverage` still read full. `sendSync` genuinely returns its
+// result, so it is observed like an invoke; `send` cannot be, so it is recorded as one-way.
+//
+// `postMessage` (MessagePort transfer) is deliberately not wrapped: the ports outlive the call, so a
+// single record could not describe it honestly. An app using it should say so in its own signals.
 const originalInvoke = ipcRenderer.invoke.bind(ipcRenderer);
 ipcRenderer.invoke = observe(originalInvoke, true, 'invoke');
+if (typeof ipcRenderer.sendSync === 'function') {
+  ipcRenderer.sendSync = observe(ipcRenderer.sendSync.bind(ipcRenderer), true, 'sendSync');
+}
+if (typeof ipcRenderer.send === 'function') {
+  ipcRenderer.send = observeOneWay(ipcRenderer.send.bind(ipcRenderer), 'send');
+}
 
 contextBridge.exposeInMainWorld(RETICLE_IPC_GLOBAL, {
   /** Start receiving records. Returns a token to hand back to `unsubscribe`. */

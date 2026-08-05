@@ -4,7 +4,7 @@
  * presenter, so omitting its selector here leaked a phantom `<button>Flag a bug</button>` into every
  * snapshot and streamed its highlight-box mutations/transitions as if the APP had rendered them.
  */
-const RETICLE_OVERLAY =
+export const RETICLE_OVERLAY =
   '[data-reticle-overlay],[data-reticle-cursor],[data-reticle-hud],[data-reticle-glow],[data-reticle-mark]';
 
 /** Known third-party dev overlays to keep out of snapshots (Agentation, Next dev UI). */

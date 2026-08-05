@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { LastAct } from './session/last-act.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DriveErrorCode, InputMode, SessionState } from '@reticlehq/core';
@@ -92,10 +93,9 @@ function fakeSession(state: { actCalls: number }): Session {
     id: 'demo',
     url: DRIVE_URL,
     elapsed: () => 0,
-    markActCursor: () => undefined,
+    lastAct: new LastAct(),
     beginAction: () => 'a1',
     finishAction: () => undefined,
-    lastActCursor: () => undefined,
     command,
     health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
     throttled: () => false,

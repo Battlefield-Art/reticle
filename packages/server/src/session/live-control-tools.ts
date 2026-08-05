@@ -35,7 +35,7 @@ export const LIVE_CONTROL_TOOLS: ToolDef[] = [
     description:
       'End this session for good — use ONLY when the whole task is complete. Sets state "ended" ' +
       '(calm, terminal) and shows the optional `summary` on the panel. If you are just finishing a ' +
-      'turn or waiting on the human, call reticle_yield instead (revivable). Idempotent.',
+      'turn or waiting on the human, call reticle_session{action:"yield"} instead (revivable). Idempotent.',
     inputSchema: { summary: z.string().optional(), ...sessionIdShape },
     outputSchema: { ended: z.boolean(), sessionId: z.string() },
     handler: (deps, args) => {
@@ -53,7 +53,7 @@ export const LIVE_CONTROL_TOOLS: ToolDef[] = [
       'mode:"waiting" = you are done responding and will continue on their next message. ' +
       'mode:"ask" = you are blocked and need an answer first; put the question in `note` so it shows ' +
       'on the panel. The session is REVIVED automatically on your next tool call, so you never need to ' +
-      'reopen it. Use reticle_end_session instead only when the whole task is truly complete.',
+      'reopen it. Use reticle_session{action:"end"} instead only when the whole task is truly complete.',
     inputSchema: {
       mode: z
         .enum([PresenterTone.WAITING, PresenterTone.ASK])
@@ -215,5 +215,5 @@ function buildFixHint(m: {
       : m.label !== undefined
         ? `Find the "${m.label}" element`
         : 'Find the flagged element';
-  return `${where} and fix: ${m.note}. Then call reticle_review { resolve: "${m.id}" }.`;
+  return `${where} and fix: ${m.note}. Then call reticle_session { action: "review", resolve: "${m.id}" }.`;
 }

@@ -37,4 +37,39 @@ describe('FlakeStore', () => {
     await writeFile(join(root, 'flake.json'), JSON.stringify({ version: 9, flows: {} }), 'utf8');
     expect(await new FlakeStore(fs, root).load()).toEqual({});
   });
+  describe('the ledger an agent can finally see', () => {
+    /**
+     * `FlakeStore` was written only by `cli-flow-commands.ts`, so `reticle_flow_verify` — the tool sold
+     * as "the autonomous regression check" — accrued nothing and could never tell an agent that a
+     * failure was intermittent. A flake and a regression demand opposite responses: one is quarantined,
+     * the other is chased. An agent that cannot tell them apart does the wrong one half the time.
+     */
+    it('reports a flow that passed and then failed on unchanged code', async () => {
+      // Five runs is the deliberate floor (DEFAULT_MIN_FLAKE_RUNS): calling a flow flaky off two
+      // samples would quarantine real regressions, which is the more expensive mistake.
+      const store = new FlakeStore(fs, root);
+      for (const passed of [true, false, true, true, false]) {
+        await store.record('checkout', passed);
+      }
+      expect(await store.flakyFlows()).toContain('checkout');
+    });
+
+    it('needs enough runs before judging — three samples is not evidence', async () => {
+      const store = new FlakeStore(fs, root);
+      for (const passed of [true, false, true]) await store.record('early', passed);
+      expect(await store.flakyFlows()).not.toContain('early');
+    });
+
+    it('does NOT report a flow that always fails — that is a regression, not a flake', async () => {
+      const store = new FlakeStore(fs, root);
+      for (let i = 0; i < 5; i += 1) await store.record('broken', false);
+      expect(await store.flakyFlows()).not.toContain('broken');
+    });
+
+    it('does NOT report a flow that always passes', async () => {
+      const store = new FlakeStore(fs, root);
+      for (let i = 0; i < 5; i += 1) await store.record('stable', true);
+      expect(await store.flakyFlows()).not.toContain('stable');
+    });
+  });
 });

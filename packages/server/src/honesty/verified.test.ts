@@ -15,6 +15,45 @@ const dirty = (...issues: string[]): HonestyBlock => ({
   integrity: { clean: false, issues },
 });
 
+/**
+ * `202 Accepted` is HTTP's only word for "no outcome yet".
+ *
+ * Measured on a logistics console with server-side reconciliation: a dispatch answered 202, the row
+ * optimistically rendered "dispatched", the page settled, every channel agreed — and the server
+ * REVERTED it to `held` 1.2s later. The verdict was not wrong about what it saw; it was early, and
+ * folding 202 into the 2xx success band is what let it be early silently.
+ */
+describe('a 202 means the outcome does not exist yet', () => {
+  const clean = {
+    grade: HonestyGrade.STATE,
+    integrity: { clean: true, issues: [] },
+  } as unknown as Parameters<typeof decideVerified>[0]['honesty'];
+
+  it('is UNKNOWN, not yes, when a write is still being processed', () => {
+    const r = decideVerified({ pass: true, honesty: clean, settled: true, outcomePending: true });
+    expect(r.verified).toBe(Verified.UNKNOWN);
+    expect(r.because).toContain('202');
+  });
+
+  it('is UNKNOWN rather than NO — nothing has failed yet', () => {
+    // Reporting a failure that has not happened is its own false report, in the other direction.
+    expect(
+      decideVerified({ pass: true, honesty: clean, settled: true, outcomePending: true }).verified,
+    ).not.toBe(Verified.NO);
+  });
+
+  it('a real failure still outranks it', () => {
+    const r = decideVerified({ pass: false, honesty: clean, settled: true, outcomePending: true });
+    expect(r.verified).toBe(Verified.NO);
+  });
+
+  it('leaves an ordinary synchronous action green', () => {
+    expect(decideVerified({ pass: true, honesty: clean, settled: true }).verified).toBe(
+      Verified.YES,
+    );
+  });
+});
+
 describe('decideVerified — one answer from eight dimensions', () => {
   it('says YES for a graded, clean, settled, uncontradicted pass', () => {
     const v = decideVerified({ pass: true, honesty: clean(), settled: true });

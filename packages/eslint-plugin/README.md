@@ -57,6 +57,14 @@ Report message: `store mutation without a mapped Reticle signal`.
 
 With no options, `mutators` is empty, so the rule is a safe **no-op** (it never fires and never crashes). Configure `mutators` to switch it on.
 
+### Matching is by BARE CALLEE NAME
+
+A mutator is matched on the call's name alone — the object is ignored, so `store.set(...)`, `map.set(...)`, `url.searchParams.set(...)` and `res.headers.set(...)` are all the same call to this rule.
+
+That matters most for the name you are most likely to configure. `set` is zustand's mutator, so it is the natural first entry — and it also matches every `Map`, `Set`, `URLSearchParams` and `Headers` call in the same file, each of which will be reported as an unsignalled mutation. Verified: a function that only builds a lookup `Map` is flagged.
+
+Prefer a name that is unambiguous in your codebase — a wrapper like `commitAndSignal`, or a domain verb (`applyOrder`, `reorderSections`) — over a generic one. A rule that fires on `map.set()` gets turned off wholesale, and then it protects nothing.
+
 ### Scoping — per function
 
 Signal-credit is **per function**. A signal called in an enclosing or inner function does **not** satisfy a mutator called in a different function. Pair the mutation and the signal in the same body (which is exactly what `commitAndSignal(mutate, signal, data)` does). This is deliberate: a signal fired in some other scope is not guaranteed to run for the mutation path that drifted.

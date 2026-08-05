@@ -53,7 +53,7 @@ const MSG_NO_SESSION =
   ' (for a non-localhost preview: allowNonLocalhost + a pairing token).';
 const MSG_NO_FLOWS =
   'No saved flows to verify (.reticle/flows is empty) — refusing to report a pass for verifying nothing.\n' +
-  '  Flows are recorded interactively by an agent (reticle_record_start → act → reticle_flow_save via the\n' +
+  '  Flows are recorded interactively by an agent (reticle_record{action:"start"} → act → reticle_flow_save via the\n' +
   '  MCP tools), then committed to .reticle/flows/. In CI, check those files in and re-run `reticle verify`.';
 const MSG_VERIFY_PREFIX = 'verify failed: ';
 

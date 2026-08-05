@@ -255,6 +255,15 @@ export interface SuiteVerdict {
   summary: string;
   /** Only the failing flows, with their decision (verdict, what changed, where, next action). */
   failures: SuiteFlowResult[];
+  /**
+   * Flows that have both passed AND failed on UNCHANGED code — intermittent, not regressions.
+   *
+   * A flake and a regression demand opposite responses: one is chased, the other is quarantined. The
+   * ledger that answers this already existed and was written only by the CLI, so an agent replaying a
+   * suite a hundred times could never learn which of its failures were noise. Omitted entirely when
+   * the ledger has not seen enough runs to say.
+   */
+  flaky?: string[];
 }
 
 /** The reticle_flow_replay envelope. */

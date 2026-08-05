@@ -9,13 +9,16 @@ import { refs } from '../dom/refs.js';
  * container persists across ticks, so its testid (or ref) is the identity that does accumulate.
  */
 function regionKeyOf(target: Node): string | undefined {
-  const el = target instanceof Element ? target : null;
+  const el = isElement(target) ? target : null;
   if (el === null) return undefined;
   const labelled = el.closest('[data-testid]');
   return labelled?.getAttribute('data-testid') ?? refs.refFor(el);
 }
 import { isReticleOverlay } from '../dom/dom-ignore.js';
 import type { Emit, Teardown } from './types.js';
+import { capturedRoots, installShadowRegistry, onShadowRoot } from '../dom/shadow-registry.js';
+import { isElement } from '../dom/realm.js';
+import { observeSameOriginFrames } from './frames.js';
 
 const WATCHED_ATTRS = [
   'class',
@@ -53,7 +56,31 @@ function isMeaningful(role: string, name: string): boolean {
 }
 
 /** Observe DOM mutations and emit semantic (not raw) events. */
+/**
+ * The trimmed text carried by a node list, or undefined when it carries none.
+ *
+ * Whitespace-only nodes are ignored deliberately: a re-render that reshuffles indentation would
+ * otherwise emit a text change on every layout node, which is noise the timeline cannot afford.
+ */
+const TEXT_NODE = 3;
+
+function textOf(nodes: NodeList): string | undefined {
+  let out = '';
+  for (const node of nodes) {
+    // The numeric nodeType, not `Node.TEXT_NODE`: the global `Node` constructor is not guaranteed to
+    // exist wherever this runs, and referencing it threw a ReferenceError rather than degrading.
+    if (node.nodeType !== TEXT_NODE) continue;
+    out += node.nodeValue ?? '';
+  }
+  const trimmed = out.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export function installDom(emit: Emit): Teardown {
+  // Installed here rather than in the bootstrap list because this observer is the registry's reason
+  // for existing, and the ordering matters: a root attached between the two would be missed by both.
+  // It is also the only chance to capture a CLOSED root, which attachShadow returns exactly once.
+  const stopRegistry = installShadowRegistry();
   const observer = new MutationObserver((records) => {
     let added = 0;
     let removed = 0;
@@ -65,11 +92,7 @@ export function installDom(emit: Emit): Teardown {
     for (const record of records) {
       if (record.type === 'attributes') {
         const target = record.target;
-        if (
-          target instanceof Element &&
-          record.attributeName !== null &&
-          !isReticleOverlay(target)
-        ) {
+        if (isElement(target) && record.attributeName !== null && !isReticleOverlay(target)) {
           if (changed >= MAX_PER_BATCH) {
             dropped += 1;
             continue;
@@ -110,8 +133,34 @@ export function installDom(emit: Emit): Teardown {
         }
         continue;
       }
+      // A TEXT node arriving or leaving is a text change, and it is the ordinary one. `characterData`
+      // fires only when an EXISTING text node's `data` is edited in place; `el.textContent = x`,
+      // `innerText`, and React replacing a child all REPLACE the node instead — a childList mutation
+      // carrying a Text node, which the Element-only loops below skip. Measured on a live page:
+      // `firstChild.data = x` emitted `dom.text`, while `textContent`, `innerText` and
+      // `appendChild(createTextNode())` emitted NOTHING. So the most common visible change an app
+      // makes — updating text — produced no event at all, `reticle_observe` reported "nothing
+      // happened" over a screen that had visibly changed, and `settled` went quiet immediately.
+      if (textOf(record.addedNodes) !== undefined || textOf(record.removedNodes) !== undefined) {
+        const parent = isElement(record.target) ? record.target : null;
+        if (parent !== null && !isReticleOverlay(parent)) {
+          if (changed >= MAX_PER_BATCH) dropped += 1;
+          else {
+            changed += 1;
+            // The element's text AFTER the mutation, so a cleared node reports '' rather than the
+            // text that just left — the reader wants what is on screen now.
+            const text = (parent.textContent ?? '').trim().slice(0, 80);
+            const old = capValue(textOf(record.removedNodes) ?? null);
+            emit(
+              EventType.DOM_TEXT,
+              { text, ...(old === undefined ? {} : { old }) },
+              refs.refFor(parent),
+            );
+          }
+        }
+      }
       for (const node of record.addedNodes) {
-        if (!(node instanceof Element)) continue;
+        if (!isElement(node)) continue;
         if (added >= MAX_PER_BATCH) {
           dropped += 1;
           continue;
@@ -132,7 +181,7 @@ export function installDom(emit: Emit): Teardown {
         }
       }
       for (const node of record.removedNodes) {
-        if (!(node instanceof Element)) continue;
+        if (!isElement(node)) continue;
         if (removed >= MAX_PER_BATCH) {
           dropped += 1;
           continue;
@@ -151,7 +200,7 @@ export function installDom(emit: Emit): Teardown {
     if (dropped > 0) emit(EventType.TRUNCATED, { channel: TruncationChannel.DOM, dropped });
   });
 
-  observer.observe(document.documentElement, {
+  const options: MutationObserverInit = {
     subtree: true,
     childList: true,
     attributes: true,
@@ -159,9 +208,22 @@ export function installDom(emit: Emit): Teardown {
     attributeOldValue: true,
     characterData: true,
     characterDataOldValue: true,
-  });
+  };
+  observer.observe(document.documentElement, options);
+
+  // A MutationObserver does NOT cross a shadow boundary, so every root needs its own observation.
+  // Without this, a click that changed text inside a web component produced an empty observe window —
+  // the same shape as an app that ignored the click entirely.
+  for (const root of capturedRoots()) observer.observe(root, options);
+  const unsubscribe = onShadowRoot((root) => observer.observe(root, options));
+
+  // Same-origin frame documents are separate node trees for the same reason, with the same symptom.
+  const stopFrames = observeSameOriginFrames((body) => observer.observe(body, options));
 
   return () => {
+    stopFrames();
+    unsubscribe();
+    stopRegistry();
     observer.disconnect();
   };
 }

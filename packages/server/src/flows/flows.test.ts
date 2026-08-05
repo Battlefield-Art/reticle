@@ -14,7 +14,7 @@ import {
 } from '@reticlehq/core';
 import { createNodeFileSystem, type FileSystemPort } from '../project/fs-port.js';
 import { flowPath, reticleDirPaths } from '../project/reticle-dir.js';
-import { FlowStore, recordedStepToFlowStep } from './flows.js';
+import { anchorForStep, FlowStore, recordedStepToFlowStep } from './flows.js';
 import type { CompiledProgram, RecordedStep } from './recordings.js';
 
 const FROZEN = 1234;
@@ -296,5 +296,35 @@ describe('recordedStepToFlowStep (pure)', () => {
       component: 'NewDeployButton',
       source: { file: 'src/Deployments.tsx', line: 107 },
     });
+  });
+});
+
+describe('a role+name anchor is a real anchor, not a degraded placeholder', () => {
+  /**
+   * The vocabulary has always described `{ kind:'role', role, name }` as addressable, and nothing
+   * ever produced one — the only ROLE anchor written to disk was the placeholder meaning "add a
+   * data-testid". So a step the recorder anchored by accessible name had that name discarded here,
+   * which is exactly the handle that separates one row's control from another's when a shared JSX
+   * source location cannot.
+   */
+  it('keeps role and name, and does not mark the step degraded', () => {
+    const { anchor, degraded } = anchorForStep({
+      by: 'role',
+      value: 'checkbox',
+      name: 'select ATL-100001',
+    });
+    expect(degraded).toBe(false);
+    expect(anchor).toEqual({ kind: AnchorKind.ROLE, role: 'checkbox', name: 'select ATL-100001' });
+  });
+
+  it('still degrades a NAMELESS role — it addresses nothing on its own', () => {
+    const { anchor, degraded } = anchorForStep({ by: 'role', value: 'button' });
+    expect(degraded).toBe(true);
+    expect(anchor).toEqual({ kind: AnchorKind.ROLE, role: DEGRADED_ANCHOR_ROLE });
+  });
+
+  it('still prefers a testid when the step has one', () => {
+    const { anchor } = anchorForStep({ by: 'testid', value: 'save', name: 'Save' });
+    expect(anchor.kind).toBe(AnchorKind.TESTID);
   });
 });

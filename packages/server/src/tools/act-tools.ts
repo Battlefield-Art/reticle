@@ -8,17 +8,15 @@ import { compileActStep, compileSequenceStep } from '../flows/replay.js';
 import {
   ActionType,
   ActionWarning,
-  DANGEROUS_ACTION_CONFIRM_ARG,
   DEFAULT_ASSERT_TIMEOUT_MS,
   InputMode,
   InputModeReason,
   ReticleCommand,
-  isDangerousActionText,
 } from '@reticlehq/core';
 import type { Session } from '../session/session.js';
 import type { ElementBox, RealInputArgs } from '../input/real-input.js';
 import { isPointerAction } from '../input/real-input.js';
-import { leanActResult } from './act-view.js';
+import { leanActResult, mutatedWithin } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
 import { causalSummary } from '../capsule/causal-summary.js';
@@ -28,7 +26,14 @@ import { saveFailedAssertCapsule } from './act-capsule.js';
 import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import { buildHonestyBlock } from '../honesty/honesty.js';
-import { buildCoverageStatement, blindSpotsFromState } from '../honesty/blind-spots.js';
+import {
+  buildCoverageStatement,
+  blindSpotsFromState,
+  impeachesCapture,
+} from '../honesty/blind-spots.js';
+import { hasAcceptedWrite } from '../honesty/accepted-write.js';
+import { hasUnreadWriteOutcome } from '../honesty/unread-outcome.js';
+import { assertDragNotDestructive, assertNotDestructive } from './act-danger.js';
 import {
   evaluatePredicate,
   waitForPredicate,
@@ -88,27 +93,7 @@ async function tryRealInput(
     return synthetic(InputModeReason.PAGE_NOT_CORRELATED);
 
   const inspected = await commandOrThrow(deps, session.id, ReticleCommand.INSPECT, { ref });
-  const confirmed = inner[DANGEROUS_ACTION_CONFIRM_ARG] === true;
-  const dangerousDescriptorText = (value: unknown): string => {
-    const descriptor = asRecord(value);
-    return [
-      asString(descriptor['name']) ?? '',
-      asString(descriptor['text']) ?? '',
-      asString(descriptor['value']) ?? '',
-      asString(descriptor['href']) ?? '',
-      asString(descriptor['formAction']) ?? '',
-      asString(descriptor['formText']) ?? '',
-    ].join(' ');
-  };
-  if (
-    (action === ActionType.CLICK || action === ActionType.DBLCLICK) &&
-    !confirmed &&
-    isDangerousActionText(dangerousDescriptorText(inspected))
-  ) {
-    throw new Error(
-      `potentially destructive native action blocked; retry with args.${DANGEROUS_ACTION_CONFIRM_ARG}=true`,
-    );
-  }
+  assertNotDestructive(action, inner, inspected);
   const box = asBox(inspected);
   if (box === undefined) return synthetic(InputModeReason.ELEMENT_NOT_LOCATABLE);
 
@@ -119,16 +104,9 @@ async function tryRealInput(
     const targetInspected = await commandOrThrow(deps, session.id, ReticleCommand.INSPECT, {
       ref: toRef,
     });
-    if (
-      !confirmed &&
-      isDangerousActionText(
-        `${dangerousDescriptorText(inspected)} ${dangerousDescriptorText(targetInspected)}`,
-      )
-    ) {
-      throw new Error(
-        `potentially destructive native action blocked; retry with args.${DANGEROUS_ACTION_CONFIRM_ARG}=true`,
-      );
-    }
+    // A drag is judged on BOTH ends: dropping onto "Trash" is destructive however innocent the
+    // thing being dragged looks.
+    assertDragNotDestructive(inner, inspected, targetInspected);
     toBox = asBox(targetInspected);
     if (toBox === undefined) return synthetic(InputModeReason.DRAG_TARGET_UNRESOLVED);
   }
@@ -231,7 +209,10 @@ export const ACT_TOOLS: ToolDef[] = [
       if (paused !== undefined) return paused;
       refuseIfThrottled(session, args['refuseWhenThrottled']);
       const since = session.elapsed();
-      session.markActCursor(since); // honesty: wait_for/assert default their floor to this cursor
+      session.lastAct.markCursor(since); // honesty: wait_for/assert default their floor to this cursor
+      // Cleared up front: a throw between here and the result must not leave the PREVIOUS act's
+      // measurement standing, which would judge this window with the last one's evidence.
+      session.lastAct.markEffect(asString(args['action']), undefined);
       const ref = asString(args['ref']) ?? '';
 
       // Open the journal's action-attribution window BEFORE dispatching, so it covers the native path
@@ -274,6 +255,10 @@ export const ACT_TOOLS: ToolDef[] = [
         // lift dispatch/settle status to the envelope (a settle timeout is NOT a failure).
         const r = asRecord(result.result);
         if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
+        // Keep what only this call measured, so the observe that judges this window can ask whether
+        // anything happened INSIDE the target — the one fact that separates a dead control from a
+        // page that was merely busy with something else.
+        session.lastAct.markEffect(asString(args['action']), mutatedWithin(r));
         return withControl(session, {
           since,
           inputMode: InputMode.SYNTHETIC,
@@ -324,7 +309,7 @@ export const ACT_TOOLS: ToolDef[] = [
       const paused = pausedShortCircuit(session);
       if (paused !== undefined) return paused;
       const since = session.elapsed();
-      session.markActCursor(since); // honesty: a later wait_for/assert floors at this cursor
+      session.lastAct.markCursor(since); // honesty: a later wait_for/assert floors at this cursor
       session.beginAction(ReticleTool.ACT_SEQUENCE, asRecord(args));
       try {
         const result = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: args['steps'] });
@@ -481,7 +466,7 @@ export const ACT_TOOLS: ToolDef[] = [
       // honesty block means. Reading the raw total pinned every later verdict to `unknown` after a
       // single early eviction (measured on the Next.js demo at dropped:51, windows intact).
       const droppedBefore = session.bufferHealth().dropped;
-      session.markActCursor(since);
+      session.lastAct.markCursor(since);
       // The attribution window stays open across the settle wait below, so post-dispatch async events
       // (the whole point of act_and_wait) attribute to this action. finishAction fires after the wait.
       session.beginAction(ReticleTool.ACT_AND_WAIT, asRecord(args));
@@ -507,7 +492,7 @@ export const ACT_TOOLS: ToolDef[] = [
         const actedSource = sourceOf(r['source']);
         // Remembered on the session so a LATER assertion can name a file even when its failure has no
         // element to point at — a signal that never fired, a request that was never made.
-        session.markActSource(
+        session.lastAct.markSource(
           actedSource === undefined ? undefined : `${actedSource.file}:${String(actedSource.line)}`,
         );
         const windowEvents = session.eventsSince(since);
@@ -529,13 +514,18 @@ export const ACT_TOOLS: ToolDef[] = [
         // stronger than this block. Grade from the strongest asserted consequence; integrity from evictions.
         // Coverage: cross-origin frames / other blind spots the SDK reported during this window mean the
         // verdict didn't see everything — say so, never imply full coverage.
-        const coverage = buildCoverageStatement(blindSpotsFromState(session.blindSpots()));
+        const spots = blindSpotsFromState(session.blindSpots());
+        const coverage = buildCoverageStatement(spots);
+        // Only a spot that IMPEACHES the capture belongs in integrity — see impeachesCapture. A
+        // structural boundary (virtualized rows, a cross-origin frame) is reported as coverage and
+        // must not downgrade a verdict about what WAS observed.
+        const impeaching = buildCoverageStatement(spots.filter((s) => impeachesCapture(s.kind)));
         const honesty = buildHonestyBlock({
           grade: gradeOf(gradedLinks),
           attribution: 'window',
           truncated: session.bufferHealth().dropped > droppedBefore,
           coveragePartial: coverage.coverage === 'partial',
-          ...(coverage.note === undefined ? {} : { blindSpots: [coverage.note] }),
+          ...(impeaching.note === undefined ? {} : { blindSpots: [impeaching.note] }),
         });
         const capsuleSaved = await saveFailedAssertCapsule({
           deps,
@@ -546,13 +536,23 @@ export const ACT_TOOLS: ToolDef[] = [
           actResult,
           ...(actedSource === undefined ? {} : { actedSource }),
         });
-        const contradictions = findContradictions(windowEvents);
+        // Pass the action: an EMPTY window then reads as "the target does not react" rather than as a
+        // clean run — `settled` is satisfied by a page that did nothing, i.e. by a click that missed.
+        const acted = asString(args['action']);
+        const contradictions = findContradictions(windowEvents, {
+          action: acted,
+          ...session.lastAct.effect(),
+        });
         // The single field an agent reads. Everything below it is the evidence it was derived from;
         // this is the only one that has to be interpreted, and now it interprets itself.
+        const outcomePending = hasAcceptedWrite(windowEvents);
+        const outcomeUnread = hasUnreadWriteOutcome(windowEvents);
         const decision = decideVerified({
           pass: verdict.pass,
           honesty,
           contradictions,
+          ...(outcomePending ? { outcomePending } : {}),
+          ...(outcomeUnread ? { outcomeUnread } : {}),
           // `settled` is genuinely optional: a wait that declared no predicate never measured it, and
           // passing `false` there would report "never settled" about something never asked to settle.
           ...(settledOutcome === undefined ? {} : { settled: settledOutcome }),

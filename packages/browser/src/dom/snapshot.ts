@@ -1,4 +1,6 @@
 import { ElementState, SnapshotMode } from '@reticlehq/core';
+import { capturedRootOf } from './shadow-registry.js';
+import { isFrame } from './realm.js';
 import { getAccessibleName, getRole, getStates, getValue, isVisible } from './a11y.js';
 import { refs } from './refs.js';
 import { isIgnored } from './dom-ignore.js';
@@ -142,9 +144,15 @@ interface WalkCtx {
  */
 function pierceChildren(parent: Element): Element[] {
   const out: Element[] = [...parent.children];
-  const shadow = parent.shadowRoot;
+  // A CLOSED root reports `shadowRoot === null` forever, but the registry captured it at the moment
+  // `attachShadow` returned it. `query` has been able to reach that content since; the snapshot could
+  // not, so the two tools disagreed about what is on the page — and the snapshot is the one an agent
+  // reads to decide what to query for, which makes its omission the one that actually costs.
+  const shadow = parent.shadowRoot ?? capturedRootOf(parent);
   if (shadow !== null) out.push(...shadow.children);
-  if (parent instanceof HTMLIFrameElement) {
+  // Realm-aware: an iframe nested INSIDE another frame's body belongs to that frame's realm, so the
+  // top window's constructor never matches it and nested embeds were silently never pierced.
+  if (isFrame(parent)) {
     try {
       const body = parent.contentDocument?.body;
       if (body !== null && body !== undefined) out.push(...body.children);

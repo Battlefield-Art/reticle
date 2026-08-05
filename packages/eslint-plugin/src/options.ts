@@ -20,6 +20,8 @@ export const OPTIONS_SCHEMA: readonly unknown[] = [
       mutators: {
         type: 'array',
         items: { type: 'string' },
+        description:
+          'Callee names that mutate user-visible state. Matched by BARE NAME — the object is ignored, so "set" also matches map.set(), url.searchParams.set() and res.headers.set(). Prefer an unambiguous name over a generic one.',
       },
       signalCallee: {
         oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
