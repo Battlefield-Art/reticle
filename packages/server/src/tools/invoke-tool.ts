@@ -134,8 +134,14 @@ function reportBugsFound(toolName: string, result: Record<string, unknown>): voi
   if (bugs.length === 0) return;
   const metrics = getSessionMetrics();
   for (const bug of bugs) {
-    metrics.recordBug(bug.kind);
-    void getTelemetry().emit(TelemetryEventKind.BUG_FOUND, { actor: TelemetryActor.AGENT, bug });
+    // `recordBug` answers whether this kind is new to the session, which is the only thing that
+    // separates "another defect" from "the same defect again". Counting instances as defects is how
+    // a published number inflates itself.
+    const first = metrics.recordBug(bug.kind);
+    void getTelemetry().emit(TelemetryEventKind.BUG_FOUND, {
+      actor: TelemetryActor.AGENT,
+      bug: { ...bug, repeat: !first },
+    });
   }
 }
 

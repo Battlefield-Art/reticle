@@ -29,6 +29,19 @@ Do **not** add telemetry inside a tool handler. If you find yourself wanting to,
 
 `<noun>_<verbed>`, lowercase, no abbreviations: `verification_completed`, `bug_found`, `runtime_crashed`.
 
+## Counting defects: instances vs distinct
+
+`bug_found` fires once per OCCURRENCE. A defect hit five times in a session is five events, which is the right raw signal — frequency is what says which classes of defect actually cost anybody anything. But it means a naive count answers "how often were defects hit", not "how many defects were found", while looking like it answers the second.
+
+So every `bug_found` carries **`repeat`**: false the first time a KIND is seen in a session, true after. Count `repeat: false` for **distinct defects**; count everything for **instances**. Measured on a real app: 7 events, 3 defects, 4 repeats. Publishing the 7 as defects would have inflated the claim by more than double.
+
+The denominator is **`verification_completed`**, which fires per verdict with `via`, `verified`, `passed` and `falseGreenCaught`. Defects per verification is the honest rate; raw defect counts grow with usage and say nothing on their own.
+
+Two rules follow, and both are gated:
+
+- **`repeat` is set at the EMISSION site, never by the classifier.** `bugsInResult` is a pure function over one tool result and cannot know what a session has already seen; if it ever grows a `repeat` field it will be guessing, and the guess becomes the published number. (`telemetry-contract.test.ts`)
+- **Session-scoped, and it cannot be otherwise.** The payload carries no selector, URL or app detail by design, so the same defect in two sessions is unrecognisable as one — and making it recognisable would require collecting exactly what this event refuses to collect.
+
 The old set failed this so badly it confused its own authors — `invoke` meant "the CLI ran" while `tool` meant "a tool was called", which is the opposite of how both read. A name that has to be looked up is a name that gets misread on a dashboard a year from now.
 
 ### 3. Names, never values

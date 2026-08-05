@@ -51,7 +51,10 @@ export function reportRunTelemetry(run: ReticleVerificationRun): void {
     });
 
     for (const _flow of failed) {
-      metrics.recordBug('flow-regression');
+      // Every failing flow in one run is a separate regression instance, but they share a kind — so
+      // only the first is a distinct defect. A 40-flow suite failing wholesale is one regression to
+      // fix far more often than it is forty.
+      const first = metrics.recordBug('flow-regression');
       void getTelemetry().emit(TelemetryEventKind.BUG_FOUND, {
         actor: TelemetryActor.HUMAN,
         bug: {
@@ -59,6 +62,7 @@ export function reportRunTelemetry(run: ReticleVerificationRun): void {
           kind: 'flow-regression',
           falseGreen: false,
           tool: VERIFY_SURFACE,
+          repeat: !first,
         },
       });
     }

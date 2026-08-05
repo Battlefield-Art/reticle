@@ -217,3 +217,60 @@ describe('error fingerprinting', () => {
     );
   });
 });
+
+/**
+ * Distinct defects vs defect instances.
+ *
+ * `bug_found` fires once per occurrence, so a defect hit five times in a session is five events.
+ * That is the right raw signal — how often users actually collide with a class of defect — but it
+ * cannot answer "how many distinct defects did Reticle find", which is the number that would go in
+ * front of anyone. Counting instances as defects inflates the claim; counting only distinct ones
+ * throws away frequency. Both are needed, so the event carries which it is.
+ *
+ * Firstness is tracked in its own uncapped set rather than read off `#bugKinds`. That map is capped
+ * at MAX_ERROR_KINDS, and once full a genuinely new kind is never inserted — so `has()` would answer
+ * "not seen" forever and mark every later occurrence as first, inflating the distinct count exactly
+ * where the data got interesting. The kind vocabulary is bounded and small; the set is not a leak.
+ */
+describe('recordBug reports whether this KIND is new to the session', () => {
+  it('is first on the first occurrence and a repeat thereafter', () => {
+    const m = new SessionMetrics(clock());
+    expect(m.recordBug('signal-contradicted')).toBe(true);
+    expect(m.recordBug('signal-contradicted')).toBe(false);
+    expect(m.recordBug('signal-contradicted')).toBe(false);
+  });
+
+  it('tracks each kind independently', () => {
+    const m = new SessionMetrics(clock());
+    expect(m.recordBug('duplicate-request')).toBe(true);
+    expect(m.recordBug('unit-mismatch')).toBe(true);
+    expect(m.recordBug('duplicate-request')).toBe(false);
+  });
+
+  it('still counts every occurrence — firstness never suppresses the instance count', () => {
+    const m = new SessionMetrics(clock());
+    m.recordBug('stale-response-applied');
+    m.recordBug('stale-response-applied');
+    const snap = m.summarize(true) as unknown as {
+      bugsFound?: number;
+      bugKinds?: Record<string, number>;
+    };
+    expect(snap.bugsFound).toBe(2);
+    expect(snap.bugKinds?.['stale-response-applied']).toBe(2);
+  });
+
+  it('keeps answering correctly past the kind-map cap, where a naive has() check would not', () => {
+    const m = new SessionMetrics(clock());
+    for (let i = 0; i < 60; i += 1) m.recordBug(`filler-kind-${String(i)}`);
+    expect(m.recordBug('filler-kind-59')).toBe(false);
+    expect(m.recordBug('a-genuinely-new-kind')).toBe(true);
+    expect(m.recordBug('a-genuinely-new-kind')).toBe(false);
+  });
+
+  it('a reset session starts fresh, so firstness is per session', () => {
+    const m = new SessionMetrics(clock());
+    expect(m.recordBug('route-rendered-nothing')).toBe(true);
+    m.reset();
+    expect(m.recordBug('route-rendered-nothing')).toBe(true);
+  });
+});

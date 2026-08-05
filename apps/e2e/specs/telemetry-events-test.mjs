@@ -181,6 +181,11 @@ await settle();
   check('  a crawl contradiction counts as a false green too', fg.some((b) => b.properties.bug_kind === 'ui-advanced-request-failed'));
   check('  a single-channel console error is NOT inflated into a false green', bugs.some((b) => b.properties.bug_kind === 'console-error' && b.properties.bug_falseGreen === false));
   check('  carries the source so the headline can be broken down', new Set(bugs.map((b) => b.properties.bug_source)).size === 2);
+  // Distinct defects vs instances. Every bug_found must say which it is, or a distinct count read
+  // off this stream is silently inflated — one defect hit five times looks like five defects, and
+  // that is the number that would end up in a deck. Measured on a real app: 7 events, 3 defects.
+  check('  every bug says whether it is a REPEAT of one already counted', bugs.every((b) => typeof b.properties.bug_repeat === 'boolean'));
+  check('  the first sighting of a kind is not a repeat', bugs.every((b) => b.properties.bug_repeat === false));
   // Scoped to the bug_* fields and using markers that cannot collide with hex. The first version
   // stringified the WHOLE event and looked for 'e3', which matches a sessionId or a fingerprint by
   // chance — a leak check that cries wolf trains you to ignore leak failures, which is precisely
@@ -190,8 +195,12 @@ await settle();
   )));
   check('  leaks no element, selector or URL from the app it was found in',
     !bugFields.includes('SECRETMARKER') && !bugFields.includes('acme.internal') && !bugFields.includes('checkout'));
-  check('  carries only the classified kind and source', bugs.every((b) =>
-    Object.keys(b.properties).filter((k) => k.startsWith('bug_')).sort().join() === 'bug_falseGreen,bug_kind,bug_source,bug_tool'));
+  // An ALLOWLIST, not a denylist: every bug_* field that leaves this machine is named here, so
+  // adding one is a deliberate act reviewed against "does this describe the user's app?". Failing
+  // here on a new field is the guard doing its job. `bug_repeat` is a boolean about OUR counting —
+  // whether this kind was already seen this session — and says nothing about the app it was found in.
+  check('  carries only the classified kind, source and dedup flag', bugs.every((b) =>
+    Object.keys(b.properties).filter((k) => k.startsWith('bug_')).sort().join() === 'bug_falseGreen,bug_kind,bug_repeat,bug_source,bug_tool'));
 }
 
 // ── 4b. SDK failures from the in-page half, arriving over the bridge ──────────

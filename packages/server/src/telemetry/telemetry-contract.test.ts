@@ -208,3 +208,20 @@ describe('failure vocabularies stay closed', () => {
     expect(new Set(Object.values(ConnectFailure)).size).toBe(Object.values(ConnectFailure).length);
   });
 });
+
+/**
+ * `repeat` is set at the EMISSION site, never by the classifier — and the classifier must not grow
+ * it back. `bugsInResult` is a pure function over a tool result; whether a kind was already seen
+ * belongs to the session. If a future change makes the detector emit `repeat` itself, it will be
+ * guessing, and the number it guesses is the one that gets published.
+ */
+describe('the bug classifier stays pure — dedup belongs to the session', () => {
+  it('does not invent a repeat flag it has no way to know', () => {
+    const bugs = bugsInResult('reticle_assert', {
+      pass: true,
+      contradictions: [{ kind: 'signal-contradicted' }],
+    });
+    expect(bugs.length).toBe(1);
+    expect(bugs[0]).not.toHaveProperty('repeat');
+  });
+});

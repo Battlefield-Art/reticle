@@ -290,6 +290,21 @@ export const BugFoundSchema = z.object({
   falseGreen: z.boolean(),
   /** Which tool surfaced it. */
   tool: z.string().min(1).max(64).optional(),
+  /**
+   * TRUE when this KIND was already reported in this session — i.e. this is another INSTANCE of a
+   * defect already counted, not another defect.
+   *
+   * Both numbers are claims, and they are different ones. "Reticle found N defects" is the headline;
+   * "users hit them M times" is the frequency that says which ones actually cost anybody anything.
+   * Without this flag the event stream answers only the second while looking like it answers the
+   * first, so any distinct-defect count read off it is silently inflated — the exact way a published
+   * number goes wrong. Count `repeat: false` for distinct, count everything for instances.
+   *
+   * Scoped to the SESSION, because that is the only identity available: the payload deliberately
+   * carries no selector, URL or app detail, so the same defect in two sessions cannot be recognised
+   * as one — and must not be, since that would need data this event refuses to collect.
+   */
+  repeat: z.boolean(),
 });
 export type BugFound = z.infer<typeof BugFoundSchema>;
 

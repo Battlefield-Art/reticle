@@ -17,6 +17,14 @@
  */
 import { BugSource, ContradictionKind, type BugFound } from '@reticlehq/core';
 
+/**
+ * A defect as the CLASSIFIER sees it — everything except `repeat`.
+ *
+ * Whether a kind is new belongs to the session, and these detectors are pure functions that know
+ * nothing about sessions and should stay that way. The emission site owns the dedup flag.
+ */
+export type BugCandidate = Omit<BugFound, 'repeat'>;
+
 /** Cap per tool call — a pathological crawl must not turn one call into a thousand events. */
 const MAX_BUGS_PER_CALL = 25;
 
@@ -41,8 +49,8 @@ function kindsOf(value: unknown): string[] {
  * the case the product exists for — the screen looked right, the write failed, and every other tool
  * on the market would have called it green. That pairing is what `falseGreen` marks.
  */
-export function bugsInResult(toolName: string, result: Record<string, unknown>): BugFound[] {
-  const bugs: BugFound[] = [];
+export function bugsInResult(toolName: string, result: Record<string, unknown>): BugCandidate[] {
+  const bugs: BugCandidate[] = [];
   const passed = result['pass'] === true;
 
   // 1. Contradictions — channels disagreeing. Invisible to a human watching the screen.

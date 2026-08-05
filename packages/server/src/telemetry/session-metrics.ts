@@ -71,6 +71,15 @@ export class SessionMetrics {
   #browserMs = 0;
   #browserCommands = 0;
   readonly #bugKinds = new Map<string, number>();
+  /**
+   * Kinds already reported this session — the dedup key, deliberately SEPARATE from `#bugKinds`.
+   *
+   * `#bugKinds` is capped at MAX_ERROR_KINDS, and once full a genuinely new kind is never inserted,
+   * so asking it "have I seen this?" answers no forever and marks every later occurrence as first —
+   * inflating the distinct-defect count precisely where a session got interesting. This set is not
+   * capped: the kind vocabulary is a bounded enum plus oracle names, not user data.
+   */
+  readonly #seenBugKinds = new Set<string>();
   readonly #clients = new Set<string>();
   readonly #startedAt: number;
   readonly #now: () => number;
@@ -199,11 +208,20 @@ export class SessionMetrics {
     this.#verifications += 1;
   }
 
-  /** One defect found in the app under test — the outcome number, kept broken down by kind. */
-  recordBug(kind: string): void {
+  /**
+   * One defect found in the app under test — the outcome number, kept broken down by kind.
+   *
+   * Returns TRUE when this kind is new to the session. Every occurrence is still counted; the flag
+   * only lets a reader separate "how many distinct defects" from "how often they were hit", which
+   * are different claims and were previously indistinguishable in the data.
+   */
+  recordBug(kind: string): boolean {
     this.#bugsFound += 1;
     if (this.#bugKinds.size < MAX_ERROR_KINDS || this.#bugKinds.has(kind))
       bump(this.#bugKinds, kind);
+    const first = !this.#seenBugKinds.has(kind);
+    this.#seenBugKinds.add(kind);
+    return first;
   }
 
   /**
@@ -302,6 +320,7 @@ export class SessionMetrics {
     this.#unknownToolCalls = 0;
     this.#bugsFound = 0;
     this.#bugKinds.clear();
+    this.#seenBugKinds.clear();
   }
 }
 
