@@ -51,6 +51,13 @@ function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
 
+function sourceLocation(value: unknown): ElementQuery['source'] {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj['file'] !== 'string' || typeof obj['line'] !== 'number') return undefined;
+  return { file: obj['file'], line: obj['line'], column: num(obj['column']) };
+}
+
 function queryFromArgs(args: Record<string, unknown>): ElementQuery {
   return {
     by: str(args['by']) as ElementQuery['by'],
@@ -62,10 +69,12 @@ function queryFromArgs(args: Record<string, unknown>): ElementQuery {
     placeholder: str(args['placeholder']),
     testid: str(args['testid']),
     alt: str(args['alt']),
+    component: str(args['component']),
     scope: str(args['scope']),
     attrs: Array.isArray(args['attrs'])
       ? args['attrs'].filter((a): a is string => typeof a === 'string')
       : undefined,
+    source: sourceLocation(args['source']),
   };
 }
 
