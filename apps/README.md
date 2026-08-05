@@ -33,24 +33,19 @@ Enforced by `packages/server/src/tools/integration-coverage.test.ts`, which fail
 
 Driven by what `SKILL.md` offers a user, which is the promise that must not break:
 
-| Framework offered to users | App               | Gate                |
-| -------------------------- | ----------------- | ------------------- |
-| Vite + React               | `bench-app`       | ✅ e2e              |
-| Next.js                    | `next-smoke`      | ✅ e2e              |
-| Remix                      | `examples/remix`  | ✅ integration      |
-| Astro                      | `examples/astro`  | ✅ integration      |
-| Plain HTML / vanilla       | `large-dom-bench` | ⚠️ bench only       |
-| Electron                   | `electron-smoke`  | ✅ desktop          |
-| Tauri                      | `tauri-smoke`     | ✅ desktop          |
-| (Adversarial fixture)      | `atlas`           | ✅ e2e              |
+| Framework offered to users | App               | Gate           |
+| -------------------------- | ----------------- | -------------- |
+| Vite + React               | `bench-app`       | ✅ e2e         |
+| Next.js                    | `next-smoke`      | ✅ e2e         |
+| Remix                      | `examples/remix`  | ✅ integration |
+| Astro                      | `examples/astro`  | ✅ integration |
+| Plain HTML / vanilla       | `large-dom-bench` | ⚠️ bench only  |
+| Electron                   | `electron-smoke`  | ✅ desktop     |
+| Tauri                      | `tauri-smoke`     | ✅ desktop     |
+| (Adversarial fixture)      | `atlas`           | ✅ e2e         |
 
-Every framework the skill offers now has an app and a gate, and
-`integration-coverage.test.ts` fails if that stops being true in either direction — an option added
-to `SKILL.md` without an app goes red, and so does re-adding one we removed.
+Every framework the skill offers now has an app and a gate, and `integration-coverage.test.ts` fails if that stops being true in either direction — an option added to `SKILL.md` without an app goes red, and so does re-adding one we removed.
 
-**Vue and Svelte/SvelteKit were REMOVED from the skill rather than left as unproven promises.** They
-were offered to users with no app and no gate; the SDK is framework-agnostic and may well work in
-both, but "may well work" is not support. `reticle init` still wires SvelteKit, and now says to the
-user's face that the wiring is untested.
+**Vue and Svelte/SvelteKit were REMOVED from the skill rather than left as unproven promises.** They were offered to users with no app and no gate; the SDK is framework-agnostic and may well work in both, but "may well work" is not support. `reticle init` still wires SvelteKit, and now says to the user's face that the wiring is untested.
 
 `examples/astro` used to be the inverse — an app for a framework the skill never offered. Astro is now offered, because the app exists, the integration battery drives it, and it wires the SDK differently (Astro SSRs its own HTML, so the plugin's `index.html` injection never fires). Proof first, then the promise.

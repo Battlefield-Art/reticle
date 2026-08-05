@@ -408,8 +408,7 @@ Everything below comes from the `@reticlehq/react` kit plus your framework's bui
 | Next.js (app router) | `ReticleDev` client component in layout (dev) | `@reticlehq/next` (`withReticle`) → component + file:line |
 | Vanilla / plain HTML | `reticle.connect()` at boot (dev) | none — refs and testids only |
 
-**Vue and Svelte/SvelteKit are not supported.** The SDK is framework-agnostic, so `connect()` may
-work, but there is no app and no CI gate for either — treat it as untested, not as supported.
+**Vue and Svelte/SvelteKit are not supported.** The SDK is framework-agnostic, so `connect()` may work, but there is no app and no CI gate for either — treat it as untested, not as supported.
 
 ---
 
