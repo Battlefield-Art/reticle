@@ -36,6 +36,9 @@ const ORDER = [
   'real-world-tests',
   'multi-agent-lease-test',
   'atlas-hard-fixture-test',
+  // Last: it drives every tool over real MCP, including navigate/crawl/clock, and owns a browser of
+  // its own. Running it earlier would leave the shared bench-app in a state later specs assume fresh.
+  'tool-surface-sweep-test',
 ];
 // The desktop battery — `pnpm e2e:desktop`. Each of these starts its OWN runtime (an Electron main
 // process, a packaged Tauri binary) and waits for it to dial the bridge, so they need no server from
