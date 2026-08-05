@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RECOVERY, buildErrorPayload, recoveryFor } from './error-recovery.js';
+import { FEEDBACK_ASK, RECOVERY, buildErrorPayload, recoveryFor } from './error-recovery.js';
 import { TOOLS } from './tools.js';
 
 describe('recoveryFor — every known error carries an actionable next move', () => {
@@ -54,8 +54,11 @@ describe('buildErrorPayload — the MCP-boundary envelope', () => {
       error: 'no browser session connected — is your app running?',
       recovery: RECOVERY.NO_SESSION,
     });
+    // An UNRECOGNIZED error gets no recovery hint — there is none to give — but it is also the case
+    // most likely to be a defect in Reticle itself, so it carries the feedback ask instead. The two
+    // are mutually exclusive on purpose: the agent always gets exactly one next move.
     const unknown = buildErrorPayload('save failed: disk_full');
-    expect(unknown).toEqual({ error: 'save failed: disk_full' });
+    expect(unknown).toEqual({ error: 'save failed: disk_full', feedback: FEEDBACK_ASK });
     expect('recovery' in unknown).toBe(false);
   });
 });

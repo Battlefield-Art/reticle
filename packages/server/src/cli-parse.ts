@@ -22,6 +22,9 @@ export const CLI_USAGE = `usage:
   reticle rollback                                     (restore the previous server version and restart)
   reticle license                                      (show enterprise license status: active | eval | missing)
   reticle telemetry [status|enable|disable]            (anonymous usage metrics — status shows what's sent + the policy)
+  reticle feedback [--rating 1-5] [--bug] "message"    (tell us what worked and what didn't — prints exactly what it sends)
+  reticle identify --context company|side_project|open_source|learning [--company N] [--email E] [--forget]
+                                                       (OPT-IN: tell us who you are, e.g. for support or an enterprise trial)
 
 Cloud (link this project to Reticle Cloud — runs/flows recorded on the dashboard):
   reticle login --email <e> [--code <c>] [--org <n>]   (sign in: mails a code, then exchanges it)
@@ -50,6 +53,15 @@ const MCP_COMMAND = 'mcp';
 const LICENSE_COMMAND = 'license';
 const VERSION_COMMAND = 'version';
 const TELEMETRY_COMMAND = 'telemetry';
+const FEEDBACK_COMMAND = 'feedback';
+const IDENTIFY_COMMAND = 'identify';
+export const COMPANY_FLAG = '--company';
+export const EMAIL_FLAG = '--email';
+export const CONTEXT_FLAG = '--context';
+export const FORGET_FLAG = '--forget';
+/** `reticle feedback --rating 4 "the words"` — the human half of the channel. */
+export const RATING_FLAG = '--rating';
+export const BUG_FLAG = '--bug';
 /** The `reticle telemetry` sub-actions. Bare `reticle telemetry` means `status`. */
 export const TelemetryAction = {
   STATUS: 'status',
@@ -58,6 +70,59 @@ export const TelemetryAction = {
 } as const;
 export type TelemetryAction = (typeof TelemetryAction)[keyof typeof TelemetryAction];
 export const DAEMON_INNER_COMMAND = '_daemon';
+
+/**
+ * Every subcommand a person can type, as one closed vocabulary. Telemetry reports which one ran, and
+ * this is what keeps that property low-cardinality and non-identifying: an argument we do not
+ * recognize reports as `unknown` rather than being echoed, so a typo — which may be a path, a URL, or
+ * a flow name — can never reach the wire just because someone misspelled `status`.
+ *
+ * Lives here rather than in the telemetry module because this is where the command names are already
+ * defined; a second list somewhere else would drift the first time a command is added.
+ */
+export const UNKNOWN_COMMAND = 'unknown';
+const KNOWN_COMMANDS: ReadonlySet<string> = new Set([
+  INIT_COMMAND,
+  SERVE_COMMAND,
+  STOP_COMMAND,
+  STATUS_COMMAND,
+  OPEN_COMMAND,
+  DRIVE_COMMAND,
+  VERIFY_COMMAND,
+  AFFECTED_COMMAND,
+  HUNT_COMMAND,
+  CAPSULES_COMMAND,
+  GATE_COMMAND,
+  WATCH_COMMAND,
+  UPDATE_COMMAND,
+  ROLLBACK_COMMAND,
+  MCP_COMMAND,
+  LICENSE_COMMAND,
+  VERSION_COMMAND,
+  TELEMETRY_COMMAND,
+  FEEDBACK_COMMAND,
+  IDENTIFY_COMMAND,
+  DAEMON_INNER_COMMAND,
+  // Cloud subcommands dispatch before the local parser but are still commands a human ran.
+  'login',
+  'logout',
+  'whoami',
+  'link',
+  'project',
+  'config',
+  'push',
+  'runs',
+  'regression',
+  'share',
+  'doctor',
+  'help',
+]);
+
+/** The subcommand name if we recognize it, else `unknown`. Bare `reticle` reports `help`. */
+export function knownCommand(arg: string | undefined): string {
+  if (arg === undefined || arg === '') return 'help';
+  return KNOWN_COMMANDS.has(arg) ? arg : UNKNOWN_COMMAND;
+}
 
 export const HEADED_FLAG = '--headed';
 export const PORT_FLAG = '--port';
@@ -88,6 +153,8 @@ export type CliResult =
   | { kind: 'status'; port: number }
   | { kind: 'license' }
   | { kind: 'telemetry'; action: TelemetryAction }
+  | { kind: 'feedback'; text: string; rating?: number; bug: boolean }
+  | { kind: 'identify'; context?: string; company?: string; email?: string; forget: boolean }
   | { kind: 'version' }
   | { kind: 'help' }
   | { kind: 'doctor'; port: number }
@@ -377,6 +444,42 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
         return { kind: 'error', message: `unknown telemetry action: ${action}` };
       }
       return { kind: 'telemetry', action };
+    }
+    case IDENTIFY_COMMAND: {
+      const flag = (name: string): string | undefined => {
+        const at = rest.indexOf(name);
+        return at === -1 ? undefined : rest[at + 1];
+      };
+      const context = flag(CONTEXT_FLAG);
+      const company = flag(COMPANY_FLAG);
+      const email = flag(EMAIL_FLAG);
+      return {
+        kind: 'identify',
+        ...(context !== undefined ? { context } : {}),
+        ...(company !== undefined ? { company } : {}),
+        ...(email !== undefined ? { email } : {}),
+        forget: rest.includes(FORGET_FLAG),
+      };
+    }
+    case FEEDBACK_COMMAND: {
+      const ratingAt = rest.indexOf(RATING_FLAG);
+      const rating = ratingAt === -1 ? undefined : Number(rest[ratingAt + 1]);
+      if (rating !== undefined && (!Number.isInteger(rating) || rating < 1 || rating > 5)) {
+        return { kind: 'error', message: `${RATING_FLAG} takes a whole number from 1 to 5` };
+      }
+      // Everything that is not a flag or the rating's value is the message. Quoting is the user's
+      // job for shell reasons, but joining the remainder means an unquoted sentence still works.
+      const consumed = new Set(ratingAt === -1 ? [] : [ratingAt, ratingAt + 1]);
+      const text = rest
+        .filter((arg, i) => !consumed.has(i) && !arg.startsWith('--'))
+        .join(' ')
+        .trim();
+      return {
+        kind: 'feedback',
+        text,
+        ...(rating !== undefined ? { rating } : {}),
+        bug: rest.includes(BUG_FLAG),
+      };
     }
     case OPEN_COMMAND: {
       const port = parsePortFlag(rest, defaultPort);

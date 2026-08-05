@@ -172,7 +172,17 @@ Verify a predicate; optionally wait for it.
 
 - **args:** `predicate`, `timeout_ms?` (0 = evaluate once), `since?`, `sessionId?`.
 - Same `since` default as `reticle_wait_for`: scoped to your last act so a stale buffered event can't fake a pass; override with an explicit `since`.
-- **returns:** `{ pass, evidence, failureReason?, session, warning? }`. On failure includes a **near-miss** (e.g. "found the dialog but not visible", or "no button named 'Submit'; saw: Cancel"). The `session` block `{ lastSeenMs, throttled, focused }` (F2) reports tab health on every assert; when throttled a `warning` is attached so you never assert against a tab that is silently no-oping.
+- **returns:** `{ verified, because, pass, evidence, contradictions?, coverage?, failureReason?, session, warning? }`. On failure includes a **near-miss** (e.g. "found the dialog but not visible", or "no button named 'Submit'; saw: Cancel"). The `session` block `{ lastSeenMs, throttled, focused }` reports tab health on every assert; when throttled a `warning` is attached so you never assert against a tab that is silently no-oping.
+- **Read `verified`, not `pass`.** `pass` says the predicate held; `verified` says whether that means anything. It is `"no"` when a channel contradicts the assertion (a failed write under a green screen, a batch whose body reports per-item failures, a request still in flight), and `"unknown"` when the outcome could not be known yet — a `202 Accepted` that has not reconciled, or a write whose response body was never recorded. `because` names the deciding evidence in one sentence.
+
+### `reticle_reconcile`
+
+Compare what the API **returned** against what the page **renders**.
+
+- **args:** `since?`, `urlContains?`, `sessionId?`.
+- **returns:** `{ mismatches, compared, note? }`.
+- Catches the class no status code and no assertion can reach: a `USD 7997` amount rendered as `₹79.97`, or a record the API calls `on_hold` displayed as `"pending"`. Both sides agree on the digits; only the meaning differs, so every other channel reports success.
+- Needs response bodies — `connect({ captureNetworkBodies: true })`. When nothing could be compared it says so in `note` rather than returning an empty, clean-looking result over data it never read.
 
 ### `reticle_network` / `reticle_console` / `reticle_animations`
 
@@ -700,7 +710,7 @@ Reticle is cheap by design ([benchmark](token-efficiency.md)), but keep it that 
 ## 15. Security & privacy
 
 - **Dev-only, localhost-only by default.** The bridge binds `127.0.0.1`; the SDK is meant for dev builds.
-- **No app data leaves your machine.** Baselines/recordings are local. The CLI sends anonymous, opt-out usage metrics only (random id + event names — no code, no PII; see [telemetry](telemetry.md)); opt out with `reticle telemetry disable`, `RETICLE_TELEMETRY=0`, or `DO_NOT_TRACK=1`.
+- **No app data leaves your machine.** Baselines/recordings are local. The CLI sends anonymous, opt-out usage metrics only (random id + event names — no code, no PII; see [telemetry](telemetry.md)); opt out with `reticle telemetry disable`, `RETICLE_TELEMETRY=0`, or `DO_NOT_TRACK=1`. Feedback you or your agent deliberately send (`reticle feedback` / `reticle_feedback`) is the only free text that ever leaves the machine — never passive, redacted first, and separately disabled with `RETICLE_FEEDBACK=0`.
 - **Network bodies aren't captured by default** — only method/url/status/timing. Body capture is opt-in and runs through a redactor (drop `password`/`token`/`secret`/… + your patterns).
 - **Additive & reversible.** Reticle patches `fetch`/History/console defensively and restores them on disconnect; it will not break the app under test.
 

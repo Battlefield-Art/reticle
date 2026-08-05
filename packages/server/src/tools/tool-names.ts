@@ -17,6 +17,7 @@ export const ReticleTool = {
   CONSOLE: 'reticle_console',
   ANIMATIONS: 'reticle_animations',
   ASSERT: 'reticle_assert',
+  RECONCILE: 'reticle_reconcile',
   BASELINE_SAVE: 'reticle_baseline_save',
   BASELINE_LIST: 'reticle_baseline_list',
   DIFF: 'reticle_diff',
@@ -99,5 +100,7 @@ export const ReticleTool = {
   TOOLS: 'reticle_tools',
   /** Meta: invoke any tool by name — the escape hatch that keeps a trimmed profile a trim, not a removal. */
   RUN: 'reticle_run',
+  /** Report that Reticle itself failed — the agent's only way to tell us what to fix. */
+  FEEDBACK: 'reticle_feedback',
 } as const;
 export type ReticleTool = (typeof ReticleTool)[keyof typeof ReticleTool];

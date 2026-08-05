@@ -70,6 +70,8 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
       changedFiles: z.array(z.string()),
       flowsRun: z.array(z.string()),
       suite: z.unknown().optional(),
+      // Session-EXEMPT: declare the one-shot human feedback ask or a validating profile strips it.
+      feedback_prompt: z.unknown().optional(),
       unknownProvenance: z.array(z.string()),
       contradictions: z
         .array(z.unknown())

@@ -16,11 +16,29 @@ function detectRuntime(): 'electron' | 'tauri' | 'web' {
   return 'web';
 }
 
-function snapshotHealth(): { hidden: boolean; focused: boolean; runtime: string } {
+/**
+ * The rendering engine, coarse on purpose. Three buckets — never the UA string itself, which is
+ * high-cardinality and semi-identifying. Order matters: every Chromium UA also contains "Safari", and
+ * Gecko is the only engine that reports a real `Gecko/` build token.
+ */
+function detectEngine(): 'blink' | 'gecko' | 'webkit' {
+  const ua = navigator.userAgent;
+  if (/Chrome|Chromium|Edg\//.test(ua)) return 'blink';
+  if (/Gecko\/|Firefox/.test(ua)) return 'gecko';
+  return 'webkit';
+}
+
+function snapshotHealth(): {
+  hidden: boolean;
+  focused: boolean;
+  runtime: string;
+  engine: string;
+} {
   return {
     hidden: document.visibilityState === 'hidden',
     focused: document.hasFocus(),
     runtime: detectRuntime(),
+    engine: detectEngine(),
   };
 }
 

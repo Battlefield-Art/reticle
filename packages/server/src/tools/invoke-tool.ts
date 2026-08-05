@@ -1,7 +1,13 @@
 import { healthEnvelope } from '../session/session-health.js';
-import { getTelemetry, TelemetryEventKind } from '../telemetry/telemetry.js';
+import { TelemetryActor, TelemetryEventKind } from '@reticlehq/core';
+import { getSessionMetrics } from '../telemetry/session-metrics.js';
+import { getTelemetry } from '../telemetry/telemetry.js';
+import { VERIFICATION_TOOLS } from './feedback-tools.js';
+import { takeUpdateNudge } from '../update/update-nudge.js';
+import { bugsInResult } from '../telemetry/bug-found.js';
 import { asString } from './tools-helpers.js';
 import { ReticleTool } from './tool-names.js';
+import { takeFeedbackPrompt } from './feedback-tools.js';
 import type { Session } from '../session/session.js';
 import type { ToolDef, ToolDeps } from './tools.js';
 
@@ -23,6 +29,9 @@ export const SESSION_BOUND_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.OBSERVE,
   ReticleTool.WAIT_FOR,
   ReticleTool.ASSERT,
+  // Reads the live page as well as the event window, so a throttled tab can make it compare a stale
+  // render against fresh data — exactly the case the health envelope exists to disclose.
+  ReticleTool.RECONCILE,
   ReticleTool.NETWORK,
   ReticleTool.CONSOLE,
   ReticleTool.ANIMATIONS,
@@ -62,10 +71,72 @@ export const SESSION_EXEMPT_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.VIEWPORT, // own contract (applied/width/height); provider-driven, not a live-DOM read
   ReticleTool.ANNOTATE, // annotates a recording's steps; pure disk-side metadata, no live DOM read
   ReticleTool.LEASE, // merged acquire/release — its sessionId is a pool lease id, not a live session
+  // Its sessionId only enriches the report with the tab's runtime/engine, and it must stay callable
+  // when NO session exists — "nothing ever connected" is feedback we especially want.
+  ReticleTool.FEEDBACK,
 ]);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Emit `verification_completed` when a verification tool produced a verdict.
+ *
+ * Read off the RESULT here rather than emitted from `decideVerified`, which is where the verdict is
+ * actually decided: that function is pure, and the repo's rules keep clocks, IO and side effects out
+ * of pure logic for good reason. Reading the result also means all four verification tools are covered
+ * by one site instead of four handler edits, and a fifth is covered the moment it joins the set.
+ *
+ * `falseGreenCaught` is the one that matters: the assertion PASSED and Reticle still refused to call
+ * it verified. That is the product's entire thesis reduced to a boolean, and it is the number worth
+ * putting in front of an investor — not "tools were called" but "this many greens were caught lying".
+ */
+function recordVerification(
+  toolName: string,
+  result: Record<string, unknown>,
+  durationMs: number,
+): void {
+  if (!VERIFICATION_TOOLS.has(toolName)) return;
+  const verified = typeof result['verified'] === 'string' ? result['verified'] : undefined;
+  // flow_verify reports `status: pass|fail`; assert reports a boolean `pass`. Accept either shape so
+  // the whole family is covered without normalizing four tools' contracts for a metric's convenience.
+  const passed =
+    typeof result['pass'] === 'boolean'
+      ? result['pass']
+      : result['status'] === 'pass'
+        ? true
+        : undefined;
+  if (verified === undefined && passed === undefined) return; // not a verdict-bearing result
+  const metrics = getSessionMetrics();
+  metrics.recordVerification();
+  void getTelemetry().emit(TelemetryEventKind.VERIFICATION_COMPLETED, {
+    actor: TelemetryActor.AGENT,
+    verification: {
+      via: toolName,
+      verified: verified ?? (passed === true ? 'yes' : 'no'),
+      passed: passed ?? verified === 'yes',
+      falseGreenCaught: passed === true && verified === 'no',
+      durationMs,
+    },
+  });
+}
+
+/**
+ * Emit one `bug_found` per defect in a tool result, and count it into the session.
+ *
+ * The outcome metric: everything else measures whether Reticle is used, this measures whether it
+ * works. Discrete events rather than only a counter, because the KIND distribution is the argument —
+ * "we found 4,000 bugs" is a claim, "1,200 were greens that lied" is evidence.
+ */
+function reportBugsFound(toolName: string, result: Record<string, unknown>): void {
+  const bugs = bugsInResult(toolName, result);
+  if (bugs.length === 0) return;
+  const metrics = getSessionMetrics();
+  for (const bug of bugs) {
+    metrics.recordBug(bug.kind);
+    void getTelemetry().emit(TelemetryEventKind.BUG_FOUND, { actor: TelemetryActor.AGENT, bug });
+  }
 }
 
 /**
@@ -80,8 +151,16 @@ export async function runTool(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   // Both dispatch paths (MCP + programmatic) pass through here — the one place "which tool is mostly
-  // used" can be counted. Fire-and-forget: telemetry never delays or fails a tool call.
-  void getTelemetry().emit(TelemetryEventKind.TOOL, { tool: tool.name });
+  // used" can be counted. This used to EMIT an event per call; it now increments an in-process counter
+  // that leaves once, with the session summary. A verification loop is 50–200 calls, and PostHog bills
+  // per event — so the old design made the telemetry bill scale with how hard people used the product,
+  // to answer a question the histogram answers better. Counting is also free: no network, no promise,
+  // nothing to fail on a tool call's hot path.
+  // Started/settled as a pair rather than a bare counter: several agents can be inside runTool at
+  // once, so a single "last start" field would attribute one tool's duration to another. The returned
+  // closure carries this call's own identity, which is also what makes peak-concurrency measurable.
+  const settleTiming = getSessionMetrics().startToolCall(tool.name, args);
+  const startedAt = Date.now();
   const rawSessionId = asString(args['sessionId']);
   const bound = SESSION_BOUND_TOOLS.has(tool.name);
 
@@ -102,7 +181,35 @@ export async function runTool(
   const leaseId = session?.id ?? rawSessionId;
   if (leaseId !== undefined) deps.pool?.touch(leaseId);
 
-  const result = await tool.handler(deps, args);
+  let raw: unknown;
+  try {
+    raw = await tool.handler(deps, args);
+  } finally {
+    // In a `finally` so a THROWN call still settles: otherwise every failing tool would leak a
+    // concurrency slot and peakConcurrentTools would climb forever on an unhealthy session.
+    settleTiming(Date.now() - startedAt);
+  }
+  // The human-feedback ask rides out on the first VERIFICATION that completes — the one moment the
+  // experience is fresh and there is something concrete to react to. It is spliced BEFORE the
+  // session-bound early return, because two of the four verification tools (flow_verify,
+  // verify_change) are session-EXEMPT and would otherwise never carry it.
+  if (isPlainObject(raw)) {
+    recordVerification(tool.name, raw, Date.now() - startedAt);
+    reportBugsFound(tool.name, raw);
+  }
+  const prompt = isPlainObject(raw) ? takeFeedbackPrompt(tool.name) : undefined;
+  // Same one-shot channel as the feedback ask: the agent is mid-task, so anything it would have to go
+  // and ASK for is something it will never ask for. Spliced on ANY tool result, not just a
+  // verification, because an out-of-date install is worth mentioning whatever the agent is doing.
+  const update = isPlainObject(raw) ? takeUpdateNudge() : undefined;
+  const result =
+    prompt === undefined && update === undefined
+      ? raw
+      : {
+          ...(raw as object),
+          ...(prompt !== undefined ? { feedback_prompt: prompt } : {}),
+          ...(update !== undefined ? { update_available: update } : {}),
+        };
   if (!bound || !isPlainObject(result)) return result;
   // Reuse the session resolved above so the health envelope describes the SAME session the handler
   // drove; only re-resolve if the up-front attempt failed but the handler somehow succeeded.

@@ -20,12 +20,6 @@ import { applyUpdate, rollback } from './update/updater.js';
 import { start, startDaemon } from './index.js';
 import { isCloudCommand, runCloudCommand } from './cloud-cli.js';
 import { SERVER_VERSION } from './server-version.js';
-import {
-  getTelemetry,
-  TelemetryEventKind,
-  describeTelemetry,
-  setTelemetryEnabled,
-} from './telemetry/telemetry.js';
 import { log } from './log.js';
 import {
   readPid,
@@ -59,8 +53,10 @@ import {
   HTTP_TOKEN_FLAG,
   parseCliArgs,
   CLI_USAGE,
-  TelemetryAction,
 } from './cli-parse.js';
+import { handleFeedback, handleIdentify, handleTelemetry } from './telemetry/feedback-cli.js';
+import { installDaemonTelemetry } from './telemetry/daemon-telemetry.js';
+import { reportCliRun } from './telemetry/cli-telemetry.js';
 
 // Re-exported so existing imports (and the CLI tests) keep resolving from './cli.js'.
 export { parseCliArgs, CLI_USAGE };
@@ -160,25 +156,6 @@ function handleVersion(): void {
 /** `reticle license` — show enterprise activation resolved from the environment (offline; nothing leaves). */
 function handleLicense(): void {
   log('reticle_license', { ...describeLicense(Date.now()) });
-}
-
-/**
- * `reticle telemetry [status|enable|disable]` — the user-facing control for anonymous usage metrics.
- * `disable` persists a machine-wide opt-out (survives shells, unlike RETICLE_TELEMETRY=0); `status`
- * says what's on, why, and where the full policy lives. Human-readable to stdout, like `doctor`.
- */
-function handleTelemetry(action: TelemetryAction): void {
-  const line = (s: string): void => {
-    process.stdout.write(`${s}\n`);
-  };
-  if (action !== TelemetryAction.STATUS) {
-    setTelemetryEnabled(action === TelemetryAction.ENABLE);
-  }
-  const state = describeTelemetry();
-  line(`telemetry    ${state.enabled ? 'enabled' : 'disabled'}  (${state.reason})`);
-  line(`policy       ${state.policyUrl}`);
-  if (state.enabled)
-    line('opt out      reticle telemetry disable  (or RETICLE_TELEMETRY=0 / DO_NOT_TRACK=1)');
 }
 
 /**
@@ -348,10 +325,9 @@ function handleDaemonInner(parsed: {
   startDaemon(options)
     .then((server) => {
       log('reticle_daemon_ready', { port: parsed.port, pid: process.pid });
-      // A live daemon IS an active session (the numerator of "active sessions" + DAU/WAU/MAU). Pair the
-      // START here with an END (carrying duration) on any clean shutdown below — best-effort, non-blocking.
-      const sessionStartedAt = Date.now();
-      void getTelemetry().emit(TelemetryEventKind.SESSION_START);
+      // Daemon lifecycle telemetry: started, a one-shot project profile, the periodic counter flush,
+      // and the rich summary on shutdown. All of it lives in one module — see daemon-telemetry.ts.
+      const daemonTelemetry = installDaemonTelemetry(process.cwd());
       // Publish to the discovery registry so a build plugin can find this daemon by projectId — no
       // hand-reconciled port. Written from the child (only it knows its cwd); removePid drops it.
       const registryProjectId = readProjectId(process.cwd());
@@ -368,11 +344,12 @@ function handleDaemonInner(parsed: {
         process.exit(1);
       });
       const shutdown = (): void => {
-        void getTelemetry().emit(TelemetryEventKind.SESSION_END, {
-          sessionMs: Date.now() - sessionStartedAt,
-        });
-        server
-          .close()
+        // Awaited before the close/exit chain: `process.exit(0)` kills an in-flight POST, and this is
+        // the one event carrying the whole session. A failed send resolves anyway (emit swallows its
+        // own errors), so this can delay the exit by at most the send timeout, never prevent it.
+        void daemonTelemetry
+          .shutdown()
+          .then(() => server.close())
           .then(() => {
             removePid(parsed.port);
             process.exit(0);
@@ -484,10 +461,15 @@ function main(): void {
   const argv = process.argv.slice(2);
   // Every invocation passes through here — the single chokepoint for the "how often is it used / how
   // many distinct machines + projects" metrics. Fire-and-forget: a metric must never delay or fail a run.
-  const telemetry = getTelemetry();
-  // `detach` so a quick command (`version`/`gate`) exits immediately instead of waiting out the POST.
-  if (telemetry.firstRun) void telemetry.emit(TelemetryEventKind.INSTALL, { detach: true });
-  void telemetry.emit(TelemetryEventKind.INVOKE, { detach: true });
+  //
+  // `_daemon` is EXCLUDED, and that exclusion is the whole point of this branch. `reticle mcp` and
+  // `reticle serve` start the daemon by re-running this very binary, so the child re-entered main()
+  // and emitted a second event for what a person experienced as one action. The old `invoke` metric
+  // was therefore inflated ~2x — and inflated worst on the agent-driven sessions that matter most,
+  // while one-shot commands like `version` counted once. That skewed the RATIO between commands, not
+  // just the scale, which is the kind of error you cannot correct for after the fact. The daemon's
+  // own lifecycle is already reported by `daemon_started` / `daemon_stopped`; it is not a CLI run.
+  reportCliRun(argv);
   // Cloud subcommands (login/link/project/config/push) are a distinct family with their own async client;
   // handle them before the local typed parser so `reticle login` etc. work as one tool.
   if (isCloudCommand(argv[0])) {
@@ -522,6 +504,12 @@ function main(): void {
       break;
     case 'telemetry':
       handleTelemetry(parsed.action);
+      break;
+    case 'feedback':
+      void handleFeedback(parsed.text, parsed.rating, parsed.bug);
+      break;
+    case 'identify':
+      void handleIdentify(parsed);
       break;
     case 'version':
       handleVersion();

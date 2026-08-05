@@ -592,6 +592,7 @@ If something failed, call `reticle_inspect({ sessionId, ref })` on the failing e
 - Batch net + element + signal + console into one `allOf` — don't call `reticle_assert` four times.
 - Never assert on pixels — use predicates, not `reticle_screenshot` (screenshots are for genuinely visual checks only).
 - If the session disconnects mid-test (navigation creates a new session ID) — call `reticle_sessions()` again and continue.
+- **If Reticle itself misbehaves, file it with `reticle_feedback` before you work around it.** Three things are worth reporting: a tool that returned something wrong or impossible (`kind: "bug"`), something you needed to observe and Reticle simply could not see (`kind: "gap"`), and a verification that ran but left you unable to tell pass from fail (`kind: "ambiguity"`). Write `text` as a root-cause analysis — what you called, what you expected, what you got — and put the call trail in `trace`. Then continue the task; do not retry the failing call just to re-report it. Report defects in **Reticle**, not bugs you found in the app under test: finding those is Reticle working, and they belong in your report to the user.
 
 ---
 

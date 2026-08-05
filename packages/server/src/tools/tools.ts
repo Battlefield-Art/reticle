@@ -26,8 +26,10 @@ import { type ToolDef, sessionIdShape, commandOrThrow } from './tool-kit.js';
 import { applyMerges, type MergePlan } from './merge-tools.js';
 import { ACT_TOOLS } from './act-tools.js';
 import { OBSERVE_TOOLS } from './observe-tools.js';
+import { RECONCILE_TOOLS } from './reconcile-tools.js';
 import { READ_TOOLS } from './read-tools.js';
 import { LEASE_TOOLS } from './lease-tools.js';
+import { FEEDBACK_TOOLS } from './feedback-tools.js';
 
 // Re-exported so tool modules that import these from './tools.js' keep working after the kit move.
 export type { ToolDef, ToolDeps } from './tool-kit.js';
@@ -215,6 +217,7 @@ const RAW_TOOLS: ToolDef[] = [
         ),
       limit: z
         .number()
+        .nonnegative()
         .optional()
         .describe(
           'Cap the returned descriptors to the first N (cuts tokens on broad queries). If more matched, the result carries total + truncated:true so the trim is never silent — narrow with name/scope.',
@@ -403,6 +406,7 @@ const RAW_TOOLS: ToolDef[] = [
       }),
   },
   // reticle_capabilities (live | fromDisk) + reticle_contract_save. See contract-tools.ts.
+  ...RECONCILE_TOOLS,
   ...CONTRACT_TOOLS,
   ...DOMAIN_TOOLS,
   // reticle_flow_save / reticle_flow_list / reticle_flow_load. See flow-tools.ts.
@@ -438,6 +442,8 @@ const RAW_TOOLS: ToolDef[] = [
   ...OBSERVE_TOOLS,
   ...READ_TOOLS,
   ...LEASE_TOOLS,
+  // reticle_feedback — the agent reports that RETICLE failed (not that the app did). See feedback-tools.ts.
+  ...FEEDBACK_TOOLS,
 ];
 
 /**

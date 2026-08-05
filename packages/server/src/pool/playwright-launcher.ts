@@ -7,6 +7,9 @@
  */
 
 import type { Browser } from 'playwright';
+import { BrowserLaunchKind } from '@reticlehq/core';
+import { getSessionMetrics } from '../telemetry/session-metrics.js';
+import { classifyConnectFailure } from '../telemetry/connect-failure.js';
 import type { Launcher, PooledBrowser, PooledContext, PooledPage } from './browser-pool.js';
 
 function wrapBrowser(browser: Browser): PooledBrowser {
@@ -49,9 +52,15 @@ export function playwrightLauncher(opts: { headless?: boolean } = {}): Launcher 
   // (where it's meaningful) instead of at import-time (where it kills unrelated features).
   return async () => {
     const { chromium } = await import('playwright');
+    // A pooled launch serves N parallel leases, so this counts BROWSERS, not contexts — which is the
+    // number that actually costs memory and the one that explains a slow machine.
+    const settle = getSessionMetrics().recordConnectAttempt(BrowserLaunchKind.POOLED);
     try {
-      return wrapBrowser(await chromium.launch({ headless }));
+      const browser = wrapBrowser(await chromium.launch({ headless }));
+      settle();
+      return browser;
     } catch (err) {
+      settle(classifyConnectFailure(err));
       // Turn Playwright's raw "Executable doesn't exist" into the one command that fixes it.
       const msg = err instanceof Error ? err.message : String(err);
       if (/executable doesn.?t exist|playwright install|browsertype\.launch/i.test(msg)) {

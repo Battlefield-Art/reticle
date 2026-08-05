@@ -51,7 +51,10 @@ export function frameworkPackages(framework: Framework): readonly string[] {
   }
 }
 
-const MCP_TARGET = 'global (claude user scope)';
+/** Exported so the init telemetry can tell an MCP-registration failure from a dependency install. */
+export const MCP_TARGET = 'global (claude user scope)';
+/** The step that runs the package manager — the other thing that commonly fails on a user's machine. */
+export const DEPS_TARGET = 'package.json';
 const RETICLE_CONFIG_FILE = '.reticle.json';
 
 export const StepStatus = {

@@ -66,6 +66,8 @@ export interface HealthReport {
   hidden: boolean | undefined;
   focused: boolean | undefined;
   runtime: string | undefined;
+  /** Coarse rendering engine (blink/gecko/webkit) — context for a feedback report, not a health input. */
+  engine: string | undefined;
 }
 
 /**
@@ -78,5 +80,6 @@ export function readHealthEvent(data: Record<string, unknown>): HealthReport {
     hidden: typeof data['hidden'] === 'boolean' ? data['hidden'] : undefined,
     focused: typeof data['focused'] === 'boolean' ? data['focused'] : undefined,
     runtime: typeof data['runtime'] === 'string' ? data['runtime'] : undefined,
+    engine: typeof data['engine'] === 'string' ? data['engine'] : undefined,
   };
 }

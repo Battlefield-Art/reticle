@@ -3,8 +3,39 @@ import { existsSync } from 'node:fs';
 import { platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { loadManifest, saveManifest } from './update-checker.js';
-import { RETICLE_NPM_PACKAGE } from '../server-version.js';
+import { RETICLE_NPM_PACKAGE, SERVER_VERSION } from '../server-version.js';
 import { log } from '../log.js';
+import { TelemetryEventKind } from '@reticlehq/core';
+import { getTelemetry } from '../telemetry/telemetry.js';
+
+/** Which way the installed version moved. A rollback means a release hurt someone enough to retreat. */
+export const VersionChangeDirection = {
+  UPDATE: 'update',
+  ROLLBACK: 'rollback',
+} as const;
+export type VersionChangeDirection =
+  (typeof VersionChangeDirection)[keyof typeof VersionChangeDirection];
+
+/**
+ * Report a completed version move. Never throws — an install that worked must still be reported done.
+ *
+ * Exported so the emit path can be exercised directly: `applyUpdate`/`rollback` both run a real npm
+ * install and then `process.exit`, so there is no way to reach this through them in a test without
+ * mocking the package manager and the process itself.
+ */
+export async function reportVersionChange(
+  from: string,
+  to: string,
+  direction: VersionChangeDirection,
+): Promise<void> {
+  try {
+    await getTelemetry().emit(TelemetryEventKind.VERSION_CHANGED, {
+      versionChange: { from, to, direction },
+    });
+  } catch {
+    /* best-effort, like every other send */
+  }
+}
 
 const NPM_BIN = platform() === 'win32' ? 'npm.cmd' : 'npm';
 const NPM_TIMEOUT_MS = 120_000;
@@ -155,6 +186,11 @@ export async function applyUpdate(targetVersion: string): Promise<void> {
   log('reticle_update_applying', { version: targetVersion, executionKind: kind });
   await installVersion(targetVersion, kind);
   log('reticle_update_applied', { version: targetVersion, executionKind: kind });
+  // Emitted AFTER the install succeeded, so the metric counts versions that actually landed rather
+  // than attempts. Awaited, unlike every other send in the product: `process.exit(0)` on the next
+  // line would kill an in-flight fire-and-forget POST, and this event is rare enough that the wait
+  // costs nothing. A failed send still cannot block the exit — `emit` swallows its own errors.
+  await reportVersionChange(SERVER_VERSION, targetVersion, VersionChangeDirection.UPDATE);
   process.exit(0);
 }
 
@@ -172,6 +208,9 @@ export async function rollback(): Promise<void> {
   log('reticle_rollback_applying', { version: prev, executionKind: kind });
   await installVersionRollback(prev, kind);
   log('reticle_rollback_applied', { version: prev, executionKind: kind });
+  // A rollback is a release-quality alarm — someone shipped something that broke a real user badly
+  // enough for them to go backwards. Worth knowing about within the hour, not at the next retro.
+  await reportVersionChange(SERVER_VERSION, prev, VersionChangeDirection.ROLLBACK);
   // For npx, exiting would let the next restart re-resolve @latest — rolling FORWARD, the opposite
   // of rollback. installVersionRollback already told the user to pin the version in.mcp.json, so
   // stay running rather than trigger that. Other kinds installed the old version and must restart.

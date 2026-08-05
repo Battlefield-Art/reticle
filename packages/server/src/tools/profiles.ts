@@ -89,6 +89,12 @@ export const CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   // The measured floor that justifies a lean core was about CUTTING to 8 (accuracy 5/5 → 3/5), not
   // about holding at 12; one tool of schema tax to close the find→fix loop is the right trade.
   ReticleTool.INSPECT,
+  // FEEDBACK is in every profile for the same reason INSPECT is: a tool an agent has to already know
+  // about, and reach through reticle_run, is a tool that never gets called. That is fatal here in a way
+  // it is not elsewhere — an unadvertised feedback channel collects nothing, which is indistinguishable
+  // from not having built one. It is also the cheapest tool on the surface to carry (three params) and
+  // the only one whose whole purpose is telling us which of the other fifteen are failing.
+  ReticleTool.FEEDBACK,
 ]);
 
 const STANDARD_TOOL_NAMES: ReadonlySet<string> = new Set([

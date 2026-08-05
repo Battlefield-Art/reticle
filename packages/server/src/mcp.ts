@@ -12,6 +12,8 @@ import { buildErrorPayload } from './tools/error-recovery.js';
 import { log } from './log.js';
 import { SERVER_VERSION } from './server-version.js';
 import { MCP_SERVER_NAME } from './init/mcp.js';
+import { setMcpClientNameHook } from './telemetry/feedback-context.js';
+import { getSessionMetrics } from './telemetry/session-metrics.js';
 
 /**
  * Merge the runtime-spliced envelope (health/lease/age/control) into a session-bound tool's declared
@@ -310,6 +312,16 @@ export function createMcpServer(
 ): McpServer {
   const encoding = (process.env[ENCODING_ENV] ?? '').toLowerCase();
   const server = new McpServer(SERVER_INFO);
+  // Which agent is on the other end, taken from its own `initialize` handshake. Registered as a lazy
+  // hook rather than read here: the handshake has not happened yet at construction time, and a
+  // feedback report filed twenty tool calls later is exactly when we want the answer.
+  setMcpClientNameHook(() => {
+    const info = server.server.getClientVersion();
+    // Record it as a side effect of the first read so the session summary can report WHICH agents
+    // drove this daemon — the multi-agent story, visible without a second plumbing path.
+    if (info?.name !== undefined) getSessionMetrics().recordClient(info.name);
+    return info === undefined ? undefined : { name: info.name, version: info.version };
+  });
   // Cast once to our bridge type so every per-tool call site is typed without `any`.
   const registerTool = server.registerTool.bind(server) as unknown as ReticleRegisterTool;
 
@@ -369,6 +381,10 @@ export function createMcpServer(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log('tool_error', { tool: tool.name, error: message });
+        // Counted by FINGERPRINT, never by message — see error-fingerprint.ts. This is the single
+        // boundary every agent-visible tool failure crosses, so it is the one place "which error is
+        // hurting people most" can be answered without instrumenting every handler.
+        getSessionMetrics().recordToolError(message, tool.name);
         // Every error the agent hits should answer "what next?", not just "what broke".
         return {
           isError: true as const,

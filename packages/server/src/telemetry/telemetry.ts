@@ -19,7 +19,23 @@ import { randomUUID, createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
-import { TelemetryEventKind, TELEMETRY_EVENT_VERSION, type TelemetryEvent } from '@reticlehq/core';
+import {
+  TelemetryEventKind,
+  TELEMETRY_EVENT_VERSION,
+  ProjectIdSource,
+  type Crash,
+  type Feedback,
+  type Identity,
+  type BugFound,
+  type InitOutcome,
+  type McpConnection,
+  type ProjectProfile,
+  type SessionSummary,
+  type TelemetryActor,
+  type TelemetryEvent,
+  type Verification,
+  type VersionChange,
+} from '@reticlehq/core';
 import { SERVER_VERSION } from '../server-version.js';
 
 const RETICLE_DIR = join(homedir(), '.reticle');
@@ -58,6 +74,7 @@ const DETACHED_SEND_SCRIPT =
 
 /** Env var names — mirror cloud-sync's `RETICLE_*` convention. */
 import { isReticleSourceCheckout } from './dev-repo.js';
+import { gitFacts } from './git-facts.js';
 
 const Env = {
   DISABLE: 'RETICLE_TELEMETRY', // "0" / "false" / "off" → disabled
@@ -97,9 +114,31 @@ const resolveIdentity = (): { anonymousId: string; firstRun: boolean } => {
   }
 };
 
-/** One-way project fingerprint: distinct-count of this = "projects Reticle is used in", reveals nothing. */
-const projectFingerprint = (cwd: string): string =>
-  createHash('sha256').update(cwd).digest('hex').slice(0, 32);
+/**
+ * One-way project fingerprint: distinct-count of this = "projects Reticle is used in", reveals nothing.
+ *
+ * Prefers a hash of the git ORIGIN over a hash of the cwd. The contract in `@reticlehq/core` always
+ * said "one-way hash of the git remote (or cwd)", but the implementation only ever hashed the path —
+ * which meant the same repo cloned by four teammates, or checked out twice on one machine, counted as
+ * four separate projects. That inflates the project count and, worse, makes team adoption look like
+ * unrelated individuals. Hashing the origin dedupes a real project down to one id across every clone.
+ *
+ * Still one-way, still non-reversible, and still exactly what the published policy describes: the
+ * remote URL itself never leaves the machine, only its SHA-256. The URL is normalized first (scheme,
+ * credentials, `.git` suffix and case removed) so `git@github.com:acme/web.git` and
+ * `https://github.com/Acme/web` are recognized as the same project rather than two.
+ */
+const projectFingerprint = (cwd: string): { projectId: string; source: ProjectIdSource } => {
+  const { origin } = gitFacts(cwd);
+  return {
+    projectId: createHash('sha256')
+      .update(origin ?? cwd)
+      .digest('hex')
+      .slice(0, 32),
+    // Reported alongside so the analytics knows whether this id is comparable to another machine's.
+    source: origin !== undefined ? ProjectIdSource.GIT_ORIGIN : ProjectIdSource.CWD,
+  };
+};
 
 /** Print the opt-out notice exactly once per machine (honest disclosure, the OSS-trust bar). */
 const showNoticeOnce = (): void => {
@@ -160,16 +199,46 @@ export const setTelemetryEnabled = (enabled: boolean, dir: string = RETICLE_DIR)
   writeFileSync(optOutFile, '1', 'utf8');
 };
 
+/**
+ * The per-event extras — one optional block per event kind, so a payload can only ever be attached
+ * to the event it belongs to. `feedback` is the only one carrying author-written text, and it only
+ * ever arrives from `submitFeedback`, which redacts and validates it first. Nothing else may set it.
+ */
+export interface TelemetryExtra {
+  detach?: boolean;
+  actor?: TelemetryActor;
+  /** `cli_command_run`: which subcommand a human ran. */
+  command?: string;
+  /** `cli_command_run`: flag NAMES present on the invocation. Never values. */
+  flags?: string[];
+  /** `daemon_stopped`: the whole session rolled up. Replaces the old per-tool-call event. */
+  session?: SessionSummary;
+  /** `project_profiled`: the project's shape and depth-of-use. */
+  project?: ProjectProfile;
+  /** `verification_completed`: one verdict. */
+  verification?: Verification;
+  /** `version_changed`: update or rollback. */
+  versionChange?: VersionChange;
+  /** `runtime_crashed`: a fingerprinted crash. */
+  crash?: Crash;
+  feedback?: Feedback;
+  /** `identified`: a self-declared identity. Opt-in, typed by a human, never inferred. */
+  identity?: Identity;
+  /** `mcp_client_connected`: a client attached, and whether it had attached before. */
+  connection?: McpConnection;
+  /** `init_completed`: how `reticle init` went. */
+  init?: InitOutcome;
+  /** `bug_found`: one defect Reticle found in the app under test. */
+  bug?: BugFound;
+}
+
 export interface Telemetry {
   /**
    * Fire one event, non-blocking. `detach: true` hands the send to a disowned child so a short-lived
    * CLI process can exit immediately instead of waiting out the POST (use it from command entry
    * points; daemon-side events send in-process).
    */
-  emit(
-    kind: TelemetryEventKind,
-    extra?: { sessionMs?: number; tool?: string; detach?: boolean },
-  ): Promise<void>;
+  emit(kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<void>;
   readonly enabled: boolean;
   /** True the very first run on this machine — the CLI emits INSTALL alongside the first INVOKE. */
   readonly firstRun: boolean;
@@ -208,7 +277,13 @@ export const createTelemetry = (opts: {
   const ci = env[Env.CI] !== undefined && env[Env.CI] !== '';
   const os = platform();
   const { anonymousId, firstRun } = resolveIdentity();
-  const projectId = projectFingerprint(opts.cwd ?? process.cwd());
+  /**
+   * One id per PROCESS, minted in memory and never persisted — which is exactly right: a daemon run
+   * IS the session, and a restarted daemon is genuinely a new one. Ephemeral by construction, so it
+   * adds no durable identifier to the machine.
+   */
+  const sessionId = randomUUID();
+  const { projectId, source: projectIdSource } = projectFingerprint(opts.cwd ?? process.cwd());
   showNoticeOnce();
 
   const spawnDetached =
@@ -217,24 +292,85 @@ export const createTelemetry = (opts: {
       spawn(command, args, { detached: true, stdio: 'ignore' }).unref();
     });
 
-  const emit = async (
-    kind: TelemetryEventKind,
-    extra?: { sessionMs?: number; tool?: string; detach?: boolean },
-  ): Promise<void> => {
+  const emit = async (kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<void> => {
     const event: TelemetryEvent = {
       v: TELEMETRY_EVENT_VERSION,
       anonymousId,
+      sessionId,
       projectId,
       event: kind,
       ts: now(),
       version: opts.version,
       ci,
       os,
-      ...(extra?.sessionMs !== undefined ? { sessionMs: extra.sessionMs } : {}),
-      ...(extra?.tool !== undefined ? { tool: extra.tool } : {}),
+      projectIdSource,
+      ...(extra?.actor !== undefined ? { actor: extra.actor } : {}),
+      ...(extra?.command !== undefined ? { command: extra.command } : {}),
+      ...(extra?.flags !== undefined ? { flags: extra.flags } : {}),
+      ...(extra?.session !== undefined ? { session: extra.session } : {}),
+      ...(extra?.project !== undefined ? { project: extra.project } : {}),
+      ...(extra?.verification !== undefined ? { verification: extra.verification } : {}),
+      ...(extra?.versionChange !== undefined ? { versionChange: extra.versionChange } : {}),
+      ...(extra?.crash !== undefined ? { crash: extra.crash } : {}),
+      ...(extra?.feedback !== undefined ? { feedback: extra.feedback } : {}),
+      ...(extra?.identity !== undefined ? { identity: extra.identity } : {}),
+      ...(extra?.connection !== undefined ? { connection: extra.connection } : {}),
+      ...(extra?.init !== undefined ? { init: extra.init } : {}),
+      ...(extra?.bug !== undefined ? { bug: extra.bug } : {}),
     };
     // Map the core contract onto PostHog's capture shape: id/name/time move up, the rest are properties.
-    const { anonymousId: distinctId, event: name, ts, ...properties } = event;
+    // The feedback body is FLATTENED into `feedback_*` properties rather than sent as a nested object:
+    // PostHog filters and breakdowns operate on top-level properties, so a nested `feedback.stack`
+    // would be invisible to the exact "which stacks report the most bugs" question this exists to
+    // answer. One prefix keeps them grouped in the UI without a nested path.
+    const {
+      anonymousId: distinctId,
+      event: name,
+      ts,
+      sessionId: eventSessionId,
+      feedback,
+      session,
+      project,
+      verification,
+      versionChange,
+      crash,
+      identity,
+      connection,
+      init,
+      bug,
+      ...rest
+    } = event;
+    // `$session_id` is PostHog's OWN session property, so sending ours under that name lights up
+    // its built-in session views and funnels for free rather than requiring custom HogQL everywhere.
+    const properties: Record<string, unknown> = {
+      ...rest,
+      sessionId: eventSessionId,
+      $session_id: eventSessionId,
+    };
+    // Each block is flattened under its own prefix rather than nested. PostHog filters, breakdowns and
+    // insight builders all operate on TOP-LEVEL properties, so a nested `project.stack` is invisible to
+    // the exact "which stacks retain best" question these exist to answer — you would have to drop to
+    // raw HogQL for every chart. One prefix per block keeps them grouped in the property list without
+    // paying that cost. The two genuine maps (`toolCounts`, `errorKinds`) stay objects: their keys are
+    // open-ended, so flattening them would mint an unbounded number of property names, which is the one
+    // thing that actually degrades a PostHog project.
+    const blocks: Record<string, Record<string, unknown> | undefined> = {
+      feedback,
+      session,
+      project,
+      verification,
+      version: versionChange,
+      crash,
+      identity,
+      connection,
+      init,
+      bug,
+    };
+    for (const [prefix, block] of Object.entries(blocks)) {
+      for (const [key, value] of Object.entries(block ?? {})) {
+        properties[`${prefix}_${key}`] = value;
+      }
+    }
     const body = JSON.stringify({
       api_key: apiKey,
       batch: [

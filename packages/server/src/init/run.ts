@@ -6,10 +6,18 @@
 
 import { dirname, join } from 'node:path';
 import { detect, Framework, type DetectInput } from './detect.js';
-import { buildPlan, StepStatus, type Plan, type PlanInput } from './plan.js';
+import {
+  DEPS_TARGET,
+  MCP_TARGET,
+  buildPlan,
+  StepStatus,
+  type Plan,
+  type PlanInput,
+} from './plan.js';
 import { claudeAvailableProbe, claudeExistsProbe } from './mcp.js';
 import { CURSOR_DIR_RELPATH, CURSOR_MCP_RELPATH } from './cursor.js';
 import { deriveProjectId, packageName } from './project-id.js';
+import { InitFailure, reportInitOutcome } from '../telemetry/init-telemetry.js';
 
 /** Lockfile basenames, in package-manager preference order (mirrors detect.ts). */
 const LOCKFILE_NAMES = [
@@ -204,14 +212,41 @@ function applyEffects(plan: Plan, io: InitIo): Set<string> {
   return failed;
 }
 
+/**
+ * Which STEP failed, from the step targets — not from an error string, which would carry paths.
+ *
+ * The distinction that matters: a dependency install failing is a machine/network problem (offline,
+ * a locked registry, a broken package manager), while MCP registration failing means the `claude` CLI
+ * is missing or refused. Two completely different fixes, and until now both were simply "init didn't
+ * work" with nothing to tell them apart.
+ */
+function classifyInitFailure(failed: ReadonlySet<string>): string {
+  if (failed.has(DEPS_TARGET)) return InitFailure.DEPENDENCY_INSTALL;
+  if (failed.has(MCP_TARGET)) return InitFailure.MCP_REGISTRATION;
+  return InitFailure.OTHER;
+}
+
 export function runInit(options: InitOptions, io: InitIo): InitResult {
   const pkgRaw = io.readFile(PACKAGE_JSON);
   if (pkgRaw === null) {
     io.print('No package.json found. Run `reticle init` from your project root.');
+    // The onboarding funnel had NO instrumentation, so a setup that died here was indistinguishable
+    // from someone who never ran the command — the two failure modes with the most different fixes.
+    reportInitOutcome({ ok: false, reason: InitFailure.NO_PACKAGE_JSON });
     return { ok: false, applied: 0, manual: 0 };
   }
 
   const plan = buildPlan(gatherPlanInput(options, io, pkgRaw));
   const failed = options.dryRun ? new Set<string>() : applyEffects(plan, io);
-  return report(plan, options.dryRun, failed, io);
+  const result = report(plan, options.dryRun, failed, io);
+  // A dry run is a preview, not an outcome — reporting it would inflate both success and failure.
+  if (!options.dryRun) {
+    reportInitOutcome({
+      ok: result.ok,
+      ...(result.ok ? {} : { reason: classifyInitFailure(failed) }),
+      stack: plan.framework,
+      mcpRegistered: !failed.has(MCP_TARGET),
+    });
+  }
+  return result;
 }

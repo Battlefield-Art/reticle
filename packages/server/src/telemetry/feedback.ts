@@ -1,0 +1,219 @@
+/**
+ * The feedback channel — the one place in Reticle that sends words someone wrote.
+ *
+ * Reticle is built for agents, and until now nothing closed the loop: when a tool misbehaved, or a
+ * verification came back undecidable, or an observer simply could not see the thing that mattered,
+ * that knowledge died in the agent's context window. This module is the return path. An agent files a
+ * report through `reticle_feedback` when a tool fails it; a human files one through `reticle
+ * feedback` with a rating and their own words.
+ *
+ * Three properties are non-negotiable here, because free text is a different privacy class from the
+ * event counters the rest of telemetry sends:
+ *
+ *   1. NEVER PASSIVE. There is no code path that emits feedback on its own. Every event is the direct
+ *      result of an explicit call someone made carrying content they authored. Nothing is scraped
+ *      from the app, the DOM, the network log, or the repo.
+ *   2. REDACTED BEFORE THE WIRE. `redactFeedbackText` strips the credential/PII shapes that leak into
+ *      a pasted trace even when the author meant no harm. It runs client-side, so the redaction is
+ *      auditable in this repo rather than promised in a policy.
+ *   3. INDEPENDENTLY DISABLE-ABLE. `RETICLE_FEEDBACK=0` kills the channel while leaving anonymous
+ *      adoption metrics on — the setting an org wants when counters are fine but prose is not. Every
+ *      existing switch (`RETICLE_TELEMETRY=0`, `DO_NOT_TRACK`, `reticle telemetry disable`) still
+ *      disables it too, since it rides the same emitter.
+ */
+import {
+  FeedbackSchema,
+  FEEDBACK_TEXT_MAX,
+  FEEDBACK_TRACE_MAX,
+  FEEDBACK_FIELD_MAX,
+  TelemetryEventKind,
+  type Feedback,
+} from '@reticlehq/core';
+import { platform } from 'node:os';
+import { getTelemetry } from './telemetry.js';
+import { SERVER_VERSION } from '../server-version.js';
+import { feedbackContext, type SessionFacts } from './feedback-context.js';
+
+/** Kills the feedback channel ONLY — adoption counters keep flowing. */
+export const FEEDBACK_ENV = 'RETICLE_FEEDBACK';
+
+/** What replaces a redacted match. Visible on purpose: a reader must see that something was removed. */
+export const REDACTED = '[redacted]';
+
+/**
+ * The shapes that leak. Ordered most-specific first — a URL carrying inline credentials must be
+ * caught as a URL before the bare-token rule chews the middle out of it.
+ *
+ * This is a net, not a proof. It cannot catch a secret that looks like an ordinary word, which is
+ * exactly why the tool description tells the agent not to paste app source or user data in the first
+ * place. Defense in depth: instruct first, redact second, cap third.
+ */
+const REDACTIONS: readonly { readonly pattern: RegExp; readonly label: string }[] = [
+  // scheme://user:pass@host — the credential is in the authority section.
+  { pattern: /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, label: 'url-credentials' },
+  { pattern: /\b[\w.%+-]+@[\w.-]+\.[a-z]{2,}\b/gi, label: 'email' },
+  // Credential assignments: the KEY stays (it is the useful part), the VALUE goes. The auth SCHEME
+  // (`Bearer`, `Basic`, `Token`) is consumed as part of the value, not left as the value — matching
+  // only `\S+` after the separator ate the word "Bearer" and published the secret right behind it.
+  {
+    pattern:
+      /\b(authorization|api[-_]?key|secret|token|password|passwd|pwd)\b(?:\s*[:=]\s*|\s+)(?:(?:bearer|basic|token|digest)\s+)?\S+/gi,
+    label: 'credential-assignment',
+  },
+  // Vendor key formats that are self-identifying (sk-…, ghp_…, AKIA…, xoxb-…, eyJ… JWTs).
+  { pattern: /\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}\b/g, label: 'vendor-key' },
+  { pattern: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, label: 'github-token' },
+  { pattern: /\bAKIA[0-9A-Z]{16}\b/g, label: 'aws-key' },
+  { pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, label: 'slack-token' },
+  { pattern: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, label: 'jwt' },
+  // Home directories carry the account name, and a trace is full of them.
+  { pattern: /(?:\/Users\/|\/home\/|[A-Z]:\\Users\\)[^\s/\\:"']+/g, label: 'home-path' },
+];
+
+export interface Redaction {
+  text: string;
+  /** Which rules fired, deduped. Surfaced back to the author so a redaction is never silent. */
+  removed: string[];
+}
+
+/** Strip credential/PII shapes and cap the length. Pure — the tests read like a spec of what leaks. */
+export function redactFeedbackText(input: string, max: number): Redaction {
+  const removed = new Set<string>();
+  let text = input;
+  for (const { pattern, label } of REDACTIONS) {
+    text = text.replace(pattern, (_match, ...groups) => {
+      removed.add(label);
+      // A rule with a leading capture keeps it (the scheme, the `api_key=` key) so the reader still
+      // sees WHAT was removed, not just that something was.
+      const prefix = typeof groups[0] === 'string' ? groups[0] : '';
+      return `${prefix}${REDACTED}`;
+    });
+  }
+  return { text: text.slice(0, max), removed: [...removed] };
+}
+
+/** True when the feedback channel is switched off on its own (the emitter's switches apply as well). */
+export function feedbackDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = (env[FEEDBACK_ENV] ?? '').toLowerCase();
+  return value === '0' || value === 'false' || value === 'off' || value === 'no';
+}
+
+/**
+ * The fields an author writes, and therefore the fields that must be redacted. ONE list, used both to
+ * redact and to assemble — so a new field cannot be added to one and missed by the other.
+ *
+ * `model` is deliberately included: it is agent-supplied text like the rest, and while a model name
+ * is not sensitive, exempting it would re-introduce the "which fields are safe?" judgement call that
+ * caused the original gap.
+ */
+const AUTHOR_WRITTEN_FIELDS: ReadonlySet<string> = new Set([
+  'text',
+  'trace',
+  'need',
+  'impact',
+  'currentApproach',
+  'model',
+]);
+
+/** Per-field caps; anything unlisted uses the standard field cap. */
+const FIELD_CAPS: Record<string, number> = {
+  text: FEEDBACK_TEXT_MAX,
+  trace: FEEDBACK_TRACE_MAX,
+  model: 64,
+};
+
+/** What the author supplies; the environment context is detected, never asked for. */
+export type FeedbackInput = Pick<
+  Feedback,
+  'source' | 'kind' | 'text' | 'trace' | 'rating' | 'need' | 'impact' | 'currentApproach' | 'model'
+>;
+
+export interface FeedbackReceipt {
+  /** False when a kill switch is on — the report was DROPPED, and the caller is told so plainly. */
+  sent: boolean;
+  reason?: string;
+  /** Which redaction rules fired. Empty when nothing needed removing. */
+  redacted: string[];
+  /** The exact context that went with it, echoed back so the send is never a black box. */
+  context: Partial<Feedback>;
+}
+
+/**
+ * Redact, validate, and emit one feedback report. Returns a receipt rather than throwing: a feedback
+ * send that fails must never take down the tool call that reported the failure — that would punish
+ * the exact behaviour we are trying to encourage.
+ */
+export async function submitFeedback(
+  input: FeedbackInput,
+  opts: { cwd?: string; session?: SessionFacts; env?: NodeJS.ProcessEnv } = {},
+): Promise<FeedbackReceipt> {
+  const env = opts.env ?? process.env;
+  const context = feedbackContext(opts.cwd ?? process.cwd(), opts.session);
+  // Redact EVERY author-written field, derived from the input rather than listed.
+  //
+  // The first version named `text` and `trace` explicitly. When `need`, `impact` and
+  // `currentApproach` were added later they silently bypassed redaction entirely — three new
+  // free-text fields going to the wire raw, and a `currentApproach` reading "hardcoding the token
+  // sk-…" would have shipped the token. Enumerating the fields to protect is the same class of
+  // mistake as hand-copying an enum: correct on the day it is written, quietly wrong at the next
+  // addition. Deriving the set means a sixth field is covered the moment it exists.
+  const redactions = new Map<string, Redaction>();
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value !== 'string' || value === '') continue;
+    if (!AUTHOR_WRITTEN_FIELDS.has(key)) continue;
+    redactions.set(key, redactFeedbackText(value, FIELD_CAPS[key] ?? FEEDBACK_FIELD_MAX));
+  }
+  const body = redactions.get('text') ?? { text: '', removed: [] };
+  const redacted = [...new Set([...redactions.values()].flatMap((r) => r.removed))];
+
+  if (feedbackDisabled(env)) {
+    return { sent: false, reason: `feedback is disabled by ${FEEDBACK_ENV}`, redacted, context };
+  }
+  const telemetry = getTelemetry();
+  if (!telemetry.enabled) {
+    return {
+      sent: false,
+      reason: 'telemetry is disabled on this machine, so feedback has nowhere to go',
+      redacted,
+      context,
+    };
+  }
+
+  const parsed = FeedbackSchema.safeParse({
+    source: input.source,
+    kind: input.kind,
+    // Every author-written field, redacted. Built from the map so nothing can be forgotten here
+    // either — the field list exists in exactly one place.
+    ...Object.fromEntries(
+      [...redactions].filter(([, r]) => r.text !== '').map(([key, r]) => [key, r.text]),
+    ),
+    text: body.text,
+    ...(input.rating !== undefined ? { rating: input.rating } : {}),
+    ...context,
+  });
+  if (!parsed.success) {
+    return {
+      sent: false,
+      reason: parsed.error.issues[0]?.message ?? 'invalid feedback',
+      redacted,
+      context,
+    };
+  }
+  await telemetry.emit(TelemetryEventKind.FEEDBACK_SUBMITTED, { feedback: parsed.data });
+  return { sent: true, redacted, context };
+}
+
+/**
+ * The receipt's context PLUS the fields the emitter stamps on every event regardless of kind — the
+ * reticle version, the OS, and whether this is CI. They are the single most-asked question of any bug
+ * report ("what version?"), so they are echoed here rather than left as an invisible claim: what the
+ * CLI prints is then genuinely everything that goes.
+ */
+export function describeFeedbackPayload(context: Partial<Feedback>): Record<string, unknown> {
+  return {
+    ...context,
+    version: SERVER_VERSION,
+    os: platform(),
+    ci: process.env['CI'] !== undefined,
+  };
+}

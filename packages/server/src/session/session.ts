@@ -1,4 +1,5 @@
 import type { WebSocket } from 'ws';
+import { LastAct } from './last-act.js';
 import { commandTimeoutMessage, type PageRuntime } from './command-timeout.js';
 import { readHealthEvent, type SessionHealth } from './session-health.js';
 
@@ -11,6 +12,7 @@ import {
   HumanMarkDataSchema,
   ReticleCommand,
   MessageKind,
+  parseEventPayload,
   PresenterTone,
   SESSION_HEALTH,
   SESSION_LEASE,
@@ -30,6 +32,7 @@ import {
 } from '../journal/journal-query.js';
 import { type AmbientCounts } from '../journal/ambient.js';
 import { ObservedState } from './observed-state.js';
+import { recordBrowserLatency, recordSdkFailure } from '../telemetry/session-metrics.js';
 import { LiveControl, type InboxMessage } from './live-control.js';
 export type { InboxMessage } from './live-control.js'; // moved; still part of Session's surface
 import { ReviewStore, type ReviewMark } from './review-store.js';
@@ -75,9 +78,8 @@ export class Session {
   #hidden = false;
   /** Which shell the page reported (PAGE_HEALTH). Undefined until the first report lands. */
   #runtime: PageRuntime | undefined;
+  #engine: string | undefined;
   #focused = true;
-  #lastActCursor: number | undefined;
-  #lastActSource: string | undefined;
   /** Liveness: wall-clock of the last AGENT command (distinct from browser chatter / lastSeen). */
   #lastAgentActivityAt: number;
   /** Server-side mirror of the agent-tuned idle window, so the reaper honors reticle_session. */
@@ -132,12 +134,21 @@ export class Session {
    * `runtime` is optional so an older SDK (which does not report it) still works — it simply loses
    * the desktop-specific timeout diagnosis rather than breaking.
    */
-  applyHealth(hidden: boolean, focused: boolean, runtime?: string): void {
+  applyHealth(hidden: boolean, focused: boolean, runtime?: string, engine?: string): void {
     this.#hidden = hidden;
     this.#focused = focused;
     if (runtime === 'electron' || runtime === 'tauri' || runtime === 'web') {
       this.#runtime = runtime;
     }
+    if (engine !== undefined) this.#engine = engine;
+  }
+
+  /** The shell (web/electron/tauri) and rendering engine the SDK reported. Undefined on an older SDK. */
+  get runtime(): PageRuntime | undefined {
+    return this.#runtime;
+  }
+  get engine(): string | undefined {
+    return this.#engine;
   }
 
   /** Throttled if the tab is hidden OR we have not heard from it recently. */
@@ -175,14 +186,14 @@ export class Session {
     if (this.staleMs() > SESSION_LEASE.STALE_AFTER_MS) {
       base.stale = true;
       base.cleanup_suggestion =
-        'Call reticle_end_session to free this session before starting new work.';
+        'Call reticle_session{action:"end"} to free this session before starting new work.';
     }
     // Surface human bug reports in reticle_sessions (only when > 0, so a clean session adds nothing).
     const marks = this.#review.pendingCount();
     if (marks > 0) {
       base.pendingMarks = marks;
       const s = marks === 1 ? '' : 's';
-      base.review_suggestion = `The human flagged ${String(marks)} issue${s} on this tab — call reticle_review to see and fix ${marks === 1 ? 'it' : 'them'}.`;
+      base.review_suggestion = `The human flagged ${String(marks)} issue${s} on this tab — call reticle_session{action:"review"} to see and fix ${marks === 1 ? 'it' : 'them'}.`;
     }
     return base;
   }
@@ -195,12 +206,14 @@ export class Session {
   /** Re-stamp an incoming event with server-relative time, buffer it, and fan out. */
   pushEvent(event: ReticleEvent, byteSize?: number): void {
     if (event.type === EventType.PAGE_HEALTH) {
-      const report = readHealthEvent(event.data);
-      this.applyHealth(
-        report.hidden ?? this.#hidden,
-        report.focused ?? this.#focused,
-        report.runtime,
-      );
+      const r = readHealthEvent(event.data);
+      this.applyHealth(r.hidden ?? this.#hidden, r.focused ?? this.#focused, r.runtime, r.engine);
+    }
+    // The in-page half of Reticle reporting its own failure — recorded like a tool error
+    // (fingerprinted, variables stripped) so a broken observer is as visible as a broken tool.
+    if (event.type === EventType.SDK_FAILED) {
+      const sdk = parseEventPayload(EventType.SDK_FAILED, event.data);
+      if (sdk.success) recordSdkFailure(sdk.data as { site: string; message: string });
     }
     if (event.type === EventType.HUMAN_CONTROL) {
       // Narrow unknown at the boundary; an invalid/unknown control is ignored (never thrown).
@@ -318,27 +331,12 @@ export class Session {
   }
 
   /**
-   * Honesty: remember the event cursor of the most recent act so wait_for/assert can default their
-   * evaluation floor to it — a signal buffered before this act can never fake a later pass.
+   * What the most recent act was: its cursor, its source, and what it changed inside its target.
+   *
+   * Exposed as the object rather than six pass-through methods — act writes to it and observe reads
+   * from it, and the split between those two tool calls is the whole reason it exists.
    */
-  markActCursor(cursor: number): void {
-    this.#lastActCursor = cursor;
-  }
-
-  /** The cursor of the last act, or undefined if nothing has acted yet. */
-  lastActCursor(): number | undefined {
-    return this.#lastActCursor;
-  }
-
-  /** Remember where the last acted control is written (`file:line`), for failures with no element. */
-  markActSource(source: string | undefined): void {
-    this.#lastActSource = source;
-  }
-
-  /** Where the last acted control is written, or undefined if nothing has acted yet. */
-  lastActSource(): string | undefined {
-    return this.#lastActSource;
-  }
+  readonly lastAct = new LastAct();
 
   // ── Server-authoritative liveness (immune to browser-tab throttling) ──────────────
 
@@ -424,11 +422,13 @@ export class Session {
       commandTimeoutMessage(name, timeoutMs, {
         url: this.url,
         hidden: this.#hidden,
+        lastSeenMs: this.lastSeenMs(),
         ...(this.#runtime === undefined ? {} : { runtime: this.#runtime }),
       }),
     );
     this.#socket.send(payload);
-    return awaited;
+    const sentAt = Date.now(); // browser-leg timing; see recordBrowserLatency for why it is split out
+    return awaited.finally(() => recordBrowserLatency(Date.now() - sentAt));
   }
 
   handleResult(result: CommandResult): void {
@@ -560,7 +560,7 @@ export class Session {
     const ageMs = this.#clock() - this.#startedAt;
     if (ageMs < SESSION_LEASE.WARN_AFTER_MS) return undefined;
     const minutes = Math.floor(ageMs / 60_000);
-    return `Session ${this.id} has been open for ${String(minutes)} minutes. If your task is complete, call reticle_end_session now.`;
+    return `Session ${this.id} has been open for ${String(minutes)} minutes. If your task is complete, call reticle_session{action:"end"} now.`;
   }
 
   /** Fire-and-forget command send — NOT registered in #pending (no correlated result expected). */

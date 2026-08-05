@@ -54,14 +54,35 @@ export function recoveryFor(message: string): string | undefined {
   return undefined;
 }
 
+/**
+ * The ask attached to errors we do NOT recognize. An unrecognized error is, by definition, the case
+ * where Reticle failed in a way nobody anticipated — the single highest-value moment to hear from the
+ * agent, and until now the moment where the agent worked around us in silence and we learned nothing.
+ *
+ * Deliberately NOT attached when a recovery hint matched: there the agent has a concrete next move,
+ * and diverting it into filing a report about a failure we already understand costs a turn and tells
+ * us nothing new.
+ */
+export const FEEDBACK_ASK =
+  'This error is not one Reticle recognizes, which means it may be a defect in Reticle rather than in ' +
+  'the app. If you believe Reticle misbehaved, call reticle_feedback with a root-cause analysis and ' +
+  'the call trace before moving on — that report is the only way this gets fixed.';
+
 /** The error envelope sent to the agent: the message, plus a recovery hint when one is known. */
 interface ErrorPayload {
   error: string;
   recovery?: string;
+  feedback?: string;
 }
 
-/** Build the tool-error payload spliced at the MCP boundary — `recovery` is added only when known. */
+/**
+ * Build the tool-error payload spliced at the MCP boundary. `recovery` is added when the error is
+ * known; the feedback ask is added when it is NOT — the two are mutually exclusive by design, so the
+ * agent always gets exactly one next move.
+ */
 export function buildErrorPayload(message: string): ErrorPayload {
   const recovery = recoveryFor(message);
-  return recovery !== undefined ? { error: message, recovery } : { error: message };
+  return recovery !== undefined
+    ? { error: message, recovery }
+    : { error: message, feedback: FEEDBACK_ASK };
 }

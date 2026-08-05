@@ -1,0 +1,265 @@
+/**
+ * How a SESSION and a PROJECT measured — the two big rollup payloads and the types they are built from.
+ *
+ * Split out of `telemetry.ts` because they are a different kind of thing from the event contract next
+ * door: that file answers "what happened", these answer "how much, how long, and on what". They are
+ * also where nearly all the growth is — every new thing worth measuring lands in one of these two
+ * shapes — so keeping them here is what stops the event contract itself from drifting past its cap
+ * every time a counter is added.
+ */
+import { z } from 'zod';
+
+/**
+ * One distinct error shape seen during a session, with the detail needed to fix it.
+ *
+ * Replaces a bare `{fingerprint: count}` map, which had the same no-dictionary problem as the crash
+ * payload: you could rank the top error and never learn what it was, or which tool produced it.
+ */
+export const ErrorShapeSchema = z.object({
+  /** Stable group key — the same defect from any machine shares it. */
+  fingerprint: z.string().min(1).max(64),
+  /** How many times it happened this session. */
+  count: z.number().int().nonnegative(),
+  /** The message with every variable part stripped. The dictionary entry for the fingerprint. */
+  message: z.string().max(300),
+  /** Which tool produced it — the same message from two tools is usually two different bugs. */
+  tool: z.string().max(64).optional(),
+});
+export type ErrorShape = z.infer<typeof ErrorShapeSchema>;
+
+/**
+ * Whether the project has git, and whether anyone has pushed it.
+ *
+ * The distinction matters for more than curiosity: `projectId` can only identify the SAME project
+ * across two machines when it is derived from a shared git origin. A repo nobody has pushed has
+ * nothing shared to hash, so its fingerprint falls back to the local directory path.
+ */
+export const GitState = {
+  /** No `.git` anywhere above the project — Reticle is running in a plain directory. */
+  NONE: 'none',
+  /** `git init` was run, but there is no origin remote. Nobody else can be working on this copy. */
+  LOCAL_ONLY: 'local_only',
+  /** There is an origin remote — the project is pushed and can be shared. */
+  REMOTE: 'remote',
+} as const;
+export type GitState = (typeof GitState)[keyof typeof GitState];
+
+/**
+ * Which forge hosts the repo. Public forges are named; everything else is `self_hosted` WITHOUT its
+ * hostname, because an internal git host is usually `git.<company>.com` and reporting it would
+ * identify the company outright. The bucket carries the signal that actually matters — self-hosted
+ * git is a strong enterprise tell.
+ */
+export const RepoForge = {
+  GITHUB: 'github',
+  GITLAB: 'gitlab',
+  BITBUCKET: 'bitbucket',
+  AZURE: 'azure',
+  SOURCEHUT: 'sourcehut',
+  CODEBERG: 'codeberg',
+  SELF_HOSTED: 'self_hosted',
+} as const;
+export type RepoForge = (typeof RepoForge)[keyof typeof RepoForge];
+
+/**
+ * What the machine looked like at a moment worth remembering — a crash, or the end of a session.
+ *
+ * Sampled at MOMENTS, never per tool call: `os.loadavg()` and `process.memoryUsage()` are cheap but
+ * not free, and taking them 200 times a session to answer "was the machine struggling" would be
+ * paying a continuous cost for a question only asked about the bad moments. Absolute numbers in MB
+ * rather than percentages, because "2 GB free of 8" and "2 GB free of 64" are different worlds.
+ */
+export const MachineSnapshotSchema = z.object({
+  /** Resident set size of the daemon itself — our footprint, the one we can actually fix. */
+  rssMb: z.number().int().nonnegative(),
+  heapUsedMb: z.number().int().nonnegative(),
+  /** Free and total system memory. A machine at 200 MB free explains a lot of otherwise-weird bugs. */
+  freeMemMb: z.number().int().nonnegative(),
+  totalMemMb: z.number().int().nonnegative(),
+  /** 1-minute load average, ×100 so it stays an integer. Zero on Windows, which does not report it. */
+  load1x100: z.number().int().nonnegative(),
+  cpuCount: z.number().int().nonnegative(),
+});
+export type MachineSnapshot = z.infer<typeof MachineSnapshotSchema>;
+
+/** Per-tool wall-clock. `count` lives in `toolCounts`; these are the two numbers it does not carry. */
+export const ToolTimingSchema = z.object({
+  /** Total ms spent inside this tool. Divided by its count, the average; summed, the time in Reticle. */
+  totalMs: z.number().int().nonnegative(),
+  /** The single worst call. An average hides the 30-second outlier that made someone give up. */
+  maxMs: z.number().int().nonnegative(),
+});
+export type ToolTiming = z.infer<typeof ToolTimingSchema>;
+
+/**
+ * Attempts, successes and failure reasons for one kind of connection.
+ *
+ * The first version of this counted only successes — and counted them inconsistently, incrementing
+ * before the await on one path and after it on another, so the CDP number was attempts and the others
+ * were successes and nobody could have told from the data. A connection metric that cannot express
+ * FAILURE is close to useless: the whole question is how often people cannot get a browser.
+ */
+export const ConnectionStatsSchema = z.object({
+  attempts: z.number().int().nonnegative(),
+  successes: z.number().int().nonnegative(),
+  /** Failure reasons with counts — our own classified vocabulary, never a raw error string. */
+  failures: z.record(z.string(), z.number().int().nonnegative()).optional(),
+});
+export type ConnectionStats = z.infer<typeof ConnectionStatsSchema>;
+
+/**
+ * Why a browser/lease connection failed, classified into causes we can act on.
+ *
+ * A raw message would be both high-cardinality and unsafe (it can carry a URL or a path). These are
+ * the distinct THINGS THAT GO WRONG, each with a different fix: a missing Chromium is a docs problem,
+ * a refused CDP url is a configuration problem, a pool timeout is a capacity problem.
+ */
+export const ConnectFailure = {
+  /** Playwright's browser binary was never downloaded — `npx playwright install`. */
+  CHROMIUM_MISSING: 'chromium_missing',
+  /** `playwright` itself is not installed; the optional dependency was skipped. */
+  PLAYWRIGHT_MISSING: 'playwright_missing',
+  /** Nothing listening on the CDP endpoint, or it refused us. */
+  CDP_UNREACHABLE: 'cdp_unreachable',
+  /** The browser launched but died, or was closed underneath us. */
+  BROWSER_CRASHED: 'browser_crashed',
+  /** Waited for a pool slot and never got one. A capacity signal, not an error. */
+  POOL_TIMEOUT: 'pool_timeout',
+  /** Classified as nothing we recognize — the bucket to watch, since a big one means a blind spot. */
+  OTHER: 'other',
+} as const;
+export type ConnectFailure = (typeof ConnectFailure)[keyof typeof ConnectFailure];
+
+/**
+ * One session, rolled up. This replaces the per-tool-call event entirely — see the volume note on
+ * `TelemetryEventKind`. The histogram is the point: `{reticle_act: 40, reticle_assert: 12}` says the
+ * session was a real verification loop, where 52 separate rows would have said only that 52 things
+ * happened. Counts, never payloads: no arguments, no results, no selectors.
+ */
+export const SessionSummarySchema = z.object({
+  /** How long the daemon was up, ms. */
+  durationMs: z.number().int().nonnegative(),
+  /** Total MCP tool calls served. */
+  toolCalls: z.number().int().nonnegative(),
+  /**
+   * Calls per tool name — `{ "reticle_act": 40 }`. Tool names are a fixed, low-cardinality set we
+   * define ourselves, so this is safe to send whole and is queryable in HogQL with JSONExtract.
+   */
+  toolCounts: z.record(z.string(), z.number().int().nonnegative()),
+  /** Tool calls that ended in an error, and the distinct error shapes behind them. */
+  toolErrors: z.number().int().nonnegative(),
+  /**
+   * The distinct error shapes seen, with counts, messages-with-variables-stripped, and the tool that
+   * produced each. Bounded, so a pathological loop cannot grow it without limit.
+   */
+  errors: z.array(ErrorShapeSchema).max(40).optional(),
+  /**
+   * Failures reported by the IN-PAGE half of Reticle. Half the product runs in the browser and had no
+   * error reporting at all — every SDK catch block swallowed silently, so a broken observer just made
+   * the product quieter and nobody found out.
+   */
+  sdkFailures: z.number().int().nonnegative().optional(),
+  /** The distinct SDK failure shapes, with the module that reported each. */
+  sdkErrors: z.array(ErrorShapeSchema).max(40).optional(),
+  /** Verifications that produced a verdict during the session. */
+  verifications: z.number().int().nonnegative(),
+  /** Defects found in the app under test — the outcome number, not an activity number. */
+  bugsFound: z.number().int().nonnegative().optional(),
+  /** Those bugs by kind, so the headline number can always be broken down rather than asserted. */
+  bugKinds: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  /**
+   * Which PARAMETERS agents actually passed, per tool: `{"reticle_act": {"ref": 40, "action:click": 31}}`.
+   *
+   * Names only, with one narrow exception for parameters whose values are enums we define ourselves
+   * (`action:click`). Never a raw value: `reticle_act`'s `args` carries the text being typed into the
+   * app, which on a login form is a password. See argument-shape.ts for the allowlist.
+   */
+  toolParams: z.record(z.string(), z.record(z.string(), z.number().int().nonnegative())).optional(),
+  /**
+   * Browser/lease connections by kind, with attempts AND failures. Replaces a bare success counter
+   * that could not express the only interesting outcome.
+   */
+  connections: z.record(z.string(), ConnectionStatsSchema).optional(),
+  /** Wall-clock per tool. With `toolCounts` this gives average, worst, and total time in Reticle. */
+  toolTiming: z.record(z.string(), ToolTimingSchema).optional(),
+  /**
+   * Total ms spent inside tool calls. The headline answer to "how much time does verification cost",
+   * and comparable against `durationMs` to see what fraction of a session Reticle was actually busy.
+   */
+  busyMs: z.number().int().nonnegative().optional(),
+  /**
+   * Time spent waiting on the BROWSER, and how many commands that was. Subtracted from `busyMs` this
+   * separates Reticle's own overhead from the app's — opposite fixes, previously indistinguishable.
+   */
+  browserMs: z.number().int().nonnegative().optional(),
+  browserCommands: z.number().int().nonnegative().optional(),
+  /** The most tool calls in flight at once — parallel agents, or one agent fanning out. */
+  peakConcurrentTools: z.number().int().nonnegative().optional(),
+  /** Calls for a tool name that does not exist. A non-zero value means our surface is confusing. */
+  unknownToolCalls: z.number().int().nonnegative().optional(),
+  /** The machine at shutdown — was it starved while all this was happening? */
+  machine: MachineSnapshotSchema.optional(),
+  /** Distinct MCP clients seen (`claude-code`, `cursor`), so multi-agent use is visible. */
+  clients: z.array(z.string().max(64)).max(8).optional(),
+  /** Was this a clean shutdown, or a periodic flush of a still-running session? */
+  final: z.boolean(),
+});
+export type SessionSummary = z.infer<typeof SessionSummarySchema>;
+
+/**
+ * Coarse size buckets. A bucket answers "is this a toy or a real codebase" — which is the actual
+ * question — while an exact file count starts to be a fingerprint, especially combined with the
+ * stack and the framework version.
+ */
+export const ProjectSize = {
+  TINY: 'tiny', // < 50 source files — a demo or a spike
+  SMALL: 'small', // < 250
+  MEDIUM: 'medium', // < 1000
+  LARGE: 'large', // < 5000
+  HUGE: 'huge', // 5000+ — a monorepo or a mature product
+} as const;
+export type ProjectSize = (typeof ProjectSize)[keyof typeof ProjectSize];
+
+/**
+ * The shape of the project and how much of Reticle it actually uses.
+ *
+ * `featureDepth` is the one to watch: someone running 40 saved flows with visual baselines and a
+ * checked-in contract is a different company from someone who called `reticle_snapshot` twice. Both
+ * look identical in a DAU chart, and only one of them is retained.
+ */
+export const ProjectProfileSchema = z.object({
+  /** Framework detected from package.json (`next`, `vite`, `vue`, `astro`, …). */
+  stack: z.string().min(1).max(64).optional(),
+  /** Its MAJOR version only — "breaks on React 19" is a work item, a full semver is a fingerprint. */
+  stackMajor: z.number().int().nonnegative().optional(),
+  size: z.nativeEnum(ProjectSize).optional(),
+  /** True when the repo has workspaces — monorepos exercise very different code paths. */
+  monorepo: z.boolean().optional(),
+  /** No git / git init but unpushed / pushed to a remote. */
+  git: z.nativeEnum(GitState),
+  /** Which forge, bucketed. Absent unless `git` is `remote`. Never the hostname of a private host. */
+  forge: z.nativeEnum(RepoForge).optional(),
+  /**
+   * How long this project has existed, in whole WEEKS, from its first commit. Answers "are people
+   * adopting Reticle on greenfield spikes or on mature codebases" — the single most useful thing to
+   * know about who this is for. Weeks, not a date: a date plus a stack narrows to a specific repo.
+   */
+  ageWeeks: z.number().int().nonnegative().optional(),
+  /** Saved flows on disk — the deterministic-replay suite. 0 means replay was never adopted. */
+  flowCount: z.number().int().nonnegative(),
+  /** Saved text baselines. */
+  baselineCount: z.number().int().nonnegative(),
+  /** Saved pixel baselines — visual regression adoption. */
+  visualBaselineCount: z.number().int().nonnegative(),
+  /** Recorded verification-run artifacts — CI/OEM consumption. */
+  runCount: z.number().int().nonnegative(),
+  /** A git-checked `.reticle/contract.json` — the team declared a testable surface on purpose. */
+  hasContract: z.boolean(),
+  /** Fail-to-pass bug capsules — the deepest feature in the product. */
+  capsuleCount: z.number().int().nonnegative(),
+  /** Which of Reticle's feature FAMILIES this project has ever touched. The activation metric. */
+  featuresUsed: z.array(z.string().max(32)).max(24),
+  /** 0–1: the fraction of shipped feature families in use. One number for "are they getting value". */
+  featureDepth: z.number().min(0).max(1),
+});
+export type ProjectProfile = z.infer<typeof ProjectProfileSchema>;

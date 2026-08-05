@@ -3,6 +3,7 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { MCP_SSE_PATH, MCP_MESSAGE_PATH, STATUS_PATH } from '@reticlehq/core';
 import { log } from './log.js';
+import { reportMcpConnected } from './telemetry/mcp-connection.js';
 import {
   isLoopbackHost,
   isLocalWebOrigin,
@@ -116,6 +117,10 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
         .connect(transport)
         .then(() => {
           log('mcp_client_connected', { sessionId: sid });
+          // The one signal that separates "Reticle is running" from "somebody is USING it": a daemon
+          // can sit up for days with nothing attached. It also exposes reconnect churn, which is
+          // indistinguishable from healthy usage in every other metric.
+          reportMcpConnected();
         })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);

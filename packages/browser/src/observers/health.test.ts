@@ -57,3 +57,50 @@ describe('installHealth (jsdom)', () => {
     teardown();
   });
 });
+
+/**
+ * The engine bucket rides the health heartbeat because that is where the user-agent already gets
+ * read — a second observer to answer the same question would be a second thing to keep in sync.
+ * Three coarse values only: the raw UA string is high-cardinality and semi-identifying, so it must
+ * never be what leaves the page.
+ */
+describe('engine detection in the health report', () => {
+  const withUserAgent = async (ua: string): Promise<string> => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(ua);
+    const { installHealth } = await import('./health.js');
+    const emit = vi.fn();
+    const teardown = installHealth(emit);
+    const initial = emit.mock.calls.find(
+      (c) => (c[1] as { reason?: string }).reason === HealthReason.INITIAL,
+    );
+    teardown();
+    return (initial?.[1] as { engine: string }).engine;
+  };
+
+  it('reports blink for Chrome — checked FIRST, because every Chromium UA also says "Safari"', async () => {
+    expect(
+      await withUserAgent(
+        'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      ),
+    ).toBe('blink');
+  });
+
+  it('reports gecko for Firefox', async () => {
+    expect(
+      await withUserAgent('Mozilla/5.0 (Macintosh; rv:133.0) Gecko/20100101 Firefox/133.0'),
+    ).toBe('gecko');
+  });
+
+  it('reports webkit for real Safari', async () => {
+    expect(
+      await withUserAgent(
+        'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+      ),
+    ).toBe('webkit');
+  });
+
+  it('never leaks the raw user-agent string itself', async () => {
+    const ua = 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36';
+    expect(await withUserAgent(ua)).not.toContain('Mozilla');
+  });
+});

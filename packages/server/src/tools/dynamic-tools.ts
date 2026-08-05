@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ToolDef, ToolDeps } from './tools.js';
 import { runTool } from './invoke-tool.js';
 import { ReticleTool } from './tool-names.js';
+import { getSessionMetrics } from '../telemetry/session-metrics.js';
 
 /**
  * On-demand tool loading for MCP — the answer to the per-turn tool-definition tax.
@@ -56,7 +57,7 @@ export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
   const reticleTools: ToolDef = {
     name: ReticleTool.TOOLS,
     description:
-      'Discover Reticle tools on demand. Call with no arguments to list every tool (name + one-line summary); call with names:["reticle_network", …] to load full descriptions and parameters for specific tools. Then invoke them with reticle_run. This avoids paying for every tool definition on every turn. To make a verification REUSABLE (record once, replay free forever), the flow workflow lives here: reticle_record_start → act → reticle_flow_save → reticle_flow_verify (and reticle_flow_heal on drift). Load those names when you want to save or re-run a flow.',
+      'Discover Reticle tools on demand. Call with no arguments to list every tool (name + one-line summary); call with names:["reticle_network", …] to load full descriptions and parameters for specific tools. Then invoke them with reticle_run. This avoids paying for every tool definition on every turn. To make a verification REUSABLE (record once, replay free forever), the flow workflow lives here: reticle_record{action:"start"} → act → reticle_flow_save → reticle_flow_verify (and reticle_flow_heal on drift). Load those names when you want to save or re-run a flow.',
     inputSchema: {
       names: z
         .array(z.string())
@@ -100,6 +101,9 @@ export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
           : {};
       const target = byName.get(name);
       if (target === undefined) {
+        // A non-zero count here means our advertised surface is confusing the agent — it reached for
+        // something it believed existed. That is a docs/naming defect, and it was invisible.
+        getSessionMetrics().recordUnknownTool();
         return { error: `unknown tool '${name}'`, available: allTools.map((t) => t.name) };
       }
       // The escape hatch is where a typo is MOST likely, because an unadvertised tool's parameters

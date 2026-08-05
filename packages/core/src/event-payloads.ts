@@ -23,10 +23,19 @@ import { HumanControlDataSchema, HumanMarkDataSchema } from './messages.js';
  * object — the browser imports the members, the schema derives its z.nativeEnum from the same object —
  * so emitter and validator are one source. Co-located with the schemas (kept constants.ts under its cap).
  */
-export const StreamTransport = { SSE: 'sse', WS: 'ws' } as const;
+/**
+ * `FETCH` is a response whose BODY is still arriving after the request itself resolved.
+ *
+ * `fetch` settles at HEADERS, so a streamed response is reported complete while the server is still
+ * writing. Measured on a Next.js App Router page: the RSC payload's NET_REQUEST landed 16 ms in, the
+ * shell rendered, and the Suspense boundary's content arrived 889 ms later — a window in which
+ * nothing at all was observed, so `settled` passed while the fallback was still on screen.
+ */
+export const StreamTransport = { SSE: 'sse', WS: 'ws', FETCH: 'fetch' } as const;
 export type StreamTransport = (typeof StreamTransport)[keyof typeof StreamTransport];
 
-export const StreamDirection = { OPEN: 'open', IN: 'in', OUT: 'out' } as const;
+/** `CLOSE` pairs with `OPEN`: until it arrives, the body is still being written. */
+export const StreamDirection = { OPEN: 'open', IN: 'in', OUT: 'out', CLOSE: 'close' } as const;
 export type StreamDirection = (typeof StreamDirection)[keyof typeof StreamDirection];
 
 export const ScrollDirection = { UP: 'up', DOWN: 'down' } as const;
@@ -36,6 +45,21 @@ export const StorageArea = { LOCAL: 'local', SESSION: 'session', COOKIE: 'cookie
 export type StorageArea = (typeof StorageArea)[keyof typeof StorageArea];
 
 const elementLabel = z.object({ role: z.string().optional(), name: z.string().optional() });
+
+/**
+ * A file the app produced. `preview`/`lines` are present only when body capture is on, for the same
+ * reason request bodies are gated: an export is exactly where a customer list lives.
+ */
+const downloadSchema = z
+  .object({
+    mimeType: z.string(),
+    bytes: z.number(),
+    filename: z.string().optional(),
+    lines: z.number().optional(),
+    preview: z.string().optional(),
+    previewTruncated: z.boolean().optional(),
+  })
+  .passthrough();
 
 const netStreamSchema = z
   .object({
@@ -78,6 +102,7 @@ export const EVENT_PAYLOAD_SCHEMAS = {
     initiator: z.string(),
   }),
   [EventType.NET_STREAM]: netStreamSchema,
+  [EventType.DOWNLOAD]: downloadSchema,
   [EventType.PERF]: z.object({
     metric: z.nativeEnum(PerfMetric),
     value: z.number(),
@@ -134,6 +159,13 @@ export const EVENT_PAYLOAD_SCHEMAS = {
   [EventType.TRANSPORT_OVERFLOW]: z.object({ dropped: z.number() }),
   [EventType.TRUNCATED]: z.object({ channel: z.string(), dropped: z.number() }),
   [EventType.BLIND_SPOT]: z.object({ kind: z.nativeEnum(BlindSpotKind), count: z.number() }),
+  [EventType.SDK_FAILED]: z.object({
+    /** WHERE in the SDK — a fixed vocabulary of our own module names, never a user path. */
+    site: z.string().max(64),
+    /** The error message. Stripped of variables server-side before it is ever reported onward. */
+    message: z.string().max(500),
+    errorType: z.string().max(64).optional(),
+  }),
   [EventType.NET_DETAIL]: z
     .object({
       url: z.string(),

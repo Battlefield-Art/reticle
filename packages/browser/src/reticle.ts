@@ -27,19 +27,7 @@ import {
   hasCapabilities,
   type CapabilitiesInput,
 } from './registry/capabilities.js';
-import { installDom } from './observers/dom.js';
-import { installStorage } from './observers/storage.js';
-import { installStoreState } from './observers/state.js';
-import { installFocus } from './observers/focus.js';
-import { installBlindSpots } from './observers/blind-spots.js';
-import { installNetwork } from './observers/network.js';
-import { installIpc, ipcNetOverrides } from './observers/ipc.js';
-import { installPerf } from './observers/perf.js';
-import { installRoute } from './observers/route.js';
-import { installConsole } from './observers/console.js';
-import { installAnimation } from './observers/animation.js';
-import { installScroll } from './observers/scroll.js';
-import { installHealth } from './observers/health.js';
+import { installAllObservers } from './observers/install-all.js';
 import { installOverlay, type OverlayHandle } from './presenter/overlay.js';
 import {
   Presenter,
@@ -357,27 +345,9 @@ export class Reticle {
     });
 
     const emit = this.#emit;
-    this.#teardowns = [
-      // Composition happens HERE, not inside the network observer: the network observer knows
-      // nothing about desktop IPC, and the IPC observer knows nothing about fetch plumbing.
-      installNetwork(emit, {
-        captureBodies: options.captureNetworkBodies === true,
-        reinterpret: ipcNetOverrides,
-      }),
-      // Desktop backends are reached over IPC, not HTTP — inert on a plain web page.
-      installIpc(emit),
-      installPerf(emit),
-      installRoute(emit),
-      installConsole(emit),
-      installAnimation(emit),
-      installScroll(emit),
-      installDom(emit),
-      installStorage(emit), // storage WRITES → STORAGE_CHANGE diffs (pull remains the fallback)
-      installStoreState(emit), // subscribed-store mutations → STATE_CHANGE path diffs
-      installFocus(emit), // element focus movement → FOCUS_CHANGE (focus-to-body = a regression)
-      installBlindSpots(emit), // cross-origin iframes the SDK can't see → BLIND_SPOT (coverage: partial)
-      installHealth(emit), // page visibility/focus health + heartbeat
-    ];
+    this.#teardowns = installAllObservers(emit, {
+      captureBodies: options.captureNetworkBodies === true,
+    });
 
     if (options.overlay === true) {
       this.#overlay = installOverlay();

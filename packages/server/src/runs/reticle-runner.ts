@@ -10,6 +10,7 @@
  * same artifact byte-for-byte.
  */
 
+import { reportRunTelemetry } from '../telemetry/run-telemetry.js';
 import type { FlowReplayResult, ReticleVerificationRun, RunId } from '@reticlehq/core';
 import { buildVerificationRun, type VerificationRunInput } from './build-verification-run.js';
 import { mapReplayToFlowResult } from './replay-mapping.js';
@@ -87,6 +88,8 @@ export class ReticleRunner {
       evidence: { consoleErrors: [], networkAnomalies: [], stateAssertions: [], timeline: [] },
       ...(failurePackets.length > 0 ? { repair: { failurePackets } } : {}),
     };
-    return buildVerificationRun(input, () => this.#port.now());
+    const run = buildVerificationRun(input, () => this.#port.now());
+    reportRunTelemetry(run);
+    return run;
   }
 }

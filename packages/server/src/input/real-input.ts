@@ -10,6 +10,9 @@
  * pay for it; the type-only import is elided by `tsc`, so the build stays green without it.
  */
 import type { Browser, Page } from 'playwright';
+import { BrowserLaunchKind } from '@reticlehq/core';
+import { getSessionMetrics } from '../telemetry/session-metrics.js';
+import { classifyConnectFailure } from '../telemetry/connect-failure.js';
 import { ActionType, DriveErrorCode, DRIVE_PLAYWRIGHT_MISSING_MSG } from '@reticlehq/core';
 import { installNetworkMocks, type MockRule } from './network-mock.js';
 import { attachNetworkDetail, type NetworkDetail } from './network-detail.js';
@@ -225,7 +228,19 @@ const nodeSleep: SleepFn = (ms) =>
 
 const cdpConnect: ConnectFn = async (url) => {
   const { chromium } = await import('playwright');
-  return chromium.connectOverCDP(url);
+  // Attaching to someone's already-running browser is the fragile path — a stale CDP url, a browser
+  // that was closed — so its FAILURE rate is the number worth watching. Settled with the outcome
+  // rather than counted up front, which is what the first version got wrong: it incremented before
+  // the await, so it silently reported attempts while the other paths reported successes.
+  const settle = getSessionMetrics().recordConnectAttempt(BrowserLaunchKind.ATTACHED);
+  try {
+    const browser = await chromium.connectOverCDP(url);
+    settle();
+    return browser;
+  } catch (error) {
+    settle(classifyConnectFailure(error));
+    throw error;
+  }
 };
 
 /** CDP-backed real-input provider. Lazily connects on first availability check / perform. */
@@ -377,9 +392,13 @@ const launchedChromium: LaunchFn = async (headless) => {
   } catch {
     throw new DriveError(DriveErrorCode.PLAYWRIGHT_MISSING, DRIVE_PLAYWRIGHT_MISSING_MSG);
   }
+  const settle = getSessionMetrics().recordConnectAttempt(BrowserLaunchKind.LAUNCHED);
   try {
-    return await mod.chromium.launch({ headless });
+    const browser = await mod.chromium.launch({ headless });
+    settle();
+    return browser;
   } catch (e) {
+    settle(classifyConnectFailure(e));
     throw new DriveError(DriveErrorCode.LAUNCH_FAILED, e instanceof Error ? e.message : String(e));
   }
 };

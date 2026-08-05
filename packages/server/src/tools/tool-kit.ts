@@ -96,6 +96,13 @@ export const sessionEnvelopeShape: z.ZodRawShape = {
   // That is exactly what invoke-tool.ts's health splice exists to prevent, so it belongs in the shared
   // envelope, not per-tool.
   warning: z.string().optional(),
+  // The one-shot "ask the human how this went" envelope. Undeclared, a validating profile would strip
+  // it — and a feedback prompt that never reaches the agent is a feedback prompt that never reaches
+  // the person, which is the entire failure mode this channel exists to fix.
+  feedback_prompt: z.unknown().optional(),
+  // One-shot "a newer Reticle exists" notice. Undeclared, a validating profile would strip it and the
+  // agent would never learn an update was waiting.
+  update_available: z.unknown().optional(),
 };
 
 /** Unwrap a browser command result or throw its error so the agent sees a clean failure. */

@@ -1,0 +1,464 @@
+/**
+ * Every telemetry / feedback / error / crash event, fired for real and checked on the wire.
+ *
+ * This spec exists because of a bug the unit tests could not have caught. `daemon_stopped` — the one
+ * event carrying a whole session — was emitted fire-and-forget microseconds before `process.exit(0)`,
+ * so the POST was killed every single time and the event NEVER arrived. Nothing threw. No assertion
+ * failed. The only way to see it was to stand up a real HTTP endpoint and notice nothing landed.
+ *
+ * So this drives the REAL built modules from `dist` against a real capture server: real network, real
+ * process semantics, real redaction. It needs no browser and none of the battery's three servers,
+ * which also makes it the cheapest and most reliable spec in the suite.
+ *
+ * Half the checks are leak checks. Telemetry is the one subsystem where a mistake is silent, shipped,
+ * and about somebody else's data — so every payload that could carry a secret, a password, a customer
+ * email, or a home directory is asserted NOT to.
+ */
+import { createServer } from 'node:http';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { fileURLToPath } from 'node:url';
+const DIST = join(fileURLToPath(new URL('../../../packages/server/dist', import.meta.url)));
+const PORT = 9960;
+
+const captured = [];
+const server = createServer((req, res) => {
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    try {
+      for (const e of JSON.parse(body).batch) captured.push(e);
+    } catch {}
+    res.end('ok');
+  });
+});
+await new Promise((r) => server.listen(PORT, r));
+
+process.env.RETICLE_TELEMETRY_URL = `http://localhost:${PORT}`;
+process.env.RETICLE_TELEMETRY_KEY = 'phc_probe';
+process.env.RETICLE_TELEMETRY = '1';
+delete process.env.DO_NOT_TRACK;
+delete process.env.VITEST;
+
+// A scratch project OUTSIDE the reticle checkout — the source-checkout guard disables telemetry inside it.
+const root = mkdtempSync(join(tmpdir(), 'reticle-verify-'));
+process.chdir(root);
+writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { next: '^15.2.0' } }));
+mkdirSync(join(root, '.reticle', 'flows'), { recursive: true });
+writeFileSync(join(root, '.reticle', 'flows', 'checkout.json'), '{}');
+mkdirSync(join(root, '.git'), { recursive: true });
+writeFileSync(join(root, '.git', 'config'), '[remote "origin"]\n\turl = git@github.com:acme/verify.git\n');
+
+const { getTelemetry } = await import(`${DIST}/telemetry/telemetry.js`);
+const { getSessionMetrics, resetSessionMetrics } = await import(`${DIST}/telemetry/session-metrics.js`);
+const { installDaemonTelemetry } = await import(`${DIST}/telemetry/daemon-telemetry.js`);
+const { installDaemonResilience } = await import(`${DIST}/daemon-resilience.js`);
+const { submitFeedback } = await import(`${DIST}/telemetry/feedback.js`);
+const { submitIdentity } = await import(`${DIST}/telemetry/identify.js`);
+const { reportCliRun } = await import(`${DIST}/telemetry/cli-telemetry.js`);
+const { runTool } = await import(`${DIST}/tools/invoke-tool.js`);
+const { TOOLS } = await import(`${DIST}/tools/tools.js`);
+const { buildErrorPayload } = await import(`${DIST}/tools/error-recovery.js`);
+const { reportVersionChange } = await import(`${DIST}/update/updater.js`);
+const { reportMcpConnected, markDaemonStart } = await import(`${DIST}/telemetry/mcp-connection.js`);
+const { reportInitOutcome, InitFailure } = await import(`${DIST}/telemetry/init-telemetry.js`);
+const { classifyConnectFailure } = await import(`${DIST}/telemetry/connect-failure.js`);
+
+if (!getTelemetry().enabled) {
+  console.log('FATAL: telemetry resolved disabled — cannot verify anything');
+  process.exit(1);
+}
+
+const results = [];
+const check = (name, ok, detail = '') => results.push({ name, ok, detail });
+const settle = () => new Promise((r) => setTimeout(r, 700));
+const find = (ev) => captured.filter((e) => e.event === ev);
+
+// ── 1. CLI command + flags ────────────────────────────────────────────────────
+reportCliRun(['status', '--port', '9000', '--http-token', 'SUPERSECRET']);
+await settle();
+{
+  const e = find('cli_command_run')[0];
+  check('cli_command_run fires', e !== undefined);
+  check('  carries the subcommand', e?.properties.command === 'status', e?.properties.command);
+  check('  carries flag NAMES', JSON.stringify(e?.properties.flags) === '["--http-token","--port"]', JSON.stringify(e?.properties.flags));
+  check('  projectId from the git origin', e?.properties.projectIdSource === 'git_origin', e?.properties.projectIdSource);
+}
+// `_daemon` must NOT fire — this is the double-count fix.
+const beforeDaemonArg = find('cli_command_run').length;
+reportCliRun(['_daemon', '--port', '9000']);
+await settle();
+check('_daemon spawn does NOT count as a CLI run', find('cli_command_run').length === beforeDaemonArg);
+
+// ── 1b. Session correlation — the key that ties one daemon run together ───────
+{
+  const ids = new Set(captured.map((e) => e.properties.sessionId));
+  check('every event carries a sessionId', captured.every((e) => typeof e.properties.sessionId === 'string'));
+  check('  all events from one daemon share ONE sessionId', ids.size === 1, `${ids.size} distinct`);
+  check('  also sent as PostHog\'s own $session_id, so its session tooling works', captured.every((e) => e.properties.$session_id === e.properties.sessionId));
+  // Dead fields from the v2→v3 migration that nothing set any more.
+  check('  the dead sessionMs/tool fields are gone', captured.every((e) => e.properties.sessionMs === undefined && e.properties.tool === undefined));
+}
+
+// ── 2. Daemon lifecycle + project profile ─────────────────────────────────────
+resetSessionMetrics();
+const daemon = installDaemonTelemetry(root);
+await settle();
+{
+  check('daemon_started fires', find('daemon_started').length === 1);
+}
+
+// ── 3. Tool calls, params, verification, errors ───────────────────────────────
+const metrics = getSessionMetrics();
+const fakeSession = {
+  id: 's1',
+  command: async () => ({ ok: true, result: {} }),
+  takeSessionLease: () => undefined,
+  ageWarning: () => undefined,
+  blindSpots: () => [],
+  health: () => ({ lastSeenMs: 0, throttled: false, focused: true }),
+  throttled: () => false,
+};
+const deps = { sessions: { resolve: () => fakeSession } };
+
+// A verification tool returning a caught false green: assertion passed, verdict refused it.
+const falseGreenTool = {
+  name: 'reticle_assert',
+  description: '',
+  inputSchema: {},
+  handler: async () => ({ pass: true, verified: 'no', because: 'channels disagree' }),
+};
+await runTool(falseGreenTool, deps, { predicate: { kind: 'console' }, since: 1 });
+// A clean pass.
+const cleanTool = { ...falseGreenTool, handler: async () => ({ pass: true, verified: 'yes' }) };
+await runTool(cleanTool, deps, { predicate: { kind: 'console' } });
+// A non-verification tool, with a secret-bearing param.
+const actTool = { name: 'reticle_act', description: '', inputSchema: {}, handler: async () => ({ dispatched: true }) };
+await runTool(actTool, deps, { ref: 'e7', action: 'type', args: 'hunter2-password' });
+await settle();
+{
+  const vs = find('verification_completed');
+  check('verification_completed fires per verdict', vs.length === 2, `got ${vs.length}`);
+  const fg = vs.find((e) => e.properties.verification_falseGreenCaught === true);
+  check('  falseGreenCaught set when a PASS is refused', fg !== undefined);
+  check('  clean pass NOT marked as a false green', vs.some((e) => e.properties.verification_falseGreenCaught === false));
+  check('  carries which tool produced it', fg?.properties.verification_via === 'reticle_assert');
+  check('  actor is the agent', fg?.properties.actor === 'agent', fg?.properties.actor);
+}
+
+// ── 4. Tool errors → fingerprints ─────────────────────────────────────────────
+// The MCP boundary records these; call the same recorder it calls.
+metrics.recordToolError("no baseline named 'checkout-v3'", 'reticle_baseline');
+metrics.recordToolError("no baseline named 'login-page'", 'reticle_baseline');
+metrics.recordToolError('the browser pool is empty', 'reticle_lease');
+{
+  const payload = buildErrorPayload('a completely novel failure nobody has seen');
+  check('unknown tool error asks the agent for an RCA', typeof payload.feedback === 'string');
+  const known = buildErrorPayload('no browser session connected');
+  check('  known error gets recovery instead, not the ask', typeof known.recovery === 'string' && known.feedback === undefined);
+}
+
+// ── 3b. Bugs found — the outcome metric ──────────────────────────────────────
+const crawlTool = { name: 'reticle_crawl', description: '', inputSchema: {}, handler: async () => ({
+  anomalies: [
+    { kind: 'console-error', ref: 'e3', desc: 'button#checkout-SECRETMARKER threw' },
+    { kind: 'ui-advanced-request-failed', ref: 'e4', detail: { url: 'https://acme.internal/orders' } },
+  ],
+}) };
+await runTool(crawlTool, deps, {});
+const contradictedTool = { ...falseGreenTool, handler: async () => ({
+  pass: true, verified: 'no', contradictions: [{ kind: 'signal-contradicted' }],
+}) };
+await runTool(contradictedTool, deps, { predicate: { kind: 'console' } });
+await settle();
+{
+  const bugs = find('bug_found');
+  check('bug_found fires — the number we can publish', bugs.length === 3, `got ${bugs.length}`);
+  const fg = bugs.filter((b) => b.properties.bug_falseGreen === true);
+  check('  a passing assertion over a contradiction IS a false green', fg.some((b) => b.properties.bug_kind === 'signal-contradicted'));
+  check('  a crawl contradiction counts as a false green too', fg.some((b) => b.properties.bug_kind === 'ui-advanced-request-failed'));
+  check('  a single-channel console error is NOT inflated into a false green', bugs.some((b) => b.properties.bug_kind === 'console-error' && b.properties.bug_falseGreen === false));
+  check('  carries the source so the headline can be broken down', new Set(bugs.map((b) => b.properties.bug_source)).size === 2);
+  // Scoped to the bug_* fields and using markers that cannot collide with hex. The first version
+  // stringified the WHOLE event and looked for 'e3', which matches a sessionId or a fingerprint by
+  // chance — a leak check that cries wolf trains you to ignore leak failures, which is precisely
+  // when you would miss a real one.
+  const bugFields = JSON.stringify(bugs.map((b) => Object.fromEntries(
+    Object.entries(b.properties).filter(([k]) => k.startsWith('bug_')),
+  )));
+  check('  leaks no element, selector or URL from the app it was found in',
+    !bugFields.includes('SECRETMARKER') && !bugFields.includes('acme.internal') && !bugFields.includes('checkout'));
+  check('  carries only the classified kind and source', bugs.every((b) =>
+    Object.keys(b.properties).filter((k) => k.startsWith('bug_')).sort().join() === 'bug_falseGreen,bug_kind,bug_source,bug_tool'));
+}
+
+// ── 4b. SDK failures from the in-page half, arriving over the bridge ──────────
+metrics.recordSdkFailure('network_observer', "cannot patch fetch on 'https://acme.internal/app'");
+metrics.recordSdkFailure('network_observer', "cannot patch fetch on 'https://other.internal/x'");
+metrics.recordSdkFailure('dom_observer', 'MutationObserver is not defined');
+
+// ── 4c. Connection outcomes: attempts AND failures, with a classified cause ───
+metrics.recordConnectAttempt('launched')();
+const poolFail = metrics.recordConnectAttempt('pooled');
+poolFail(classifyConnectFailure(new Error("Executable doesn't exist at /ms-playwright/chromium/headless_shell")));
+metrics.recordConnectAttempt('attached')(classifyConnectFailure(new Error('connect ECONNREFUSED 127.0.0.1:9222')));
+{
+  check('classifies a missing Chromium as a docs problem, not "other"',
+    classifyConnectFailure(new Error("Executable doesn't exist")) === 'chromium_missing');
+  check('  classifies a refused CDP endpoint as a config problem',
+    classifyConnectFailure(new Error('connect ECONNREFUSED 127.0.0.1:9222')) === 'cdp_unreachable');
+  check('  falls back to `other` rather than guessing a cause',
+    classifyConnectFailure(new Error('something nobody has seen before')) === 'other');
+}
+
+// ── 4d. MCP client attached — "running" vs "actually being used" ──────────────
+markDaemonStart(Date.now() - 5000);
+reportMcpConnected('claude-code');
+reportMcpConnected('claude-code');
+await settle();
+{
+  const cs = find('mcp_client_connected');
+  check('mcp_client_connected fires when an agent actually attaches', cs.length === 2, `got ${cs.length}`);
+  check('  first attach is not a reconnect', cs[0]?.properties.connection_reconnect === false);
+  check('  a re-attach IS flagged, so churn is distinguishable from usage', cs[1]?.properties.connection_reconnect === true);
+  check('  carries how long the daemon sat before anyone used it', (cs[0]?.properties.connection_daemonAgeMs ?? 0) >= 5000);
+}
+
+// ── 4e. Onboarding funnel ─────────────────────────────────────────────────────
+reportInitOutcome({ ok: false, reason: InitFailure.DEPENDENCY_INSTALL, stack: 'next', mcpRegistered: false });
+await settle();
+{
+  const i = find('init_completed')[0];
+  check('init_completed fires — the onboarding funnel had NO instrumentation', i !== undefined);
+  check('  distinguishes a dependency failure from an MCP-registration one', i?.properties.init_reason === 'dependency_install');
+  check('  carries the stack that failed to set up', i?.properties.init_stack === 'next');
+}
+
+// ── 5. Crash analytics ────────────────────────────────────────────────────────
+// Drive a known tool immediately before the crash so the "trigger point" assertion is about the
+// mechanism rather than about whatever happened to run last in this file.
+await runTool(actTool, deps, { ref: 'e9', action: 'click' });
+const handlers = {};
+installDaemonResilience({ on: (ev, fn) => (handlers[ev] = fn) }, () => {}, () => {});
+{
+  const err = new TypeError("cannot read 'ref' of undefined");
+  err.stack = [
+    "TypeError: cannot read 'ref' of undefined",
+    '    at resolveAnchor (/home/u/node_modules/@reticlehq/server/dist/tools/act-tools.js:142:19)',
+    '    at Object.runTool (/home/u/node_modules/@reticlehq/server/dist/tools/invoke-tool.js:88:3)',
+    '    at doCheckout (/Users/ada/secret-app/src/checkout.tsx:42:9)',
+    '    at node:internal/process/task_queues:95:5',
+  ].join('\n');
+  handlers['unhandledRejection']?.(err);
+}
+handlers['uncaughtException']?.(new RangeError('index out of range'));
+await settle();
+{
+  const cs = find('runtime_crashed');
+  check('runtime_crashed fires for both crash kinds', cs.length === 2, `got ${cs.length}`);
+  check('  distinguishes rejection from exception', new Set(cs.map((e) => e.properties.crash_kind)).size === 2);
+  check('  carries the error TYPE', cs.some((e) => e.properties.crash_errorType === 'TypeError'));
+  check('  carries a fingerprint', cs.every((e) => /^[0-9a-f]{12}$/.test(e.properties.crash_fingerprint ?? '')));
+  const blob = JSON.stringify(cs);
+  check('  leaks NO raw message text', !blob.includes('cannot read x'));
+  check('  leaks NO user path or app file', !blob.includes('/Users/ada') && !blob.includes('Checkout.tsx'));
+  // The detail that makes a fingerprint diagnosable rather than merely rankable.
+  const deep = cs.find((e) => e.properties.crash_errorType === 'TypeError');
+  check('  carries a READABLE skeleton message', typeof deep?.properties.crash_message === 'string' && deep.properties.crash_message.includes('*'));
+  check('  carries OUR OWN frames with function@file:line', JSON.stringify(deep?.properties.crash_frames ?? []).includes('act-tools.js'));
+  check('  frames name the FUNCTION, not just the file', JSON.stringify(deep?.properties.crash_frames ?? []).includes('@'));
+  check('  frames exclude the user\'s own app frames', !JSON.stringify(deep?.properties.crash_frames ?? []).includes('checkout'));
+  check('  carries the tool in flight (the trigger point)', deep?.properties.crash_tool === 'reticle_act', String(deep?.properties.crash_tool));
+  check('  carries the agent\'s approach run (breadcrumb)', JSON.stringify(deep?.properties.crash_breadcrumb ?? []).includes('reticle_assert'));
+  check('  carries node version + arch', typeof deep?.properties.crash_nodeVersion === 'string' && typeof deep?.properties.crash_arch === 'string');
+  check('  attributes the crash to the agent', deep?.properties.actor === 'agent');
+  // "Out of memory" and "our bug" produce identical stack traces; this is what separates them.
+  check('  carries the machine state at the moment of the crash', typeof deep?.properties.crash_machine === 'object' && deep.properties.crash_machine !== null);
+  check('  machine snapshot has real memory numbers', (deep?.properties.crash_machine?.totalMemMb ?? 0) > 0);
+}
+
+// ── 6. Feedback (agent path, through the real MCP tool) ───────────────────────
+const feedbackTool = TOOLS.find((t) => t.name === 'reticle_feedback');
+check('reticle_feedback tool is registered', feedbackTool !== undefined);
+const receipt = await runTool(feedbackTool, deps, {
+  kind: 'gap',
+  text: 'reticle_network missed the POST. contact ada@example.com, token sk-abcdefghijklmnopqrstuvwx',
+  trace: 'called reticle_network at /Users/ada/app',
+});
+await settle();
+{
+  const f = find('feedback_submitted')[0];
+  check('feedback_submitted fires from the agent tool', f !== undefined);
+  check('  receipt reports it was sent', receipt?.sent === true, JSON.stringify(receipt?.reason ?? ''));
+  check('  carries the kind', f?.properties.feedback_kind === 'gap');
+  check('  source is the agent', f?.properties.feedback_source === 'agent');
+  check('  carries detected stack context', f?.properties.feedback_stack === 'next', f?.properties.feedback_stack);
+  check('  carries the stack MAJOR', f?.properties.feedback_stackMajor === 15);
+  const blob = JSON.stringify(f);
+  check('  REDACTED the email', !blob.includes('ada@example.com'));
+  check('  REDACTED the api key', !blob.includes('sk-abcdefghijklmnopqrstuvwx'));
+  check('  REDACTED the home path', !blob.includes('/Users/ada'));
+  check('  redaction is reported back to the caller', (receipt?.redacted ?? []).length >= 2, JSON.stringify(receipt?.redacted));
+}
+
+// ── 6b. A feature request from an agent — the roadmap channel ────────────────
+const featureReceipt = await runTool(feedbackTool, deps, {
+  kind: 'feature_request',
+  text: 'A way to assert that NO request fired during an action.',
+  need: 'Verifying a debounced search does not call the API on every keystroke.',
+  impact: 'Removes a 3-call workaround from every debounce check.',
+  currentApproach: 'Diffing reticle_network counts by hand, token sk-abcdefghijklmnopqrstuvwx',
+  model: 'claude-opus-4',
+});
+await settle();
+{
+  const f = find('feedback_submitted').find((e) => e.properties.feedback_kind === 'feature_request');
+  check('an agent can REQUEST a feature, not only report failures', f !== undefined);
+  check('  carries the GOAL behind the request', f?.properties.feedback_need?.includes('debounced'));
+  check('  carries the workaround — the most useful field in the report', typeof f?.properties.feedback_currentApproach === 'string');
+  check('  carries the self-reported MODEL, which MCP cannot tell us', f?.properties.feedback_model === 'claude-opus-4');
+  // The structured fields are free text and bypassed redaction when they were first added.
+  check('  REDACTS the structured fields too, not just text/trace', !JSON.stringify(f).includes('sk-abcdefghijklmnopqrstuvwx'));
+  // The word "token" precedes the key, so the credential-assignment rule claims it before the
+  // vendor-key rule sees it. Either is a correct redaction — assert that SOMETHING fired rather than
+  // pinning which rule won, or this becomes a brittle test of rule ordering.
+  check('  redaction is reported back for the structured field', (featureReceipt?.redacted ?? []).length > 0, JSON.stringify(featureReceipt?.redacted));
+}
+
+// ── 7. Identify (opt-in) ──────────────────────────────────────────────────────
+await submitIdentity({ context: 'company', company: 'Acme Corp', email: 'dev@acme.com' });
+await settle();
+{
+  const i = find('identified')[0];
+  check('identified fires only from an explicit call', i !== undefined);
+  check('  carries the self-declared context', i?.properties.identity_context === 'company');
+}
+
+// ── 8. Human feedback path ────────────────────────────────────────────────────
+const human = await submitFeedback({ source: 'human', kind: 'experience', text: 'worked well', rating: 5 });
+await settle();
+{
+  check('human feedback sends', human.sent === true, human.reason ?? '');
+  const f = find('feedback_submitted').find((e) => e.properties.feedback_source === 'human');
+  check('  carries the rating', f?.properties.feedback_rating === 5);
+}
+
+// ── 8b. Version changed (update + rollback) ───────────────────────────────────
+await reportVersionChange('2.2.1', '2.3.0', 'update');
+await reportVersionChange('2.3.0', '2.2.1', 'rollback');
+await settle();
+{
+  const vs = find('version_changed');
+  check('version_changed fires for update and rollback', vs.length === 2, `got ${vs.length}`);
+  const up = vs.find((e) => e.properties.version_direction === 'update');
+  check('  carries from -> to', up?.properties.version_from === '2.2.1' && up?.properties.version_to === '2.3.0');
+  check('  a rollback is distinguishable from an update', vs.some((e) => e.properties.version_direction === 'rollback'));
+}
+
+// ── 8c. First-ever run, in a child with a pristine HOME ───────────────────────
+{
+  const { execFileSync } = await import('node:child_process');
+  const fakeHome = mkdtempSync(join(tmpdir(), 'reticle-home-'));
+  const script = `
+    const m = await import('${DIST}/telemetry/cli-telemetry.js');
+    m.reportCliRun(['version']);
+    await new Promise(r => setTimeout(r, 1500));
+  `;
+  try {
+    execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome },
+      cwd: root,
+      timeout: 20000,
+    });
+  } catch {}
+  await settle();
+  check('reticle_installed fires on a machine that has never run Reticle', find('reticle_installed').length === 1, `got ${find('reticle_installed').length}`);
+  rmSync(fakeHome, { recursive: true, force: true });
+}
+
+// ── 9. Daemon shutdown → the rich session summary ─────────────────────────────
+// NO settle() before the assertion, deliberately. The bug this guards against was a fire-and-forget
+// emit followed immediately by process.exit(0), which killed the POST every time. Any wait here would
+// hide it, because a fire-and-forget send DOES land given ~700ms — it just never gets them. Asserting
+// the event has already ARRIVED the instant shutdown() resolves is the real contract: awaiting
+// shutdown must be sufficient, with no grace period, because in production there is none.
+// NO settle() before the assertion, deliberately. The bug this guards against was a fire-and-forget
+// emit followed immediately by process.exit(0), which killed the POST every time. Any wait here would
+// hide it, because a fire-and-forget send DOES land given ~700ms — it just never gets them. Asserting
+// the event has already ARRIVED the instant shutdown() resolves is the real contract: awaiting
+// shutdown must be sufficient, with no grace period, because in production there is none.
+await daemon.shutdown();
+{
+  const s = find('daemon_stopped')[0];
+  const arrived = s !== undefined;
+  check('daemon_stopped has ARRIVED by the time shutdown() resolves (no grace period)', arrived);
+  // Every downstream check is gated on arrival. Without this the whole spec dies on a TypeError the
+  // moment the event is missing, which reports a crash instead of naming the thing that broke — and
+  // the thing that broke is exactly the failure this file was written to catch.
+  const p = s?.properties ?? {};
+  check('  marked final', arrived && p.session_final === true);
+  check('  counted tool calls', arrived && p.session_toolCalls === 8, String(p.session_toolCalls));
+  check('  histogram by tool name', arrived && JSON.stringify(p.session_toolCounts ?? {}).includes('reticle_act'));
+  check('  counted verifications', arrived && p.session_verifications === 3, String(p.session_verifications));
+  check('  counted tool errors', arrived && p.session_toolErrors === 3, String(p.session_toolErrors));
+  const errors = p.session_errors ?? [];
+  check('  grouped 2 same-shape errors into 1 fingerprint', arrived && errors.length === 2, `${errors.length} shapes`);
+  check('  errors leak no flow name', !JSON.stringify(errors).includes('checkout-v3'));
+  const baselineError = errors.find((e) => e.tool === 'reticle_baseline');
+  check('  error carries a READABLE skeleton, not just a hash', baselineError?.message === 'no baseline named *', String(baselineError?.message));
+  check('  error names the tool that produced it', baselineError !== undefined);
+  check('  error carries its count', baselineError?.count === 2, String(baselineError?.count));
+  const params = p.session_toolParams ?? {};
+  check('  recorded tool PARAM names', arrived && JSON.stringify(params).includes('ref'));
+  check('  recorded a safe enum VALUE', arrived && JSON.stringify(params).includes('action:type'));
+  check('  leaked NO param value', !JSON.stringify(params).includes('hunter2'));
+  // Timing — the headline "how much time does verification actually cost" numbers.
+  check('  timed each tool (total + worst call)', arrived && typeof p.session_toolTiming === 'object');
+  check('  reports total busy time inside tool calls', arrived && typeof p.session_busyMs === 'number');
+  check('  reports peak concurrent tool calls', arrived && typeof p.session_peakConcurrentTools === 'number');
+  // Connections: attempts and failures, not a bare success count.
+  const conns = p.session_connections ?? {};
+  check('  connection attempts AND successes recorded', conns['launched']?.attempts === 1 && conns['launched']?.successes === 1);
+  check('  a FAILED connection is visible, with its cause', conns['pooled']?.failures?.chromium_missing === 1, JSON.stringify(conns['pooled']));
+  check('  a refused CDP attach is classified, not lumped into `other`', conns['attached']?.failures?.cdp_unreachable === 1, JSON.stringify(conns['attached']));
+  check('  machine state captured at session end', arrived && (p.session_machine?.cpuCount ?? 0) > 0);
+  // The outcome number, rolled up and broken down.
+  check('  session counts the bugs found', arrived && p.session_bugsFound === 3, String(p.session_bugsFound));
+  check('  and keeps them broken down by kind', JSON.stringify(p.session_bugKinds ?? {}).includes('signal-contradicted'));
+  // Reticle's overhead vs the app's own slowness — opposite fixes, previously indistinguishable.
+  check('  reports browser-leg latency separately from total busy time', arrived && typeof p.session_browserMs === 'number');
+  // The in-page half of Reticle had no error reporting at all until now.
+  const sdk = p.session_sdkErrors ?? [];
+  check('  counted SDK failures from the browser', arrived && p.session_sdkFailures === 3, String(p.session_sdkFailures));
+  check('  grouped SDK failures by shape', arrived && sdk.length === 2, `${sdk.length} shapes`);
+  check('  SDK failure names the module that reported it', sdk.some((e) => e.tool === 'network_observer'));
+  check('  SDK failure carries a readable skeleton', sdk.some((e) => e.message.includes('cannot patch fetch')));
+  check('  SDK failure leaks NO app URL', !JSON.stringify(sdk).includes('acme.internal'));
+  check('  SDK failures kept separate from tool errors', arrived && (p.session_errors ?? []).every((e) => e.tool !== 'network_observer'));
+}
+
+// ── 10. Project profile (deliberately deferred 5s off the daemon boot path) ───
+await new Promise((r) => setTimeout(r, 6000));
+// ── ────────────────────────────────────────────────────
+{
+  const p = find('project_profiled')[0]?.properties;
+  check('project_profiled fires', p !== undefined, '(deferred 5s after daemon start)');
+  if (p !== undefined) {
+    check('  detected the stack', p.project_stack === 'next', p.project_stack);
+    check('  detected git state', p.project_git === 'remote', p.project_git);
+    check('  detected the forge', p.project_forge === 'github', p.project_forge);
+    check('  counted saved flows', p.project_flowCount === 1, String(p.project_flowCount));
+    check('  computed featureDepth', typeof p.project_featureDepth === 'number');
+  }
+}
+
+// ── report ────────────────────────────────────────────────────────────────────
+console.log('');
+for (const r of results) console.log(`${r.ok ? ' PASS' : ' FAIL'}  ${r.name}${r.detail && !r.ok ? `  [${r.detail}]` : ''}`);
+const failed = results.filter((r) => !r.ok);
+console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+console.log(`events captured: ${JSON.stringify(Object.fromEntries(Object.entries(captured.reduce((a, e) => ({ ...a, [e.event]: (a[e.event] ?? 0) + 1 }), {}))))}`);
+rmSync(root, { recursive: true, force: true });
+process.exit(failed.length === 0 ? 0 : 1);

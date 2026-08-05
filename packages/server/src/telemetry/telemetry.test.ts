@@ -49,7 +49,7 @@ describe('telemetry emitter', () => {
       fetchImpl: impl,
     });
     expect(t.enabled).toBe(false);
-    await t.emit(TelemetryEventKind.INVOKE);
+    await t.emit(TelemetryEventKind.CLI_COMMAND_RUN);
     expect(calls).toHaveLength(0);
   });
 
@@ -80,12 +80,12 @@ describe('telemetry emitter', () => {
       now: () => 1700,
       fetchImpl: impl,
     });
-    await t.emit(TelemetryEventKind.INVOKE);
+    await t.emit(TelemetryEventKind.CLI_COMMAND_RUN);
     expect(calls[0]?.url).toBe('http://example.test/batch/');
     const body = calls[0]?.body;
     expect(body?.api_key).toBe('phc_test');
     const item = body?.batch[0];
-    expect(item?.event).toBe(TelemetryEventKind.INVOKE);
+    expect(item?.event).toBe(TelemetryEventKind.CLI_COMMAND_RUN);
     expect(item?.timestamp).toBe(new Date(1700).toISOString());
     // Reassembled, the capture item must round-trip through the core contract.
     const parsed = TelemetryEventSchema.safeParse({
@@ -103,7 +103,12 @@ describe('telemetry emitter', () => {
     expect(item?.properties['projectId']).not.toContain('proj-a');
   });
 
-  it('carries the tool name on TOOL events', async () => {
+  /**
+   * There is deliberately no per-tool-call event any more: a verification loop is 50-200 calls and
+   * PostHog bills per event, so tool usage now rides out ONCE inside the session summary. This asserts
+   * the replacement carries the same answer -- which tool was used how often -- in one event.
+   */
+  it('carries the tool histogram on the session summary, not one event per call', async () => {
     const { impl, calls } = recordingFetch();
     const t = createTelemetry({
       cwd: USER_PROJECT,
@@ -111,10 +116,23 @@ describe('telemetry emitter', () => {
       env: TEST_ENV,
       fetchImpl: impl,
     });
-    await t.emit(TelemetryEventKind.TOOL, { tool: 'reticle_act' });
+    await t.emit(TelemetryEventKind.DAEMON_STOPPED, {
+      session: {
+        durationMs: 1000,
+        toolCalls: 3,
+        toolCounts: { reticle_act: 2, reticle_assert: 1 },
+        toolErrors: 0,
+        verifications: 1,
+        final: true,
+      },
+    });
     const item = calls[0]?.body.batch[0];
-    expect(item?.event).toBe(TelemetryEventKind.TOOL);
-    expect(item?.properties['tool']).toBe('reticle_act');
+    expect(item?.event).toBe(TelemetryEventKind.DAEMON_STOPPED);
+    // Flattened under a prefix so PostHog breakdowns can reach it without raw HogQL...
+    expect(item?.properties['session_toolCalls']).toBe(3);
+    expect(item?.properties['session_final']).toBe(true);
+    // ...but the open-ended maps stay objects: flattening them would mint unbounded property names.
+    expect(item?.properties['session_toolCounts']).toEqual({ reticle_act: 2, reticle_assert: 1 });
   });
 
   it('hands a detached emit to a disowned child instead of fetching in-process', async () => {
@@ -125,13 +143,13 @@ describe('telemetry emitter', () => {
       env: TEST_ENV,
       spawnImpl: (command, args) => spawns.push({ command, args }),
     });
-    await t.emit(TelemetryEventKind.INVOKE, { detach: true });
+    await t.emit(TelemetryEventKind.CLI_COMMAND_RUN, { detach: true });
     expect(spawns).toHaveLength(1);
     const args = spawns[0]?.args ?? [];
     expect(args[2]).toBe('http://example.test/batch/');
     const body = JSON.parse(args[3] ?? '{}') as CapturedBatch;
     expect(body.api_key).toBe('phc_test');
-    expect(body.batch[0]?.event).toBe(TelemetryEventKind.INVOKE);
+    expect(body.batch[0]?.event).toBe(TelemetryEventKind.CLI_COMMAND_RUN);
   });
 
   it('persists and lifts the machine-wide opt-out (`reticle telemetry disable`/`enable`)', () => {
@@ -157,6 +175,6 @@ describe('telemetry emitter', () => {
       env: TEST_ENV,
       fetchImpl: failing,
     });
-    await expect(t.emit(TelemetryEventKind.INVOKE)).resolves.toBeUndefined();
+    await expect(t.emit(TelemetryEventKind.CLI_COMMAND_RUN)).resolves.toBeUndefined();
   });
 });
