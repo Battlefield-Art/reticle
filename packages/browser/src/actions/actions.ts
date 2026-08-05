@@ -7,9 +7,10 @@ import {
   SettleReason,
 } from '@reticlehq/core';
 import { refs } from '../dom/refs.js';
-import { getAccessibleName, isVisible, getStates } from '../dom/a11y.js';
+import { assertEditable, assertNotRichText, setNativeValue } from './value-input.js';
+import { getAccessibleName, getRole, isVisible, getStates } from '../dom/a11y.js';
 import { elementHasHoverHandlers, identifyComponent } from '../registry/adapters.js';
-import { captureValueSetter } from '../patching/capture-method.js';
+import { isForm, isHtmlElement, isInput, isSelect, isTextArea } from '../dom/realm.js';
 import { nativeSetTimeout, settle } from '../timers/native-timers.js';
 
 /**
@@ -65,27 +66,12 @@ interface ActionResult {
    * degraded role one — addressing the element across replays with zero hand-added testids.
    */
   component?: string;
+  /** Role + accessible name — the anchor that identifies an INSTANCE, not a JSX site. */
+  role?: string;
+  name?: string;
   source?: { file: string; line: number; column?: number };
   /** Best-effort caveat the agent should heed (e.g. synthetic hover may not fire enter/leave). */
   warning?: string;
-}
-
-/**
- * Set a value on a controlled input the way React expects (native setter + input event).
- * Returns the `input` event's dispatchEvent result (defaultPrevented of the primary event).
- */
-function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): boolean {
-  const proto =
-    el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  const setter = captureValueSetter(proto);
-  if (setter !== undefined) {
-    setter.call(el, value);
-  } else {
-    el.value = value;
-  }
-  const notPrevented = el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
-  return !notPrevented;
 }
 
 function asString(value: unknown, fallback = ''): string {
@@ -95,7 +81,7 @@ function asString(value: unknown, fallback = ''): string {
 function requireElement(ref: string): HTMLElement {
   const el = refs.resolve(ref);
   if (el === null) throw new Error(`ref '${ref}' no longer resolves to an element`);
-  if (!(el instanceof HTMLElement)) throw new Error(`ref '${ref}' is not an HTMLElement`);
+  if (!isHtmlElement(el)) throw new Error(`ref '${ref}' is not an HTMLElement`);
   return el;
 }
 
@@ -104,6 +90,17 @@ interface CapturedAnchor {
   testid?: string;
   component?: string;
   source?: { file: string; line: number; column?: number };
+  /**
+   * Role + accessible name — the anchor that identifies an INSTANCE.
+   *
+   * A component/source anchor names the JSX site, and one `<input>` written inside a row renders
+   * once per row: measured on a shipments console, three different rows' checkboxes compiled to the
+   * identical anchor and a replay resolved all three to the same element (91 matches, first taken).
+   * The accessible name does not collapse that way — "select ATL-100000" is one row and no other —
+   * and it is the only stable anchor an app with no testids has at all.
+   */
+  role?: string;
+  name?: string;
 }
 
 /**
@@ -126,6 +123,12 @@ function anchorOf(el: Element): CapturedAnchor {
   const component = info?.componentStack[0];
   if (component !== undefined) out.component = component;
   if (info?.source !== undefined) out.source = info.source;
+  const role = getRole(el);
+  const name = getAccessibleName(el);
+  if (role.length > 0 && name.length > 0) {
+    out.role = role;
+    out.name = name;
+  }
   return out;
 }
 
@@ -154,6 +157,8 @@ const result = (
   if (anchor.testid !== undefined) base.testid = anchor.testid;
   if (anchor.component !== undefined) base.component = anchor.component;
   if (anchor.source !== undefined) base.source = anchor.source;
+  if (anchor.role !== undefined) base.role = anchor.role;
+  if (anchor.name !== undefined) base.name = anchor.name;
   if (warning !== undefined) base.warning = warning;
   return base;
 };
@@ -198,10 +203,9 @@ function assertActionAllowed(el: HTMLElement, action: string, args: Record<strin
     action === ActionType.SUBMIT ||
     (action === ActionType.PRESS && asString(args['key'], 'Enter') === 'Enter');
   const dragTarget = action === ActionType.DRAG ? refs.resolve(asString(args['toRef'])) : null;
-  const context =
-    dragTarget instanceof HTMLElement
-      ? `${dangerousActionContext(el)} ${dangerousActionContext(dragTarget)}`
-      : dangerousActionContext(el);
+  const context = isHtmlElement(dragTarget)
+    ? `${dangerousActionContext(el)} ${dangerousActionContext(dragTarget)}`
+    : dangerousActionContext(el);
   if (
     canTrigger &&
     requiresDangerousConfirmation(context) &&
@@ -230,11 +234,7 @@ function enabledOf(el: Element): boolean {
 
 /** Current value for inputs/textareas/selects, else undefined. */
 function valueOf(el: Element): string | undefined {
-  if (
-    el instanceof HTMLInputElement ||
-    el instanceof HTMLTextAreaElement ||
-    el instanceof HTMLSelectElement
-  ) {
+  if (isInput(el) || isTextArea(el) || isSelect(el)) {
     return el.value;
   }
   return undefined;
@@ -295,41 +295,75 @@ async function dispatchFor(
       el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
       return false;
     case ActionType.FILL:
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      if (isInput(el) || isTextArea(el)) {
+        // A MISSING value is a malformed call, not a request to empty the field. `asString` defaults
+        // to '', which made such a fill indistinguishable from `clear`: it wiped what was there,
+        // dispatched a real input event so React committed the empty string to state, and reported
+        // ok:true with nothing flagged. The value is nested (`args:{value}`) at the tool boundary, so
+        // passing it at the top level lands here — measured on bench-app's login form, where
+        // "admin@reticle.dev" was destroyed by a fill that reported success. An explicit '' still
+        // clears, because that is someone asking for it.
+        if (typeof args['value'] !== 'string') {
+          throw new Error(
+            "fill requires a string `value` — pass it nested, as args: { value: '…' }. " +
+              'To empty a field on purpose use the `clear` action, or fill with an explicit "".',
+          );
+        }
+        assertEditable(el, 'fill');
         el.focus(); // focus first so a later blur commits (onBlur editors)
-        return setNativeValue(el, asString(args['value']));
+        return setNativeValue(el, args['value']);
       }
+      assertNotRichText(el, 'fill');
       throw new Error(`cannot fill a <${el.tagName.toLowerCase()}>`);
     case ActionType.TYPE:
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      if (isInput(el) || isTextArea(el)) {
+        // Same family as the valueless FILL: a missing `text` appended '' and reported ok:true, so an
+        // agent believed it had typed into a field nothing was written to.
+        if (typeof args['text'] !== 'string') {
+          throw new Error(
+            "type requires a string `text` — pass it nested, as args: { text: '…' }.",
+          );
+        }
+        assertEditable(el, 'type');
         el.focus();
-        return setNativeValue(el, el.value + asString(args['text']));
+        return setNativeValue(el, el.value + args['text']);
       }
+      assertNotRichText(el, 'type into');
       throw new Error(`cannot type into a <${el.tagName.toLowerCase()}>`);
     case ActionType.CLEAR:
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      if (isInput(el) || isTextArea(el)) {
         return setNativeValue(el, '');
       }
       // Consistent with TYPE/SELECT/CHECK: clearing a non-field is not a silent success. Throwing
       // surfaces the mismatch instead of reporting ok:true for an action that did nothing.
       throw new Error(`cannot clear a <${el.tagName.toLowerCase()}>`);
     case ActionType.SELECT:
-      if (el instanceof HTMLSelectElement) {
-        el.value = asString(args['value']);
+      if (isSelect(el)) {
+        // A MISSING value assigned '' to the <select>. No option carries that, so the browser sets
+        // selectedIndex to -1 — deselecting everything — from a call that was simply malformed.
+        // (Selecting a value that no option carries is a different case and is deliberately NOT
+        // refused: `actions.effect.test.ts` pins it as a detectable no-op, where the reported
+        // valueChanged delta is what tells the agent the option never took.)
+        if (typeof args['value'] !== 'string') {
+          throw new Error(
+            "select requires a string `value` — pass it nested, as args: { value: '…' }.",
+          );
+        }
+        el.value = args['value'];
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return false; // change is not cancelable.
       }
       throw new Error(`cannot select on a <${el.tagName.toLowerCase()}>`);
     case ActionType.CHECK:
     case ActionType.UNCHECK:
-      if (el instanceof HTMLInputElement) {
+      if (isInput(el)) {
         el.checked = action === ActionType.CHECK;
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return false;
       }
       throw new Error(`cannot (un)check a <${el.tagName.toLowerCase()}>`);
     case ActionType.SUBMIT: {
-      const form = el instanceof HTMLFormElement ? el : el.closest('form');
+      const form = isForm(el) ? el : el.closest('form');
       if (form === null) throw new Error('no form to submit');
       form.requestSubmit();
       return false; // requestSubmit returns void; the internal submit event is unobservable.
@@ -346,7 +380,7 @@ async function dispatchFor(
       el.scrollIntoView();
       return false;
     case ActionType.UPLOAD: {
-      if (!(el instanceof HTMLInputElement) || el.type !== 'file') {
+      if (!isInput(el) || el.type !== 'file') {
         throw new Error('upload target must be a <input type="file">');
       }
       const file = new File(
@@ -368,7 +402,7 @@ async function dispatchFor(
       // asString falls back to '' (never undefined), so the old `!== undefined` was always true and
       // handed '' to refs.resolve. A drag with no target ref is a free drag — resolve nothing.
       const resolved = toRef !== '' ? refs.resolve(toRef) : null;
-      return await dragElement(el, resolved instanceof HTMLElement ? resolved : null, args['data']);
+      return await dragElement(el, isHtmlElement(resolved) ? resolved : null, args['data']);
     }
     default:
       throw new Error(`unknown action '${action}'`);

@@ -23,6 +23,7 @@
 import { writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { McpStdioClient, RETICLE_CLI as CLI } from './mcp-client.mjs';
+import { RETICLE_PORT } from './ports.mjs';
 
 const SESSIONS = Number(process.argv[2] ?? 12);
 const CONCURRENCY = Number(process.argv[3] ?? 4);
@@ -88,7 +89,7 @@ const portsBefore = listeningPorts();
 // 4460). A daemon listening anywhere else gets no browser session at all and every measurement below
 // silently becomes a measurement of an idle daemon — which is exactly how the whole bench/harness
 // fleet ran against nothing for an unknown number of commits.
-const PORT = process.env.RETICLE_PORT ?? '4460';
+const PORT = RETICLE_PORT;
 const client = new McpStdioClient('node', [CLI, 'mcp', '--port', PORT, '--drive', APP], {
   RETICLE_PORT: PORT,
   RETICLE_TOOL_PROFILE: 'full',

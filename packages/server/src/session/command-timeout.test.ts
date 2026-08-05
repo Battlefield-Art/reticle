@@ -36,6 +36,56 @@ describe('commandTimeoutMessage — an 8s timeout should say what to DO', () => 
   });
 
   /**
+   * A page that was heard from moments ago is executing JavaScript, so "hung/hidden/suspended" cannot
+   * be the explanation whatever `hidden` reports — the two facts contradict, and the fresher one wins.
+   *
+   * This is an invariant, not a war story: the Tauri investigation that prompted it went fully silent
+   * instead (`lastSeenMs` 15s at timeout), so the hidden-window diagnosis was right THERE. The branch
+   * exists for the genuinely different state where the SDK is still talking.
+   */
+  it('says the page is alive when events are still arriving, overriding the hidden story', () => {
+    const message = commandTimeoutMessage('snapshot', 8000, {
+      url: TAURI,
+      hidden: true,
+      runtime: 'tauri',
+      lastSeenMs: 120,
+    });
+    expect(message).toContain('ALIVE');
+    expect(message).toMatch(/OUT and not back IN/);
+    // The hidden-window diagnosis must NOT also appear — two contradictory causes is worse than one.
+    expect(message).not.toMatch(/never presents|on_page_load/);
+  });
+
+  it('keeps the hidden-window diagnosis when the page has genuinely gone quiet', () => {
+    const message = commandTimeoutMessage('snapshot', 8000, {
+      url: TAURI,
+      hidden: true,
+      runtime: 'tauri',
+      lastSeenMs: 30_000,
+    });
+    expect(message).toMatch(/on_page_load/);
+    expect(message).not.toContain('ALIVE');
+  });
+
+  /**
+   * The ordering is INFERRED, never observed — the only evidence here is `hidden === true`. Measured
+   * on a Tauri shell pointed at an external http origin whose window nothing ever hid: the message
+   * prescribed a fix for a mistake that had not been made, and two rounds of debugging went into the
+   * wrong place. A confidently wrong cause is worse than a bare timeout, which at least sends the
+   * reader looking. So the message must rank causes rather than assert one.
+   */
+  it('offers more than one cause instead of asserting the ordering as fact', () => {
+    const message = commandTimeoutMessage('snapshot', 8000, {
+      url: TAURI,
+      hidden: true,
+      runtime: 'tauri',
+    });
+    expect(message).toMatch(/likely|most likely/i);
+    expect(message).toMatch(/\(2\)/);
+    expect(message).not.toMatch(/never presents, so it never runs/);
+  });
+
+  /**
    * The advice used to blame occlusion, which is measurably false: a LOADED Tauri webview answers
    * while minimized, app-hidden, occluded and on another Space. Telling someone to go move a window
    * costs them the hour this message exists to save, so the wrong cause must not come back.

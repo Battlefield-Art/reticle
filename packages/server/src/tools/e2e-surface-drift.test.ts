@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOOLS } from './tools.js';
+import { ReticleTool } from './tool-names.js';
 
 /**
  * Every `reticle_*` tool an e2e spec calls must still exist on the surface.
@@ -40,6 +41,27 @@ const BENCH_DIR = join(REPO, 'bench');
 
 /** Tool names referenced as string literals in a spec, e.g. T('reticle_query', …). */
 const TOOL_REF = /'(reticle_[a-z0-9_]+)'/g;
+
+/**
+ * The universe this guard judges against: names DECLARED as tools.
+ *
+ * Matching every `reticle_*` token instead flagged 23 telemetry event codes and CLI log identifiers
+ * (`reticle_status`, `reticle_daemon_stopped`) that were never tools and never will be. A name is
+ * only evidence of drift if it was a tool once and is not on the surface now — which is exactly what
+ * a consolidation leaves behind.
+ */
+const DECLARED_TOOLS = new Set<string>(Object.values(ReticleTool));
+
+/**
+ * Names that ARE callable, just not in the default profile — so naming them in guidance is correct.
+ *
+ * `TOOLS` is one profile's surface, not the universe. The progressive-disclosure tools are advertised
+ * only when that profile is active, and treating their absence from the default list as drift would
+ * flag guidance that is exactly right for the reader who has them. This is the distinction the guard
+ * exists to draw: a FACADE MEMBER (`reticle_flow_list`) cannot be called by its own name in any
+ * profile and must not be advertised as if it could; a profile-gated tool can.
+ */
+const PROFILE_GATED = new Set<string>([ReticleTool.RUN, ReticleTool.TOOLS]);
 
 /**
  * Names a spec may reference despite being absent from the advertised surface, each with the reason.
@@ -83,8 +105,18 @@ describe('e2e specs do not reference tools that no longer exist', () => {
     it(`${file} calls only tools that are on the surface`, () => {
       const text = readFileSync(join(SPEC_DIR, file), 'utf8');
       const referenced = [...text.matchAll(TOOL_REF)].map((m) => m[1]);
+      // Only a name that WAS a tool is evidence of drift. A spec may legitimately quote a
+      // telemetry event code (`reticle_installed`) or a store name, and flagging those told the
+      // author to "update the spec" about a string that was never a tool and never will be — a guard
+      // that is confidently wrong is worse than one that is silent, because the fix it demands is
+      // impossible. Same rule the guidance guards below use.
       const missing = [...new Set(referenced)].filter(
-        (n) => n !== undefined && !advertised.has(n) && !KNOWN_REMOVED.has(n),
+        (n) =>
+          n !== undefined &&
+          DECLARED_TOOLS.has(n) &&
+          !advertised.has(n) &&
+          !PROFILE_GATED.has(n) &&
+          !KNOWN_REMOVED.has(n),
       );
       expect(
         missing,
@@ -130,5 +162,136 @@ describe('bench harnesses do not reference tools that no longer exist', () => {
         'produce a number anyway unless the harness checks isError. Fix the call, or add the name to ' +
         'KNOWN_REMOVED with the reason.',
     ).toEqual([]);
+  });
+});
+
+/**
+ * The guidance the surface SHIPS is a caller too — and the one an agent actually follows.
+ *
+ * The two guards above scan callers written as code: specs and harnesses referencing `'reticle_x'`
+ * as string literals. They cannot see a tool name embedded in ADVICE — a tool description, an error
+ * message, a readiness banner — and that is where the same consolidation rotted a third time. Six
+ * user-facing strings still told an agent to call `reticle_record_start`/`_stop` long after those
+ * became `reticle_record { action }`, including `reticle_discover`'s own description of the flow
+ * workflow and the error you get when a recording is missing. An agent following that guidance
+ * verbatim gets "tool not found" and has no way to know the advice was stale rather than its own
+ * call being wrong.
+ *
+ * This guard is deliberately shaped to the FAILURE (a dead name reaching a user) rather than to the
+ * incident (specs, then harnesses, then prose).
+ */
+const SERVER_SRC = join(HERE, '..');
+/** Any reticle_* name mentioned anywhere in a source file, quoted or embedded in prose. */
+const ANY_TOOL_MENTION = /reticle_[a-z0-9_]+/g;
+
+function serverSources(dir: string = SERVER_SRC): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    if (entry === 'node_modules' || entry === 'dist') continue;
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) out.push(...serverSources(full));
+    // tool-names.ts DECLARES the constants; the names there are the vocabulary, not advice.
+    else if (entry.endsWith('.ts') && !entry.includes('.test.') && entry !== 'tool-names.ts')
+      out.push(full);
+  }
+  return out;
+}
+
+describe('user-facing guidance never names a tool an agent cannot call', () => {
+  const advertised = new Set(TOOLS.map((t) => t.name));
+
+  it('finds source files to check', () => {
+    expect(serverSources().length).toBeGreaterThan(20);
+  });
+
+  it('every reticle_* name in shipped guidance resolves to a live tool', () => {
+    const dead: string[] = [];
+    for (const file of serverSources()) {
+      const text = readFileSync(file, 'utf8');
+      // Per LINE, not per file: a whole-file search matches any quote anywhere before the name, which
+      // flags ordinary code comments describing the module. Only a name inside a string on its own line
+      // is guidance that ships.
+      for (const line of text.split('\n')) {
+        if (line.trimStart().startsWith('*') || line.trimStart().startsWith('//')) continue;
+        for (const match of line.match(ANY_TOOL_MENTION) ?? []) {
+          if (PROFILE_GATED.has(match)) continue;
+          if (!DECLARED_TOOLS.has(match) || advertised.has(match) || KNOWN_REMOVED.has(match))
+            continue;
+          // A facade is BUILT from its members' constants — `members: { start: ReticleTool.RECORD_START }`
+          // wires the surface rather than advising anyone to call it. Only a bare literal is advice.
+          if (!/['`"]/.test(line.slice(0, line.indexOf(match)))) continue;
+          dead.push(`${file.replace(SERVER_SRC, '')}: ${match}`);
+        }
+      }
+    }
+    expect(dead, `guidance names tools that are not on the surface:\n${dead.join('\n')}`).toEqual(
+      [],
+    );
+  });
+});
+
+/**
+ * The docs a USER pastes are guidance too, and the furthest-out audience.
+ *
+ * `SKILL.md` is the canonical paste-URL for integrating Reticle and `docs/` ships with it, so a dead
+ * tool name there reaches someone with no way at all to check it against the surface. Judged by the
+ * same rule as shipped code — a name is drift only if it was DECLARED a tool and is not callable —
+ * because prose legitimately mentions Rust symbols (`reticle_tauri::reticle_capture`), store names
+ * (`__reticle_renders`) and telemetry codes (`reticle_installed`), none of which are tools. Matching
+ * every `reticle_*` token flags eight of those and nothing real, which is how a guard becomes noise
+ * and then gets ignored.
+ */
+describe('shipped docs never name a tool a reader cannot call', () => {
+  const advertised = new Set(TOOLS.map((t) => t.name));
+  const DOCS = join(REPO, 'docs');
+
+  function docFiles(dir: string = DOCS): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      if (entry === 'node_modules' || entry.startsWith('.')) continue;
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) out.push(...docFiles(full));
+      else if (entry.endsWith('.md')) out.push(full);
+    }
+    return out;
+  }
+
+  it('finds docs to check', () => {
+    expect(docFiles().length).toBeGreaterThan(3);
+  });
+
+  /**
+   * The published package READMEs are in scope, and they are the most-read docs we ship.
+   *
+   * This guard checked `docs/` and `SKILL.md` only, so `packages/server/README.md` was advertising
+   * `reticle_baseline_save`, `reticle_baseline_list` and `reticle_diff` — three names no profile
+   * registers (the real tools are `reticle_baseline` and `reticle_visual_diff`) — to every reader on
+   * npm, and passed. The logic here was always right; it was simply pointed at the wrong files.
+   */
+  function shippedReadmes(): string[] {
+    const out = [join(REPO, 'README.md')];
+    const pkgs = join(REPO, 'packages');
+    for (const entry of readdirSync(pkgs)) {
+      const readme = join(pkgs, entry, 'README.md');
+      if (existsSync(readme)) out.push(readme);
+    }
+    return out;
+  }
+
+  it('finds shipped READMEs to check', () => {
+    expect(shippedReadmes().length).toBeGreaterThan(3);
+  });
+
+  it('every declared tool name in the docs is one a reader can actually call', () => {
+    const dead: string[] = [];
+    for (const file of [...docFiles(), ...shippedReadmes(), join(REPO, 'SKILL.md')]) {
+      const text = readFileSync(file, 'utf8');
+      for (const match of text.match(ANY_TOOL_MENTION) ?? []) {
+        if (!DECLARED_TOOLS.has(match) || advertised.has(match)) continue;
+        if (PROFILE_GATED.has(match) || KNOWN_REMOVED.has(match)) continue;
+        dead.push(`${file.replace(REPO, '')}: ${match}`);
+      }
+    }
+    expect(dead, `docs name tools that are not callable:\n${dead.join('\n')}`).toEqual([]);
   });
 });

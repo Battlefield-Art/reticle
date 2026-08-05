@@ -13,16 +13,18 @@
 // them, runs the EXISTING harness scripts, and tears the fixtures down on exit. Each script writes its
 // own bench/raw/*.json; gate.mjs reads those. (Raw JSON keys keep the A/B/C codes for data continuity.)
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import * as PORTS from './ports.mjs';
 
 const FULL = process.argv.includes('--full');
 const NO_BOOT = process.argv.includes('--no-boot');
-const RETICLE_PORT = process.env.BENCH_RETICLE_PORT ?? '4455';
-const API_PORT = process.env.BENCH_API_PORT ?? '8787';
-const DEMO_PORT = process.env.BENCH_DEMO_PORT ?? '4312';
+// Ports live in one module — see the note there on why disagreeing about them silently
+// invalidated the benchmark twice.
+const { RETICLE_PORT, API_PORT, DEMO_PORT, BENCH_URL } = PORTS;
 const FIXTURE_READY_MS = Number(process.env.BENCH_FIXTURE_READY_MS ?? '30000');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -146,13 +148,84 @@ function cleanupDaemon() {
   }
 }
 
+/** Resolve once nothing is listening on `port`, so the next pass can actually bind it. */
+async function waitForPortFree(port, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const busy = await new Promise((resolve) => {
+      const socket = connect({ port: Number(port), host: '127.0.0.1' });
+      socket.once('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once('error', () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+    if (!busy) return true;
+    if (Date.now() >= deadline) return false;
+    await sleep(200);
+  }
+}
+
+/**
+ * A pass writes `bench/raw/<its own basename>.json`. There are two ways it can exit 0 while having
+ * proved nothing, and both used to read as a green ✓:
+ *
+ *   1. Every flow errored, so the summary is a row of nulls — the run still printed
+ *      `detection 0/3 … ~null tok … => nullx` and then `process.exit(0)`.
+ *   2. It died before writing, leaving the PREVIOUS run's file behind. gate.mjs then compares
+ *      stale numbers against history and reports no regression.
+ *
+ * Both are the exact failure this project exists to catch, in the harness that measures it. So the
+ * exit code is not the verdict — the artifact is. Verify the pass wrote a file DURING this run, and
+ * that it measured at least one row.
+ */
+function verifyPassArtifact(scriptPath, startedAtMs) {
+  const raw = join('bench', 'raw', `${basename(scriptPath, '.mjs')}.json`);
+  let stat;
+  try {
+    stat = statSync(raw);
+  } catch {
+    return `wrote no ${raw}`;
+  }
+  // 1s of slack: some filesystems store mtime at whole-second granularity.
+  if (stat.mtimeMs < startedAtMs - 1000) return `left ${raw} stale — this run never wrote it`;
+  let data;
+  try {
+    data = JSON.parse(readFileSync(raw, 'utf8'));
+  } catch {
+    return `wrote ${raw} but it is not valid JSON`;
+  }
+  if (!Array.isArray(data.rows)) return null; // pass reports no per-row detail; exit code is all we have
+  const measured = data.rows.filter((row) => row !== null && row.error === undefined);
+  if (measured.length > 0) return null;
+  const firstError = data.rows.find((row) => row?.error !== undefined)?.error;
+  return data.rows.length === 0
+    ? `measured NOTHING — ${raw} has no rows`
+    : `measured NOTHING — all ${data.rows.length} row(s) errored, first: ${String(firstError).slice(0, 160)}`;
+}
+
 function runScript(path) {
   console.log(`\n▶ ${path}`);
   const started = Date.now();
   try {
-    execFileSync('node', [path], { stdio: 'inherit' });
+    execFileSync('node', [path], {
+      stdio: 'inherit',
+      // A pass spawns its OWN daemon, which has to land on the port the fixture app dials. bench-all
+      // set that port only on the fixture, so the passes inherited nothing, fell back to a DIFFERENT
+      // default, and no browser session ever connected — every flow failed while the pass still
+      // reported ✓. Hand both down explicitly rather than hoping the defaults agree.
+      env: { ...process.env, RETICLE_PORT, BENCH_URL },
+    });
   } catch (error) {
     console.error(`\n✗ ${path} FAILED (${error instanceof Error ? error.message : String(error)})`);
+    return false;
+  }
+  const problem = verifyPassArtifact(path, started);
+  if (problem !== null) {
+    console.error(`\n✗ ${path} exited 0 but ${problem}`);
     return false;
   }
   console.log(`✓ ${path} (${Math.round((Date.now() - started) / 1000)}s)`);
@@ -179,7 +252,17 @@ if (!NO_BOOT) await bootFixtures();
 
 for (const path of scripts) {
   cleanupDaemon();
-  await sleep(1000);
+  // Not a sleep. `stop` returns before the listener has necessarily released the socket, and the next
+  // pass spawns its own daemon on the same port — so a fixed 1s wait is a bet on the machine, and it
+  // loses under load: the daemon fails to bind, the MCP child exits 1, and the pass dies with
+  // "mcp process exited code=1", which reads as a product failure rather than a harness race.
+  if (!(await waitForPortFree(RETICLE_PORT))) {
+    teardownFixtures();
+    console.error(
+      `\n✗ daemon port ${RETICLE_PORT} never freed — the next pass could not have bound it.`,
+    );
+    process.exit(1);
+  }
   if (!runScript(path)) {
     cleanupDaemon();
     teardownFixtures();

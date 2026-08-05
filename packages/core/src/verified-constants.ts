@@ -66,6 +66,14 @@ export const BlindSpotKind = {
    */
   RATE_LIMITED: 'rate-limited',
   CROSS_ORIGIN_IFRAME: 'cross-origin-iframe',
+  /**
+   * A SAME-ORIGIN frame, whose DOM is observed but whose NETWORK is not.
+   *
+   * A frame's `fetch`/`XMLHttpRequest` live in the frame's own realm, and the top realm's patch never
+   * sees them. Declared rather than half-instrumented: a request channel that is partly seen produces
+   * a `settled` that can be true while a frame request is still in flight, which is a false green.
+   */
+  UNINSTRUMENTED_FRAME: 'uninstrumented-frame',
   VIRTUALIZED_UNMOUNTED: 'virtualized-unmounted',
   /**
    * Something wrapped `fetch` before we did, so the request we record is not necessarily the request
@@ -75,5 +83,26 @@ export const BlindSpotKind = {
    * declared instead, and a verdict over it reports partial coverage rather than implying we saw the wire.
    */
   WRAPPED_NETWORK: 'wrapped-network',
+  /**
+   * An Electron renderer with no preload shim installed: every `ipcRenderer.invoke` is invisible.
+   *
+   * A desktop app reaches its backend over IPC, not HTTP, so without the shim `reticle_network`
+   * reports NOTHING — which reads as "this app makes no backend calls" rather than "you are blind to
+   * all of them", and makes `assert { net }` vacuously true. The SDK can tell the difference (it is
+   * running in Electron and the preload global is absent), so it says so instead of letting the
+   * silence pass for a clean result. `reticle doctor` names the one-line fix.
+   */
+  UNOBSERVED_IPC: 'unobserved-ipc',
+  /**
+   * A one-way IPC `send` in this window: dispatched, with NO verdict to observe.
+   *
+   * `ipcRenderer.send` returns immediately and the renderer never learns whether the main process
+   * handled it, so there is nothing to assert on. This is not a failure — it is an outcome that is
+   * structurally unobservable, and it has to read that way. Without it a fire-and-forget send lands
+   * as a clean green ("the UI said Marked as seen, no channel disagreed"), which is a false green the
+   * evidence cannot rule out, while treating it as a failure is a false red on a healthy app. So it
+   * is declared, and the verdict over it reports partial coverage.
+   */
+  VERDICTLESS_SEND: 'verdictless-send',
 } as const;
 export type BlindSpotKind = (typeof BlindSpotKind)[keyof typeof BlindSpotKind];

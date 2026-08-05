@@ -10,6 +10,7 @@
 import { writeFileSync } from 'node:fs';
 import { McpStdioClient } from './mcp-client.mjs';
 import { inject, revert, revertAll } from './inject.mjs';
+import { RETICLE_PORT } from './ports.mjs';
 
 const KEY = process.env.OPENAI_API_KEY;
 const MODEL = process.env.BENCH_OPENAI_MODEL ?? 'gpt-4o';
@@ -36,9 +37,9 @@ const SERVERS = {
   },
   reticle: {
     command: 'node',
-    args: ['packages/server/dist/cli.js', 'mcp', '--port', '4455', '--drive', URL],
+    args: ['packages/server/dist/cli.js', 'mcp', '--port', RETICLE_PORT, '--drive', URL],
     env: {
-      RETICLE_PORT: '4455',
+      RETICLE_PORT,
       RETICLE_TOOL_PROFILE: process.env.BENCH_RETICLE_PROFILE ?? 'full',
     },
   },
@@ -192,9 +193,13 @@ async function runCell(scenarioId, toolKey) {
     if (toolKey === 'reticle') {
       try {
         const { execFileSync } = await import('node:child_process');
-        execFileSync('node', ['packages/server/dist/cli.js', 'stop', '--port', '4455', '--quiet'], {
-          stdio: 'ignore',
-        });
+        execFileSync(
+          'node',
+          ['packages/server/dist/cli.js', 'stop', '--port', RETICLE_PORT, '--quiet'],
+          {
+            stdio: 'ignore',
+          },
+        );
       } catch {
         /* */
       }

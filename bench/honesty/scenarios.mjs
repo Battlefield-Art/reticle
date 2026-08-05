@@ -1,7 +1,7 @@
 // Honesty / false-green benchmark scenarios. Each is a GREEN verdict (the action passed) over a real
 // observation window — the question is NOT "did it pass" but "is the pass presented as honestly as
-// reality warrants". `reality` is the ground truth an honest verdict MUST disclose. v2.1.0 has no honesty
-// block, so it discloses nothing; v2.2.0 composes one. The metric is false-green rate: a green that hides
+// reality warrants". `reality` is the ground truth an honest verdict MUST disclose. the pre-honesty baseline has no honesty
+// block, so it discloses nothing; the honesty layer composes one. The metric is false-green rate: a green that hides
 // a real caveat is a false green (the operator trusts more than the tool actually proved).
 
 import { EventType, BlindSpotKind } from '@reticlehq/core';
@@ -49,7 +49,7 @@ export const HONESTY_SCENARIOS = [
   },
   {
     // CONTROL: a genuinely trustworthy green. A good honesty benchmark must NOT over-flag these —
-    // if v2.2.0 marked this partial/dirty it would cry wolf and be as useless as silence.
+    // if the honesty layer marked this partial/dirty it would cry wolf and be as useless as silence.
     name: 'clean-signal-green (control)',
     desc: 'Green act, strong signal grade, full coverage, no truncation — nothing to disclose',
     grade: 'signal',

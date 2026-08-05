@@ -1,4 +1,4 @@
-// Deterministic re-check for the fix-loop ablation (W1/B01). A regression is FIXED iff every marker
+// Deterministic re-check for the fix-loop ablation. A regression is FIXED iff every marker
 // string it injected is gone from its source files. Sound for any fix (revert OR rewrite): removing the
 // buggy code is necessary to fix the bug, so absence-of-marker is a reliable "fixed" signal — and it needs
 // no running app, so re-check is instant and deterministic (the ablation's fixed-correctly oracle).

@@ -15,6 +15,7 @@
 import { writeFileSync } from 'node:fs';
 import { McpStdioClient } from './mcp-client.mjs';
 import { inject, revert, revertAll } from './inject.mjs';
+import { RETICLE_PORT } from './ports.mjs';
 
 const KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = process.env.BENCH_MODEL ?? 'claude-haiku-4-5-20251001';
@@ -50,8 +51,8 @@ const SERVERS = {
   },
   reticle: {
     command: 'node',
-    args: ['packages/server/dist/cli.js', 'mcp', '--port', '4455', '--drive', URL],
-    env: { RETICLE_PORT: '4455' },
+    args: ['packages/server/dist/cli.js', 'mcp', '--port', RETICLE_PORT, '--drive', URL],
+    env: { RETICLE_PORT },
   },
 };
 
@@ -188,9 +189,13 @@ async function runCell(scenarioId, toolKey) {
     if (toolKey === 'reticle') {
       try {
         const { execFileSync } = await import('node:child_process');
-        execFileSync('node', ['packages/server/dist/cli.js', 'stop', '--port', '4455', '--quiet'], {
-          stdio: 'ignore',
-        });
+        execFileSync(
+          'node',
+          ['packages/server/dist/cli.js', 'stop', '--port', RETICLE_PORT, '--quiet'],
+          {
+            stdio: 'ignore',
+          },
+        );
       } catch {
         /* */
       }

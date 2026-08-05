@@ -114,3 +114,147 @@ describe('dev overlay', () => {
     expect(document.querySelector('[data-reticle-overlay]')).toBeNull();
   });
 });
+
+describe('fill without a value', () => {
+  /**
+   * A `fill` carrying no value must FAIL, not quietly empty the field.
+   *
+   * `asString(args['value'])` defaults to '', so a fill whose value never arrived was indistinguishable
+   * from `clear` — it wiped whatever the user (or the app) had put there, dispatched a real input
+   * event so React committed the empty string to state, and reported ok:true with no contradiction.
+   *
+   * This is easy to trigger: the tool takes the value NESTED (`{ref, action:'fill', args:{value}}`),
+   * so passing `value` at the top level silently becomes a destructive clear. Measured on bench-app's
+   * login form — "admin@reticle.dev" was wiped and the act reported success.
+   *
+   * `clear` already exists for emptying a field on purpose, and its own branch throws rather than
+   * report a silent success for a target it cannot clear. Fill follows the same rule.
+   */
+  it('throws instead of silently clearing the field', async () => {
+    document.body.innerHTML = '<input id="f" value="keep-me" />';
+    const el = document.getElementById('f') as HTMLInputElement;
+    await expect(executeAction(refs.refFor(el), 'fill', {})).rejects.toThrow(/value/i);
+    expect(el.value, 'the existing value must survive a malformed fill').toBe('keep-me');
+  });
+
+  it('still fills normally when a value is given', async () => {
+    document.body.innerHTML = '<input id="g" value="old" />';
+    const el = document.getElementById('g') as HTMLInputElement;
+    await executeAction(refs.refFor(el), 'fill', { value: 'new' });
+    expect(el.value).toBe('new');
+  });
+
+  it('allows an explicit empty string, which is a deliberate clear', async () => {
+    document.body.innerHTML = '<input id="h" value="old" />';
+    const el = document.getElementById('h') as HTMLInputElement;
+    await executeAction(refs.refFor(el), 'fill', { value: '' });
+    expect(el.value).toBe('');
+  });
+});
+
+describe('type and select refuse malformed calls too', () => {
+  /**
+   * Same family as the valueless fill: a missing argument defaulted to '' and turned a broken call
+   * into a silent success. `type` appended nothing and reported ok:true — an agent believes it typed.
+   */
+  it('type throws instead of appending nothing', async () => {
+    document.body.innerHTML = '<input id="t" value="abc" />';
+    const el = document.getElementById('t') as HTMLInputElement;
+    await expect(executeAction(refs.refFor(el), 'type', {})).rejects.toThrow(/text/i);
+    expect(el.value).toBe('abc');
+  });
+
+  /**
+   * The worst of the three: `select` with no value assigned '' to the <select>. No option carries
+   * that value, so the browser sets selectedIndex to -1 — DESELECTING everything — and the action
+   * reported ok:true. A form the agent believes it filled is now emptier than before it acted.
+   */
+  it('select throws instead of deselecting everything', async () => {
+    document.body.innerHTML =
+      '<select id="s"><option value="a">A</option><option value="b">B</option></select>';
+    const el = document.getElementById('s') as HTMLSelectElement;
+    el.value = 'b';
+    await expect(executeAction(refs.refFor(el), 'select', {})).rejects.toThrow(/value/i);
+    expect(el.value, 'the existing selection must survive').toBe('b');
+  });
+
+  it('select still works for an option that exists', async () => {
+    document.body.innerHTML =
+      '<select id="s3"><option value="a">A</option><option value="b">B</option></select>';
+    const el = document.getElementById('s3') as HTMLSelectElement;
+    await executeAction(refs.refFor(el), 'select', { value: 'b' });
+    expect(el.value).toBe('b');
+  });
+});
+
+describe('fill and type refuse fields a user could not edit', () => {
+  /**
+   * A synthetic fill can write where a person cannot.
+   *
+   * `readonly` and `disabled` block USER input, not scripted assignment — so the prototype value
+   * setter sails straight through both. Measured: filling a `readonly` input reported
+   * `ok:true, valueChanged:true` with NOTHING in the effect block marking it read-only, and a
+   * `disabled` input reported the same with only `enabled:false` to hint at it. The agent is told it
+   * edited a field, and the app is now in a state no user could have produced — so any conclusion
+   * drawn from what follows is about software nobody can actually operate.
+   *
+   * This is the same rule the click path already applies with `occluded` ("a real user could not
+   * click it"), and it matches Playwright, which refuses to fill a non-editable element rather than
+   * forcing the value in.
+   */
+  it('refuses to fill a readonly input, leaving it untouched', async () => {
+    document.body.innerHTML = '<input id="ro" value="locked" readonly />';
+    const el = document.getElementById('ro') as HTMLInputElement;
+    await expect(executeAction(refs.refFor(el), 'fill', { value: 'new' })).rejects.toThrow(
+      /readonly/i,
+    );
+    expect(el.value).toBe('locked');
+  });
+
+  it('refuses to fill a disabled input, leaving it untouched', async () => {
+    document.body.innerHTML = '<input id="di" value="locked" disabled />';
+    const el = document.getElementById('di') as HTMLInputElement;
+    await expect(executeAction(refs.refFor(el), 'fill', { value: 'new' })).rejects.toThrow(
+      /disabled/i,
+    );
+    expect(el.value).toBe('locked');
+  });
+
+  it('refuses to type into a readonly input', async () => {
+    document.body.innerHTML = '<input id="ro2" value="locked" readonly />';
+    const el = document.getElementById('ro2') as HTMLInputElement;
+    await expect(executeAction(refs.refFor(el), 'type', { text: 'x' })).rejects.toThrow(
+      /readonly/i,
+    );
+    expect(el.value).toBe('locked');
+  });
+
+  it('still fills an ordinary editable input', async () => {
+    document.body.innerHTML = '<input id="ok" value="old" />';
+    const el = document.getElementById('ok') as HTMLInputElement;
+    await executeAction(refs.refFor(el), 'fill', { value: 'new' });
+    expect(el.value).toBe('new');
+  });
+});
+
+describe('a contenteditable target is refused legibly', () => {
+  /**
+   * Rich-text editors (TipTap, Quill, ProseMirror, Slate, Lexical) are all `[contenteditable]`, and
+   * `fill` handles only input/textarea — so an agent driving a comment box or CMS body gets
+   * "cannot fill a <div>", which reads as "you picked the wrong element" when the truth is "this
+   * surface is not supported yet". Naming it costs nothing and stops the reader hunting for a
+   * better selector that does not exist.
+   *
+   * Support is deliberately NOT faked here: setting textContent would update the DOM while the
+   * editor's own model kept the old value, and the tool would report ok:true for content the app
+   * will never submit — a false green in exactly the apps the feature would be for.
+   */
+  it('names contenteditable rather than blaming the element type', async () => {
+    document.body.innerHTML = '<div id="rt" contenteditable="true">hello</div>';
+    const el = document.getElementById('rt') as HTMLElement;
+    await expect(executeAction(refs.refFor(el), 'fill', { value: 'x' })).rejects.toThrow(
+      /contenteditable/i,
+    );
+    expect(el.textContent, 'the existing content must not be touched').toBe('hello');
+  });
+});

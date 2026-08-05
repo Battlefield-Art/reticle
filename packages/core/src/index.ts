@@ -14,6 +14,7 @@ export * from './verified-constants.js'; // Verified — the one field an agent 
 export * from './session-constants.js';
 export * from './messages.js'; // ReticleEvent + the message schemas
 export * from './event-payloads.js'; // per-event payload schemas + wire vocab
+export * from './event-priority.js'; // which events survive the bridge rate cap
 export * from './flow-types.js'; // FlowStep, FlowExpect, FlowStepTool, replay result shapes
 export * from './verification-run.js'; // run/verdict shapes for the CI surface
 export * from './types.js';
@@ -32,4 +33,6 @@ export * from './redaction.js'; // isSensitiveKey / scrubKnownSecrets — the sh
 export * from './state-select.js'; // selectPath / capDepth — shared by browser SDK + server fallback
 export * from './toon.js'; // TOON encoding used by the server's result encoder
 export * from './upgrade.js'; // self-update policy shared by the CLI
-export * from './telemetry.js'; // anonymous adoption telemetry wire contract (DAU/WAU/MAU/installs)
+export * from './telemetry.js';
+export * from './telemetry-session.js'; // the session/project rollup payloads
+export * from './telemetry-feedback.js'; // the two things a PERSON writes: feedback + a self-declared identity // anonymous adoption telemetry wire contract (DAU/WAU/MAU/installs)

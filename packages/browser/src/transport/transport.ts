@@ -240,10 +240,48 @@ export class Transport {
       return;
     }
     const result = CommandMessageSchema.safeParse(parsed);
-    if (!result.success) return;
+    if (!result.success) {
+      // Also once silent. A command the page cannot parse is a version skew between the SDK and the
+      // daemon, and dropping it produces the same unfalsifiable timeout every other hang produces — the one
+      // failure mode where the cause is knowable and was being thrown away. Reply if we can recover
+      // an id; a message without one is not a command we can answer at all.
+      const id: unknown = (parsed as { id?: unknown } | null)?.id;
+      if (typeof id === 'string' && id.length > 0) {
+        this.#sendRaw(
+          safeStringify({
+            kind: MessageKind.COMMAND_RESULT,
+            id,
+            ok: false,
+            error:
+              'this page could not parse the command — the @reticlehq/browser SDK and the daemon ' +
+              'are probably different versions. Nothing ran.',
+          }),
+        );
+      }
+      return;
+    }
     const command = result.data;
     // #sessionId is set in onopen, which always precedes any inbound command on the same socket.
-    if (command.sessionId !== undefined && command.sessionId !== this.#sessionId) return;
+    //
+    // A mismatch used to `return` — silently. The command then had no reply of any kind, so the agent
+    // waited out its full timeout and got "command timed out", which reads as a hung or suspended
+    // page. Measured on a Tauri shell: the session was connected and streaming events the whole time
+    // while every command vanished here, and three rounds of debugging went looking at the webview.
+    // A dropped command is a real fault, so it now says so and names both ids.
+    if (command.sessionId !== undefined && command.sessionId !== this.#sessionId) {
+      this.#sendRaw(
+        safeStringify({
+          kind: MessageKind.COMMAND_RESULT,
+          id: command.id,
+          ok: false,
+          error:
+            `command addressed to session ${command.sessionId} but this page is ` +
+            `${this.#sessionId ?? '(none)'} — the page reconnected under a new id, or two sessions ` +
+            'share a socket. Nothing ran.',
+        }),
+      );
+      return;
+    }
     let outcome: CommandOutcome;
     try {
       outcome = await this.#deps.handleCommand(command);

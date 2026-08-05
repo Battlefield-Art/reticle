@@ -3,7 +3,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { transformSync } from '@babel/core';
 import reticleSource from '@reticlehq/babel-plugin';
-import { RETICLE_DEFAULT_PORT, bridgeWsUrl, ReticleDir, ReticleEnv } from '@reticlehq/core';
+import {
+  RETICLE_DEFAULT_PORT,
+  RETICLE_RENDER_PREHOOK,
+  bridgeWsUrl,
+  ReticleDir,
+  ReticleEnv,
+} from '@reticlehq/core';
 import { resolveProjectId } from './project-id.js';
 import { discoverDaemonPort } from './discover-port.js';
 
@@ -26,6 +32,28 @@ const NODE_MODULES = 'node_modules';
  * by the injected <script src> and served by the load hook below.
  */
 export const RETICLE_CONNECT_MODULE = '/@reticle-connect';
+
+/**
+ * The pre-hook, as source for an inline <head> script.
+ *
+ * Deliberately dependency-free ES5 in a try/catch: it runs before anything else on the page, so it
+ * must not assume a bundler, a module system, or that React is present at all. It installs a faithful
+ * devtools hook (React calls `inject` and expects a renderer id back, and stores the renderer) and
+ * counts commits into a buffer the module-side meter adopts later.
+ */
+export const RENDER_PREHOOK_SOURCE = `(function(){try{
+var K='__REACT_DEVTOOLS_GLOBAL_HOOK__',P='${RETICLE_RENDER_PREHOOK}';
+if(globalThis[P])return;
+var B={commits:0,sinks:[]};
+globalThis[P]=B;
+var fire=function(){B.commits++;for(var i=0;i<B.sinks.length;i++){try{B.sinks[i].apply(null,arguments);}catch(e){}}};
+var h=globalThis[K];
+if(h===undefined){
+globalThis[K]={supportsFiber:true,renderers:new Map(),inject:function(r){var id=this.renderers.size+1;this.renderers.set(id,r);return id;},
+onScheduleFiberRoot:function(){},onCommitFiberRoot:fire,onPostCommitFiberRoot:function(){},onCommitFiberUnmount:function(){}};
+}else{var prev=h.onCommitFiberRoot;h.onCommitFiberRoot=function(){try{fire.apply(null,arguments);}catch(e){}
+if(typeof prev==='function')return prev.apply(this,arguments);};}
+}catch(e){}})();`;
 
 /**
  * How long after serving the HTML to wait before concluding the entry was never injected.
@@ -67,6 +95,23 @@ export interface ReticleVitePluginOptions {
    */
   desktop?: boolean;
   /**
+   * Record request/response BODIES on `reticle_network`, not just method/url/status.
+   *
+   * Off by default because a body is the one part of a request that routinely carries a card
+   * number, a token or a customer's address, and the daemon journals what it is told.
+   *
+   * It matters that this is reachable at all. The SDK has supported `captureNetworkBodies` on
+   * `connect()` since bodies existed, but the plugin — the documented one-line integration, and the
+   * only `connect()` most apps ever have — had no way to pass it, and calling `connect()` a second
+   * time is a no-op. So for every app wired the recommended way, a payload was unreachable: on a
+   * real payments dashboard, a refund POSTing `amount: 1187.01` into a paise field (a 100x
+   * under-refund) was visible to Playwright's request inspector and invisible here.
+   *
+   * Also settable as `VITE_RETICLE_CAPTURE_BODIES=1`, so it can be turned on for one debugging
+   * session without editing vite.config.
+   */
+  captureNetworkBodies?: boolean;
+  /**
    * Where a diagnostic goes. Defaults to the console; injected so the dev-mode injection check is
    * testable without capturing global console output.
    */
@@ -76,6 +121,13 @@ export interface ReticleVitePluginOptions {
 /** Structural Vite plugin shape — avoids a hard dependency on `vite` while staying assignable to its `Plugin`. */
 export interface ReticleVitePlugin {
   name: string;
+  /**
+   * Vite's `config` hook. Used to declare the SDK's CJS runtime deps for pre-bundling — see the
+   * implementation for why omitting them makes the whole SDK fail to load on linked setups.
+   */
+  config?: (config: { optimizeDeps?: { include?: string[] } }) => {
+    optimizeDeps: { include: string[] };
+  };
   /** Absent in desktop mode, where the plugin must also run for `vite build`. */
   apply?: 'serve';
   enforce: 'pre';
@@ -93,8 +145,12 @@ export interface ReticleVitePlugin {
 
 interface HtmlTag {
   tag: string;
-  attrs: Record<string, string>;
-  injectTo: 'body';
+  /** Absent on an inline script, which carries its source in `children` instead. */
+  attrs?: Record<string, string>;
+  /** Inline source, for a tag that has no `src`. */
+  children?: string;
+  /** `head-prepend` is required for the render pre-hook: it must run before any module script. */
+  injectTo: 'body' | 'head-prepend';
 }
 
 /**
@@ -152,6 +208,15 @@ function stamp(code: string, id: string): { code: string; map: string | null } |
  * sandbox can't read the file, which is exactly why a rogue localhost app can't forge it. Best-effort:
  * undefined if the daemon hasn't started yet (the page reloads once it has). Exported for testing.
  */
+/**
+ * CJS packages the browser SDK needs at runtime. Named, because a bare string here is exactly the
+ * kind of thing that silently rots when a dependency is renamed.
+ */
+const SDK_CJS_DEPS = {
+  TESTING_LIBRARY: '@testing-library/dom',
+  ARIA_QUERY: 'aria-query',
+} as const;
+
 export function readPairingToken(): string | undefined {
   const override = process.env[ReticleEnv.PAIRING_TOKEN_DIR];
   const dir =
@@ -175,6 +240,12 @@ function connectArgs(options: ReticleVitePluginOptions): string {
   // A desktop renderer is a production build by construction; without this the SDK's prod backstop
   // refuses to connect and the app is silently uninstrumented.
   if (options.desktop === true) args['allowInProduction'] = true;
+  // Env wins nothing — it only turns the flag ON, so a config that never set it can still be
+  // switched on for one debugging session without editing vite.config and restarting the mental
+  // model with it.
+  if (options.captureNetworkBodies === true || process.env['VITE_RETICLE_CAPTURE_BODIES'] === '1') {
+    args['captureNetworkBodies'] = true;
+  }
   return Object.keys(args).length > 0 ? JSON.stringify(args) : '';
 }
 
@@ -277,6 +348,30 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     // run for `vite build` or the shipped app has no connect() at all.
     ...(options.desktop === true ? {} : { apply: 'serve' as const }),
     enforce: 'pre',
+    /**
+     * Declare the SDK's CJS runtime deps so Vite pre-bundles them.
+     *
+     * `@testing-library/dom` is what `by: role` matching runs on, and it pulls CJS `aria-query`. When
+     * the SDK resolves from OUTSIDE the app's root — a linked package, a pnpm workspace, `npm link`,
+     * a monorepo alias — Vite skips pre-bundling and the named import dies with "does not provide an
+     * export named 'elementRoles'". That takes the WHOLE SDK down before connect() runs, so there is
+     * no session, no Reticle-side error, and only a console SyntaxError naming a package the
+     * developer has never heard of. Measured on the react-admin demo with the SDK aliased to a local
+     * checkout: zero sessions, and it looked like the app was failing to render.
+     *
+     * Declaring them is free when Vite would have found them anyway.
+     */
+    config(config: { optimizeDeps?: { include?: string[] } }) {
+      return {
+        optimizeDeps: {
+          include: [
+            ...(config.optimizeDeps?.include ?? []),
+            SDK_CJS_DEPS.TESTING_LIBRARY,
+            SDK_CJS_DEPS.ARIA_QUERY,
+          ],
+        },
+      };
+    },
     transform(code, id) {
       // Desktop injection: prepend connect() to the HTML's own entry module. It is a REAL module, so
       // its bare `@reticlehq/react` import resolves through the normal pipeline in both dev and
@@ -335,6 +430,15 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       // URL in a packaged build.
       if (!inject || desktop) return [];
       return [
+        // A CLASSIC inline script in <head>, and it has to be both.
+        //
+        // React reads `__REACT_DEVTOOLS_GLOBAL_HOOK__` when its renderer injects — which happens as
+        // soon as react-dom evaluates. A `type="module"` script runs in document order AFTER the
+        // app's entry module, so the connect module below can never install the hook in time.
+        // Measured on two independent Vite apps: the hook existed with our callback attached and
+        // `renderers.size === 0`, so the render meter counted zero forever while the docs advertised
+        // commit counts. This runs during parse, before any module, and the meter adopts its buffer.
+        { tag: 'script', children: RENDER_PREHOOK_SOURCE, injectTo: 'head-prepend' },
         { tag: 'script', attrs: { type: 'module', src: RETICLE_CONNECT_MODULE }, injectTo: 'body' },
       ];
     },

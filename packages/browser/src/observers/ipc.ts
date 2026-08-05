@@ -1,4 +1,5 @@
 import {
+  BlindSpotKind,
   EventType,
   IPC_URL_SCHEME,
   IpcStatus,
@@ -39,6 +40,21 @@ interface PreloadRecord {
   ok?: boolean;
   durationMs?: number;
   error?: string;
+  /**
+   * A fire-and-forget `ipcRenderer.send`: dispatched, with no outcome the renderer can ever learn.
+   * Such a record carries NO `ok` and NO `status` — see the emit below.
+   */
+  oneWay?: boolean;
+  /**
+   * The call's payloads, as the preload serialized them. A desktop app's whole API surface is IPC,
+   * so without these every payload-based check — a batch whose ok envelope hides per-item failures,
+   * a money value written back at the wrong scale — is web-only on Electron.
+   */
+  requestBody?: string;
+  requestSize?: number;
+  responseBody?: string;
+  responseSize?: number;
+  responseBodyTruncated?: boolean;
 }
 
 interface PreloadChannel {
@@ -59,8 +75,19 @@ const TAURI_RESPONSE_ERROR = 'error';
 /** Rust/IPC vocabulary rather than HTTP's, so the text never claims a transport status it lacks. */
 const IPC_STATUS_TEXT = { OK: 'Ok', ERROR: 'Err' } as const;
 
-/** Tauri's IPC endpoint, e.g. `ipc://localhost/archive_todo`. The last segment is the command. */
-const TAURI_IPC_URL = /^ipc:\/\/[^/]*\/(.+)$/;
+/**
+ * Tauri's IPC endpoint. The last path segment is the command name.
+ *
+ * TWO spellings, because Tauri v2 uses a different one per platform and matching only the first is a
+ * silent false green on Windows: macOS/Linux get the custom scheme `ipc://localhost/archive_todo`,
+ * while Windows (and Android) need a real http origin and get
+ * `http://ipc.localhost/archive_todo` — the hostname `desktop-doctor` already tells people to put in
+ * their CSP. Unmatched, a Windows `invoke` was recorded as an ordinary HTTP request, so the
+ * `Tauri-Response` translation never ran and every command that returned `Err` was banked as a
+ * successful 200. `.localhost` is reserved for loopback by RFC 6761, so this can never match a
+ * remote host.
+ */
+const TAURI_IPC_URL = /^(?:ipc:\/\/[^/]*|https?:\/\/ipc\.localhost(?::\d+)?)\/(.+)$/;
 
 /**
  * Fields to override on a NET_REQUEST that turned out to be a Tauri IPC call, or null when the
@@ -92,14 +119,36 @@ export function ipcNetOverrides(
 }
 
 /**
+ * Is this page an Electron renderer? Read off the user agent, which Electron stamps and which is
+ * available whether or not the preload ran — the whole point is to recognise a renderer that has
+ * NOT been instrumented.
+ */
+function isElectronRenderer(): boolean {
+  return navigator.userAgent.includes('Electron');
+}
+
+/**
  * Subscribe to the Electron preload shim, if this app installed it. Inert on Tauri (whose calls the
  * network observer handles) and on a plain web page.
  */
-export function installIpc(emit: Emit): Teardown {
+export interface IpcOptions {
+  /** Forward the IPC payloads the preload recorded. Off by default, like the HTTP body capture. */
+  captureBodies?: boolean;
+}
+
+export function installIpc(emit: Emit, options: IpcOptions = {}): Teardown {
   const channel = (window as unknown as Record<string, unknown>)[RETICLE_IPC_GLOBAL] as
     | PreloadChannel
     | undefined;
-  if (typeof channel?.subscribe !== 'function') return () => undefined;
+  if (typeof channel?.subscribe !== 'function') {
+    // No shim — but on Electron that is not "nothing to observe", it is "everything unobserved".
+    // Tauri needs no shim (its invoke travels as a fetch) and a web page has no IPC at all, so only
+    // Electron gets the declaration. Saying nothing here is what let a missing preload line read as
+    // a clean, empty network view for a whole app.
+    if (isElectronRenderer())
+      emit(EventType.BLIND_SPOT, { kind: BlindSpotKind.UNOBSERVED_IPC, count: 1 });
+    return () => undefined;
+  }
 
   const token = channel.subscribe((record) => {
     observeSafely(() => {
@@ -113,16 +162,36 @@ export function installIpc(emit: Emit): Teardown {
         });
         return;
       }
+      // A one-way `send` that did not throw has NO verdict — the renderer never learns whether the
+      // main process handled it. Emitting `ok/status` anyway would manufacture the success nobody
+      // reported, so both are omitted and `oneWay` says why. `reticle_network { ok }` then matches
+      // such a record in neither direction, which is the honest answer to "did it work".
+      const verdictless = record.oneWay === true && record.ok === undefined;
+      // Declared, not inferred: the server cannot tell "no verdict" from "not yet settled" without
+      // being told, and a send with nothing to observe must not read as a clean green.
+      if (verdictless)
+        emit(EventType.BLIND_SPOT, { kind: BlindSpotKind.VERDICTLESS_SEND, count: 1 });
       const ok = record.ok === true;
       emit(EventType.NET_REQUEST, {
         id: record.id,
         method: NetInitiator.IPC,
         url,
-        ok,
-        status: ok ? IpcStatus.OK : IpcStatus.ERROR,
+        ...(verdictless ? {} : { ok, status: ok ? IpcStatus.OK : IpcStatus.ERROR }),
+        ...(record.oneWay === true ? { oneWay: true } : {}),
         durationMs: record.durationMs ?? 0,
         initiator: NetInitiator.IPC,
         ...(record.error === undefined ? {} : { error: record.error }),
+        // Size travels ALWAYS, bodies only on opt-in. The split matters: the verdict layer reports "a
+        // write returned ok and its payload went unread" from the size alone, and it cannot infer that
+        // from an absent field — an unread payload and an empty one would look identical.
+        ...(record.responseSize === undefined ? {} : { responseSize: record.responseSize }),
+        ...(options.captureBodies === true
+          ? {
+              ...(record.requestBody === undefined ? {} : { requestBody: record.requestBody }),
+              ...(record.responseBody === undefined ? {} : { responseBody: record.responseBody }),
+              ...(record.responseBodyTruncated === true ? { responseBodyTruncated: true } : {}),
+            }
+          : {}),
       });
     });
   });

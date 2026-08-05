@@ -1,4 +1,4 @@
-// Multi-agent throughput (Q1/Q5): the BrowserPool's payoff. One real Chromium, N isolated leased
+// Multi-agent throughput: the BrowserPool's payoff. One real Chromium, N isolated leased
 // contexts. Each "flow" = acquire(url) [real context create + navigation] + a hold representing the
 // verify steps + release. We compare SERIAL (cap=1) vs POOLED-PARALLEL (cap=N) wall-clock over M flows
 // so the speedup and peak concurrency are measured, not asserted. Needs the demo at BENCH_URL.

@@ -1,4 +1,8 @@
 import { ContradictionKind, EventType, MUTATING_METHODS, type ReticleEvent } from '@reticlehq/core';
+import { findStaleResponses } from './stale-response.js';
+import { findBodyFailures } from './body-failures.js';
+import { findEchoMismatches } from './echo-mismatch.js';
+import { findUnitMismatches } from './unit-mismatch.js';
 import { asNumber, asString } from '../tools/tools-helpers.js';
 
 /**
@@ -34,7 +38,16 @@ interface NetCall {
   method: string;
   url: string;
   status: number | undefined;
-  ok: boolean;
+  /**
+   * `undefined` means NO VERDICT — not failure.
+   *
+   * A one-way IPC `send` hands the message to the main process and returns; the renderer never learns
+   * whether it was handled. The observer deliberately omits both `ok` and `status` rather than
+   * manufacture a success nobody reported. Collapsing that to `false` here manufactured a FAILURE
+   * nobody reported instead, which is the same sin pointing the other way: every fire-and-forget send
+   * raised `ui-advanced-request-failed` against a UI that had done nothing wrong.
+   */
+  ok: boolean | undefined;
 }
 
 function netCall(e: ReticleEvent): NetCall {
@@ -44,8 +57,11 @@ function netCall(e: ReticleEvent): NetCall {
     url: asString(e.data['url']) ?? '',
     status,
     // `ok` is authoritative when present (IPC sets it explicitly); status is the HTTP fallback.
+    // Neither present = no verdict was ever reported, which stays undefined all the way through.
     ok:
-      e.data['ok'] === true || (e.data['ok'] === undefined && status !== undefined && status < 400),
+      e.data['ok'] === undefined && status === undefined
+        ? undefined
+        : e.data['ok'] === true || (e.data['ok'] === undefined && (status ?? 0) < 400),
   };
 }
 
@@ -141,14 +157,131 @@ function describe(call: NetCall): string {
   return `${call.method} ${call.url}${call.status === undefined ? '' : ` → ${String(call.status)}`}`;
 }
 
-export function findContradictions(events: readonly ReticleEvent[]): Contradiction[] {
+/**
+ * Actions that are SUPPOSED to make something happen, so producing nothing is a finding.
+ *
+ * Deliberately narrow. `hover`, `focus` and `scrollIntoView` can legitimately move nothing, and
+ * `fill`/`type` change an input's value without necessarily mutating the DOM tree — flagging those
+ * would manufacture noise, which is the failure mode opposite to a false green and just as bad.
+ */
+const MUST_DO_SOMETHING = new Set(['click', 'dblclick', 'submit']);
+
+/**
+ * Whether NOTHING in this window is attributable to the action.
+ *
+ * Ambient churn is deliberately not counted as evidence the action worked — a background event
+ * stream, a polling store, a perf sample and a scroll position all move on their own. What counts:
+ *
+ *  - a mutation inside the target's own subtree (what the target itself did),
+ *  - a request (the action asked the server for something),
+ *  - a navigation, or a dialog/live region appearing — the two ways a real reaction legitimately
+ *    lands OUTSIDE the target, e.g. a modal portalled to the body.
+ *
+ * The last clause is what keeps this from manufacturing noise: a button that opens a modal mutates
+ * nothing within itself, and must not be called dead.
+ */
+function didNothing(
+  events: readonly ReticleEvent[],
+  requests: readonly NetCall[],
+  mutatedWithin: number | undefined,
+): boolean {
+  if (mutatedWithin === undefined) return events.length === 0;
+  if (mutatedWithin > 0 || requests.length > 0) return false;
+  return !events.some(
+    (e) => e.type === EventType.ROUTE_CHANGE || e.type === EventType.VISIBLE_SHOWN,
+  );
+}
+
+export interface ContradictionOptions {
+  /** The action that opened this window, when one did. Enables the no-effect check. */
+  action?: string | undefined;
+  /**
+   * Events from BEFORE the window, used only to LEARN — never reported on. Some disagreements are
+   * with something the API stated earlier in the session, which an action-scoped window cannot
+   * contain. See `findUnitMismatches` for the measured case this exists for.
+   */
+  prior?: readonly ReticleEvent[] | undefined;
+  /**
+   * DOM mutations observed INSIDE the target's own subtree, as the act tool measured them.
+   *
+   * The no-effect check used to require a completely empty window, which is a statement about the
+   * PAGE rather than about the action — and no real app has a quiet page. Measured on a shipments
+   * console with a background event stream: clicking an inert heading produced `domMutatedWithin: 0`
+   * and four ambient events (a scroll position, an unrelated store update, a perf sample), so the
+   * window was not empty and the dead control went unreported. The user's framing of this is exact:
+   * the DOM moving after an action is not evidence that the action moved it.
+   *
+   * Undefined means the caller did not measure it — the check then falls back to the empty-window
+   * test, which is weaker but never wrong in the direction of a false accusation.
+   */
+  mutatedWithin?: number | undefined;
+}
+
+export function findContradictions(
+  events: readonly ReticleEvent[],
+  options: ContradictionOptions = {},
+): Contradiction[] {
   const found: Contradiction[] = [];
+
   const settled = events.filter((e) => e.type === EventType.NET_REQUEST).map(netCall);
-  const failed = settled.filter((c) => !c.ok);
+
+  // ── Overlapping reads that settled out of order ─────────────────────────────────────────────
+  // Independent of any action, so it runs on every window: the race is a property of the timeline.
+  found.push(...findStaleResponses(events));
+
+  // ── A 2xx whose BODY says it failed ─────────────────────────────────────────────────────────
+  // Needs body capture; silent without it, which is why the assert path also declares when bodies
+  // were never recorded rather than letting an unread payload read as an empty one.
+  found.push(...findBodyFailures(events));
+  found.push(...findEchoMismatches(events));
+
+  // ── A money value written back at the wrong SCALE ───────────────────────────────────────────
+  found.push(...findUnitMismatches(events, options.prior ?? []));
+
+  // ── The action landed on something that does not react ──────────────────────────────────────
+  // Checked first and returned alone: nothing is attributable to the action, so every rule below is
+  // reasoning about someone else's events.
+  const action = (options.action ?? '').toLowerCase();
+  if (MUST_DO_SOMETHING.has(action) && didNothing(events, settled, options.mutatedWithin)) {
+    const measured = options.mutatedWithin !== undefined;
+    return [
+      {
+        kind: ContradictionKind.ACTION_HAD_NO_EFFECT,
+        claim: `the ${action} was dispatched and the page settled`,
+        counter: measured
+          ? 'nothing changed inside the target, and no request, navigation or dialog followed — whatever else moved on the page was not this'
+          : 'no channel observed anything at all — DOM, store, route, network, signal, console',
+        detail:
+          'the target does not react to this action (a non-interactive wrapper resolved instead of the control, a disabled handler, or a no-op) — settling proves only that the page was quiet, which a page that did nothing always is',
+      },
+    ];
+  }
+  const failed = settled.filter((c) => c.ok === false);
   const advanced = uiAdvanced(events);
   const signals = events
     .filter((e) => e.type === EventType.SIGNAL)
     .map((e) => asString(e.data['name']) ?? 'signal');
+
+  // ── The route moved and nothing was rendered for it ─────────────────────────────────────────
+  // A navigation that neither fetches nor renders arrived nowhere. Distinct from a dead control:
+  // the control worked, the DESTINATION is empty — which is why every "did the click do something"
+  // heuristic passes it, a route change being unambiguously something.
+  const routed = events.some((e) => e.type === EventType.ROUTE_CHANGE);
+  const rendered = events.some(
+    (e) => e.type === EventType.DOM_ADDED || e.type === EventType.DOM_REMOVED,
+  );
+  const fetched = events.some(
+    (e) => e.type === EventType.NET_REQUEST || e.type === EventType.NET_PENDING,
+  );
+  if (routed && !rendered && !fetched) {
+    found.push({
+      kind: ContradictionKind.ROUTE_RENDERED_NOTHING,
+      claim: 'the app navigated to a new route',
+      counter: 'nothing was rendered for it — no content added or removed, and no request made',
+      detail:
+        'the URL moved but the destination produced no content: a route with no view, a view that returned null, or data the page never asked for. A control that navigates always looks alive, so this is invisible to a dead-control check. Confirm by reading the page — a view revealed from DOM that already existed emits this same window',
+    });
+  }
 
   // ── The app claimed success while its own request failed ────────────────────────────────────
   // A signal is the sharper claim: the app did not merely LOOK right, it explicitly asserted
@@ -158,7 +291,7 @@ export function findContradictions(events: readonly ReticleEvent[]): Contradicti
   // the app did not claim success, it claimed the wrong failure. Telling someone their password is
   // wrong while the backend is down sends them to fix something they cannot fix.
   const serverFaults = settled.filter(
-    (c) => !c.ok && c.status !== undefined && c.status >= SERVER_FAULT_MIN,
+    (c) => c.ok === false && c.status !== undefined && c.status >= SERVER_FAULT_MIN,
   );
   const userBlame = [
     ...signals.filter((name) => BLAMES_USER.test(name)),
@@ -202,7 +335,7 @@ export function findContradictions(events: readonly ReticleEvent[]): Contradicti
   // Writes only: a GET that changes nothing is a prefetch; a POST that changes nothing is a lost
   // write, a response parsed into the void, or a render that never happened.
   if (!advanced) {
-    const ignoredWrites = settled.filter((c) => c.ok && isMutating(c));
+    const ignoredWrites = settled.filter((c) => c.ok === true && isMutating(c));
     if (ignoredWrites.length > 0) {
       found.push({
         kind: ContradictionKind.RESPONSE_IGNORED,

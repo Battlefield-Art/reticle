@@ -21,6 +21,16 @@ export interface VerifiedInputs {
   contradictions?: readonly { kind: string }[];
   /** Did a real frame flush before the wait gave up? */
   settled?: boolean;
+  /**
+   * A write in this window answered `202 Accepted` — the server took the request and has NOT
+   * finished processing it.
+   */
+  outcomePending?: boolean;
+  /**
+   * A write in this window returned 2xx with a payload that was never recorded, so its outcome was
+   * never read. See `hasUnreadWriteOutcome` — the status line describes the transport, not the result.
+   */
+  outcomeUnread?: boolean;
 }
 
 export interface VerifiedVerdict {
@@ -30,7 +40,7 @@ export interface VerifiedVerdict {
 }
 
 export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
-  const { pass, honesty, contradictions = [], settled } = inputs;
+  const { pass, honesty, contradictions = [], settled, outcomePending, outcomeUnread } = inputs;
 
   // A failed assertion is the most actionable fact there is; it leads.
   if (pass === false) {
@@ -70,6 +80,37 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
     };
   }
 
+  // A `202 Accepted` is the server saying, in the only word HTTP has for it, that the outcome does
+  // not exist yet. Treating 2xx as success makes every asynchronous workflow verifiable at exactly
+  // the moment nothing has been decided.
+  //
+  // Measured on a logistics console with server-side reconciliation: a dispatch answered 202, the row
+  // optimistically rendered "dispatched", the page settled, and the verdict came back `yes` — then
+  // the server REVERTED it to `held` 1.2s later. Every channel agreed, and every channel was early.
+  // UNKNOWN rather than NO: nothing has failed, and saying it has would be its own false report.
+  if (outcomePending === true) {
+    return {
+      verified: Verified.UNKNOWN,
+      because:
+        'a write returned 202 Accepted, so the server has not finished processing it — this window cannot contain the outcome; re-check once it reconciles',
+    };
+  }
+
+  // A write answered 2xx and its payload went unread, so the one channel that could contradict the
+  // screen was never opened. Reporting `yes` here means "no channel disagreed" — true only because a
+  // channel was closed. Measured on a shipments console: `POST /api/bulk-hold` → 200 with three of
+  // nine items failed inside the body, banner reading "9 shipments held", verdict `yes`.
+  //
+  // UNKNOWN, not NO: nothing is known to have failed. The remedy is in the sentence, because an
+  // agent that cannot act on a caveat will learn to skip it.
+  if (outcomeUnread === true) {
+    return {
+      verified: Verified.UNKNOWN,
+      because:
+        'a write returned 2xx with a response body that was never recorded, so its outcome is unread — a 200 describes the transport, not the result (a batch reports per-item failures in the body, and every GraphQL error is a 200). Enable it where your app calls connect(): `reticle.connect({ captureNetworkBodies: true })`, then re-run',
+    };
+  }
+
   // Never settled: the page may still be moving, so the observation window may have closed early.
   if (settled === false) {
     return {
@@ -81,8 +122,17 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
 
   // Partial coverage is a real caveat but not a blocker — it is reported in `honesty.coverage` and
   // does not by itself make a graded, clean, uncontradicted pass untrustworthy.
+  //
+  // It must not be described as clean, though. This sentence said "over a clean capture" regardless,
+  // so a verdict could read `verified: yes ... over a clean capture` directly beside `coverage:
+  // partial` — the prose contradicting the evidence block next to it. Whichever a reader believes,
+  // one of them lied, and the whole point of this layer is that the sentence can be trusted on its
+  // own. Seen on a one-way IPC send: coverage said the outcome was unobservable, `because` said clean.
   return {
     verified: Verified.YES,
-    because: `assertion held at ${honesty.grade} grade over a clean capture with no channel disagreeing`,
+    because:
+      honesty.coverage?.partial === true
+        ? `assertion held at ${honesty.grade} grade with no channel disagreeing, but coverage was PARTIAL — see \`coverage\` for what went unobserved`
+        : `assertion held at ${honesty.grade} grade over a clean capture with no channel disagreeing`,
   };
 }

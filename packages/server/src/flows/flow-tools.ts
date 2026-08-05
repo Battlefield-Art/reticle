@@ -6,6 +6,7 @@ import {
   type FlowReplayResult,
 } from '@reticlehq/core';
 import type { FlowFile } from '@reticlehq/core';
+import { FlakeStore } from './flake-store.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import { asNumber, asString } from '../tools/tools-helpers.js';
 import { log } from '../log.js';
@@ -96,7 +97,7 @@ export const FLOW_TOOLS: ToolDef[] = [
       flowName: z
         .string()
         .describe(
-          'Name for the flow file (saved to .reticle/flows/<flowName>.json). Use again in reticle_flow_load/reticle_flow_replay.',
+          'Name for the flow file (saved to .reticle/flows/<flowName>.json). Use again in reticle_flow{action:"load"} / reticle_flow_replay.',
         ),
       sessionId: z
         .string()
@@ -204,7 +205,7 @@ export const FLOW_TOOLS: ToolDef[] = [
     inputSchema: {
       flowName: z
         .string()
-        .describe('Flow file name (without .json extension) from reticle_flow_list.'),
+        .describe('Flow file name (without .json extension) from reticle_flow{action:"list"}.'),
       sessionId: z
         .string()
         .optional()
@@ -233,7 +234,7 @@ export const FLOW_TOOLS: ToolDef[] = [
     inputSchema: {
       flowName: z
         .string()
-        .describe('Flow file name (without .json extension) from reticle_flow_list.'),
+        .describe('Flow file name (without .json extension) from reticle_flow{action:"list"}.'),
       sessionId: z
         .string()
         .optional()
@@ -264,7 +265,7 @@ export const FLOW_TOOLS: ToolDef[] = [
     inputSchema: {
       flowName: z
         .string()
-        .describe('Flow file name (without .json extension) from reticle_flow_list.'),
+        .describe('Flow file name (without .json extension) from reticle_flow{action:"list"}.'),
       confirmDangerous: z
         .boolean()
         .optional()
@@ -312,7 +313,7 @@ export const FLOW_TOOLS: ToolDef[] = [
       'Replay EVERY saved flow (or a given subset) and return ONE consolidated suite verdict — the ' +
       'autonomous regression check to run after a build/change. Deterministic (no LLM per flow). ' +
       'Returns { status: pass|fail, total, passed, failed, summary, failures:[{ flow, verdict, ' +
-      'whatChanged, whereInSource, nextAction }] } — passing flows are counted, only failures carry ' +
+      'whatChanged, whereInSource, nextAction }] } plus `flaky` (flows seen to pass AND fail on unchanged code) — passing flows are counted, only failures carry ' +
       'detail (the actionable fix). One call replaces N hand-driven replays.',
     inputSchema: {
       names: z
@@ -339,6 +340,15 @@ export const FLOW_TOOLS: ToolDef[] = [
       failed: z.number(),
       summary: z.string(),
       failures: z.array(z.unknown()),
+      flaky: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Flows that have both passed and failed on UNCHANGED code — intermittent, not regressions. Omitted when none are known.',
+        ),
+      // Session-EXEMPT, so it does not inherit `sessionEnvelopeShape` — declare the one-shot human
+      // feedback ask here or a validating profile strips it off the suite verdict.
+      feedback_prompt: z.unknown().optional(),
     },
     handler: async (deps: ToolDeps, args): Promise<SuiteVerdict> => {
       const sessionId = asString(args['sessionId']);
@@ -394,6 +404,11 @@ export const FLOW_TOOLS: ToolDef[] = [
       }
       const runs: { replay: FlowReplayResult }[] = [];
       const timed: TimedReplay[] = [];
+      // The flake ledger the CLI gate already keeps — see FlakeStore. It was only ever written by
+      // `reticle flow` on the command line, so an AGENT running this tool a hundred times learned
+      // nothing about which flows are intermittent. Same product, same ledger, two surfaces, and the
+      // one an agent uses was the blind half.
+      const flakes = new FlakeStore(deps.fs, deps.reticleRoot);
       // Sequential default: every flow replays against the same live session, so they must not overlap.
       for (const flowName of requested) {
         const start = deps.now();
@@ -401,9 +416,19 @@ export const FLOW_TOOLS: ToolDef[] = [
         runs.push({ replay });
         timed.push({ replay, durationMs: deps.now() - start });
       }
+      // Accrue this run's outcomes, then report what the ledger knows. Best-effort on both halves: a
+      // flake ledger is memory, not a gate, and it must never turn a working verify into an error.
+      for (const { replay } of runs) {
+        await flakes.record(replay.name, replay.status === ReplayStatus.OK).catch(() => undefined);
+      }
+      const flaky = await flakes.flakyFlows().catch(() => [] as string[]);
       // Emit the consolidated run artifact (Runs tab) + best-effort cloud push. Never blocks the verdict.
       await persistAndSyncVerificationRun(deps, timed, projectId);
-      return buildSuiteVerdict(runs);
+      const verdict = buildSuiteVerdict(runs);
+      // A flow that has both passed and failed on UNCHANGED code is a different thing from a
+      // regression, and an agent that cannot tell them apart either chases a ghost or ignores a real
+      // break. Present only when the ledger has seen enough runs to say so.
+      return flaky.length > 0 ? { ...verdict, flaky } : verdict;
     },
   },
   {
@@ -477,7 +502,7 @@ export const FLOW_TOOLS: ToolDef[] = [
       'untouched). Returns { name, status: healed|drift|unhealable|consequence_broken|' +
       'nothing_to_heal|error, applied, proposals[], changed[], message }.',
     inputSchema: {
-      flowName: z.string().describe('Flow file name to heal (from reticle_flow_list).'),
+      flowName: z.string().describe('Flow file name to heal (from reticle_flow{action:"list"}).'),
       apply: z.boolean().optional(),
       confirmDangerous: z
         .boolean()

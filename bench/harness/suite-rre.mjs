@@ -65,7 +65,16 @@ async function verifySuite(names) {
     } catch {
       /* leave empty */
     }
-    return { tokens: measure(text).tokens_o200k, status: obj.status ?? 'unknown', verdict: obj };
+    // `passed`/`total` are read by the caller's "did this suite actually verify" guard. They were not
+    // returned, so that guard compared `undefined !== k` and threw on every run — including runs where
+    // the suite verified perfectly (status=pass). A guard that cannot pass is not a guard.
+    return {
+      tokens: measure(text).tokens_o200k,
+      status: obj.status ?? 'unknown',
+      passed: obj.passed,
+      total: obj.total,
+      verdict: obj,
+    };
   } finally {
     await a.stop();
   }

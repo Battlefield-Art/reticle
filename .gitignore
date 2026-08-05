@@ -99,3 +99,12 @@ leads/
 
 # local reticle workspace (session artifacts, visual baselines, run residue)
 .reticle/
+
+# Complex app fixtures: real upstream apps Reticle is tested and benchmarked against.
+# The CONTENTS are never committed — they are multi-gigabyte checkouts with their own git
+# history and their own package managers (react-admin is a yarn monorepo, which would break
+# this pnpm workspace if it lived under apps/*). fixtures/README.md + setup.sh are committed
+# so anyone can reproduce them; everything they produce is not.
+fixtures/*
+!fixtures/README.md
+!fixtures/setup.sh

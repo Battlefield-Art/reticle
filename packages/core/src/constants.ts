@@ -287,6 +287,9 @@ export const EventType = {
    * implies it saw everything.
    */
   BLIND_SPOT: 'blind-spot',
+  /** synthetic: the SDK ITSELF failed (an observer threw). `data: { site, message, errorType }`.
+   *  Rides the existing bridge — no outbound request. See browser/observers/sdk-failure.ts. */
+  SDK_FAILED: 'sdk.failed',
   /**
    * synthetic (driven only): CDP/Playwright-authoritative network detail for a response the in-page
    * fetch/XHR wrapper also saw — full response headers + authoritative status/mimeType the page-side
@@ -306,6 +309,13 @@ export const EventType = {
    * the agent that drains the mark knows exactly which element and which source to fix.
    */
   HUMAN_MARK: 'human.mark',
+  /**
+   * The app produced a FILE — a Blob handed to `URL.createObjectURL`, usually saved by clicking an
+   * anchor with `download`. `data: { filename?, mimeType, bytes, lines?, preview? }`. The one artifact
+   * class no outside-the-browser tool can inspect: it never crosses the network, so there is no
+   * request to intercept. See `observers/download.ts` for the defect that motivated it.
+   */
+  DOWNLOAD: 'download',
 } as const;
 export type EventType = (typeof EventType)[keyof typeof EventType];
 
@@ -338,6 +348,9 @@ export const RETICLE_HYDRATION_SIGNAL = 'reticle:hydration-complete';
  * stop the SDK's owned-store matching.
  */
 export const RETICLE_RENDERS_STORE = '__reticle_renders';
+
+/** Global the render pre-hook parks its commit buffer on (see the vite plugin's RENDER_PREHOOK_SOURCE). */
+export const RETICLE_RENDER_PREHOOK = '__reticleRenderPreHook';
 
 /**
  * Signal the React adapter fires when an error boundary catches (dev-only). Carried on the signal channel

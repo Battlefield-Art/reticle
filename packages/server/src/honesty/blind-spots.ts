@@ -27,6 +27,10 @@ const LABEL: Record<BlindSpotKind, (n: number) => string> = {
     `${String(n)} closed shadow root${n === 1 ? '' : 's'} unobserved`,
   [BlindSpotKind.CROSS_ORIGIN_IFRAME]: (n) =>
     `${String(n)} cross-origin frame${n === 1 ? '' : 's'} unobserved`,
+  // The DOM of these frames IS observed; only their network is not. Saying so precisely matters — a
+  // flat "unobserved" would discard a real capability and push agents back to guessing.
+  [BlindSpotKind.UNINSTRUMENTED_FRAME]: (n) =>
+    `${String(n)} same-origin frame${n === 1 ? '' : 's'} observed for DOM but not network — requests they make are invisible`,
   [BlindSpotKind.VIRTUALIZED_UNMOUNTED]: (n) =>
     `${String(n)} virtualized unmounted row${n === 1 ? '' : 's'} unobserved`,
   // Not "some rows we could not see" — the events never reached the observer, so this window is a
@@ -35,9 +39,40 @@ const LABEL: Record<BlindSpotKind, (n: number) => string> = {
     `${String(n)} event${n === 1 ? '' : 's'} dropped by the bridge rate cap, so this window is SAMPLED — raise RETICLE_MAX_MESSAGES_PER_SECOND for a busy app`,
   // Not a count of things — a single fact about the page. Phrased so the coverage line reads as a
   // caveat on what the network view MEANS, not as a tally.
+  // A count of unverifiable ACTIONS, not of things we failed to look at. The distinction matters:
+  // nothing here was missed, there was simply never a verdict to observe, and no amount of extra
+  // instrumentation would produce one.
+  [BlindSpotKind.VERDICTLESS_SEND]: (n) =>
+    `${String(n)} one-way IPC send${n === 1 ? '' : 's'} dispatched with NO verdict — the renderer never learns whether the main process handled ${n === 1 ? 'it' : 'them'}, so this cannot be confirmed from the page`,
   [BlindSpotKind.WRAPPED_NETWORK]: () =>
     'fetch was already wrapped before Reticle, so recorded requests may differ from what was sent',
+  // A fact about the app's wiring, not a tally. Says what the empty network view MEANS, because an
+  // empty one here is indistinguishable from "this app made no backend calls" — and that reading is
+  // the false green: every IPC call went unseen and every `assert { net }` over them is vacuous.
+  [BlindSpotKind.UNOBSERVED_IPC]: () =>
+    "this Electron renderer has no Reticle preload, so NO ipcRenderer.invoke is observed — an empty network view here means unseen, not none (add require('@reticlehq/electron/preload') to your preload)",
 };
+
+/**
+ * Blind spots that IMPEACH the capture, as opposed to bounding what it covers.
+ *
+ * The distinction decides whether a verdict is downgraded to UNKNOWN or merely carries a caveat, and
+ * conflating them breaks the tool in one direction or the other:
+ *
+ *  - **Impeaching**: events were DROPPED, so the window itself is a sample and any claim over it may
+ *    be a false negative. Nothing observed can be trusted to be complete.
+ *  - **Bounding**: a region is structurally unobservable — a cross-origin frame, a closed shadow
+ *    root, the 9,970 virtualized rows that were never rendered. What WAS observed is completely and
+ *    correctly observed; there is simply a boundary, and it is usually permanent.
+ *
+ * Treating the second kind as impeaching made every verdict on any virtualized list UNKNOWN — which
+ * is most data-heavy software, permanently. A tool that answers "unknown" to everything is as
+ * useless as one that answers "yes" to everything, and it is the same failure: a verdict that does
+ * not depend on the evidence.
+ */
+export function impeachesCapture(kind: BlindSpotKind): boolean {
+  return kind === BlindSpotKind.RATE_LIMITED;
+}
 
 /** Compose the coverage statement. `full` (no note) when nothing was unobserved. */
 export function buildCoverageStatement(spots: readonly BlindSpot[]): CoverageStatement {
@@ -47,7 +82,13 @@ export function buildCoverageStatement(spots: readonly BlindSpot[]): CoverageSta
   // "...may differ from what was sent unobserved" for the wrapped-network caveat, which is a
   // sentence rather than a count — and the same dangle appeared the moment a second prose-shaped
   // spot (rate-limited sampling) was added.
-  const note = `partial — ${present.map((s) => LABEL[s.kind](s.count)).join(', ')}`;
+  // A kind this daemon does not know about still has to READ as a blind spot. An SDK newer than the
+  // daemon can report one, and `LABEL[kind](count)` threw a TypeError on the verdict path when it
+  // did — turning "there is something I could not see" into a crashed assert, which is worse than
+  // either the caveat or the silence. Unknown kinds degrade to their own name.
+  const label = (s: BlindSpot): string =>
+    typeof LABEL[s.kind] === 'function' ? LABEL[s.kind](s.count) : `${s.kind} (${String(s.count)})`;
+  const note = `partial — ${present.map(label).join(', ')}`;
   return { coverage: 'partial', note, spots: present };
 }
 

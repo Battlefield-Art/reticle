@@ -246,6 +246,51 @@ describe('Bridge security boundary', () => {
   });
 
   /**
+   * Over the cap, sampling must drop by VALUE rather than by arrival order.
+   *
+   * Volume is inversely correlated with value: a render/DOM storm emits thousands per second while
+   * the network call an assertion actually turns on is a single event. First-come-first-dropped
+   * therefore spends the whole budget on churn and loses exactly the signal the agent asked about.
+   * Measured on a react-admin renderer with a render loop: 11,138 events dropped in one window, the
+   * one IPC call under test among them, and the assertion came back `unknown` — honest, but blind.
+   */
+  it('keeps high-value events when a low-value flood is over the cap', async () => {
+    const rateLimited = await makeBridge({ maxMessagesPerSecond: 2 });
+    const noisy = await openSocket(rateLimited.port);
+    noisy.send(JSON.stringify(hello('mixed')));
+    await waitUntil(() => rateLimited.bridge.sessions.count() === 1);
+
+    // A churn flood far past the cap, then the one event that matters, in the SAME window.
+    for (let i = 0; i < 50; i += 1) {
+      noisy.send(
+        JSON.stringify({
+          kind: MessageKind.EVENT,
+          event: { t: i, type: EventType.DOM_ADDED, sessionId: 'mixed' },
+        }),
+      );
+    }
+    noisy.send(
+      JSON.stringify({
+        kind: MessageKind.EVENT,
+        event: { t: 999, type: EventType.NET_REQUEST, sessionId: 'mixed', data: { url: '/paid' } },
+      }),
+    );
+
+    await waitUntil(() =>
+      (rateLimited.bridge.sessions.get('mixed')?.eventsSince(0) ?? []).some(
+        (event) => event.type === EventType.NET_REQUEST,
+      ),
+    );
+    const kept = rateLimited.bridge.sessions.get('mixed')?.eventsSince(0) ?? [];
+    expect(
+      kept.some((event) => event.type === EventType.NET_REQUEST),
+      'the network call must survive a DOM flood that is over the cap',
+    ).toBe(true);
+    // The bound still holds — the reserve is bounded, so the flood is still shed.
+    expect(kept.length, 'sampling must still shed the flood').toBeLessThan(50);
+  });
+
+  /**
    * Only EVENTS may be dropped. A dropped hello strands the session and a dropped command_result
    * hangs the agent's in-flight call, so the cap must bound observation without breaking protocol.
    */

@@ -1,10 +1,23 @@
 import { ElementState, REDACTED_VALUE, type ElementDescriptor } from '@reticlehq/core';
+import { isButton, isHtmlElement, isImage, isInput, isSelect, isTextArea } from './realm.js';
 import { refs } from './refs.js';
 import { inspectChart } from './chart.js';
 import { isSensitiveKey } from '../security/serialization.js';
 import { formatSource, sourceFromDom } from './source.js';
 
-/** Roles whose accessible name comes from their text content. */
+/**
+ * Roles whose accessible name comes from their text content (ARIA's `nameFrom: author content`).
+ *
+ * `radio`, `checkbox`, `row` and `tooltip` were missing, and the gap is not cosmetic: a segmented
+ * filter written as `<button role="radio">held</button>` — an extremely ordinary design-system
+ * control — reported as a nameless `radio`, so `by: role` + name could not address it at all and an
+ * agent had to fall back to a testid the app has no reason to carry. Measured on a shipments console:
+ * six filters, six nameless radios, none reachable by name.
+ *
+ * `listitem`, `status` and `alert` are NOT in the spec's list. They are kept as a deliberate
+ * over-approximation — a name computed from content is more useful than no name — and removing them
+ * has no measured symptom to justify the risk.
+ */
 const NAME_FROM_CONTENT = new Set([
   'button',
   'link',
@@ -12,9 +25,13 @@ const NAME_FROM_CONTENT = new Set([
   'option',
   'listitem',
   'cell',
+  'checkbox',
   'columnheader',
+  'radio',
+  'row',
   'rowheader',
   'tab',
+  'tooltip',
   'menuitem',
   'menuitemcheckbox',
   'menuitemradio',
@@ -101,13 +118,34 @@ function labelledByText(el: Element): string | null {
   const parts: string[] = [];
   for (const id of ids.split(/\s+/)) {
     const ref = el.ownerDocument.getElementById(id);
-    if (ref !== null) parts.push(collapse(ref.textContent ?? ''));
+    if (ref !== null) parts.push(collapse(textWithoutHidden(ref)));
   }
   const joined = parts.join(' ').trim();
   return joined.length > 0 ? joined : null;
 }
 
 /** Accessible name via a practical subset of the accname algorithm. */
+/** Accessible name via a practical subset of the accname algorithm. */
+/**
+ * Text content with `aria-hidden` subtrees removed.
+ *
+ * The accessible-name spec excludes them, and — decisively — so does dom-accessibility-api, which is
+ * what `by: role` + name MATCHES against via testing-library. Reading raw `textContent` here made the
+ * name we REPORT differ from the name that can be SELECTED: Material UI renders its required-field
+ * marker as `<span aria-hidden="true"> *</span>`, so a login field was reported as `"Username *"` and
+ * addressable only as `"Username"`. Reporting a name the agent cannot use defeats the purpose of
+ * reporting it at all, so both must come from the same rule.
+ */
+function textWithoutHidden(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+  const el = node as Element;
+  if (el.getAttribute('aria-hidden') === 'true') return '';
+  let out = '';
+  for (const child of el.childNodes) out += textWithoutHidden(child);
+  return out;
+}
+
 export function getAccessibleName(el: Element): string {
   const labelled = labelledByText(el);
   if (labelled !== null) return labelled;
@@ -115,32 +153,28 @@ export function getAccessibleName(el: Element): string {
   const ariaLabel = el.getAttribute('aria-label');
   if (ariaLabel !== null && ariaLabel.trim().length > 0) return ariaLabel.trim();
 
-  if (el instanceof HTMLImageElement) {
+  if (isImage(el)) {
     const alt = el.getAttribute('alt');
     if (alt !== null) return alt.trim();
   }
 
-  if (
-    el instanceof HTMLInputElement ||
-    el instanceof HTMLTextAreaElement ||
-    el instanceof HTMLSelectElement
-  ) {
+  if (isInput(el) || isTextArea(el) || isSelect(el)) {
     const labels = el.labels;
     if (labels !== null && labels.length > 0) {
       const text = [...labels]
-        .map((l) => collapse(l.textContent ?? ''))
+        .map((l) => collapse(textWithoutHidden(l)))
         .join(' ')
         .trim();
       if (text.length > 0) return text;
     }
-    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    if (isInput(el) || isTextArea(el)) {
       const placeholder = el.getAttribute('placeholder');
       if (placeholder !== null && placeholder.trim().length > 0) return placeholder.trim();
     }
   }
 
   if (NAME_FROM_CONTENT.has(getRole(el))) {
-    const text = collapse(el.textContent ?? '');
+    const text = collapse(textWithoutHidden(el));
     if (text.length > 0) return text;
   }
 
@@ -165,16 +199,11 @@ export function getStates(el: Element, visible: boolean = isVisible(el)): Elemen
   states.push(visible ? ElementState.VISIBLE : ElementState.HIDDEN);
 
   const disabledProp =
-    (el instanceof HTMLButtonElement ||
-      el instanceof HTMLInputElement ||
-      el instanceof HTMLSelectElement ||
-      el instanceof HTMLTextAreaElement) &&
-    el.disabled;
+    (isButton(el) || isInput(el) || isSelect(el) || isTextArea(el)) && el.disabled;
   const disabled = disabledProp || ariaBool(el, 'aria-disabled') === true;
   states.push(disabled ? ElementState.DISABLED : ElementState.ENABLED);
 
-  const checkedProp =
-    el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio') && el.checked;
+  const checkedProp = isInput(el) && (el.type === 'checkbox' || el.type === 'radio') && el.checked;
   if (checkedProp || ariaBool(el, 'aria-checked') === true) states.push(ElementState.CHECKED);
   if (ariaBool(el, 'aria-expanded') === true) states.push(ElementState.EXPANDED);
   if (el.ownerDocument.activeElement === el) states.push(ElementState.FOCUSED);
@@ -189,11 +218,7 @@ export function getStates(el: Element, visible: boolean = isVisible(el)): Elemen
  * flow recorder's fill-value redaction, so recorded flows never persist typed passwords/OTPs/keys.
  */
 export function isSensitiveField(el: Element): boolean {
-  if (
-    !(el instanceof HTMLInputElement) &&
-    !(el instanceof HTMLTextAreaElement) &&
-    !(el instanceof HTMLSelectElement)
-  ) {
+  if (!isInput(el) && !isTextArea(el) && !isSelect(el)) {
     return false;
   }
   const autocomplete = el.getAttribute('autocomplete') ?? '';
@@ -206,18 +231,14 @@ export function isSensitiveField(el: Element): boolean {
   const sensitiveAutocomplete =
     /current-password|new-password|cc-number|cc-csc|one-time-code/i.test(autocomplete);
   return (
-    (el instanceof HTMLInputElement && el.type.toLowerCase() === 'password') ||
+    (isInput(el) && el.type.toLowerCase() === 'password') ||
     sensitiveAutocomplete ||
     identifiers.some(isSensitiveKey)
   );
 }
 
 export function getValue(el: Element): string | undefined {
-  if (
-    el instanceof HTMLInputElement ||
-    el instanceof HTMLTextAreaElement ||
-    el instanceof HTMLSelectElement
-  ) {
+  if (isInput(el) || isTextArea(el) || isSelect(el)) {
     if (isSensitiveField(el)) return REDACTED_VALUE;
     return el.value;
   }
@@ -228,7 +249,7 @@ export function getValue(el: Element): string | undefined {
 /** Whether the element's OWN box hides it — one forced-style resolution, no ancestor walk. */
 function selfHidden(el: Element): boolean {
   if (el.getAttribute('aria-hidden') === 'true') return true;
-  if (el instanceof HTMLElement && el.hidden) return true;
+  if (isHtmlElement(el) && el.hidden) return true;
   const view = el.ownerDocument.defaultView;
   if (view !== null) {
     const style = view.getComputedStyle(el);

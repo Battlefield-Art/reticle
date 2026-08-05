@@ -24,6 +24,24 @@ describe('findContradictions — cross-channel disagreement', () => {
    * line reads "archived", and the IPC call rejected. Screenshot, DOM assertion and human glance all
    * agree the feature works. Only the disagreement BETWEEN channels reveals it.
    */
+  /**
+   * A one-way `ipcRenderer.send` reports NO verdict — neither `ok` nor `status` — because the
+   * renderer never learns whether the main process handled it. Reading that absence as failure
+   * raised `ui-advanced-request-failed` against every fire-and-forget send in a healthy app, which
+   * is a false red, and false reds cost trust as fast as false greens do.
+   */
+  it('does not call a verdictless one-way send a failure', () => {
+    const verdictlessSend = ev(EventType.NET_REQUEST, {
+      id: 'n-oneway',
+      method: 'IPC',
+      url: 'ipc://invoices:seen',
+      oneWay: true,
+    });
+    expect(kinds([domChanged(), verdictlessSend])).not.toContain(
+      ContradictionKind.UI_ADVANCED_REQUEST_FAILED,
+    );
+  });
+
   it('catches a UI that advanced while its request failed', () => {
     const found = findContradictions([domChanged(), failedCall('IPC', 'ipc://todos:archive')]);
     expect(found).toHaveLength(1);
@@ -155,6 +173,87 @@ describe('findContradictions — cross-channel disagreement', () => {
   /** A failed request with NO UI movement is an honest failure — the app did not lie about it. */
   it('does not flag a failed request the UI never pretended succeeded', () => {
     expect(kinds([failedCall()])).toEqual([]);
+  });
+});
+
+/**
+ * A click that lands on nothing must not read as a clean run.
+ *
+ * Measured on a real merchant dashboard: `reticle_query { by: 'text' }` resolved a `styled.div`
+ * instead of the button beside it, the click produced zero events, the store did not move — and
+ * `until: { kind: 'settled' }` PASSED, giving `verified: "yes", because: "…no channel disagreeing"`.
+ * Settle is the trap: a page that did nothing is quiet, and quiet is what settle tests for.
+ */
+describe('the action landed on something that does not react', () => {
+  it('an empty window after a click is a contradiction, not a clean run', () => {
+    const found = findContradictions([], { action: 'click' });
+    expect(found.map((c) => c.kind)).toEqual([ContradictionKind.ACTION_HAD_NO_EFFECT]);
+    expect(found[0]?.counter).toContain('no channel observed anything');
+  });
+
+  it('covers the other actions that are supposed to do something', () => {
+    for (const action of ['dblclick', 'submit', 'CLICK']) {
+      expect(findContradictions([], { action })).toHaveLength(1);
+    }
+  });
+
+  it('says nothing when the action DID something', () => {
+    expect(findContradictions([domChanged()], { action: 'click' })).toHaveLength(0);
+    // A window that is NOT empty falls through to the ordinary rules — a successful write with no
+    // client movement is still `response-ignored`, and must not be relabelled as "no effect".
+    expect(findContradictions([okCall()], { action: 'click' }).map((c) => c.kind)).toEqual([
+      ContradictionKind.RESPONSE_IGNORED,
+    ]);
+  });
+
+  it('does not fire for actions that can legitimately move nothing', () => {
+    // Noise is the opposite failure and just as bad: a hover that changes no DOM is ordinary, and
+    // fill/type change an input value without necessarily mutating the tree.
+    for (const action of ['hover', 'focus', 'scrollIntoView', 'fill', 'type']) {
+      expect(findContradictions([], { action })).toHaveLength(0);
+    }
+  });
+
+  it('does not fire when no action opened the window', () => {
+    // reticle_observe passes a bare window with no action; an empty one there means "nothing
+    // happened lately", not "something failed to react".
+    expect(findContradictions([])).toHaveLength(0);
+  });
+});
+
+/**
+ * A nav link that routes to a blank page.
+ *
+ * The class every dead-control heuristic misses, because the control worked — it navigated. Measured
+ * on a real merchant dashboard with nine such links: `reticle_crawl` drove all nine and reported
+ * `deadControls: 0`, correctly by its own definition. The discriminator below came from executing
+ * both cases side by side: a working nav emitted `domAdded: 1, network: 2`, a blank one
+ * `domAdded: 0, domRemoved: 0, network: 0`.
+ */
+describe('the route moved and nothing was rendered for it', () => {
+  const routeChange = (): ReticleEvent => ev(EventType.ROUTE_CHANGE, { pathname: '/invoices' });
+  const attrOnly = (): ReticleEvent => ev(EventType.DOM_ATTR, { path: 'a', name: 'aria-current' });
+
+  it('flags a navigation that neither rendered nor fetched', () => {
+    // The only DOM mutation is the nav link marking itself active — the destination stayed empty.
+    const found = findContradictions([routeChange(), attrOnly()]);
+    expect(found.map((c) => c.kind)).toEqual([ContradictionKind.ROUTE_RENDERED_NOTHING]);
+  });
+
+  it('stays silent when the destination rendered', () => {
+    expect(kinds([routeChange(), ev(EventType.DOM_ADDED, { role: 'table' })])).toEqual([]);
+  });
+
+  it('stays silent when the destination fetched its data', () => {
+    // A page that asks for data has arrived somewhere, even if the rows land after this window.
+    // It still trips `request-never-settled` (the route moved over an in-flight call), which is a
+    // separate and correct finding — what must be absent is the blank-destination claim.
+    const pending = ev(EventType.NET_PENDING, { id: 'n1', method: 'GET', url: '/api/invoices' });
+    expect(kinds([routeChange(), pending])).not.toContain(ContradictionKind.ROUTE_RENDERED_NOTHING);
+  });
+
+  it('does not fire without a route change — a quiet window is not a bad navigation', () => {
+    expect(kinds([attrOnly()])).toEqual([]);
   });
 });
 
@@ -303,5 +402,58 @@ describe('acknowledgement without relying on English', () => {
       domChanged(),
     ]);
     expect(found.map((c) => c.kind)).toEqual([ContradictionKind.UI_ADVANCED_REQUEST_FAILED]);
+  });
+});
+
+describe('no-effect under ambient churn', () => {
+  // The rule used to require a completely EMPTY window, which is a statement about the page rather
+  // than about the action — and no real app has a quiet page. Measured on a console with a background
+  // event stream: an inert heading clicked, `domMutatedWithin: 0`, and four ambient events in the
+  // window (a scroll position, an unrelated store update, a perf sample). The dead control went
+  // unreported because the page was busy with something else.
+  const ambient = [
+    { type: EventType.STATE_CHANGE, t: 10, data: { path: 'rows', value: 'x' } },
+    { type: EventType.SCROLL_POSITION, t: 20, data: {} },
+  ] as unknown as ReticleEvent[];
+
+  it('reports a dead click even when the page is busy with something else', () => {
+    const found = findContradictions(ambient, { action: 'click', mutatedWithin: 0 });
+    expect(found.map((f) => f.kind)).toContain(ContradictionKind.ACTION_HAD_NO_EFFECT);
+  });
+
+  it('stays silent when the target itself mutated', () => {
+    const found = findContradictions(ambient, { action: 'click', mutatedWithin: 183 });
+    expect(found.map((f) => f.kind)).not.toContain(ContradictionKind.ACTION_HAD_NO_EFFECT);
+  });
+
+  it('stays silent when the click fired a request instead of mutating', () => {
+    const withRequest = [
+      ...ambient,
+      {
+        type: EventType.NET_REQUEST,
+        t: 30,
+        data: { method: 'POST', url: '/api/dispatch', status: 202 },
+      },
+    ] as unknown as ReticleEvent[];
+    const found = findContradictions(withRequest, { action: 'click', mutatedWithin: 0 });
+    expect(found.map((f) => f.kind)).not.toContain(ContradictionKind.ACTION_HAD_NO_EFFECT);
+  });
+
+  it('stays silent when the reaction landed OUTSIDE the target — a portalled modal', () => {
+    const withDialog = [
+      ...ambient,
+      { type: EventType.VISIBLE_SHOWN, t: 30, data: { role: 'dialog', name: 'Confirm' } },
+    ] as unknown as ReticleEvent[];
+    const found = findContradictions(withDialog, { action: 'click', mutatedWithin: 0 });
+    expect(found.map((f) => f.kind)).not.toContain(ContradictionKind.ACTION_HAD_NO_EFFECT);
+  });
+
+  it('falls back to the empty-window test when nothing measured the target', () => {
+    expect(findContradictions(ambient, { action: 'click' }).map((f) => f.kind)).not.toContain(
+      ContradictionKind.ACTION_HAD_NO_EFFECT,
+    );
+    expect(findContradictions([], { action: 'click' }).map((f) => f.kind)).toContain(
+      ContradictionKind.ACTION_HAD_NO_EFFECT,
+    );
   });
 });

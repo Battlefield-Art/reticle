@@ -21,6 +21,7 @@ import { writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { McpStdioClient, RETICLE_CLI as CLI } from './mcp-client.mjs';
 import { measure } from './tokenizer.mjs';
+import { RETICLE_PORT } from './ports.mjs';
 
 const APP = process.argv[2] ?? process.env.STRESS_URL ?? 'http://localhost:4313/';
 const TIERS = [
@@ -57,10 +58,10 @@ async function timed(client, tool, args) {
 const results = [];
 for (const tier of TIERS) {
   // The fixture's SDK dials RETICLE_PORT, baked in when ITS dev server started — large-dom-bench
-  // defaults to 4455, bench-app to 4460. A daemon on any other port gets no session at all, and the
+  // comes from ports.mjs, the one place that owns it. A daemon on any other port gets no session at all, and the
   // whole report becomes a measurement of an idle daemon. Tiers run sequentially and each stops
   // before the next starts, so one port suffices.
-  const port = process.env.RETICLE_PORT ?? '4455';
+  const port = RETICLE_PORT;
   const url = `${APP}${APP.includes('?') ? '&' : '?'}rows=${tier.rows}`;
   const client = new McpStdioClient('node', [CLI, 'mcp', '--port', port, '--drive', url], {
     RETICLE_PORT: port,

@@ -132,9 +132,9 @@ These are exactly the kind of subtle measurement bugs that flatter or punish a t
 node bench/harness/bench-all.mjs --full && node bench/harness/gate.mjs
 
 # Or run the passes by hand:
-# 1. start backends — api on :8787, bench-app on :4312; its embedded SDK dials the bench daemon (:4455)
+# 1. start backends — api on :8787, bench-app on :4312; its embedded SDK dials the bench daemon (:4460)
 node apps/api/server.mjs &
-RETICLE_PORT=4455 pnpm --filter @reticlehq/bench-app exec vite --port 4312 --strictPort &
+RETICLE_PORT=4460 pnpm --filter @reticlehq/bench-app exec vite --port 4312 --strictPort &
 
 # 2. verify all three tool servers boot + list tools
 node bench/harness/probe.mjs

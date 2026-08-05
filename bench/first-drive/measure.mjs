@@ -1,4 +1,4 @@
-// B02 — first-drive / new-surface cost, TRACKED not assumed.
+// First-drive / new-surface cost, TRACKED not assumed.
 //
 // The dominant cost of putting Reticle in front of an agent is not any single call: it is the ADVERTISED
 // TOOL SURFACE, which is re-sent to the model on every turn. That number was previously quoted from

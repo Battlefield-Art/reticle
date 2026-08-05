@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { McpStdioClient } from './mcp-client.mjs';
 import { measure } from './tokenizer.mjs';
+import { RETICLE_PORT } from './ports.mjs';
 
 const pexecFile = promisify(execFile);
 const LOGIN = { email: 'admin@reticle.dev', password: 'password' };
@@ -194,16 +195,12 @@ function reticleRefForTestid(queryText, testid) {
   return m ? m[1] : null;
 }
 /**
- * The port apps/bench-app's SDK dials — see apps/bench-app/vite.config.ts, which defaults RETICLE_PORT
- * to 4460 "so it never collides with reticle:4400 or the local mcp daemon".
- *
- * This adapter hardcoded 4455. The daemon it spawned therefore listened on a port the fixture's SDK
- * never dialled, so NO browser session ever connected and every tool call returned
- * "no browser session connected" — which the client then handed back as ordinary text. Every
- * bench/harness measurement against bench-app (replay, determinism, RRE, flake) was running against
- * a daemon with no app attached.
+ * The port apps/bench-app's SDK dials. Imported, never written as a literal here — see
+ * `ports.mjs` for why: a disagreement between this file and the fixture's config produced a daemon
+ * with no app attached, and every measurement (replay, determinism, RRE, flake) silently became a
+ * row of nulls that still reported ✓. It has been re-broken once already by fixing one side only.
  */
-const BENCH_APP_RETICLE_PORT = Number(process.env.RETICLE_PORT ?? 4460);
+const BENCH_APP_RETICLE_PORT = Number(RETICLE_PORT);
 
 export class ReticleAdapter {
   constructor(url, port = BENCH_APP_RETICLE_PORT) {
@@ -284,10 +281,36 @@ export class ReticleAdapter {
         tokens_o200k: 0,
         text: '',
       };
-    return rec(
+    // The destructive-action guard refuses a click it judges dangerous and TELLS the caller how to
+    // proceed ("retry with args.confirmDangerous=true"). A real agent reads that and retries; this
+    // harness did not, so every flow through such a control (the new-deploy modal, the determinism
+    // pass) died and was dropped from the mean. Note the refusal arrives as a THROW — the MCP client
+    // rejects an isError response — so it has to be caught, not inspected on `.text`.
+    let blocked = null;
+    try {
+      const first = await this.c.callTool('reticle_act', { ref: q.ref, action: 'click' });
+      if (!/confirmDangerous/.test(first.text ?? '')) return rec('reticle_act', first);
+      blocked = rec('reticle_act', first);
+    } catch (error) {
+      if (!/confirmDangerous/.test(String(error))) throw error;
+    }
+    const retry = rec(
       'reticle_act',
-      await this.c.callTool('reticle_act', { ref: q.ref, action: 'click' }),
+      await this.c.callTool('reticle_act', {
+        ref: q.ref,
+        action: 'click',
+        args: { confirmDangerous: true },
+      }),
     );
+    // Charge for both calls: the retry is part of what this path costs, and hiding the first would
+    // flatter the number.
+    if (blocked !== null) {
+      retry.chars += blocked.chars;
+      retry.bytes += blocked.bytes;
+      retry.tokens_o200k += blocked.tokens_o200k;
+      retry.latency_ms += blocked.latency_ms;
+    }
+    return retry;
   }
   async console() {
     return rec('reticle_console', await this.c.callTool('reticle_console', { level: 'error' }));

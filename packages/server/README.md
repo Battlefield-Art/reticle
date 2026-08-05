@@ -12,7 +12,7 @@ Point your agent at it (e.g. Claude Code `.mcp.json`):
 { "mcpServers": { "reticle": { "command": "npx", "args": ["@reticlehq/server", "mcp"] } } }
 ```
 
-Tools: `reticle_snapshot`, `reticle_query`, `reticle_inspect`, `reticle_act`, `reticle_act_sequence`, `reticle_observe`, `reticle_wait_for`, `reticle_assert`, `reticle_network`, `reticle_console`, `reticle_animations`, `reticle_baseline_save`/`_list`, `reticle_diff`, `reticle_record_start`/`_stop`, `reticle_explore`, `reticle_sessions`.
+Tools: `reticle_snapshot`, `reticle_query`, `reticle_inspect`, `reticle_act`, `reticle_act_sequence`, `reticle_act_and_wait`, `reticle_observe`, `reticle_wait_for`, `reticle_assert`, `reticle_network`, `reticle_console`, `reticle_animations`, `reticle_baseline`, `reticle_visual_diff`, `reticle_record`, `reticle_flow`, `reticle_explore`, `reticle_sessions`.
 
 See the [main README](https://github.com/reticlehq/reticle).
 

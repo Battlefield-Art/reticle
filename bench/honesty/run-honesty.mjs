@@ -1,10 +1,10 @@
 // Honesty / false-green benchmark. Runs each scenario through BOTH versions and scores false-green rate.
 //
-//  - v2.2.0: the REAL honesty composition from the built server dist (buildHonestyBlock over the same
+//  - WITH the honesty layer: the REAL composition from the built server dist (buildHonestyBlock over the same
 //    inputs act_and_wait derives — coverage from BLIND_SPOT events, truncation from TRUNCATED events,
 //    grade from the asserted consequence).
-//  - v2.1.0: no honesty block existed. A consumer of a bare green can only assume the best: full coverage,
-//    clean integrity, strongest grade. So v2.1.0 "discloses" nothing.
+//  - WITHOUT it: no honesty block existed. A consumer of a bare green can only assume the best: full coverage,
+//    clean integrity, strongest grade. So the pre-honesty baseline "discloses" nothing.
 //
 // A verdict is a FALSE GREEN when reality carried a caveat the verdict did not disclose. The metric is
 // the false-green rate over scenarios that HAD a caveat (the control has none — it checks over-flagging).
@@ -31,7 +31,7 @@ function v22Honesty(scenario) {
   });
 }
 
-/** What a v2.1.0 green actually discloses: nothing. A consumer must assume the most trustworthy reading. */
+/** What a the pre-honesty baseline green actually discloses: nothing. A consumer must assume the most trustworthy reading. */
 const V21_DISCLOSURE = {
   coverageDisclosedPartial: false,
   integrityDisclosedDirty: false,
@@ -76,7 +76,7 @@ function run() {
   const rate = (rs, key) =>
     rs.length === 0 ? 0 : Math.round((rs.filter((r) => r[key]).length / rs.length) * 100);
 
-  // Gate demo: a CI harness requiring "grade >= net AND integrity clean". v2.1.0 can't gate (no block).
+  // Gate demo: a CI harness requiring "grade >= net AND integrity clean". the pre-honesty baseline can't gate (no block).
   const gateSample = HONESTY_SCENARIOS.find((s) => s.name === 'presence-only-green');
   const gate = meetsHonestyBar(v22Honesty(gateSample), {
     minGrade: 'net',
@@ -98,20 +98,20 @@ console.log('\n=== Honesty / false-green benchmark ===\n');
 for (const r of result.rows) {
   const mark = (fg) => (fg ? '✗ false-green' : '✓ honest');
   console.log(
-    `${r.name}\n   v2.1.0: ${mark(r.v21FalseGreen)}${r.v21Hidden.length ? ` (hides ${r.v21Hidden.join(', ')})` : ''}` +
-      `\n   v2.2.0: ${mark(r.v22FalseGreen)}${r.v22Hidden.length ? ` (hides ${r.v22Hidden.join(', ')})` : ''}`,
+    `${r.name}\n   the pre-honesty baseline: ${mark(r.v21FalseGreen)}${r.v21Hidden.length ? ` (hides ${r.v21Hidden.join(', ')})` : ''}` +
+      `\n   the honesty layer: ${mark(r.v22FalseGreen)}${r.v22Hidden.length ? ` (hides ${r.v22Hidden.join(', ')})` : ''}`,
   );
 }
 console.log(
-  `\nfalse-green rate over ${result.caveatScenarios} caveat scenarios:  v2.1.0 = ${result.v21FalseGreenRate}%   v2.2.0 = ${result.v22FalseGreenRate}%`,
+  `\nfalse-green rate over ${result.caveatScenarios} caveat scenarios:  the pre-honesty baseline = ${result.v21FalseGreenRate}%   the honesty layer = ${result.v22FalseGreenRate}%`,
 );
 console.log(
   `over-flagging check (control): ${result.control.v22FalseGreen ? 'FAIL — flagged a clean green' : 'PASS — clean green stays clean'}`,
 );
 console.log(
-  `CI gate (grade>=net AND integrity clean) on presence-only green: v2.2.0 ${result.gate.ok ? 'ALLOWS (bug)' : 'REJECTS'} → ${result.gate.reasons.join('; ')}; v2.1.0 cannot gate (no honesty block)\n`,
+  `CI gate (grade>=net AND integrity clean) on presence-only green: the honesty layer ${result.gate.ok ? 'ALLOWS (bug)' : 'REJECTS'} → ${result.gate.reasons.join('; ')}; the pre-honesty baseline cannot gate (no honesty block)\n`,
 );
 
-// Non-zero exit if v2.2.0 ever produces a false green or over-flags the control — makes this CI-gateable.
+// Non-zero exit if the honesty layer ever produces a false green or over-flags the control — makes this CI-gateable.
 const broken = result.v22FalseGreenRate > 0 || result.control.v22FalseGreen;
 process.exit(broken ? 1 : 0);

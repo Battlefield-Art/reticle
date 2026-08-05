@@ -1,4 +1,4 @@
-// W1 / B01 — the fix-loop ablation. For each injected bug, a Claude Code subagent fixes it WITH the
+// The fix-loop ablation. For each injected bug, a Claude Code subagent fixes it WITH the
 // Reticle MCP vs WITHOUT it; we measure fixed-correctly rate (deterministic re-check), tokens, tool
 // calls, and wall-time. This is the release's before/after number — run first to set the 2.1.0 baseline,
 // re-run last for the delta. Publish honestly either way.

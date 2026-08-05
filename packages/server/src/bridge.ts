@@ -14,6 +14,8 @@ import {
   isLoopbackHostname,
   isOpaqueOrigin,
   OPAQUE_ORIGIN,
+  isHighValueEvent,
+  RATE_CAP_HIGH_VALUE_RESERVE_RATIO,
 } from '@reticlehq/core';
 import { Session, SessionManager } from './session/session.js';
 import { tokensMatch } from './token-auth.js';
@@ -246,6 +248,10 @@ export class Bridge {
     let session: Session | undefined;
     let messageWindowStartedAt = this.#clock();
     let messagesInWindow = 0;
+    let highValueInWindow = 0;
+    const highValueReserve = Math.ceil(
+      this.#maxMessagesPerSecond * RATE_CAP_HIGH_VALUE_RESERVE_RATIO,
+    );
     const releasePending = (): void => {
       if (!awaitingHello) return;
       awaitingHello = false;
@@ -263,6 +269,7 @@ export class Bridge {
       if (now - messageWindowStartedAt >= 1000) {
         messageWindowStartedAt = now;
         messagesInWindow = 0;
+        highValueInWindow = 0;
       }
       messagesInWindow += 1;
       const overRate = messagesInWindow > this.#maxMessagesPerSecond;
@@ -289,10 +296,20 @@ export class Bridge {
       // Only EVENTS are dropped. A dropped hello would strand the session and a dropped
       // command_result would hang the agent's in-flight call, so control traffic is always processed
       // however fast it arrives — the cap exists to bound observation, not to break the protocol.
+      // Over the cap we drop by VALUE, not by arrival order. Volume is inversely correlated with
+      // value — a render-commit storm is thousands/second while the network call an assertion turns
+      // on is one — so first-come-first-dropped spends the budget on churn and loses the signal.
+      // High-value kinds get a bounded reserve on top of the cap; see event-priority.ts.
       if (overRate && parsed.kind === MessageKind.EVENT) {
-        droppedByRate += 1;
-        if (session !== undefined) session.noteRateLimited(droppedByRate);
-        return;
+        const withinReserve =
+          isHighValueEvent(parsed.event.type) && highValueInWindow < highValueReserve;
+        if (withinReserve) {
+          highValueInWindow += 1;
+        } else {
+          droppedByRate += 1;
+          if (session !== undefined) session.noteRateLimited(droppedByRate);
+          return;
+        }
       }
 
       if (parsed.kind === MessageKind.HELLO) {
