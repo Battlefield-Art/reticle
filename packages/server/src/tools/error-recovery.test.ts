@@ -113,3 +113,40 @@ describe('a stale ref is a recognized, recoverable condition — not an unknown 
     expect(recoveryFor("ref 'e12' no longer resolves to an element")).toBeDefined();
   });
 });
+
+/**
+ * Reticle's OWN argument-validation errors were being reported as unknown failures.
+ *
+ * `reticle_lease{action:"acquire"} requires a url` is a message this codebase authored, about its
+ * own API, naming the exact tool and argument at fault. It is the opposite of an unanticipated
+ * failure — and it was getting FEEDBACK_ASK: "this error is not one Reticle recognizes, which means
+ * it may be a defect in Reticle rather than in your app."
+ *
+ * Two costs. The agent is pushed toward filing a report instead of fixing its call, and the
+ * maintainers' feedback fills with reports about callers passing the wrong arguments. Measured
+ * against real `reticle mcp` processes driving bench-app, atlas and next-smoke: the same error, the
+ * same wrong classification, in all three.
+ *
+ * A message that names a `reticle_*` tool is by definition one we wrote. Treat it as recognized.
+ */
+describe("Reticle's own validation errors are recognized, not reported as unknown defects", () => {
+  it('maps a tool argument-validation error to "check the schema and retry"', () => {
+    const hint = recoveryFor('reticle_lease{action:"acquire"} requires a url');
+    expect(hint).toBe(RECOVERY.BAD_ARGUMENTS);
+    // Deliberately names no tool: `reticle_tools` is advertised under the default hybrid profile
+    // but NOT under `full`, so pointing at it would be dead advice for exactly the callers who
+    // opted into the larger surface. The failing tool's own name is already in the message.
+    expect(String(hint)).toContain('not a Reticle defect');
+  });
+
+  it('recognizes the shape generally, not just that one tool', () => {
+    expect(recoveryFor('reticle_flow{action:"save"} requires a flowName')).toBe(
+      RECOVERY.BAD_ARGUMENTS,
+    );
+  });
+
+  it('still returns undefined for a genuinely unknown failure, so real defects keep the ask', () => {
+    expect(recoveryFor('Cannot read properties of undefined (reading foo)')).toBeUndefined();
+    expect(recoveryFor('ECONNRESET')).toBeUndefined();
+  });
+});

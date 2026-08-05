@@ -36,6 +36,10 @@ export const RECOVERY = {
     'before it. Reticle refuses here rather than clicking whatever now occupies that slot. Call ' +
     'reticle_query again for a fresh ref and retry the action — and prefer reticle_act_and_wait ' +
     '{ until } when an action changes the page, so the next ref is taken after it settles.',
+  BAD_ARGUMENTS:
+    "That call did not match the tool's schema — the message above names the tool and the exact " +
+    "argument it wanted. Re-read that tool's parameters and retry with the missing or corrected " +
+    'argument. This is an invalid call, not a Reticle defect: there is nothing to report.',
   TOKEN_REQUIRED:
     'The bridge binds beyond localhost and requires a pairing token. Set the same token in the SDK ' +
     'init (@reticlehq/core) and the Reticle server config, then reconnect.',
@@ -53,6 +57,13 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   // The commonest post-action condition there is. Unmatched, it fell through to FEEDBACK_ASK and
   // told the agent a successful click's aftermath might be a bug in Reticle.
   { match: /no longer resolves to an element/i, hint: RECOVERY.STALE_REF },
+  // A message naming a `reticle_*` tool is one WE authored about our own API — an invalid call, not
+  // an unanticipated failure. Left unmatched it collected the feedback ask, which pushed agents to
+  // file reports about their own bad arguments. Kept LAST so a specific rule above always wins.
+  {
+    match: /reticle_[a-z_]+\s*\{[^}]*\}.*\b(requires|must|expected)\b/i,
+    hint: RECOVERY.BAD_ARGUMENTS,
+  },
 ];
 
 /** The actionable next move for a known error message, or undefined when none is recognized. */
