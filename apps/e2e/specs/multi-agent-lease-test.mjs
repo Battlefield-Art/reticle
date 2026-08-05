@@ -75,7 +75,12 @@ const results = await Promise.allSettled(
       const sid = `agent-${process.pid}-${i}`;
       const navUrl = appendReticleParams(APP, sid); // the app's SDK adopts __reticle_session
       const lease = await pool.acquire(navUrl, { sessionId: sid });
-      const connected = await waitUntil(() => server.bridge.sessions.get(sid) !== undefined, 12000);
+      // Generous on purpose. Six leases share ONE browser behind a cap of 3, so half of them wait
+      // for a slot before their page even loads — and this spec asserts that all six eventually
+      // lease and drive, never that any of them does so within N seconds. A tight bound here is an
+      // assertion about the machine: it passed alone and failed under parallel load, which is to say
+      // it failed only in CI.
+      const connected = await waitUntil(() => server.bridge.sessions.get(sid) !== undefined, 60000);
       if (!connected) {
         await lease.release();
         throw new Error(`${sid} never connected`);

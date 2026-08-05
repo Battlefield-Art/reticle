@@ -58,6 +58,33 @@ ipcMain.handle('todos:add', async (_event, title) => {
  * swallows the rejection — the exact false-green Reticle exists to catch: the screen says "Archived",
  * the IPC call says it failed. Without the IPC observer there is nothing to assert against.
  */
+/**
+ * A ONE-WAY channel: `ipcRenderer.send` with no reply. The renderer cannot learn whether this ran,
+ * which is exactly why Reticle records it as dispatched-with-no-verdict rather than as a 200.
+ */
+ipcMain.on('todos:seen', (_event, id) => {
+  console.log(`[main] marked seen: ${String(id)}`);
+});
+
+/**
+ * A BATCH: resolves successfully, with per-item outcomes inside the payload.
+ *
+ * The IPC equivalent of an HTTP 200 that hides failures in its body, and the shape every bulk action
+ * in a desktop app takes. The promise fulfils, so `ok` is true and every channel above the payload
+ * agrees the operation worked — only the payload disagrees. Every third item is rejected by the
+ * backend, deterministically, so a test of this path gets the same answer twice.
+ */
+ipcMain.handle('todos:bulkDone', async (_event, ids) => {
+  await delay(90);
+  const list = Array.isArray(ids) ? ids : [];
+  return {
+    requested: list.length,
+    results: list.map((id, i) =>
+      i % 3 === 2 ? { id, ok: false, error: 'locked_by_sync' } : { id, ok: true },
+    ),
+  };
+});
+
 ipcMain.handle('todos:archive', async () => {
   await delay(80);
   throw new Error('archive is not implemented in the backend');

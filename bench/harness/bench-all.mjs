@@ -182,8 +182,13 @@ async function waitForPortFree(port, timeoutMs = 15000) {
  * exit code is not the verdict — the artifact is. Verify the pass wrote a file DURING this run, and
  * that it measured at least one row.
  */
+// Every pass writes bench/raw/<script-name>.json — except the two that predate that convention and
+// whose filenames analyze.mjs, the README and the artifacts all already refer to by their old names.
+const LEGACY_RAW_NAMES = { 'run-observation': 'observation-results', analyze: 'analysis' };
+
 function verifyPassArtifact(scriptPath, startedAtMs) {
-  const raw = join('bench', 'raw', `${basename(scriptPath, '.mjs')}.json`);
+  const stem = basename(scriptPath, '.mjs');
+  const raw = join('bench', 'raw', `${LEGACY_RAW_NAMES[stem] ?? stem}.json`);
   let stat;
   try {
     stat = statSync(raw);

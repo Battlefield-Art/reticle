@@ -4,7 +4,14 @@ plan/
 # Cloud control plane — the paid app (moat + tenant/billing) lives OUTSIDE this repo, at the
 # sibling ReticleHQ/app/, with its own git per service. This entry is a belt-and-suspenders guard
 # so a stray app/ dir can never be committed into the Apache OSS repo by accident.
-app/
+#
+# ROOT-ANCHORED on purpose. A bare `app/` matches a directory called `app` at ANY depth, which
+# silently swallowed the Next.js App Router routes in apps/next-smoke/app/ — the server-actions,
+# RSC and idle-stream routes the e2e battery drives. They existed locally, so every gate passed,
+# while a fresh clone got a next-smoke app missing the routes its own spec tests. Only files
+# already tracked before the rule landed (layout.tsx, page.tsx) survived, which is what made it
+# invisible.
+/app/
 
 # Marketing: keep the source (HTML/CSS/mjs) reproducible, but never commit the heavy
 # render outputs or raw footage — host those on a CDN / GitHub Releases. The curated

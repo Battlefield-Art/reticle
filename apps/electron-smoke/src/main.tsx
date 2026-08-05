@@ -26,6 +26,7 @@ registerCapabilities({
     'go-settings',
     'go-home',
     'fetch-stats',
+    'mark-seen',
   ],
   signals: ['todos:loaded', 'todo:added'],
   stores: ['app'],

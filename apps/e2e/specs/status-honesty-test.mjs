@@ -32,11 +32,15 @@ const page = await browser.newPage();
 await page.addInitScript(() => {
   window.requestAnimationFrame = () => 0;
 });
-await page.goto('http://localhost:3100/', { waitUntil: 'networkidle' });
-for (let i = 0; i < 150 && server.bridge.sessions.count() === 0; i++) await sleep(50);
+await page.goto('http://localhost:3100/');
+// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
+// open on the machine — a tab from another project retries the bridge and connects the instant
+// one appears, so this would exit before our own app had connected.
+const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
+for (let i = 0; i < 150 && !hasOwn(); i++) await sleep(50);
 console.log('\n=== status honesty, real Chromium (rAF throttled) ===');
 
-// F1 — act on a tab where rAF never fires must NOT hang/throw; returns dispatched:true fast.
+// Act on a tab where rAF never fires must NOT hang/throw; returns dispatched:true fast.
 const addRef = await refOf('testid', 'add-task');
 const t0 = now();
 let f1ok = false, f1detail = '';
@@ -49,9 +53,9 @@ try {
 } catch (e) {
   f1detail = `THREW: ${e instanceof Error ? e.message : String(e)}`;
 }
-check('F1 act on throttled tab returns dispatched:true (not an 8s error)', f1ok, f1detail);
+check('act on a throttled tab returns dispatched:true, not an 8s error', f1ok, f1detail);
 
-// F2 — session health surfaces on the act result; hidden tab → throttled + warning.
+// Session health surfaces on the act result; hidden tab → throttled + warning.
 await page.evaluate(() => {
   Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
   Object.defineProperty(document, 'hidden', { value: true, configurable: true });
@@ -59,9 +63,9 @@ await page.evaluate(() => {
 });
 await sleep(300);
 const act2 = await T('reticle_act', { ref: await refOf('testid', 'add-task'), action: 'click' });
-check('F2 act result carries session health', Boolean(act2.session) && typeof act2.session.lastSeenMs === 'number',
+check('act result carries session health', Boolean(act2.session) && typeof act2.session.lastSeenMs === 'number',
   JSON.stringify(act2.session ?? {}));
-check('F2 hidden tab → throttled:true + warning', act2.session?.throttled === true && typeof act2.warning === 'string',
+check('hidden tab reports throttled:true with a warning', act2.session?.throttled === true && typeof act2.warning === 'string',
   act2.warning ?? '(no warning)');
 
 // un-hide for the rest
@@ -72,13 +76,13 @@ await page.evaluate(() => {
 });
 await sleep(200);
 
-// F4 — zero-match query returns a hint (empty-state vs missing), not a bare [].
+// A zero-match query returns a hint (empty-state vs missing), not a bare [].
 const miss = await T('reticle_query', { by: 'testid', value: 'definitely-not-here-xyz' });
 const present = miss.hint?.presentTestids ?? [];
-check('F4 zero-match query returns hint.presentTestids', miss.elements?.length === 0 && Array.isArray(present) && present.length > 0,
+check('a zero-match query returns hint.presentTestids', miss.elements?.length === 0 && Array.isArray(present) && present.length > 0,
   `route=${miss.hint?.route ?? '?'} present=${JSON.stringify(present).slice(0, 70)}`);
 
-// F5 — state{ref} returns a structured result, never hangs.
+// state{ref} returns a structured result, never hangs.
 const t5 = now();
 let f5ok = false, f5detail = '';
 try {
@@ -89,7 +93,7 @@ try {
 } catch (e) {
   f5detail = `THREW: ${e instanceof Error ? e.message : String(e)}`;
 }
-check('F5 state{ref} resolves with structured status (no hang)', f5ok, f5detail);
+check('state{ref} resolves with a structured status and does not hang', f5ok, f5detail);
 
 console.log(`\n${fail === 0 ? '✅ STATUS HONESTY PASSED' : `❌ ${fail} FAILED`}  (${pass} passed, ${fail} failed)`);
 await browser.close();

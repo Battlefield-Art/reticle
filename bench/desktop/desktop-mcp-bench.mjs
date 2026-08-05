@@ -10,6 +10,13 @@ const RETICLE_CLI =
   new URL('../../packages/server/dist/cli.js', import.meta.url).pathname;
 const PW_MCP = process.env['PW_MCP_CLI'] ?? 'node_modules/@playwright/mcp/cli.js';
 
+// `--tauri` points the same task at the packaged Tauri smoke app (same planted false green: the
+// Archive button removes the row, writes "archived", and `ipc://archive_todo` always rejects).
+// Only the session scheme differs — Electron loads `file:`, a packaged Tauri app `tauri://localhost`
+// — and Playwright cannot attach to a WKWebView at all, so its head-to-head row has no counterpart.
+const TAURI = process.argv.includes('--tauri');
+const SESSION_SCHEME = TAURI ? 'tauri:' : 'file:';
+
 function client(cmd, args) {
   const proc = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'ignore'] });
   let buf = '';
@@ -75,7 +82,7 @@ async function resetApp() {
   });
   const sid = JSON.parse(
     sessions.result?.content?.map((c) => c.text).join('') ?? '{}',
-  ).sessions.find((s) => s.url.startsWith('file:'))?.sessionId;
+  ).sessions.find((s) => s.url.startsWith(SESSION_SCHEME))?.sessionId;
   await send('tools/call', {
     name: 'reticle_run',
     arguments: { tool: 'reticle_navigate', args: { reload: true, sessionId: sid } },
@@ -99,7 +106,9 @@ async function benchReticle() {
     arguments: { tool: 'reticle_sessions', args: {} },
   });
   const sessText = sessions.result?.content?.map((c) => c.text).join('') ?? '';
-  const sid = JSON.parse(sessText).sessions.find((s) => s.url.startsWith('file:'))?.sessionId;
+  const sid = JSON.parse(sessText).sessions.find((s) =>
+    s.url.startsWith(SESSION_SCHEME),
+  )?.sessionId;
 
   const call = async (tool, args) => {
     const r = await send('tools/call', {
@@ -206,7 +215,7 @@ async function benchReticleTargeted() {
   });
   const sid = JSON.parse(
     sessions.result?.content?.map((c) => c.text).join('') ?? '{}',
-  ).sessions.find((s) => s.url.startsWith('file:'))?.sessionId;
+  ).sessions.find((s) => s.url.startsWith(SESSION_SCHEME))?.sessionId;
   const call = async (tool, args) => {
     const r = await send('tools/call', {
       name: 'reticle_run',
@@ -261,20 +270,22 @@ await resetApp();
 const r = await benchReticle();
 await resetApp();
 const rl = await benchReticleTargeted();
-await resetApp();
-const p = await benchPlaywright();
+// On Tauri there is no head-to-head row to run — Playwright has no CDP endpoint to attach to.
+let p = null;
+if (!TAURI) {
+  await resetApp();
+  p = await benchPlaywright();
+}
 const pt = await benchPlaywrightTauri();
 
 const row = (s) =>
   `${s.tool.padEnd(15)} ${String(s.calls).padStart(5)} ${String(s.bytes).padStart(8)} ${String(Math.round(s.bytes / 4)).padStart(8)} ${String(s.ms).padStart(7)}  ${s.verdict}`;
-console.log('\n════ Archive a todo, then verify it worked ════');
+const rows = [r, rl, p, pt].filter(Boolean);
+console.log(`\n════ Archive a todo, then verify it worked (${TAURI ? 'Tauri' : 'Electron'}) ════`);
 console.log('tool             calls    bytes  ~tokens   ms  verdict');
-console.log(row(r));
-console.log(row(rl));
-console.log(row(p));
-console.log(row(pt));
+for (const s of rows) console.log(row(s));
 console.log('\nper-step output bytes:');
-for (const s of [r, rl, p]) {
+for (const s of rows) {
   console.log(`  ${s.tool}: ` + s.steps.map((x) => `${x.label}=${x.bytes}`).join('  '));
 }
 process.exit(0);

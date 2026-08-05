@@ -31,24 +31,27 @@ Your app **connects to the daemon**, not the other way round. So the workflow is
 
 ## What works, measured
 
-Every tool below was run against both demo apps against a live daemon. Electron passed 27/27; Tauri passed 25/27.
+Every tool below was run against both demo apps against a live daemon.
+
+The rows in **bold** are the ones a committed battery re-proves on every change — `pnpm test:e2e:desktop`, which starts a real Electron main process and a **packaged** Tauri binary (`tauri://localhost`, not `tauri dev`) and drives them headless. The rest were measured by hand. That distinction matters: this table used to report a hand-run score with nothing in the repo that reproduced it, so it could go stale without anything failing.
 
 | Capability | Electron | Tauri | Note |
 | --- | --- | --- | --- |
 | sessions, snapshot, query, inspect | ✅ | ✅ | `inspect` returns `src/App.tsx:104` in a dev build; a packaged production renderer has no source map, so it reports `n/a` |
 | capabilities, state (live store) | ✅ | ✅ | `reticle_state` reads the real store |
 | act (click/fill/type/select) | ✅ | ✅ |  |
-| act_and_wait, wait_for, assert | ✅ | ✅ | signal / state / route / net / console predicates |
+| **act_and_wait, wait_for, assert** | ✅ | ✅ | signal / state / route / net / console predicates |
 | console errors | ✅ | ✅ | catches what the UI never shows |
 | network — HTTP | ✅ | ✅ | on `file://` a relative URL has no origin; use an absolute one |
-| network — IPC | ✅ | ✅ | `ipc://<channel>`, incl. failures |
+| **network — IPC** | ✅ | ✅ | `ipc://<channel>`, incl. failures. Electron: `invoke` and `sendSync` carry a verdict; a one-way `send` is recorded as `oneWay: true` with NO status, because the renderer never learns the outcome. Tauri: both the `ipc://` (macOS/Linux) and `http://ipc.localhost` (Windows) transports |
 | route | ✅ | ✅ | use a **hash** router — see below |
 | storage, animations, observe, explore | ✅ | ✅ |  |
 | baseline (semantic), record → replay, crawl | ✅ | ✅ | `crawl` found real anomalies in both |
 | navigate (reload) | ✅ | ✅ |  |
-| **screenshot / visual_diff** | ✅ | ✅ | one line in Electron's main process; one Rust command in Tauri — see below |
+| **screenshot / visual_diff** | ✅ | ✅ | one line in Electron's main process; one Rust command in Tauri — see below. Reticle's own presenter panel is hidden for the shot, so a baseline records your app and not the instrument |
 | **drivable while window occluded** | ✅ | ✅ | including minimized, app-hidden, and behind a fullscreen app on another Space |
 | **headless** | ✅ | ✅ | Electron never shows the window; Tauri shows, loads, then hides |
+| **a missing preload is DECLARED, not silent** | ✅ | n/a | without `@reticlehq/electron/preload` every IPC call is invisible, so verdicts carry `coverage: partial` naming the missing line instead of reading clean |
 | network_mock, viewport | ❌ | ❌ | need a Reticle-driven browser |
 
 ### Screenshots
@@ -85,7 +88,7 @@ Nothing on the JavaScript side: the SDK invokes the command through Tauri's own 
 | Linux, BSD | WebKitGTK `webkit_web_view_get_snapshot` | Snapshot + PNG encoding verified under `xvfb`; not yet driven through a full Tauri app |
 | Windows | WebView2 `CapturePreview` | **Untested — compiles, never executed** |
 
-The Windows path is written and type-checked against the real `webview2-com` API (which caught two genuine type errors), but nobody has run it on Windows. It is shipped rather than withheld so it can be tried, and labelled rather than listed flatly so that trying it is a choice. If it works for you, say so and this row changes; treat a green from it as unconfirmed until then.
+The Windows path is written and type-checked against the real `webview2-com` API (which caught two genuine type errors), but nobody has run it on Windows. CI now re-checks it against that target on every PR (`cargo check --target x86_64-pc-windows-msvc`), so "compiles" is a gate rather than a claim — it had been asserted for months by a workflow comment while no such job existed. Executed is still a different word from compiled: it is shipped rather than withheld so it can be tried, and labelled rather than listed flatly so that trying it is a choice. If it works for you, say so and this row changes; treat a green from it as unconfirmed until then.
 
 All three capture the visible viewport by default, so a baseline taken on a developer's Mac is comparable against the same app in Linux CI. On a platform with no webview API to call, capture reports no-provider rather than returning a plausible wrong image.
 

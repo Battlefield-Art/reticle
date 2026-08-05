@@ -24,8 +24,12 @@ const server = await start({ port: 4400, mcp: false });
 deps.sessions = server.bridge.sessions;
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
-await page.goto('http://localhost:3100/', { waitUntil: 'networkidle' });
-for (let i = 0; i < 150 && server.bridge.sessions.count() === 0; i++) await sleep(50);
+await page.goto('http://localhost:3100/');
+// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
+// open on the machine — a tab from another project retries the bridge and connects the instant
+// one appears, so this would exit before our own app had connected.
+const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
+for (let i = 0; i < 150 && !hasOwn(); i++) await sleep(50);
 
 console.log('\n=== Reticle on a real Next.js 15 / React 19 app ===');
 check('Reticle session connected from Next', server.bridge.sessions.count() >= 1,
@@ -61,6 +65,27 @@ const info = await T('reticle_inspect', { ref: await refOf('testid', 'ping-butto
 check('component identity resolved', Array.isArray(info.component?.componentStack) && info.component.componentStack.length > 0,
   info.component ? info.component.componentStack.join(' < ') : 'none');
 console.log(`   ℹ source file: ${info.component?.source ? `${info.component.source.file}:${info.component.source.line}` : 'n/a — Next uses SWC; needs the SWC source plugin (roadmap)'}`);
+
+console.log('\nTASK D — a SERVER ACTION, the mutation shape with no fetch the app wrote itself');
+// Reticle's network picture comes from patching fetch/XHR in the page. A server action is neither in
+// the app's code: React posts to the CURRENT url with a `Next-Action` header and an RSC response, not
+// JSON. If that write were invisible, every server-action app would have its entire mutation surface
+// unobserved — the desktop-IPC blind spot in a different costume. The fixture at app/actions has
+// asked this question since it was written and no gate ever answered it.
+await page.goto('http://localhost:3100/actions', { waitUntil: 'domcontentloaded' });
+await sleep(1500);
+const countBefore = (await T('reticle_query', { by: 'testid', value: 'note-count' })).elements?.[0]?.text;
+await T('reticle_act', { ref: await refOf('testid', 'note-input'), action: 'fill', args: { value: 'from the battery' } });
+const acted = await T('reticle_act', { ref: await refOf('testid', 'save-note'), action: 'click' });
+await sleep(2000);
+const saCalls = (await T('reticle_network', { since: acted.since })).calls ?? [];
+check(
+  'a server action is OBSERVED as a network write, not silently missed',
+  saCalls.some((c) => c.method === 'POST' && String(c.url).includes('/actions')),
+  saCalls.map((c) => `${c.method} ${String(c.url).replace(/^https?:\/\/[^/]+/, '')} -> ${c.status}`).join(', ') || 'no calls seen',
+);
+const countAfter = (await T('reticle_query', { by: 'testid', value: 'note-count' })).elements?.[0]?.text;
+check('and the write really landed on the server', countBefore !== countAfter, `${String(countBefore)} -> ${String(countAfter)}`);
 
 console.log(`\n${fail === 0 ? '✅ NEXT.JS SMOKE TEST PASSED' : `❌ ${fail} FAILED`}  (${pass} passed, ${fail} failed)`);
 await browser.close();

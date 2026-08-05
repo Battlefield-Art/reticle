@@ -47,7 +47,7 @@ const rec = (call, res) => {
 };
 
 // 1) Full page snapshot — the whole-tree cost.
-rec('reticle_snapshot(page)', await c.callTool('reticle_snapshot', { scope: 'page' }));
+rec('reticle_snapshot(page)', await c.callTool('reticle_snapshot', {}));
 
 // 2) The targeted verify loop on one row, deep in the grid. Poll the query until the row resolves
 // (a fixed sleep races the large grid's paint); only the resolving call is measured into the loop.

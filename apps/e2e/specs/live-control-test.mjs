@@ -6,8 +6,12 @@ const T=(n,a={})=>TOOLS.find(t=>t.name===n).handler(deps,{sessionId:'next-smoke'
 let pass=0,fail=0; const chk=(l,o,d='')=>{console.log(`   ${o?'✅':'❌'} ${l}${d?'  — '+d:''}`);o?pass++:fail++;};
 const server=await start({port:4400,mcp:false}); deps.sessions=server.bridge.sessions;
 const b=await chromium.launch({headless:true}); const p=await b.newPage();
-await p.goto('http://localhost:3100/',{waitUntil:'networkidle'});
-for(let i=0;i<200&&server.bridge.sessions.count()===0;i++) await sleep(50);
+await p.goto('http://localhost:3100/');
+// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
+// open on the machine — a tab from another project retries the bridge and connects the instant
+// one appears, so this would exit before our own app had connected.
+const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
+for (let i = 0; i < 200 && !hasOwn(); i++) await sleep(50);
 const sess=server.bridge.sessions.resolve('next-smoke');
 const ref=(await T('reticle_query',{by:'testid',value:'add-task'})).elements[0].ref;
 console.log('\n=== live control: human pause + prompt + resume + agent end (real browser) ===');

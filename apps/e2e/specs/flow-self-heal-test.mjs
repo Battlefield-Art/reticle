@@ -9,8 +9,12 @@ const server=await start({port:4400,mcp:false});
 const deps={sessions:server.bridge.sessions,baselines:new BaselineStore(),recordings:new RecordingStore(),flows,project,fs:fsp,reticleRoot,now,annotations:new AnnotationStore()};
 const T=(n,a={})=>TOOLS.find(t=>t.name===n).handler(deps,{sessionId:'next-smoke',...a});
 const b=await chromium.launch({headless:true}); const p=await b.newPage();
-await p.goto('http://localhost:3100/',{waitUntil:'networkidle'});
-for(let i=0;i<200&&server.bridge.sessions.count()===0;i++) await sleep(50);
+await p.goto('http://localhost:3100/');
+// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
+// open on the machine — a tab from another project retries the bridge and connects the instant
+// one appears, so this would exit before our own app had connected.
+const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
+for (let i = 0; i < 200 && !hasOwn(); i++) await sleep(50);
 const refOf=async(by,v)=>{for(let i=0;i<30;i++){const r=(await T('reticle_query',{by,value:v})).elements?.[0]?.ref;if(r)return r;await sleep(100);}throw new Error('nf '+v);};
 console.log('\n=== self-healing rebind (real browser) ===');
 await T('reticle_record',{action:'start',recordingName:'ht'});

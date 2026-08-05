@@ -105,7 +105,7 @@ for (const tier of TIERS) {
     // Whole-store read: the path with the known silent-truncation defect.
     await timed(client, 'reticle_state', { sessionId: sid, store: 'app', depth: 1 }),
     await timed(client, 'reticle_observe', { sessionId: sid, filters: ['net'], since: 0 }),
-    await timed(client, 'reticle_snapshot', { sessionId: sid, scope: 'page' }),
+    await timed(client, 'reticle_snapshot', { sessionId: sid }),
   ];
 
   results.push({

@@ -1,4 +1,4 @@
-// HONESTY-CRITICAL: prove the N3 visual layer end-to-end — `reticle drive` launches a real browser,
+// HONESTY-CRITICAL: prove the visual layer end-to-end — `reticle drive` launches a real browser,
 // reticle_screenshot captures a PNG baseline to .reticle/visual/, and reticle_visual_diff perceptually
 // compares a fresh capture of the same static page (→ matched) and reports baseline-missing honestly.
 import os from 'node:os';
@@ -35,9 +35,13 @@ const deps = {
   now: () => Date.now(),
 };
 const T = (n, a = {}) => TOOLS.find((t) => t.name === n).handler(deps, { sessionId: 'next-smoke', ...a });
-for (let i = 0; i < 200 && server.bridge.sessions.count() === 0; i++) await sleep(50);
+// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
+// open on the machine — a tab from another project retries the bridge and connects the instant
+// one appears, so this would exit before our own app had connected.
+const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
+for (let i = 0; i < 200 && !hasOwn(); i++) await sleep(50);
 
-console.log('\n=== N3 VISUAL: reticle drive → screenshot → visual_diff (real browser) ===');
+console.log('\n=== VISUAL: reticle drive → screenshot → visual_diff (real browser) ===');
 chk('reticle drive launched a browser + the app SDK connected', server.bridge.sessions.count() > 0);
 
 const shot = await T('reticle_screenshot', { name: 'home', fullPage: true });
@@ -51,7 +55,7 @@ chk('reticle_visual_diff wrote an overlay diff PNG', typeof same.diffPath === 's
 const missing = await T('reticle_visual_diff', { baseline: 'never-saved' });
 chk('a missing baseline is reported honestly (baseline-missing)', missing.ok === false && missing.reason === 'baseline-missing', JSON.stringify(missing).slice(0, 80));
 
-console.log(`\n${fail === 0 ? '✅ N3 VISUAL VERIFIED' : '❌ FAILED'} (${pass} passed, ${fail} failed)`);
+console.log(`\n${fail === 0 ? '✅ VISUAL VERIFIED' : '❌ FAILED'} (${pass} passed, ${fail} failed)`);
 await provider.dispose();
 await server.close();
 nfs.rmSync(path.dirname(reticleRoot), { recursive: true, force: true });

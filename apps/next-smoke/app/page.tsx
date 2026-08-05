@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef } from 'react';
+import Link from 'next/link';
 import { reticle } from '@reticlehq/browser';
 import { useReticleStore } from '@reticlehq/react/store';
 
@@ -138,6 +139,15 @@ export default function Page() {
           </div>
         </div>
       ) : null}
+      {/* Soft navigation — App Router fetches an RSC payload rather than a document. */}
+      <nav style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+        <Link href="/rsc" data-testid="link-rsc">
+          Server component
+        </Link>
+        <Link href="/actions" data-testid="link-actions">
+          Server actions
+        </Link>
+      </nav>
     </main>
   );
 }

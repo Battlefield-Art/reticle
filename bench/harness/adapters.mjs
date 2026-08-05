@@ -230,7 +230,11 @@ export class ReticleAdapter {
     return this.c.callTool('reticle_navigate', { url: this.url, reload: true });
   }
   async snapshot() {
-    return rec('reticle_snapshot', await this.c.callTool('reticle_snapshot', { scope: 'page' }));
+    // NO `scope`. `scope` is a ref or a CSS selector, and since "a missing scope no longer silently
+    // widens to the whole page" the literal 'page' this used to pass resolved to nothing: every
+    // snapshot came back `{tree:"", nodes:0, scopeMissing:true}` — 42 tokens, identical in every
+    // scenario, so silent-dom-regression and layout-shift could not be detected by construction.
+    return rec('reticle_snapshot', await this.c.callTool('reticle_snapshot', {}));
   }
   async _refByTestid(id) {
     const r = await this.c.callTool('reticle_query', { by: 'testid', value: id });

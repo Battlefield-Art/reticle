@@ -1,4 +1,4 @@
-// HONESTY-CRITICAL: prove the N4 autonomous crawler runs end-to-end against a real app — it
+// HONESTY-CRITICAL: prove the autonomous crawler runs end-to-end against a real app — it
 // discovers interactive controls, clicks them (bounded), and returns a structured anomaly report
 // WITHOUT a script. Bounded (maxSteps) so it always terminates.
 import { chromium } from 'playwright';
@@ -16,10 +16,14 @@ const deps = { sessions: server.bridge.sessions };
 const T = (n, a = {}) => TOOLS.find((t) => t.name === n).handler(deps, { sessionId: 'next-smoke', ...a });
 const b = await chromium.launch({ headless: true });
 const p = await b.newPage();
-await p.goto('http://localhost:3100/', { waitUntil: 'networkidle' });
-for (let i = 0; i < 200 && server.bridge.sessions.count() === 0; i++) await sleep(50);
+await p.goto('http://localhost:3100/');
+// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
+// open on the machine — a tab from another project retries the bridge and connects the instant
+// one appears, so this would exit before our own app had connected.
+const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
+for (let i = 0; i < 200 && !hasOwn(); i++) await sleep(50);
 
-console.log('\n=== N4 EXPLORE: reticle_crawl autonomously drives the app (real browser) ===');
+console.log('\n=== EXPLORE: reticle_crawl autonomously drives the app (real browser) ===');
 chk('app SDK connected', server.bridge.sessions.count() > 0);
 
 const report = await T('reticle_crawl', { maxSteps: 6, settleMs: 150 });
@@ -28,7 +32,7 @@ chk('reticle_crawl clicked controls (bounded) and terminated', report.stepsRun >
 chk('reticle_crawl returned a structured anomaly report', Array.isArray(report.anomalies) && typeof report.counts === 'object', JSON.stringify(report.counts));
 chk('every visited control is named', Array.isArray(report.visited) && report.visited.length === report.stepsRun);
 
-console.log(`\n${fail === 0 ? '✅ N4 CRAWL VERIFIED' : '❌ FAILED'} (${pass} passed, ${fail} failed) — anomalies: ${report.anomalies.length}`);
+console.log(`\n${fail === 0 ? '✅ CRAWL VERIFIED' : '❌ FAILED'} (${pass} passed, ${fail} failed) — anomalies: ${report.anomalies.length}`);
 await b.close();
 await server.close();
 process.exit(fail === 0 ? 0 : 1);

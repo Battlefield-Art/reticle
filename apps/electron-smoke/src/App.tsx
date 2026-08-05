@@ -7,6 +7,9 @@ interface DesktopApi {
   loadTodos: () => Promise<Todo[]>;
   addTodo: (title: string) => Promise<Todo>;
   archiveTodo: (id: number) => Promise<void>;
+  bulkDone: (ids: number[]) => Promise<{ requested: number }>;
+  /** One-way `ipcRenderer.send` — returns nothing, and no reply ever comes back. */
+  markSeen: (id: number) => void;
 }
 
 function api(): DesktopApi {
@@ -66,6 +69,16 @@ export function App(): React.ReactElement {
       });
   };
 
+  /**
+   * A one-way `ipcRenderer.send`. There is no promise to await and no reply channel, so the UI
+   * cannot know whether the main process handled it — and neither can Reticle. The call still has
+   * to be VISIBLE, or an app built on this pattern reports no backend activity at all.
+   */
+  const markSeen = (): void => {
+    api().markSeen(todos[0]?.id ?? 0);
+    store.getState().setStatus('marked seen');
+  };
+
   /** Exercises the console observer: an uncaught error the UI never shows. */
   const breakSomething = (): void => {
     console.error('checkout total mismatch: expected 42, got 41');
@@ -116,6 +129,25 @@ export function App(): React.ReactElement {
           placeholder="What needs doing?"
           style={{ flex: 1, padding: 8 }}
         />
+        <button
+          data-testid="bulk-done"
+          onClick={() => {
+            // Trusts the envelope: the promise resolved, so the banner reports the count REQUESTED.
+            // The per-item outcomes inside the payload are never read — which is how a bulk action is
+            // written in every desktop app anyone has shipped.
+            const ids = todos.map((t) => t.id);
+            void api()
+              .bulkDone(ids)
+              .then(() => {
+                store.getState().setStatus(`${String(ids.length)} marked done`);
+              })
+              .catch(() => {
+                store.getState().setStatus('bulk failed');
+              });
+          }}
+        >
+          Bulk done
+        </button>
         <button data-testid="add" onClick={add}>
           Add
         </button>
@@ -148,6 +180,9 @@ export function App(): React.ReactElement {
         </button>
         <button data-testid="fetch-stats" onClick={fetchStats}>
           Fetch stats
+        </button>
+        <button data-testid="mark-seen" onClick={markSeen}>
+          Mark seen (one-way)
         </button>
       </div>
     </main>

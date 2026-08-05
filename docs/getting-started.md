@@ -440,3 +440,17 @@ The errors Reticle returns to the agent now carry a `recovery` hint for this exa
 **Nothing should run in production**
 
 - Keep `reticle.connect()` behind a dev guard (`import.meta.env.DEV` / `NODE_ENV`). The package is side-effect free and tree-shakes out when unused. As a backstop, `connect()` also self-disables when the build reports `NODE_ENV=production` (so an SSR healthcheck or a prod bundle opened on localhost won't activate it) — pass `allowInProduction: true` only for a deliberate prod diagnostic.
+
+## Installing alongside a Next.js or React prerelease
+
+`@reticlehq/next` declares `peer next >=13`, and `@reticlehq/react` declares `peer react >=18`. If your app runs a **prerelease** — a Next.js canary/preview (`16.3.0-preview.9`) or a React RC — npm will refuse the install with `ERESOLVE`.
+
+That is npm's semver rule, not a Reticle restriction: a prerelease version satisfies a range only when some comparator shares its exact `major.minor.patch`. No floor-style range accepts it — verified, including `*`. Marking the peer optional does not help either, because npm still version-checks a peer that is present.
+
+Install with either of these instead. Both are safe; the floor is a real minimum, not a maximum:
+
+```bash
+npm install @reticlehq/next --legacy-peer-deps
+# or use pnpm, whose peer resolution does not hard-fail here
+pnpm add @reticlehq/next
+```
