@@ -37,7 +37,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint src",
     "test:unit": "vitest run src --passWithNoTests",
-    "prepack": "tsc -b && find dist -name \"*.test.*\" -delete"
+    "prepack": "tsc -b && find dist -name \"*.test.*\" -delete && node ../../scripts/strip-maps.mjs dist"
   },
   "dependencies": {
     "@babel/core": "^7.26.0",

@@ -21,7 +21,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint src",
     "test:unit": "vitest run src --passWithNoTests",
-    "prepack": "tsc -b && node scripts/gen-schema.mjs && node scripts/gen-desktop-contract.mjs && find dist -name \"*.test.*\" -delete"
+    "prepack": "tsc -b && node scripts/gen-schema.mjs && node scripts/gen-desktop-contract.mjs && find dist -name \"*.test.*\" -delete && node ../../scripts/strip-maps.mjs dist"
   },
   "dependencies": {
     "zod": "^3.24.1"
