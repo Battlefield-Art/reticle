@@ -26,6 +26,7 @@ import {
   reticleConfigContent,
   svelteKitHooksFile,
   SVELTEKIT_HOOKS_PATH,
+  UNVERIFIED_FRAMEWORK_NOTE,
 } from './snippets.js';
 
 // An app dev installs exactly the audience-scoped browser-side dependencies — never the retired
@@ -369,11 +370,26 @@ function nextSteps(input: PlanInput): Step[] {
   ];
 }
 
+/**
+ * SvelteKit is WIRED but not SUPPORTED, and the plan says so out loud.
+ *
+ * There is no SvelteKit app in `apps/` and no CI gate for one, so nothing proves this hook still
+ * registers a session — every other framework init offers (React, Next, Remix, Astro) has both. The
+ * wiring is real and may well work; what is missing is anything that would tell us when it stops.
+ * Silently emitting it reads as a support claim, which is the thing this project exists to not do.
+ */
 function svelteKitSteps(input: PlanInput): Step[] {
-  // SvelteKit can't use the Vite-plugin injection (renders via app.html) — wire a client hook that
-  // SvelteKit runs on startup. This is verified to register a session where the plugin does not.
+  const unverified: Step = {
+    title: 'SvelteKit is UNVERIFIED',
+    target: SVELTEKIT_HOOKS_PATH,
+    status: StepStatus.MANUAL,
+    detail: UNVERIFIED_FRAMEWORK_NOTE,
+  };
+  // SvelteKit can't use the Vite-plugin injection (it renders via app.html) — wire a client hook
+  // that SvelteKit runs on startup, which is the path that can register a session at all.
   if (input.svelteKitHooksExists === true) {
     return [
+      unverified,
       {
         title: 'Reticle client hook',
         target: SVELTEKIT_HOOKS_PATH,
@@ -383,6 +399,7 @@ function svelteKitSteps(input: PlanInput): Step[] {
     ];
   }
   return [
+    unverified,
     {
       title: 'Reticle client hook',
       target: SVELTEKIT_HOOKS_PATH,

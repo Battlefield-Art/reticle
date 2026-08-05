@@ -36,11 +36,12 @@ which zed       2>/dev/null && echo "zed"
 1. What framework/stack is this app?
    a) Vite + React (specify React 18 or 19)
    b) Next.js (specify version + app/pages router)
-   c) Vite + Vue
-   d) Vite + Svelte
-   e) SvelteKit
-   f) Remix
-   g) Plain HTML / vanilla JS / other
+   c) Remix
+   d) Astro
+   e) Plain HTML / vanilla JS / other
+
+   Vue and Svelte/SvelteKit are NOT supported yet — the SDK is framework-agnostic and may
+   well connect, but nothing in CI proves it, so don't treat it as supported. Pick (e).
 
 2. What package manager are you using?
    npm | pnpm | yarn | bun

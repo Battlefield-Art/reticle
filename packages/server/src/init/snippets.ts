@@ -95,6 +95,13 @@ export const NEXT_RETICLE_DEV_PATH = 'app/reticle-dev.tsx';
 export const SVELTEKIT_HOOKS_PATH = 'src/hooks.client.ts';
 
 /**
+ * Said to the user's face rather than discovered later. React, Next, Remix and Astro each have an
+ * app and a CI gate; SvelteKit has neither, so "it generated some wiring" is not evidence it works.
+ */
+export const UNVERIFIED_FRAMEWORK_NOTE =
+  'Reticle has no SvelteKit app and no CI gate for one, so this wiring is untested — it may work, but nothing proves it and nothing will tell us if it breaks. Supported and gated today: Vite + React, Next.js, Remix, Astro, and plain HTML. If the hook does not register a session, please open an issue.';
+
+/**
  * Dev-only client hook that connects Reticle in a SvelteKit app. SvelteKit renders through app.html and
  * never triggers Vite's index.html injection (verified), so the standard plugin can't auto-connect —
  * a client hook is the reliable path. SvelteKit runs src/hooks.client.ts on the client at startup.

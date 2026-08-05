@@ -9,10 +9,10 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..
  * Every integration we SHIP has an app that exercises it, and a gate that runs that app.
  *
  * This is the rule `apps/` never stated, which is why it accumulated: apps arrived for a reason and
- * then nothing recorded whether that reason was still being served. Two of them — the Astro and Remix
- * examples — wire the SDK for real (Astro even connects a different way, because it SSRs its own HTML
- * and the plugin's index.html injection never fires there) and NOTHING runs either. Astro or Remix
- * support could be broken right now and every gate would still be green.
+ * then nothing recorded whether that reason was still being served. The Astro and Remix examples
+ * wire the SDK for real (Astro connects a different way, because it SSRs its own HTML so the
+ * plugin's index.html injection never fires) and are driven by the integration battery — which is
+ * why they can be offered in SKILL.md at all.
  *
  * The failure mode this prevents is shipping a broken integration, and discipline does not prevent it
  * — a red build does. Adding `packages/svelte` with no app and no spec fails here, at the moment the
@@ -93,49 +93,60 @@ describe('every shipped integration is covered by an app AND a gate', () => {
   });
 
   /**
-   * The promise that must not break: what `SKILL.md` offers a USER.
+   * Every framework the skill OFFERS has an app and a gate. Vue and Svelte/SvelteKit used to be on
+   * that list with neither — an unproven promise in the one file users actually paste — and they
+   * were removed rather than quietly kept.
    *
-   * SKILL.md is the public skill people paste into their own repo, and it asks "what framework is
-   * this app?" with a fixed list. Every option on that list is a claim of support. Measured: it offers
-   * **Vue, Svelte and SvelteKit**, and there is no app and no gate for any of them — while
-   * `examples/astro` exists for a framework the skill never offers. Promise and proof were out of sync
-   * in both directions, and nothing said so.
-   *
-   * This pins the CURRENT gap rather than asserting it is empty. Closing one (an app + a spec) makes
-   * this test fail, and the fix is to move that framework out of the gap list — a deliberate edit that
-   * records the coverage arriving, instead of a silent pass.
+   * `HAS_APP` is the whole point: adding an option to SKILL.md without adding its app here fails,
+   * so the list cannot grow past what CI proves.
    */
-  const UNPROVEN_FRAMEWORKS = ['SvelteKit', 'Vite + Svelte', 'Vite + Vue', 'Remix'] as const;
+  const HAS_APP: Record<string, { dir: string; gateToken: string }> = {
+    'Vite + React': { dir: 'apps/bench-app', gateToken: 'bench-app' },
+    'Next.js': { dir: 'apps/next-smoke', gateToken: 'next-smoke' },
+    // The integration battery drives these two by PACKAGE name, not by path.
+    Remix: { dir: 'apps/examples/remix', gateToken: '@reticlehq/example-remix' },
+    Astro: { dir: 'apps/examples/astro', gateToken: '@reticlehq/example-astro' },
+  };
 
-  it('the frameworks SKILL.md offers with no app and no gate are exactly the known gap', () => {
+  it('every framework SKILL.md offers has an app that a gate drives', () => {
     const skill = readFileSync(join(REPO, 'SKILL.md'), 'utf8');
-    const offered = [
-      'Vite + React',
-      'Next.js',
-      'Vite + Vue',
-      'Vite + Svelte',
-      'SvelteKit',
-      'Remix',
-    ];
+    const offered = Object.keys(HAS_APP);
     const missingFromSkill = offered.filter((f) => !skill.includes(f));
-    expect(missingFromSkill, 'SKILL.md changed its framework list — update this guard').toEqual([]);
+    expect(missingFromSkill, 'SKILL.md dropped a framework — update HAS_APP deliberately').toEqual(
+      [],
+    );
 
+    // The e2e specs cover React and Next; the integration battery covers Remix and Astro. Both are
+    // gates, so read both — checking only one would report a covered framework as unproven.
     const specDir = join(REPO, 'apps/e2e/specs');
-    const specs = readdirSync(specDir)
-      .map((f) => readFileSync(join(specDir, f), 'utf8').toString())
+    const gates = [
+      ...readdirSync(specDir).map((f) => readFileSync(join(specDir, f), 'utf8').toString()),
+      readFileSync(join(REPO, 'test/frameworks.integration.test.ts'), 'utf8').toString(),
+    ].join('\n');
+
+    const missingApp = offered.filter((f) => !existsSync(join(REPO, HAS_APP[f]?.dir ?? '')));
+    expect(missingApp.sort(), 'a framework is offered to users with no app on disk').toEqual([]);
+
+    const unproven = offered.filter((f) => !gates.includes(HAS_APP[f]?.gateToken ?? ' '));
+    expect(unproven.sort(), 'a framework is offered to users with no gate driving its app').toEqual(
+      [],
+    );
+  });
+
+  /**
+   * The removal has to STAY removed. Re-adding Vue or Svelte to the skill is a support claim, and it
+   * must arrive with an app and a gate — which the test above then enforces.
+   */
+  it('SKILL.md does not offer a framework we cannot prove', () => {
+    const skill = readFileSync(join(REPO, 'SKILL.md'), 'utf8');
+    const offeredOptions = skill
+      .split('\n')
+      .filter((line) => /^\s+[a-z]\)\s/.test(line))
       .join('\n');
-    const HAS_APP: Record<string, string> = {
-      'Vite + React': 'bench-app',
-      'Next.js': 'next-smoke',
-      Remix: 'examples/remix',
-    };
-    const unproven = offered.filter((f) => {
-      const app = HAS_APP[f];
-      return app === undefined || !specs.includes(app);
-    });
+    const claimed = ['Vue', 'Svelte', 'SvelteKit'].filter((f) => offeredOptions.includes(f));
     expect(
-      unproven.sort(),
-      'a framework offered to users gained or lost coverage — update UNPROVEN_FRAMEWORKS deliberately',
-    ).toEqual([...UNPROVEN_FRAMEWORKS].sort());
+      claimed,
+      'SKILL.md offers a framework with no app and no gate — add both, or do not offer it',
+    ).toEqual([]);
   });
 });

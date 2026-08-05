@@ -695,7 +695,7 @@ Reticle is cheap by design ([benchmark](token-efficiency.md)), but keep it that 
 
 **Do I have to change my components?** No, for basic look/act/observe. You'll get better results by adding `data-testid`s and labels where the agent needs precision.
 
-**Does it work without React?** Yes — the core (DOM/network/route/console/animation/snapshot/ actions) is framework-agnostic. React gets component + source mapping; Vue/Svelte adapters are on the roadmap.
+**Does it work without React?** The core (DOM/network/route/console/animation/snapshot/actions) is framework-agnostic and is gated against a vanilla-TS app. React, Next.js, Remix and Astro each have an app and a CI gate. Vue and Svelte have neither, so they are untested rather than supported — `connect()` may work, but nothing proves it.
 
 **Can it judge whether my UI _looks_ good?** No. Reticle verifies behavior, not aesthetics. Visual/pixel correctness and "does it feel right" remain human (or a visual-diff tool).
 
