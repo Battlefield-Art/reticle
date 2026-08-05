@@ -107,6 +107,9 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
           changedFiles,
           flowsRun: [],
           unknownProvenance,
+          // Nothing was looked for, and the schema requires this field to say so. Omitting it made
+          // the MCP layer reject the whole response, turning an honest UNKNOWN into a protocol error.
+          measured: [],
         };
       }
 
@@ -119,6 +122,8 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
           changedFiles,
           flowsRun: [],
           unknownProvenance,
+          // No flow ran, so nothing was measured — said explicitly rather than left undefined.
+          measured: [],
         };
       }
 

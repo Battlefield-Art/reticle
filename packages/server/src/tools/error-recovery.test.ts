@@ -83,3 +83,33 @@ describe('every tool a recovery hint names must still be advertised', () => {
     }
   });
 });
+
+/**
+ * The commonest event in an agent loop, and it was classified as "possibly a Reticle defect".
+ *
+ * `reticle_act` invalidates refs whenever the DOM re-renders — a click that navigates, a list that
+ * re-sorts, a modal that opens. The browser throws `ref 'e6' no longer resolves to an element`,
+ * which is Reticle working correctly: it refuses rather than clicking whatever now occupies that
+ * slot, and refusing is the whole point.
+ *
+ * But the message was not in RULES, so it got FEEDBACK_ASK — "this error is not one Reticle
+ * recognizes, which means it may be a defect in Reticle". Measured against a real `reticle mcp`
+ * process: three tool calls in one sweep, every one of them told the agent to consider filing a bug
+ * about the single most ordinary thing that happens after a successful click. That costs the agent a
+ * turn it should have spent re-querying, and fills the maintainers' feedback with a non-bug.
+ */
+describe('a stale ref is a recognized, recoverable condition — not an unknown defect', () => {
+  it('maps the stale-ref throw to "query again for a fresh ref"', () => {
+    const hint = recoveryFor("ref 'e6' no longer resolves to an element");
+    expect(hint).toBe(RECOVERY.STALE_REF);
+    expect(String(hint)).toContain('reticle_query');
+  });
+
+  it('names the CAUSE, so the agent stops reusing refs across a re-render', () => {
+    expect(String(RECOVERY.STALE_REF)).toMatch(/re-render|changed the page|navigat/i);
+  });
+
+  it('and it is recognized, so no feedback ask is attached', () => {
+    expect(recoveryFor("ref 'e12' no longer resolves to an element")).toBeDefined();
+  });
+});

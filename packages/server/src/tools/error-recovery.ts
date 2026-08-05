@@ -30,6 +30,12 @@ export const RECOVERY = {
   MISSING_RECORDING:
     'No recording by that name is in progress. Start one with reticle_record { action: "start", name } ' +
     'before annotating, stopping, or saving it.',
+  STALE_REF:
+    'That ref is stale: refs are invalidated whenever the DOM re-renders, so any action that ' +
+    'navigated, opened a modal, re-sorted a list or changed the page invalidates every ref taken ' +
+    'before it. Reticle refuses here rather than clicking whatever now occupies that slot. Call ' +
+    'reticle_query again for a fresh ref and retry the action — and prefer reticle_act_and_wait ' +
+    '{ until } when an action changes the page, so the next ref is taken after it settles.',
   TOKEN_REQUIRED:
     'The bridge binds beyond localhost and requires a pairing token. Set the same token in the SDK ' +
     'init (@reticlehq/core) and the Reticle server config, then reconnect.',
@@ -44,6 +50,9 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   { match: /no baseline named/i, hint: RECOVERY.MISSING_BASELINE },
   { match: /no (?:active|compiled) recording named/i, hint: RECOVERY.MISSING_RECORDING },
   { match: /pairing token is required/i, hint: RECOVERY.TOKEN_REQUIRED },
+  // The commonest post-action condition there is. Unmatched, it fell through to FEEDBACK_ASK and
+  // told the agent a successful click's aftermath might be a bug in Reticle.
+  { match: /no longer resolves to an element/i, hint: RECOVERY.STALE_REF },
 ];
 
 /** The actionable next move for a known error message, or undefined when none is recognized. */

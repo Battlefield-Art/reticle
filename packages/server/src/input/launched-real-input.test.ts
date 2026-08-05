@@ -20,11 +20,22 @@ interface FakePageState {
   waitForFunctionCalls: number;
   gotoThrows?: boolean;
   waitForFunctionThrows?: boolean;
+  viewport?: { width: number; height: number };
+  routes?: string[];
 }
 
 function fakePage(state: FakePageState): unknown {
   return {
     url: () => state.url,
+    setViewportSize: (size: { width: number; height: number }) => {
+      state.viewport = size;
+      return Promise.resolve();
+    },
+    route: (pattern: unknown) => {
+      state.routes = [...(state.routes ?? []), String(pattern)];
+      return Promise.resolve();
+    },
+    unroute: () => Promise.resolve(),
     goto: (url: string) => {
       state.gotoCalls.push(url);
       if (state.gotoThrows === true) return Promise.reject(new Error('goto boom'));
@@ -111,7 +122,14 @@ function newSpy(overrides: Partial<LaunchSpy> = {}): LaunchSpy {
     calls: [],
     state: {
       closeCalls: 0,
-      page: { url: DRIVE_URL, gotoCalls: [], mouse: [], evalCalls: [], waitForFunctionCalls: 0 },
+      page: {
+        url: DRIVE_URL,
+        gotoCalls: [],
+        mouse: [],
+        evalCalls: [],
+        waitForFunctionCalls: 0,
+        routes: [],
+      },
     },
     ...overrides,
   };
@@ -330,5 +348,52 @@ describe('LaunchedRealInputProvider', () => {
     const provider = makeProvider(spy);
     const res = await provider.perform(DRIVE_URL, 'hover', SOURCE_BOX, {});
     expect(res.performed).toBe(false);
+  });
+});
+
+/**
+ * The capabilities `reticle drive` claims to unlock, and did not have.
+ *
+ * `reticle_viewport` and `reticle_network_mock` look for `setViewport` / `setMocks` on whatever
+ * provider is attached. `CdpRealInputProvider` (attach to a browser someone else opened, via
+ * RETICLE_CDP_URL) implements both; this provider — the one `reticle drive` and `reticle mcp
+ * --drive` actually create — implemented neither, so both tools refused with `no-cdp-provider`
+ * while a driven browser was sitting right there taking screenshots.
+ *
+ * The refusal then told the caller to "start with `reticle drive <url>`" — the exact thing they had
+ * already done. An agent following that recommendation loops forever. Measured against a real
+ * `reticle mcp --drive` process driving a real app.
+ */
+describe('the driven provider supports the tools that require a driven browser', () => {
+  it('applies a viewport to the page it owns', async () => {
+    const spy = newSpy();
+    const provider = makeProvider(spy);
+    await provider.navigate();
+
+    const applied = await provider.setViewport?.(DRIVE_URL, { width: 1024, height: 768 });
+
+    expect(applied).toBe(true);
+    expect(spy.state.page.viewport).toEqual({ width: 1024, height: 768 });
+  });
+
+  it('installs network mocks on the page it owns', async () => {
+    const spy = newSpy();
+    const provider = makeProvider(spy);
+    await provider.navigate();
+
+    const applied = await provider.setMocks?.(DRIVE_URL, [
+      { urlContains: '/api/thing', status: 503, body: '{}' },
+    ]);
+
+    expect(applied).toBe(true);
+    expect((spy.state.page.routes ?? []).length).toBeGreaterThan(0);
+  });
+
+  it('refuses honestly before navigate, rather than pretending it applied', async () => {
+    const spy = newSpy();
+    const provider = makeProvider(spy);
+
+    expect(await provider.setViewport?.(DRIVE_URL, { width: 800, height: 600 })).toBe(false);
+    expect(await provider.setMocks?.(DRIVE_URL, [])).toBe(false);
   });
 });

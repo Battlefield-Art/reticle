@@ -491,6 +491,32 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
     return capturePage(page, opts);
   }
 
+  /**
+   * Pin the owned page's viewport; false before navigate / after dispose.
+   *
+   * `CdpRealInputProvider` has had this since it shipped and THIS provider did not, so
+   * `reticle_viewport` refused with `no-cdp-provider` under `reticle drive` — while recommending
+   * `reticle drive` as the fix. Same for `setMocks` below. A driven browser was attached and taking
+   * screenshots the whole time; only these two methods were missing.
+   */
+  async setViewport(
+    _sessionUrl: string,
+    size: { width: number; height: number },
+  ): Promise<boolean> {
+    const page = this.#page;
+    if (page === undefined) return false;
+    await page.setViewportSize({ width: size.width, height: size.height });
+    return true;
+  }
+
+  /** Apply network-mock rules to the owned page; false before navigate / after dispose. */
+  async setMocks(_sessionUrl: string, rules: MockRule[]): Promise<boolean> {
+    const page = this.#page;
+    if (page === undefined) return false;
+    await installNetworkMocks(page, rules);
+    return true;
+  }
+
   /** Close the owned browser once. Idempotent and safe before navigate. */
   async dispose(): Promise<void> {
     const browser = this.#browser;

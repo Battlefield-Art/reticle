@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { Verified } from '@reticlehq/core';
 import { VERIFY_CHANGE_TOOLS } from './verify-change-tools.js';
 import { FLOW_TOOLS } from './flow-tools.js';
@@ -200,5 +201,41 @@ describe('reticle_verify_change — a green suite is not the end of the check', 
     })) as Record<string, unknown>;
     expect(sequentialRun['measured']).toContain('contradictions');
     affectedSpy.mockRestore();
+  });
+});
+
+/**
+ * The tool's own DECLARED output schema, applied to what the handler actually returns.
+ *
+ * Every test above calls the handler directly, which is exactly why they all passed while the tool
+ * was broken over MCP: the schema is enforced by the MCP layer, not by the handler, so a direct
+ * call never sees it. Measured against a real `reticle mcp` process driving a real app,
+ * `reticle_verify_change {}` came back `-32602 Output validation error: measured Required` — the
+ * two UNKNOWN returns omitted a field the schema marks required.
+ *
+ * Those two are the COMMON paths, not edge cases: "no files given" and "no saved flow covers this
+ * change". So the careful UNKNOWN verdict — the one this whole tool exists to deliver — was
+ * replaced by a protocol error for every caller who had not already recorded a covering flow.
+ */
+describe('what the handler returns satisfies the output schema it advertises', () => {
+  const outputShape = z.object(tool.outputSchema as Record<string, z.ZodTypeAny>);
+
+  it('the no-files UNKNOWN return validates', async () => {
+    const result = await tool.handler(depsWithNoFlows(), {});
+    expect(() => outputShape.parse(result)).not.toThrow();
+  });
+
+  it('the no-covering-flow UNKNOWN return validates', async () => {
+    const result = await tool.handler(depsWithNoFlows(), { files: ['src/Untouched.tsx'] });
+    expect(() => outputShape.parse(result)).not.toThrow();
+  });
+
+  it('and `measured` is empty on both, because nothing was looked for', async () => {
+    const none = (await tool.handler(depsWithNoFlows(), {})) as Record<string, unknown>;
+    const uncovered = (await tool.handler(depsWithNoFlows(), {
+      files: ['src/Untouched.tsx'],
+    })) as Record<string, unknown>;
+    expect(none['measured']).toEqual([]);
+    expect(uncovered['measured']).toEqual([]);
   });
 });
