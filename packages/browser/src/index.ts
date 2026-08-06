@@ -46,9 +46,12 @@ export {
   xstateStore,
   valtioStore,
   mobxStore,
+  recoilStore,
+  svelteStore,
+  piniaStore,
   pushStore,
 } from './registry/store-adapters.js';
-export type { QuerySnapshot } from './registry/store-adapters.js';
+export type { QuerySnapshot, RecoilAtomSnapshot } from './registry/store-adapters.js';
 
 // Capability registry: the app self-describes its testable surface via reticle.describe.
 export { registerCapabilities, getCapabilities, hasCapabilities } from './registry/capabilities.js';

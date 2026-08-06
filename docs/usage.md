@@ -837,6 +837,9 @@ import {
   xstateStore,
   valtioStore,
   mobxStore,
+  svelteStore,
+  piniaStore,
+  recoilStore,
 } from '@reticlehq/browser';
 
 registerStore('queries', tanstackQueryStore(queryClient)); // TanStack Query
@@ -844,7 +847,42 @@ registerStore('app', jotaiStore(getDefaultStore(), { cart, user })); // Jotai (n
 registerStore('machine', xstateStore(actor)); // XState
 registerStore('app', valtioStore(state, snapshot, subscribe)); // Valtio
 registerStore('app', mobxStore(store, toJS, reaction)); // MobX
+registerStore('cart', svelteStore(cartStore)); // Svelte store — `{ subscribe }` is the whole contract
+registerStore('cart', piniaStore(useCartStore())); // Pinia (Vue)
 ```
+
+**Svelte and Pinia** are the two whose adapters do something you would not guess from the shape.
+
+A Svelte store has **no pull side at all** — `{ subscribe }` is the entire contract, no `getState`. `svelteStore` reads the current value by subscribing, catching the synchronous first callback the store contract guarantees, and unsubscribing immediately (the same thing `svelte/store`'s own `get()` does), so it holds no lasting subscription and needs no teardown. It also *swallows* that first callback on `subscribe`, because forwarding it would emit a state change at registration time for a change that never happened.
+
+`piniaStore` subscribes with `detached: true` and `flush: 'sync'`. Without `detached`, a store registered from inside a component goes permanently silent after that component unmounts — still readable, but never emitting another state change, which reads exactly like an app that stopped changing. Without `sync`, the notification lands a Vue tick late, outside the window that links a state change to the click that caused it. Note that `$state` carries state, not getters: a Pinia getter is derived, so asserting on the state it derives from is the stronger assertion anyway.
+
+**Recoil** has no enumerable registry of live atoms and no per-atom subscription outside React, so it takes an atom map (like Jotai) plus the transaction stream from a small bridge component:
+
+```tsx
+import { snapshot_UNSTABLE, useRecoilTransactionObserver_UNSTABLE } from 'recoil';
+
+function ReticleRecoilBridge() {
+  const latest = useRef(snapshot_UNSTABLE());
+  const listeners = useRef(new Set<() => void>()).current;
+  useRecoilTransactionObserver_UNSTABLE(({ snapshot }) => {
+    latest.current = snapshot;
+    for (const l of listeners) l();
+  });
+  useEffect(() => {
+    registerStore(
+      'recoil',
+      recoilStore({ cart: cartAtom, user: userAtom }, () => latest.current, (l) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      }),
+    );
+  }, []);
+  return null;
+}
+```
+
+Each atom comes back as `{ status, value, error }` rather than a bare value, because Recoil atoms can be async: calling `getValue()` on a pending selector **throws the pending promise**, which would lose the whole state read over one slow atom. A loading atom reports `status: 'loading'` instead of silently reading as empty.
 
 **TanStack Query is worth registering even if you register nothing else.** Its cache holds the state most likely to be wrong in a way nothing else can observe: a stale value served as fresh, a mutation that never invalidated its query, an optimistic update never rolled back. None of those fire a network request, so a network log shows silence and the DOM shows a plausible number — the cache is the only witness. The adapter exposes `status`, `fetchStatus`, `isStale` and `dataUpdatedAt` per query key, so an agent can assert the stronger property: not "the number rendered is 42" but "the number rendered came from fresh data".
 
