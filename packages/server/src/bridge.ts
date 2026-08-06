@@ -11,6 +11,7 @@ import {
   ReticleEnv,
   RETICLE_PROTOCOL_VERSION,
   TRANSPORT_LIMITS,
+  isLocalPage,
   isLoopbackHostname,
   isOpaqueOrigin,
   OPAQUE_ORIGIN,
@@ -383,7 +384,20 @@ export class Bridge {
     // check, so it is exactly as attributable as a missing Origin — defer to the token, as above.
     // Without this branch `new URL` throws INSIDE the WS upgrade handler, crashing the process.
     if (isOpaqueOrigin(normalized)) return this.#token !== undefined;
-    return isLoopbackHostname(new URL(normalized).hostname);
+    // `isLocalPage`, not `isLoopbackHostname` — the SAME rule the SDK applies on the page side.
+    //
+    // They had drifted, and the drift made a whole platform unreachable. Tauri v2 uses an opaque
+    // `tauri://localhost` on macOS/Linux, but on WINDOWS the webview needs a real http origin and
+    // Tauri serves `http://tauri.localhost`. `isLocalPage` was taught that hostname; this check was
+    // not. So a Windows Tauri app passed its own gate, dialed the bridge, and every handshake came
+    // back 403 — Reticle could not connect to a Tauri app on Windows at all, which is precisely the
+    // platform the release notes admitted had never been executed.
+    //
+    // No weaker than before: `.localhost` is reserved for loopback by RFC 6761, so the name cannot
+    // resolve to a remote host, and this is the argument core already made when it accepted the same
+    // hostname for the page.
+    const url = new URL(normalized);
+    return isLocalPage(url.protocol, url.hostname);
   }
 
   #parse(text: string): ReturnType<typeof ReticleMessageSchema.parse> | null {

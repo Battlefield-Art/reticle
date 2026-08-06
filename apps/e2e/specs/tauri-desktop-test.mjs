@@ -26,7 +26,11 @@ const { chk, state } = checker();
  * Missing means the build step did not happen — a setup fault, reported as a failure rather than a
  * skip. A desktop battery that quietly tests nothing is the failure this spec exists to prevent.
  */
-const BINARY = path.join(ROOT, 'apps/tauri-smoke/src-tauri/target/release/tauri-smoke');
+const BINARY = path.join(
+  ROOT,
+  'apps/tauri-smoke/src-tauri/target/release',
+  process.platform === 'win32' ? 'tauri-smoke.exe' : 'tauri-smoke',
+);
 if (!existsSync(BINARY)) {
   console.error(
     `\n❌ no packaged Tauri binary at ${BINARY}\n` +
@@ -45,7 +49,11 @@ try {
         cwd: path.join(ROOT, 'apps/tauri-smoke/src-tauri'),
         env: { ...env, RETICLE_HEADLESS: '1' },
       }),
-    urlIncludes: 'tauri://',
+    // Tauri's origin differs by platform and BOTH are a Tauri webview: an opaque `tauri://localhost`
+    // on macOS/Linux, and a real `http://tauri.localhost` on Windows, where the webview requires an
+    // http origin. Matching only the first made this spec unrunnable on Windows — the very platform
+    // whose capture backend the release notes admit had never been executed.
+    urlIncludes: 'tauri',
   });
   const { tool, refOf, sessionId, server, log } = session;
 
@@ -54,10 +62,16 @@ try {
     console.log(log.join('').slice(-3000));
     throw new Error('no session');
   }
+  // The origin a PACKAGED Tauri app serves its embedded frontend from — `tauri://localhost` on
+  // macOS/Linux, `http://tauri.localhost` on Windows, where the webview requires an http origin.
+  // Both are the packaged app. What this check exists to exclude is a DEV SERVER
+  // (`http://localhost:5173`), because testing one of those would prove nothing about the binary.
+  const PACKAGED_TAURI_ORIGINS = ['tauri://localhost', 'http://tauri.localhost/'];
+  const connectedUrl = String(server.bridge.sessions.list()[0]?.url);
   chk(
-    'it connected from the packaged opaque origin, not a dev server',
-    server.bridge.sessions.list()[0]?.url === 'tauri://localhost',
-    String(server.bridge.sessions.list()[0]?.url),
+    'it connected from the packaged Tauri origin, not a dev server',
+    PACKAGED_TAURI_ORIGINS.includes(connectedUrl),
+    connectedUrl,
   );
 
   for (let i = 0; i < 40; i++) {

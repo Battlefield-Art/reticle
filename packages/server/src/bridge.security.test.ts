@@ -83,6 +83,27 @@ describe('Bridge security boundary', () => {
     );
   });
 
+  // Tauri on WINDOWS is the one desktop origin that is NOT opaque: the webview needs a real http
+  // origin, so Tauri serves `http://tauri.localhost` there while macOS/Linux get `tauri://localhost`.
+  // The SDK's own page-side gate was taught that hostname and this handshake check was not, so a
+  // Windows Tauri app passed its own gate, dialed the bridge, and got 403 on every attempt —
+  // Reticle could not connect to a Tauri app on Windows at all. Found by running the packaged
+  // binary there for the first time.
+  it('accepts the Tauri Windows http origin, which is loopback by RFC 6761', async () => {
+    const { bridge, port } = await makeBridge();
+    const socket = await openSocket(port, 'http://tauri.localhost');
+    socket.send(JSON.stringify(hello('tauri-win')));
+    await waitUntil(() => bridge.sessions.count() === 1);
+    expect(bridge.sessions.get('tauri-win')).toBeDefined();
+  });
+
+  it('still rejects a lookalike that merely ENDS with the Tauri hostname', async () => {
+    const { port } = await makeBridge();
+    await expect(openSocket(port, 'http://evil-tauri.localhost.example')).rejects.toThrow(
+      /Unexpected server response: 403/,
+    );
+  });
+
   it('accepts configured origins and requires the pairing token', async () => {
     const { bridge, port } = await makeBridge({
       token: 'shared-secret',
