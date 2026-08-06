@@ -82,7 +82,7 @@ export interface ReticleConnectOptions {
    *
    * Literal `keys` strings also cross the bridge, so the daemon redacts them on the driven path,
    * where request bodies are captured raw from the network stack and never pass through this SDK.
-   * RegExp entries and `allow` do NOT cross — see docs/privacy.md for why, and what that means.
+   * RegExp entries and `allow` do NOT cross — see docs/usage.md ("Extending the redaction rules") for why, and what that means.
    */
   redact?: RedactionConfig;
 }

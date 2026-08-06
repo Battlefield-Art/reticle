@@ -160,7 +160,7 @@ export const MAX_WIRE_REDACT_KEY_LENGTH = 128;
  *    able to send it could quietly un-redact `password` in the daemon's journal for every session.
  *    The driven path keeps the default floor.
  *
- * Both limitations are documented for users in docs/privacy.md.
+ * Both limitations are documented for users in docs/usage.md ("Extending the redaction rules").
  */
 export function wireRedactionKeys(config?: RedactionConfig): string[] {
   const seen = new Set<string>();
