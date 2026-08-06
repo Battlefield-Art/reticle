@@ -281,7 +281,9 @@ describe('recoilStore', () => {
     // `getValue()` on a loading Loadable THROWS the pending promise. Reading `.state` instead is
     // what keeps one async selector from taking down the whole state read.
     const atom = {};
-    const recoil = fakeRecoil(new Map([[atom, { state: 'loading', contents: Promise.resolve(1) }]]));
+    const recoil = fakeRecoil(
+      new Map([[atom, { state: 'loading', contents: Promise.resolve(1) }]]),
+    );
     const state = recoilStore({ q: atom }, recoil.snapshot, recoil.subscribe).getState();
     expect(state).toEqual({ q: { status: 'loading', value: null, error: null } });
   });

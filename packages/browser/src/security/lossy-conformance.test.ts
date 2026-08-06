@@ -42,7 +42,9 @@ describe('sanitizeWithReport is the reference implementation', () => {
   });
 
   it('reports a truncated VALUE, not only dropped items', () => {
-    const { truncation } = sanitizeWithReport({ blob: 'x'.repeat(TRANSPORT_LIMITS.MAX_STRING_LENGTH * 2) });
+    const { truncation } = sanitizeWithReport({
+      blob: 'x'.repeat(TRANSPORT_LIMITS.MAX_STRING_LENGTH * 2),
+    });
     expect(truncation?.truncatedValues).toBeGreaterThan(0);
   });
 

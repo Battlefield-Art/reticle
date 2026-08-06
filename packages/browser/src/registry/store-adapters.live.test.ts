@@ -151,7 +151,11 @@ describe('store adapters against the libraries they claim to support', () => {
       get: () => new Promise<number>(() => undefined), // never resolves: permanently 'loading'
     });
     let current = snapshot_UNSTABLE();
-    const adapter = recoilStore({ count, slow }, () => current, () => () => undefined);
+    const adapter = recoilStore(
+      { count, slow },
+      () => current,
+      () => () => undefined,
+    );
 
     expect(adapter.getState()).toEqual({
       count: { status: 'hasValue', value: 1, error: null },

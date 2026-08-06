@@ -60,7 +60,11 @@ describe('selectPath declares its loss beside the value', () => {
   });
 
   it.each([
-    ['an object', Object.fromEntries(Array.from({ length: 120 }, (_, i) => [`k${String(i)}`, i])), 120],
+    [
+      'an object',
+      Object.fromEntries(Array.from({ length: 120 }, (_, i) => [`k${String(i)}`, i])),
+      120,
+    ],
     ['an array', Array.from({ length: 120 }, (_, i) => i), 120],
     ['a Map', new Map(Array.from({ length: 120 }, (_, i) => [`k${String(i)}`, i])), 120],
   ])('reports the true size for %s', (_label, value, total) => {
@@ -74,9 +78,7 @@ describe('selectPath declares its loss beside the value', () => {
 
 describe('toToon declares a collapsed subtree with its size', () => {
   it('carries count=N for a container whose children are not expanded', () => {
-    const encoded = toToon([
-      { ref: 'e1', role: 'list', name: 'Results', childCount: 250 },
-    ]);
+    const encoded = toToon([{ ref: 'e1', role: 'list', name: 'Results', childCount: 250 }]);
     expect(encoded).toContain('count=250');
   });
 

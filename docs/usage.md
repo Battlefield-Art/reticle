@@ -734,11 +734,11 @@ reticle.connect({
 
 **What crosses the bridge, and why it matters.** Most captures pass through the SDK in your page. Request bodies and response headers on the **driven** path (`reticle drive`, or a CDP-attached browser) do not — the daemon reads them straight from the network stack. So the literal strings in `keys` are announced to the daemon when your app connects, and it redacts them there too. Two parts deliberately stay in the page:
 
-| | Applies in the page | Applies on the driven path |
-| --- | :-: | :-: |
-| `keys` — plain strings | ✅ | ✅ |
-| `keys` — RegExp entries | ✅ | ❌ |
-| `allow` | ✅ | ❌ |
+|                         | Applies in the page | Applies on the driven path |
+| ----------------------- | :-----------------: | :------------------------: |
+| `keys` — plain strings  |         ✅          |             ✅             |
+| `keys` — RegExp entries |         ✅          |             ❌             |
+| `allow`                 |         ✅          |             ❌             |
 
 A RegExp does not travel because compiling a pattern that arrived over a socket and running it against every key of every request body is a denial-of-service surface. `allow` does not travel because it is the only part of the config that **removes** redaction, and the driven path keeps the built-in floor rather than letting a page lower it. Both exclusions fail in the safe direction: the driven path can over-redact relative to your config, never under. **If a key must be redacted everywhere, name it as a plain string.**
 
@@ -881,7 +881,7 @@ registerStore('cart', piniaStore(useCartStore())); // Pinia (Vue)
 
 **Svelte and Pinia** are the two whose adapters do something you would not guess from the shape.
 
-A Svelte store has **no pull side at all** — `{ subscribe }` is the entire contract, no `getState`. `svelteStore` reads the current value by subscribing, catching the synchronous first callback the store contract guarantees, and unsubscribing immediately (the same thing `svelte/store`'s own `get()` does), so it holds no lasting subscription and needs no teardown. It also *swallows* that first callback on `subscribe`, because forwarding it would emit a state change at registration time for a change that never happened.
+A Svelte store has **no pull side at all** — `{ subscribe }` is the entire contract, no `getState`. `svelteStore` reads the current value by subscribing, catching the synchronous first callback the store contract guarantees, and unsubscribing immediately (the same thing `svelte/store`'s own `get()` does), so it holds no lasting subscription and needs no teardown. It also _swallows_ that first callback on `subscribe`, because forwarding it would emit a state change at registration time for a change that never happened.
 
 `piniaStore` subscribes with `detached: true` and `flush: 'sync'`. Without `detached`, a store registered from inside a component goes permanently silent after that component unmounts — still readable, but never emitting another state change, which reads exactly like an app that stopped changing. Without `sync`, the notification lands a Vue tick late, outside the window that links a state change to the click that caused it. Note that `$state` carries state, not getters: a Pinia getter is derived, so asserting on the state it derives from is the stronger assertion anyway.
 
@@ -900,10 +900,14 @@ function ReticleRecoilBridge() {
   useEffect(() => {
     registerStore(
       'recoil',
-      recoilStore({ cart: cartAtom, user: userAtom }, () => latest.current, (l) => {
-        listeners.add(l);
-        return () => listeners.delete(l);
-      }),
+      recoilStore(
+        { cart: cartAtom, user: userAtom },
+        () => latest.current,
+        (l) => {
+          listeners.add(l);
+          return () => listeners.delete(l);
+        },
+      ),
     );
   }, []);
   return null;

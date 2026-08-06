@@ -4,6 +4,34 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+### Added
+
+**Three more state libraries Reticle can read** (#70, #71, first step of #76)
+
+- **`recoilStore`** (`@reticlehq/browser`) — takes an atom map plus the transaction stream from a small bridge component, because Recoil has no enumerable registry of live atoms and no per-atom subscription outside React. Each atom comes back as `{ status, value, error }` rather than a bare value: calling `getValue()` on a pending async selector **throws the pending promise**, so a bare projection would lose the whole state read over one slow atom.
+- **`svelteStore`** (`@reticlehq/browser`) — a Svelte store has no pull side at all, so this reads by subscribing, catching the synchronous first callback the store contract guarantees, and unsubscribing (what `svelte/store`'s own `get()` does). It holds no lasting subscription and needs no teardown, and it **swallows that first callback** on `subscribe` — forwarding it would emit a state change at registration for a change that never happened.
+- **`piniaStore`** (`@reticlehq/browser`) — subscribes with `detached: true` and `flush: 'sync'`. Without `detached`, a store registered inside a component goes permanently silent after unmount: still readable, never emitting another diff, which reads exactly like an app that stopped changing.
+
+**Redaction is configurable** (#74)
+
+- `reticle.connect({ redact: { keys, allow } })`. `keys` adds to the rule (a string matches a key name exactly, case-insensitively; a RegExp is tested), `allow` exempts a key from the default rule and loses to `keys`. Additive only — there is no way to replace the default set. Exempting a key the default rule treats as a credential prints a one-time warning naming it.
+- Literal `keys` strings **cross the bridge**, so the daemon redacts them on the driven path too, where request bodies are captured raw from the network stack and never pass through the SDK. RegExp entries and `allow` deliberately do not cross; both exclusions fail in the safe direction. See [docs/usage.md](docs/usage.md#extending-the-redaction-rules).
+- With no `redact` option the behaviour is exactly what it was, pinned by a test that walks every credential name the rule catches and every false positive it was taught to allow.
+
+**Svelte source mapping** (#75)
+
+- `@reticlehq/vite-plugin` stamps `data-reticle-source` into `.svelte` single-file components, so a SvelteKit verdict finally carries the `file:line` the rest of the product leads with. `svelte` is not a dependency: the compiler is resolved lazily from your app and its absence is a no-op. A React-only build is unaffected, asserted by comparing the plugin's output against Babel run directly.
+- `reticle init` now also patches `vite.config` for SvelteKit. It already installed `@reticlehq/vite-plugin` and never wired it in, so the plugin sat in `package.json` doing nothing.
+
+**A guard for the invariant behind three past bugs** (#77)
+
+- `scripts/check-lossy-transforms.mjs` (wired into `pnpm lint`) classifies every export of the read-path modules, so adding one fails the build until somebody says whether it can drop data and how it declares that. Conformance suites drive fixtures guaranteed to lose data. The guard proves itself with `--self-test`. Rule written down in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Fixed
+
+- **`reticle_state` said "that key does not exist" when it meant "here are 50 of them"** (`@reticlehq/core`, found by #77's registry). A wrong `path` into a store with more than 50 keys returned a capped `availableKeys` with no marker, which reads as the strongest possible negative signal — when the key was simply number 51. The result now carries `totalKeys` beside the sample.
+- **Source pointers contained backslashes on Windows** (`@reticlehq/babel-plugin`). `path.relative` returns the platform separator, so `data-reticle-source` stamped `src\Foo.tsx:42:8` — the headline `file:line`, in a form matching neither the paths every other Reticle surface emits nor the ones an agent greps for. Nothing failed loudly. Both stampers now always emit forward slashes.
+
 ## [2.3.0] — 2026-08-05
 
 **Desktop release.** Electron and Tauri become supported surfaces with a committed test battery behind them, and CI compiles the Rust for the first time. Plus a feedback channel so an agent can report a bad verdict, telemetry rebuilt around outcomes rather than activity, and a round of false-green fixes. No breaking API changes; on-disk flow files stay version 1.

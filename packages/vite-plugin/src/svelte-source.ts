@@ -80,7 +80,10 @@ function defaultLoadCompiler(): SvelteCompilerLike | null {
  * and a Svelte pointer that was 0-based on line would land every verdict one line off while looking
  * completely plausible.
  */
-export function offsetToLineColumn(source: string, offset: number): { line: number; column: number } {
+export function offsetToLineColumn(
+  source: string,
+  offset: number,
+): { line: number; column: number } {
   let line = 1;
   let lineStart = 0;
   for (let i = 0; i < offset && i < source.length; i++) {

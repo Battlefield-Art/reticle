@@ -107,10 +107,13 @@ export const READ_PATH = Object.freeze({
     unregisterStore: [Declaration.NONE, 'registration, reads nothing'],
     storeNames: [Declaration.NONE, 'names only, never truncated'],
     subscribableStores: [Declaration.NONE, 'registry projection, never truncated'],
-    readStoresRaw: [Declaration.NONE, 'deliberately UNCAPPED — it exists so a scoped read selects before the caps apply'],
+    readStoresRaw: [
+      Declaration.NONE,
+      'deliberately UNCAPPED — it exists so a scoped read selects before the caps apply',
+    ],
     readStores: [
       Declaration.SILENT,
-      'convenience wrapper that DROPS readStoresWithTruncation\'s report. Every read-path caller uses the reporting form',
+      "convenience wrapper that DROPS readStoresWithTruncation's report. Every read-path caller uses the reporting form",
     ],
     readStoresWithTruncation: [
       Declaration.REPORT,
@@ -137,7 +140,10 @@ export const READ_PATH = Object.freeze({
       Declaration.MARKER,
       'a container whose children are not expanded carries count=N on its own line, so a collapsed subtree states its size',
     ],
-    resultToToon: [Declaration.MARKER, 'delegates to toToon; non-element results pass through as JSON'],
+    resultToToon: [
+      Declaration.MARKER,
+      'delegates to toToon; non-element results pass through as JSON',
+    ],
     isToonable: [Declaration.NONE, 'predicate'],
   },
 });
@@ -241,11 +247,9 @@ function selfTest() {
     'export function untested() {}',
     'export function unclassified() {}',
   ].join('\n');
-  const problems = findDrift(
-    registry,
-    (file) => (file === 'fake/mod.ts' ? source : null),
-    ['expect(declared()).toBeDefined(); noReason(); badStyle();'],
-  );
+  const problems = findDrift(registry, (file) => (file === 'fake/mod.ts' ? source : null), [
+    'expect(declared()).toBeDefined(); noReason(); badStyle();',
+  ]);
   const got = problems.map((p) => `${p.name ?? '-'}:${p.reason.slice(0, 24)}`);
   const expected = [
     ['unclassified', 'a new export must be classified'],
@@ -264,7 +268,11 @@ function selfTest() {
     console.error('self-test FAILED — guard missed:', missing.map(([, why]) => why).join('; '));
     process.exit(1);
   }
-  console.log('lossy-transform guard self-test passed (%d synthetic problems caught: %s)', problems.length, got.length);
+  console.log(
+    'lossy-transform guard self-test passed (%d synthetic problems caught: %s)',
+    problems.length,
+    got.length,
+  );
 }
 
 function main() {
@@ -276,7 +284,10 @@ function main() {
   const missingSuite = CONFORMANCE_TESTS.filter((file) => readFromDisk(file) === null);
   const problems = findDrift(READ_PATH, readFromDisk, conformance);
   for (const file of missingSuite) {
-    problems.push({ file, reason: 'conformance suite listed in CONFORMANCE_TESTS but not on disk' });
+    problems.push({
+      file,
+      reason: 'conformance suite listed in CONFORMANCE_TESTS but not on disk',
+    });
   }
   if (problems.length > 0) {
     console.error('Lossy-transform registry drift:\n');

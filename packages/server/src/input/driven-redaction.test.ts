@@ -102,7 +102,7 @@ describe('the union tracks session lifetime', () => {
     expect(drivenRedactionPolicy().isSensitiveKey('beta')).toBe(true);
   });
 
-  it('a re-declaration replaces that session\'s keys rather than accumulating them', () => {
+  it("a re-declaration replaces that session's keys rather than accumulating them", () => {
     declareDrivenRedactionKeys('s1', ['alpha']);
     declareDrivenRedactionKeys('s1', ['beta']);
     expect(drivenRedactionKeys()).toEqual(['beta']);

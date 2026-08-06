@@ -56,7 +56,8 @@ describe('stampSvelte', () => {
   });
 
   it('reaches elements inside every block form, not just the top level', () => {
-    const source = '{#if n}\n<p>a</p>\n{:else}\n<p>b</p>\n{/if}\n{#each xs as x}\n<li>{x}</li>\n{/each}';
+    const source =
+      '{#if n}\n<p>a</p>\n{:else}\n<p>b</p>\n{/if}\n{#each xs as x}\n<li>{x}</li>\n{/each}';
     expect(stampedValues(stampSvelte(source, 'src/A.svelte') ?? '')).toEqual([
       'src/A.svelte:2:0',
       'src/A.svelte:4:0',
@@ -70,7 +71,7 @@ describe('stampSvelte', () => {
     expect(stampedValues(twice)).toEqual(['src/App.svelte:1:0']);
   });
 
-  it('keeps the element\'s own attributes and directives intact', () => {
+  it("keeps the element's own attributes and directives intact", () => {
     const source = '<button class="a" on:click={go} {...rest}>Go</button>';
     const out = stampSvelte(source, 'src/App.svelte') ?? '';
     expect(out).toContain('class="a"');
