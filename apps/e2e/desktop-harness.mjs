@@ -223,11 +223,16 @@ function resolveElectronBinary() {
  * and `kill` is wrapped so every existing caller gets the tree kill without changing its code.
  */
 export function spawn(command, args, options = {}) {
-  const child = nodeSpawn(command, args, { detached: true, ...options });
+  // `shell` on Windows, because a package-manager entry point there is `pnpm.CMD`, not `pnpm`, and
+  // a bare spawn dies with ENOENT before the app it was launching exists. Process GROUPS are also a
+  // POSIX concept, so the negative-pid kill below is skipped there; Windows already terminates the
+  // whole tree for a detached child, which is what the group signal buys us on POSIX.
+  const windows = process.platform === 'win32';
+  const child = nodeSpawn(command, args, { detached: true, shell: windows, ...options });
   const killOne = child.kill.bind(child);
   child.kill = (signal = 'SIGTERM') => {
     try {
-      if (child.pid !== undefined) process.kill(-child.pid, signal);
+      if (!windows && child.pid !== undefined) process.kill(-child.pid, signal);
     } catch {
       /* group already gone — normal after a clean exit */
     }

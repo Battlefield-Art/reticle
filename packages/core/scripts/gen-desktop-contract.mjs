@@ -38,14 +38,27 @@ export function renderDesktopContractDts(contract) {
 }
 
 // ── CLI entry ────────────────────────────────────────────────────────────────────────────────────
-if (import.meta.url === `file://${process.argv[1]}`) {
+//
+// `fileURLToPath(import.meta.url) === process.argv[1]`, matching scripts/check-boundaries.mjs — NOT
+// the `file://${process.argv[1]}` string concatenation this used to be. On Windows argv[1] is
+// `C:\…\gen-desktop-contract.mjs`, so the concatenation produced `file://C:\…` while import.meta.url
+// is `file:///C:/…`. They never matched, so the generator ran as a no-op, `pnpm build` reported
+// success, and @reticlehq/core shipped with no dist/desktop-contract.cjs — which an Electron main
+// process requires at boot. The whole desktop integration died with a module-not-found and nothing
+// in the build said a word.
+const { fileURLToPath } = await import('node:url');
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const { writeFileSync } = await import('node:fs');
   const { join, dirname } = await import('node:path');
-  const { fileURLToPath } = await import('node:url');
+
+  const { pathToFileURL } = await import('node:url');
 
   const here = dirname(fileURLToPath(import.meta.url));
   const dist = join(here, '..', 'dist');
-  const { DESKTOP_CONTRACT } = await import(join(dist, 'desktop-contract.js'));
+  // `pathToFileURL`, not the bare path: a dynamic import of an absolute Windows path (`C:\…`) is
+  // rejected outright — Node reads `c:` as a URL scheme. This was invisible until the CLI-entry
+  // guard above was fixed, because the guard never let this line run on Windows in the first place.
+  const { DESKTOP_CONTRACT } = await import(pathToFileURL(join(dist, 'desktop-contract.js')).href);
   const outCjs = join(dist, 'desktop-contract.cjs');
   const outDts = join(dist, 'desktop-contract.d.cts');
   writeFileSync(outCjs, renderDesktopContract(DESKTOP_CONTRACT), 'utf8');
