@@ -632,6 +632,9 @@ importers:
       '@types/babel__core':
         specifier: ^7.20.5
         version: 7.20.5
+      svelte:
+        specifier: ^5.56.8
+        version: 5.56.8(@typescript-eslint/types@8.60.1)
       vite:
         specifier: ^8
         version: 8.2.0(@types/node@22.19.20)(esbuild@0.28.1)(yaml@2.9.0)

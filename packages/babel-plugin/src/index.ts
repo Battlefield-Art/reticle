@@ -42,7 +42,12 @@ function reticleSourcePlugin({ types: t }: PluginApi): PluginObj<PluginPass> {
         if (loc === null || loc === undefined) return;
 
         const filename = state.filename ?? 'unknown';
-        const rel = relative(process.cwd(), filename);
+        // Forward slashes always. `relative` returns the PLATFORM separator, so on Windows this
+        // stamped `src\Foo.tsx:42:8` — the `file:line` the whole product hands back, with a
+        // separator that matches neither the repo-relative paths every other Reticle surface emits
+        // nor the ones the agent then greps for. Nothing failed loudly; the pointers were just
+        // subtly the wrong string on one OS.
+        const rel = relative(process.cwd(), filename).replace(/\\/g, '/');
         const value = `${rel}:${String(loc.start.line)}:${String(loc.start.column)}`;
 
         node.attributes.push(t.jsxAttribute(t.jsxIdentifier(SOURCE_ATTR), t.stringLiteral(value)));

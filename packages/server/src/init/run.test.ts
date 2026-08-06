@@ -161,7 +161,12 @@ describe('runInit', () => {
     expect(io.written['app/reticle-dev.tsx']).toContain('ReticleDev');
   });
 
-  it('creates src/hooks.client.ts for a SvelteKit project and does NOT patch vite.config', () => {
+  it('creates src/hooks.client.ts for a SvelteKit project AND patches vite.config', () => {
+    // Both halves, and they do different jobs. The client hook is what registers a session, because
+    // SvelteKit renders through app.html so the plugin's HTML injection never fires. The plugin is
+    // what stamps data-reticle-source into .svelte components — `init` has always installed
+    // @reticlehq/vite-plugin for SvelteKit and used to leave it unwired, so it sat in package.json
+    // doing nothing and every verdict on a SvelteKit app came back with no file:line.
     const io = memoryIo({
       'package.json': JSON.stringify({ devDependencies: { '@sveltejs/kit': '^2', vite: '^5' } }),
       'svelte.config.js': 'export default {};\n',
@@ -170,6 +175,7 @@ describe('runInit', () => {
     runInit(OPTS, io);
     expect(io.written['src/hooks.client.ts']).toContain('reticle.connect(');
     expect(io.written['src/hooks.client.ts']).toContain('app.html'); // explains why the hook exists
-    expect(io.written['vite.config.ts']).toBeUndefined(); // the Vite plugin is NOT added for SvelteKit
+    expect(io.written['vite.config.ts']).toContain('reticle()');
+    expect(io.written['vite.config.ts']).toContain('sveltekit()'); // the app's own plugin survives
   });
 });
