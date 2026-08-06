@@ -10,8 +10,9 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "lint": "node scripts/check-boundaries.mjs && turbo run lint",
+    "lint": "node scripts/check-boundaries.mjs && node scripts/check-lossy-transforms.mjs && turbo run lint",
     "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:lossy": "node scripts/check-lossy-transforms.mjs",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test:unit",
     "test:unit": "turbo run test:unit",

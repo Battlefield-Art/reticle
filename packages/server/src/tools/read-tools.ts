@@ -306,6 +306,10 @@ export const READ_TOOLS: ToolDef[] = [
       store: z.string().optional(),
       path: z.string().optional(),
       availableKeys: z.array(z.string()).optional(),
+      // Present only when `availableKeys` is a SAMPLE. Declared for the same reason as the truncation
+      // report below: a capped list of 50 keys with no count reads as a complete one, so an agent
+      // concludes the key it wants is absent when it is merely past the cap.
+      totalKeys: z.number().optional(),
       component: z
         .object({ ok: z.boolean(), reason: z.string().optional(), state: z.unknown().optional() })
         .optional(),

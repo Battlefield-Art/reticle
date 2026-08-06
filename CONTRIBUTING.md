@@ -105,6 +105,11 @@ These are enforced by lint and review. A PR that violates them will be asked to 
 9. **Design tokens are the only place design values live.**
 10. **No internal tracking tags.** Comments, file names, directory names, and test descriptions must never contain design-doc reference codes or internal version strings.
 11. **No `console.log`** left in committed code.
+12. **Lossy transforms declare their loss.** Any transform that can drop, truncate, or shape-coerce data on a path an agent reads must report that it did, in a machine-readable way the consumer can detect. The consumer is an agent deciding whether a green verdict is trustworthy, so a partial answer it cannot tell apart from a complete one is a false green — and a note in a log, or a value quietly shortened with nothing to say so, is not a report. `sanitizeWithReport` is the reference: it returns the value **and** a `TruncationReport`, precisely so a caller cannot mistake a fraction for the whole.
+
+    The read path is registered in [`scripts/check-lossy-transforms.mjs`](scripts/check-lossy-transforms.mjs), which runs in `pnpm lint`. **Adding an export to one of those modules fails the build until you classify it** — `report` (a field beside the value), `marker` (an unambiguous in-band sentinel, where the value's shape has to survive), `signal` (announced on the event stream or a health surface), `none` (not lossy), or `silent` (a known gap, with the reason written down). Anything classified lossy must also be named in a conformance suite that drives a fixture guaranteed to lose data and asserts the loss is declared.
+
+    Honest about its own limits: the guard catches a new **export**, not a new behaviour. Someone can still add silent truncation inside a function already on the list. What it prevents is the case that actually happened three times — a transform written in isolation by someone who did not know the rule existed. Prove the guard still works with `node scripts/check-lossy-transforms.mjs --self-test`.
 
 ### Naming conventions
 

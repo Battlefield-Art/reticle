@@ -12,25 +12,55 @@ export interface PathSelection {
   value: unknown;
   /** On a miss: the keys present at the deepest level reached (so the agent can correct the path). */
   availableKeys?: string[];
+  /**
+   * On a miss where `availableKeys` is a SAMPLE: how many keys were really there.
+   *
+   * Present only when the list was cut. `availableKeys` is capped, and without this a 10,000-key
+   * store answered a wrong path with 50 names and no sign there were more — so an agent reading it
+   * concludes the key it wants does not exist, when it is simply key 51. That reads as the strongest
+   * possible negative signal and it is a false one, which is the precise failure this near-miss
+   * payload was added to prevent.
+   */
+  totalKeys?: number;
 }
 
 /** Cap on how many near-miss keys travel in a failed selection — a 10k-key store must not return a
  *  10k-entry array in the error payload (that was the token blowup the near-miss exists to avoid). */
 const MAX_AVAILABLE_KEYS = 50;
 
-function keysOf(value: unknown): string[] {
-  if (Array.isArray(value)) return value.slice(0, MAX_AVAILABLE_KEYS).map((_, i) => String(i));
-  if (value instanceof Map) {
-    const out: string[] = [];
-    for (const k of value.keys()) {
-      if (typeof k === 'string') out.push(k);
-      if (out.length >= MAX_AVAILABLE_KEYS) break;
-    }
-    return out;
+/** The keys at a level, as a bounded sample plus the true count when the sample is short. */
+function keysOf(value: unknown): { keys: string[]; total: number } {
+  if (Array.isArray(value)) {
+    return {
+      keys: value.slice(0, MAX_AVAILABLE_KEYS).map((_, i) => String(i)),
+      total: value.length,
+    };
   }
-  if (typeof value === 'object' && value !== null)
-    return Object.keys(value).slice(0, MAX_AVAILABLE_KEYS);
-  return [];
+  if (value instanceof Map) {
+    const keys: string[] = [];
+    let total = 0;
+    for (const k of value.keys()) {
+      total += 1;
+      if (typeof k === 'string' && keys.length < MAX_AVAILABLE_KEYS) keys.push(k);
+    }
+    return { keys, total };
+  }
+  if (typeof value === 'object' && value !== null) {
+    const all = Object.keys(value);
+    return { keys: all.slice(0, MAX_AVAILABLE_KEYS), total: all.length };
+  }
+  return { keys: [], total: 0 };
+}
+
+/** A miss, with the sample of keys available where it stopped and the count when that sample is cut. */
+function miss(value: unknown): PathSelection {
+  const { keys, total } = keysOf(value);
+  return {
+    found: false,
+    value: null,
+    availableKeys: keys,
+    ...(total > keys.length ? { totalKeys: total } : {}),
+  };
 }
 
 /** Walk `path` (e.g. "captionCache.v3.0.text") into `root`. Empty path returns root unchanged. */
@@ -49,7 +79,7 @@ export function selectPath(root: unknown, path: string): PathSelection {
         String(index) !== segment ||
         index >= current.length
       ) {
-        return { found: false, value: null, availableKeys: keysOf(current) };
+        return miss(current);
       }
       current = current[index];
       continue;
@@ -59,7 +89,7 @@ export function selectPath(root: unknown, path: string): PathSelection {
         current = current.get(segment);
         continue;
       }
-      return { found: false, value: null, availableKeys: keysOf(current) };
+      return miss(current);
     }
     // `Object.hasOwn`, not `in`: `in` walks the prototype, so a path segment of `constructor`,
     // `__proto__`, or `toString` reported found:true and returned a function from Object.prototype —
@@ -69,7 +99,7 @@ export function selectPath(root: unknown, path: string): PathSelection {
       current = (current as Record<string, unknown>)[segment];
       continue;
     }
-    return { found: false, value: null, availableKeys: keysOf(current) };
+    return miss(current);
   }
   return { found: true, value: current };
 }
