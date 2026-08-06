@@ -192,6 +192,10 @@ So the gap isn't something your agent forgot. It's a different job, and nothing 
 
 We injected **88 real regressions** into a controlled app and ran Reticle head-to-head against a Playwright script. Every number is produced by a committed harness — reproduce it with `pnpm bench`.
 
+<p align="center">
+  <img src="assets/readme/benchmark-chart.svg" alt="Bugs caught by category: Reticle 86/86, Playwright 60/86. Reticle catches all 8 state bugs, 6 business-logic, 4 signal and 4 net-status bugs where Playwright catches 0, 0, 0 and 1. On the other 13 categories both catch everything." width="900" />
+</p>
+
 |  | **Reticle** | Playwright (script) |
 | --- | :-: | :-: |
 | **Critical bugs caught** (silent 500s, wrong data, bad state) | **26 / 26** | 9 / 26 |
