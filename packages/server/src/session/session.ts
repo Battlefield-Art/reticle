@@ -67,6 +67,12 @@ export class Session {
   title: string;
   adapters: string[];
   hasCapabilities: boolean;
+  /**
+   * Extra key names this app declared sensitive via `connect({ redact: { keys } })`. Held so the
+   * DRIVEN path can redact them too — a request body the daemon captures from the network stack
+   * never passes through the SDK, so nothing else would.
+   */
+  readonly redactKeys: readonly string[];
 
   readonly #socket: WebSocket;
   readonly #clock: Clock;
@@ -107,6 +113,7 @@ export class Session {
     this.title = hello.title;
     this.adapters = hello.adapters;
     this.hasCapabilities = hello.hasCapabilities ?? false;
+    this.redactKeys = hello.redactKeys ?? [];
     this.#socket = socket;
     this.#clock = clock;
     this.#startedAt = clock();

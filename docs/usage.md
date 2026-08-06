@@ -714,6 +714,34 @@ Reticle is cheap by design ([benchmark](token-efficiency.md)), but keep it that 
 - **Network bodies aren't captured by default** — only method/url/status/timing. Body capture is opt-in and runs through a redactor (drop `password`/`token`/`secret`/… + your patterns).
 - **Additive & reversible.** Reticle patches `fetch`/History/console defensively and restores them on disconnect; it will not break the app under test.
 
+### Extending the redaction rules
+
+The built-in rule catches the credential names that are common across apps. Yours has its own vocabulary in both directions — a `licenceKey` it has never heard of, and a `designToken` it redacts by mistake — so `connect()` takes a `redact` option:
+
+```ts
+reticle.connect({
+  redact: {
+    keys: ['licenceKey', /^partner[-_]?code$/i], // also redact these
+    allow: ['designToken'], // stop redacting this false positive
+  },
+});
+```
+
+- **`keys`** adds to the rule. A string matches a key name **exactly**, case-insensitively — `'code'` does not redact `codeOwner`. A RegExp is tested against the key.
+- **`allow`** exempts a key from the **default** rule. It loses to `keys`: an explicit redact instruction beats an exemption. Exempting a key the default rule considers a credential prints a one-time warning naming it — that value now reaches the agent transcript and the on-disk journal in cleartext.
+- **There is no way to replace the default set.** Both options are additive on purpose: a config that could turn the whole rule off would eventually ship in an app that leaks, and Reticle would be the thing that recorded it.
+- **With no `redact` option, behaviour is exactly what it was before this option existed** — pinned by a test that walks every credential name and every known false positive.
+
+**What crosses the bridge, and why it matters.** Most captures pass through the SDK in your page. Request bodies and response headers on the **driven** path (`reticle drive`, or a CDP-attached browser) do not — the daemon reads them straight from the network stack. So the literal strings in `keys` are announced to the daemon when your app connects, and it redacts them there too. Two parts deliberately stay in the page:
+
+| | Applies in the page | Applies on the driven path |
+| --- | :-: | :-: |
+| `keys` — plain strings | ✅ | ✅ |
+| `keys` — RegExp entries | ✅ | ❌ |
+| `allow` | ✅ | ❌ |
+
+A RegExp does not travel because compiling a pattern that arrived over a socket and running it against every key of every request body is a denial-of-service surface. `allow` does not travel because it is the only part of the config that **removes** redaction, and the driven path keeps the built-in floor rather than letting a page lower it. Both exclusions fail in the safe direction: the driven path can over-redact relative to your config, never under. **If a key must be redacted everywhere, name it as a plain string.**
+
 ---
 
 ## 16. Presenter mode, narration & fake clock (watch + control)
