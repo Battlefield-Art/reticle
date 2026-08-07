@@ -4,6 +4,7 @@ import { getSessionMetrics } from '../telemetry/session-metrics.js';
 import { getTelemetry } from '../telemetry/telemetry.js';
 import { VERIFICATION_TOOLS } from './feedback-tools.js';
 import { takeUpdateNudge } from '../update/update-nudge.js';
+import { takeVersionSkew } from '../version-nudge.js';
 import { bugsInResult } from '../telemetry/bug-found.js';
 import { asString } from './tools-helpers.js';
 import { ReticleTool } from './tool-names.js';
@@ -208,13 +209,19 @@ export async function runTool(
   // and ASK for is something it will never ask for. Spliced on ANY tool result, not just a
   // verification, because an out-of-date install is worth mentioning whatever the agent is doing.
   const update = isPlainObject(raw) ? takeUpdateNudge() : undefined;
+  // Same one-shot channel, for the same reason. Skew was only ever reported in
+  // reticle_sessions.versionSkew and a CLI log line — two places an agent driving a flow never
+  // looks — so it could work a whole session against a mismatched pair and never learn the one fact
+  // that explains the behaviour. It rides out here on whatever tool it happens to be calling.
+  const skew = isPlainObject(raw) ? takeVersionSkew() : undefined;
   const result =
-    prompt === undefined && update === undefined
+    prompt === undefined && update === undefined && skew === undefined
       ? raw
       : {
           ...(raw as object),
           ...(prompt !== undefined ? { feedback_prompt: prompt } : {}),
           ...(update !== undefined ? { update_available: update } : {}),
+          ...(skew !== undefined ? { version_skew: skew } : {}),
         };
   if (!bound || !isPlainObject(result)) return result;
   // Reuse the session resolved above so the health envelope describes the SAME session the handler

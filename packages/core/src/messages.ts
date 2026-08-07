@@ -111,6 +111,16 @@ export const HelloMessageSchema = z.object({
    */
   sdkVersion: z.string().max(TRANSPORT_LIMITS.MAX_ADAPTER_NAME_LENGTH).optional(),
   /**
+   * The wire contract this SDK build speaks (see contract-fingerprint.ts) — DERIVED from core's
+   * vocabulary, so it moves only when a name on the wire genuinely changes.
+   *
+   * `sdkVersion` above answers "which release is this"; this answers the question that actually
+   * decides whether the pair works, and it answers it for the two cases a version cannot: a patch
+   * bump that changed nothing (equal here → stay quiet) and two different BUILDS of one version
+   * number, which is what a stale daemon or a cached npx install is (unequal here → say so).
+   */
+  contract: z.string().max(TRANSPORT_LIMITS.MAX_ADAPTER_NAME_LENGTH).optional(),
+  /**
    * Extra key names this app declared sensitive via `connect({ redact: { keys } })`.
    *
    * Sent so the DRIVEN path redacts them too: a request body captured by the daemon from the network

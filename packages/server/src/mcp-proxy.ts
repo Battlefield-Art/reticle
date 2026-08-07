@@ -3,7 +3,9 @@ import * as net from 'node:net';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { LOOPBACK_HOST, MCP_SSE_PATH, ReticleDir } from '@reticlehq/core';
+import { LOOPBACK_HOST, MCP_SSE_PATH, ReticleDir, CONTRACT_FINGERPRINT } from '@reticlehq/core';
+import { SERVER_VERSION } from './server-version.js';
+import { PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './peer-announce.js';
 import { log } from './log.js';
 
 const DEFAULT_DAEMON_READY_TIMEOUT_MS = 10_000;
@@ -299,7 +301,10 @@ export function startMcpProxy(port: number): Promise<never> {
     }
 
     function connect(first: boolean): void {
-      const req = http.get({ host: LOOPBACK_HOST, port, path: MCP_SSE_PATH }, (res) => {
+      // Announce this process to the daemon on the connect we already make — it is the single judge
+      // of version skew, and this is the only moment it learns the agent's MCP server exists.
+      const announce = `${MCP_SSE_PATH}?${PEER_VERSION_PARAM}=${encodeURIComponent(SERVER_VERSION)}&${PEER_CONTRACT_PARAM}=${encodeURIComponent(CONTRACT_FINGERPRINT)}`;
+      const req = http.get({ host: LOOPBACK_HOST, port, path: announce }, (res) => {
         attempts = 0; // a stream we actually established resets the budget
         if (!first) proxyLog('reticle_mcp_proxy_reconnected', { port });
         res.setEncoding('utf8');

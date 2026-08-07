@@ -7,15 +7,24 @@
  * answering requests. See describeDaemonSkew.
  */
 import type { SessionInfo } from './session/session-info.js';
+import { CONTRACT_FINGERPRINT } from '@reticlehq/core';
 import { SERVER_VERSION } from './server-version.js';
 
 export interface StatusPayload {
   running: true;
   version: string;
+  /** The wire contract this daemon speaks — what another process compares against, not the version. */
+  contract: string;
   sessionCount: number;
   sessions: SessionInfo[];
 }
 
 export function statusPayload(sessionCount: number, sessions: SessionInfo[]): StatusPayload {
-  return { running: true, version: SERVER_VERSION, sessionCount, sessions };
+  return {
+    running: true,
+    version: SERVER_VERSION,
+    contract: CONTRACT_FINGERPRINT,
+    sessionCount,
+    sessions,
+  };
 }

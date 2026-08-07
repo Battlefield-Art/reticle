@@ -1,7 +1,8 @@
 import * as http from 'node:http';
 import { spawn } from 'node:child_process';
 import { isOpaqueOrigin, LOOPBACK_HOST, STATUS_PATH } from '@reticlehq/core';
-import { describeDaemonSkew } from './version-skew.js';
+import { describeSkew, DAEMON_FIX } from './version-skew.js';
+import { CONTRACT_FINGERPRINT } from '@reticlehq/core';
 import { SERVER_VERSION } from './server-version.js';
 import { log } from './log.js';
 
@@ -52,11 +53,11 @@ export function summarizeStatus(payload: unknown): {
   return { sessionCount, sessions };
 }
 
-/** The daemon's own version from /status, or undefined on an older daemon that does not report one. */
-export function daemonVersionOf(payload: unknown): string | undefined {
+/** A string field off the /status body, or undefined on a daemon too old to report it. */
+function statusField(payload: unknown, key: string): string | undefined {
   if (typeof payload !== 'object' || payload === null) return undefined;
-  const version = (payload as Record<string, unknown>)['version'];
-  return typeof version === 'string' && version.length > 0 ? version : undefined;
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 /**
@@ -67,7 +68,16 @@ export function daemonVersionOf(payload: unknown): string | undefined {
  * another agent's session on a version bump, which is worse than a loud line.
  */
 export async function warnOnDaemonSkew(port: number): Promise<void> {
-  const skew = describeDaemonSkew(daemonVersionOf(await fetchStatus(port)), SERVER_VERSION);
+  const status = await fetchStatus(port);
+  const skew = describeSkew(
+    {
+      what: 'the daemon already running on this port',
+      version: statusField(status, 'version'),
+      contract: statusField(status, 'contract'),
+      fix: DAEMON_FIX,
+    },
+    { version: SERVER_VERSION, contract: CONTRACT_FINGERPRINT },
+  );
   if (skew !== undefined) log('reticle_daemon_skew', { port, warning: skew });
 }
 

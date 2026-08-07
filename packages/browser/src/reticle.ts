@@ -16,6 +16,7 @@ import {
   wireRedactionKeys,
   RETICLE_ROOT_GLOBAL,
   RETICLE_SDK_VERSION_GLOBAL,
+  CONTRACT_FINGERPRINT,
   type CommandMessage,
   type HelloMessage,
   type RedactionConfig,
@@ -482,6 +483,9 @@ export class Reticle {
       hasCapabilities: hasCapabilities(),
       // Absent when no build plugin supplied one — "unknown", never "matching".
       ...(this.#sdkVersion === undefined ? {} : { sdkVersion: this.#sdkVersion }),
+      // Always present: derived from THIS build's core, so it needs no build plugin to supply it.
+      // It is the half of the skew check that works on a hand-wired connect.
+      contract: CONTRACT_FINGERPRINT,
       ...(this.#redactKeys.length === 0 ? {} : { redactKeys: this.#redactKeys }),
     };
   }

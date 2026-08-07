@@ -2,6 +2,7 @@ import * as http from 'node:http';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { MCP_SSE_PATH, MCP_MESSAGE_PATH, STATUS_PATH } from '@reticlehq/core';
+import { noteAgentPeer, PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './peer-announce.js';
 import { log } from './log.js';
 import { reportMcpConnected } from './telemetry/mcp-connection.js';
 import {
@@ -93,6 +94,12 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
     }
 
     if (req.method === 'GET' && path === MCP_SSE_PATH) {
+      // The agent's MCP server announces itself here, on the connect it already makes. The daemon is
+      // the single judge of skew, so this is where the third pair is decided — and unlike the CLI's
+      // own check (a stderr line no agent reads), a nudge queued here rides out on the agent's next
+      // tool result. That is the pair the user hits after `npm update`: a cached npx MCP package
+      // talking to a daemon from a different build.
+      noteAgentPeer(url.searchParams.get(PEER_VERSION_PARAM), url.searchParams.get(PEER_CONTRACT_PARAM));
       if (mcpFactory === undefined) {
         res.writeHead(503, { 'Content-Type': 'text/plain' });
         res.end('MCP server not ready');

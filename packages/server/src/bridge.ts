@@ -18,11 +18,13 @@ import {
   isHighValueEvent,
   RATE_CAP_HIGH_VALUE_RESERVE_RATIO,
   type HelloMessage,
+  CONTRACT_FINGERPRINT,
 } from '@reticlehq/core';
 import { Session, SessionManager } from './session/session.js';
 import { tokensMatch } from './token-auth.js';
 import { log } from './log.js';
-import { describeVersionSkew } from './version-skew.js';
+import { describeSkew, sdkFix, SkewPair } from './version-skew.js';
+import { noteVersionSkew } from './version-nudge.js';
 import { SERVER_VERSION } from './server-version.js';
 
 /**
@@ -365,12 +367,22 @@ export class Bridge {
         this.#onSessionCreate?.(session); // attach the durable journal before any events stream in
         const replaced = this.sessions.add(session);
         replaced?.disconnect('session replaced by a newer connection');
-        // A skewed pair connects happily and then disagrees about tool behaviour. Say it once, here,
-        // where both versions are in hand — the alternative is a bare -32000 with nothing to go on.
-        const skew = describeVersionSkew(parsed.sdkVersion, SERVER_VERSION);
+        // The daemon is the single judge of skew, and HELLO is where the page announces itself.
+        // Reported on the session (reticle_sessions) AND queued for the next tool result, because an
+        // agent driving a flow never calls reticle_sessions and would never learn.
+        const skew = describeSkew(
+          {
+            what: 'the page',
+            version: parsed.sdkVersion,
+            contract: parsed.contract,
+            fix: sdkFix(SERVER_VERSION),
+          },
+          { version: SERVER_VERSION, contract: CONTRACT_FINGERPRINT },
+        );
         if (skew !== undefined) {
           log('version_skew', { sessionId: session.id, sdk: parsed.sdkVersion, daemon: SERVER_VERSION });
           session.versionSkew = skew;
+          noteVersionSkew(SkewPair.SDK, skew);
         }
         log('session_connected', { sessionId: session.id, url: session.url });
         this.#onSessionReady?.(session); // daemon pushes the replayable-flow list to the panel
