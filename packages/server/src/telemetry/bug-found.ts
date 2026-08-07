@@ -49,9 +49,43 @@ function kindsOf(value: unknown): string[] {
  * the case the product exists for — the screen looked right, the write failed, and every other tool
  * on the market would have called it green. That pairing is what `falseGreen` marks.
  */
+/**
+ * The verdict this result carries, whatever envelope it arrived in.
+ *
+ * `reticle_assert` reports a top-level boolean `pass`. `reticle_act_and_wait` — the tool agents
+ * actually reach for, and the one whose description calls it the act->observe->assert loop — reports
+ * `verdict.pass` with the summary at `verified`. Reading only `result.pass` meant a FAILED
+ * act_and_wait produced no bug at all, and a contradiction found next to a PASSING one was recorded
+ * with `falseGreen: false` — deflating the single number this product exists to publish, by the
+ * shape of its own envelope.
+ */
+function verdictOf(result: Record<string, unknown>): boolean | undefined {
+  if (typeof result['pass'] === 'boolean') return result['pass'];
+  const verdict = result['verdict'];
+  if (typeof verdict === 'object' && verdict !== null) {
+    const nested = (verdict as Record<string, unknown>)['pass'];
+    if (typeof nested === 'boolean') return nested;
+  }
+  // `verified` is the field the agent is told to gate on; "unknown" is deliberately not a verdict.
+  const verified = result['verified'];
+  if (verified === 'yes') return true;
+  if (verified === 'no') return false;
+  return undefined;
+}
+
+/** The assertion label, from either envelope — act_and_wait nests it under `verdict`. */
+function assertionOf(result: Record<string, unknown>): unknown {
+  if (result['assertion'] !== undefined) return result['assertion'];
+  const verdict = result['verdict'];
+  return typeof verdict === 'object' && verdict !== null
+    ? (verdict as Record<string, unknown>)['assertion']
+    : undefined;
+}
+
 export function bugsInResult(toolName: string, result: Record<string, unknown>): BugCandidate[] {
   const bugs: BugCandidate[] = [];
-  const passed = result['pass'] === true;
+  const verdict = verdictOf(result);
+  const passed = verdict === true;
 
   // 1. Contradictions — channels disagreeing. Invisible to a human watching the screen.
   for (const kind of kindsOf(result['contradictions'])) {
@@ -73,8 +107,8 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
 
   // 3. A failed assertion — the agent declared a consequence and it did not hold.
   //    Only when nothing above already explained it, or one defect would be counted twice.
-  if (result['pass'] === false && bugs.length === 0) {
-    const reason = result['assertion'];
+  if (verdict === false && bugs.length === 0) {
+    const reason = assertionOf(result);
     bugs.push({
       source: BugSource.ASSERTION,
       kind:

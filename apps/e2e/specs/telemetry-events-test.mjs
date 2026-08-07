@@ -138,9 +138,29 @@ await runTool(cleanTool, deps, { predicate: { kind: 'console' } });
 const actTool = { name: 'reticle_act', description: '', inputSchema: {}, handler: async () => ({ dispatched: true }) };
 await runTool(actTool, deps, { ref: 'e7', action: 'type', args: 'hunter2-password' });
 await settle();
+// The envelope the product's MAIN verification tool returns: no top-level `pass`, the verdict
+// nested under `verdict`, the summary at `verified`. act_and_wait was absent from
+// VERIFICATION_TOOLS AND unreadable by bugsInResult, so every verdict it produced — and every
+// failure — was invisible to both metrics. Measured: act_and_wait 14 calls/day, assert 0.
+const actAndWaitFail = {
+  name: 'reticle_act_and_wait',
+  description: '',
+  inputSchema: {},
+  handler: async () => ({ verified: 'no', verdict: { pass: false, assertion: 'element.visible' } }),
+};
+await runTool(actAndWaitFail, deps, { ref: 'e7', action: 'click' });
+await settle();
 {
   const vs = find('verification_completed');
-  check('verification_completed fires per verdict', vs.length === 2, `got ${vs.length}`);
+  check('verification_completed fires per verdict', vs.length === 3, `got ${vs.length}`);
+  const aw = vs.find((e) => e.properties.verification_via === 'reticle_act_and_wait');
+  check('  act_and_wait counts as a verification', aw !== undefined);
+  check('  and its failed verdict is recorded as not-passed', aw?.properties.verification_passed === false, String(aw?.properties.verification_passed));
+  const bugs = find('bug_found').filter((e) => e.properties.bug_tool === 'reticle_act_and_wait');
+  check('  a failed act_and_wait verdict is counted as a bug', bugs.length === 1, `got ${bugs.length}`);
+}
+{
+  const vs = find('verification_completed');
   const fg = vs.find((e) => e.properties.verification_falseGreenCaught === true);
   check('  falseGreenCaught set when a PASS is refused', fg !== undefined);
   check('  clean pass NOT marked as a false green', vs.some((e) => e.properties.verification_falseGreenCaught === false));
@@ -175,12 +195,15 @@ await runTool(contradictedTool, deps, { predicate: { kind: 'console' } });
 await settle();
 {
   const bugs = find('bug_found');
-  check('bug_found fires — the number we can publish', bugs.length === 3, `got ${bugs.length}`);
+  check('bug_found fires — the number we can publish', bugs.length === 4, `got ${bugs.length}`);
   const fg = bugs.filter((b) => b.properties.bug_falseGreen === true);
   check('  a passing assertion over a contradiction IS a false green', fg.some((b) => b.properties.bug_kind === 'signal-contradicted'));
   check('  a crawl contradiction counts as a false green too', fg.some((b) => b.properties.bug_kind === 'ui-advanced-request-failed'));
   check('  a single-channel console error is NOT inflated into a false green', bugs.some((b) => b.properties.bug_kind === 'console-error' && b.properties.bug_falseGreen === false));
-  check('  carries the source so the headline can be broken down', new Set(bugs.map((b) => b.properties.bug_source)).size === 2);
+  // The property is "the headline can be broken down", not "there are exactly N sources" — an exact
+  // count turns every added case into a failure and says nothing about the breakdown being usable.
+  const sources = new Set(bugs.map((b) => b.properties.bug_source));
+  check('  carries the source so the headline can be broken down', sources.size >= 2 && !sources.has(undefined), [...sources].join(','));
   // Distinct defects vs instances. Every bug_found must say which it is, or a distinct count read
   // off this stream is silently inflated — one defect hit five times looks like five defects, and
   // that is the number that would end up in a deck. Measured on a real app: 7 events, 3 defects.
@@ -408,9 +431,9 @@ await daemon.shutdown();
   // the thing that broke is exactly the failure this file was written to catch.
   const p = s?.properties ?? {};
   check('  marked final', arrived && p.session_final === true);
-  check('  counted tool calls', arrived && p.session_toolCalls === 8, String(p.session_toolCalls));
+  check('  counted tool calls', arrived && p.session_toolCalls === 9, String(p.session_toolCalls));
   check('  histogram by tool name', arrived && JSON.stringify(p.session_toolCounts ?? {}).includes('reticle_act'));
-  check('  counted verifications', arrived && p.session_verifications === 3, String(p.session_verifications));
+  check('  counted verifications', arrived && p.session_verifications === 4, String(p.session_verifications));
   check('  counted tool errors', arrived && p.session_toolErrors === 3, String(p.session_toolErrors));
   const errors = p.session_errors ?? [];
   check('  grouped 2 same-shape errors into 1 fingerprint', arrived && errors.length === 2, `${errors.length} shapes`);
@@ -434,7 +457,7 @@ await daemon.shutdown();
   check('  a refused CDP attach is classified, not lumped into `other`', conns['attached']?.failures?.cdp_unreachable === 1, JSON.stringify(conns['attached']));
   check('  machine state captured at session end', arrived && (p.session_machine?.cpuCount ?? 0) > 0);
   // The outcome number, rolled up and broken down.
-  check('  session counts the bugs found', arrived && p.session_bugsFound === 3, String(p.session_bugsFound));
+  check('  session counts the bugs found', arrived && p.session_bugsFound === 4, String(p.session_bugsFound));
   check('  and keeps them broken down by kind', JSON.stringify(p.session_bugKinds ?? {}).includes('signal-contradicted'));
   // Reticle's overhead vs the app's own slowness — opposite fixes, previously indistinguishable.
   check('  reports browser-leg latency separately from total busy time', arrived && typeof p.session_browserMs === 'number');

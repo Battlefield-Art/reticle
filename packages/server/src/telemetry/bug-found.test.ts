@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bugsInResult } from './bug-found.js';
+import { BugSource, ContradictionKind } from '@reticlehq/core';
 
 /**
  * The outcome metric — the only number that can honestly be published or shown to an investor,
@@ -96,5 +97,60 @@ describe('bugsInResult', () => {
     });
     expect(JSON.stringify(bugs)).not.toContain('acme.internal');
     expect(JSON.stringify(bugs)).not.toContain('e7');
+  });
+});
+
+/**
+ * The verdict shape the product's MAIN tool returns was invisible to the bug metric.
+ *
+ * `reticle_act_and_wait` does not return a top-level `pass`. Its verdict lives at `verdict.pass`
+ * with the summary at `verified`. `bugsInResult` read only `result.pass`, so on the tool agents
+ * actually use:
+ *
+ *   - a FAILED assertion produced no bug at all — `result.pass === false` was never true, so rule 3
+ *     never fired;
+ *   - and a contradiction found alongside a PASSING verdict was recorded with `falseGreen: false`,
+ *     because `passed` was computed from the same missing field. False greens caught is the number
+ *     this product exists to publish, and it was being deflated by the shape of its own envelope.
+ *
+ * Measured the same day: act_and_wait 14 calls, assert 0. Everything above was the common path.
+ */
+describe('act_and_wait verdicts count, even though the shape differs', () => {
+  it('a FAILED act_and_wait verdict is a bug', () => {
+    const bugs = bugsInResult('reticle_act_and_wait', {
+      verified: 'no',
+      verdict: { pass: false, assertion: 'element.visible' },
+    });
+    expect(bugs).toHaveLength(1);
+    expect(bugs[0]?.source).toBe(BugSource.ASSERTION);
+    expect(bugs[0]?.kind).toBe('element.visible');
+    expect(bugs[0]?.falseGreen).toBe(false);
+  });
+
+  it('a contradiction on a PASSING act_and_wait is a false green', () => {
+    const bugs = bugsInResult('reticle_act_and_wait', {
+      verified: 'yes',
+      verdict: { pass: true },
+      contradictions: [{ kind: ContradictionKind.UI_ADVANCED_REQUEST_FAILED }],
+    });
+    expect(bugs).toHaveLength(1);
+    expect(bugs[0]?.source).toBe(BugSource.CONTRADICTION);
+    expect(bugs[0]?.falseGreen, 'a passing verdict with a contradiction IS the false green').toBe(
+      true,
+    );
+  });
+
+  it('a clean, passing act_and_wait is not a bug', () => {
+    expect(bugsInResult('reticle_act_and_wait', { verified: 'yes', verdict: { pass: true } })).toHaveLength(0);
+  });
+
+  it('does not double-count: a contradiction explains the failure on its own', () => {
+    const bugs = bugsInResult('reticle_act_and_wait', {
+      verified: 'no',
+      verdict: { pass: false, assertion: 'net.status' },
+      contradictions: [{ kind: ContradictionKind.UI_ADVANCED_REQUEST_FAILED }],
+    });
+    expect(bugs).toHaveLength(1);
+    expect(bugs[0]?.source).toBe(BugSource.CONTRADICTION);
   });
 });
