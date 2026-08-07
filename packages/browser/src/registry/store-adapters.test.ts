@@ -379,6 +379,28 @@ describe('svelteStore', () => {
     expect(svelte.runCount()).toBe(0);
   });
 
+  it('delivers the FIRST change of a store that never called back synchronously', () => {
+    // The registration callback is swallowed by POSITION (it arrives during the subscribe call), not
+    // by count. A store that calls back late — an RxJS Observable that is not a BehaviorSubject, the
+    // same store getState warns about — has no registration callback to drop, so swallowing "the
+    // first one" ate a real change instead: no STATE_CHANGE, and a {kind:"state"} assertion left
+    // with nothing to match. A silently missed state change is the false green this project exists
+    // to prevent.
+    let emit: ((value: unknown) => void) | undefined;
+    const lazy = {
+      subscribe: (run: (value: unknown) => void): (() => void) => {
+        emit = run; // deliberately NOT called here
+        return () => undefined;
+      },
+    };
+    const listener = vi.fn();
+    svelteStore(lazy, vi.fn()).subscribe(listener);
+    expect(listener).not.toHaveBeenCalled();
+
+    emit?.('the first real change');
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('accepts a subscribe that returns an {unsubscribe} object, not only a function', () => {
     const unsubscribe = vi.fn();
     const store = svelteStore({

@@ -362,17 +362,22 @@ export function svelteStore(
       return value;
     },
     subscribe: (listener: () => void): (() => void) => {
-      // Swallow the immediate call. Forwarding it would emit a STATE_CHANGE at REGISTRATION time for
-      // a change that never happened — a diff of nothing that shows up in causal summaries and that
-      // a {kind:'state'} predicate could satisfy without the app doing anything at all.
-      let primed = false;
+      // Swallow whatever arrives DURING the subscribe call. Forwarding it would emit a STATE_CHANGE
+      // at REGISTRATION time for a change that never happened — a diff of nothing that shows up in
+      // causal summaries and that a {kind:'state'} predicate could satisfy without the app doing
+      // anything at all.
+      //
+      // The window is what makes this correct, rather than "swallow the first callback whenever it
+      // arrives". A store that does NOT call back synchronously (an RxJS Observable that is not a
+      // BehaviorSubject — the exact store `getState` warns about) has no registration callback to
+      // drop, so counting callbacks ate its first REAL change: no STATE_CHANGE, and a
+      // {kind:'state'} assertion with nothing to match. A silently missed state change is the false
+      // green this project exists to prevent, so the rule is positional, not ordinal.
+      let inSubscribeCall = true;
       const handle = readable.subscribe(() => {
-        if (!primed) {
-          primed = true;
-          return;
-        }
-        listener();
+        if (!inSubscribeCall) listener();
       });
+      inSubscribeCall = false;
       return () => stopSubscription(handle);
     },
   };
