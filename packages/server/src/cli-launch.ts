@@ -1,6 +1,9 @@
 import * as http from 'node:http';
 import { spawn } from 'node:child_process';
 import { isOpaqueOrigin, LOOPBACK_HOST, STATUS_PATH } from '@reticlehq/core';
+import { describeDaemonSkew } from './version-skew.js';
+import { SERVER_VERSION } from './server-version.js';
+import { log } from './log.js';
 
 /**
  * CLI launch + status helpers — the daemon-introspection (`reticle status`) and the one-command
@@ -47,6 +50,25 @@ export function summarizeStatus(payload: unknown): {
   const sessionCount =
     typeof obj['sessionCount'] === 'number' ? obj['sessionCount'] : sessions.length;
   return { sessionCount, sessions };
+}
+
+/** The daemon's own version from /status, or undefined on an older daemon that does not report one. */
+export function daemonVersionOf(payload: unknown): string | undefined {
+  if (typeof payload !== 'object' || payload === null) return undefined;
+  const version = (payload as Record<string, unknown>)['version'];
+  return typeof version === 'string' && version.length > 0 ? version : undefined;
+}
+
+/**
+ * Warn when the daemon already on this port is a different version than this CLI, and attach anyway.
+ *
+ * Attaching to whatever owns the port is the point of a daemon — but it means an upgrade does not
+ * take effect until that daemon dies, and nothing used to say so. Killing it here would take out
+ * another agent's session on a version bump, which is worse than a loud line.
+ */
+export async function warnOnDaemonSkew(port: number): Promise<void> {
+  const skew = describeDaemonSkew(daemonVersionOf(await fetchStatus(port)), SERVER_VERSION);
+  if (skew !== undefined) log('reticle_daemon_skew', { port, warning: skew });
 }
 
 /** How long the daemon /status probe waits before giving up — a local loopback call is near-instant. */

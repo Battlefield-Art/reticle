@@ -81,7 +81,12 @@ function queryFromArgs(args: Record<string, unknown>): ElementQuery {
 
 function inspect(ref: string): unknown {
   const el = refs.resolve(ref);
-  if (el === null) return { error: `ref '${ref}' no longer resolves` };
+  // THROW, exactly as executeAction does. Returning an error payload made it a SUCCESSFUL command
+  // result, which the server then handed to reticle_inspect's outputSchema (ref/role/name/states/
+  // visible all required) — so the MCP layer answered -32602 Output validation error for the most
+  // ordinary thing that follows a click. The wording matches actions.ts because the server's
+  // recovery table keys off /no longer resolves to an element/ to attach the stale-ref recovery.
+  if (el === null) throw new Error(`ref '${ref}' no longer resolves to an element`);
   const rect = el.getBoundingClientRect();
   const component = identifyComponent(el);
   const view = el.ownerDocument.defaultView;

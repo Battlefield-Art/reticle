@@ -40,6 +40,27 @@ export const RECOVERY = {
     "That call did not match the tool's schema — the message above names the tool and the exact " +
     "argument it wanted. Re-read that tool's parameters and retry with the missing or corrected " +
     'argument. This is an invalid call, not a Reticle defect: there is nothing to report.',
+  WRONG_TARGET:
+    'That action does not apply to this element — the ref resolved, the element just cannot take it ' +
+    '(you cannot fill a <button>, submit outside a form, or upload to anything but <input ' +
+    'type="file">). Call reticle_snapshot or reticle_query to find the control that does, or ' +
+    'reticle_inspect on this ref to see what it actually is. This is an invalid call, not a Reticle ' +
+    'defect: there is nothing to report.',
+  NOT_EDITABLE:
+    'The field is disabled or readonly, so a user could not edit it either — forcing the value would ' +
+    'put the app in a state nobody can reach, which is why Reticle refuses. This is usually the app ' +
+    'telling you something: drive whatever ENABLES the field (open the editor, satisfy the ' +
+    'precondition) and act again. If the field should have been editable, that is a bug in the app, ' +
+    'not in Reticle.',
+  CONFIRM_DANGEROUS:
+    'Reticle blocked a potentially destructive control (delete, remove, revoke…) on purpose. If you ' +
+    'mean it, retry the same action with args.confirmDangerous set to true. This is a deliberate ' +
+    'refusal, not a defect: there is nothing to report.',
+  UNSUPPORTED_SURFACE:
+    'That surface is not supported yet, and Reticle refuses rather than pretending — a rich-text ' +
+    'editor keeps its own document model, so writing to the DOM would look right and submit the old ' +
+    'content. Drive the same outcome another way (a plain input, a command, a keyboard action) or ' +
+    'assert on the result instead of typing it. Known gap, already reported: no need to file it.',
   TOKEN_REQUIRED:
     'The bridge binds beyond localhost and requires a pairing token. Set the same token in the SDK ' +
     'init (@reticlehq/core) and the Reticle server config, then reconnect.',
@@ -57,6 +78,21 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   // The commonest post-action condition there is. Unmatched, it fell through to FEEDBACK_ASK and
   // told the agent a successful click's aftermath might be a bug in Reticle.
   { match: /no longer resolves to an element/i, hint: RECOVERY.STALE_REF },
+  // Every guard in the browser's executeAction. These are Reticle-authored refusals of an invalid
+  // call, and ALL of them used to fall through to the feedback ask — including the destructive-action
+  // block, which carries its own retry instruction and was still telling the agent Reticle might be
+  // broken. Order matters: contenteditable and disabled/readonly are `cannot <verb> …` messages too,
+  // so they must be tested before the general wrong-target rule.
+  { match: /contenteditable/i, hint: RECOVERY.UNSUPPORTED_SURFACE },
+  { match: /cannot \w+ a (disabled|readonly) </i, hint: RECOVERY.NOT_EDITABLE },
+  { match: /potentially destructive action blocked/i, hint: RECOVERY.CONFIRM_DANGEROUS },
+  {
+    match: /^cannot [\w()]+ (?:a|an|into a|on a) <|no form to submit|upload target must be|is not an HTMLElement/i,
+    hint: RECOVERY.WRONG_TARGET,
+  },
+  // Authored by Reticle, about the caller's arguments: the message already names the valid answers.
+  { match: /^unknown action '/i, hint: RECOVERY.BAD_ARGUMENTS },
+  { match: /^\w+ requires a string `\w+`/i, hint: RECOVERY.BAD_ARGUMENTS },
   // A message naming a `reticle_*` tool is one WE authored about our own API — an invalid call, not
   // an unanticipated failure. Left unmatched it collected the feedback ask, which pushed agents to
   // file reports about their own bad arguments. Kept LAST so a specific rule above always wins.

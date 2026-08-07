@@ -33,7 +33,7 @@ import {
 import { waitForDaemon, startMcpProxy, probeDaemon } from './mcp-proxy.js';
 import { installDaemonResilience } from './daemon-resilience.js';
 import { IdleShutdown, resolveIdleShutdownMs } from './idle-shutdown.js';
-import { fetchStatus, summarizeStatus, decideOpen, openInBrowser } from './cli-launch.js';
+import { fetchStatus, summarizeStatus, warnOnDaemonSkew, decideOpen, openInBrowser } from './cli-launch.js';
 import { handleVerify } from './cli-verify.js';
 import { summarizeHunt, type HuntAnomaly, type HuntRun } from './hunt/hunt-report.js';
 import { runInit } from './init/run.js';
@@ -251,8 +251,12 @@ async function handleRollback(): Promise<void> {
 
 /** Ensure a daemon is reachable on `port` (probe the real port; spawn + wait only if nothing's there). */
 function ensureDaemon(port: number): Promise<void> {
-  return probeDaemon(port).then((listening) => {
-    if (listening) return undefined;
+  return probeDaemon(port).then(async (listening) => {
+    // Attaching to whatever already owns the port is the whole point of a daemon — but it means an
+    // upgrade does NOT take effect until that daemon dies, and nothing used to say so. Say it here,
+    // where both versions are in hand, and keep attaching: killing another agent's daemon on a
+    // version bump is worse than a loud warning.
+    if (listening) return warnOnDaemonSkew(port);
     const scriptPath = process.argv[1];
     if (scriptPath === undefined) throw new Error('cannot locate the reticle daemon script');
     spawnDaemon(

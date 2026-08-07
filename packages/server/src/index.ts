@@ -32,6 +32,7 @@ import { startVerifyServer } from './runs/verify-server.js';
 import { createMcpServer } from './mcp.js';
 import { SessionReaper, endAllSessions, MCP_DISCONNECT_SUMMARY } from './session/session-reaper.js';
 import { resolveToolProfile } from './tools/profiles.js';
+import { statusPayload } from './status-payload.js';
 import { CdpRealInputProvider, LaunchedRealInputProvider } from './input/real-input.js';
 import { cpus } from 'node:os';
 import { BrowserPool } from './pool/browser-pool.js';
@@ -454,11 +455,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   // mirror rejection so a port collision can't surface as an unhandled promise rejection.
   void bridge.ready.catch(() => undefined);
   // `reticle status` GETs this for a live, at-a-glance view of connected tabs + their health.
-  shared.attachStatus(() => ({
-    running: true,
-    sessionCount: bridge.sessions.count(),
-    sessions: bridge.sessions.list(),
-  }));
+  shared.attachStatus(() => statusPayload(bridge.sessions.count(), bridge.sessions.list()));
   // Agent-independent presence: the daemon outlives any single agent, so when the LAST agent's MCP
   // connection drops (it stopped, or is waiting on the human), end every session and push a clear
   // "go to your terminal" notice to the panel — the human is on the browser and must not lose a typed

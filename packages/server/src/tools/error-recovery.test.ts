@@ -150,3 +150,86 @@ describe("Reticle's own validation errors are recognized, not reported as unknow
     expect(recoveryFor('ECONNRESET')).toBeUndefined();
   });
 });
+
+/**
+ * The whole browser-side action-validation family was classified as an unknown Reticle defect.
+ *
+ * Measured over real MCP against bench-app: `reticle_act { action: 'frobnicate' }` came back with
+ * "unknown action 'frobnicate' — expected one of: click, dblclick, …" — a message Reticle wrote,
+ * listing the valid answers — and then "This error is not one Reticle recognizes, which means it
+ * may be a defect in Reticle". Same for `cannot fill a <button>`.
+ *
+ * These are every guard in executeAction: the wrong element for the action, a disabled or readonly
+ * field, a valueless fill, an unknown action, and the destructive-action block — which is a
+ * DELIBERATE refusal carrying its own retry instruction, and was still telling the agent Reticle
+ * might be broken. The prior rule only caught server-authored messages that named a `reticle_*`
+ * tool, so none of these matched.
+ */
+describe('browser-side action guards are recognized refusals, not unknown defects', () => {
+  // Without this, every expectation below reads `expect(undefined).toBe(undefined)` while the
+  // constant is missing — a suite that passes with the bug fully present. Assert the hints EXIST
+  // before asserting anything maps to them.
+  it('the hints these map to are real strings', () => {
+    for (const key of [
+      'WRONG_TARGET',
+      'NOT_EDITABLE',
+      'CONFIRM_DANGEROUS',
+      'UNSUPPORTED_SURFACE',
+    ] as const) {
+      expect(typeof RECOVERY[key], key).toBe('string');
+    }
+  });
+
+  it('an unknown action is a bad call — the message already lists the valid ones', () => {
+    expect(recoveryFor("unknown action 'frobnicate' — expected one of: click, dblclick, hover")).toBe(
+      RECOVERY.BAD_ARGUMENTS,
+    );
+  });
+
+  it('a missing value/text is a bad call', () => {
+    expect(recoveryFor('fill requires a string `value` — pass it nested, as args: { value: … }')).toBe(
+      RECOVERY.BAD_ARGUMENTS,
+    );
+    expect(recoveryFor('type requires a string `text` — pass it nested, as args: { text: … }')).toBe(
+      RECOVERY.BAD_ARGUMENTS,
+    );
+  });
+
+  it('the wrong element for the action points at re-querying, not at a bug report', () => {
+    for (const msg of [
+      'cannot fill a <button>',
+      'cannot type into a <div>',
+      'cannot clear a <span>',
+      'cannot select on a <input>',
+      'cannot (un)check a <div>',
+      'no form to submit',
+      'upload target must be a <input type="file">',
+      "ref 'e12' is not an HTMLElement",
+    ]) {
+      expect(recoveryFor(msg), msg).toBe(RECOVERY.WRONG_TARGET);
+    }
+  });
+
+  it('a disabled or readonly field is the app refusing, not Reticle failing', () => {
+    expect(recoveryFor('cannot fill a disabled <input> — a user could not edit it')).toBe(
+      RECOVERY.NOT_EDITABLE,
+    );
+    expect(recoveryFor('cannot type a readonly <textarea> — a user could not edit it')).toBe(
+      RECOVERY.NOT_EDITABLE,
+    );
+  });
+
+  it('the destructive-action block carries its own retry, and must never read as a defect', () => {
+    expect(
+      recoveryFor('potentially destructive action blocked; retry with args.confirmDangerous=true'),
+    ).toBe(RECOVERY.CONFIRM_DANGEROUS);
+  });
+
+  it('an unsupported surface is named as unsupported, not as a possible bug', () => {
+    expect(
+      recoveryFor(
+        'cannot fill a contenteditable element — rich-text editors keep their own document model',
+      ),
+    ).toBe(RECOVERY.UNSUPPORTED_SURFACE);
+  });
+});

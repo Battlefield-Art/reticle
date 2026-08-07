@@ -72,7 +72,11 @@ export const READ_TOOLS: ToolDef[] = [
       buffer: z.unknown().optional(),
     },
     handler: async (deps, args) => {
-      const name = asString(args['baseline']) ?? 'default';
+      // `name` too: the merged reticle_baseline family made this required field optional, and the
+      // SIBLING that creates a baseline calls it `name` — its description even says to reuse it
+      // here. So `{ action:"diff", name:"x" }` is a valid call that used to look up 'default' and
+      // report "no baseline named 'default'", naming something the caller never mentioned.
+      const name = asString(args['baseline']) ?? asString(args['name']) ?? 'default';
       const base = deps.baselines.get(name);
       if (base === undefined) throw new Error(`no baseline named '${name}'`);
       const session = deps.sessions.resolve(asString(args['sessionId']));
