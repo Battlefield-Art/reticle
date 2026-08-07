@@ -90,11 +90,15 @@ describe('updateTarget — what `reticle update` should actually install', () =>
   });
 
   it('returns nothing when the registry is BEHIND us — never install a downgrade', () => {
-    expect(updateTarget({ updateAvailable: true, latestVersion: '2.1.0' }, '2.4.0')).toBeUndefined();
+    expect(
+      updateTarget({ updateAvailable: true, latestVersion: '2.1.0' }, '2.4.0'),
+    ).toBeUndefined();
   });
 
   it('returns nothing when already current', () => {
-    expect(updateTarget({ updateAvailable: false, latestVersion: '2.4.0' }, '2.4.0')).toBeUndefined();
+    expect(
+      updateTarget({ updateAvailable: false, latestVersion: '2.4.0' }, '2.4.0'),
+    ).toBeUndefined();
   });
 
   it('returns nothing when the registry answer is missing', () => {

@@ -94,7 +94,8 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   { match: /cannot \w+ a (disabled|readonly) </i, hint: RECOVERY.NOT_EDITABLE },
   { match: /potentially destructive action blocked/i, hint: RECOVERY.CONFIRM_DANGEROUS },
   {
-    match: /^cannot [\w()]+ (?:a|an|into a|on a) <|no form to submit|upload target must be|is not an HTMLElement/i,
+    match:
+      /^cannot [\w()]+ (?:a|an|into a|on a) <|no form to submit|upload target must be|is not an HTMLElement/i,
     hint: RECOVERY.WRONG_TARGET,
   },
   // Authored by Reticle, about the caller's arguments: the message already names the valid answers.

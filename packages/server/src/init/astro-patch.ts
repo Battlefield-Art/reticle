@@ -63,17 +63,30 @@ export function patchAstroConfig(source: string): SourcePatch {
   }
   const opening = DEFINE_CONFIG.exec(source);
   if (opening?.index === undefined) {
-    return { kind: PatchKind.MANUAL, reason: "couldn't find a `defineConfig({ ... })` call to extend" };
+    return {
+      kind: PatchKind.MANUAL,
+      reason: "couldn't find a `defineConfig({ ... })` call to extend",
+    };
   }
   const at = opening.index + opening[0].length;
   const withBlock = `${source.slice(0, at)}\n${VITE_BLOCK}${source.slice(at)}`;
-  return { kind: PatchKind.APPLY, code: `${HELPER_IMPORTS}${withBlock.trimStart()}\n${HELPER}`.trimEnd() + '\n' };
+  return {
+    kind: PatchKind.APPLY,
+    code: `${HELPER_IMPORTS}${withBlock.trimStart()}\n${HELPER}`.trimEnd() + '\n',
+  };
 }
 
 /** The dev-only connect that goes inside the layout's `<body>`. */
-export function astroConnectScript(port: number | undefined, projectId: string | undefined): string {
-  const url = port !== undefined && port !== RETICLE_DEFAULT_PORT ? `\n          url: '${bridgeWsUrl(port)}',` : '';
-  const id = projectId !== undefined && projectId.length > 0 ? `\n          projectId: '${projectId}',` : '';
+export function astroConnectScript(
+  port: number | undefined,
+  projectId: string | undefined,
+): string {
+  const url =
+    port !== undefined && port !== RETICLE_DEFAULT_PORT
+      ? `\n          url: '${bridgeWsUrl(port)}',`
+      : '';
+  const id =
+    projectId !== undefined && projectId.length > 0 ? `\n          projectId: '${projectId}',` : '';
   return `    <script>
       if (import.meta.env.DEV) {
         const token = typeof __RETICLE_TOKEN__ !== 'undefined' ? __RETICLE_TOKEN__ : '';

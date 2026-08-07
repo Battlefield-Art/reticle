@@ -182,18 +182,18 @@ describe('browser-side action guards are recognized refusals, not unknown defect
   });
 
   it('an unknown action is a bad call — the message already lists the valid ones', () => {
-    expect(recoveryFor("unknown action 'frobnicate' — expected one of: click, dblclick, hover")).toBe(
-      RECOVERY.BAD_ARGUMENTS,
-    );
+    expect(
+      recoveryFor("unknown action 'frobnicate' — expected one of: click, dblclick, hover"),
+    ).toBe(RECOVERY.BAD_ARGUMENTS);
   });
 
   it('a missing value/text is a bad call', () => {
-    expect(recoveryFor('fill requires a string `value` — pass it nested, as args: { value: … }')).toBe(
-      RECOVERY.BAD_ARGUMENTS,
-    );
-    expect(recoveryFor('type requires a string `text` — pass it nested, as args: { text: … }')).toBe(
-      RECOVERY.BAD_ARGUMENTS,
-    );
+    expect(
+      recoveryFor('fill requires a string `value` — pass it nested, as args: { value: … }'),
+    ).toBe(RECOVERY.BAD_ARGUMENTS);
+    expect(
+      recoveryFor('type requires a string `text` — pass it nested, as args: { text: … }'),
+    ).toBe(RECOVERY.BAD_ARGUMENTS);
   });
 
   it('the wrong element for the action points at re-querying, not at a bug report', () => {

@@ -25,7 +25,12 @@ import { diagnoseNoSession } from './no-session-diagnosis.js';
 
 describe('diagnoseNoSession', () => {
   it('a session was here and left — say so, and say what to do', () => {
-    const msg = diagnoseNoSession({ everConnected: true, initialized: true, listening: [], port: 4400 });
+    const msg = diagnoseNoSession({
+      everConnected: true,
+      initialized: true,
+      listening: [],
+      port: 4400,
+    });
     expect(msg).toMatch(/was connected|disconnected|reload/i);
     // Never send someone to check the install when the install demonstrably worked.
     expect(msg).not.toMatch(/reticle init/);
@@ -58,7 +63,12 @@ describe('diagnoseNoSession', () => {
   });
 
   it('nothing is listening at all — the app is simply not running', () => {
-    const msg = diagnoseNoSession({ everConnected: false, initialized: true, listening: [], port: 4400 });
+    const msg = diagnoseNoSession({
+      everConnected: false,
+      initialized: true,
+      listening: [],
+      port: 4400,
+    });
     expect(msg).toMatch(/no dev server|not running/i);
     // Do not ask the agent to check the SDK when there is no app to have an SDK in.
     expect(msg).not.toMatch(/reticle init/);

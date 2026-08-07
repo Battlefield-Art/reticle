@@ -14,9 +14,8 @@ import { loadDotEnv } from './telemetry/dev-repo.js';
 import { createNodeFileSystem } from './project/fs-port.js';
 import { affectedSavedFlows } from './flows/flow-sources.js';
 
-import { checkForUpdate } from './update/update-checker.js';
-import { availableUpdate, updateTarget } from './update/update-nudge.js';
-import { applyUpdate, rollback } from './update/updater.js';
+import { availableUpdate } from './update/update-nudge.js';
+import { handleUpdate, handleRollback } from './cli-update-commands.js';
 
 import { start, startDaemon } from './index.js';
 import { isCloudCommand, runCloudCommand } from './cloud-cli.js';
@@ -34,14 +33,25 @@ import {
 import { waitForDaemon, startMcpProxy, probeDaemon } from './mcp-proxy.js';
 import { installDaemonResilience } from './daemon-resilience.js';
 import { IdleShutdown, resolveIdleShutdownMs } from './idle-shutdown.js';
-import { fetchStatus, summarizeStatus, warnOnDaemonSkew, decideOpen, openInBrowser } from './cli-launch.js';
+import {
+  fetchStatus,
+  summarizeStatus,
+  warnOnDaemonSkew,
+  decideOpen,
+  openInBrowser,
+} from './cli-launch.js';
 import { handleVerify } from './cli-verify.js';
 import { summarizeHunt, type HuntAnomaly, type HuntRun } from './hunt/hunt-report.js';
 import { runInit } from './init/run.js';
 import { handleDoctor } from './cli-doctor.js';
 import { buildNodeIo } from './init/node-io.js';
 import { describeLicense } from './license/license.js';
-import { isLikelyDevServerPort, devServerPortWarning, readProjectPort, readProjectId } from './cli-port.js';
+import {
+  isLikelyDevServerPort,
+  devServerPortWarning,
+  readProjectPort,
+  readProjectId,
+} from './cli-port.js';
 import type { StartOptions } from './index.js';
 
 import {
@@ -220,37 +230,6 @@ async function handleHunt(dir: string): Promise<void> {
     log('reticle_hunt_failed', {
       error: error instanceof Error ? error.message : String(error),
     });
-  }
-}
-
-/** `reticle update` — install the latest server version and restart (moved off the MCP surface). */
-async function handleUpdate(): Promise<void> {
-  try {
-    const manifest = await checkForUpdate(SERVER_VERSION, () => Date.now());
-    // Direction, not inequality: the registry being DIFFERENT is not the registry being newer, and
-    // the old gate happily installed a downgrade. See updateTarget.
-    const target = updateTarget(manifest);
-    if (target === undefined) {
-      log('reticle_update', { ok: false, message: 'already on the latest version', version: SERVER_VERSION });
-      return;
-    }
-    log('reticle_update', { ok: true, from: SERVER_VERSION, to: target });
-    await applyUpdate(target); // calls process.exit; Claude Code restarts
-  } catch (error) {
-    log('reticle_update_failed', { error: error instanceof Error ? error.message : String(error) });
-    process.exitCode = 1;
-  }
-}
-
-/** `reticle rollback` — restore the previous server version and restart. */
-async function handleRollback(): Promise<void> {
-  try {
-    await rollback(); // calls process.exit
-  } catch (error) {
-    log('reticle_rollback_failed', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    process.exitCode = 1;
   }
 }
 

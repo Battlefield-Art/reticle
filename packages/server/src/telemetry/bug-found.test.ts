@@ -141,7 +141,9 @@ describe('act_and_wait verdicts count, even though the shape differs', () => {
   });
 
   it('a clean, passing act_and_wait is not a bug', () => {
-    expect(bugsInResult('reticle_act_and_wait', { verified: 'yes', verdict: { pass: true } })).toHaveLength(0);
+    expect(
+      bugsInResult('reticle_act_and_wait', { verified: 'yes', verdict: { pass: true } }),
+    ).toHaveLength(0);
   });
 
   it('does not double-count: a contradiction explains the failure on its own', () => {

@@ -380,7 +380,11 @@ export class Bridge {
           { version: SERVER_VERSION, contract: CONTRACT_FINGERPRINT },
         );
         if (skew !== undefined) {
-          log('version_skew', { sessionId: session.id, sdk: parsed.sdkVersion, daemon: SERVER_VERSION });
+          log('version_skew', {
+            sessionId: session.id,
+            sdk: parsed.sdkVersion,
+            daemon: SERVER_VERSION,
+          });
           session.versionSkew = skew;
           noteVersionSkew(SkewPair.SDK, skew);
         }

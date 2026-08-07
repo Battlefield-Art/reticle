@@ -99,7 +99,10 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
       // own check (a stderr line no agent reads), a nudge queued here rides out on the agent's next
       // tool result. That is the pair the user hits after `npm update`: a cached npx MCP package
       // talking to a daemon from a different build.
-      noteAgentPeer(url.searchParams.get(PEER_VERSION_PARAM), url.searchParams.get(PEER_CONTRACT_PARAM));
+      noteAgentPeer(
+        url.searchParams.get(PEER_VERSION_PARAM),
+        url.searchParams.get(PEER_CONTRACT_PARAM),
+      );
       if (mcpFactory === undefined) {
         res.writeHead(503, { 'Content-Type': 'text/plain' });
         res.end('MCP server not ready');

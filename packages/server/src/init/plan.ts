@@ -14,11 +14,7 @@ import {
 } from './detect.js';
 import { claudeAddCommand, mcpManual } from './mcp.js';
 import { mergeCursorConfig, CursorMergeStatus, cursorServerEntry } from './cursor.js';
-import {
-  CLAUDE_COMMAND_PATH,
-  CURSOR_COMMAND_PATH,
-  SLASH_COMMAND_BODY,
-} from './slash-command.js';
+import { CLAUDE_COMMAND_PATH, CURSOR_COMMAND_PATH, SLASH_COMMAND_BODY } from './slash-command.js';
 import {
   mergeMarkedInstruction,
   cursorRuleFile,
@@ -34,11 +30,7 @@ import {
   astroSteps,
   VITE_PLUGIN_DETAIL,
 } from './plan-framework.js';
-import {
-  htmlManual,
-  reticleConfigContent,
-  unverifiedUiLibraryNote,
-} from './snippets.js';
+import { htmlManual, reticleConfigContent, unverifiedUiLibraryNote } from './snippets.js';
 
 // An app dev installs exactly the audience-scoped browser-side dependencies — never the retired
 // `@reticlehq/core` umbrella (which dragged the Node MCP server + ws into every app). The kit is the
@@ -291,7 +283,11 @@ const SLASH_COMMAND_TITLE = 'The /reticle command';
  */
 function slashCommandSteps(input: PlanInput): Step[] {
   const targets: { path: string; when: boolean; exists: boolean }[] = [
-    { path: CLAUDE_COMMAND_PATH, when: input.claudeCli, exists: input.claudeCommandExists === true },
+    {
+      path: CLAUDE_COMMAND_PATH,
+      when: input.claudeCli,
+      exists: input.claudeCommandExists === true,
+    },
     {
       path: CURSOR_COMMAND_PATH,
       when: input.cursorProjectPresent === true || (input.cursorPresent && !input.claudeCli),

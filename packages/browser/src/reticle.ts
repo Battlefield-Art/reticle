@@ -262,8 +262,7 @@ export class Reticle {
     // The build plugin defines this; a hand-wired connect can pass it explicitly. Either way an
     // absent value means UNKNOWN, so the bridge never reports an unknown pair as in sync.
     const declaredVersion =
-      options.sdkVersion ??
-      (globalThis as Record<string, unknown>)[RETICLE_SDK_VERSION_GLOBAL];
+      options.sdkVersion ?? (globalThis as Record<string, unknown>)[RETICLE_SDK_VERSION_GLOBAL];
     this.#sdkVersion =
       typeof declaredVersion === 'string' && declaredVersion.length > 0
         ? declaredVersion
