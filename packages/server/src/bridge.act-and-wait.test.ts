@@ -105,6 +105,23 @@ describe('reticle_act_and_wait (composite)', () => {
     expect(result.verdict.pass).toBe(true);
     browser.matcher = () => false;
   });
+
+  /**
+   * reticle_act captured into an active recording; act_and_wait did not — and act_and_wait is the
+   * tool every recipe tells the agent to drive with. So "record start -> drive -> record stop ->
+   * flow_save" produced a flow with ZERO steps, and flow_save graded the empty flow instead of
+   * saying nothing had been captured. The regression suite did not work for the agent that drove it.
+   */
+  it('captures the step into an active recording, like reticle_act does', async () => {
+    deps.recordings.start('agent-drive', 0);
+    await callTool(deps, 'reticle_act_and_wait', {
+      ref: 'e7',
+      action: 'click',
+      timeout_ms: 0,
+    });
+    expect(deps.recordings.stepCount('agent-drive')).toBe(1);
+    deps.recordings.stop('agent-drive');
+  });
 });
 
 /**

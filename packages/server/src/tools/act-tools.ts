@@ -4,7 +4,7 @@
  * into the tool list there via...ACT_TOOLS.
  */
 import { z } from 'zod';
-import { compileActStep, compileSequenceStep } from '../flows/replay.js';
+import { captureAct, compileSequenceStep } from '../flows/replay.js';
 import {
   ActionType,
   ActionWarning,
@@ -228,9 +228,7 @@ export const ACT_TOOLS: ToolDef[] = [
         // drive native pointer input when a provider is available; otherwise fall back.
         const real = await tryRealInput(deps, session, ref, action, args);
         if (real.result !== undefined) {
-          if (deps.recordings.active().length > 0) {
-            deps.recordings.capture(compileActStep(args, real.result));
-          }
+          captureAct(deps.recordings, args, real.result);
           settledOutcome = real.settled ?? undefined;
           return withControl(session, {
             since,
@@ -249,9 +247,7 @@ export const ACT_TOOLS: ToolDef[] = [
           args: args['args'] ?? {},
         });
         if (!result.ok) throw new Error(result.error ?? 'act failed');
-        if (deps.recordings.active().length > 0) {
-          deps.recordings.capture(compileActStep(args, result.result));
-        }
+        captureAct(deps.recordings, args, result.result);
         // lift dispatch/settle status to the envelope (a settle timeout is NOT a failure).
         const r = asRecord(result.result);
         if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
@@ -478,6 +474,7 @@ export const ACT_TOOLS: ToolDef[] = [
           args: args['args'] ?? {},
         });
         if (!actResult.ok) throw new Error(actResult.error ?? 'act failed');
+        captureAct(deps.recordings, args, actResult.result);
 
         // Honesty: floor the predicate at this act's cursor so a stale buffered event can't satisfy it.
         const verdict =

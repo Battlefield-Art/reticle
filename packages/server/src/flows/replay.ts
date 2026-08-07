@@ -51,6 +51,21 @@ function sourceFromResult(res: Record<string, unknown>): Record<string, unknown>
 }
 
 /**
+ * Capture an act into every in-flight recording, or do nothing when none is running.
+ *
+ * Every tool that drives the page must call this. reticle_act_and_wait did not, which is the tool
+ * the documented agent recipe drives with — so "record start -> drive -> record stop -> flow_save"
+ * saved a flow with zero steps.
+ */
+export function captureAct(
+  recordings: { active: () => string[]; capture: (step: RecordedStep) => void },
+  args: Record<string, unknown>,
+  res: unknown,
+): void {
+  if (recordings.active().length > 0) recordings.capture(compileActStep(args, res));
+}
+
+/**
  * Compile a single reticle_act invocation into a normalized RecordedStep using the action result. Anchor
  * priority mirrors synthesizeAnchor: a data-testid is the gold standard; failing that, the element's
  * component identity / source location (the AUTO-ANCHOR) keeps the step STABLE instead of degrading to
