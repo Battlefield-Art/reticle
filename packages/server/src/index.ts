@@ -411,6 +411,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
       fs,
       reticleRoot,
       now,
+      bridgePort: port,
     };
     const profile = resolveToolProfile(options.toolProfile);
     const server = createMcpServer(
@@ -506,6 +507,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     fs,
     reticleRoot,
     now,
+    bridgePort: port,
   };
   const profile = resolveToolProfile(options.toolProfile);
   const effectiveDeps = realInput !== undefined ? { ...deps, realInput } : deps;

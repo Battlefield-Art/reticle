@@ -10,7 +10,10 @@
  */
 
 import { z } from 'zod';
-import { RETICLE_URL_PARAM } from '@reticlehq/core';
+import { leaseNotConnectedHint } from './lease-hint.js';
+import { RETICLE_URL_PARAM,
+  RETICLE_DEFAULT_PORT,
+} from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import type { ToolDef, ToolDeps } from './tool-kit.js';
 import { asString } from './tools-helpers.js';
@@ -175,7 +178,7 @@ export const LEASE_TOOLS: ToolDef[] = [
         ...(ready
           ? {}
           : {
-              hint: `leased tab did not connect — is ${url} running with @reticlehq/core enabled?`,
+              hint: leaseNotConnectedHint(url, deps.bridgePort ?? RETICLE_DEFAULT_PORT),
             }),
       };
     },

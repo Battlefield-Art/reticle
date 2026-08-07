@@ -37,6 +37,14 @@ export interface ToolDeps {
   reticleRoot: string;
   /** injected clock for the contract's generatedAt stamp. */
   now: () => number;
+  /**
+   * The port this daemon's bridge listens on.
+   *
+   * Needed wherever a message has to name the OTHER half of a port mismatch — the commonest reason
+   * a leased tab loads the app and never dials in. Optional so every existing test construction of
+   * ToolDeps keeps working; absent falls back to the default port.
+   */
+  bridgePort?: number;
 }
 
 export interface ToolDef {
