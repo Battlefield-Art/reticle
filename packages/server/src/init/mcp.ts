@@ -12,9 +12,38 @@
  * global agent config.
  */
 
+import { platform } from 'node:os';
 import { RETICLE_NPM_PACKAGE } from '../server-version.js';
 
 export const MCP_SERVER_NAME = 'reticle';
+
+/**
+ * The npx binary to register, by platform.
+ *
+ * Bare `npx` on Windows resolves through `npx.ps1` for a PowerShell-hosted launcher, and a machine
+ * with a restrictive execution policy refuses to run it — reported by a user whose agent could not
+ * start Reticle at all because of it. `npx.cmd` is a batch file and is not gated by that policy.
+ *
+ * This repo already made exactly this decision for npm in update/updater.ts
+ * (`platform() === 'win32' ? 'npm.cmd' : 'npm'`); it was simply never applied to the MCP
+ * registration, which is the one command a Windows user has to run before anything works.
+ *
+ * Resolved by the LOCAL platform on purpose: the string is written into the agent's config on the
+ * machine running `reticle init`, so it is that machine's shell that has to be able to run it.
+ */
+export function npxBin(os: NodeJS.Platform = platform()): string {
+  return os === 'win32' ? 'npx.cmd' : 'npx';
+}
+
+/**
+ * The registered command is STILL bare `npx` on every platform, deliberately.
+ *
+ * Windows is 66% of Reticle's users (65 of 99 in a day of telemetry) and has NO CI, no fixture, and
+ * nothing in this repo has ever run there. Switching the majority platform to a launch command
+ * nobody can test — where `.cmd` also has its own spawn caveats in some hosts — risks breaking the
+ * users it is meant to help. So the fallback is DOCUMENTED (see mcpManual) rather than defaulted,
+ * until somebody can run it on Windows.
+ */
 export const NPX = 'npx';
 // The `reticle` bin lives in the server package, so `npx <pkg> mcp` runs the bridge without the
 // retired `core` umbrella. Sourced from the single derived identity so it can never drift.
@@ -66,5 +95,11 @@ export function mcpManual(): string {
 
 Or, for another agent, add this to its global MCP config (e.g. Cursor's ~/.cursor/mcp.json):
 
-  "${MCP_SERVER_NAME}": { "command": "${NPX}", "args": ${JSON.stringify(serverInvocation().slice(1))} }`;
+  "${MCP_SERVER_NAME}": { "command": "${NPX}", "args": ${JSON.stringify(serverInvocation().slice(1))} }
+
+On Windows, if the agent cannot start Reticle because npx is blocked ("running scripts is disabled
+on this system" — a PowerShell execution policy), register it through cmd instead, which that policy
+does not gate:
+
+  "${MCP_SERVER_NAME}": { "command": "cmd", "args": ${JSON.stringify(['/c', NPX, ...serverInvocation().slice(1)])} }`;
 }
