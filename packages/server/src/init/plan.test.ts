@@ -1,15 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { buildPlan, StepStatus, type PlanInput } from './plan.js';
-import { Framework, PackageManager, type Detection } from './detect.js';
+import { Framework, PackageManager, UiLibrary, type Detection } from './detect.js';
 
 const CLAUDE_STEP = 'MCP server (Claude, global)';
 const CURSOR_STEP = 'MCP server (Cursor, global)';
 const MCP_STEP = 'MCP server (global)';
 const CONFIG_STEP = 'Reticle config';
 
-function detection(framework: Framework, reactMajor = 19): Detection {
+function detection(
+  framework: Framework,
+  reactMajor = 19,
+  uiLibrary: UiLibrary = UiLibrary.REACT,
+): Detection {
   return {
     framework,
+    uiLibrary,
+    typescript: true,
     reactMajor,
     needsSourceMapping: reactMajor >= 19,
     packageManager: PackageManager.PNPM,
@@ -22,10 +28,18 @@ function input(partial: Partial<PlanInput>): PlanInput {
     claudeCli: partial.claudeCli ?? true,
     mcpExists: partial.mcpExists ?? false,
     cursorPresent: partial.cursorPresent ?? false,
+    cursorProjectPresent: partial.cursorProjectPresent,
     cursorConfig: partial.cursorConfig ?? null,
     cursorConfigPath: partial.cursorConfigPath ?? '/home/u/.cursor/mcp.json',
     viteConfig: partial.viteConfig ?? null,
     nextConfigFile: partial.nextConfigFile ?? null,
+    nextConfigSource: partial.nextConfigSource,
+    nextLayout: partial.nextLayout,
+    nextReticleDevPath: partial.nextReticleDevPath,
+    nextReticleDevImport: partial.nextReticleDevImport,
+    testids: partial.testids,
+    storeHints: partial.storeHints,
+    viteDevModuleExists: partial.viteDevModuleExists,
     nextReticleDevExists: partial.nextReticleDevExists ?? false,
     claudeMdContent: partial.claudeMdContent,
     agentsMdContent: partial.agentsMdContent,
@@ -270,20 +284,53 @@ describe('buildPlan — install', () => {
 });
 
 describe('buildPlan — Next', () => {
-  it('creates reticle-dev.tsx and bails config + mount to manual', () => {
-    const plan = buildPlan(
-      input({ detection: detection(Framework.NEXT), nextConfigFile: 'next.config.mjs' }),
+  const NEXT_CONFIG_SRC = 'const nextConfig = {};\nexport default nextConfig;\n';
+  const LAYOUT_SRC =
+    'export default function RootLayout({ children }) {\n  return <html><body>{children}</body></html>;\n}\n';
+
+  const nextPlan = (partial: Partial<PlanInput> = {}): ReturnType<typeof buildPlan> =>
+    buildPlan(
+      input({
+        detection: detection(Framework.NEXT),
+        nextConfigFile: 'next.config.ts',
+        nextConfigSource: NEXT_CONFIG_SRC,
+        nextLayout: { path: 'app/layout.tsx', source: LAYOUT_SRC },
+        ...partial,
+      }),
     );
+
+  it('wires all three Next files with no hand edits left', () => {
+    const plan = nextPlan();
     expect(step(plan, 'ReticleDev component').status).toBe(StepStatus.APPLY);
+    expect(step(plan, 'Next config (withReticle)').status).toBe(StepStatus.APPLY);
+    expect(step(plan, 'Mount ReticleDev').status).toBe(StepStatus.APPLY);
+  });
+
+  it('the generated connect presents the pairing token — without it the bridge refuses', () => {
+    const content = step(nextPlan(), 'ReticleDev component').write?.content ?? '';
+    expect(content).toContain('NEXT_PUBLIC_RETICLE_TOKEN');
+    expect(content).toContain('token');
+  });
+
+  it('puts the component next to the layout, so a --src-dir app imports something that exists', () => {
+    const plan = nextPlan({
+      nextLayout: { path: 'src/app/layout.tsx', source: LAYOUT_SRC },
+      nextReticleDevPath: 'src/app/reticle-dev.tsx',
+    });
+    expect(step(plan, 'ReticleDev component').write?.path).toBe('src/app/reticle-dev.tsx');
+    expect(step(plan, 'Mount ReticleDev').write?.path).toBe('src/app/layout.tsx');
+  });
+
+  it('falls back to the hand-edit instructions when a file is missing or unrecognised', () => {
+    const plan = nextPlan({ nextConfigSource: null, nextLayout: null });
     expect(step(plan, 'Next config (withReticle)').status).toBe(StepStatus.MANUAL);
     expect(step(plan, 'Mount ReticleDev').status).toBe(StepStatus.MANUAL);
   });
 
   it('marks reticle-dev.tsx already when it exists', () => {
-    const plan = buildPlan(
-      input({ detection: detection(Framework.NEXT), nextReticleDevExists: true }),
+    expect(step(nextPlan({ nextReticleDevExists: true }), 'ReticleDev component').status).toBe(
+      StepStatus.ALREADY,
     );
-    expect(step(plan, 'ReticleDev component').status).toBe(StepStatus.ALREADY);
   });
 });
 
@@ -317,5 +364,182 @@ describe('SvelteKit gets the Vite plugin, not only the client hook', () => {
 
   it('falls back to manual instructions when there is no vite config to patch', () => {
     expect(maybeStep(svelteKit(null), 'Vite plugin')?.status).toBe(StepStatus.MANUAL);
+  });
+});
+
+/**
+ * A Vue or Preact app used to get `@reticlehq/react` installed and an all-green report — the report
+ * claimed support the project does not have. It now says so in the plan itself.
+ */
+describe('buildPlan — non-React apps are marked unverified', () => {
+  const libStep = (lib: UiLibrary) =>
+    maybeStep(
+      buildPlan(input({ detection: detection(Framework.VITE, 0, lib) })),
+      `${lib} is UNVERIFIED`,
+    );
+
+  it('flags Vue and Preact apps as a NOTICE — worth reading, but not work to do', () => {
+    for (const lib of [UiLibrary.VUE, UiLibrary.PREACT] as const) {
+      const s = libStep(lib);
+      // Not MANUAL: the app is wired and working, it is just not covered by a gate. Counting this as
+      // an outstanding step made "steps remaining" a number that could never reach zero.
+      expect(s?.status).toBe(StepStatus.NOTICE);
+      expect(s?.detail).toContain('data-reticle-source');
+    }
+  });
+
+  it('an UNVERIFIED stack still reports zero manual steps when everything applied', () => {
+    const plan = buildPlan(
+      input({
+        detection: detection(Framework.VITE, 0, UiLibrary.PREACT),
+        viteConfig: { path: 'vite.config.ts', source: VITE_SRC },
+        options: { port: undefined, mcp: true, install: true },
+      }),
+    );
+    expect(plan.steps.filter((s) => s.status === StepStatus.MANUAL)).toEqual([]);
+  });
+
+  it('says nothing for React, and does not double up on SvelteKit (which has its own note)', () => {
+    expect(libStep(UiLibrary.REACT)).toBeUndefined();
+    expect(
+      maybeStep(
+        buildPlan(input({ detection: detection(Framework.SVELTEKIT, 0, UiLibrary.SVELTE) })),
+        'svelte is UNVERIFIED',
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe('buildPlan — the Cursor rule is a project file, not a machine-wide one', () => {
+  const rule = (partial: Partial<PlanInput>) =>
+    maybeStep(buildPlan(input({ cursorPresent: true, ...partial })), AGENT_RULE_STEP);
+
+  it('is not written into a Claude Code project just because ~/.cursor exists', () => {
+    expect(rule({ claudeCli: true, cursorProjectPresent: false })?.write?.path).toBe('CLAUDE.md');
+    const steps = buildPlan(
+      input({ cursorPresent: true, claudeCli: true, cursorProjectPresent: false }),
+    ).steps;
+    expect(steps.some((s) => s.write?.path === '.cursor/rules/reticle.mdc')).toBe(false);
+  });
+
+  it('is written when the repo itself has a .cursor dir', () => {
+    const steps = buildPlan(
+      input({ cursorPresent: true, claudeCli: true, cursorProjectPresent: true }),
+    ).steps;
+    expect(steps.some((s) => s.write?.path === '.cursor/rules/reticle.mdc')).toBe(true);
+  });
+
+  it('is written when Cursor is the only agent found', () => {
+    expect(rule({ claudeCli: false, cursorProjectPresent: false })?.write?.path).toBe(
+      '.cursor/rules/reticle.mdc',
+    );
+  });
+});
+
+describe('buildPlan — Astro', () => {
+  it('gets Astro-specific instructions, not the generic HTML connect snippet', () => {
+    const plan = buildPlan(input({ detection: detection(Framework.ASTRO, 19) }));
+    expect(maybeStep(plan, 'Connect snippet')).toBeUndefined();
+    const s = step(plan, 'Connect snippet (Astro)');
+    expect(s.status).toBe(StepStatus.MANUAL);
+    // The three things that are Astro-specific and wrong in the generic advice.
+    expect(s.detail).toContain('__RETICLE_TOKEN__');
+    expect(s.detail).toContain('es2022');
+    expect(s.detail).toContain('<script>');
+  });
+
+  it('installs the kit but no bundler plugin — Astro owns its own Vite', () => {
+    const s = step(buildPlan(input({ detection: detection(Framework.ASTRO, 19) })), 'Install dependencies');
+    expect(s.detail).toContain('@reticlehq/react');
+    expect(s.detail).not.toContain('@reticlehq/vite-plugin');
+  });
+});
+
+/**
+ * `pnpm add -D @reticlehq/react` installed 2.2.1 in one project while npm and yarn took 2.3.0 in the
+ * next — a stale registry metadata cache, invisible to everyone. A version-skewed SDK against a newer
+ * daemon is the -32000 path: the app connects, the protocol disagrees, and nothing names a version.
+ */
+describe('buildPlan — the SDK is pinned to the CLI version', () => {
+  const installStepOf = (sdkVersion?: string) =>
+    step(
+      buildPlan(
+        input({
+          detection: detection(Framework.VITE),
+          options: {
+            port: undefined,
+            mcp: true,
+            install: true,
+            ...(sdkVersion !== undefined ? { sdkVersion } : {}),
+          },
+        }),
+      ),
+      'Install dependencies',
+    );
+
+  it('asks for the exact version, so a stale cache cannot pick a different one', () => {
+    const s = installStepOf('2.3.1');
+    expect(s.detail).toContain('@reticlehq/react@2.3.1');
+    expect(s.detail).toContain('@reticlehq/vite-plugin@2.3.1');
+    expect(s.exec?.args).toContain('@reticlehq/react@2.3.1');
+  });
+
+  it('falls back to unpinned when no version is known, rather than installing garbage', () => {
+    expect(installStepOf(undefined).detail).toContain('@reticlehq/react');
+    expect(installStepOf(undefined).detail).not.toContain('@undefined');
+  });
+});
+
+/**
+ * The generated connect component ships into a JavaScript project as `.jsx`, where SWC parses it as
+ * plain JS. A TypeScript cast in the body — `(globalThis as Record<string, unknown>)` — therefore
+ * failed to compile and every route served 500: installing Reticle stopped the app booting, for the
+ * second time, in the same file. The extension was fixed; the BODY was not. So assert on the body.
+ */
+describe('the generated Next component is valid JavaScript', () => {
+  const body = (): string => {
+    const plan = buildPlan(
+      input({
+        detection: detection(Framework.NEXT),
+        nextConfigFile: 'next.config.js',
+        nextConfigSource: 'module.exports = {};\n',
+        nextLayout: { path: 'pages/_app.js', source: 'export default function App({ Component, pageProps }) {\n  return <Component {...pageProps} />;\n}\n' },
+        nextReticleDevPath: 'components/reticle-dev.jsx',
+      }),
+    );
+    return step(plan, 'ReticleDev component').write?.content ?? '';
+  };
+
+  it('contains no TypeScript-only syntax', () => {
+    const src = body();
+    expect(src, 'an `as` cast does not parse as JavaScript').not.toMatch(/\bas\s+(Record|any|unknown|string)\b/);
+    expect(src, 'a type annotation does not parse as JavaScript').not.toMatch(/:\s*Record<|:\s*string\b|<[A-Z]\w*>/);
+  });
+
+  it('carries the capabilities scaffold too — only the Vite path used to get one', () => {
+    const plan = buildPlan(
+      input({
+        detection: detection(Framework.NEXT),
+        nextConfigFile: 'next.config.ts',
+        nextConfigSource: 'export default {};\n',
+        nextLayout: { path: 'app/layout.tsx', source: '<html><body>{children}</body></html>' },
+        testids: ['pay', 'nav-home'],
+        storeHints: ["registerStore('app', store)"],
+      }),
+    );
+    const src = step(plan, 'ReticleDev component').write?.content ?? '';
+    expect(src).toContain('registerCapabilities');
+    expect(src).toContain("'pay'");
+    // Commented, for the same reason as everywhere else: we cannot know which module exports it.
+    for (const line of src.split('\n')) {
+      if (line.includes('registerStore')) expect(line.trimStart().startsWith('//')).toBe(true);
+    }
+  });
+
+  it('still passes the root through, just as a connect option instead of a global assignment', () => {
+    const src = body();
+    expect(src).toContain('NEXT_PUBLIC_RETICLE_ROOT');
+    expect(src).toContain('root');
+    expect(src).not.toContain('globalThis');
   });
 });

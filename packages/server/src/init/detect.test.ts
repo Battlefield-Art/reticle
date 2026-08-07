@@ -5,6 +5,7 @@ import {
   installCommand,
   Framework,
   PackageManager,
+  UiLibrary,
   type DetectInput,
 } from './detect.js';
 
@@ -113,5 +114,97 @@ describe('installCommand', () => {
     expect(
       installCommand(PackageManager.PNPM, ['@reticlehq/react', '@reticlehq/vite-plugin']),
     ).toBe('pnpm add -D @reticlehq/react @reticlehq/vite-plugin');
+  });
+});
+
+/**
+ * Detection used to stop at "vite is in package.json". A Vue or Preact app therefore got the React
+ * kit installed and an all-green report — a support claim nothing backs.
+ */
+describe('detect — UI library', () => {
+  const withDeps = (dependencies: Record<string, string>): DetectInput => ({
+    pkg: { dependencies },
+    configFiles: new Set(['vite.config.ts']),
+    lockfiles: new Set(),
+  });
+
+  it('names the library the app actually renders through', () => {
+    expect(detect(withDeps({ react: '^19' })).uiLibrary).toBe(UiLibrary.REACT);
+    expect(detect(withDeps({ preact: '^10' })).uiLibrary).toBe(UiLibrary.PREACT);
+    expect(detect(withDeps({ vue: '^3' })).uiLibrary).toBe(UiLibrary.VUE);
+    expect(detect(withDeps({ svelte: '^5' })).uiLibrary).toBe(UiLibrary.SVELTE);
+    expect(detect(withDeps({ lodash: '^4' })).uiLibrary).toBe(UiLibrary.UNKNOWN);
+  });
+
+  it('prefers React when both are present (preact/compat aliasing)', () => {
+    expect(detect(withDeps({ preact: '^10', react: '^18' })).uiLibrary).toBe(UiLibrary.REACT);
+  });
+});
+
+/**
+ * Astro is Vite-based but SSRs its own HTML and does not list `vite` as a direct dependency, so it
+ * fell all the way through to HTML — and was handed connect instructions for an entry module it does
+ * not have. SKILL.md offers Astro as a gated framework the whole time.
+ */
+describe('detect — Astro', () => {
+  it('is recognised from the dependency or the config, before the generic Vite branch', () => {
+    expect(
+      detect({ pkg: { dependencies: { astro: '^7' } }, configFiles: new Set(), lockfiles: new Set() })
+        .framework,
+    ).toBe(Framework.ASTRO);
+    expect(
+      detect({ pkg: {}, configFiles: new Set(['astro.config.mjs']), lockfiles: new Set() }).framework,
+    ).toBe(Framework.ASTRO);
+  });
+
+  it('wins over a bare vite dependency, which Astro pulls in transitively anyway', () => {
+    expect(
+      detect({
+        pkg: { dependencies: { astro: '^7' }, devDependencies: { vite: '^7' } },
+        configFiles: new Set(['astro.config.mjs', 'vite.config.ts']),
+        lockfiles: new Set(),
+      }).framework,
+    ).toBe(Framework.ASTRO);
+  });
+});
+
+/**
+ * No lockfile is not the same as "npm". A pnpm-installed project with an uncommitted lockfile was
+ * read as npm, and `npm i -D` then died on pnpm's symlink layout with "Cannot read properties of
+ * null (reading 'matches')" — leaving the package present in node_modules but absent from
+ * package.json, so every later run reported the same failure. A setup that cannot be retried into
+ * working is worse than one that fails outright.
+ */
+describe('detect package manager — from an installed tree', () => {
+  const withMarkers = (nodeModulesMarkers: Set<string>): DetectInput => ({
+    pkg: {},
+    configFiles: new Set(),
+    lockfiles: new Set(),
+    nodeModulesMarkers,
+  });
+
+  it('reads the manager that built node_modules when no lockfile is committed', () => {
+    expect(detect(withMarkers(new Set(['.modules.yaml']))).packageManager).toBe(PackageManager.PNPM);
+    expect(detect(withMarkers(new Set(['.yarn-state.yml']))).packageManager).toBe(
+      PackageManager.YARN,
+    );
+    expect(detect(withMarkers(new Set(['.package-lock.json']))).packageManager).toBe(
+      PackageManager.NPM,
+    );
+  });
+
+  it('a committed lockfile still wins over the installed tree', () => {
+    expect(
+      detect({
+        pkg: {},
+        configFiles: new Set(),
+        lockfiles: new Set(['yarn.lock']),
+        nodeModulesMarkers: new Set(['.modules.yaml']),
+      }).packageManager,
+    ).toBe(PackageManager.YARN);
+  });
+
+  it('still falls back to npm when there is nothing to go on', () => {
+    expect(detect(withMarkers(new Set())).packageManager).toBe(PackageManager.NPM);
   });
 });

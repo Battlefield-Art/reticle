@@ -21,6 +21,7 @@ import {
   type ActionStep,
 } from '../actions/actions.js';
 import { describe } from '../dom/a11y.js';
+import { sourceFor, formatSource } from '../dom/source.js';
 import { themeReport } from '../dom/theme.js';
 import { refs } from '../dom/refs.js';
 import { isButton, isInput } from '../dom/realm.js';
@@ -99,8 +100,15 @@ function inspect(ref: string): unknown {
           visibility: cs.visibility,
         }
       : null;
+  // `describe()` carries the CHEAP source (the nearest babel-stamped ancestor), because it runs per
+  // element on paths that describe hundreds at once. inspect is a single-element path, so it takes
+  // the adapter's answer first — the component that actually RENDERED this element, not the nearest
+  // stamped host. `act` already did this; inspect did not, so the two tools disagreed about the same
+  // ref and inspect — the tool you reach for to ask where something lives — was the one saying null.
+  const source = formatSource(sourceFor(el, component?.source));
   return {
     ...describe(el),
+    ...(source !== undefined ? { source } : {}),
     tag: el.tagName.toLowerCase(),
     href: el.getAttribute('href') ?? undefined,
     formAction:

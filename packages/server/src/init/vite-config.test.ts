@@ -42,7 +42,9 @@ describe('patchViteConfig', () => {
   it('emits bare reticle() when no port is given', () => {
     const r = patchViteConfig(BASIC);
     if (r.kind !== VitePatchKind.APPLY) throw new Error('expected apply');
-    expect(r.code).toContain('reticle(), ');
+    // Spaced to match the line it lands on: single-line arrays keep the space, multi-line ones
+    // would otherwise be left with trailing whitespace for a formatter to rewrite.
+    expect(r.code).toContain('reticle(),');
     expect(r.code).not.toContain('port:');
   });
 
@@ -57,5 +59,21 @@ export default defineConfig({ server: { port: 3000 } });
     const r = patchViteConfig('export default { plugins: [] };\n');
     if (r.kind !== VitePatchKind.APPLY) throw new Error('expected apply');
     expect(r.code.startsWith(VITE_IMPORT)).toBe(true);
+  });
+});
+
+/**
+ * The patch lands in somebody's source file, so it has to look like something a person wrote. A
+ * trailing space before a newline is exactly what a formatter rewrites, turning a one-line install
+ * into a diff against the user's own style.
+ */
+describe('patchViteConfig — the edit reads like the file it lands in', () => {
+  it('leaves no trailing whitespace on the plugins line', () => {
+    const src = `import { defineConfig } from 'vite';\nexport default defineConfig({\n  plugins: [\n    react(),\n  ],\n});\n`;
+    const r = patchViteConfig(src);
+    if (r.kind !== VitePatchKind.APPLY) throw new Error('expected apply');
+    for (const line of r.code.split('\n')) {
+      expect(line, JSON.stringify(line)).toBe(line.replace(/\s+$/, ''));
+    }
   });
 });

@@ -34,6 +34,23 @@ function mergeUnique(into: string[], add: readonly string[] | undefined): void {
   for (const v of add) if (!into.includes(v)) into.push(v);
 }
 
+/**
+ * Notified whenever capabilities change, so the SDK can re-announce them to the bridge.
+ *
+ * `hasCapabilities` rides in the HELLO, which goes out at connect() — and registering deliberately
+ * happens AFTER connect, because `registerStore` needs a live SDK to subscribe through. Without a
+ * notification, an app that declared its whole testable surface still appeared to the agent as
+ * having none, permanently. The hook lives HERE rather than on `reticle.describe` because the
+ * documented entry point is this bare function; only wiring `describe` would have fixed the path
+ * almost nobody uses.
+ */
+let onChanged: (() => void) | undefined;
+
+/** Set by the SDK at connect. Idempotent; the last connect wins. */
+export function setCapabilitiesListener(cb: (() => void) | undefined): void {
+  onChanged = cb;
+}
+
 /** Called by the host app via reticle.describe. Merges (idempotent), never replaces wholesale. */
 export function registerCapabilities(input: CapabilitiesInput): void {
   mergeUnique(capabilities.testids, input.testids);
@@ -49,6 +66,7 @@ export function registerCapabilities(input: CapabilitiesInput): void {
       }
     }
   }
+  onChanged?.();
 }
 
 /** Snapshot copy of the registered capabilities (defensive — never hand out the live arrays). */

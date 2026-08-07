@@ -309,6 +309,20 @@ export class Transport {
     });
   }
 
+  /**
+   * Re-send the HELLO on a live socket.
+   *
+   * The hello carries `hasCapabilities`, and it goes out at connect() — before the app has had a
+   * chance to call `registerCapabilities`, which by design happens AFTER connect so `registerStore`
+   * has a live SDK to subscribe through. So an app that declared its whole testable surface still
+   * appeared to the agent as having none, and nothing ever corrected it. Cheap and idempotent: the
+   * bridge treats a hello as the session's current identity, not as a new session.
+   */
+  reannounce(): void {
+    if (this.#ws === undefined || this.#ws.readyState !== WebSocket.OPEN) return;
+    this.#ws.send(JSON.stringify(this.#deps.hello()));
+  }
+
   #sendRaw(text: string, event?: QueuedMessage['event']): void {
     if (this.#ws !== undefined && this.#ws.readyState === WebSocket.OPEN) {
       this.#ws.send(text);

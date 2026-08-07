@@ -39,6 +39,27 @@ export function buildNodeIo(cwd: string): InitIo {
         }
       });
     },
+    listDirs(rel) {
+      const path = abs(rel);
+      if (!existsSync(path)) return [];
+      try {
+        return readdirSync(path).filter((name) => statSync(join(path, name)).isDirectory());
+      } catch {
+        return [];
+      }
+    },
+    listFiles(rel) {
+      const path = abs(rel);
+      if (!existsSync(path)) return [];
+      try {
+        return readdirSync(path).filter((name) => !statSync(join(path, name)).isDirectory());
+      } catch {
+        return [];
+      }
+    },
+    scoped(rel) {
+      return buildNodeIo(abs(rel));
+    },
     exec(command, args) {
       // `shell: true` lets package-manager shims (pnpm.cmd, etc.) resolve on Windows; inherit
       // stdio so the install's own progress is visible to the user.

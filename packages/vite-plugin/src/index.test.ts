@@ -325,6 +325,83 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
     expect(include).toContain('aria-query');
   });
 
+  /**
+   * The SDK itself has to be pre-declared, not discovered.
+   *
+   * Vite only learns about `@reticlehq/react` when the injected connect module is first requested —
+   * which is mid-flight during the very first page load. It then pre-bundles it and forces a full
+   * reload, and the connect is lost in that reload: no WebSocket, no session, no console message.
+   * So the FIRST load after `reticle init` silently did nothing and the SECOND one worked, which is
+   * the worst possible shape for this bug — it looks like the install failed, and it looks fixed the
+   * moment anyone refreshes to investigate. Reproduced on a real Vite 4 app with a cold dep cache.
+   */
+  it('declares the SDK itself, so the first page load is not lost to a dep-optimization reload', () => {
+    const plugin = reticle() as unknown as {
+      config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
+    };
+    const patch = plugin.config?.({}) ?? {};
+    const include = (patch['optimizeDeps'] as { include?: string[] } | undefined)?.include ?? [];
+    expect(include).toContain('@reticlehq/react');
+  });
+
+  /**
+   * A connect the plugin does not write itself still needs the pairing token — SvelteKit's client
+   * hook is the case that exists today. Nothing in a browser can read the file the token lives in,
+   * so the hook called connect() with no credential and the bridge answered "authentication failed":
+   * app boots, no session, one console line nobody was looking for. Same defect Next.js shipped.
+   */
+  it('inlines the pairing token as a define, for connects it does not write itself', () => {
+    const plugin = reticle() as unknown as {
+      config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
+    };
+    const patch = plugin.config?.({}) ?? {};
+    const define = (patch['define'] as Record<string, string> | undefined) ?? {};
+    expect(Object.keys(define)).toContain('__RETICLE_TOKEN__');
+    // Always a defined string literal — an undefined global would make the guard in the hook throw.
+    expect(typeof define['__RETICLE_TOKEN__']).toBe('string');
+  });
+
+  it("preserves the app's own define entries", () => {
+    const plugin = reticle() as unknown as {
+      config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
+    };
+    const patch = plugin.config?.({ define: { __THEIRS__: '"x"' } }) ?? {};
+    const define = (patch['define'] as Record<string, string> | undefined) ?? {};
+    expect(define['__THEIRS__']).toBe('"x"');
+    expect(Object.keys(define)).toContain('__RETICLE_TOKEN__');
+  });
+
+  /**
+   * Vite's dep-optimizer cache is keyed on the optimizeDeps config and the lockfile — not on what is
+   * actually inside the packages it bundled. Upgrade the SDK in place and the version can stay the
+   * same, so Vite keeps serving the OLD pre-bundled copy across dev-server restarts: the fix is not
+   * in the browser and it looks like the fix does not work. That produced a real false negative
+   * while hunting the null-fiber crash, and every in-place upgrade hits it.
+   */
+  it('mixes the installed SDK build into the cache key so an in-place upgrade is noticed', () => {
+    const plugin = reticle() as unknown as {
+      config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
+    };
+    const patch = plugin.config?.({}) ?? {};
+    const opt = patch['optimizeDeps'] as
+      | { esbuildOptions?: { define?: Record<string, string> } }
+      | undefined;
+    expect(Object.keys(opt?.esbuildOptions?.define ?? {})).toContain('__RETICLE_SDK_BUILD__');
+  });
+
+  it("does not clobber the app's own esbuildOptions.define", () => {
+    const plugin = reticle() as unknown as {
+      config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
+    };
+    const patch =
+      plugin.config?.({ optimizeDeps: { esbuildOptions: { define: { THEIRS: '"x"' } } } }) ?? {};
+    const define =
+      (patch['optimizeDeps'] as { esbuildOptions?: { define?: Record<string, string> } })
+        .esbuildOptions?.define ?? {};
+    expect(define['THEIRS']).toBe('"x"');
+    expect(Object.keys(define)).toContain('__RETICLE_SDK_BUILD__');
+  });
+
   it('preserves optimizeDeps entries the app already declared', () => {
     const plugin = reticle() as unknown as {
       config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;

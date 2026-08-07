@@ -14,6 +14,7 @@ import {
   isLocalPage,
   setActiveRedactionPolicy,
   wireRedactionKeys,
+  RETICLE_ROOT_GLOBAL,
   type CommandMessage,
   type HelloMessage,
   type RedactionConfig,
@@ -28,6 +29,7 @@ import { Transport, type CommandOutcome } from './transport/transport.js';
 import { adapterNames } from './registry/adapters.js';
 import {
   registerCapabilities,
+  setCapabilitiesListener,
   hasCapabilities,
   type CapabilitiesInput,
 } from './registry/capabilities.js';
@@ -249,6 +251,12 @@ export class Reticle {
       return;
     }
 
+    // Publish the project root for the adapters' source relativisation. Done HERE, in library code,
+    // so the app-side connect stays plain JavaScript — see ReticleConnectOptions.root.
+    if (options.root !== undefined && options.root.length > 0) {
+      (globalThis as Record<string, unknown>)[RETICLE_ROOT_GLOBAL] = options.root;
+    }
+
     // A pooled/headless launcher can stamp identity via namespaced URL params; explicit (non-auto)
     // options win, but the `auto` sentinel defers to the URL param so leases correlate.
     const identity = resolveConnectIdentity(options, window.location.search);
@@ -299,6 +307,10 @@ export class Reticle {
         );
       },
     });
+
+    // Capabilities registered AFTER connect (which is when they are registered, by design) must
+    // reach the bridge, or an app that declared its whole testable surface reads as having none.
+    setCapabilitiesListener(() => this.#transport?.reannounce());
 
     const emit = this.#emit;
     this.#teardowns = installAllObservers(emit, {
@@ -383,7 +395,7 @@ export class Reticle {
 
   /** Advertise the app's testable surface so the agent learns it without reading source. */
   describe(input: CapabilitiesInput): void {
-    registerCapabilities(input);
+    registerCapabilities(input); // the registry notifies the transport — see setCapabilitiesListener
   }
 
   /** Live-control: end the session programmatically from the host app (drives the panel to ended). */

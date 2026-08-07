@@ -4,9 +4,21 @@
  * runner performs the `write` side-effects; this module decides *what* should happen.
  */
 
-import { Framework, installCommand, installCommandParts, type Detection } from './detect.js';
+import {
+  Framework,
+  PackageManager,
+  UiLibrary,
+  installCommand,
+  installCommandParts,
+  type Detection,
+} from './detect.js';
 import { claudeAddCommand, mcpManual } from './mcp.js';
 import { mergeCursorConfig, CursorMergeStatus, cursorServerEntry } from './cursor.js';
+import {
+  CLAUDE_COMMAND_PATH,
+  CURSOR_COMMAND_PATH,
+  SLASH_COMMAND_BODY,
+} from './slash-command.js';
 import {
   mergeMarkedInstruction,
   cursorRuleFile,
@@ -15,18 +27,12 @@ import {
   AGENTS_MD_PATH,
   CURSOR_RULE_PATH,
 } from './agent-rules.js';
-import { patchViteConfig, VitePatchKind } from './vite-config.js';
+import { viteSteps, nextSteps, svelteKitSteps, VITE_PLUGIN_DETAIL } from './plan-framework.js';
 import {
-  viteManual,
   htmlManual,
-  NEXT_LAYOUT_MANUAL,
-  nextReticleDevFile,
-  NEXT_RETICLE_DEV_PATH,
-  nextConfigManual,
   reticleConfigContent,
-  svelteKitHooksFile,
-  SVELTEKIT_HOOKS_PATH,
-  UNVERIFIED_FRAMEWORK_NOTE,
+  unverifiedUiLibraryNote,
+  astroManual,
 } from './snippets.js';
 
 // An app dev installs exactly the audience-scoped browser-side dependencies — never the retired
@@ -37,6 +43,23 @@ const RETICLE_REACT_KIT = '@reticlehq/react';
 const RETICLE_VITE_PLUGIN = '@reticlehq/vite-plugin';
 const RETICLE_NEXT_PLUGIN = '@reticlehq/next';
 
+/**
+ * Pin the SDK to the CLI's own version.
+ *
+ * `pnpm add -D @reticlehq/react` installed **2.2.1** in one project while npm and yarn took 2.3.0 in
+ * the next — a stale registry metadata cache, invisible to the user and to us. A version-skewed SDK
+ * talking to a newer daemon is the `-32000` failure path: the app connects, the protocol disagrees,
+ * and nothing on either side names a version. Asking for the CLI's exact version makes the cache
+ * irrelevant, and a skewed pair impossible to install by accident.
+ */
+export function pinnedPackages(
+  packages: readonly string[],
+  version: string | undefined,
+): readonly string[] {
+  if (version === undefined || version.length === 0) return packages;
+  return packages.map((p) => `${p}@${version}`);
+}
+
 /** The dev-dependencies `reticle init` installs for a given framework — kit first, build plugin next. */
 export function frameworkPackages(framework: Framework): readonly string[] {
   switch (framework) {
@@ -46,6 +69,10 @@ export function frameworkPackages(framework: Framework): readonly string[] {
     case Framework.SVELTEKIT:
       // SvelteKit builds on Vite; until a dedicated Svelte kit exists it uses the Vite build plugin.
       return [RETICLE_REACT_KIT, RETICLE_VITE_PLUGIN];
+    case Framework.ASTRO:
+      // Astro owns its own Vite instance and renders its own HTML, so there is no config for the
+      // plugin to attach to — the kit alone, connected from a page <script> (see astroManual).
+      return [RETICLE_REACT_KIT];
     case Framework.HTML:
       // No bundler plugin to install — just the kit; connect is wired by hand (see htmlManual).
       return [RETICLE_REACT_KIT];
@@ -63,10 +90,17 @@ export const StepStatus = {
   MANUAL: 'manual',
   ALREADY: 'already',
   SKIP: 'skip',
+  /**
+   * Something the user should KNOW, not something they must DO. The UNVERIFIED lines are the case:
+   * a Preact or SvelteKit app is wired and working, it just isn't covered by a gate. Reporting those
+   * as `manual` made "steps left to do" a number that could never reach zero, and made a release gate
+   * read two regressions that were not regressions.
+   */
+  NOTICE: 'notice',
 } as const;
 export type StepStatus = (typeof StepStatus)[keyof typeof StepStatus];
 
-interface Step {
+export interface Step {
   title: string;
   target: string;
   status: StepStatus;
@@ -75,6 +109,13 @@ interface Step {
   write?: { path: string; content: string };
   /** Present only when status is APPLY and a subprocess must run (the dependency install). */
   exec?: { command: string; args: string[]; fallback: string };
+  /**
+   * This step wires the app to a package the install step provides. If that install fails, applying
+   * it anyway leaves the app importing a module that is not there — `next.config.ts` importing
+   * `@reticlehq/next` took a dev server down exactly this way. Installing Reticle must never be the
+   * reason an app stops booting.
+   */
+  dependsOnInstall?: boolean;
 }
 
 export interface Plan {
@@ -90,6 +131,8 @@ export interface PlanInput {
   mcpExists: boolean;
   /** Whether Cursor is installed for this user (its global config dir exists). */
   cursorPresent: boolean;
+  /** Whether THIS project has a .cursor/ directory — the signal that Cursor works on this repo. */
+  cursorProjectPresent?: boolean | undefined;
   /** Current ~/.cursor/mcp.json content, or null if absent. */
   cursorConfig: string | null;
   /** Absolute path of ~/.cursor/mcp.json (the write target). */
@@ -98,8 +141,22 @@ export interface PlanInput {
   viteConfig: { path: string; source: string } | null;
   /** Discovered Next config filename (e.g. 'next.config.mjs'), or null. */
   nextConfigFile: string | null;
-  /** Whether app/reticle-dev.tsx already exists. */
+  /** Source of that Next config, so the export can be wrapped in withReticle. */
+  nextConfigSource?: string | null | undefined;
+  /** Discovered Next root layout: its path + source, or null (App Router only). */
+  nextLayout?: { path: string; source: string } | null | undefined;
+  /** Where the dev-only connect component goes — never inside `pages/`, which routes on presence. */
+  nextReticleDevPath?: string | undefined;
+  /** What the mount file should import — a sibling for App Router, `../components/…` for Pages. */
+  nextReticleDevImport?: string | undefined;
+  /** Whether the ReticleDev component file already exists. */
   nextReticleDevExists: boolean;
+  /** `data-testid` values scanned from the app's source, for the generated capabilities block. */
+  testids?: readonly string[] | undefined;
+  /** Ready-to-uncomment `registerStore` lines for the state libraries the app actually depends on. */
+  storeHints?: readonly string[] | undefined;
+  /** Whether src/reticle-dev.ts already exists — it is the one generated file users are meant to edit. */
+  viteDevModuleExists?: boolean | undefined;
   /** Whether src/hooks.client.ts already exists (SvelteKit idempotency). */
   svelteKitHooksExists?: boolean;
   /** Whether .reticle.json already exists in the project root (idempotency). */
@@ -110,12 +167,18 @@ export interface PlanInput {
   agentsMdContent?: string | null | undefined;
   /** Whether .cursor/rules/reticle.mdc already exists (agent-rule idempotency). */
   cursorRuleExists?: boolean | undefined;
+  /** Whether .claude/commands/reticle.md already exists (slash-command idempotency). */
+  claudeCommandExists?: boolean | undefined;
+  /** Whether .cursor/commands/reticle.md already exists. */
+  cursorCommandExists?: boolean | undefined;
   options: {
     port: number | undefined;
     mcp: boolean;
     install: boolean;
     /** Stable project identity derived at init (package.json name + root). Baked into snippets/.reticle.json. */
     projectId?: string;
+    /** The CLI's own version, pinned onto the SDK install so a stale registry cache cannot skew it. */
+    sdkVersion?: string;
   };
 }
 
@@ -195,6 +258,41 @@ function mcpSteps(input: PlanInput): Step[] {
   ];
 }
 
+const SLASH_COMMAND_TITLE = 'The /reticle command';
+
+/**
+ * `/reticle` — the entry point SKILL.md promises in three places and nothing ever created, so it
+ * silently did nothing in every tool. One file per agent that supports custom commands.
+ */
+function slashCommandSteps(input: PlanInput): Step[] {
+  const targets: { path: string; when: boolean; exists: boolean }[] = [
+    { path: CLAUDE_COMMAND_PATH, when: input.claudeCli, exists: input.claudeCommandExists === true },
+    {
+      path: CURSOR_COMMAND_PATH,
+      when: input.cursorProjectPresent === true || (input.cursorPresent && !input.claudeCli),
+      exists: input.cursorCommandExists === true,
+    },
+  ];
+  return targets
+    .filter((t) => t.when)
+    .map((t) =>
+      t.exists
+        ? {
+            title: SLASH_COMMAND_TITLE,
+            target: t.path,
+            status: StepStatus.ALREADY,
+            detail: 'command already exists',
+          }
+        : {
+            title: SLASH_COMMAND_TITLE,
+            target: t.path,
+            status: StepStatus.APPLY,
+            detail: 'type /reticle to verify one flow in the browser',
+            write: { path: t.path, content: SLASH_COMMAND_BODY },
+          },
+    );
+}
+
 const AGENT_RULE_TITLE = 'Agent verification rule';
 const AGENT_RULE_DETAIL = 'teach the agent to verify features with Reticle after building them';
 
@@ -218,8 +316,15 @@ function claudeRuleStep(input: PlanInput): Step | null {
   };
 }
 
+/**
+ * The Cursor rule is a PROJECT file, so it is written only when Cursor plausibly works on THIS
+ * project — the repo has a `.cursor/` dir, or Cursor is the only agent found. `~/.cursor` merely
+ * existing on the machine meant every Claude Code user got an unexplained `.cursor/rules/reticle.mdc`
+ * committed into their repo. (Global MCP registration is different: it is global, and stays.)
+ */
 function cursorRuleStep(input: PlanInput): Step | null {
   if (!input.cursorPresent) return null;
+  if (input.cursorProjectPresent !== true && input.claudeCli) return null;
   if (input.cursorRuleExists === true) {
     return {
       title: AGENT_RULE_TITLE,
@@ -267,9 +372,33 @@ function agentRuleSteps(input: PlanInput): Step[] {
   ];
 }
 
+/**
+ * What to say when the install command fails.
+ *
+ * pnpm's `minimumReleaseAge` refuses any release younger than the configured window — a deliberate
+ * supply-chain policy, not a bug — with `ERR_PNPM_NO_MATURE_MATCHING_VERSION`. Unpinned it silently
+ * resolves to an OLDER version instead, which is how an app ends up running a 2.2.1 SDK against a
+ * 2.3.0 daemon: the connection succeeds, the protocol disagrees, and the failure surfaces as -32000
+ * with nothing naming a version. Pinning turns that into this loud failure, which is the better
+ * trade — but only if the message says what to do about it.
+ */
+function installFailureHint(pm: PackageManager): string {
+  if (pm !== PackageManager.PNPM) return 'If the version was refused, install the SDK yourself.';
+  return (
+    'If pnpm reported ERR_PNPM_NO_MATURE_MATCHING_VERSION, its minimumReleaseAge setting is holding ' +
+    'this release back. Either wait out the window, or allow these packages explicitly:\n' +
+    '  pnpm config set minimumReleaseAgeExclude "@reticlehq/*"\n' +
+    'Do NOT drop the version pin — unpinned, pnpm installs an older SDK against a newer daemon, and ' +
+    'that mismatch surfaces as a -32000 with nothing naming a version.'
+  );
+}
+
 function installStep(input: PlanInput): Step {
   const pm = input.detection.packageManager;
-  const packages = frameworkPackages(input.detection.framework);
+  const packages = pinnedPackages(
+    frameworkPackages(input.detection.framework),
+    input.options.sdkVersion,
+  );
   const command = installCommand(pm, packages);
   if (!input.options.install) {
     return {
@@ -285,145 +414,12 @@ function installStep(input: PlanInput): Step {
     target: 'package.json',
     status: StepStatus.APPLY,
     detail: command,
-    exec: { command: parts.command, args: parts.args, fallback: command },
+    exec: {
+      command: parts.command,
+      args: parts.args,
+      fallback: `${command}\n\n${installFailureHint(pm)}`,
+    },
   };
-}
-
-/** What adding `reticle()` to a Vite config buys, which differs by framework. */
-const VITE_PLUGIN_DETAIL = {
-  /** A plain Vite app gets both halves from the plugin. */
-  VITE: 'add reticle() to plugins (also injects connect())',
-  /**
-   * SvelteKit renders through app.html, so the plugin's HTML injection never fires and connect()
-   * comes from the client hook instead. The plugin is still required: it is what stamps
-   * data-reticle-source into .svelte components, and without it every verdict on a SvelteKit app
-   * comes back with no file:line at all.
-   */
-  SVELTEKIT: 'add reticle() to plugins (stamps data-reticle-source in .svelte components)',
-} as const;
-
-function viteSteps(input: PlanInput, detail: string = VITE_PLUGIN_DETAIL.VITE): Step[] {
-  const cfg = input.viteConfig;
-  const port = input.options.port;
-  if (cfg === null) {
-    return [
-      {
-        title: 'Vite plugin',
-        target: 'vite.config',
-        status: StepStatus.MANUAL,
-        detail: viteManual(port),
-      },
-    ];
-  }
-  const patch = patchViteConfig(cfg.source, port);
-  if (patch.kind === VitePatchKind.ALREADY) {
-    return [
-      {
-        title: 'Vite plugin',
-        target: cfg.path,
-        status: StepStatus.ALREADY,
-        detail: 'reticle() already in plugins',
-      },
-    ];
-  }
-  if (patch.kind === VitePatchKind.MANUAL) {
-    return [
-      {
-        title: 'Vite plugin',
-        target: cfg.path,
-        status: StepStatus.MANUAL,
-        detail: `${patch.reason}\n\n${viteManual(port)}`,
-      },
-    ];
-  }
-  return [
-    {
-      title: 'Vite plugin',
-      target: cfg.path,
-      status: StepStatus.APPLY,
-      detail,
-      write: { path: cfg.path, content: patch.code },
-    },
-  ];
-}
-
-function nextSteps(input: PlanInput): Step[] {
-  const configFile = input.nextConfigFile ?? 'next.config.mjs';
-  const devFile: Step = input.nextReticleDevExists
-    ? {
-        title: 'ReticleDev component',
-        target: NEXT_RETICLE_DEV_PATH,
-        status: StepStatus.ALREADY,
-        detail: 'file exists',
-      }
-    : {
-        title: 'ReticleDev component',
-        target: NEXT_RETICLE_DEV_PATH,
-        status: StepStatus.APPLY,
-        detail: 'create dev-only connect component',
-        write: {
-          path: NEXT_RETICLE_DEV_PATH,
-          content: nextReticleDevFile(input.options.port, input.options.projectId),
-        },
-      };
-  return [
-    devFile,
-    {
-      title: 'Next config (withReticle)',
-      target: configFile,
-      status: StepStatus.MANUAL,
-      detail: nextConfigManual(configFile),
-    },
-    {
-      title: 'Mount ReticleDev',
-      target: 'app/layout.tsx',
-      status: StepStatus.MANUAL,
-      detail: NEXT_LAYOUT_MANUAL,
-    },
-  ];
-}
-
-/**
- * SvelteKit is WIRED but not SUPPORTED, and the plan says so out loud.
- *
- * There is no SvelteKit app in `apps/` and no CI gate for one, so nothing proves this hook still
- * registers a session — every other framework init offers (React, Next, Remix, Astro) has both. The
- * wiring is real and may well work; what is missing is anything that would tell us when it stops.
- * Silently emitting it reads as a support claim, which is the thing this project exists to not do.
- */
-function svelteKitSteps(input: PlanInput): Step[] {
-  const unverified: Step = {
-    title: 'SvelteKit is UNVERIFIED',
-    target: SVELTEKIT_HOOKS_PATH,
-    status: StepStatus.MANUAL,
-    detail: UNVERIFIED_FRAMEWORK_NOTE,
-  };
-  // SvelteKit can't use the Vite-plugin injection (it renders via app.html) — wire a client hook
-  // that SvelteKit runs on startup, which is the path that can register a session at all.
-  if (input.svelteKitHooksExists === true) {
-    return [
-      unverified,
-      {
-        title: 'Reticle client hook',
-        target: SVELTEKIT_HOOKS_PATH,
-        status: StepStatus.ALREADY,
-        detail: 'file exists',
-      },
-    ];
-  }
-  return [
-    unverified,
-    {
-      title: 'Reticle client hook',
-      target: SVELTEKIT_HOOKS_PATH,
-      status: StepStatus.APPLY,
-      detail: 'create dev-only client connect (SvelteKit renders via app.html)',
-      write: {
-        path: SVELTEKIT_HOOKS_PATH,
-        content: svelteKitHooksFile(input.options.port, input.options.projectId),
-      },
-    },
-  ];
 }
 
 function reticleConfigStep(input: PlanInput): Step {
@@ -449,10 +445,30 @@ function reticleConfigStep(input: PlanInput): Step {
   };
 }
 
+/**
+ * A step that says out loud when the app isn't React. SvelteKit already carries its own unverified
+ * note, so it isn't doubled up here.
+ */
+function uiLibraryStep(input: PlanInput): Step[] {
+  const lib = input.detection.uiLibrary;
+  if (lib === UiLibrary.REACT || input.detection.framework === Framework.SVELTEKIT) return [];
+  if (lib === UiLibrary.UNKNOWN) return [];
+  return [
+    {
+      title: `${lib} is UNVERIFIED`,
+      target: 'package.json',
+      status: StepStatus.NOTICE,
+      detail: unverifiedUiLibraryNote(lib),
+    },
+  ];
+}
+
 export function buildPlan(input: PlanInput): Plan {
   const steps: Step[] = [
     ...mcpSteps(input),
     ...agentRuleSteps(input),
+    ...slashCommandSteps(input),
+    ...uiLibraryStep(input),
     installStep(input),
     reticleConfigStep(input),
   ];
@@ -460,6 +476,13 @@ export function buildPlan(input: PlanInput): Plan {
     steps.push(...viteSteps(input));
   } else if (input.detection.framework === Framework.NEXT) {
     steps.push(...nextSteps(input));
+  } else if (input.detection.framework === Framework.ASTRO) {
+    steps.push({
+      title: 'Connect snippet (Astro)',
+      target: 'astro.config + layout',
+      status: StepStatus.MANUAL,
+      detail: astroManual(input.options.port, input.options.projectId),
+    });
   } else if (input.detection.framework === Framework.SVELTEKIT) {
     steps.push(...svelteKitSteps(input));
     // The Vite plugin as well as the client hook. `init` already INSTALLS @reticlehq/vite-plugin for

@@ -248,13 +248,26 @@ export interface SuiteFlowResult {
  * failures carry detail (token-cheap). `status` is fail if any flow drifted or errored.
  */
 export interface SuiteVerdict {
-  status: 'pass' | 'fail';
+  /**
+   * `unverifiable` means the suite contained flows that CANNOT FAIL, so "pass" would be a lie.
+   *
+   * A recorded flow with no steps, or one that asserts no observable consequence, replays green no
+   * matter what the app does. Reporting `pass` for it is a false green in the exact feature sold as
+   * the regression suite — measured: a flow saved as `{steps: [], intent: "..."}`, which `flow_save`
+   * had ALREADY graded assertion-free with a warning, came back "all 1 flow pass".
+   */
+  status: 'pass' | 'fail' | 'unverifiable';
   total: number;
   passed: number;
   failed: number;
   summary: string;
   /** Only the failing flows, with their decision (verdict, what changed, where, next action). */
   failures: SuiteFlowResult[];
+  /**
+   * Flows that replayed without error but assert nothing, so their green means nothing. Counted
+   * apart from `passed` — a number that includes them is not a count of anything verified.
+   */
+  unverifiable?: { flow: string; reason: string }[];
   /**
    * Flows that have both passed AND failed on UNCHANGED code — intermittent, not regressions.
    *

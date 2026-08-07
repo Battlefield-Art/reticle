@@ -250,3 +250,42 @@ describe('bridge round-trip (north-star)', () => {
     await waitUntil(() => !bridge.sessions.resolve('demo').throttled());
   });
 });
+
+/**
+ * `hasCapabilities` is announced in the HELLO, which the SDK sends at connect() — but capabilities
+ * are registered AFTER connect by design, because `registerStore` needs a live SDK to subscribe
+ * through. The SDK therefore re-announces, and the bridge used to answer that by closing the socket
+ * with "hello already received": every app that declared its testable surface reported
+ * `hasCapabilities: false` forever, and re-announcing killed the session outright.
+ */
+describe('a repeat hello is an identity refresh, not a violation', () => {
+  it('updates hasCapabilities without dropping the session', async () => {
+    const bridge = new Bridge({ port: 0 });
+    const port = await bridge.ready;
+    const browser = new FakeBrowser(port, 'refresh-1', false);
+    await browser.open();
+    await waitUntil(() => bridge.sessions.count() === 1);
+    expect(bridge.sessions.get('refresh-1')?.hasCapabilities).toBe(false);
+
+    browser.reannounce({ hasCapabilities: true });
+    await waitUntil(() => bridge.sessions.get('refresh-1')?.hasCapabilities === true);
+
+    expect(bridge.sessions.get('refresh-1')?.hasCapabilities).toBe(true);
+    expect(bridge.sessions.count(), 'the session must survive the refresh').toBe(1);
+    browser.close();
+    await bridge.close();
+  });
+
+  it('still rejects a hello claiming a DIFFERENT session — that is what the guard is for', async () => {
+    const bridge = new Bridge({ port: 0 });
+    const port = await bridge.ready;
+    const browser = new FakeBrowser(port, 'refresh-2', false);
+    await browser.open();
+    await waitUntil(() => bridge.sessions.count() === 1);
+
+    browser.reannounce({ sessionId: 'someone-else' });
+    await waitUntil(() => bridge.sessions.count() === 0);
+    expect(bridge.sessions.count()).toBe(0);
+    await bridge.close();
+  });
+});

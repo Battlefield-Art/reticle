@@ -393,16 +393,21 @@ export const FLOW_TOOLS: ToolDef[] = [
             await lease.release().catch(() => undefined);
           }
         });
-        return buildSuiteVerdict(
-          outcomes.map((o, i) => ({
-            replay:
-              o.ok && o.value !== undefined
-                ? o.value
-                : leaseFailureReplay(requested[i] ?? '', o.error),
-          })),
+        const parallelRuns = await Promise.all(
+          outcomes.map(async (o, i) => {
+            const name = requested[i] ?? '';
+            const replay = o.ok && o.value !== undefined ? o.value : leaseFailureReplay(name, o.error);
+            const loaded = await deps.flows.load(name, projectId).catch(() => null);
+            const flow = loaded !== null && loaded.ok ? loaded.value : undefined;
+            return flow === undefined ? { replay } : { replay, flow };
+          }),
         );
+        return buildSuiteVerdict(parallelRuns);
       }
-      const runs: { replay: FlowReplayResult }[] = [];
+      // The flow FILE travels with each replay so the verdict can tell a green that verified
+      // something from a green that could never have gone red. Without it the suite reported "all 1
+      // flow pass" for a flow with no steps at all.
+      const runs: { replay: FlowReplayResult; flow?: FlowFile }[] = [];
       const timed: TimedReplay[] = [];
       // The flake ledger the CLI gate already keeps — see FlakeStore. It was only ever written by
       // `reticle flow` on the command line, so an AGENT running this tool a hundred times learned
@@ -413,7 +418,9 @@ export const FLOW_TOOLS: ToolDef[] = [
       for (const flowName of requested) {
         const start = deps.now();
         const replay = await replayNamedFlow(deps, { flowName, sessionId });
-        runs.push({ replay });
+        const loaded = await deps.flows.load(flowName, projectId).catch(() => null);
+        const flow = loaded !== null && loaded.ok ? loaded.value : undefined;
+        runs.push(flow === undefined ? { replay } : { replay, flow });
         timed.push({ replay, durationMs: deps.now() - start });
       }
       // Accrue this run's outcomes, then report what the ledger knows. Best-effort on both halves: a

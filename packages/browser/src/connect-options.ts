@@ -36,6 +36,16 @@ export interface ReticleConnectOptions {
    * sensitive keys redacted, per-body capped). Off by default — bodies cost tokens and can carry PII.
    */
   captureNetworkBodies?: boolean;
+  /**
+   * The project root, so source paths report repo-relative instead of absolute.
+   *
+   * React's `_debugSource.fileName` is absolute; the babel stamp is repo-relative. Build plugins that
+   * can `define` a global set it themselves; frameworks that cannot (Next passes it through env,
+   * Astro through its own config) hand it here instead. Taking it as a connect OPTION is what keeps
+   * the generated app-side code plain JavaScript — the previous shape made the caller assign a global,
+   * and the TypeScript cast that needed shipped into a `.jsx` file and broke the build.
+   */
+  root?: string;
   /** Presenter mode: glow border, animated cursor, click/hover effects, narration HUD. */
   present?: boolean;
   /** Per-action pacing (ms) in presenter mode so a human can follow. Default 450. */

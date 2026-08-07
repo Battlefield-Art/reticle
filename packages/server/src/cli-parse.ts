@@ -7,7 +7,7 @@
 
 export const CLI_USAGE = `usage:
   reticle init  [--dry-run] [--port N] [--no-mcp] [--no-install]  (wire Reticle into the project in this directory)
-  reticle serve [--port N] [--drive <url>] [--headed] [--http] [--http-port N] [--http-token T]
+  reticle serve [--port N] [--drive <url>] [--headless] [--http] [--http-port N] [--http-token T]
   reticle stop  [--port N] [--quiet]
   reticle status [--port N]
   reticle doctor [--port N]                            (diagnose setup: Chromium, daemon, port — one command)
@@ -16,8 +16,8 @@ export const CLI_USAGE = `usage:
   reticle affected [--since <ref>] [file...]           (which saved flows must re-verify for the changed files)
   reticle gate [--since <ref>] [file...]               (exit non-zero unless passing artifacts cover the affected flows)
   reticle watch [url]                                  (on save, report which saved flows must re-verify)
-  reticle drive <url> [--headed]                       (foreground mode — for debugging)
-  reticle mcp   [--port N] [--drive <url>] [--headed]  (MCP stdio proxy — auto-starts daemon if needed)
+  reticle drive <url> [--headless]                     (foreground mode — for debugging)
+  reticle mcp   [--port N] [--drive <url>] [--headless] (MCP stdio proxy — auto-starts daemon if needed)
   reticle update                                       (install the latest server version and restart)
   reticle rollback                                     (restore the previous server version and restart)
   reticle license                                      (show enterprise license status: active | eval | missing)
@@ -33,7 +33,10 @@ Cloud (link this project to Reticle Cloud — runs/flows recorded on the dashboa
   reticle project <ls|create <name>>                   (list or create cloud projects)
   reticle config [--runs on|off] [--memory on|off] [--flows on|off] [--verify local|server]
   reticle push                                          (send local run artifacts to the dashboard)
-  reticle runs | regression | share <runId>            (read cloud state; regression exits 3 if any flow broke)`;
+  reticle runs | regression | share <runId>            (read cloud state; regression exits 3 if any flow broke)
+
+'drive' shows the browser; everything else is hidden (serve/mcp own the pool behind leases, replay
+and the spec runner — batch work). --headed opts any of them in, --headless hides drive, CI hides it.`;
 
 const INIT_COMMAND = 'init';
 const SERVE_COMMAND = 'serve';
@@ -125,6 +128,12 @@ export function knownCommand(arg: string | undefined): string {
 }
 
 export const HEADED_FLAG = '--headed';
+/**
+ * Force a hidden browser. The default is now HEADED: a run nobody can see is a run nobody trusts,
+ * and every "did it actually do anything?" question cost a round-trip. CI passes this (or just sets
+ * CI, which flips the default) because there is no display there to be headed on.
+ */
+export const HEADLESS_FLAG = '--headless';
 export const PORT_FLAG = '--port';
 export const DRIVE_FLAG = '--drive';
 const QUIET_FLAG = '--quiet';
@@ -200,7 +209,13 @@ type ServeFlags =
     }
   | { kind: 'error'; message: string };
 
-function parseServeFlags(args: string[], defaultPort: number): ServeFlags {
+/**
+ * `serve` / `mcp` / `_daemon` own the browser POOL, which backs automated work — leased contexts for
+ * parallel agents, flow replay, the spec runner. Those are batch: nobody is watching, and launching
+ * them headed changed timing enough to break four e2e specs. The headed default belongs to the
+ * INTERACTIVE command (`drive`), where a human asked to see the run. `--headed` still opts in here.
+ */
+function parseServeFlags(args: string[], defaultPort: number, _defaultHeadless: boolean): ServeFlags {
   let port = defaultPort;
   let driveUrl: string | undefined;
   let headless = true;
@@ -223,6 +238,8 @@ function parseServeFlags(args: string[], defaultPort: number): ServeFlags {
       if (driveUrl === undefined) return { kind: 'error', message: CLI_USAGE };
     } else if (arg === HEADED_FLAG) {
       headless = false;
+    } else if (arg === HEADLESS_FLAG) {
+      headless = true;
     } else if (arg === HTTP_FLAG) {
       http = true;
     } else if (arg === HTTP_PORT_FLAG) {
@@ -265,12 +282,14 @@ type DriveSuffix =
   | { kind: 'ok'; port: number; driveUrl: string; headless: boolean }
   | { kind: 'error'; message: string };
 
-function parseDriveSuffix(args: string[], port: number): DriveSuffix {
-  let headless = true;
+function parseDriveSuffix(args: string[], port: number, defaultHeadless: boolean): DriveSuffix {
+  let headless = defaultHeadless;
   let driveUrl: string | undefined;
   for (const arg of args) {
     if (arg === HEADED_FLAG) {
       headless = false;
+    } else if (arg === HEADLESS_FLAG) {
+      headless = true;
     } else if (arg.startsWith('--')) {
       return { kind: 'error', message: CLI_USAGE };
     } else if (driveUrl === undefined) {
@@ -387,7 +406,18 @@ function parseTargetArgs(rest: string[]): { files: string[]; since?: string } {
   return since === undefined ? { files } : { files, since };
 }
 
-export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
+/**
+ * @param defaultHeadless Whether a browser Reticle launches should be hidden when no flag says
+ *   otherwise. Injected rather than read from the environment here, because this module is pure —
+ *   `cli.ts` decides it from `CI`. The product default is FALSE: showing the run is what makes it
+ *   trustworthy, and asking people to opt into seeing their own app was backwards.
+ */
+export function parseCliArgs(
+  argv: string[],
+  defaultPort: number,
+  defaultHeadless = false,
+): CliResult {
+  // Bare `reticle` is `serve` — a pool-owning command, so headless like the rest of that family.
   if (argv.length === 0) return { kind: 'serve', port: defaultPort, headless: true, http: false };
 
   const [cmd, ...rest] = argv;
@@ -407,7 +437,7 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
       return { kind: 'init', port: r.port, mcp: r.mcp, dryRun: r.dryRun, install: r.install };
     }
     case SERVE_COMMAND: {
-      const r = parseServeFlags(rest, defaultPort);
+      const r = parseServeFlags(rest, defaultPort, defaultHeadless);
       if (r.kind === 'error') return r;
       return {
         kind: 'serve',
@@ -488,12 +518,12 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
       return url !== undefined ? { kind: 'open', port, url } : { kind: 'open', port };
     }
     case DRIVE_COMMAND: {
-      const r = parseDriveSuffix(rest, defaultPort);
+      const r = parseDriveSuffix(rest, defaultPort, defaultHeadless);
       if (r.kind === 'error') return r;
       return { kind: 'drive', port: r.port, driveUrl: r.driveUrl, headless: r.headless };
     }
     case DAEMON_INNER_COMMAND: {
-      const r = parseServeFlags(rest, defaultPort);
+      const r = parseServeFlags(rest, defaultPort, defaultHeadless);
       if (r.kind === 'error') return r;
       return {
         kind: '_daemon',
@@ -552,7 +582,7 @@ export function parseCliArgs(argv: string[], defaultPort: number): CliResult {
     case ROLLBACK_COMMAND:
       return { kind: 'rollback' };
     case MCP_COMMAND: {
-      const r = parseServeFlags(rest, defaultPort);
+      const r = parseServeFlags(rest, defaultPort, defaultHeadless);
       if (r.kind === 'error') return r;
       return {
         kind: 'mcp',
