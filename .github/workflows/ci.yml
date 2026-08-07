@@ -39,6 +39,36 @@ jobs:
         continue-on-error: true
       - run: pnpm format:check
 
+  # Windows is the MAJORITY platform and has never been tested.
+  #
+  # 65 of 99 persons and 1,032 of 1,468 events in a day of telemetry are win32 — 66% of users — and
+  # until this job existed nothing in this repo had ever executed on Windows. Two total blockers were
+  # reported by a Windows user before any check here could see them, and a path bug that made every
+  # source pointer an absolute `C:\Users\...` path shipped for months because a pure-string mistake
+  # on the majority platform had nothing to trip over.
+  #
+  # ADVISORY (continue-on-error) on purpose: nothing here has ever run green on Windows, so making it
+  # blocking today would red every PR for failures nobody has triaged yet. It runs, it reports, and
+  # the moment it is green it should be flipped to blocking — a permanently-advisory job is one
+  # people learn to scroll past, which is the same as not having it.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm typecheck
+      # The unit gate only. The e2e battery boots three HTTP servers and a browser, which is a
+      # separate problem from "does this code run on Windows at all" — start with the cheap question.
+      - run: pnpm test:unit
+
   # `reticle-tauri` is Rust, so NONE of the gates above can see it — and it had no job at all, which
   # meant the Windows capture backend had never been compiled by CI even though publish-crate.yml
   # claimed it was. Linux builds natively here (its webkit2gtk build scripts cannot cross-compile)
