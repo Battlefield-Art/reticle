@@ -24,11 +24,40 @@ interface DebugSource {
  * app was on — and `/Users/someone/tmp/wt/apps/x/src/A.tsx` is noise in a report, not a pointer.
  * The build plugins define the root; without one we return the path unchanged rather than guessing.
  */
-function relativeToRoot(file: string): string {
+/** Backslashes to forward slashes, so a Windows path can be compared with a posix one. */
+function toPosix(path: string): string {
+  return path.replace(/\\/g, '/');
+}
+
+/**
+ * Make a source pointer repo-relative.
+ *
+ * Both sides of this comparison are native paths, and on Windows that means BACKSLASHES on both:
+ * `C:\Users\dev\app` and `C:\Users\dev\app\src\Counter.tsx`. Building the prefix as
+ * `root + '/'` produced `C:\Users\dev\app/` — a mixed separator that can never match the start of
+ * the file — so on Windows the root was never stripped and every pointer came back as an absolute
+ * path from the developer's own machine. Exactly what the root exists to prevent, on the platform
+ * carrying two thirds of Reticle's users.
+ *
+ * Normalizing to posix fixes three cases at once: native Windows, the mixed pair Vite produces (it
+ * normalizes module ids to forward slashes while `cwd()` stays native), and plain posix. The result
+ * is always forward-slashed, because flow anchors and `file:line` pointers all speak posix.
+ *
+ * The drive letter is compared case-insensitively — Windows treats `C:\App` and `c:\app` as the
+ * same path, and the two spellings routinely come from different APIs — but the returned suffix is
+ * sliced from the ORIGINAL file, so nothing else gets case-folded.
+ */
+export function relativeToRoot(file: string): string {
   const root = (globalThis as Record<string, unknown>)[RETICLE_ROOT_GLOBAL];
   if (typeof root !== 'string' || root.length === 0) return file;
-  const prefix = root.endsWith('/') ? root : `${root}/`;
-  return file.startsWith(prefix) ? file.slice(prefix.length) : file;
+  const normalizedRoot = toPosix(root).replace(/\/+$/, '');
+  if (normalizedRoot.length === 0) return file;
+  const normalizedFile = toPosix(file);
+  const prefix = `${normalizedRoot}/`;
+  const matches =
+    normalizedFile.startsWith(prefix) ||
+    normalizedFile.toLowerCase().startsWith(prefix.toLowerCase());
+  return matches ? normalizedFile.slice(prefix.length) : file;
 }
 
 interface Fiber {
