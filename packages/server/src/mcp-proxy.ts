@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { LOOPBACK_HOST, MCP_SSE_PATH, ReticleDir, CONTRACT_FINGERPRINT } from '@reticlehq/core';
 import { SERVER_VERSION } from './server-version.js';
 import { PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './peer-announce.js';
+import { onStreamDrop, onClientRequest, OnDrop, OnRequest } from './proxy-lifecycle.js';
 import { log } from './log.js';
 
 const DEFAULT_DAEMON_READY_TIMEOUT_MS = 10_000;
@@ -319,7 +320,7 @@ export function startMcpProxy(
         // loop forever — measured at four processes in 200s before this. If nothing is listening the
         // proxy goes DORMANT and the next client request brings a daemon back (see the stdin reader).
         void probeDaemon(port).then((listening) => {
-          if (listening) {
+          if (onStreamDrop(listening) === OnDrop.REATTACH) {
             connect(false);
             return;
           }
@@ -381,24 +382,26 @@ export function startMcpProxy(
         const trimmed = line.trim();
         if (trimmed === '') continue;
         replay.observeOutbound(trimmed);
-        if (postUrl === null) {
-          stdinQueue.push(trimmed);
-          // Demand, at last: start a daemon and reattach. The queue is flushed on `endpoint`.
-          if (dormant) {
-            dormant = false;
-            attempts = 0;
-            void (ensureDaemon?.() ?? Promise.resolve())
-              .then(() => connect(false))
-              .catch((err: unknown) => {
-                dormant = true;
-                proxyLog('reticle_mcp_proxy_wake_failed', {
-                  port,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-              });
-          }
-        } else {
+        const action = onClientRequest(postUrl !== null, dormant);
+        if (action === OnRequest.SEND && postUrl !== null) {
           void postToSession(postUrl, trimmed);
+          continue;
+        }
+        stdinQueue.push(trimmed);
+        // WAKE is the ONLY path allowed to start a daemon — see proxy-lifecycle.ts. The queue is
+        // flushed once the new session's `endpoint` frame arrives.
+        if (action === OnRequest.WAKE) {
+          dormant = false;
+          attempts = 0;
+          void (ensureDaemon?.() ?? Promise.resolve())
+            .then(() => connect(false))
+            .catch((err: unknown) => {
+              dormant = true;
+              proxyLog('reticle_mcp_proxy_wake_failed', {
+                port,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            });
         }
       }
     });
