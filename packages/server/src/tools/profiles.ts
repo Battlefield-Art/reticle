@@ -133,6 +133,37 @@ export function resolveToolProfile(explicit?: string): ToolProfile {
   return TOOL_PROFILE.HYBRID;
 }
 
+/** The live profile plus where it came from — see describeToolProfile. */
+export interface ToolProfileOrigin {
+  active: ToolProfile;
+  source: string;
+}
+
+/**
+ * Which profile is live, and what chose it.
+ *
+ * `RETICLE_TOOL_PROFILE` is read by the DAEMON at startup, never by the client, so exporting it in an
+ * agent's environment while a daemon is already running changes nothing at all — two different
+ * profiles then look identical from the agent's side, which is exactly the observation that produced
+ * a "standard and full are the same 46 tools" report. Documenting that was not enough; the setting
+ * failing to take has to be VISIBLE, so this rides along in the reticle_tools catalog.
+ */
+export function describeToolProfile(active: ToolProfile): ToolProfileOrigin {
+  const env = process.env[TOOL_PROFILE_ENV];
+  if (env === undefined || env.length === 0) {
+    return active === resolveToolProfile()
+      ? { active, source: `default (${TOOL_PROFILE_ENV} unset when the daemon started)` }
+      : { active, source: 'set explicitly when the daemon was started' };
+  }
+  if (active !== env) {
+    return {
+      active,
+      source: `${TOOL_PROFILE_ENV}=${env} did NOT take effect (unknown profile name, or the daemon was started with an explicit one)`,
+    };
+  }
+  return { active, source: `${TOOL_PROFILE_ENV}=${env} in the DAEMON's environment at startup` };
+}
+
 export function filterTools(tools: ToolDef[], profile: ToolProfile): ToolDef[] {
   if (profile === TOOL_PROFILE.CORE) return tools.filter((t) => CORE_TOOL_NAMES.has(t.name));
   if (profile === TOOL_PROFILE.STANDARD)

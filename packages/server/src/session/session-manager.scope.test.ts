@@ -94,6 +94,29 @@ describe('project-scoped resolve()', () => {
     expect(() => bridge.sessions.resolve(undefined, { projectId: 'ghost' })).toThrow(/ghost/);
   });
 
+  /**
+   * The refusal used to ask "is that app running with @reticlehq/core enabled?" — the ONE thing that
+   * is definitely true, since the connected session is sitting right there in reticle_sessions. The
+   * reader then goes looking at their app instead of at the scope. It cost ~20 minutes with the
+   * source open. What is connected, and how to target it, is in hand at the point of failure.
+   */
+  it('names the sessions that ARE connected, and how to target one', async () => {
+    await connect({ sessionId: 'stray', url: 'http://localhost:4310/', projectId: 'showcase' });
+    await waitForSessions(1);
+
+    let message = '';
+    try {
+      bridge.sessions.resolve(undefined, { projectId: 'ghost' });
+    } catch (err) {
+      message = err instanceof Error ? err.message : String(err);
+    }
+    expect(message).toContain('ghost'); // the scope that found nothing
+    expect(message).toContain('showcase'); // the project that IS connected
+    expect(message).toContain('stray'); // the sessionId to pass
+    expect(message).toContain('http://localhost:4310/'); // where it came from
+    expect(message).not.toContain('is that app running');
+  });
+
   it('origin scope works for legacy SDKs that send no projectId', async () => {
     await connect({ sessionId: 'next', url: 'http://localhost:3000/' });
     await connect({ sessionId: 'vite', url: 'http://localhost:5173/' });

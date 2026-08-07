@@ -4,7 +4,12 @@ import { z } from 'zod';
 import { isToonable, resultToToon } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from './tools/tools.js';
 import type { ToolDef } from './tools/tools.js';
-import { filterTools, TOOL_PROFILE, type ToolProfile } from './tools/profiles.js';
+import {
+  filterTools,
+  describeToolProfile,
+  TOOL_PROFILE,
+  type ToolProfile,
+} from './tools/profiles.js';
 import { buildDynamicTools } from './tools/dynamic-tools.js';
 import { runTool, SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
 import { sessionEnvelopeShape } from './tools/tool-kit.js';
@@ -199,10 +204,13 @@ type ReticleRegisterTool = (
  * call. `full` advertises everything and needs no hatch.
  */
 export function advertisedTools(profile: ToolProfile): ToolDef[] {
-  if (profile === TOOL_PROFILE.DYNAMIC) return buildDynamicTools(TOOLS);
+  // The catalog reports which profile is live and what chose it — the only way an agent can see that
+  // its own RETICLE_TOOL_PROFILE did not take (the daemon read the value it started with).
+  const origin = describeToolProfile(profile);
+  if (profile === TOOL_PROFILE.DYNAMIC) return buildDynamicTools(TOOLS, origin);
   if (profile === TOOL_PROFILE.FULL) return TOOLS;
   const base = filterTools(TOOLS, profile === TOOL_PROFILE.HYBRID ? TOOL_PROFILE.CORE : profile);
-  return [...base, ...buildDynamicTools(TOOLS)];
+  return [...base, ...buildDynamicTools(TOOLS, origin)];
 }
 
 /**

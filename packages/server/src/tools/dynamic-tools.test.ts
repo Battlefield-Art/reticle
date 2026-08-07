@@ -58,6 +58,26 @@ describe('buildDynamicTools — the dynamic profile meta-tools', () => {
     expect(out.tools.find((t) => t.name === 'nope')?.error).toBe('unknown tool');
   });
 
+  /**
+   * RETICLE_TOOL_PROFILE is read by the DAEMON at startup, not by the client. Setting it in an
+   * agent's environment while a daemon is already running changes nothing — which is how "standard
+   * and full are the same 46 tools" got reported. The setting not taking effect must be OBSERVABLE,
+   * so the catalog says which profile is live and where it came from.
+   */
+  it('reports the ACTIVE profile and where it came from, so a setting that did not take is visible', async () => {
+    const tools = buildDynamicTools(fakeTools, {
+      active: 'hybrid',
+      source: 'default (RETICLE_TOOL_PROFILE unset when the daemon started)',
+    });
+    const discover = tools.find((t) => t.name === ReticleTool.TOOLS);
+    const out = (await discover?.handler(NO_DEPS, {})) as {
+      profile: { active: string; source: string; note: string };
+    };
+    expect(out.profile.active).toBe('hybrid');
+    expect(out.profile.source).toContain('RETICLE_TOOL_PROFILE');
+    expect(out.profile.note).toContain('restart');
+  });
+
   it('reticle_run on an unknown tool returns the available names (no invocation)', async () => {
     const tools = buildDynamicTools(fakeTools);
     const run = tools.find((t) => t.name === ReticleTool.RUN);

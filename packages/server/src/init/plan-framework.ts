@@ -6,6 +6,7 @@
 
 import { patchViteConfig, VitePatchKind } from './vite-config.js';
 import { patchNextConfig, patchRootLayout, patchPagesApp } from './next-patch.js';
+import { patchAstroConfig, patchAstroLayout } from './astro-patch.js';
 import { PatchKind, type SourcePatch } from './patch-kind.js';
 import {
   viteManual,
@@ -19,6 +20,7 @@ import {
   svelteKitHooksFile,
   SVELTEKIT_HOOKS_PATH,
   UNVERIFIED_FRAMEWORK_NOTE,
+  astroManual,
 } from './snippets.js';
 import { StepStatus, type PlanInput, type Step } from './plan.js';
 
@@ -262,5 +264,45 @@ export function svelteKitSteps(input: PlanInput): Step[] {
       },
       dependsOnInstall: true,
     },
+  ];
+}
+
+/**
+ * Astro: the config define + build target, and the connect script in ONE layout.
+ *
+ * Astro was the last gated stack left printing a recipe it did not apply. It still falls back to the
+ * printed one whenever the choice is not obvious — no config, no single layout, or a shape the
+ * patchers do not fully recognise — because which page or layout to instrument is a real decision
+ * and a half-edited build config is worse than a documented manual step.
+ */
+export function astroSteps(input: PlanInput): Step[] {
+  const config = input.astroConfig ?? null;
+  const layout = input.astroLayout ?? null;
+  const manual = astroManual(input.options.port, input.options.projectId);
+  if (config === null || layout === null) {
+    return [
+      {
+        title: 'Connect snippet (Astro)',
+        target: 'astro.config + layout',
+        status: StepStatus.MANUAL,
+        detail: manual,
+      },
+    ];
+  }
+  return [
+    patchStep(
+      'Astro config (token + build target)',
+      config.path,
+      patchAstroConfig(config.source),
+      'inline the pairing token and raise build.target to es2022',
+      manual,
+    ),
+    patchStep(
+      'Connect snippet (Astro)',
+      layout.path,
+      patchAstroLayout(layout.source, input.options.port, input.options.projectId),
+      'add the dev-only connect <script> before </body>',
+      manual,
+    ),
   ];
 }

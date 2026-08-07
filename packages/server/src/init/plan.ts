@@ -27,12 +27,17 @@ import {
   AGENTS_MD_PATH,
   CURSOR_RULE_PATH,
 } from './agent-rules.js';
-import { viteSteps, nextSteps, svelteKitSteps, VITE_PLUGIN_DETAIL } from './plan-framework.js';
+import {
+  viteSteps,
+  nextSteps,
+  svelteKitSteps,
+  astroSteps,
+  VITE_PLUGIN_DETAIL,
+} from './plan-framework.js';
 import {
   htmlManual,
   reticleConfigContent,
   unverifiedUiLibraryNote,
-  astroManual,
 } from './snippets.js';
 
 // An app dev installs exactly the audience-scoped browser-side dependencies — never the retired
@@ -149,6 +154,16 @@ export interface PlanInput {
   cursorConfigPath: string;
   /** Discovered Vite config: its path + source, or null if none found. */
   viteConfig: { path: string; source: string } | null;
+  /** Discovered Astro config: its path + source, or null if none found. */
+  astroConfig?: { path: string; source: string } | null | undefined;
+  /**
+   * The single layout to instrument, or null when the choice is not obvious.
+   *
+   * WHICH page or layout to instrument is a real decision — so `init` only makes it when there is
+   * exactly one candidate. Zero or several falls back to the printed recipe rather than guessing at
+   * the file every page of the user's site inherits from.
+   */
+  astroLayout?: { path: string; source: string } | null | undefined;
   /** Discovered Next config filename (e.g. 'next.config.mjs'), or null. */
   nextConfigFile: string | null;
   /** Source of that Next config, so the export can be wrapped in withReticle. */
@@ -504,12 +519,7 @@ export function buildPlan(input: PlanInput): Plan {
   } else if (input.detection.framework === Framework.NEXT) {
     steps.push(...nextSteps(input));
   } else if (input.detection.framework === Framework.ASTRO) {
-    steps.push({
-      title: 'Connect snippet (Astro)',
-      target: 'astro.config + layout',
-      status: StepStatus.MANUAL,
-      detail: astroManual(input.options.port, input.options.projectId),
-    });
+    steps.push(...astroSteps(input));
   } else if (input.detection.framework === Framework.SVELTEKIT) {
     steps.push(...svelteKitSteps(input));
     // The Vite plugin as well as the client hook. `init` already INSTALLS @reticlehq/vite-plugin for

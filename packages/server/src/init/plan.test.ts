@@ -32,6 +32,8 @@ function input(partial: Partial<PlanInput>): PlanInput {
     cursorConfig: partial.cursorConfig ?? null,
     cursorConfigPath: partial.cursorConfigPath ?? '/home/u/.cursor/mcp.json',
     viteConfig: partial.viteConfig ?? null,
+    astroConfig: partial.astroConfig,
+    astroLayout: partial.astroLayout,
     nextConfigFile: partial.nextConfigFile ?? null,
     nextConfigSource: partial.nextConfigSource,
     nextLayout: partial.nextLayout,
@@ -437,6 +439,44 @@ describe('buildPlan — the Cursor rule is a project file, not a machine-wide on
 });
 
 describe('buildPlan — Astro', () => {
+  /**
+   * Astro was the last gated stack whose wiring `init` printed and did not apply — the only ⚠ left
+   * on a supported framework. With a config and exactly one layout in hand, both halves are written.
+   */
+  it('APPLIES both halves when there is a config and exactly one layout', () => {
+    const plan = buildPlan(
+      input({
+        detection: detection(Framework.ASTRO, 19),
+        astroConfig: {
+          path: 'astro.config.mjs',
+          source: "import { defineConfig } from 'astro/config';\nexport default defineConfig({});\n",
+        },
+        astroLayout: {
+          path: 'src/layouts/Layout.astro',
+          source: '<html><body><slot /></body></html>\n',
+        },
+      }),
+    );
+    const config = step(plan, 'Astro config (token + build target)');
+    expect(config.status).toBe(StepStatus.APPLY);
+    expect(config.write?.content).toContain('__RETICLE_TOKEN__');
+    const layout = step(plan, 'Connect snippet (Astro)');
+    expect(layout.status).toBe(StepStatus.APPLY);
+    expect(layout.write?.path).toBe('src/layouts/Layout.astro');
+    expect(layout.write?.content).toContain('reticle.connect');
+  });
+
+  it('falls back to the printed recipe when the layout is ambiguous', () => {
+    const plan = buildPlan(
+      input({
+        detection: detection(Framework.ASTRO, 19),
+        astroConfig: { path: 'astro.config.mjs', source: 'export default defineConfig({});\n' },
+        astroLayout: null, // zero or several candidates — not init's decision to make
+      }),
+    );
+    expect(step(plan, 'Connect snippet (Astro)').status).toBe(StepStatus.MANUAL);
+  });
+
   it('gets Astro-specific instructions, not the generic HTML connect snippet', () => {
     const plan = buildPlan(input({ detection: detection(Framework.ASTRO, 19) }));
     expect(maybeStep(plan, 'Connect snippet')).toBeUndefined();

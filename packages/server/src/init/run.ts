@@ -120,6 +120,14 @@ const VITE_CONFIG_CANDIDATES = [
   'vite.config.mjs',
   'vite.config.mts',
 ];
+const ASTRO_CONFIG_CANDIDATES = [
+  'astro.config.mjs',
+  'astro.config.js',
+  'astro.config.ts',
+  'astro.config.cjs',
+];
+/** Where a conventional Astro app keeps the layout every page wraps itself in. */
+const ASTRO_LAYOUTS_DIR = 'src/layouts';
 const NEXT_CONFIG_CANDIDATES = [
   'next.config.mjs',
   'next.config.js',
@@ -216,6 +224,16 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const cursorPresent = options.mcp && io.exists(cursorDir);
   const cursorConfig = cursorPresent ? io.readFile(cursorConfigPath) : null;
 
+  const astroPath = firstPresent(rootFiles, ASTRO_CONFIG_CANDIDATES);
+  const astroSource = astroPath === null ? null : io.readFile(astroPath);
+  // Exactly one layout, or none: which page or layout to instrument is a real decision, and with
+  // several candidates the printed recipe is the honest answer rather than a guess at the one every
+  // page inherits from.
+  const astroLayouts = io.listFiles(ASTRO_LAYOUTS_DIR).filter((f) => f.endsWith('.astro'));
+  const soleLayout = astroLayouts.length === 1 ? astroLayouts[0] : undefined;
+  const layoutRelPath = soleLayout === undefined ? null : `${ASTRO_LAYOUTS_DIR}/${soleLayout}`;
+  const astroLayoutSource = layoutRelPath === null ? null : io.readFile(layoutRelPath);
+
   const nextConfigFile = firstPresent(rootFiles, NEXT_CONFIG_CANDIDATES);
   // App Router first; a Pages Router app has no layout, and its mount point is pages/_app.
   const layoutPath =
@@ -236,6 +254,12 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     cursorConfig,
     cursorConfigPath,
     viteConfig,
+    astroConfig:
+      astroPath !== null && astroSource !== null ? { path: astroPath, source: astroSource } : null,
+    astroLayout:
+      layoutRelPath !== null && astroLayoutSource !== null
+        ? { path: layoutRelPath, source: astroLayoutSource }
+        : null,
     nextConfigFile,
     nextConfigSource: nextConfigFile === null ? null : io.readFile(nextConfigFile),
     nextLayout:

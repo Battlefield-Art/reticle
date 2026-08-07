@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ToolDef, ToolDeps } from './tools.js';
 import { runTool } from './invoke-tool.js';
 import { ReticleTool } from './tool-names.js';
+import { TOOL_PROFILE_ENV, type ToolProfileOrigin } from './profiles.js';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
 
 /**
@@ -51,8 +52,19 @@ function paramInfo(shape: z.ZodRawShape): ParamInfo[] {
  * Build the two dynamic meta-tools over the full tool table. `reticle_run` dispatches through the same
  * `runTool` chokepoint as a direct call, so session-health splicing and every other invariant hold.
  */
-export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
+export function buildDynamicTools(allTools: ToolDef[], profile?: ToolProfileOrigin): ToolDef[] {
   const byName = new Map(allTools.map((t) => [t.name, t]));
+  // The profile is a DAEMON-startup decision, so an agent that exported RETICLE_TOOL_PROFILE into its
+  // own environment sees no change and has, until now, no way to tell. Reported with the catalog.
+  const profileBlock =
+    profile === undefined
+      ? {}
+      : {
+          profile: {
+            ...profile,
+            note: `The profile is read once at daemon startup — change ${TOOL_PROFILE_ENV} and restart the daemon, or it has no effect. Every tool is callable via reticle_run under any profile.`,
+          },
+        };
 
   const reticleTools: ToolDef = {
     name: ReticleTool.TOOLS,
@@ -71,6 +83,7 @@ export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
       if (names === undefined || names.length === 0) {
         return Promise.resolve({
           tools: allTools.map((t) => ({ name: t.name, summary: firstSentence(t.description) })),
+          ...profileBlock,
           next: 'Load params with reticle_tools { names:[…] }, then call reticle_run { tool, args }.',
         });
       }

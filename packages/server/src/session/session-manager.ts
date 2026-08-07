@@ -42,15 +42,32 @@ function scopeSessions(sessions: Session[], scope?: ResolveScope): Session[] {
   return sessions;
 }
 
-/** Honest, scoped error when sessions exist but none match the agent's project. */
-function scopeMissError(scope?: ResolveScope): string {
+/**
+ * Honest, scoped error when sessions exist but none match the agent's project.
+ *
+ * The daemon takes its default scope from the `.reticle.json` of whichever directory started it, so
+ * attaching from a second project — or another worktree of the SAME project — makes every tool
+ * refuse while `reticle_sessions` shows the tab sitting right there. The old message asked "is that
+ * app running with @reticlehq/core enabled?", which is the one thing that is definitely true, so the
+ * reader goes looking at their app instead of at the scope. Name what IS connected and how to
+ * target it: both facts are already in hand here.
+ */
+function scopeMissError(connected: Session[], scope?: ResolveScope): string {
   const who =
     scope?.projectId !== undefined
       ? `project '${scope.projectId}'`
       : scope?.url !== undefined
         ? `your app at ${scope.url}`
         : 'the active project';
-  return `no browser session for ${who} — is that app running with @reticlehq/core enabled? (other apps may be connected, but they won't be driven by mistake)`;
+  const listed = connected
+    .map((s) => `'${s.projectId ?? 'untagged'}' (${s.url}, sessionId '${s.id}')`)
+    .join(', ');
+  return (
+    `no browser session for ${who}, but ${String(connected.length)} session(s) ARE connected under a ` +
+    `different project: ${listed}. The daemon scopes to the .reticle.json of the directory it was ` +
+    `started in, so this is a scope mismatch, not a dead app. Pass the sessionId above to target one, ` +
+    `or restart the daemon from that app's directory.`
+  );
 }
 
 /**
@@ -169,10 +186,14 @@ export class SessionManager {
     // candidate set, no matter how recently it was heard from. This is the anti-cross-talk guard.
     // An explicit per-call scope wins; otherwise the daemon's active-project default applies.
     const effectiveScope = scope ?? this.#defaultScope;
-    const all = scopeSessions([...this.#sessions.values()], effectiveScope);
+    const connected = [...this.#sessions.values()];
+    const all = scopeSessions(connected, effectiveScope);
     if (all.length === 0) {
       // Sessions exist, but none belong to the scoped project — never fall back to a foreign tab.
-      throw new Error(scopeMissError(effectiveScope));
+      // ponytail: still a refusal, deliberately. Auto-targeting the only connected tab would be the
+      // friendlier 90% case and would also silently defeat the anti-cross-talk guard this scope
+      // exists to be. Naming the tab and its sessionId costs the agent one extra argument.
+      throw new Error(scopeMissError(connected, effectiveScope));
     }
     if (all.length === 1) {
       const [only] = all;
