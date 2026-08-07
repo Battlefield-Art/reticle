@@ -39,6 +39,25 @@ export const SELF_RECOVERING_MARKER =
   'Then call reticle_sessions again — it will appear within a second of the page loading.';
 const RETRY = SELF_RECOVERING_MARKER;
 
+/**
+ * The way out that needs no human at all.
+ *
+ * `reticle_lease` opens a browser Reticle drives itself, instead of waiting for somebody's tab to
+ * dial in. Measured over a day of telemetry it is the single strongest predictor of a session that
+ * works: the 5 sessions that used it had a MEDIAN of 30 tool calls and produced 46% of every bug
+ * found, against a median of 1 call for the 20 active sessions that did not — and not one
+ * single-call bounce used one. It is also advertised on no profile except `full`, so an agent only
+ * ever finds it if it already knew it existed. Naming it HERE puts it in front of the agent at the
+ * one moment it is the answer, and costs nothing on the turns when it is not.
+ *
+ * Only offered when the app is known to carry the SDK: leasing an uninstrumented app just burns a
+ * browser and comes back `ready:false`.
+ */
+const SELF_SERVE =
+  'You do not have to wait for the human: reticle_lease {action:"acquire", url} opens a browser ' +
+  'Reticle drives itself, and returns a sessionId you can use immediately (reach it with ' +
+  'reticle_run {tool:"reticle_lease"} if it is not advertised directly; release it when you finish).';
+
 export function diagnoseNoSession(facts: NoSessionFacts): string {
   const { everConnected, initialized, listening, port } = facts;
   const ports = listening.join(', ');
@@ -47,7 +66,7 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
     return (
       'no browser session connected — but one WAS connected to this daemon earlier, so the wiring ' +
       'is correct. The tab was closed, navigated away, or hard-reloaded. Ask the human to reopen ' +
-      `the app (or run \`reticle open\`), or reload the tab. ${RETRY}`
+      `the app (or run \`reticle open\`), or reload the tab. ${SELF_SERVE} ${RETRY}`
     );
   }
 
@@ -74,6 +93,6 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
     `wired for Reticle — so the app is either serving a build made before the wiring landed, or ` +
     `dialling a different daemon than this one (this daemon is on ${String(port)}). Ask the human ` +
     'to restart the dev server and hard-reload the page; if it still does not appear, check that ' +
-    `the app's reticle port matches ${String(port)}. ${RETRY}`
+    `the app's reticle port matches ${String(port)}. ${SELF_SERVE} ${RETRY}`
   );
 }

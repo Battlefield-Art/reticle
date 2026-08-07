@@ -75,6 +75,59 @@ describe('diagnoseNoSession', () => {
     expect(msg).toContain('5173');
   });
 
+  /**
+   * The branch where the agent does not need the human at all.
+   *
+   * `reticle_lease` opens a browser Reticle controls instead of waiting for the human's tab to dial
+   * in. Measured over a day: the 5 sessions that used it had a MEDIAN of 30 tool calls and produced
+   * 46% of every bug found, against a median of 1 call for the 20 active sessions that did not — and
+   * not one single-call bounce used a lease. It is the difference between working and bouncing.
+   *
+   * It is also advertised on NO profile but `full`, so an agent finds it only if it already knew.
+   * The moment it matters is exactly here, so this is where it gets named — at no per-turn cost.
+   */
+  it('offers self-service driving when the app is wired but no tab is open', () => {
+    const msg = diagnoseNoSession({
+      everConnected: false,
+      initialized: true,
+      listening: [5173],
+      port: 4400,
+    });
+    expect(msg).toContain('reticle_lease');
+    // Advertised only under `full`; everywhere else it is reached through the meta-tool.
+    expect(msg).toContain('reticle_run');
+  });
+
+  it('offers it again when a tab was connected and went away', () => {
+    const msg = diagnoseNoSession({
+      everConnected: true,
+      initialized: true,
+      listening: [5173],
+      port: 4400,
+    });
+    expect(msg).toContain('reticle_lease');
+  });
+
+  it('does NOT offer it when the app has no SDK — a leased tab would never dial in either', () => {
+    const msg = diagnoseNoSession({
+      everConnected: false,
+      initialized: false,
+      listening: [5173],
+      port: 4400,
+    });
+    expect(msg).not.toContain('reticle_lease');
+  });
+
+  it('does NOT offer it when nothing is running — there is nothing to open', () => {
+    const msg = diagnoseNoSession({
+      everConnected: false,
+      initialized: true,
+      listening: [],
+      port: 4400,
+    });
+    expect(msg).not.toContain('reticle_lease');
+  });
+
   it('always ends with something the agent can DO', () => {
     for (const input of [
       { everConnected: true, initialized: true, listening: [], port: 4400 },
