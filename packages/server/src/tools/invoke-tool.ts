@@ -5,6 +5,7 @@ import { getTelemetry } from '../telemetry/telemetry.js';
 import { VERIFICATION_TOOLS } from './feedback-tools.js';
 import { takeUpdateNudge } from '../update/update-nudge.js';
 import { takeVersionSkew } from '../version-nudge.js';
+import { noteToolCall } from '../daemon-usefulness.js';
 import { bugsInResult } from '../telemetry/bug-found.js';
 import { asString } from './tools-helpers.js';
 import { ReticleTool } from './tool-names.js';
@@ -166,6 +167,8 @@ export async function runTool(
   // Started/settled as a pair rather than a bare counter: several agents can be inside runTool at
   // once, so a single "last start" field would attribute one tool's duration to another. The returned
   // closure carries this call's own identity, which is also what makes peak-concurrency measurable.
+  // A daemon that has served even one tool call is doing a job for somebody; see daemon-usefulness.
+  noteToolCall();
   const settleTiming = getSessionMetrics().startToolCall(tool.name, args);
   const startedAt = Date.now();
   const rawSessionId = asString(args['sessionId']);

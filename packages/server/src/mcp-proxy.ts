@@ -253,7 +253,15 @@ export function buildSessionUrl(rawData: string, port: number): string {
  * `/mcp` could. The daemon demonstrably stays up across these drops, so the stream ending is a
  * transport event, not a shutdown: reconnect to it and replay the handshake instead of dying.
  */
-export function startMcpProxy(port: number): Promise<never> {
+export function startMcpProxy(
+  port: number,
+  /**
+   * Bring a daemon back before reconnecting. Without it the proxy retried a DEAD port until the
+   * budget ran out and then killed itself, taking the agent's whole Reticle surface with it — the
+   * failure mode for a daemon that crashed, was stopped, or shut itself down as idle.
+   */
+  ensureDaemon?: () => Promise<void>,
+): Promise<never> {
   return new Promise<never>((_resolve, reject) => {
     let postUrl: string | null = null;
     const stdinQueue: string[] = [];
@@ -297,7 +305,12 @@ export function startMcpProxy(port: number): Promise<never> {
         retryInMs: wait,
         ...(detail !== undefined ? { detail } : {}),
       });
-      setTimeout(() => connect(false), wait).unref();
+      setTimeout(() => {
+        // Respawn first: reconnecting to a port with nothing behind it can only fail.
+        void (ensureDaemon?.() ?? Promise.resolve())
+          .catch(() => undefined)
+          .then(() => connect(false));
+      }, wait).unref();
     }
 
     function connect(first: boolean): void {

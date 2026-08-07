@@ -32,6 +32,7 @@ import { startVerifyServer } from './runs/verify-server.js';
 import { createMcpServer } from './mcp.js';
 import { SessionReaper, endAllSessions, MCP_DISCONNECT_SUMMARY } from './session/session-reaper.js';
 import { wireSessionScope } from './session/no-session-watch.js';
+import { buildIdlePredicate } from './daemon-usefulness.js';
 import { resolveToolProfile } from './tools/profiles.js';
 import { statusPayload } from './status-payload.js';
 import { CdpRealInputProvider, LaunchedRealInputProvider } from './input/real-input.js';
@@ -580,9 +581,9 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     ...(realInput !== undefined ? { realInput } : {}),
     ...(verifyHttp !== undefined ? { verifyPort: verifyHttp.port } : {}),
     ...(security.token !== undefined ? { token: security.token } : {}),
-    // Idle = nobody is using the daemon: no agent attached, no browser tab connected, no pool lease.
-    // The daemon entry self-shuts-down after this holds for the grace window (see cli.ts / IdleShutdown).
-    isIdle: () => !agentConnected && bridge.sessions.count() === 0 && pool.activeCount() === 0,
+    // Nobody is using this daemon — self-shuts-down once it holds for the grace window. See
+    // daemon-usefulness.ts for the two ways that can be true.
+    isIdle: buildIdlePredicate(() => agentConnected, bridge.sessions, pool),
     close: async () => {
       reaper.stop();
       const vh = verifyHttp;

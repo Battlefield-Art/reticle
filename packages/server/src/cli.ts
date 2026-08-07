@@ -15,6 +15,7 @@ import { createNodeFileSystem } from './project/fs-port.js';
 import { affectedSavedFlows } from './flows/flow-sources.js';
 
 import { checkForUpdate } from './update/update-checker.js';
+import { availableUpdate } from './update/update-nudge.js';
 import { applyUpdate, rollback } from './update/updater.js';
 
 import { start, startDaemon } from './index.js';
@@ -140,11 +141,16 @@ function handleStatus(port: number): void {
   }
   // The daemon is up — ask it for live sessions + health so status is at-a-glance, not just a pid.
   void fetchStatus(port).then((payload) => {
+    // `status` is the second-most-run command and the one a HUMAN types. The update nudge otherwise
+    // only rides a tool result, which the majority of daemons never produce — so the people most in
+    // need of an upgrade were the ones with no path to hearing about it.
+    const update = availableUpdate();
+    const nudge = update === undefined ? {} : { updateAvailable: update };
     if (payload === undefined) {
-      log('reticle_status', { port, running: true, pid });
+      log('reticle_status', { port, running: true, pid, ...nudge });
       return;
     }
-    log('reticle_status', { port, running: true, pid, ...summarizeStatus(payload) });
+    log('reticle_status', { port, running: true, pid, ...summarizeStatus(payload), ...nudge });
   });
 }
 
@@ -404,36 +410,38 @@ function handleMcp(opts: {
   httpToken?: string;
 }): void {
   const { port, driveUrl, headless, http, httpPort, httpToken } = opts;
-  // Probe the port first — a daemon with a stale PID file is still usable.
-  // Only spawn when nothing is actually listening on the port.
-  probeDaemon(port)
-    .then((listening) => {
-      if (!listening) {
-        const scriptPath = process.argv[1];
-        if (scriptPath === undefined) {
-          log('reticle_mcp_no_script', {});
-          process.exit(1);
-          return;
-        }
-        const daemonArgs = [DAEMON_INNER_COMMAND, PORT_FLAG, String(port)];
-        if (driveUrl !== undefined) {
-          daemonArgs.push(DRIVE_FLAG, driveUrl);
-          if (!headless) daemonArgs.push(HEADED_FLAG);
-        }
-        // Forward the HTTP-verify flags too (previously silently dropped for `reticle mcp`).
-        if (http) {
-          daemonArgs.push(HTTP_FLAG);
-          if (httpPort !== undefined) daemonArgs.push(HTTP_PORT_FLAG, String(httpPort));
-          if (httpToken !== undefined) daemonArgs.push(HTTP_TOKEN_FLAG, httpToken);
-        }
-        spawnDaemon(process.execPath, scriptPath, daemonArgs, port);
-        log('reticle_mcp_daemon_started', {
-          port,
-          ...(driveUrl !== undefined ? { driveUrl } : {}),
-        });
-      }
-      return waitForDaemon(port).then(() => startMcpProxy(port));
-    })
+  /**
+   * Make sure a daemon is on the port, spawning one if not.
+   *
+   * Called on first start AND on every reconnect. The proxy used to only retry the socket, so a
+   * daemon that exited — crashed, `reticle stop`, or self-shut-down as idle — meant the retries hit
+   * a dead port until the budget ran out and the agent's MCP server exited with it. Reticle simply
+   * disappeared mid-session with nothing said. Respawning here makes the reconnect self-healing.
+   */
+  const ensure = async (): Promise<void> => {
+    if (await probeDaemon(port)) return;
+    const scriptPath = process.argv[1];
+    if (scriptPath === undefined) {
+      log('reticle_mcp_no_script', {});
+      process.exit(1);
+    }
+    const daemonArgs = [DAEMON_INNER_COMMAND, PORT_FLAG, String(port)];
+    if (driveUrl !== undefined) {
+      daemonArgs.push(DRIVE_FLAG, driveUrl);
+      if (!headless) daemonArgs.push(HEADED_FLAG);
+    }
+    // Forward the HTTP-verify flags too (previously silently dropped for `reticle mcp`).
+    if (http) {
+      daemonArgs.push(HTTP_FLAG);
+      if (httpPort !== undefined) daemonArgs.push(HTTP_PORT_FLAG, String(httpPort));
+      if (httpToken !== undefined) daemonArgs.push(HTTP_TOKEN_FLAG, httpToken);
+    }
+    spawnDaemon(process.execPath, scriptPath, daemonArgs, port);
+    log('reticle_mcp_daemon_started', { port, ...(driveUrl !== undefined ? { driveUrl } : {}) });
+    await waitForDaemon(port);
+  };
+  ensure()
+    .then(() => startMcpProxy(port, ensure))
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       log('reticle_mcp_proxy_error', { error: message });

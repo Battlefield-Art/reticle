@@ -16,9 +16,34 @@
  * human never agreed to interrupt. So the envelope carries the fact and the exact command, and the
  * decision stays with the people whose machine it is.
  */
-import { checkForUpdate } from './update-checker.js';
+import { checkForUpdate, loadManifest } from './update-checker.js';
 import { SERVER_VERSION } from '../server-version.js';
 import { log } from '../log.js';
+
+/**
+ * Is `candidate` a strictly NEWER release than `current`?
+ *
+ * Replaces a plain `!==`, which told anyone on a version newer than the published one — a
+ * prerelease, a local build, a rollback in progress — to "update" to something older. A nudge that
+ * prompts a downgrade is one people learn to ignore, and this is the mechanism the entire adoption
+ * story rests on. Numeric per segment, so 2.10.0 correctly beats 2.9.0 (string order does not), and
+ * a bare release beats its own prerelease.
+ */
+export function isNewerVersion(candidate: string, current: string): boolean {
+  const parse = (v: string): { parts: number[]; pre: boolean } => {
+    const [core = '', ...rest] = v.split(/[-+]/);
+    return { parts: core.split('.').map((n) => Number.parseInt(n, 10) || 0), pre: rest.length > 0 };
+  };
+  const a = parse(candidate);
+  const b = parse(current);
+  for (let i = 0; i < 3; i++) {
+    const left = a.parts[i] ?? 0;
+    const right = b.parts[i] ?? 0;
+    if (left !== right) return left > right;
+  }
+  // Same numbers: a final release is newer than its own prerelease, and nothing else counts.
+  return !a.pre && b.pre;
+}
 
 /** Let the daemon finish coming up before touching the network. */
 const CHECK_DELAY_MS = 8_000;
@@ -42,20 +67,28 @@ let delivered = false;
  * for 24h on disk, and falls back to the cached manifest when the registry is unreachable — so this
  * costs one npm registry request per day per machine, and nothing at all when offline.
  */
+function buildNudge(latestVersion: string, currentVersion: string): UpdateNudge {
+  return {
+    currentVersion,
+    latestVersion,
+    command: UPDATE_COMMAND,
+    action:
+      `A newer Reticle is available (${currentVersion} → ${latestVersion}). ` +
+      `Tell the human, and run \`${UPDATE_COMMAND}\` if they agree — it restarts the daemon, ` +
+      'so do it between tasks rather than mid-verification. Continue your current task first.',
+  };
+}
+
 export function startUpdateCheck(now: () => number = () => Date.now()): void {
+  // The cached answer first, so the very first tool call can carry it — see armUpdateNudgeFrom.
+  armUpdateNudgeFrom(loadManifest());
   setTimeout(() => {
     void checkForUpdate(SERVER_VERSION, now)
       .then((manifest) => {
         if (!manifest.updateAvailable || manifest.latestVersion === undefined) return;
-        pending = {
-          currentVersion: SERVER_VERSION,
-          latestVersion: manifest.latestVersion,
-          command: UPDATE_COMMAND,
-          action:
-            `A newer Reticle is available (${SERVER_VERSION} → ${manifest.latestVersion}). ` +
-            `Tell the human, and run \`${UPDATE_COMMAND}\` if they agree — it restarts the daemon, ` +
-            'so do it between tasks rather than mid-verification. Continue your current task first.',
-        };
+        if (!isNewerVersion(manifest.latestVersion, SERVER_VERSION)) return;
+        pending = buildNudge(manifest.latestVersion, SERVER_VERSION);
+        delivered = false;
         log('reticle_update_available', {
           from: SERVER_VERSION,
           to: manifest.latestVersion,
@@ -67,11 +100,40 @@ export function startUpdateCheck(now: () => number = () => Date.now()): void {
   }, CHECK_DELAY_MS).unref();
 }
 
+/**
+ * Arm from an already-cached answer, synchronously, at daemon boot.
+ *
+ * The network check fires 8s after boot and the nudge is delivered by riding a tool result — but
+ * half the sessions that use Reticle at all make exactly ONE tool call, usually in the first
+ * seconds. The check had not finished, so the single chance to tell them was gone, and the
+ * population most in need of the update is precisely the one that never heard about it. Yesterday's
+ * answer is already on disk; use it now and let the network refresh behind it.
+ */
+export function armUpdateNudgeFrom(
+  cached: { latestVersion?: string; updateAvailable?: boolean } | null,
+  currentVersion: string = SERVER_VERSION,
+): void {
+  const latest = cached?.latestVersion;
+  if (latest === undefined || !isNewerVersion(latest, currentVersion)) return;
+  pending = buildNudge(latest, currentVersion);
+  delivered = false;
+}
+
 /** The nudge, once. Returns undefined afterwards so a long session is told exactly one time. */
 export function takeUpdateNudge(): UpdateNudge | undefined {
   if (delivered || pending === undefined) return undefined;
   delivered = true;
   return pending;
+}
+
+/**
+ * The newer version, if the cached answer says there is one — WITHOUT consuming the agent's
+ * one-shot nudge. `reticle status` is a human reading a terminal; the two channels are separate
+ * audiences and must not steal each other's message.
+ */
+export function availableUpdate(currentVersion: string = SERVER_VERSION): string | undefined {
+  const latest = loadManifest()?.latestVersion;
+  return latest !== undefined && isNewerVersion(latest, currentVersion) ? latest : undefined;
 }
 
 /** Tests only — drop the module state so each case starts clean. */
