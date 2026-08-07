@@ -5,6 +5,9 @@
  * session looks like from the outside has no reason to live inside the class that happens to build
  * it, and separating them keeps the wire-facing shape reviewable on its own.
  */
+import { SESSION_LEASE } from '@reticlehq/core';
+import type { SessionHealth } from './session-health.js';
+
 export interface SessionInfo {
   sessionId: string;
   url: string;
@@ -13,6 +16,8 @@ export interface SessionInfo {
   title: string;
   adapters: string[];
   hasCapabilities: boolean;
+  /** Present only when the page's SDK version differs from the daemon's — see version-skew.ts. */
+  versionSkew?: string;
   /** ms since the SDK last reported anything (silence ⇒ likely throttled). */
   lastSeenMs: number;
   hidden: boolean;
@@ -26,4 +31,54 @@ export interface SessionInfo {
   pendingMarks?: number;
   /** present with pendingMarks — nudges the agent to drain them with reticle_review. */
   review_suggestion?: string;
+}
+
+/** The read-only slice of a Session that the projection needs. Keeps this module class-free. */
+export interface SessionView {
+  id: string;
+  url: string;
+  projectId: string | undefined;
+  title: string;
+  adapters: string[];
+  hasCapabilities: boolean;
+  versionSkew: string | undefined;
+  hidden: boolean;
+  health: () => SessionHealth;
+  staleMs: () => number;
+  pendingMarkCount: () => number;
+}
+
+/**
+ * Project a live Session into the shape the tools return.
+ *
+ * Lives beside the SessionInfo type rather than on the class: it is a pure read of already-computed
+ * state, it is where every "what does the agent see about this tab" decision belongs, and Session is
+ * a stateful class already at its size cap — every field added to a listing was costing a line there.
+ */
+export function buildSessionInfo(session: SessionView): SessionInfo {
+  const base: SessionInfo = {
+    sessionId: session.id,
+    url: session.url,
+    ...(session.projectId === undefined ? {} : { projectId: session.projectId }),
+    title: session.title,
+    adapters: session.adapters,
+    hasCapabilities: session.hasCapabilities,
+    // On every listing, not buried in a log — skew explains failures that read as app bugs.
+    ...(session.versionSkew === undefined ? {} : { versionSkew: session.versionSkew }),
+    hidden: session.hidden,
+    ...session.health(),
+  };
+  if (session.staleMs() > SESSION_LEASE.STALE_AFTER_MS) {
+    base.stale = true;
+    base.cleanup_suggestion =
+      'Call reticle_session{action:"end"} to free this session before starting new work.';
+  }
+  // Surface human bug reports in reticle_sessions (only when > 0, so a clean session adds nothing).
+  const marks = session.pendingMarkCount();
+  if (marks > 0) {
+    base.pendingMarks = marks;
+    const s = marks === 1 ? '' : 's';
+    base.review_suggestion = `The human flagged ${String(marks)} issue${s} on this tab — call reticle_session{action:"review"} to see and fix ${marks === 1 ? 'it' : 'them'}.`;
+  }
+  return base;
 }

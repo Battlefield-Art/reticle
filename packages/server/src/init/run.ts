@@ -322,6 +322,7 @@ function report(
   dryRun: boolean,
   failed: ReadonlySet<string>,
   skipped: ReadonlySet<string>,
+  degraded: ReadonlyMap<string, string>,
   io: InitIo,
 ): InitResult {
   io.print(dryRun ? 'reticle init (dry run — no files written)' : 'reticle init');
@@ -330,6 +331,14 @@ function report(
   let manual = 0;
   for (const s of plan.steps) {
     // A side effect that failed to apply is reported as a manual step with its fallback command.
+    const note = degraded.get(s.target);
+    if (note !== undefined) {
+      // Applied, but not the way it was asked for. A NOTICE, not work — the install did happen.
+      io.print(`  [${STATUS_SYMBOL[StepStatus.NOTICE]}] ${s.title} → ${s.target}`);
+      for (const line of note.split('\n')) io.print(`      ${line}`);
+      applied++;
+      continue;
+    }
     const downgraded = failed.has(s.target) || skipped.has(s.target);
     const status = downgraded ? StepStatus.MANUAL : s.status;
     const detail = skipped.has(s.target)
@@ -361,9 +370,13 @@ function report(
  * MODULE_NOT_FOUND, so the app stops booting *because* Reticle was installed. A skipped step is a
  * message; a half-wired app is a broken project.
  */
-function applyEffects(plan: Plan, io: InitIo): { failed: Set<string>; skipped: Set<string> } {
+function applyEffects(
+  plan: Plan,
+  io: InitIo,
+): { failed: Set<string>; skipped: Set<string>; degraded: Map<string, string> } {
   const failed = new Set<string>();
   const skipped = new Set<string>();
+  const degraded = new Map<string, string>();
   let installFailed = false;
   for (const s of plan.steps) {
     if (s.status !== StepStatus.APPLY) continue;
@@ -373,11 +386,17 @@ function applyEffects(plan: Plan, io: InitIo): { failed: Set<string>; skipped: S
     }
     if (s.write !== undefined) io.writeFile(s.write.path, s.write.content);
     if (s.exec !== undefined && !io.exec(s.exec.command, s.exec.args)) {
+      // A weaker second attempt beats no install at all — but only when it is REPORTED, because the
+      // thing it gives up is the version pin that keeps SDK and daemon in step.
+      if (s.retry !== undefined && io.exec(s.retry.command, s.retry.args)) {
+        degraded.set(s.target, s.retry.note);
+        continue;
+      }
       failed.add(s.target);
       if (s.target === DEPS_TARGET) installFailed = true;
     }
   }
-  return { failed, skipped };
+  return { failed, skipped, degraded };
 }
 
 /**
@@ -449,10 +468,10 @@ export function runInit(options: InitOptions, io: InitIo): InitResult {
 
   const plan = buildPlan(gatherPlanInput(options, io, pkgRaw));
   const effects = options.dryRun
-    ? { failed: new Set<string>(), skipped: new Set<string>() }
+    ? { failed: new Set<string>(), skipped: new Set<string>(), degraded: new Map<string, string>() }
     : applyEffects(plan, io);
-  const { failed, skipped } = effects;
-  const result = report(plan, options.dryRun, failed, skipped, io);
+  const { failed, skipped, degraded } = effects;
+  const result = report(plan, options.dryRun, failed, skipped, degraded, io);
   // A dry run is a preview, not an outcome — reporting it would inflate both success and failure.
   if (!options.dryRun) {
     reportInitOutcome({

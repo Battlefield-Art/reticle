@@ -83,6 +83,15 @@ function turbopackConfig(existing) {
   };
 }
 
+/** The installed SDK's package version, for the HELLO's `sdkVersion`. @returns {string} */
+function sdkPackageVersion() {
+  try {
+    return require('@reticlehq/react/package.json').version || '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * @param {import('next').NextConfig} [nextConfig]
  * @returns {import('next').NextConfig}
@@ -107,6 +116,8 @@ function withReticle(nextConfig = {}) {
       // Next 16 default — never runs the webpack branch, and a source pointer that only works on one
       // of the two bundlers is worse than one that works on neither.
       NEXT_PUBLIC_RETICLE_ROOT: process.cwd(),
+      // So a version-skewed pair can name itself instead of surfacing as a bare -32000.
+      NEXT_PUBLIC_RETICLE_SDK_VERSION: sdkPackageVersion(),
     },
     webpack(config, ctx) {
       config.module = config.module || { rules: [] };

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { transformSync } from '@babel/core';
@@ -10,11 +10,12 @@ import {
   ReticleDir,
   ReticleEnv,
   RETICLE_ROOT_GLOBAL,
+  RETICLE_SDK_VERSION_GLOBAL,
 } from '@reticlehq/core';
 import { resolveProjectId } from './project-id.js';
 import { discoverDaemonPort } from './discover-port.js';
 import { SVELTE_FILE, stampSvelte } from './svelte-source.js';
-import { createRequire } from 'node:module';
+import { isResolvable, sdkPackageVersion, sdkBuildFingerprint } from './installed.js';
 
 export const RETICLE_VITE_PLUGIN_NAME = 'reticle';
 
@@ -28,42 +29,6 @@ const RETICLE_PACKAGE = '@reticlehq/react';
  * file it lives in.
  */
 export const RETICLE_TOKEN_GLOBAL = '__RETICLE_TOKEN__';
-
-/**
- * Whether a package can be resolved from this process. Used to avoid declaring an optimizeDeps entry
- * for something the app does not have, which Vite reports as a resolve failure on every boot.
- */
-function isResolvable(specifier: string): boolean {
-  try {
-    createRequire(import.meta.url).resolve(specifier);
-    return true;
-  } catch {
-    return false;
-  }
-}
-/**
- * A fingerprint of the installed SDK build, mixed into `optimizeDeps` so Vite re-bundles when the
- * SDK changes.
- *
- * Vite's dep-optimizer cache is keyed on the `optimizeDeps` config and the lockfile — NOT on the
- * contents of the packages it bundled. Upgrade the SDK in place (a patched dist, a linked checkout,
- * an overlay) and the version in `package.json` can stay the same, so Vite keeps serving the OLD
- * pre-bundled copy out of `node_modules/.vite` across dev-server restarts. The fix you just shipped
- * is simply not in the browser, and it looks like the fix does not work. That cost a real
- * false-negative during this bug hunt, and every user upgrading in place hits the same thing.
- *
- * Size+mtime is enough: it changes whenever the bundle does and costs one `stat`.
- */
-function sdkBuildFingerprint(): string {
-  try {
-    const entry = createRequire(import.meta.url).resolve(RETICLE_PACKAGE);
-    const { size, mtimeMs } = statSync(entry);
-    return `${String(size)}-${String(Math.trunc(mtimeMs))}`;
-  } catch {
-    // Unresolvable (not installed yet, exotic layout) — a constant is still correct, just inert.
-    return 'unknown';
-  }
-}
 
 /** Files we stamp with source info — JSX/TSX only. */
 const JSX_FILE = /\.[jt]sx$/;
@@ -112,6 +77,16 @@ const DEV_INJECTION_GRACE_MS = 10_000;
 export interface ReticleVitePluginOptions {
   /** Bridge WebSocket port. Defaults to the SDK default; only baked into connect when non-default. */
   port?: number;
+  /**
+   * Project root, so React's absolute `_debugSource.fileName` reports repo-relative. Resolved from
+   * the Vite config at injection time; set it only to override.
+   */
+  root?: string;
+  /**
+   * The installed SDK's version, so a pair skewed against the daemon can name itself instead of
+   * surfacing as a bare -32000. Read from the installed package; set it only to override.
+   */
+  sdkVersion?: string;
   /** Stable session label for the bridge. Defaults to the SDK's auto-generated id. */
   session?: string;
   /**
@@ -305,6 +280,15 @@ function connectArgs(options: ReticleVitePluginOptions): string {
   if (options.session !== undefined) args['session'] = options.session;
   if (options.projectId !== undefined) args['projectId'] = options.projectId;
   if (options.token !== undefined) args['token'] = options.token;
+  // Passed as connect ARGUMENTS, not as a `define`. A define substitutes a bare identifier in the
+  // source it transforms; the SDK reads these as `globalThis[NAME]`, a dynamic lookup no define can
+  // ever reach — so defining them looked right, shipped, and did nothing. Baking them into the
+  // generated connect call is a literal in generated source: no bundler subtleties, works the same
+  // in dev and in a desktop build.
+  if (options.root !== undefined && options.root.length > 0) args['root'] = options.root;
+  if (options.sdkVersion !== undefined && options.sdkVersion.length > 0) {
+    args['sdkVersion'] = options.sdkVersion;
+  }
   // A desktop renderer is a production build by construction; without this the SDK's prod backstop
   // refuses to connect and the app is silently uninstrumented.
   if (options.desktop === true) args['allowInProduction'] = true;
@@ -401,7 +385,11 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     const port = resolved.port ?? discoverDaemonPort(resolved.projectId);
     const withPort = port !== undefined ? { ...resolved, port } : resolved;
     const token = withPort.token ?? readPairingToken();
-    return token !== undefined ? { ...withPort, token } : withPort;
+    const withToken = token !== undefined ? { ...withPort, token } : withPort;
+    // Resolved here for the same reason as the token: these are Node-side facts about the installed
+    // tree, and they travel in the generated connect call rather than through a `define`.
+    const sdkVersion = withToken.sdkVersion ?? sdkPackageVersion();
+    return { ...withToken, root: withToken.root ?? root ?? process.cwd(), sdkVersion };
   };
   /**
    * The BUILD message. A build always runs every transform, so "my transform never ran" and "the
@@ -479,7 +467,11 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
           [RETICLE_TOKEN_GLOBAL]: JSON.stringify(readPairingToken() ?? ''),
           // Lets the SDK report React's absolute `_debugSource.fileName` as a repo-relative path,
           // so source looks the same whichever React version an app is on.
+          // Kept for HAND-WRITTEN connects (SvelteKit's hook, a custom entry): those live in app
+          // source, where a define does substitute. The plugin's own injected connect passes both as
+          // arguments instead — see connectArgs.
           [RETICLE_ROOT_GLOBAL]: JSON.stringify(config.root ?? process.cwd()),
+          [RETICLE_SDK_VERSION_GLOBAL]: JSON.stringify(sdkPackageVersion()),
         },
         optimizeDeps: {
           // Part of the cache key, not of the build: changing it is what makes Vite notice that the

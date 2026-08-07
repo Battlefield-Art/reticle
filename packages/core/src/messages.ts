@@ -101,6 +101,16 @@ export const HelloMessageSchema = z.object({
   /** Whether the app has advertised a capability registry (reticle.describe). */
   hasCapabilities: z.boolean().optional(),
   /**
+   * The version of the SDK in the page, so a version-skewed pair can SAY so.
+   *
+   * `protocolVersion` only catches an incompatible wire format. A 2.2.1 SDK against a 2.4.0 daemon
+   * agrees on the protocol, connects fine, and then disagrees about tool behaviour — which surfaced
+   * as a bare `-32000` with nothing on either side naming a version. Supplied by the build plugin
+   * (which can read the installed package's version Node-side); absent means "unknown", never
+   * "matching", so a hand-wired connect is not falsely reported as in sync.
+   */
+  sdkVersion: z.string().max(TRANSPORT_LIMITS.MAX_ADAPTER_NAME_LENGTH).optional(),
+  /**
    * Extra key names this app declared sensitive via `connect({ redact: { keys } })`.
    *
    * Sent so the DRIVEN path redacts them too: a request body captured by the daemon from the network

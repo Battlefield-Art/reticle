@@ -46,6 +46,12 @@ export interface ReticleConnectOptions {
    * and the TypeScript cast that needed shipped into a `.jsx` file and broke the build.
    */
   root?: string;
+  /**
+   * The SDK's own package version, so a version-skewed pair against the daemon can name itself
+   * rather than surfacing as a bare `-32000`. Build plugins supply it automatically; pass it here
+   * only for a hand-wired connect that has no plugin.
+   */
+  sdkVersion?: string;
   /** Presenter mode: glow border, animated cursor, click/hover effects, narration HUD. */
   present?: boolean;
   /** Per-action pacing (ms) in presenter mode so a human can follow. Default 450. */

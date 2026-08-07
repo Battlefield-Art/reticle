@@ -22,6 +22,8 @@ import {
 import { Session, SessionManager } from './session/session.js';
 import { tokensMatch } from './token-auth.js';
 import { log } from './log.js';
+import { describeVersionSkew } from './version-skew.js';
+import { SERVER_VERSION } from './server-version.js';
 
 /**
  * Take the mutable half of a session's identity from a repeat HELLO.
@@ -363,6 +365,13 @@ export class Bridge {
         this.#onSessionCreate?.(session); // attach the durable journal before any events stream in
         const replaced = this.sessions.add(session);
         replaced?.disconnect('session replaced by a newer connection');
+        // A skewed pair connects happily and then disagrees about tool behaviour. Say it once, here,
+        // where both versions are in hand — the alternative is a bare -32000 with nothing to go on.
+        const skew = describeVersionSkew(parsed.sdkVersion, SERVER_VERSION);
+        if (skew !== undefined) {
+          log('version_skew', { sessionId: session.id, sdk: parsed.sdkVersion, daemon: SERVER_VERSION });
+          session.versionSkew = skew;
+        }
         log('session_connected', { sessionId: session.id, url: session.url });
         this.#onSessionReady?.(session); // daemon pushes the replayable-flow list to the panel
         return;

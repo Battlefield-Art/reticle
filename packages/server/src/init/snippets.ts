@@ -268,11 +268,19 @@ if (import.meta.env.DEV) {
     // file it lives in, so @reticlehq/vite-plugin inlines it here at build time. Without it the
     // console reads "bridge refused the connection: authentication failed" and no session appears.
     const token = typeof __RETICLE_TOKEN__ !== 'undefined' ? __RETICLE_TOKEN__ : '';
-    reticle.connect({ ${fields}...(token.length > 0 ? { token } : {}) });
+    const root = typeof __RETICLE_ROOT__ !== 'undefined' ? __RETICLE_ROOT__ : '';
+    const sdkVersion = typeof __RETICLE_SDK_VERSION__ !== 'undefined' ? __RETICLE_SDK_VERSION__ : '';
+    reticle.connect({
+      ${fields}...(token.length > 0 ? { token } : {}),
+      ...(root.length > 0 ? { root } : {}),
+      ...(sdkVersion.length > 0 ? { sdkVersion } : {}),
+    });
   });
 }
 
 declare const __RETICLE_TOKEN__: string | undefined;
+declare const __RETICLE_ROOT__: string | undefined;
+declare const __RETICLE_SDK_VERSION__: string | undefined;
 `;
 }
 

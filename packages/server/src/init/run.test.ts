@@ -451,3 +451,55 @@ describe('runInit — the /reticle command', () => {
     expect(io.written['.claude/commands/reticle.md']).toBeUndefined();
   });
 });
+
+/**
+ * For ~48 hours after every release, a pnpm project with `minimumReleaseAge` could not install
+ * Reticle AT ALL: `init` pins the SDK to the CLI's version and pnpm refuses anything younger than
+ * its window. Measured against the live 2.4.0, three minutes after publish.
+ *
+ * The pin exists to stop SILENT version skew, so it cannot simply be dropped — but a blocked install
+ * is worse than a reported one. Fall back to unpinned, and say so.
+ */
+describe('runInit — a refused pin falls back instead of blocking the install', () => {
+  /** Fails the exact-version install, accepts the unpinned retry — what pnpm does inside the window. */
+  function pinRefusingIo(files: Record<string, string>): MemoryIo {
+    const io = memoryIo(files, { mcpExists: true });
+    const realExec = io.exec.bind(io);
+    return {
+      ...io,
+      exec(command: string, args: readonly string[]) {
+        realExec(command, args); // still recorded, so the test can see BOTH attempts
+        return !args.some((a) => a.includes('@reticlehq/react@'));
+      },
+    };
+  }
+
+  const VITE_APP = {
+    'package.json': JSON.stringify({ devDependencies: { vite: '^5', react: '^19' } }),
+    'vite.config.ts': 'export default { plugins: [] };\n',
+    'pnpm-lock.yaml': '',
+  };
+
+  it('retries unpinned, so the user ends up installed rather than blocked', () => {
+    const io = pinRefusingIo(VITE_APP);
+    runInit({ ...OPTS, install: true }, io);
+    const attempts = io.execCalls.filter((c) => c.args.includes('add'));
+    expect(attempts.length, 'it must try the pin first, then the fallback').toBe(2);
+    expect(attempts[0]?.args.some((a) => /@reticlehq\/react@\d/.test(a))).toBe(true);
+    expect(attempts[1]?.args).toContain('@reticlehq/react');
+  });
+
+  it('never does it silently — the pin is what keeps SDK and daemon in step', () => {
+    const io = pinRefusingIo(VITE_APP);
+    runInit({ ...OPTS, install: true }, io);
+    const out = io.lines.join('\n');
+    expect(out).toContain('minimumReleaseAge');
+    expect(out).toContain('versionSkew');
+  });
+
+  it('still wires the app — a fallback install is a real install', () => {
+    const io = pinRefusingIo(VITE_APP);
+    runInit({ ...OPTS, install: true }, io);
+    expect(io.written['vite.config.ts']).toContain('reticle()');
+  });
+});

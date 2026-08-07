@@ -41,6 +41,7 @@ import { buildPresenterArgs } from './presenter-args.js';
 import { buildSessionLease, type SessionLease } from './session-lease.js';
 import type { SessionInfo } from './session-info.js';
 export type { SessionInfo } from './session-info.js';
+import { buildSessionInfo } from './session-info.js';
 
 type Clock = () => number;
 
@@ -67,6 +68,8 @@ export class Session {
   title: string;
   adapters: string[];
   hasCapabilities: boolean;
+  /** Set when the page's SDK version differs from the daemon's (see version-skew.ts). */
+  versionSkew?: string;
   /**
    * Extra key names this app declared sensitive via `connect({ redact: { keys } })`. Held so the
    * DRIVEN path can redact them too — a request body the daemon captures from the network stack
@@ -181,29 +184,19 @@ export class Session {
   }
 
   info(): SessionInfo {
-    const base: SessionInfo = {
-      sessionId: this.id,
+    return buildSessionInfo({
+      id: this.id,
       url: this.url,
-      ...(this.projectId === undefined ? {} : { projectId: this.projectId }),
+      projectId: this.projectId,
       title: this.title,
       adapters: this.adapters,
       hasCapabilities: this.hasCapabilities,
+      versionSkew: this.versionSkew,
       hidden: this.#hidden,
-      ...this.health(),
-    };
-    if (this.staleMs() > SESSION_LEASE.STALE_AFTER_MS) {
-      base.stale = true;
-      base.cleanup_suggestion =
-        'Call reticle_session{action:"end"} to free this session before starting new work.';
-    }
-    // Surface human bug reports in reticle_sessions (only when > 0, so a clean session adds nothing).
-    const marks = this.#review.pendingCount();
-    if (marks > 0) {
-      base.pendingMarks = marks;
-      const s = marks === 1 ? '' : 's';
-      base.review_suggestion = `The human flagged ${String(marks)} issue${s} on this tab — call reticle_session{action:"review"} to see and fix ${marks === 1 ? 'it' : 'them'}.`;
-    }
-    return base;
+      health: () => this.health(),
+      staleMs: () => this.staleMs(),
+      pendingMarkCount: () => this.#review.pendingCount(),
+    });
   }
 
   /** Wall-clock age of the session in milliseconds. */

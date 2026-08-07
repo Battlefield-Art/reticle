@@ -14,7 +14,8 @@
     "./desktop-contract": {
       "types": "./dist/desktop-contract.d.cts",
       "default": "./dist/desktop-contract.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
     "build": "tsc -b && node scripts/gen-schema.mjs && node scripts/gen-desktop-contract.mjs",

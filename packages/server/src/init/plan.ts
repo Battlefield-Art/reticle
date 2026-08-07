@@ -110,6 +110,16 @@ export interface Step {
   /** Present only when status is APPLY and a subprocess must run (the dependency install). */
   exec?: { command: string; args: string[]; fallback: string };
   /**
+   * A second, weaker attempt to run when `exec` fails, with what to tell the user if it succeeds.
+   *
+   * The pinned install is refused outright by pnpm's `minimumReleaseAge` for as long as its window
+   * lasts — so for ~48 hours after every release, a project with that setting could not install
+   * Reticle at all. An unpinned install still works there (it resolves the newest MATURE version), so
+   * the fallback trades an exact version for a working install and says which it did. It must never
+   * be silent: an older SDK against a newer daemon is the skew this pin exists to prevent.
+   */
+  retry?: { command: string; args: string[]; note: string };
+  /**
    * This step wires the app to a package the install step provides. If that install fails, applying
    * it anyway leaves the app importing a module that is not there — `next.config.ts` importing
    * `@reticlehq/next` took a dev server down exactly this way. Installing Reticle must never be the
@@ -382,6 +392,17 @@ function agentRuleSteps(input: PlanInput): Step[] {
  * with nothing naming a version. Pinning turns that into this loud failure, which is the better
  * trade — but only if the message says what to do about it.
  */
+/** Said out loud when the exact-version install was refused and the unpinned one worked. */
+function unpinnedRetryNote(version: string | undefined): string {
+  const wanted = version === undefined ? 'the exact version' : version;
+  return (
+    `the registry refused ${wanted} (pnpm's minimumReleaseAge holds new releases back), so the ` +
+    `newest ACCEPTED version was installed instead. That may not match the daemon — if the agent ` +
+    `reports protocol errors, check \`versionSkew\` in reticle_sessions, then either wait out the ` +
+    `window or allow these packages: pnpm config set minimumReleaseAgeExclude "@reticlehq/*"`
+  );
+}
+
 function installFailureHint(pm: PackageManager): string {
   if (pm !== PackageManager.PNPM) return 'If the version was refused, install the SDK yourself.';
   return (
@@ -418,6 +439,12 @@ function installStep(input: PlanInput): Step {
       command: parts.command,
       args: parts.args,
       fallback: `${command}\n\n${installFailureHint(pm)}`,
+    },
+    // Unpinned. pnpm resolves the newest MATURE version there, which is how a project with a
+    // release-age hold gets a working install instead of no install.
+    retry: {
+      ...installCommandParts(pm, frameworkPackages(input.detection.framework)),
+      note: unpinnedRetryNote(input.options.sdkVersion),
     },
   };
 }

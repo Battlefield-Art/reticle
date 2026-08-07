@@ -15,6 +15,7 @@ import {
   setActiveRedactionPolicy,
   wireRedactionKeys,
   RETICLE_ROOT_GLOBAL,
+  RETICLE_SDK_VERSION_GLOBAL,
   type CommandMessage,
   type HelloMessage,
   type RedactionConfig,
@@ -211,6 +212,7 @@ export class Reticle {
   #annotator: Annotator | undefined;
   #eventCount = 0;
   #token: string | undefined;
+  #sdkVersion: string | undefined;
   #projectId: string | undefined;
   /** App-declared extra redaction keys, announced in hello so the driven path honours them too. */
   #redactKeys: string[] = [];
@@ -256,6 +258,15 @@ export class Reticle {
     if (options.root !== undefined && options.root.length > 0) {
       (globalThis as Record<string, unknown>)[RETICLE_ROOT_GLOBAL] = options.root;
     }
+    // The build plugin defines this; a hand-wired connect can pass it explicitly. Either way an
+    // absent value means UNKNOWN, so the bridge never reports an unknown pair as in sync.
+    const declaredVersion =
+      options.sdkVersion ??
+      (globalThis as Record<string, unknown>)[RETICLE_SDK_VERSION_GLOBAL];
+    this.#sdkVersion =
+      typeof declaredVersion === 'string' && declaredVersion.length > 0
+        ? declaredVersion
+        : undefined;
 
     // A pooled/headless launcher can stamp identity via namespaced URL params; explicit (non-auto)
     // options win, but the `auto` sentinel defers to the URL param so leases correlate.
@@ -469,6 +480,8 @@ export class Reticle {
       adapters: adapterNames(),
       ...(this.#token === undefined ? {} : { token: this.#token }),
       hasCapabilities: hasCapabilities(),
+      // Absent when no build plugin supplied one — "unknown", never "matching".
+      ...(this.#sdkVersion === undefined ? {} : { sdkVersion: this.#sdkVersion }),
       ...(this.#redactKeys.length === 0 ? {} : { redactKeys: this.#redactKeys }),
     };
   }

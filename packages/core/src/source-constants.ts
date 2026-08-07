@@ -26,3 +26,10 @@ export const DATA_RETICLE_SOURCE_ATTR = 'data-reticle-source';
  * the build plugins, which are the only place that knows the root.
  */
 export const RETICLE_ROOT_GLOBAL = '__RETICLE_ROOT__';
+
+/**
+ * Compile-time global carrying the SDK's own package version, so a version-skewed pair can name
+ * itself. Defined by the build plugins, which are the only place that can read the installed
+ * package's version. See `sdkVersion` on the HELLO message.
+ */
+export const RETICLE_SDK_VERSION_GLOBAL = '__RETICLE_SDK_VERSION__';

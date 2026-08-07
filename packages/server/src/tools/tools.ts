@@ -55,6 +55,12 @@ const RAW_TOOLS: ToolDef[] = [
             title: z.string().optional(),
             adapters: z.array(z.string()),
             hasCapabilities: z.boolean(),
+            versionSkew: z
+              .string()
+              .optional()
+              .describe(
+                "Present only when this page's SDK version differs from the daemon's. A skewed pair connects and then disagrees about tool behaviour — usually surfacing as a bare -32000. Fix it before trusting any verdict from this session.",
+              ),
             lastSeenMs: z.number(),
             throttled: z.boolean(),
             focused: z.boolean(),
