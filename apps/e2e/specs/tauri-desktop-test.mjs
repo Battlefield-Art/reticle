@@ -67,11 +67,19 @@ try {
   // Both are the packaged app. What this check exists to exclude is a DEV SERVER
   // (`http://localhost:5173`), because testing one of those would prove nothing about the binary.
   const PACKAGED_TAURI_ORIGINS = ['tauri://localhost', 'http://tauri.localhost/'];
-  const connectedUrl = String(server.bridge.sessions.list()[0]?.url);
+  // Find the Tauri session, never `list()[0]`. Any Reticle-instrumented app running on the developer's
+  // machine can dial this bridge and take slot 0 — an ordinary dev server on localhost:3000 did
+  // exactly that and failed this check while the packaged binary had connected perfectly, which is a
+  // red that belongs to nobody's change. Asserting on the session we are actually testing keeps the
+  // check just as strict: a spec driving a DEV SERVER still finds no packaged origin here.
+  const sessions = server.bridge.sessions.list();
+  const tauriSession = sessions.find((s) => PACKAGED_TAURI_ORIGINS.includes(String(s?.url)));
   chk(
     'it connected from the packaged Tauri origin, not a dev server',
-    PACKAGED_TAURI_ORIGINS.includes(connectedUrl),
-    connectedUrl,
+    tauriSession !== undefined,
+    tauriSession === undefined
+      ? `no packaged-origin session among ${JSON.stringify(sessions.map((s) => String(s?.url)))}`
+      : String(tauriSession.url),
   );
 
   for (let i = 0; i < 40; i++) {
