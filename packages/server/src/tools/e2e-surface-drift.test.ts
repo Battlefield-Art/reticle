@@ -295,3 +295,32 @@ describe('shipped docs never name a tool a reader cannot call', () => {
     expect(dead, `docs name tools that are not callable:\n${dead.join('\n')}`).toEqual([]);
   });
 });
+
+/**
+ * The surface has to point at the verdict, because the surface is what the agent reads.
+ *
+ * Measured over a day of real telemetry: `reticle_act` 50 calls, `reticle_act_and_wait` 14 — so 78%
+ * of the actions agents drove produced no verdict at all, and `verification_completed` was 2. The
+ * cause is in the descriptions: `reticle_act` sent the reader to `reticle_observe`, which is a LOOK,
+ * and never mentioned `reticle_act_and_wait` at all. `act_and_wait`'s own description calls itself
+ * "one hop for the act->observe->assert loop" — but only somebody who already found it ever reads
+ * that.
+ *
+ * Tool definitions are re-sent to the model on EVERY turn, so this is a clause, not a paragraph.
+ */
+describe('the acting tools point at the one that produces a verdict', () => {
+  const act = TOOLS.find((t) => t.name === ReticleTool.ACT);
+
+  it('reticle_act names reticle_act_and_wait as the way to get a verdict', () => {
+    expect(act, 'reticle_act is not on the surface').toBeDefined();
+    expect(
+      act?.description,
+      'reticle_act never mentions act_and_wait, so an agent reading it has no way to learn that ' +
+        'asserting is one argument away — which is how 78% of actions end with no verdict.',
+    ).toContain(ReticleTool.ACT_AND_WAIT);
+  });
+
+  it('and says what act_and_wait gives you, not merely that it exists', () => {
+    expect(act?.description).toMatch(/verdict|assert/i);
+  });
+});
