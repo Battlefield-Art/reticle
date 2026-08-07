@@ -4,6 +4,7 @@ import { ReticleTool } from './tool-names.js';
 import { withSizeCost } from '../session/output-budget.js';
 import { applySnapshotDelta, SnapshotCache } from './snapshot-delta.js';
 import { asString, asNumber } from './tools-helpers.js';
+import { normalizeQueryArgs } from './query-shape.js';
 import { paginateQueryResult } from './query-paginate.js';
 import { CONTRACT_TOOLS } from './contract-tools.js';
 import { DOMAIN_TOOLS } from '../domain/domain-tools.js';
@@ -199,11 +200,15 @@ const RAW_TOOLS: ToolDef[] = [
     description:
       'Find elements by Testing-Library semantics, INCLUDING open shadow roots — `count_only:true` gives just the count (~30x smaller); `limit` caps descriptors. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `attrs:["href"]` to project attributes (link/image URLs) onto each match. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
     inputSchema: {
-      by: z.string().describe('Query strategy: role | text | label | placeholder | testid | alt'),
+      by: z
+        .string()
+        .optional()
+        .describe('Query strategy: role | text | label | placeholder | testid | alt'),
       value: z
         .string()
+        .optional()
         .describe(
-          'Query value for the selected strategy (e.g. by=role value=button, or by=testid value=submit-btn).',
+          'Query value for the selected strategy (e.g. by=role value=button, or by=testid value=submit-btn). Or use the predicate spelling directly: { testid: "submit" }, { text: "Deploy" }.',
         ),
       name: z
         .string()
@@ -234,6 +239,14 @@ const RAW_TOOLS: ToolDef[] = [
         .describe(
           'Return just { count } (no element descriptors) — use when you only need "how many match?" and not their refs.',
         ),
+      // The predicate's spelling, accepted as an alias for by/value so the shape an agent learns from
+      // act_and_wait/assert also works here. See query-shape.ts.
+      testid: z.string().optional().describe('Alias for by="testid" value=… (predicate spelling).'),
+      text: z.string().optional().describe('Alias for by="text" value=… (predicate spelling).'),
+      role: z.string().optional().describe('Alias for by="role" value=… (predicate spelling).'),
+      label: z.string().optional().describe('Alias for by="label" value=… (predicate spelling).'),
+      placeholder: z.string().optional().describe('Alias for by="placeholder" value=… .'),
+      alt: z.string().optional().describe('Alias for by="alt" value=… (predicate spelling).'),
       ...sessionIdShape,
     },
     outputSchema: {
@@ -324,8 +337,10 @@ const RAW_TOOLS: ToolDef[] = [
           'True when a `scope` was given but resolved to nothing — zero matches then means the scope is gone, NOT that the element is absent. The search did not widen to the whole page. Re-check the scope before concluding anything.',
         ),
     },
-    handler: (deps, args) =>
-      commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.QUERY, {
+    handler: (deps, rawArgs) => {
+      // Accept the predicate's named-field spelling too — see query-shape.ts.
+      const args = normalizeQueryArgs(rawArgs);
+      return commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.QUERY, {
         by: args['by'],
         value: args['value'],
         name: args['name'],
@@ -338,7 +353,8 @@ const RAW_TOOLS: ToolDef[] = [
         withSizeCost(
           paginateQueryResult(result, asNumber(args['limit']), args['count_only'] === true),
         ),
-      ),
+      );
+    },
   },
   {
     name: ReticleTool.INSPECT,
