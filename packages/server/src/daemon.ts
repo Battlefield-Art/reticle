@@ -16,24 +16,41 @@ import {
   daemonRegistryPort,
   DaemonRegistryEntrySchema,
   pickDaemonPort,
+  ReticleEnv,
   type DaemonRegistryEntry,
 } from '@reticlehq/core';
+import { log } from './log.js';
 
-const RETICLE_HOME = join(homedir(), '.reticle');
+/** Env override for the whole state directory — see ReticleEnv.STATE_DIR. */
+export const STATE_DIR_ENV = ReticleEnv.STATE_DIR;
 
-function pidPath(port: number, home: string = RETICLE_HOME): string {
+/**
+ * Where the daemon keeps pidfiles, the discovery registry and its logs.
+ *
+ * `~/.reticle` unless overridden. The override exists because a read-only $HOME is not hypothetical
+ * — a sandboxed agent or a locked-down Windows profile cannot write there, and until now that meant
+ * the daemon could not start at all. Read per call rather than captured at import, so a test (and a
+ * wrapper that sets it late) sees the current value.
+ */
+export function reticleStateHome(): string {
+  const override = process.env[STATE_DIR_ENV];
+  if (override !== undefined && override.length > 0) return override;
+  return join(homedir(), '.reticle');
+}
+
+function pidPath(port: number, home: string = reticleStateHome()): string {
   return join(home, `daemon-${port}.pid`);
 }
 
 function registryPath(port: number): string {
-  return join(RETICLE_HOME, daemonRegistryFileName(port));
+  return join(reticleStateHome(), daemonRegistryFileName(port));
 }
 
 export function logPath(port: number): string {
-  return join(RETICLE_HOME, `daemon-${port}.log`);
+  return join(reticleStateHome(), `daemon-${port}.log`);
 }
 
-export function readPid(port: number, home: string = RETICLE_HOME): number | null {
+export function readPid(port: number, home: string = reticleStateHome()): number | null {
   const path = pidPath(port, home);
   if (!existsSync(path)) return null;
   const n = parseInt(readFileSync(path, 'utf8').trim(), 10);
@@ -50,7 +67,7 @@ export function isAlive(pid: number): boolean {
 }
 
 export function writePid(port: number): void {
-  mkdirSync(RETICLE_HOME, { recursive: true });
+  mkdirSync(reticleStateHome(), { recursive: true });
   writeFileSync(pidPath(port), String(process.pid), 'utf8');
 }
 
@@ -95,7 +112,7 @@ export function writeDaemonRegistry(
     ...(meta.projectId !== undefined ? { projectId: meta.projectId } : {}),
   };
   try {
-    mkdirSync(RETICLE_HOME, { recursive: true });
+    mkdirSync(reticleStateHome(), { recursive: true });
     writeFileSync(registryPath(port), JSON.stringify(entry), 'utf8');
   } catch {
     // discovery is a convenience — never block startup on it
@@ -120,7 +137,7 @@ export function discoverDaemonPortForProject(projectId: string | undefined): num
   const entries: DaemonRegistryEntry[] = [];
   let files: string[];
   try {
-    files = readdirSync(RETICLE_HOME);
+    files = readdirSync(reticleStateHome());
   } catch {
     return null; // no ~/.reticle yet
   }
@@ -128,7 +145,7 @@ export function discoverDaemonPortForProject(projectId: string | undefined): num
     if (daemonRegistryPort(file) === null) continue;
     try {
       const parsed = DaemonRegistryEntrySchema.safeParse(
-        JSON.parse(readFileSync(join(RETICLE_HOME, file), 'utf8')),
+        JSON.parse(readFileSync(join(reticleStateHome(), file), 'utf8')),
       );
       if (parsed.success) entries.push(parsed.data);
     } catch {
@@ -152,7 +169,7 @@ export function discoverDaemonPort(): number | null {
   reclaimStaleDaemons(); // sweep crashed daemons' stale pidfiles before scanning for live ones
   let found: number | null = null;
   try {
-    for (const file of readdirSync(RETICLE_HOME)) {
+    for (const file of readdirSync(reticleStateHome())) {
       const m = /^daemon-(\d+)\.pid$/.exec(file);
       if (m === null) continue;
       const port = Number(m[1]);
@@ -171,7 +188,7 @@ export function discoverDaemonPort(): number | null {
  * ~/.reticle and the process.kill(pid,0) liveness probe).
  */
 export function reclaimStaleDaemons(
-  home: string = RETICLE_HOME,
+  home: string = reticleStateHome(),
   pidAlive: (pid: number) => boolean = isAlive,
 ): number[] {
   const reclaimed: number[] = [];
@@ -227,7 +244,7 @@ export interface SpawnDaemonDeps {
 
 export function defaultSpawnDaemonDeps(): SpawnDaemonDeps {
   return {
-    home: RETICLE_HOME,
+    home: reticleStateHome(),
     openFile: openSync,
     closeFile: closeSync,
     spawnChild: (command, args, options) =>
@@ -251,7 +268,19 @@ export function spawnDaemon(
   port: number,
   deps: SpawnDaemonDeps = defaultSpawnDaemonDeps(),
 ): boolean {
-  mkdirSync(deps.home, { recursive: true });
+  try {
+    mkdirSync(deps.home, { recursive: true });
+  } catch (err) {
+    // The log-file open below has always been guarded; this was not, so the ONE failure a sandboxed
+    // agent actually hits — a read-only $HOME — escaped as a raw EACCES naming nothing. Refuse
+    // loudly, and name the way out.
+    log('reticle_daemon_state_unwritable', {
+      home: deps.home,
+      error: err instanceof Error ? err.message : String(err),
+      fix: `Reticle could not create its state directory. Set ${STATE_DIR_ENV} to a writable path and retry.`,
+    });
+    return false;
+  }
   const pidFilePath = join(deps.home, `daemon-${port}.pid`);
   const logFilePath = join(deps.home, `daemon-${port}.log`);
   // O_EXCL spawn-lock: only the FIRST racer to create the pidfile spawns. A concurrent second gets

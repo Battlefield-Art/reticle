@@ -50,6 +50,15 @@ export const ReticleEnv = {
   ALLOWED_ORIGINS: 'RETICLE_ALLOWED_ORIGINS',
   /** Bridge/daemon WS port override. */
   PORT: 'RETICLE_PORT',
+  /**
+   * Where the daemon keeps its state — pidfiles, the discovery registry, logs. Defaults to
+   * `~/.reticle`.
+   *
+   * Exists because a read-only $HOME is not hypothetical: a sandboxed agent, a locked-down Windows
+   * profile, or a container without a writable home cannot start a daemon at all, and the failure
+   * arrives as a raw EACCES naming nothing. Reported by a user on Windows.
+   */
+  STATE_DIR: 'RETICLE_STATE_DIR',
   /** Attach to an already-running browser over CDP instead of launching one. */
   CDP_URL: 'RETICLE_CDP_URL',
   /** Max simultaneous leased headless contexts in the browser pool (resource cap). */
