@@ -32,7 +32,7 @@ import {
 } from './daemon.js';
 import { waitForDaemon, startMcpProxy, probeDaemon } from './mcp-proxy.js';
 import { installDaemonResilience } from './daemon-resilience.js';
-import { IdleShutdown, resolveIdleShutdownMs } from './idle-shutdown.js';
+import { IdleShutdown, resolveIdleShutdownMs, resolveIdleCheckMs } from './idle-shutdown.js';
 import {
   fetchStatus,
   summarizeStatus,
@@ -355,6 +355,7 @@ function handleDaemonInner(parsed: {
       // lingers on the user's machine after the editor closes. Reuses the same clean shutdown path.
       const idleShutdown = new IdleShutdown({
         graceMs: resolveIdleShutdownMs(process.env[ReticleEnv.IDLE_SHUTDOWN]),
+        checkIntervalMs: resolveIdleCheckMs(process.env[ReticleEnv.IDLE_CHECK]),
         isIdle: server.isIdle ?? (() => false),
         onShutdown: () => {
           log('reticle_daemon_idle_exit', { port: parsed.port });

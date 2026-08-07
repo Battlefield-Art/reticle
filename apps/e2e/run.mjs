@@ -32,6 +32,9 @@ const ORDER = [
   'flow-self-heal-test',
   'project-history-test',
   'spec-runner-test',
+  // Needs no servers and no browser — it watches the daemon's own life cycle, which nothing else
+  // here can see (every other spec drives a daemon immediately, never leaving one idle).
+  'daemon-lifecycle-test',
   'live-control-test',
   'real-world-tests',
   'multi-agent-lease-test',

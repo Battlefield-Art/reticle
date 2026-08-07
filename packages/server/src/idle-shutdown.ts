@@ -73,6 +73,17 @@ export class IdleShutdown {
  * Resolve the idle-shutdown grace from `RETICLE_IDLE_SHUTDOWN_MS`: a non-negative integer of milliseconds,
  * `0` to disable. Anything missing/invalid falls back to the default. Pure.
  */
+/**
+ * The idle re-check cadence, from the environment. Same shape as the grace resolver: a bad value
+ * falls back rather than throwing, and 0/negative is not a legal cadence (it would spin).
+ */
+export function resolveIdleCheckMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') return SESSION_LIFECYCLE.DAEMON_IDLE_CHECK_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return SESSION_LIFECYCLE.DAEMON_IDLE_CHECK_MS;
+  return Math.floor(n);
+}
+
 export function resolveIdleShutdownMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === '') return SESSION_LIFECYCLE.DAEMON_IDLE_SHUTDOWN_MS;
   const n = Number(raw);

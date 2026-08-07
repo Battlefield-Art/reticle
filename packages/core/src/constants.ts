@@ -50,14 +50,9 @@ export const ReticleEnv = {
   ALLOWED_ORIGINS: 'RETICLE_ALLOWED_ORIGINS',
   /** Bridge/daemon WS port override. */
   PORT: 'RETICLE_PORT',
-  /**
-   * Where the daemon keeps its state — pidfiles, the discovery registry, logs. Defaults to
-   * `~/.reticle`.
-   *
-   * Exists because a read-only $HOME is not hypothetical: a sandboxed agent, a locked-down Windows
-   * profile, or a container without a writable home cannot start a daemon at all, and the failure
-   * arrives as a raw EACCES naming nothing. Reported by a user on Windows.
-   */
+  /** Daemon state — pidfiles, discovery registry, logs. Defaults to `~/.reticle`. Overridable
+   * because a read-only $HOME (sandboxed agent, locked-down Windows profile, container) otherwise
+   * makes the daemon unstartable with a raw EACCES naming nothing. Reported by a Windows user. */
   STATE_DIR: 'RETICLE_STATE_DIR',
   /** Attach to an already-running browser over CDP instead of launching one. */
   CDP_URL: 'RETICLE_CDP_URL',
@@ -76,6 +71,9 @@ export const ReticleEnv = {
   /** Ms of continuous idleness (no agent, no browser session, no lease) before the daemon self-exits;
    * `0` disables. Keeps Reticle from lingering on a user's machine after the editor closes. */
   IDLE_SHUTDOWN: 'RETICLE_IDLE_SHUTDOWN_MS',
+  /** Idle re-check cadence (default 30s). Overridable so daemon-lifecycle-test can watch a full
+   * exit/wake cycle in seconds rather than minutes. */
+  IDLE_CHECK: 'RETICLE_IDLE_CHECK_MS',
   /** Directory holding the auto-provisioned pairing token. Defaults to ~/.reticle; relocatable for CI. */
   PAIRING_TOKEN_DIR: 'RETICLE_PAIRING_TOKEN_DIR',
   /** Force the durable causal journal off (`0`/`false`/`off`) or on (`1`/`true`/`on`); default on. */
