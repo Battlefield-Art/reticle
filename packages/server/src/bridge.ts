@@ -17,10 +17,30 @@ import {
   OPAQUE_ORIGIN,
   isHighValueEvent,
   RATE_CAP_HIGH_VALUE_RESERVE_RATIO,
+  type HelloMessage,
 } from '@reticlehq/core';
 import { Session, SessionManager } from './session/session.js';
 import { tokensMatch } from './token-auth.js';
 import { log } from './log.js';
+
+/**
+ * Take the mutable half of a session's identity from a repeat HELLO.
+ *
+ * Lives here rather than on Session because this is where the protocol decision is made — the caller
+ * has already established that the hello belongs to this same session — and because these fields are
+ * the session's public surface, read by the tools on every listing.
+ *
+ * `hasCapabilities` is the one that matters: it is announced in the hello, which the SDK sends at
+ * connect(), while capabilities are registered AFTER connect by design (registerStore needs a live
+ * SDK to subscribe through). Without this refresh, an app that declared its entire testable surface
+ * reported `hasCapabilities: false` forever.
+ */
+function refreshIdentity(session: Session, hello: HelloMessage): void {
+  session.url = hello.url;
+  session.title = hello.title;
+  session.adapters = hello.adapters;
+  session.hasCapabilities = hello.hasCapabilities ?? false;
+}
 
 /** A human clicked ▶ on a saved flow in the panel — replay it with no agent. Wired by the daemon. */
 type ReplayRequestHandler = (sessionId: string, flowName: string) => void;
@@ -315,7 +335,16 @@ export class Bridge {
 
       if (parsed.kind === MessageKind.HELLO) {
         if (session !== undefined) {
-          socket.close(...WS_CLOSE.HELLO_DUPLICATE);
+          // A repeat hello on the SAME socket for the SAME session is an identity refresh, not a
+          // violation: the SDK re-announces when the app registers capabilities, which happens after
+          // connect by design. Closing the socket on it made `hasCapabilities` permanently false for
+          // every app that declared anything. A hello bearing a DIFFERENT session id is still a
+          // protocol violation — that is the case this guard exists for.
+          if (parsed.sessionId !== session.id) {
+            socket.close(...WS_CLOSE.HELLO_DUPLICATE);
+            return;
+          }
+          refreshIdentity(session, parsed);
           return;
         }
         if (this.#token !== undefined && !tokensMatch(this.#token, parsed.token)) {

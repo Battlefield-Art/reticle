@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { SseFrameParser, buildSessionUrl } from './mcp-proxy.js';
+import {
+  SseFrameParser,
+  buildSessionUrl,
+  HandshakeReplay,
+  reconnectDelayMs,
+  RECONNECT_INITIALIZE_ID,
+  MAX_RECONNECT_ATTEMPTS,
+} from './mcp-proxy.js';
 
 /**
  * The MCP front door. Every JSON-RPC message the agent sends is framed by SseFrameParser, and a bug in
@@ -63,6 +70,86 @@ describe('SseFrameParser — MCP front-door framing', () => {
     const p = new SseFrameParser();
     p.push('event: endpoint\ndata: /s\n\n');
     expect(p.push('data: next\n\n')).toEqual([{ event: 'message', data: 'next' }]);
+  });
+});
+
+/**
+ * The proxy used to `process.exit(0)` the moment the SSE stream ended, even though the daemon stayed
+ * up — the agent's tools vanished mid-session and only a human running `/mcp` could bring them back.
+ * Reconnecting means re-establishing a session with a FRESH McpServer, which has never seen the
+ * client's `initialize`. Replaying that handshake is what makes the reconnect invisible to the client;
+ * suppressing the replayed response is what stops a duplicate JSON-RPC id from reaching its stdout.
+ */
+describe('HandshakeReplay — surviving a dropped SSE stream', () => {
+  const INIT = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"x"}}';
+  const INITIALIZED = '{"jsonrpc":"2.0","method":"notifications/initialized"}';
+
+  it('replays nothing before the client has initialized', () => {
+    expect(new HandshakeReplay().replayLines()).toEqual([]);
+  });
+
+  it('replays the initialize under a reserved id so the response can be told apart', () => {
+    const r = new HandshakeReplay();
+    r.observeOutbound(INIT);
+    r.observeOutbound(INITIALIZED);
+    const lines = r.replayLines();
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0] ?? '')).toMatchObject({
+      id: RECONNECT_INITIALIZE_ID,
+      method: 'initialize',
+      params: { protocolVersion: 'x' },
+    });
+    expect(lines[1]).toBe(INITIALIZED);
+  });
+
+  it('replays the initialize even when the client never sent notifications/initialized', () => {
+    const r = new HandshakeReplay();
+    r.observeOutbound(INIT);
+    expect(r.replayLines()).toHaveLength(1);
+  });
+
+  it('suppresses the replayed response, exactly once, and passes real traffic through', () => {
+    const r = new HandshakeReplay();
+    r.observeOutbound(INIT);
+    r.replayLines();
+    const echo = `{"jsonrpc":"2.0","id":${JSON.stringify(RECONNECT_INITIALIZE_ID)},"result":{}}`;
+    expect(r.shouldSuppressInbound(echo)).toBe(true);
+    // A second frame with the same id is no longer ours — passing it through beats swallowing a real reply.
+    expect(r.shouldSuppressInbound(echo)).toBe(false);
+    expect(r.shouldSuppressInbound('{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}')).toBe(false);
+  });
+
+  it('suppresses a fresh id after every reconnect, not just the first', () => {
+    const r = new HandshakeReplay();
+    r.observeOutbound(INIT);
+    r.replayLines();
+    r.shouldSuppressInbound(`{"jsonrpc":"2.0","id":${JSON.stringify(RECONNECT_INITIALIZE_ID)}}`);
+    r.replayLines(); // second drop → replay again
+    expect(
+      r.shouldSuppressInbound(`{"jsonrpc":"2.0","id":${JSON.stringify(RECONNECT_INITIALIZE_ID)}}`),
+    ).toBe(true);
+  });
+
+  it('ignores unparseable lines rather than throwing on them', () => {
+    const r = new HandshakeReplay();
+    r.observeOutbound('not json');
+    expect(r.replayLines()).toEqual([]);
+    expect(r.shouldSuppressInbound('not json')).toBe(false);
+  });
+
+  it('keeps the FIRST initialize when the client sends another (the session identity is the first)', () => {
+    const r = new HandshakeReplay();
+    r.observeOutbound(INIT);
+    r.observeOutbound('{"jsonrpc":"2.0","id":9,"method":"initialize","params":{"protocolVersion":"y"}}');
+    expect(JSON.parse(r.replayLines()[0] ?? '')).toMatchObject({ params: { protocolVersion: 'x' } });
+  });
+});
+
+describe('reconnectDelayMs', () => {
+  it('backs off with the attempt number and never exceeds the cap', () => {
+    expect(reconnectDelayMs(1)).toBeLessThan(reconnectDelayMs(3));
+    expect(reconnectDelayMs(MAX_RECONNECT_ATTEMPTS)).toBeLessThanOrEqual(5_000);
+    expect(reconnectDelayMs(1)).toBeGreaterThan(0);
   });
 });
 

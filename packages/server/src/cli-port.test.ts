@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readJournalEnabled, readProjectId, readProjectPort, resolvePort } from './cli-port.js';
+import { readJournalEnabled, readProjectId, readProjectPort, resolvePort, isLikelyDevServerPort, devServerPortWarning } from './cli-port.js';
 import { RETICLE_DEFAULT_PORT } from '@reticlehq/core';
 
 describe('readJournalEnabled', () => {
@@ -331,5 +331,28 @@ describe('Scenario matrix — port isolation per project', () => {
       RETICLE_DEFAULT_PORT,
     );
     expect(corrupt).toBe(RETICLE_DEFAULT_PORT);
+  });
+});
+
+/**
+ * `.reticle.json` "port" is the BRIDGE port; the dev server's port is a different thing entirely.
+ * The old setup skill asked "what port does your dev server run on?" a few lines before showing this
+ * field, so the two got conflated — and the daemon then tried to bind the port the app already held.
+ * The user saw a bind failure or a daemon that never connected, neither mentioning the real mistake.
+ */
+describe('isLikelyDevServerPort', () => {
+  it('recognises the ports frameworks actually serve on', () => {
+    for (const p of [3000, 5173, 4321, 8080]) expect(isLikelyDevServerPort(p)).toBe(true);
+  });
+
+  it('leaves Reticle bridge ports alone, including the multi-app range people are told to use', () => {
+    for (const p of [4400, 4460, 4461, 4477]) expect(isLikelyDevServerPort(p)).toBe(false);
+  });
+
+  it('the warning names the port, the field, and the correct default', () => {
+    const w = devServerPortWarning(3000);
+    expect(w).toContain('3000');
+    expect(w).toContain('.reticle.json');
+    expect(w).toContain('4400');
   });
 });

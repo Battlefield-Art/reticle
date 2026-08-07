@@ -243,3 +243,65 @@ describe('whereInSource points at code or says nothing', () => {
     expect(buildDecision(result, f).whereInSource).toBe('src/components/Topbar.tsx:31');
   });
 });
+
+/**
+ * A flow that cannot fail must never be reported as passing.
+ *
+ * Measured: a flow saved as `{"steps": [], "intent": "navigate to a demo route"}` — which
+ * `flow_save` had ALREADY graded assertion-free, `empty: true`, with a warning that it "claims to
+ * verify a goal it does not assert" — replayed green and `flow_verify` answered
+ * `{"status":"pass","total":1,"passed":1,"failed":0,"summary":"all 1 flow pass"}`.
+ *
+ * That is a permanent false green in the exact feature sold as the regression suite: the grader had
+ * already said the flow was worthless and the verdict said everything was fine anyway.
+ */
+describe('buildSuiteVerdict — a flow that cannot fail is not a pass', () => {
+  const okReplay = (name: string): FlowReplayResult => ({
+    name,
+    status: ReplayStatus.OK,
+    steps: [],
+  });
+  const emptyFlow = (name: string): FlowFile =>
+    ({ version: 1, name, steps: [], intent: 'navigate to a demo route' }) as unknown as FlowFile;
+  const assertingFlow = (name: string): FlowFile =>
+    ({
+      version: 1,
+      name,
+      steps: [{ action: 'click', anchor: { testid: 'pay' }, expect: { signal: 'paid' } }],
+    }) as unknown as FlowFile;
+
+  it('does not count an empty flow as passed, and does not claim the suite passes', () => {
+    const v = buildSuiteVerdict([{ replay: okReplay('empty'), flow: emptyFlow('empty') }]);
+    expect(v.passed, 'nothing was verified').toBe(0);
+    expect(v.status).not.toBe('pass');
+    expect(v.summary).not.toContain('all 1 flow pass');
+    expect(v.unverifiable?.[0]?.flow).toBe('empty');
+  });
+
+  it('names WHY it could not be verified, so the fix is obvious', () => {
+    const v = buildSuiteVerdict([{ replay: okReplay('empty'), flow: emptyFlow('empty') }]);
+    expect(v.unverifiable?.[0]?.reason ?? '').toMatch(/assert|step/i);
+  });
+
+  it('a real failure still outranks it — a broken flow is worse news than an empty one', () => {
+    const v = buildSuiteVerdict([
+      { replay: okReplay('empty'), flow: emptyFlow('empty') },
+      { replay: { name: 'broken', status: ReplayStatus.ERROR, steps: [] }, flow: assertingFlow('broken') },
+    ]);
+    expect(v.status).toBe('fail');
+    expect(v.failed).toBe(1);
+  });
+
+  it('a flow that asserts a consequence still passes normally', () => {
+    const v = buildSuiteVerdict([{ replay: okReplay('real'), flow: assertingFlow('real') }]);
+    expect(v.status).toBe('pass');
+    expect(v.passed).toBe(1);
+    expect(v.unverifiable ?? []).toEqual([]);
+  });
+
+  it('with no flow available to classify, behaviour is unchanged — never invent a warning', () => {
+    const v = buildSuiteVerdict([{ replay: okReplay('unknown') }]);
+    expect(v.status).toBe('pass');
+    expect(v.passed).toBe(1);
+  });
+});

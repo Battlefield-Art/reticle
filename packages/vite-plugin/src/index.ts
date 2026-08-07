@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { transformSync } from '@babel/core';
@@ -9,10 +9,12 @@ import {
   bridgeWsUrl,
   ReticleDir,
   ReticleEnv,
+  RETICLE_ROOT_GLOBAL,
 } from '@reticlehq/core';
 import { resolveProjectId } from './project-id.js';
 import { discoverDaemonPort } from './discover-port.js';
 import { SVELTE_FILE, stampSvelte } from './svelte-source.js';
+import { createRequire } from 'node:module';
 
 export const RETICLE_VITE_PLUGIN_NAME = 'reticle';
 
@@ -20,6 +22,49 @@ export const RETICLE_VITE_PLUGIN_NAME = 'reticle';
 // specifier yields both `reticle` (connect) and `install` (the React adapter). NOT `@reticlehq/core`
 // — that is the isomorphic foundation and exports neither.
 const RETICLE_PACKAGE = '@reticlehq/react';
+/**
+ * Compile-time global carrying the daemon's pairing token, for connects the plugin does not write
+ * itself. The bridge requires the token even on localhost, and nothing in a browser can read the
+ * file it lives in.
+ */
+export const RETICLE_TOKEN_GLOBAL = '__RETICLE_TOKEN__';
+
+/**
+ * Whether a package can be resolved from this process. Used to avoid declaring an optimizeDeps entry
+ * for something the app does not have, which Vite reports as a resolve failure on every boot.
+ */
+function isResolvable(specifier: string): boolean {
+  try {
+    createRequire(import.meta.url).resolve(specifier);
+    return true;
+  } catch {
+    return false;
+  }
+}
+/**
+ * A fingerprint of the installed SDK build, mixed into `optimizeDeps` so Vite re-bundles when the
+ * SDK changes.
+ *
+ * Vite's dep-optimizer cache is keyed on the `optimizeDeps` config and the lockfile — NOT on the
+ * contents of the packages it bundled. Upgrade the SDK in place (a patched dist, a linked checkout,
+ * an overlay) and the version in `package.json` can stay the same, so Vite keeps serving the OLD
+ * pre-bundled copy out of `node_modules/.vite` across dev-server restarts. The fix you just shipped
+ * is simply not in the browser, and it looks like the fix does not work. That cost a real
+ * false-negative during this bug hunt, and every user upgrading in place hits the same thing.
+ *
+ * Size+mtime is enough: it changes whenever the bundle does and costs one `stat`.
+ */
+function sdkBuildFingerprint(): string {
+  try {
+    const entry = createRequire(import.meta.url).resolve(RETICLE_PACKAGE);
+    const { size, mtimeMs } = statSync(entry);
+    return `${String(size)}-${String(Math.trunc(mtimeMs))}`;
+  } catch {
+    // Unresolvable (not installed yet, exotic layout) — a constant is still correct, just inert.
+    return 'unknown';
+  }
+}
+
 /** Files we stamp with source info — JSX/TSX only. */
 const JSX_FILE = /\.[jt]sx$/;
 /** Rollup virtual-module ids start with a NUL byte; never transform those. */
@@ -126,8 +171,19 @@ export interface ReticleVitePlugin {
    * Vite's `config` hook. Used to declare the SDK's CJS runtime deps for pre-bundling — see the
    * implementation for why omitting them makes the whole SDK fail to load on linked setups.
    */
-  config?: (config: { optimizeDeps?: { include?: string[] } }) => {
-    optimizeDeps: { include: string[] };
+  config?: (config: {
+    optimizeDeps?: {
+      include?: string[];
+      esbuildOptions?: { define?: Record<string, string> };
+    };
+    define?: Record<string, string>;
+    root?: string;
+  }) => {
+    optimizeDeps: {
+      include: string[];
+      esbuildOptions: { define: Record<string, string> };
+    };
+    define: Record<string, string>;
   };
   /** Absent in desktop mode, where the plugin must also run for `vite build`. */
   apply?: 'serve';
@@ -262,9 +318,38 @@ function connectArgs(options: ReticleVitePluginOptions): string {
 }
 
 /** The body of the connect module — real imports, resolved by Vite when the module is served. */
-export function connectModuleSource(options: ReticleVitePluginOptions): string {
+/**
+ * The conventional app-side dev module: `registerStore` / `registerCapabilities` live here.
+ *
+ * It is imported by CONVENTION rather than by patching the app's entry file. The connect is injected
+ * into a virtual module, so there is nowhere for a user to add these calls without `init` editing
+ * `src/main.tsx` — an edit to the file people actually own, for something that is opt-in enrichment.
+ * Convention costs one `existsSync` and leaves their entry untouched.
+ */
+export const RETICLE_DEV_MODULE_CANDIDATES = [
+  'src/reticle-dev.ts',
+  'src/reticle-dev.js',
+  'src/reticle-dev.tsx',
+  'src/reticle-dev.jsx',
+] as const;
+
+/** The app's dev module, as an importable path — or null when the app has none. */
+export function findDevModule(root: string, exists: (p: string) => boolean): string | null {
+  for (const rel of RETICLE_DEV_MODULE_CANDIDATES) {
+    if (exists(`${root}/${rel}`)) return `/${rel}`;
+  }
+  return null;
+}
+
+export function connectModuleSource(
+  options: ReticleVitePluginOptions,
+  devModule: string | null = null,
+): string {
   const args = connectArgs(options);
-  return `import { reticle, install } from '${RETICLE_PACKAGE}';\ninstall();\nreticle.connect(${args});\n`;
+  const base = `import { reticle, install } from '${RETICLE_PACKAGE}';\ninstall();\nreticle.connect(${args});\n`;
+  // AFTER connect: registerStore subscribes through the live SDK, and registering before there is a
+  // session to report into drops the first diffs.
+  return devModule === null ? base : `${base}import('${devModule}');\n`;
 }
 
 /**
@@ -371,15 +456,53 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
      * developer has never heard of. Measured on the react-admin demo with the SDK aliased to a local
      * checkout: zero sessions, and it looked like the app was failing to render.
      *
-     * Declaring them is free when Vite would have found them anyway.
+     * Declaring them is free when Vite would have found them anyway — but only when they are
+     * actually installed. Naming a package that is not there makes Vite log `Failed to resolve
+     * dependency: …, present in optimizeDeps.include` on every boot, which is a scary line pointing
+     * at Reticle for a problem that does not exist. SvelteKit apps hit exactly that: nothing in that
+     * tree depends on @testing-library/dom.
      */
-    config(config: { optimizeDeps?: { include?: string[] } }) {
+    config(config: {
+      optimizeDeps?: { include?: string[]; esbuildOptions?: { define?: Record<string, string> } };
+      define?: Record<string, string>;
+      /** Vite's UserConfig root; undefined means the cwd. `configResolved` runs too late for this. */
+      root?: string;
+    }) {
       return {
+        // Expose the daemon's pairing token to hand-written connects in the same Vite app. The
+        // plugin's own injected connect gets the token directly, but a connect the USER writes —
+        // SvelteKit's client hook, a custom entry — had no way to reach a file only Node can read,
+        // so it called connect() with no credential and the bridge answered "authentication
+        // failed". Empty until the daemon has provisioned one; the page reloads once it has.
+        define: {
+          ...(config.define ?? {}),
+          [RETICLE_TOKEN_GLOBAL]: JSON.stringify(readPairingToken() ?? ''),
+          // Lets the SDK report React's absolute `_debugSource.fileName` as a repo-relative path,
+          // so source looks the same whichever React version an app is on.
+          [RETICLE_ROOT_GLOBAL]: JSON.stringify(config.root ?? process.cwd()),
+        },
         optimizeDeps: {
+          // Part of the cache key, not of the build: changing it is what makes Vite notice that the
+          // SDK on disk is not the SDK it pre-bundled. See sdkBuildFingerprint.
+          esbuildOptions: {
+            ...(config.optimizeDeps?.esbuildOptions ?? {}),
+            define: {
+              ...(config.optimizeDeps?.esbuildOptions?.define ?? {}),
+              __RETICLE_SDK_BUILD__: JSON.stringify(sdkBuildFingerprint()),
+            },
+          },
           include: [
             ...(config.optimizeDeps?.include ?? []),
-            SDK_CJS_DEPS.TESTING_LIBRARY,
-            SDK_CJS_DEPS.ARIA_QUERY,
+            // The SDK ITSELF. Without this, Vite does not learn about @reticlehq/react until the
+            // injected connect module is requested — mid-flight, on the very first page load. It
+            // then pre-bundles it and forces a full reload, and the connect is lost in that reload:
+            // no WebSocket, no session, no console message. The FIRST load after `reticle init` —
+            // the one the whole product is judged on — silently did nothing, and it worked on the
+            // next refresh, which is the worst possible shape for a bug like this.
+            RETICLE_PACKAGE,
+            // Only if present — see above; naming an absent package produces a boot warning that
+            // blames Reticle for nothing.
+            ...[SDK_CJS_DEPS.TESTING_LIBRARY, SDK_CJS_DEPS.ARIA_QUERY].filter(isResolvable),
           ],
         },
       };
@@ -422,7 +545,9 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     },
     load(id) {
       if (!inject || id !== RETICLE_CONNECT_MODULE) return null;
-      return connectModuleSource(resolveLazy());
+      // Resolved at load, not at config: the file may be created after the dev server starts.
+      const devModule = root === undefined ? null : findDevModule(root, existsSync);
+      return connectModuleSource(resolveLazy(), devModule);
     },
     configResolved(config) {
       root = config.root;

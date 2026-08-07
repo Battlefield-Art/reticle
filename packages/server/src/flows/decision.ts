@@ -8,7 +8,7 @@ import {
   type SuiteFlowResult,
   type SuiteVerdict,
 } from '@reticlehq/core';
-import { classifyFlowAssertions } from './flow-classify.js';
+import { classifyFlowAssertions, FlowAssertionGrade } from './flow-classify.js';
 import { SUCCESS_STEP_TOOL } from './flow-success.js';
 
 /**
@@ -114,14 +114,40 @@ function suiteVerdictOf(status: ReplayStatus): 'pass' | 'drift' | 'fail' {
  * decision-annotated replay results + their flows. Passing flows are counted; only failures carry
  * detail (token-cheap), each with the actionable decision so the agent fixes without re-querying.
  */
+/**
+ * Why a green replay still verified nothing, or undefined when it genuinely did.
+ *
+ * A flow with no steps, or one that asserts no observable consequence, replays green no matter what
+ * the app does — the grader already knows this at save time and says so. Counting it as `passed`
+ * turned that warning into "all 1 flow pass", which is a false green in the exact feature sold as
+ * the regression suite. Classified only when the flow file is available; never guessed.
+ */
+function unverifiableReason(flow: FlowFile | undefined): string | undefined {
+  if (flow === undefined) return undefined;
+  if (flow.steps.length === 0) {
+    return 'the flow has no steps — it replays green whatever the app does. Record it again, or add steps with reticle_annotate.';
+  }
+  const c = classifyFlowAssertions(flow);
+  if (c.grade !== FlowAssertionGrade.ASSERTION_FREE) return undefined;
+  return (
+    c.warning ??
+    'the flow asserts no observable consequence, so it passes even when the feature is broken.'
+  );
+}
+
 export function buildSuiteVerdict(
   runs: ReadonlyArray<{ replay: FlowReplayResult; flow?: FlowFile }>,
 ): SuiteVerdict {
   const failures: SuiteFlowResult[] = [];
+  const unverifiable: { flow: string; reason: string }[] = [];
   let passed = 0;
   for (const { replay, flow } of runs) {
     if (replay.status === ReplayStatus.OK) {
-      passed += 1;
+      const reason = unverifiableReason(flow);
+      // A green that cannot go red is not a pass. Counted apart, so `passed` stays a count of things
+      // actually verified rather than of replays that merely completed.
+      if (reason !== undefined) unverifiable.push({ flow: replay.name, reason });
+      else passed += 1;
       continue;
     }
     const decision = replay.decision ?? buildDecision(replay, flow);
@@ -133,10 +159,26 @@ export function buildSuiteVerdict(
   }
   const total = runs.length;
   const failed = failures.length;
-  const status = failed === 0 ? 'pass' : 'fail';
+  // A real failure outranks an unverifiable flow: a broken flow is worse news than an empty one.
+  const status: SuiteVerdict['status'] =
+    failed > 0 ? 'fail' : unverifiable.length > 0 ? 'unverifiable' : 'pass';
+  const cannotFail =
+    unverifiable.length === 0
+      ? ''
+      : ` — ${String(unverifiable.length)} verified nothing (${unverifiable.map((u) => u.flow).join(', ')})`;
   const summary =
     failed === 0
-      ? `all ${total} flow${total === 1 ? '' : 's'} pass`
-      : `${passed}/${total} flows pass — ${failed} need attention: ${failures.map((f) => f.flow).join(', ')}`;
-  return { status, total, passed, failed, summary, failures };
+      ? unverifiable.length === 0
+        ? `all ${total} flow${total === 1 ? '' : 's'} pass`
+        : `${String(passed)}/${String(total)} flows verified${cannotFail}`
+      : `${passed}/${total} flows pass — ${failed} need attention: ${failures.map((f) => f.flow).join(', ')}${cannotFail}`;
+  return {
+    status,
+    total,
+    passed,
+    failed,
+    summary,
+    failures,
+    ...(unverifiable.length > 0 ? { unverifiable } : {}),
+  };
 }

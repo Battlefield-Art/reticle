@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { ComponentStateReason, type ComponentStateResult } from '@reticlehq/core';
 import { identify, readState, hasHoverHandlers } from './index.js';
 
@@ -171,5 +171,54 @@ describe('react adapter hasHoverHandlers', () => {
 
   it('returns false when a hover key is present but not a function', () => {
     expect(hasHoverHandlers(withProps({ onMouseEnter: 'nope' }))).toBe(false);
+  });
+});
+
+/**
+ * React's `_debugSource.fileName` is ABSOLUTE; the babel stamp is repo-relative. Both surface to the
+ * agent as `source`, so the same product reported two different path shapes depending on which React
+ * version an app happened to be on — three of six real apps came back with
+ * `/private/tmp/.../wt/apps/x/src/A.tsx`, which is somebody else's machine and not a pointer anyone
+ * can act on. The build plugins define the root; without one the path is left alone rather than guessed at.
+ */
+describe('source paths are repo-relative when the build plugin supplies a root', () => {
+  const ROOT_KEY = '__RETICLE_ROOT__';
+  const g = globalThis as Record<string, unknown>;
+  afterEach(() => {
+    delete g[ROOT_KEY];
+  });
+
+  function elementAt(fileName: string): Element {
+    const el = document.createElement('button');
+    const fiber = {
+      return: null,
+      type: function Pay() {
+        return null;
+      },
+      elementType: function Pay() {
+        return null;
+      },
+      _debugSource: { fileName, lineNumber: 7, columnNumber: 1 },
+    };
+    (el as unknown as Record<string, unknown>)['__reactFiber$test'] = fiber;
+    return el;
+  }
+
+  it('strips the root, with or without a trailing slash', () => {
+    for (const root of ['/repo/app', '/repo/app/']) {
+      g[ROOT_KEY] = root;
+      expect(identify(elementAt('/repo/app/src/Pay.tsx'))?.source?.file).toBe('src/Pay.tsx');
+    }
+  });
+
+  it('leaves the path alone when no root is defined — a guess would be worse', () => {
+    expect(identify(elementAt('/repo/app/src/Pay.tsx'))?.source?.file).toBe('/repo/app/src/Pay.tsx');
+  });
+
+  it('leaves a path that is not under the root alone (linked package, monorepo sibling)', () => {
+    g[ROOT_KEY] = '/repo/app';
+    expect(identify(elementAt('/elsewhere/lib/Button.tsx'))?.source?.file).toBe(
+      '/elsewhere/lib/Button.tsx',
+    );
   });
 });

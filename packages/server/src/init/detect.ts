@@ -7,6 +7,7 @@ export const Framework = {
   NEXT: 'next',
   VITE: 'vite',
   SVELTEKIT: 'sveltekit',
+  ASTRO: 'astro',
   HTML: 'html',
 } as const;
 export type Framework = (typeof Framework)[keyof typeof Framework];
@@ -31,10 +32,33 @@ export interface DetectInput {
   configFiles: ReadonlySet<string>;
   /** Lockfile basenames present in the project root. */
   lockfiles: ReadonlySet<string>;
+  /** Marker basenames inside `node_modules` (`.modules.yaml`, `.yarn-state.yml`, …), if installed. */
+  nodeModulesMarkers?: ReadonlySet<string>;
 }
+
+/**
+ * The UI library the app renders with. Detection used to key on "vite is in package.json" and stop
+ * there, so a Vue or Preact app got `@reticlehq/react` installed and an all-green report with no
+ * mention that the React adapter has nothing to attach to.
+ */
+export const UiLibrary = {
+  REACT: 'react',
+  PREACT: 'preact',
+  VUE: 'vue',
+  SVELTE: 'svelte',
+  UNKNOWN: 'unknown',
+} as const;
+export type UiLibrary = (typeof UiLibrary)[keyof typeof UiLibrary];
 
 export interface Detection {
   framework: Framework;
+  uiLibrary: UiLibrary;
+  /**
+   * Whether the project is TypeScript. Not cosmetic: generating a `.tsx` file into a JavaScript
+   * project makes Next auto-install TypeScript on the next `next dev`, which on Next 13 takes its
+   * require-hook down with it and the dev server never starts.
+   */
+  typescript: boolean;
   reactMajor: number | undefined;
   /** React 19 dropped _debugSource, so it needs the build-time source-map stamp. */
   needsSourceMapping: boolean;
@@ -44,6 +68,7 @@ export interface Detection {
 const NEXT_CONFIGS = ['next.config.js', 'next.config.mjs', 'next.config.ts', 'next.config.cjs'];
 const VITE_CONFIGS = ['vite.config.js', 'vite.config.ts', 'vite.config.mjs', 'vite.config.mts'];
 const SVELTE_CONFIGS = ['svelte.config.js', 'svelte.config.ts', 'svelte.config.mjs'];
+const ASTRO_CONFIGS = ['astro.config.mjs', 'astro.config.js', 'astro.config.ts', 'astro.config.cjs'];
 
 function depVersion(pkg: PackageJsonLike, name: string): string | undefined {
   return pkg.dependencies?.[name] ?? pkg.devDependencies?.[name] ?? pkg.peerDependencies?.[name];
@@ -62,11 +87,38 @@ export function parseMajor(range: string | undefined): number | undefined {
   return isNaN(major) ? undefined : major;
 }
 
-function detectPackageManager(lockfiles: ReadonlySet<string>): PackageManager {
+/**
+ * Markers each package manager leaves INSIDE `node_modules`. An installed tree is the strongest
+ * evidence there is — stronger than a lockfile, which may simply not be committed.
+ *
+ * Without this, a pnpm-installed project with no committed lockfile was read as npm, and `npm i -D`
+ * then died on pnpm's symlink layout with `Cannot read properties of null (reading 'matches')`. Worse,
+ * it left the package present in `node_modules` but absent from `package.json`, so every later run
+ * reported the same failure — a setup that could not be retried into working.
+ */
+const NODE_MODULES_MARKERS: readonly (readonly [string, PackageManager])[] = [
+  ['.modules.yaml', PackageManager.PNPM],
+  ['.yarn-state.yml', PackageManager.YARN],
+  ['.package-lock.json', PackageManager.NPM],
+];
+
+/** Marker basenames present inside the project's `node_modules`, if it has one. */
+export function packageManagerFromNodeModules(
+  markers: ReadonlySet<string>,
+): PackageManager | undefined {
+  for (const [name, pm] of NODE_MODULES_MARKERS) if (markers.has(name)) return pm;
+  return undefined;
+}
+
+function detectPackageManager(
+  lockfiles: ReadonlySet<string>,
+  nodeModulesMarkers: ReadonlySet<string>,
+): PackageManager {
   if (lockfiles.has('pnpm-lock.yaml')) return PackageManager.PNPM;
   if (lockfiles.has('yarn.lock')) return PackageManager.YARN;
   if (lockfiles.has('bun.lockb') || lockfiles.has('bun.lock')) return PackageManager.BUN;
-  return PackageManager.NPM;
+  // No lockfile is not the same as "npm". An already-installed tree says which manager built it.
+  return packageManagerFromNodeModules(nodeModulesMarkers) ?? PackageManager.NPM;
 }
 
 function detectFramework(input: DetectInput): Framework {
@@ -79,19 +131,44 @@ function detectFramework(input: DetectInput): Framework {
   if (depVersion(pkg, '@sveltejs/kit') !== undefined || hasAnyConfig(configFiles, SVELTE_CONFIGS)) {
     return Framework.SVELTEKIT;
   }
+  // Astro is Vite-based but SSRs its own HTML, so the plugin's index.html injection never fires and
+  // `vite` is not a direct dependency — it used to fall all the way through to HTML and be handed
+  // connect instructions for a bundler it does not have. Check BEFORE the generic Vite branch.
+  if (depVersion(pkg, 'astro') !== undefined || hasAnyConfig(configFiles, ASTRO_CONFIGS)) {
+    return Framework.ASTRO;
+  }
   if (depVersion(pkg, 'vite') !== undefined || hasAnyConfig(configFiles, VITE_CONFIGS)) {
     return Framework.VITE;
   }
   return Framework.HTML;
 }
 
+/**
+ * React first: a Preact app using preact/compat aliases React, and Next/Remix apps list both. The
+ * order is the precedence — whichever the app actually renders through is the one it depends on
+ * directly.
+ */
+function detectUiLibrary(pkg: PackageJsonLike): UiLibrary {
+  if (depVersion(pkg, 'react') !== undefined) return UiLibrary.REACT;
+  if (depVersion(pkg, 'preact') !== undefined) return UiLibrary.PREACT;
+  if (depVersion(pkg, 'vue') !== undefined) return UiLibrary.VUE;
+  if (depVersion(pkg, 'svelte') !== undefined) return UiLibrary.SVELTE;
+  return UiLibrary.UNKNOWN;
+}
+
+const TS_CONFIGS = ['tsconfig.json'];
+
 export function detect(input: DetectInput): Detection {
   const reactMajor = parseMajor(depVersion(input.pkg, 'react'));
   return {
     framework: detectFramework(input),
+    uiLibrary: detectUiLibrary(input.pkg),
+    typescript:
+      hasAnyConfig(input.configFiles, TS_CONFIGS) ||
+      depVersion(input.pkg, 'typescript') !== undefined,
     reactMajor,
     needsSourceMapping: reactMajor !== undefined && reactMajor >= 19,
-    packageManager: detectPackageManager(input.lockfiles),
+    packageManager: detectPackageManager(input.lockfiles, input.nodeModulesMarkers ?? new Set()),
   };
 }
 

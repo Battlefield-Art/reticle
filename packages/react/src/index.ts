@@ -2,6 +2,7 @@ import { registerAdapter, type ComponentInfo, type ComponentSource } from '@reti
 import {
   ComponentStateReason,
   DATA_RETICLE_SOURCE_ATTR,
+  RETICLE_ROOT_GLOBAL,
   type ComponentStateResult,
 } from '@reticlehq/core';
 
@@ -14,13 +15,32 @@ interface Hook {
 interface DebugSource {
   fileName: string;
   lineNumber: number;
-  columnNumber?: number;
+  /** Nullable for the same reason as `_debugSource` itself — React leaves it null, not absent. */
+  columnNumber?: number | null;
 }
+/**
+ * React's `_debugSource.fileName` is ABSOLUTE; the babel stamp is repo-relative. Both surface to the
+ * agent as `source`, so the same product emitted two path shapes depending on which React version an
+ * app was on — and `/Users/someone/tmp/wt/apps/x/src/A.tsx` is noise in a report, not a pointer.
+ * The build plugins define the root; without one we return the path unchanged rather than guessing.
+ */
+function relativeToRoot(file: string): string {
+  const root = (globalThis as Record<string, unknown>)[RETICLE_ROOT_GLOBAL];
+  if (typeof root !== 'string' || root.length === 0) return file;
+  const prefix = root.endsWith('/') ? root : `${root}/`;
+  return file.startsWith(prefix) ? file.slice(prefix.length) : file;
+}
+
 interface Fiber {
   return: Fiber | null;
   type: unknown;
   elementType: unknown;
-  _debugSource?: DebugSource;
+  /**
+   * NULLABLE, not merely absent. React writes `_debugSource: null` on fibers it has no JSX source
+   * for — the old `?: DebugSource` type said "missing or a DebugSource", so `!== undefined` let the
+   * null straight through to a dereference. Typing the null is what makes the compiler catch it.
+   */
+  _debugSource?: DebugSource | null;
   memoizedState?: unknown; // for a function component this is the head of the hook list
   memoizedProps?: unknown; // host fiber props incl. JSX event handlers
 }
@@ -85,11 +105,16 @@ export function identify(el: Element): ComponentInfo | null {
       rawStack.push(name);
       if (!isFrameworkNoise(name) && stack[stack.length - 1] !== name) stack.push(name);
     }
-    if (source === undefined && fiber._debugSource !== undefined) {
-      source = { file: fiber._debugSource.fileName, line: fiber._debugSource.lineNumber };
-      if (fiber._debugSource.columnNumber !== undefined) {
-        source.column = fiber._debugSource.columnNumber;
-      }
+    // `identify()` is on the ACT path as well as the inspect path, so one null fiber anywhere in
+    // this walk used to take out reticle_act / reticle_act_and_wait / reticle_inspect for the whole
+    // app: the read-only tools kept working, so the agent could see the app perfectly and could not
+    // touch it. The throw also pre-empted the React 19 attribute fallback below, which would have
+    // produced the source anyway.
+    const debugSource = fiber._debugSource;
+    if (source === undefined && debugSource !== undefined && debugSource !== null) {
+      source = { file: relativeToRoot(debugSource.fileName), line: debugSource.lineNumber };
+      const column = debugSource.columnNumber;
+      if (column !== undefined && column !== null) source.column = column;
     }
     fiber = fiber.return;
   }

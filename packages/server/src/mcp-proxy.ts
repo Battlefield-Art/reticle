@@ -1,6 +1,9 @@
 import * as http from 'node:http';
 import * as net from 'node:net';
-import { LOOPBACK_HOST, MCP_SSE_PATH } from '@reticlehq/core';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { LOOPBACK_HOST, MCP_SSE_PATH, ReticleDir } from '@reticlehq/core';
 import { log } from './log.js';
 
 const DEFAULT_DAEMON_READY_TIMEOUT_MS = 10_000;
@@ -18,6 +21,106 @@ const DAEMON_POLL_INTERVAL_MS = 100;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Reconnect backoff: linear, capped, so a briefly-restarting daemon is picked up fast. */
+const RECONNECT_BASE_MS = 250;
+const RECONNECT_CAP_MS = 5_000;
+/**
+ * How many consecutive failed reconnects before the proxy gives up and exits. At the capped backoff
+ * this is a few minutes — long enough to ride out a daemon restart, short enough that a genuinely
+ * dead daemon lets the agent host respawn the proxy (which spawns a fresh daemon) instead of hanging.
+ */
+export const MAX_RECONNECT_ATTEMPTS = 60;
+
+export function reconnectDelayMs(attempt: number): number {
+  return Math.min(RECONNECT_BASE_MS * attempt, RECONNECT_CAP_MS);
+}
+
+/** JSON-RPC id the proxy uses for its own replayed `initialize` — never one the client could send. */
+export const RECONNECT_INITIALIZE_ID = '__reticle_proxy_reinit';
+
+/** The proxy's own log file, so a silent drop leaves a readable trace the agent can go read. */
+export function proxyLogPath(): string {
+  return join(homedir(), ReticleDir.ROOT, 'mcp-proxy.log');
+}
+
+/**
+ * Log to stderr (which the agent host usually swallows) AND to ~/.reticle/mcp-proxy.log, which it
+ * does not. A dropped MCP connection is invisible from the agent's side — no message, no exit code —
+ * so the one thing that makes it diagnosable at all is a file somebody can read afterwards.
+ */
+function proxyLog(event: string, fields: Record<string, unknown> = {}): void {
+  log(event, fields);
+  try {
+    const dir = join(homedir(), ReticleDir.ROOT);
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(proxyLogPath(), `${JSON.stringify({ event, ...fields })}\n`, 'utf8');
+  } catch {
+    // Logging must never be the thing that kills the proxy.
+  }
+}
+
+interface JsonRpcLike {
+  id?: unknown;
+  method?: unknown;
+}
+
+function parseJsonRpc(line: string): JsonRpcLike | null {
+  try {
+    const parsed: unknown = JSON.parse(line);
+    return typeof parsed === 'object' && parsed !== null ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+const INITIALIZE_METHOD = 'initialize';
+const INITIALIZED_METHOD = 'notifications/initialized';
+
+/**
+ * Makes a reconnect invisible to the client.
+ *
+ * The daemon builds a FRESH `McpServer` per SSE connection, so a reconnected session has never seen
+ * the client's `initialize` — every subsequent `tools/call` would hit an uninitialized server. The
+ * proxy therefore remembers the handshake the client sent once and replays it into each new session.
+ * The replay is re-issued under a reserved id so the daemon's response to it can be dropped rather
+ * than reaching the client's stdout, where a duplicate JSON-RPC id would be a protocol violation.
+ */
+export class HandshakeReplay {
+  #initialize: string | null = null;
+  #initialized: string | null = null;
+  #pendingReplayId: string | null = null;
+
+  /** Record one outbound client line. Cheap enough to call for every stdin message. */
+  observeOutbound(line: string): void {
+    const msg = parseJsonRpc(line);
+    if (msg === null) return;
+    // The first initialize is the session's identity; a client re-issuing one does not change it.
+    if (msg.method === INITIALIZE_METHOD && this.#initialize === null) this.#initialize = line;
+    else if (msg.method === INITIALIZED_METHOD) this.#initialized = line;
+  }
+
+  /** Lines to POST into a freshly-established session, before any queued client traffic. */
+  replayLines(): string[] {
+    if (this.#initialize === null) return [];
+    const msg = parseJsonRpc(this.#initialize);
+    if (msg === null) return [];
+    this.#pendingReplayId = RECONNECT_INITIALIZE_ID;
+    const reinit = { ...msg, id: RECONNECT_INITIALIZE_ID };
+    return this.#initialized === null
+      ? [JSON.stringify(reinit)]
+      : [JSON.stringify(reinit), this.#initialized];
+  }
+
+  /** True when this inbound daemon line is the echo of our replayed handshake and must not be forwarded. */
+  shouldSuppressInbound(line: string): boolean {
+    if (this.#pendingReplayId === null) return false;
+    const msg = parseJsonRpc(line);
+    if (msg === null || msg.id !== this.#pendingReplayId) return false;
+    this.#pendingReplayId = null; // one response per replay — anything later is not ours to swallow
+    return true;
+  }
 }
 
 /** One parsed Server-Sent-Events frame: the event name (defaulted to "message") and its data. */
@@ -141,51 +244,91 @@ export function buildSessionUrl(rawData: string, port: number): string {
 
 /**
  * Bridge stdio ↔ SSE: connects to the running daemon's MCP endpoint and forwards
- * Claude Code's stdin/stdout JSON-RPC through it. Never resolves — runs until
- * stdin closes or the SSE stream ends (at which point the process exits so
- * Claude Code restarts the proxy fresh).
+ * Claude Code's stdin/stdout JSON-RPC through it. Never resolves — runs until stdin closes.
+ *
+ * A dropped SSE stream used to exit the process, which is what made the agent's `reticle_*` tools
+ * vanish mid-session with no message and no way for the agent to get them back — only a human running
+ * `/mcp` could. The daemon demonstrably stays up across these drops, so the stream ending is a
+ * transport event, not a shutdown: reconnect to it and replay the handshake instead of dying.
  */
 export function startMcpProxy(port: number): Promise<never> {
   return new Promise<never>((_resolve, reject) => {
     let postUrl: string | null = null;
     const stdinQueue: string[] = [];
-
-    // ── SSE reader ──────────────────────────────────────────────────────────
-    const req = http.get({ host: LOOPBACK_HOST, port, path: MCP_SSE_PATH }, (res) => {
-      res.setEncoding('utf8');
-
-      const sse = new SseFrameParser();
-      res.on('data', (chunk: string) => {
-        for (const frame of sse.push(chunk)) onSseEvent(frame.event, frame.data, port);
-      });
-
-      res.on('end', () => {
-        log('reticle_mcp_proxy_sse_ended', { port });
-        process.exit(0);
-      });
-
-      res.on('error', (err) => {
-        log('reticle_mcp_proxy_sse_error', { error: err.message });
-        process.exit(1);
-      });
-    });
-
-    req.on('error', (err) => reject(err));
+    const replay = new HandshakeReplay();
+    let stopped = false;
+    let attempts = 0;
 
     function onSseEvent(event: string, data: string, p: number): void {
       if (event === 'endpoint') {
         const url = buildSessionUrl(data, p);
         postUrl = url;
-        // Flush messages that arrived before the session URL was known
-        for (const queued of stdinQueue.splice(0)) {
-          void postToSession(url, queued);
-        }
+        // The new session's McpServer has never seen the client's initialize — replay it first, then
+        // flush whatever the client sent while we were reconnecting.
+        for (const line of replay.replayLines()) void postToSession(url, line);
+        for (const queued of stdinQueue.splice(0)) void postToSession(url, queued);
         return;
       }
-      if (event === 'message') {
+      if (event === 'message' && !replay.shouldSuppressInbound(data)) {
         process.stdout.write(`${data}\n`);
       }
     }
+
+    function scheduleReconnect(reason: string, detail?: string): void {
+      if (stopped) return;
+      postUrl = null;
+      attempts++;
+      if (attempts > MAX_RECONNECT_ATTEMPTS) {
+        proxyLog('reticle_mcp_proxy_gave_up', {
+          port,
+          reason,
+          attempts,
+          ...(detail !== undefined ? { detail } : {}),
+        });
+        process.exit(1);
+      }
+      const wait = reconnectDelayMs(attempts);
+      proxyLog('reticle_mcp_proxy_reconnecting', {
+        port,
+        reason,
+        attempt: attempts,
+        retryInMs: wait,
+        ...(detail !== undefined ? { detail } : {}),
+      });
+      setTimeout(() => connect(false), wait).unref();
+    }
+
+    function connect(first: boolean): void {
+      const req = http.get({ host: LOOPBACK_HOST, port, path: MCP_SSE_PATH }, (res) => {
+        attempts = 0; // a stream we actually established resets the budget
+        if (!first) proxyLog('reticle_mcp_proxy_reconnected', { port });
+        res.setEncoding('utf8');
+        // `end` and `error` can both fire on one response; only the first should drive a reconnect.
+        let settled = false;
+        const drop = (reason: string, detail?: string): void => {
+          if (settled) return;
+          settled = true;
+          scheduleReconnect(reason, detail);
+        };
+        const sse = new SseFrameParser();
+        res.on('data', (chunk: string) => {
+          for (const frame of sse.push(chunk)) onSseEvent(frame.event, frame.data, port);
+        });
+        res.on('end', () => drop('sse_ended'));
+        res.on('error', (err) => drop('sse_error', err.message));
+        // A socket dying under us (daemon killed, network stack reset) emits NEITHER `end` nor
+        // `error` — only `aborted`/`close`. Listening for just the first two is why the proxy sat
+        // there afterwards holding a dead stream. `settled` keeps the clean case single-fire.
+        res.on('aborted', () => drop('sse_aborted'));
+        res.on('close', () => drop('sse_closed'));
+      });
+
+      // The very first connect failing means there is no daemon to talk to — that is a startup
+      // failure the caller handles. Later ones are just the daemon bouncing: keep retrying.
+      req.on('error', (err) => (first ? reject(err) : scheduleReconnect('connect_error', err.message)));
+    }
+
+    connect(true);
 
     // ── stdin reader ─────────────────────────────────────────────────────────
     process.stdin.setEncoding('utf8');
@@ -198,6 +341,7 @@ export function startMcpProxy(port: number): Promise<never> {
       for (const line of lines) {
         const trimmed = line.trim();
         if (trimmed === '') continue;
+        replay.observeOutbound(trimmed);
         if (postUrl === null) {
           stdinQueue.push(trimmed);
         } else {
@@ -206,6 +350,10 @@ export function startMcpProxy(port: number): Promise<never> {
       }
     });
 
-    process.stdin.on('end', () => process.exit(0));
+    // The client going away is the one clean shutdown — stop reconnecting and exit.
+    process.stdin.on('end', () => {
+      stopped = true;
+      process.exit(0);
+    });
   });
 }

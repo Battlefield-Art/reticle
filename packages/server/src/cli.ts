@@ -40,7 +40,7 @@ import { runInit } from './init/run.js';
 import { handleDoctor } from './cli-doctor.js';
 import { buildNodeIo } from './init/node-io.js';
 import { describeLicense } from './license/license.js';
-import { readProjectPort, readProjectId } from './cli-port.js';
+import { isLikelyDevServerPort, devServerPortWarning, readProjectPort, readProjectId } from './cli-port.js';
 import type { StartOptions } from './index.js';
 
 import {
@@ -479,8 +479,15 @@ function main(): void {
   const portEnv = process.env[ReticleEnv.PORT];
   const envPort = portEnv !== undefined ? parseInt(portEnv, 10) : undefined;
   const projectPort = readProjectPort(process.cwd());
+  // Say so rather than letting the daemon fight the dev server for the port and fail with an
+  // EADDRINUSE that mentions neither file nor cause.
+  if (projectPort !== undefined && isLikelyDevServerPort(projectPort)) {
+    process.stderr.write(`${devServerPortWarning(projectPort)}\n`);
+  }
   const defaultPort = envPort ?? projectPort ?? RETICLE_DEFAULT_PORT;
-  const parsed = parseCliArgs(argv, defaultPort);
+  // Headed by default; hidden only where there is no display to be headed on. A run nobody can see
+  // is a run nobody trusts, and every "did it actually do anything?" cost a human round-trip.
+  const parsed = parseCliArgs(argv, defaultPort, process.env['CI'] !== undefined);
 
   switch (parsed.kind) {
     case 'error':

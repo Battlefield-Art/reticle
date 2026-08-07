@@ -16,61 +16,51 @@ cat .reticle.json 2>/dev/null || echo "NOT_FOUND"
 
 > Run this once per project. Writes config files, installs the SDK, and validates the connection. After setup, every subsequent `/reticle` goes straight to Test mode.
 
-## Step 0 — Ask these questions before doing anything
-
-Ask ALL of them in a single message. Do not start installing until you have the answers.
-
-**Before asking Q5**, run the detection commands below to pre-fill a suggestion — but always confirm with the user, because they may plan to use a tool that isn't installed yet.
+## Step 1 — Run `init`. Ask the user nothing.
 
 ```bash
-which claude    2>/dev/null && echo "claude-code"
-which opencode  2>/dev/null && echo "opencode"
-which codex     2>/dev/null && echo "codex"
-ls ~/.cursor/                             2>/dev/null && echo "cursor"
-ls ~/.codeium/windsurf/                   2>/dev/null && echo "windsurf"
-ls .vscode/                               2>/dev/null && echo "vscode"
-which zed       2>/dev/null && echo "zed"
+npx @reticlehq/server init
 ```
 
-```
-1. What framework/stack is this app?
-   a) Vite + React (specify React 18 or 19)
-   b) Next.js (specify version + app/pages router)
-   c) Remix
-   d) Astro
-   e) Plain HTML / vanilla JS / other
+That is the setup. It takes a few seconds and it does the whole job: detects the framework, package manager and UI library; registers the MCP server globally with whichever agents are installed; writes the agent verification rule **and the `/reticle` slash command**; installs the SDK pinned to the CLI's version; writes `.reticle.json`; wires the build config — the Vite plugin, or all three Next.js files (`next.config`, the root layout, and the `ReticleDev` component); and generates a **capabilities scaffold** pre-filled with the `data-testid` values it found and the state library it detected.
 
-   Vue and Svelte/SvelteKit are NOT supported yet — the SDK is framework-agnostic and may
-   well connect, but nothing in CI proves it, so don't treat it as supported. Pick (e).
+**Ask the user nothing. Not one question.** Not which framework, not which package manager, not which port, not which editor or MCP client, not whether they have `data-testid` attributes. Every one of those is answerable from the repository you are already sitting in, and `init` answers them itself — from `package.json`, the lockfile, the config files, and which agent CLIs exist on the machine. The people this is built for do not know the answers, and asking is how a two-minute setup became an hour.
 
-2. What package manager are you using?
-   npm | pnpm | yarn | bun
+If you genuinely cannot determine something, pick the sensible default, say which default you picked in one line, and keep going. A wrong default that gets corrected in ten seconds beats a question that blocks for ten minutes.
 
-3. What port does your dev server run on?
-   (e.g. 3000, 5173, 8080 — the port number only, not the full URL)
-   Reticle attaches to your running server — you keep running `npm run dev` yourself.
-   Reticle does NOT start or manage your dev server.
+**Never ask about the port.** There are two different ports and conflating them is the single most common setup failure:
 
-4. Do you already have data-testid attributes on your key elements?
-   (If yes, Reticle reuses them. If no, we'll add a handful to the most important elements.)
+| | What it is | Who owns it |
+| --- | --- | --- |
+| Dev-server port (3000, 5173, 4321, …) | where the app is served | the user's `npm run dev` — Reticle never touches it |
+| Bridge port (**4400**) | the daemon ↔ SDK channel | Reticle, and it defaults correctly |
 
-5. Which AI coding tool(s) will you use this project with?
-   (I detected: <list from detection above, or "none found">)
+Reticle **attaches** to whatever is already running; it never starts or manages a dev server, so it does not need to know that port. Putting a dev-server port in `.reticle.json`'s `port` field makes the daemon fight the app for it. Leave `port` out unless you are running several apps at once.
 
-   a) Claude Code   b) OpenCode   c) Codex CLI
-   d) Cursor        e) Windsurf   f) VS Code + GitHub Copilot   g) Zed
-   h) Multiple — list them
+**In a monorepo, run it at the repo root anyway.** If the root isn't the app, `init` finds the app under `apps/*` or `packages/*` and wires that instead. If it finds several, it lists them — pick the one the user has been working in (the one their recent edits touch) and say which you picked. Do not put the list to them as a question.
 
-   Save as RETICLE_HARNESSES.
-```
+Then read the report. Each line is marked:
+
+| Mark | Meaning | What you do |
+| --- | --- | --- |
+| `✓` | applied | nothing |
+| `·` | already wired | nothing |
+| `–` | skipped by a flag | nothing |
+| `⚠` | needs a human/agent edit | **only these** — the line carries the exact snippet |
+
+**If every line is `✓`, `·` or `–`, skip to Step 4 and validate.** The manual sections below exist for the `⚠` lines only.
+
+Useful flags: `--port N` (only when running several apps at once), `--no-install` (you'll run the package manager yourself), `--no-mcp` (skip agent registration), `--dry-run` (preview).
+
+**What is proven:** Vite + React, Next.js, Remix and Astro each have an app in this repo and a CI gate that drives it — the first two in the `pnpm test:e2e` battery, Remix and Astro in `pnpm test:integration`. Plain HTML and bundled non-Vite apps (CRA, webpack, Parcel) are wired by hand and have **no** app and no gate: they may well work, nothing proves it. The SDK is framework-agnostic and will usually connect elsewhere — but on a Vue, Preact or Svelte app `init` prints an UNVERIFIED line saying which parts work (DOM, network, console, state) and which do not (component names, `file:line`). Repeat that to the user rather than reporting a clean install.
 
 ---
 
-## Step 1 — Configure the MCP server
+## Manual fallback — Configure the MCP server
 
-> **Fast path (Claude Code + Vite or Next.js):** Run `npx @reticlehq/server init --port <Q3 answer>`. This handles Steps 1–4 automatically for Claude Code and Cursor. Jump to Step 4 to validate.
+> **Only if `init` printed `⚠` for the MCP step**, or the user runs an agent `init` doesn't register (it handles Claude Code and Cursor automatically; the rest are below).
 
-> For all other harnesses or manual control, follow the steps below. There is no single MCP config file all tools share. Each harness has its own file and schema. Write only the ones in `RETICLE_HARNESSES`.
+There is no single MCP config file all tools share. Each harness has its own file and schema — write only the one the user actually uses.
 
 | Tool | File | Root key | Command format | `type` needed? |
 | --- | --- | --- | --- | --- |
@@ -209,18 +199,22 @@ Only add this if the user explicitly asks for the daemon to stop between turns:
 
 ---
 
-## Step 2 — Install the SDK
+## Manual fallback — Install the SDK
+
+> Only if `init` printed `⚠` for the install step (offline, a locked registry, an unusual package manager).
 
 > **Mental model:** The user keeps running their dev server (`npm run dev`) themselves. Reticle embeds a tiny SDK in the app that connects to a local bridge daemon. The agent talks to the daemon over MCP — no Chromium is downloaded or needed for standard agent workflows. Playwright is only required if you explicitly use `--drive` mode.
 
 ```bash
-npm install --save-dev @reticlehq/react @reticlehq/vite-plugin    # swap npm for pnpm/yarn/bun per Q2
+npm install --save-dev @reticlehq/react @reticlehq/vite-plugin    # swap npm for the project's package manager
 # Next.js instead of Vite? npm install --save-dev @reticlehq/react @reticlehq/next
 ```
 
 ---
 
-## Step 3 — Wire up the SDK
+## Manual fallback — Wire up the SDK
+
+> Only for the files `init` marked `⚠`. It auto-patches `vite.config.*` and all three Next.js files; it bails to `⚠` when a config's shape isn't one it recognises, and prints the snippet you need on that line.
 
 **Vite + React**
 
@@ -270,12 +264,7 @@ Which libraries work:
 
 Register TanStack Query even if you register nothing else: a stale cache served as fresh fires **no network request**, so the network log shows silence and the DOM shows a plausible number — the cache is the only witness. Adapters come from `@reticlehq/browser`.
 
-Then load it once from your entry file — add this line near the top of `src/main.tsx` (the dynamic `import()` keeps it out of the production bundle):
-
-```ts
-// src/main.tsx
-if (import.meta.env.DEV) import('./reticle-dev');
-```
+**You do not need to import this file.** `@reticlehq/vite-plugin` imports `src/reticle-dev.*` by convention, so `init` never has to edit the entry file you own. (Only if you are wiring by hand with `inject: false` do you add `if (import.meta.env.DEV) import('./reticle-dev');` to `src/main.tsx` yourself.)
 
 To emit `reticle.signal()` from app code (components, stores), **never import `reticle` statically** — a top-level `import { reticle } from '@reticlehq/react'` drags the whole dev-only SDK into your production bundle. Funnel signals through a dev-guarded helper so `import.meta.env.DEV` dead-code-eliminates it in prod:
 
@@ -289,7 +278,9 @@ export function signal(name: string, data?: Record<string, unknown>): void {
 
 **Next.js (App Router)**
 
-Create `app/reticle-dev.tsx`:
+`init` creates this file, wraps `next.config`, and mounts the component for you — all three are `✓` on a normal `create-next-app`. Use this only to extend the generated file (adding `registerStore` / `registerCapabilities`), or if one of the three came back `⚠`.
+
+Create it next to your root layout — `app/reticle-dev.tsx`, or `src/app/reticle-dev.tsx` in a `--src-dir` app:
 
 ```ts
 'use client';
@@ -300,10 +291,11 @@ export function ReticleDev() {
     void import('@reticlehq/react').then(
       ({ reticle, install, registerCapabilities, registerStore }) => {
         install();
-        // The bridge requires a pairing token. Vite users get it auto-injected; hand-wired Next passes it
-        // in: set RETICLE_TOKEN for the daemon and expose the same value as NEXT_PUBLIC_RETICLE_TOKEN.
+        // The bridge requires a pairing token even on localhost. Vite gets it injected by the
+        // plugin; on Next it comes from withReticle(), which publishes it as NEXT_PUBLIC_RETICLE_TOKEN.
+        // Omit it and the browser logs "bridge refused the connection: authentication failed".
         const token = process.env.NEXT_PUBLIC_RETICLE_TOKEN;
-        reticle.connect(token ? { token } : {});
+        reticle.connect({ ...(token ? { token } : {}) });
         registerStore('app', useApp); // your store — see the table above for non-zustand libraries
         registerCapabilities({
           testids: [], // your data-testid values
@@ -327,20 +319,24 @@ import { ReticleDev } from './reticle-dev';
 }
 ```
 
-Add `@reticlehq/next` → `withReticle` to `next.config.mjs` for source mapping:
+Add `@reticlehq/next` → `withReticle` to `next.config.*`. It does two jobs: source mapping (`data-reticle-source`), and publishing the pairing token the connect above needs.
 
 ```ts
 import { withReticle } from '@reticlehq/next';
 export default withReticle(nextConfig);
 ```
 
+It configures **both** Turbopack and webpack, so it is correct on Next 16 (Turbopack by default) and on Next 15 and earlier. If you are on `@reticlehq/next` older than 2.3.1, `next dev` on Next 16 dies with *"This build is using Turbopack, with a webpack config and no turbopack config"* — upgrade rather than dropping `withReticle`.
+
 **Other frameworks** — call `reticle.connect()` and `install()` inside a dev guard. Vanilla / HTML: use a dynamic `import('@reticlehq/react')` inside `if (location.hostname === 'localhost')`.
 
 ---
 
-## Step 4 — Save config and validate
+## Step 4 — Validate the connection
 
-If you used `reticle init` in Step 1, `.reticle.json` was already written. Verify with:
+**The human can see this.** Reticle's HUD is on by default — a glow border round the page, an animated cursor, and a narration line for each action — and any browser Reticle launches itself is visible by default too. Neither needs a flag. Tell the user to keep the tab in view while you drive: watching the agent operate their own app IS the demo, and it is what makes the first two minutes land. (`--headless` hides the launched browser; CI does that automatically. `reticle.connect({ present: false })` turns the HUD off.)
+
+`init` already wrote `.reticle.json`. Verify with:
 
 ```bash
 cat .reticle.json
@@ -350,19 +346,19 @@ If setting up manually, write `.reticle.json` to the project root (commit this �
 
 ```jsonc
 {
-  "framework": "vite-react",
+  "framework": "vite",
 }
 ```
 
-Fill in `framework` from Q1. **Leave `port` out** — it defaults to `4400` and everything just works for a single app.
+`framework` is one of `vite`, `next`, `sveltekit`, `astro`, `html`. **Leave `port` out** — it defaults to `4400` and everything just works for a single app.
 
-> **`port` here is the Reticle _bridge_ port — NOT your dev server port.** The bridge is the daemon ↔ SDK channel (default `4400`); your dev server (Q3, e.g. 5173) is a separate thing Reticle never touches. Do **not** set `.reticle.json` `port` to your dev-server port — that collides the daemon with your app.
+> **`port` here is the Reticle _bridge_ port — NOT your dev server port.** The bridge is the daemon ↔ SDK channel (default `4400`); your dev server (e.g. 5173) is a separate thing Reticle never touches. Do **not** set `.reticle.json` `port` to your dev-server port — that collides the daemon with your app.
 >
 > Only set `port` when running **multiple apps at once**, so each gets its own bridge. When you do, set the **same** value in two places or the SDK and daemon never meet:
 >
 > ```jsonc
 > // .reticle.json          →  reticle({ port: 4460 })  in vite.config.ts
-> { "framework": "vite-react", "port": 4460 }
+> { "framework": "vite", "port": 4460 }
 > ```
 >
 > Pick any free port that is **not** your dev-server port (4460, 4461, …).
@@ -383,9 +379,36 @@ Most no-connect cases are one of these. Fastest signal first:
 4. **Is the SDK actually wired + loaded in dev?** `reticle()` present in `vite.config.ts`; for the manual entry, `if (import.meta.env.DEV) import('./reticle-dev')` in `src/main.tsx`. After editing `vite.config.ts` you **must restart `vite`** (config changes need a fresh dev server), then **hard-reload the browser tab**. A production build won't connect — the SDK is dev-only by design.
 5. **Still nothing?** See the full [Troubleshooting](#troubleshooting) section (stale `npx` cache, Stop-hook killing the daemon, `-32000`).
 
-When a session is confirmed, tell the user:
+---
 
-> "Reticle is set up. Type `/reticle` anytime to verify the app after a change."
+## Step 5 — Prove it on ONE flow, while the user watches
+
+**Do not stop at "connected".** A connected session is not a result; the user has installed something
+and seen nothing happen. Drive one flow now, in front of them. This is the whole first impression.
+
+**One flow. Not the app.** The person installing this has an existing project with dozens of flows. An
+agent that tries to instrument all of them spends ten minutes producing nothing to look at. Pick the
+single most important flow that completes in a handful of steps — the one a user would do first — say
+which one you picked in a line, and drive only that.
+
+**You do not need to add `data-testid` anywhere to do this.** `reticle_snapshot` addresses elements by
+role and name, and it works on an app that has never heard of Reticle. Adding testids is an
+optimisation for flows you will replay often — it is not a prerequisite, and treating it as one is
+what turns a two-minute setup into an afternoon.
+
+1. Tell the user: **"Keep the tab visible — you'll see this happen."** The HUD is on by default: a glow
+   border, a moving cursor, and a narration line per step.
+2. `reticle_snapshot` → find the elements the flow needs.
+3. Walk it with `reticle_act_and_wait`, narrating each step before you take it.
+4. `reticle_assert` after each step — that the effect happened, not just that the click dispatched.
+5. `reticle_console` + `reticle_network` at the end, for what the DOM does not show.
+
+Then report what you drove and what it produced, with `file:line` for anything broken.
+
+**Only after that flow has run**, tell the user:
+
+> "Reticle is set up, and you just watched it drive <flow>. Type `/reticle` any time to verify a flow
+> after a change — `init` created that command in this project."
 
 **Setup complete — stop here. Do not proceed to Test mode.**
 
@@ -420,13 +443,15 @@ Pin `sessionId` for every subsequent call.
 Call these in parallel:
 
 ```
-reticle_snapshot({ sessionId, maxDepth: 3 })
+reticle_snapshot({ sessionId, mode: "interactive" })
 reticle_run({ tool: "reticle_capabilities", args: { sessionId } })   // not advertised in the default hybrid profile — reach it via reticle_run
 reticle_network({ sessionId, limit: 10 })
 reticle_console({ sessionId, limit: 20 })
 ```
 
-> **Default `hybrid` profile:** only the ~14 core verify tools are advertised directly. Anything else the skill names — `reticle_capabilities`, `reticle_session {action:"yield"}`, `reticle_session {action:"review"}`, `reticle_inspect`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list params first with `reticle_tools`). To advertise them all directly instead, set `RETICLE_TOOL_PROFILE=standard` (flows + extras) or `=full` (everything).
+> **Default `hybrid` profile: 16 tools advertised.** Everything else the skill names — `reticle_capabilities`, `reticle_act_sequence`, `reticle_session {action:"yield"}`, `reticle_session {action:"review"}`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list its params first with `reticle_tools`). Measured surfaces: `hybrid` 16 tools / ~74k chars, `standard` 33 / ~117k, `full` 46 / ~166k — so the default costs ~55% fewer schema characters than `full`.
+>
+> **`RETICLE_TOOL_PROFILE` is read by the DAEMON at startup, not by your client.** Setting it in the agent's environment while a daemon is already running changes nothing, and the two profiles then look identical because you are still talking to the old one. Run `npx @reticlehq/server stop` first.
 
 Build a mental model:
 
@@ -482,11 +507,11 @@ The repeat loop is cheap (~175 tok); the expensive part is the FIRST drive of a 
 **Do this** — state the whole journey, then assert its consequence once:
 
 ```
-reticle_act_sequence({ sessionId, steps: [
+reticle_run({ tool: "reticle_act_sequence", args: { sessionId, steps: [
   { ref: emailRef,    action: "fill",   args: { value: "a@b.com" } },
   { ref: passwordRef, action: "fill",   args: { value: "hunter2"  } },
   { ref: submitRef,   action: "click" }
-]})
+] }})   // act_sequence is not advertised under the default hybrid profile — hence reticle_run
 → reticle_assert({ sessionId, since, predicate: { kind: "allOf", predicates: [
     { kind: "signal",  name: "auth:granted" },
     { kind: "net",     method: "POST", urlContains: "/api/login", status: 200 },
@@ -539,7 +564,7 @@ For flows worth re-checking forever — the actual test suite — record them, t
 
    On a failure the envelope tells you exactly what changed, the `file:line`, and the fix (e.g. "rebind to 'new-deploy'") — act on `nextAction` directly. A single flow: `reticle_flow_replay({ flowName })`.
 
-   > **Tool profile (default `hybrid`).** Reticle advertises the ~12 core verify tools directly and keeps everything else (record/replay/verify/heal, screenshots, network-mock, …) one call away behind two meta-tools — to save ~64% of per-turn tool-schema tokens. Reach a non-core tool with `reticle_run({ tool: "reticle_flow_verify", args: { sessionId } })`, or `reticle_tools` first to list/learn params. Prefer them advertised directly (no `reticle_run`)? Set `RETICLE_TOOL_PROFILE=standard` (flows + extras direct) or `=full` (all tools).
+   > **Tool profile (default `hybrid`).** Reticle advertises 16 core verify tools directly and keeps everything else (record/replay/verify/heal, screenshots, network-mock, `act_sequence`, …) one call away behind two meta-tools — ~55% fewer schema characters per turn than `full`. Reach a non-core tool with `reticle_run({ tool: "reticle_flow_verify", args: { sessionId } })`, or `reticle_tools` first to list its params. Want them advertised directly? Set `RETICLE_TOOL_PROFILE=standard` (33 tools) or `=full` (46) **and restart the daemon** — the profile is read at daemon startup, not per client.
 
 ### Read program truth in one call — instead of reconstructing it from the DOM
 
@@ -601,6 +626,14 @@ If something failed, call `reticle_inspect({ sessionId, ref })` on the failing e
 ---
 
 ## Troubleshooting
+
+### The `reticle_*` tools disappeared mid-session
+
+The MCP proxy lost its stream to the daemon. From 2.3.1 it reconnects on its own and replays the handshake, so this should heal without anyone doing anything — the daemon stays up across the drop, and `npx @reticlehq/server status` will confirm it (`running:true`).
+
+Read `~/.reticle/mcp-proxy.log` — it records every drop and reconnect with a reason (`sse_ended`, `sse_error`, `connect_error`) and the attempt number. It is the only place this is visible; the disconnect is silent from the agent's side.
+
+If the tools stay gone, the proxy exhausted its reconnect budget (`reticle_mcp_proxy_gave_up` in that log) and only the human can restore them by running `/mcp`. Until then, use the CLI for anything that doesn't need the tools: `npx @reticlehq/server status | doctor | open | drive`.
 
 ### Multiple projects / port conflicts
 

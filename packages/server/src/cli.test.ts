@@ -289,12 +289,12 @@ describe('parseCliArgs', () => {
     });
   });
 
-  it('drive <url> returns legacy drive result (headless)', () => {
+  it('drive <url> returns legacy drive result (visible by default)', () => {
     expect(parseCliArgs(['drive', URL], PORT)).toEqual({
       kind: 'drive',
       port: PORT,
       driveUrl: URL,
-      headless: true,
+      headless: false,
     });
   });
 
@@ -412,5 +412,44 @@ describe('parseCliArgs', () => {
 
   it('unknown command is a usage error', () => {
     expect(parseCliArgs(['nope'], PORT)).toEqual({ kind: 'error', message: CLI_USAGE });
+  });
+});
+
+/**
+ * A run nobody can see is a run nobody trusts. Reticle used to hide the browser unless you passed
+ * --headed, so every "did it actually do anything?" cost a human round-trip — and the people this is
+ * built for never knew the flag existed. Visible is now the default; CI, which has no display to be
+ * headed on, flips it back through the injected parameter (cli.ts reads the CI env var).
+ */
+describe('parseCliArgs — the browser is visible unless something says otherwise', () => {
+  const headlessOf = (r: unknown): unknown => (r as { headless?: unknown }).headless;
+
+  it('makes the INTERACTIVE command visible — that is where a human is watching', () => {
+    expect(headlessOf(parseCliArgs(['drive', URL], PORT))).toBe(false);
+  });
+
+  it('leaves the pool-owning commands headless — they back batch work nobody watches', () => {
+    // serve/mcp/_daemon own the browser pool: leased contexts for parallel agents, flow replay, the
+    // spec runner. Launching those headed broke four e2e specs and helps no one.
+    for (const argv of [[], ['serve'], ['mcp'], ['_daemon']]) {
+      expect(headlessOf(parseCliArgs(argv, PORT)), argv.join(' ')).toBe(true);
+    }
+  });
+
+  it('--headless forces drive hidden; --headed opts the pool commands in', () => {
+    expect(headlessOf(parseCliArgs(['drive', URL, '--headless'], PORT))).toBe(true);
+    expect(headlessOf(parseCliArgs(['serve', '--headed'], PORT))).toBe(false);
+    expect(headlessOf(parseCliArgs(['mcp', '--headed'], PORT))).toBe(false);
+  });
+
+  it('an injected headless default (what CI passes) hides the interactive command too', () => {
+    expect(headlessOf(parseCliArgs(['drive', URL], PORT, true))).toBe(true);
+    // ...and an explicit --headed still wins over it, so CI can opt a single run back in.
+    expect(headlessOf(parseCliArgs(['drive', URL, '--headed'], PORT, true))).toBe(false);
+  });
+
+  it('verify stays hidden by default — it is the CI one-shot, not an interactive run', () => {
+    expect(headlessOf(parseCliArgs(['verify', URL], PORT))).toBe(true);
+    expect(headlessOf(parseCliArgs(['verify', URL, '--headed'], PORT))).toBe(false);
   });
 });

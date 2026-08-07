@@ -69,3 +69,70 @@ describe('source pointer, end to end through a real render', () => {
     expect(info?.source).toBeUndefined();
   });
 });
+
+/**
+ * React writes `_debugSource: null` on fibers it has no JSX source for — the type said `undefined`,
+ * so `!== undefined` let the null through and the very next line dereferenced it:
+ *
+ *   Cannot read properties of null (reading 'fileName')
+ *
+ * `identify()` is on the ACT path as well as the inspect path, so ONE null fiber anywhere in the walk
+ * took out `reticle_act`, `reticle_act_and_wait` and `reticle_inspect` for the whole app. The
+ * read-only tools kept working, so the agent could see the app perfectly and could not touch it — and
+ * the React 19 attribute fallback below never got the chance to run. Measured on two real apps.
+ */
+describe('identify — a fiber with no JSX source must not take out the walk', () => {
+  function PayButton(): null {
+    return null;
+  }
+
+  /** A fiber tree shaped the way React actually leaves it: _debugSource present, and null. */
+  function elementWithNullDebugSource(attrs: Record<string, string> = {}): Element {
+    const el = document.createElement('button');
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    const componentFiber = {
+      return: null,
+      type: PayButton,
+      elementType: PayButton,
+      _debugSource: null,
+    };
+    const hostFiber = {
+      return: componentFiber,
+      type: 'button',
+      elementType: 'button',
+      _debugSource: null,
+    };
+    (el as unknown as Record<string, unknown>)['__reactFiber$test'] = hostFiber;
+    return el;
+  }
+
+  it('does not throw — this is what broke driving on two real apps', () => {
+    const el = elementWithNullDebugSource();
+    expect(() => identify(el)).not.toThrow();
+  });
+
+  it('still names the component from the fiber walk', () => {
+    expect(identify(elementWithNullDebugSource())?.componentStack).toContain('PayButton');
+  });
+
+  it('lets the React 19 attribute fallback run, which the throw pre-empted', () => {
+    const el = elementWithNullDebugSource({ 'data-reticle-source': 'src/Checkout.tsx:42:6' });
+    const info = identify(el);
+    expect(info?.source?.file).toBe('src/Checkout.tsx');
+    expect(info?.source?.line).toBe(42);
+  });
+
+  it('a null columnNumber is survivable too — same shape, one field down', () => {
+    const el = document.createElement('button');
+    const hostFiber = {
+      return: null,
+      type: 'button',
+      elementType: 'button',
+      _debugSource: { fileName: 'src/A.tsx', lineNumber: 3, columnNumber: null },
+    };
+    (el as unknown as Record<string, unknown>)['__reactFiber$test'] = hostFiber;
+    const info = identify(el);
+    expect(info?.source?.file).toBe('src/A.tsx');
+    expect(info?.source?.column).toBeUndefined();
+  });
+});

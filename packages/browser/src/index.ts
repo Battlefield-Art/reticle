@@ -54,7 +54,12 @@ export {
 export type { QuerySnapshot, RecoilAtomSnapshot } from './registry/store-adapters.js';
 
 // Capability registry: the app self-describes its testable surface via reticle.describe.
-export { registerCapabilities, getCapabilities, hasCapabilities } from './registry/capabilities.js';
+export {
+  registerCapabilities,
+  getCapabilities,
+  hasCapabilities,
+  setCapabilitiesListener,
+} from './registry/capabilities.js';
 export type { Capabilities, CapabilitiesInput, CapabilityFlow } from './registry/capabilities.js';
 
 // SDK helpers: adopt the recommended integration patterns without boilerplate.
