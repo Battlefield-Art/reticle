@@ -160,8 +160,20 @@ export const FEEDBACK_PROMPT = {
   command: 'reticle feedback',
 } as const;
 
-/** Tools whose completion means "a verification just happened" — the only moment worth asking at. */
+/**
+ * Tools whose completion means "a verification just happened" — the only moment worth asking at,
+ * and the set that decides what `verification_completed` counts.
+ *
+ * ACT_AND_WAIT belongs here and was missing for a long time. It declares `verified` in its
+ * outputSchema, returns the whole verdict block, and its own description calls it "one hop for the
+ * act->observe->assert loop" — it IS the verification path most agents take. The guard that should
+ * have caught the omission keyed on the tool NAME (/assert|verify/), which act_and_wait does not
+ * match, so it slipped through in silence. Measured over a day of real telemetry: act_and_wait 14
+ * calls, assert ZERO, verification_completed 2. Agents were verifying the entire time and the metric
+ * could not see it. The contract test now checks the SHAPE instead.
+ */
 export const VERIFICATION_TOOLS: ReadonlySet<string> = new Set([
+  ReticleTool.ACT_AND_WAIT,
   ReticleTool.ASSERT,
   ReticleTool.FLOW_VERIFY,
   ReticleTool.VERIFY_CHANGE,

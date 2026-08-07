@@ -108,6 +108,37 @@ describe('every tool is classified for telemetry', () => {
       ).toBe(true);
     }
   });
+
+  /**
+   * The name check above has a hole exactly the shape of the product's MAIN verification path.
+   *
+   * `reticle_act_and_wait` declares `verified` in its outputSchema, returns the full verdict block
+   * (verified / because / honesty), and its own description calls it "one hop for the act->observe->
+   * assert loop". It matches neither /assert/ nor /verify/, so the tripwire never fired and it was
+   * never added to VERIFICATION_TOOLS — meaning every verification performed through it emitted no
+   * `verification_completed` at all.
+   *
+   * Measured over a day of real telemetry: `reticle_act_and_wait` 14 calls, `reticle_assert` ZERO,
+   * and `verification_completed` = 2. Agents were verifying the whole time, through the tool built
+   * for exactly that, and the metric the product exists to report could not see any of it.
+   *
+   * So the check is on the SHAPE, not the name: a tool that declares a `verified` verdict is a
+   * verification tool, whatever it happens to be called.
+   */
+  it('every tool that DECLARES a `verified` verdict is in VERIFICATION_TOOLS', () => {
+    const declaresVerdict = TOOLS.filter(
+      (tool) => tool.outputSchema !== undefined && 'verified' in tool.outputSchema,
+    ).map((tool) => tool.name);
+    // If this ever comes back empty the check has silently stopped guarding anything.
+    expect(declaresVerdict.length).toBeGreaterThan(0);
+    for (const name of declaresVerdict) {
+      expect(
+        VERIFICATION_TOOLS.has(name),
+        `'${name}' declares a \`verified\` verdict in its outputSchema but is not in ` +
+          'VERIFICATION_TOOLS, so every verdict it returns is invisible to verification_completed.',
+      ).toBe(true);
+    }
+  });
 });
 
 /**
