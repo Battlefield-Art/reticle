@@ -93,6 +93,7 @@ export class SessionManager {
   }
 
   add(session: Session): Session | undefined {
+    this.#everConnected = true;
     const previous = this.#sessions.get(session.id);
     this.#sessions.set(session.id, session);
     // Publish what this app declared sensitive to the driven-path rule. Here rather than in the
@@ -153,6 +154,29 @@ export class SessionManager {
    */
   readonly #recentClosures: { at: number; reason: string }[] = [];
 
+  /**
+   * What the daemon knows about WHY nothing is connected, refreshed in the background.
+   *
+   * Measured: of the sessions that call any tool, half make exactly one call — usually
+   * reticle_sessions — and stop, because the answer they get names two things they cannot check and
+   * nothing they can do. The daemon can tell "no app is running" from "an app is running and never
+   * dialled us" from "one was connected and left", and each has a different fix. Optional so a
+   * bridge constructed without a daemon (every unit test) keeps the plain message.
+   */
+  #noSessionHint: (() => string | undefined) | undefined;
+
+  /** Wire the diagnosis provider (daemon boot). Absent ⇒ the plain, static message. */
+  setNoSessionHint(hint: (() => string | undefined) | undefined): void {
+    this.#noSessionHint = hint;
+  }
+
+  /** Whether any session has connected since this daemon booted — half the diagnosis. */
+  #everConnected = false;
+
+  everConnected(): boolean {
+    return this.#everConnected;
+  }
+
   /** Record a bridge-initiated close so `resolve` can explain a session that vanished. */
   noteClosure(reason: string, at: number): void {
     this.#recentClosures.push({ at, reason });
@@ -175,6 +199,9 @@ export class SessionManager {
     }
     if (this.#sessions.size === 0) {
       const closure = this.lastClosure();
+      // A diagnosis beats a checklist: it names which of the three causes this actually is.
+      const hint = this.#noSessionHint?.();
+      if (hint !== undefined && closure === undefined) throw new Error(hint);
       throw new Error(
         closure === undefined
           ? NO_SESSION_CONNECTED_ERROR

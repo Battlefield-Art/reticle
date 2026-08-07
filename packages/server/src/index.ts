@@ -31,6 +31,7 @@ import { RunStore } from './runs/run-store.js';
 import { startVerifyServer } from './runs/verify-server.js';
 import { createMcpServer } from './mcp.js';
 import { SessionReaper, endAllSessions, MCP_DISCONNECT_SUMMARY } from './session/session-reaper.js';
+import { wireSessionScope } from './session/no-session-watch.js';
 import { resolveToolProfile } from './tools/profiles.js';
 import { statusPayload } from './status-payload.js';
 import { CdpRealInputProvider, LaunchedRealInputProvider } from './input/real-input.js';
@@ -472,10 +473,9 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   reaper.start();
   // Scope auto-selection to the active project (from .reticle.json) so a stray tab from another app is
   // never picked when the agent omits a sessionId. Explicit per-call scope/sessionId still overrides.
-  const activeProjectId = readProjectId(process.cwd());
-  if (activeProjectId !== undefined) {
-    bridge.sessions.setDefaultScope({ projectId: activeProjectId });
-  }
+  // Scope + the no-session diagnosis: "no browser session connected" is the error that ends most
+  // sessions, and the agent is told to check two things it cannot see. See no-session-diagnosis.ts.
+  wireSessionScope(bridge.sessions, readProjectId(process.cwd()), port);
 
   const { realInput, owned } = await resolveRealInput(
     options,

@@ -9,6 +9,13 @@
  * baseline stores). No clock, no IO — unit-testable in isolation.
  */
 
+import { SELF_RECOVERING_MARKER } from '../session/no-session-diagnosis.js';
+
+/** A message that already carries its own concrete next action, so nothing should be appended. */
+function isSelfRecovering(message: string): boolean {
+  return message.includes(SELF_RECOVERING_MARKER);
+}
+
 /** The recovery hints, named so they are not free strings and can be asserted in tests. */
 export const RECOVERY = {
   NO_SESSION:
@@ -102,8 +109,16 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   },
 ];
 
-/** The actionable next move for a known error message, or undefined when none is recognized. */
+/**
+ * The actionable next move for a known error message, or undefined when none is recognized.
+ *
+ * A message that already carries its own next action gets NO second one. The no-session diagnosis
+ * inspects the machine and says which of three causes this actually is; pairing that with the
+ * generic "ask the human to start their app" produced a result that contradicted itself — the error
+ * saying a server is running and the recovery saying to go start one.
+ */
 export function recoveryFor(message: string): string | undefined {
+  if (isSelfRecovering(message)) return undefined;
   for (const rule of RULES) {
     if (rule.match.test(message)) return rule.hint;
   }
@@ -137,6 +152,10 @@ interface ErrorPayload {
  * agent always gets exactly one next move.
  */
 export function buildErrorPayload(message: string): ErrorPayload {
+  // A self-diagnosing message gets NEITHER a generic recovery nor the feedback ask. It already
+  // inspected the machine and named the cause; a second, contradictory hint is noise, and inviting a
+  // bug report about a condition Reticle diagnosed itself is exactly backwards.
+  if (isSelfRecovering(message)) return { error: message };
   const recovery = recoveryFor(message);
   return recovery !== undefined
     ? { error: message, recovery }

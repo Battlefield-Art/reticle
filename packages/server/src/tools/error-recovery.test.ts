@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FEEDBACK_ASK, RECOVERY, buildErrorPayload, recoveryFor } from './error-recovery.js';
 import { TOOLS } from './tools.js';
+import { diagnoseNoSession } from '../session/no-session-diagnosis.js';
 
 describe('recoveryFor — every known error carries an actionable next move', () => {
   it('maps the no-session footgun to a concrete recovery', () => {
@@ -231,5 +232,38 @@ describe('browser-side action guards are recognized refusals, not unknown defect
         'cannot fill a contenteditable element — rich-text editors keep their own document model',
       ),
     ).toBe(RECOVERY.UNSUPPORTED_SURFACE);
+  });
+});
+
+/**
+ * The no-session diagnosis inspects the machine and says which of three causes this actually is.
+ * Pairing it with the generic hint produced a result that contradicted itself — the error saying a
+ * server IS listening, the recovery saying to go start one — and suppressing only the recovery then
+ * dropped it into the feedback ask, telling the agent that a condition Reticle had just diagnosed
+ * might be a defect in Reticle. A message that recovers itself gets nothing appended.
+ */
+describe('a self-diagnosing message is left alone', () => {
+  const diagnosis = diagnoseNoSession({
+    everConnected: false,
+    initialized: true,
+    listening: [5173],
+    port: 4400,
+  });
+
+  it('gets no second, generic recovery', () => {
+    expect(recoveryFor(diagnosis)).toBeUndefined();
+  });
+
+  it('and is NOT reported as a possible Reticle defect', () => {
+    const payload = buildErrorPayload(diagnosis);
+    expect(payload.recovery).toBeUndefined();
+    expect(payload.feedback).toBeUndefined();
+    expect(payload.error).toBe(diagnosis);
+  });
+
+  it('while the plain static message still gets its hint', () => {
+    expect(recoveryFor('no browser session connected. Two things to check')).toBe(
+      RECOVERY.NO_SESSION,
+    );
   });
 });

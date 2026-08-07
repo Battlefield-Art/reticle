@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
  * asked "what port does your dev server run on?" a few lines before showing this field, which is how
  * the confusion got manufactured in the first place.
  */
-const DEV_SERVER_PORTS: ReadonlySet<number> = new Set([
+export const DEV_SERVER_PORTS: ReadonlySet<number> = new Set([
   3000, 3001, 4200, 4321, 5000, 5173, 5174, 8000, 8080, 8100, 9000,
 ]);
 
