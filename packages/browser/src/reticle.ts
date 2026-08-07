@@ -9,10 +9,14 @@ import {
   SESSION_AUTO,
   SessionState,
   TRANSPORT_LIMITS,
+  buildRedactionPolicy,
   isLoopbackHostname,
   isLocalPage,
+  setActiveRedactionPolicy,
+  wireRedactionKeys,
   type CommandMessage,
   type HelloMessage,
+  type RedactionConfig,
   type ReticleEvent,
 } from '@reticlehq/core';
 import {
@@ -43,64 +47,10 @@ import { nativeWarn } from './timers/native-console.js';
 import { installRecorder, type RecorderHandle } from './recorder/recorder.js';
 import { Annotator } from './review/annotator.js';
 import type { Teardown } from './observers/types.js';
+import type { ReticleConnectOptions } from './connect-options.js';
 
-export interface ReticleConnectOptions {
-  /** WS endpoint of the local bridge. Defaults to ws://localhost:<port><path>. */
-  url?: string;
-  /** Human-friendly session label so the agent can target the right tab. */
-  session?: string;
-  /**
-   * Stable project identity, normally stamped by the build plugin (e.g. "acme-web-9f3c1d"). Lets the
-   * agent scope to the right app even when its dev server boots on an unexpected port. Optional.
-   */
-  projectId?: string;
-  /** Browser/bridge pairing token. Required when either endpoint is non-localhost. */
-  token?: string;
-  /** Explicitly allow Reticle on a non-localhost page or bridge. Requires token. */
-  allowNonLocalhost?: boolean;
-  /**
-   * Escape hatch for the production backstop. Reticle is dev-only and refuses to connect when the
-   * build reports NODE_ENV=production (an SSR healthcheck or a prod bundle opened locally would
-   * otherwise activate). The real fix is to gate the import behind `import.meta.env.DEV` so it's
-   * tree-shaken out; this flag only exists for the rare intentional prod diagnostic.
-   */
-  allowInProduction?: boolean;
-  /** Show a small in-page status chip (connection + event count). */
-  overlay?: boolean;
-  /**
-   * Capture request/response bodies on net.request events (dev-only; text-like content only,
-   * sensitive keys redacted, per-body capped). Off by default — bodies cost tokens and can carry PII.
-   */
-  captureNetworkBodies?: boolean;
-  /** Presenter mode: glow border, animated cursor, click/hover effects, narration HUD. */
-  present?: boolean;
-  /** Per-action pacing (ms) in presenter mode so a human can follow. Default 450. */
-  pace?: number;
-  /** Min ms each narration line stays visible before the next replaces it (presenter). Default 3000. */
-  narrationDwellMs?: number;
-  /**
-   * Border behavior in presenter mode: 'session' (default) persists the border for the whole
-   * session; 'busy' restores the fade-after-idle behavior.
-   */
-  border?: 'session' | 'busy';
-  /** Max accumulated activity-log rows before the oldest are pruned (presenter). Default 50. */
-  logMax?: number;
-  /**
-   * Mount the floating human-recorder toolbar (Record/Stop/Annotate).
-   * Default off — purely additive, dev-only.
-   */
-  recorder?: boolean;
-  /**
-   * Mount the "Flag a bug" annotator: the human clicks an element that looks wrong, types what's
-   * wrong, and Reticle emits a HUMAN_MARK the agent drains via reticle_review. Defaults to ON with the
-   * presenter (it's the human's side of the look→act→assert loop); pass `annotate: false` to suppress.
-   */
-  annotate?: boolean;
-  /** Live-control: overridable ended-border fade delay (native timer). Default 4000. */
-  endedFadeMs?: number;
-  /** Session auto-end after this much agent idle (presenter). Default 5min; agent-tunable via reticle_session. */
-  idleEndMs?: number;
-}
+// Re-exported so every existing importer of the options type is unaffected by the file split.
+export type { ReticleConnectOptions };
 
 /**
  * Runtime backstop for the dev-only SDK: block connecting when the build reports production, unless
@@ -260,6 +210,8 @@ export class Reticle {
   #eventCount = 0;
   #token: string | undefined;
   #projectId: string | undefined;
+  /** App-declared extra redaction keys, announced in hello so the driven path honours them too. */
+  #redactKeys: string[] = [];
   /** Act-row log handle for the in-flight act/act_sequence, so its outcome stamps the right row. */
   #actHandle: LogHandle | undefined;
 
@@ -308,6 +260,10 @@ export class Reticle {
     this.#token =
       options.token !== undefined && options.token.length > 0 ? options.token : undefined;
     this.#projectId = identity.projectId;
+    // Install the redaction rule BEFORE anything can emit. Every observer, the serializer and the
+    // snapshot path read it ambiently, so a policy set even one line after installAllObservers would
+    // leave the first events of the session redacted by a different rule than the rest.
+    this.#applyRedaction(options.redact);
     this.#start = performance.now();
     this.#registry = createCommandRegistry();
 
@@ -479,6 +435,17 @@ export class Reticle {
     }
   };
 
+  /**
+   * Resolve the app's redaction config into the ambient policy, and remember the part of it that
+   * travels. A config of `undefined` is not "no policy" — it is the DEFAULT policy, installed
+   * explicitly so a second connect() in the same page (HMR, a re-mount) cannot inherit a rule the
+   * previous one set.
+   */
+  #applyRedaction(config: RedactionConfig | undefined): void {
+    setActiveRedactionPolicy(buildRedactionPolicy(config, nativeWarn));
+    this.#redactKeys = wireRedactionKeys(config);
+  }
+
   #hello(): HelloMessage {
     return {
       kind: MessageKind.HELLO,
@@ -490,6 +457,7 @@ export class Reticle {
       adapters: adapterNames(),
       ...(this.#token === undefined ? {} : { token: this.#token }),
       hasCapabilities: hasCapabilities(),
+      ...(this.#redactKeys.length === 0 ? {} : { redactKeys: this.#redactKeys }),
     };
   }
 

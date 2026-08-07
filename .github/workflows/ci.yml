@@ -24,6 +24,9 @@ jobs:
       # Prove the boundary guard itself works (catches a synthetic bad graph) before trusting it.
       - name: Dependency-boundary guard self-test
         run: node scripts/check-boundaries.mjs --self-test
+      # Same reasoning for the lossy-transform guard: an unproven guard is its own false green.
+      - name: Lossy-transform guard self-test
+        run: node scripts/check-lossy-transforms.mjs --self-test
       - run: pnpm build
       - run: pnpm lint
       - run: pnpm typecheck

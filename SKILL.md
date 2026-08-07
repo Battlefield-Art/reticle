@@ -263,6 +263,9 @@ Which libraries work:
 | **TanStack Query** | `registerStore('queries', tanstackQueryStore(queryClient))` |
 | Jotai | `registerStore('app', jotaiStore(getDefaultStore(), { cart, user }))` |
 | XState / Valtio / MobX | `xstateStore(actor)` / `valtioStore(...)` / `mobxStore(...)` |
+| Svelte stores | `registerStore('cart', svelteStore(cartStore))` |
+| Pinia (Vue) | `registerStore('cart', piniaStore(useCartStore()))` |
+| Recoil | `registerStore('app', recoilStore({ cart: cartAtom }, getSnapshot, subscribe))` — see the bridge in [docs/usage.md](docs/usage.md) |
 | React Context / useState / useReducer | `useReticleStore('cart', cart)` from `@reticlehq/react/store` |
 
 Register TanStack Query even if you register nothing else: a stale cache served as fresh fires **no network request**, so the network log shows silence and the DOM shows a plausible number — the cache is the only witness. Adapters come from `@reticlehq/browser`.

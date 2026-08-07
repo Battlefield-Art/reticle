@@ -1,10 +1,12 @@
 import {
   EventType,
   REDACTED_VALUE,
-  isSensitiveKey,
+  defaultIsSensitiveKey,
   scrubKnownSecrets,
+  type RedactionPolicy,
   type ReticleEvent,
 } from '@reticlehq/core';
+import { drivenRedactionPolicy } from './driven-redaction.js';
 
 /**
  * CDP-authoritative network detail. Wherever the daemon has a CDP connection — whether it launched
@@ -47,25 +49,35 @@ export interface NetworkDetail {
 const MAX_WIRE_BODY_CHARS = 8192;
 
 /**
+ * The rule this module redacts by.
+ *
+ * `defaultIsSensitiveKey`, never the ambient `isSensitiveKey`: a daemon serves many sessions in one
+ * process, so an ambient policy here would let one app's config decide another app's redaction.
+ * Callers that have a session's declarations pass a policy explicitly; everything else gets the
+ * built-in floor, which is exactly what this module did before the rule became configurable.
+ */
+const DEFAULT_POLICY: RedactionPolicy = { isSensitiveKey: defaultIsSensitiveKey };
+
+/**
  * Redact a sensitive key's value whatever its TYPE — string, number, array, or a nested object.
  *
  * This is the one payload in the system that reaches the journal without having passed through the
  * SDK's sanitizer (Playwright hands it over raw), so its redaction has to be as strong as the SDK's,
  * which is key-based over a parsed object — not string-shaped.
  */
-function redactByKey(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(redactByKey);
+function redactByKey(value: unknown, policy: RedactionPolicy): unknown {
+  if (Array.isArray(value)) return value.map((v) => redactByKey(v, policy));
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      out[k] = isSensitiveKey(k) ? REDACTED_VALUE : redactByKey(v);
+      out[k] = policy.isSensitiveKey(k) ? REDACTED_VALUE : redactByKey(v, policy);
     }
     return out;
   }
   return value;
 }
 
-function projectWireBody(raw: string): string {
+function projectWireBody(raw: string, policy: RedactionPolicy): string {
   const bounded = raw.length > MAX_WIRE_BODY_CHARS ? raw.slice(0, MAX_WIRE_BODY_CHARS) : raw;
   const byShape = scrubKnownSecrets(bounded);
   // Prefer a STRUCTURAL pass. A sensitive key must be redacted regardless of its value type — a
@@ -74,7 +86,7 @@ function projectWireBody(raw: string): string {
   // straight to the agent's context and the on-disk journal. Parsing and walking redacts them by key
   // whatever the shape.
   try {
-    return JSON.stringify(redactByKey(JSON.parse(byShape)));
+    return JSON.stringify(redactByKey(JSON.parse(byShape), policy));
   } catch {
     // Not JSON (a truncated capture, or a form-encoded body — the shape a login form actually POSTs).
     // Two best-effort sweeps, because a password lives in both: the `"key":"string"` JSON fragment a
@@ -82,10 +94,10 @@ function projectWireBody(raw: string): string {
     // which neither the JSON path nor the old regex ever touched — so `password=hunter2` leaked.
     return byShape
       .replace(/"([^"]+)"\s*:\s*"([^"]*)"/g, (whole, key: string) =>
-        isSensitiveKey(key) ? `"${key}":"${REDACTED_VALUE}"` : whole,
+        policy.isSensitiveKey(key) ? `"${key}":"${REDACTED_VALUE}"` : whole,
       )
       .replace(/([^&?=\s]+)=([^&\s]*)/g, (whole, key: string) =>
-        isSensitiveKey(key) ? `${key}=${REDACTED_VALUE}` : whole,
+        policy.isSensitiveKey(key) ? `${key}=${REDACTED_VALUE}` : whole,
       );
   }
 }
@@ -99,34 +111,46 @@ function projectWireBody(raw: string): string {
  * credential HEADER is redacted whole by key; any other header value is still swept for known secret
  * SHAPES (a JWT echoed in a custom header), matching how request bodies are handled.
  */
-function projectHeaders(headers: Record<string, string>): Record<string, string> {
+function projectHeaders(
+  headers: Record<string, string>,
+  policy: RedactionPolicy,
+): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
     const key = k.toLowerCase();
-    out[key] = isSensitiveKey(key) ? REDACTED_VALUE : scrubKnownSecrets(v);
+    out[key] = policy.isSensitiveKey(key) ? REDACTED_VALUE : scrubKnownSecrets(v);
   }
   return out;
 }
 
-/** Shape a raw authoritative response into a NET_DETAIL payload (lower-cased headers). */
-export function buildNetworkDetail(raw: {
-  url: string;
-  method?: string;
-  status: number;
-  headers: Record<string, string>;
-  resourceType?: string;
-  requestBody?: string;
-  pageUrl?: string;
-}): NetworkDetail {
+/**
+ * Shape a raw authoritative response into a NET_DETAIL payload (lower-cased headers).
+ *
+ * `policy` defaults to the built-in rule so this stays a PURE builder — the driven-path union is
+ * resolved by `attachNetworkDetail`, at the glue layer, where reading process state is not a lie
+ * about the function's inputs.
+ */
+export function buildNetworkDetail(
+  raw: {
+    url: string;
+    method?: string;
+    status: number;
+    headers: Record<string, string>;
+    resourceType?: string;
+    requestBody?: string;
+    pageUrl?: string;
+  },
+  policy: RedactionPolicy = DEFAULT_POLICY,
+): NetworkDetail {
   return {
     url: raw.url,
     ...(raw.method === undefined ? {} : { method: raw.method }),
     status: raw.status,
-    headers: projectHeaders(raw.headers),
+    headers: projectHeaders(raw.headers, policy),
     ...(raw.resourceType === undefined ? {} : { resourceType: raw.resourceType }),
     ...(raw.requestBody === undefined || raw.requestBody.length === 0
       ? {}
-      : { requestBody: projectWireBody(raw.requestBody) }),
+      : { requestBody: projectWireBody(raw.requestBody, policy) }),
     ...(raw.pageUrl === undefined || raw.pageUrl.length === 0 ? {} : { pageUrl: raw.pageUrl }),
   };
 }
@@ -213,15 +237,21 @@ export function attachNetworkDetail(page: PageLike, emit: (detail: NetworkDetail
       // postData is null for GETs and for bodies the driver did not retain; both mean "nothing to say".
       const postData = request.postData?.() ?? null;
       emit(
-        buildNetworkDetail({
-          url: response.url(),
-          method: request.method(),
-          status: response.status(),
-          headers,
-          ...(resourceType === undefined ? {} : { resourceType }),
-          ...(postData === null ? {} : { requestBody: postData }),
-          pageUrl: page.url(),
-        }),
+        buildNetworkDetail(
+          {
+            url: response.url(),
+            method: request.method(),
+            status: response.status(),
+            headers,
+            ...(resourceType === undefined ? {} : { resourceType }),
+            ...(postData === null ? {} : { requestBody: postData }),
+            pageUrl: page.url(),
+          },
+          // Resolved per response, not per attachment: a session declaring extra keys can connect
+          // after the listener is attached, and capturing the policy once would leave every
+          // already-driven page redacting by the rule that was in force before the app said so.
+          drivenRedactionPolicy(),
+        ),
       );
     });
     // `response.headers()` REJECTS when the page/CDP session is closing — precisely when responses race

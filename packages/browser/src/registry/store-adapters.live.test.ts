@@ -4,13 +4,21 @@ import { proxy, snapshot, subscribe } from 'valtio/vanilla';
 import { createActor, createMachine } from 'xstate';
 import { makeAutoObservable, reaction, toJS } from 'mobx';
 import { QueryClient } from '@tanstack/query-core';
+import { atom as recoilAtom, selector, snapshot_UNSTABLE } from 'recoil';
+import { derived, get, writable } from 'svelte/store';
+import { createPinia, defineStore, setActivePinia } from 'pinia';
+import { ref } from 'vue';
 import {
   jotaiStore,
   mobxStore,
+  piniaStore,
+  recoilStore,
+  svelteStore,
   tanstackQueryStore,
   valtioStore,
   xstateStore,
 } from './store-adapters.js';
+import { sanitizeForTransport } from '../security/serialization.js';
 
 /**
  * The adapters, against the REAL libraries.
@@ -134,5 +142,87 @@ describe('store adapters against the libraries they claim to support', () => {
     expect(JSON.stringify(state)).toContain('user');
     expect(fired).toBeGreaterThan(0);
     unsub();
+  });
+
+  it('recoil: reads a real Loadable, and a PENDING async selector does not take the read down', () => {
+    const count = recoilAtom({ key: 'live-count', default: 1 });
+    const slow = selector({
+      key: 'live-slow',
+      get: () => new Promise<number>(() => undefined), // never resolves: permanently 'loading'
+    });
+    let current = snapshot_UNSTABLE();
+    const adapter = recoilStore(
+      { count, slow },
+      () => current,
+      () => () => undefined,
+    );
+
+    expect(adapter.getState()).toEqual({
+      count: { status: 'hasValue', value: 1, error: null },
+      // The whole reason this adapter reads `.state` instead of calling `.getValue()`: getValue()
+      // THROWS the pending promise here, and one slow selector would lose the entire state read.
+      slow: { status: 'loading', value: null, error: null },
+    });
+
+    // A Recoil snapshot is immutable — a write produces a NEW one, so the adapter must re-read.
+    current = current.map(({ set }) => {
+      set(count, 42);
+    });
+    expect(adapter.getState()).toMatchObject({ count: { value: 42 } });
+  });
+
+  it('svelte: pulls the live value with no lasting subscription, and skips the immediate call', () => {
+    const cart = writable({ items: 1 });
+    const total = derived(cart, ($cart) => $cart.items * 10);
+    const adapter = svelteStore(cart);
+    const derivedAdapter = svelteStore(total);
+    let fired = 0;
+    const unsub = adapter.subscribe(() => {
+      fired += 1;
+    });
+
+    // Svelte calls a new subscriber synchronously; that must NOT read as a state change.
+    expect(fired).toBe(0);
+    expect(adapter.getState()).toEqual({ items: 1 });
+    // A `derived` store only computes while it has a subscriber — the transient-subscription pull is
+    // what makes it readable at all, and `get()` from svelte/store agrees with it.
+    expect(derivedAdapter.getState()).toBe(10);
+    expect(derivedAdapter.getState()).toBe(get(total));
+
+    cart.set({ items: 3 });
+    expect(fired).toBe(1);
+    expect(adapter.getState()).toEqual({ items: 3 });
+
+    unsub();
+    cart.set({ items: 5 });
+    expect(fired).toBe(1);
+  });
+
+  it('pinia: reads live $state through the reactive proxy and fires synchronously on a mutation', () => {
+    setActivePinia(createPinia());
+    const useCart = defineStore('live-cart', () => {
+      const items = ref<string[]>([]);
+      const label = ref('cart');
+      return { items, label };
+    });
+    const cart = useCart();
+    const adapter = piniaStore(cart);
+    let fired = 0;
+    const unsub = adapter.subscribe(() => {
+      fired += 1;
+    });
+
+    cart.items.push('sku-1');
+    // `flush: 'sync'` — no tick, no await. A deferred notification would land outside the action
+    // window that links a state change to the click that caused it.
+    expect(fired).toBe(1);
+
+    // A Vue reactive proxy has to survive the transport serializer: reading it as `{}` is the exact
+    // false green that makes an agent conclude an app's state is empty.
+    expect(sanitizeForTransport(adapter.getState())).toEqual({ items: ['sku-1'], label: 'cart' });
+
+    unsub();
+    cart.items.push('sku-2');
+    expect(fired).toBe(1);
   });
 });

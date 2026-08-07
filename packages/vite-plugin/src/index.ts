@@ -12,6 +12,7 @@ import {
 } from '@reticlehq/core';
 import { resolveProjectId } from './project-id.js';
 import { discoverDaemonPort } from './discover-port.js';
+import { SVELTE_FILE, stampSvelte } from './svelte-source.js';
 
 export const RETICLE_VITE_PLUGIN_NAME = 'reticle';
 
@@ -178,12 +179,23 @@ function isHtmlEntry(id: string, specifier: string | undefined, root: string | u
   return candidate.endsWith(target.startsWith('/') ? target : `/${target}`);
 }
 
-function shouldStamp(id: string): boolean {
-  if (id.startsWith(VIRTUAL_PREFIX)) return false;
-  if (id.includes(NODE_MODULES)) return false;
+/** A module id we may stamp at all: not virtual, not a dependency. Extension decides which stamper. */
+function stampableId(id: string): string | null {
+  if (id.startsWith(VIRTUAL_PREFIX)) return null;
+  if (id.includes(NODE_MODULES)) return null;
   // Strip any query suffix (?worker, ?raw,...) before matching the extension.
-  const clean = id.split('?')[0] ?? id;
-  return JSX_FILE.test(clean);
+  return id.split('?')[0] ?? id;
+}
+
+function shouldStamp(id: string): boolean {
+  const clean = stampableId(id);
+  return clean !== null && JSX_FILE.test(clean);
+}
+
+/** A `.svelte` single-file component, which needs the Svelte stamper rather than Babel. */
+function shouldStampSvelte(id: string): boolean {
+  const clean = stampableId(id);
+  return clean !== null && SVELTE_FILE.test(clean);
 }
 
 function stamp(code: string, id: string): { code: string; map: string | null } | null {
@@ -382,7 +394,15 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
         const stamped = sourceMapping && shouldStamp(id) ? stamp(withConnect, id) : null;
         return stamped ?? { code: withConnect, map: null };
       }
-      if (!sourceMapping || !shouldStamp(id)) return null;
+      if (!sourceMapping) return null;
+      // `.svelte` runs on the RAW component source, which is only still markup because this plugin
+      // declares `enforce: 'pre'` and therefore transforms before @sveltejs/vite-plugin-svelte. No
+      // map: the insertions are within a line and never move one, and a wrong map is worse than none.
+      if (shouldStampSvelte(id)) {
+        const stamped = stampSvelte(code, id);
+        return stamped === null ? null : { code: stamped, map: null };
+      }
+      if (!shouldStamp(id)) return null;
       return stamp(code, id);
     },
     resolveId(id, importer) {

@@ -1,4 +1,8 @@
 import { NO_SESSION_CONNECTED_ERROR } from '@reticlehq/core';
+import {
+  declareDrivenRedactionKeys,
+  forgetDrivenRedactionKeys,
+} from '../input/driven-redaction.js';
 import { Session, type SessionInfo } from './session.js';
 
 /**
@@ -74,12 +78,17 @@ export class SessionManager {
   add(session: Session): Session | undefined {
     const previous = this.#sessions.get(session.id);
     this.#sessions.set(session.id, session);
+    // Publish what this app declared sensitive to the driven-path rule. Here rather than in the
+    // bridge because EVERY path that registers a session goes through this method, and a declaration
+    // that silently fails to register is a leak nothing would report.
+    declareDrivenRedactionKeys(session.id, session.redactKeys);
     return previous;
   }
 
   remove(session: Session): boolean {
     if (this.#sessions.get(session.id) !== session) return false;
     session.rejectAll('session disconnected');
+    forgetDrivenRedactionKeys(session.id);
     return this.#sessions.delete(session.id);
   }
 

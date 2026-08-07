@@ -1,3 +1,4 @@
+import { nativeWarn } from '../timers/native-console.js';
 import type { StoreLike, StoreSubscribe } from './stores.js';
 
 /**
@@ -190,6 +191,248 @@ export function mobxStore<T>(
         () => toJS(observable),
         () => listener(),
       ),
+  };
+}
+
+/**
+ * The load states a Recoil `Loadable` reports. Named because the projection below branches on them
+ * and a bare 'hasValue' in three places is exactly the free string the rules forbid.
+ */
+const RecoilLoadState = {
+  HAS_VALUE: 'hasValue',
+  LOADING: 'loading',
+  HAS_ERROR: 'hasError',
+} as const;
+
+/** The minimum of a Recoil `Loadable` this adapter touches. */
+interface RecoilLoadableLike {
+  /** 'hasValue' | 'loading' | 'hasError'. Widened to string: it arrives from outside this package. */
+  state: string;
+  /** The value, the pending promise, or the thrown error — which one depends on `state`. */
+  contents: unknown;
+}
+
+/** The minimum of a Recoil `Snapshot` this adapter touches, generic in the ATOM type. */
+interface RecoilSnapshotLike<A> {
+  getLoadable: (atom: A) => RecoilLoadableLike;
+}
+
+/** How one Recoil atom is projected: the value never travels without the load state beside it. */
+export interface RecoilAtomSnapshot {
+  status: string;
+  value: unknown;
+  error: string | null;
+}
+
+function projectLoadable(loadable: RecoilLoadableLike): RecoilAtomSnapshot {
+  if (loadable.state === RecoilLoadState.HAS_ERROR) {
+    const contents = loadable.contents;
+    return {
+      status: loadable.state,
+      value: null,
+      error: contents instanceof Error ? contents.message : String(contents),
+    };
+  }
+  // A LOADING loadable's `contents` is the pending promise. Sending it would serialize to `{}` and
+  // read as an empty value — so the value stays null and the status carries the truth.
+  if (loadable.state !== RecoilLoadState.HAS_VALUE) {
+    return { status: loadable.state, value: null, error: null };
+  }
+  return { status: loadable.state, value: loadable.contents, error: null };
+}
+
+/**
+ * Expose a chosen set of Recoil atoms as one Reticle store.
+ *
+ * Three things about Recoil's API shape this adapter is built around, none of them optional:
+ *
+ *  - **The atom map is forced, not an ergonomic choice.** Recoil has no enumerable registry of live
+ *    atoms, so "the whole store" is not a thing that exists. Naming the atoms is the only way to
+ *    snapshot them, and it doubles as a declaration of what matters — the same reason `jotaiStore`
+ *    takes one.
+ *  - **`.state`/`.contents`, never `.getValue()`.** On a pending async selector `getValue()` THROWS
+ *    the pending promise, and on a failed one it throws the error. Either would take down the whole
+ *    state read over one slow atom — so a loading atom reports `status: 'loading'` with a null value
+ *    rather than silently becoming an empty object or an exception.
+ *  - **One subscription, not one per atom.** Recoil exposes no per-atom subscription outside React
+ *    (`jotaiStore` gets `store.sub(atom, …)`; there is no equivalent here). The transaction stream is
+ *    the only public change signal, so the caller passes it in — the same "the library ships free
+ *    functions, so hand them over" shape as `valtioStore` and `mobxStore`.
+ *
+ * Wire it from a bridge component, which is where `useRecoilTransactionObserver_UNSTABLE` lives:
+ *
+ * ```tsx
+ * const latest = useRef(snapshot_UNSTABLE());
+ * const listeners = useRef(new Set<() => void>()).current;
+ * useRecoilTransactionObserver_UNSTABLE(({ snapshot }) => {
+ *   latest.current = snapshot;
+ *   for (const l of listeners) l();
+ * });
+ * registerStore('recoil', recoilStore({ cart: cartAtom }, () => latest.current, (l) => {
+ *   listeners.add(l);
+ *   return () => listeners.delete(l);
+ * }));
+ * ```
+ */
+export function recoilStore<A>(
+  atoms: Record<string, A>,
+  snapshot: () => RecoilSnapshotLike<A>,
+  subscribe: StoreSubscribe,
+): StoreLike {
+  return {
+    // Resolved per call, not captured once: a Recoil snapshot is IMMUTABLE, so an adapter holding
+    // one would keep answering from the transaction it was built in and never see another write.
+    getState: (): Record<string, RecoilAtomSnapshot> => {
+      const current = snapshot();
+      const out: Record<string, RecoilAtomSnapshot> = {};
+      for (const [name, atom] of Object.entries(atoms)) {
+        out[name] = projectLoadable(current.getLoadable(atom));
+      }
+      return out;
+    },
+    subscribe,
+  };
+}
+
+/**
+ * The minimum of a Svelte store this adapter touches.
+ *
+ * `subscribe` may return either the unsubscribe function or an object carrying one — the store
+ * contract permits both, and an RxJS-shaped source returns the object form.
+ */
+interface SvelteReadable {
+  subscribe: (run: (value: unknown) => void) => (() => void) | { unsubscribe: () => void };
+}
+
+function stopSubscription(handle: (() => void) | { unsubscribe: () => void }): void {
+  if (typeof handle === 'function') {
+    handle();
+    return;
+  }
+  handle.unsubscribe();
+}
+
+/**
+ * Expose a Svelte store as a Reticle store.
+ *
+ * Structurally unlike every other adapter in this file: they all wrap something that can be PULLED
+ * (`getState`, `getSnapshot`, `snapshot(proxy)`, `toJS`). A Svelte store has no pull side at all —
+ * `{ subscribe }` is the entire contract. What makes a pull possible anyway is the part of that
+ * contract which says `subscribe` must call back **immediately and synchronously** with the current
+ * value: subscribe, catch the value, unsubscribe, return it. That is precisely how `svelte/store`'s
+ * own `get()` is implemented, so it is a blessed read rather than a trick.
+ *
+ * Doing it that way is what keeps this adapter free of the `dispose` the obvious implementation
+ * needs. Caching the latest value would mean holding a permanent subscription, which means a
+ * teardown the other five adapters don't have, which means a leak the moment a caller forgets it.
+ * A transient subscription per read owns nothing and leaks nothing.
+ *
+ * ```ts
+ * registerStore('cart', svelteStore(cartStore));
+ * ```
+ */
+export function svelteStore(
+  readable: SvelteReadable,
+  warn: (message: string) => void = nativeWarn,
+): StoreLike {
+  let warnedAboutLazyStore = false;
+  return {
+    getState: (): unknown => {
+      let value: unknown;
+      let called = false;
+      stopSubscription(
+        readable.subscribe((next) => {
+          value = next;
+          called = true;
+        }),
+      );
+      // A store that did NOT call back synchronously (an RxJS Observable that is not a
+      // BehaviorSubject, a hand-rolled store that breaks the contract) leaves `value` undefined —
+      // indistinguishable from a store legitimately holding undefined. Reading empty when the answer
+      // is "unknown" is the false green this project exists to prevent, so say it once, out loud.
+      if (!called && !warnedAboutLazyStore) {
+        warnedAboutLazyStore = true;
+        warn(
+          '[reticle] a store passed to svelteStore did not call its subscriber synchronously, so ' +
+            'its current value cannot be read. reticle_state will report undefined for it. Svelte ' +
+            'stores always call back immediately; an RxJS Observable does not unless it is a ' +
+            'BehaviorSubject.',
+        );
+      }
+      return value;
+    },
+    subscribe: (listener: () => void): (() => void) => {
+      // Swallow the immediate call. Forwarding it would emit a STATE_CHANGE at REGISTRATION time for
+      // a change that never happened — a diff of nothing that shows up in causal summaries and that
+      // a {kind:'state'} predicate could satisfy without the app doing anything at all.
+      let primed = false;
+      const handle = readable.subscribe(() => {
+        if (!primed) {
+          primed = true;
+          return;
+        }
+        listener();
+      });
+      return () => stopSubscription(handle);
+    },
+  };
+}
+
+/** Pinia `$subscribe` options. `sync` and `detached` are library option values, not free strings. */
+const PINIA_SUBSCRIBE_OPTIONS = { detached: true, flush: 'sync' } as const;
+
+/**
+ * The minimum of a Pinia store this adapter touches.
+ *
+ * Two things here look over-specified and are not, both found by compiling against the real library
+ * rather than against a fake written to the same belief as the adapter:
+ *
+ *  - **`$state: object`, not `Record<string, unknown>`.** A Pinia store's `$state` is a concrete
+ *    object type with named keys and no index signature, and TypeScript rejects those for a
+ *    `Record<string, unknown>` parameter. `piniaStore(useCartStore())` did not compile — the same
+ *    shape of failure as the Jotai contravariance note above, and equally invisible to a fake.
+ *  - **`flush` as the literal union**, not `string`. The option object is checked contravariantly, so
+ *    a widened `string` here makes the real `$subscribe` unassignable to this shape and the whole
+ *    store stops matching.
+ */
+interface PiniaStoreLike {
+  $state: object;
+  $subscribe: (
+    callback: (mutation: unknown, state: unknown) => void,
+    options?: { detached?: boolean; flush?: 'pre' | 'post' | 'sync' },
+  ) => () => void;
+}
+
+/**
+ * Expose a Pinia store as a Reticle store. `$state` / `$subscribe` are close to `{getState,
+ * subscribe}` but not close enough for `registerStore`'s duck-type, which is the whole reason a Vue
+ * app currently connects and then reports no state at all.
+ *
+ * Both `$subscribe` options are load-bearing:
+ *
+ *  - **`detached`** keeps the subscription alive past the component that happened to register the
+ *    store. Without it Pinia tears the listener down on unmount, so a store registered from inside a
+ *    component goes permanently silent after the first route change — readable, but never again
+ *    emitting a STATE_CHANGE, which reads exactly like an app that stopped changing.
+ *  - **`flush: 'sync'`** puts the notification inside the action's attribution window. The default
+ *    (`'post'`) defers it past the Vue update tick, and a state change that lands after the window
+ *    closed is no longer linked to the click that caused it in the causal summary.
+ *
+ * `$state` carries state, not getters — a Pinia getter is derived, so asserting on the state it
+ * derives from is the stronger assertion anyway.
+ *
+ * ```ts
+ * registerStore('cart', piniaStore(useCartStore()));
+ * ```
+ */
+export function piniaStore(store: PiniaStoreLike): StoreLike {
+  return {
+    // `$state` is a live reactive proxy, so this reads through to the current value rather than
+    // snapshotting at registration. The transport serializer walks it like any object and guards
+    // each key, which is what keeps a throwing reactive trap from costing the whole read.
+    getState: (): unknown => store.$state,
+    subscribe: (listener: () => void): (() => void) =>
+      store.$subscribe(() => listener(), { ...PINIA_SUBSCRIBE_OPTIONS }),
   };
 }
 

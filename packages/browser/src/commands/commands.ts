@@ -171,6 +171,10 @@ function readState(
       // what keeps "the list is short" distinguishable from "I shortened the list".
       ...(projected.truncation === undefined ? {} : { truncation: projected.truncation }),
       ...('availableKeys' in selection ? { availableKeys: selection.availableKeys } : {}),
+      // How many keys there REALLY were, when the near-miss list is a sample. Without it, 50 names
+      // and no marker reads as "the key you asked for does not exist" — the strongest negative
+      // signal there is, and a false one when the key is simply number 51.
+      ...('totalKeys' in selection ? { totalKeys: selection.totalKeys } : {}),
       storeNames: names,
     };
   }

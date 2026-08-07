@@ -7,6 +7,7 @@ import {
   TRANSPORT_LIMITS,
 } from './constants.js';
 import { HumanControlKind, MarkAnchorStrategy } from './session-constants.js';
+import { MAX_WIRE_REDACT_KEYS, MAX_WIRE_REDACT_KEY_LENGTH } from './redaction.js';
 
 const sessionIdSchema = z.string().min(1).max(TRANSPORT_LIMITS.MAX_SESSION_ID_LENGTH);
 const refSchema = z.string().max(TRANSPORT_LIMITS.MAX_REF_LENGTH);
@@ -99,6 +100,19 @@ export const HelloMessageSchema = z.object({
   token: z.string().max(TRANSPORT_LIMITS.MAX_TOKEN_LENGTH).optional(),
   /** Whether the app has advertised a capability registry (reticle.describe). */
   hasCapabilities: z.boolean().optional(),
+  /**
+   * Extra key names this app declared sensitive via `connect({ redact: { keys } })`.
+   *
+   * Sent so the DRIVEN path redacts them too: a request body captured by the daemon from the network
+   * stack never passes through the SDK, so an app-declared credential would otherwise reach the
+   * journal in cleartext on exactly the path the user cannot see. Literal names only — a pattern
+   * compiled from the wire would be a ReDoS surface, and the exemption list is never sent because it
+   * is the only part of the config that could REMOVE redaction. See `wireRedactionKeys`.
+   */
+  redactKeys: z
+    .array(z.string().min(1).max(MAX_WIRE_REDACT_KEY_LENGTH))
+    .max(MAX_WIRE_REDACT_KEYS)
+    .optional(),
 });
 export type HelloMessage = z.infer<typeof HelloMessageSchema>;
 

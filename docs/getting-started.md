@@ -406,9 +406,20 @@ Everything below comes from the `@reticlehq/react` kit plus your framework's bui
 | --- | --- | --- |
 | Vite + React (any) | `reticle()` plugin (auto) — or `connect()` | `reticle()` plugin handles it (incl. React 19) |
 | Next.js (app router) | `ReticleDev` client component in layout (dev) | `@reticlehq/next` (`withReticle`) → component + file:line |
+| SvelteKit | `src/hooks.client.ts` (written by `reticle init`) | `reticle()` plugin stamps `.svelte` → file:line |
 | Vanilla / plain HTML | `reticle.connect()` at boot (dev) | none — refs and testids only |
 
-**Vue and Svelte/SvelteKit are not supported.** The SDK is framework-agnostic, so `connect()` may work, but there is no app and no CI gate for either — treat it as untested, not as supported.
+### What Svelte support is, and what it is not
+
+`reticle init` detects SvelteKit and writes both halves: a client hook that calls `connect()` (SvelteKit renders through `app.html`, so the plugin's HTML injection never fires) and `reticle()` in `vite.config`, which is what stamps `data-reticle-source`.
+
+**You get** `file:line` on every element in a `.svelte` component, plus everything the framework-agnostic core already gave you — DOM, network, console, routing, storage, actions — and `svelteStore` for reading a Svelte store (see [usage](usage.md)).
+
+**You do not get** component identity. `@reticlehq/react` walks the fiber tree to answer "which component rendered this element"; there is no Svelte equivalent, so snapshots carry the file and line but no component name. Stamping targets Svelte 5's compiler AST and also accepts Svelte 4's; `.svelte.ts` runes modules are code rather than markup and are not stamped.
+
+**It is still unverified.** There is no SvelteKit app in `apps/` and no CI gate for one, so nothing would tell us when this breaks — `reticle init` says so out loud in its plan. React, Next.js, Remix and Astro each have an app and a gate. Treat SvelteKit as wired and plausible, not as supported.
+
+**Vue is not supported.** The SDK is framework-agnostic so `connect()` may work, and `piniaStore` will read a Pinia store, but there is no detection, no `.vue` source stamping and no CI gate.
 
 ---
 

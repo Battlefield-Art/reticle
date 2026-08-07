@@ -2,6 +2,8 @@ import { afterAll, describe, it, expect } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { transformSync } from '@babel/core';
+import reticleSource from '@reticlehq/babel-plugin';
 import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv } from '@reticlehq/core';
 import {
   reticle,
@@ -331,5 +333,48 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
     const include = (patch['optimizeDeps'] as { include?: string[] } | undefined)?.include ?? [];
     expect(include, "the app's own entries must survive").toContain('their-dep');
     expect(include).toContain('aria-query');
+  });
+});
+
+describe('svelte source stamping', () => {
+  it('stamps host elements in a .svelte component', () => {
+    const plugin = reticle();
+    const result = plugin.transform?.('<div>\n  <button>Pay</button>\n</div>', 'src/App.svelte');
+    expect(result?.code).toContain(SOURCE_ATTR);
+    expect(result?.code).toContain('src/App.svelte:2:2');
+  });
+
+  it('skips .svelte in node_modules and virtual ids, like the JSX path', () => {
+    const plugin = reticle();
+    expect(plugin.transform?.('<div>x</div>', '/app/node_modules/pkg/A.svelte')).toBeNull();
+    expect(plugin.transform?.('<div>x</div>', '\0virtual:A.svelte')).toBeNull();
+  });
+
+  it('honours sourceMapping: false', () => {
+    const plugin = reticle({ sourceMapping: false });
+    expect(plugin.transform?.('<div>x</div>', 'src/App.svelte')).toBeNull();
+  });
+
+  it('leaves a React project bit-for-bit unchanged', () => {
+    // The regression that would matter most: Svelte support altering a build that has no Svelte in
+    // it. Compared against Babel run directly with the same plugin — if the JSX path ever diverges
+    // from "just the stamper", this fails.
+    const source = 'export const App = () => <button className="a">Hi</button>;';
+    const id = '/app/src/App.tsx';
+    const direct = transformSync(source, {
+      filename: id,
+      plugins: [reticleSource],
+      parserOpts: { plugins: ['jsx', 'typescript'] },
+      sourceMaps: true,
+      configFile: false,
+      babelrc: false,
+    });
+
+    const throughPlugin = reticle().transform?.(source, id);
+
+    expect(throughPlugin?.code).toBe(direct?.code);
+    expect(throughPlugin?.map).toBe(JSON.stringify(direct?.map));
+    // And a plain .ts module is still not touched at all.
+    expect(reticle().transform?.('export const n = 1;', '/app/src/util.ts')).toBeNull();
   });
 });

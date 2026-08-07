@@ -294,3 +294,28 @@ describe('buildPlan — HTML', () => {
     expect(step(plan, 'Connect snippet').status).toBe(StepStatus.MANUAL);
   });
 });
+
+describe('SvelteKit gets the Vite plugin, not only the client hook', () => {
+  const svelteKit = (viteConfig: PlanInput['viteConfig']): ReturnType<typeof buildPlan> =>
+    buildPlan(input({ detection: detection(Framework.SVELTEKIT, 0), viteConfig }));
+
+  it('patches vite.config so .svelte components are actually stamped', () => {
+    // `init` already installed @reticlehq/vite-plugin for SvelteKit and then never wired it in, so
+    // it sat in package.json doing nothing — which is why a SvelteKit app connected fine and every
+    // verdict came back with no file:line.
+    const plan = svelteKit({ path: 'vite.config.ts', source: VITE_SRC });
+    const step = maybeStep(plan, 'Vite plugin');
+    expect(step?.status).toBe(StepStatus.APPLY);
+    expect(step?.write?.content).toContain('reticle()');
+    expect(step?.detail).toContain('data-reticle-source');
+  });
+
+  it('still wires the client hook, which is what registers the session', () => {
+    const plan = svelteKit(null);
+    expect(maybeStep(plan, 'Reticle client hook')).toBeDefined();
+  });
+
+  it('falls back to manual instructions when there is no vite config to patch', () => {
+    expect(maybeStep(svelteKit(null), 'Vite plugin')?.status).toBe(StepStatus.MANUAL);
+  });
+});

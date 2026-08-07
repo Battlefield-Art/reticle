@@ -289,7 +289,20 @@ function installStep(input: PlanInput): Step {
   };
 }
 
-function viteSteps(input: PlanInput): Step[] {
+/** What adding `reticle()` to a Vite config buys, which differs by framework. */
+const VITE_PLUGIN_DETAIL = {
+  /** A plain Vite app gets both halves from the plugin. */
+  VITE: 'add reticle() to plugins (also injects connect())',
+  /**
+   * SvelteKit renders through app.html, so the plugin's HTML injection never fires and connect()
+   * comes from the client hook instead. The plugin is still required: it is what stamps
+   * data-reticle-source into .svelte components, and without it every verdict on a SvelteKit app
+   * comes back with no file:line at all.
+   */
+  SVELTEKIT: 'add reticle() to plugins (stamps data-reticle-source in .svelte components)',
+} as const;
+
+function viteSteps(input: PlanInput, detail: string = VITE_PLUGIN_DETAIL.VITE): Step[] {
   const cfg = input.viteConfig;
   const port = input.options.port;
   if (cfg === null) {
@@ -328,7 +341,7 @@ function viteSteps(input: PlanInput): Step[] {
       title: 'Vite plugin',
       target: cfg.path,
       status: StepStatus.APPLY,
-      detail: 'add reticle() to plugins (also injects connect())',
+      detail,
       write: { path: cfg.path, content: patch.code },
     },
   ];
@@ -449,6 +462,10 @@ export function buildPlan(input: PlanInput): Plan {
     steps.push(...nextSteps(input));
   } else if (input.detection.framework === Framework.SVELTEKIT) {
     steps.push(...svelteKitSteps(input));
+    // The Vite plugin as well as the client hook. `init` already INSTALLS @reticlehq/vite-plugin for
+    // SvelteKit and then never wired it into the config, so it sat in package.json doing nothing —
+    // which is why a SvelteKit app connected fine and every verdict came back with no file:line.
+    steps.push(...viteSteps(input, VITE_PLUGIN_DETAIL.SVELTEKIT));
   } else {
     steps.push({
       title: 'Connect snippet',

@@ -21,8 +21,161 @@ import { REDACTED_VALUE } from './constants.js';
 const SENSITIVE_KEY =
   /password|passwd|passcode|secret|(?:(?:access|refresh|auth|bearer|api|id|session|csrf|client)[-_]?tokens?|(?:^|[-_])tokens?(?=$|[-_]))|session[-_]?id|(?:^|[-_])(?:sid|pwd|jwt)(?=$|[-_])|authorization|(?:^|[-_])(?:set[-_])?cookie(?=$|[-_])|api[-_]?key|access[-_]?key|private[-_]?key|client[-_]?secret|credit[-_]?card|card[-_]?number|cvv|cvc|ssn|(?:^|[-_])(?:signature|sig)$|(?:^|[-_])credential$|x-(?:amz|goog)-(?:signature|credential|security-token)$/i;
 
-export function isSensitiveKey(key: string): boolean {
+/**
+ * The built-in rule, always available and never configurable.
+ *
+ * Separate from `isSensitiveKey` on purpose: the driven path needs a floor that no page-supplied
+ * config can lower, and the conformance test needs something to compare an unconfigured policy
+ * against. Every existing caller wants `isSensitiveKey`.
+ */
+export function defaultIsSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY.test(key);
+}
+
+/**
+ * An app's additions to (and subtractions from) the default rule.
+ *
+ * Additive by construction: `keys` can only ever redact MORE, and `allow` only exempts from the
+ * DEFAULT rule. There is deliberately no way to replace the default set — a user who could would
+ * eventually ship an app that leaks, and Reticle would be the thing that recorded it.
+ */
+export interface RedactionConfig {
+  /**
+   * Extra keys to redact. A string matches a key name EXACTLY (case-insensitively) — `'code'` does
+   * not redact `codeOwner` — and a RegExp is tested against the key. Use a string unless you need a
+   * pattern: only strings cross the bridge (see `wireRedactionKeys`).
+   */
+  keys?: ReadonlyArray<string | RegExp>;
+  /**
+   * Keys to exempt from the DEFAULT rule, for the false positives every app has its own version of
+   * (`designToken`, an internal `sessionId` that is not a credential). Exact, case-insensitive.
+   * Loses to `keys`: an explicit redact instruction beats an exemption.
+   */
+  allow?: readonly string[];
+}
+
+/** A resolved rule. An object rather than a bare function so a caller can hold one per session. */
+export interface RedactionPolicy {
+  isSensitiveKey: (key: string) => boolean;
+}
+
+function normalizeNames(values: readonly string[] | undefined): Set<string> {
+  const out = new Set<string>();
+  for (const value of values ?? []) {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed.length > 0) out.add(trimmed);
+  }
+  return out;
+}
+
+/**
+ * Resolve a config into a rule.
+ *
+ * `onWarn` fires ONCE here, at build time, rather than per key: the check runs on every serialized
+ * key of every event, so a per-key warning would flood the console of the app it is trying to help.
+ */
+export function buildRedactionPolicy(
+  config?: RedactionConfig,
+  onWarn?: (message: string) => void,
+): RedactionPolicy {
+  const literalKeys = normalizeNames(
+    config?.keys?.filter((k): k is string => typeof k === 'string'),
+  );
+  const patterns = (config?.keys ?? []).filter((k): k is RegExp => k instanceof RegExp);
+  const allowed = normalizeNames(config?.allow);
+  // Exempting a key the default rule calls a credential is a deliberate choice with a real blast
+  // radius: that value now reaches the agent transcript and the on-disk journal. Say it once, name
+  // the keys, and say nothing about the ordinary case — an exemption for a key the rule never
+  // matched is the false-positive fix this option exists for, and warning about it would train
+  // people to ignore the warning that matters.
+  const exemptedCredentials = [...allowed].filter(
+    (key) => defaultIsSensitiveKey(key) && !literalKeys.has(key),
+  );
+  if (exemptedCredentials.length > 0 && onWarn !== undefined) {
+    onWarn(
+      `[reticle] redact.allow is exempting ${exemptedCredentials.join(', ')} from redaction. The ` +
+        `default rule treats ${exemptedCredentials.length === 1 ? 'that key' : 'those keys'} as a ` +
+        `credential, so ${exemptedCredentials.length === 1 ? 'its value' : 'their values'} will now ` +
+        `reach the agent transcript and the on-disk journal in cleartext.`,
+    );
+  }
+  return {
+    isSensitiveKey: (key: string): boolean => {
+      const normalized = key.toLowerCase();
+      if (literalKeys.has(normalized)) return true;
+      for (const pattern of patterns) {
+        // `test` on a /g regex advances lastIndex between calls, so the same key alternates
+        // true/false. Reset it rather than trusting every caller to omit the flag.
+        pattern.lastIndex = 0;
+        if (pattern.test(key)) return true;
+      }
+      if (allowed.has(normalized)) return false;
+      return defaultIsSensitiveKey(key);
+    },
+  };
+}
+
+/**
+ * The rule in force for THIS process.
+ *
+ * Ambient rather than threaded through the ~10 call sites that redact, so configuring it changes
+ * every one of them at once and adding a new one cannot accidentally opt out. Set by `connect()` in
+ * the browser, where one page means one config.
+ *
+ * The server deliberately does NOT set this. A daemon serves many sessions in one process, so an
+ * ambient policy there would let one app's config decide another app's redaction; the driven path
+ * holds its own policy per daemon instead, built only from what sessions declared as EXTRA keys.
+ */
+let activePolicy: RedactionPolicy | undefined;
+
+export function setActiveRedactionPolicy(policy: RedactionPolicy): void {
+  activePolicy = policy;
+}
+
+export function resetActiveRedactionPolicy(): void {
+  activePolicy = undefined;
+}
+
+/** Whether a key carries a credential, under the policy in force. */
+export function isSensitiveKey(key: string): boolean {
+  return activePolicy === undefined ? defaultIsSensitiveKey(key) : activePolicy.isSensitiveKey(key);
+}
+
+/** Cap on how many declared keys travel in a hello — a bound, not a limit anyone should reach. */
+export const MAX_WIRE_REDACT_KEYS = 64;
+/** Cap on one declared key's length, so a hello cannot be inflated by a pathological name. */
+export const MAX_WIRE_REDACT_KEY_LENGTH = 128;
+
+/**
+ * The part of a config that may cross the bridge, so the server redacts an app's own credentials on
+ * the driven path too — where request bodies are captured raw from the network stack and never pass
+ * through the SDK at all.
+ *
+ * Two deliberate exclusions, and both are the safe direction of the asymmetry:
+ *
+ *  - **RegExp entries do not travel.** Compiling a pattern that arrived over a socket and running it
+ *    against every key of every request body is a ReDoS surface handed to whatever is on the page.
+ *    A dropped pattern means the driven path over-redacts relative to the config, never under.
+ *  - **`allow` never travels.** It is the only part of the config that REMOVES redaction, so a page
+ *    able to send it could quietly un-redact `password` in the daemon's journal for every session.
+ *    The driven path keeps the default floor.
+ *
+ * Both limitations are documented for users in docs/usage.md ("Extending the redaction rules").
+ */
+export function wireRedactionKeys(config?: RedactionConfig): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const key of config?.keys ?? []) {
+    if (typeof key !== 'string') continue;
+    const trimmed = key.trim();
+    if (trimmed.length === 0 || trimmed.length > MAX_WIRE_REDACT_KEY_LENGTH) continue;
+    const normalized = trimmed.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(trimmed);
+    if (out.length >= MAX_WIRE_REDACT_KEYS) break;
+  }
+  return out;
 }
 
 // High-confidence credential SHAPES, redacted regardless of key name — for scanning body/value text where

@@ -35,12 +35,26 @@ describe('desktop contract generation', () => {
   });
 
   /**
-   * Catches the one failure the generator cannot prevent: a constant changed in source and the
-   * package published without rebuilding, so the preload requires stale values.
+   * Catches the two failures the generator cannot prevent: a constant changed in source and the
+   * package published without rebuilding, and the generator not running at all.
+   *
+   * The skip is keyed on `dist/` rather than on the CJS file itself, and that distinction is the
+   * whole test. Skipping when the OUTPUT is absent cannot tell "nobody has built yet" from "the
+   * build ran and silently produced nothing" — and the second is exactly what happened: the
+   * generator's CLI-entry guard compared `import.meta.url` against a hand-concatenated
+   * `file://${process.argv[1]}`, which never matches on Windows, so `pnpm build` reported success
+   * while writing no CJS view at all. Every Electron app built there died at boot on a missing
+   * module, and this test passed the whole time.
    */
   it('has a built CJS view matching the current source', () => {
-    const built = join(process.cwd(), 'dist', 'desktop-contract.cjs');
-    if (!existsSync(built)) return; // a clean tree before `pnpm build` — nothing to compare yet
+    const dist = join(process.cwd(), 'dist');
+    if (!existsSync(dist)) return; // genuinely un-built tree — there is nothing to compare yet
+    const built = join(dist, 'desktop-contract.cjs');
+    expect(
+      existsSync(built),
+      'dist exists but the generated CJS contract does not — the generator did not run. An ' +
+        'Electron main process requires this file at boot; without it desktop support is dead.',
+    ).toBe(true);
     expect(readFileSync(built, 'utf8')).toBe(renderDesktopContract(DESKTOP_CONTRACT));
   });
 });

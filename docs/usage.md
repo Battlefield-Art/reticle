@@ -695,7 +695,7 @@ Reticle is cheap by design ([benchmark](token-efficiency.md)), but keep it that 
 
 **Do I have to change my components?** No, for basic look/act/observe. You'll get better results by adding `data-testid`s and labels where the agent needs precision.
 
-**Does it work without React?** The core (DOM/network/route/console/animation/snapshot/actions) is framework-agnostic and is gated against a vanilla-TS app. React, Next.js, Remix and Astro each have an app and a CI gate. Vue and Svelte have neither, so they are untested rather than supported — `connect()` may work, but nothing proves it.
+**Does it work without React?** The core (DOM/network/route/console/animation/snapshot/actions) is framework-agnostic and is gated against a vanilla-TS app. React, Next.js, Remix and Astro each have an app and a CI gate. SvelteKit is wired end-to-end — `reticle init` writes the client hook and the Vite plugin, and the plugin stamps `data-reticle-source` into `.svelte` components so verdicts carry `file:line` — but there is still no SvelteKit app in CI, so it is unverified rather than supported. Vue has a Pinia store adapter and nothing else: no detection, no `.vue` stamping, no gate. See [what Svelte support is and is not](getting-started.md#what-svelte-support-is-and-what-it-is-not).
 
 **Can it judge whether my UI _looks_ good?** No. Reticle verifies behavior, not aesthetics. Visual/pixel correctness and "does it feel right" remain human (or a visual-diff tool).
 
@@ -713,6 +713,34 @@ Reticle is cheap by design ([benchmark](token-efficiency.md)), but keep it that 
 - **No app data leaves your machine.** Baselines/recordings are local. The CLI sends anonymous, opt-out usage metrics only (random id + event names — no code, no PII; see [telemetry](telemetry.md)); opt out with `reticle telemetry disable`, `RETICLE_TELEMETRY=0`, or `DO_NOT_TRACK=1`. Feedback you or your agent deliberately send (`reticle feedback` / `reticle_feedback`) is the only free text that ever leaves the machine — never passive, redacted first, and separately disabled with `RETICLE_FEEDBACK=0`.
 - **Network bodies aren't captured by default** — only method/url/status/timing. Body capture is opt-in and runs through a redactor (drop `password`/`token`/`secret`/… + your patterns).
 - **Additive & reversible.** Reticle patches `fetch`/History/console defensively and restores them on disconnect; it will not break the app under test.
+
+### Extending the redaction rules
+
+The built-in rule catches the credential names that are common across apps. Yours has its own vocabulary in both directions — a `licenceKey` it has never heard of, and a `designToken` it redacts by mistake — so `connect()` takes a `redact` option:
+
+```ts
+reticle.connect({
+  redact: {
+    keys: ['licenceKey', /^partner[-_]?code$/i], // also redact these
+    allow: ['designToken'], // stop redacting this false positive
+  },
+});
+```
+
+- **`keys`** adds to the rule. A string matches a key name **exactly**, case-insensitively — `'code'` does not redact `codeOwner`. A RegExp is tested against the key.
+- **`allow`** exempts a key from the **default** rule. It loses to `keys`: an explicit redact instruction beats an exemption. Exempting a key the default rule considers a credential prints a one-time warning naming it — that value now reaches the agent transcript and the on-disk journal in cleartext.
+- **There is no way to replace the default set.** Both options are additive on purpose: a config that could turn the whole rule off would eventually ship in an app that leaks, and Reticle would be the thing that recorded it.
+- **With no `redact` option, behaviour is exactly what it was before this option existed** — pinned by a test that walks every credential name and every known false positive.
+
+**What crosses the bridge, and why it matters.** Most captures pass through the SDK in your page. Request bodies and response headers on the **driven** path (`reticle drive`, or a CDP-attached browser) do not — the daemon reads them straight from the network stack. So the literal strings in `keys` are announced to the daemon when your app connects, and it redacts them there too. Two parts deliberately stay in the page:
+
+|                         | Applies in the page | Applies on the driven path |
+| ----------------------- | :-----------------: | :------------------------: |
+| `keys` — plain strings  |         ✅          |             ✅             |
+| `keys` — RegExp entries |         ✅          |             ❌             |
+| `allow`                 |         ✅          |             ❌             |
+
+A RegExp does not travel because compiling a pattern that arrived over a socket and running it against every key of every request body is a denial-of-service surface. `allow` does not travel because it is the only part of the config that **removes** redaction, and the driven path keeps the built-in floor rather than letting a page lower it. Both exclusions fail in the safe direction: the driven path can over-redact relative to your config, never under. **If a key must be redacted everywhere, name it as a plain string.**
 
 ---
 
@@ -837,6 +865,9 @@ import {
   xstateStore,
   valtioStore,
   mobxStore,
+  svelteStore,
+  piniaStore,
+  recoilStore,
 } from '@reticlehq/browser';
 
 registerStore('queries', tanstackQueryStore(queryClient)); // TanStack Query
@@ -844,7 +875,46 @@ registerStore('app', jotaiStore(getDefaultStore(), { cart, user })); // Jotai (n
 registerStore('machine', xstateStore(actor)); // XState
 registerStore('app', valtioStore(state, snapshot, subscribe)); // Valtio
 registerStore('app', mobxStore(store, toJS, reaction)); // MobX
+registerStore('cart', svelteStore(cartStore)); // Svelte store — `{ subscribe }` is the whole contract
+registerStore('cart', piniaStore(useCartStore())); // Pinia (Vue)
 ```
+
+**Svelte and Pinia** are the two whose adapters do something you would not guess from the shape.
+
+A Svelte store has **no pull side at all** — `{ subscribe }` is the entire contract, no `getState`. `svelteStore` reads the current value by subscribing, catching the synchronous first callback the store contract guarantees, and unsubscribing immediately (the same thing `svelte/store`'s own `get()` does), so it holds no lasting subscription and needs no teardown. It also _swallows_ that first callback on `subscribe`, because forwarding it would emit a state change at registration time for a change that never happened.
+
+`piniaStore` subscribes with `detached: true` and `flush: 'sync'`. Without `detached`, a store registered from inside a component goes permanently silent after that component unmounts — still readable, but never emitting another state change, which reads exactly like an app that stopped changing. Without `sync`, the notification lands a Vue tick late, outside the window that links a state change to the click that caused it. Note that `$state` carries state, not getters: a Pinia getter is derived, so asserting on the state it derives from is the stronger assertion anyway.
+
+**Recoil** has no enumerable registry of live atoms and no per-atom subscription outside React, so it takes an atom map (like Jotai) plus the transaction stream from a small bridge component:
+
+```tsx
+import { snapshot_UNSTABLE, useRecoilTransactionObserver_UNSTABLE } from 'recoil';
+
+function ReticleRecoilBridge() {
+  const latest = useRef(snapshot_UNSTABLE());
+  const listeners = useRef(new Set<() => void>()).current;
+  useRecoilTransactionObserver_UNSTABLE(({ snapshot }) => {
+    latest.current = snapshot;
+    for (const l of listeners) l();
+  });
+  useEffect(() => {
+    registerStore(
+      'recoil',
+      recoilStore(
+        { cart: cartAtom, user: userAtom },
+        () => latest.current,
+        (l) => {
+          listeners.add(l);
+          return () => listeners.delete(l);
+        },
+      ),
+    );
+  }, []);
+  return null;
+}
+```
+
+Each atom comes back as `{ status, value, error }` rather than a bare value, because Recoil atoms can be async: calling `getValue()` on a pending selector **throws the pending promise**, which would lose the whole state read over one slow atom. A loading atom reports `status: 'loading'` instead of silently reading as empty.
 
 **TanStack Query is worth registering even if you register nothing else.** Its cache holds the state most likely to be wrong in a way nothing else can observe: a stale value served as fresh, a mutation that never invalidated its query, an optimistic update never rolled back. None of those fire a network request, so a network log shows silence and the DOM shows a plausible number — the cache is the only witness. The adapter exposes `status`, `fetchStatus`, `isStale` and `dataUpdatedAt` per query key, so an agent can assert the stronger property: not "the number rendered is 42" but "the number rendered came from fresh data".
 

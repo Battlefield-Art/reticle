@@ -6,6 +6,9 @@ import {
   valtioStore,
   mobxStore,
   pushStore,
+  recoilStore,
+  svelteStore,
+  piniaStore,
 } from './store-adapters.js';
 
 /** A fake matching the shape of TanStack Query's cache surface (getAll + subscribe). */
@@ -227,5 +230,239 @@ describe('pushStore (React Context / useState — no readable store exists)', ()
     store.subscribe(listener)();
     push(1);
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+/** A fake shaped like a Recoil `Snapshot`: getLoadable returns a `{state, contents}` Loadable. */
+function fakeRecoil(values: Map<object, { state: string; contents: unknown }>) {
+  const listeners = new Set<() => void>();
+  return {
+    snapshot: () => ({
+      getLoadable: (atom: object) => values.get(atom) ?? { state: 'hasValue', contents: undefined },
+    }),
+    subscribe: (listener: () => void): (() => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    emit: (): void => {
+      for (const l of listeners) l();
+    },
+    listenerCount: (): number => listeners.size,
+  };
+}
+
+describe('recoilStore', () => {
+  it('projects each named atom from the current snapshot', () => {
+    const cart = {},
+      user = {};
+    const recoil = fakeRecoil(
+      new Map([
+        [cart, { state: 'hasValue', contents: { items: 2 } }],
+        [user, { state: 'hasValue', contents: 'ada' }],
+      ]),
+    );
+    const state = recoilStore({ cart, user }, recoil.snapshot, recoil.subscribe).getState();
+    expect(state).toEqual({
+      cart: { status: 'hasValue', value: { items: 2 }, error: null },
+      user: { status: 'hasValue', value: 'ada', error: null },
+    });
+  });
+
+  it('re-reads the snapshot on every getState, so a new transaction is visible', () => {
+    const atom = {};
+    const values = new Map([[atom, { state: 'hasValue', contents: 1 }]]);
+    const recoil = fakeRecoil(values);
+    const store = recoilStore({ n: atom }, recoil.snapshot, recoil.subscribe);
+    values.set(atom, { state: 'hasValue', contents: 2 });
+    expect(store.getState()).toEqual({ n: { status: 'hasValue', value: 2, error: null } });
+  });
+
+  it('reports a PENDING async atom as pending rather than as a value', () => {
+    // `getValue()` on a loading Loadable THROWS the pending promise. Reading `.state` instead is
+    // what keeps one async selector from taking down the whole state read.
+    const atom = {};
+    const recoil = fakeRecoil(
+      new Map([[atom, { state: 'loading', contents: Promise.resolve(1) }]]),
+    );
+    const state = recoilStore({ q: atom }, recoil.snapshot, recoil.subscribe).getState();
+    expect(state).toEqual({ q: { status: 'loading', value: null, error: null } });
+  });
+
+  it('reports an ERRORED atom as an error, never as an absent value', () => {
+    const atom = {};
+    const recoil = fakeRecoil(
+      new Map([[atom, { state: 'hasError', contents: new Error('boom') }]]),
+    );
+    const state = recoilStore({ q: atom }, recoil.snapshot, recoil.subscribe).getState();
+    expect(state).toEqual({ q: { status: 'hasError', value: null, error: 'boom' } });
+  });
+
+  it('fires the listener on a transaction and detaches on unsubscribe', () => {
+    const recoil = fakeRecoil(new Map());
+    const listener = vi.fn();
+    const unsub = recoilStore({}, recoil.snapshot, recoil.subscribe).subscribe(listener);
+    recoil.emit();
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsub();
+    recoil.emit();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(recoil.listenerCount()).toBe(0);
+  });
+});
+
+/** A hand-rolled Svelte readable: `subscribe` calls back synchronously, then on every `set`. */
+function fakeSvelteStore<T>(initial: T) {
+  const runs = new Set<(value: T) => void>();
+  let value = initial;
+  return {
+    store: {
+      subscribe: (run: (value: T) => void): (() => void) => {
+        runs.add(run);
+        run(value); // the Svelte store contract: immediate + synchronous
+        return () => runs.delete(run);
+      },
+    },
+    set: (next: T): void => {
+      value = next;
+      for (const run of runs) run(value);
+    },
+    runCount: (): number => runs.size,
+  };
+}
+
+describe('svelteStore', () => {
+  it('pulls the current value through a transient subscription — the same trick svelte/store `get` uses', () => {
+    const svelte = fakeSvelteStore({ count: 1 });
+    expect(svelteStore(svelte.store).getState()).toEqual({ count: 1 });
+  });
+
+  it('leaves no subscription behind after a read, so the adapter needs no teardown', () => {
+    const svelte = fakeSvelteStore(0);
+    const store = svelteStore(svelte.store);
+    store.getState();
+    store.getState();
+    expect(svelte.runCount()).toBe(0);
+  });
+
+  it('reads the LIVE value after a set, not a cached one', () => {
+    const svelte = fakeSvelteStore(1);
+    const store = svelteStore(svelte.store);
+    expect(store.getState()).toBe(1);
+    svelte.set(9);
+    expect(store.getState()).toBe(9);
+  });
+
+  it('swallows the immediate call, so registering a store is not reported as a state change', () => {
+    // Svelte calls back synchronously on subscribe. Forwarding that would emit a STATE_CHANGE for a
+    // change that never happened — a diff of nothing that a {kind:"state"} predicate could satisfy.
+    const svelte = fakeSvelteStore(1);
+    const listener = vi.fn();
+    svelteStore(svelte.store).subscribe(listener);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('fires on every set after the first', () => {
+    const svelte = fakeSvelteStore(1);
+    const listener = vi.fn();
+    svelteStore(svelte.store).subscribe(listener);
+    svelte.set(2);
+    svelte.set(3);
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('unsubscribe detaches', () => {
+    const svelte = fakeSvelteStore(1);
+    const listener = vi.fn();
+    svelteStore(svelte.store).subscribe(listener)();
+    svelte.set(2);
+    expect(listener).not.toHaveBeenCalled();
+    expect(svelte.runCount()).toBe(0);
+  });
+
+  it('accepts a subscribe that returns an {unsubscribe} object, not only a function', () => {
+    const unsubscribe = vi.fn();
+    const store = svelteStore({
+      subscribe: (run: (value: unknown) => void) => {
+        run('v');
+        return { unsubscribe };
+      },
+    });
+    expect(store.getState()).toBe('v');
+    store.subscribe(vi.fn())();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('warns once when a store breaks the synchronous-first-call contract instead of reading empty', () => {
+    // No synchronous call ⇒ getState can only answer `undefined`, which is indistinguishable from a
+    // store legitimately holding `undefined`. Say so rather than let it read as empty state.
+    const warn = vi.fn();
+    const lazy = { subscribe: (): (() => void) => () => undefined };
+    const store = svelteStore(lazy, warn);
+    expect(store.getState()).toBeUndefined();
+    store.getState();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** A fake shaped like a Pinia store: a `$state` object plus `$subscribe(cb, options)`. */
+function fakePinia(initial: Record<string, unknown>) {
+  const listeners = new Set<() => void>();
+  const options: Array<{ detached?: boolean; flush?: string }> = [];
+  const state = { ...initial };
+  return {
+    store: {
+      $state: state,
+      $subscribe: (
+        callback: (mutation: unknown, state: Record<string, unknown>) => void,
+        opts?: { detached?: boolean; flush?: string },
+      ): (() => void) => {
+        options.push(opts ?? {});
+        const run = (): void => callback({ type: 'direct' }, state);
+        listeners.add(run);
+        return () => listeners.delete(run);
+      },
+    },
+    mutate: (key: string, value: unknown): void => {
+      state[key] = value;
+      for (const l of listeners) l();
+    },
+    optionsUsed: (): Array<{ detached?: boolean; flush?: string }> => options,
+    listenerCount: (): number => listeners.size,
+  };
+}
+
+describe('piniaStore', () => {
+  it('reads $state live, so a mutation is visible without re-registering', () => {
+    const pinia = fakePinia({ n: 1 });
+    const store = piniaStore(pinia.store);
+    expect(store.getState()).toEqual({ n: 1 });
+    pinia.mutate('n', 2);
+    expect(store.getState()).toEqual({ n: 2 });
+  });
+
+  it('fires the listener on a mutation', () => {
+    const pinia = fakePinia({ n: 1 });
+    const listener = vi.fn();
+    piniaStore(pinia.store).subscribe(listener);
+    pinia.mutate('n', 2);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('unsubscribe detaches', () => {
+    const pinia = fakePinia({ n: 1 });
+    const listener = vi.fn();
+    piniaStore(pinia.store).subscribe(listener)();
+    pinia.mutate('n', 2);
+    expect(listener).not.toHaveBeenCalled();
+    expect(pinia.listenerCount()).toBe(0);
+  });
+
+  it('subscribes detached and sync — a remount must not silence it, and a diff must not land late', () => {
+    // `detached` keeps the subscription alive across the component that happened to register the
+    // store; `sync` puts the notification inside the action's attribution window instead of a tick
+    // after it, where the causal summary would no longer link the change to the click that caused it.
+    const pinia = fakePinia({ n: 1 });
+    piniaStore(pinia.store).subscribe(vi.fn());
+    expect(pinia.optionsUsed()[0]).toEqual({ detached: true, flush: 'sync' });
   });
 });
