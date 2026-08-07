@@ -15,7 +15,7 @@ import { createNodeFileSystem } from './project/fs-port.js';
 import { affectedSavedFlows } from './flows/flow-sources.js';
 
 import { checkForUpdate } from './update/update-checker.js';
-import { availableUpdate } from './update/update-nudge.js';
+import { availableUpdate, updateTarget } from './update/update-nudge.js';
 import { applyUpdate, rollback } from './update/updater.js';
 
 import { start, startDaemon } from './index.js';
@@ -227,16 +227,15 @@ async function handleHunt(dir: string): Promise<void> {
 async function handleUpdate(): Promise<void> {
   try {
     const manifest = await checkForUpdate(SERVER_VERSION, () => Date.now());
-    if (!manifest.updateAvailable || manifest.latestVersion === undefined) {
-      log('reticle_update', {
-        ok: false,
-        message: 'already on the latest version',
-        version: SERVER_VERSION,
-      });
+    // Direction, not inequality: the registry being DIFFERENT is not the registry being newer, and
+    // the old gate happily installed a downgrade. See updateTarget.
+    const target = updateTarget(manifest);
+    if (target === undefined) {
+      log('reticle_update', { ok: false, message: 'already on the latest version', version: SERVER_VERSION });
       return;
     }
-    log('reticle_update', { ok: true, from: SERVER_VERSION, to: manifest.latestVersion });
-    await applyUpdate(manifest.latestVersion); // calls process.exit; Claude Code restarts
+    log('reticle_update', { ok: true, from: SERVER_VERSION, to: target });
+    await applyUpdate(target); // calls process.exit; Claude Code restarts
   } catch (error) {
     log('reticle_update_failed', { error: error instanceof Error ? error.message : String(error) });
     process.exitCode = 1;

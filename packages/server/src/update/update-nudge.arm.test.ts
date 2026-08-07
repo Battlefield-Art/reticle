@@ -18,7 +18,12 @@
  */
 
 import { describe, expect, it, beforeEach } from 'vitest';
-import { armUpdateNudgeFrom, takeUpdateNudge, resetUpdateNudge } from './update-nudge.js';
+import {
+  armUpdateNudgeFrom,
+  takeUpdateNudge,
+  resetUpdateNudge,
+  updateTarget,
+} from './update-nudge.js';
 
 beforeEach(() => resetUpdateNudge());
 
@@ -63,5 +68,36 @@ describe('armUpdateNudgeFrom — the cached answer, available on the FIRST tool 
     armUpdateNudgeFrom({ latestVersion: '2.4.0', updateAvailable: true }, '2.3.0');
     expect(takeUpdateNudge()).toBeDefined();
     expect(takeUpdateNudge()).toBeUndefined();
+  });
+});
+
+/**
+ * `reticle update` would install a DOWNGRADE.
+ *
+ * A real user reported this on 2026-08-06: "Version comparison is reversed in the update path — both
+ * the `update_available` banner and `reticle update` report the current and target versions swapped,
+ * so an upgrade is described as a downgrade." They hit it with npm-latest at 2.3.0 against a stale
+ * npx-cached daemon at 2.2.1.
+ *
+ * The banner half is fixed by isNewerVersion above. The COMMAND half was not: `handleUpdate` gates
+ * on `manifest.updateAvailable`, which is a plain `latest !== current`, so whenever the registry's
+ * latest is older than the running build — a prerelease, a local build, a rollback in progress, a
+ * stale cache — it reports the move and then actually installs the older version.
+ */
+describe('updateTarget — what `reticle update` should actually install', () => {
+  it('returns the newer version when there is one', () => {
+    expect(updateTarget({ updateAvailable: true, latestVersion: '2.4.0' }, '2.3.0')).toBe('2.4.0');
+  });
+
+  it('returns nothing when the registry is BEHIND us — never install a downgrade', () => {
+    expect(updateTarget({ updateAvailable: true, latestVersion: '2.1.0' }, '2.4.0')).toBeUndefined();
+  });
+
+  it('returns nothing when already current', () => {
+    expect(updateTarget({ updateAvailable: false, latestVersion: '2.4.0' }, '2.4.0')).toBeUndefined();
+  });
+
+  it('returns nothing when the registry answer is missing', () => {
+    expect(updateTarget({ updateAvailable: true }, '2.4.0')).toBeUndefined();
   });
 });

@@ -101,6 +101,24 @@ export function startUpdateCheck(now: () => number = () => Date.now()): void {
 }
 
 /**
+ * What `reticle update` should install, or undefined when it should do nothing.
+ *
+ * `handleUpdate` gated on `manifest.updateAvailable`, a plain `latest !== current`, so whenever the
+ * registry's latest was OLDER than the running build — a prerelease, a local build, a rollback in
+ * progress, a stale npx cache — it announced the move and then installed the downgrade. Reported by
+ * a real user on 2026-08-06: "both the `update_available` banner and `reticle update` report the
+ * current and target versions swapped, so an upgrade is described as a downgrade."
+ */
+export function updateTarget(
+  manifest: { updateAvailable?: boolean; latestVersion?: string },
+  currentVersion: string = SERVER_VERSION,
+): string | undefined {
+  const latest = manifest.latestVersion;
+  if (latest === undefined || !isNewerVersion(latest, currentVersion)) return undefined;
+  return latest;
+}
+
+/**
  * Arm from an already-cached answer, synchronously, at daemon boot.
  *
  * The network check fires 8s after boot and the nudge is delivered by riding a tool result — but
