@@ -4,6 +4,7 @@
  * into the tool list there via...ACT_TOOLS.
  */
 import { z } from 'zod';
+import { aliasParam } from './alias-args.js';
 import { captureAct, compileSequenceStep } from '../flows/replay.js';
 import {
   ActionType,
@@ -353,6 +354,9 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           'Action-specific arguments: { value } for fill/select, { text } for type/press, { confirmDangerous: true } for a potentially destructive control.',
         ),
+      predicate: PredicateSchema.optional().describe(
+        'Alias for `until` (the name reticle_assert / reticle_wait_for use).',
+      ),
       until: PredicateSchema.optional().describe(
         'Predicate to wait for after the action completes (same shape as reticle_assert). OMIT to wait for the page to SETTLE — network + DOM idle — the deterministic default instead of a sleep. To assert a consequence AND settle, allOf them: { kind: "allOf", predicates: [<your predicate>, { kind: "settled" }] }.',
       ),
@@ -450,9 +454,11 @@ export const ACT_TOOLS: ToolDef[] = [
       if (paused !== undefined) return paused;
       refuseIfThrottled(session, args['refuseWhenThrottled']);
       // Omitting `until` waits for the page to settle (idle) — the deterministic default vs a sleep.
+      // `predicate` is what reticle_assert / reticle_wait_for call this — see alias-args.ts.
+      const withUntil = aliasParam(args, 'until', ['predicate']);
       const until =
-        args['until'] !== undefined
-          ? PredicateSchema.parse(args['until'])
+        withUntil['until'] !== undefined
+          ? PredicateSchema.parse(withUntil['until'])
           : ({ kind: 'settled' } as const);
       const timeout = asNumber(args['timeout_ms']) ?? DEFAULT_ASSERT_TIMEOUT_MS;
 

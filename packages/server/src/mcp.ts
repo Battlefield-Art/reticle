@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { PredicateSchema } from './events/predicate.js';
 import { isToonable, resultToToon } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from './tools/tools.js';
 import type { ToolDef } from './tools/tools.js';
@@ -82,7 +83,23 @@ export function firstSentence(description: string): string {
  * Across the three tools that take a predicate that is 72% of the entire advertised input schema — a
  * cost re-sent on every request, forever, to describe a grammar most calls use one variant of.
  */
-const PREDICATE_PARAMS = new Set(['predicate', 'until']);
+/**
+ * Is this parameter ACTUALLY the predicate union?
+ *
+ * This used to be a name check — `new Set(['predicate', 'until'])` — and `until` is overloaded on
+ * this surface: the act/assert family means a predicate by it, while reticle_observe / _network /
+ * _console mean a NUMBER, an upper cursor bound. So all three had their numeric parameter advertised
+ * to the agent as `Predicate object: { kind, ...fields }`, typed as a record, under the DEFAULT
+ * profile. An agent believing the schema passes an object, `asNumber` yields undefined, the bound is
+ * silently dropped and the tool answers over the wrong window — a wrong answer wearing the shape of
+ * an answer.
+ *
+ * Keying on the schema cannot make that mistake: a parameter is compacted because it IS a predicate.
+ */
+function isPredicateParam(schema: z.ZodTypeAny): boolean {
+  const inner = schema instanceof z.ZodOptional ? (schema.unwrap() as z.ZodTypeAny) : schema;
+  return inner === PredicateSchema || inner === (PredicateSchema as z.ZodTypeAny).optional();
+}
 
 /**
  * What a lean profile advertises in place of the full predicate union.
@@ -136,12 +153,17 @@ const COMPACT_PREDICATE_DESCRIPTION = `${PREDICATE_KINDS}${PREDICATE_FIELD_GRAMM
  */
 function leanZodShape(shape: z.ZodRawShape, predicateAnchor?: string): z.ZodRawShape {
   const out: z.ZodRawShape = {};
+  // The navigation hint is said ONCE per turn, so it is anchored to one parameter — not one tool.
+  // A tool can carry two predicate parameters (a canonical name plus a neighbouring tool's alias),
+  // and anchoring per-tool spelled the hint out on both.
+  let hintSpent = predicateAnchor !== undefined;
   for (const [key, schema] of Object.entries(shape)) {
-    if (PREDICATE_PARAMS.has(key)) {
-      // Every tool keeps the kinds; only the navigation hint is anchored to one.
+    if (isPredicateParam(schema)) {
+      // Every tool keeps the kinds; only the navigation hint is anchored.
       const compact = z
         .record(z.unknown())
-        .describe(predicateAnchor === undefined ? COMPACT_PREDICATE_DESCRIPTION : PREDICATE_KINDS);
+        .describe(hintSpent ? PREDICATE_KINDS : COMPACT_PREDICATE_DESCRIPTION);
+      hintSpent = true;
       out[key] = schema.isOptional() ? compact.optional() : compact;
       continue;
     }
@@ -232,7 +254,7 @@ export function advertisedConfig(
     profile === TOOL_PROFILE.HYBRID;
   // The first advertised tool carrying a predicate spells the grammar out; the rest point at it.
   const anchor = advertised.find((t) =>
-    Object.keys(t.inputSchema).some((k) => PREDICATE_PARAMS.has(k)),
+    Object.values(t.inputSchema).some((schema) => isPredicateParam(schema)),
   )?.name;
   const outputSchema = terse ? undefined : withSessionEnvelope(tool.name, tool.outputSchema);
   return {

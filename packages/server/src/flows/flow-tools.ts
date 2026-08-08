@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { aliasParam } from '../tools/alias-args.js';
 import {
   FlowErrorCode,
   RecordedSaveError,
@@ -94,6 +95,10 @@ export const FLOW_TOOLS: ToolDef[] = [
     description:
       'Persist the last/active recording (by name) as a git-checked, anchor-resolved flow at .reticle/flows/<name>.json. Each step is bound to a SEMANTIC anchor (testid/role/signal), never a volatile ref; steps without a resolvable testid are kept with degraded:true (a "add a data-testid here" marker) rather than dropped. Returns { name, stepCount, degraded, empty, assertions } — `assertions.grade` is asserted | presence-only | assertion-free: a flow that only acts (or only checks element presence) will pass even if the feature breaks, so when grade is not "asserted" follow assertions.warning and add a consequence assertion via reticle_annotate (assert-signal / assert-net / success-state).',
     inputSchema: {
+      flow: z
+        .string()
+        .optional()
+        .describe('Alias for `flowName` (the name reticle_annotate uses).'),
       flowName: z
         .string()
         .describe(
@@ -129,7 +134,7 @@ export const FLOW_TOOLS: ToolDef[] = [
       code: z.string().optional(),
     },
     handler: (deps: ToolDeps, args) => {
-      const name = asString(args['flowName']) ?? '';
+      const name = asString(aliasParam(args, 'flowName', ['flow'])['flowName']) ?? '';
       const program = deps.recordings.getCompiled(name);
       if (program === undefined) {
         return Promise.resolve({
@@ -203,6 +208,10 @@ export const FLOW_TOOLS: ToolDef[] = [
     description:
       'Read + validate a saved flow by flowName from .reticle/flows/<flowName>.json. Returns the FlowFile (version, flowName, createdAt, anchored steps) or a structured { error, code }.',
     inputSchema: {
+      flow: z
+        .string()
+        .optional()
+        .describe('Alias for `flowName` (the name reticle_annotate uses).'),
       flowName: z
         .string()
         .describe('Flow file name (without .json extension) from reticle_flow{action:"list"}.'),
@@ -212,17 +221,23 @@ export const FLOW_TOOLS: ToolDef[] = [
         .describe('Active session ID — resolves the flow within that app’s scope.'),
     },
     outputSchema: {
+      flow: z
+        .string()
+        .optional()
+        .describe('Alias for `flowName` (the name reticle_annotate uses).'),
       flowName: z.string(),
       steps: z.array(z.unknown()),
       createdAt: z.number().optional(),
     },
     handler: (deps: ToolDeps, args) => {
       const projectId = sessionProjectId(deps, asString(args['sessionId']));
-      return deps.flows.load(asString(args['flowName']) ?? '', projectId).then((res) => {
-        if (!res.ok) return { error: flowErrorMessage(res.code), code: res.code };
-        const { name, ...rest } = res.value;
-        return { flowName: name, ...rest };
-      });
+      return deps.flows
+        .load(asString(aliasParam(args, 'flowName', ['flow'])['flowName']) ?? '', projectId)
+        .then((res) => {
+          if (!res.ok) return { error: flowErrorMessage(res.code), code: res.code };
+          const { name, ...rest } = res.value;
+          return { flowName: name, ...rest };
+        });
     },
   },
   {
@@ -232,6 +247,10 @@ export const FLOW_TOOLS: ToolDef[] = [
       'to the connected app. Returns { deleted: true } or a structured { error, code } (code not_found ' +
       'when no such flow — deleting an absent flow is an error, not a silent no-op).',
     inputSchema: {
+      flow: z
+        .string()
+        .optional()
+        .describe('Alias for `flowName` (the name reticle_annotate uses).'),
       flowName: z
         .string()
         .describe('Flow file name (without .json extension) from reticle_flow{action:"list"}.'),
@@ -247,10 +266,12 @@ export const FLOW_TOOLS: ToolDef[] = [
     },
     handler: (deps: ToolDeps, args) => {
       const projectId = sessionProjectId(deps, asString(args['sessionId']));
-      return deps.flows.remove(asString(args['flowName']) ?? '', projectId).then((res) => {
-        if (!res.ok) return { error: flowErrorMessage(res.code), code: res.code };
-        return { deleted: true };
-      });
+      return deps.flows
+        .remove(asString(aliasParam(args, 'flowName', ['flow'])['flowName']) ?? '', projectId)
+        .then((res) => {
+          if (!res.ok) return { error: flowErrorMessage(res.code), code: res.code };
+          return { deleted: true };
+        });
     },
   },
   {
@@ -263,6 +284,10 @@ export const FLOW_TOOLS: ToolDef[] = [
       'Returns { name, status: ok|drift|error, steps:[...] }; missing/malformed files and action ' +
       'failures are status:error with a structured code (distinct from contract-changed drift).',
     inputSchema: {
+      flow: z
+        .string()
+        .optional()
+        .describe('Alias for `flowName` (the name reticle_annotate uses).'),
       flowName: z
         .string()
         .describe('Flow file name (without .json extension) from reticle_flow{action:"list"}.'),
@@ -396,7 +421,8 @@ export const FLOW_TOOLS: ToolDef[] = [
         const parallelRuns = await Promise.all(
           outcomes.map(async (o, i) => {
             const name = requested[i] ?? '';
-            const replay = o.ok && o.value !== undefined ? o.value : leaseFailureReplay(name, o.error);
+            const replay =
+              o.ok && o.value !== undefined ? o.value : leaseFailureReplay(name, o.error);
             const loaded = await deps.flows.load(name, projectId).catch(() => null);
             const flow = loaded !== null && loaded.ok ? loaded.value : undefined;
             return flow === undefined ? { replay } : { replay, flow };
@@ -448,6 +474,10 @@ export const FLOW_TOOLS: ToolDef[] = [
       'recorded name. Returns { name, stepCount, degraded, empty } or { error, code } (code ' +
       'flow_no_recorded when no recording is present).',
     inputSchema: {
+      flow: z
+        .string()
+        .optional()
+        .describe('Alias for `flowName` (the name reticle_annotate uses).'),
       flowName: z
         .string()
         .optional()
@@ -482,7 +512,7 @@ export const FLOW_TOOLS: ToolDef[] = [
           code: RecordedSaveError.NO_RECORDED_FLOW,
         };
       }
-      const override = asString(args['flowName']);
+      const override = asString(aliasParam(args, 'flowName', ['flow'])['flowName']);
       const flow = override !== undefined ? { ...recorded.flow, name: override } : recorded.flow;
       // The store stamps the project into the file AND routes it to the per-project subdir (a shared
       // daemon serves many apps), so location and content agree from one source of truth.
@@ -509,6 +539,10 @@ export const FLOW_TOOLS: ToolDef[] = [
       'untouched). Returns { name, status: healed|drift|unhealable|consequence_broken|' +
       'nothing_to_heal|error, applied, proposals[], changed[], message }.',
     inputSchema: {
+      flow: z
+        .string()
+        .optional()
+        .describe('Alias for `flowName` (the name reticle_annotate uses).'),
       flowName: z.string().describe('Flow file name to heal (from reticle_flow{action:"list"}).'),
       apply: z.boolean().optional(),
       confirmDangerous: z
@@ -523,6 +557,10 @@ export const FLOW_TOOLS: ToolDef[] = [
         ),
     },
     outputSchema: {
+      flow: z
+        .string()
+        .optional()
+        .describe('Alias for `flowName` (the name reticle_annotate uses).'),
       flowName: z.string(),
       status: z.string(),
       applied: z.boolean(),

@@ -191,7 +191,10 @@ describe('every predicate parameter can be used without reading another tool', (
   const predicateTexts = (): string[] =>
     advertised.flatMap((tool) =>
       Object.entries(advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID).inputSchema)
-        .filter(([key]) => key === 'predicate' || key === 'until')
+        // Select by SHAPE, not by name. `until` is overloaded — reticle_observe/_network/_console
+        // use it for a numeric cursor bound — and selecting by name here made this suite assert that
+        // a NUMBER should carry predicate grammar, which is the bug it was meant to guard against.
+        .filter(([, schema]) => (schema.description ?? '').includes('Predicate object'))
         .map(([, schema]) => schema.description ?? ''),
     );
 
