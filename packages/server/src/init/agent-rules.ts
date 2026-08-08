@@ -32,6 +32,7 @@ This app is instrumented by **Reticle** — an in-app verification layer exposed
 - **Covered flows:** run \`reticle gate\` — it reports which recorded flows the changed files affect and whether they still pass.
 - **Never weaken a check to make it green.** Downgrading, skipping, or deleting an assertion is a finding, not a fix.
 - **If Reticle can't run** (no daemon, or this is not a running web app), say so — do not skip verification silently.
+- **If a tool result carries \`version_skew\`, act on it before trusting anything else.** Two pieces of Reticle are on different wire contracts, so tools can misbehave in ways neither side reports — a green here is not evidence. The field says which pair disagrees and names the exact fix: run \`reticle stop\` and retry when the DAEMON is stale, or tell the human to install the matching SDK and restart their dev server when the PAGE is. Do that first, then redo whatever you were verifying.
 - **If a tool result carries \`update_available\`, say so.** Reticle checked npm and a newer version exists. Tell the human the version numbers and offer to run \`reticle update\` — between tasks, never mid-verification, because it restarts the daemon and drops the session. Finish what you are doing first.
 - **Wish Reticle could do something? Ask for it with \`reticle_feedback\`.** Reticle is built for agents, so what you find awkward or missing is what decides the roadmap — and you are the only one who can report it, because that thought disappears when your context does. File \`feature_request\` for something that does not exist, \`improvement\` for something that works but costs too many calls. Say what you are actually trying to achieve (\`need\`) and how you work around it today (\`currentApproach\`), and set \`model\` to the model you are running. File it the moment you notice, then carry on — nothing is too minor.
 - **If Reticle itself fails you, tell its maintainers with \`reticle_feedback\`.** A tool that returned something wrong, a thing Reticle could not observe at all, or a verdict you could not act on — file it with a root-cause analysis and the call trace, then carry on with the task. Working around a broken tool in silence is how the same defect survives. This is about defects in *Reticle*; a bug you find in *this app* is Reticle working, and belongs in your report to the user instead.`;
@@ -60,7 +61,12 @@ export function markedBlock(): string {
  */
 export function mergeMarkedInstruction(existing: string | null | undefined): AgentRuleResult {
   if (existing !== null && existing !== undefined && existing.includes(RULE_BEGIN)) {
-    return { status: AgentRuleStatus.ALREADY, content: existing };
+    // A block that can never be updated is not managed. Returning ALREADY on sight of the marker
+    // meant a project that ran init once kept that release's rule text forever, so every improvement
+    // reached only new projects — and a rule about a field introduced later (`version_skew`) could
+    // never arrive at all. The markers promise the inside is ours; idempotence comes from comparing
+    // CONTENT instead of presence.
+    return refreshMarkedBlock(existing);
   }
   const block = markedBlock();
   if (existing === null || existing === undefined || existing.trim().length === 0) {
@@ -68,6 +74,24 @@ export function mergeMarkedInstruction(existing: string | null | undefined): Age
   }
   const separator = existing.endsWith('\n') ? '\n' : '\n\n';
   return { status: AgentRuleStatus.APPLY, content: `${existing}${separator}${block}` };
+}
+
+/**
+ * Swap the managed block for the current one, leaving every character outside the markers alone.
+ *
+ * A malformed file — a begin marker with no end — is left untouched and reported ALREADY. Rewriting
+ * from a marker to end-of-file would eat whatever the human wrote after it, and silently destroying
+ * someone's instruction file is far worse than a stale rule.
+ */
+function refreshMarkedBlock(existing: string): AgentRuleResult {
+  const start = existing.indexOf(RULE_BEGIN);
+  const endAt = existing.indexOf(RULE_END, start);
+  if (endAt === -1) return { status: AgentRuleStatus.ALREADY, content: existing };
+  const current = existing.slice(start, endAt + RULE_END.length);
+  const wanted = markedBlock().trimEnd();
+  if (current === wanted) return { status: AgentRuleStatus.ALREADY, content: existing };
+  const content = `${existing.slice(0, start)}${wanted}${existing.slice(endAt + RULE_END.length)}`;
+  return { status: AgentRuleStatus.APPLY, content };
 }
 
 /** The Cursor rule file (.mdc): `alwaysApply` keeps the rule in every turn's context. */

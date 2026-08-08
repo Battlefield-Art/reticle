@@ -4,6 +4,103 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+## [2.4.1] — 2026-08-08
+
+**False greens, and a metric that was measuring the wrong thing.** Almost every fix here was found by
+driving the shipped MCP surface against a live app and reading what came back — 994 adversarial calls
+with hostile arguments generated from each tool's own schema, plus one realistic verification session
+with every telemetry event captured on a local endpoint. Three of these change behaviour: a flow that
+was green because nothing was checking it will now go red, a misspelled predicate key is now refused
+instead of silently weakening the assertion, and a verification suite with no flows no longer passes.
+
+### Fixed — verifications that could not fail
+
+- **`@reticlehq/server` — a step's `signal` / `net` / `console` assertion is now EVALUATED on replay.**
+  Replay checked exactly two things per step (element presence, and `expect.state`), so an assertion
+  recorded by `reticle_annotate { kind: 'assert-signal' }` was written to disk and read by nothing —
+  while `reticle_flow_save` graded the flow `"asserted"`. Driven end to end: annotate a step with a
+  signal that never fires, save (grade `asserted`), replay → `status: "ok"`. It now reports `drift`
+  with the reason. Step expects compile through the same converter the flow-level `success` has
+  always used, so the two forms cannot diverge again.
+  **This turns previously-green flows red.** That is the point — they were green because nothing was
+  looking. Run `reticle verify` after upgrading and expect to find real failures.
+- **`@reticlehq/server` — a misspelled predicate key is refused instead of weakening the check.**
+  `until: { kind: 'route', path: '/checkout' }` silently dropped `path` (the field is `pathname`,
+  though the `state` predicate in the same union spells it `path`) and degraded to "any route
+  change". Five predicate kinds have all-optional fields, so a plausible-but-wrong key left a
+  tautology: `{net, url}` became "any network call at all". Every branch is now strict, and `path` /
+  `url` / `data` are accepted as aliases for `pathname` / `urlContains` / `dataMatches` so a
+  rejection is not simply a different dead end.
+- **`@reticlehq/server` — `since` now works on `signal`, `route` and `animation` predicates.** It
+  existed only on `net` and `console`, so an assertion scoped to the action that had just run was
+  really "at any point in the window". Found by the strictness change, in this repo's own e2e battery.
+- **`@reticlehq/server` — a suite with no flows no longer reports `pass`.** `reticle_flow_verify` on a
+  project with no flows returned `status: "pass"`, `"all 0 flows pass"` — so the CI gate went green on
+  every project that had not written a flow yet, and on any project where the flows directory failed
+  to resolve. It now reports `unverifiable` and says what to do.
+- **`@reticlehq/server` — an ordinary React navigation is no longer reported as a blank destination.**
+  `route-rendered-nothing` looked only for added/removed nodes, so a destination React reconciled IN
+  PLACE looked identical to one that rendered nothing. Measured on three ordinary navigations: each
+  emitted `dom.attr`, `dom.text` and `render.commit` and zero `dom.added`/`dom.removed`. Correct
+  greens came back `verified: "no"` and each emitted a bug. In a live session, bugs went 4 → 1.
+- **`@reticlehq/server` — an agent's own malformed call is no longer reported as a defect in the
+  user's app.** `until: { kind: 'state' }` without naming a store returned `verified: "no"` — and that
+  path emits `bug_found`. It is now `unknown`, with the missing argument named, and emits nothing.
+
+### Fixed — telemetry that was measuring the wrong thing
+
+- **`@reticlehq/server` — a FAILING verification suite is now counted.** `verification_completed`
+  fired only when a suite passed, while `bug_found` fired on the reds — so the data showed defects
+  with no verification to divide them by, and a CI verify that went red was invisible.
+- **`@reticlehq/server` — a periodic flush is no longer emitted as `daemon_stopped`.** The 30-minute
+  roll-up reused the exit event, so 98 `daemon_stopped` events in one day were 73 real exits plus 25
+  flushes. It is now `session_progress`, and the flush interval is 5 minutes rather than 30 (the
+  interval is the bound on what is lost when a working daemon is finally killed).
+- **`@reticlehq/server` — a repeated defect is no longer counted as a new one.** The flush cleared the
+  seen-bug-kinds memory along with the window counters, so the same defect re-found after a flush
+  reported `repeat: false`.
+- **`@reticlehq/server` — `reticle mcp` no longer emits `cli_command_run`.** It is the agent's MCP
+  transport, which nobody types, and it was 85% of that event. `mcp_client_connected` already reports
+  an agent attaching, with more detail.
+- **`@reticlehq/server` — one-shot CLI commands no longer mint a `sessionId`.** The id is per-process,
+  so `reticle status` invented a session that joined to nothing: of 704 distinct ids in one day, 561
+  came from CLI runs and not one was shared with a daemon. Any chart counting sessions was ~6x high.
+
+### Added
+
+- **`@reticlehq/core` / `@reticlehq/server` — version and contract agreement is reported to the
+  agent.** When the SDK, the daemon and the agent's MCP server disagree on the wire contract, the next
+  tool result carries `version_skew` naming which pair differs and the exact fix (`reticle stop` for a
+  stale daemon; install the matching SDK and restart the dev server for a stale page). Matched
+  installs stay silent — the signal is a derived contract fingerprint, not version equality, so a
+  patch release does not cry wolf.
+- **`@reticlehq/server` — `reticle init` now REFRESHES its managed instruction block.** It previously
+  returned "already wired" on sight of the marker, so a project that ran init once kept that release's
+  rule text forever and every improvement reached only new projects. Content outside the markers is
+  never touched, and a malformed block (begin with no end) is left alone rather than risking someone's
+  file.
+- **`@reticlehq/server` — the agent rule block tells agents what to do with `version_skew`.**
+- **`@reticlehq/core` — verifications record how the browser got there** (`headless` / `headed` /
+  `attached`), so "verifications run" stops being one number covering unattended CI, a human watching
+  an agent, and the SDK in somebody's own dev server.
+- **`@reticlehq/core` — five session metrics that answer questions the data could not.**
+  `noSessionErrors` (tool calls that failed because there was no app to reach — the largest drop-off
+  in the funnel, previously reachable only by unpacking an array), `consecutiveRepeats` (longest
+  back-to-back run per tool, so a retry loop stops looking like engagement), `abandonedActions`
+  (actions left with no verdict after them), `tzOffsetMin` (time-of-day without relying on GeoIP), and
+  `versionChange.nudged` (whether the update banner is what caused the upgrade).
+
+### Changed
+
+- The file line cap moved from 600 to 1000. Cohesion is still the rule; the number is the backstop.
+
+### Internal
+
+- Two new e2e specs, both browser-free where possible: `version-skew-test` drives all three agreement
+  states with a fake peer and a hand-rolled HELLO that lie about their contract, and
+  `telemetry-stitch-test` runs a real session and checks the captured events describe it. The battery
+  is 21 specs.
+
 ## [2.4.0] — 2026-08-07
 
 **Setup, and the honesty of the regression suite.** Almost every fix here was found by installing the

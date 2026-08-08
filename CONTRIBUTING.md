@@ -84,7 +84,7 @@ We write tests first: **RED → GREEN → REFACTOR.**
 
 1. **RED** — write a failing test that pins the behavior you want.
 2. **GREEN** — write the minimum code to make it pass.
-3. **REFACTOR** — clean up with the test green; check the file is still under the 600-line cap.
+3. **REFACTOR** — clean up with the test green; check the file is still cohesive and under the 1000-line cap.
 
 Every behavior change ships with a test. Bug fixes start with a test that reproduces the bug.
 
@@ -99,7 +99,7 @@ These are enforced by lint and review. A PR that violates them will be asked to 
 3. **No free strings.** Every domain / wire / UI string is a named constant. Wire strings live in `@reticlehq/core`, never inlined in `browser` or `server`.
 4. **No non-null `!`.** Use optional chaining + explicit null checks.
 5. **Tests first** (see above).
-6. **600-line file cap.** Over it = a cohesion failure; split before adding.
+6. **1000-line file cap.** Over it = a cohesion failure; split before adding. (Raised from 600, which was forcing splits of genuinely cohesive units and turning two-line fixes into refactors. Cohesion is the rule; the number is the backstop.)
 7. **Inject the clock.** Never call `Date.now()` / `Math.random()` inside pure logic — pass them in.
 8. **Scope every data access to the authenticated principal.**
 9. **Design tokens are the only place design values live.**

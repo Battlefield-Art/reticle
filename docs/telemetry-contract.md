@@ -90,6 +90,20 @@ This split exists because the flush used to be emitted AS `daemon_stopped` — a
 
 The flush interval is also the **bound on what is lost**: nothing calls shutdown when a working daemon is finally killed, so its last partial window dies with it. At 30 minutes against a median 28-minute session that was most of the session. Only non-empty windows emit, so a short interval costs nothing on the daemons that never serve a tool.
 
+## The session summary's newer fields
+
+Four counters and one flag were added because the data could not answer questions we were already
+asking. All are properties on events that already exist — no new kinds — and all four counters are
+**omitted rather than sent as zero**, so a field's presence is itself the signal.
+
+| Field | On | Means |
+| --- | --- | --- |
+| `noSessionErrors` | session summary | tool calls that failed because there was no app to reach — no session, no session by that id, or several with none named. The largest drop-off in the funnel; it was previously reachable only by unpacking `errors[]`. |
+| `consecutiveRepeats` | session summary | longest back-to-back run per tool name. `toolCounts` reports five useful calls and five retries of one failing call identically, and those are opposite facts. |
+| `abandonedActions` | session summary | actions driven with no verdict AFTER them — the trailing unsettled run, not `actions - verifications`. That difference ignores order, so a verdict that drove nothing (a `flow_verify` over saved flows) silently paid for an abandoned action elsewhere. |
+| `tzOffsetMin` | every event | minutes offset from UTC. One integer, no location. |
+| `versionChange.nudged` | `version_changed` | an agent had been told about exactly this version recently, so the nudge plausibly caused the update. The daemon that nudges and the `reticle update` that acts are different processes, so a marker file joins them. |
+
 ## Adding things: what to do
 
 | You are adding | Do this | Enforced by |

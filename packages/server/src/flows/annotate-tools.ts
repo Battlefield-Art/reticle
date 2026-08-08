@@ -38,7 +38,7 @@ export const ANNOTATE_TOOLS: ToolDef[] = [
     example: { kind: 'assert-signal', name: 'todos:loaded' },
     description:
       'Attach a STRUCTURED annotation to the active recording, compiling it into the flow. kind: ' +
-      'assert-signal { name, dataMatches? } → the last step asserts that signal; assert-visible '  +
+      'assert-signal { name, dataMatches? } → the last step asserts that signal; assert-visible ' +
       '{ testid } → the last step asserts that element is present; assert-state ' +
       '{ statePath, store?, equals? } → the last step asserts a registered store value (the source ' +
       'of truth no DOM read can reach); mark-dynamic { testid } → the ' +

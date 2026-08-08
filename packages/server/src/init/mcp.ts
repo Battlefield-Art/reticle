@@ -31,6 +31,9 @@ export const MCP_SERVER_NAME = 'reticle';
  * Resolved by the LOCAL platform on purpose: the string is written into the agent's config on the
  * machine running `reticle init`, so it is that machine's shell that has to be able to run it.
  */
+// DELIBERATELY UNUSED at present — see the note below on why the registered command is still bare
+// `npx`. Kept, tested, and one call site away from being switched on the day the Windows CI job
+// (advisory today) can prove it, because rediscovering this decision costs more than the three lines.
 export function npxBin(os: NodeJS.Platform = platform()): string {
   return os === 'win32' ? 'npx.cmd' : 'npx';
 }

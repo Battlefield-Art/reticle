@@ -70,13 +70,39 @@ describe('a retry loop does not look like engagement', () => {
   });
 });
 
-describe('an action with no verdict after it is abandonment', () => {
-  it('counts actions that were never followed by a verification', () => {
+describe('an action with no verdict AFTER it is abandonment', () => {
+  /**
+   * The first version of this subtracted totals: `actions - verifications`. That is not what the
+   * field claims to measure and it is wrong in both directions, because it ignores ORDER.
+   *
+   * A verdict settles whatever was outstanding when it arrives; what is abandoned is the run of
+   * actions after the LAST one. So the measure is the trailing unsettled run, not a difference.
+   */
+  it('counts the actions left hanging after the last verdict', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordAction();
+    m.recordVerification(); // settles it
+    m.recordAction();
+    m.recordAction(); // ...and then the loop stops
+    expect(m.summarize(true).abandonedActions).toBe(2);
+  });
+
+  it('a verdict settles everything outstanding, however many actions it took', () => {
     const m = new SessionMetrics(() => 0);
     m.recordAction();
     m.recordAction();
-    m.recordVerification(); // settles ONE of them
-    expect(m.summarize(true).abandonedActions).toBe(1);
+    m.recordAction();
+    m.recordVerification();
+    expect(m.summarize(true).abandonedActions).toBeUndefined();
+  });
+
+  it('a verification with NO action before it cannot cancel a later abandonment', () => {
+    // The bug the subtraction had: a flow_verify is a verdict that drove nothing, so under
+    // `actions - verifications` it silently paid for a genuinely abandoned action elsewhere.
+    const m = new SessionMetrics(() => 0);
+    m.recordVerification(); // e.g. reticle_flow_verify — a verdict, but it acted on nothing
+    m.recordAction(); // ...then the agent drove the page and never checked
+    expect(m.summarize(true).abandonedActions, 'the flow_verify must not mask this').toBe(1);
   });
 
   it('a loop that always ends in a verdict abandons nothing', () => {

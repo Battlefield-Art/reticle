@@ -29,6 +29,8 @@ import { machineSnapshot } from './machine-snapshot.js';
 
 /** Cap the distinct error shapes held in memory — a pathological loop must not grow unbounded. */
 const MAX_ERROR_KINDS = 40;
+/** Distinct tool names whose repeat-runs are tracked. Its own cap: the tool surface, not error shapes. */
+const MAX_REPEAT_TOOLS = 64;
 
 /**
  * Tool errors that all mean the same thing to a user: the agent asked, and there was no app it could
@@ -101,8 +103,15 @@ export class SessionMetrics {
   readonly #repeatRuns = new Map<string, number>();
   #lastTool: string | undefined;
   #currentRun = 0;
-  /** Actions driven, and verdicts produced, so an action with no verdict after it is countable. */
-  #actions = 0;
+  /**
+   * Actions driven since the last verdict — the run that is left hanging if the loop stops here.
+   *
+   * NOT `actions - verifications`. That difference ignores ORDER, so a verdict that drove nothing
+   * (a `flow_verify` over saved flows) silently paid for a genuinely abandoned action elsewhere, and
+   * a session could verify first and act after and look settled. What is abandoned is the trailing
+   * run, which is exactly what the field claims to mean.
+   */
+  #unsettledActions = 0;
   readonly #clients = new Set<string>();
   readonly #startedAt: number;
   readonly #now: () => number;
@@ -161,7 +170,10 @@ export class SessionMetrics {
     this.#lastTool = tool;
     if (this.#currentRun > 1) {
       const best = this.#repeatRuns.get(tool) ?? 0;
-      if (this.#currentRun > best && (this.#repeatRuns.has(tool) || this.#repeatRuns.size < MAX_ERROR_KINDS))
+      if (
+        this.#currentRun > best &&
+        (this.#repeatRuns.has(tool) || this.#repeatRuns.size < MAX_REPEAT_TOOLS)
+      )
         this.#repeatRuns.set(tool, this.#currentRun);
     }
     this.#toolCalls += 1;
@@ -237,13 +249,15 @@ export class SessionMetrics {
     return { breadcrumb: [...this.#breadcrumb], inFlight: this.#inFlight };
   }
 
-  /** One action driven at the page. Paired with recordVerification to expose abandonment. */
+  /** One action driven at the page. Settled by the next verdict; see #unsettledActions. */
   recordAction(): void {
-    this.#actions += 1;
+    this.#unsettledActions += 1;
   }
 
   recordVerification(): void {
     this.#verifications += 1;
+    // A verdict settles whatever was outstanding, however many actions it took to get there.
+    this.#unsettledActions = 0;
   }
 
   /**
@@ -313,9 +327,7 @@ export class SessionMetrics {
         ? { consecutiveRepeats: Object.fromEntries(this.#repeatRuns) }
         : {}),
       // Absent rather than zero, so the PRESENCE of the field is the signal on a dashboard.
-      ...(this.#actions > this.#verifications
-        ? { abandonedActions: this.#actions - this.#verifications }
-        : {}),
+      ...(this.#unsettledActions > 0 ? { abandonedActions: this.#unsettledActions } : {}),
       ...(this.#toolParams.size > 0
         ? {
             toolParams: Object.fromEntries(
@@ -356,7 +368,7 @@ export class SessionMetrics {
     this.#repeatRuns.clear();
     this.#lastTool = undefined;
     this.#currentRun = 0;
-    this.#actions = 0;
+    this.#unsettledActions = 0;
     this.#toolCounts.clear();
     this.#toolParams.clear();
     this.#errorKinds.clear();
