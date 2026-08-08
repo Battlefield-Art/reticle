@@ -20,6 +20,25 @@ const CONFIG_MARKER = '__RETICLE_TOKEN__';
 /** Present in a patched layout and in the printed recipe's script. */
 const LAYOUT_MARKER = 'reticle.connect';
 
+/**
+ * The SDK, declared so Vite pre-bundles it BEFORE the first page load.
+ *
+ * The connect script does `await import('@reticlehq/react')`. Undeclared, Vite meets that import
+ * mid-load, pre-bundles it, and the hashed `/node_modules/.vite/deps/@reticlehq_react.js?v=…` URL
+ * the browser already requested stops existing — the import rejects with "Failed to fetch
+ * dynamically imported module", connect() never runs, and the page looks entirely normal. Measured
+ * on astro-nanostores, intermittent on whether the dep cache was warm. The Vite plugin has declared
+ * the SDK for this exact reason since the bug was first found on React; Astro is hand-patched and
+ * never got it.
+ */
+const SDK_INCLUDE_LITERAL = `'@reticlehq/react'`;
+/**
+ * An `include:` the app already declared — ours joins that array instead of adding a second key.
+ * Deliberately not anchored to a newline: `optimizeDeps: { include: ['x'] }` on one line is the
+ * common way to write it, and requiring a line break made the merge miss it and duplicate the key.
+ */
+const EXISTING_INCLUDE = /(\s*include\s*:\s*\[)/;
+
 const DEFINE_CONFIG = /defineConfig\s*\(\s*\{/;
 /** A `vite:` key whose value is an object LITERAL — the one shape we can merge into safely. */
 const VITE_OBJECT_KEY = /(^\s*vite\s*:\s*\{)/m;
@@ -50,7 +69,10 @@ import { join } from 'node:path';
  */
 const VITE_KEYS: readonly { key: string; inner: string }[] = [
   { key: 'build', inner: `\n      target: 'es2022',` },
-  { key: 'optimizeDeps', inner: `\n      esbuildOptions: { target: 'es2022' },` },
+  {
+    key: 'optimizeDeps',
+    inner: `\n      include: [${SDK_INCLUDE_LITERAL}],\n      esbuildOptions: { target: 'es2022' },`,
+  },
   {
     key: 'define',
     inner: `\n      __RETICLE_TOKEN__: JSON.stringify(reticleToken()),\n      __RETICLE_ROOT__: JSON.stringify(process.cwd()),`,
@@ -60,7 +82,7 @@ const VITE_KEYS: readonly { key: string; inner: string }[] = [
 /** Whole-key form, for a `vite:` block that does not have the key at all. */
 const WHOLE: Readonly<Record<string, string>> = {
   build: `\n    build: { target: 'es2022' },`,
-  optimizeDeps: `\n    optimizeDeps: { esbuildOptions: { target: 'es2022' } },`,
+  optimizeDeps: `\n    optimizeDeps: { include: [${SDK_INCLUDE_LITERAL}], esbuildOptions: { target: 'es2022' } },`,
   define: `\n    define: {\n      __RETICLE_TOKEN__: JSON.stringify(reticleToken()),\n      __RETICLE_ROOT__: JSON.stringify(process.cwd()),\n    },`,
 };
 
@@ -84,9 +106,51 @@ function mergeIntoViteBlock(source: string, braceAt: number): string | null {
     // reference we must not touch.
     if (existing[2] !== '{') return null;
     const at = braceAt + existing.index + existing[0].length; // just past the `{`
-    out = `${out.slice(0, at)}${inner}${out.slice(at)}`;
+    // An `include:` the app already wrote is an ARRAY, and a second `include:` key in the same
+    // object literal is not a merge — the last one wins and one of the two silently disappears.
+    // That is how `build.target` was lost while init still reported success. Join their array.
+    // Scoped to THIS block's braces: an `include:` under a later key is somebody else's array, and
+    // appending the SDK to it would both miss the target and edit a config we were not asked to.
+    const own = 'optimizeDeps' === key ? EXISTING_INCLUDE.exec(blockAfter(out, at)) : null;
+    if (own?.index === undefined) {
+      out = insertAt(out, at, inner);
+      continue;
+    }
+    // Their array first, then the rest of our keys at the block's start — inserting at the LOWER
+    // offset second keeps the first offset valid.
+    out = insertAt(out, at + own.index + own[0].length, `${SDK_INCLUDE_LITERAL}, `);
+    out = insertAt(out, at, withoutInclude(inner));
   }
   return out;
+}
+
+function insertAt(source: string, at: number, text: string): string {
+  return `${source.slice(0, at)}${text}${source.slice(at)}`;
+}
+
+/**
+ * The text from just inside an opening brace to its match — a brace count, not a parser.
+ *
+ * Enough for the one question asked of it (does THIS object literal already declare `include`), and
+ * honest about its limit: a `{` or `}` inside a string literal in someone's Vite config would fool
+ * it. That only ever shortens or lengthens the window we search for `include:` in, so the worst case
+ * is the same duplicate-key merge we would have done before, never a corrupted file.
+ */
+function blockAfter(source: string, at: number): string {
+  let depth = 1;
+  for (let i = at; i < source.length; i++) {
+    if ('{' === source[i]) depth += 1;
+    else if ('}' === source[i]) {
+      depth -= 1;
+      if (0 === depth) return source.slice(at, i);
+    }
+  }
+  return source.slice(at);
+}
+
+/** The optimizeDeps inner minus our `include:` line, for when the app already has one to join. */
+function withoutInclude(inner: string): string {
+  return inner.replace(`\n      include: [${SDK_INCLUDE_LITERAL}],`, '');
 }
 
 /**
@@ -96,7 +160,7 @@ function mergeIntoViteBlock(source: string, braceAt: number): string | null {
  */
 const VITE_BLOCK = `  vite: {
     build: { target: 'es2022' },
-    optimizeDeps: { esbuildOptions: { target: 'es2022' } },
+    optimizeDeps: { include: [${SDK_INCLUDE_LITERAL}], esbuildOptions: { target: 'es2022' } },
     define: {
       __RETICLE_TOKEN__: JSON.stringify(reticleToken()),
       __RETICLE_ROOT__: JSON.stringify(process.cwd()),

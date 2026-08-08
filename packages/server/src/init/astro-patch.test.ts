@@ -219,3 +219,48 @@ export default defineConfig({
     expect(patchAstroConfig(hostile).kind).toBe(PatchKind.MANUAL);
   });
 });
+
+/**
+ * The Astro connect does `await import('@reticlehq/react')`, and nothing told Vite the SDK exists.
+ *
+ * So Vite meets it for the first time DURING the first page load, pre-bundles it, and the hashed URL
+ * the browser already asked for stops existing:
+ *
+ *   uncaught: TypeError: Failed to fetch dynamically imported module:
+ *   http://localhost:4322/node_modules/.vite/deps/@reticlehq_react.js?v=4ada8de3
+ *
+ * The import rejects, connect() never runs, and the page looks completely normal — no session, no
+ * Reticle error, nothing in the console that names us. Measured on astro-nanostores, where it came
+ * and went between runs depending on whether the dep cache happened to be warm; the install gate
+ * blamed a different fixture each sweep until the uncaught exception was captured.
+ *
+ * The Vite plugin has declared the SDK in `optimizeDeps.include` since this bug was first found on a
+ * React app. Astro does not use that plugin — its config is patched by hand — so it never got the
+ * same protection.
+ */
+describe('the SDK is pre-declared so the first load is not lost to a dep-optimization', () => {
+  it('declares the SDK in optimizeDeps.include on the common shape', () => {
+    const patch = patchAstroConfig(PLAIN_CONFIG);
+    if (patch.kind !== PatchKind.APPLY) throw new Error('expected a patch');
+    expect(patch.code).toContain("include: ['@reticlehq/react']");
+  });
+
+  it('declares it when the app already has a vite block without optimizeDeps', () => {
+    const source = `import { defineConfig } from 'astro/config';\nexport default defineConfig({\n  vite: {\n    server: { port: 4321 },\n  },\n});\n`;
+    const patch = patchAstroConfig(source);
+    if (patch.kind !== PatchKind.APPLY) throw new Error('expected a patch');
+    expect(patch.code).toContain("include: ['@reticlehq/react']");
+    expect(patch.code).toContain('server: { port: 4321 }');
+  });
+
+  it('adds the SDK to an optimizeDeps.include the app already has, rather than shadowing it', () => {
+    const source = `import { defineConfig } from 'astro/config';\nexport default defineConfig({\n  vite: {\n    optimizeDeps: { include: ['their-dep'] },\n  },\n});\n`;
+    const patch = patchAstroConfig(source);
+    if (patch.kind !== PatchKind.APPLY) throw new Error('expected a patch');
+    // A SECOND `include:` key in the same object literal is not a merge — the last one wins and one
+    // of the two silently disappears. Exactly how `build.target` was lost while init reported OK.
+    expect(patch.code).toContain('their-dep');
+    expect(patch.code).toContain('@reticlehq/react');
+    expect(patch.code.match(/include\s*:/g)?.length ?? 0).toBe(1);
+  });
+});
