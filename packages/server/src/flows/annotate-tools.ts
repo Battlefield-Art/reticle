@@ -35,10 +35,11 @@ const DEFAULT_RECORDING = 'default';
 export const ANNOTATE_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.ANNOTATE,
-    example: { kind: 'assert-signal', name: 'todos:loaded' },
+    example: { kind: 'success-state', signal: 'todos:loaded' },
     description:
       'Attach a STRUCTURED annotation to the active recording, compiling it into the flow. kind: ' +
-      'assert-signal { name, dataMatches? } → the last step asserts that signal; assert-visible ' +
+      'assert-signal { name, dataMatches? } → records that signal on the last step, but a replay ' +
+      'does NOT evaluate step signals — use success-state for a signal that can fail the flow; assert-visible '  +
       '{ testid } → the last step asserts that element is present; assert-state ' +
       '{ statePath, store?, equals? } → the last step asserts a registered store value (the source ' +
       'of truth no DOM read can reach); mark-dynamic { testid } → the ' +
@@ -47,7 +48,8 @@ export const ANNOTATE_TOOLS: ToolDef[] = [
       'end-condition (statePath asserts a registered store value — the source of truth no DOM read can ' +
       'reach; net asserts a request fired EXACTLY `count` times — catches double-submit; console+absent ' +
       'asserts a clean console — catches an action that logs an error). Folded onto disk by reticle_flow_save. ' +
-      'Returns { ok:true, target:step|flow, compiled } (e.g. "will assert signal diff:shown") or ' +
+      'Returns { ok:true, target:step|flow, compiled, note? } — `note` is present when a replay will ' +
+      'not evaluate what was compiled — or ' +
       '{ ok:false, code } (annotate_no_recording | annotate_no_step | annotate_unknown_kind | ' +
       'annotate_missing_field). FIRST CUT: structured only — a free natural-language string is ' +
       'rejected (annotate_unknown_kind), never guessed into a predicate. Pass `flow` to target a ' +

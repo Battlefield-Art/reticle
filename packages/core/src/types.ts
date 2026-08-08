@@ -311,7 +311,19 @@ export type Annotation = z.infer<typeof AnnotationSchema>;
  * recorder confirmation strip shows ("will assert signal diff:shown").
  */
 export type AnnotateResult =
-  | { ok: true; target: AnnotationTarget; compiled: string }
+  | {
+      ok: true;
+      target: AnnotationTarget;
+      compiled: string;
+      /**
+       * Set when the compiled annotation is NOT something a replay evaluates, so `compiled` on its
+       * own would overstate it. `assert-signal` writes a STEP expect, and replay checks exactly two
+       * things per step — element presence and state — so a step signal is recorded and then never
+       * checked. Saying "will assert signal X" and passing regardless is a false green in the
+       * feature whose whole job is to catch them.
+       */
+      note?: string;
+    }
   /**
    * A failure carries its own way out. `code` alone told the caller WHAT was wrong and never what to
    * do, and the recovery hints elsewhere only attach to THROWN messages — a structured `{ ok: false }`
