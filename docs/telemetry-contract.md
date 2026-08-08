@@ -104,6 +104,30 @@ asking. All are properties on events that already exist — no new kinds — and
 | `tzOffsetMin` | every event | minutes offset from UTC. One integer, no location. |
 | `versionChange.nudged` | `version_changed` | an agent had been told about exactly this version recently, so the nudge plausibly caused the update. The daemon that nudges and the `reticle update` that acts are different processes, so a marker file joins them. |
 
+## Recording locally instead of sending — `RETICLE_TELEMETRY_FILE`
+
+Set it to a path and every event is appended there as one JSON object per line, and **nothing is
+sent**. The payload is the one the wire would have carried, built by the same code and redacted by
+the same rules, so what a run records is what a user would have sent.
+
+It exists for two reasons that pull the same way:
+
+- **A release sweep is not a user.** Driving dozens of sessions through a gate emits real
+  `daemon_started` / `verification_completed` / `bug_found` events, indistinguishable in PostHog from
+  people. Test runs polluting the numbers is the same class of error as counting
+  `cli_command_run { mcp }` as human intent: the metric stops describing what it claims to.
+- **Verifying telemetry should not need a hand-rolled HTTP server.** Ad-hoc harnesses are how a check
+  ends up measuring nothing.
+
+One deliberate exception to the rules above: `RETICLE_TELEMETRY_FILE` keeps telemetry ENABLED inside a
+Reticle source checkout. The checkout guard exists to stop us phoning home, and writing a local file
+is not phoning home — while a release sweep is driven from exactly there, so a sink that inherited
+the guard would record nothing and look like it had worked.
+
+`sent: true` from `reticle_feedback` means the record landed in the file, which is the honest reading
+of "captured" for a recorded run. An unwritable path degrades to a no-op and reports `false`; it
+never takes the daemon down.
+
 ## Adding things: what to do
 
 | You are adding | Do this | Enforced by |

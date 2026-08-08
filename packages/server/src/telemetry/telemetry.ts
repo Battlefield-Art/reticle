@@ -16,7 +16,7 @@
  */
 import { spawn } from 'node:child_process';
 import { randomUUID, createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -81,6 +81,7 @@ const Env = {
   DISABLE: 'RETICLE_TELEMETRY', // "0" / "false" / "off" → disabled
   DO_NOT_TRACK: 'DO_NOT_TRACK', // the cross-tool opt-out convention (any truthy value)
   URL: 'RETICLE_TELEMETRY_URL', // override the PostHog host (EU cloud / self-hosted)
+  FILE: 'RETICLE_TELEMETRY_FILE', // record to a local JSONL file and send NOTHING — see the sink note
   KEY: 'RETICLE_TELEMETRY_KEY', // override the PostHog project key
   CI: 'CI', // presence marks a CI environment
   VITEST: 'VITEST', // set by vitest — unit tests must never phone home
@@ -89,6 +90,10 @@ const Env = {
 const isDisabled = (env: NodeJS.ProcessEnv, cwd: string = process.cwd()): boolean => {
   const off = new Set(['0', 'false', 'off', 'no']);
   if (off.has((env[Env.DISABLE] ?? '').toLowerCase())) return true;
+  // Recording to a local file is not "phoning home", and the guards below exist to stop us phoning
+  // home. Chief among them is the source-checkout rule — which is exactly where a release sweep is
+  // driven from, so a sink that inherited it would record nothing and look like it had worked.
+  if ((env[Env.FILE] ?? '') !== '') return false;
   if (env[Env.VITEST] !== undefined) return true; // a test run is not a user
   // Developing Reticle is not using Reticle. The `.env` carrying RETICLE_TELEMETRY=0 is gitignored,
   // so it only exists on the machine that made it — a fresh clone would phone home on a
@@ -398,17 +403,25 @@ export const createTelemetry = (opts: {
         properties[`${prefix}_${key}`] = value;
       }
     }
-    const body = JSON.stringify({
-      api_key: apiKey,
-      batch: [
-        {
-          event: name,
-          distinct_id: distinctId,
-          timestamp: new Date(ts).toISOString(),
-          properties: { ...properties, ...POSTHOG_PERSONLESS },
-        },
-      ],
-    });
+    const capture = {
+      event: name,
+      distinct_id: distinctId,
+      timestamp: new Date(ts).toISOString(),
+      properties: { ...properties, ...POSTHOG_PERSONLESS },
+    };
+    const body = JSON.stringify({ api_key: apiKey, batch: [capture] });
+    const filePath = env[Env.FILE];
+    if (filePath !== undefined && filePath !== '') {
+      // The SAME payload the wire would have carried, built by the same code path and redacted by
+      // the same rules — so what a run records is what a user would have sent. One JSON object per
+      // line, appended, so a whole sweep lands in one file in order.
+      try {
+        appendFileSync(filePath, `${JSON.stringify(capture)}\n`, 'utf8');
+        return true;
+      } catch {
+        return false; // a sink that cannot write must not take the daemon down
+      }
+    }
     try {
       if (extra?.detach === true && opts.fetchImpl === undefined) {
         spawnDetached(process.execPath, ['-e', DETACHED_SEND_SCRIPT, url, body]);
