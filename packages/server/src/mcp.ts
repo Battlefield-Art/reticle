@@ -352,7 +352,7 @@ export function installFriendlyArgErrors(
  * them would put their schemas back into `tools/list`, which is the exact cost the trim exists to
  * avoid. Delegates untouched for every other name, so an advertised tool's errors stay the SDK's.
  */
-export function installUnadvertisedToolHelp(
+function installUnadvertisedToolHelp(
   server: McpServer,
   advertised: ReadonlySet<string>,
   known: ReadonlySet<string>,

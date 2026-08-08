@@ -16,7 +16,7 @@ import { AnnotationStore } from './flows/annotation-store.js';
 import { TOOLS, type ToolDeps } from './tools/tools.js';
 
 /** The app-advertised testable surface a FakeBrowser reports for an reticle_capabilities round-trip. */
-export const FAKE_CAPABILITIES = {
+const FAKE_CAPABILITIES = {
   testids: ['toast'],
   signals: ['webhook:received'],
   stores: ['cart'],

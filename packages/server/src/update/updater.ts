@@ -10,7 +10,7 @@ import { getTelemetry } from '../telemetry/telemetry.js';
 import { wasNudged } from './nudge-credit.js';
 
 /** Which way the installed version moved. A rollback means a release hurt someone enough to retreat. */
-export const VersionChangeDirection = {
+const VersionChangeDirection = {
   UPDATE: 'update',
   ROLLBACK: 'rollback',
 } as const;
@@ -62,7 +62,7 @@ type ExecutionKind = (typeof ExecutionKind)[keyof typeof ExecutionKind];
  * most reliable cross-platform signal. Local installs always live inside a
  * `node_modules` directory. Everything else is treated as a global install.
  */
-export function detectExecutionKind(): ExecutionKind {
+function detectExecutionKind(): ExecutionKind {
   return classifyExecutionKind(process.argv[1] ?? '');
 }
 

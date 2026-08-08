@@ -18,11 +18,11 @@ export const CloudEnv = {
 } as const;
 
 /** Paths the OSS server pushes to (match the cloud app's contract). */
-export const CLOUD_FLOWS_PATH = '/v1/flows';
-export const CLOUD_RUNS_PATH = '/v1/runs';
-export const CLOUD_PROJECT_RUNS_PATH = '/v1/project/runs';
-export const CLOUD_PROJECT_REGRESSION_PATH = '/v1/project/regression';
-export const CLOUD_VERIFICATIONS_PATH = '/v1/verifications';
+const CLOUD_FLOWS_PATH = '/v1/flows';
+const CLOUD_RUNS_PATH = '/v1/runs';
+const CLOUD_PROJECT_RUNS_PATH = '/v1/project/runs';
+const CLOUD_PROJECT_REGRESSION_PATH = '/v1/project/regression';
+const CLOUD_VERIFICATIONS_PATH = '/v1/verifications';
 
 export interface CloudConfig {
   url: string;

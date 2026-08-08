@@ -154,14 +154,14 @@ export const LICENSE_PUBLIC_KEY_ENV = 'RETICLE_LICENSE_PUBLIC_KEY';
  * never setting RETICLE_LICENSE_PUBLIC_KEY, because the baked key takes precedence. The public key is
  * safe to ship openly — it can only verify licenses, never mint them (that needs the private key).
  */
-export const BAKED_ISSUER_PUBLIC_KEY_PEM = '';
+const BAKED_ISSUER_PUBLIC_KEY_PEM = '';
 
 /**
  * Resolve the issuer public-key PEM enforcement uses: the baked-in release key wins, so it can't be
  * turned off from the environment. Only when nothing is baked (dev/repo) does the env var apply — that
  * env path is the test/self-eval escape hatch, not the production switch.
  */
-export function resolveIssuerPublicKeyPem(
+function resolveIssuerPublicKeyPem(
   env: NodeJS.ProcessEnv,
   baked: string = BAKED_ISSUER_PUBLIC_KEY_PEM,
 ): string | undefined {

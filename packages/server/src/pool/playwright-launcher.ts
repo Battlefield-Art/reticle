@@ -39,7 +39,7 @@ function wrapBrowser(browser: Browser): PooledBrowser {
 }
 
 /** The fix for the most common first-run failure: Chromium isn't installed for Playwright. */
-export const CHROMIUM_MISSING_HINT =
+const CHROMIUM_MISSING_HINT =
   'Chromium is not installed for Playwright. Run: npx playwright install chromium';
 
 /** A Launcher that boots a real headless Chromium and adapts it to the pool's interface. */

@@ -13,7 +13,7 @@
  */
 
 /** The reload's own disclosure — the same shape and the same advice the URL branch gives. */
-export const RELOAD_NOTE =
+const RELOAD_NOTE =
   'ok means the reload was DISPATCHED, not that the page came back — the SDK is torn down by the ' +
   'reload itself, so nothing here can see the new document yet. Call reticle_sessions to confirm ' +
   'the session reconnected before acting; the session id is preserved across a reload, so it will ' +
@@ -23,7 +23,7 @@ export const RELOAD_NOTE =
  * What a CONFIRMED reload says. The page re-announced itself under the same id before this returned,
  * so the next call is safe — which is the whole reason the tool now waits instead of advising.
  */
-export const RELOAD_RECONNECTED_NOTE =
+const RELOAD_RECONNECTED_NOTE =
   'the page came back and re-announced itself under the same session id, so this session is live ' +
   'again — no re-selection needed. Anything captured before the reload is gone with the old document.';
 

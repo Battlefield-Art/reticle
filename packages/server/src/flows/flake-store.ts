@@ -3,7 +3,7 @@ import type { FileSystemPort } from '../project/fs-port.js';
 import { reticleDirPaths } from '../project/reticle-dir.js';
 import { FlakeFileSchema, emptyRecord, isFlaky, recordOutcome, type FlakeLedger } from './flake.js';
 
-export const FLAKE_FILE_VERSION = 1;
+const FLAKE_FILE_VERSION = 1;
 
 /**
  * Persists the per-flow flake ledger at `.reticle/flake.json`. Local single-project memory (stays OSS —

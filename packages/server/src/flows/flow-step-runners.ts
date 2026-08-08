@@ -121,7 +121,7 @@ export async function runRoleStep(
  * Dispatch one already-resolved step. Shared so every anchor kind runs the action the same way —
  * including the action window, whose open/close must not depend on which anchor found the element.
  */
-export async function actOnResolvedRef(
+async function actOnResolvedRef(
   session: FlowReplaySession,
   step: FlowStep,
   index: number,
@@ -212,7 +212,7 @@ export function isDegradedAnchor(anchor: FlowAnchor): boolean {
 }
 
 /** What a step with no resolvable anchor reports, instead of a missing-element story. */
-export const DEGRADED_STEP_REASON =
+const DEGRADED_STEP_REASON =
   'recorded without a resolvable anchor (no data-testid, no accessible role+name), so it can never ' +
   'resolve on replay — add a data-testid to the element and record this flow again';
 

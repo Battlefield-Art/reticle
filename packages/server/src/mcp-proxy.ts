@@ -46,7 +46,7 @@ export function reconnectDelayMs(attempt: number): number {
 export const RECONNECT_INITIALIZE_ID = '__reticle_proxy_reinit';
 
 /** The proxy's own log file, so a silent drop leaves a readable trace the agent can go read. */
-export function proxyLogPath(): string {
+function proxyLogPath(): string {
   return join(homedir(), ReticleDir.ROOT, 'mcp-proxy.log');
 }
 

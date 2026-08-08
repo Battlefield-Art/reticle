@@ -11,10 +11,10 @@ import { useEffect, useRef, useState } from 'react';
  * `captureNetworkBodies` — a chatty stream is the high-volume case, so it is opt-in.
  */
 
-export const STREAM_STATUS_TESTID = 'stream-status';
-export const STREAM_STEPS_TESTID = 'stream-steps';
-export const WS_STATUS_TESTID = 'ws-status';
-export const WS_SEND_TESTID = 'ws-send';
+const STREAM_STATUS_TESTID = 'stream-status';
+const STREAM_STEPS_TESTID = 'stream-steps';
+const WS_STATUS_TESTID = 'ws-status';
+const WS_SEND_TESTID = 'ws-send';
 
 /** Overridable so the injector can point the app at a deliberately broken stream. */
 export const STREAM_URLS = {

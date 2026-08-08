@@ -16,9 +16,9 @@ import { API_BASE, authToken } from '../lib/api.js';
  * carries no evidence of staleness and the query cache is the sole source of truth about whether what
  * is on screen came from fresh data.
  */
-export const QUERY_COUNT_TESTID = 'query-item-count';
-export const QUERY_ADD_TESTID = 'query-add-item';
-export const ITEMS_QUERY_KEY = ['items'] as const;
+const QUERY_COUNT_TESTID = 'query-item-count';
+const QUERY_ADD_TESTID = 'query-add-item';
+const ITEMS_QUERY_KEY = ['items'] as const;
 
 interface ItemsResponse {
   total: number;

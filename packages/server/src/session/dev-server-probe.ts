@@ -33,7 +33,7 @@ const PROBE_HOST = 'localhost';
  * port 5000) as the user's dev server. See looks-like-dev-server for what it actually answers and
  * why "a socket accepted" is the wrong question.
  */
-export function servesDocument(port: number, host = PROBE_HOST): Promise<boolean> {
+function servesDocument(port: number, host = PROBE_HOST): Promise<boolean> {
   return new Promise((resolve) => {
     const req = request(
       { host, port, path: '/', method: 'GET', timeout: HTTP_PROBE_TIMEOUT_MS },

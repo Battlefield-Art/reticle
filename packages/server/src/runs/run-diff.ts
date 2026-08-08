@@ -23,7 +23,7 @@ export interface RunDiff {
 }
 
 /** Below this percent, a duration change is noise (machine jitter), not a regression. */
-export const DEFAULT_NOISE_FLOOR_PCT = 10;
+const DEFAULT_NOISE_FLOOR_PCT = 10;
 
 function pct(before: number, delta: number): number {
   return before > 0 ? Math.round((delta / before) * 100) : 0;

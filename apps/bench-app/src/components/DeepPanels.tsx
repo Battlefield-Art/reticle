@@ -19,10 +19,10 @@ export const SHADOW_TAG = 'bench-status';
 export const SHADOW_LABEL_TESTID = 'shadow-status';
 export const SHADOW_BUTTON_TESTID = 'shadow-refresh';
 export const IFRAME_TESTID = 'deep-iframe';
-export const PANEL_PATH = '/panel.html';
+const PANEL_PATH = '/panel.html';
 
 /** The healthy label text — the injector's typo variant is checked against this. */
-export const SHADOW_LABEL_OK = 'All systems nominal';
+const SHADOW_LABEL_OK = 'All systems nominal';
 
 class BenchStatus extends HTMLElement {
   connectedCallback(): void {

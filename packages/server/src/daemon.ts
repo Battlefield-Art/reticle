@@ -112,7 +112,7 @@ export function writeDaemonRegistry(
   }
 }
 
-export function removeDaemonRegistry(port: number): void {
+function removeDaemonRegistry(port: number): void {
   const path = registryPath(port);
   try {
     if (existsSync(path)) unlinkSync(path);
@@ -208,7 +208,7 @@ export interface SpawnDaemonDeps {
   pidAlive(pid: number): boolean;
 }
 
-export function defaultSpawnDaemonDeps(): SpawnDaemonDeps {
+function defaultSpawnDaemonDeps(): SpawnDaemonDeps {
   return {
     home: reticleStateHome(),
     openFile: openSync,

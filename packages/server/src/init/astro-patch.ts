@@ -153,7 +153,7 @@ export function patchAstroConfig(source: string): SourcePatch {
 }
 
 /** The dev-only connect that goes inside the layout's `<body>`. */
-export function astroConnectScript(
+function astroConnectScript(
   port: number | undefined,
   projectId: string | undefined,
 ): string {

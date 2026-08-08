@@ -64,7 +64,7 @@ export function pinnedPackages(
 }
 
 /** The dev-dependencies `reticle init` installs for a given framework — kit first, build plugin next. */
-export function frameworkPackages(framework: Framework): readonly string[] {
+function frameworkPackages(framework: Framework): readonly string[] {
   switch (framework) {
     case Framework.NEXT:
       return [RETICLE_REACT_KIT, RETICLE_NEXT_PLUGIN];
@@ -441,7 +441,7 @@ function cursorRuleStep(input: PlanInput): Step | null {
  * Deliberately functions rather than data: registering with Claude runs its CLI while Cursor merges
  * a JSON file, and pretending those are the same shape would cost more than it saves.
  */
-export const AgentId = {
+const AgentId = {
   CLAUDE: 'claude',
   CURSOR: 'cursor',
 } as const;

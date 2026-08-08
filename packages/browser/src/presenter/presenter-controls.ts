@@ -418,4 +418,3 @@ export class ControlPanel {
   }
 }
 
-export { DATA_RETICLE_STATE };

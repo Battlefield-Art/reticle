@@ -15,7 +15,7 @@ export const AUTH_TOKEN_KEY = 'reticle.bench.authToken';
 /** Deliberately session-scoped: a session id that outlives the tab is the `session-in-localstorage` bug. */
 export const SESSION_ID_KEY = 'reticle.bench.sessionId';
 /** The server-visible half; a client that drops it looks signed in until the next API call. */
-export const SESSION_COOKIE = 'bench_session';
+const SESSION_COOKIE = 'bench_session';
 
 export interface PersistedSession {
   token: string;
@@ -56,8 +56,4 @@ export function clearSession(): void {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   sessionStorage.removeItem(SESSION_ID_KEY);
   document.cookie = `${SESSION_COOKIE}=; path=/; Max-Age=0; SameSite=Lax`;
-}
-
-export function readToken(): string | null {
-  return localStorage.getItem(AUTH_TOKEN_KEY);
 }

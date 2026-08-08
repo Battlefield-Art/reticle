@@ -91,7 +91,7 @@ export function snapshotCacheKey(sessionId: string, scope: string, mode: string)
 }
 
 /** Said out loud when a diff was computed over a capped tree, so "unchanged" cannot mean "nothing happened". */
-export const CAPPED_DIFF_NOTE =
+const CAPPED_DIFF_NOTE =
   'this diff covers only the first N nodes of the page (the snapshot hit its cap), so "unchanged" means "unchanged in the part that was captured" — narrow with `scope` to see the rest';
 
 export interface SnapshotDeltaOpts {

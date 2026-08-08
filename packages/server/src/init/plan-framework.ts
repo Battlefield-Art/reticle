@@ -45,7 +45,7 @@ export const VITE_PLUGIN_DETAIL = {
   SVELTEKIT: 'add reticle() to plugins (stamps data-reticle-source in .svelte components)',
 } as const;
 
-export const CAPABILITIES_TITLE = 'Capabilities + store';
+const CAPABILITIES_TITLE = 'Capabilities + store';
 
 /**
  * The dev module carrying `registerCapabilities` / `registerStore`.

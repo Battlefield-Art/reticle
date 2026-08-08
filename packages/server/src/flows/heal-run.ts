@@ -22,7 +22,7 @@ import { assertSuccess, dynamicTestids, successLabel } from './flow-success.js';
 import { flowErrorMessage, sessionProjectId } from './flow-replay-run.js';
 import type { ToolDeps } from '../tools/tools.js';
 
-export const HEAL_MESSAGES = {
+const HEAL_MESSAGES = {
   NOTHING: 'nothing to heal — every anchor resolved on replay',
   HEALED:
     "rewrote drifted testid anchors to their nearest surviving match and re-verified the flow's success consequence still fires",

@@ -105,7 +105,7 @@ const NODE_MODULES_MARKERS: readonly (readonly [string, PackageManager])[] = [
 ];
 
 /** Marker basenames present inside the project's `node_modules`, if it has one. */
-export function packageManagerFromNodeModules(
+function packageManagerFromNodeModules(
   markers: ReadonlySet<string>,
 ): PackageManager | undefined {
   for (const [name, pm] of NODE_MODULES_MARKERS) if (markers.has(name)) return pm;

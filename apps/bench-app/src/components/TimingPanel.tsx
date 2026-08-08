@@ -8,12 +8,12 @@ import { useEffect, useRef, useState } from 'react';
  * point-in-time DOM read can distinguish.
  */
 
-export const SEARCH_INPUT_TESTID = 'timing-search';
-export const SEARCH_RESULT_TESTID = 'timing-search-result';
-export const RETRY_BUTTON_TESTID = 'timing-retry';
-export const RETRY_STATUS_TESTID = 'timing-retry-status';
-export const CLOCK_TESTID = 'timing-clock';
-export const CLOCK_STABLE_TESTID = 'timing-clock-label';
+const SEARCH_INPUT_TESTID = 'timing-search';
+const SEARCH_RESULT_TESTID = 'timing-search-result';
+const RETRY_BUTTON_TESTID = 'timing-retry';
+const RETRY_STATUS_TESTID = 'timing-retry-status';
+const CLOCK_TESTID = 'timing-clock';
+const CLOCK_STABLE_TESTID = 'timing-clock-label';
 
 const API = 'http://localhost:8787';
 

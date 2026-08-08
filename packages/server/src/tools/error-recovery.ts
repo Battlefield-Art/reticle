@@ -141,7 +141,7 @@ const ARGUMENT_REJECTION =
  * What to say instead of asking for a bug report. The schema already stated the problem precisely;
  * this only says who can fix it and where to look.
  */
-export const ARGUMENT_RECOVERY =
+const ARGUMENT_RECOVERY =
   'That call did not match the tool\'s schema — the message above names the parameter. Nothing ran, ' +
   'so no result is affected. Call reticle_tools { names: ["<tool>"] } for its exact parameters and ' +
   'retry.';

@@ -12,7 +12,7 @@
  * an assertion in a flow the agent never named, which is worse than an error.
  */
 /** The documented fallback name, matching what `reticle_record` starts when given none. */
-export const DEFAULT_RECORDING = 'default';
+const DEFAULT_RECORDING = 'default';
 
 export function resolveAnnotateTarget(
   explicit: string | undefined,

@@ -6,7 +6,7 @@
  * for every existing benchmark URL, so the nav item is not rendered and the view never mounts.
  */
 
-export const EnterpriseParam = {
+const EnterpriseParam = {
   ENABLED: 'enterprise',
   ROWS: 'enterprise-rows',
   COLS: 'enterprise-cols',
@@ -18,7 +18,7 @@ export const EnterpriseParam = {
 } as const;
 
 /** Defaults land on ~10k nodes / depth ~15 / 20 req-per-sec — the "real enterprise React app" shape. */
-export const EnterpriseDefault = {
+const EnterpriseDefault = {
   ROWS: 1000,
   COLS: 4,
   DEPTH: 15,

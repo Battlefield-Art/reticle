@@ -9,8 +9,8 @@
 import { PatchKind, type SourcePatch } from './patch-kind.js';
 
 const RETICLE_NEXT_PACKAGE = '@reticlehq/next';
-export const NEXT_CONFIG_IMPORT = `import { withReticle } from '${RETICLE_NEXT_PACKAGE}';`;
-export const NEXT_CONFIG_REQUIRE = `const { withReticle } = require('${RETICLE_NEXT_PACKAGE}');`;
+const NEXT_CONFIG_IMPORT = `import { withReticle } from '${RETICLE_NEXT_PACKAGE}';`;
+const NEXT_CONFIG_REQUIRE = `const { withReticle } = require('${RETICLE_NEXT_PACKAGE}');`;
 
 const RETICLE_DEV_COMPONENT = 'ReticleDev';
 const RETICLE_DEV_BASENAME = 'reticle-dev';
@@ -18,7 +18,7 @@ const RETICLE_DEV_BASENAME = 'reticle-dev';
 const RETICLE_DEV_SIBLING = `./${RETICLE_DEV_BASENAME}`;
 const reticleDevImport = (specifier: string): string =>
   `import { ${RETICLE_DEV_COMPONENT} } from '${specifier}';`;
-export const RETICLE_DEV_IMPORT = reticleDevImport(RETICLE_DEV_SIBLING);
+const RETICLE_DEV_IMPORT = reticleDevImport(RETICLE_DEV_SIBLING);
 
 /** Where the generated connect component goes, and how the mount file should import it. */
 export interface ReticleDevLocation {

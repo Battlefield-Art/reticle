@@ -69,7 +69,7 @@ interface PreloadChannel {
  * returned Ok or Err — the verdict is in this response header, which Tauri explicitly CORS-exposes so
  * JS may read it. Without translating it, every failed command is recorded as a successful request.
  */
-export const TAURI_RESPONSE_HEADER_NAME = 'Tauri-Response';
+const TAURI_RESPONSE_HEADER_NAME = 'Tauri-Response';
 const TAURI_RESPONSE_ERROR = 'error';
 
 /** Rust/IPC vocabulary rather than HTTP's, so the text never claims a transport status it lacks. */

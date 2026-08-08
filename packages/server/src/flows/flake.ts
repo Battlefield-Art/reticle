@@ -7,7 +7,7 @@ import { z } from 'zod';
  * outcome ONLY for unchanged-code replays (a fail after a code change is a legitimate red, not flake).
  */
 
-export const FlakeRecordSchema = z.object({
+const FlakeRecordSchema = z.object({
   runs: z.number().int().min(0),
   fails: z.number().int().min(0),
 });

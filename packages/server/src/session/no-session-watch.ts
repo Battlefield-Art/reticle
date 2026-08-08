@@ -26,7 +26,7 @@ export interface NoSessionWatchOptions {
 }
 
 /** Start the watch. Returns a stop function; the timer is unref'd so it never holds the daemon up. */
-export function startNoSessionWatch(options: NoSessionWatchOptions): () => void {
+function startNoSessionWatch(options: NoSessionWatchOptions): () => void {
   const probe = options.probe ?? (() => probeDevServers());
   let listening: readonly number[] = [];
   let running = false;

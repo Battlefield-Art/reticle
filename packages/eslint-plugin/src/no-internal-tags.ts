@@ -23,7 +23,7 @@ import { DOCS_URL_ROOT } from './constants.js';
 
 const createRule = ESLintUtils.RuleCreator((name) => `${DOCS_URL_ROOT}#${name}`);
 
-export const INTERNAL_TAG_MESSAGE =
+const INTERNAL_TAG_MESSAGE =
   "Internal reference '{{tag}}' does not belong in source. It means nothing to a reader without the design doc — describe the behaviour instead.";
 
 /** `(W11)`, `B37`, `W10.3`, `N5:` — a short capital-prefixed code used as a label. */

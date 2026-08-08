@@ -62,10 +62,10 @@ const VERSION_COMMAND = 'version';
 const TELEMETRY_COMMAND = 'telemetry';
 const FEEDBACK_COMMAND = 'feedback';
 const IDENTIFY_COMMAND = 'identify';
-export const COMPANY_FLAG = '--company';
-export const EMAIL_FLAG = '--email';
-export const CONTEXT_FLAG = '--context';
-export const FORGET_FLAG = '--forget';
+const COMPANY_FLAG = '--company';
+const EMAIL_FLAG = '--email';
+const CONTEXT_FLAG = '--context';
+const FORGET_FLAG = '--forget';
 /** `reticle feedback --rating 4 "the words"` — the human half of the channel. */
 export const RATING_FLAG = '--rating';
 export const BUG_FLAG = '--bug';
@@ -137,7 +137,7 @@ export const HEADED_FLAG = '--headed';
  * and every "did it actually do anything?" question cost a round-trip. CI passes this (or just sets
  * CI, which flips the default) because there is no display there to be headed on.
  */
-export const HEADLESS_FLAG = '--headless';
+const HEADLESS_FLAG = '--headless';
 export const PORT_FLAG = '--port';
 export const DRIVE_FLAG = '--drive';
 const QUIET_FLAG = '--quiet';

@@ -28,7 +28,7 @@ export interface SyncPolicy {
   /** Sync saved flow files (the shared regression suite). */
   flows: boolean;
 }
-export const DEFAULT_SYNC_POLICY: SyncPolicy = { runs: true, memory: true, flows: true };
+const DEFAULT_SYNC_POLICY: SyncPolicy = { runs: true, memory: true, flows: true };
 
 /** Where a verification actually executes. Reserved for the hosted-runner path; default local. */
 export const VerifyMode = { LOCAL: 'local', SERVER: 'server' } as const;

@@ -96,7 +96,7 @@ export function offsetToLineColumn(
 }
 
 /** Project-relative, forward-slashed. A pointer must be the same string on Windows as on Linux. */
-export function sourcePathFor(id: string, cwd: string = process.cwd()): string {
+function sourcePathFor(id: string, cwd: string = process.cwd()): string {
   return relative(cwd, id).replace(/\\/g, '/');
 }
 

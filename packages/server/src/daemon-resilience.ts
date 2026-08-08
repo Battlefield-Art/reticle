@@ -32,7 +32,7 @@ function describe(value: unknown): string {
 }
 
 /** The two ways a failure reaches the top of the process. Named so the analytics can tell them apart. */
-export const CrashKind = {
+const CrashKind = {
   UNHANDLED_REJECTION: 'unhandled_rejection',
   UNCAUGHT_EXCEPTION: 'uncaught_exception',
 } as const;
