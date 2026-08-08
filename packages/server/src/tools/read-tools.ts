@@ -2,6 +2,7 @@
  * Read / record / replay tools — baselines + diff, recordings + replay, narrate, clock, state,
  * explore. Split out of tools.ts; assembled back via...READ_TOOLS.
  */
+import { resolveAnnotateTarget } from '../flows/annotate-target.js';
 import { z } from 'zod';
 import { EventType, ReticleCommand, REPLAY_PROGRAM_VERSION, SnapshotMode } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
@@ -145,9 +146,22 @@ export const READ_TOOLS: ToolDef[] = [
     },
     handler: (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      const name = asString(args['recordingName']) ?? 'default';
+      // The recording actually RUNNING when there is exactly one, not the literal name `default` —
+      // the same defaulting that made `annotate` report "no steps" against a recording full of them.
+      // With several running, `default` stays the documented answer rather than a guess.
+      const name = resolveAnnotateTarget(
+        asString(args['recordingName']),
+        deps.recordings.active(),
+      );
       const rec = deps.recordings.stop(name);
-      if (rec === undefined) throw new Error(`no active recording named '${name}'`);
+      if (rec === undefined) {
+        const active = deps.recordings.active();
+        throw new Error(
+          active.length === 0
+            ? `no active recording named '${name}' — none is in progress`
+            : `no active recording named '${name}'; in progress: ${active.map((r) => `'${r}'`).join(', ')}`,
+        );
+      }
       const events = session.eventsSince(rec.cursor);
       const program: CompiledProgram = {
         name,
