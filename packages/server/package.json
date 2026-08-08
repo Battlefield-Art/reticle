@@ -24,7 +24,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint src",
     "test:unit": "vitest run src --passWithNoTests",
-    "prepack": "tsc -b && find dist -name \"*.test.*\" -delete && node ../../scripts/strip-maps.mjs dist"
+    "prepack": "tsc -b && find dist -name \"*.test.*\" -delete && node ../../scripts/strip-maps.mjs dist && cp ../../SKILL.md . && rm -rf docs && cp -R ../../docs ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.0",
@@ -53,7 +53,9 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE-ENTERPRISE"
+    "LICENSE-ENTERPRISE",
+    "SKILL.md",
+    "docs"
   ],
   "keywords": [
     "mcp",

@@ -25,7 +25,10 @@ const coreSection = doc.slice(doc.indexOf('## Core tool set'), doc.indexOf('Freq
 
 describe('the agent cheat-sheet describes the surface that actually ships', () => {
   it('names every core tool in its core list', () => {
-    const missing = [...CORE_TOOL_NAMES].filter((name) => !coreSection.includes(name));
+    // Backtick-delimited, like the overclaim check below: a bare `includes` is satisfied by a LONGER
+    // name that contains this one, so dropping `reticle_act` while keeping `reticle_act_and_wait`
+    // passed a gate whose entire job was to notice a core tool going missing from the doc.
+    const missing = [...CORE_TOOL_NAMES].filter((name) => !new RegExp(`\`${name}\``).test(coreSection));
     expect(missing).toEqual([]);
   });
 
@@ -37,7 +40,7 @@ describe('the agent cheat-sheet describes the surface that actually ships', () =
     expect(overclaimed).toEqual([]);
   });
 
-  it('states the real tool count for the full profile', () => {
-    expect(doc).toContain(`(all ${String(TOOLS.length)})`);
-  });
+  // The doc's PROFILE SIZES are gated in profile-sizes.test.ts, over both this file and SKILL.md —
+  // the counts belong next to the numbers they are derived from, and pinning a phrase here as well
+  // meant two gates disagreeing about which count ("46 tools" or "48 advertised") the doc must state.
 });

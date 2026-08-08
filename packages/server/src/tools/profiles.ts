@@ -6,10 +6,11 @@ import type { ToolDef } from './tools.js';
  * every turn, so a smaller surface is a per-turn token saving that compounds across a loop. Fewer
  * tools also makes the model wander less (fewer turns, higher accuracy). See bench/agent-loop-and-replay.md.
  *
- * Surface sizes are NOT restated here. They were wrong twice — most recently `core 15 · standard 32
- * · hybrid 15 · full 43` against an actual 16 / 33 / 16 / 46, which means the token figures derived
- * from them were wrong too. A list that grows every release cannot be tracked by prose, so the counts
- * live in profile-sizes.test.ts where a gate reads them.
+ * Surface sizes are NOT restated here — not as a current figure, not as a historical one. Three
+ * generations of this comment got them wrong, and the third was the sentence that ANNOUNCED the rule
+ * and then broke it in its own next clause, quoting a "correct" number that had gone stale since. A
+ * count written down anywhere but the gate is a count nobody updates. They live in
+ * profile-sizes.test.ts, which reads them off the real surface.
  * core and hybrid match in size because a trimmed profile also advertises the two meta-tools, which
  * is what keeps an un-advertised tool reachable through reticle_run.
  *
@@ -19,7 +20,7 @@ import type { ToolDef } from './tools.js';
  * standard — core + common extras (inspect, sequences, animations, flows, session lifecycle,
  * scroll, baselines, …). For agents that need more than the bare loop.
  * hybrid — THE DEFAULT: core verify+oracle tools advertised directly + 2 meta-tools for on-demand
- * reach to everything else. Core accuracy/detection at ~64% less schema tax than full.
+ * reach to everything else. Core accuracy/detection off a third of full's advertised surface.
  * full — all tools advertised directly. Opt in via RETICLE_TOOL_PROFILE=full for hard-call scripts.
  */
 export const TOOL_PROFILE = {
@@ -43,11 +44,15 @@ export const TOOL_PROFILE_ENV = 'RETICLE_TOOL_PROFILE';
 // MEASURED per-turn `tools/list` cost — the bytes an MCP client re-sends EVERY turn — taken off the
 // real wire (spawn `mcp`, read tools/list, measure the serialized result), not estimated:
 //
-//   dynamic     2 tools    1,531 B   ~383 tok/turn
-//   core       15 tools   14,104 B  ~3,526 tok/turn
-//   hybrid     15 tools   14,104 B  ~3,526 tok/turn
-//   standard   32 tools   26,769 B  ~6,692 tok/turn
-//   full       43 tools  105,061 B ~26,265 tok/turn
+//   dynamic       1,531 B   ~383 tok/turn
+//   core         14,104 B  ~3,526 tok/turn
+//   hybrid       14,104 B  ~3,526 tok/turn
+//   standard     26,769 B  ~6,692 tok/turn
+//   full        105,061 B ~26,265 tok/turn
+//
+// Tool COUNTS are deliberately absent from that table — see above; they live in profile-sizes.test.ts.
+// The bytes move with the surface too, and this reading predates tools added since: treat it as the
+// SHAPE of the gap (lean vs full is ~7x), not as a current figure. Re-measure before quoting one.
 //
 // These REPLACE the previous figures (core 6,479 / standard 13,951 / full 20,441), which the comment
 // itself flagged as stale. Two of the three moved in opposite directions, which is why re-measuring
@@ -129,8 +134,8 @@ export function resolveToolProfile(explicit?: string): ToolProfile {
   if (raw === TOOL_PROFILE.STANDARD) return TOOL_PROFILE.STANDARD;
   if (raw === TOOL_PROFILE.FULL) return TOOL_PROFILE.FULL;
   // Default: hybrid — the core verify+oracle tools advertised directly (no detection loss, verified
-  // 10/10 on the regression bench) PLUS the 2 meta-tools for on-demand reach to every other tool. ~64%
-  // less per-turn schema than `full` at the same accuracy. Explicit `full` still opts into all tools.
+  // 10/10 on the regression bench) PLUS the 2 meta-tools for on-demand reach to every other tool — a
+  // third of full's advertised surface at the same accuracy. Explicit `full` still opts into all tools.
   return TOOL_PROFILE.HYBRID;
 }
 
@@ -146,7 +151,7 @@ export interface ToolProfileOrigin {
  * `RETICLE_TOOL_PROFILE` is read by the DAEMON at startup, never by the client, so exporting it in an
  * agent's environment while a daemon is already running changes nothing at all — two different
  * profiles then look identical from the agent's side, which is exactly the observation that produced
- * a "standard and full are the same 46 tools" report. Documenting that was not enough; the setting
+ * a "standard and full advertise the same tools" report. Documenting that was not enough; the setting
  * failing to take has to be VISIBLE, so this rides along in the reticle_tools catalog.
  */
 export function describeToolProfile(active: ToolProfile): ToolProfileOrigin {

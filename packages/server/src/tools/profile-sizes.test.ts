@@ -1,16 +1,18 @@
 /**
  * The documented profile sizes must match the real ones.
  *
- * `profiles.ts` carries a prose table of surface sizes, and its own comment says "every count
- * previously written here was wrong". They were wrong again: documented `core 15 · standard 32 ·
- * hybrid 15 · full 43` against an actual 16 / 33 / 16 / 46, reported from a field sweep. The token
- * and byte figures in that comment are derived from those counts, so the whole justification for the
- * default profile was computed from numbers that were never true.
+ * Three generations of prose got them wrong, each time in a comment that had just finished promising
+ * not to restate them — the historical "here is what it used to say" clause goes stale exactly like
+ * the claim it corrects. So no count is written down in this file except EXPECTED_SIZE, and none is
+ * written down in the docs except the one gated table in SKILL.md.
  *
  * Prose cannot be trusted to stay in step with a list that grows every release, so the numbers live
- * here where a gate reads them, and the comment points at this file instead of restating them.
+ * here where a gate reads them, and every other file points at this one.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { TOOL_PROFILE, type ToolProfile } from './profiles.js';
 import { advertisedTools } from '../mcp.js';
@@ -22,8 +24,8 @@ const EXPECTED_SIZE: Record<ToolProfile, number> = {
   [TOOL_PROFILE.CORE]: 16,
   [TOOL_PROFILE.HYBRID]: 16,
   [TOOL_PROFILE.STANDARD]: 33,
-  // 46 tools + the two meta-tools: every recovery message points at reticle_tools, so a profile
-  // without it makes our own advice a dead end.
+  // The whole surface PLUS the two meta-tools: every recovery message points at reticle_tools, so a
+  // profile without it makes our own advice a dead end.
   [TOOL_PROFILE.FULL]: 48,
 };
 
@@ -52,5 +54,39 @@ describe('advertised surface sizes', () => {
     for (const profile of [TOOL_PROFILE.DYNAMIC, TOOL_PROFILE.CORE, TOOL_PROFILE.HYBRID, TOOL_PROFILE.STANDARD]) {
       expect(advertisedTools(profile).length, profile).toBeLessThan(full);
     }
+  });
+});
+
+/**
+ * The same defect, one directory away — and the first attempt at this gate could not catch it.
+ *
+ * `toContain(String(n))` passes on a file that states BOTH 46 and 48, and "16" was already satisfied
+ * by an unrelated "Next 16" elsewhere in SKILL.md — so the assertion guarded nothing while both docs
+ * told readers the counts were "gated". Presence is the wrong property. The property that holds is
+ * SINGULARITY: exactly one place in the docs may state a size, it must be the current one, and
+ * anything anywhere else that reads like a surface count is a contradiction waiting to happen.
+ */
+describe('docs state a surface size exactly once, correctly', () => {
+  const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../..');
+  /** The one sentence in the docs allowed to carry counts. Built from the numbers the gate proves. */
+  const CANONICAL = `\`hybrid\` ${String(EXPECTED_SIZE[TOOL_PROFILE.HYBRID])}, \`standard\` ${String(EXPECTED_SIZE[TOOL_PROFILE.STANDARD])}, \`full\` ${String(EXPECTED_SIZE[TOOL_PROFILE.FULL])}`;
+  /**
+   * Anything that reads like a count of the surface: "46 tools", "33 advertised", "`=full` (48)".
+   * Deliberately blind to whether the number is right — a SECOND statement of it is the defect, because
+   * the two drift apart and the reader cannot tell which one to believe.
+   */
+  const COUNT_CLAIM = /\b\d{1,3}\s+(?:tools|advertised)\b|(?:hybrid|standard|full|core|dynamic)`?\s*\(\d{1,3}\)/gi;
+  const read = (rel: string): string => readFileSync(join(ROOT, rel), 'utf8');
+
+  it('SKILL.md carries the canonical table, with the CURRENT numbers', () => {
+    const text = read('SKILL.md');
+    expect(text.split(CANONICAL).length - 1, `SKILL.md must state "${CANONICAL}" exactly once`).toBe(1);
+  });
+
+  it.each(['SKILL.md', 'docs/agent-cheatsheet.md'])('%s states no OTHER surface count', (rel) => {
+    const text = read(rel).split(CANONICAL).join('');
+    expect(text.match(COUNT_CLAIM) ?? [], `${rel}: counts belong only in the canonical table`).toEqual(
+      [],
+    );
   });
 });
