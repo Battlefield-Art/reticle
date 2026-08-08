@@ -5,9 +5,39 @@
  */
 
 import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { detect, Framework, type DetectInput } from './detect.js';
 import { wasMcpRegistered } from './mcp-registered.js';
 import { pickAstroHost } from './astro-host.js';
+import { workspaceParents } from './workspace-apps.js';
+import { CRA_ENV_PATH } from './cra.js';
+
+/** CRA's bundled entry, in the order create-react-app itself generates them. */
+const CRA_ENTRY_CANDIDATES = ['src/index.tsx', 'src/index.jsx', 'src/index.ts', 'src/index.js'];
+
+function craEntryOf(io: InitIo): { path: string; source: string } | null {
+  for (const path of CRA_ENTRY_CANDIDATES) {
+    const source = io.readFile(path);
+    if (source !== null) return { path, source };
+  }
+  return null;
+}
+
+/**
+ * The daemon's pairing token, for the one stack that cannot read it at build time.
+ *
+ * Every other framework's snippet reads this file in Node when the dev server starts, so the token
+ * is never written into the project. CRA bundles browser code and inlines only REACT_APP_*, so it
+ * has to be materialised into .env.development.local — which CRA's own template gitignores.
+ */
+function readPairingToken(): string {
+  try {
+    return readFileSync(join(homedir(), '.reticle', 'pairing-token'), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
 import {
   DEPS_TARGET,
   MCP_TARGET,
@@ -304,6 +334,9 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     nextReticleDevImport: devLocation.importSpecifier,
     nextReticleDevExists: io.exists(devLocation.path),
     svelteKitHooksExists: io.exists(SVELTEKIT_HOOKS),
+    craEntry: craEntryOf(io),
+    craEnv: io.readFile(CRA_ENV_PATH),
+    pairingToken: readPairingToken(),
     reticleConfigExists: io.exists('.reticle.json'),
     // Read the agent instruction files so the rule merge stays idempotent across re-runs.
     claudeMdContent: io.readFile('CLAUDE.md'),
@@ -323,7 +356,8 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
 }
 
 /** Where workspace tooling conventionally puts packages. */
-const WORKSPACE_PARENTS = ['apps', 'packages'] as const;
+/** pnpm's workspace declaration, read when present — it is authoritative about where packages live. */
+const PNPM_WORKSPACE = 'pnpm-workspace.yaml';
 /** Deps that mark a directory as a runnable web app even when it has no bundler config file. */
 const APP_DEPS = ['next', 'vite'] as const;
 
@@ -346,13 +380,37 @@ function looksLikeApp(dir: string, io: Pick<InitIo, 'exists' | 'readFile'>): boo
  */
 export function findWorkspaceApps(io: Pick<InitIo, 'exists' | 'readFile' | 'listDirs'>): string[] {
   const found: string[] = [];
-  for (const parent of WORKSPACE_PARENTS) {
+  // A workspace DECLARES its packages; `['apps','packages']` was a guess that missed a real repo
+  // with three Next apps at web/, admin/ and space/ — and missing them meant init ran against the
+  // root and reported ✓ for a file Next never compiles. See workspace-apps.
+  const pkgRaw = io.readFile(PACKAGE_JSON);
+  let pkgWorkspaces: unknown;
+  try {
+    const parsed: unknown = pkgRaw === null ? undefined : JSON.parse(pkgRaw);
+    pkgWorkspaces =
+      typeof parsed === 'object' && parsed !== null
+        ? (parsed as { workspaces?: unknown }).workspaces
+        : undefined;
+  } catch {
+    pkgWorkspaces = undefined;
+  }
+  const parents = workspaceParents({
+    ...(io.readFile(PNPM_WORKSPACE) === null
+      ? {}
+      : { pnpmWorkspace: io.readFile(PNPM_WORKSPACE) ?? '' }),
+    ...(pkgWorkspaces === undefined ? {} : { pkgWorkspaces }),
+    topLevelDirs: io.listDirs('.'),
+  });
+  // A declared parent can itself BE the app (`workspaces: ["web"]`), so check both the directory and
+  // its children rather than assuming one level of nesting.
+  for (const parent of parents) {
+    if (looksLikeApp(parent, io)) found.push(parent);
     for (const name of io.listDirs(parent)) {
       const dir = `${parent}/${name}`;
       if (looksLikeApp(dir, io)) found.push(dir);
     }
   }
-  return found;
+  return [...new Set(found)];
 }
 
 function restartHint(framework: Framework): string {

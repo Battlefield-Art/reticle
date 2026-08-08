@@ -8,6 +8,8 @@ export const Framework = {
   VITE: 'vite',
   SVELTEKIT: 'sveltekit',
   ASTRO: 'astro',
+  /** Create React App. No config file exists, so `react-scripts` in the dependencies is the signal. */
+  CRA: 'cra',
   HTML: 'html',
 } as const;
 export type Framework = (typeof Framework)[keyof typeof Framework];
@@ -140,6 +142,9 @@ function detectFramework(input: DetectInput): Framework {
   if (depVersion(pkg, 'vite') !== undefined || hasAnyConfig(configFiles, VITE_CONFIGS)) {
     return Framework.VITE;
   }
+  // Checked after Vite, never before: a project migrating off CRA can carry both, and the Vite path
+  // is the one that works. CRA has no config file at all, so the dependency is the only signal.
+  if (depVersion(pkg, 'react-scripts') !== undefined) return Framework.CRA;
   return Framework.HTML;
 }
 

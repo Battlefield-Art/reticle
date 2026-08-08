@@ -26,6 +26,7 @@ import {
 import {
   viteSteps,
   nextSteps,
+  craSteps,
   svelteKitSteps,
   astroSteps,
   VITE_PLUGIN_DETAIL,
@@ -69,6 +70,10 @@ export function frameworkPackages(framework: Framework): readonly string[] {
     case Framework.ASTRO:
       // Astro owns its own Vite instance and renders its own HTML, so there is no config for the
       // plugin to attach to — the kit alone, connected from a page <script> (see astroManual).
+      return [RETICLE_REACT_KIT];
+    case Framework.CRA:
+      // react-scripts owns its webpack config and cannot be extended without ejecting, so there is
+      // no build plugin — the kit alone, imported from src/index.tsx (see cra.ts).
       return [RETICLE_REACT_KIT];
     case Framework.HTML:
       // No bundler plugin to install — just the kit; connect is wired by hand (see htmlManual).
@@ -176,6 +181,12 @@ export interface PlanInput {
   viteDevModuleExists?: boolean | undefined;
   /** Whether src/hooks.client.ts already exists (SvelteKit idempotency). */
   svelteKitHooksExists?: boolean;
+  /** CRA's bundled entry (src/index.tsx or .js) — where the connect import has to go. */
+  craEntry?: { path: string; source: string } | null;
+  /** Existing .env.development.local, so an unrelated variable in it survives. */
+  craEnv?: string | null;
+  /** The daemon's pairing token, inlined for CRA through the one channel it supports. */
+  pairingToken?: string;
   /** Whether .reticle.json already exists in the project root (idempotency). */
   reticleConfigExists?: boolean;
   /** Current project-root CLAUDE.md content (for the idempotent agent-rule merge), or null/undefined. */
@@ -516,6 +527,8 @@ export function buildPlan(input: PlanInput): Plan {
     steps.push(...nextSteps(input));
   } else if (input.detection.framework === Framework.ASTRO) {
     steps.push(...astroSteps(input));
+  } else if (input.detection.framework === Framework.CRA) {
+    steps.push(...craSteps(input));
   } else if (input.detection.framework === Framework.SVELTEKIT) {
     steps.push(...svelteKitSteps(input));
     // The Vite plugin as well as the client hook. `init` already INSTALLS @reticlehq/vite-plugin for

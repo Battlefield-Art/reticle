@@ -7,6 +7,14 @@
 import { patchViteConfig, VitePatchKind } from './vite-config.js';
 import { patchNextConfig, patchRootLayout, patchPagesApp } from './next-patch.js';
 import { patchAstroConfig, patchAstroLayout } from './astro-patch.js';
+import {
+  CRA_DEV_MODULE_IMPORT,
+  CRA_DEV_MODULE_PATH,
+  CRA_ENV_PATH,
+  craDevModuleFile,
+  craEnvPatch,
+  craImportPatch,
+} from './cra.js';
 import { PatchKind, type SourcePatch } from './patch-kind.js';
 import {
   viteManual,
@@ -233,6 +241,69 @@ export function nextSteps(input: PlanInput): Step[] {
  * wiring is real and may well work; what is missing is anything that would tell us when it stops.
  * Silently emitting it reads as a support claim, which is the thing this project exists to not do.
  */
+/**
+ * Create React App: the connect goes in `src/index.tsx`, the token in `.env.development.local`.
+ *
+ * The previous plan pointed at `index.html`, which cannot work — CRA's is a static template the
+ * bundler never processes for modules. Reported from a real cra-redux-saga app.
+ */
+export function craSteps(input: PlanInput): Step[] {
+  const entry = input.craEntry ?? null;
+  const steps: Step[] = [
+    {
+      title: 'Reticle connect module',
+      target: CRA_DEV_MODULE_PATH,
+      status: StepStatus.APPLY,
+      detail: 'create the dev-only connect (CRA cannot inject through public/index.html)',
+      write: {
+        path: CRA_DEV_MODULE_PATH,
+        content: craDevModuleFile(input.options.port, input.options.projectId),
+      },
+      dependsOnInstall: true,
+    },
+  ];
+  const env = craEnvPatch(input.craEnv ?? null, input.pairingToken ?? '');
+  if (env !== null) {
+    steps.push({
+      title: 'Pairing token',
+      target: CRA_ENV_PATH,
+      status: StepStatus.APPLY,
+      // REACT_APP_* is the only thing CRA inlines into browser code; without the token the bridge
+      // refuses the connection and no session appears.
+      detail: 'set REACT_APP_RETICLE_TOKEN (the only channel CRA inlines)',
+      write: { path: CRA_ENV_PATH, content: env },
+    });
+  }
+  if (entry === null) {
+    steps.push({
+      title: 'Connect snippet (CRA)',
+      target: 'src/index.tsx',
+      status: StepStatus.MANUAL,
+      detail: `Add \`${CRA_DEV_MODULE_IMPORT}\` to your app entry (src/index.tsx or src/index.js), after the existing imports.`,
+    });
+    return steps;
+  }
+  const patched = craImportPatch(entry.source);
+  steps.push(
+    patched === null
+      ? {
+          title: 'Connect snippet (CRA)',
+          target: entry.path,
+          status: StepStatus.ALREADY,
+          detail: 'already imported',
+        }
+      : {
+          title: 'Connect snippet (CRA)',
+          target: entry.path,
+          status: StepStatus.APPLY,
+          detail: 'import the dev-only connect module',
+          write: { path: entry.path, content: patched },
+          dependsOnInstall: true,
+        },
+  );
+  return steps;
+}
+
 export function svelteKitSteps(input: PlanInput): Step[] {
   const unverified: Step = {
     title: 'SvelteKit is UNVERIFIED',
