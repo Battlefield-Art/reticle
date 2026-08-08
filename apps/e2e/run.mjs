@@ -39,6 +39,10 @@ const ORDER = [
   'real-world-tests',
   'multi-agent-lease-test',
   'atlas-hard-fixture-test',
+  // Drives a real session and then checks that the EVENTS describe it — a different question from
+  // telemetry-events-test, which only proves each kind can be sent. Owns a browser and writes a flow,
+  // so it sits beside the sweep at the end.
+  'telemetry-stitch-test',
   // Last: it drives every tool over real MCP, including navigate/crawl/clock, and owns a browser of
   // its own. Running it earlier would leave the shared bench-app in a state later specs assume fresh.
   'tool-surface-sweep-test',
