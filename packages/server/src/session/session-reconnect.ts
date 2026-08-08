@@ -22,7 +22,17 @@ interface WaitForReconnectOptions {
   pollMs?: number;
 }
 
-const DEFAULT_POLL_MS = 100;
+/**
+ * How often to look for the reconnected session.
+ *
+ * 25ms, not 100. What is being polled is an in-memory map lookup — no I/O, no browser round-trip —
+ * while the thing being waited for is an EVENT (the reloaded page's HELLO). At 100ms the agent paid
+ * up to a full interval of dead time after the page was already back, on every navigate-with-reload.
+ * Measured across the fixture fleet, `reticle_navigate` clustered at 105 / 202-206 / 308 / 407ms —
+ * the poll grid, visible in the data. Four times the checks of something this cheap costs nothing
+ * anyone can measure.
+ */
+const DEFAULT_POLL_MS = 25;
 
 /**
  * How long a reload is worth waiting for before answering "not confirmed".
