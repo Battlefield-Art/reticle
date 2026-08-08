@@ -17,6 +17,11 @@ export interface VerifiedInputs {
   /** Did the declared consequence hold? Undefined when the action declared none. */
   pass?: boolean;
   honesty: HonestyBlock;
+  /**
+   * Set when the assertion could not be EVALUATED at all — an under-specified call, or nothing
+   * instrumented to read. Carries the sentence naming what is missing.
+   */
+  inconclusive?: string;
   /** Cross-channel disagreements found in the action's window. */
   contradictions?: readonly { kind: string }[];
   /** Did a real frame flush before the wait gave up? */
@@ -41,6 +46,16 @@ export interface VerifiedVerdict {
 
 export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   const { pass, honesty, contradictions = [], settled, outcomePending, outcomeUnread } = inputs;
+
+  // Ahead of the failure clause, because a failure is only the most actionable fact when there WAS
+  // one. An assertion nobody could evaluate is not a defect in the app, and calling it one was
+  // putting the agent's own malformed calls into the bug count.
+  if (inputs.inconclusive !== undefined) {
+    return {
+      verified: Verified.UNKNOWN,
+      because: `the assertion could not be evaluated: ${inputs.inconclusive}`,
+    };
+  }
 
   // A failed assertion is the most actionable fact there is; it leads.
   if (pass === false) {

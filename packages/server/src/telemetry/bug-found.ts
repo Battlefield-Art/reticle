@@ -82,6 +82,20 @@ function assertionOf(result: Record<string, unknown>): unknown {
     : undefined;
 }
 
+/**
+ * A verdict that could not be reached is not a defect found. `inconclusive` is set when the
+ * assertion was never evaluated — an under-specified call, or nothing instrumented to read — so
+ * counting it would put the agent's own mistakes into the number we publish.
+ */
+function isInconclusive(result: Record<string, unknown>): boolean {
+  const verdict = result['verdict'];
+  return (
+    typeof verdict === 'object' &&
+    verdict !== null &&
+    typeof (verdict as Record<string, unknown>)['inconclusive'] === 'string'
+  );
+}
+
 export function bugsInResult(toolName: string, result: Record<string, unknown>): BugCandidate[] {
   const bugs: BugCandidate[] = [];
   const verdict = verdictOf(result);
@@ -107,7 +121,7 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
 
   // 3. A failed assertion — the agent declared a consequence and it did not hold.
   //    Only when nothing above already explained it, or one defect would be counted twice.
-  if (verdict === false && bugs.length === 0) {
+  if (verdict === false && bugs.length === 0 && !isInconclusive(result)) {
     const reason = assertionOf(result);
     bugs.push({
       source: BugSource.ASSERTION,

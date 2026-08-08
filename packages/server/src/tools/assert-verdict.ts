@@ -30,6 +30,8 @@ export async function assertVerdict(
   predicate: Predicate,
   pass: boolean,
   since: number,
+  /** Set when the assertion was never evaluated — see honesty/verified.ts. */
+  inconclusive?: string,
 ): Promise<{
   decision: Record<string, unknown>;
   contradictions: Contradiction[];
@@ -66,6 +68,7 @@ export async function assertVerdict(
   const outcomeUnread = hasUnreadWriteOutcome(windowEvents);
   const decision = decideVerified({
     pass,
+    ...(inconclusive === undefined ? {} : { inconclusive }),
     honesty: buildHonestyBlock({
       grade: gradeOfPredicate(predicate),
       attribution: 'window',

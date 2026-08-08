@@ -185,13 +185,14 @@ async function evalState(
   const names = Object.keys(stores);
   const storeName = p.store ?? (names.length === 1 ? names[0] : undefined);
   if (storeName === undefined) {
-    return {
-      pass: false,
-      failureReason:
-        names.length === 0
-          ? 'no registered store to read state from'
-          : `multiple stores (${names.join(', ')}); name one with \`store\``,
-    };
+    // Neither of these is a finding about the app. With several stores registered the call simply did
+    // not say which one to read; with none, there is nothing to read at all. No assertion was
+    // evaluated either way, so this is inconclusive rather than failed — see honesty/inconclusive.
+    const reason =
+      names.length === 0
+        ? 'no registered store to read state from'
+        : `multiple stores (${names.join(', ')}); name one with \`store\``;
+    return { pass: false, failureReason: reason, inconclusive: reason };
   }
   const selection = selectPath(stores[storeName], p.path);
   if (!selection.found) {

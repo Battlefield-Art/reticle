@@ -404,6 +404,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         predicate,
         verdict.pass,
         since,
+        verdict.inconclusive,
       );
       return withControl(session, {
         ...decision,

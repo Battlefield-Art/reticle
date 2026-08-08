@@ -126,6 +126,15 @@ export const PredicateSchema = z.lazy(() =>
 
 export interface EvalResult {
   pass: boolean;
+  /**
+   * Set when the assertion could not be EVALUATED — the call was under-specified or there was
+   * nothing instrumented to read — rather than evaluated and found false. Carries the sentence that
+   * names what is missing.
+   *
+   * `pass` stays false because nothing was proven, but a false that nobody could have made true is
+   * not a defect in the user's app, and reporting it as one puts agent mistakes into the bug count.
+   */
+  inconclusive?: string;
   evidence?: unknown;
   failureReason?: string;
   /**

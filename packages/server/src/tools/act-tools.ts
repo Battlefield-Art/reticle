@@ -1,7 +1,7 @@
 /**
- * Action tools — reticle_act, reticle_act_sequence, reticle_act_and_wait — plus the native-input machinery
- * (asBox / tryRealInput). Split out of tools.ts to keep that file under the line cap; assembled back
- * into the tool list there via...ACT_TOOLS.
+ * Action tools — reticle_act, reticle_act_sequence, reticle_act_and_wait. Split out of tools.ts to keep
+ * that file under the line cap and assembled back into the tool list there via ...ACT_TOOLS; the
+ * native-input attempt itself lives in real-input-attempt.ts for the same reason.
  */
 import { z } from 'zod';
 import { aliasParam } from './alias-args.js';
@@ -11,12 +11,8 @@ import {
   ActionWarning,
   DEFAULT_ASSERT_TIMEOUT_MS,
   InputMode,
-  InputModeReason,
   ReticleCommand,
 } from '@reticlehq/core';
-import type { Session } from '../session/session.js';
-import type { ElementBox, RealInputArgs } from '../input/real-input.js';
-import { isPointerAction } from '../input/real-input.js';
 import { leanActResult, mutatedWithin } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
@@ -34,7 +30,6 @@ import {
 } from '../honesty/blind-spots.js';
 import { hasAcceptedWrite } from '../honesty/accepted-write.js';
 import { hasUnreadWriteOutcome } from '../honesty/unread-outcome.js';
-import { assertDragNotDestructive, assertNotDestructive } from './act-danger.js';
 import {
   evaluatePredicate,
   waitForPredicate,
@@ -44,94 +39,9 @@ import {
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
 import { pausedShortCircuit, pausedOutputShape, withControl } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
-import { type ToolDef, type ToolDeps, sessionIdShape, commandOrThrow } from './tool-kit.js';
-import { asActionType, asBox, gradeOf } from './act-helpers.js';
-
-interface RealActResult {
-  /** Defined only on a successful native action; `undefined` means the synthetic path runs. */
-  result: unknown;
-  settled: boolean;
-  /** Set when a provider was available but threw — surfaces the fallback to the agent. */
-  fellBack?: boolean;
-  /** Why we went synthetic despite a configured provider (field bug #2: never a silent fallback). */
-  reason?: InputModeReason;
-}
-
-/** Synthetic outcome with a diagnostic reason (provider configured but native input skipped). */
-function synthetic(reason?: InputModeReason): RealActResult {
-  return reason === undefined
-    ? { result: undefined, settled: false }
-    : { result: undefined, settled: false, reason };
-}
-
-/**
- * Attempt to drive a pointer action via native input. Returns a synthetic outcome (with a
- * `reason` when a provider is configured) whenever the synthetic path should run — no matching
- * page, unresolvable box, declined, etc. A throw inside the provider becomes a synthetic fallback
- * flagged with `fellBack`. `result` is defined only on a real success.
- */
-async function tryRealInput(
-  deps: ToolDeps,
-  session: Session,
-  ref: string,
-  action: ActionType,
-  args: Record<string, unknown>,
-): Promise<RealActResult> {
-  const provider = deps.realInput;
-  if (provider === undefined) return synthetic(); // real input not configured — no diagnostic
-  if (!isPointerAction(action)) return synthetic(InputModeReason.NOT_POINTER); // fill/type stay synthetic
-
-  const inner = asRecord(args['args']);
-  // "Don't click, run the code": a click/dblclick runs the occlusion-honest SYNTHETIC path by default
-  // even with a provider configured — no coordinate gesture to be intercepted by the HUD or missed
-  // off-screen. Opt into a trusted native click with args.native:true (file pickers, clipboard,
-  // isTrusted-gated handlers). hover/drag genuinely need native pointer state, so they stay real.
-  if ((action === ActionType.CLICK || action === ActionType.DBLCLICK) && inner['native'] !== true) {
-    return synthetic(InputModeReason.SYNTHETIC_CLICK_PREFERRED);
-  }
-
-  if (!(await provider.isAvailableFor(session.url)))
-    return synthetic(InputModeReason.PAGE_NOT_CORRELATED);
-
-  const inspected = await commandOrThrow(deps, session.id, ReticleCommand.INSPECT, { ref });
-  assertNotDestructive(action, inner, inspected);
-  const box = asBox(inspected);
-  if (box === undefined) return synthetic(InputModeReason.ELEMENT_NOT_LOCATABLE);
-
-  let toBox: ElementBox | undefined;
-  if (action === ActionType.DRAG) {
-    const toRef = asString(inner['toRef']);
-    if (toRef === undefined) return synthetic(InputModeReason.DRAG_TARGET_UNRESOLVED);
-    const targetInspected = await commandOrThrow(deps, session.id, ReticleCommand.INSPECT, {
-      ref: toRef,
-    });
-    // A drag is judged on BOTH ends: dropping onto "Trash" is destructive however innocent the
-    // thing being dragged looks.
-    assertDragNotDestructive(inner, inspected, targetInspected);
-    toBox = asBox(targetInspected);
-    if (toBox === undefined) return synthetic(InputModeReason.DRAG_TARGET_UNRESOLVED);
-  }
-
-  const performArgs: RealInputArgs = {};
-  const value = asString(inner['value']);
-  if (value !== undefined) performArgs.value = value;
-  const text = asString(inner['text']);
-  if (text !== undefined) performArgs.text = text;
-  if (toBox !== undefined) performArgs.toBox = toBox;
-
-  try {
-    const performed = await provider.perform(session.url, action, box, performArgs);
-    if (!performed.performed) return synthetic(InputModeReason.PROVIDER_DECLINED);
-    return { result: { performed: true, center: performed.center, action }, settled: true };
-  } catch {
-    return {
-      result: undefined,
-      settled: false,
-      fellBack: true,
-      reason: InputModeReason.PROVIDER_ERROR,
-    };
-  }
-}
+import { type ToolDef, sessionIdShape } from './tool-kit.js';
+import { asActionType, gradeOf } from './act-helpers.js';
+import { tryRealInput } from './real-input-attempt.js';
 
 /**
  * Narrow the wire's `action` to a real ActionType, or undefined.
@@ -552,6 +462,8 @@ export const ACT_TOOLS: ToolDef[] = [
         const outcomeUnread = hasUnreadWriteOutcome(windowEvents);
         const decision = decideVerified({
           pass: verdict.pass,
+          // An assertion nobody could evaluate must not be reported as one the app failed.
+          ...(verdict.inconclusive === undefined ? {} : { inconclusive: verdict.inconclusive }),
           honesty,
           contradictions,
           ...(outcomePending ? { outcomePending } : {}),
