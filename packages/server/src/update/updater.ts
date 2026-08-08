@@ -7,6 +7,7 @@ import { RETICLE_NPM_PACKAGE, SERVER_VERSION } from '../server-version.js';
 import { log } from '../log.js';
 import { TelemetryEventKind } from '@reticlehq/core';
 import { getTelemetry } from '../telemetry/telemetry.js';
+import { wasNudged } from './nudge-credit.js';
 
 /** Which way the installed version moved. A rollback means a release hurt someone enough to retreat. */
 export const VersionChangeDirection = {
@@ -29,8 +30,11 @@ export async function reportVersionChange(
   direction: VersionChangeDirection,
 ): Promise<void> {
   try {
+    const nudged = wasNudged(to);
     await getTelemetry().emit(TelemetryEventKind.VERSION_CHANGED, {
-      versionChange: { from, to, direction },
+      // Only when true: an absent flag reads as "we do not know", which is honest for a machine that
+      // updated from a shell script or a package bump with no agent involved at all.
+      versionChange: { from, to, direction, ...(nudged ? { nudged } : {}) },
     });
   } catch {
     /* best-effort, like every other send */

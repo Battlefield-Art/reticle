@@ -19,6 +19,7 @@
 import { checkForUpdate, loadManifest } from './update-checker.js';
 import { SERVER_VERSION } from '../server-version.js';
 import { log } from '../log.js';
+import { creditNudge } from './nudge-credit.js';
 
 /**
  * Is `candidate` a strictly NEWER release than `current`?
@@ -141,6 +142,9 @@ export function armUpdateNudgeFrom(
 export function takeUpdateNudge(): UpdateNudge | undefined {
   if (delivered || pending === undefined) return undefined;
   delivered = true;
+  // Leave a mark an `reticle update` in another process can read, so version_changed can say whether
+  // this nudge is what caused the upgrade. Best-effort by construction — see nudge-credit.
+  creditNudge(pending.latestVersion);
   return pending;
 }
 

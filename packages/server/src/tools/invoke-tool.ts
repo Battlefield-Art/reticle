@@ -19,6 +19,17 @@ import type { ToolDef, ToolDeps } from './tools.js';
  * can never return a healthy-looking result from any of these. `runTool` is the single choke point
  * (mcp.ts + tool-invoker.ts) that splices health on; the guard test asserts the set is exhaustive.
  */
+/**
+ * Tools that DRIVE the page. An action with no verdict after it is the signature of the loop
+ * breaking mid-task — see `abandonedActions`. `act_and_wait` is one of these AND a verification, so
+ * it settles its own action, which is exactly right: it is the tool that does both.
+ */
+const ACTION_TOOLS: ReadonlySet<string> = new Set([
+  ReticleTool.ACT,
+  ReticleTool.ACT_SEQUENCE,
+  ReticleTool.ACT_AND_WAIT,
+]);
+
 export const SESSION_BOUND_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.SNAPSHOT,
   ReticleTool.QUERY,
@@ -152,6 +163,9 @@ export async function runTool(
   // closure carries this call's own identity, which is also what makes peak-concurrency measurable.
   // A daemon that has served even one tool call is doing a job for somebody; see daemon-usefulness.
   noteToolCall();
+  // An ACTION is what gets abandoned. Counted here, against verifications, so "the agent drove the
+  // page and then wandered off" becomes a number instead of an impression.
+  if (ACTION_TOOLS.has(tool.name)) getSessionMetrics().recordAction();
   const settleTiming = getSessionMetrics().startToolCall(tool.name, args);
   const startedAt = Date.now();
   const rawSessionId = asString(args['sessionId']);

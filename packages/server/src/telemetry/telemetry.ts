@@ -277,6 +277,8 @@ export const createTelemetry = (opts: {
   const url = `${(env[Env.URL] ?? DEFAULT_URL).replace(/\/+$/, '')}${TELEMETRY_PATH}`;
   const ci = env[Env.CI] !== undefined && env[Env.CI] !== '';
   const os = platform();
+  // Negated so it reads the way people say it: UTC+2 is +120, not -120.
+  const tzOffsetMin = -new Date().getTimezoneOffset();
   const { anonymousId, firstRun } = resolveIdentity();
   /**
    * One id per PROCESS, minted in memory and never persisted — which is exactly right: a daemon run
@@ -304,6 +306,7 @@ export const createTelemetry = (opts: {
       version: opts.version,
       ci,
       os,
+      tzOffsetMin,
       projectIdSource,
       ...(extra?.actor !== undefined ? { actor: extra.actor } : {}),
       ...(extra?.command !== undefined ? { command: extra.command } : {}),

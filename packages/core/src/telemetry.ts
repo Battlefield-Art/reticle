@@ -237,6 +237,15 @@ export type Verification = z.infer<typeof VerificationSchema>;
 export const VersionChangeSchema = z.object({
   from: z.string().min(1).max(64),
   to: z.string().min(1).max(64),
+  /**
+   * True when an agent had been told about exactly this version recently — so the nudge plausibly
+   * caused the update.
+   *
+   * Without it, `version_changed` says a version moved and never why, which leaves "the nudge never
+   * fired" and "the nudge fired and nobody acted" indistinguishable. Those need opposite responses,
+   * and the whole adoption story rests on knowing which one is happening.
+   */
+  nudged: z.boolean().optional(),
   /** `update` (forward) or `rollback` (back) — a rollback is a release-quality alarm. */
   direction: z.string().min(1).max(16),
 });
@@ -426,6 +435,14 @@ export const TelemetryEventSchema = z.object({
   projectIdSource: z.nativeEnum(ProjectIdSource).optional(),
   /** `process.platform` (darwin/linux/win32) — OS mix, low cardinality, non-identifying. */
   os: z.string().min(1).max(32),
+  /**
+   * Minutes this machine's local time is offset from UTC.
+   *
+   * "When do they work" was answerable only through ingest-side GeoIP, which may be off and is a
+   * coarser thing than a working day. One integer, no location, identifies nobody — and it turns
+   * every time-of-day tile from "which continent" into "9am or 11pm".
+   */
+  tzOffsetMin: z.number().int().min(-900).max(900).optional(),
   /** Only on `feedback`: the author-submitted report + its environment context. Never sent otherwise. */
   feedback: FeedbackSchema.optional(),
   /** Human or agent. Absent on events that are neither (a crash, a version change). */
