@@ -25,7 +25,7 @@ import { ReticleEnv } from '@reticlehq/core';
 import { log } from './log.js';
 
 /** The `event` field every trace line carries, so one `grep` separates it from milestone logs. */
-export const TRACE_EVENT = 'trace';
+const TRACE_EVENT = 'trace';
 
 const ON_VALUES: ReadonlySet<string> = new Set(['1', 'true', 'on', 'yes']);
 
