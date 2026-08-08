@@ -10,7 +10,7 @@
 export { BlindSpotKind } from '@reticlehq/core';
 import { BlindSpotKind, EventType, type ReticleEvent } from '@reticlehq/core';
 
-export interface BlindSpot {
+interface BlindSpot {
   kind: BlindSpotKind;
   count: number;
 }
@@ -29,7 +29,7 @@ export const Coverage = {
 } as const;
 export type Coverage = (typeof Coverage)[keyof typeof Coverage];
 
-export interface CoverageStatement {
+interface CoverageStatement {
   coverage: Coverage;
   /** Present only when partial — the human/agent-legible list of what went unobserved. */
   note?: string;

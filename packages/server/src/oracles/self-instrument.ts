@@ -24,7 +24,7 @@ export interface InstrumentationGap {
   context?: string;
 }
 
-export interface InstrumentationProposal {
+interface InstrumentationProposal {
   file: string;
   line: number;
   /** The code to insert. */

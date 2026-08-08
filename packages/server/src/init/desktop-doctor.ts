@@ -27,7 +27,7 @@ export const DesktopFinding = {
 } as const;
 export type DesktopFinding = (typeof DesktopFinding)[keyof typeof DesktopFinding];
 
-export interface DesktopDiagnosis {
+interface DesktopDiagnosis {
   code: DesktopFinding;
   /** Which file to look at. */
   file: string;
@@ -38,7 +38,7 @@ export interface DesktopDiagnosis {
 }
 
 /** Reads a project-relative path. Undefined means the file does not exist. */
-export type ReadFile = (path: string) => string | undefined;
+type ReadFile = (path: string) => string | undefined;
 
 const TAURI_CONF = 'src-tauri/tauri.conf.json';
 const PRELOAD_REQUIRE = '@reticlehq/electron/preload';

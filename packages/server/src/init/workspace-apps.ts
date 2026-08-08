@@ -15,7 +15,7 @@
 /** Directories that are never a workspace package, whatever the layout. */
 const NEVER_A_PACKAGE = new Set(['node_modules', 'dist', 'build', 'out', 'coverage', 'target']);
 
-export interface WorkspaceSources {
+interface WorkspaceSources {
   /** Raw contents of pnpm-workspace.yaml, when present. */
   pnpmWorkspace?: string;
   /** The `workspaces` field of package.json — array form or the yarn/npm object form. */

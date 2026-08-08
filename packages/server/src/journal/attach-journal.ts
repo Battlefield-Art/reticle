@@ -11,7 +11,7 @@ export interface JournalTarget {
   setJournal(recorder: JournalRecorder, reader?: JournalReader): void;
 }
 
-export interface JournalAttachDeps {
+interface JournalAttachDeps {
   fs: FileSystemPort;
   reticleRoot: string;
   /** Journaling is on by default; the opt-out (`.reticle.json` journal:false / env) sets this false. */

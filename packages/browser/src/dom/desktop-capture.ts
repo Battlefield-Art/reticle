@@ -67,7 +67,7 @@ function tauriCapture(): (() => Promise<string | null>) | undefined {
   };
 }
 
-export interface CaptureResult {
+interface CaptureResult {
   ok: boolean;
   /**
    * Filesystem path of the captured PNG, written by the desktop shell.

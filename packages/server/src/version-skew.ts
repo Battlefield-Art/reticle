@@ -46,7 +46,7 @@ export interface PeerIdentity {
 }
 
 /** Everything a build knows about itself. */
-export interface SelfIdentity {
+interface SelfIdentity {
   version: string;
   contract: string;
 }

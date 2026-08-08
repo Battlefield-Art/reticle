@@ -131,7 +131,7 @@ function isElectronRenderer(): boolean {
  * Subscribe to the Electron preload shim, if this app installed it. Inert on Tauri (whose calls the
  * network observer handles) and on a plain web page.
  */
-export interface IpcOptions {
+interface IpcOptions {
   /** Forward the IPC payloads the preload recorded. Off by default, like the HTTP body capture. */
   captureBodies?: boolean;
 }

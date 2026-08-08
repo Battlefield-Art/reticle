@@ -13,7 +13,7 @@ import { HonestyGrade, type HonestyBlock } from './honesty.js';
  * should be told the most actionable fact rather than the first true one.
  */
 
-export interface VerifiedInputs {
+interface VerifiedInputs {
   /** Did the declared consequence hold? Undefined when the action declared none. */
   pass?: boolean;
   honesty: HonestyBlock;
@@ -44,7 +44,7 @@ export interface VerifiedInputs {
   outcomeUnread?: boolean;
 }
 
-export interface VerifiedVerdict {
+interface VerifiedVerdict {
   verified: Verified;
   /** One sentence naming the deciding evidence — never a restatement of the field. */
   because: string;

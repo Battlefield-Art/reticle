@@ -12,7 +12,7 @@
  */
 import { ReticleTool } from '../tools/tool-names.js';
 
-export interface EmptyFlowRefusal {
+interface EmptyFlowRefusal {
   error: string;
   recovery: string;
 }

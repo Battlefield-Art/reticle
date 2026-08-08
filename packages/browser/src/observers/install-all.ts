@@ -28,7 +28,7 @@ import { installHealth } from './health.js';
 import { reportSdkFailure, SdkSite } from './sdk-failure.js';
 import type { Emit, Teardown } from './types.js';
 
-export interface InstallOptions {
+interface InstallOptions {
   captureBodies: boolean;
 }
 

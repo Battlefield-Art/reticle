@@ -24,12 +24,12 @@ export { redactUrl };
  * succeeded means nothing to a network observer — so the knowledge lives in the IPC observer and is
  * passed IN, rather than this module importing it. Returns undefined to leave the record untouched.
  */
-export type NetResponseReinterpreter = (
+type NetResponseReinterpreter = (
   url: string,
   header: (name: string) => string | null,
 ) => Record<string, unknown> | undefined;
 
-export interface NetworkOptions {
+interface NetworkOptions {
   /** Capture request/response bodies (text-like content only, redacted, per-body capped). */
   captureBodies?: boolean;
   /** Optional hook that reinterprets a completed request — see NetResponseReinterpreter. */
@@ -158,7 +158,7 @@ function initiatorFrame(): string | undefined {
 }
 
 /** The timing fields we lift from a resource entry — TTFB is the perf signal a duration alone hides. */
-export interface NetTiming {
+interface NetTiming {
   ttfbMs?: number;
   transferSize?: number;
 }

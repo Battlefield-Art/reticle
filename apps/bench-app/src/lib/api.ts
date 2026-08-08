@@ -10,7 +10,7 @@ export function authToken(): string {
   return token;
 }
 
-export interface ApiResult {
+interface ApiResult {
   method: string;
   path: string;
   status: number | 'ERR';

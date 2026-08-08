@@ -7,13 +7,13 @@
  */
 
 /** A flow whose assertions were WEAKENED since its last passing run. */
-export interface DowngradedFlow {
+interface DowngradedFlow {
   flow: string;
   /** Step indices whose mustHold dropped from a consequence to presence-only. */
   steps: number[];
 }
 
-export interface GateInput {
+interface GateInput {
   /** Flows that must be covered (from the affected index over the changed files). */
   affected: readonly string[];
   /** Flows that have a passing verification artifact. */
@@ -26,7 +26,7 @@ export interface GateInput {
   deleted?: readonly string[];
 }
 
-export interface GateResult {
+interface GateResult {
   /** True when every affected, non-flaky flow has a passing artifact AND nothing was weakened/deleted. */
   pass: boolean;
   /** Affected flows with no passing artifact and not flaky — these block the gate. */

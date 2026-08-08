@@ -45,7 +45,7 @@ export const SyncOutcome = {
 } as const;
 export type SyncOutcome = (typeof SyncOutcome)[keyof typeof SyncOutcome];
 
-export interface SyncResult {
+interface SyncResult {
   outcome: SyncOutcome;
   status?: number;
   error?: string;

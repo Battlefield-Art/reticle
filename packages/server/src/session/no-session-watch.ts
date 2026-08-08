@@ -17,7 +17,7 @@ import type { SessionManager } from './session-manager.js';
 /** Slow enough to be free, fast enough that a dev server started 15s ago is already reflected. */
 const REFRESH_MS = 15_000;
 
-export interface NoSessionWatchOptions {
+interface NoSessionWatchOptions {
   sessions: SessionManager;
   port: number;
   /** Whether this project has been through `reticle init` (a projectId is stamped in .reticle.json). */

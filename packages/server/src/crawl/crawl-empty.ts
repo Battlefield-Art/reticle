@@ -7,7 +7,7 @@
  * the zero carry its own diagnosis rather than guess at a cause.
  */
 
-export interface CrawlOutcome {
+interface CrawlOutcome {
   interactiveFound: number;
   stepsRun: number;
   maxSteps: number;

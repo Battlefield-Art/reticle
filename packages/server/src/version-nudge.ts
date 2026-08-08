@@ -14,7 +14,7 @@
 
 import type { SkewPair } from './version-skew.js';
 
-export interface VersionSkewNudge {
+interface VersionSkewNudge {
   pair: SkewPair;
   action: string;
 }

@@ -14,7 +14,7 @@
 import { MERGE_PLANS, RETIRED_FROM_SURFACE } from './tools.js';
 import { ReticleTool } from './tool-names.js';
 
-export interface MergedNameRedirect {
+interface MergedNameRedirect {
   /** The tool to call instead. */
   tool: string;
   /** The action that selects the old behaviour, when the name was merged rather than retired. */

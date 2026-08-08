@@ -5,13 +5,13 @@
  * about what everything means. Pure set math; the deviation report + gate carry the number.
  */
 
-export interface DeclaredSurface {
+interface DeclaredSurface {
   testids: readonly string[];
   signals: readonly string[];
   flows: readonly string[];
 }
 
-export interface CoverageDimension {
+interface CoverageDimension {
   total: number;
   covered: number;
   /** Percent covered, rounded; 100 when nothing is declared (vacuously complete). */

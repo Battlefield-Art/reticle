@@ -14,7 +14,7 @@
  *    the "this click did nothing" check is unreachable on the ordinary act-then-observe flow: an
  *    empty-window test is a statement about the PAGE, and no real app has a quiet page.
  */
-export interface ActEffect {
+interface ActEffect {
   action?: string | undefined;
   /** DOM mutations inside the acted element's own subtree. Undefined means nobody measured. */
   mutatedWithin?: number | undefined;

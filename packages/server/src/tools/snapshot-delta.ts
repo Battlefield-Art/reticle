@@ -22,14 +22,14 @@ export const SnapshotDeltaMode = {
 } as const;
 export type SnapshotDeltaMode = (typeof SnapshotDeltaMode)[keyof typeof SnapshotDeltaMode];
 
-export interface SnapshotDelta {
+interface SnapshotDelta {
   added: string[];
   removed: string[];
   addedCount: number;
   removedCount: number;
 }
 
-export type DeltaDecision =
+type DeltaDecision =
   | { mode: typeof SnapshotDeltaMode.FULL }
   | { mode: typeof SnapshotDeltaMode.UNCHANGED }
   | { mode: typeof SnapshotDeltaMode.DELTA; delta: SnapshotDelta };
@@ -94,7 +94,7 @@ export function snapshotCacheKey(sessionId: string, scope: string, mode: string)
 const CAPPED_DIFF_NOTE =
   'this diff covers only the first N nodes of the page (the snapshot hit its cap), so "unchanged" means "unchanged in the part that was captured" — narrow with `scope` to see the rest';
 
-export interface SnapshotDeltaOpts {
+interface SnapshotDeltaOpts {
   sessionId: string;
   scope: string;
   mode: string;

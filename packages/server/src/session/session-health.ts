@@ -62,7 +62,7 @@ export function refuseIfThrottled(session: Session, refuse: unknown): void {
 }
 
 /** The page's own visibility/runtime report, narrowed out of an untrusted PAGE_HEALTH payload. */
-export interface HealthReport {
+interface HealthReport {
   hidden: boolean | undefined;
   focused: boolean | undefined;
   runtime: string | undefined;

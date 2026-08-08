@@ -16,7 +16,7 @@ import { asString, asRecord } from './tools-helpers.js';
 import { type ToolDeps, commandOrThrow } from './tool-kit.js';
 import { asBox } from './act-helpers.js';
 
-export interface RealActResult {
+interface RealActResult {
   /** Defined only on a successful native action; `undefined` means the synthetic path runs. */
   result: unknown;
   settled: boolean;

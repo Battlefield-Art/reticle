@@ -65,7 +65,7 @@ function completeObjects(text: string): string[] {
   return found.filter((f) => f.depth === shallowest).map((f) => f.text);
 }
 
-export interface Salvaged {
+interface Salvaged {
   /** Parsed values — one whole body, or the records recovered from a truncated one. */
   values: unknown[];
   /** True when the payload was incomplete and only part of it could be read. */

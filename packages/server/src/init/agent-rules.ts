@@ -58,7 +58,7 @@ export const AgentRuleStatus = {
 } as const;
 export type AgentRuleStatus = (typeof AgentRuleStatus)[keyof typeof AgentRuleStatus];
 
-export interface AgentRuleResult {
+interface AgentRuleResult {
   status: AgentRuleStatus;
   /** Full file content to write when status is APPLY; the unchanged input otherwise. */
   content: string;

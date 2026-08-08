@@ -7,7 +7,7 @@
  * forces the human to go digging, which is exactly the work the buddy exists to remove.
  */
 
-export interface BuddyStatusInput {
+interface BuddyStatusInput {
   /** Every saved flow. */
   total: number;
   /** Flows with a passing artifact. */

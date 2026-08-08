@@ -174,7 +174,7 @@ export class HandshakeReplay {
 }
 
 /** One parsed Server-Sent-Events frame: the event name (defaulted to "message") and its data. */
-export interface SseFrame {
+interface SseFrame {
   event: string;
   data: string;
 }

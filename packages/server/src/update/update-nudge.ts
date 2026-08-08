@@ -49,7 +49,7 @@ export function isNewerVersion(candidate: string, current: string): boolean {
 /** Let the daemon finish coming up before touching the network. */
 const CHECK_DELAY_MS = 8_000;
 
-export interface UpdateNudge {
+interface UpdateNudge {
   /** The version available, so the agent can tell the human what they would be moving to. */
   latestVersion: string;
   currentVersion: string;

@@ -11,7 +11,7 @@
  * clothes as one.
  */
 
-export interface EmptyReadContext {
+interface EmptyReadContext {
   /** The observation window, when the read has one. */
   windowMs?: number;
   /** What was being counted, in the agent's words: "console lines", "network calls". */

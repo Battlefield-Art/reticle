@@ -9,6 +9,8 @@ export type StoreSubscribe = (listener: () => void) => () => void;
 
 // Persist on a global so registrations survive HMR re-evaluation (see adapters.ts / feedback #7).
 /** Notified when a SUBSCRIBABLE store is registered, so a late registration is still observed. */
+// Exported because the lossy-transform registry classifies it by name — see
+// scripts/check-lossy-transforms.mjs, which fails the lint gate if it stops being exported.
 export type StoreRegisteredListener = (entry: [string, StoreGetter, StoreSubscribe]) => void;
 
 const globalStore = globalThis as unknown as {

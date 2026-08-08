@@ -10,7 +10,7 @@
  * a typo or a stale path, and wiring a directory that is not an app writes files nothing compiles.
  */
 
-export type AppChoice =
+type AppChoice =
   | { ok: true; app: string | undefined }
   | { ok: false; message: string };
 

@@ -34,7 +34,7 @@ export interface SessionInfo {
 }
 
 /** The read-only slice of a Session that the projection needs. Keeps this module class-free. */
-export interface SessionView {
+interface SessionView {
   id: string;
   url: string;
   projectId: string | undefined;

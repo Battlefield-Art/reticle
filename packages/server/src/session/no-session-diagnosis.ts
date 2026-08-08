@@ -19,7 +19,7 @@
  * the hot resolve() path and this stays unit-testable.
  */
 
-export interface NoSessionFacts {
+interface NoSessionFacts {
   /** Whether ANY session has connected to this daemon since it booted. */
   everConnected: boolean;
   /** Whether this project has been through `reticle init` (a .reticle.json / projectId is present). */

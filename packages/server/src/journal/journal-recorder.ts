@@ -16,7 +16,7 @@ export interface JournalReader {
   readEvents(): Promise<ReticleEvent[]>;
 }
 
-export interface JournalRecorderOptions {
+interface JournalRecorderOptions {
   /** Injected elapsed-ms clock (never read from Date here — the clock-injection rule). */
   now: () => number;
   /** Flush the pending-event batch once this many accumulate. */

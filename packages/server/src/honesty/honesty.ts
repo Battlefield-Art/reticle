@@ -30,7 +30,7 @@ const MIN_ENVELOPE_SAMPLES = 3;
 /** Coverage when the SDK reported no blind spots during the window — it saw everything it can see. */
 const FULL_COVERAGE_PCT = 100;
 
-export interface HonestyInputs {
+interface HonestyInputs {
   grade: HonestyGrade;
   /** Present when a causal chain is presented; `window` = time-heuristic, never dataflow truth. */
   attribution?: string;
@@ -77,7 +77,7 @@ export function buildHonestyBlock(inputs: HonestyInputs): HonestyBlock {
   };
 }
 
-export interface HonestyBar {
+interface HonestyBar {
   /** The minimum grade a green must carry to be trusted (default: any). */
   minGrade?: HonestyGrade;
   /** Require capture integrity to be clean (no truncation / blind spots). */

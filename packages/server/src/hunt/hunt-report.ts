@@ -44,7 +44,7 @@ export interface HuntRun {
   stepsRun?: number;
 }
 
-export interface HuntSummary {
+interface HuntSummary {
   runs: number;
   /** Runs that actually drove at least one control. The denominator that can honestly be quoted. */
   runsWithCoverage: number;

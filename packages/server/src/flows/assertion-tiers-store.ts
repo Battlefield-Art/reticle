@@ -33,11 +33,11 @@ const AssertionTiersFileSchema = z.object({
   ),
 });
 
-export interface FlowBaseline {
+interface FlowBaseline {
   steps: StepExpect[];
   sources: string[];
 }
-export type FlowTiers = Record<string, FlowBaseline>;
+type FlowTiers = Record<string, FlowBaseline>;
 
 const ASSERTION_TIERS_VERSION = 1;
 

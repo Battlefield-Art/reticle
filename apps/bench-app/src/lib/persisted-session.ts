@@ -17,7 +17,7 @@ export const SESSION_ID_KEY = 'reticle.bench.sessionId';
 /** The server-visible half; a client that drops it looks signed in until the next API call. */
 const SESSION_COOKIE = 'bench_session';
 
-export interface PersistedSession {
+interface PersistedSession {
   token: string;
   sessionId: string;
 }

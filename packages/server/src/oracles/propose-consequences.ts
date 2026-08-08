@@ -9,7 +9,7 @@ import { EventType, type ReticleEvent, PredicateKind } from '@reticlehq/core';
  * (OSS-VS-SERVER); these local rules are OSS.
  */
 
-export interface ProposedConsequence {
+interface ProposedConsequence {
   /** A predicate object, directly usable as a mustHold. */
   predicate: Record<string, unknown>;
   /** Ranking tier: 0 strongest (signal) … 2 weakest (presence). */

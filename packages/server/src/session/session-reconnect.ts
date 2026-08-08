@@ -10,7 +10,7 @@
  * and inventing one for this would be a wire change for a two-second wait.
  */
 
-export interface WaitForReconnectOptions {
+interface WaitForReconnectOptions {
   /** The session registered under this id right now, or undefined if none is. */
   current: () => object | undefined;
   /** The session object that was live when the reload was dispatched. */

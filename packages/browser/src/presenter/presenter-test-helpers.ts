@@ -20,7 +20,7 @@ export const dataOn = (): string | null =>
 export const dataBusy = (): string | null =>
   document.querySelector('[data-reticle-glow]')?.getAttribute('data-busy') ?? null;
 
-export interface GlowFlips {
+interface GlowFlips {
   enters: number;
   exits: number;
   stop: () => void;

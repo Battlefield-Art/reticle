@@ -33,7 +33,7 @@ import { AppRuntime, isOpaqueOrigin } from '@reticlehq/core';
  */
 export type PageRuntime = AppRuntime;
 
-export interface TimeoutContext {
+interface TimeoutContext {
   url: string;
   /** The page's own last visibility report. */
   hidden: boolean;

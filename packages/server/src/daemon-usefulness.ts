@@ -37,7 +37,7 @@ export function resetDaemonUsefulness(): void {
   servedToolCall = false;
 }
 
-export interface UsefulnessFacts {
+interface UsefulnessFacts {
   /** Has any tool been dispatched since this daemon booted? */
   servedToolCall: boolean;
   /** Has any browser session ever connected? */
@@ -57,13 +57,13 @@ export function isUselessDaemon(facts: UsefulnessFacts): boolean {
 }
 
 /** The little of SessionManager the idle predicate reads — structural, so a fake needs two methods. */
-export interface IdleSessions {
+interface IdleSessions {
   count(): number;
   everConnected(): boolean;
 }
 
 /** The little of BrowserPool it reads. */
-export interface IdlePool {
+interface IdlePool {
   activeCount(): number;
 }
 

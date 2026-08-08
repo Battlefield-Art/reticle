@@ -39,7 +39,7 @@ interface PendingBlob {
   text: Promise<string | undefined>;
 }
 
-export interface DownloadOptions {
+interface DownloadOptions {
   /** Include a content preview. Gated for the same reason request bodies are: exports hold PII. */
   capturePreview?: boolean;
 }

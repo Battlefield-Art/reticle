@@ -19,12 +19,12 @@
  * alternative it replaces reported ZERO coverage on entire frameworks.
  */
 
-export interface CoverageControl {
+interface CoverageControl {
   ref: string;
   label: string;
 }
 
-export interface CoverageTally {
+interface CoverageTally {
   /** Controls on the page the agent has driven, by ref or by surviving label. */
   exercised: number;
   /** Controls the agent drove that are on the page no longer, and no label explains. */

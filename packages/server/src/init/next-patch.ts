@@ -21,7 +21,7 @@ const reticleDevImport = (specifier: string): string =>
 const RETICLE_DEV_IMPORT = reticleDevImport(RETICLE_DEV_SIBLING);
 
 /** Where the generated connect component goes, and how the mount file should import it. */
-export interface ReticleDevLocation {
+interface ReticleDevLocation {
   /** Project-relative path to write. */
   path: string;
   /** What the mount file (`app/layout.*` or `pages/_app.*`) should import. */

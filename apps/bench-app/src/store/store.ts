@@ -29,7 +29,7 @@ export interface Toast {
   detail?: string;
 }
 
-export interface RequestLog {
+interface RequestLog {
   id: number;
   method: string;
   path: string;

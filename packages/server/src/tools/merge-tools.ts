@@ -18,7 +18,7 @@ import type { ToolDef, ToolDeps } from './tool-kit.js';
  * like flow_replay/flow_verify/flow_heal that return their own documented verdict shapes — are NOT
  * merged. Only sibling families whose value is the capability, not the contract, are consolidated.
  */
-export interface MergeSpec {
+interface MergeSpec {
   name: string;
   description: string;
   /** action value → the original tool whose handler serves it. */

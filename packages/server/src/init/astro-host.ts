@@ -14,7 +14,7 @@
  * silently instrumenting one of them would leave half the app unverified while reporting success.
  */
 
-export interface AstroCandidate {
+interface AstroCandidate {
   path: string;
   source: string;
 }

@@ -28,7 +28,7 @@ const EnterpriseDefault = {
   HOT_MS: 500,
 } as const;
 
-export interface EnterpriseConfig {
+interface EnterpriseConfig {
   rows: number;
   cols: number;
   depth: number;

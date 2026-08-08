@@ -47,12 +47,12 @@ const HOST_ELEMENT_TYPES: ReadonlySet<string> = new Set(['RegularElement', 'Elem
 const PARENT_KEY = 'parent';
 
 /** The part of `svelte/compiler` this module uses. Structural, so `svelte` stays un-imported. */
-export interface SvelteCompilerLike {
+interface SvelteCompilerLike {
   parse: (source: string, options?: { modern?: boolean }) => unknown;
 }
 
 /** How the compiler is obtained. Injected in tests; the default resolves it from the app. */
-export type LoadSvelteCompiler = () => SvelteCompilerLike | null;
+type LoadSvelteCompiler = () => SvelteCompilerLike | null;
 
 /** Resolved once per process: `null` means "looked, not installed" and must not be retried per file. */
 let cachedCompiler: SvelteCompilerLike | null | undefined;
