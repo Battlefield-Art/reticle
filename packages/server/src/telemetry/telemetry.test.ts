@@ -80,12 +80,14 @@ describe('telemetry emitter', () => {
       now: () => 1700,
       fetchImpl: impl,
     });
-    await t.emit(TelemetryEventKind.CLI_COMMAND_RUN);
+    // A DAEMON event, because that is the shape carrying every optional block. The CLI event's own
+    // (deliberately session-less) shape is asserted in the case below.
+    await t.emit(TelemetryEventKind.DAEMON_STARTED);
     expect(calls[0]?.url).toBe('http://example.test/batch/');
     const body = calls[0]?.body;
     expect(body?.api_key).toBe('phc_test');
     const item = body?.batch[0];
-    expect(item?.event).toBe(TelemetryEventKind.CLI_COMMAND_RUN);
+    expect(item?.event).toBe(TelemetryEventKind.DAEMON_STARTED);
     expect(item?.timestamp).toBe(new Date(1700).toISOString());
     // Reassembled, the capture item must round-trip through the core contract.
     const parsed = TelemetryEventSchema.safeParse({

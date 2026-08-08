@@ -23,6 +23,14 @@ import { fileURLToPath } from 'node:url';
 const DIST = join(fileURLToPath(new URL('../../../packages/server/dist', import.meta.url)));
 const PORT = 9960;
 
+// Events that happen inside a DAEMON RUN and therefore carry `sessionId`. Mirrors core's
+// isSessionScoped; a one-shot CLI command is not a session and must not invent one.
+const SESSION_SCOPED_EVENTS = new Set([
+  'daemon_started', 'daemon_stopped', 'session_progress', 'mcp_client_connected',
+  'project_profiled', 'verification_completed', 'bug_found', 'runtime_crashed',
+  'feedback_submitted',
+]);
+
 const captured = [];
 const server = createServer((req, res) => {
   let body = '';
@@ -91,13 +99,22 @@ const beforeDaemonArg = find('cli_command_run').length;
 reportCliRun(['_daemon', '--port', '9000']);
 await settle();
 check('_daemon spawn does NOT count as a CLI run', find('cli_command_run').length === beforeDaemonArg);
+// Nor does `mcp`. It is the agent's MCP client opening its transport, which no person typed — and it
+// was 475 of 561 of this event (85%) in one real day, on an event whose purpose is human intent.
+// `mcp_client_connected` already reports an agent attaching, with strictly more detail.
+reportCliRun(['mcp', '--port', '9000']);
+await settle();
+check('`mcp` does NOT count as a CLI run — it is the agent\'s transport, not a typed command', find('cli_command_run').length === beforeDaemonArg);
 
 // ── 1b. Session correlation — the key that ties one daemon run together ───────
 {
-  const ids = new Set(captured.map((e) => e.properties.sessionId));
-  check('every event carries a sessionId', captured.every((e) => typeof e.properties.sessionId === 'string'));
-  check('  all events from one daemon share ONE sessionId', ids.size === 1, `${ids.size} distinct`);
-  check('  also sent as PostHog\'s own $session_id, so its session tooling works', captured.every((e) => e.properties.$session_id === e.properties.sessionId));
+  // A sessionId means A DAEMON RUN. A one-shot CLI command mints one per PROCESS that joins to
+  // nothing — measured over a real day, uniq(sessionId) was 704, of which 561 came from
+  // cli_command_run and not one was shared with a daemon. The true daemon count was 121, so every
+  // tile counting sessions was ~6x high.
+  check('every DAEMON event carries a sessionId', captured.filter((e) => SESSION_SCOPED_EVENTS.has(e.event)).every((e) => typeof e.properties.sessionId === 'string'));
+  check('  a one-shot CLI run carries NONE — it is not a session', find('cli_command_run').every((e) => e.properties.sessionId === undefined && e.properties.$session_id === undefined));
+  check('  nor does it carry `actor` — human by definition once `mcp` is excluded', find('cli_command_run').every((e) => e.properties.actor === undefined));
   // Dead fields from the v2→v3 migration that nothing set any more.
   check('  the dead sessionMs/tool fields are gone', captured.every((e) => e.properties.sessionMs === undefined && e.properties.tool === undefined));
 }
@@ -484,6 +501,18 @@ await new Promise((r) => setTimeout(r, 6000));
     check('  counted saved flows', p.project_flowCount === 1, String(p.project_flowCount));
     check('  computed featureDepth', typeof p.project_featureDepth === 'number');
   }
+}
+
+// ── the session key, checked once EVERY event has been emitted ────────────────
+// Placed last on purpose: run in section 1b it saw only CLI events, which deliberately carry no
+// sessionId, so it compared an empty set and passed for the wrong reason.
+{
+  const scoped = captured.filter((e) => SESSION_SCOPED_EVENTS.has(e.event));
+  const ids = new Set(scoped.map((e) => e.properties.sessionId));
+  check('all events from one daemon share ONE sessionId', ids.size === 1, `${ids.size} distinct across ${scoped.length} events`);
+  check('  also sent as PostHog\'s own $session_id, so its session tooling works', scoped.every((e) => e.properties.$session_id === e.properties.sessionId));
+  const unscoped = captured.filter((e) => !SESSION_SCOPED_EVENTS.has(e.event));
+  check('  and no one-shot event invents one', unscoped.every((e) => e.properties.sessionId === undefined), unscoped.map((e) => e.event).join(','));
 }
 
 // ── report ────────────────────────────────────────────────────────────────────

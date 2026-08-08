@@ -27,6 +27,7 @@ import {
   type Feedback,
   type Identity,
   type BugFound,
+  isSessionScoped,
   type InitOutcome,
   type McpConnection,
   type ProjectProfile,
@@ -342,10 +343,14 @@ export const createTelemetry = (opts: {
     } = event;
     // `$session_id` is PostHog's OWN session property, so sending ours under that name lights up
     // its built-in session views and funnels for free rather than requiring custom HogQL everywhere.
+    // `sessionId` rides only on events that happened inside a daemon run. A one-shot CLI command
+    // mints a per-process id that joins to nothing and inflates every session count — see
+    // isSessionScoped for the measurement.
     const properties: Record<string, unknown> = {
       ...rest,
-      sessionId: eventSessionId,
-      $session_id: eventSessionId,
+      ...(isSessionScoped(name)
+        ? { sessionId: eventSessionId, $session_id: eventSessionId }
+        : {}),
     };
     // Each block is flattened under its own prefix rather than nested. PostHog filters, breakdowns and
     // insight builders all operate on TOP-LEVEL properties, so a nested `project.stack` is invisible to

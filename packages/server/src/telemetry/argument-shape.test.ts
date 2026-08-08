@@ -44,8 +44,10 @@ describe('CLI flags — names only, never values', () => {
 });
 
 describe('tool parameters — names, plus only our own enums', () => {
-  it('reports which parameters an agent passed', () => {
-    expect(describeToolParams({ ref: 'e7', sessionId: 'abc' })).toEqual(['ref', 'sessionId']);
+  it('reports which parameters an agent passed, minus the ones every call carries', () => {
+    // sessionId is dropped: nearly every tool takes it and nearly every call passes it, so counting
+    // it filled a third of the histogram with "the agent addressed a session". See event-hygiene.
+    expect(describeToolParams({ ref: 'e7', sessionId: 'abc' })).toEqual(['ref']);
   });
 
   /**

@@ -135,6 +135,34 @@ export const TelemetryEventKind = {
 export type TelemetryEventKind = (typeof TelemetryEventKind)[keyof typeof TelemetryEventKind];
 
 /**
+ * Events that belong to a DAEMON RUN, and therefore carry `sessionId`.
+ *
+ * `sessionId` is minted per process, which is right for a daemon (a daemon run IS the session) and
+ * wrong for a one-shot CLI command, which invents one that joins to nothing. Measured over a real
+ * day: uniq(sessionId) was 704, of which 561 came from `cli_command_run` and NOT ONE was shared with
+ * a daemon. The real number of daemon runs was 121, so every tile counting sessions was ~6x high.
+ *
+ * Omitting the id on the one-shot events costs nothing — no join on those ids could ever have
+ * succeeded — and makes `uniq(sessionId)` mean the thing every dashboard already assumes it means.
+ */
+const SESSION_SCOPED: ReadonlySet<string> = new Set([
+  TelemetryEventKind.DAEMON_STARTED,
+  TelemetryEventKind.DAEMON_STOPPED,
+  TelemetryEventKind.SESSION_PROGRESS,
+  TelemetryEventKind.MCP_CLIENT_CONNECTED,
+  TelemetryEventKind.PROJECT_PROFILED,
+  TelemetryEventKind.VERIFICATION_COMPLETED,
+  TelemetryEventKind.BUG_FOUND,
+  TelemetryEventKind.RUNTIME_CRASHED,
+  TelemetryEventKind.FEEDBACK_SUBMITTED,
+]);
+
+/** True when this event happened inside a daemon run, so a `sessionId` on it means something. */
+export function isSessionScoped(kind: string): boolean {
+  return SESSION_SCOPED.has(kind);
+}
+
+/**
  * Who caused this. The only honest split available to us: a `reticle` command was TYPED by a person,
  * while an MCP tool call came from the agent's own loop.
  *
@@ -377,7 +405,12 @@ export const TelemetryEventSchema = z.object({
    * explicitly supports) interleaved into one undifferentiated stream, and no per-session funnel could
    * be built at all. It cannot be backfilled, which is why it is worth adding before the data matters.
    */
-  sessionId: z.string().min(1).max(64),
+  /**
+   * The daemon run this happened inside. ABSENT on one-shot CLI events — see isSessionScoped: a
+   * per-process id on `reticle status` is not a session, it is a number that inflates every session
+   * count and joins to nothing.
+   */
+  sessionId: z.string().min(1).max(64).optional(),
   event: z.nativeEnum(TelemetryEventKind),
   /** Client epoch-ms when the event happened (the server also stamps its own receive time). */
   ts: z.number().int().nonnegative(),
