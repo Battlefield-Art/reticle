@@ -280,4 +280,20 @@ describe('action result: testid normalization', () => {
     expect(out.steps[0]?.testid).toBe('a');
     expect(out.steps[1]?.testid).toBeUndefined();
   });
+
+  /**
+   * A sequence step reported ONLY its testid, while a single act reports role+name and
+   * component/source too. Every app without testids therefore compiled every sub-step to a volatile
+   * ref, the flow saved the degraded `unresolved` sentinel, and replay drifted — measured on 7 of 7
+   * apps in a field sweep. The narrowing is the whole bug: the anchors exist, they were dropped on
+   * the way out.
+   */
+  it('executeSequence carries the same anchors a single act does', async () => {
+    document.body.innerHTML = '<button>Pay now</button>';
+    const out = await executeSequence([
+      { ref: refOf('button'), action: 'click', args: { confirmDangerous: true } },
+    ]);
+    expect(out.steps[0]?.role).toBe('button');
+    expect(out.steps[0]?.name).toBe('Pay now');
+  });
 });

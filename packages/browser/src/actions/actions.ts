@@ -523,7 +523,16 @@ interface SequenceStepResult {
   dispatched: boolean;
   settled: boolean;
   settleReason: SettleReason | null;
+  /**
+   * The SAME anchors a single act reports. Reporting only the testid meant a testid-less app
+   * compiled every sub-step to a volatile ref, so the saved flow carried the degraded sentinel and
+   * every replay drifted.
+   */
   testid?: string;
+  component?: string;
+  role?: string;
+  name?: string;
+  source?: { file: string; line: number; column?: number };
   /** best-effort caveat for this step (e.g. synthetic hover may not fire enter/leave). */
   warning?: string;
 }
@@ -547,6 +556,10 @@ export async function executeSequence(steps: ActionStep[]): Promise<{
       settleReason: res.settleReason,
     };
     if (res.testid !== undefined) stepBase.testid = res.testid;
+    if (res.component !== undefined) stepBase.component = res.component;
+    if (res.role !== undefined) stepBase.role = res.role;
+    if (res.name !== undefined) stepBase.name = res.name;
+    if (res.source !== undefined) stepBase.source = res.source;
     if (res.warning !== undefined) stepBase.warning = res.warning;
     stepResults.push(stepBase);
   }

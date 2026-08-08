@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ActionType, DANGEROUS_ACTION_CONFIRM_ARG } from '@reticlehq/core';
+import { ActionType, DANGEROUS_ACTION_CONFIRM_ARG, QueryBy } from '@reticlehq/core';
 import { RecordingStore, type RecordedStep, type CompiledProgram } from './recordings.js';
 import { compileActStep, compileSequenceStep } from './replay.js';
 
@@ -68,6 +68,47 @@ describe('RecordingStore', () => {
       { steps: [{ testid: 'delete-account' }] },
     );
     expect((sequence.args['steps'] as { args: Record<string, unknown> }[])[0]?.args).toEqual({});
+  });
+
+  /**
+   * The sequence compiler understood ONLY a testid, while the act compiler had long since learned
+   * role+name and component/source. So on any app without testids every sub-step fell to a volatile
+   * ref, `stable` went false, the saved flow carried the degraded `unresolved` sentinel, and replay
+   * drifted — 7 apps out of 7 in a field sweep, with heal correctly refusing to match a placeholder.
+   * One compiler, one anchor priority: testid > role+name > component/source.
+   */
+  it('compiles a sequence sub-step by role+name, and by component, when there is no testid', () => {
+    const sequence = compileSequenceStep(
+      {
+        steps: [
+          { ref: 'e1', action: ActionType.CLICK, args: {} },
+          { ref: 'e2', action: ActionType.CLICK, args: {} },
+        ],
+      },
+      {
+        steps: [
+          { role: 'button', name: 'Pay now' },
+          { component: 'Row', source: { file: 'src/Row.tsx', line: 12 } },
+        ],
+      },
+    );
+    expect(sequence.stable).toBe(true);
+    const steps = sequence.args['steps'] as Record<string, unknown>[];
+    expect(steps[0]).toMatchObject({ by: QueryBy.ROLE, value: 'button', name: 'Pay now' });
+    expect(steps[1]).toMatchObject({
+      by: QueryBy.COMPONENT,
+      component: 'Row',
+      source: { file: 'src/Row.tsx', line: 12 },
+    });
+  });
+
+  it('leaves a sub-step ref-bound (unstable) only when the element has no anchor at all', () => {
+    const sequence = compileSequenceStep(
+      { steps: [{ ref: 'e3', action: ActionType.CLICK, args: {} }] },
+      { steps: [{}] },
+    );
+    expect(sequence.stable).toBe(false);
+    expect((sequence.args['steps'] as Record<string, unknown>[])[0]).toMatchObject({ ref: 'e3' });
   });
 
   it('compiles a stable component (auto-anchor) step when the result has no testid but a component/source', () => {
