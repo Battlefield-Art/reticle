@@ -6,6 +6,7 @@ import {
   type ReticleEvent,
 } from '@reticlehq/core';
 import { z } from 'zod';
+import { describeObserved } from './observed-in-window.js';
 
 export type Predicate =
   | { kind: 'element'; query: ElementQuery; state?: ElementState; absent?: boolean }
@@ -231,7 +232,14 @@ export function evalNet(
     : {
         pass: false,
         failureReason: `no network call matched ${JSON.stringify(p)}`,
-        observed: 'no matching network call in the window',
+        // Same reasoning as the signal miss: "no matching call" cannot be told apart from "the app
+        // made no calls at all", and those need different fixes.
+        observed: describeObserved(
+          'calls',
+          events
+            .filter((e) => e.type === EventType.NET_REQUEST)
+            .map((e) => `${str(e.data['method']) ?? 'GET'} ${str(e.data['url']) ?? ''}`),
+        ),
         expected: `at least one call matching ${JSON.stringify(p)}`,
         assertion: 'net.present',
       };
@@ -394,7 +402,12 @@ export function evalSignal(
     observed:
       sameName.length > 0
         ? `signal '${p.name ?? '(any)'}' fired ${String(sameName.length)}x, payload: ${JSON.stringify(sameName[0])}`
-        : `signal '${p.name ?? '(any)'}' never fired in the window`,
+        : // Name what DID fire: a typo'd signal name and a genuinely dead action produce the same
+          // sentence otherwise, and the agent cannot tell them apart. See observed-in-window.ts.
+          `signal '${p.name ?? '(any)'}' never fired — ${describeObserved(
+            'signals',
+            events.filter((e) => e.type === EventType.SIGNAL).map((e) => str(e.data['name']) ?? ''),
+          )}`,
     expected:
       p.dataMatches === undefined
         ? `signal '${p.name ?? '(any)'}' to fire`
