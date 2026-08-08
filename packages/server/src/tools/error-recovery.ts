@@ -35,8 +35,10 @@ export const RECOVERY = {
     'That baseline does not exist yet. Call reticle_baseline { action: "list" } to see saved names, or ' +
     'reticle_baseline { action: "save", name } to capture one before diffing against it.',
   MISSING_RECORDING:
-    'No recording by that name is in progress. Start one with reticle_record { action: "start", name } ' +
-    'before annotating, stopping, or saving it.',
+    // `recordingName`, not `name`. The hint said `name`, so an agent that followed it exactly got
+    // InvalidParams — a recovery that fails is worse than none, because it spends the retry.
+    'No recording by that name is in progress. Start one with ' +
+    'reticle_record { action: "start", recordingName } before annotating, stopping, or saving it.',
   STALE_REF:
     'That ref is stale: refs are invalidated whenever the DOM re-renders, so any action that ' +
     'navigated, opened a modal, re-sorted a list or changed the page invalidates every ref taken ' +
@@ -127,6 +129,24 @@ export function recoveryFor(message: string): string | undefined {
 }
 
 /**
+ * A schema rejection: the call named a parameter that does not exist, or gave one the wrong type.
+ *
+ * Matched by the SHAPES the validators actually produce (zod's codes, and the MCP layer's wrapper),
+ * because these are our own machinery talking, not the app.
+ */
+const ARGUMENT_REJECTION =
+  /Unrecognized key|unrecognized_keys|invalid_type|Invalid arguments for tool|Unknown parameters? for|^Required |Expected \w+, received/i;
+
+/**
+ * What to say instead of asking for a bug report. The schema already stated the problem precisely;
+ * this only says who can fix it and where to look.
+ */
+export const ARGUMENT_RECOVERY =
+  'That call did not match the tool\'s schema — the message above names the parameter. Nothing ran, ' +
+  'so no result is affected. Call reticle_tools { names: ["<tool>"] } for its exact parameters and ' +
+  'retry.';
+
+/**
  * The ask attached to errors we do NOT recognize. An unrecognized error is, by definition, the case
  * where Reticle failed in a way nobody anticipated — the single highest-value moment to hear from the
  * agent, and until now the moment where the agent worked around us in silence and we learned nothing.
@@ -157,6 +177,10 @@ export function buildErrorPayload(message: string): ErrorPayload {
   // inspected the machine and named the cause; a second, contradictory hint is noise, and inviting a
   // bug report about a condition Reticle diagnosed itself is exactly backwards.
   if (isSelfRecovering(message)) return { error: message };
+  // An argument rejection is the agent's to fix, not a Reticle defect. Reported from the field: a
+  // clean `unrecognized_keys: ["value"]` came back wrapped in "may be a defect in Reticle", which
+  // spends the agent's turn and fills the feedback channel with reports about malformed calls.
+  if (ARGUMENT_REJECTION.test(message)) return { error: message, recovery: ARGUMENT_RECOVERY };
   const recovery = recoveryFor(message);
   return recovery !== undefined
     ? { error: message, recovery }

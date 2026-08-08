@@ -19,6 +19,7 @@ import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
 import { causalSummary } from '../capsule/causal-summary.js';
 import { findContradictions } from '../events/contradictions.js';
 import { decideVerified } from '../honesty/verified.js';
+import { readsDomState } from '../honesty/already-true.js';
 import { saveFailedAssertCapsule } from './act-capsule.js';
 import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
@@ -383,6 +384,14 @@ export const ACT_TOOLS: ToolDef[] = [
       // (the whole point of act_and_wait) attribute to this action. finishAction fires after the wait.
       session.beginAction(ReticleTool.ACT_AND_WAIT, asRecord(args));
       let settledOutcome: boolean | undefined;
+      // Was the declared consequence ALREADY TRUE? Only asked for predicates that read live DOM
+      // state — event-based ones are floored at this act's cursor and cannot be satisfied by the
+      // past, so they need no pre-check and pay nothing. One extra query, on the path where a green
+      // is otherwise unfalsifiable. See honesty/already-true.
+      const alreadyTrue =
+        until !== undefined && readsDomState(until)
+          ? (await evaluatePredicate(session, until, since, false)).pass
+          : false;
       try {
         const actResult = await session.command(ReticleCommand.ACT, {
           ref: args['ref'],
@@ -462,6 +471,7 @@ export const ACT_TOOLS: ToolDef[] = [
         const outcomeUnread = hasUnreadWriteOutcome(windowEvents);
         const decision = decideVerified({
           pass: verdict.pass,
+          ...(alreadyTrue ? { alreadyTrue } : {}),
           // An assertion nobody could evaluate must not be reported as one the app failed.
           ...(verdict.inconclusive === undefined ? {} : { inconclusive: verdict.inconclusive }),
           honesty,

@@ -22,6 +22,12 @@ export interface VerifiedInputs {
    * instrumented to read. Carries the sentence naming what is missing.
    */
   inconclusive?: string;
+  /**
+   * The declared consequence was ALREADY TRUE before the action ran, so its holding afterwards says
+   * nothing about the action. Only meaningful for predicates that read live DOM state — event-based
+   * ones are floored at the act's cursor and cannot be satisfied by the past.
+   */
+  alreadyTrue?: boolean;
   /** Cross-channel disagreements found in the action's window. */
   contradictions?: readonly { kind: string }[];
   /** Did a real frame flush before the wait gave up? */
@@ -57,9 +63,23 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
     };
   }
 
-  // A failed assertion is the most actionable fact there is; it leads.
+  // A failed assertion is the most actionable fact there is; it leads — including over
+  // `alreadyTrue`, because a condition that held before AND fails now is a real regression.
   if (pass === false) {
     return { verified: Verified.NO, because: 'the declared consequence did not hold' };
+  }
+
+  // A green that was already green before the action is not evidence about the action. Measured in
+  // the field: a click asserted with `{ text: 'Parallel Routes' }` returned verified "yes" in 478ms
+  // with routeChanges 0, because the text was the nav link already on screen — the real navigation
+  // landed 1.8s later. UNKNOWN rather than NO on purpose: the app may well be fine, and reporting a
+  // failure we did not observe would be its own false claim.
+  if (inputs.alreadyTrue === true) {
+    return {
+      verified: Verified.UNKNOWN,
+      because:
+        'the declared consequence was already true before this action, so it proves nothing about it — assert something the action CHANGES (a signal, a request, a route, or store state)',
+    };
   }
 
   // A contradiction outranks a passing assertion, and that inversion is the whole point: the case

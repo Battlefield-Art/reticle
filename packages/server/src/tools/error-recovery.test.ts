@@ -267,3 +267,31 @@ describe('a self-diagnosing message is left alone', () => {
     );
   });
 });
+
+/**
+ * A schema rejection is the agent's argument to fix, not evidence of a Reticle defect.
+ *
+ * Reported from the field: a clean `unrecognized_keys: ["value"]` rejection came back wrapped in
+ * "This error is not one Reticle recognizes, which means it may be a defect in Reticle". Nothing
+ * misbehaved — the call named a parameter that does not exist, and the schema said so precisely.
+ * Inviting a bug report there spends the agent's turn and fills the feedback channel with reports
+ * about calls that were simply wrong, which is the fastest way to make real reports unfindable.
+ */
+describe('argument rejections are not Reticle defects', () => {
+  it.each([
+    ['an unknown key', 'Unrecognized key(s) in object: \'value\''],
+    ['a zod code', 'invalid_type: expected string, received number at path ["by"]'],
+    ['the MCP wrapper', 'Invalid arguments for tool reticle_query: Expected string, received number'],
+    ['a missing required arg', 'Required at path ["action"]'],
+  ])('%s gets a recovery, never the defect ask', (_label, message) => {
+    const payload = buildErrorPayload(message);
+    expect(payload.feedback, message).toBeUndefined();
+    expect(payload.recovery, message).toBeDefined();
+  });
+
+  it('a genuinely unrecognized failure still asks for feedback', () => {
+    // The ask must keep working, or this fix trades one silence for another.
+    const payload = buildErrorPayload('ECONNRESET while flushing the observer queue');
+    expect(payload.feedback).toBeDefined();
+  });
+});

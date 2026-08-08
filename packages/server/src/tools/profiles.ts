@@ -6,10 +6,11 @@ import type { ToolDef } from './tools.js';
  * every turn, so a smaller surface is a per-turn token saving that compounds across a loop. Fewer
  * tools also makes the model wander less (fewer turns, higher accuracy). See bench/agent-loop-and-replay.md.
  *
- * MEASURED surface sizes (assert them with profile-reachability.test.ts rather than trusting prose —
- * every count previously written here was wrong, and the token figures below derive from those counts):
- *   core 15 · standard 32 · hybrid 15 · full 43 · dynamic 2
- * core and hybrid are both 14 because a trimmed profile now also advertises the two meta-tools, which
+ * Surface sizes are NOT restated here. They were wrong twice — most recently `core 15 · standard 32
+ * · hybrid 15 · full 43` against an actual 16 / 33 / 16 / 46, which means the token figures derived
+ * from them were wrong too. A list that grows every release cannot be tracked by prose, so the counts
+ * live in profile-sizes.test.ts where a gate reads them.
+ * core and hybrid match in size because a trimmed profile also advertises the two meta-tools, which
  * is what keeps an un-advertised tool reachable through reticle_run.
  *
  * core — the verify loop a coding agent actually needs: navigate→look→act→observe→assert,
@@ -85,7 +86,7 @@ export const CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   // bug is half the job; knowing which file to open is the half that makes the agent useful, and it
   // is the one capability here with no substitute in any other verification tool. It sat in
   // `standard`, so under the default profile an agent had to already know it existed and reach it
-  // through reticle_run — which, observed over a full 43-tool drive, means it never gets called.
+  // through reticle_run — which, observed over a drive of the whole surface, means it never gets called.
   // The measured floor that justifies a lean core was about CUTTING to 8 (accuracy 5/5 → 3/5), not
   // about holding at 12; one tool of schema tax to close the find→fix loop is the right trade.
   ReticleTool.INSPECT,
