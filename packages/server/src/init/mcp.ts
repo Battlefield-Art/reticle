@@ -54,8 +54,24 @@ const RETICLE_PACKAGE = RETICLE_NPM_PACKAGE;
 const MCP_SUBCOMMAND = 'mcp';
 const CLAUDE_CLI = 'claude';
 
-/** Args after `npx` that launch the bridge: `@reticlehq/server mcp`. Portless — the port comes from
- * the project's `.reticle.json` at runtime, so one global entry works for every project. */
+/**
+ * Args after `npx` that launch the bridge: `@reticlehq/server mcp`. Portless — the port comes from
+ * the project's `.reticle.json` at runtime, so one global entry works for every project.
+ *
+ * DELIBERATELY UNPINNED, and the trade is worth stating. `reticle init` pins the SDK to the CLI's
+ * exact version, so on release day the app can be on the new one while npx serves a cached older
+ * build — a real skew, reported from the field. Pinning this entry would remove that window.
+ *
+ * It would also freeze the agent's MCP server at whatever version was installed the day `init` ran,
+ * for as long as that entry survives — and `reticle update` upgrades the CLI, not a global agent
+ * config. Reticle's biggest measured problem is fixes not reaching people (2.4.0 reached zero users
+ * before its nudge existed), and a permanent pin makes that worse for every install, to close a
+ * window that lasts until the next npx cache miss.
+ *
+ * So it stays unpinned, and the skew is handled where it actually shows up: the contract fingerprint
+ * makes a real mismatch loud on the next tool result (see version-skew), and a stale entry of our own
+ * shape is now repaired on re-run rather than reported "already registered" (see cursor.ts).
+ */
 export function npxServerArgs(): string[] {
   return [RETICLE_PACKAGE, MCP_SUBCOMMAND];
 }

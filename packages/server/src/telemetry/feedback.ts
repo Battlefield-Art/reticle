@@ -31,6 +31,7 @@ import {
 } from '@reticlehq/core';
 import { platform } from 'node:os';
 import { getTelemetry } from './telemetry.js';
+import { isReticleSourceCheckout } from './dev-repo.js';
 import { SERVER_VERSION } from '../server-version.js';
 import { feedbackContext, type SessionFacts } from './feedback-context.js';
 
@@ -173,7 +174,12 @@ export async function submitFeedback(
   if (!telemetry.enabled) {
     return {
       sent: false,
-      reason: 'telemetry is disabled on this machine, so feedback has nowhere to go',
+      // Named precisely, because the commonest cause is not what the old wording suggested: a
+      // Reticle SOURCE CHECKOUT disables telemetry by cwd, and that is exactly where release runs and
+      // contributor sessions happen — so the reports most worth having were the ones silently lost.
+      reason: isReticleSourceCheckout(opts.cwd ?? process.cwd())
+        ? 'this is a Reticle source checkout, where telemetry is disabled by design — so feedback has nowhere to go. Open an issue at https://github.com/reticlehq/reticle/issues instead, or run from the app you are verifying.'
+        : `telemetry is disabled on this machine, so feedback has nowhere to go. Re-enable with \`reticle telemetry enable\`, or open an issue at https://github.com/reticlehq/reticle/issues.`,
       redacted,
       context,
     };
@@ -199,8 +205,21 @@ export async function submitFeedback(
       context,
     };
   }
-  await telemetry.emit(TelemetryEventKind.FEEDBACK_SUBMITTED, { feedback: parsed.data });
-  return { sent: true, redacted, context };
+  // `sent` reflects DELIVERY, not handing the payload to the emitter. It was unconditional, so a DNS
+  // miss or a 4xx both reported "filed" — and this is the only qualitative channel the product has,
+  // so a silent failure here loses the report AND tells the reporter it worked.
+  const delivered = await telemetry.emit(TelemetryEventKind.FEEDBACK_SUBMITTED, {
+    feedback: parsed.data,
+  });
+  return delivered
+    ? { sent: true, redacted, context }
+    : {
+        sent: false,
+        reason:
+          'the report could not be delivered (the network call failed or was rejected) — it was NOT filed. Retry, or open an issue at https://github.com/reticlehq/reticle/issues with the same detail.',
+        redacted,
+        context,
+      };
 }
 
 /**

@@ -99,7 +99,7 @@ describe('the human prompt re-arms, but is capped', () => {
 
   const enableChannel = (): void => {
     vi.spyOn(telemetryModule, 'getTelemetry').mockReturnValue({
-      emit: async () => {},
+      emit: () => Promise.resolve(true),
       enabled: true,
       firstRun: false,
     });

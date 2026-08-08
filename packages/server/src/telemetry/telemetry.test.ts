@@ -169,7 +169,7 @@ describe('telemetry emitter', () => {
     }
   });
 
-  it('never rejects when the network throws (best-effort)', async () => {
+  it('never rejects when the network throws — and reports the failure rather than hiding it', async () => {
     const failing = (() => Promise.reject(new Error('offline'))) as unknown as typeof fetch;
     const t = createTelemetry({
       cwd: USER_PROJECT,
@@ -177,6 +177,31 @@ describe('telemetry emitter', () => {
       env: TEST_ENV,
       fetchImpl: failing,
     });
-    await expect(t.emit(TelemetryEventKind.CLI_COMMAND_RUN)).resolves.toBeUndefined();
+    // Resolving is the contract — a lost metric must never surface to a user. But it resolves FALSE,
+    // because one caller (reticle_feedback) shows a receipt to an agent and must not claim delivery.
+    await expect(t.emit(TelemetryEventKind.CLI_COMMAND_RUN)).resolves.toBe(false);
+  });
+
+  /**
+   * The other half of the same contract. `reticle_feedback` returned `sent: true` unconditionally
+   * while the send could fail silently, so a DNS miss and a 4xx both read as filed — on the only
+   * qualitative channel the product has. `emit` now answers whether the event actually landed.
+   */
+  it('reports TRUE when the event actually lands', async () => {
+    const { impl } = recordingFetch();
+    const t = createTelemetry({ cwd: USER_PROJECT, version: '1', env: TEST_ENV, fetchImpl: impl });
+    await expect(t.emit(TelemetryEventKind.CLI_COMMAND_RUN)).resolves.toBe(true);
+  });
+
+  it('reports FALSE when the endpoint REJECTS the payload — a 4xx is not a delivery', async () => {
+    const rejecting = (() =>
+      Promise.resolve({ ok: false, status: 400 })) as unknown as typeof fetch;
+    const t = createTelemetry({
+      cwd: USER_PROJECT,
+      version: '1',
+      env: TEST_ENV,
+      fetchImpl: rejecting,
+    });
+    await expect(t.emit(TelemetryEventKind.CLI_COMMAND_RUN)).resolves.toBe(false);
   });
 });

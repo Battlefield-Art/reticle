@@ -239,13 +239,21 @@ export interface Telemetry {
    * CLI process can exit immediately instead of waiting out the POST (use it from command entry
    * points; daemon-side events send in-process).
    */
-  emit(kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<void>;
+  /**
+   * Send one event. Resolves to whether it was DELIVERED.
+   *
+   * Almost every caller ignores the result and should — a lost metric must never surface to a user.
+   * `reticle_feedback` is the exception: it hands a receipt to an agent, and reporting "filed" for a
+   * send that failed loses the report and lies about it in the same breath.
+   */
+  emit(kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<boolean>;
   readonly enabled: boolean;
   /** True the very first run on this machine — the CLI emits INSTALL alongside the first INVOKE. */
   readonly firstRun: boolean;
 }
 
-const NOOP: Telemetry = { emit: async () => {}, enabled: false, firstRun: false };
+// A disabled emitter delivers nothing, and says so — `false` is the honest answer, not a courtesy.
+const NOOP: Telemetry = { emit: () => Promise.resolve(false), enabled: false, firstRun: false };
 
 /**
  * Build the telemetry emitter for this process. Resolves identity + opt-out ONCE; each `emit` builds a
@@ -295,7 +303,18 @@ export const createTelemetry = (opts: {
       spawn(command, args, { detached: true, stdio: 'ignore' }).unref();
     });
 
-  const emit = async (kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<void> => {
+  /**
+   * Returns whether the event was actually DELIVERED.
+   *
+   * Every caller but one ignores this and should: a lost metric must never surface to a user. The
+   * exception is `reticle_feedback`, which hands a receipt back to an agent — `sent: true` there was
+   * unconditional, so a DNS miss or a 4xx both read as "filed", and the only qualitative channel the
+   * product has could fail silently while telling the reporter it had worked.
+   *
+   * A detached send reports false: it is handed to a disowned child precisely so the caller does not
+   * wait, so its outcome is genuinely unknown and claiming success would be the same lie.
+   */
+  const emit = async (kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<boolean> => {
     const event: TelemetryEvent = {
       v: TELEMETRY_EVENT_VERSION,
       anonymousId,
@@ -393,16 +412,19 @@ export const createTelemetry = (opts: {
     try {
       if (extra?.detach === true && opts.fetchImpl === undefined) {
         spawnDetached(process.execPath, ['-e', DETACHED_SEND_SCRIPT, url, body]);
-        return;
+        return false; // handed off, outcome unknowable from here
       }
-      await doFetch(url, {
+      const response = await doFetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body,
         signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
       });
+      // A 4xx is a rejected payload, not a delivery. It must not read as filed.
+      return response.ok !== false;
     } catch {
       /* best-effort: a lost metric must never surface to the user */
+      return false;
     }
   };
 

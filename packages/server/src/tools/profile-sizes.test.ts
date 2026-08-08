@@ -22,7 +22,9 @@ const EXPECTED_SIZE: Record<ToolProfile, number> = {
   [TOOL_PROFILE.CORE]: 16,
   [TOOL_PROFILE.HYBRID]: 16,
   [TOOL_PROFILE.STANDARD]: 33,
-  [TOOL_PROFILE.FULL]: 46,
+  // 46 tools + the two meta-tools: every recovery message points at reticle_tools, so a profile
+  // without it makes our own advice a dead end.
+  [TOOL_PROFILE.FULL]: 48,
 };
 
 describe('advertised surface sizes', () => {
@@ -31,7 +33,18 @@ describe('advertised surface sizes', () => {
   });
 
   it('full advertises the ENTIRE surface, which is what "full" has to mean', () => {
-    expect(advertisedTools(TOOL_PROFILE.FULL)).toHaveLength(TOOLS.length);
+    const names = new Set(advertisedTools(TOOL_PROFILE.FULL).map((t) => t.name));
+    for (const tool of TOOLS) expect(names.has(tool.name), tool.name).toBe(true);
+  });
+
+  it('EVERY profile can look up a tool\'s parameters', () => {
+    // Recovery messages across the server say "Call reticle_tools { names: [...] }". A profile that
+    // does not advertise it turns our own advice into a dead end — `full` used to be exactly that.
+    for (const profile of Object.values(TOOL_PROFILE)) {
+      const names = advertisedTools(profile).map((t) => t.name);
+      expect(names, profile).toContain('reticle_tools');
+      expect(names, profile).toContain('reticle_run');
+    }
   });
 
   it('every trimmed profile is smaller than full, or it is not a trim', () => {

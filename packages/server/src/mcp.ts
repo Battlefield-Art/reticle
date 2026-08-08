@@ -235,7 +235,11 @@ export function advertisedTools(profile: ToolProfile): ToolDef[] {
   // its own RETICLE_TOOL_PROFILE did not take (the daemon read the value it started with).
   const origin = describeToolProfile(profile);
   if (profile === TOOL_PROFILE.DYNAMIC) return buildDynamicTools(TOOLS, origin);
-  if (profile === TOOL_PROFILE.FULL) return TOOLS;
+  // `full` advertises every tool AND the two meta-tools. It needs no escape hatch — that is what
+  // "full" means — but `reticle_tools` is not a hatch, it is parameter lookup, and every recovery
+  // message this server emits says "Call reticle_tools { names: [...] } for its parameters". Leaving
+  // it out made our own advice a dead end on the one profile that advertises everything.
+  if (profile === TOOL_PROFILE.FULL) return [...TOOLS, ...buildDynamicTools(TOOLS, origin)];
   const base = filterTools(TOOLS, profile === TOOL_PROFILE.HYBRID ? TOOL_PROFILE.CORE : profile);
   return [...base, ...buildDynamicTools(TOOLS, origin)];
 }
