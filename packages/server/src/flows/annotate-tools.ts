@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { aliasParam } from '../tools/alias-args.js';
 import { AnnotationErrorCode, AnnotationSchema, type AnnotateResult } from '@reticlehq/core';
 import { RECOVERY } from '../tools/error-recovery.js';
 
@@ -54,6 +55,12 @@ export const ANNOTATE_TOOLS: ToolDef[] = [
     inputSchema: {
       // `flow` selects the recording; `name`/`signal`/`testid`/`dataMatches` are the annotation fields.
       flow: z.string().optional().describe("Named recording to annotate. Defaults to 'default'."),
+      // Every other flow tool says `flowName`, and reticle_flow_save's own description sends the
+      // agent here — so the spelling it arrives with is the one this tool did not accept.
+      flowName: z
+        .string()
+        .optional()
+        .describe('Alias for `flow` (the name every other flow tool uses).'),
       kind: z
         .string()
         .describe(
@@ -136,7 +143,7 @@ export const ANNOTATE_TOOLS: ToolDef[] = [
       code: z.string().optional(),
     },
     handler: (deps: ToolDeps, args): Promise<AnnotateResult> => {
-      const name = asString(args['flow']) ?? DEFAULT_RECORDING;
+      const name = asString(aliasParam(args, 'flow', ['flowName'])['flow']) ?? DEFAULT_RECORDING;
 
       // Structured boundary: a free NL string / unknown kind fails the schema → UNKNOWN_KIND.
       const parsed = AnnotationSchema.safeParse(args);

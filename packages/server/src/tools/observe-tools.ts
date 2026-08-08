@@ -3,6 +3,7 @@
  * reticle_console, reticle_animations. Split out of tools.ts; assembled back via...OBSERVE_TOOLS.
  */
 import { z } from 'zod';
+import { aliasParam } from './alias-args.js';
 import { ReticleCommand, DEFAULT_ASSERT_TIMEOUT_MS } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport } from '../events/reaction.js';
@@ -233,9 +234,11 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     description:
       'Block until a predicate is satisfied (or already true in the recent buffer), else time out. Returns matching evidence or a near-miss diagnosis. By default it only counts events since your last act, so a signal buffered BEFORE the action can never fake a pass; pass `since` (an observe/act cursor) to widen or narrow that window explicitly.',
     inputSchema: {
-      predicate: PredicateSchema.describe(
+      predicate: PredicateSchema.optional().describe(
         'Predicate to wait for: { signal }, { net }, { element }, { kind: "net", ok: false } (assert on the OUTCOME — the honest field for IPC, which has no status code), { kind: "state", store, path, equals } (assert a registered store\'s value directly — the source of truth no DOM read can reach; equals takes a literal or { $gte | $contains | $length } pattern), { kind: "settled", quietMs } (deterministic network + DOM idle — prefer this over a fixed sleep), or a combination via allOf/anyOf.',
       ),
+      // Same concept, the neighbouring tool's name. See alias-args.ts.
+      until: PredicateSchema.optional().describe("Alias for `predicate` (act_and_wait's name)."),
       timeout_ms: z.number().optional().describe('Maximum wait in milliseconds. Default: 4000.'),
       since: z
         .number()
@@ -278,7 +281,10 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      const predicate = PredicateSchema.parse(args['predicate']);
+      // `until` is act_and_wait's name for this — see alias-args.ts.
+      const predicate = PredicateSchema.parse(
+        aliasParam(args, 'predicate', ['until'])['predicate'],
+      );
       // Honesty: explicit since wins; else default to the last act's cursor; else the whole buffer.
       const since = asNumber(args['since']) ?? session.lastAct.cursor() ?? 0;
       const verdict = await waitForPredicate(
@@ -303,9 +309,10 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     description:
       'Evaluate a predicate (optionally waiting up to timeout_ms). Returns { pass, evidence, failureReason? }. The end of every verify loop. Prefer a { signal } or { net } consequence over { element }/{ text } presence — a passing presence-only assertion returns `advice` because a wrong/healed element can fake it. By default it only counts events since your last act, so a stale buffered signal can never fake a pass; pass `since` (an observe/act cursor) to set the window explicitly.',
     inputSchema: {
-      predicate: PredicateSchema.describe(
+      predicate: PredicateSchema.optional().describe(
         'Predicate to evaluate: { signal }, { net }, { element } or a combination.',
       ),
+      until: PredicateSchema.optional().describe("Alias for `predicate` (act_and_wait's name)."),
       timeout_ms: z
         .number()
         .optional()
@@ -369,7 +376,10 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      const predicate = PredicateSchema.parse(args['predicate']);
+      // `until` is act_and_wait's name for this — see alias-args.ts.
+      const predicate = PredicateSchema.parse(
+        aliasParam(args, 'predicate', ['until'])['predicate'],
+      );
       const timeout = asNumber(args['timeout_ms']) ?? 0;
       // Honesty: explicit since wins; else default to the last act's cursor; else the whole buffer.
       const since = asNumber(args['since']) ?? session.lastAct.cursor() ?? 0;
