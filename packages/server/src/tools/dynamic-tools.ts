@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ToolDef, ToolDeps } from './tools.js';
 import { runTool } from './invoke-tool.js';
+import { mergedNameRedirect, mergedNameMessage } from './merged-name-redirect.js';
 import { ReticleTool } from './tool-names.js';
 import { TOOL_PROFILE_ENV, type ToolProfileOrigin } from './profiles.js';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
@@ -121,6 +122,16 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolProfileOrig
         // A non-zero count here means our advertised surface is confusing the agent — it reached for
         // something it believed existed. That is a docs/naming defect, and it was invisible.
         getSessionMetrics().recordUnknownTool();
+        // ...and for 22 of those names the capability DOES exist, it just moved when tools merged.
+        // Answering "unknown tool" there is simply wrong; see merged-name-redirect.
+        const moved = mergedNameRedirect(name);
+        if (moved !== undefined) {
+          return {
+            error: mergedNameMessage(name, moved),
+            tool: moved.tool,
+            ...(moved.action === undefined ? {} : { action: moved.action }),
+          };
+        }
         return { error: `unknown tool '${name}'`, available: allTools.map((t) => t.name) };
       }
       // The escape hatch is where a typo is MOST likely, because an unadvertised tool's parameters

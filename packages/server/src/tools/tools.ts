@@ -476,7 +476,7 @@ const RAW_TOOLS: ToolDef[] = [
  * Guardrail (from the plan): the 12-tool core hot-set keeps its EXACT names and shapes and is never
  * merged — sessions/navigate/snapshot/query/act/act_and_wait/observe/network/console/wait_for/assert/state.
  */
-const MERGE_PLANS: MergePlan[] = [
+export const MERGE_PLANS: MergePlan[] = [
   {
     name: ReticleTool.BASELINE,
     description:
@@ -529,7 +529,7 @@ const MERGE_PLANS: MergePlan[] = [
  * Retired from the MCP surface entirely (capability preserved elsewhere, per the plan):
  * - run_record: auto-recording on flow_replay already persists run outcomes.
  */
-const RETIRED_FROM_SURFACE: string[] = [
+export const RETIRED_FROM_SURFACE: string[] = [
   ReticleTool.RUN_RECORD, // auto-recording on flow_replay already persists run outcomes
   ReticleTool.REFRESH, // absorbed into reticle_navigate { reload: true }
   ReticleTool.WAIT_READY, // server-internal: the first live call already blocks for the session

@@ -15,6 +15,7 @@ import { buildDynamicTools } from './tools/dynamic-tools.js';
 import { runTool, SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
 import { sessionEnvelopeShape } from './tools/tool-kit.js';
 import { buildErrorPayload } from './tools/error-recovery.js';
+import { resultIsError } from './mcp-is-error.js';
 import { unadvertisedToolHelp } from './tools/unadvertised-help.js';
 
 /** The JSON-RPC method the SDK registers its tool dispatcher under. */
@@ -441,13 +442,21 @@ export function createMcpServer(
       try {
         const result = await runTool(tool, deps, args);
         const text = encodeResult(result, encoding);
+        // A tool that RETURNS `{ error, recovery }` refused just as surely as one that threw, and
+        // `isError` is the field a caller branches on. Without this it was set only on the throw
+        // path, so half the surface reported a refusal as a success. See mcp-is-error.
+        const isError = resultIsError(result);
         if (tool.outputSchema !== undefined) {
           return {
+            ...(isError ? { isError: true as const } : {}),
             content: [{ type: 'text' as const, text }],
             structuredContent: result as Record<string, unknown>,
           };
         }
-        return { content: [{ type: 'text' as const, text }] };
+        return {
+          ...(isError ? { isError: true as const } : {}),
+          content: [{ type: 'text' as const, text }],
+        };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log('tool_error', { tool: tool.name, error: message });

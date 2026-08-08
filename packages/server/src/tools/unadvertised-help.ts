@@ -15,6 +15,7 @@
  */
 import { ReticleTool } from './tool-names.js';
 import { TOOL_PROFILE, TOOL_PROFILE_ENV } from './profiles.js';
+import { mergedNameRedirect, mergedNameMessage } from './merged-name-redirect.js';
 
 /**
  * Guidance for `name`, or undefined when there is nothing useful to add — the tool IS advertised (so
@@ -25,7 +26,11 @@ export function unadvertisedToolHelp(
   advertised: ReadonlySet<string>,
   known: ReadonlySet<string>,
 ): string | undefined {
-  if (advertised.has(name) || !known.has(name)) return undefined;
+  if (advertised.has(name)) return undefined;
+  // A name that MOVED gets the move, not a profile lecture — it is not un-advertised, it is gone.
+  const moved = mergedNameRedirect(name);
+  if (moved !== undefined) return mergedNameMessage(name, moved);
+  if (!known.has(name)) return undefined;
   return (
     `${name} exists and works, but is not advertised under this tool profile — the schemas for all ` +
     `tools are re-sent every turn, so the default advertises a subset and keeps the rest one call ` +
