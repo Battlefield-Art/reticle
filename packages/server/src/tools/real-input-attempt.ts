@@ -11,6 +11,7 @@ import type { Session } from '../session/session.js';
 import type { ElementBox, RealInputArgs } from '../input/real-input.js';
 import { isPointerAction } from '../input/real-input.js';
 import { assertDragNotDestructive, assertNotDestructive } from './act-danger.js';
+ import { NATIVE_INPUT_ARG } from '@reticlehq/core';
 import { asString, asRecord } from './tools-helpers.js';
 import { type ToolDeps, commandOrThrow } from './tool-kit.js';
 import { asBox } from './act-helpers.js';
@@ -54,7 +55,7 @@ export async function tryRealInput(
   // even with a provider configured — no coordinate gesture to be intercepted by the HUD or missed
   // off-screen. Opt into a trusted native click with args.native:true (file pickers, clipboard,
   // isTrusted-gated handlers). hover/drag genuinely need native pointer state, so they stay real.
-  if ((action === ActionType.CLICK || action === ActionType.DBLCLICK) && inner['native'] !== true) {
+  if ((action === ActionType.CLICK || action === ActionType.DBLCLICK) && inner[NATIVE_INPUT_ARG] !== true) {
     return synthetic(InputModeReason.SYNTHETIC_CLICK_PREFERRED);
   }
 

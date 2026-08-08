@@ -13,6 +13,7 @@ import {
   InputMode,
   ReticleCommand,
   Verified, PredicateKind } from '@reticlehq/core';
+import { assertNativeInputSupported } from './act-danger.js';
 import { leanActResult, mutatedWithin } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
@@ -385,6 +386,10 @@ export const ACT_TOOLS: ToolDef[] = [
           ? PredicateSchema.parse(withUntil['until'])
           : ({ kind: PredicateKind.SETTLED } as const);
       const timeout = asNumber(args['timeout_ms']) ?? DEFAULT_ASSERT_TIMEOUT_MS;
+
+      // Before anything is driven: this path cannot honour a native-input request, and taking the
+      // argument and ignoring it told the agent its trusted click had happened. See act-danger.
+      assertNativeInputSupported(asRecord(args['args']));
 
       const since = session.elapsed();
       // `dropped` is cumulative for the SESSION, so comparing against a pre-action reading is what
