@@ -517,7 +517,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
             ...buffer,
           },
           'calls',
-          { noun: 'network calls', ...(since > 0 ? {} : {}) },
+          { noun: 'network calls' },
         ),
       );
     },
@@ -590,10 +590,18 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         limit ?? DEFAULT_QUERY_LIMIT,
       );
       const logs = budgeted.map(projectConsoleLog);
+      // Say the look HAPPENED when it found nothing. A quiet page and a dead console observer both
+      // produced `{ logs: [] }`, and "no console errors" is the claim agents lean on most — see
+      // observed-nothing.ts, whose own header names this exact case and which every other array-
+      // returning read here was already wired to.
       return withSizeCost(
-        droppedOldest > 0
-          ? { logs, total: matched.length, droppedOldest, ...buffer }
-          : { logs, ...buffer },
+        noteEmptyRead(
+          droppedOldest > 0
+            ? { logs, total: matched.length, droppedOldest, ...buffer }
+            : { logs, ...buffer },
+          'logs',
+          { noun: 'console lines' },
+        ),
       );
     },
   },
