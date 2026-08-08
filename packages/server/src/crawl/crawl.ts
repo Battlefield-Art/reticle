@@ -9,6 +9,7 @@ import {
   type CommandResult,
   type ReticleEvent,
 } from '@reticlehq/core';
+import { crawlEmptyNote } from './crawl-empty.js';
 import {
   parseInteractive,
   asRecord,
@@ -272,5 +273,16 @@ export async function crawl(
     // partial sweep into "all controls healthy".
     truncated: items.length > stepsRun || coverageCapped,
     ...(coverageCapped ? { coverageNote: CAPPED_SNAPSHOT_NOTE } : {}),
+    // A bare `stepsRun: 0` made "the page had no controls" and "it had 34 and none were clicked" the
+    // same answer. See crawl-empty.
+    ...(() => {
+      const note = crawlEmptyNote({
+        interactiveFound: items.length,
+        stepsRun,
+        maxSteps,
+        truncated: coverageCapped,
+      });
+      return note === undefined ? {} : { note };
+    })(),
   };
 }
