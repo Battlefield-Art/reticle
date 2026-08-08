@@ -72,7 +72,7 @@ describe('appendReticleParams', () => {
 
 describe('cleanNavError', () => {
   it('extracts the net:: code from a noisy Playwright goto error (ANSI + call log stripped)', () => {
-    const raw = `page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5999/?__reticle_session=lease-x\nCall log:\n[2m  - navigating[22m`;
+    const raw = `page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5999/?__reticle_session=lease-x\nCall log:\n\u001b[2m  - navigating\u001b[22m`;
     expect(cleanNavError(new Error(raw))).toBe('net::ERR_CONNECTION_REFUSED');
   });
 

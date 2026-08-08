@@ -93,6 +93,3 @@ export async function registerFlowSpecs(
     register(spec.name, specToCase(spec, getSession));
   }
 }
-
-/** Public alias matching the design's stated entrypoint name. */
-export const reticleFlowsAsSpecs = registerFlowSpecs;
