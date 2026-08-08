@@ -6,7 +6,50 @@ import {
   reconnectDelayMs,
   RECONNECT_INITIALIZE_ID,
   MAX_RECONNECT_ATTEMPTS,
+  PendingRequests,
 } from './mcp-proxy.js';
+
+/**
+ * What the proxy owes the client at exit.
+ *
+ * A client that wrote `initialize` + `tools/list` and closed stdin in the same flush got only the
+ * handshake answered — and exit status 0, which tells a supervising script the run succeeded. The
+ * proxy exited the instant stdin ended, so whether anything was still in flight was never asked.
+ */
+describe('PendingRequests — what is still unanswered', () => {
+  const req = (id: number | string, method: string): string =>
+    JSON.stringify({ jsonrpc: '2.0', id, method });
+  const res = (id: number | string): string => JSON.stringify({ jsonrpc: '2.0', id, result: {} });
+
+  it('holds a request until its response goes back', () => {
+    const pending = new PendingRequests();
+    pending.observeOutbound(req(1, 'tools/list'));
+    expect(pending.unanswered).toEqual(['1']);
+    pending.observeInbound(res(1));
+    expect(pending.unanswered).toEqual([]);
+  });
+
+  it('ignores notifications — no id means nothing is owed', () => {
+    const pending = new PendingRequests();
+    pending.observeOutbound(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }));
+    expect(pending.unanswered).toEqual([]);
+  });
+
+  it('tracks each id separately, so one answer does not clear the other', () => {
+    const pending = new PendingRequests();
+    pending.observeOutbound(req(1, 'initialize'));
+    pending.observeOutbound(req('two', 'tools/list'));
+    pending.observeInbound(res(1));
+    expect(pending.unanswered).toEqual(['"two"']);
+  });
+
+  it('ignores unparseable lines rather than throwing on them', () => {
+    const pending = new PendingRequests();
+    pending.observeOutbound('not json');
+    pending.observeInbound('not json either');
+    expect(pending.unanswered).toEqual([]);
+  });
+});
 
 /**
  * The MCP front door. Every JSON-RPC message the agent sends is framed by SseFrameParser, and a bug in

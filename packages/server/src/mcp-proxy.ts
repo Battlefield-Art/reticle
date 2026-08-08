@@ -92,6 +92,43 @@ const LOCAL_HANDSHAKE_MS = 12_000;
 const INITIALIZED_METHOD = 'notifications/initialized';
 
 /**
+ * JSON-RPC requests forwarded on behalf of the client that have not been answered yet.
+ *
+ * Only used at shutdown, where it is the difference between "the client closed stdin" and "the client
+ * closed stdin and we dropped its `tools/list` on the floor while reporting exit 0". A request has an
+ * id AND a method; a notification has no id and is owed nothing; a response has an id and no method.
+ */
+export class PendingRequests {
+  #ids = new Set<string>();
+
+  observeOutbound(line: string): void {
+    const msg = parseJsonRpc(line);
+    if (msg === null || msg.id === undefined || msg.method === undefined) return;
+    this.#ids.add(JSON.stringify(msg.id));
+  }
+
+  observeInbound(line: string): void {
+    const msg = parseJsonRpc(line);
+    if (msg === null || msg.id === undefined) return;
+    this.#ids.delete(JSON.stringify(msg.id));
+  }
+
+  get unanswered(): string[] {
+    return [...this.#ids];
+  }
+}
+
+/**
+ * How long stdin closing gives the daemon to answer what is still in flight.
+ *
+ * A client can write its whole conversation and close in one flush; the daemon is a socket away and
+ * answers in milliseconds, so this is generous. Overshooting only delays an exit that is already
+ * ending the process.
+ */
+const SHUTDOWN_DRAIN_MS = 5_000;
+const SHUTDOWN_DRAIN_POLL_MS = 25;
+
+/**
  * Makes a reconnect invisible to the client.
  *
  * The daemon builds a FRESH `McpServer` per SSE connection, so a reconnected session has never seen
@@ -289,6 +326,12 @@ export function startMcpProxy(
     let dormant = false;
     const stdinQueue: string[] = [];
     const replay = new HandshakeReplay();
+    const pending = new PendingRequests();
+    /** The ONE way a line reaches the client — so nothing can be answered without clearing the debt. */
+    const emit = (line: string): void => {
+      pending.observeInbound(line);
+      process.stdout.write(`${line}\n`);
+    };
     let stopped = false;
     let attempts = 0;
 
@@ -306,7 +349,7 @@ export function startMcpProxy(
         // Remember the tool catalog as it goes past: it is what makes a locally-answered handshake
         // useful rather than toolless. See tool-catalog-cache.
         catalog.observe(data);
-        process.stdout.write(`${data}\n`);
+        emit(data);
       }
     }
 
@@ -413,7 +456,7 @@ export function startMcpProxy(
           if (queued !== undefined && isHandshakeLine(queued)) stdinQueue.splice(i, 1);
         }
         proxyLog('reticle_mcp_local_handshake', { port, reason: 'daemon did not answer in time' });
-        process.stdout.write(`${response}\n`);
+        emit(response);
       }, LOCAL_HANDSHAKE_MS).unref();
     };
 
@@ -427,6 +470,7 @@ export function startMcpProxy(
         const trimmed = line.trim();
         if (trimmed === '') continue;
         replay.observeOutbound(trimmed);
+        pending.observeOutbound(trimmed);
         const action = onClientRequest(postUrl !== null, dormant);
         if (action === OnRequest.SEND && postUrl !== null) {
           void postToSession(postUrl, trimmed);
@@ -437,7 +481,7 @@ export function startMcpProxy(
         if (handshakeAnswered) {
           const cached = catalog.answer(trimmed);
           if (cached !== null) {
-            process.stdout.write(`${cached}\n`);
+            emit(cached);
             continue;
           }
         }
@@ -467,9 +511,34 @@ export function startMcpProxy(
     });
 
     // The client going away is the one clean shutdown — stop reconnecting and exit.
+    //
+    // Exiting the INSTANT stdin ends drops whatever is still in flight and reports success for it: a
+    // client that wrote `initialize` + `tools/list` and closed in the same flush got the handshake
+    // answered, `tools/list` never, and exit 0 — so nothing supervising it could tell. A 4-second gap
+    // between the writes made it "work", which is the signature of a teardown race, not of a client
+    // that asked for too much. Drain first, and let the exit status carry the truth if it fails.
     process.stdin.on('end', () => {
-      stopped = true;
-      process.exit(0);
+      const quit = (code: number): void => {
+        stopped = true;
+        process.exit(code);
+      };
+      if (pending.unanswered.length === 0) {
+        quit(0);
+        return;
+      }
+      const deadline = Date.now() + SHUTDOWN_DRAIN_MS;
+      const poll = setInterval(() => {
+        const stuck = pending.unanswered;
+        if (stuck.length === 0) {
+          clearInterval(poll);
+          quit(0);
+          return;
+        }
+        if (Date.now() < deadline) return;
+        clearInterval(poll);
+        proxyLog('reticle_mcp_proxy_unanswered_at_exit', { port, ids: stuck });
+        quit(1);
+      }, SHUTDOWN_DRAIN_POLL_MS);
     });
   });
 }
