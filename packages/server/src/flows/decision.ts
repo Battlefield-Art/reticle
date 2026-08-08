@@ -160,14 +160,21 @@ export function buildSuiteVerdict(
   const total = runs.length;
   const failed = failures.length;
   // A real failure outranks an unverifiable flow: a broken flow is worse news than an empty one.
+  // An EMPTY suite is unverifiable for the same reason a flow that asserts nothing is — it is the
+  // purest green that cannot go red. It used to report `pass` with the summary "all 0 flows pass",
+  // which meant `reticle verify` went green on every project that had not written a flow yet, and on
+  // any project where the flows directory failed to resolve. Found by the adversarial MCP sweep; it
+  // was the only invented answer in 994 calls.
   const status: SuiteVerdict['status'] =
-    failed > 0 ? 'fail' : unverifiable.length > 0 ? 'unverifiable' : 'pass';
+    failed > 0 ? 'fail' : unverifiable.length > 0 || total === 0 ? 'unverifiable' : 'pass';
   const cannotFail =
     unverifiable.length === 0
       ? ''
       : ` — ${String(unverifiable.length)} verified nothing (${unverifiable.map((u) => u.flow).join(', ')})`;
   const summary =
-    failed === 0
+    total === 0
+      ? 'no flows to verify — nothing was checked. Record one with reticle_record { action: "start" }, then reticle_flow_save.'
+      : failed === 0
       ? unverifiable.length === 0
         ? `all ${total} flow${total === 1 ? '' : 's'} pass`
         : `${String(passed)}/${String(total)} flows verified${cannotFail}`

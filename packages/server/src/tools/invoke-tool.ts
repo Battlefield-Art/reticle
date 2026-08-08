@@ -2,11 +2,11 @@ import { healthEnvelope } from '../session/session-health.js';
 import { TelemetryActor, TelemetryEventKind } from '@reticlehq/core';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
 import { getTelemetry } from '../telemetry/telemetry.js';
-import { VERIFICATION_TOOLS } from './feedback-tools.js';
 import { takeUpdateNudge } from '../update/update-nudge.js';
 import { takeVersionSkew } from '../version-nudge.js';
 import { noteToolCall } from '../daemon-usefulness.js';
 import { bugsInResult } from '../telemetry/bug-found.js';
+import { verificationOf } from '../telemetry/verification-of.js';
 import { asString } from './tools-helpers.js';
 import { ReticleTool } from './tool-names.js';
 import { takeFeedbackPrompt } from './feedback-tools.js';
@@ -87,40 +87,23 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *
  * Read off the RESULT here rather than emitted from `decideVerified`, which is where the verdict is
  * actually decided: that function is pure, and the repo's rules keep clocks, IO and side effects out
- * of pure logic for good reason. Reading the result also means all four verification tools are covered
- * by one site instead of four handler edits, and a fifth is covered the moment it joins the set.
+ * of pure logic for good reason. Reading the result also means all the verification tools are covered
+ * by one site instead of N handler edits, and the next one is covered the moment it joins the set.
  *
- * `falseGreenCaught` is the one that matters: the assertion PASSED and Reticle still refused to call
- * it verified. That is the product's entire thesis reduced to a boolean, and it is the number worth
- * putting in front of an investor — not "tools were called" but "this many greens were caught lying".
+ * The RULE itself lives in verification-of.ts, because getting it wrong is silent and it feeds the
+ * one number shown to investors — see that file for the two ways it was wrong.
  */
 function recordVerification(
   toolName: string,
   result: Record<string, unknown>,
   durationMs: number,
 ): void {
-  if (!VERIFICATION_TOOLS.has(toolName)) return;
-  const verified = typeof result['verified'] === 'string' ? result['verified'] : undefined;
-  // flow_verify reports `status: pass|fail`; assert reports a boolean `pass`. Accept either shape so
-  // the whole family is covered without normalizing four tools' contracts for a metric's convenience.
-  const passed =
-    typeof result['pass'] === 'boolean'
-      ? result['pass']
-      : result['status'] === 'pass'
-        ? true
-        : undefined;
-  if (verified === undefined && passed === undefined) return; // not a verdict-bearing result
-  const metrics = getSessionMetrics();
-  metrics.recordVerification();
+  const verification = verificationOf(toolName, result, durationMs);
+  if (verification === undefined) return;
+  getSessionMetrics().recordVerification();
   void getTelemetry().emit(TelemetryEventKind.VERIFICATION_COMPLETED, {
     actor: TelemetryActor.AGENT,
-    verification: {
-      via: toolName,
-      verified: verified ?? (passed === true ? 'yes' : 'no'),
-      passed: passed ?? verified === 'yes',
-      falseGreenCaught: passed === true && verified === 'no',
-      durationMs,
-    },
+    verification,
   });
 }
 
