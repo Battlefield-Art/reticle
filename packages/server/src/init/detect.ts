@@ -112,7 +112,7 @@ function packageManagerFromNodeModules(
   return undefined;
 }
 
-function detectPackageManager(
+export function detectPackageManager(
   lockfiles: ReadonlySet<string>,
   nodeModulesMarkers: ReadonlySet<string>,
 ): PackageManager {
