@@ -267,8 +267,21 @@ export function findContradictions(
   // the control worked, the DESTINATION is empty — which is why every "did the click do something"
   // heuristic passes it, a route change being unambiguously something.
   const routed = events.some((e) => e.type === EventType.ROUTE_CHANGE);
+  // `dom.text` counts as rendered, and it has to: React reconciles a destination IN PLACE far more
+  // often than it adds nodes. Measured on three ordinary sidebar navigations of the bench app — every
+  // one emitted { dom.attr:2, dom.text:2, render.commit, state.change } and ZERO dom.added/removed,
+  // so all three were flagged as blank destinations, `verified` came back "no" on a correct green,
+  // and a bug_found was emitted for a navigation that worked.
+  //
+  // Deliberately NOT `dom.attr`: the nav link marks itself active whether or not the destination
+  // rendered, which is the true positive this rule exists for. Deliberately NOT `render.commit`
+  // either: React commits a render for a component that returns null, which is one of the very bugs
+  // named in `detail` below.
   const rendered = events.some(
-    (e) => e.type === EventType.DOM_ADDED || e.type === EventType.DOM_REMOVED,
+    (e) =>
+      e.type === EventType.DOM_ADDED ||
+      e.type === EventType.DOM_REMOVED ||
+      e.type === EventType.DOM_TEXT,
   );
   const fetched = events.some(
     (e) => e.type === EventType.NET_REQUEST || e.type === EventType.NET_PENDING,

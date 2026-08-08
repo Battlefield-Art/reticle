@@ -255,6 +255,35 @@ describe('the route moved and nothing was rendered for it', () => {
   it('does not fire without a route change — a quiet window is not a bad navigation', () => {
     expect(kinds([attrOnly()])).toEqual([]);
   });
+
+  /**
+   * The window below is COPIED FROM A MEASUREMENT, not invented: three ordinary sidebar navigations
+   * on the bench app, read back through reticle_observe. Every one of them emitted
+   *
+   *   { perf, focus.change, state.change, signal, route.change, dom.attr:2, dom.text:2, render.commit }
+   *
+   * and ZERO dom.added / dom.removed — React reconciled the destination in place. The rule looked
+   * only for added/removed nodes, so all three were flagged `route-rendered-nothing`, which made
+   * `verified` come back "no" on a correct green and emitted a `bug_found` for a navigation that
+   * worked. On a React app that reconciles in place — the common case — this fires on essentially
+   * every navigation, which is noise in the one metric that is supposed to mean something.
+   *
+   * `dom.text` is the discriminator that separates the two: the destination produced content. It is
+   * deliberately NOT `dom.attr` (the nav link marks itself active whether or not anything rendered —
+   * that is the true positive above) and deliberately NOT `render.commit` (React commits a render for
+   * a component that returns null, which is precisely one of the bugs this is meant to catch).
+   */
+  it('stays silent when the destination re-rendered IN PLACE, as React usually does', () => {
+    const measured = [
+      routeChange(),
+      attrOnly(),
+      attrOnly(),
+      ev(EventType.DOM_TEXT, { path: 'main h1' }),
+      ev(EventType.DOM_TEXT, { path: 'main p' }),
+      ev(EventType.STATE_CHANGE, { path: 'view', value: 'deployments' }),
+    ];
+    expect(kinds(measured)).not.toContain(ContradictionKind.ROUTE_RENDERED_NOTHING);
+  });
 });
 
 describe('failure misattributed — the server broke, the app blamed the user', () => {
