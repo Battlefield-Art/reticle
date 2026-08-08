@@ -74,6 +74,12 @@ export const ReticleEnv = {
   /** Idle re-check cadence (default 30s). Overridable so daemon-lifecycle-test can watch a full
    * exit/wake cycle in seconds rather than minutes. */
   IDLE_CHECK: 'RETICLE_IDLE_CHECK_MS',
+  /**
+   * Grace for a daemon with an agent ATTACHED. Longer than the base on purpose: quiet with a client
+   * present means a slow install or a thinking human, not an unwanted daemon — a flat 5 minutes was
+   * killing live runs mid-install. Derived from the base when unset.
+   */
+  IDLE_ATTACHED: 'RETICLE_IDLE_ATTACHED_MS',
   /** Directory holding the auto-provisioned pairing token. Defaults to ~/.reticle; relocatable for CI. */
   PAIRING_TOKEN_DIR: 'RETICLE_PAIRING_TOKEN_DIR',
   /** Force the durable causal journal off (`0`/`false`/`off`) or on (`1`/`true`/`on`); default on. */

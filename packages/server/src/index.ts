@@ -216,6 +216,8 @@ export interface RunningServer {
   /** True when nothing is using the daemon: no agent connected, no browser session, no pool lease.
    * The daemon entry (cli.ts) polls this to self-shut-down when idle so Reticle never lingers. */
   isIdle?: () => boolean;
+  /** True while an agent's MCP client is attached — see IdleShutdownOptions.agentAttached. */
+  agentAttached?: () => boolean;
   /** The pairing token the bridge is enforcing (explicit, env, or auto-provisioned); undefined if none. */
   token?: string;
   close: () => Promise<void>;
@@ -590,6 +592,9 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     // Nobody is using this daemon — self-shuts-down once it holds for the grace window. See
     // daemon-usefulness.ts for the two ways that can be true.
     isIdle: buildIdlePredicate(() => agentConnected, bridge.sessions, pool),
+    // Exposed so the shutdown watcher can give an ATTACHED daemon a longer grace. The predicate above
+    // says WHETHER it is idle; this says how long that quiet should be tolerated — see idle-grace.
+    agentAttached: () => agentConnected,
     close: async () => {
       reaper.stop();
       const vh = verifyHttp;

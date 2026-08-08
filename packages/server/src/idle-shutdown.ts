@@ -1,4 +1,5 @@
 import { SESSION_LIFECYCLE } from '@reticlehq/core';
+import { idleGraceMs } from './idle-grace.js';
 import { log } from './log.js';
 
 export interface IdleShutdownOptions {
@@ -8,6 +9,14 @@ export interface IdleShutdownOptions {
   onShutdown: () => void;
   /** Continuous-idle window before shutdown. `0` (or negative) disables the watcher entirely. */
   graceMs: number;
+  /**
+   * Is an agent's MCP client attached right now? An attached daemon gets a much longer grace — quiet
+   * with a client present means a slow install or a thinking human, not an unwanted daemon. It still
+   * exits. See idle-grace.
+   */
+  agentAttached?: () => boolean;
+  /** Explicit attached grace (RETICLE_IDLE_ATTACHED_MS); derived from graceMs when absent. */
+  attachedGraceMs?: number;
   /** How often to re-check idleness. */
   checkIntervalMs?: number;
   /** Injected clock — never read wall-clock time in logic (repo rule). */
@@ -29,6 +38,8 @@ export class IdleShutdown {
   readonly #isIdle: () => boolean;
   readonly #onShutdown: () => void;
   readonly #graceMs: number;
+  readonly #agentAttached: (() => boolean) | undefined;
+  readonly #attachedGraceMs: number | undefined;
   readonly #checkMs: number;
   readonly #clock: () => number;
 
@@ -36,6 +47,8 @@ export class IdleShutdown {
     this.#isIdle = opts.isIdle;
     this.#onShutdown = opts.onShutdown;
     this.#graceMs = opts.graceMs;
+    this.#agentAttached = opts.agentAttached;
+    this.#attachedGraceMs = opts.attachedGraceMs;
     this.#checkMs = opts.checkIntervalMs ?? SESSION_LIFECYCLE.DAEMON_IDLE_CHECK_MS;
     this.#clock = opts.clock ?? (() => Date.now());
   }
@@ -49,9 +62,12 @@ export class IdleShutdown {
     }
     const now = this.#clock();
     this.#idleSince ??= now;
-    if (now - this.#idleSince >= this.#graceMs) {
+    // Read per CHECK, not at construction: a client attaches and detaches during a daemon's life, and
+    // the question "how long should this quiet be tolerated" is only answerable now. See idle-grace.
+    const grace = idleGraceMs(this.#graceMs, this.#agentAttached?.() ?? false, this.#attachedGraceMs);
+    if (now - this.#idleSince >= grace) {
       this.#fired = true;
-      log('reticle_daemon_idle_shutdown', { idleMs: now - this.#idleSince });
+      log('reticle_daemon_idle_shutdown', { idleMs: now - this.#idleSince, attached: this.#agentAttached?.() ?? false });
       this.#onShutdown();
     }
   }

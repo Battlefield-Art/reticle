@@ -361,10 +361,18 @@ function handleDaemonInner(parsed: {
       process.on('SIGINT', shutdown);
       // Self-shut-down when idle so a detached daemon (and any headless Chromium it launched) never
       // lingers on the user's machine after the editor closes. Reuses the same clean shutdown path.
+      const attachedGraceEnv = process.env[ReticleEnv.IDLE_ATTACHED];
       const idleShutdown = new IdleShutdown({
         graceMs: resolveIdleShutdownMs(process.env[ReticleEnv.IDLE_SHUTDOWN]),
         checkIntervalMs: resolveIdleCheckMs(process.env[ReticleEnv.IDLE_CHECK]),
         isIdle: server.isIdle ?? (() => false),
+        ...(server.agentAttached === undefined ? {} : { agentAttached: server.agentAttached }),
+        // Only when the var is actually SET. `resolveIdleShutdownMs(undefined)` returns the 5-minute
+        // DEFAULT, so passing it unconditionally would override the derived attached grace with the
+        // very number this change exists to stop using — shipping the bug while looking fixed.
+        ...(attachedGraceEnv === undefined || attachedGraceEnv.trim() === ''
+          ? {}
+          : { attachedGraceMs: resolveIdleShutdownMs(attachedGraceEnv) }),
         onShutdown: () => {
           log('reticle_daemon_idle_exit', { port: parsed.port });
           shutdown();

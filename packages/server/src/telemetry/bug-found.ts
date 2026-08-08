@@ -15,6 +15,7 @@
  * `console-error`, `duplicate-request`. Never a selector, a URL, an element, or a description of
  * anyone's app: that a class of defect was found, never what it was found in.
  */
+import { ReticleTool } from '../tools/tool-names.js';
 import { BugSource, ContradictionKind, type BugFound } from '@reticlehq/core';
 
 /**
@@ -96,7 +97,26 @@ function isInconclusive(result: Record<string, unknown>): boolean {
   );
 }
 
+/** A suite row whose replay never STARTED — see SuiteFlowResult.couldNotRun. */
+function couldNotRun(failure: unknown): boolean {
+  return (
+    typeof failure === 'object' &&
+    failure !== null &&
+    (failure as { couldNotRun?: unknown }).couldNotRun === true
+  );
+}
+
 export function bugsInResult(toolName: string, result: Record<string, unknown>): BugCandidate[] {
+  // `reticle_run` is a WRAPPER: its handler calls runTool on the real tool, which already reported
+  // that result's defects under the real tool's name — then the outer chokepoint reports the very
+  // same object again as `reticle_run`. One sweep of 34 events was a perfect mirror image:
+  // flow-regression x8/reticle_flow_verify AND x8/reticle_run; assertion-failed x8/reticle_verify_change
+  // AND x8/reticle_run. Sixteen of the thirty-four were echoes, and a headline number that doubles
+  // because of HOW a tool was reached is not a measurement.
+  //
+  // Nothing is lost by staying silent here: when the inner tool refuses or throws, the wrapper
+  // returns { error, tool, params, hint }, which carries no verdict and no failures to classify.
+  if (toolName === ReticleTool.RUN) return [];
   const bugs: BugCandidate[] = [];
   const verdict = verdictOf(result);
   const passed = verdict === true;
@@ -141,7 +161,11 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
   // 4. Replay failures — a saved flow that used to pass no longer does. That is a regression caught,
   //    which is a different and stronger claim than "a check failed".
   if (result['status'] === 'fail' && Array.isArray(result['failures'])) {
-    for (const _failure of result['failures'].slice(0, MAX_BUGS_PER_CALL)) {
+    for (const failure of result['failures'].slice(0, MAX_BUGS_PER_CALL)) {
+      // A suite that failed because nothing could RUN is not a regression in the user's app. This
+      // rule never looked past `status`, so a project whose flow files did not resolve reported one
+      // "defect found" per flow — Reticle's own failure, published as the customer's.
+      if (couldNotRun(failure)) continue;
       bugs.push({
         source: BugSource.REPLAY,
         kind: 'flow-regression',

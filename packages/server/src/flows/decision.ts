@@ -152,6 +152,13 @@ export function buildSuiteVerdict(
     }
     const decision = replay.decision ?? buildDecision(replay, flow);
     const row: SuiteFlowResult = { flow: replay.name, verdict: suiteVerdictOf(replay.status) };
+    // Zero step results PLUS an error is the signature of a replay that never STARTED — the flow file
+    // failed to load (before the session is even resolved), or its leased context never came up. A
+    // flow that ran and failed always carries its failing step; a flow with no steps replays OK and
+    // never reaches here. Both arrive as ReplayStatus.ERROR, so without this the suite cannot tell
+    // "the app broke" from "Reticle could not run this" — and the bug metric reported the second as
+    // the first, 8 times in one sweep.
+    if (replay.steps.length === 0 && replay.error !== undefined) row.couldNotRun = true;
     if (decision.whatChanged !== undefined) row.whatChanged = decision.whatChanged;
     if (decision.whereInSource !== undefined) row.whereInSource = decision.whereInSource;
     row.nextAction = decision.nextAction;

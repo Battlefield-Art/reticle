@@ -189,3 +189,64 @@ describe('Reticle failing is not the app failing', () => {
     ).toHaveLength(1);
   });
 });
+
+/**
+ * The wrapper counted every defect a second time.
+ *
+ * `reticle_run` dispatches through `runTool` (dynamic-tools.ts), which reports the inner tool's
+ * defects under the INNER tool's name — and then the outer `runTool` reports the same returned object
+ * again as `reticle_run`. One sweep of 34 events was a perfect mirror image:
+ *
+ *   flow-regression   x8 / reticle_flow_verify   AND   x8 / reticle_run
+ *   assertion-failed  x8 / reticle_verify_change AND   x8 / reticle_run
+ *
+ * Sixteen of the thirty-four were echoes. A headline number that doubles because of how a tool was
+ * reached is not a measurement.
+ */
+describe('the reticle_run wrapper never reports its own bugs', () => {
+  it('does not re-count a flow regression the inner tool already reported', () => {
+    expect(
+      bugsInResult('reticle_run', { status: 'fail', failures: [{ flow: 'checkout' }] }),
+    ).toHaveLength(0);
+  });
+
+  it('does not re-count a failed assertion either', () => {
+    expect(
+      bugsInResult('reticle_run', { verified: 'no', verdict: { pass: false, assertion: 'route.changed' } }),
+    ).toHaveLength(0);
+  });
+
+  it('the INNER tool still reports it — the defect is counted exactly once', () => {
+    expect(
+      bugsInResult('reticle_flow_verify', { status: 'fail', failures: [{ flow: 'checkout' }] }),
+    ).toHaveLength(1);
+  });
+});
+
+/**
+ * A suite that failed because nothing could RUN is not a regression in the user's app.
+ *
+ * The replay rule looked only at `status === 'fail'`, so a project whose flow files did not resolve —
+ * or whose leased context never came up — reported one "defect found" per flow. Reticle's own failure,
+ * published as the customer's.
+ */
+describe('a flow that never ran is not a regression', () => {
+  it('skips rows the replay could not start', () => {
+    expect(
+      bugsInResult('reticle_flow_verify', {
+        status: 'fail',
+        failures: [{ flow: 'checkout', couldNotRun: true }],
+      }),
+    ).toHaveLength(0);
+  });
+
+  it('still counts the rows that genuinely failed', () => {
+    // The fix must not silence the metric it protects.
+    expect(
+      bugsInResult('reticle_flow_verify', {
+        status: 'fail',
+        failures: [{ flow: 'checkout', couldNotRun: true }, { flow: 'signup' }],
+      }),
+    ).toHaveLength(1);
+  });
+});

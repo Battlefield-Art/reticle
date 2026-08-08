@@ -236,6 +236,13 @@ export interface ReplayDecision {
  */
 export interface SuiteFlowResult {
   flow: string;
+  /**
+   * The flow never ran: its file failed to load, or its leased context never came up. Nothing was
+   * learned about the app, so this row is not a regression — it is Reticle reporting its own failure
+   * in the same array as the app's. Measured: one sweep emitted 8 `flow-regression` bug_found events
+   * off rows like these, from a suite where no flow ever executed.
+   */
+  couldNotRun?: boolean;
   verdict: 'pass' | 'drift' | 'fail';
   whatChanged?: string;
   whereInSource?: string;

@@ -62,6 +62,11 @@ const client = new McpStdioClient(
     RETICLE_PORT: PORT,
     RETICLE_TELEMETRY: '0',
     RETICLE_IDLE_SHUTDOWN_MS: String(GRACE_MS),
+    // An ATTACHED daemon waits longer than the base (a flat grace was killing runs mid-install), and
+    // this spec's daemon IS attached. Set it explicitly rather than relying on the derived multiple,
+    // so the spec asserts the behaviour — an attached-but-unused daemon still exits — instead of
+    // racing a product constant.
+    RETICLE_IDLE_ATTACHED_MS: String(GRACE_MS * 2),
     RETICLE_IDLE_CHECK_MS: String(CHECK_MS),
   },
 );
@@ -83,6 +88,9 @@ chk('a daemon comes up for the attached agent', born && firstPid !== null, `pid 
 
 // 1. It exits when it has served nothing and no browser ever connected — even though an agent is
 //    still attached. Before, `agentConnected` alone kept it alive for the whole editor session.
+// 20s, not 5: an ATTACHED daemon now waits ATTACHED_GRACE_MULTIPLIER x the base before exiting
+// (see packages/server/src/idle-grace.ts), because a 5-minute flat grace was killing live runs
+// mid-install. At the 2s base above that is 12s, so this window must stay comfortably past it.
 const exited = await waitFor(() => daemonPid() === null, 20_000);
 chk('an attached-but-unused daemon shuts itself down', exited);
 
