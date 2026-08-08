@@ -11,6 +11,7 @@ import { detect, Framework, type DetectInput } from './detect.js';
 import { wasMcpRegistered } from './mcp-registered.js';
 import { pickAstroHost } from './astro-host.js';
 import { workspaceParents } from './workspace-apps.js';
+import { isConnectStep } from './plan.js';
 import { CRA_ENV_PATH } from './cra.js';
 
 /** CRA's bundled entry, in the order create-react-app itself generates them. */
@@ -272,9 +273,15 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const existsProbe = claudeExistsProbe();
   const mcpExists = claudeCli ? io.probe(existsProbe.command, existsProbe.args) : false;
 
-  const cursorDir = `${io.homeDir()}/${CURSOR_DIR_RELPATH}`;
-  const cursorConfigPath = `${io.homeDir()}/${CURSOR_MCP_RELPATH}`;
-  const cursorPresent = options.mcp && io.exists(cursorDir);
+  // join(), not a literal '/': this path is checked and WRITTEN on the user's machine, and a
+  // backslash platform silently misses the config it is meant to find.
+  const cursorDir = join(io.homeDir(), CURSOR_DIR_RELPATH);
+  const cursorConfigPath = join(io.homeDir(), CURSOR_MCP_RELPATH);
+  // Cursor is "present" if its global config directory exists OR the project carries a `.cursor/`.
+  // The directory alone missed a real case: Cursor installed with a FRESH profile has not written
+  // ~/.cursor yet, so a user who had it open got no Cursor step and no message about one. A
+  // project-level .cursor/ is unambiguous evidence somebody uses it here.
+  const cursorPresent = options.mcp && (io.exists(cursorDir) || io.exists(CURSOR_DIR_RELPATH));
   const cursorConfig = cursorPresent ? io.readFile(cursorConfigPath) : null;
 
   const astroPath = firstPresent(rootFiles, ASTRO_CONFIG_CANDIDATES);
@@ -441,6 +448,10 @@ function report(
   io.print('');
   let applied = 0;
   let manual = 0;
+  // A ⚠ on a CONNECT step is a guaranteed failure, not a caveat: nothing performs the manual step, so
+  // the app never dials the daemon and every tool answers "no browser session connected". `ok` was
+  // hardcoded true, so a run that could not possibly work reported success.
+  let connectPending = false;
   for (const s of plan.steps) {
     // A side effect that failed to apply is reported as a manual step with its fallback command.
     const note = degraded.get(s.target);
@@ -462,15 +473,25 @@ function report(
     if (status === StepStatus.APPLY) applied++;
     if (status === StepStatus.MANUAL || status === StepStatus.NOTICE) {
       // A notice prints in full like a manual step — it is worth reading — but is NOT counted as work.
-      if (status === StepStatus.MANUAL) manual++;
+      if (status === StepStatus.MANUAL) {
+        manual++;
+        if (isConnectStep(s.title)) connectPending = true;
+      }
       for (const line of detail.split('\n')) io.print(`      ${line}`);
     } else if (detail.length > 0) {
       io.print(`      ${detail}`);
     }
   }
   io.print('');
+  if (connectPending) {
+    io.print(
+      'This app will NOT connect until the ⚠ step above is done by hand — Reticle tools will report ' +
+        '"no browser session connected" until then. Everything else is already in place.',
+    );
+    io.print('');
+  }
   io.print(restartHint(plan.framework));
-  return { ok: true, applied, manual };
+  return { ok: !connectPending, applied, manual };
 }
 
 /**

@@ -306,8 +306,13 @@ describe('runInit — workspace roots', () => {
   it('still falls through to the manual HTML plan when nothing app-like is anywhere', () => {
     const io = memoryIo({ 'package.json': JSON.stringify({ dependencies: {} }) });
     const result = runInit(OPTS, io);
-    expect(result.ok).toBe(true);
+    // The config IS written and everything automatable happened...
     expect(io.written['.reticle.json']).toBeDefined();
+    // ...but the connect step is manual, so nothing will dial the daemon and this run did NOT leave a
+    // working install. `ok` used to be hardcoded true, which made the ⚠ count and "did it connect"
+    // read as independent signals when one implies the other.
+    expect(result.ok).toBe(false);
+    expect(result.manual).toBeGreaterThan(0);
   });
 });
 

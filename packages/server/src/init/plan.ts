@@ -83,6 +83,29 @@ export function frameworkPackages(framework: Framework): readonly string[] {
 
 /** Exported so the init telemetry can tell an MCP-registration failure from a dependency install. */
 export const MCP_TARGET = 'global (claude user scope)';
+
+/**
+ * Titles of the steps WITHOUT which no session ever appears.
+ *
+ * A ⚠ on one of these is not a warning, it is a guaranteed failure: nothing performs the manual step,
+ * so the app will not connect and every Reticle tool will answer "no browser session connected".
+ * Reported from a field sweep, where the ⚠ count and "did it connect" were treated as independent
+ * signals and are not.
+ */
+const CONNECT_STEP_TITLES: ReadonlySet<string> = new Set([
+  'Connect snippet',
+  'Connect snippet (CRA)',
+  'Connect snippet (Astro)',
+  'Reticle client hook',
+  'Reticle connect module',
+  'ReticleDev component',
+  'Vite plugin',
+]);
+
+/** True when this step is what makes the app dial the daemon. */
+export function isConnectStep(title: string): boolean {
+  return CONNECT_STEP_TITLES.has(title);
+}
 /** The step that runs the package manager — the other thing that commonly fails on a user's machine. */
 export const DEPS_TARGET = 'package.json';
 const RETICLE_CONFIG_FILE = '.reticle.json';
@@ -269,13 +292,19 @@ function mcpSteps(input: PlanInput): Step[] {
         title: 'MCP server (global)',
         target: MCP_TARGET,
         status: StepStatus.SKIP,
-        detail: '--no-mcp',
+        // Names everything it turns off. `--no-mcp` reads like "skip one step" and skips three: the
+        // registration, the agent rule files, and the /reticle command. A gate running with this flag
+        // therefore covers far less than its name suggests, which is worth saying out loud.
+        detail:
+          '--no-mcp — also skips the agent rule files (CLAUDE.md / AGENTS.md / .cursor) and the /reticle command',
       },
     ];
   }
   const steps = [claudeMcpStep(input), cursorMcpStep(input)].filter((s): s is Step => s !== null);
   if (steps.length > 0) return steps;
-  // No supported agent detected — print the one-time global instructions.
+  // No supported agent detected — print the one-time global instructions. Reached when the `claude`
+  // CLI is absent AND ~/.cursor does not exist, which includes Cursor installed with a fresh profile
+  // that has not written its config directory yet, so the manual text covers both agents.
   return [
     {
       title: 'MCP server (global)',

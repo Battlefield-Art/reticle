@@ -12,31 +12,9 @@
  * global agent config.
  */
 
-import { platform } from 'node:os';
 import { RETICLE_NPM_PACKAGE } from '../server-version.js';
 
 export const MCP_SERVER_NAME = 'reticle';
-
-/**
- * The npx binary to register, by platform.
- *
- * Bare `npx` on Windows resolves through `npx.ps1` for a PowerShell-hosted launcher, and a machine
- * with a restrictive execution policy refuses to run it — reported by a user whose agent could not
- * start Reticle at all because of it. `npx.cmd` is a batch file and is not gated by that policy.
- *
- * This repo already made exactly this decision for npm in update/updater.ts
- * (`platform() === 'win32' ? 'npm.cmd' : 'npm'`); it was simply never applied to the MCP
- * registration, which is the one command a Windows user has to run before anything works.
- *
- * Resolved by the LOCAL platform on purpose: the string is written into the agent's config on the
- * machine running `reticle init`, so it is that machine's shell that has to be able to run it.
- */
-// DELIBERATELY UNUSED at present — see the note below on why the registered command is still bare
-// `npx`. Kept, tested, and one call site away from being switched on the day the Windows CI job
-// (advisory today) can prove it, because rediscovering this decision costs more than the three lines.
-export function npxBin(os: NodeJS.Platform = platform()): string {
-  return os === 'win32' ? 'npx.cmd' : 'npx';
-}
 
 /**
  * The registered command is STILL bare `npx` on every platform, deliberately.
@@ -97,7 +75,11 @@ export function claudeAddCommand(): ClaudeAddCommand {
 
 /** Probe args that tell us whether an `reticle` server already exists in any scope (exit 0 = exists). */
 export function claudeExistsProbe(): { command: string; args: string[] } {
-  return { command: CLAUDE_CLI, args: [MCP_SUBCOMMAND, 'get', MCP_SERVER_NAME] };
+  // SCOPED to `user`, matching what `claudeAddCommand` registers. Unscoped, `claude mcp get reticle`
+  // exits 0 for a PROJECT-scoped entry in some unrelated repo the user once ran init in — so the
+  // global registration was skipped and reported done, and the agent had Reticle in one directory
+  // and nowhere else. Asking about the scope we write is the only answer that means anything.
+  return { command: CLAUDE_CLI, args: [MCP_SUBCOMMAND, 'get', MCP_SERVER_NAME, '-s', 'user'] };
 }
 
 /** Probe args for whether the `claude` CLI is installed at all. */

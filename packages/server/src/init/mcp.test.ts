@@ -29,8 +29,21 @@ describe('claudeAddCommand', () => {
 });
 
 describe('claudeExistsProbe', () => {
-  it('uses `claude mcp get reticle`', () => {
-    expect(claudeExistsProbe()).toEqual({ command: 'claude', args: ['mcp', 'get', 'reticle'] });
+  it('asks about the SAME scope it registers in', () => {
+    // Unscoped, `claude mcp get reticle` exits 0 for a PROJECT-scoped entry in some unrelated repo
+    // the user once ran init in — so the global registration was skipped and reported done, and the
+    // agent had Reticle in one directory and nowhere else.
+    expect(claudeExistsProbe()).toEqual({
+      command: 'claude',
+      args: ['mcp', 'get', 'reticle', '-s', 'user'],
+    });
+  });
+
+  it('matches the scope claudeAddCommand writes', () => {
+    const added = claudeAddCommand().args;
+    const probed = claudeExistsProbe().args;
+    const scopeOf = (args: string[]): string | undefined => args[args.indexOf('-s') + 1];
+    expect(scopeOf(probed)).toBe(scopeOf(added));
   });
 });
 

@@ -10,6 +10,24 @@ import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import type { InitIo } from './run.js';
 
+/**
+ * `shell: true` ONLY where it earns its keep.
+ *
+ * It exists so package-manager shims (`pnpm.cmd`, `npx.cmd`) resolve on Windows. On POSIX it buys
+ * nothing and costs correctness: under a shell, arguments are re-parsed, so a path containing a
+ * space — `/Users/ada/My Projects/app` — silently becomes two arguments and registration fails with
+ * no error anyone can read.
+ */
+function shellOpt(): { shell?: true } {
+  return process.platform === 'win32' ? { shell: true } : {};
+}
+
+/** Under a shell, quote what the shell would otherwise split. Windows only, where shell is required. */
+function shellSafe(args: readonly string[]): string[] {
+  if (process.platform !== 'win32') return [...args];
+  return args.map((arg) => (/[\s"]/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg));
+}
+
 export function buildNodeIo(cwd: string): InitIo {
   // Project-relative by default; absolute paths (e.g. ~/.cursor/mcp.json) pass through unchanged.
   const abs = (rel: string): string => (isAbsolute(rel) ? rel : join(cwd, rel));
@@ -61,14 +79,13 @@ export function buildNodeIo(cwd: string): InitIo {
       return buildNodeIo(abs(rel));
     },
     exec(command, args) {
-      // `shell: true` lets package-manager shims (pnpm.cmd, etc.) resolve on Windows; inherit
-      // stdio so the install's own progress is visible to the user.
-      const result = spawnSync(command, [...args], { cwd, stdio: 'inherit', shell: true });
+      // Inherit stdio so the install's own progress is visible to the user.
+      const result = spawnSync(command, shellSafe(args), { cwd, stdio: 'inherit', ...shellOpt() });
       return result.status === 0;
     },
     probe(command, args) {
       // Quiet yes/no check (CLI availability, existing registration). Never throws.
-      const result = spawnSync(command, [...args], { cwd, stdio: 'ignore', shell: true });
+      const result = spawnSync(command, shellSafe(args), { cwd, stdio: 'ignore', ...shellOpt() });
       return result.status === 0;
     },
     print(line) {

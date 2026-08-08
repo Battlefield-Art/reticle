@@ -7,6 +7,9 @@
 
 export const CLI_USAGE = `usage:
   reticle init  [--dry-run] [--port N] [--no-mcp] [--no-install]  (wire Reticle into the project in this directory)
+                --no-mcp skips MORE than the server registration: also the agent rule files
+                (CLAUDE.md / AGENTS.md / .cursor) and the /reticle command, because all three
+                only make sense once the tools are reachable.
   reticle serve [--port N] [--drive <url>] [--headless] [--http] [--http-port N] [--http-token T]
   reticle stop  [--port N] [--quiet]
   reticle status [--port N]
