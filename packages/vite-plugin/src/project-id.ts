@@ -8,34 +8,26 @@
  */
 
 import { createHash } from 'node:crypto';
-import { basename, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
+import { PROJECT_ID_HASH_LENGTH, projectIdFrom } from '@reticlehq/core';
 
-/**
- * Turn a package name into an id-safe slug: scoped names lose the `@scope/` punctuation
- * (`@acme/web` → `acme-web`), everything non-alphanumeric collapses to single dashes, edges trimmed.
- */
-export function slugifyPackageName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/^@/, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
+export { slugifyPackageName } from '@reticlehq/core';
 
 /** A short, stable hex fingerprint of the absolute project root (disambiguates same-named checkouts). */
 export function shortHash(input: string): string {
-  return createHash('sha1').update(input).digest('hex').slice(0, 8);
+  return createHash('sha1').update(input).digest('hex').slice(0, PROJECT_ID_HASH_LENGTH);
 }
 
 /**
  * Derive the stable projectId from the package name (may be undefined) and the absolute root path.
- * Pure — both inputs are passed in. Falls back to the root's folder name, then to "app".
+ *
+ * The rule itself is core's `projectIdFrom`, shared with `reticle init`: this id is what scopes a
+ * session to an app, so what the plugin stamps and what init records must be the same string. They
+ * used to be two identical copies kept in step by a comment.
  */
 export function deriveProjectId(pkgName: string | undefined, rootPath: string): string {
-  const fromName = pkgName !== undefined ? slugifyPackageName(pkgName) : '';
-  const base = fromName.length > 0 ? fromName : slugifyPackageName(basename(rootPath)) || 'app';
-  return `${base}-${shortHash(rootPath)}`;
+  return projectIdFrom(pkgName, rootPath, shortHash);
 }
 
 /** Read the `name` from the nearest package.json at or above `startDir`, or undefined if none. */

@@ -66,10 +66,12 @@ export default nextConfig;
    *     });
    *
    * an unbalanced-paren SYNTAX ERROR. `next dev` exited 1, the gate reported only "dev server never
-   * served", and `init` had reported the step as ✓. Two exports means we cannot know which one runs,
-   * so the honest answer is manual.
+   * served", and `init` had reported the step as ✓.
+   *
+   * Both branches get wrapped, because which one runs is an env var's business: the result is
+   * correct whichever executes, and the app connects instead of landing on a manual step.
    */
-  it('bails to manual on a conditional export instead of corrupting it', () => {
+  it('wraps both branches of a conditional export', () => {
     const source = `const nextConfig = {};
 if (process.env.SENTRY) {
   module.exports = withSentryConfig(nextConfig, sentryConfig);
@@ -78,7 +80,16 @@ if (process.env.SENTRY) {
 }
 `;
     const r = patchNextConfig(source);
-    expect(r.kind).toBe(PatchKind.MANUAL);
+    expect(r.kind).toBe(PatchKind.APPLY);
+    if (r.kind !== PatchKind.APPLY) return;
+    expect(r.code).toContain(
+      'module.exports = withReticle(withSentryConfig(nextConfig, sentryConfig));',
+    );
+    expect(r.code).toContain('module.exports = withReticle(nextConfig);');
+    // The braces must still balance — the whole point.
+    const opens = (r.code.match(/\(/g) ?? []).length;
+    const closes = (r.code.match(/\)/g) ?? []).length;
+    expect(opens).toBe(closes);
   });
 
   /** Same root cause, single export: anything AFTER the export used to be swallowed into the wrap. */

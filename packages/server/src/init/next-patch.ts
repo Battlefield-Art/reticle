@@ -79,9 +79,7 @@ const CJS_EXPORT_HEAD = /^[ \t]*module\.exports[ \t]*=[ \t]*/gm;
 const BODY_OPEN_TAG = /<body(\s[^>]*)?>/g;
 
 const NO_EXPORT_REASON = "couldn't find an `export default` or `module.exports` to wrap";
-const AMBIGUOUS_EXPORT_REASON =
-  'this config exports more than once (a conditional export), so there is no single expression to ' +
-  'wrap — wrap the one that actually runs in `withReticle(...)` yourself';
+const NO_BODY_REASON = "couldn't find a single <body> tag to mount <ReticleDev /> inside";
 
 /** Bracket pairs that keep an expression open. A `;` at depth 0 is what ends it. */
 const OPENERS = '([{';
@@ -140,42 +138,49 @@ interface ExportSite {
   end: number;
 }
 
-/** The single export this config has, or undefined when there is none or more than one. */
-function soleExport(source: string, head: RegExp): ExportSite | undefined {
-  const matches = [...source.matchAll(head)];
-  const match = 1 === matches.length ? matches[0] : undefined;
-  if (match?.index === undefined) return undefined;
-  const start = match.index + match[0].length;
-  return { start, end: expressionEnd(source, start) };
+/** Every top-level export assignment in the file, in source order. */
+function exportSites(source: string, head: RegExp): ExportSite[] {
+  const sites: ExportSite[] = [];
+  for (const match of source.matchAll(head)) {
+    if (match.index === undefined) continue;
+    const start = match.index + match[0].length;
+    sites.push({ start, end: expressionEnd(source, start) });
+  }
+  return sites;
 }
-const NO_BODY_REASON = "couldn't find a single <body> tag to mount <ReticleDev /> inside";
 
-/** Wrap the expression at `site` in `withReticle(...)`, leaving every other byte of the file alone. */
-function wrapAt(source: string, site: ExportSite): string {
-  return `${source.slice(0, site.start)}withReticle(${source.slice(site.start, site.end)})${source.slice(site.end)}`;
+/**
+ * Wrap every listed expression in `withReticle(...)`, leaving every other byte of the file alone.
+ *
+ * All of them, not just the first: a config can export CONDITIONALLY — Sentry-wrapped in one branch,
+ * plain in the other — and which branch runs is an environment variable's business, not ours.
+ * Wrapping each assignment is correct whichever one executes, and it is what turns that shape from a
+ * manual step (an app that boots and never connects) into a working install.
+ *
+ * Applied back-to-front so each splice leaves the earlier offsets valid.
+ */
+function wrapAll(source: string, sites: readonly ExportSite[]): string {
+  let out = source;
+  for (const site of [...sites].sort((a, b) => b.start - a.start)) {
+    out = `${out.slice(0, site.start)}withReticle(${out.slice(site.start, site.end)})${out.slice(site.end)}`;
+  }
+  return out;
 }
 
 export function patchNextConfig(source: string): SourcePatch {
   if (source.includes(RETICLE_NEXT_PACKAGE)) return { kind: PatchKind.ALREADY };
 
-  const esm = soleExport(source, ESM_DEFAULT_HEAD);
-  if (esm !== undefined) {
-    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_IMPORT}\n${wrapAt(source, esm)}` };
+  const esm = exportSites(source, ESM_DEFAULT_HEAD);
+  if (esm.length > 0) {
+    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_IMPORT}\n${wrapAll(source, esm)}` };
   }
 
-  const cjs = soleExport(source, CJS_EXPORT_HEAD);
-  if (cjs !== undefined) {
-    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_REQUIRE}\n${wrapAt(source, cjs)}` };
+  const cjs = exportSites(source, CJS_EXPORT_HEAD);
+  if (cjs.length > 0) {
+    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_REQUIRE}\n${wrapAll(source, cjs)}` };
   }
 
-  // Distinguish "no export at all" from "several" — the second is a config we understood and chose
-  // not to touch, and saying so is the difference between a usable manual step and a shrug.
-  const exports_ =
-    [...source.matchAll(ESM_DEFAULT_HEAD)].length + [...source.matchAll(CJS_EXPORT_HEAD)].length;
-  return {
-    kind: PatchKind.MANUAL,
-    reason: 0 === exports_ ? NO_EXPORT_REASON : AMBIGUOUS_EXPORT_REASON,
-  };
+  return { kind: PatchKind.MANUAL, reason: NO_EXPORT_REASON };
 }
 
 /** `<Component {...pageProps} />` — the one element every `pages/_app` renders. */

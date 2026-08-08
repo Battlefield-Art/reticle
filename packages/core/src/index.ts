@@ -24,6 +24,7 @@ export * from './net.js'; // NetInitiator / ipc:// scheme — network + desktop-
 export * from './findings.js'; // crawl anomalies + cross-channel contradictions
 export * from './desktop-contract.js'; // the Electron preload/main/renderer/daemon string contract
 export * from './consequence.js';
+export * from './project-id.js';
 export * from './notices.js';
 export * from './journal.js';
 
