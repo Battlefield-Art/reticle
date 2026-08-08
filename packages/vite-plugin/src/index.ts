@@ -17,7 +17,7 @@ import {
 import { resolveProjectId } from './project-id.js';
 import { discoverDaemonPort } from './discover-port.js';
 import { SVELTE_FILE, stampSvelte } from './svelte-source.js';
-import { isResolvable, sdkPackageVersion, sdkBuildFingerprint } from './installed.js';
+import { resolvableChain, sdkPackageVersion, sdkBuildFingerprint } from './installed.js';
 
 export const RETICLE_VITE_PLUGIN_NAME = 'reticle';
 
@@ -261,6 +261,45 @@ const SDK_CJS_DEPS = {
   TESTING_LIBRARY: '@testing-library/dom',
   ARIA_QUERY: 'aria-query',
 } as const;
+
+/** The package that actually imports them — the middle of the chain under a nested layout. */
+const BROWSER_PACKAGE = '@reticlehq/browser';
+
+/**
+ * Name each CJS dep in the form Vite can actually resolve, and omit it when nothing can.
+ *
+ * Three layouts, one function. A hoisted install (npm, yarn) resolves the bare specifier from the
+ * app root. A strict one (pnpm, npm's nested layout) does not — the dep belongs to
+ * `@reticlehq/browser`, which belongs to the SDK — so it has to be named through the chain that
+ * reaches it. An app that has neither gets nothing, because a name Vite cannot resolve is worse
+ * than no name: it prints `Failed to resolve dependency: …, present in optimizeDeps.include` and
+ * forces a full re-optimization on EVERY cold boot. On the sveltekit fixture that reload cost the
+ * page its load window twice in a row — a green install reported as a dead one.
+ */
+function cjsDepIncludes(appRoot: string): string[] {
+  // Ordered widest-to-narrowest: the bare form when the app owns the dep, then through the browser
+  // package if the app depends on it directly (Svelte, Vue, vanilla), then through the React kit
+  // that carries it.
+  const prefixes: readonly (readonly string[])[] = [
+    [],
+    [BROWSER_PACKAGE],
+    [RETICLE_PACKAGE, BROWSER_PACKAGE],
+  ];
+  const first = (chains: readonly (readonly string[])[]): string[] | null => {
+    for (const chain of chains) if (null !== resolvableChain(chain, appRoot)) return [...chain];
+    return null;
+  };
+  const testingLibrary = first(prefixes.map((p) => [...p, SDK_CJS_DEPS.TESTING_LIBRARY]));
+  // `aria-query` hangs off @testing-library/dom, not off the SDK, so its chain is that one plus a
+  // segment — there is no layout where it is reachable by any other route but the bare one.
+  const ariaQuery = first([
+    [SDK_CJS_DEPS.ARIA_QUERY],
+    ...(null === testingLibrary ? [] : [[...testingLibrary, SDK_CJS_DEPS.ARIA_QUERY]]),
+  ]);
+  return [testingLibrary, ariaQuery]
+    .filter((chain): chain is string[] => null !== chain)
+    .map((chain) => chain.join(' > '));
+}
 
 export function readPairingToken(): string | undefined {
   const override = process.env[ReticleEnv.PAIRING_TOKEN_DIR];
@@ -513,9 +552,9 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
             // the one the whole product is judged on — silently did nothing, and it worked on the
             // next refresh, which is the worst possible shape for a bug like this.
             RETICLE_PACKAGE,
-            // Only if present — see above; naming an absent package produces a boot warning that
-            // blames Reticle for nothing.
-            ...[SDK_CJS_DEPS.TESTING_LIBRARY, SDK_CJS_DEPS.ARIA_QUERY].filter((d) => isResolvable(d, appRoot)),
+            // Only in a form that resolves — see above; a name Vite cannot resolve produces a boot
+            // warning that blames Reticle, and a forced re-optimization on every cold start.
+            ...cjsDepIncludes(appRoot),
           ],
         },
       };

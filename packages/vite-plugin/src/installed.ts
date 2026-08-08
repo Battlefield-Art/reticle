@@ -46,6 +46,52 @@ export function isResolvable(specifier: string, from: string = process.cwd()): b
   }
 }
 
+/**
+ * The directory holding `specifier`'s own manifest, resolved from `from`. Null when it is not there.
+ *
+ * Resolves the entry and walks up to the manifest beside it rather than requiring
+ * `<pkg>/package.json` directly: a package with an `exports` map may refuse that subpath, and our
+ * own packages do.
+ */
+function packageDirOf(specifier: string, from: string): string | null {
+  try {
+    let dir = dirname(requireFromApp(from).resolve(specifier));
+    for (let up = 0; up < MANIFEST_SEARCH_DEPTH; up++) {
+      const candidate = join(dir, 'package.json');
+      if (existsSync(candidate)) {
+        const parsed = JSON.parse(readFileSync(candidate, 'utf8')) as { name?: string };
+        if (parsed.name === specifier) return dir;
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  } catch {
+    // Unresolvable from here — the caller's next chain, or nothing.
+  }
+  return null;
+}
+
+/**
+ * Vite's nested include form — `a > b > c` — for a chain that fully resolves, else null.
+ *
+ * A single-segment chain is just the bare specifier, so this also answers "can the app see it
+ * itself". Each further segment is resolved from the PREVIOUS package's directory, which is what
+ * Vite does with the `>` form and the only way to name a dependency the app root cannot see: under
+ * pnpm (and npm's nested layout) `@testing-library/dom` belongs to `@reticlehq/browser`, not to the
+ * user's app. Naming it bare made Vite fail to resolve it and force a re-optimization on every cold
+ * boot. SvelteKit ships `svelte > clsx` for the same reason.
+ */
+export function resolvableChain(chain: readonly string[], from: string): string | null {
+  let base = from;
+  for (const segment of chain) {
+    const dir = packageDirOf(segment, base);
+    if (null === dir) return null;
+    base = dir;
+  }
+  return 0 === chain.length ? null : chain.join(' > ');
+}
+
 /** The installed SDK's package version, for the HELLO's `sdkVersion`. Node-side only. */
 export function sdkPackageVersion(from: string = process.cwd()): string {
   const require_ = requireFromApp(from);

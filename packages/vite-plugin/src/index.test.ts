@@ -324,8 +324,11 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
     );
     const patch = plugin.config?.({}) ?? {};
     const include = (patch['optimizeDeps'] as { include?: string[] } | undefined)?.include ?? [];
-    expect(include).toContain('@testing-library/dom');
-    expect(include).toContain('aria-query');
+    // Either spelling counts: the bare specifier when the app root can resolve it, or Vite's nested
+    // `a > b > c` chain when only the SDK can. Asserting the bare form alone would forbid the fix
+    // for pnpm layouts, where naming it bare is what breaks the app — see installed.test.ts.
+    expect(include.some((e) => e.endsWith('@testing-library/dom'))).toBe(true);
+    expect(include.some((e) => e.endsWith('aria-query'))).toBe(true);
   });
 
   /**
@@ -412,7 +415,7 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
     const patch = plugin.config?.({ optimizeDeps: { include: ['their-dep'] } }) ?? {};
     const include = (patch['optimizeDeps'] as { include?: string[] } | undefined)?.include ?? [];
     expect(include, "the app's own entries must survive").toContain('their-dep');
-    expect(include).toContain('aria-query');
+    expect(include.some((e) => e.endsWith('aria-query'))).toBe(true);
   });
 });
 
