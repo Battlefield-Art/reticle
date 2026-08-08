@@ -268,6 +268,12 @@ export class Session {
     const payload = result.result;
     if (typeof payload !== 'object' || payload === null) return;
     const record = payload as Record<string, unknown>;
+    // The TESTID first: it is the strongest identity a control has and it survives any re-render.
+    // Coverage previously matched only on `role "name"`, so a control with a testid but no accessible
+    // name — or on a stack where the act reply carried neither — was unrecognisable after a
+    // re-render, and coverage read `exercised: 0` however much work had been done.
+    const testid = record['testid'];
+    if (typeof testid === 'string' && testid.length > 0) this.#observed.recordActedLabel(testid);
     const role = record['role'];
     const name = record['name'];
     if (typeof role !== 'string' || typeof name !== 'string') return;

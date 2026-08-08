@@ -40,7 +40,18 @@ export function exercisedCount(
 ): CoverageTally {
   // An empty label is not an identity — anonymous controls would otherwise collapse into one bucket
   // and a single act would mark every one of them driven.
-  const droveLabel = (label: string): boolean => label.length > 0 && actedLabels.has(label);
+  // Matched on the whole label (`button "Save"`) OR on a testid the label contains. The snapshot
+  // renders a control's testid inside its label, and a testid is the identity most likely to survive
+  // a re-render — matching only the full label meant a control with a testid but no accessible name
+  // was never recognised, and coverage read `exercised: 0` after real work.
+  const droveLabel = (label: string): boolean => {
+    if (label.length === 0) return false;
+    if (actedLabels.has(label)) return true;
+    for (const acted of actedLabels) {
+      if (acted.length > 0 && !acted.includes('"') && label.includes(acted)) return true;
+    }
+    return false;
+  };
   const untouched = controls.filter(
     (control) => !actedRefs.has(control.ref) && !droveLabel(control.label),
   );

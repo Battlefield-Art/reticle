@@ -78,10 +78,18 @@ function handleInit(parsed: {
   mcp: boolean;
   dryRun: boolean;
   install: boolean;
+  app?: string | undefined;
 }): void {
   const cwd = process.cwd();
   const result = runInit(
-    { cwd, port: parsed.port, mcp: parsed.mcp, dryRun: parsed.dryRun, install: parsed.install },
+    {
+      cwd,
+      port: parsed.port,
+      mcp: parsed.mcp,
+      dryRun: parsed.dryRun,
+      install: parsed.install,
+      ...(parsed.app === undefined ? {} : { app: parsed.app }),
+    },
     buildNodeIo(cwd),
   );
   if (!result.ok) process.exit(1);

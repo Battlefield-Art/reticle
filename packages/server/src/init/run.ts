@@ -11,6 +11,7 @@ import { detect, Framework, type DetectInput } from './detect.js';
 import { wasMcpRegistered } from './mcp-registered.js';
 import { pickAstroHost } from './astro-host.js';
 import { workspaceParents } from './workspace-apps.js';
+import { chooseWorkspaceApp } from './app-choice.js';
 import { isConnectStep } from './plan.js';
 import { CRA_ENV_PATH } from './cra.js';
 
@@ -176,6 +177,11 @@ export interface InitOptions {
   mcp: boolean;
   dryRun: boolean;
   install: boolean;
+  /**
+   * Which app in a monorepo to wire, when several are found. Without it `init` refuses to guess, and
+   * "re-run inside the one you want" is not an instruction a script or an agent can follow.
+   */
+  app?: string;
   /** Set on the recursive call after a workspace redirect, so the search happens at most once. */
   redirected?: boolean;
 }
@@ -571,11 +577,21 @@ function redirectToWorkspaceApp(
   if (here.framework !== Framework.HTML) return null; // this directory IS the app
 
   const apps = findWorkspaceApps(io);
-  const target = apps.length === 1 ? apps[0] : undefined;
+  // An explicitly named app answers the ambiguity. Refusing to guess is right, but "re-run inside the
+  // one you want" is not something a script, a CI step, or an agent that cannot change directory can
+  // act on — so the refusal was a dead end for exactly the callers most likely to hit it.
+  const chosen = chooseWorkspaceApp(options.app, apps);
+  if (!chosen.ok) {
+    io.print(chosen.message);
+    return { ok: false, applied: 0, manual: 1 };
+  }
+  const target = chosen.app ?? (apps.length === 1 ? apps[0] : undefined);
   if (target === undefined) {
     if (apps.length === 0) return null; // not a workspace — fall through to the normal HTML plan
     io.print(AMBIGUOUS_HEADER);
     for (const a of apps) io.print(`  ${a}`);
+    io.print('');
+    io.print(`Or name one without changing directory:  reticle init --app ${apps[0] ?? '<dir>'}`);
     return { ok: false, applied: 0, manual: apps.length };
   }
   io.print(`No app in this directory — wiring ${target} instead.`);

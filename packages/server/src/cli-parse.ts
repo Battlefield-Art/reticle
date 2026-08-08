@@ -6,7 +6,8 @@
  */
 
 export const CLI_USAGE = `usage:
-  reticle init  [--dry-run] [--port N] [--no-mcp] [--no-install]  (wire Reticle into the project in this directory)
+  reticle init  [--dry-run] [--port N] [--no-mcp] [--no-install] [--app <dir>]  (wire Reticle into the project in this directory)
+                --app picks WHICH app in a monorepo, when several are found
                 --no-mcp skips MORE than the server registration: also the agent rule files
                 (CLAUDE.md / AGENTS.md / .cursor) and the /reticle command, because all three
                 only make sense once the tools are reachable.
@@ -143,6 +144,7 @@ const QUIET_FLAG = '--quiet';
 const DRY_RUN_FLAG = '--dry-run';
 const YES_FLAG = '--yes';
 const NO_MCP_FLAG = '--no-mcp';
+const APP_FLAG = '--app';
 const NO_INSTALL_FLAG = '--no-install';
 export const HTTP_FLAG = '--http';
 export const HTTP_PORT_FLAG = '--http-port';
@@ -151,7 +153,14 @@ const TIMEOUT_FLAG = '--timeout';
 const STORAGE_STATE_FLAG = '--storage-state';
 
 export type CliResult =
-  | { kind: 'init'; port: number | undefined; mcp: boolean; dryRun: boolean; install: boolean }
+  | {
+      kind: 'init';
+      port: number | undefined;
+      mcp: boolean;
+      dryRun: boolean;
+      install: boolean;
+      app: string | undefined;
+    }
   | {
       kind: 'serve';
       port: number;
@@ -356,7 +365,14 @@ function parseVerifySuffix(args: string[]): VerifySuffix {
 }
 
 type InitFlags =
-  | { kind: 'ok'; port: number | undefined; mcp: boolean; dryRun: boolean; install: boolean }
+  | {
+      kind: 'ok';
+      port: number | undefined;
+      mcp: boolean;
+      dryRun: boolean;
+      install: boolean;
+      app: string | undefined;
+    }
   | { kind: 'error'; message: string };
 
 function parseInitFlags(args: string[]): InitFlags {
@@ -364,6 +380,7 @@ function parseInitFlags(args: string[]): InitFlags {
   let mcp = true;
   let dryRun = false;
   let install = true;
+  let app: string | undefined;
   let i = 0;
   while (i < args.length) {
     const arg = args[i];
@@ -374,6 +391,11 @@ function parseInitFlags(args: string[]): InitFlags {
       const parsed = parseInt(n, 10);
       if (isNaN(parsed)) return { kind: 'error', message: CLI_USAGE };
       port = parsed;
+    } else if (arg === APP_FLAG) {
+      i++;
+      const value = args[i];
+      if (value === undefined) return { kind: 'error', message: CLI_USAGE };
+      app = value;
     } else if (arg === NO_MCP_FLAG) {
       mcp = false;
     } else if (arg === NO_INSTALL_FLAG) {
@@ -387,7 +409,7 @@ function parseInitFlags(args: string[]): InitFlags {
     }
     i++;
   }
-  return { kind: 'ok', port, mcp, dryRun, install };
+  return { kind: 'ok', port, mcp, dryRun, install, app };
 }
 
 /** Pure CLI arg parser — exported for unit tests. argv = process.argv.slice(2). */
@@ -437,7 +459,14 @@ export function parseCliArgs(
     case INIT_COMMAND: {
       const r = parseInitFlags(rest);
       if (r.kind === 'error') return r;
-      return { kind: 'init', port: r.port, mcp: r.mcp, dryRun: r.dryRun, install: r.install };
+      return {
+        kind: 'init',
+        port: r.port,
+        mcp: r.mcp,
+        dryRun: r.dryRun,
+        install: r.install,
+        app: r.app,
+      };
     }
     case SERVE_COMMAND: {
       const r = parseServeFlags(rest, defaultPort, defaultHeadless);

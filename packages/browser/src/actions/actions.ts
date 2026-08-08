@@ -123,12 +123,18 @@ function anchorOf(el: Element): CapturedAnchor {
   const component = info?.componentStack[0];
   if (component !== undefined) out.component = component;
   if (info?.source !== undefined) out.source = info.source;
+  // Reported INDEPENDENTLY. They used to be all-or-nothing, so an element with a role and no
+  // accessible name — an icon button, a clickable div, a control labelled by an SVG — came back with
+  // no identity at all once identifyComponent (React-specific) also found nothing. Two features read
+  // this and both silently degrade without it: the flow recorder anchors a step by it, and coverage
+  // recognises a control it already drove across a re-render by it.
+  //
+  // A role alone is not a unique anchor, and the flow compiler still requires role AND name before it
+  // will anchor a step that way. But it is real information, and reporting it beats reporting nothing.
   const role = getRole(el);
   const name = getAccessibleName(el);
-  if (role.length > 0 && name.length > 0) {
-    out.role = role;
-    out.name = name;
-  }
+  if (role.length > 0) out.role = role;
+  if (name.length > 0) out.name = name;
   return out;
 }
 

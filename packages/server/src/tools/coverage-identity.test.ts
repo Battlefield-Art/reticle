@@ -62,4 +62,19 @@ describe('a control the agent drove stays exercised across a re-render', () => {
     ];
     expect(exercisedCount(anon, new Set(['e20']), new Set([''])).exercised).toBe(1);
   });
+
+  it('matches a control by TESTID, which survives what a re-render destroys', () => {
+    // A control with a testid and no accessible name was unrecognisable after a re-render, so
+    // coverage read `exercised: 0` however much work had been done — reported on three of four apps.
+    const controls = [
+      { ref: 'e30', label: 'button "" [data-testid=save-btn]' },
+      { ref: 'e31', label: 'button "Cancel"' },
+    ];
+    expect(exercisedCount(controls, new Set(), new Set(['save-btn'])).exercised).toBe(1);
+  });
+
+  it('a testid match does not spill onto an unrelated control', () => {
+    const controls = [{ ref: 'e40', label: 'button "Cancel"' }];
+    expect(exercisedCount(controls, new Set(), new Set(['save-btn'])).exercised).toBe(0);
+  });
 });
