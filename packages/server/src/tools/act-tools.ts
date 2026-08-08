@@ -12,6 +12,7 @@ import {
   DEFAULT_ASSERT_TIMEOUT_MS,
   InputMode,
   ReticleCommand,
+  Verified,
 } from '@reticlehq/core';
 import { leanActResult, mutatedWithin } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
@@ -38,7 +39,12 @@ import {
   PredicateSchema,
 } from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
-import { pausedShortCircuit, pausedOutputShape, withControl } from '../session/control-envelope.js';
+import {
+  pausedShortCircuit,
+  pausedOutputShape,
+  withControl,
+  PAUSED_NO_VERDICT,
+} from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
 import { type ToolDef, sessionIdShape } from './tool-kit.js';
 import { asActionType, gradeOf } from './act-helpers.js';
@@ -361,8 +367,15 @@ export const ACT_TOOLS: ToolDef[] = [
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
       // Live-control: refuse to drive the page (no act, no predicate eval) while paused.
+      //
+      // A VERDICT rides out with the refusal. This is the one tool here that promises `verified`,
+      // and the bare pause payload omitted it — so an agent reading `result.verified` got undefined
+      // from a call that carried no error, which is neither yes, no, nor unknown. It also broke this
+      // tool's own outputSchema, where `because` is required.
       const paused = pausedShortCircuit(session);
-      if (paused !== undefined) return paused;
+      if (paused !== undefined) {
+        return { ...paused, verified: Verified.UNKNOWN, because: PAUSED_NO_VERDICT };
+      }
       refuseIfThrottled(session, args['refuseWhenThrottled']);
       // Omitting `until` waits for the page to settle (idle) — the deterministic default vs a sleep.
       // `predicate` is what reticle_assert / reticle_wait_for call this — see alias-args.ts.

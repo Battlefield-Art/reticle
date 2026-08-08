@@ -59,6 +59,17 @@ describe('verificationOf', () => {
   it('a verification tool that returned no verdict never counts', () => {
     expect(verificationOf(VERIFY, { error: 'no session' }, 1)).toBeUndefined();
   });
+
+  /**
+   * A pause REFUSES the call: nothing is driven and nothing is asserted. The refusal now carries
+   * `verified: 'unknown'` so the agent's read of that field is never undefined — which must not turn
+   * a refusal into a row in the metric investors are shown.
+   */
+  it('a paused refusal is not a verification, verdict field or no', () => {
+    expect(
+      verificationOf(ReticleTool.ACT_AND_WAIT, { paused: true, verified: 'unknown' }, 1),
+    ).toBeUndefined();
+  });
 });
 
 describe('how the browser got there rides on the event', () => {

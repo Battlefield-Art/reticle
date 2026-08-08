@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LastAct } from './last-act.js';
-import { SessionState } from '@reticlehq/core';
+import { SessionState, Verified } from '@reticlehq/core';
 import type { CommandResult } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from '../tools/tools.js';
 import { ReticleTool } from '../tools/tool-names.js';
@@ -176,6 +176,22 @@ describe('live-control: pause short-circuit', () => {
     expect(res.guidance).toEqual(['stop']);
     expect(res.hint).toBe(PAUSE_HINT);
     expect(session.__sent).toHaveLength(0);
+  });
+
+  /**
+   * A verification tool must always answer the one field its verdict hangs on. The pause
+   * short-circuit returned a plain `{ paused, guidance, hint }`, so `verified` was ABSENT — not
+   * yes/no/unknown — and an agent reading `result.verified` got undefined from a call that looked
+   * like it had succeeded. Reported from the field on two apps.
+   */
+  it('reticle_act_and_wait says verified:unknown while paused, never nothing at all', async () => {
+    const session = fakeSession({ state: SessionState.PAUSED, inbox: [] });
+    const res = (await tool(ReticleTool.ACT_AND_WAIT).handler(fakeDeps(session), {
+      ...ACT_ARGS,
+      until: { kind: 'console', level: 'error', absent: true },
+    })) as PausedShape & { verified?: string; because?: string };
+    expect(res.verified).toBe(Verified.UNKNOWN);
+    expect(res.because).toBeTruthy();
   });
 
   it('reticle_act_sequence short-circuits when paused', async () => {

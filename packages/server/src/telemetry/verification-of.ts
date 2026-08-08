@@ -34,6 +34,10 @@ export function verificationOf(
   durationMs: number,
 ): Verification | undefined {
   if (!VERIFICATION_TOOLS.has(toolName)) return undefined;
+  // A paused session REFUSES the call — nothing driven, nothing asserted. The refusal carries a
+  // verdict field so the agent never reads undefined off it, and that field must not be mistaken
+  // here for work that happened.
+  if (result['paused'] === true) return undefined;
   const verified = typeof result['verified'] === 'string' ? result['verified'] : undefined;
   // flow_verify reports `status: pass|fail|unverifiable`; assert reports a boolean `pass`. Accept
   // either shape so the whole family is covered without normalizing four tools' contracts for a
