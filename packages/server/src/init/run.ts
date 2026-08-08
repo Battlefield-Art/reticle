@@ -6,6 +6,8 @@
 
 import { dirname, join } from 'node:path';
 import { detect, Framework, type DetectInput } from './detect.js';
+import { wasMcpRegistered } from './mcp-registered.js';
+import { pickAstroHost } from './astro-host.js';
 import {
   DEPS_TARGET,
   MCP_TARGET,
@@ -128,6 +130,8 @@ const ASTRO_CONFIG_CANDIDATES = [
 ];
 /** Where a conventional Astro app keeps the layout every page wraps itself in. */
 const ASTRO_LAYOUTS_DIR = 'src/layouts';
+/** Also searched: an app with no layouts directory renders the document straight from a page. */
+const ASTRO_PAGES_DIR = 'src/pages';
 const NEXT_CONFIG_CANDIDATES = [
   'next.config.mjs',
   'next.config.js',
@@ -179,6 +183,25 @@ interface InitResult {
  * decide whether the install finished. A notice gets its own mark so "steps remaining" can reach zero
  * on a working install that happens to be on an ungated stack.
  */
+/**
+ * A step's status AFTER the run, which is what actually happened to it.
+ *
+ * `report` applies the same downgrade when printing: a step that failed or was skipped is shown as
+ * MANUAL whatever it planned to be. Reading the planned status alone would say a step applied when
+ * the run had already given up on it.
+ */
+function resolvedStatus(
+  plan: { steps: readonly { target: string; status: StepStatus }[] },
+  target: string,
+  failed: ReadonlySet<string>,
+  skipped: ReadonlySet<string>,
+): StepStatus | undefined {
+  const step = plan.steps.find((s) => s.target === target);
+  if (step === undefined) return undefined;
+  if (failed.has(target) || skipped.has(target)) return StepStatus.MANUAL;
+  return step.status;
+}
+
 const STATUS_SYMBOL: Record<StepStatus, string> = {
   [StepStatus.APPLY]: '✓',
   [StepStatus.MANUAL]: '⚠',
@@ -226,13 +249,20 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
 
   const astroPath = firstPresent(rootFiles, ASTRO_CONFIG_CANDIDATES);
   const astroSource = astroPath === null ? null : io.readFile(astroPath);
-  // Exactly one layout, or none: which page or layout to instrument is a real decision, and with
-  // several candidates the printed recipe is the honest answer rather than a guess at the one every
-  // page inherits from.
-  const astroLayouts = io.listFiles(ASTRO_LAYOUTS_DIR).filter((f) => f.endsWith('.astro'));
-  const soleLayout = astroLayouts.length === 1 ? astroLayouts[0] : undefined;
-  const layoutRelPath = soleLayout === undefined ? null : `${ASTRO_LAYOUTS_DIR}/${soleLayout}`;
-  const astroLayoutSource = layoutRelPath === null ? null : io.readFile(layoutRelPath);
+  // Which file owns the DOCUMENT, not how many files sit in a directory. The old rule ("exactly one
+  // .astro in src/layouts") fired on neither real Astro app: one has no layouts directory and
+  // renders from src/pages/index.astro, the other has three files there of which two are partials.
+  // `</body>` is the discriminator — see astro-host.
+  const astroCandidates = [ASTRO_LAYOUTS_DIR, ASTRO_PAGES_DIR].flatMap((dir) =>
+    io
+      .listFiles(dir)
+      .filter((f) => f.endsWith('.astro'))
+      .map((f) => ({ path: `${dir}/${f}`, source: io.readFile(`${dir}/${f}`) }))
+      .filter((c): c is { path: string; source: string } => c.source !== null),
+  );
+  const astroHost = pickAstroHost(astroCandidates);
+  const layoutRelPath = astroHost?.path ?? null;
+  const astroLayoutSource = astroHost?.source ?? null;
 
   const nextConfigFile = firstPresent(rootFiles, NEXT_CONFIG_CANDIDATES);
   // App Router first; a Pages Router app has no layout, and its mount point is pages/_app.
@@ -502,7 +532,8 @@ export function runInit(options: InitOptions, io: InitIo): InitResult {
       ok: result.ok,
       ...(result.ok ? {} : { reason: classifyInitFailure(failed) }),
       stack: plan.framework,
-      mcpRegistered: !failed.has(MCP_TARGET),
+      // The step's REAL final status, not the absence of a failure — see mcp-registered.
+      mcpRegistered: wasMcpRegistered(resolvedStatus(plan, MCP_TARGET, failed, skipped)),
     });
   }
   return result;
