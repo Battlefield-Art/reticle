@@ -13,6 +13,7 @@ import { pickAstroHost } from './astro-host.js';
 import { workspaceParents } from './workspace-apps.js';
 import { chooseWorkspaceApp } from './app-choice.js';
 import { isConnectStep } from './plan.js';
+import { CURSOR_RULE_PATH } from './agent-rules.js';
 import { CRA_ENV_PATH } from './cra.js';
 
 /** CRA's bundled entry, in the order create-react-app itself generates them. */
@@ -354,9 +355,9 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     // Read the agent instruction files so the rule merge stays idempotent across re-runs.
     claudeMdContent: io.readFile('CLAUDE.md'),
     agentsMdContent: io.readFile('AGENTS.md'),
-    cursorRuleExists: io.exists('.cursor/rules/reticle.mdc'),
-    claudeCommandExists: io.exists(CLAUDE_COMMAND_PATH),
-    cursorCommandExists: io.exists(CURSOR_COMMAND_PATH),
+    cursorRuleContent: io.readFile(CURSOR_RULE_PATH),
+    claudeCommandContent: io.readFile(CLAUDE_COMMAND_PATH),
+    cursorCommandContent: io.readFile(CURSOR_COMMAND_PATH),
     options: {
       port: options.port,
       mcp: options.mcp,

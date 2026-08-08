@@ -11,6 +11,9 @@
  * re-run is a no-op. Mirrors the apply/already result shape used across init (see cursor.ts).
  */
 
+import { NPX } from './mcp.js';
+import { RETICLE_NPM_PACKAGE } from '../server-version.js';
+
 /** Project-root instruction files the agent re-reads every session. */
 export const CLAUDE_MD_PATH = 'CLAUDE.md';
 export const AGENTS_MD_PATH = 'AGENTS.md';
@@ -22,20 +25,32 @@ const RULE_BEGIN =
   '<!-- reticle:begin (managed by `reticle init` — edit outside these markers) -->';
 const RULE_END = '<!-- reticle:end -->';
 
+/**
+ * How the agent must INVOKE the CLI.
+ *
+ * `reticle init` installs the SDK packages, never the server — so there is no `reticle` on the
+ * agent's PATH, and every bare `reticle <cmd>` this rule named was an instruction that could not be
+ * followed. Reported from a field sweep: three of them, in the file the agent re-reads every session.
+ *
+ * `npx @reticlehq/server` is the same invocation the MCP registration uses, and it is derived from
+ * the package's own name so the two can never drift apart.
+ */
+const CLI = `${NPX} ${RETICLE_NPM_PACKAGE}`;
+
 /** The rule body (markdown). States WHEN to verify, HOW, and never-weaken-a-check. */
 const RULE_BODY = `## Verifying with Reticle
 
-This app is instrumented by **Reticle** — an in-app verification layer exposed as \`reticle_*\` MCP tools and the \`reticle\` CLI. Verifying is part of "done", not an optional extra.
+This app is instrumented by **Reticle** — an in-app verification layer exposed as \`reticle_*\` MCP tools and the \`${CLI}\` CLI (run it through npx — Reticle's server is not installed into this project). Verifying is part of "done", not an optional extra.
 
 - **When:** after you build or change any user-facing feature, flow, or UI, verify it with Reticle **before** telling the user it is complete. Reading the code or passing unit tests is not enough — drive the real running app.
 - **How:** drive the actual flow (\`reticle_act\` / \`reticle_act_and_wait\`), then read the observable effect (\`reticle_assert\`, \`reticle_snapshot\`, \`reticle_state\`, \`reticle_network\`). Confirm the change produced the effect it was meant to, with no new console errors or failed requests.
-- **Covered flows:** run \`reticle gate\` — it reports which recorded flows the changed files affect and whether they still pass.
+- **Covered flows:** run \`${CLI} gate\` — it reports which recorded flows the changed files affect and whether they still pass.
 - **Never weaken a check to make it green.** Downgrading, skipping, or deleting an assertion is a finding, not a fix.
 - **If Reticle can't run** (no daemon, or this is not a running web app), say so — do not skip verification silently.
-- **If a tool result carries \`version_skew\`, act on it before trusting anything else.** Two pieces of Reticle are on different wire contracts, so tools can misbehave in ways neither side reports — a green here is not evidence. The field says which pair disagrees and names the exact fix: run \`reticle stop\` and retry when the DAEMON is stale, or tell the human to install the matching SDK and restart their dev server when the PAGE is. Do that first, then redo whatever you were verifying.
-- **If a tool result carries \`update_available\`, say so.** Reticle checked npm and a newer version exists. Tell the human the version numbers and offer to run \`reticle update\` — between tasks, never mid-verification, because it restarts the daemon and drops the session. Finish what you are doing first.
-- **Wish Reticle could do something? Ask for it with \`reticle_feedback\`.** Reticle is built for agents, so what you find awkward or missing is what decides the roadmap — and you are the only one who can report it, because that thought disappears when your context does. File \`feature_request\` for something that does not exist, \`improvement\` for something that works but costs too many calls. Say what you are actually trying to achieve (\`need\`) and how you work around it today (\`currentApproach\`), and set \`model\` to the model you are running. File it the moment you notice, then carry on — nothing is too minor.
-- **If Reticle itself fails you, tell its maintainers with \`reticle_feedback\`.** A tool that returned something wrong, a thing Reticle could not observe at all, or a verdict you could not act on — file it with a root-cause analysis and the call trace, then carry on with the task. Working around a broken tool in silence is how the same defect survives. This is about defects in *Reticle*; a bug you find in *this app* is Reticle working, and belongs in your report to the user instead.`;
+- **If a tool result carries \`version_skew\`, act on it before trusting anything else.** Two pieces of Reticle are on different wire contracts, so tools can misbehave in ways neither side reports — a green here is not evidence. The field says which pair disagrees and names the exact fix: run \`${CLI} stop\` and retry when the DAEMON is stale, or tell the human to install the matching SDK and restart their dev server when the PAGE is. Do that first, then redo whatever you were verifying.
+- **If a tool result carries \`update_available\`, say so.** Reticle checked npm and a newer version exists. Tell the human the version numbers and offer to run \`${CLI} update\` — between tasks, never mid-verification, because it restarts the daemon and drops the session. Finish what you are doing first.
+- **Wish Reticle could do something? Ask for it with \`reticle_feedback\`.** Reticle is built for agents, so what you find awkward or missing is what decides the roadmap — and you are the only one who can report it, because that thought disappears when your context does. Put the report itself in \`text\` (the only required field) and pick a \`kind\`: \`feature_request\` for something that does not exist, \`improvement\` for something that works but costs too many calls, \`bug\` for a tool that returned something wrong, \`gap\` for something Reticle could not observe at all, \`ambiguity\` for a verdict you could not act on. Say what you are actually trying to achieve (\`need\`) and how you work around it today (\`currentApproach\`), and set \`model\` to the model you are running. File it the moment you notice, then carry on — nothing is too minor.
+- **If Reticle itself fails you, tell its maintainers with \`reticle_feedback\`.** A tool that returned something wrong, a thing Reticle could not observe at all, or a verdict you could not act on — file it as \`text\` — a root-cause analysis with the call trace — under \`kind: bug\` (wrong result), \`gap\` (could not observe it) or \`ambiguity\` (undecidable verdict), then carry on with the task. Working around a broken tool in silence is how the same defect survives. This is about defects in *Reticle*; a bug you find in *this app* is Reticle working, and belongs in your report to the user instead.`;
 
 export const AgentRuleStatus = {
   APPLY: 'apply',

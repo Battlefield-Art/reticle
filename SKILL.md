@@ -64,7 +64,7 @@ There is no single MCP config file all tools share. Each harness has its own fil
 
 | Tool | File | Root key | Command format | `type` needed? |
 | --- | --- | --- | --- | --- |
-| Claude Code | `~/.claude/claude_mcp_config.json` | `mcpServers` | `"command"` + `"args"` split | no |
+| Claude Code | `~/.claude.json` (user scope; prefer the `claude mcp add` CLI) | `mcpServers` | `"command"` + `"args"` split | no |
 | OpenCode | `opencode.json` | `mcp` | `"command"` flat array | `"local"` required |
 | Codex CLI | `.codex/config.toml` | `[mcp_servers.reticle]` | TOML `command` + `args` | no |
 | Cursor | `.cursor/mcp.json` | `mcpServers` | `"command"` + `"args"` split | no |
@@ -82,7 +82,7 @@ claude mcp add reticle -s user -- npx @reticlehq/server mcp
 
 Confirm with `claude mcp list` — `reticle` should appear. **After adding, restart Claude Code** (or run `/mcp` to refresh) so it picks up the server.
 
-**If the `claude` CLI is unavailable**, fall back to writing `~/.claude/claude_mcp_config.json` (create if missing, merge `"reticle"` if it exists):
+**If the `claude` CLI is unavailable**, fall back to merging `"reticle"` into `mcpServers` in `~/.claude.json` — Claude Code's user-scope config, and the same file `claude mcp add` writes. It is a large stateful file, so merge one key; never rewrite it:
 
 ```jsonc
 {
@@ -449,7 +449,7 @@ reticle_network({ sessionId, limit: 10 })
 reticle_console({ sessionId, limit: 20 })
 ```
 
-> **Default `hybrid` profile: 16 tools advertised.** Everything else the skill names — `reticle_capabilities`, `reticle_act_sequence`, `reticle_session {action:"yield"}`, `reticle_session {action:"review"}`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list its params first with `reticle_tools`). Measured surfaces: `hybrid` 16 tools / ~74k chars, `standard` 33 / ~117k, `full` 46 / ~166k — so the default costs ~55% fewer schema characters than `full`.
+> **Default `hybrid` profile: 16 tools advertised.** Everything else the skill names — `reticle_capabilities`, `reticle_act_sequence`, `reticle_session {action:"yield"}`, `reticle_session {action:"review"}`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list its params first with `reticle_tools`). Advertised counts, checked by a gate (`profile-sizes.test.ts`): `hybrid` 16, `standard` 33, `full` 48 — so the default carries a third of the schema `full` does. (The character figures once printed here were measured wrong, in the direction that flattered the default; the counts are the claim that survives.)
 >
 > **`RETICLE_TOOL_PROFILE` is read by the DAEMON at startup, not by your client.** Setting it in the agent's environment while a daemon is already running changes nothing, and the two profiles then look identical because you are still talking to the old one. Run `npx @reticlehq/server stop` first.
 
@@ -696,8 +696,8 @@ Then reload Claude Code (`/mcp`) so the new version is picked up on next connect
 4. **Confirm the MCP config is user-level** (not project-level) and has no pinned version:
 
    ```bash
-   cat ~/.claude/claude_mcp_config.json
-   # Should contain: {"mcpServers": {"reticle": {"command": "npx", "args": ["@reticlehq/server", "mcp"]}}}
+   claude mcp list        # ~/.claude.json is large and stateful — ask the CLI, do not read it
+   # Should show: reticle → npx @reticlehq/server mcp   (no --port, no pinned version)
    ```
 
    If the project has a `.mcp.json` or `.claude/mcp.json` that overrides the user-level config with pinned args (e.g., `["@reticlehq/server@0.x.y", "mcp"]`), rename it out of the way and re-register:

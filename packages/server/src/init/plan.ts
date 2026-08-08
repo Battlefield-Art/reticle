@@ -14,7 +14,12 @@ import {
 } from './detect.js';
 import { claudeAddCommand, mcpManual } from './mcp.js';
 import { mergeCursorConfig, CursorMergeStatus, cursorServerEntry } from './cursor.js';
-import { CLAUDE_COMMAND_PATH, CURSOR_COMMAND_PATH, SLASH_COMMAND_BODY } from './slash-command.js';
+import {
+  CLAUDE_COMMAND_PATH,
+  CURSOR_COMMAND_PATH,
+  SLASH_COMMAND_BODY,
+  SLASH_COMMAND_SIGNATURE,
+} from './slash-command.js';
 import {
   mergeMarkedInstruction,
   cursorRuleFile,
@@ -216,12 +221,18 @@ export interface PlanInput {
   claudeMdContent?: string | null | undefined;
   /** Current project-root AGENTS.md content (cross-agent fallback rule), or null/undefined. */
   agentsMdContent?: string | null | undefined;
-  /** Whether .cursor/rules/reticle.mdc already exists (agent-rule idempotency). */
-  cursorRuleExists?: boolean | undefined;
-  /** Whether .claude/commands/reticle.md already exists (slash-command idempotency). */
-  claudeCommandExists?: boolean | undefined;
-  /** Whether .cursor/commands/reticle.md already exists. */
-  cursorCommandExists?: boolean | undefined;
+  /**
+   * Current .cursor/rules/reticle.mdc content, or null when absent.
+   *
+   * CONTENT, not existence. Gating on the file merely being there froze a Cursor project's rule at
+   * whatever release wrote it — so the CLAUDE.md path refreshed itself while the Cursor one never
+   * could, and a rule added later (`version_skew`) never reached a Cursor-only project at all.
+   */
+  cursorRuleContent?: string | null | undefined;
+  /** Current .claude/commands/reticle.md content, or null when absent (slash-command idempotency). */
+  claudeCommandContent?: string | null | undefined;
+  /** Current .cursor/commands/reticle.md content, or null when absent. */
+  cursorCommandContent?: string | null | undefined;
   options: {
     port: number | undefined;
     mcp: boolean;
@@ -318,20 +329,35 @@ function mcpSteps(input: PlanInput): Step[] {
 const SLASH_COMMAND_TITLE = 'The /reticle command';
 
 /**
+ * Nothing to do for this command file: it already holds the CURRENT body, or it is not ours at all.
+ *
+ * Gating on mere existence froze the command at whatever release wrote it. Rewriting anything found
+ * there would be worse — a human may have claimed `/reticle` for their own prompt — so a file without
+ * our signature is left exactly as it is.
+ */
+function commandIsSettled(content: string | null | undefined): boolean {
+  if (content === null || content === undefined) return false;
+  return content === SLASH_COMMAND_BODY || !content.includes(SLASH_COMMAND_SIGNATURE);
+}
+
+/**
  * `/reticle` — the entry point SKILL.md promises in three places and nothing ever created, so it
  * silently did nothing in every tool. One file per agent that supports custom commands.
  */
 function slashCommandSteps(input: PlanInput): Step[] {
+  // CURRENT, not merely present — same reason as the Cursor rule: a command file frozen at whatever
+  // release created it is a command that can never be improved for anyone who already ran init. The
+  // whole file is Reticle's, so a stale one is rewritten.
   const targets: { path: string; when: boolean; exists: boolean }[] = [
     {
       path: CLAUDE_COMMAND_PATH,
       when: input.claudeCli,
-      exists: input.claudeCommandExists === true,
+      exists: commandIsSettled(input.claudeCommandContent),
     },
     {
       path: CURSOR_COMMAND_PATH,
       when: input.cursorProjectPresent === true || (input.cursorPresent && !input.claudeCli),
-      exists: input.cursorCommandExists === true,
+      exists: commandIsSettled(input.cursorCommandContent),
     },
   ];
   return targets
@@ -386,7 +412,9 @@ function claudeRuleStep(input: PlanInput): Step | null {
 function cursorRuleStep(input: PlanInput): Step | null {
   if (!input.cursorPresent) return null;
   if (input.cursorProjectPresent !== true && input.claudeCli) return null;
-  if (input.cursorRuleExists === true) {
+  // The whole file is Reticle's — init created it — so a stale one is REWRITTEN rather than merged.
+  // Comparing content is what makes the rule updatable; comparing existence made it permanent.
+  if (input.cursorRuleContent === cursorRuleFile()) {
     return {
       title: AGENT_RULE_TITLE,
       target: CURSOR_RULE_PATH,

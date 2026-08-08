@@ -64,7 +64,7 @@ describe('the rule tells the agent what to do with a skew envelope', () => {
     const block = markedBlock();
     expect(block).toContain('version_skew');
     // The two fixes differ by which piece is stale, so the rule must not collapse them into one.
-    expect(block).toContain('reticle update');
-    expect(block).toContain('reticle stop');
+    expect(block).toContain('npx @reticlehq/server update');
+    expect(block).toContain('npx @reticlehq/server stop');
   });
 });

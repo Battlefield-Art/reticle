@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildPlan, StepStatus, type PlanInput } from './plan.js';
 import { Framework, PackageManager, UiLibrary, type Detection } from './detect.js';
+import { cursorRuleFile } from './agent-rules.js';
 
 const CLAUDE_STEP = 'MCP server (Claude, global)';
 const CURSOR_STEP = 'MCP server (Cursor, global)';
@@ -45,7 +46,7 @@ function input(partial: Partial<PlanInput>): PlanInput {
     nextReticleDevExists: partial.nextReticleDevExists ?? false,
     claudeMdContent: partial.claudeMdContent,
     agentsMdContent: partial.agentsMdContent,
-    cursorRuleExists: partial.cursorRuleExists,
+    cursorRuleContent: partial.cursorRuleContent,
     options: partial.options ?? { port: undefined, mcp: true, install: false },
   };
 }
@@ -73,7 +74,7 @@ describe('buildPlan — agent verification rule (makes the agent USE Reticle)', 
     expect(s.status).toBe(StepStatus.APPLY);
     expect(s.write?.path).toBe('CLAUDE.md');
     expect(s.write?.content).toContain('Verifying with Reticle');
-    expect(s.write?.content).toContain('reticle gate');
+    expect(s.write?.content).toContain('npx @reticlehq/server gate');
   });
 
   it('appends to an existing CLAUDE.md, preserving it', () => {
@@ -100,7 +101,7 @@ describe('buildPlan — agent verification rule (makes the agent USE Reticle)', 
 
   it('writes a Cursor .mdc rule when Cursor is present', () => {
     const s = step(
-      buildPlan(input({ claudeCli: false, cursorPresent: true, cursorRuleExists: false })),
+      buildPlan(input({ claudeCli: false, cursorPresent: true, cursorRuleContent: null })),
       AGENT_RULE_STEP,
     );
     expect(s.status).toBe(StepStatus.APPLY);
@@ -108,12 +109,34 @@ describe('buildPlan — agent verification rule (makes the agent USE Reticle)', 
     expect(s.write?.content).toContain('alwaysApply: true');
   });
 
-  it('Cursor rule step is ALREADY when the .mdc already exists', () => {
+  it('Cursor rule step is ALREADY only when the .mdc holds the CURRENT rule', () => {
+    const current = cursorRuleFile();
     const s = step(
-      buildPlan(input({ claudeCli: false, cursorPresent: true, cursorRuleExists: true })),
+      buildPlan(input({ claudeCli: false, cursorPresent: true, cursorRuleContent: current })),
       AGENT_RULE_STEP,
     );
     expect(s.status).toBe(StepStatus.ALREADY);
+  });
+
+  /**
+   * The Cursor rule was gated on the file EXISTING, while CLAUDE.md compares content and refreshes.
+   * So a Cursor project that ran init once kept that release's rule text forever — a rule about a
+   * field introduced later (`version_skew`) could never reach it, on the only agent surface those
+   * projects have.
+   */
+  it('refreshes a STALE Cursor rule instead of calling it done', () => {
+    const s = step(
+      buildPlan(
+        input({
+          claudeCli: false,
+          cursorPresent: true,
+          cursorRuleContent: '---\nalwaysApply: true\n---\n\n## Verifying with Reticle\n\nold text',
+        }),
+      ),
+      AGENT_RULE_STEP,
+    );
+    expect(s.status).toBe(StepStatus.APPLY);
+    expect(s.write?.content).toContain('version_skew');
   });
 
   it('falls back to AGENTS.md when neither Claude nor Cursor is detected', () => {

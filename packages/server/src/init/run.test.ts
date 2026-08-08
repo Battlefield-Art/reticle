@@ -314,6 +314,19 @@ describe('runInit — workspace roots', () => {
     expect(result.ok).toBe(false);
     expect(result.manual).toBeGreaterThan(0);
   });
+
+  /**
+   * `ok` drives the CLI's exit code, and CI reads it. A ⚠ that is not the CONNECT step — an MCP
+   * registration the agent's own CLI refused, say — leaves an app that boots, connects and verifies;
+   * exiting non-zero on it reports a working install as a failed one, which is enough to make a
+   * release gate unrunnable and keep it from ever being run.
+   */
+  it('a manual step that is NOT the connect step still exits successfully', () => {
+    const io = memoryIo(VITE_FILES, { execOk: false });
+    const result = runInit(OPTS, io);
+    expect(result.manual).toBeGreaterThan(0);
+    expect(result.ok).toBe(true);
+  });
 });
 
 /**
@@ -445,6 +458,22 @@ describe('runInit — the /reticle command', () => {
     const io = memoryIo(VITE_FILES, { claudeAvailable: false, cursor: true });
     runInit(OPTS, io);
     expect(io.written['.cursor/commands/reticle.md']).toContain('reticle_snapshot');
+  });
+
+  /**
+   * A command file frozen at whatever release created it can never be improved for anyone who
+   * already ran init — the same existence-gate that kept the Cursor RULE stale. A file carrying our
+   * frontmatter signature is refreshed; one that does not (a human's own /reticle) is untouchable,
+   * which the test below pins.
+   */
+  it('refreshes a STALE Reticle command, recognised by its own frontmatter', () => {
+    const stale = '---\ndescription: Verify this app in the browser with Reticle\n---\n\nold body\n';
+    const io = memoryIo(
+      { ...VITE_FILES, '.claude/commands/reticle.md': stale },
+      { claudeAvailable: true },
+    );
+    runInit(OPTS, io);
+    expect(io.written['.claude/commands/reticle.md']).toContain('Pick ONE flow');
   });
 
   it('is idempotent — an existing command is left alone', () => {

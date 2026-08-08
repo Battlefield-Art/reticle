@@ -416,6 +416,22 @@ function parseInitFlags(args: string[]): InitFlags {
 const SINCE_FLAG = '--since';
 
 /** Parse `[--since <ref>] [file...]` shared by `affected` and `gate`. */
+/**
+ * What `reticle gate` / `reticle affected` mean with NOTHING after them: the working tree.
+ *
+ * They used to mean a usage error — while the rule `reticle init` writes into the agent's own
+ * instruction file says, in as many words, "run `reticle gate`". An instruction the tool rejects is
+ * worse than no instruction: the agent spends a turn on it and concludes Reticle is broken.
+ *
+ * HEAD is the ref that answers the question being asked. Explicit files or an explicit --since still
+ * win; this only fills the empty case.
+ */
+const WORKING_TREE_REF = 'HEAD';
+
+function implicitSince(files: readonly string[]): string | undefined {
+  return files.length === 0 ? WORKING_TREE_REF : undefined;
+}
+
 function parseTargetArgs(rest: string[]): { files: string[]; since?: string } {
   const files: string[] = [];
   let since: string | undefined;
@@ -588,21 +604,13 @@ export function parseCliArgs(
     }
     case AFFECTED_COMMAND: {
       const t = parseTargetArgs(rest);
-      if (t.files.length === 0 && t.since === undefined) {
-        return { kind: 'error', message: 'usage: reticle affected [--since <ref>] [file...]' };
-      }
-      return {
-        kind: 'affected',
-        files: t.files,
-        ...(t.since === undefined ? {} : { since: t.since }),
-      };
+      const since = t.since ?? implicitSince(t.files);
+      return { kind: 'affected', files: t.files, ...(since === undefined ? {} : { since }) };
     }
     case GATE_COMMAND: {
       const t = parseTargetArgs(rest);
-      if (t.files.length === 0 && t.since === undefined) {
-        return { kind: 'error', message: 'usage: reticle gate [--since <ref>] [file...]' };
-      }
-      return { kind: 'gate', files: t.files, ...(t.since === undefined ? {} : { since: t.since }) };
+      const since = t.since ?? implicitSince(t.files);
+      return { kind: 'gate', files: t.files, ...(since === undefined ? {} : { since }) };
     }
     case WATCH_COMMAND: {
       // `reticle watch [url]` — on file save, report which saved flows must re-verify.

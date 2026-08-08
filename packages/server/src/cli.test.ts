@@ -67,8 +67,21 @@ describe('parseCliArgs', () => {
     });
   });
 
-  it('rejects `affected` with no files', () => {
-    expect(parseCliArgs(['affected'], PORT).kind).toBe('error');
+  /**
+   * The rule `reticle init` writes into CLAUDE.md tells the agent to run `reticle gate` — bare, no
+   * arguments — and the parser answered with a usage error. An instruction an agent cannot follow is
+   * worse than none: it spends a turn on it and learns the tool is broken.
+   *
+   * Bare means "what I just changed", which is the working tree against HEAD — the same question the
+   * agent is asking when it reaches for the command at all.
+   */
+  it('bare `gate` and `affected` mean the working tree, not a usage error', () => {
+    expect(parseCliArgs(['gate'], PORT)).toEqual({ kind: 'gate', files: [], since: 'HEAD' });
+    expect(parseCliArgs(['affected'], PORT)).toEqual({
+      kind: 'affected',
+      files: [],
+      since: 'HEAD',
+    });
   });
 
   it('parses `gate <file...>` into the changed-file list', () => {
@@ -86,10 +99,6 @@ describe('parseCliArgs', () => {
       files: ['src/a.ts'],
       since: 'HEAD~1',
     });
-  });
-
-  it('rejects `gate` with no files', () => {
-    expect(parseCliArgs(['gate'], PORT).kind).toBe('error');
   });
 
   it('parses the lifecycle commands moved to the CLI', () => {
