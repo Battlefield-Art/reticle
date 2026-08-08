@@ -19,6 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import { verificationOf } from './verification-of.js';
 import { ReticleTool } from '../tools/tool-names.js';
+import { BrowserMode, setBrowserMode, resetBrowserMode } from './browser-mode.js';
 
 const VERIFY = ReticleTool.FLOW_VERIFY;
 
@@ -57,5 +58,22 @@ describe('verificationOf', () => {
 
   it('a verification tool that returned no verdict never counts', () => {
     expect(verificationOf(VERIFY, { error: 'no session' }, 1)).toBeUndefined();
+  });
+});
+
+describe('how the browser got there rides on the event', () => {
+  it('defaults to attached — Reticle launched nothing, so it must not claim headless', () => {
+    resetBrowserMode();
+    expect(verificationOf(VERIFY, { status: 'pass' }, 1)?.browser).toBe(BrowserMode.ATTACHED);
+  });
+
+  it('reports headless and headed when Reticle DID launch the browser', () => {
+    // "verifications run" was one number covering unattended CI, a human watching an agent, and the
+    // SDK in somebody's own dev server. Three products, three costs, three failure modes.
+    setBrowserMode(BrowserMode.HEADLESS);
+    expect(verificationOf(VERIFY, { status: 'pass' }, 1)?.browser).toBe(BrowserMode.HEADLESS);
+    setBrowserMode(BrowserMode.HEADED);
+    expect(verificationOf(VERIFY, { status: 'fail' }, 1)?.browser).toBe(BrowserMode.HEADED);
+    resetBrowserMode();
   });
 });

@@ -13,6 +13,7 @@ import {
 } from '@reticlehq/core';
 import type { FlowReplayResult } from '@reticlehq/core';
 import { originOf } from './session/session-manager.js';
+import { setBrowserMode, BrowserMode } from './telemetry/browser-mode.js';
 import type { NetworkDetail } from './input/network-detail.js';
 import { replayNamedFlow } from './flows/flow-tools.js';
 import { createSharedServer } from './http-server.js';
@@ -324,6 +325,9 @@ async function resolveRealInput(
   const driveUrl = options.driveUrl;
   if (driveUrl !== undefined && driveUrl.length > 0) {
     const headless = options.headless ?? true;
+    // The one place that knows. Everything downstream reads it rather than re-deriving it, and a
+    // daemon that launches nothing keeps the default (ATTACHED) rather than guessing.
+    setBrowserMode(headless ? BrowserMode.HEADLESS : BrowserMode.HEADED);
     const injectConnect = options.injectConnect;
     const storageState = options.storageState;
     const factory =

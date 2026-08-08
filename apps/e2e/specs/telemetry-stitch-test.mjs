@@ -227,6 +227,14 @@ chk(
   ),
   verifications.map((e) => `${prop(e, 'verification_via')}:${prop(e, 'verification_passed')}`).join(' '),
 );
+// The spec drives via --drive with the battery's default (headless), so every verification here must
+// say so. Without this, "verifications run" is one number covering unattended CI, a human watching an
+// agent, and the SDK in somebody's own dev server.
+chk(
+  'each verification records HOW the browser got there',
+  verifications.length > 0 && verifications.every((e) => prop(e, 'verification_browser') === 'headless'),
+  verifications.map((e) => prop(e, 'verification_browser')).join(' '),
+);
 chk(
   'exactly the real failure produced a bug_found',
   bugs.length === 1,

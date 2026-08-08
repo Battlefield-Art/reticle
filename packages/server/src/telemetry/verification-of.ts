@@ -14,6 +14,7 @@
  */
 import { type Verification } from '@reticlehq/core';
 import { VERIFICATION_TOOLS } from '../tools/feedback-tools.js';
+import { getBrowserMode } from './browser-mode.js';
 
 /** Suite statuses. `unverifiable` is a suite that ran but proved nothing — including an empty one. */
 const SuiteStatus = {
@@ -54,5 +55,8 @@ export function verificationOf(
     passed: passed ?? verified === 'yes',
     falseGreenCaught: passed === true && verified === 'no',
     durationMs,
+    // Headless CI, a human watching, or somebody's own dev server — three different products behind
+    // one number until this was recorded.
+    browser: getBrowserMode(),
   };
 }

@@ -20,6 +20,9 @@ const ORDER = [
   // Needs no browser and none of the three servers — real dist modules against a real capture
   // endpoint. Runs first because it is the fastest way to learn the build is sane.
   'telemetry-events-test',
+  // Also needs no browser and no servers: a fake MCP peer and a hand-rolled HELLO, both LYING about
+  // their contract. Runs early for the same reason — it is a cheap check that the three pieces agree.
+  'version-skew-test',
   'next-smoke-test',
   'next-blur-clock-test',
   'status-honesty-test',

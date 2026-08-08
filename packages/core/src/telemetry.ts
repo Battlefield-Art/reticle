@@ -193,6 +193,15 @@ export const VerificationSchema = z.object({
    */
   falseGreenCaught: z.boolean(),
   durationMs: z.number().int().nonnegative().optional(),
+  /**
+   * `headless` | `headed` | `attached` — how the browser under verification got there.
+   *
+   * Without it, "verifications run" is one undifferentiated number covering three different
+   * products: unattended CI, a human watching an agent work, and the SDK in somebody's own dev
+   * server. They have different costs, different failure modes and different value, and only the
+   * last one is what most installs actually do.
+   */
+  browser: z.string().min(1).max(16).optional(),
 });
 export type Verification = z.infer<typeof VerificationSchema>;
 
