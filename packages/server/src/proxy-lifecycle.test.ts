@@ -13,7 +13,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { onStreamDrop, onClientRequest, OnDrop, OnRequest } from './proxy-lifecycle.js';
+import {
+  onStreamDrop,
+  onClientRequest,
+  onReconnectBudgetSpent,
+  OnDrop,
+  OnRequest,
+} from './proxy-lifecycle.js';
 
 describe('onStreamDrop — a dropped stream is not demand', () => {
   it('reattaches when a daemon is already listening', () => {
@@ -59,5 +65,35 @@ describe('the pair cannot cycle', () => {
     expect(reachableFromDrops).not.toContain(OnRequest.WAKE);
     // And dormancy is terminal until a request arrives: dropping again while dormant is still not demand.
     expect(onStreamDrop(false)).toBe(OnDrop.DORMANT);
+  });
+});
+
+/**
+ * The MCP server must never be down. This is the rule that makes that true.
+ *
+ * The proxy retried a lost daemon with backoff and then, after a fixed budget, called
+ * `process.exit(1)`. The comment justified it as "let the agent host respawn the proxy" — but a
+ * stdio MCP server that exits is not respawned by Claude Code. It is marked disconnected, its tools
+ * vanish from the session, and a HUMAN has to open /mcp and reconnect. That is the single worst
+ * experience this product has, and it was a deliberate line of code.
+ *
+ * Exiting was never necessary either: the dormant path already handles "no daemon" perfectly — the
+ * catalog cache answers `tools/list`, the handshake is answered locally, and the next client request
+ * WAKES a fresh daemon. Dormant is strictly better than dead in every case exit was meant to cover.
+ */
+describe('onReconnectBudgetSpent — running out of retries must not end the server', () => {
+  it('goes dormant rather than exiting, so the client never loses its tools', () => {
+    expect(onReconnectBudgetSpent()).toBe(OnDrop.DORMANT);
+  });
+
+  /**
+   * The point of the enum: DORMANT is recoverable and reachable by the WAKE path. If this ever
+   * returns something that is not one of the two lifecycle answers, the proxy has grown a third
+   * behaviour that no test covers — which is how the exit got in.
+   */
+  it('answers with a lifecycle state the wake path understands', () => {
+    const answer: OnDrop = onReconnectBudgetSpent();
+    expect([OnDrop.REATTACH, OnDrop.DORMANT]).toContain(answer);
+    expect(onClientRequest(false, OnDrop.DORMANT === answer)).toBe(OnRequest.WAKE);
   });
 });

@@ -7,6 +7,7 @@
  * is `<repo>/.reticle/cloud.json`. Auth for a command = `RETICLE_CLOUD_KEY` env (agent) OR the login token.
  */
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { NodePlatform } from './platform.js';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { homedir } from 'node:os';
@@ -178,8 +179,8 @@ const DevicePollSchema = z.object({
 /** Best-effort open the approval page in the default browser; the printed URL is the headless fallback. */
 const openBrowser = (target: string): void => {
   const cmd =
-    'darwin' === process.platform ? 'open' : 'win32' === process.platform ? 'cmd' : 'xdg-open';
-  const args = 'win32' === process.platform ? ['/c', 'start', '', target] : [target];
+    NodePlatform.MACOS === process.platform ? 'open' : NodePlatform.WINDOWS === process.platform ? 'cmd' : 'xdg-open';
+  const args = NodePlatform.WINDOWS === process.platform ? ['/c', 'start', '', target] : [target];
   try {
     const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
     child.on('error', () => undefined);

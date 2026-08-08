@@ -8,7 +8,13 @@ import { join } from 'node:path';
 import { LOOPBACK_HOST, MCP_SSE_PATH, ReticleDir, CONTRACT_FINGERPRINT } from '@reticlehq/core';
 import { SERVER_VERSION } from './server-version.js';
 import { PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './peer-announce.js';
-import { onStreamDrop, onClientRequest, OnDrop, OnRequest } from './proxy-lifecycle.js';
+import {
+  onStreamDrop,
+  onClientRequest,
+  onReconnectBudgetSpent,
+  OnDrop,
+  OnRequest,
+} from './proxy-lifecycle.js';
 import { log } from './log.js';
 
 const DEFAULT_DAEMON_READY_TIMEOUT_MS = 10_000;
@@ -32,9 +38,12 @@ function delay(ms: number): Promise<void> {
 const RECONNECT_BASE_MS = 250;
 const RECONNECT_CAP_MS = 5_000;
 /**
- * How many consecutive failed reconnects before the proxy gives up and exits. At the capped backoff
- * this is a few minutes — long enough to ride out a daemon restart, short enough that a genuinely
- * dead daemon lets the agent host respawn the proxy (which spawns a fresh daemon) instead of hanging.
+ * How many consecutive failed reconnects before the proxy stops RETRYING. It does not stop serving:
+ * the budget ends the retry loop and the proxy goes dormant, where the handshake and `tools/list`
+ * are still answered and the next client request starts a daemon. See onReconnectBudgetSpent.
+ *
+ * At the capped backoff this is a few minutes — long enough to ride out a daemon restart without
+ * spinning on a port that is wedged or held by a foreign process.
  */
 export const MAX_RECONNECT_ATTEMPTS = 60;
 
@@ -358,13 +367,17 @@ export function startMcpProxy(
       postUrl = null;
       attempts++;
       if (attempts > MAX_RECONNECT_ATTEMPTS) {
-        proxyLog('reticle_mcp_proxy_gave_up', {
+        // Stop RETRYING, never stop SERVING. See onReconnectBudgetSpent: exiting here made the
+        // client mark the MCP server disconnected and left a human to reconnect it by hand.
+        dormant = onReconnectBudgetSpent() === OnDrop.DORMANT;
+        proxyLog('reticle_mcp_proxy_dormant_after_budget', {
           port,
           reason,
           attempts,
+          note: 'stopped retrying; the next client request will start a daemon',
           ...(detail !== undefined ? { detail } : {}),
         });
-        process.exit(1);
+        return;
       }
       const wait = reconnectDelayMs(attempts);
       proxyLog('reticle_mcp_proxy_reconnecting', {

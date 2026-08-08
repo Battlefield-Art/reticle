@@ -1,4 +1,5 @@
 import * as http from 'node:http';
+import { NodePlatform } from './platform.js';
 import { spawn } from 'node:child_process';
 import { isOpaqueOrigin, LOOPBACK_HOST, STATUS_PATH } from '@reticlehq/core';
 import { describeSkew, DAEMON_FIX } from './version-skew.js';
@@ -158,8 +159,8 @@ export function openCommand(
   url: string,
   platform: NodeJS.Platform,
 ): { cmd: string; args: string[] } {
-  if ('darwin' === platform) return { cmd: 'open', args: [url] };
-  if ('win32' === platform) {
+  if (NodePlatform.MACOS === platform) return { cmd: 'open', args: [url] };
+  if (NodePlatform.WINDOWS === platform) {
     return { cmd: 'cmd', args: ['/c', 'start', '', encodeForWindowsStart(url)] };
   }
   return { cmd: 'xdg-open', args: [url] };

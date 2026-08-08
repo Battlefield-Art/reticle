@@ -32,7 +32,7 @@ function describe(value: unknown): string {
 }
 
 /** The two ways a failure reaches the top of the process. Named so the analytics can tell them apart. */
-const CrashKind = {
+export const CrashKind = {
   UNHANDLED_REJECTION: 'unhandled_rejection',
   UNCAUGHT_EXCEPTION: 'uncaught_exception',
 } as const;
@@ -98,5 +98,35 @@ export function installDaemonResilience(proc: ProcessLike, log: LogFn, onFatal: 
     log('reticle_daemon_uncaught_exception', { error: describe(err) });
     reportCrash(CrashKind.UNCAUGHT_EXCEPTION, err);
     onFatal();
+  });
+}
+
+/**
+ * Process-level resilience for the MCP PROXY, whose rule is the opposite of the daemon's.
+ *
+ * The daemon exits on an uncaught throw because the next `reticle mcp` respawns it. Nothing respawns
+ * the proxy — it is the stdio server the editor launched, and its exit is what the user experiences
+ * as "the MCP server disconnected, open /mcp and reconnect". So it logs and keeps serving: its whole
+ * state is a socket and a queue, and it already knows how to rebuild both (see the reconnect and
+ * dormant paths). A crashed-but-serving proxy answers the handshake and `tools/list` from cache; a
+ * dead one answers nothing and needs a human.
+ *
+ * `onCrash` is for reporting only — it must not end the process.
+ */
+export function installProxyResilience(
+  proc: ProcessLike,
+  log: LogFn,
+  onCrash: (kind: CrashKind, cause: unknown) => void = reportCrash,
+): void {
+  proc.on('unhandledRejection', (reason: unknown) => {
+    log('reticle_mcp_proxy_unhandled_rejection', { reason: describe(reason) });
+    onCrash(CrashKind.UNHANDLED_REJECTION, reason);
+  });
+  proc.on('uncaughtException', (err: unknown) => {
+    log('reticle_mcp_proxy_uncaught_exception', {
+      error: describe(err),
+      note: 'still serving — exiting here would disconnect the MCP client',
+    });
+    onCrash(CrashKind.UNCAUGHT_EXCEPTION, err);
   });
 }

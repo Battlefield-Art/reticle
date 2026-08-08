@@ -35,6 +35,23 @@ export function onStreamDrop(daemonListening: boolean): OnDrop {
   return daemonListening ? OnDrop.REATTACH : OnDrop.DORMANT;
 }
 
+/**
+ * What to do when the reconnect budget runs out. Always DORMANT — never exit.
+ *
+ * The proxy used to `process.exit(1)` here, justified as "let the agent host respawn the proxy". No
+ * host does that: a stdio MCP server that exits is marked DISCONNECTED, its tools disappear from the
+ * session, and a human has to open /mcp and reconnect by hand. That is the worst thing this product
+ * does to anyone, and it was deliberate.
+ *
+ * Exiting bought nothing. Dormant already covers every case exit was meant to: the handshake is
+ * answered locally, `tools/list` is answered from the catalog cache, and the next client request
+ * WAKES a daemon. The budget still exists — it decides when to stop burning CPU on retries, not
+ * whether the server survives.
+ */
+export function onReconnectBudgetSpent(): OnDrop {
+  return OnDrop.DORMANT;
+}
+
 /** What to do with a client message. */
 export const OnRequest = {
   /** Connected — post it straight through. */

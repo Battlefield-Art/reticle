@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { NodePlatform } from '../platform.js';
 import { existsSync } from 'node:fs';
 import { platform } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -41,7 +42,7 @@ export async function reportVersionChange(
   }
 }
 
-const NPM_BIN = 'win32' === platform() ? 'npm.cmd' : 'npm';
+const NPM_BIN = NodePlatform.WINDOWS === platform() ? 'npm.cmd' : 'npm';
 const NPM_TIMEOUT_MS = 120_000;
 
 /** How this reticle process was launched — determines which npm strategy to use for updates. */

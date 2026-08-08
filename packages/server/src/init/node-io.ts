@@ -5,6 +5,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { NodePlatform } from '../platform.js';
 import { join, dirname, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -19,12 +20,12 @@ import type { InitIo } from './run.js';
  * no error anyone can read.
  */
 function shellOpt(): { shell?: true } {
-  return 'win32' === process.platform ? { shell: true } : {};
+  return NodePlatform.WINDOWS === process.platform ? { shell: true } : {};
 }
 
 /** Under a shell, quote what the shell would otherwise split. Windows only, where shell is required. */
 function shellSafe(args: readonly string[]): string[] {
-  if (process.platform !== 'win32') return [...args];
+  if (process.platform !== NodePlatform.WINDOWS) return [...args];
   return args.map((arg) => (/[\s"]/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg));
 }
 

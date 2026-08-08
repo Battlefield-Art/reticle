@@ -4,7 +4,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { installDaemonResilience, type ProcessLike } from './daemon-resilience.js';
+import {
+  CrashKind,
+  installDaemonResilience,
+  installProxyResilience,
+  type ProcessLike,
+} from './daemon-resilience.js';
 
 /** A fake process that records listeners and lets the test emit events. */
 function fakeProc(): ProcessLike & { emit: (event: string, arg: unknown) => void } {
@@ -66,5 +71,39 @@ describe('installDaemonResilience', () => {
     );
     proc.emit('unhandledRejection', 'a string rejection');
     expect(logs[0]?.['reason']).toBe('a string rejection');
+  });
+});
+
+/**
+ * The proxy's rule is the OPPOSITE of the daemon's, and the difference is who can restart it.
+ *
+ * A daemon that exits on an uncaught throw is respawned by the next `reticle mcp`, so exiting is the
+ * safe answer there. Nothing respawns the PROXY: it is the stdio MCP server the editor launched, and
+ * when it exits the client marks the server disconnected, drops its tools, and waits for a human to
+ * open /mcp and reconnect. Staying up with a logged error is strictly better than that, because the
+ * proxy's own state is a socket and a queue — both of which it already knows how to rebuild.
+ */
+describe('installProxyResilience — the MCP server must outlive its own bugs', () => {
+  it('logs an uncaught exception and KEEPS SERVING — exiting would disconnect the client', () => {
+    const proc = fakeProc();
+    const lines: { event: string; data: Record<string, unknown> }[] = [];
+    const crashes: CrashKind[] = [];
+    // There is no fatal hook to pass: the signature cannot express "and then exit", which is the
+    // point. The daemon's equivalent takes one and uses it; the proxy has nobody to respawn it.
+    installProxyResilience(proc, (event, data) => lines.push({ event, data }), (kind) =>
+      crashes.push(kind),
+    );
+    proc.emit('uncaughtException', new Error('a bug in the proxy'));
+    expect(lines.some((l) => l.event.includes('uncaught'))).toBe(true);
+    expect(crashes, 'still reported, just not fatal').toEqual([CrashKind.UNCAUGHT_EXCEPTION]);
+  });
+
+  it('logs an unhandled rejection and keeps serving', () => {
+    const proc = fakeProc();
+    const lines: { event: string; data: Record<string, unknown> }[] = [];
+    installProxyResilience(proc, (event, data) => lines.push({ event, data }), () => undefined);
+    proc.emit('unhandledRejection', 'a stray promise');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.event).toContain('proxy');
   });
 });

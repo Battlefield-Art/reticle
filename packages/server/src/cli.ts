@@ -31,7 +31,7 @@ import {
   writeDaemonRegistry,
 } from './daemon.js';
 import { waitForDaemon, startMcpProxy, probeDaemon } from './mcp-proxy.js';
-import { installDaemonResilience } from './daemon-resilience.js';
+import { installDaemonResilience, installProxyResilience } from './daemon-resilience.js';
 import { IdleShutdown, resolveIdleShutdownMs, resolveIdleCheckMs } from './idle-shutdown.js';
 import {
   fetchStatus,
@@ -405,6 +405,11 @@ function handleMcp(opts: {
   httpToken?: string;
 }): void {
   const { port, driveUrl, headless, http, httpPort, httpToken } = opts;
+  // The proxy IS the MCP server the editor launched. Nothing respawns it, so an uncaught throw here
+  // is what a user experiences as "the MCP server disconnected — open /mcp and reconnect". Log it,
+  // report it, keep serving: the reconnect and dormant paths already know how to rebuild the only
+  // state this process has. See installProxyResilience for why its rule inverts the daemon's.
+  installProxyResilience(process, log);
   /**
    * Make sure a daemon is on the port, spawning one if not.
    *
