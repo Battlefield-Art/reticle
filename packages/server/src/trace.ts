@@ -36,8 +36,16 @@ interface CallContext {
 
 const context = new AsyncLocalStorage<CallContext>();
 
-/** Monotonic within a process; enough to group the stages of one call. Never leaves the machine. */
+/**
+ * Monotonic within a process, and PID-qualified so it stays unique across them.
+ *
+ * A bare counter was not enough: the e2e battery runs many daemons, and a restarted daemon starts
+ * over at 1, so `c7` named a different call in every process. Aggregating that trace silently
+ * merged unrelated calls into one — measured on the first real trace collected, before it had a
+ * chance to mislead anything.
+ */
 let nextCallId = 0;
+const CALL_ID_PREFIX = `p${String(process.pid)}-c`;
 
 /**
  * Whether tracing is on. Read per call rather than cached at import: a daemon is long-lived, and a
@@ -63,7 +71,9 @@ export async function span<T>(
   if (!traceEnabled()) return fn();
   const parent = context.getStore();
   const scope: CallContext =
-    parent === undefined ? { callId: `c${String((nextCallId += 1))}`, depth: 0 } : parent;
+    parent === undefined
+      ? { callId: `${CALL_ID_PREFIX}${String((nextCallId += 1))}`, depth: 0 }
+      : parent;
   const depth = parent === undefined ? 0 : parent.depth;
   const startedAt = Date.now();
   const emit = (ok: boolean, extra: Record<string, unknown>): void => {

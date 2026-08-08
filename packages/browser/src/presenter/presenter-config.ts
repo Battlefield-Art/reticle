@@ -52,6 +52,30 @@ export interface PresenterOptions {
 export const DEFAULT_PACE = 450;
 
 /**
+ * The pace to actually use: the default in a browser a human is watching, zero in an automated one.
+ *
+ * The HUD paces `beforeAct` so a person can see the cursor reach the element before it fires. In a
+ * headless browser that is 450ms of nothing, charged to the agent, on every action. Measured with
+ * RETICLE_TRACE across the e2e battery: 42 `act` round-trips, 40 of them in a 452–460ms band —
+ * a fixed cost, not app work — 19.7 SECONDS in total, 98.5% of all time the battery spent in the
+ * browser, while every other command ran in 1–4ms.
+ *
+ * `navigator.webdriver` is the discriminator because it is exactly the question being asked: true
+ * under automation (Playwright, CDP, the browser pool's leased tabs, CI), false in the dev browser
+ * a human has open — the case the HUD exists for, which keeps its pacing untouched.
+ *
+ * An EXPLICIT `paceMs` always wins: a recorded demo runs under automation and still wants the glide,
+ * and an option that quietly ignores what the caller asked for is worse than no option.
+ */
+export function effectivePaceMs(
+  requested: number | undefined,
+  nav: Navigator | undefined = 'undefined' === typeof navigator ? undefined : navigator,
+): number {
+  if (requested !== undefined) return requested;
+  return true === nav?.webdriver ? 0 : DEFAULT_PACE;
+}
+
+/**
  * Glow state machine phases (exposed via glowPhase for tests). A burst of activity flips the
  * border IN once on the first activity, holds steady (the slow reticle-pulse breathing keeps running
  * uninterrupted — no per-action restart/strobe), then fades OUT once after a quiet window.

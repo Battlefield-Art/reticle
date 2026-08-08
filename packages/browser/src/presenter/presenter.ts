@@ -29,7 +29,7 @@ import {
   DEFAULT_BORDER_MODE,
   DATA_BUSY,
   BUSY_OFF,
-  DEFAULT_PACE,
+  effectivePaceMs,
   GlowPhase,
   IDLE_AFTER_MS,
   HEARTBEAT_MS,
@@ -120,7 +120,7 @@ export class Presenter {
   readonly #panel: ControlPanel;
 
   constructor(options: PresenterOptions = {}) {
-    this.#paceMs = options.paceMs ?? DEFAULT_PACE;
+    this.#paceMs = effectivePaceMs(options.paceMs);
     this.#now = options.now ?? nativeNow;
     this.#heartbeatMs = options.heartbeatMs ?? HEARTBEAT_MS;
     this.#idleNoticeMs = options.idleNoticeMs ?? IDLE_NOTICE_MS;

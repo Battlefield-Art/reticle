@@ -100,6 +100,21 @@ describe('trace — on', () => {
     }
   });
 
+  /**
+   * The e2e battery runs many daemons and a restarted one starts its counter over, so a bare `c7`
+   * named a different call in every process — and aggregating that trace merges unrelated calls
+   * into one. Found on the first real trace collected.
+   */
+  it('qualifies the call id with the pid, so two daemons never claim the same id', async () => {
+    const cap = captureTrace();
+    try {
+      await span('tool', {}, () => Promise.resolve(0));
+      expect(cap.lines[0]?.callId).toContain(`p${String(process.pid)}-`);
+    } finally {
+      cap.restore();
+    }
+  });
+
   it('gives concurrent calls different ids, so their stages never mix', async () => {
     const cap = captureTrace();
     try {
