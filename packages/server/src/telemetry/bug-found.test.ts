@@ -156,3 +156,36 @@ describe('act_and_wait verdicts count, even though the shape differs', () => {
     expect(bugs[0]?.source).toBe(BugSource.CONTRADICTION);
   });
 });
+
+/**
+ * `bug_found` counted Reticle's OWN failures as defects in the user's app.
+ *
+ * Measured over one sweep: all 14 events were `assertion-failed` from `reticle_verify_change` and
+ * `reticle_run` — and the `reticle_run` ones were "no session connected", which is infrastructure,
+ * not an app defect. The product's headline number was counting its own errors.
+ *
+ * A verdict earned by an assertion the app failed is a bug. A verdict that exists because Reticle
+ * could not reach the app, or because the suite proved nothing, is not — and `verified: "unknown"`
+ * already marks exactly that category, which the failed-assertion rule was ignoring.
+ */
+describe('Reticle failing is not the app failing', () => {
+  it('does not count a result Reticle could not evaluate', () => {
+    // `verified: unknown` is the honesty layer saying "nothing was proved either way".
+    expect(
+      bugsInResult('reticle_verify_change', { verified: 'unknown', pass: false }),
+    ).toHaveLength(0);
+  });
+
+  it('does not count a refusal, whatever shape the tool returned it in', () => {
+    expect(
+      bugsInResult('reticle_run', { error: 'no browser session connected', pass: false }),
+    ).toHaveLength(0);
+  });
+
+  it('still counts a genuine failed assertion', () => {
+    // The fix must not silence the metric it is protecting.
+    expect(
+      bugsInResult('reticle_act_and_wait', { verified: 'no', verdict: { pass: false, assertion: 'route.changed' } }),
+    ).toHaveLength(1);
+  });
+});

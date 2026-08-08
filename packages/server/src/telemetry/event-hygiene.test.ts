@@ -28,6 +28,7 @@ import { knownCommand } from '../cli-parse.js';
 import { isHumanCliCommand } from './cli-telemetry.js';
 import { createTelemetry } from './telemetry.js';
 import { describeToolParams } from './argument-shape.js';
+import { readFileSync } from 'node:fs';
 
 describe('cli_command_run reports human intent, and only that', () => {
   it('does not fire for `mcp` — the agent spawning its transport is not a typed command', () => {
@@ -116,5 +117,21 @@ describe('the tool-parameter histogram counts only informative parameters', () =
 
   it('and still records the ones that say how a tool is used', () => {
     expect(describeToolParams({ sessionId: 's1', until: {} })).toEqual(['until']);
+  });
+});
+
+describe('the install is reported whichever command ran first', () => {
+  it('`mcp` does not fire cli_command_run, but MUST NOT suppress reticle_installed', () => {
+    // The top of every funnel. On most machines the first-ever contact is the agent spawning
+    // `reticle mcp`, and the human-command filter sits in the same function — so putting the filter
+    // first meant a real sweep produced 15 init_completed and ZERO reticle_installed.
+    const source = readFileSync(new URL('./cli-telemetry.ts', import.meta.url), 'utf8');
+    const installedAt = source.indexOf('RETICLE_INSTALLED');
+    const filterAt = source.indexOf('if (!isHumanCliCommand(command)) return;');
+    expect(installedAt).toBeGreaterThan(0);
+    expect(filterAt).toBeGreaterThan(0);
+    expect(installedAt, 'the install must be emitted BEFORE the human-command filter').toBeLessThan(
+      filterAt,
+    );
   });
 });

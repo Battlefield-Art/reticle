@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { emptyFlowRefusal } from './empty-flow.js';
 import { aliasParam } from '../tools/alias-args.js';
 import {
   FlowErrorCode,
@@ -152,6 +153,10 @@ export const FLOW_TOOLS: ToolDef[] = [
         ...(intent !== undefined ? { intent } : {}),
       };
       const projectId = sessionProjectId(deps, asString(args['sessionId']));
+      // A zero-step recording is not a flow. Saving it wrote a file the suite reports "unverifiable"
+      // forever while telling the agent it had saved a regression test — see empty-flow.
+      const emptyRefusal = emptyFlowRefusal(program.steps.length, name);
+      if (emptyRefusal !== undefined) return Promise.resolve(emptyRefusal);
       return deps.flows.save(program, annotations, projectId).then(async (res) => {
         if (!res.ok) return { error: flowErrorMessage(res.code), code: res.code };
         deps.annotations.clear(name);
@@ -516,6 +521,8 @@ export const FLOW_TOOLS: ToolDef[] = [
       const flow = override !== undefined ? { ...recorded.flow, name: override } : recorded.flow;
       // The store stamps the project into the file AND routes it to the per-project subdir (a shared
       // daemon serves many apps), so location and content agree from one source of truth.
+      const emptyRecorded = emptyFlowRefusal(flow.steps.length, flow.name);
+      if (emptyRecorded !== undefined) return emptyRecorded;
       const res = await deps.flows.saveFlow(flow, session.projectId);
       if (!res.ok) return { error: flowErrorMessage(res.code), code: res.code };
       // If logged into Reticle Cloud, mirror the saved flow to the team's regression suite. Best-effort

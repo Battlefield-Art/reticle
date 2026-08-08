@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { verdictForSuite } from './verify-change-verdict.js';
 import { Verified } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
@@ -34,7 +35,6 @@ interface SuiteResult {
   failures?: unknown[];
 }
 
-const PASS = 'pass';
 
 export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
   {
@@ -149,11 +149,17 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
       const failed = suite.failed ?? 0;
       const passed = suite.passed ?? 0;
 
-      const failedSuite = suite.status !== PASS || failed > 0;
-      if (failedSuite) {
+      // `unverifiable` is NOT a failure — the suite ran and proved nothing, which is the same fact
+      // this tool answers UNKNOWN for an uncovered change. Treating it as a red emitted a bug_found
+      // that nothing earned. See verify-change-verdict.
+      const verdict = verdictForSuite(String(suite.status), failed);
+      if (verdict !== Verified.YES) {
         return {
-          verified: Verified.NO,
-          because: `${String(failed)} of ${String(suite.total ?? affected.length)} covering flows failed${provenanceNote}`,
+          verified: verdict,
+          because:
+            verdict === Verified.NO
+              ? `${String(failed)} of ${String(suite.total ?? affected.length)} covering flows failed${provenanceNote}`
+              : `the covering flows ran but proved nothing (${String(suite.status)}) — they assert no observable consequence, so a green from them would not have meant your change is safe${provenanceNote}`,
           changedFiles,
           flowsRun: affected,
           suite,

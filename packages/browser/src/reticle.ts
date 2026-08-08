@@ -22,6 +22,7 @@ import {
   type RedactionConfig,
   type ReticleEvent,
 } from '@reticlehq/core';
+import { rememberSessionLabel } from './session-continuity.js';
 import {
   createCommandRegistry,
   RELOAD_CACHE_BUST_PARAM,
@@ -271,10 +272,17 @@ export class Reticle {
     // A pooled/headless launcher can stamp identity via namespaced URL params; explicit (non-auto)
     // options win, but the `auto` sentinel defers to the URL param so leases correlate.
     const identity = resolveConnectIdentity(options, window.location.search);
-    this.#session = resolveSessionLabel(identity.session, () =>
-      typeof globalThis.crypto?.randomUUID === 'function'
-        ? `s${globalThis.crypto.randomUUID()}`
-        : `s${Date.now().toString(36)}`,
+    // Remembered per TAB, so a reload rejoins the same session instead of appearing as a new one and
+    // stranding the agent's handle — see session-continuity. An explicit id (connect option, or the
+    // lease's URL param) still wins.
+    const explicitSession = resolveSessionLabel(identity.session, () => '');
+    this.#session = rememberSessionLabel(
+      explicitSession.length > 0 ? explicitSession : undefined,
+      typeof globalThis.sessionStorage === 'undefined' ? undefined : globalThis.sessionStorage,
+      () =>
+        typeof globalThis.crypto?.randomUUID === 'function'
+          ? `s${globalThis.crypto.randomUUID()}`
+          : `s${Date.now().toString(36)}`,
     );
     this.#token =
       options.token !== undefined && options.token.length > 0 ? options.token : undefined;

@@ -40,11 +40,15 @@ export function reportCliRun(argv: readonly string[]): void {
   const firstArg = argv[0];
   if (firstArg === DAEMON_INNER_COMMAND) return;
   const command = knownCommand(firstArg);
-  if (!isHumanCliCommand(command)) return;
   const telemetry = getTelemetry();
+  // FIRST — before the human-command filter. The install happened whichever command ran, and on most
+  // machines the very first contact is the agent spawning `reticle mcp`, which that filter excludes.
+  // Measured over one sweep: 15 `init_completed` and ZERO `reticle_installed`, in a run that
+  // installed the SDK into nine apps — the top of every funnel, missing.
   // `detach` so a quick command (`version`/`gate`) exits immediately instead of waiting out the POST.
   if (telemetry.firstRun)
     void telemetry.emit(TelemetryEventKind.RETICLE_INSTALLED, { detach: true });
+  if (!isHumanCliCommand(command)) return;
   void telemetry.emit(TelemetryEventKind.CLI_COMMAND_RUN, {
     detach: true,
     // No `actor`: with the agent's transport excluded, this event is human BY DEFINITION. It was

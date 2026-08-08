@@ -121,7 +121,13 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
 
   // 3. A failed assertion — the agent declared a consequence and it did not hold.
   //    Only when nothing above already explained it, or one defect would be counted twice.
-  if (verdict === false && bugs.length === 0 && !isInconclusive(result)) {
+  // A red the APP earned, not one Reticle produced. `verified: "unknown"` is the honesty layer
+  // saying nothing was proved either way, and a top-level `error` is a refusal — measured over one
+  // sweep, every bug_found emitted was one of these two: "no session connected" from reticle_run and
+  // an unverifiable suite from reticle_verify_change, counted as defects in the user's app.
+  const reticleFailure =
+    result['verified'] === 'unknown' || typeof result['error'] === 'string';
+  if (verdict === false && bugs.length === 0 && !isInconclusive(result) && !reticleFailure) {
     const reason = assertionOf(result);
     bugs.push({
       source: BugSource.ASSERTION,
