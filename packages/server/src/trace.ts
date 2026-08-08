@@ -8,8 +8,9 @@
  *
  * Design, in order of what it cost to get wrong elsewhere in this repo:
  *
- *  - OFF by default, and free when off (`span` calls the function and returns). A trace on every
- *    tool call is a cost on the hot path, and the hot path is a verification loop of 50–200 calls.
+ *  - OFF by default, and ~126ns per site when off (measured) — `span` calls the function and
+ *    returns. A trace on every tool call is a real cost on the hot path, and the hot path is a
+ *    verification loop of 50–200 calls.
  *  - ONE line per stage, emitted when it ENDS, carrying its own duration. A start line as well
  *    would double the volume to say something the end line already implies.
  *  - Correlated by a call id and a depth, carried in AsyncLocalStorage rather than threaded through
@@ -48,8 +49,18 @@ let nextCallId = 0;
 const CALL_ID_PREFIX = `p${String(process.pid)}-c`;
 
 /**
- * Whether tracing is on. Read per call rather than cached at import: a daemon is long-lived, and a
- * flag you can only set before startup is one nobody turns on while looking at the problem.
+ * Whether tracing is on.
+ *
+ * Read per call, not cached at import, and the reason is `loadDotEnv`: the CLI populates
+ * `process.env` from the project's .env AFTER every module has been imported, so a value captured at
+ * import time would miss a `RETICLE_TRACE` set there — silently, which is the worst way for a
+ * diagnostic switch to fail. (The reason originally given here — "so it can be turned on while the
+ * daemon runs" — was wrong: nothing outside a process can change its environment.)
+ *
+ * Measured cost of reading it per call: 126ns per traced site when tracing is OFF, against a ~9ns
+ * bare call. With a handful of spans per tool call that is under a microsecond on a call that takes
+ * milliseconds — cheap enough to be worth the correctness, and not the literal zero this comment
+ * used to imply.
  */
 export function traceEnabled(): boolean {
   const raw = process.env[ReticleEnv.TRACE];

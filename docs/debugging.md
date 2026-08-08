@@ -30,7 +30,9 @@ tail -f ~/.reticle/daemon-4400.log | jq .
 ## Verbose flow tracing
 
 Off by default, because a trace on every tool call is a cost on the hot path — a verification loop is
-50–200 calls. Turn it on **for the daemon** (the flag is read per call, but the daemon is the process
+50–200 calls. Measured, so the claim is checkable: a disabled span costs **126ns** per site (against
+~9ns for a bare call), which is under a microsecond per tool call and not the literal zero it is
+tempting to write. Turn it on **for the daemon** (the flag is read per call, but the daemon is the process
 doing the work, so it has to be set where the daemon starts):
 
 ```bash
