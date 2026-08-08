@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { verdictForSuite } from './verify-change-verdict.js';
+import { attributedFailures } from './attributed-failure.js';
 import { Verified } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
@@ -153,12 +154,27 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
       // this tool answers UNKNOWN for an uncovered change. Treating it as a red emitted a bug_found
       // that nothing earned. See verify-change-verdict.
       const verdict = verdictForSuite(String(suite.status), failed);
-      if (verdict !== Verified.YES) {
+      // A NO must be EARNED by a failing flow genuinely tied to the changed files. `affectedSavedFlows`
+      // re-runs any flow whose sources it cannot determine — over-running beats skipping — and those
+      // land in `unknownProvenance`. Judging the change on them produced a negative verdict whose own
+      // explanation admitted the evidence was not tied to the file. See attributed-failure.
+      const failingNames = Array.isArray(suite.failures)
+        ? suite.failures
+            .map((f) => (typeof f === 'object' && f !== null ? asString(asRecord(f)['flow']) : undefined))
+            .filter((n): n is string => n !== undefined)
+        : // No per-failure detail: the failure is somewhere in the set that ran, so ask the question
+          // of all of them rather than guessing which.
+          affected;
+      const attributed = attributedFailures(failingNames, unknownProvenance);
+      const earnedNo = verdict === Verified.NO && attributed.length > 0;
+      const reported = verdict === Verified.NO && !earnedNo ? Verified.UNKNOWN : verdict;
+      if (reported !== Verified.YES) {
         return {
-          verified: verdict,
-          because:
-            verdict === Verified.NO
-              ? `${String(failed)} of ${String(suite.total ?? affected.length)} covering flows failed${provenanceNote}`
+          verified: reported,
+          because: earnedNo
+            ? `${String(failed)} of ${String(suite.total ?? affected.length)} covering flows failed, including ${attributed.join(', ')}, which cover the changed files${provenanceNote}`
+            : verdict === Verified.NO
+              ? `flows failed, but Reticle cannot tell which sources any of them cover (${failingNames.join(', ')}) — so this says nothing about the files you changed. Re-record them so their sources are stamped, or read the replay yourself`
               : `the covering flows ran but proved nothing (${String(suite.status)}) — they assert no observable consequence, so a green from them would not have meant your change is safe${provenanceNote}`,
           changedFiles,
           flowsRun: affected,
