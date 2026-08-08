@@ -12,6 +12,29 @@ import { getSessionMetrics } from '../telemetry/session-metrics.js';
 import { classifyConnectFailure } from '../telemetry/connect-failure.js';
 import type { Launcher, PooledBrowser, PooledContext, PooledPage } from './browser-pool.js';
 
+/**
+ * How a leased tab navigates. Pure, and exported, because the decision in it is worth a test while
+ * the rest of this file needs a real Chromium.
+ *
+ * `waitUntil: 'domcontentloaded'` — NOT Playwright's default of `load`. `load` waits for every
+ * subresource, so an app with one that never finishes burns the whole nav budget and the lease then
+ * reports "is the app running?" about an app that is running. Measured on the sveltekit fixture:
+ * 30,501ms and a false diagnosis. The SDK connect is a module script and runs before
+ * DOMContentLoaded, and the pool separately waits for the session to register, so the load event was
+ * never what proved the page was usable.
+ */
+export function gotoOptions(timeoutMs: number | undefined): {
+  waitUntil: 'domcontentloaded';
+  timeout?: number;
+} {
+  return {
+    waitUntil: 'domcontentloaded',
+    // Absent, not zero: zero means "no timeout" to Playwright, which would turn a slow page into a
+    // lease that never returns.
+    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+  };
+}
+
 function wrapBrowser(browser: Browser): PooledBrowser {
   return {
     isConnected: () => browser.isConnected(),
@@ -21,11 +44,7 @@ function wrapBrowser(browser: Browser): PooledBrowser {
         newPage: async (): Promise<PooledPage> => {
           const page = await context.newPage();
           return {
-            goto: (url, opts) =>
-              page.goto(
-                url,
-                opts?.timeoutMs === undefined ? undefined : { timeout: opts.timeoutMs },
-              ),
+            goto: (url, opts) => page.goto(url, gotoOptions(opts?.timeoutMs)),
             close: () => page.close(),
             onCrash: (handler) => page.on('crash', handler),
           };
