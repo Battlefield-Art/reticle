@@ -330,14 +330,19 @@ function selfTest() {
     ['untested', 'a lossy export with no conformance test must be flagged'],
     [MISSING_FILE, 'a registry file missing from disk must be flagged'],
     ['reexportedLocal', 'an export list entry (export { x }) must be classified'],
-    ['declaredAlias', 'an export list alias (export { x as y }) must be classified by its exported name'],
+    [
+      'declaredAlias',
+      'an export list alias (export { x as y }) must be classified by its exported name',
+    ],
     ['default', 'export default must be classified'],
     [WILDCARD_REEXPORT, 'a wildcard re-export (export * from) must fail loudly, not pass silently'],
   ];
   const missing = expected.filter(([marker]) => {
     if (marker === MISSING_FILE) return !problems.some((p) => p.file === 'fake/missing.ts');
     if (marker === WILDCARD_REEXPORT) {
-      return !problems.some((p) => p.file === 'fake/mod.ts' && p.name === undefined && p.reason.includes('wildcard'));
+      return !problems.some(
+        (p) => p.file === 'fake/mod.ts' && p.name === undefined && p.reason.includes('wildcard'),
+      );
     }
     return !problems.some((p) => p.name === marker);
   });
