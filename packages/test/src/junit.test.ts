@@ -4,8 +4,13 @@ import { TestStatus } from './constants.js';
 import type { FileSystemPort } from '@reticlehq/server';
 import type { SpecResult } from './types.js';
 
-// eslint-disable-next-line no-control-regex -- intentional: detect any illegal XML chars that survived
-const XML_ILLEGAL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/;
+/** A control character below U+0020 that is not tab, newline or carriage return — illegal in XML 1.0. */
+const XML_LEGAL_CONTROL_CODES: ReadonlySet<number> = new Set([0x09, 0x0a, 0x0d]);
+const hasXmlIllegalChar = (text: string): boolean =>
+  [...text].some((ch) => {
+    const code = ch.codePointAt(0) ?? 0;
+    return code < 0x20 && !XML_LEGAL_CONTROL_CODES.has(code);
+  });
 
 const mixed: SpecResult[] = [
   { name: 'passes', status: TestStatus.PASS, durationMs: 12 },
@@ -44,7 +49,7 @@ describe('toJUnitXml', () => {
     const xml = toJUnitXml(results);
     expect(xml).not.toContain(ESC);
     expect(xml).toContain('[31mred[0m');
-    expect(XML_ILLEGAL_CHARS.test(xml)).toBe(false);
+    expect(hasXmlIllegalChar(xml)).toBe(false);
   });
 
   it('preserves multi-line error text: summary in attribute, full text in element content', () => {
@@ -55,7 +60,7 @@ describe('toJUnitXml', () => {
     const xml = toJUnitXml(results);
     expect(xml).toContain('message="line one"');
     expect(xml).toContain('line one\nline two\nline three');
-    expect(XML_ILLEGAL_CHARS.test(xml)).toBe(false);
+    expect(hasXmlIllegalChar(xml)).toBe(false);
   });
 
   it('handles CRLF and CR line breaks in firstLine extraction', () => {

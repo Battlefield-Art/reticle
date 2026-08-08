@@ -4,11 +4,29 @@ import { summarize } from './summary.js';
 import type { SpecResult } from './types.js';
 
 /**
- * Characters illegal in XML 1.0 per section 2.2: U+0000-U+0008, U+000B, U+000C, U+000E-U+001F.
- * Tab (U+0009), newline (U+000A), and carriage return (U+000D) are the only control chars allowed.
+ * XML 1.0 section 2.2: every code point below U+0020 is illegal EXCEPT tab, newline and carriage
+ * return. Stated as codes rather than a regex character class, which cannot express control
+ * characters without tripping `no-control-regex` and needing the rule turned off to read it.
+ *
+ * Iterating code points also means an astral character (an emoji in a test name) survives intact;
+ * the regex worked on UTF-16 units.
  */
-// eslint-disable-next-line no-control-regex -- intentional: these are the exact chars to strip
-const XML_ILLEGAL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
+const XML_MIN_LEGAL_CODE = 0x20;
+const XML_LEGAL_CONTROL_CODES: ReadonlySet<number> = new Set([
+  0x09, // tab
+  0x0a, // newline
+  0x0d, // carriage return
+]);
+
+/** Drop the control characters no XML parser will accept. */
+function stripXmlIllegal(value: string): string {
+  let out = '';
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code >= XML_MIN_LEGAL_CODE || XML_LEGAL_CONTROL_CODES.has(code)) out += ch;
+  }
+  return out;
+}
 
 /**
  * Strip characters illegal in XML 1.0 then escape the five XML-significant characters. Without the
@@ -16,8 +34,7 @@ const XML_ILLEGAL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
  * nothing instead of showing the failure.
  */
 function escapeXml(value: string): string {
-  return value
-    .replace(XML_ILLEGAL_CHARS, '')
+  return stripXmlIllegal(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
