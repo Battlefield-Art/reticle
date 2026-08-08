@@ -11,8 +11,7 @@ import {
   type FlowStep,
   type FlowStepResult,
   type ReticleEvent,
-  type QueryEmptyHint,
-} from '@reticlehq/core';
+  type QueryEmptyHint, PredicateKind } from '@reticlehq/core';
 import type { EvalResult, Predicate } from '../events/predicate.js';
 import { asRecord, asString } from '../tools/tools-helpers.js';
 import { replayActionArgs, ambiguousTestidNote, queryRefs } from './replay.js';
@@ -423,7 +422,7 @@ async function runSignalStep(
   // satisfied a LATER flow's signal step even when that flow's own action never fired it — a
   // cross-flow false green on the exact suite-verify path the regression-cost claim rests on. The
   // replay-start floor excludes prior flows/runs while still seeing this run's adjacent-step signal.
-  const verdict = await waitForSignal(session, { kind: 'signal', name }, signalTimeoutMs, since);
+  const verdict = await waitForSignal(session, { kind: PredicateKind.SIGNAL, name }, signalTimeoutMs, since);
   if (verdict.pass) return { step: index, tool: step.tool, anchor: name, ok: true };
   return {
     step: index,

@@ -5,7 +5,7 @@
 import { noteEmptyRead } from './observed-nothing.js';
 import { z } from 'zod';
 import { aliasParam } from './alias-args.js';
-import { ReticleCommand, DEFAULT_ASSERT_TIMEOUT_MS } from '@reticlehq/core';
+import { ReticleCommand, DEFAULT_ASSERT_TIMEOUT_MS, PredicateKind } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport } from '../events/reaction.js';
 import { findContradictions } from '../events/contradictions.js';
@@ -231,7 +231,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.WAIT_FOR,
-    example: { predicate: { kind: 'state', path: 'todos.length', equals: 3 } },
+    example: { predicate: { kind: PredicateKind.STATE, path: 'todos.length', equals: 3 } },
     description:
       'Block until a predicate is satisfied (or already true in the recent buffer), else time out. Returns matching evidence or a near-miss diagnosis. By default it only counts events since your last act, so a signal buffered BEFORE the action can never fake a pass; pass `since` (an observe/act cursor) to widen or narrow that window explicitly.',
     inputSchema: {
@@ -306,7 +306,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.ASSERT,
-    example: { predicate: { kind: 'signal', name: 'todos:loaded' } },
+    example: { predicate: { kind: PredicateKind.SIGNAL, name: 'todos:loaded' } },
     description:
       'Evaluate a predicate (optionally waiting up to timeout_ms). Returns { pass, evidence, failureReason? }. The end of every verify loop. Prefer a { signal } or { net } consequence over { element }/{ text } presence — a passing presence-only assertion returns `advice` because a wrong/healed element can fake it. By default it only counts events since your last act, so a stale buffered signal can never fake a pass; pass `since` (an observe/act cursor) to set the window explicitly.',
     inputSchema: {

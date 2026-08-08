@@ -1,5 +1,6 @@
 import {
   ElementState,
+  PredicateKind,
   ReticleCommand,
   type CommandResult,
   type ElementQuery,
@@ -24,7 +25,7 @@ import {
   type EvalResult,
 } from './predicate-eval.js';
 
-export { PredicateSchema };
+export { PredicateSchema, PredicateKind };
 export type { Predicate, EvalResult };
 
 /** The subset of Session the predicate engine needs — keeps it testable with a fake. */
@@ -166,7 +167,7 @@ async function evalElement(
 
 async function evalState(
   session: PredicateSession,
-  p: Extract<Predicate, { kind: 'state' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.STATE }>,
 ): Promise<EvalResult> {
   const res = await session.command(
     ReticleCommand.STATE_READ,
@@ -243,7 +244,7 @@ export async function evaluatePredicate(
   // reads the event stream, and net/console re-applying it is a no-op.
   const events = session.eventsSince(Math.max(since, predicateSince(predicate)));
   switch (predicate.kind) {
-    case 'element':
+    case PredicateKind.ELEMENT:
       return evalElement(
         session,
         predicate.query,
@@ -251,7 +252,7 @@ export async function evaluatePredicate(
         predicate.absent ?? false,
         diagnose,
       );
-    case 'text':
+    case PredicateKind.TEXT:
       return evalElement(
         session,
         { text: predicate.contains },
@@ -259,19 +260,19 @@ export async function evaluatePredicate(
         predicate.absent ?? false,
         diagnose,
       );
-    case 'net':
+    case PredicateKind.NET:
       return evalNet(events, predicate);
-    case 'route':
+    case PredicateKind.ROUTE:
       return evalRoute(events, predicate);
-    case 'console':
+    case PredicateKind.CONSOLE:
       return evalConsole(events, predicate);
-    case 'animation':
+    case PredicateKind.ANIMATION:
       return evalAnimation(events, predicate);
-    case 'signal':
+    case PredicateKind.SIGNAL:
       return evalSignal(events, predicate);
-    case 'state':
+    case PredicateKind.STATE:
       return evalState(session, predicate);
-    case 'settled': {
+    case PredicateKind.SETTLED: {
       // Drop events on learned-ambient regions (chat/ticker churn) before the settle check — by ref
       // alone, NOT by attribution: window-attribution ("happened during the action window") is a time
       // heuristic, never causation, so a chat message arriving mid-window must not hold settle open.
@@ -280,7 +281,7 @@ export async function evaluatePredicate(
         counts === undefined ? events : events.filter((e) => !isAmbient(counts, ambientKeyOf(e)));
       return evalSettled(settleEvents, predicate, session.elapsed());
     }
-    case 'allOf': {
+    case PredicateKind.ALL_OF: {
       const results = await Promise.all(
         predicate.predicates.map((p) => evaluatePredicate(session, p, since, diagnose)),
       );
@@ -293,7 +294,7 @@ export async function evaluatePredicate(
             evidence: results,
           };
     }
-    case 'anyOf': {
+    case PredicateKind.ANY_OF: {
       const results = await Promise.all(
         predicate.predicates.map((p) => evaluatePredicate(session, p, since, diagnose)),
       );
@@ -302,7 +303,7 @@ export async function evaluatePredicate(
         ? { pass: true, evidence: passed.evidence }
         : { pass: false, failureReason: 'no sub-predicate of anyOf matched', evidence: results };
     }
-    case 'not': {
+    case PredicateKind.NOT: {
       const inner = await evaluatePredicate(session, predicate.predicate, since, diagnose);
       return inner.pass
         ? { pass: false, failureReason: 'negated predicate unexpectedly held', evidence: inner }
@@ -346,11 +347,11 @@ const COUNT_CONFIRM_MS = 300;
  * must stay that way, or every ordinary wait pays the confirmation delay for nothing.
  */
 function assertsExactCount(predicate: Predicate): boolean {
-  if ('allOf' === predicate.kind || 'anyOf' === predicate.kind) {
+  if (PredicateKind.ALL_OF === predicate.kind || PredicateKind.ANY_OF === predicate.kind) {
     return predicate.predicates.some(assertsExactCount);
   }
-  if ('not' === predicate.kind) return assertsExactCount(predicate.predicate);
-  return 'net' === predicate.kind && predicate.count !== undefined;
+  if (PredicateKind.NOT === predicate.kind) return assertsExactCount(predicate.predicate);
+  return PredicateKind.NET === predicate.kind && predicate.count !== undefined;
 }
 
 /**
@@ -487,13 +488,13 @@ export async function provenExpectedLinks(
   predicate: Predicate,
   since = 0,
 ): Promise<ExpectedLink[]> {
-  if ('allOf' === predicate.kind) {
+  if (PredicateKind.ALL_OF === predicate.kind) {
     const per = await Promise.all(
       predicate.predicates.map((p) => provenExpectedLinks(session, p, since)),
     );
     return per.flat();
   }
-  if ('anyOf' === predicate.kind) {
+  if (PredicateKind.ANY_OF === predicate.kind) {
     const per = await Promise.all(
       predicate.predicates.map(async (p) =>
         (await evaluatePredicate(session, p, since)).pass

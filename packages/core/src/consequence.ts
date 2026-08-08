@@ -24,6 +24,34 @@ export const PresenceKind = {
 } as const;
 export type PresenceKind = (typeof PresenceKind)[keyof typeof PresenceKind];
 
+/**
+ * Every predicate discriminant, in one place — the five graded above plus the ungraded rest.
+ *
+ * Composed from ConsequenceKind/PresenceKind rather than respelling them, which is the whole point:
+ * these strings are what an agent types into `until:`/`expect:`, what zod discriminates on, and what
+ * a dozen files across flows, capsules and oracles switch on. A second spelling of 'signal' is
+ * exactly the drift this file exists to prevent, and a typo in a free-string branch is not a compile
+ * error anywhere — it is a case that silently never matches.
+ *
+ * The remaining kinds are neither consequence nor presence: they observe context (route, console),
+ * timing (animation, settled), or combine other predicates (allOf/anyOf/not).
+ */
+export const PredicateKind = {
+  ELEMENT: PresenceKind.ELEMENT,
+  TEXT: PresenceKind.TEXT,
+  SIGNAL: ConsequenceKind.SIGNAL,
+  NET: ConsequenceKind.NET,
+  STATE: ConsequenceKind.STATE,
+  ROUTE: 'route',
+  CONSOLE: 'console',
+  ANIMATION: 'animation',
+  SETTLED: 'settled',
+  ALL_OF: 'allOf',
+  ANY_OF: 'anyOf',
+  NOT: 'not',
+} as const;
+export type PredicateKind = (typeof PredicateKind)[keyof typeof PredicateKind];
+
 const CONSEQUENCE_KINDS: ReadonlySet<string> = new Set(Object.values(ConsequenceKind));
 const PRESENCE_KINDS: ReadonlySet<string> = new Set(Object.values(PresenceKind));
 

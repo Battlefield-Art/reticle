@@ -1,3 +1,4 @@
+import { PredicateKind } from '@reticlehq/core';
 /**
  * The assertion the agent MADE, in the shape a saved flow can keep.
  *
@@ -25,13 +26,13 @@ function merge(into: FlowExpect, from: FlowExpect): FlowExpect {
 
 export function predicateToExpect(predicate: Predicate): FlowExpect | undefined {
   switch (predicate.kind) {
-    case 'signal': {
+    case PredicateKind.SIGNAL: {
       if (predicate.name === undefined) return undefined;
       return predicate.dataMatches === undefined
         ? { signal: predicate.name }
         : { signal: predicate.name, signalData: predicate.dataMatches };
     }
-    case 'net': {
+    case PredicateKind.NET: {
       const net: NonNullable<FlowExpect['net']> = {};
       if (predicate.method !== undefined) net.method = predicate.method;
       if (predicate.urlContains !== undefined) net.urlContains = predicate.urlContains;
@@ -39,26 +40,26 @@ export function predicateToExpect(predicate: Predicate): FlowExpect | undefined 
       if (predicate.count !== undefined) net.count = predicate.count;
       return 0 === Object.keys(net).length ? undefined : { net };
     }
-    case 'console': {
+    case PredicateKind.CONSOLE: {
       const console_: NonNullable<FlowExpect['console']> = {};
       if (predicate.level !== undefined) console_.level = predicate.level;
       if (predicate.absent !== undefined) console_.absent = predicate.absent;
       return 0 === Object.keys(console_).length ? undefined : { console: console_ };
     }
-    case 'element': {
+    case PredicateKind.ELEMENT: {
       const element: NonNullable<FlowExpect['element']> = {};
       if (predicate.query.testid !== undefined) element.testid = predicate.query.testid;
       if (predicate.query.role !== undefined) element.role = predicate.query.role;
       if (predicate.query.name !== undefined) element.name = predicate.query.name;
       return 0 === Object.keys(element).length ? undefined : { element };
     }
-    case 'state': {
+    case PredicateKind.STATE: {
       const state: NonNullable<FlowExpect['state']> = { path: predicate.path };
       if (predicate.store !== undefined) state.store = predicate.store;
       if (predicate.equals !== undefined) state.equals = predicate.equals;
       return { state };
     }
-    case 'allOf': {
+    case PredicateKind.ALL_OF: {
       // `settled` members drop out on their own by returning undefined.
       let combined: FlowExpect | undefined;
       for (const part of predicate.predicates) {

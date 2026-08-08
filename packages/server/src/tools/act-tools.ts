@@ -12,8 +12,7 @@ import {
   DEFAULT_ASSERT_TIMEOUT_MS,
   InputMode,
   ReticleCommand,
-  Verified,
-} from '@reticlehq/core';
+  Verified, PredicateKind } from '@reticlehq/core';
 import { leanActResult, mutatedWithin } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
@@ -246,7 +245,7 @@ export const ACT_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.ACT_AND_WAIT,
-    example: { ref: 'e42', action: 'click', until: { kind: 'signal', name: 'todos:loaded' } },
+    example: { ref: 'e42', action: 'click', until: { kind: PredicateKind.SIGNAL, name: 'todos:loaded' } },
     description:
       'Act on a ref, then wait for a predicate to hold — one hop for the act->observe->assert loop. ' +
       'Omit `until` to wait for the page to settle (network + DOM idle) — use this instead of a fixed sleep. ' +
@@ -383,7 +382,7 @@ export const ACT_TOOLS: ToolDef[] = [
       const until =
         withUntil['until'] !== undefined
           ? PredicateSchema.parse(withUntil['until'])
-          : ({ kind: 'settled' } as const);
+          : ({ kind: PredicateKind.SETTLED } as const);
       const timeout = asNumber(args['timeout_ms']) ?? DEFAULT_ASSERT_TIMEOUT_MS;
 
       const since = session.elapsed();

@@ -13,7 +13,7 @@
  * Pure: no IO, no clock.
  */
 
-import { AnchorKind, type FlowExpect, type FlowFile } from '@reticlehq/core';
+import { AnchorKind, PredicateKind, type FlowExpect, type FlowFile } from '@reticlehq/core';
 import type { EvalResult, Predicate } from '../events/predicate.js';
 import type { FlowReplaySession, WaitForSignal } from './flow-replay.js';
 
@@ -50,13 +50,13 @@ export function successToPredicate(
   if (success.signal !== undefined) {
     parts.push(
       success.signalData !== undefined
-        ? { kind: 'signal', name: success.signal, dataMatches: success.signalData }
-        : { kind: 'signal', name: success.signal },
+        ? { kind: PredicateKind.SIGNAL, name: success.signal, dataMatches: success.signalData }
+        : { kind: PredicateKind.SIGNAL, name: success.signal },
     );
   }
 
   if (success.net !== undefined) {
-    const net: Extract<Predicate, { kind: 'net' }> = { kind: 'net' };
+    const net: Extract<Predicate, { kind: typeof PredicateKind.NET }> = { kind: PredicateKind.NET };
     if (success.net.method !== undefined) net.method = success.net.method;
     if (success.net.urlContains !== undefined) net.urlContains = success.net.urlContains;
     if (success.net.status !== undefined) net.status = success.net.status;
@@ -66,34 +66,34 @@ export function successToPredicate(
       // exact count (e.g. 1) is transiently satisfied the instant the FIRST matching request lands —
       // before a double-submit's duplicate arrives. Gating on `settled` forces the count to be read
       // only after the network has gone quiet, so the duplicate IS counted and the over-count fails.
-      parts.push({ kind: 'settled' });
+      parts.push({ kind: PredicateKind.SETTLED });
     }
     parts.push(net);
   }
 
   if (success.console !== undefined) {
-    const con: Extract<Predicate, { kind: 'console' }> = { kind: 'console' };
+    const con: Extract<Predicate, { kind: typeof PredicateKind.CONSOLE }> = { kind: PredicateKind.CONSOLE };
     if (success.console.level !== undefined) con.level = success.console.level;
     if (success.console.absent !== undefined) {
       con.absent = success.console.absent;
       // An `absent` assertion is post-settle, same as net.count: a wait-until-true waiter sees "no
       // error yet" at the first poll and passes BEFORE the action's error fires. Gate on `settled` so
       // the console is read only after the page quiets, by which point any error is in the buffer.
-      if (success.console.absent) parts.push({ kind: 'settled' });
+      if (success.console.absent) parts.push({ kind: PredicateKind.SETTLED });
     }
     parts.push(con);
   }
 
   const state = success.state;
   if (state !== undefined) {
-    const part: Extract<Predicate, { kind: 'state' }> = { kind: 'state', path: state.path };
+    const part: Extract<Predicate, { kind: typeof PredicateKind.STATE }> = { kind: PredicateKind.STATE, path: state.path };
     if (state.store !== undefined) part.store = state.store;
     if (state.equals !== undefined) part.equals = state.equals;
     // `hold` = an INVARIANT ("this state must still hold after the action settles"), vs the default
     // wait-for-change. A wait-until-true waiter would pass the instant the path already equals the
     // value — which, for "an unrelated path stayed put", is true BEFORE a side-effect leak fires. Gate
     // on `settled` so the read happens after the page quiets, by which point the leak has landed.
-    if (true === state.hold) parts.push({ kind: 'settled' });
+    if (true === state.hold) parts.push({ kind: PredicateKind.SETTLED });
     parts.push(part);
   }
 
@@ -106,14 +106,14 @@ export function successToPredicate(
       if (testid !== undefined) query['testid'] = testid;
       if (element.role !== undefined) query['role'] = element.role;
       if (element.name !== undefined) query['name'] = element.name;
-      if (Object.keys(query).length > 0) parts.push({ kind: 'element', query });
+      if (Object.keys(query).length > 0) parts.push({ kind: PredicateKind.ELEMENT, query });
     }
   }
 
   const [first] = parts;
   if (0 === parts.length) return undefined;
   if (1 === parts.length && first !== undefined) return first;
-  return { kind: 'allOf', predicates: parts };
+  return { kind: PredicateKind.ALL_OF, predicates: parts };
 }
 
 /**

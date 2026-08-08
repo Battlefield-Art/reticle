@@ -1,3 +1,4 @@
+import { ConsequenceKind, PredicateKind } from '@reticlehq/core';
 import type { Predicate } from '../events/predicate.js';
 import type { ExpectedLink } from './divergence.js';
 
@@ -8,24 +9,24 @@ import type { ExpectedLink } from './divergence.js';
  */
 export function predicateToExpectedLinks(predicate: Predicate): ExpectedLink[] {
   switch (predicate.kind) {
-    case 'signal':
-      return predicate.name === undefined ? [] : [{ kind: 'signal', name: predicate.name }];
-    case 'net':
+    case PredicateKind.SIGNAL:
+      return predicate.name === undefined ? [] : [{ kind: ConsequenceKind.SIGNAL, name: predicate.name }];
+    case PredicateKind.NET:
       return predicate.urlContains === undefined
         ? []
         : [
             {
-              kind: 'net',
+              kind: ConsequenceKind.NET,
               urlContains: predicate.urlContains,
               ...(predicate.status === undefined ? {} : { status: predicate.status }),
             },
           ];
-    case 'state': {
+    case PredicateKind.STATE: {
       const name = predicate.store ?? predicate.path;
-      return [{ kind: 'state', name }];
+      return [{ kind: ConsequenceKind.STATE, name }];
     }
-    case 'allOf':
-    case 'anyOf':
+    case PredicateKind.ALL_OF:
+    case PredicateKind.ANY_OF:
       return predicate.predicates.flatMap(predicateToExpectedLinks);
     default:
       return [];

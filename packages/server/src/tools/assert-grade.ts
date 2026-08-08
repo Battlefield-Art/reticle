@@ -11,7 +11,7 @@
  * Pure: no IO, no clock.
  */
 
-import { isConsequenceKind, isPresenceKind } from '@reticlehq/core';
+import { isConsequenceKind, isPresenceKind, PredicateKind } from '@reticlehq/core';
 import { HonestyGrade } from '../honesty/honesty.js';
 import type { Predicate } from '../events/predicate.js';
 
@@ -26,14 +26,14 @@ interface PredicateKinds {
 }
 
 function walk(predicate: Predicate): PredicateKinds {
-  if ('allOf' === predicate.kind || 'anyOf' === predicate.kind) {
+  if (PredicateKind.ALL_OF === predicate.kind || PredicateKind.ANY_OF === predicate.kind) {
     const subs = predicate.predicates.map(walk);
     return {
       consequence: subs.some((s) => s.consequence),
       presence: subs.some((s) => s.presence),
     };
   }
-  if ('not' === predicate.kind) return walk(predicate.predicate);
+  if (PredicateKind.NOT === predicate.kind) return walk(predicate.predicate);
   // Leaf: classify against the single source of truth in core. Kinds that are neither consequence
   // nor presence (route/console/settled/animation) correctly return false for both.
   return {
@@ -64,11 +64,11 @@ export const DERIVED_IPC_STATUS_ADVICE =
  * Recognised by the `ipc://` scheme, so a genuine HTTP status is never second-guessed.
  */
 export function assertsDerivedIpcStatus(predicate: Predicate): boolean {
-  if ('allOf' === predicate.kind || 'anyOf' === predicate.kind) {
+  if (PredicateKind.ALL_OF === predicate.kind || PredicateKind.ANY_OF === predicate.kind) {
     return predicate.predicates.some(assertsDerivedIpcStatus);
   }
-  if ('not' === predicate.kind) return assertsDerivedIpcStatus(predicate.predicate);
-  if (predicate.kind !== 'net') return false;
+  if (PredicateKind.NOT === predicate.kind) return assertsDerivedIpcStatus(predicate.predicate);
+  if (predicate.kind !== PredicateKind.NET) return false;
   return (
     predicate.status !== undefined &&
     predicate.ok === undefined &&
@@ -90,11 +90,11 @@ export function isPresenceOnlyAssertion(predicate: Predicate): boolean {
  */
 export function gradeOfPredicate(predicate: Predicate): HonestyGrade {
   switch (predicate.kind) {
-    case 'signal':
+    case PredicateKind.SIGNAL:
       return HonestyGrade.SIGNAL;
-    case 'net':
+    case PredicateKind.NET:
       return HonestyGrade.NET;
-    case 'state':
+    case PredicateKind.STATE:
       return HonestyGrade.STATE;
     default:
       return HonestyGrade.PRESENCE;

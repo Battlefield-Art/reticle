@@ -2,6 +2,7 @@ import {
   ElementQuerySchema,
   ElementState,
   EventType,
+  PredicateKind,
   type ElementQuery,
   type ReticleEvent,
 } from '@reticlehq/core';
@@ -9,10 +10,10 @@ import { z } from 'zod';
 import { describeObserved } from './observed-in-window.js';
 
 export type Predicate =
-  | { kind: 'element'; query: ElementQuery; state?: ElementState; absent?: boolean }
-  | { kind: 'text'; contains: string; visible?: boolean; absent?: boolean }
+  | { kind: typeof PredicateKind.ELEMENT; query: ElementQuery; state?: ElementState; absent?: boolean }
+  | { kind: typeof PredicateKind.TEXT; contains: string; visible?: boolean; absent?: boolean }
   | {
-      kind: 'net';
+      kind: typeof PredicateKind.NET;
       method?: string;
       urlContains?: string;
       status?: number;
@@ -21,15 +22,15 @@ export type Predicate =
       since?: number;
       count?: number;
     }
-  | { kind: 'route'; pathname?: string; contains?: string; since?: number }
-  | { kind: 'console'; level?: string; absent?: boolean; since?: number }
-  | { kind: 'animation'; name?: string; target?: string; completed?: boolean; since?: number }
-  | { kind: 'signal'; name?: string; dataMatches?: Record<string, unknown>; since?: number }
-  | { kind: 'state'; store?: string; path: string; equals?: unknown }
-  | { kind: 'settled'; quietMs?: number }
-  | { kind: 'allOf'; predicates: Predicate[] }
-  | { kind: 'anyOf'; predicates: Predicate[] }
-  | { kind: 'not'; predicate: Predicate };
+  | { kind: typeof PredicateKind.ROUTE; pathname?: string; contains?: string; since?: number }
+  | { kind: typeof PredicateKind.CONSOLE; level?: string; absent?: boolean; since?: number }
+  | { kind: typeof PredicateKind.ANIMATION; name?: string; target?: string; completed?: boolean; since?: number }
+  | { kind: typeof PredicateKind.SIGNAL; name?: string; dataMatches?: Record<string, unknown>; since?: number }
+  | { kind: typeof PredicateKind.STATE; store?: string; path: string; equals?: unknown }
+  | { kind: typeof PredicateKind.SETTLED; quietMs?: number }
+  | { kind: typeof PredicateKind.ALL_OF; predicates: Predicate[] }
+  | { kind: typeof PredicateKind.ANY_OF; predicates: Predicate[] }
+  | { kind: typeof PredicateKind.NOT; predicate: Predicate };
 
 /**
  * Spellings an agent plausibly reaches for, mapped to the real field.
@@ -39,9 +40,9 @@ export type Predicate =
  * the only key supplied left a predicate that asserts nothing and passes on anything.
  */
 const PREDICATE_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  route: { path: 'pathname' },
-  net: { url: 'urlContains' },
-  signal: { data: 'dataMatches' },
+  [PredicateKind.ROUTE]: { path: 'pathname' },
+  [PredicateKind.NET]: { url: 'urlContains' },
+  [PredicateKind.SIGNAL]: { data: 'dataMatches' },
 };
 
 /** Rename known aliases before parse; an explicit canonical key always wins. */
@@ -66,19 +67,19 @@ function applyPredicateAliases(input: unknown): unknown {
 export const PredicateSchema = z.lazy(() =>
   z.preprocess(applyPredicateAliases, z.discriminatedUnion('kind', [
     z.object({
-      kind: z.literal('element'),
+      kind: z.literal(PredicateKind.ELEMENT),
       query: ElementQuerySchema,
       state: z.nativeEnum(ElementState).optional(),
       absent: z.boolean().optional(),
     }).strict(),
     z.object({
-      kind: z.literal('text'),
+      kind: z.literal(PredicateKind.TEXT),
       contains: z.string(),
       visible: z.boolean().optional(),
       absent: z.boolean().optional(),
     }).strict(),
     z.object({
-      kind: z.literal('net'),
+      kind: z.literal(PredicateKind.NET),
       method: z.string().optional(),
       urlContains: z.string().optional(),
       status: z.number().optional(),
@@ -87,40 +88,40 @@ export const PredicateSchema = z.lazy(() =>
       count: z.number().int().nonnegative().optional(),
     }).strict(),
     z.object({
-      kind: z.literal('route'),
+      kind: z.literal(PredicateKind.ROUTE),
       pathname: z.string().optional(),
       contains: z.string().optional(),
       since: z.number().optional(),
     }).strict(),
     z.object({
-      kind: z.literal('console'),
+      kind: z.literal(PredicateKind.CONSOLE),
       level: z.string().optional(),
       absent: z.boolean().optional(),
       since: z.number().optional(),
     }).strict(),
     z.object({
-      kind: z.literal('animation'),
+      kind: z.literal(PredicateKind.ANIMATION),
       name: z.string().optional(),
       target: z.string().optional(),
       completed: z.boolean().optional(),
       since: z.number().optional(),
     }).strict(),
     z.object({
-      kind: z.literal('signal'),
+      kind: z.literal(PredicateKind.SIGNAL),
       name: z.string().optional(),
       dataMatches: z.record(z.unknown()).optional(),
       since: z.number().optional(),
     }).strict(),
     z.object({
-      kind: z.literal('state'),
+      kind: z.literal(PredicateKind.STATE),
       store: z.string().optional(),
       path: z.string(),
       equals: z.unknown().optional(),
     }).strict(),
-    z.object({ kind: z.literal('settled'), quietMs: z.number().positive().optional() }).strict(),
-    z.object({ kind: z.literal('allOf'), predicates: z.array(PredicateSchema) }).strict(),
-    z.object({ kind: z.literal('anyOf'), predicates: z.array(PredicateSchema) }).strict(),
-    z.object({ kind: z.literal('not'), predicate: PredicateSchema }).strict(),
+    z.object({ kind: z.literal(PredicateKind.SETTLED), quietMs: z.number().positive().optional() }).strict(),
+    z.object({ kind: z.literal(PredicateKind.ALL_OF), predicates: z.array(PredicateSchema) }).strict(),
+    z.object({ kind: z.literal(PredicateKind.ANY_OF), predicates: z.array(PredicateSchema) }).strict(),
+    z.object({ kind: z.literal(PredicateKind.NOT), predicate: PredicateSchema }).strict(),
   ])),
 ) as unknown as z.ZodType<Predicate>;
 
@@ -240,7 +241,7 @@ function callSucceeded(data: Record<string, unknown>): boolean {
 
 export function evalNet(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'net' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.NET }>,
 ): EvalResult {
   const since = p.since ?? 0;
   const matches = events.filter((e) => {
@@ -291,7 +292,7 @@ export function evalNet(
 
 export function evalRoute(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'route' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.ROUTE }>,
 ): EvalResult {
   const routes = events.filter((e) => e.type === EventType.ROUTE_CHANGE);
   const last = routes.at(-1);
@@ -341,7 +342,7 @@ const CONSOLE_LEVEL_TYPE: Readonly<Record<string, EventType>> = {
 
 export function evalConsole(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'console' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.CONSOLE }>,
 ): EvalResult {
   const since = p.since ?? 0;
   // Reticle only instruments console.log/warn/error. A level outside that set is never captured,
@@ -395,7 +396,7 @@ export function evalConsole(
 
 export function evalAnimation(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'animation' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.ANIMATION }>,
 ): EvalResult {
   const wantType = true === p.completed ? EventType.ANIM_END : EventType.ANIM_START;
   const hit = events.find((e) => {
@@ -417,7 +418,7 @@ export function evalAnimation(
 
 export function evalSignal(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'signal' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.SIGNAL }>,
 ): EvalResult {
   const hit = events.find((e) => {
     if (e.type !== EventType.SIGNAL) return false;
@@ -500,7 +501,7 @@ const DEFAULT_QUIET_MS = 500;
  */
 export function evalSettled(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'settled' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.SETTLED }>,
   now: number,
 ): EvalResult {
   const quietMs = p.quietMs ?? DEFAULT_QUIET_MS;
