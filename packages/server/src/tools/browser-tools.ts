@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { navigateResult } from './navigate-result.js';
+import { reloadResult } from './reload-result.js';
 import { ReticleCommand } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { asString } from './tools-helpers.js';
@@ -41,7 +42,10 @@ export const BROWSER_TOOLS: ToolDef[] = [
         await commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.REFRESH, {
           hard: args['hard'] === true,
         });
-        return { ok: true };
+        // Not a bare `{ ok: true }`. The URL branch below already discloses that `ok` means
+        // DISPATCHED — the reload branch had identical semantics and said nothing, on the path most
+        // likely to need it. See reload-result.
+        return reloadResult();
       }
       const url = asString(args['url']);
       if (url === undefined || url.length === 0) return { ok: false, reason: 'url required' };
