@@ -157,6 +157,27 @@ describe('precedence between competing faults', () => {
     expect(v.verified).toBe(Verified.NO);
   });
 
+  /**
+   * The same rule as the dirty-capture case above, applied to the other absence-of-evidence verdict.
+   *
+   * `alreadyTrue` says the assertion proves nothing about the action; a contradiction says a channel
+   * observed the action going WRONG. Both can hold at once — assert `{ text: 'Saved' }` that was
+   * already on screen while the write 500s — and ordering alreadyTrue first downgraded a detected
+   * false green from NO to UNKNOWN, which reads as "assert something else" rather than "this is
+   * broken". Evidence AGAINST beats absence of evidence, whichever absence it is.
+   */
+  it('prefers a contradiction over an already-true assertion', () => {
+    const v = decideVerified({
+      pass: true,
+      honesty: clean(),
+      alreadyTrue: true,
+      contradictions: [{ kind: 'ui-advanced-request-failed' }],
+      settled: true,
+    });
+    expect(v.verified).toBe(Verified.NO);
+    expect(v.because).toContain('disagree');
+  });
+
   /** Partial coverage is a caveat carried in `honesty.coverage`, not grounds to withhold a verdict. */
   it('still says YES under partial coverage when nothing else is wrong', () => {
     const v = decideVerified({

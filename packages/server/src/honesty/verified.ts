@@ -69,6 +69,24 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
     return { verified: Verified.NO, because: 'the declared consequence did not hold' };
   }
 
+  // A contradiction outranks a passing assertion, and that inversion is the whole point: the case
+  // this product exists to catch is a green assertion sitting on top of a failed write. Measured on
+  // the bench app — `ui-advanced-request-failed` arrived with verdict.pass true and every other
+  // channel agreeing. Letting `pass` win there would report exactly the false green being detected.
+  if (contradictions.length > 0) {
+    const kinds = contradictions.map((c) => c.kind).join(', ');
+    return {
+      verified: Verified.NO,
+      because: `channels disagree about this action (${kinds}) even though the assertion passed`,
+    };
+  }
+
+  // Below the contradiction clause, and for the same reason a contradiction outranks a dirty
+  // capture: evidence AGAINST beats absence of evidence, whichever absence it is. Both can hold at
+  // once — assert `{ text: 'Saved' }` that was already on screen while the write 500s — and ordering
+  // this first downgraded a DETECTED false green from NO to UNKNOWN, which reads as "assert
+  // something else" rather than "this is broken".
+  //
   // A green that was already green before the action is not evidence about the action. Measured in
   // the field: a click asserted with `{ text: 'Parallel Routes' }` returned verified "yes" in 478ms
   // with routeChanges 0, because the text was the nav link already on screen — the real navigation
@@ -79,18 +97,6 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
       verified: Verified.UNKNOWN,
       because:
         'the declared consequence was already true before this action, so it proves nothing about it — assert something the action CHANGES (a signal, a request, a route, or store state)',
-    };
-  }
-
-  // A contradiction outranks a passing assertion, and that inversion is the whole point: the case
-  // this product exists to catch is a green assertion sitting on top of a failed write. Measured on
-  // the bench app — `ui-advanced-request-failed` arrived with verdict.pass true and every other
-  // channel agreeing. Letting `pass` win there would report exactly the false green being detected.
-  if (contradictions.length > 0) {
-    const kinds = contradictions.map((c) => c.kind).join(', ');
-    return {
-      verified: Verified.NO,
-      because: `channels disagree about this action (${kinds}) even though the assertion passed`,
     };
   }
 
