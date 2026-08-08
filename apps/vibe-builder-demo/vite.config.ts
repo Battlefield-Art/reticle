@@ -105,6 +105,10 @@ function apiMiddleware(): Connect.NextHandleFunction {
 
 export default defineConfig({
   server: { port: Number(process.env['RETICLE_PREVIEW_PORT'] ?? 4310) },
+  // Both pages, named explicitly. Vite's default single `index.html` input silently dropped
+  // builder.html — the OUTER self-test app — from every build, so src/builder-ui.ts was unreachable
+  // from the build graph while working fine under `vite dev`, which serves any HTML on disk.
+  build: { rollupOptions: { input: ['index.html', 'builder.html'] } },
   plugins: [
     {
       name: 'vibe-builder-preview-api',
