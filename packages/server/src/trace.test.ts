@@ -9,7 +9,7 @@
 
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { ReticleEnv } from '@reticlehq/core';
-import { span, traceEnabled } from './trace.js';
+import { span, spanSync, traceEnabled } from './trace.js';
 
 interface TraceLine {
   event: string;
@@ -131,6 +131,42 @@ describe('trace — on', () => {
         expect(marks.length, 'each call has its own inner stage').toBe(1);
         expect(new Set(marks.map((l) => l.which)).size, 'a tree never mixes two calls').toBe(1);
       }
+    } finally {
+      cap.restore();
+    }
+  });
+
+  /**
+   * `reticle init` — the flow every user hits before anything else — is entirely synchronous, so an
+   * async-only span could not reach it. That left the one flow whose slowness a user experiences
+   * personally as the one flow with no timings at all.
+   */
+  it('traces a synchronous stage, and nests it under an async parent', async () => {
+    const cap = captureTrace();
+    try {
+      await span('init', {}, () => {
+        const wrote = spanSync('write-config', { target: '.reticle.json' }, () => 'written');
+        expect(wrote).toBe('written');
+      });
+      const byName = new Map(cap.lines.map((l) => [l.span, l]));
+      expect(byName.get('write-config')?.depth).toBe(1);
+      expect(byName.get('write-config')?.target).toBe('.reticle.json');
+      expect(new Set(cap.lines.map((l) => l.callId)).size, 'one tree').toBe(1);
+    } finally {
+      cap.restore();
+    }
+  });
+
+  it('records a synchronous stage that threw, and re-throws it unchanged', () => {
+    const cap = captureTrace();
+    try {
+      expect(() =>
+        spanSync('failing-sync', {}, () => {
+          throw new Error('sync boom');
+        }),
+      ).toThrow('sync boom');
+      expect(cap.lines[0]?.ok).toBe(false);
+      expect(cap.lines[0]?.error).toContain('sync boom');
     } finally {
       cap.restore();
     }

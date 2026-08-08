@@ -5,6 +5,7 @@
  */
 
 import { dirname, join } from 'node:path';
+import { spanSync } from '../trace.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { detect, Framework, type DetectInput } from './detect.js';
@@ -524,12 +525,39 @@ function applyEffects(
       skipped.add(s.target);
       continue;
     }
-    if (s.write !== undefined) io.writeFile(s.write.path, s.write.content);
-    if (s.exec !== undefined && !io.exec(s.exec.command, s.exec.args)) {
+    const write = s.write;
+    if (write !== undefined) {
+      spanSync('init.write', { target: s.target, path: write.path }, () => {
+        io.writeFile(write.path, write.content);
+      });
+    }
+    // Bound once so the traced call cannot need a `?? ''` fallback — a default there would turn a
+    // narrowing mistake into an empty command that silently "succeeds".
+    const exec = s.exec;
+    // Per-step, because the interesting part of init's wall-clock is WHICH step spent it: a
+    // package-manager install and a `claude mcp add` are both subprocesses, and one of them being
+    // slow is a completely different problem from the other.
+    if (
+      exec !== undefined &&
+      !spanSync('init.exec', { target: s.target, command: exec.command }, () =>
+        io.exec(exec.command, exec.args),
+      )
+    ) {
       // A weaker second attempt beats no install at all — but only when it is REPORTED, because the
       // thing it gives up is the version pin that keeps SDK and daemon in step.
-      if (s.retry !== undefined && io.exec(s.retry.command, s.retry.args)) {
-        degraded.set(s.target, s.retry.note);
+      //
+      // Traced separately, and it is the reason init can take twice as long as it looks like it
+      // should: this is a SECOND full package-manager run, and until it had its own span 1.6 of
+      // init's 2.3 seconds simply vanished — the span above accounted for the first attempt and
+      // nothing accounted for this one.
+      const retry = s.retry;
+      if (
+        retry !== undefined &&
+        spanSync('init.exec.retry', { target: s.target, command: retry.command }, () =>
+          io.exec(retry.command, retry.args),
+        )
+      ) {
+        degraded.set(s.target, retry.note);
         continue;
       }
       failed.add(s.target);
@@ -616,10 +644,13 @@ export function runInit(options: InitOptions, io: InitIo): InitResult {
   const redirected = redirectToWorkspaceApp(options, io, pkgRaw);
   if (redirected !== null) return redirected;
 
-  const plan = buildPlan(gatherPlanInput(options, io, pkgRaw));
+  // Init is the flow a user experiences the wait of personally, and the fixture gate measures it at
+  // 1–6s per app with no explanation of the spread. These three spans split that number into detect
+  // (filesystem probing), plan (pure), and apply (writes + package-manager and CLI subprocesses).
+  const plan = spanSync('init.plan', {}, () => buildPlan(gatherPlanInput(options, io, pkgRaw)));
   const effects = options.dryRun
     ? { failed: new Set<string>(), skipped: new Set<string>(), degraded: new Map<string, string>() }
-    : applyEffects(plan, io);
+    : spanSync('init.apply', { steps: plan.steps.length }, () => applyEffects(plan, io));
   const { failed, skipped, degraded } = effects;
   const result = report(plan, options.dryRun, failed, skipped, degraded, io);
   // A dry run is a preview, not an outcome — reporting it would inflate both success and failure.

@@ -80,6 +80,24 @@ Or find the slowest stages across a session:
 grep '"event":"trace"' ~/.reticle/daemon-4400.log | jq -sc 'sort_by(-.ms)[:10] | .[] | {span,ms,tool}'
 ```
 
+### The init flow
+
+`reticle init` is synchronous end to end, so it uses `spanSync` — same line, same tree:
+
+```
+init.plan        2ms
+init.exec       133ms  target=package.json command=pnpm
+init.exec.retry 128ms  target=package.json command=pnpm
+init.write        1ms  target=.reticle.json
+init.apply      262ms  steps=5
+```
+
+Two things that trace makes visible and nothing else did. Planning is ~2ms, so init's wall-clock is
+essentially all subprocess: the package manager, and `claude mcp add` when MCP registration is on.
+And when the pinned install is refused, the unpinned **retry is a second full package-manager run** —
+init legitimately takes about twice as long on that path. Every `--local` fixture run takes it,
+because the version being installed is not published yet.
+
 ### Adding a span
 
 ```ts

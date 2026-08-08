@@ -56,6 +56,38 @@ export function traceEnabled(): boolean {
   return raw !== undefined && ON_VALUES.has(raw.trim().toLowerCase());
 }
 
+/** The scope a stage runs in, plus how to report it. Shared by the async and sync forms. */
+function openSpan(
+  name: string,
+  fields: Record<string, unknown>,
+): { child: CallContext; emit: (ok: boolean, extra: Record<string, unknown>) => void } {
+  const parent = context.getStore();
+  const scope: CallContext =
+    parent === undefined
+      ? { callId: `${CALL_ID_PREFIX}${String((nextCallId += 1))}`, depth: 0 }
+      : parent;
+  const depth = parent === undefined ? 0 : parent.depth;
+  const startedAt = Date.now();
+  return {
+    // The child scope is what nested spans see: same call, one level deeper.
+    child: { callId: scope.callId, depth: depth + 1 },
+    emit: (ok, extra) => {
+      log(TRACE_EVENT, {
+        span: name,
+        ms: Date.now() - startedAt,
+        depth,
+        callId: scope.callId,
+        ok,
+        ...fields,
+        ...extra,
+      });
+    },
+  };
+}
+
+/** How much of a thrown value to keep. Enough to identify it, not enough to paste a stack into a log. */
+const ERROR_CHARS = 300;
+
 /**
  * Run `fn` as a named stage, recording how long it took and how it sat inside the call around it.
  *
@@ -69,26 +101,7 @@ export async function span<T>(
   fn: () => Promise<T> | T,
 ): Promise<T> {
   if (!traceEnabled()) return fn();
-  const parent = context.getStore();
-  const scope: CallContext =
-    parent === undefined
-      ? { callId: `${CALL_ID_PREFIX}${String((nextCallId += 1))}`, depth: 0 }
-      : parent;
-  const depth = parent === undefined ? 0 : parent.depth;
-  const startedAt = Date.now();
-  const emit = (ok: boolean, extra: Record<string, unknown>): void => {
-    log(TRACE_EVENT, {
-      span: name,
-      ms: Date.now() - startedAt,
-      depth,
-      callId: scope.callId,
-      ok,
-      ...fields,
-      ...extra,
-    });
-  };
-  // The child scope is what nested spans see: same call, one level deeper.
-  const child: CallContext = { callId: scope.callId, depth: depth + 1 };
+  const { child, emit } = openSpan(name, fields);
   try {
     const value = await context.run(child, async () => fn());
     emit(true, {});
@@ -96,7 +109,27 @@ export async function span<T>(
   } catch (err) {
     // A stage that THREW is the one most worth having in the trace: without this line the trace
     // shows a call that entered a stage and never left it, which reads as a hang.
-    emit(false, { error: String(err).slice(0, 300) });
+    emit(false, { error: String(err).slice(0, ERROR_CHARS) });
+    throw err;
+  }
+}
+
+/**
+ * The synchronous form. Same line, same tree, same cost when off.
+ *
+ * It exists because `reticle init` — the flow every user hits before anything else, and the one
+ * whose slowness they experience personally — is synchronous end to end. An async-only span left
+ * exactly that flow untraceable.
+ */
+export function spanSync<T>(name: string, fields: Record<string, unknown>, fn: () => T): T {
+  if (!traceEnabled()) return fn();
+  const { child, emit } = openSpan(name, fields);
+  try {
+    const value = context.run(child, fn);
+    emit(true, {});
+    return value;
+  } catch (err) {
+    emit(false, { error: String(err).slice(0, ERROR_CHARS) });
     throw err;
   }
 }
