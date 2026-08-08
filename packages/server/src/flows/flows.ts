@@ -146,7 +146,12 @@ export function recordedStepToFlowStep(step: RecordedStep): FlowStep {
     const rawSubs = Array.isArray(step.args['steps']) ? step.args['steps'] : [];
     const subs = rawSubs.map(subStepToFlowStep);
     const degraded = subs.some((s) => s.degraded === true);
-    const anchor: FlowAnchor = subs[0]?.anchor ?? degradedAnchor();
+    // The first sub-step that HAS an anchor, not blindly the first. Taking subs[0] handed the whole
+    // sequence the degraded sentinel whenever sub-step 0 lacked a testid — even with every later
+    // sub-step perfectly anchored — and replay then queried the DOM for a testid literally named
+    // "unresolved", so the step drifted on all 5 apps, every replay.
+    const anchor: FlowAnchor =
+      subs.find((s) => s.degraded !== true)?.anchor ?? subs[0]?.anchor ?? degradedAnchor();
     const out: FlowStep = { tool: ReticleTool.ACT_SEQUENCE, anchor, steps: subs };
     if (degraded) out.degraded = true;
     if (step.expect !== undefined) out.expect = step.expect;

@@ -16,7 +16,13 @@ import {
 import type { EvalResult, Predicate } from '../events/predicate.js';
 import { asRecord, asString } from '../tools/tools-helpers.js';
 import { replayActionArgs, ambiguousTestidNote, queryRefs } from './replay.js';
-import { runRoleStep, runComponentStep } from './flow-step-runners.js';
+import {
+  degradedStepResult,
+  isDegradedAnchor,
+  runComponentStep,
+  runRoleStep,
+  runSequenceStep,
+} from './flow-step-runners.js';
 import { successToPredicate } from './flow-success.js';
 import { ReticleTool } from '../tools/tool-names.js';
 
@@ -163,7 +169,7 @@ export function nearestIsAmbiguous(missing: string, present: string[]): boolean 
 }
 
 /** Build the legible-drift record for a testid anchor that resolved to zero live elements. */
-function testidDrift(value: string, hint: QueryEmptyHint | undefined): Drift {
+export function testidDrift(value: string, hint: QueryEmptyHint | undefined): Drift {
   const present = hint?.presentTestids ?? [];
   const drift: Drift = {
     reasonKind: DriftReason.TESTID_NOT_FOUND,
@@ -273,7 +279,7 @@ export function componentLabel(
 }
 
 /** The value of a step's primary anchor, for labelling the result row. */
-function anchorLabel(anchor: FlowAnchor): string {
+export function anchorLabel(anchor: FlowAnchor): string {
   if (anchor.kind === AnchorKind.TESTID) return anchor.value;
   if (anchor.kind === AnchorKind.SIGNAL) return anchor.name;
   if (anchor.kind === AnchorKind.COMPONENT) return componentLabel(anchor);
@@ -465,7 +471,13 @@ export async function replayFlow(
     // Event-time floor so the consequence reflects only THIS step's aftermath, not prior steps'.
     const cursorBefore = session.elapsed();
     let result: FlowStepResult;
-    if (step.anchor.kind === AnchorKind.SIGNAL) {
+    const subSteps = step.steps;
+    if (isDegradedAnchor(step.anchor)) {
+      // Never QUERY the sentinel — it marks "no anchor was determined", not an element to find.
+      result = degradedStepResult(step, index, label);
+    } else if (subSteps !== undefined && subSteps.length > 0) {
+      result = await runSequenceStep(session, step, index, subSteps, confirmDangerous, sleep);
+    } else if (step.anchor.kind === AnchorKind.SIGNAL) {
       result = await runSignalStep(
         session,
         step,

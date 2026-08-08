@@ -8,6 +8,7 @@
  */
 import {
   AnchorKind,
+  DEGRADED_ANCHOR_ROLE,
   DriftReason,
   QueryBy,
   ReticleCommand,
@@ -18,7 +19,13 @@ import {
 import { ReticleTool } from '../tools/tool-names.js';
 import { replayActionArgs } from './replay.js';
 import type { FlowReplaySession, Sleep } from './flow-replay.js';
-import { componentLabel, componentQueryArgs, resolveQuery } from './flow-replay.js';
+import {
+  anchorLabel,
+  componentLabel,
+  componentQueryArgs,
+  resolveQuery,
+  testidDrift,
+} from './flow-replay.js';
 import { nearestRoleName, type RoleCandidate } from './role-anchor-nearest.js';
 
 /** Query args for a NAMED role anchor — the handle that identifies an instance, not a JSX site. */
@@ -179,6 +186,118 @@ export async function runComponentStep(
     session.finishAction?.();
   }
   const result: FlowStepResult = { step: index, tool: step.tool, anchor: label, ok: act.ok };
+  if (!act.ok) result.error = act.error ?? 'command failed';
+  return result;
+}
+
+/**
+ * DEGRADED_ANCHOR_ROLE is a MARKER ("no anchor could be determined"), never a locator.
+ *
+ * Recognising it is most of the fix: a nameless-ROLE anchor used to fall through to the testid
+ * runner, which asked the DOM eight times for a testid literally named "unresolved", found none (it
+ * never exists), and reported a MISSING ELEMENT. It then ran edit-distance against the word
+ * "unresolved" and offered the nearest testid as a rebind target — which flow_verify printed while
+ * flow_heal refused it on confidence. Two tools contradicting each other over a candidate that never
+ * meant anything.
+ *
+ * Both recorders emit this sentinel, so the check belongs here on the replay side, where all of them
+ * land.
+ */
+export function isDegradedAnchor(anchor: FlowAnchor): boolean {
+  return (
+    anchor.kind === AnchorKind.ROLE &&
+    anchor.role === DEGRADED_ANCHOR_ROLE &&
+    anchor.name === undefined
+  );
+}
+
+/** What a step with no resolvable anchor reports, instead of a missing-element story. */
+export const DEGRADED_STEP_REASON =
+  'recorded without a resolvable anchor (no data-testid, no accessible role+name), so it can never ' +
+  'resolve on replay — add a data-testid to the element and record this flow again';
+
+export function degradedStepResult(step: FlowStep, index: number, label: string): FlowStepResult {
+  return {
+    step: index,
+    tool: step.tool,
+    anchor: label,
+    ok: false,
+    drift: {
+      reasonKind: DriftReason.ANCHOR_DEGRADED,
+      reason: DEGRADED_STEP_REASON,
+      anchor: label,
+      // Deliberately null: the old path produced a nearest match to the WORD "unresolved", which is
+      // not a candidate for anything.
+      nearest: null,
+    },
+  };
+}
+
+/** QUERY args for an element anchor — null when the anchor addresses no element. */
+function anchorQueryArgs(anchor: FlowAnchor): Record<string, unknown> | null {
+  if (anchor.kind === AnchorKind.TESTID) return { by: QueryBy.TESTID, value: anchor.value };
+  if (anchor.kind === AnchorKind.COMPONENT) return componentQueryArgs(anchor);
+  if (anchor.kind === AnchorKind.ROLE && !isDegradedAnchor(anchor)) return roleQueryArgs(anchor);
+  return null;
+}
+
+/**
+ * Run an act_sequence step: resolve every sub-step's OWN anchor, then dispatch the whole thing as one
+ * ACT_SEQUENCE — the same shape `replayProgram` already uses, so a recorded sequence and a saved one
+ * execute identically.
+ *
+ * `replayFlow` had no sequence branch at all. It dispatches on `anchor.kind`, so a saved sequence fell
+ * to the testid runner and ran ONE act with `action: ''` (a saved sequence carries no top-level
+ * action) — sub-steps 2..n never executed. Fixing the anchor without this would have turned a visible
+ * drift into a silent partial replay reporting ok.
+ */
+export async function runSequenceStep(
+  session: FlowReplaySession,
+  step: FlowStep,
+  index: number,
+  subs: readonly FlowStep[],
+  confirmDangerous: boolean,
+  sleep: Sleep,
+): Promise<FlowStepResult> {
+  const live: { ref: string; action: string; args: Record<string, unknown> }[] = [];
+  for (const [subIndex, sub] of subs.entries()) {
+    const label = `${anchorLabel(sub.anchor)} (sub-step ${String(subIndex)})`;
+    const queryArgs = anchorQueryArgs(sub.anchor);
+    if (queryArgs === null) return degradedStepResult(step, index, label);
+    const { refs, hint } = await resolveQuery(session, queryArgs, sleep);
+    const ref = refs[0];
+    if (ref === undefined) {
+      return {
+        step: index,
+        tool: step.tool,
+        anchor: label,
+        ok: false,
+        drift:
+          sub.anchor.kind === AnchorKind.TESTID
+            ? testidDrift(sub.anchor.value, hint)
+            : {
+                reasonKind: DriftReason.COMPONENT_NOT_FOUND,
+                reason: `anchor ${label} not found`,
+                anchor: label,
+                nearest: null,
+              },
+      };
+    }
+    live.push({ ref, action: sub.action ?? '', args: replayActionArgs(sub.args, confirmDangerous) });
+  }
+  session.beginAction?.(ReticleTool.FLOW_REPLAY, { steps: live.length });
+  let act;
+  try {
+    act = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: live });
+  } finally {
+    session.finishAction?.();
+  }
+  const result: FlowStepResult = {
+    step: index,
+    tool: step.tool,
+    anchor: anchorLabel(step.anchor),
+    ok: act.ok,
+  };
   if (!act.ok) result.error = act.error ?? 'command failed';
   return result;
 }
