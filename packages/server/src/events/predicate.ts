@@ -43,6 +43,11 @@ export interface PredicateSession {
    * Optional: a session without ambient learning simply omits it and settle behaves as before.
    */
   ambientCounts?(): AmbientCounts;
+  /**
+   * Subscribe to session disconnect. Returns an unsubscribe function. Optional: a session without
+   * this hook (e.g. tests that never disconnect) simply leaves in-flight predicates until timeout.
+   */
+  onDisconnect?(listener: () => void): () => void;
 }
 
 async function matchOnce(
@@ -396,6 +401,7 @@ export function waitForPredicate(
       if (done) return;
       done = true;
       unsub();
+      unsubDisconnect?.();
       clearInterval(interval);
       clearTimeout(timer);
       if (cooldownTimer !== undefined) clearTimeout(cooldownTimer);
@@ -506,6 +512,9 @@ export function waitForPredicate(
     const boundCheck = bindSpanContext(guardedCheck);
     const unsub = session.onEvent(() => {
       boundCheck();
+    });
+    const unsubDisconnect = session.onDisconnect?.(() => {
+      finish({ pass: false, failureReason: 'session disconnected' });
     });
     const interval = setInterval(boundCheck, POLL_INTERVAL_MS);
     const timer = setTimeout(() => {
