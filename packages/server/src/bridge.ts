@@ -366,7 +366,21 @@ export class Bridge {
         session = new Session(parsed, socket, this.#clock);
         this.#onSessionCreate?.(session); // attach the durable journal before any events stream in
         const replaced = this.sessions.add(session);
-        replaced?.disconnect('session replaced by a newer connection');
+        if (replaced !== undefined) {
+          // Name the newcomer. A field report had a live session vanish during `reticle_lease` and the
+          // only evidence was "session replaced by a newer connection" in the page console — which
+          // says a replacement happened but not BY WHAT, so the cause had to be inferred. A session
+          // is only ever replaced by one carrying the SAME id, and knowing which URL claimed it is
+          // the difference between a diagnosis and a guess.
+          log('session_replaced', {
+            sessionId: session.id,
+            byUrl: session.url,
+            previousUrl: replaced.url,
+          });
+          replaced.disconnect(
+            `session replaced by a newer connection claiming the same id (${session.id}) from ${session.url}`,
+          );
+        }
         // The daemon is the single judge of skew, and HELLO is where the page announces itself.
         // Reported on the session (reticle_sessions) AND queued for the next tool result, because an
         // agent driving a flow never calls reticle_sessions and would never learn.

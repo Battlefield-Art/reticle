@@ -49,7 +49,23 @@ export const AFFECTED_TOOLS: ToolDef[] = [
       const changedFiles = await resolveChangedFiles(files, since);
       const flows = await loadNamedFlows(deps.fs, deps.reticleRoot);
       const result = affectedSavedFlows(flows, changedFiles);
-      return { changedFiles, ...result };
+      // Three different situations produced the same empty answer: no files changed, no flows saved,
+      // and a git ref that resolved to nothing. Only the first means "nothing to re-verify"; the
+      // others mean the question could not be answered, and re-running nothing on that basis is how a
+      // regression ships. Say which one it is.
+      const why =
+        flows.length === 0
+          ? 'no saved flows exist yet, so nothing COULD be affected — record one with reticle_record then reticle_flow_save'
+          : changedFiles.length === 0
+            ? since === undefined && files.length === 0
+              ? 'no files were given and no `since` ref was passed, so nothing was compared — pass the files you edited, or a git ref'
+              : 'nothing changed against that input, so no saved flow needs re-verifying'
+            : undefined;
+      return {
+        changedFiles,
+        ...result,
+        ...(why === undefined ? {} : { observed: true, note: why }),
+      };
     },
   },
 ];

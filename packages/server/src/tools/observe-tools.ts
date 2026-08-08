@@ -604,7 +604,23 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     outputSchema: {
       animations: z.array(z.unknown()),
     },
-    handler: (deps, args) =>
-      commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.ANIMATIONS, {}),
+    handler: async (deps, args) => {
+      const result = await commandOrThrow(
+        deps,
+        asString(args['sessionId']),
+        ReticleCommand.ANIMATIONS,
+        {},
+      );
+      // A page with nothing animating and an observer that is not watching both return `[]`, and the
+      // second means the run should not be trusted. Say the look happened.
+      return isPlainRecord(result)
+        ? noteEmptyRead(result, 'animations', { noun: 'animations running or completed' })
+        : result;
+    },
   },
 ];
+
+/** Narrow a command result to something noteEmptyRead can annotate. */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

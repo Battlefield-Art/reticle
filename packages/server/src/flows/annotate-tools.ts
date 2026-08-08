@@ -17,7 +17,7 @@ import { asString } from '../tools/tools-helpers.js';
 import { compileAnnotation } from './annotate.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 
-const DEFAULT_RECORDING = 'default';
+import { resolveAnnotateTarget } from './annotate-target.js';
 
 /**
  * The reticle_annotate tool. A STRUCTURED annotation (the AnnotationSchema
@@ -143,7 +143,13 @@ export const ANNOTATE_TOOLS: ToolDef[] = [
       code: z.string().optional(),
     },
     handler: (deps: ToolDeps, args): Promise<AnnotateResult> => {
-      const name = asString(aliasParam(args, 'flow', ['flowName'])['flow']) ?? DEFAULT_RECORDING;
+      // The recording actually RUNNING when there is exactly one, not the literal name `default`.
+      // Reproduced on three apps: a named recording plus an unnamed annotate reported
+      // `annotate_no_step` while the steps sat in the recording the agent had started.
+      const name = resolveAnnotateTarget(
+        asString(aliasParam(args, 'flow', ['flowName'])['flow']),
+        deps.recordings.active(),
+      );
 
       // Structured boundary: a free NL string / unknown kind fails the schema → UNKNOWN_KIND.
       const parsed = AnnotationSchema.safeParse(args);
@@ -166,7 +172,19 @@ export const ANNOTATE_TOOLS: ToolDef[] = [
       }
 
       const outcome = compileAnnotation(parsed.data, stepCount ?? 0);
-      if (!outcome.result.ok) return Promise.resolve(outcome.result);
+      if (!outcome.result.ok) {
+        // Name what IS recording. `annotate_no_step` alone sent the agent off to record MORE steps —
+        // into the same empty recording — when the steps it already has are in another one.
+        const active = deps.recordings.active();
+        const elsewhere = active.filter((r) => r !== name && (deps.recordings.stepCount(r) ?? 0) > 0);
+        if (outcome.result.code === AnnotationErrorCode.NO_STEP_TO_ANNOTATE && elsewhere.length > 0) {
+          return Promise.resolve({
+            ...outcome.result,
+            recovery: `'${name}' has no steps yet, but ${elsewhere.map((r) => `'${r}'`).join(', ')} does. Pass \`flow\` to say which recording this belongs to, or drive an action first.`,
+          });
+        }
+        return Promise.resolve(outcome.result);
+      }
 
       const patch = outcome.patch;
       if (patch !== undefined) {

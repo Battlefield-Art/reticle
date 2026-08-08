@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { noteEmptyRead } from '../tools/observed-nothing.js';
 import {
   AGENT_ASK_NOTICE,
   AGENT_WAITING_NOTICE,
@@ -108,7 +109,13 @@ export const LIVE_CONTROL_TOOLS: ToolDef[] = [
     outputSchema: { messages: z.array(z.unknown()) },
     handler: (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      return Promise.resolve({ messages: session.drainInbox() });
+      // An empty inbox and a panel that is not wired both return `[]`. The first means the human has
+      // said nothing; the second means an agent is waiting on a channel that does not exist.
+      return Promise.resolve(
+        noteEmptyRead({ messages: session.drainInbox() }, 'messages', {
+          noun: 'messages from the human since the last poll',
+        }),
+      );
     },
   },
   {
