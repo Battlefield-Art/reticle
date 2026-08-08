@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { missingTokenWarning } from './missing-token.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { transformSync } from '@babel/core';
@@ -272,6 +273,23 @@ export function readPairingToken(): string | undefined {
   }
 }
 
+/**
+ * Pass the token through, saying so once when it is absent.
+ *
+ * Warned HERE rather than at connect time because this is the moment the value is frozen: by the
+ * time the app is refused, the empty string was inlined minutes ago and restarting the dev server is
+ * the only fix. Once per config resolve, so a watch-mode rebuild does not repeat it.
+ */
+let tokenWarned = false;
+function warnIfTokenMissing(token: string | undefined): string | undefined {
+  const warning = missingTokenWarning(token);
+  if (warning !== undefined && !tokenWarned) {
+    tokenWarned = true;
+    console.warn(warning);
+  }
+  return token;
+}
+
 /** Build the `reticle.connect` argument literal — only includes keys the user set. */
 function connectArgs(options: ReticleVitePluginOptions): string {
   const args: Record<string, string | number | boolean> = {};
@@ -464,7 +482,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
         // failed". Empty until the daemon has provisioned one; the page reloads once it has.
         define: {
           ...(config.define ?? {}),
-          [RETICLE_TOKEN_GLOBAL]: JSON.stringify(readPairingToken() ?? ''),
+          [RETICLE_TOKEN_GLOBAL]: JSON.stringify(warnIfTokenMissing(readPairingToken()) ?? ''),
           // Lets the SDK report React's absolute `_debugSource.fileName` as a repo-relative path,
           // so source looks the same whichever React version an app is on.
           // Kept for HAND-WRITTEN connects (SvelteKit's hook, a custom entry): those live in app
