@@ -22,25 +22,13 @@ import {
  * compilation is explicitly FUTURE — an NL string never reaches here (AnnotationSchema
  * rejects it upstream; the tool maps that to UNKNOWN_KIND). No NL parser exists or is faked.
  */
-/**
- * A step signal is recorded but never evaluated — replay checks element presence and state only.
- * The flow-level `success` expect IS compiled and evaluated (signal included), so that is where a
- * signal assertion has teeth.
- */
-const STEP_SIGNAL_NOT_ENFORCED =
-  'Recorded, but a replay does not evaluate a step-level signal — it checks element presence and ' +
-  'state per step. For a signal that can actually fail the flow, use ' +
-  '{ kind: "success-state", signal } instead.';
-
 export function compileAnnotation(a: Annotation, stepCount: number): AnnotateOutcome {
   switch (a.kind) {
     case AnnotationKind.ASSERT_SIGNAL: {
       if (stepCount === 0) return noStep();
       const expect: FlowExpect = { signal: a.name };
       if (a.dataMatches !== undefined) expect.signalData = a.dataMatches;
-      const out = stepPatch(a, stepCount, expect);
-      if (out.result.ok) out.result.note = STEP_SIGNAL_NOT_ENFORCED;
-      return out;
+      return stepPatch(a, stepCount, expect);
     }
     case AnnotationKind.ASSERT_VISIBLE: {
       if (stepCount === 0) return noStep();

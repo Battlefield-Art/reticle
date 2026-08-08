@@ -7,7 +7,6 @@ import {
   type CommandResult,
   type Drift,
   type FlowAnchor,
-  type FlowExpect,
   type FlowFile,
   type FlowStep,
   type FlowStepResult,
@@ -18,6 +17,7 @@ import type { EvalResult, Predicate } from '../events/predicate.js';
 import { asRecord, asString } from '../tools/tools-helpers.js';
 import { replayActionArgs, ambiguousTestidNote, queryRefs } from './replay.js';
 import { runRoleStep, runComponentStep } from './flow-step-runners.js';
+import { successToPredicate } from './flow-success.js';
 import { ReticleTool } from '../tools/tool-names.js';
 
 /**
@@ -350,29 +350,52 @@ async function runTestidStep(
 }
 
 /**
- * After a step's anchor resolves + its action runs, an `expect.state` additionally asserts STORE
- * TRUTH — the source of truth no DOM read can reach. Evaluated with the same predicate engine (waits
- * up to the timeout so an async store update can settle); a mismatch is legible drift, not a blind
- * fail. Returns the drift on mismatch, else undefined.
+ * After a step's anchor resolves and its action runs, its `expect` is EVALUATED — every kind of it.
+ *
+ * For a long time only `expect.state` was, so a recorded `expect.signal` or `expect.net` was written
+ * to disk and read by nothing while `flow_save` graded the flow "asserted". Driven end to end over
+ * MCP: annotate a step with a signal that never fires, save (grade "asserted"), replay -> status
+ * "ok". A green that cannot go red, inside the feature whose job is catching exactly that.
+ *
+ * It compiles through the SAME `successToPredicate` the flow-level `success` has always used, so
+ * there is one definition of what an expect means and the step form cannot drift from it again.
+ * Turning this on makes previously-green flows go red. That is the point — they were green because
+ * nothing was looking.
  */
-async function assertStepState(
+async function assertStepExpect(
   session: FlowReplaySession,
-  state: NonNullable<FlowExpect['state']>,
+  expect: NonNullable<FlowStep['expect']>,
+  dynamic: ReadonlySet<string>,
   waitForSignal: WaitForSignal,
   timeoutMs: number,
   since: number,
 ): Promise<Drift | undefined> {
-  const predicate: Extract<Predicate, { kind: 'state' }> = { kind: 'state', path: state.path };
-  if (state.store !== undefined) predicate.store = state.store;
-  if (state.equals !== undefined) predicate.equals = state.equals;
+  // `element` is deliberately dropped: the step runner already asserts expect.element.testid against
+  // the live DOM before we get here, and re-asserting it through the predicate engine would be a
+  // second round trip for the same fact.
+  const { element: _element, ...consequences } = expect;
+  const predicate = successToPredicate(consequences, dynamic);
+  if (predicate === undefined) return undefined;
   const verdict = await waitForSignal(session, predicate, timeoutMs, since);
   if (verdict.pass) return undefined;
   return {
-    reasonKind: DriftReason.STATE_MISMATCH,
-    reason: verdict.failureReason ?? `state '${state.path}' did not hold`,
-    anchor: `state:${state.path}`,
+    // The store case keeps its own kind because heal and the run report branch on it; everything
+    // else is a consequence that did not hold, and the reason carries observed-vs-expected.
+    reasonKind:
+      expect.state !== undefined ? DriftReason.STATE_MISMATCH : DriftReason.SIGNAL_NOT_OBSERVED,
+    reason: verdict.failureReason ?? 'the step\'s declared consequence did not hold',
+    anchor: expectLabel(expect),
     nearest: null,
   };
+}
+
+/** Name the thing that was asserted, for the drift's `anchor` column. */
+function expectLabel(expect: NonNullable<FlowStep['expect']>): string {
+  if (expect.signal !== undefined) return `signal:${expect.signal}`;
+  if (expect.net !== undefined) return `net:${expect.net.urlContains ?? expect.net.method ?? '*'}`;
+  if (expect.state !== undefined) return `state:${expect.state.path}`;
+  if (expect.console !== undefined) return `console:${expect.console.level ?? '*'}`;
+  return 'expect';
 }
 
 /** Run one signal-anchored step: wait for the signal predicate, else drift (no nearest for signals). */
@@ -461,19 +484,21 @@ export async function replayFlow(
     } else {
       result = await runTestidStep(session, step, index, label, dynamic, confirmDangerous, sleep);
     }
-    // A step may additionally assert STORE TRUTH (expect.state) once its action has run — caught
-    // deterministically here, in the same cheap replay loop, with no LLM.
-    if (result.ok && result.drift === undefined && step.expect?.state !== undefined) {
-      const stateDrift = await assertStepState(
+    // Once the anchor resolved and the action ran, the step's own expect is evaluated — signal, net,
+    // console and store truth alike — deterministically, in the same cheap replay loop, with no LLM.
+    const stepExpect = step.expect;
+    if (result.ok && result.drift === undefined && stepExpect !== undefined) {
+      const expectDrift = await assertStepExpect(
         session,
-        step.expect.state,
+        stepExpect,
+        dynamic,
         waitForSignal,
         signalTimeoutMs,
         cursorBefore,
       );
-      if (stateDrift !== undefined) {
+      if (expectDrift !== undefined) {
         result.ok = false;
-        result.drift = stateDrift;
+        result.drift = expectDrift;
       }
     }
     if (page !== undefined) result.page = page;

@@ -33,22 +33,21 @@ describe('classifyFlowAssertions', () => {
     expect(c.warning).toContain('element presence');
   });
 
-  // These two used to expect ASSERTED — which is what shipped the false green in
-  // step-consequence.test.ts: replay evaluates neither, so the flow could never go red on them.
-  // A STEP signal/net expect is an intention replay cannot honour, so it grades weak.
-  it('a step signal assertion is NOT a consequence — replay never evaluates it', () => {
+  // Replay evaluates these (assertStepExpect); the coupling itself is guarded in
+  // step-consequence.test.ts, which is where the false green that made this necessary is written up.
+  it('treats a step signal assertion as a real consequence', () => {
     const c = classifyFlowAssertions(flow([step({ signal: 'order:placed' })]));
-    expect(c.grade).toBe(FlowAssertionGrade.PRESENCE_ONLY);
-    expect(c.hasConsequenceAssertion).toBe(false);
-    expect(c.consequenceSteps).toBe(0);
+    expect(c.grade).toBe(FlowAssertionGrade.ASSERTED);
+    expect(c.hasConsequenceAssertion).toBe(true);
+    expect(c.consequenceSteps).toBe(1);
   });
 
-  it('nor is a step network assertion', () => {
+  it('and a step network assertion', () => {
     const c = classifyFlowAssertions(
       flow([step({ net: { urlContains: '/api/order', status: 200 } })]),
     );
-    expect(c.grade).toBe(FlowAssertionGrade.PRESENCE_ONLY);
-    expect(c.consequenceSteps).toBe(0);
+    expect(c.grade).toBe(FlowAssertionGrade.ASSERTED);
+    expect(c.consequenceSteps).toBe(1);
   });
 
   it('a step STATE assertion is a consequence — assertStepState really does check it', () => {

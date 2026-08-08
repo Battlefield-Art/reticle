@@ -421,6 +421,35 @@ describe('replayFlow — anchor re-resolution + legible drift', () => {
     expect(session.acts).toEqual([]);
   });
 
+  /**
+   * The false green that shipped: `annotate { kind:'assert-signal' }` wrote a STEP expect, flow_save
+   * graded the flow "asserted", and replay evaluated element presence and state ONLY — so the flow
+   * passed with the asserted signal never firing. Driven end to end over MCP before this was written.
+   *
+   * Enforcement now covers every kind the recorder can produce, via the same successToPredicate the
+   * flow-level `success` has always used. Turning this on makes previously-green flows go RED, which
+   * is the entire point: they were green because nothing was checking.
+   */
+  it('11: a step expect.signal that never fires drifts, instead of passing', async () => {
+    const script = (testid: string): QueryScript => ({ elements: [el(`e-${testid}`, testid)] });
+    const session = new FakeSession(script, []); // no events at all → the signal never fires
+    const step: FlowStep = { ...testidStep('ship'), expect: { signal: 'deploy:shipped' } };
+    const steps = await replayFlow(session, flow([step]), waitForPredicate, FAST);
+    expect(steps.at(-1)?.ok, 'the asserted signal never fired').toBe(false);
+    expect(steps.at(-1)?.drift?.reason).toContain('deploy:shipped');
+  });
+
+  it('12: a step expect.net that never happens drifts', async () => {
+    const script = (testid: string): QueryScript => ({ elements: [el(`e-${testid}`, testid)] });
+    const session = new FakeSession(script, []);
+    const step: FlowStep = {
+      ...testidStep('ship'),
+      expect: { net: { urlContains: '/api/deploys', status: 201 } },
+    };
+    const steps = await replayFlow(session, flow([step]), waitForPredicate, FAST);
+    expect(steps.at(-1)?.ok, 'the asserted request was never made').toBe(false);
+  });
+
   it('9: a step expect.state holds against the store → green', async () => {
     const script = (testid: string): QueryScript => ({ elements: [el(`e-${testid}`, testid)] });
     const stores = { app: { deployments: [{ status: 'live' }] } };

@@ -65,25 +65,17 @@ const expectIsConsequence = flowExpectHasConsequence;
 const expectIsWeak = flowExpectIsPresenceOnly;
 
 /**
- * A STEP expect counts as a consequence only if a replay actually evaluates it.
+ * A step expect counts the same as a flow-level one, because replay now evaluates the same set.
  *
- * `flow-replay` checks exactly two things per step: `expect.element.testid` is present after the
- * action, and `expect.state` holds. A per-step `signal` or `net` expect is evaluated by nothing —
- * yet it was counted here, so a flow could report `grade: "asserted"` and then PASS while its
- * assertion was false. Driven end to end: annotate a step with a signal that never fires, save
- * (grade "asserted", consequenceSteps 1), replay -> status "ok".
+ * This was briefly narrowed to `state` only — correctly, at the time: replay checked element presence
+ * and state and nothing else, so grading a step signal/net as a consequence produced a flow that
+ * reported `grade: "asserted"` and could not go red. `assertStepExpect` closed that by compiling
+ * every step expect through the same `successToPredicate` the flow-level path uses, so the narrow
+ * rule is no longer true and would now UNDER-grade real assertions.
  *
- * That is the false green this repo's own rule names — "a green that cannot go red is no longer a
- * pass" — inside the feature the rule was written for.
- *
- * The FLOW-LEVEL `success` expect is unaffected: `assertSuccess` compiles it through
- * `successToPredicate` and really does evaluate signal and net. So the honest guidance is to put
- * those on `success-state`, which is what the warning below says.
+ * The invariant to keep: this function and what replay enforces must move together. If one ever
+ * describes more than the other, the difference is a false green or a lost verification.
  */
-function stepExpectIsCheckedConsequence(expect: FlowStep['expect']): boolean {
-  return expect?.state !== undefined;
-}
-
 /** Walk steps + act_sequence sub-steps so an expect on either level is counted. */
 function flattenSteps(steps: readonly FlowStep[]): FlowStep[] {
   const out: FlowStep[] = [];
@@ -99,10 +91,8 @@ export function classifyFlowAssertions(flow: FlowFile): FlowAssertionClassificat
   let consequenceSteps = 0;
   let weakSteps = 0;
   for (const s of all) {
-    if (stepExpectIsCheckedConsequence(s.expect)) consequenceSteps++;
-    // An unenforced step consequence (signal/net) is not "nothing" — it is a stated intention the
-    // replay cannot honour, so it grades as weak rather than silently vanishing.
-    else if (expectIsWeak(s.expect) || expectIsConsequence(s.expect)) weakSteps++;
+    if (expectIsConsequence(s.expect)) consequenceSteps++;
+    else if (expectIsWeak(s.expect)) weakSteps++;
   }
   const successIsConsequence = expectIsConsequence(flow.success);
   const successIsWeak = expectIsWeak(flow.success);

@@ -1,90 +1,86 @@
 /**
- * A flow graded "asserted" that passes when its assertion is false.
+ * The grade and the enforcement must describe the SAME set. This is the guard on that.
  *
- * Driven end to end against the bench app, following the documented path exactly:
+ * The defect that motivated it, driven end to end over MCP against bench-app:
  *
- *   reticle_annotate { kind: 'assert-signal', name: 'signal-that-never-fires' }
- *     -> ok: true, "will assert signal signal-that-never-fires"
- *   reticle_flow_save
- *     -> grade: "asserted", hasConsequenceAssertion: true, consequenceSteps: 1
- *   reticle_flow_replay
- *     -> status: "ok"          <-- PASSES. The signal never fired.
+ *   annotate { kind:'assert-signal', name:'signal-that-never-fires' }
+ *     -> ok:true, "will assert signal signal-that-never-fires"
+ *   flow_save   -> grade:"asserted", hasConsequenceAssertion:true, consequenceSteps:1
+ *   flow_replay -> status:"ok"          <-- PASSED. The signal never fired.
  *
- * `flow-replay` evaluates exactly two things per step: `expect.element.testid` is present, and
- * `expect.state` holds. A per-step `signal` or `net` expect is counted as a consequence by
- * `classifyFlowAssertions` and then never evaluated by anything.
+ * `classifyFlowAssertions` counted a step signal/net expect as a real consequence; `flow-replay`
+ * evaluated element presence and `state` and nothing else. Two functions describing the same idea,
+ * disagreeing — and the difference was a green that could not go red, inside the feature whose whole
+ * job is to catch exactly that.
  *
- * So the grade is the lie: the flow claims to assert an observable consequence and cannot go red on
- * it. "A green that cannot go red is no longer a pass" is this repo's own rule, and this is the
- * feature that rule was written for.
+ * `assertStepExpect` now compiles every step expect through the same `successToPredicate` the
+ * flow-level `success` has always used. The invariant guarded here is ONE-DIRECTIONAL:
  *
- * The FLOW-LEVEL `success` expect does not have this problem — `assertSuccess` compiles it through
- * `successToPredicate` and evaluates it, signal and net included. So the fix is to stop counting the
- * unenforced STEP kinds, and point the agent at `success-state`, which works.
+ *   everything the grade counts as a consequence must be something replay actually evaluates.
+ *
+ * The converse is deliberately not required, and `console` is why. A replay does enforce
+ * `expect.console` — but `{ level: 'error', absent: true }` is a GUARD, not proof the app did
+ * anything, and grading it as a consequence would let a flow that clicks Checkout and asserts only
+ * "no console error" report that the goal was verified. Enforced-but-not-credited is the safe
+ * direction; credited-but-unenforced is the false green.
  */
 
 import { describe, expect, it } from 'vitest';
 import { classifyFlowAssertions, FlowAssertionGrade } from './flow-classify.js';
-import { compileAnnotation } from './annotate.js';
-import { AnnotationKind } from '@reticlehq/core';
-import type { FlowFile } from '@reticlehq/core';
+import { successToPredicate } from './flow-success.js';
+import type { FlowExpect, FlowFile } from '@reticlehq/core';
 
-const flow = (step: Record<string, unknown>, success?: Record<string, unknown>): FlowFile =>
+const NO_DYNAMIC = new Set<string>();
+
+const flow = (stepExpect: FlowExpect): FlowFile =>
   ({
     version: 1,
     name: 'probe',
-    steps: [{ tool: 'reticle_act', anchor: { kind: 'testid', value: 'x' }, ...step }],
-    ...(success === undefined ? {} : { success }),
+    steps: [
+      { tool: 'reticle_act', anchor: { kind: 'testid', value: 'x' }, expect: stepExpect },
+    ],
   }) as unknown as FlowFile;
 
-describe('a step expect only counts as a consequence if replay can CHECK it', () => {
-  it('a step signal expect does NOT make the flow "asserted" — replay never evaluates it', () => {
-    const c = classifyFlowAssertions(flow({ expect: { signal: 'never-fires' } }));
-    expect(c.hasConsequenceAssertion, 'nothing evaluates a step signal on replay').toBe(false);
-    expect(c.grade).not.toBe(FlowAssertionGrade.ASSERTED);
+/** Every expect kind the recorder and reticle_annotate can produce. */
+const KINDS: readonly { label: string; expect: FlowExpect; consequence: boolean }[] = [
+  { label: 'signal', expect: { signal: 'order:placed' }, consequence: true },
+  { label: 'net', expect: { net: { urlContains: '/api/order', status: 200 } }, consequence: true },
+  { label: 'state', expect: { state: { path: 'cart.total', equals: 2 } }, consequence: true },
+  // Enforced by replay, deliberately NOT credited as a consequence — see the header.
+  { label: 'console', expect: { console: { level: 'error', absent: true } }, consequence: false },
+  { label: 'element', expect: { element: { testid: 'toast' } }, consequence: false },
+];
+
+describe('what the grade counts is exactly what a replay enforces', () => {
+  it.each(KINDS)('$label: anything replay can check is compilable', ({ expect: e }) => {
+    // If this is undefined, replay has nothing to evaluate and the flow cannot fail on it.
+    expect(successToPredicate(e, NO_DYNAMIC)).toBeDefined();
   });
 
-  it('nor does a step net expect', () => {
-    expect(
-      classifyFlowAssertions(flow({ expect: { net: { urlContains: '/api/x' } } }))
-        .hasConsequenceAssertion,
-    ).toBe(false);
+  it.each(KINDS.filter((k) => k.consequence))(
+    '$label: a consequence in the grade is a consequence replay evaluates',
+    ({ expect: e }) => {
+      const c = classifyFlowAssertions(flow(e));
+      expect(c.hasConsequenceAssertion, 'graded as a real consequence').toBe(true);
+      expect(c.grade).toBe(FlowAssertionGrade.ASSERTED);
+      expect(successToPredicate(e, NO_DYNAMIC), 'and replay compiles it to a predicate').toBeDefined();
+    },
+  );
+
+  it('console is enforced but not credited — the safe direction', () => {
+    const c = classifyFlowAssertions(flow({ console: { level: 'error', absent: true } }));
+    expect(successToPredicate({ console: { level: 'error', absent: true } }, NO_DYNAMIC)).toBeDefined();
+    expect(c.hasConsequenceAssertion, 'a clean console does not prove the feature worked').toBe(false);
   });
 
-  it('a step STATE expect does count — assertStepState evaluates it', () => {
-    const c = classifyFlowAssertions(flow({ expect: { state: { path: 'cart.total', equals: 1 } } }));
-    expect(c.hasConsequenceAssertion).toBe(true);
-    expect(c.grade).toBe(FlowAssertionGrade.ASSERTED);
-  });
-
-  it('a FLOW-LEVEL success signal still counts — assertSuccess really does evaluate it', () => {
-    // The working path must not be downgraded by this fix, or the honest option looks broken too.
-    const c = classifyFlowAssertions(flow({}, { signal: 'deploy:shipped' }));
-    expect(c.hasConsequenceAssertion).toBe(true);
-    expect(c.grade).toBe(FlowAssertionGrade.ASSERTED);
-  });
-
-  it('a step element expect is still presence-only, as before', () => {
-    const c = classifyFlowAssertions(flow({ expect: { element: { testid: 'toast' } } }));
-    expect(c.grade).toBe(FlowAssertionGrade.PRESENCE_ONLY);
-  });
-});
-
-describe('annotate stops promising a check that never runs', () => {
-  it('assert-signal says so, and names the kind that IS enforced', () => {
-    const out = compileAnnotation({ kind: AnnotationKind.ASSERT_SIGNAL, name: 'never-fires' }, 1);
-    expect(out.result.ok).toBe(true);
-    if (!out.result.ok) return;
-    expect(out.result.note, 'the caller is told replay will not check this').toContain(
-      'success-state',
+  it('element presence stays presence-only — a wrong element can fake it', () => {
+    expect(classifyFlowAssertions(flow({ element: { testid: 'toast' } })).grade).toBe(
+      FlowAssertionGrade.PRESENCE_ONLY,
     );
   });
 
-  it('assert-state carries no such caveat — that one is checked', () => {
-    const out = compileAnnotation(
-      { kind: AnnotationKind.ASSERT_STATE, statePath: 'cart.total', equals: 1 },
-      1,
-    );
-    expect(out.result.ok && out.result.note).toBeUndefined();
+  it('a dynamic-marked element is not asserted, and is not graded as one either', () => {
+    // The one place the two rules are allowed to differ, and it differs in the safe direction.
+    expect(successToPredicate({ element: { testid: 'clock' } }, new Set(['clock']))).toBeUndefined();
   });
 });
