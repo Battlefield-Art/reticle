@@ -15,8 +15,22 @@ export interface BlindSpot {
   count: number;
 }
 
+/**
+ * Whether the observation window saw everything it was asked about.
+ *
+ * NOT core's VerdictStatus, which happens to spell one of its values 'partial' too: that one grades
+ * a verification RUN (some flows passed, some failed), this one grades what could be OBSERVED. Two
+ * meanings behind one string is exactly how a comparison ends up reading the wrong field, so they
+ * stay separate vocabularies.
+ */
+export const Coverage = {
+  FULL: 'full',
+  PARTIAL: 'partial',
+} as const;
+export type Coverage = (typeof Coverage)[keyof typeof Coverage];
+
 export interface CoverageStatement {
-  coverage: 'full' | 'partial';
+  coverage: Coverage;
   /** Present only when partial — the human/agent-legible list of what went unobserved. */
   note?: string;
   spots: BlindSpot[];
@@ -77,7 +91,7 @@ export function impeachesCapture(kind: BlindSpotKind): boolean {
 /** Compose the coverage statement. `full` (no note) when nothing was unobserved. */
 export function buildCoverageStatement(spots: readonly BlindSpot[]): CoverageStatement {
   const present = spots.filter((s) => s.count > 0);
-  if (0 === present.length) return { coverage: 'full', spots: [] };
+  if (0 === present.length) return { coverage: Coverage.FULL, spots: [] };
   // Each label carries its own ending. Appending a blanket " unobserved" here produced
   // "...may differ from what was sent unobserved" for the wrapped-network caveat, which is a
   // sentence rather than a count — and the same dangle appeared the moment a second prose-shaped
@@ -88,8 +102,8 @@ export function buildCoverageStatement(spots: readonly BlindSpot[]): CoverageSta
   // either the caveat or the silence. Unknown kinds degrade to their own name.
   const label = (s: BlindSpot): string =>
     'function' === typeof LABEL[s.kind] ? LABEL[s.kind](s.count) : `${s.kind} (${String(s.count)})`;
-  const note = `partial — ${present.map(label).join(', ')}`;
-  return { coverage: 'partial', note, spots: present };
+  const note = `${Coverage.PARTIAL} — ${present.map(label).join(', ')}`;
+  return { coverage: Coverage.PARTIAL, note, spots: present };
 }
 
 /**

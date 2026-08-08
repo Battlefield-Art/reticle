@@ -4,6 +4,7 @@ import { findContradictions, type Contradiction } from '../events/contradictions
 import {
   blindSpotsFromState,
   buildCoverageStatement,
+  Coverage,
   impeachesCapture,
 } from '../honesty/blind-spots.js';
 import { buildHonestyBlock } from '../honesty/honesty.js';
@@ -47,9 +48,9 @@ export async function assertVerdict(
   // Omitted entirely when coverage is full, so an intact page pays nothing and the field's PRESENCE
   // is the warning.
   const coverage =
-    'partial' === statement.coverage
+    Coverage.PARTIAL === statement.coverage
       ? {
-          coverage: statement.note ?? 'partial',
+          coverage: statement.note ?? Coverage.PARTIAL,
           coverage_spots: statement.spots.map((sp) => ({ kind: sp.kind, count: sp.count })),
         }
       : {};
@@ -72,7 +73,7 @@ export async function assertVerdict(
     honesty: buildHonestyBlock({
       grade: gradeOfPredicate(predicate),
       attribution: 'window',
-      coveragePartial: 'partial' === statement.coverage,
+      coveragePartial: Coverage.PARTIAL === statement.coverage,
       ...(impeaching.note === undefined ? {} : { blindSpots: [impeaching.note] }),
     }),
     contradictions,

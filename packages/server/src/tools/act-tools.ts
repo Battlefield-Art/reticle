@@ -27,6 +27,7 @@ import { buildHonestyBlock } from '../honesty/honesty.js';
 import {
   buildCoverageStatement,
   blindSpotsFromState,
+  Coverage,
   impeachesCapture,
 } from '../honesty/blind-spots.js';
 import { hasAcceptedWrite } from '../honesty/accepted-write.js';
@@ -458,7 +459,7 @@ export const ACT_TOOLS: ToolDef[] = [
           grade: gradeOf(gradedLinks),
           attribution: 'window',
           truncated: session.bufferHealth().dropped > droppedBefore,
-          coveragePartial: 'partial' === coverage.coverage,
+          coveragePartial: Coverage.PARTIAL === coverage.coverage,
           ...(impeaching.note === undefined ? {} : { blindSpots: [impeaching.note] }),
         });
         const capsuleSaved = await saveFailedAssertCapsule({
