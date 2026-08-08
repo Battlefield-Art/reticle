@@ -89,3 +89,47 @@ describe('buildDynamicTools — the dynamic profile meta-tools', () => {
     expect(out.available).toEqual(['reticle_alpha', 'reticle_beta']);
   });
 });
+
+/**
+ * Under the DEFAULT profile most tools are reached through `reticle_run` — so whatever it does with
+ * a failure is what an agent actually sees.
+ *
+ * It caught every error and answered `hint: "fix the arguments and call reticle_run again"`,
+ * discarding the recovery the error boundary would have attached. A stale ref — the commonest
+ * post-action condition there is, and one with a good, specific recovery ("refs are invalidated
+ * whenever the DOM re-renders; call reticle_query again") — was reported to the agent as a bad
+ * argument. The arguments were fine; the page had re-rendered. Wrong advice costs the retry.
+ */
+describe('reticle_run reports a failure the way the rest of the surface does', () => {
+  const staleRef: ToolDef[] = [
+    {
+      name: 'reticle_alpha',
+      description: 'Do the alpha thing.',
+      inputSchema: { ref: z.string() },
+      handler: () => {
+        throw new Error("ref 'e1' no longer resolves to an element");
+      },
+    },
+  ];
+
+  it('keeps the real recovery instead of blaming the arguments', async () => {
+    const run = buildDynamicTools(staleRef).find((t) => t.name === ReticleTool.RUN);
+    const out = (await run?.handler(NO_DEPS, {
+      tool: 'reticle_alpha',
+      args: { ref: 'e1' },
+    })) as { error?: string; recovery?: string; hint?: string };
+    expect(out.error).toContain('no longer resolves');
+    expect(out.recovery).toContain('reticle_query');
+    expect(out.hint).toBeUndefined();
+  });
+
+  it('still points at the parameters when the arguments really are the problem', async () => {
+    const run = buildDynamicTools(staleRef).find((t) => t.name === ReticleTool.RUN);
+    const out = (await run?.handler(NO_DEPS, { tool: 'reticle_alpha', args: { nope: 1 } })) as {
+      error?: string;
+      params?: unknown;
+    };
+    expect(out.error).toContain('nope');
+    expect(out.params).toBeDefined();
+  });
+});

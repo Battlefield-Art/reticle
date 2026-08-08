@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ToolDef, ToolDeps } from './tools.js';
 import { runTool } from './invoke-tool.js';
+import { buildErrorPayload } from './error-recovery.js';
 import { mergedNameRedirect, mergedNameMessage } from './merged-name-redirect.js';
 import { ReticleTool } from './tool-names.js';
 import { TOOL_PROFILE_ENV, type ToolProfileOrigin } from './profiles.js';
@@ -153,12 +154,12 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolProfileOrig
       try {
         return await runTool(target, deps, callArgs);
       } catch (error) {
-        return {
-          error: error instanceof Error ? error.message : String(error),
-          tool: name,
-          params: paramInfo(target.inputSchema),
-          hint: 'fix the arguments and call reticle_run again',
-        };
+        // The SAME payload the direct tool path builds — recovery included. Answering every failure
+        // with "fix the arguments" threw that away, and under the default profile nearly every tool
+        // is reached through here: a stale ref, a paused session, a missing pairing token all came
+        // back as the agent's arguments being wrong, which is advice that spends the retry.
+        const message = error instanceof Error ? error.message : String(error);
+        return { ...buildErrorPayload(message), tool: name };
       }
     },
   };
