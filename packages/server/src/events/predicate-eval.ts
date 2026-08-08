@@ -3,6 +3,7 @@ import {
   ElementState,
   EventType,
   PredicateKind,
+  StreamDirection,
   type ElementQuery,
   type ReticleEvent,
 } from '@reticlehq/core';
@@ -544,8 +545,8 @@ export function evalSettled(
     const id = str(e.data['id']);
     if (id === undefined) continue;
     const direction = str(e.data['direction']);
-    if ('open' === direction) openStreams.add(id);
-    else if ('close' === direction) openStreams.delete(id);
+    if (StreamDirection.OPEN === direction) openStreams.add(id);
+    else if (StreamDirection.CLOSE === direction) openStreams.delete(id);
   }
   const streaming = openStreams.size;
 

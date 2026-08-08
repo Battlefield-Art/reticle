@@ -1,26 +1,32 @@
 // Present-tense verb for an action label in the presenter HUD (cursor status + act-log row).
 // Presenter-only UI copy — never a wire string. Shared by presenter.ts (cursor) and reticle.ts
 // (act-log row) so the two stay in lockstep.
+//
+// The CASES are wire values though, and they are core's ActionType. Spelled as free strings here,
+// a rename in core left this switch silently falling through to `default` — which returns the raw
+// action name, so the HUD degrades to "webmcp Save" instead of a verb and nothing fails.
+import { ActionType } from '@reticlehq/core';
+
 export function actionVerb(action: string): string {
   switch (action) {
-    case 'click':
-    case 'dblclick':
+    case ActionType.CLICK:
+    case ActionType.DBLCLICK:
       return 'Clicking';
-    case 'fill':
-    case 'type':
+    case ActionType.FILL:
+    case ActionType.TYPE:
       return 'Typing into';
-    case 'hover':
+    case ActionType.HOVER:
       return 'Hovering';
-    case 'select':
+    case ActionType.SELECT:
       return 'Selecting';
-    case 'submit':
+    case ActionType.SUBMIT:
       return 'Submitting';
-    case 'check':
-    case 'uncheck':
+    case ActionType.CHECK:
+    case ActionType.UNCHECK:
       return 'Toggling';
-    case 'upload':
+    case ActionType.UPLOAD:
       return 'Uploading to';
-    case 'drag':
+    case ActionType.DRAG:
       return 'Dragging';
     default:
       return action;

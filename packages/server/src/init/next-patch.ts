@@ -62,32 +62,120 @@ export function reticleDevLocation(mountPath: string, typescript: boolean): Reti
 /** The dev-guarded mount. Production strips it — `process.env.NODE_ENV` is inlined at build time. */
 const RETICLE_DEV_MOUNT = `{process.env.NODE_ENV === 'development' ? <${RETICLE_DEV_COMPONENT} /> : null}`;
 
-/** `export default <expr>;` — the ESM shape every `create-next-app` config uses. */
-const ESM_DEFAULT_EXPORT = /export\s+default\s+([\s\S]+?);?\s*$/;
-/** `module.exports = <expr>;` — the CJS shape older configs use. */
-const CJS_EXPORT = /module\.exports\s*=\s*([\s\S]+?);?\s*$/;
+/**
+ * `export default ` / `module.exports = ` at the START of a line — the head of the assignment, not
+ * the whole statement. Where the exported expression ENDS is decided by `expressionEnd` below.
+ *
+ * These used to be `/…([\s\S]+?);?\s*$/`, which reads as "the expression, lazily". It is not: with
+ * no `m` flag the `$` is end-of-FILE and the trailing `;?\s*` is satisfiable only there, so the
+ * capture always ran to the last non-blank character of the file. Every config whose export was not
+ * the final statement got everything after it swallowed into the wrap. On a config exporting
+ * conditionally that produced an unbalanced paren — a syntax error, so `next dev` exited 1 while
+ * `init` reported the step as ✓ and the only symptom was "dev server never served".
+ */
+const ESM_DEFAULT_HEAD = /^[ \t]*export[ \t]+default[ \t]+/gm;
+const CJS_EXPORT_HEAD = /^[ \t]*module\.exports[ \t]*=[ \t]*/gm;
 /** The opening `<body ...>` tag, whose first child is where the mount goes. */
 const BODY_OPEN_TAG = /<body(\s[^>]*)?>/g;
 
 const NO_EXPORT_REASON = "couldn't find an `export default` or `module.exports` to wrap";
+const AMBIGUOUS_EXPORT_REASON =
+  'this config exports more than once (a conditional export), so there is no single expression to ' +
+  'wrap — wrap the one that actually runs in `withReticle(...)` yourself';
+
+/** Bracket pairs that keep an expression open. A `;` at depth 0 is what ends it. */
+const OPENERS = '([{';
+const CLOSERS = ')]}';
+const LINE_COMMENT = '//';
+const BLOCK_COMMENT_OPEN = '/*';
+const BLOCK_COMMENT_CLOSE = '*/';
+const QUOTES = '\'"`';
+
+/**
+ * Index just past the exported expression that starts at `from` — the `;` that closes it, or end of
+ * file. Tracks bracket depth so a multi-line object or a nested call ends in the right place, and
+ * skips strings and comments so a `;` or a brace inside one cannot end it early.
+ *
+ * Deliberately a scanner and not a parser: `next.config.*` is arbitrary JS and this file's contract
+ * is to recognise the obvious shape or bail. It only has to be right about where ONE expression
+ * stops, and wrong is caught by the caller bailing to manual, never by a half-edit.
+ */
+function expressionEnd(source: string, from: number): number {
+  let depth = 0;
+  for (let i = from; i < source.length; i++) {
+    const ch = source[i] ?? '';
+    const pair = source.slice(i, i + 2);
+    if (pair === LINE_COMMENT) {
+      const nl = source.indexOf('\n', i);
+      if (-1 === nl) return source.length;
+      i = nl;
+      continue;
+    }
+    if (pair === BLOCK_COMMENT_OPEN) {
+      const close = source.indexOf(BLOCK_COMMENT_CLOSE, i + 2);
+      i = -1 === close ? source.length : close + 1;
+      continue;
+    }
+    if (QUOTES.includes(ch)) {
+      for (i++; i < source.length; i++) {
+        if ('\\' === source[i]) i++;
+        else if (source[i] === ch) break;
+      }
+      continue;
+    }
+    if (OPENERS.includes(ch)) depth++;
+    else if (CLOSERS.includes(ch)) {
+      // A closer at depth 0 belongs to an enclosing block, so the expression ended before it.
+      if (0 === depth) return i;
+      depth--;
+    } else if (';' === ch && 0 === depth) return i;
+  }
+  return source.length;
+}
+
+interface ExportSite {
+  /** Index of the first character of the exported expression. */
+  start: number;
+  /** Index just past the expression (at its `;`, or end of file). */
+  end: number;
+}
+
+/** The single export this config has, or undefined when there is none or more than one. */
+function soleExport(source: string, head: RegExp): ExportSite | undefined {
+  const matches = [...source.matchAll(head)];
+  const match = 1 === matches.length ? matches[0] : undefined;
+  if (match?.index === undefined) return undefined;
+  const start = match.index + match[0].length;
+  return { start, end: expressionEnd(source, start) };
+}
 const NO_BODY_REASON = "couldn't find a single <body> tag to mount <ReticleDev /> inside";
+
+/** Wrap the expression at `site` in `withReticle(...)`, leaving every other byte of the file alone. */
+function wrapAt(source: string, site: ExportSite): string {
+  return `${source.slice(0, site.start)}withReticle(${source.slice(site.start, site.end)})${source.slice(site.end)}`;
+}
 
 export function patchNextConfig(source: string): SourcePatch {
   if (source.includes(RETICLE_NEXT_PACKAGE)) return { kind: PatchKind.ALREADY };
 
-  const esm = ESM_DEFAULT_EXPORT.exec(source);
-  if (esm?.[1] !== undefined) {
-    const wrapped = source.replace(ESM_DEFAULT_EXPORT, `export default withReticle(${esm[1]});\n`);
-    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_IMPORT}\n${wrapped}` };
+  const esm = soleExport(source, ESM_DEFAULT_HEAD);
+  if (esm !== undefined) {
+    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_IMPORT}\n${wrapAt(source, esm)}` };
   }
 
-  const cjs = CJS_EXPORT.exec(source);
-  if (cjs?.[1] !== undefined) {
-    const wrapped = source.replace(CJS_EXPORT, `module.exports = withReticle(${cjs[1]});\n`);
-    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_REQUIRE}\n${wrapped}` };
+  const cjs = soleExport(source, CJS_EXPORT_HEAD);
+  if (cjs !== undefined) {
+    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_REQUIRE}\n${wrapAt(source, cjs)}` };
   }
 
-  return { kind: PatchKind.MANUAL, reason: NO_EXPORT_REASON };
+  // Distinguish "no export at all" from "several" — the second is a config we understood and chose
+  // not to touch, and saying so is the difference between a usable manual step and a shrug.
+  const exports_ =
+    [...source.matchAll(ESM_DEFAULT_HEAD)].length + [...source.matchAll(CJS_EXPORT_HEAD)].length;
+  return {
+    kind: PatchKind.MANUAL,
+    reason: 0 === exports_ ? NO_EXPORT_REASON : AMBIGUOUS_EXPORT_REASON,
+  };
 }
 
 /** `<Component {...pageProps} />` — the one element every `pages/_app` renders. */

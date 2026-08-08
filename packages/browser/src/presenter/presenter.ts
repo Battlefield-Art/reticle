@@ -1,4 +1,5 @@
 import {
+  ActionType,
   ReticleCommand,
   PresenterMode,
   type PresenterTone,
@@ -493,7 +494,11 @@ export class Presenter {
     moveCursor(this.#cursor, cx, cy);
     ringAround(this.#ring, rect);
     await pace(this.#paceMs);
-    if ('click' === action || 'dblclick' === action || 'submit' === action)
+    if (
+      ActionType.CLICK === action ||
+      ActionType.DBLCLICK === action ||
+      ActionType.SUBMIT === action
+    )
       spawnRipple(this.#root, cx, cy);
   }
 }

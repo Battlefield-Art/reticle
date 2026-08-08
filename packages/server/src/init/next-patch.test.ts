@@ -54,6 +54,63 @@ export default nextConfig;
     const r = patchNextConfig('const nextConfig = {};\n');
     expect(r.kind).toBe(PatchKind.MANUAL);
   });
+
+  /**
+   * The shape that broke a real app. The old pattern ran from `module.exports =` to END OF FILE, so
+   * on a config that exports conditionally it captured the first assignment AND everything after it
+   * — the else-branch, the closing brace, all of it — and emitted
+   *
+   *     module.exports = withReticle(withSentryConfig(nextConfig, sentryConfig);
+   *     } else {
+   *       module.exports = nextConfig;
+   *     });
+   *
+   * an unbalanced-paren SYNTAX ERROR. `next dev` exited 1, the gate reported only "dev server never
+   * served", and `init` had reported the step as ✓. Two exports means we cannot know which one runs,
+   * so the honest answer is manual.
+   */
+  it('bails to manual on a conditional export instead of corrupting it', () => {
+    const source = `const nextConfig = {};
+if (process.env.SENTRY) {
+  module.exports = withSentryConfig(nextConfig, sentryConfig);
+} else {
+  module.exports = nextConfig;
+}
+`;
+    const r = patchNextConfig(source);
+    expect(r.kind).toBe(PatchKind.MANUAL);
+  });
+
+  /** Same root cause, single export: anything AFTER the export used to be swallowed into the wrap. */
+  it('wraps only the exported expression when code follows the export', () => {
+    const source = `const nextConfig = {};
+module.exports = withSentryConfig(nextConfig, sentryConfig);
+
+// a trailing statement the old pattern swallowed into the wrap
+process.on('exit', () => undefined);
+`;
+    const r = patchNextConfig(source);
+    expect(r.kind).toBe(PatchKind.APPLY);
+    if (r.kind !== PatchKind.APPLY) return;
+    expect(r.code).toContain(
+      'module.exports = withReticle(withSentryConfig(nextConfig, sentryConfig));',
+    );
+    expect(r.code).toContain("process.on('exit', () => undefined);");
+  });
+
+  /** A multi-line inline object must be wrapped whole — the brace depth is what ends the expression. */
+  it('wraps a multi-line inline object export', () => {
+    const source = `export default {
+  reactStrictMode: true,
+  images: { unoptimized: true },
+};
+`;
+    const r = patchNextConfig(source);
+    expect(r.kind).toBe(PatchKind.APPLY);
+    if (r.kind !== PatchKind.APPLY) return;
+    expect(r.code).toContain('export default withReticle({');
+    expect(r.code).toContain('});');
+  });
 });
 
 describe('patchRootLayout', () => {

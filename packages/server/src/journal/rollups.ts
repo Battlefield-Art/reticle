@@ -1,4 +1,4 @@
-import { EventType, type ReticleEvent } from '@reticlehq/core';
+import { EventType, StreamDirection, type ReticleEvent } from '@reticlehq/core';
 
 /**
  * A route-segment rollup: what happened between two ROUTE_CHANGE events. Aggregated, not raw — the
@@ -120,9 +120,9 @@ export function computeSegments(events: readonly ReticleEvent[]): SegmentRollup[
     if (event.type === EventType.NET_STREAM) {
       acc.streams.frames += 1;
       const direction = event.data['direction'];
-      if ('open' === direction) acc.streams.opened += 1;
-      else if ('in' === direction) acc.streams.in += 1;
-      else if ('out' === direction) acc.streams.out += 1;
+      if (StreamDirection.OPEN === direction) acc.streams.opened += 1;
+      else if (StreamDirection.IN === direction) acc.streams.in += 1;
+      else if (StreamDirection.OUT === direction) acc.streams.out += 1;
     }
     if (event.type === EventType.TRUNCATED || event.type === EventType.TRANSPORT_OVERFLOW) {
       acc.truncated = true;

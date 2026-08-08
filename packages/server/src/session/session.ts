@@ -6,6 +6,7 @@ import { readHealthEvent, type SessionHealth } from './session-health.js';
 export type { SessionHealth };
 import { PendingCommands } from './pending-commands.js';
 import {
+  AppRuntime,
   EventType,
   HumanControlDataSchema,
   HumanControlKind,
@@ -148,7 +149,11 @@ export class Session {
   applyHealth(hidden: boolean, focused: boolean, runtime?: string, engine?: string): void {
     this.#hidden = hidden;
     this.#focused = focused;
-    if ('electron' === runtime || 'tauri' === runtime || 'web' === runtime) {
+    if (
+      AppRuntime.ELECTRON === runtime ||
+      AppRuntime.TAURI === runtime ||
+      AppRuntime.WEB === runtime
+    ) {
       this.#runtime = runtime;
     }
     if (engine !== undefined) this.#engine = engine;

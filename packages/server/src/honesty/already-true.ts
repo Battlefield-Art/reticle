@@ -14,17 +14,18 @@
  * So these are the kinds worth evaluating BEFORE the act, to find out whether the green means
  * anything.
  */
+import { PredicateKind } from '@reticlehq/core';
 import type { Predicate } from '../events/predicate.js';
 
 export function readsDomState(predicate: Predicate): boolean {
   switch (predicate.kind) {
-    case 'element':
-    case 'text':
+    case PredicateKind.ELEMENT:
+    case PredicateKind.TEXT:
       return true;
-    case 'allOf':
-    case 'anyOf':
+    case PredicateKind.ALL_OF:
+    case PredicateKind.ANY_OF:
       return predicate.predicates.some(readsDomState);
-    case 'not':
+    case PredicateKind.NOT:
       return readsDomState(predicate.predicate);
     default:
       return false;

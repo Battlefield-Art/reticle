@@ -1,4 +1,4 @@
-import { ReticleCommand, PresenterMode } from '@reticlehq/core';
+import { ReticleCommand, PresenterMode, QueryBy } from '@reticlehq/core';
 import { refs } from './dom/refs.js';
 import { describe } from './dom/a11y.js';
 
@@ -73,7 +73,8 @@ export function presentStatus(commandName: string, args: Record<string, unknown>
 
 /** Compact "what we're looking for" from a query's args (testid/value/name/role/text/label). */
 function queryTarget(q: Record<string, unknown>): string | undefined {
-  const testid = str(q['testid']) ?? ('testid' === str(q['by']) ? str(q['value']) : undefined);
+  const testid =
+    str(q['testid']) ?? (QueryBy.TESTID === str(q['by']) ? str(q['value']) : undefined);
   if (testid !== undefined) return `[testid=${testid}]`;
   const name = str(q['name']);
   const value = str(q['value']) ?? str(q['text']) ?? str(q['label']) ?? str(q['role']);
