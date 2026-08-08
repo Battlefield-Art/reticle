@@ -405,8 +405,9 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     const withToken = token !== undefined ? { ...withPort, token } : withPort;
     // Resolved here for the same reason as the token: these are Node-side facts about the installed
     // tree, and they travel in the generated connect call rather than through a `define`.
-    const sdkVersion = withToken.sdkVersion ?? sdkPackageVersion();
-    return { ...withToken, root: withToken.root ?? root ?? process.cwd(), sdkVersion };
+    const appRoot = withToken.root ?? root ?? process.cwd();
+    const sdkVersion = withToken.sdkVersion ?? sdkPackageVersion(appRoot);
+    return { ...withToken, root: appRoot, sdkVersion };
   };
   /**
    * The BUILD message. A build always runs every transform, so "my transform never ran" and "the
@@ -473,6 +474,9 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       /** Vite's UserConfig root; undefined means the cwd. `configResolved` runs too late for this. */
       root?: string;
     }) {
+      // Everything below asks what the APP has installed, so every lookup is rooted here and never
+      // at the plugin's own location. Vite defaults an omitted root to the cwd; so do we.
+      const appRoot = config.root ?? process.cwd();
       return {
         // Expose the daemon's pairing token to hand-written connects in the same Vite app. The
         // plugin's own injected connect gets the token directly, but a connect the USER writes —
@@ -487,8 +491,8 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
           // Kept for HAND-WRITTEN connects (SvelteKit's hook, a custom entry): those live in app
           // source, where a define does substitute. The plugin's own injected connect passes both as
           // arguments instead — see connectArgs.
-          [RETICLE_ROOT_GLOBAL]: JSON.stringify(config.root ?? process.cwd()),
-          [RETICLE_SDK_VERSION_GLOBAL]: JSON.stringify(sdkPackageVersion()),
+          [RETICLE_ROOT_GLOBAL]: JSON.stringify(appRoot),
+          [RETICLE_SDK_VERSION_GLOBAL]: JSON.stringify(sdkPackageVersion(appRoot)),
         },
         optimizeDeps: {
           // Part of the cache key, not of the build: changing it is what makes Vite notice that the
@@ -497,7 +501,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
             ...(config.optimizeDeps?.esbuildOptions ?? {}),
             define: {
               ...(config.optimizeDeps?.esbuildOptions?.define ?? {}),
-              __RETICLE_SDK_BUILD__: JSON.stringify(sdkBuildFingerprint()),
+              __RETICLE_SDK_BUILD__: JSON.stringify(sdkBuildFingerprint(appRoot)),
             },
           },
           include: [
@@ -511,7 +515,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
             RETICLE_PACKAGE,
             // Only if present — see above; naming an absent package produces a boot warning that
             // blames Reticle for nothing.
-            ...[SDK_CJS_DEPS.TESTING_LIBRARY, SDK_CJS_DEPS.ARIA_QUERY].filter(isResolvable),
+            ...[SDK_CJS_DEPS.TESTING_LIBRARY, SDK_CJS_DEPS.ARIA_QUERY].filter((d) => isResolvable(d, appRoot)),
           ],
         },
       };

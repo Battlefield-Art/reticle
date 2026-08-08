@@ -5,6 +5,14 @@
  * because guessing was wrong in a way that reached a user: a declared-but-absent dependency logs a
  * resolve failure on every boot, an unnoticed SDK change leaves stale code in the browser, and an
  * unreported version makes a skewed pair surface as a bare -32000.
+ *
+ * All three resolve from the APP ROOT, never from this file. The SDK is the user's dependency and
+ * deliberately not one of this plugin's, so a resolve based on `import.meta.url` walks the PLUGIN's
+ * node_modules — which under pnpm's strict layout does not contain the SDK at all. Every one of these
+ * then fell into its own catch and returned the "not installed" answer: no `sdkVersion` on the HELLO,
+ * a CONSTANT build fingerprint (so Vite never re-bundled a changed SDK — the exact stale-bundle
+ * false-negative the fingerprint exists to prevent), and no optimizeDeps entry for the SDK itself.
+ * Silently, for every pnpm user, with no error anywhere.
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -14,34 +22,33 @@ import { createRequire } from 'node:module';
 /** The React kit the host app imports the SDK from. Mirrors the constant in index.ts. */
 const RETICLE_PACKAGE = '@reticlehq/react';
 
+/** How far up from the resolved entry to look for the manifest beside it. */
+const MANIFEST_SEARCH_DEPTH = 5;
+
 /**
- * Whether a package can be resolved from this process. Used to avoid declaring an optimizeDeps entry
- * for something the app does not have, which Vite reports as a resolve failure on every boot.
+ * A `require` rooted at the app rather than at this plugin. `from` is Vite's `config.root`; the
+ * `process.cwd()` default matches how Vite itself defaults the root when the config omits it.
  */
-export function isResolvable(specifier: string): boolean {
+function requireFromApp(from: string): NodeJS.Require {
+  return createRequire(join(from, 'package.json'));
+}
+
+/**
+ * Whether a package can be resolved from the app. Used to avoid declaring an optimizeDeps entry for
+ * something the app does not have, which Vite reports as a resolve failure on every boot.
+ */
+export function isResolvable(specifier: string, from: string = process.cwd()): boolean {
   try {
-    createRequire(import.meta.url).resolve(specifier);
+    requireFromApp(from).resolve(specifier);
     return true;
   } catch {
     return false;
   }
 }
-/**
- * A fingerprint of the installed SDK build, mixed into `optimizeDeps` so Vite re-bundles when the
- * SDK changes.
- *
- * Vite's dep-optimizer cache is keyed on the `optimizeDeps` config and the lockfile — NOT on the
- * contents of the packages it bundled. Upgrade the SDK in place (a patched dist, a linked checkout,
- * an overlay) and the version in `package.json` can stay the same, so Vite keeps serving the OLD
- * pre-bundled copy out of `node_modules/.vite` across dev-server restarts. The fix you just shipped
- * is simply not in the browser, and it looks like the fix does not work. That cost a real
- * false-negative during this bug hunt, and every user upgrading in place hits the same thing.
- *
- * Size+mtime is enough: it changes whenever the bundle does and costs one `stat`.
- */
+
 /** The installed SDK's package version, for the HELLO's `sdkVersion`. Node-side only. */
-export function sdkPackageVersion(): string {
-  const require_ = createRequire(import.meta.url);
+export function sdkPackageVersion(from: string = process.cwd()): string {
+  const require_ = requireFromApp(from);
   // Preferred: the package exports its own manifest. Newer SDKs do.
   try {
     const pkg = require_(`${RETICLE_PACKAGE}/package.json`) as { version?: string };
@@ -54,7 +61,7 @@ export function sdkPackageVersion(): string {
   // main entry instead and walk up to the manifest beside it.
   try {
     let dir = dirname(require_.resolve(RETICLE_PACKAGE));
-    for (let up = 0; up < 5; up++) {
+    for (let up = 0; up < MANIFEST_SEARCH_DEPTH; up++) {
       const candidate = join(dir, 'package.json');
       if (existsSync(candidate)) {
         const parsed = JSON.parse(readFileSync(candidate, 'utf8')) as { version?: string };
@@ -70,9 +77,22 @@ export function sdkPackageVersion(): string {
   return '';
 }
 
-export function sdkBuildFingerprint(): string {
+/**
+ * A fingerprint of the installed SDK build, mixed into `optimizeDeps` so Vite re-bundles when the
+ * SDK changes.
+ *
+ * Vite's dep-optimizer cache is keyed on the `optimizeDeps` config and the lockfile — NOT on the
+ * contents of the packages it bundled. Upgrade the SDK in place (a patched dist, a linked checkout,
+ * an overlay) and the version in `package.json` can stay the same, so Vite keeps serving the OLD
+ * pre-bundled copy out of `node_modules/.vite` across dev-server restarts. The fix you just shipped
+ * is simply not in the browser, and it looks like the fix does not work. That cost a real
+ * false-negative during this bug hunt, and every user upgrading in place hits the same thing.
+ *
+ * Size+mtime is enough: it changes whenever the bundle does and costs one `stat`.
+ */
+export function sdkBuildFingerprint(from: string = process.cwd()): string {
   try {
-    const entry = createRequire(import.meta.url).resolve(RETICLE_PACKAGE);
+    const entry = requireFromApp(from).resolve(RETICLE_PACKAGE);
     const { size, mtimeMs } = statSync(entry);
     return `${String(size)}-${String(Math.trunc(mtimeMs))}`;
   } catch {

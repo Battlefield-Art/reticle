@@ -84,13 +84,62 @@ function turbopackConfig(existing) {
   };
 }
 
-/** The installed SDK's package version, for the HELLO's `sdkVersion`. @returns {string} */
+/**
+ * The React kit the host app imports the SDK from. Deliberately NOT a dependency of this package —
+ * it is the user's own install, probed for its version and nothing else. Declaring it here would
+ * force the React adapter onto every Next user, including the ones who never import it.
+ */
+const RETICLE_SDK_PACKAGE = '@reticlehq/react';
+
+/** How far up from the resolved entry to look for the manifest beside it. */
+const MANIFEST_SEARCH_DEPTH = 5;
+
+/**
+ * Resolve from the APP, not from this file. `next.config.js` is loaded with cwd at the project root,
+ * where the user's `@reticlehq/react` always is. A bare `require` resolves relative to THIS package
+ * instead, and since the SDK is deliberately not a dependency here, that lookup fails outright under
+ * pnpm's strict node_modules layout — silently, into a `catch` that returns ''. Every pnpm Next user
+ * therefore reported no `sdkVersion`, which is the one value that turns a skewed pair into a named
+ * mismatch rather than a bare -32000.
+ * @param {string} specifier
+ * @returns {string}
+ */
+function resolveFromApp(specifier) {
+  return require.resolve(specifier, { paths: [process.cwd()] });
+}
+
+/**
+ * The installed SDK's package version, for the HELLO's `sdkVersion`. Mirrors
+ * `@reticlehq/vite-plugin`'s `sdkPackageVersion` — this package is plain CJS tooling with no
+ * dependency on the TS packages, so the logic is duplicated rather than imported.
+ * @returns {string}
+ */
 function sdkPackageVersion() {
+  // Preferred: the package exports its own manifest. Newer SDKs do.
   try {
-    return require('@reticlehq/react/package.json').version || '';
+    const { version } = require(resolveFromApp(`${RETICLE_SDK_PACKAGE}/package.json`));
+    if (typeof version === 'string') return version;
   } catch {
-    return '';
+    // Falls through — see below.
   }
+  // Fallback, and it is load-bearing rather than defensive: an OLDER SDK has no `./package.json` in
+  // its exports map, and an older SDK is precisely the skew this value exists to name.
+  try {
+    let dir = path.dirname(resolveFromApp(RETICLE_SDK_PACKAGE));
+    for (let up = 0; up < MANIFEST_SEARCH_DEPTH; up++) {
+      const candidate = path.join(dir, 'package.json');
+      if (fs.existsSync(candidate)) {
+        const { version } = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+        if (typeof version === 'string') return version;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  } catch {
+    // Unresolvable (not installed, exotic layout) — report nothing rather than guessing.
+  }
+  return '';
 }
 
 /**
