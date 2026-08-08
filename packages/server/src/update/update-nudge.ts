@@ -163,9 +163,3 @@ export function resetUpdateNudge(): void {
   pending = undefined;
   delivered = false;
 }
-
-/** Tests only — seed a pending nudge without going near the network. */
-export function setPendingUpdate(nudge: UpdateNudge | undefined): void {
-  pending = nudge;
-  delivered = false;
-}

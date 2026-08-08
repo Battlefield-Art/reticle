@@ -11,14 +11,7 @@ import {
   readdirSync,
 } from 'node:fs';
 import { spawn } from 'node:child_process';
-import {
-  daemonRegistryFileName,
-  daemonRegistryPort,
-  DaemonRegistryEntrySchema,
-  pickDaemonPort,
-  ReticleEnv,
-  type DaemonRegistryEntry,
-} from '@reticlehq/core';
+import { daemonRegistryFileName, ReticleEnv, type DaemonRegistryEntry } from '@reticlehq/core';
 import { log } from './log.js';
 
 /** Env override for the whole state directory — see ReticleEnv.STATE_DIR. */
@@ -126,33 +119,6 @@ export function removeDaemonRegistry(port: number): void {
   } catch {
     // racing another cleaner — already gone
   }
-}
-
-/**
- * Discover the port of a live daemon serving `projectId` by reading the registry entries in ~/.reticle.
- * Returns null when none matches (caller falls back to the default port — never guesses a mismatched
- * daemon). Stale entries (crashed daemons) are ignored via the pid liveness probe.
- */
-export function discoverDaemonPortForProject(projectId: string | undefined): number | null {
-  const entries: DaemonRegistryEntry[] = [];
-  let files: string[];
-  try {
-    files = readdirSync(reticleStateHome());
-  } catch {
-    return null; // no ~/.reticle yet
-  }
-  for (const file of files) {
-    if (null === daemonRegistryPort(file)) continue;
-    try {
-      const parsed = DaemonRegistryEntrySchema.safeParse(
-        JSON.parse(readFileSync(join(reticleStateHome(), file), 'utf8')),
-      );
-      if (parsed.success) entries.push(parsed.data);
-    } catch {
-      // unreadable/corrupt entry — skip it
-    }
-  }
-  return pickDaemonPort(entries, projectId, isAlive);
 }
 
 export function isRunning(port: number): boolean {

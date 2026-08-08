@@ -10,7 +10,7 @@
  * must never fail the run that found it.
  */
 import { ActionType, AnchorKind } from '@reticlehq/core';
-import { CapsuleStore, capsuleId } from '../capsule/capsule-store.js';
+import { CapsuleStore, capsuleId, CAPSULE_VERSION } from '../capsule/capsule-store.js';
 import type { ExpectedLink } from '../capsule/divergence.js';
 import type { DivergenceCapsule } from '../capsule/capsule.js';
 import { ReticleTool } from './tool-names.js';
@@ -39,7 +39,7 @@ export async function saveFailedAssertCapsule(
     .map((l) => ('name' in l ? `${l.kind} ${String(l.name)}` : l.kind))
     .join(' AND ');
   const saved = await new CapsuleStore(deps.fs, deps.reticleRoot).save({
-    version: 1,
+    version: CAPSULE_VERSION,
     id,
     createdAt: deps.now(),
     origin: 'failed-assert',

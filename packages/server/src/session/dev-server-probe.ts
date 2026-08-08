@@ -10,14 +10,11 @@
  * is fine here — it is a hint in an error message, not a decision.
  */
 
-import * as net from 'node:net';
 import { request } from 'node:http';
 import { DEV_SERVER_PORTS } from '../cli-port.js';
 import { looksLikeDevServer } from './looks-like-dev-server.js';
 
-/** Give up fast: a localhost connect either lands in a millisecond or nothing is there. */
-const PROBE_TIMEOUT_MS = 150;
-/** An HTTP answer from localhost is fast too, but slower than a bare connect. */
+/** Give up fast: an HTTP answer from localhost either lands quickly or nothing is there. */
 const HTTP_PROBE_TIMEOUT_MS = 400;
 /**
  * `localhost`, not `127.0.0.1` — so BOTH address families are tried.
@@ -28,22 +25,6 @@ const HTTP_PROBE_TIMEOUT_MS = 400;
  * service that happens to bind both stacks (macOS AirPlay does).
  */
 const PROBE_HOST = 'localhost';
-
-/** Resolve true when something accepts a TCP connection on this localhost port. */
-export function isListening(port: number, host = PROBE_HOST): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = new net.Socket();
-    const done = (result: boolean): void => {
-      socket.destroy();
-      resolve(result);
-    };
-    socket.setTimeout(PROBE_TIMEOUT_MS);
-    socket.once('connect', () => done(true));
-    socket.once('timeout', () => done(false));
-    socket.once('error', () => done(false));
-    socket.connect(port, host);
-  });
-}
 
 /**
  * Does this port serve a DOCUMENT — i.e. is it a dev server rather than merely something listening?
