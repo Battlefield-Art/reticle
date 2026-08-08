@@ -371,6 +371,8 @@ export function waitForPredicate(
       failureReason: error instanceof Error ? error.message : String(error),
     });
     let cooldownTimer: ReturnType<typeof setTimeout> | undefined;
+    /** One-shot re-check timed to when a time-based predicate could first pass. See retryAfterMs. */
+    let hintTimer: ReturnType<typeof setTimeout> | undefined;
     // An exact-count wait keeps watching after it first reads true — see COUNT_CONFIRM_MS.
     const holdsForCount = assertsExactCount(predicate);
     let confirming = false;
@@ -382,6 +384,7 @@ export function waitForPredicate(
       clearInterval(interval);
       clearTimeout(timer);
       if (cooldownTimer !== undefined) clearTimeout(cooldownTimer);
+      if (hintTimer !== undefined) clearTimeout(hintTimer);
       if (confirmTimer !== undefined) clearTimeout(confirmTimer);
       resolve(result);
     };
@@ -409,7 +412,19 @@ export function waitForPredicate(
       // final timeout eval below runs with full diagnostics.
       void evaluatePredicate(session, predicate, since, false)
         .then((r) => {
-          if (!r.pass) return;
+          if (!r.pass) {
+            // A time-based failure knows when it could stop being one — re-check THEN rather than on
+            // the next blind tick. Without this, every `settled` wait paid up to a full poll interval
+            // of dead time after the quiet window had already closed: measured at 566–627ms across
+            // the fleet for a 500ms window, on the call an agent makes after almost every action.
+            // Additive — the backstop interval below still runs, so a missed hint costs nothing.
+            const hint = r.retryAfterMs;
+            if ('number' === typeof hint && hint > 0 && hint < POLL_INTERVAL_MS) {
+              clearTimeout(hintTimer);
+              hintTimer = setTimeout(check, hint);
+            }
+            return;
+          }
           // "Exactly N" cannot be concluded from a passing sample — the count can still rise. Hold,
           // re-evaluate WITH diagnostics, and let that second read be the verdict: if an N+1th
           // arrived in the meantime it now fails, carrying observed/expected rather than a bare no.

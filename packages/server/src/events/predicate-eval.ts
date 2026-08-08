@@ -129,6 +129,13 @@ export const PredicateSchema = z.lazy(() =>
 export interface EvalResult {
   pass: boolean;
   /**
+   * For a TIME-based failure: how long until this predicate could first become true, if nothing else
+   * changes. Purely a scheduling hint for `waitForPredicate` — it replaces a blind poll tick with one
+   * timed to the moment that matters, and never decides anything. Absent when the wait is on an
+   * external event (a request in flight settles when the server answers, not on a clock).
+   */
+  retryAfterMs?: number;
+  /**
    * Set when the assertion could not be EVALUATED — the call was under-specified or there was
    * nothing instrumented to read — rather than evaluated and found false. Carries the sentence that
    * names what is missing.
@@ -592,5 +599,10 @@ export function evalSettled(
     expected: `${String(quietMs)}ms of quiet`,
     assertion: 'settled.quiet',
     evidence: { quietForMs, lastActivity: lastType },
+    // The one failure in this file that knows exactly when it could stop being one: if nothing else
+    // happens, the window closes in this many ms. A waiter that re-checks THEN instead of on its next
+    // blind tick stops paying up to a full poll interval on the hottest call in the product. Only a
+    // hint — the predicate is still evaluated at that moment, and can still fail.
+    retryAfterMs: quietMs - quietForMs,
   };
 }
