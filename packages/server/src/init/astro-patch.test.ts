@@ -49,16 +49,27 @@ describe('patchAstroConfig', () => {
     expect(patchAstroConfig(once.code).kind).toBe(PatchKind.ALREADY);
   });
 
-  it('refuses to merge into an existing vite: key — a broken build config is worse than a manual step', () => {
+  /**
+   * This used to assert the OPPOSITE — that any `vite:` key bails to a manual step — and that belief
+   * was the last genuine install defect in the gate. It bailed while the LAYOUT patch applied anyway,
+   * so the app got a connect snippet with no inlined token and no raised build target: a guaranteed
+   * non-connection, reported as one OK step and one warning.
+   *
+   * A `vite: { ... }` block is an object literal; our keys merge in after the brace and whatever is
+   * already there is untouched. What still bails is a `vite:` that is NOT a literal — see below.
+   */
+  it('merges into an existing vite: object rather than bailing', () => {
     const withVite = `import { defineConfig } from 'astro/config';
 export default defineConfig({
   vite: { build: { target: 'es2018' } },
 });
 `;
     const patch = patchAstroConfig(withVite);
-    expect(patch.kind).toBe(PatchKind.MANUAL);
-    if (patch.kind !== PatchKind.MANUAL) return;
-    expect(patch.reason).toContain('vite');
+    expect(patch.kind).toBe(PatchKind.APPLY);
+    if (patch.kind !== PatchKind.APPLY) return;
+    expect(patch.code).toContain('__RETICLE_TOKEN__');
+    // The app's own setting survives — we add, never replace.
+    expect(patch.code).toContain("target: 'es2018'");
   });
 
   it('refuses a config shape it does not recognise', () => {
@@ -94,5 +105,55 @@ describe('patchAstroLayout', () => {
   it('refuses a layout with no </body> rather than guessing where the script goes', () => {
     const patch = patchAstroLayout('<slot />\n', undefined, undefined);
     expect(patch.kind).toBe(PatchKind.MANUAL);
+  });
+});
+
+/**
+ * The config patch bailed on any `vite:` key, while the LAYOUT patch applied anyway.
+ *
+ * Measured on the astro-nanostores fixture — the only genuine install defect left in the gate:
+ *
+ *   [WARN] Astro config (token + build target) -> astro.config.ts     <- bailed
+ *   [OK]   Connect snippet (Astro) -> src/layouts/Layout.astro        <- applied
+ *
+ * So the app got a connect snippet with no pairing token inlined and no raised build target, which
+ * cannot connect. Half-wiring while reporting an OK step is worse than doing nothing: the OK reads as
+ * progress, and the ⚠ reads as a caveat rather than the guaranteed failure it is.
+ *
+ * A `vite: {` block is an object literal we can merge into — our keys go straight after the brace,
+ * and anything already there is untouched. A `vite:` that is NOT an object literal (a spread, an
+ * imported config) still goes manual, because merging into that is not a text edit anyone can do
+ * safely.
+ */
+describe('an Astro config that already configures vite', () => {
+  it('merges into an existing empty vite block', () => {
+    const source = `import { defineConfig } from 'astro/config';\nexport default defineConfig({\n  vite: {},\n});\n`;
+    const patch = patchAstroConfig(source);
+    expect(patch.kind).toBe(PatchKind.APPLY);
+    expect(patch.kind === PatchKind.APPLY && patch.code).toContain('__RETICLE_TOKEN__');
+  });
+
+  it('merges without disturbing what is already in there', () => {
+    const source = `import { defineConfig } from 'astro/config';\nimport mdx from '@astrojs/mdx';\nexport default defineConfig({\n  integrations: [mdx()],\n  vite: {\n    plugins: [somePlugin()],\n    server: { port: 4321 },\n  },\n});\n`;
+    const patch = patchAstroConfig(source);
+    expect(patch.kind).toBe(PatchKind.APPLY);
+    const out = patch.kind === PatchKind.APPLY ? patch.code : '';
+    expect(out).toContain('somePlugin()');
+    expect(out).toContain('server: { port: 4321 }');
+    expect(out).toContain('integrations: [mdx()]');
+    expect(out).toContain('__RETICLE_TOKEN__');
+  });
+
+  it('still refuses a vite value that is not an object literal', () => {
+    // `vite: sharedViteConfig` cannot be merged by editing text, and guessing would corrupt the file.
+    const source = `import { defineConfig } from 'astro/config';\nimport sharedViteConfig from './vite.shared';\nexport default defineConfig({\n  vite: sharedViteConfig,\n});\n`;
+    expect(patchAstroConfig(source).kind).toBe(PatchKind.MANUAL);
+  });
+
+  it('is still idempotent — a second run changes nothing', () => {
+    const source = `import { defineConfig } from 'astro/config';\nexport default defineConfig({\n  vite: {},\n});\n`;
+    const once = patchAstroConfig(source);
+    const content = once.kind === PatchKind.APPLY ? once.code : '';
+    expect(patchAstroConfig(content).kind).toBe(PatchKind.ALREADY);
   });
 });

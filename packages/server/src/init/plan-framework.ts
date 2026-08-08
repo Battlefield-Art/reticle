@@ -362,18 +362,35 @@ export function astroSteps(input: PlanInput): Step[] {
       },
     ];
   }
+  // ATOMIC. The connect snippet is useless without the config: the token is inlined by the config,
+  // so a layout patched on its own gives an app that dials the bridge and is refused. Measured on a
+  // real fixture — config ⚠, layout ✓ — which reads as one step done and one caveat when it is
+  // actually a guaranteed non-connection. If either half cannot be applied, BOTH go manual with the
+  // single recipe that does the whole job.
+  const configPatch = patchAstroConfig(config.source);
+  const layoutPatch = patchAstroLayout(layout.source, input.options.port, input.options.projectId);
+  if (configPatch.kind === PatchKind.MANUAL || layoutPatch.kind === PatchKind.MANUAL) {
+    return [
+      {
+        title: 'Connect snippet (Astro)',
+        target: `${config.path} + ${layout.path}`,
+        status: StepStatus.MANUAL,
+        detail: manual,
+      },
+    ];
+  }
   return [
     patchStep(
       'Astro config (token + build target)',
       config.path,
-      patchAstroConfig(config.source),
+      configPatch,
       'inline the pairing token and raise build.target to es2022',
       manual,
     ),
     patchStep(
       'Connect snippet (Astro)',
       layout.path,
-      patchAstroLayout(layout.source, input.options.port, input.options.projectId),
+      layoutPatch,
       'add the dev-only connect <script> before </body>',
       manual,
     ),

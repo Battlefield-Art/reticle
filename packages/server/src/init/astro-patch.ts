@@ -21,8 +21,10 @@ const CONFIG_MARKER = '__RETICLE_TOKEN__';
 const LAYOUT_MARKER = 'reticle.connect';
 
 const DEFINE_CONFIG = /defineConfig\s*\(\s*\{/;
-/** A `vite:` key already in the config — merging into one is not a text edit we can do safely. */
-const EXISTING_VITE_KEY = /^\s*vite\s*:/m;
+/** A `vite:` key whose value is an object LITERAL — the one shape we can merge into safely. */
+const VITE_OBJECT_KEY = /(^\s*vite\s*:\s*\{)/m;
+/** Any `vite:` key at all. One that is not an object literal (a spread, an imported config) is ours to refuse. */
+const ANY_VITE_KEY = /^\s*vite\s*:/m;
 const BODY_CLOSE = '</body>';
 
 const HELPER = `
@@ -36,6 +38,15 @@ const HELPER_IMPORTS = `import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 `;
+
+/** Our keys alone, for merging INTO a vite block the config already has. */
+const VITE_INNER = `
+    build: { target: 'es2022' },
+    optimizeDeps: { esbuildOptions: { target: 'es2022' } },
+    define: {
+      __RETICLE_TOKEN__: JSON.stringify(reticleToken()),
+      __RETICLE_ROOT__: JSON.stringify(process.cwd()),
+    },`;
 
 /**
  * The `vite:` block Astro needs. `build.target` is raised because Astro's default down-levels the
@@ -54,11 +65,27 @@ const VITE_BLOCK = `  vite: {
 
 export function patchAstroConfig(source: string): SourcePatch {
   if (source.includes(CONFIG_MARKER)) return { kind: PatchKind.ALREADY };
-  if (EXISTING_VITE_KEY.test(source)) {
+  // A `vite: { ... }` block is an object literal, so our keys can go straight after the brace and
+  // whatever is already in there is untouched. Refusing outright was the only genuine install defect
+  // left in the gate: the config bailed while the LAYOUT patch applied anyway, leaving an app with a
+  // connect snippet, no inlined token and no raised build target — which cannot connect, reported as
+  // one OK step and one warning.
+  const viteObject = VITE_OBJECT_KEY.exec(source);
+  if (viteObject?.index !== undefined) {
+    const at = viteObject.index + viteObject[0].length;
+    const merged = `${source.slice(0, at)}${VITE_INNER}${source.slice(at)}`;
+    return {
+      kind: PatchKind.APPLY,
+      code: `${HELPER_IMPORTS}${merged.trimStart()}\n${HELPER}`.trimEnd() + '\n',
+    };
+  }
+  if (ANY_VITE_KEY.test(source)) {
+    // `vite: sharedConfig` — not an object literal, so there is no brace to merge into and guessing
+    // would corrupt a build config. The recipe is the honest answer here.
     return {
       kind: PatchKind.MANUAL,
       reason:
-        'this config already has a `vite:` key — merging into it is your call, not a text edit Reticle should make',
+        'this config sets `vite:` to something other than an object literal — merging into it is your call, not a text edit Reticle should make',
     };
   }
   const opening = DEFINE_CONFIG.exec(source);
