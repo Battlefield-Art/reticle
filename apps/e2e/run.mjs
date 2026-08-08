@@ -131,6 +131,8 @@ async function freePort() {
 }
 
 let failed = 0;
+/** Names of the specs that failed, so the SUMMARY can name them — see below. */
+const failures = [];
 for (const name of specs) {
   await freePort();
   process.stdout.write(`\n──────── ${name} ────────\n`);
@@ -154,6 +156,7 @@ for (const name of specs) {
   }
   if (code !== 0) {
     failed += 1;
+    failures.push(`${name} (exit ${code})`);
     process.stdout.write(`\n[e2e] ✗ ${name} FAILED (exit ${code})\n`);
   }
 }
@@ -162,4 +165,11 @@ await freePort();
 process.stdout.write(
   `\n================ e2e ${desktop ? 'desktop ' : ''}battery: ${specs.length - failed}/${specs.length} specs passed ================\n`,
 );
+// Name them HERE too, not only where they happened. The per-spec line is thousands of lines up by
+// the time the battery ends, so "21/22" was in practice an unnamed failure: two intermittent ones
+// were investigated from scratch because the summary — the part anyone actually reads, and all that
+// survives in a CI tail — did not say which spec it was.
+if (failures.length > 0) {
+  process.stdout.write(`   failed: ${failures.join(', ')}\n`);
+}
 process.exit(failed === 0 ? 0 : 1);

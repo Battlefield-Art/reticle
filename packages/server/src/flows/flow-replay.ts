@@ -187,6 +187,37 @@ export function testidDrift(value: string, hint: QueryEmptyHint | undefined): Dr
  * so a present anchor costs one query; a genuinely missing one costs the full (bounded) settle and
  * then drifts. The last result's near-miss hint is returned for the drift record.
  */
+
+/**
+ * One wait between anchor attempts: the fixed tick, or the next DOM event — whichever comes first.
+ *
+ * An element mounting IS a mutation, and the session already streams those, so sleeping out the rest
+ * of a 150ms tick after the thing has already appeared is pure latency. Measured on next-app-router:
+ * a single `flow.step` span was 1079ms around nine QUERY round-trips of 1–2ms each — the cost was
+ * entirely the sleeping, and four such steps made up 4.3s of that app's 7.6s.
+ *
+ * It can only resolve the wait EARLIER, never end the loop earlier: the attempt budget above is
+ * untouched, so a genuinely missing anchor still spends the full settle before it drifts. An early
+ * "not found" would be a false drift, which is the failure this loop exists to prevent.
+ */
+async function settleTick(session: FlowReplaySession, sleep: Sleep): Promise<void> {
+  let unsubscribe: (() => void) | undefined;
+  try {
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = (): void => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      unsubscribe = session.onEvent(finish);
+      void sleep(ANCHOR_SETTLE_DELAY_MS).then(finish);
+    });
+  } finally {
+    unsubscribe?.();
+  }
+}
+
 export async function resolveQuery(
   session: FlowReplaySession,
   queryArgs: Record<string, unknown>,
@@ -194,7 +225,7 @@ export async function resolveQuery(
 ): Promise<{ refs: string[]; hint?: QueryEmptyHint }> {
   let last = readQuery(await session.command(ReticleCommand.QUERY, queryArgs));
   for (let attempt = 1; 0 === last.refs.length && attempt < ANCHOR_SETTLE_ATTEMPTS; attempt += 1) {
-    await sleep(ANCHOR_SETTLE_DELAY_MS);
+    await settleTick(session, sleep);
     last = readQuery(await session.command(ReticleCommand.QUERY, queryArgs));
   }
   return last;
