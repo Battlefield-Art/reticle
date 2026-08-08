@@ -221,6 +221,11 @@ async function evalState(
   };
 }
 
+/** The predicate's own event-time floor, if its kind carries one. */
+function predicateSince(predicate: Predicate): number {
+  return 'since' in predicate && typeof predicate.since === 'number' ? predicate.since : 0;
+}
+
 export async function evaluatePredicate(
   session: PredicateSession,
   predicate: Predicate,
@@ -231,7 +236,11 @@ export async function evaluatePredicate(
   // reads. Only element/text failures have a near-miss; everything else ignores this.
   diagnose = true,
 ): Promise<EvalResult> {
-  const events = session.eventsSince(since);
+  // A predicate's own `since` is a TIGHTER event-time floor than the caller's — an agent that took
+  // `since` from the act it just performed is scoping the assertion to that action's aftermath. It is
+  // applied here, once, rather than in each eval: the floor means the same thing for every kind that
+  // reads the event stream, and net/console re-applying it is a no-op.
+  const events = session.eventsSince(Math.max(since, predicateSince(predicate)));
   switch (predicate.kind) {
     case 'element':
       return evalElement(

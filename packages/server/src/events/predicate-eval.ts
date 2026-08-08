@@ -21,30 +21,62 @@ export type Predicate =
       since?: number;
       count?: number;
     }
-  | { kind: 'route'; pathname?: string; contains?: string }
+  | { kind: 'route'; pathname?: string; contains?: string; since?: number }
   | { kind: 'console'; level?: string; absent?: boolean; since?: number }
-  | { kind: 'animation'; name?: string; target?: string; completed?: boolean }
-  | { kind: 'signal'; name?: string; dataMatches?: Record<string, unknown> }
+  | { kind: 'animation'; name?: string; target?: string; completed?: boolean; since?: number }
+  | { kind: 'signal'; name?: string; dataMatches?: Record<string, unknown>; since?: number }
   | { kind: 'state'; store?: string; path: string; equals?: unknown }
   | { kind: 'settled'; quietMs?: number }
   | { kind: 'allOf'; predicates: Predicate[] }
   | { kind: 'anyOf'; predicates: Predicate[] }
   | { kind: 'not'; predicate: Predicate };
 
+/**
+ * Spellings an agent plausibly reaches for, mapped to the real field.
+ *
+ * `route` spells its field `pathname` while `state`, in the same union, spells its `path`. Every one
+ * of these was silently DROPPED before, and because these kinds have all-optional fields, dropping
+ * the only key supplied left a predicate that asserts nothing and passes on anything.
+ */
+const PREDICATE_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  route: { path: 'pathname' },
+  net: { url: 'urlContains' },
+  signal: { data: 'dataMatches' },
+};
+
+/** Rename known aliases before parse; an explicit canonical key always wins. */
+function applyPredicateAliases(input: unknown): unknown {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return input;
+  const obj = input as Record<string, unknown>;
+  const aliases = PREDICATE_ALIASES[typeof obj['kind'] === 'string' ? obj['kind'] : ''];
+  if (aliases === undefined) return input;
+  const out = { ...obj };
+  for (const [from, to] of Object.entries(aliases)) {
+    if (out[from] === undefined) continue;
+    if (out[to] === undefined) out[to] = out[from];
+    delete out[from];
+  }
+  return out;
+}
+
+/**
+ * Strict on every branch. A key that is nobody's spelling is now a schema error naming it, instead of
+ * a stripped field and a green — see predicate-strict.test.ts for the MCP session that found this.
+ */
 export const PredicateSchema = z.lazy(() =>
-  z.discriminatedUnion('kind', [
+  z.preprocess(applyPredicateAliases, z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('element'),
       query: ElementQuerySchema,
       state: z.nativeEnum(ElementState).optional(),
       absent: z.boolean().optional(),
-    }),
+    }).strict(),
     z.object({
       kind: z.literal('text'),
       contains: z.string(),
       visible: z.boolean().optional(),
       absent: z.boolean().optional(),
-    }),
+    }).strict(),
     z.object({
       kind: z.literal('net'),
       method: z.string().optional(),
@@ -53,40 +85,43 @@ export const PredicateSchema = z.lazy(() =>
       ok: z.boolean().optional(),
       since: z.number().optional(),
       count: z.number().int().nonnegative().optional(),
-    }),
+    }).strict(),
     z.object({
       kind: z.literal('route'),
       pathname: z.string().optional(),
       contains: z.string().optional(),
-    }),
+      since: z.number().optional(),
+    }).strict(),
     z.object({
       kind: z.literal('console'),
       level: z.string().optional(),
       absent: z.boolean().optional(),
       since: z.number().optional(),
-    }),
+    }).strict(),
     z.object({
       kind: z.literal('animation'),
       name: z.string().optional(),
       target: z.string().optional(),
       completed: z.boolean().optional(),
-    }),
+      since: z.number().optional(),
+    }).strict(),
     z.object({
       kind: z.literal('signal'),
       name: z.string().optional(),
       dataMatches: z.record(z.unknown()).optional(),
-    }),
+      since: z.number().optional(),
+    }).strict(),
     z.object({
       kind: z.literal('state'),
       store: z.string().optional(),
       path: z.string(),
       equals: z.unknown().optional(),
-    }),
-    z.object({ kind: z.literal('settled'), quietMs: z.number().positive().optional() }),
-    z.object({ kind: z.literal('allOf'), predicates: z.array(PredicateSchema) }),
-    z.object({ kind: z.literal('anyOf'), predicates: z.array(PredicateSchema) }),
-    z.object({ kind: z.literal('not'), predicate: PredicateSchema }),
-  ]),
+    }).strict(),
+    z.object({ kind: z.literal('settled'), quietMs: z.number().positive().optional() }).strict(),
+    z.object({ kind: z.literal('allOf'), predicates: z.array(PredicateSchema) }).strict(),
+    z.object({ kind: z.literal('anyOf'), predicates: z.array(PredicateSchema) }).strict(),
+    z.object({ kind: z.literal('not'), predicate: PredicateSchema }).strict(),
+  ])),
 ) as unknown as z.ZodType<Predicate>;
 
 export interface EvalResult {

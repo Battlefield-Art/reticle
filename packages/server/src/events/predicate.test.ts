@@ -61,6 +61,25 @@ function ev(type: EventType, data: Record<string, unknown>, t = 1, ref?: string)
 }
 
 describe('predicate engine', () => {
+  it("a signal's own `since` excludes what happened BEFORE the action", async () => {
+    // The floor used to be dropped by the schema, so an agent scoping an assertion to the act it just
+    // performed was silently asserting "at any point in the window" — our own next-blur-clock e2e
+    // spec did exactly this. Evaluated, not asserted: the same predicate flips on the floor alone.
+    const session = new FakeSession([ev(EventType.SIGNAL, { name: 'field:committed' }, 5)]);
+    const before = await evaluatePredicate(session, {
+      kind: 'signal',
+      name: 'field:committed',
+      since: 3,
+    });
+    const after = await evaluatePredicate(session, {
+      kind: 'signal',
+      name: 'field:committed',
+      since: 10,
+    });
+    expect(before.pass, 'fired after the floor').toBe(true);
+    expect(after.pass, 'fired BEFORE the floor — must not satisfy the assertion').toBe(false);
+  });
+
   it('matches a network predicate', async () => {
     const session = new FakeSession([
       ev(EventType.NET_REQUEST, { method: 'POST', url: '/api/order', status: 200 }),
