@@ -5,6 +5,7 @@ import { readHealthEvent, type SessionHealth } from './session-health.js';
 
 export type { SessionHealth };
 import { PendingCommands } from './pending-commands.js';
+import { span } from '../trace.js';
 import {
   AppRuntime,
   EventType,
@@ -461,7 +462,9 @@ export class Session {
     );
     this.#socket.send(payload);
     const sentAt = Date.now(); // browser-leg timing; see recordBrowserLatency for why it is split out
-    return awaited
+    // Traced because this is the boundary that decides whether a slow tool call is OUR overhead or
+    // the app taking its time — the split telemetry reports in aggregate, made visible per call.
+    return span('browser.command', { command: name, sessionId: this.id }, () => awaited)
       .then((result) => {
         // The label is only knowable from the REPLY — the request carries a ref, and a ref dies with
         // the next re-render. Recorded here so coverage survives frameworks that replace nodes.

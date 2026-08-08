@@ -11,6 +11,7 @@ import { asString } from './tools-helpers.js';
 import { ReticleTool } from './tool-names.js';
 import { takeFeedbackPrompt } from './feedback-tools.js';
 import type { Session } from '../session/session.js';
+import { span } from '../trace.js';
 import type { ToolDef, ToolDeps } from './tools.js';
 
 /**
@@ -190,7 +191,12 @@ export async function runTool(
 
   let raw: unknown;
   try {
-    raw = await tool.handler(deps, args);
+    // The one dispatch point every tool call passes through, so it is where the trace's root span
+    // belongs: with RETICLE_TRACE on, every stage that runs underneath inherits this call's id and
+    // nests under it. Free when off — see trace.ts.
+    raw = await span('tool.handler', { tool: tool.name, session: session?.id }, () =>
+      tool.handler(deps, args),
+    );
   } finally {
     // In a `finally` so a THROWN call still settles: otherwise every failing tool would leak a
     // concurrency slot and peakConcurrentTools would climb forever on an unhealthy session.

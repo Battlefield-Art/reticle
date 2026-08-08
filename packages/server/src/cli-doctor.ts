@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readPid, isAlive } from './daemon.js';
+import { ReticleEnv } from '@reticlehq/core';
+import { readPid, isAlive, reticleStateHome } from './daemon.js';
 import { diagnoseDesktop, isDesktopProject } from './init/desktop-doctor.js';
 
 /**
@@ -34,6 +35,12 @@ export async function handleDoctor(port: number): Promise<void> {
     );
   }
   line(`  bridge port  ${port}  (your app must dial THIS port — not your dev-server port)`);
+  // Where to LOOK when something is wrong. The daemon has always written a structured log here and
+  // nothing ever said so, so the first move in every investigation was reading source instead of
+  // reading the log. `RETICLE_TRACE=1` turns the same stream into a per-stage trace — see
+  // docs/debugging.md.
+  line(`  daemon log   ${join(reticleStateHome(), `daemon-${String(port)}.log`)}`);
+  line(`  tracing      ${ReticleEnv.TRACE}=1 on the daemon for per-stage timings in that log`);
 
   // Desktop setup RCA. Every one of these fails SILENTLY — a Tauri app with the default CSP runs
   // perfectly and never connects; an Electron app without the preload line reports zero network

@@ -84,6 +84,15 @@ export const ReticleEnv = {
   PAIRING_TOKEN_DIR: 'RETICLE_PAIRING_TOKEN_DIR',
   /** Force the durable causal journal off (`0`/`false`/`off`) or on (`1`/`true`/`on`); default on. */
   JOURNAL: 'RETICLE_JOURNAL',
+  /**
+   * Verbose internal flow tracing for people working ON Reticle (`1`/`true`/`on`); default off.
+   *
+   * Distinct from the journal, which records what the AGENT did to the app. This records what
+   * RETICLE did to answer it: one line per internal stage, with its duration and nesting, so a
+   * developer can see which code a tool call actually went through and where the time went.
+   * Off by default and free when off — a trace on every tool call is a cost on the hot path.
+   */
+  TRACE: 'RETICLE_TRACE',
 } as const;
 
 /** Hard transport bounds shared by the browser and bridge. */
