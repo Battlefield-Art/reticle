@@ -157,3 +157,65 @@ describe('an Astro config that already configures vite', () => {
     expect(patchAstroConfig(content).kind).toBe(PatchKind.ALREADY);
   });
 });
+
+/**
+ * Merging blindly produced a DUPLICATE key, and the app's copy won.
+ *
+ * The real astro-nanostores config is `vite: { plugins: [...], build: { chunkSizeWarningLimit } }`.
+ * Inserting our block after `vite: {` gave the object TWO `build` keys — and in a JS object literal
+ * the last one wins, so `target: 'es2022'` was silently discarded while `init` reported ✓.
+ *
+ * That is worse than the bail it replaced. The whole reason the block exists is that Astro's default
+ * target down-levels the modern SDK bundle and dies on a destructuring transform; losing `target`
+ * while claiming success is a green that cannot go red.
+ *
+ * So a key we would collide with is merged INTO, not duplicated — and if it is not an object literal
+ * we can merge into, we go back to refusing, because a corrupted build config is the worst outcome.
+ */
+describe('merging beside keys the app already set', () => {
+  const REAL_SHAPE = `import { defineConfig } from 'astro/config'
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineConfig({
+  vite: {
+    plugins: [tailwindcss()],
+    build: {
+      chunkSizeWarningLimit: 1500,
+    },
+  },
+})
+`;
+
+  it('never emits a duplicate `build` key', () => {
+    const patch = patchAstroConfig(REAL_SHAPE);
+    expect(patch.kind).toBe(PatchKind.APPLY);
+    const out = patch.kind === PatchKind.APPLY ? patch.code : '';
+    // Two `build:` inside one object means ours is dead code.
+    expect(out.match(/^\s*build\s*:/gm) ?? []).toHaveLength(1);
+  });
+
+  it('injects the target INTO the existing build block, keeping what was there', () => {
+    const patch = patchAstroConfig(REAL_SHAPE);
+    const out = patch.kind === PatchKind.APPLY ? patch.code : '';
+    expect(out).toContain("target: 'es2022'");
+    expect(out).toContain('chunkSizeWarningLimit: 1500');
+    expect(out).toContain('plugins: [tailwindcss()]');
+  });
+
+  it('still inlines the token, which is the point of the whole patch', () => {
+    const patch = patchAstroConfig(REAL_SHAPE);
+    const out = patch.kind === PatchKind.APPLY ? patch.code : '';
+    expect(out).toContain('__RETICLE_TOKEN__');
+  });
+
+  it('refuses when a colliding key is not an object literal we can merge into', () => {
+    const hostile = `import { defineConfig } from 'astro/config'
+export default defineConfig({
+  vite: {
+    build: sharedBuildConfig,
+  },
+})
+`;
+    expect(patchAstroConfig(hostile).kind).toBe(PatchKind.MANUAL);
+  });
+});

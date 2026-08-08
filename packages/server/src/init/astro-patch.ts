@@ -39,14 +39,55 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 `;
 
-/** Our keys alone, for merging INTO a vite block the config already has. */
-const VITE_INNER = `
-    build: { target: 'es2022' },
-    optimizeDeps: { esbuildOptions: { target: 'es2022' } },
-    define: {
-      __RETICLE_TOKEN__: JSON.stringify(reticleToken()),
-      __RETICLE_ROOT__: JSON.stringify(process.cwd()),
-    },`;
+/**
+ * The keys we add inside `vite:`, each with what it must contain.
+ *
+ * Kept as a list rather than one blob because a config that already sets one of these must be merged
+ * INTO, not duplicated: the real astro-nanostores config has `build: { chunkSizeWarningLimit }`, and
+ * inserting our own `build` beside it gave the object two — where the last one wins, so
+ * `target: 'es2022'` was silently discarded while init reported success. Losing that target is not
+ * cosmetic: Astro's default down-levels the modern SDK bundle and dies on a destructuring transform.
+ */
+const VITE_KEYS: readonly { key: string; inner: string }[] = [
+  { key: 'build', inner: `\n      target: 'es2022',` },
+  { key: 'optimizeDeps', inner: `\n      esbuildOptions: { target: 'es2022' },` },
+  {
+    key: 'define',
+    inner: `\n      __RETICLE_TOKEN__: JSON.stringify(reticleToken()),\n      __RETICLE_ROOT__: JSON.stringify(process.cwd()),`,
+  },
+];
+
+/** Whole-key form, for a `vite:` block that does not have the key at all. */
+const WHOLE: Readonly<Record<string, string>> = {
+  build: `\n    build: { target: 'es2022' },`,
+  optimizeDeps: `\n    optimizeDeps: { esbuildOptions: { target: 'es2022' } },`,
+  define: `\n    define: {\n      __RETICLE_TOKEN__: JSON.stringify(reticleToken()),\n      __RETICLE_ROOT__: JSON.stringify(process.cwd()),\n    },`,
+};
+
+/**
+ * Add our keys to an existing `vite: { ... }` block, merging into any the app already set.
+ *
+ * Returns null when a colliding key is not an object literal (`build: sharedConfig`) — there is no
+ * brace to merge into, and duplicating or replacing it would corrupt someone's build.
+ */
+function mergeIntoViteBlock(source: string, braceAt: number): string | null {
+  let out = source;
+  for (const { key, inner } of VITE_KEYS) {
+    // Scoped to the vite block by searching from its opening brace: a `build:` under `markdown:` or
+    // at the top level is somebody else's key and must not be touched.
+    const existing = new RegExp(`(\\n\\s*${key}\\s*:\\s*)([\\{A-Za-z_])`).exec(out.slice(braceAt));
+    if (existing?.index === undefined) {
+      out = `${out.slice(0, braceAt)}${WHOLE[key] ?? ''}${out.slice(braceAt)}`;
+      continue;
+    }
+    // The character after the colon decides: `{` is a literal we can open; anything else is a
+    // reference we must not touch.
+    if (existing[2] !== '{') return null;
+    const at = braceAt + existing.index + existing[0].length; // just past the `{`
+    out = `${out.slice(0, at)}${inner}${out.slice(at)}`;
+  }
+  return out;
+}
 
 /**
  * The `vite:` block Astro needs. `build.target` is raised because Astro's default down-levels the
@@ -73,10 +114,18 @@ export function patchAstroConfig(source: string): SourcePatch {
   const viteObject = VITE_OBJECT_KEY.exec(source);
   if (viteObject?.index !== undefined) {
     const at = viteObject.index + viteObject[0].length;
-    const merged = `${source.slice(0, at)}${VITE_INNER}${source.slice(at)}`;
+    const merged = mergeIntoViteBlock(source, at);
+    if (merged !== null) {
+      return {
+        kind: PatchKind.APPLY,
+        code: `${HELPER_IMPORTS}${merged.trimStart()}\n${HELPER}`.trimEnd() + '\n',
+      };
+    }
     return {
-      kind: PatchKind.APPLY,
-      code: `${HELPER_IMPORTS}${merged.trimStart()}\n${HELPER}`.trimEnd() + '\n',
+      kind: PatchKind.MANUAL,
+      reason:
+        'this config sets a `vite` key Reticle needs (build / optimizeDeps / define) to something ' +
+        'other than an object literal — merging into it is your call, not a text edit Reticle should make',
     };
   }
   if (ANY_VITE_KEY.test(source)) {

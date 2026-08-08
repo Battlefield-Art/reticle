@@ -1,5 +1,6 @@
 import * as http from 'node:http';
 import { localInitializeResponse, isHandshakeLine } from './proxy-handshake.js';
+import { ToolCatalogCache } from './tool-catalog-cache.js';
 import * as net from 'node:net';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -273,6 +274,10 @@ export function startMcpProxy(
   ensureDaemon?: () => Promise<void>,
 ): Promise<never> {
   return new Promise<never>((_resolve, reject) => {
+    // Declared before the SSE handler that fills it: the handler is a closure created below but
+    // invoked on the first daemon frame, and a `const` referenced before its declaration executes is
+    // a runtime throw, not a type error.
+    const catalog = new ToolCatalogCache();
     let postUrl: string | null = null;
     /**
      * No daemon is listening and the proxy has stopped chasing one.
@@ -298,6 +303,9 @@ export function startMcpProxy(
         return;
       }
       if (event === 'message' && !replay.shouldSuppressInbound(data)) {
+        // Remember the tool catalog as it goes past: it is what makes a locally-answered handshake
+        // useful rather than toolless. See tool-catalog-cache.
+        catalog.observe(data);
         process.stdout.write(`${data}\n`);
       }
     }
@@ -423,6 +431,15 @@ export function startMcpProxy(
         if (action === OnRequest.SEND && postUrl !== null) {
           void postToSession(postUrl, trimmed);
           continue;
+        }
+        // A queued `tools/list` with no daemon is the state that leaves an agent "connected with no
+        // tools" — the one a human has to fix by hand. If the catalog has been seen, answer it.
+        if (handshakeAnswered) {
+          const cached = catalog.answer(trimmed);
+          if (cached !== null) {
+            process.stdout.write(`${cached}\n`);
+            continue;
+          }
         }
         stdinQueue.push(trimmed);
         // A queued `initialize` is the one message that must not wait indefinitely. If the daemon
