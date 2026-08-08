@@ -5,6 +5,8 @@ import {
   type CommandResult,
 } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
+import { predicateToExpect, enforcedOnReplay } from './predicate-to-expect.js';
+import { PredicateSchema } from '../events/predicate.js';
 import type { RecordedStep, CompiledProgram } from './recordings.js';
 import type { Session } from '../session/session.js';
 import { asString, asRecord } from '../tools/tools-helpers.js';
@@ -62,7 +64,23 @@ export function captureAct(
   args: Record<string, unknown>,
   res: unknown,
 ): void {
-  if (recordings.active().length > 0) recordings.capture(compileActStep(args, res));
+  if (recordings.active().length === 0) return;
+  const step = compileActStep(args, res);
+  // Keep the assertion the agent actually made. `act_and_wait { until }` IS the agent saying what
+  // success means — 12 of 14 calls in a day carried one — and dropping it produced a flow graded
+  // "assertion-free: it will pass even if the feature is broken", which is the regression-suite
+  // story failing at its last step. Only kinds FlowExpect can express survive; see
+  // predicate-to-expect.ts.
+  const until = args['until'] ?? args['predicate'];
+  if (until !== undefined) {
+    const parsed = PredicateSchema.safeParse(until);
+    // Only what a replay actually CHECKS — recording an unenforced assertion would grade the flow
+    // "asserted" while nothing verifies it, which is a false green in the feature built to prevent
+    // them. See enforcedOnReplay.
+    const expect = parsed.success ? enforcedOnReplay(predicateToExpect(parsed.data)) : undefined;
+    if (expect !== undefined) step.expect = expect;
+  }
+  recordings.capture(step);
 }
 
 /**
