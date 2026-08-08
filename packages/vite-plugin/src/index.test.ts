@@ -121,10 +121,13 @@ describe('reticle vite plugin', () => {
     }
   });
 
-  it('omits the token when the daemon has not provisioned one yet (no file)', () => {
-    // Env points at the empty dir from the top of the file — no token file present.
+  it('PROVISIONS a token when the daemon has not run yet, instead of shipping none', () => {
+    // This used to assert the opposite, and the opposite is the bug. A dev server started before the
+    // daemon froze an empty token into every page it served; the bridge refused each one and no
+    // session ever appeared, while the SDK loaded and the socket opened. The daemon read-or-creates
+    // the same file, so whichever starts first can provision it and the two agree. See ensure-token.
     const code = reticle().load?.(RETICLE_CONNECT_MODULE);
-    expect(code).not.toContain('"token"');
+    expect(code).toContain('token');
   });
 
   it('auto-stamps a derived projectId with zero config', () => {

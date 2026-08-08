@@ -1,4 +1,5 @@
 import * as http from 'node:http';
+import { authFailureReason } from './auth-failure-reason.js';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import {
@@ -154,6 +155,12 @@ export class Bridge {
   readonly #wss: WebSocketServer;
   readonly #clock: () => number;
   readonly #token: string | undefined;
+  /**
+   * Projects this daemon has ACCEPTED a session from. Evidence, not derivation: it is what lets a
+   * leaked daemon say "I belong to another project" instead of "authentication failed". See
+   * authFailureReason.
+   */
+  readonly #servedProjects = new Set<string>();
   readonly #allowedOrigins: Set<string>;
   readonly #maxMessagesPerSecond: number;
   readonly #maxSessions: number;
@@ -352,8 +359,15 @@ export class Bridge {
           return;
         }
         if (this.#token !== undefined && !tokensMatch(this.#token, parsed.token)) {
-          log('authentication_failed', {});
-          socket.close(...WS_CLOSE.AUTH_FAILED);
+          // A daemon left running by ANOTHER project answers this app and rejects it on token. The
+          // token is not wrong, it is somebody else's — and "authentication failed" sends the user to
+          // check the one thing that is fine. See auth-failure-reason.
+          const reason = authFailureReason(this.#servedProjects, parsed.projectId);
+          log('authentication_failed', {
+            served: [...this.#servedProjects],
+            ...(parsed.projectId === undefined ? {} : { helloProject: parsed.projectId }),
+          });
+          socket.close(WS_CLOSE.AUTH_FAILED[0], reason);
           return;
         }
         const existing = this.sessions.get(parsed.sessionId);
@@ -364,6 +378,8 @@ export class Bridge {
         clearTimeout(helloTimer);
         releasePending();
         session = new Session(parsed, socket, this.#clock);
+        // Recorded on ACCEPTANCE, so it is evidence of what this daemon really serves.
+        if (parsed.projectId !== undefined) this.#servedProjects.add(parsed.projectId);
         this.#onSessionCreate?.(session); // attach the durable journal before any events stream in
         const replaced = this.sessions.add(session);
         if (replaced !== undefined) {

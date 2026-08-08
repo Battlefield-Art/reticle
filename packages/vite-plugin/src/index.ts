@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { missingTokenWarning } from './missing-token.js';
+import { ensurePairingToken } from './ensure-token.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { transformSync } from '@babel/core';
@@ -265,12 +266,10 @@ export function readPairingToken(): string | undefined {
   const override = process.env[ReticleEnv.PAIRING_TOKEN_DIR];
   const dir =
     override !== undefined && override.length > 0 ? override : join(homedir(), ReticleDir.ROOT);
-  try {
-    const token = readFileSync(join(dir, ReticleDir.PAIRING_TOKEN_FILE), 'utf8').trim();
-    return token.length > 0 ? token : undefined;
-  } catch {
-    return undefined;
-  }
+  // Read-or-CREATE, matching the daemon. Reading alone meant a dev server started before the daemon
+  // baked in an empty token and every page it served was refused — with the SDK loading and the
+  // socket opening, so nothing looked broken. See ensure-token for the bisect.
+  return ensurePairingToken(dir);
 }
 
 /**

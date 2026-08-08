@@ -1,4 +1,5 @@
 import * as http from 'node:http';
+import { localInitializeResponse, isHandshakeLine } from './proxy-handshake.js';
 import * as net from 'node:net';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -79,6 +80,14 @@ function parseJsonRpc(line: string): JsonRpcLike | null {
 }
 
 const INITIALIZE_METHOD = 'initialize';
+/**
+ * How long the handshake waits on the daemon before the proxy answers it.
+ *
+ * Long enough for a cold daemon start (which is seconds), short enough that a client does not sit
+ * there. Measured failure: a listener that accepts and never serves SSE left `initialize` unanswered
+ * past 25s with nothing on stderr, and the reported client gave up at 60s having run no tools.
+ */
+const LOCAL_HANDSHAKE_MS = 12_000;
 const INITIALIZED_METHOD = 'notifications/initialized';
 
 /**
@@ -372,6 +381,34 @@ export function startMcpProxy(
 
     // ── stdin reader ─────────────────────────────────────────────────────────
     process.stdin.setEncoding('utf8');
+    let handshakeAnswered = false;
+    /**
+     * Answer a queued `initialize` locally if the daemon has not produced an endpoint in time.
+     *
+     * Bounded because a hang is the worst outcome available here: no tools, no diagnosis, nothing to
+     * retry. Cancelled implicitly — once `postUrl` exists the queue flushes and the daemon answers,
+     * and `handshakeAnswered` keeps us from answering twice.
+     */
+    const armLocalHandshake = (line: string): void => {
+      if (handshakeAnswered) return;
+      const response = localInitializeResponse(line);
+      if (response === null) return;
+      setTimeout(() => {
+        if (handshakeAnswered || postUrl !== null) return;
+        handshakeAnswered = true;
+        // Drop the handshake from the queue. Otherwise the daemon, whenever it finally arrives,
+        // answers the SAME id a second time and the client sees two responses to one request — a
+        // corrupted stream, which is worse than the hang this replaces. The daemon still gets its own
+        // handshake: `replayLines` re-issues it under a distinct id and suppresses the echo.
+        for (let i = stdinQueue.length - 1; i >= 0; i--) {
+          const queued = stdinQueue[i];
+          if (queued !== undefined && isHandshakeLine(queued)) stdinQueue.splice(i, 1);
+        }
+        proxyLog('reticle_mcp_local_handshake', { port, reason: 'daemon did not answer in time' });
+        process.stdout.write(`${response}\n`);
+      }, LOCAL_HANDSHAKE_MS).unref();
+    };
+
     let stdinBuffer = '';
 
     process.stdin.on('data', (chunk: string) => {
@@ -388,6 +425,12 @@ export function startMcpProxy(
           continue;
         }
         stdinQueue.push(trimmed);
+        // A queued `initialize` is the one message that must not wait indefinitely. If the daemon
+        // port is held by something that never serves SSE — wedged, foreign, or leaked by another
+        // project — the handshake never completes and the agent gets NO tools and no diagnosis.
+        // Answer it ourselves after a bounded wait; the daemon still receives the client's own
+        // initialize when a session is finally established (replayLines).
+        armLocalHandshake(trimmed);
         // WAKE is the ONLY path allowed to start a daemon — see proxy-lifecycle.ts. The queue is
         // flushed once the new session's `endpoint` frame arrives.
         if (action === OnRequest.WAKE) {
