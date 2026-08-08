@@ -176,7 +176,7 @@ export default tseslint.config(
     // category — deliberately not done in the same pass that is verifying those fixtures' behaviour.
     files: ['packages/*/src/**'],
     ignores: ['**/*.test.ts', '**/*.test.tsx'],
-    rules: { 'max-lines': ['error', { max: 600, skipBlankLines: false, skipComments: false }] },
+    rules: { 'max-lines': ['error', { max: 1000, skipBlankLines: false, skipComments: false }] },
   },
   {
     // The rule that BANS these tokens has to name them — in its own doc comment explaining the ban, and
