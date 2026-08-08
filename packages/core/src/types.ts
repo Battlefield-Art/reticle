@@ -97,6 +97,12 @@ export interface MatchResult {
    * confirmed absence (a false negative); both are the false-green shape this tool exists to prevent.
    */
   scopeMissing?: boolean;
+  /**
+   * Zero-match diagnosis, present only on a miss: what IS on the page. `reticle_query` has always
+   * returned this; MATCH (the command every PREDICATE uses) did not, so a failed assertion was a
+   * dead end while the same failure through query was one step from fixed.
+   */
+  hint?: QueryEmptyHint;
 }
 
 /**

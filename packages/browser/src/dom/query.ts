@@ -349,6 +349,11 @@ export function matchQuery(
     count: filtered.length,
     elements: descriptors,
     ...(scopeMissing ? { scopeMissing: true } : {}),
+    // On a MISS, carry the same diagnosis `runQuery` has always returned. MATCH is the command every
+    // PREDICATE uses, so without this a failed assertion was a dead end ("no element matched") while
+    // the identical failure through reticle_query listed the testids that ARE present. Computed only
+    // when there is nothing to report, so the hot path pays nothing.
+    ...(filtered.length === 0 ? { hint: buildEmptyHint(query) } : {}),
   };
 }
 

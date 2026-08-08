@@ -7,6 +7,7 @@ import {
   type MatchResult,
 } from '@reticlehq/core';
 import { selectPath, capDepth } from '../session/state-select.js';
+import { describeTestidMiss } from './testid-near-miss.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import type { ExpectedLink } from '../capsule/divergence.js';
 import { isAmbient, ambientKeyOf, type AmbientCounts } from '../journal/ambient.js';
@@ -146,12 +147,20 @@ async function evalElement(
       };
     }
   }
+  // The testid near-miss: name what IS here, so a typo is one step from fixed rather than a dead
+  // end. reticle_query has always done this; the predicate path had no equivalent. See
+  // testid-near-miss.ts.
+  const present = match.hint?.presentTestids ?? [];
+  const alsoHere =
+    query.testid === undefined ? undefined : describeTestidMiss(query.testid, present);
+  const suffix = alsoHere === undefined || alsoHere === '' ? '' : ` — ${alsoHere}`;
   return {
     pass: false,
-    failureReason: `no element matched ${subject}${state === undefined ? '' : ` in state '${state}'`}`,
-    observed: 'no matching element on the page',
+    failureReason: `no element matched ${subject}${state === undefined ? '' : ` in state '${state}'`}${suffix}`,
+    observed: `no matching element on the page${suffix}`,
     expected: `an element matching ${subject}${state === undefined ? '' : ` in state '${state}'`}`,
     assertion: 'element.present',
+    ...(present.length > 0 ? { evidence: { presentTestids: present } } : {}),
   };
 }
 
