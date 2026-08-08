@@ -14,7 +14,7 @@ type MockCapable = RealInputProvider & {
 
 function mockProvider(deps: ToolDeps): MockCapable | undefined {
   const p = deps.realInput;
-  return p !== undefined && typeof p.setMocks === 'function' ? (p as MockCapable) : undefined;
+  return p !== undefined && 'function' === typeof p.setMocks ? (p as MockCapable) : undefined;
 }
 
 const ruleShape = z.object({
@@ -86,7 +86,7 @@ export const NETWORK_MOCK_TOOLS: ToolDef[] = [
         };
       }
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      const rules = args['clear'] === true ? [] : toRules(args['mocks']);
+      const rules = true === args['clear'] ? [] : toRules(args['mocks']);
       const applied = await provider.setMocks(session.url, rules);
       return { applied, count: applied ? rules.length : 0 };
     },

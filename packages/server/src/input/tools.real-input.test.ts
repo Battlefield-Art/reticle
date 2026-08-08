@@ -29,8 +29,8 @@ interface FakeSessionState {
 
 function fakeSession(state: FakeSessionState): Session {
   const command = (name: string, args: Record<string, unknown> = {}): Promise<CommandResult> => {
-    if (name === 'inspect') {
-      const ref = typeof args['ref'] === 'string' ? args['ref'] : '';
+    if ('inspect' === name) {
+      const ref = 'string' === typeof args['ref'] ? args['ref'] : '';
       state.inspectRefs.push(ref);
       if (ref === state.staleRef) {
         return Promise.resolve({ kind: 'command_result', id: 'c', ok: true, result: {} });
@@ -43,7 +43,7 @@ function fakeSession(state: FakeSessionState): Session {
           result: { box: { x: 5, y: 5, width: 0, height: 0 } },
         });
       }
-      const box = ref === 'eTarget' ? TARGET_BOX : SOURCE_BOX;
+      const box = 'eTarget' === ref ? TARGET_BOX : SOURCE_BOX;
       return Promise.resolve({
         kind: 'command_result',
         id: 'c',
@@ -51,7 +51,7 @@ function fakeSession(state: FakeSessionState): Session {
         result: { box, ...(state.inspectName === undefined ? {} : { name: state.inspectName }) },
       });
     }
-    if (name === 'act') {
+    if ('act' === name) {
       state.actCalls += 1;
       return Promise.resolve({
         kind: 'command_result',
@@ -115,7 +115,7 @@ function makeProvider(available: boolean, options: { throws?: boolean } = {}): R
     calls,
     isAvailableFor: () => Promise.resolve(available),
     perform: (_url, action, box, args) => {
-      if (options.throws === true) return Promise.reject(new Error('cdp gone'));
+      if (true === options.throws) return Promise.reject(new Error('cdp gone'));
       const center = boxCenter(box);
       const call: RecordingProvider['calls'][number] = { action, box, center };
       if (args.toBox !== undefined) call.toBox = args.toBox;

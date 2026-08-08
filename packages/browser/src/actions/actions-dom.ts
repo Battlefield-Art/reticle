@@ -24,7 +24,7 @@ export function fireClickSequence(el: HTMLElement): boolean {
   const from: EventTarget = doc.activeElement ?? doc.body;
   firePointer(el, 'pointerdown', from);
   el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-  if (el.tabIndex >= 0 && typeof el.focus === 'function') el.focus();
+  if (el.tabIndex >= 0 && 'function' === typeof el.focus) el.focus();
   firePointer(el, 'pointerup', from);
   el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
   const notPrevented = el.dispatchEvent(
@@ -41,7 +41,7 @@ function isMeasurable(rect: DOMRect): boolean {
 /** The center of `rect` falls outside the visible viewport. */
 function isOffViewport(el: HTMLElement, rect: DOMRect): boolean {
   const win = el.ownerDocument.defaultView;
-  if (win === null) return false;
+  if (null === win) return false;
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
   return cx < 0 || cy < 0 || cx > win.innerWidth || cy > win.innerHeight;
@@ -50,7 +50,7 @@ function isOffViewport(el: HTMLElement, rect: DOMRect): boolean {
 /** Hit-test the center: occluded iff the top NON-Reticle element is a foreign subtree (not target/ancestor/descendant). */
 function hitTest(el: HTMLElement, rect: DOMRect): { occluded: boolean; occludedBy: string | null } {
   const top = hitTestOccluder(el, rect);
-  return top === null
+  return null === top
     ? { occluded: false, occludedBy: null }
     : { occluded: true, occludedBy: refs.refFor(top) };
 }
@@ -65,7 +65,7 @@ export function clickGeometry(el: HTMLElement): ClickGeometry {
   let rect = el.getBoundingClientRect();
   if (!isMeasurable(rect)) return NO_GEOMETRY;
   let scrolledIntoView = false;
-  if (isOffViewport(el, rect) && typeof el.scrollIntoView === 'function') {
+  if (isOffViewport(el, rect) && 'function' === typeof el.scrollIntoView) {
     el.scrollIntoView({ block: 'center', inline: 'center' });
     scrolledIntoView = true;
     rect = el.getBoundingClientRect();
@@ -78,7 +78,7 @@ export function firePointer(
   type: string,
   relatedTarget: EventTarget | null = null,
 ): void {
-  if (typeof PointerEvent === 'function') {
+  if ('function' === typeof PointerEvent) {
     el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, relatedTarget }));
   } else {
     el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, relatedTarget }));
@@ -91,7 +91,7 @@ export function firePointerNonBubbling(
   type: string,
   relatedTarget: EventTarget | null = null,
 ): void {
-  if (typeof PointerEvent === 'function') {
+  if ('function' === typeof PointerEvent) {
     el.dispatchEvent(new PointerEvent(type, { bubbles: false, cancelable: true, relatedTarget }));
   } else {
     el.dispatchEvent(new MouseEvent(type, { bubbles: false, cancelable: true, relatedTarget }));
@@ -104,9 +104,9 @@ function makeDataTransfer(data: unknown): DataTransfer | null {
   // data: { mime, value } or [{ mime, value }, …]
   const entries = Array.isArray(data) ? data : data !== undefined ? [data] : [];
   for (const entry of entries) {
-    if (typeof entry === 'object' && entry !== null) {
+    if ('object' === typeof entry && entry !== null) {
       const e = entry as { mime?: unknown; value?: unknown };
-      if (typeof e.mime === 'string' && typeof e.value === 'string') dt.setData(e.mime, e.value);
+      if ('string' === typeof e.mime && 'string' === typeof e.value) dt.setData(e.mime, e.value);
     }
   }
   return dt;
@@ -123,7 +123,7 @@ export async function dragElement(
 ): Promise<boolean> {
   const dest = target ?? source;
   const fire = (el: Element, type: string): void => {
-    if (typeof PointerEvent === 'function' && type.startsWith('pointer')) {
+    if ('function' === typeof PointerEvent && type.startsWith('pointer')) {
       el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true }));
     } else {
       el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
@@ -139,7 +139,7 @@ export async function dragElement(
   fire(dest, 'mouseup');
 
   let dropPrevented = false;
-  if (typeof DragEvent === 'function') {
+  if ('function' === typeof DragEvent) {
     const dataTransfer = makeDataTransfer(data);
     const init: DragEventInit = { bubbles: true, cancelable: true };
     if (dataTransfer !== null) init.dataTransfer = dataTransfer;

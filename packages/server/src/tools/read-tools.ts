@@ -157,7 +157,7 @@ export const READ_TOOLS: ToolDef[] = [
       if (rec === undefined) {
         const active = deps.recordings.active();
         throw new Error(
-          active.length === 0
+          0 === active.length
             ? `no active recording named '${name}' — none is in progress`
             : `no active recording named '${name}'; in progress: ${active.map((r) => `'${r}'`).join(', ')}`,
         );
@@ -221,7 +221,7 @@ export const READ_TOOLS: ToolDef[] = [
       if (program === undefined) throw new Error(`no compiled recording named '${name}'`);
       const session = deps.sessions.resolve(asString(args['sessionId']));
       const since = session.elapsed();
-      const steps = await replayProgram(session, program, args['confirmDangerous'] === true);
+      const steps = await replayProgram(session, program, true === args['confirmDangerous']);
       return { recordingName: name, since, steps, ok: steps.every((s) => s.ok) };
     },
   },
@@ -374,13 +374,13 @@ export const READ_TOOLS: ToolDef[] = [
         found?: unknown;
       };
       const names = Array.isArray(root.storeNames)
-        ? root.storeNames.filter((n): n is string => typeof n === 'string')
-        : typeof root.storeNames === 'string' && root.storeNames.length > 0
+        ? root.storeNames.filter((n): n is string => 'string' === typeof n)
+        : 'string' === typeof root.storeNames && root.storeNames.length > 0
           ? [root.storeNames]
           : [];
 
       // The browser already scoped it in-page (the `found` shape) — pass through, just safe storeNames.
-      if (typeof root.found === 'boolean') {
+      if ('boolean' === typeof root.found) {
         return { ...(root as Record<string, unknown>), storeNames: names };
       }
 
@@ -447,7 +447,7 @@ export const READ_TOOLS: ToolDef[] = [
         // The walk stops at its node cap and returns a document-order prefix, so an inventory taken
         // from a big page is a floor, not a census — and this is the tool crawl's description points
         // agents at first for "a non-destructive list of what is here".
-        ...(snap.truncated === true ? { truncated: true } : {}),
+        ...(true === snap.truncated ? { truncated: true } : {}),
         consoleErrors,
         hint: 'act on each ref, observe the reaction, and report failed requests / console errors / dead controls',
         // Buffer-honesty: the console-error count spans the whole buffer, which evicts — signal it.
@@ -493,7 +493,7 @@ export const READ_TOOLS: ToolDef[] = [
         ReticleCommand.STORAGE_READ,
         area !== undefined ? { area } : {},
       );
-      const data = (typeof result === 'object' && result !== null ? result : {}) as Record<
+      const data = ('object' === typeof result && result !== null ? result : {}) as Record<
         string,
         unknown
       >;
@@ -501,7 +501,7 @@ export const READ_TOOLS: ToolDef[] = [
       // Look up the key in the scoped area, or across all three areas when none was named.
       const areas = area !== undefined ? [data] : [data['local'], data['session'], data['cookies']];
       for (const a of areas) {
-        if (typeof a === 'object' && a !== null && key in a) {
+        if ('object' === typeof a && a !== null && key in a) {
           return { area, key, value: String((a as Record<string, unknown>)[key]), found: true };
         }
       }

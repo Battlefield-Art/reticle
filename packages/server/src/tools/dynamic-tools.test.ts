@@ -52,10 +52,10 @@ describe('buildDynamicTools — the dynamic profile meta-tools', () => {
     const out = (await discover?.handler(NO_DEPS, { names: ['reticle_alpha', 'nope'] })) as {
       tools: { name: string; params?: { name: string }[]; error?: string; description?: string }[];
     };
-    const alpha = out.tools.find((t) => t.name === 'reticle_alpha');
+    const alpha = out.tools.find((t) => 'reticle_alpha' === t.name);
     expect(alpha?.description).toContain('alpha');
     expect(alpha?.params?.map((p) => p.name)).toEqual(['ref', 'count']);
-    expect(out.tools.find((t) => t.name === 'nope')?.error).toBe('unknown tool');
+    expect(out.tools.find((t) => 'nope' === t.name)?.error).toBe('unknown tool');
   });
 
   /**

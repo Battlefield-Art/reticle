@@ -52,7 +52,7 @@ export function sdkPackageVersion(from: string = process.cwd()): string {
   // Preferred: the package exports its own manifest. Newer SDKs do.
   try {
     const pkg = require_(`${RETICLE_PACKAGE}/package.json`) as { version?: string };
-    if (typeof pkg.version === 'string') return pkg.version;
+    if ('string' === typeof pkg.version) return pkg.version;
   } catch {
     // Falls through — see below.
   }
@@ -65,7 +65,7 @@ export function sdkPackageVersion(from: string = process.cwd()): string {
       const candidate = join(dir, 'package.json');
       if (existsSync(candidate)) {
         const parsed = JSON.parse(readFileSync(candidate, 'utf8')) as { version?: string };
-        if (typeof parsed.version === 'string') return parsed.version;
+        if ('string' === typeof parsed.version) return parsed.version;
       }
       const parent = dirname(dir);
       if (parent === dir) break;

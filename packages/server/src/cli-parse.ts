@@ -127,7 +127,7 @@ const KNOWN_COMMANDS: ReadonlySet<string> = new Set([
 
 /** The subcommand name if we recognize it, else `unknown`. Bare `reticle` reports `help`. */
 export function knownCommand(arg: string | undefined): string {
-  if (arg === undefined || arg === '') return 'help';
+  if (arg === undefined || '' === arg) return 'help';
   return KNOWN_COMMANDS.has(arg) ? arg : UNKNOWN_COMMAND;
 }
 
@@ -283,7 +283,7 @@ function parseServeFlags(args: string[], defaultPort: number, _defaultHeadless: 
 
 function parsePortFlag(args: string[], defaultPort: number): number {
   const idx = args.indexOf(PORT_FLAG);
-  if (idx === -1) return defaultPort;
+  if (-1 === idx) return defaultPort;
   const n = args[idx + 1];
   if (n === undefined) return defaultPort;
   const parsed = parseInt(n, 10);
@@ -429,7 +429,7 @@ const SINCE_FLAG = '--since';
 const WORKING_TREE_REF = 'HEAD';
 
 function implicitSince(files: readonly string[]): string | undefined {
-  return files.length === 0 ? WORKING_TREE_REF : undefined;
+  return 0 === files.length ? WORKING_TREE_REF : undefined;
 }
 
 function parseTargetArgs(rest: string[]): { files: string[]; since?: string } {
@@ -459,22 +459,22 @@ export function parseCliArgs(
   defaultHeadless = false,
 ): CliResult {
   // Bare `reticle` is `serve` — a pool-owning command, so headless like the rest of that family.
-  if (argv.length === 0) return { kind: 'serve', port: defaultPort, headless: true, http: false };
+  if (0 === argv.length) return { kind: 'serve', port: defaultPort, headless: true, http: false };
 
   const [cmd, ...rest] = argv;
 
   // `version` (or the conventional -v/--version flags) prints the running version — the diagnostic the
   // troubleshooting docs lean on to confirm which npx-resolved build is actually executing.
-  if (cmd === VERSION_COMMAND || cmd === '--version' || cmd === '-v') return { kind: 'version' };
+  if (cmd === VERSION_COMMAND || '--version' === cmd || '-v' === cmd) return { kind: 'version' };
 
   // `help` (and the conventional -h/--help) print usage to stdout and exit 0 — the universal first move
   // for a new user, which otherwise fell through to a JSON error with exit 1.
-  if (cmd === 'help' || cmd === '--help' || cmd === '-h') return { kind: 'help' };
+  if ('help' === cmd || '--help' === cmd || '-h' === cmd) return { kind: 'help' };
 
   switch (cmd) {
     case INIT_COMMAND: {
       const r = parseInitFlags(rest);
-      if (r.kind === 'error') return r;
+      if ('error' === r.kind) return r;
       return {
         kind: 'init',
         port: r.port,
@@ -486,7 +486,7 @@ export function parseCliArgs(
     }
     case SERVE_COMMAND: {
       const r = parseServeFlags(rest, defaultPort, defaultHeadless);
-      if (r.kind === 'error') return r;
+      if ('error' === r.kind) return r;
       return {
         kind: 'serve',
         port: r.port,
@@ -526,7 +526,7 @@ export function parseCliArgs(
     case IDENTIFY_COMMAND: {
       const flag = (name: string): string | undefined => {
         const at = rest.indexOf(name);
-        return at === -1 ? undefined : rest[at + 1];
+        return -1 === at ? undefined : rest[at + 1];
       };
       const context = flag(CONTEXT_FLAG);
       const company = flag(COMPANY_FLAG);
@@ -541,13 +541,13 @@ export function parseCliArgs(
     }
     case FEEDBACK_COMMAND: {
       const ratingAt = rest.indexOf(RATING_FLAG);
-      const rating = ratingAt === -1 ? undefined : Number(rest[ratingAt + 1]);
+      const rating = -1 === ratingAt ? undefined : Number(rest[ratingAt + 1]);
       if (rating !== undefined && (!Number.isInteger(rating) || rating < 1 || rating > 5)) {
         return { kind: 'error', message: `${RATING_FLAG} takes a whole number from 1 to 5` };
       }
       // Everything that is not a flag or the rating's value is the message. Quoting is the user's
       // job for shell reasons, but joining the remainder means an unquoted sentence still works.
-      const consumed = new Set(ratingAt === -1 ? [] : [ratingAt, ratingAt + 1]);
+      const consumed = new Set(-1 === ratingAt ? [] : [ratingAt, ratingAt + 1]);
       const text = rest
         .filter((arg, i) => !consumed.has(i) && !arg.startsWith('--'))
         .join(' ')
@@ -567,12 +567,12 @@ export function parseCliArgs(
     }
     case DRIVE_COMMAND: {
       const r = parseDriveSuffix(rest, defaultPort, defaultHeadless);
-      if (r.kind === 'error') return r;
+      if ('error' === r.kind) return r;
       return { kind: 'drive', port: r.port, driveUrl: r.driveUrl, headless: r.headless };
     }
     case DAEMON_INNER_COMMAND: {
       const r = parseServeFlags(rest, defaultPort, defaultHeadless);
-      if (r.kind === 'error') return r;
+      if ('error' === r.kind) return r;
       return {
         kind: '_daemon',
         port: r.port,
@@ -585,7 +585,7 @@ export function parseCliArgs(
     }
     case VERIFY_COMMAND: {
       const r = parseVerifySuffix(rest);
-      if (r.kind === 'error') return r;
+      if ('error' === r.kind) return r;
       return {
         kind: 'verify',
         url: r.url,
@@ -623,7 +623,7 @@ export function parseCliArgs(
       return { kind: 'rollback' };
     case MCP_COMMAND: {
       const r = parseServeFlags(rest, defaultPort, defaultHeadless);
-      if (r.kind === 'error') return r;
+      if ('error' === r.kind) return r;
       return {
         kind: 'mcp',
         port: r.port,

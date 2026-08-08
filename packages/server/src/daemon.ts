@@ -81,7 +81,7 @@ export function shouldRemovePid(
   expectedPid: number,
   alive: boolean,
 ): boolean {
-  return owner === null || owner === expectedPid || !alive;
+  return null === owner || owner === expectedPid || !alive;
 }
 
 export function removePid(port: number, expectedPid = process.pid): void {
@@ -142,7 +142,7 @@ export function discoverDaemonPortForProject(projectId: string | undefined): num
     return null; // no ~/.reticle yet
   }
   for (const file of files) {
-    if (daemonRegistryPort(file) === null) continue;
+    if (null === daemonRegistryPort(file)) continue;
     try {
       const parsed = DaemonRegistryEntrySchema.safeParse(
         JSON.parse(readFileSync(join(reticleStateHome(), file), 'utf8')),
@@ -171,9 +171,9 @@ export function discoverDaemonPort(): number | null {
   try {
     for (const file of readdirSync(reticleStateHome())) {
       const m = /^daemon-(\d+)\.pid$/.exec(file);
-      if (m === null) continue;
+      if (null === m) continue;
       const port = Number(m[1]);
-      if (isRunning(port) && (found === null || port < found)) found = port;
+      if (isRunning(port) && (null === found || port < found)) found = port;
     }
   } catch {
     // no ~/.reticle yet → nothing running
@@ -200,7 +200,7 @@ export function reclaimStaleDaemons(
   }
   for (const file of files) {
     const match = /^daemon-(\d+)\.pid$/.exec(file);
-    if (match === null) continue;
+    if (null === match) continue;
     const path = join(home, file);
     let pid: number | null = null;
     try {
@@ -209,7 +209,7 @@ export function reclaimStaleDaemons(
     } catch {
       pid = null; // unreadable pidfile counts as stale
     }
-    if (pid === null || !pidAlive(pid)) {
+    if (null === pid || !pidAlive(pid)) {
       try {
         unlinkSync(path);
         removeDaemonRegistry(Number(match[1])); // drop the sidecar discovery entry too

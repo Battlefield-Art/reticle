@@ -93,7 +93,7 @@ function evidenceList(steps: FlowStepResult[]): string {
       for (const part of step.consequence.split(';')) seen.add(part.trim());
     }
   }
-  if (seen.size === 0) return '_No observable consequence captured._';
+  if (0 === seen.size) return '_No observable consequence captured._';
   return [...seen].map((e) => `- ${e}`).join('\n');
 }
 

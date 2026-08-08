@@ -30,7 +30,7 @@ export async function handleFeedback(
   const line = (s: string): void => {
     process.stdout.write(`${s}\n`);
   };
-  if (text === '' && rating === undefined) {
+  if ('' === text && rating === undefined) {
     line(`usage: reticle feedback [${RATING_FLAG} 1-5] [${BUG_FLAG}] "what worked, what didn't"`);
     line('       your words go to the maintainers; nothing from your app is ever included.');
     process.exitCode = 1;
@@ -40,7 +40,7 @@ export async function handleFeedback(
     source: FeedbackSource.HUMAN,
     kind: bug ? FeedbackKind.BUG : FeedbackKind.EXPERIENCE,
     // A rating with no words is a real report, but the schema wants text — say what the rating means.
-    text: text === '' ? `rated ${String(rating)}/5 with no comment` : text,
+    text: '' === text ? `rated ${String(rating)}/5 with no comment` : text,
     ...(rating !== undefined ? { rating } : {}),
   });
   line(`sending      ${JSON.stringify(describeFeedbackPayload(receipt.context))}`);

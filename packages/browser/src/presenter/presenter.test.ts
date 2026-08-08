@@ -282,7 +282,7 @@ describe('presenter v2 activity log', () => {
     expect(p.state).toBe('active');
 
     clock = 5000; // far past idleEndMs → the heartbeat should auto-end the session
-    expect(await until(() => p.state === 'ended', 800)).toBe(true);
+    expect(await until(() => 'ended' === p.state, 800)).toBe(true);
 
     // The panel (HUD/log) PERSISTS for analysis (only the border fades).
     expect(document.querySelector('[data-reticle-hud]')?.getAttribute('data-on')).toBe('1');

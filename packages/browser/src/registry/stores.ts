@@ -42,10 +42,10 @@ function isStoreLike(source: StoreGetter | StoreLike): source is StoreLike {
   // Zustand's `create` returns a CALLABLE hook that also carries getState/subscribe, so a store can be
   // typeof 'function' as well as 'object'. What distinguishes it from a plain getter is those two members
   // — never the typeof. (Checking only for 'object' left every Zustand app on pull-only reads.)
-  if (source === null) return false;
+  if (null === source) return false;
   if (typeof source !== 'object' && typeof source !== 'function') return false;
   const candidate = source as Partial<StoreLike>;
-  return typeof candidate.getState === 'function' && typeof candidate.subscribe === 'function';
+  return 'function' === typeof candidate.getState && 'function' === typeof candidate.subscribe;
 }
 
 /**
@@ -68,7 +68,7 @@ export function registerStore(
     return;
   }
   if (typeof source !== 'function') {
-    const hasSubscribe = typeof source === 'object' && source !== null && 'subscribe' in source;
+    const hasSubscribe = 'object' === typeof source && source !== null && 'subscribe' in source;
     nativeWarn(
       `[reticle] store "${name}" is neither a getter function nor a {getState, subscribe} store` +
         (hasSubscribe

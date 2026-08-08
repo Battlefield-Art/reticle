@@ -71,7 +71,7 @@ export async function readOrCreatePairingToken(
   }
   try {
     const token = deps.randomToken().trim();
-    if (token.length === 0) return undefined;
+    if (0 === token.length) return undefined;
     await deps.mkdir(dir);
     await deps.writeFile(path, token);
     return token;

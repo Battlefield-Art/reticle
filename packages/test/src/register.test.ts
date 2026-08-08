@@ -66,7 +66,7 @@ function memoryFs(files: Record<string, string>): FileSystemPort {
       return Promise.resolve();
     },
     stat: () => Promise.resolve({ mtimeMs: 0 }),
-    isNotFound: (error) => (error as { code?: string } | undefined)?.code === 'ENOENT',
+    isNotFound: (error) => 'ENOENT' === (error as { code?: string } | undefined)?.code,
   };
 }
 
@@ -87,7 +87,7 @@ function fakeSession(testids: string[]): SessionLike {
     command: (name, args) => {
       if (name === ReticleCommand.QUERY) {
         const raw = args?.['value'];
-        const value = typeof raw === 'string' ? raw : '';
+        const value = 'string' === typeof raw ? raw : '';
         const has = present.has(value);
         return Promise.resolve(
           ok({
@@ -160,10 +160,10 @@ describe('registerFlowSpecs', () => {
     });
     expect(c.cases.map((x) => x.name).sort()).toEqual(['bad', 'good']);
 
-    const bad = c.cases.find((x) => x.name === 'bad');
+    const bad = c.cases.find((x) => 'bad' === x.name);
     await expect(Promise.resolve().then(() => bad?.fn())).rejects.toThrow(FLOW_LOAD_ERROR_PREFIX);
 
-    const good = c.cases.find((x) => x.name === 'good');
+    const good = c.cases.find((x) => 'good' === x.name);
     await expect(Promise.resolve().then(() => good?.fn())).resolves.toBeUndefined();
   });
 

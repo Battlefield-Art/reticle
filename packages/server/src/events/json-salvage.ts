@@ -39,20 +39,20 @@ function completeObjects(text: string): string[] {
     const ch = text[i];
     if (inString) {
       if (escaped) escaped = false;
-      else if (ch === '\\') escaped = true;
-      else if (ch === '"') inString = false;
+      else if ('\\' === ch) escaped = true;
+      else if ('"' === ch) inString = false;
       continue;
     }
-    if (ch === '"') {
+    if ('"' === ch) {
       inString = true;
       continue;
     }
-    if (ch === '{') {
+    if ('{' === ch) {
       starts.push(i);
       depth += 1;
       continue;
     }
-    if (ch === '}') {
+    if ('}' === ch) {
       depth -= 1;
       // A negative depth means the cut removed an opening brace; nothing further is trustworthy.
       if (depth < 0) break;
@@ -60,7 +60,7 @@ function completeObjects(text: string): string[] {
       if (start !== undefined) found.push({ depth: depth + 1, text: text.slice(start, i + 1) });
     }
   }
-  if (found.length === 0) return [];
+  if (0 === found.length) return [];
   const shallowest = Math.min(...found.map((f) => f.depth));
   return found.filter((f) => f.depth === shallowest).map((f) => f.text);
 }

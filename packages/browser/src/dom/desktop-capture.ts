@@ -62,8 +62,8 @@ function tauriCapture(): (() => Promise<string | null>) | undefined {
   if (typeof internals?.invoke !== 'function') return undefined;
   const invoke = internals.invoke.bind(internals);
   return async (fullPage?: boolean) => {
-    const path = await invoke(RETICLE_TAURI_CAPTURE_COMMAND, { fullPage: fullPage === true });
-    return typeof path === 'string' ? path : null;
+    const path = await invoke(RETICLE_TAURI_CAPTURE_COMMAND, { fullPage: true === fullPage });
+    return 'string' === typeof path ? path : null;
   };
 }
 
@@ -124,13 +124,13 @@ export async function captureDesktopWindow(fullPage = false): Promise<CaptureRes
   const channel = (window as unknown as Record<string, unknown>)[RETICLE_IPC_GLOBAL] as
     | CaptureChannel
     | undefined;
-  const capture = typeof channel?.capture === 'function' ? channel.capture : tauriCapture();
+  const capture = 'function' === typeof channel?.capture ? channel.capture : tauriCapture();
   if (capture === undefined) {
     return { ok: false, reason: 'no desktop capture helper installed' };
   }
   try {
     const path = await withReticleUiHidden(() => capture(fullPage));
-    return typeof path === 'string' && path.length > 0
+    return 'string' === typeof path && path.length > 0
       ? { ok: true, path }
       : { ok: false, reason: 'capture returned no image' };
   } catch (error) {

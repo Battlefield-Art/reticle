@@ -114,7 +114,7 @@ describe('installPerf', () => {
     const installed = FakePerformanceObserver.instances.filter((o) => o.observedType !== '');
     expect(installed.length).toBeGreaterThan(0);
     t();
-    expect(installed.every((o) => o.disconnectCount === 1)).toBe(true);
+    expect(installed.every((o) => 1 === o.disconnectCount)).toBe(true);
   });
 
   it('no-ops without PerformanceObserver', () => {

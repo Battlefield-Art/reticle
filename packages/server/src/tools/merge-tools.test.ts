@@ -95,7 +95,7 @@ describe('applyMerges (assembly-point consolidation)', () => {
 
   it('the merged tool still reaches every original handler', async () => {
     const out = applyMerges(raw, plans);
-    const baseline = out.find((t) => t.name === 'reticle_baseline');
+    const baseline = out.find((t) => 'reticle_baseline' === t.name);
     expect(await baseline?.handler(deps, { action: 'diff' })).toMatchObject({
       ran: 'reticle_diff',
     });

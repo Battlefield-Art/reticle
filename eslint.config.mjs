@@ -52,6 +52,15 @@ export default tseslint.config(
       // Foundation skill — correctness rules
       eqeqeq: ['error', 'always'],
       'no-cond-assign': 'error',
+      /**
+       * Literal on the LEFT of an equality test, so a typo'd `=` is a syntax error instead of a
+       * silent assignment that always passes.
+       *
+       * `onlyEquality` on purpose: the assignment hazard exists only for `==`/`===`/`!=`/`!==`.
+       * Applying it to relational operators as well would rewrite every `count > 0` into
+       * `0 < count`, which costs readability everywhere to defend against nothing.
+       */
+      yoda: ['error', 'always', { onlyEquality: true }],
       'no-console': ['error', { allow: ['warn', 'error'] }],
 
       // _ prefix = intentionally unused (required so _param silences the rule)

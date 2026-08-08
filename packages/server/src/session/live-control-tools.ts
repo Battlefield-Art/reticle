@@ -156,7 +156,7 @@ export const LIVE_CONTROL_TOOLS: ToolDef[] = [
           session.pushNarration(`✓ fixed: ${mark.note}`);
         }
       }
-      const source = args['all'] === true ? session.allMarks() : session.pendingMarks();
+      const source = true === args['all'] ? session.allMarks() : session.pendingMarks();
       const marks = source.map((m) => ({ ...m, fix: buildFixHint(m) }));
       const out: { marks: typeof marks; pendingCount: number; resolved?: boolean } = {
         marks,

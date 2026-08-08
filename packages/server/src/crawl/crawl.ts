@@ -157,7 +157,7 @@ export async function crawl(
   // the controls it never reached are not merely unclicked — they were never seen. Reporting
   // `interactiveFound` without this would state a control count that is really a cap, and
   // `truncated:false` would positively assert that nothing was cut.
-  const coverageCapped = snapshot.truncated === true;
+  const coverageCapped = true === snapshot.truncated;
 
   const anomalies: CrawlAnomaly[] = [];
   const visited: string[] = [];
@@ -182,7 +182,7 @@ export async function crawl(
       act = await session.command(ReticleCommand.ACT, {
         ref: item.ref,
         action: ActionType.CLICK,
-        args: opts.confirmDangerous === true ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
+        args: true === opts.confirmDangerous ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
       });
       await sleep(settleMs);
     } finally {
@@ -247,7 +247,7 @@ export async function crawl(
     const dispatched = asRecord(act.result)['dispatched'] !== false && act.ok;
     if (
       dispatched &&
-      errs.length === 0 &&
+      0 === errs.length &&
       !events.some(isActivity) &&
       !legitimatelyInert(item.desc)
     ) {

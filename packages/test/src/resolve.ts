@@ -10,13 +10,13 @@ interface QueryEnvelope {
 }
 
 function asQueryEnvelope(value: unknown): QueryEnvelope {
-  if (typeof value !== 'object' || value === null) return {};
+  if (typeof value !== 'object' || null === value) return {};
   const record = value as Record<string, unknown>;
   const elements = Array.isArray(record['elements'])
     ? (record['elements'] as { ref?: unknown }[])
     : undefined;
   const hint =
-    typeof record['hint'] === 'object' && record['hint'] !== null
+    'object' === typeof record['hint'] && record['hint'] !== null
       ? (record['hint'] as { presentTestids?: unknown })
       : undefined;
   return {
@@ -42,7 +42,7 @@ export async function resolveTestid(
   };
   const result = asQueryEnvelope(await invoke(ReticleTool.QUERY, args));
   const first = result.elements?.[0]?.ref;
-  if (typeof first === 'string' && first.length > 0) return first;
+  if ('string' === typeof first && first.length > 0) return first;
 
   const present = result.hint?.presentTestids;
   const detail = present !== undefined ? { evidence: { presentTestids: present } } : undefined;

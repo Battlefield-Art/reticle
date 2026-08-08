@@ -15,7 +15,7 @@ const MAX_LISTED = 8;
 
 export function describeObserved(noun: string, seen: readonly string[]): string {
   const unique = [...new Set(seen.filter((s) => s.length > 0))];
-  if (unique.length === 0) return `no ${noun} at all in this window`;
+  if (0 === unique.length) return `no ${noun} at all in this window`;
   const shown = unique.slice(0, MAX_LISTED);
   const rest = unique.length - shown.length;
   return `${noun} seen in this window: ${shown.join(', ')}${rest > 0 ? `, and ${String(rest)} more` : ''}`;

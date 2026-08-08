@@ -41,11 +41,11 @@ function keysOf(value: unknown): { keys: string[]; total: number } {
     let total = 0;
     for (const k of value.keys()) {
       total += 1;
-      if (typeof k === 'string' && keys.length < MAX_AVAILABLE_KEYS) keys.push(k);
+      if ('string' === typeof k && keys.length < MAX_AVAILABLE_KEYS) keys.push(k);
     }
     return { keys, total };
   }
-  if (typeof value === 'object' && value !== null) {
+  if ('object' === typeof value && value !== null) {
     const all = Object.keys(value);
     return { keys: all.slice(0, MAX_AVAILABLE_KEYS), total: all.length };
   }
@@ -95,7 +95,7 @@ export function selectPath(root: unknown, path: string): PathSelection {
     // `__proto__`, or `toString` reported found:true and returned a function from Object.prototype —
     // a state assertion on a typo'd path silently passed against a builtin instead of failing with
     // availableKeys. Only an OWN key is a real state path.
-    if (typeof current === 'object' && current !== null && Object.hasOwn(current, segment)) {
+    if ('object' === typeof current && current !== null && Object.hasOwn(current, segment)) {
       current = (current as Record<string, unknown>)[segment];
       continue;
     }
@@ -113,22 +113,22 @@ export function capDepth(value: unknown, maxDepth: number): unknown {
   if (maxDepth < 0) return value;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
   if (value instanceof Set) {
-    if (maxDepth === 0) return `[Set(${String(value.size)})]`;
+    if (0 === maxDepth) return `[Set(${String(value.size)})]`;
     return [...value].map((v) => capDepth(v, maxDepth - 1));
   }
   if (value instanceof Map) {
-    if (maxDepth === 0) return `{Map(${String(value.size)})}`;
+    if (0 === maxDepth) return `{Map(${String(value.size)})}`;
     const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
     for (const [k, v] of value) out[String(k)] = capDepth(v, maxDepth - 1);
     return out;
   }
   if (Array.isArray(value)) {
-    if (maxDepth === 0) return `[Array(${String(value.length)})]`;
+    if (0 === maxDepth) return `[Array(${String(value.length)})]`;
     return value.map((v) => capDepth(v, maxDepth - 1));
   }
-  if (typeof value === 'object' && value !== null) {
+  if ('object' === typeof value && value !== null) {
     const keys = Object.keys(value);
-    if (maxDepth === 0) return `{…${String(keys.length)} keys}`;
+    if (0 === maxDepth) return `{…${String(keys.length)} keys}`;
     // Null-proto target: a wire object can carry an own `__proto__` key (via JSON.parse), and
     // `out['__proto__'] = …` on a normal object writes the prototype slot instead of a key, losing
     // that key from the projection. A prototype-less target makes every key an ordinary assignment.

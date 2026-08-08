@@ -20,10 +20,10 @@ function safeArea(get: () => Storage): Storage | null {
 
 function readArea(storage: Storage | null): Record<string, string> {
   const out: Record<string, string> = {};
-  if (storage === null) return out;
+  if (null === storage) return out;
   for (let i = 0; i < storage.length; i += 1) {
     const key = storage.key(i);
-    if (key === null) continue;
+    if (null === key) continue;
     // Redact credential-bearing keys (token/session/password/…) so auth state never leaks verbatim.
     out[key] = isSensitiveKey(key) ? REDACTED_VALUE : (storage.getItem(key) ?? '');
   }
@@ -42,9 +42,9 @@ function readCookies(): Record<string, string> {
   }
   for (const part of raw.split(';')) {
     const eq = part.indexOf('=');
-    if (eq === -1) continue;
+    if (-1 === eq) continue;
     const key = part.slice(0, eq).trim();
-    if (key === '') continue;
+    if ('' === key) continue;
     if (isSensitiveKey(key)) {
       out[key] = REDACTED_VALUE;
       continue;
@@ -67,7 +67,7 @@ function readCookies(): Record<string, string> {
 export function readStorage(area?: string): StorageSnapshot | Record<string, string> {
   if (area === StorageArea.LOCAL) return readArea(safeArea(() => window.localStorage));
   if (area === StorageArea.SESSION) return readArea(safeArea(() => window.sessionStorage));
-  if (area === 'cookies') return readCookies();
+  if ('cookies' === area) return readCookies();
   return {
     local: readArea(safeArea(() => window.localStorage)),
     session: readArea(safeArea(() => window.sessionStorage)),
@@ -77,7 +77,7 @@ export function readStorage(area?: string): StorageSnapshot | Record<string, str
 
 /** Redact a value when its key is credential-bearing — the same rule the pull path applies. */
 function redactFor(key: string, value: string | null): string | undefined {
-  if (value === null) return undefined;
+  if (null === value) return undefined;
   return isSensitiveKey(key) ? REDACTED_VALUE : value;
 }
 
@@ -93,7 +93,7 @@ type ClearFn = (this: Storage) => void;
  * method access) and re-dispatched via `.call(this)`. Fully reversible; values redacted like the reads.
  */
 export function installStorage(emit: Emit): Teardown {
-  if (typeof Storage === 'undefined') return () => undefined;
+  if ('undefined' === typeof Storage) return () => undefined;
   const proto = Storage.prototype;
   const origSet = Object.getOwnPropertyDescriptor(proto, 'setItem')?.value as SetItemFn | undefined;
   const origRemove = Object.getOwnPropertyDescriptor(proto, 'removeItem')?.value as

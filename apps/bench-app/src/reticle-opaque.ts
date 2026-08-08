@@ -37,7 +37,7 @@ const STRIP_LEVEL2 = ['data-testid', 'role', 'aria-label', 'aria-labelledby'];
  */
 export function installNoSource(): void {
   const params = new URLSearchParams(window.location.search);
-  if (params.get(NO_SOURCE_PARAM) === null) return;
+  if (null === params.get(NO_SOURCE_PARAM)) return;
 
   const strip = (): void => {
     for (const el of document.querySelectorAll(`[${SOURCE_ATTR}]`)) {
@@ -55,8 +55,8 @@ export function installNoSource(): void {
 
 export function installOpaqueShell(): void {
   const level = new URLSearchParams(window.location.search).get(OPAQUE_PARAM);
-  if (level === null || level.length === 0) return;
-  const attrs = level === '2' ? STRIP_LEVEL2 : STRIP_LEVEL1;
+  if (null === level || 0 === level.length) return;
+  const attrs = '2' === level ? STRIP_LEVEL2 : STRIP_LEVEL1;
 
   const strip = (): void => {
     for (const attr of attrs) {

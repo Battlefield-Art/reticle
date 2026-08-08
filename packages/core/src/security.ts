@@ -4,13 +4,13 @@ const DANGEROUS_ACTION =
 /** True only for literal loopback hosts, never lookalike DNS names such as 127.example.com. */
 export function isLoopbackHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (normalized === 'localhost' || normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') {
+  if ('localhost' === normalized || '::1' === normalized || '0:0:0:0:0:0:0:1' === normalized) {
     return true;
   }
   const octets = normalized.split('.');
   return (
-    octets.length === 4 &&
-    octets[0] === '127' &&
+    4 === octets.length &&
+    '127' === octets[0] &&
     octets.every((octet) => {
       if (!/^\d{1,3}$/.test(octet)) return false;
       const value = Number(octet);

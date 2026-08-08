@@ -100,7 +100,7 @@ const isDisabled = (env: NodeJS.ProcessEnv, cwd: string = process.cwd()): boolea
   // contributor's first `reticle serve`. The repo marker is committed, so this guarantee travels.
   if (isReticleSourceCheckout(cwd)) return true;
   const dnt = env[Env.DO_NOT_TRACK];
-  return typeof dnt === 'string' && dnt !== '' && dnt !== '0';
+  return 'string' === typeof dnt && dnt !== '' && dnt !== '0';
 };
 
 /** Read (or mint-and-persist) the anonymous machine id. `firstRun` is true the run that created it. */
@@ -283,7 +283,7 @@ export const createTelemetry = (opts: {
     /* unreadable home dir — fall through; the env-var opt-outs above still apply */
   }
   const apiKey = env[Env.KEY] ?? POSTHOG_KEY;
-  if (apiKey === '') return NOOP; // no key baked in (dev/test build) — nowhere to send, stay silent
+  if ('' === apiKey) return NOOP; // no key baked in (dev/test build) — nowhere to send, stay silent
 
   const now = opts.now ?? (() => Date.now());
   const doFetch = opts.fetchImpl ?? fetch;
@@ -423,7 +423,7 @@ export const createTelemetry = (opts: {
       }
     }
     try {
-      if (extra?.detach === true && opts.fetchImpl === undefined) {
+      if (true === extra?.detach && opts.fetchImpl === undefined) {
         spawnDetached(process.execPath, ['-e', DETACHED_SEND_SCRIPT, url, body]);
         return false; // handed off, outcome unknowable from here
       }

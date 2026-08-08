@@ -70,7 +70,7 @@ describe('spawnDaemon with injectable deps', () => {
     const { deps, opened, closed } = makeDeps();
     spawnDaemon('node', 'script.mjs', [], 4001, deps);
 
-    const logEntry = opened.find((e) => e.flags === 'a');
+    const logEntry = opened.find((e) => 'a' === e.flags);
     expect(logEntry).toBeDefined();
     expect(closed).toContain(logEntry?.fd);
   });
@@ -79,7 +79,7 @@ describe('spawnDaemon with injectable deps', () => {
     const { deps, opened, closed } = makeDeps();
     spawnDaemon('node', 'script.mjs', [], 4002, deps);
 
-    const lockEntry = opened.find((e) => e.flags === 'wx');
+    const lockEntry = opened.find((e) => 'wx' === e.flags);
     expect(lockEntry).toBeDefined();
     expect(closed).toContain(lockEntry?.fd);
   });
@@ -90,7 +90,7 @@ describe('spawnDaemon with injectable deps', () => {
     const { deps, closed } = makeDeps({
       openFile: (path, flags) => {
         callCount += 1;
-        if (callCount === 2) throw new Error('disk full');
+        if (2 === callCount) throw new Error('disk full');
         const fd = openSync(path, flags);
         realOpened.push({ path, flags, fd });
         return fd;
@@ -115,8 +115,8 @@ describe('spawnDaemon with injectable deps', () => {
     const ok = spawnDaemon('node', 'script.mjs', [], 4004, deps);
 
     expect(ok).toBe(false);
-    const lockEntry = opened.find((e) => e.flags === 'wx');
-    const logEntry = opened.find((e) => e.flags === 'a');
+    const lockEntry = opened.find((e) => 'wx' === e.flags);
+    const logEntry = opened.find((e) => 'a' === e.flags);
     expect(lockEntry).toBeDefined();
     expect(logEntry).toBeDefined();
     expect(closed).toContain(lockEntry?.fd);
@@ -137,8 +137,8 @@ describe('spawnDaemon with injectable deps', () => {
     const ok = spawnDaemon('node', 'script.mjs', [], 4005, deps);
 
     expect(ok).toBe(false);
-    const lockEntry = opened.find((e) => e.flags === 'wx');
-    const logEntry = opened.find((e) => e.flags === 'a');
+    const lockEntry = opened.find((e) => 'wx' === e.flags);
+    const logEntry = opened.find((e) => 'a' === e.flags);
     expect(closed).toContain(lockEntry?.fd);
     expect(closed).toContain(logEntry?.fd);
     expect(existsSync(join(home, 'daemon-4005.pid'))).toBe(false);

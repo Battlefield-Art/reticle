@@ -49,9 +49,9 @@ function toPosix(path: string): string {
  */
 export function relativeToRoot(file: string): string {
   const root = (globalThis as Record<string, unknown>)[RETICLE_ROOT_GLOBAL];
-  if (typeof root !== 'string' || root.length === 0) return file;
+  if (typeof root !== 'string' || 0 === root.length) return file;
   const normalizedRoot = toPosix(root).replace(/\/+$/, '');
-  if (normalizedRoot.length === 0) return file;
+  if (0 === normalizedRoot.length) return file;
   const normalizedFile = toPosix(file);
   const prefix = `${normalizedRoot}/`;
   const matches =
@@ -107,12 +107,12 @@ function getFiber(el: Element): Fiber | null {
 
 /** Display name of a component type (function, forwardRef/memo object, or host string). */
 function componentName(type: unknown): string | null {
-  if (typeof type === 'function') {
+  if ('function' === typeof type) {
     const fn = type as { displayName?: string; name?: string };
     if (fn.displayName !== undefined && fn.displayName.length > 0) return fn.displayName;
     return fn.name !== undefined && fn.name.length > 0 ? fn.name : null;
   }
-  if (typeof type === 'object' && type !== null) {
+  if ('object' === typeof type && type !== null) {
     const obj = type as { displayName?: string };
     return obj.displayName !== undefined && obj.displayName.length > 0 ? obj.displayName : null;
   }
@@ -156,7 +156,7 @@ export function identify(el: Element): ComponentInfo | null {
 
   // Prefer the de-noised stack; fall back to the nearest raw name if filtering left nothing.
   const componentStack = stack.length > 0 ? stack : rawStack.slice(0, 1);
-  if (componentStack.length === 0 && source === undefined) return null;
+  if (0 === componentStack.length && source === undefined) return null;
   const info: ComponentInfo = { componentStack };
   if (source !== undefined) info.source = source;
   return info;
@@ -165,9 +165,9 @@ export function identify(el: Element): ComponentInfo | null {
 function sourceFromAttribute(el: Element): ComponentSource | undefined {
   const stamped = el.closest(`[${DATA_RETICLE_SOURCE_ATTR}]`);
   const raw = stamped?.getAttribute(DATA_RETICLE_SOURCE_ATTR);
-  if (raw === null || raw === undefined) return undefined;
+  if (null === raw || raw === undefined) return undefined;
   const match = /^(.*):(\d+):(\d+)$/.exec(raw);
-  if (match === null) return undefined;
+  if (null === match) return undefined;
   const [, file, line, column] = match;
   if (file === undefined || line === undefined || column === undefined) return undefined;
   return { file, line: Number(line), column: Number(column) };
@@ -179,7 +179,7 @@ function nearestComponentFiber(el: Element): Fiber | null {
   let depth = 0;
   while (fiber !== null && depth < MAX_DEPTH) {
     depth += 1;
-    if (typeof fiber.type === 'function' || typeof fiber.elementType === 'function') return fiber;
+    if ('function' === typeof fiber.type || 'function' === typeof fiber.elementType) return fiber;
     fiber = fiber.return;
   }
   return null;
@@ -192,10 +192,10 @@ function nearestComponentFiber(el: Element): Fiber | null {
  * serializing those un-guarded can cause hangs. Never throws.
  */
 function safeValue(value: unknown, depth: number, seen: WeakSet<object>): unknown {
-  if (value === null) return null;
+  if (null === value) return null;
   const t = typeof value;
-  if (t === 'string' || t === 'number' || t === 'boolean') return value;
-  if (t === 'undefined' || t === 'function' || t === 'symbol' || t === 'bigint') return null;
+  if ('string' === t || 'number' === t || 'boolean' === t) return value;
+  if ('undefined' === t || 'function' === t || 'symbol' === t || 'bigint' === t) return null;
   if (typeof Node !== 'undefined' && value instanceof Node) return DOM_NODE_MARKER;
   if (depth >= MAX_SERIALIZE_DEPTH) return null;
   const obj = value as object;
@@ -223,28 +223,28 @@ function safeValue(value: unknown, depth: number, seen: WeakSet<object>): unknow
  */
 /** Build a success result, omitting `component` when the name is unknown (exactOptional-safe). */
 function ok(name: string | null, hooks: unknown[]): ComponentStateResult {
-  return name === null ? { ok: true, hooks } : { ok: true, component: name, hooks };
+  return null === name ? { ok: true, hooks } : { ok: true, component: name, hooks };
 }
 
 export function readState(el: Element): ComponentStateResult {
   try {
     const fiber = nearestComponentFiber(el);
-    if (fiber === null) {
+    if (null === fiber) {
       return { ok: false, reason: ComponentStateReason.UNAVAILABLE };
     }
     const name = componentName(fiber.elementType ?? fiber.type);
     const head = fiber.memoizedState;
-    if (typeof head !== 'object' || head === null) {
+    if (typeof head !== 'object' || null === head) {
       return ok(name, []);
     }
     const hooks: unknown[] = [];
     const seen = new WeakSet<object>();
     let hook = head as Hook;
     let i = 0;
-    while (typeof hook === 'object' && i < MAX_HOOKS) {
+    while ('object' === typeof hook && i < MAX_HOOKS) {
       hooks.push(safeValue(hook.memoizedState, 0, seen));
       const next = hook.next;
-      if (next === null || typeof next !== 'object') break;
+      if (null === next || typeof next !== 'object') break;
       hook = next;
       i += 1;
     }
@@ -269,9 +269,9 @@ const HOVER_HANDLER_KEYS = [
 export function hasHoverHandlers(el: Element): boolean {
   const fiber = getFiber(el);
   const props = fiber?.memoizedProps;
-  if (typeof props !== 'object' || props === null) return false;
+  if (typeof props !== 'object' || null === props) return false;
   const p = props as Record<string, unknown>;
-  return HOVER_HANDLER_KEYS.some((k) => typeof p[k] === 'function');
+  return HOVER_HANDLER_KEYS.some((k) => 'function' === typeof p[k]);
 }
 
 import { installRenderMeter } from './render-meter.js';

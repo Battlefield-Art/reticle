@@ -70,7 +70,7 @@ function sweep(): void {
   }
   while (roots.size > MAX_TRACKED_ROOTS) {
     const oldest = roots.values().next();
-    if (oldest.done === true) break;
+    if (true === oldest.done) break;
     roots.delete(oldest.value);
   }
 }
@@ -152,7 +152,7 @@ export function installShadowRegistry(): () => void {
   const sweep = (node: ParentNode): void => {
     for (const el of node.querySelectorAll('*')) {
       const root = el.shadowRoot;
-      if (root === null) continue;
+      if (null === root) continue;
       record(root, el); // idempotent — a root the patch already caught is skipped inside
 
       sweep(root);

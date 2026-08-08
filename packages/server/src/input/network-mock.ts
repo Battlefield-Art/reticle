@@ -51,7 +51,7 @@ export function matchMock(rules: MockRule[], req: { url: string; method: string 
     if (!req.url.includes(rule.urlContains)) continue;
     if (rule.method !== undefined && rule.method.toUpperCase() !== req.method.toUpperCase())
       continue;
-    if (rule.abort === true) return { kind: 'abort' };
+    if (true === rule.abort) return { kind: 'abort' };
     const outcome: MockOutcome = {
       kind: 'fulfill',
       status: rule.status ?? DEFAULT_STATUS,
@@ -70,11 +70,11 @@ export async function applyOutcome(
   outcome: MockOutcome,
   sleep: (ms: number) => Promise<void>,
 ): Promise<void> {
-  if (outcome.kind === 'continue') {
+  if ('continue' === outcome.kind) {
     await route.continue();
     return;
   }
-  if (outcome.kind === 'abort') {
+  if ('abort' === outcome.kind) {
     await route.abort('failed');
     return;
   }
@@ -99,7 +99,7 @@ export async function installNetworkMocks(
   sleep: (ms: number) => Promise<void> = realSleep,
 ): Promise<void> {
   await page.unroute('**/*').catch(() => undefined);
-  if (rules.length === 0) return;
+  if (0 === rules.length) return;
   await page.route('**/*', (route) => {
     const req = route.request();
     const outcome = matchMock(rules, { url: req.url(), method: req.method() });

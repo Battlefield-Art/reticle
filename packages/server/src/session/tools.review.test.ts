@@ -123,7 +123,7 @@ describe('reticle_review tool — human marks ingested from HUMAN_MARK events', 
 
     const narrate = sends
       .map((s) => JSON.parse(s) as { name: string; args: { text: string } })
-      .find((m) => m.name === 'narrate');
+      .find((m) => 'narrate' === m.name);
     expect(narrate).toBeDefined();
     expect(narrate?.args.text).toContain('button misaligned');
     expect(narrate?.args.text).toContain('fixed');

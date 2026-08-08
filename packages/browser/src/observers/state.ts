@@ -15,7 +15,7 @@ interface StateChange {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return 'object' === typeof value && value !== null && !Array.isArray(value);
 }
 
 /**

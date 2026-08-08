@@ -45,7 +45,7 @@ export function exercisedCount(
   // a re-render — matching only the full label meant a control with a testid but no accessible name
   // was never recognised, and coverage read `exercised: 0` after real work.
   const droveLabel = (label: string): boolean => {
-    if (label.length === 0) return false;
+    if (0 === label.length) return false;
     if (actedLabels.has(label)) return true;
     for (const acted of actedLabels) {
       if (acted.length > 0 && !acted.includes('"') && label.includes(acted)) return true;
@@ -62,7 +62,7 @@ export function exercisedCount(
     controls.filter((control) => droveLabel(control.label)).map((control) => control.label),
   );
   const droveGone = [...actedRefs].filter(
-    (ref) => !presentRefs.has(ref) && explainedByLabel.size === 0,
+    (ref) => !presentRefs.has(ref) && 0 === explainedByLabel.size,
   ).length;
   return { exercised: controls.length - untouched.length, droveGone, untouched };
 }

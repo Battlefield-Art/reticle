@@ -24,7 +24,7 @@ const MAX_LISTED = 12;
  * not presence, and "you asked for X; X is present" reads as a contradiction rather than a hint.
  */
 export function describeTestidMiss(wanted: string, present: readonly string[]): string | undefined {
-  if (present.length === 0) return undefined;
+  if (0 === present.length) return undefined;
   if (present.includes(wanted)) return '';
   const shown = present.slice(0, MAX_LISTED);
   const rest = present.length - shown.length;

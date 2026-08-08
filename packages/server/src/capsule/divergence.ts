@@ -33,7 +33,7 @@ function satisfies(link: ExpectedLink, events: readonly ReticleEvent[]): boolean
     case 'net':
       return net(events).some(
         (e) =>
-          typeof e.data['url'] === 'string' &&
+          'string' === typeof e.data['url'] &&
           e.data['url'].includes(link.urlContains) &&
           (link.status === undefined || e.data['status'] === link.status),
       );
@@ -42,14 +42,14 @@ function satisfies(link: ExpectedLink, events: readonly ReticleEvent[]): boolean
 
 /** Describe what WAS observed for a link that failed — the closest attempt, for a side-by-side. */
 function observedFor(link: ExpectedLink, events: readonly ReticleEvent[]): string {
-  if (link.kind === 'net') {
+  if ('net' === link.kind) {
     const match = net(events).find(
-      (e) => typeof e.data['url'] === 'string' && e.data['url'].includes(link.urlContains),
+      (e) => 'string' === typeof e.data['url'] && e.data['url'].includes(link.urlContains),
     );
     if (match === undefined) return `no request to ${link.urlContains}`;
     return `${link.urlContains} responded ${String(match.data['status'])} (expected ${String(link.status)})`;
   }
-  if (link.kind === 'signal') return `signal "${link.name}" never fired`;
+  if ('signal' === link.kind) return `signal "${link.name}" never fired`;
   return `state "${link.name}" never changed`;
 }
 

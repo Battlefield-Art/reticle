@@ -26,7 +26,7 @@ interface BufferEnvelope {
  */
 export function bufferEnvelope(session: Session): BufferEnvelope {
   const { total, dropped } = session.bufferHealth();
-  if (dropped === 0) return {};
+  if (0 === dropped) return {};
   return { buffer: { held: total, dropped, note: BUFFER_EVICTION_WARNING } };
 }
 
@@ -56,7 +56,7 @@ export function healthEnvelope(session: Session): HealthEnvelope {
  * warn-only so background testing never breaks.
  */
 export function refuseIfThrottled(session: Session, refuse: unknown): void {
-  if (refuse === true && session.throttled()) {
+  if (true === refuse && session.throttled()) {
     throw new Error(`refusing to act: ${THROTTLED_WARNING}`);
   }
 }
@@ -77,9 +77,9 @@ export interface HealthReport {
  */
 export function readHealthEvent(data: Record<string, unknown>): HealthReport {
   return {
-    hidden: typeof data['hidden'] === 'boolean' ? data['hidden'] : undefined,
-    focused: typeof data['focused'] === 'boolean' ? data['focused'] : undefined,
-    runtime: typeof data['runtime'] === 'string' ? data['runtime'] : undefined,
-    engine: typeof data['engine'] === 'string' ? data['engine'] : undefined,
+    hidden: 'boolean' === typeof data['hidden'] ? data['hidden'] : undefined,
+    focused: 'boolean' === typeof data['focused'] ? data['focused'] : undefined,
+    runtime: 'string' === typeof data['runtime'] ? data['runtime'] : undefined,
+    engine: 'string' === typeof data['engine'] ? data['engine'] : undefined,
   };
 }

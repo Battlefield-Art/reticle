@@ -186,7 +186,7 @@ const RAW_TOOLS: ToolDef[] = [
               sessionId: resolved.id,
               scope: asString(args['scope']) ?? '',
               mode,
-              diff: args['diff'] === true,
+              diff: true === args['diff'],
             },
             SNAPSHOT_CACHE,
           ),
@@ -351,7 +351,7 @@ const RAW_TOOLS: ToolDef[] = [
         attrs: args['attrs'],
       }).then((result) =>
         withSizeCost(
-          paginateQueryResult(result, asNumber(args['limit']), args['count_only'] === true),
+          paginateQueryResult(result, asNumber(args['limit']), true === args['count_only']),
         ),
       );
     },

@@ -15,9 +15,9 @@ import type { Session, SessionManager } from '../session/session.js';
 function depsWith(opts: { matched?: boolean; events?: ReticleEvent[] }): ToolDeps {
   const matchResult = {
     matched: opts.matched ?? false,
-    count: opts.matched === true ? 1 : 0,
+    count: true === opts.matched ? 1 : 0,
     elements:
-      opts.matched === true
+      true === opts.matched
         ? [{ ref: 'e1', role: 'button', name: 'X', states: [], visible: true }]
         : [],
   };

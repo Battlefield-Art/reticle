@@ -111,13 +111,13 @@ export function anchorFor(el: Element): { anchor: FlowAnchor; degraded: boolean 
 
 function isTextbox(el: Element): el is HTMLInputElement | HTMLTextAreaElement {
   if (el instanceof HTMLTextAreaElement) return true;
-  return el instanceof HTMLInputElement && inputRole(el) === 'textbox';
+  return el instanceof HTMLInputElement && 'textbox' === inputRole(el);
 }
 
 function inputRole(el: HTMLInputElement): 'textbox' | 'checkbox' | 'radio' | 'other' {
   const type = el.type.toLowerCase();
-  if (type === 'checkbox') return 'checkbox';
-  if (type === 'radio') return 'radio';
+  if ('checkbox' === type) return 'checkbox';
+  if ('radio' === type) return 'radio';
   if (['text', 'email', 'tel', 'url', 'search', 'password', ''].includes(type)) return 'textbox';
   return 'other';
 }
@@ -219,7 +219,7 @@ class Recorder implements RecorderHandle {
 
   mount(): void {
     if (this.#root !== undefined) return;
-    if (typeof document === 'undefined') return;
+    if ('undefined' === typeof document) return;
     this.#buildToolbar();
     this.#installCapture();
   }
@@ -278,7 +278,7 @@ class Recorder implements RecorderHandle {
     // side effect twice (analytics, dependent-field resets), so skip the duplicate.
     if (
       (target instanceof HTMLInputElement &&
-        (inputRole(target) === 'checkbox' || inputRole(target) === 'radio')) ||
+        ('checkbox' === inputRole(target) || 'radio' === inputRole(target))) ||
       target instanceof HTMLSelectElement
     ) {
       return;
@@ -299,12 +299,12 @@ class Recorder implements RecorderHandle {
     if (this.#phase !== RecorderPhase.RECORDING) return;
     const target = this.#ignore(ev);
     if (target === undefined) return;
-    if (target instanceof HTMLInputElement && inputRole(target) === 'checkbox') {
+    if (target instanceof HTMLInputElement && 'checkbox' === inputRole(target)) {
       this.#flushPendingFill();
       this.#steps.push(buildStep(target, target.checked ? ActionType.CHECK : ActionType.UNCHECK));
       return;
     }
-    if (target instanceof HTMLInputElement && inputRole(target) === 'radio') {
+    if (target instanceof HTMLInputElement && 'radio' === inputRole(target)) {
       this.#flushPendingFill();
       this.#steps.push(buildStep(target, ActionType.CHECK));
       return;
@@ -384,7 +384,7 @@ class Recorder implements RecorderHandle {
   #start(): void {
     // A fresh span — no leakage from a previous Record→Stop cycle.
     this.#steps = [];
-    this.#startPath = typeof location === 'undefined' ? undefined : location.pathname;
+    this.#startPath = 'undefined' === typeof location ? undefined : location.pathname;
     this.#annotations = [];
     this.#pendingFill = undefined;
     this.#draft = undefined;
@@ -403,7 +403,7 @@ class Recorder implements RecorderHandle {
       this.#startPath,
     );
     this.#deps.emit(EventType.FLOW_RECORDED, { name, flow });
-    this.#setStatus(this.#steps.length === 0 ? RECORDER_EMPTY_MSG : STATUS_IDLE);
+    this.#setStatus(0 === this.#steps.length ? RECORDER_EMPTY_MSG : STATUS_IDLE);
     this.#setPhase(RecorderPhase.IDLE);
     this.#closeMenu();
   }

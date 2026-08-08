@@ -59,7 +59,7 @@ export function pinnedPackages(
   packages: readonly string[],
   version: string | undefined,
 ): readonly string[] {
-  if (version === undefined || version.length === 0) return packages;
+  if (version === undefined || 0 === version.length) return packages;
   return packages.map((p) => `${p}@${version}`);
 }
 
@@ -336,7 +336,7 @@ const SLASH_COMMAND_TITLE = 'The /reticle command';
  * our signature is left exactly as it is.
  */
 function commandIsSettled(content: string | null | undefined): boolean {
-  if (content === null || content === undefined) return false;
+  if (null === content || content === undefined) return false;
   return content === SLASH_COMMAND_BODY || !content.includes(SLASH_COMMAND_SIGNATURE);
 }
 
@@ -356,7 +356,7 @@ function slashCommandSteps(input: PlanInput): Step[] {
     },
     {
       path: CURSOR_COMMAND_PATH,
-      when: input.cursorProjectPresent === true || (input.cursorPresent && !input.claudeCli),
+      when: true === input.cursorProjectPresent || (input.cursorPresent && !input.claudeCli),
       exists: commandIsSettled(input.cursorCommandContent),
     },
   ];
@@ -529,7 +529,7 @@ function installStep(input: PlanInput): Step {
 }
 
 function reticleConfigStep(input: PlanInput): Step {
-  if (input.reticleConfigExists === true) {
+  if (true === input.reticleConfigExists) {
     return {
       title: 'Reticle config',
       target: RETICLE_CONFIG_FILE,

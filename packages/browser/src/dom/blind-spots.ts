@@ -14,7 +14,7 @@ export function classifyCrossOriginFrames(
 
 /** Probe the live document: count iframes whose document is unreachable (cross-origin). */
 export function countCrossOriginFrames(): number {
-  if (typeof document === 'undefined') return 0;
+  if ('undefined' === typeof document) return 0;
   const frames: Array<{ sameOrigin: boolean; hasSrc: boolean }> = [];
   for (const frame of document.querySelectorAll('iframe')) {
     const hasSrc = frame.getAttribute('src') !== null && frame.getAttribute('src') !== '';

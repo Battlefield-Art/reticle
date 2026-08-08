@@ -70,7 +70,7 @@ describe('every tool speaks the whole synonym group, not half of it', () => {
         if (group.except?.[tool.name] !== undefined) continue;
         const keys = new Set(Object.keys(tool.inputSchema));
         const present = group.names.filter((name) => keys.has(name));
-        if (present.length === 0) continue;
+        if (0 === present.length) continue;
         const missing = group.names.filter((name) => !keys.has(name));
         if (missing.length > 0) {
           offenders.push(
@@ -110,7 +110,7 @@ describe('every tool speaks the whole synonym group, not half of it', () => {
  * stay callable on reticle_query.
  */
 describe('reticle_query keeps accepting the predicate spelling', () => {
-  const query = TOOLS.find((t) => t.name === 'reticle_query');
+  const query = TOOLS.find((t) => 'reticle_query' === t.name);
 
   it.each(['testid', 'text', 'role'])('accepts { %s }', (field) => {
     expect(query, 'reticle_query is not on the surface').toBeDefined();

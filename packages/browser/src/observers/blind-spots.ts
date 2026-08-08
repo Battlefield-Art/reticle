@@ -49,9 +49,9 @@ export function countClosedShadowRoots(): number {
  */
 export function isCrossOriginFrame(frame: HTMLIFrameElement): boolean {
   const src = frame.getAttribute('src');
-  if (src === null || src.length === 0) return false;
+  if (null === src || 0 === src.length) return false;
   try {
-    return frame.contentDocument === null;
+    return null === frame.contentDocument;
   } catch {
     return true; // SecurityError on access is itself proof of cross-origin
   }

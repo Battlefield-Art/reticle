@@ -84,9 +84,9 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolProfileOrig
     },
     handler: (_deps: ToolDeps, args: Record<string, unknown>) => {
       const names = Array.isArray(args['names'])
-        ? (args['names'] as unknown[]).filter((n): n is string => typeof n === 'string')
+        ? (args['names'] as unknown[]).filter((n): n is string => 'string' === typeof n)
         : undefined;
-      if (names === undefined || names.length === 0) {
+      if (names === undefined || 0 === names.length) {
         return Promise.resolve({
           tools: allTools.map((t) => ({ name: t.name, summary: firstSentence(t.description) })),
           ...profileBlock,
@@ -113,9 +113,9 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolProfileOrig
       args: z.record(z.unknown()).optional().describe('Arguments object for that tool.'),
     },
     handler: async (deps: ToolDeps, args: Record<string, unknown>) => {
-      const name = typeof args['tool'] === 'string' ? args['tool'] : '';
+      const name = 'string' === typeof args['tool'] ? args['tool'] : '';
       const callArgs =
-        typeof args['args'] === 'object' && args['args'] !== null
+        'object' === typeof args['args'] && args['args'] !== null
           ? (args['args'] as Record<string, unknown>)
           : {};
       const target = byName.get(name);
@@ -144,7 +144,7 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolProfileOrig
       const unknown = Object.keys(callArgs).filter((key) => !declared.has(key));
       if (unknown.length > 0) {
         return {
-          error: `unknown ${unknown.length === 1 ? 'parameter' : 'parameters'} for ${name}: ${unknown.join(', ')} — NOT applied, so any result would be an answer to a different question`,
+          error: `unknown ${1 === unknown.length ? 'parameter' : 'parameters'} for ${name}: ${unknown.join(', ')} — NOT applied, so any result would be an answer to a different question`,
           tool: name,
           params: paramInfo(target.inputSchema),
           ...(target.example === undefined ? {} : { example: target.example }),

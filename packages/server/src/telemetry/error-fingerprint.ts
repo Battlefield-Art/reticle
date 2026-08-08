@@ -55,7 +55,7 @@ export function reticleFrames(stack: string): string[] {
   for (const line of stack.split('\n')) {
     if (!/@reticlehq[/\\]|[/\\]reticle[/\\]dist[/\\]/.test(line)) continue;
     const location = line.match(/([\w.-]+\.(?:js|mjs|cjs|ts)):(\d+)/);
-    if (location === null) continue;
+    if (null === location) continue;
     // `at Object.runTool (/path/to/invoke-tool.js:88:3)` → `runTool`. The function name is half the
     // value of a frame in an RCA — "it died in act-tools.js" narrows to a file, "it died in
     // resolveAnchor" names the thing that broke. Anonymous frames just report the location.
@@ -63,7 +63,7 @@ export function reticleFrames(stack: string): string[] {
     const where = `${location[1] ?? ''}:${location[2] ?? ''}`;
     // `Object.` / `Module.` prefixes are V8 noise that make the same function look like two.
     const name = fn?.replace(/^(?:Object|Module|Function)\./, '');
-    frames.push(name === undefined || name === '' ? where : `${name}@${where}`);
+    frames.push(name === undefined || '' === name ? where : `${name}@${where}`);
   }
   return frames;
 }

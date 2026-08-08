@@ -78,7 +78,7 @@ async function connect(sessionId: string): Promise<{ bridge: Bridge; client: Pan
   const client = new PanelClient(port, sessionId);
   clients.push(client);
   await client.open();
-  await waitUntil(() => bridge.sessions.count() === 1);
+  await waitUntil(() => 1 === bridge.sessions.count());
   return { bridge, client };
 }
 
@@ -88,7 +88,7 @@ describe('replay-from-panel wiring (bridge)', () => {
     const calls: { sessionId: string; flowName: string }[] = [];
     bridge.attachReplay((sessionId, flowName) => calls.push({ sessionId, flowName }));
     client.emitControl({ kind: HumanControlKind.REPLAY, text: 'checkout' });
-    await waitUntil(() => calls.length === 1);
+    await waitUntil(() => 1 === calls.length);
     expect(calls[0]?.flowName).toBe('checkout');
     expect(calls[0]?.sessionId).toBe('panel');
   });
@@ -111,7 +111,7 @@ describe('replay-from-panel wiring (bridge)', () => {
     const client = new PanelClient(port, 'ready-tab');
     clients.push(client);
     await client.open();
-    await waitUntil(() => seen.length === 1);
+    await waitUntil(() => 1 === seen.length);
     expect(seen[0]).toBe('ready-tab');
   });
 });

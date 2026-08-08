@@ -35,9 +35,9 @@ export function craImportPatch(source: string): string | null {
 
 /** Set the token variable, or null when nothing needs to change. */
 export function craEnvPatch(existing: string | null, token: string): string | null {
-  if (token === '') return null;
+  if ('' === token) return null;
   const line = `${TOKEN_VAR}=${token}`;
-  if (existing === null || existing.trim() === '') return `${line}\n`;
+  if (null === existing || '' === existing.trim()) return `${line}\n`;
   if (existing.includes(line)) return null;
   // Replace rather than append: two assignments of one variable is a silent coin flip on which wins.
   if (new RegExp(`^${TOKEN_VAR}=`, 'm').test(existing)) {

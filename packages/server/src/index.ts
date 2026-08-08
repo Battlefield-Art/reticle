@@ -233,7 +233,7 @@ function createBrowserPool(headless: boolean): BrowserPool {
   const maxContexts = resolveMaxContexts(process.env[ReticleEnv.MAX_CONTEXTS], cpus().length);
   const genSessionId = (): string =>
     `lease-${
-      typeof globalThis.crypto?.randomUUID === 'function'
+      'function' === typeof globalThis.crypto?.randomUUID
         ? globalThis.crypto.randomUUID()
         : String(Date.now())
     }`;
@@ -523,7 +523,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   // driving the same flow-replay machinery the agent uses — no MCP stdio, no human. Each verdict is
   // persisted via RunStore. Localhost-bound + token-guarded. Off unless `reticle serve --http`.
   let verifyHttp: { server: Server; port: number } | undefined;
-  if (options.httpVerify === true) {
+  if (true === options.httpVerify) {
     const runStore = new RunStore(fs, reticleRoot);
     const runner = new ReticleRunner(createRunnerPort(effectiveDeps));
     const token = options.httpVerifyToken ?? process.env[ReticleEnv.VERIFY_TOKEN] ?? '';

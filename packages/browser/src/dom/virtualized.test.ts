@@ -27,7 +27,7 @@ describe('rows a container reserved space for but never rendered', () => {
     document.body.innerHTML = '<div id="v"><div id="spacer"></div></div>';
     const view = document.querySelector<HTMLElement>('#v');
     const spacer = document.querySelector<HTMLElement>('#spacer');
-    if (view === null || spacer === null) throw new Error('fixture');
+    if (null === view || null === spacer) throw new Error('fixture');
     scroller(view, 1700, 560);
     box(spacer, 0, 1700);
     for (let i = 0; i < 29; i += 1) {
@@ -44,7 +44,7 @@ describe('rows a container reserved space for but never rendered', () => {
     // its rows still span the whole area, so nothing is reserved-and-empty.
     document.body.innerHTML = '<div id="v"></div>';
     const view = document.querySelector<HTMLElement>('#v');
-    if (view === null) throw new Error('fixture');
+    if (null === view) throw new Error('fixture');
     scroller(view, 1000, 400);
     for (let i = 0; i < 20; i += 1) {
       const row = document.createElement('div');
@@ -57,7 +57,7 @@ describe('rows a container reserved space for but never rendered', () => {
   it('reports ZERO for a container that does not scroll', () => {
     document.body.innerHTML = '<div id="v"><div></div><div></div></div>';
     const view = document.querySelector<HTMLElement>('#v');
-    if (view === null) throw new Error('fixture');
+    if (null === view) throw new Error('fixture');
     scroller(view, 300, 300);
     expect(unmountedRowsIn(view)).toBe(0);
   });
@@ -66,7 +66,7 @@ describe('rows a container reserved space for but never rendered', () => {
     document.body.innerHTML = '<div id="v"><div id="spacer"></div></div>';
     const view = document.querySelector<HTMLElement>('#v');
     const spacer = document.querySelector<HTMLElement>('#spacer');
-    if (view === null || spacer === null) throw new Error('fixture');
+    if (null === view || null === spacer) throw new Error('fixture');
     scroller(view, 3400, 560);
     box(spacer, 0, 3400);
     for (let i = 0; i < 20; i += 1) {

@@ -39,7 +39,7 @@ export class LiveControl {
   /** Queue a human note. Empty/whitespace-only text is ignored so a stray enter cannot spam the agent. */
   push(text: string, t: number): void {
     const trimmed = text.trim();
-    if (trimmed.length === 0) return;
+    if (0 === trimmed.length) return;
     this.#inbox.push({ text: trimmed, t });
   }
 

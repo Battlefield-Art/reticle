@@ -34,7 +34,7 @@ describe('resolveMarkAnchor', () => {
   it('reads source from the nearest ancestor that carries the stamp', () => {
     const root = render('<div data-reticle-source="src/Card.tsx:10:0"><span>x</span></div>');
     const child = root.querySelector('span');
-    if (child === null) throw new Error('no child');
+    if (null === child) throw new Error('no child');
     expect(resolveMarkAnchor(child).source).toEqual({ file: 'src/Card.tsx', line: 10 });
   });
 
@@ -43,7 +43,7 @@ describe('resolveMarkAnchor', () => {
       name: 'mark-test-component',
       identify: (el: Element): ComponentInfo | null => {
         const owner = el.closest('[data-mark-comp]')?.getAttribute('data-mark-comp');
-        return owner === null || owner === undefined
+        return null === owner || owner === undefined
           ? null
           : { componentStack: [owner], source: { file: 'src/Checkout.tsx', line: 42, column: 8 } };
       },

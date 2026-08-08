@@ -77,8 +77,8 @@ export function buildSessionInfo(session: SessionView): SessionInfo {
   const marks = session.pendingMarkCount();
   if (marks > 0) {
     base.pendingMarks = marks;
-    const s = marks === 1 ? '' : 's';
-    base.review_suggestion = `The human flagged ${String(marks)} issue${s} on this tab — call reticle_session{action:"review"} to see and fix ${marks === 1 ? 'it' : 'them'}.`;
+    const s = 1 === marks ? '' : 's';
+    base.review_suggestion = `The human flagged ${String(marks)} issue${s} on this tab — call reticle_session{action:"review"} to see and fix ${1 === marks ? 'it' : 'them'}.`;
   }
   return base;
 }

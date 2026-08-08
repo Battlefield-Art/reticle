@@ -92,7 +92,7 @@ describe('presenter-controls / live-control panel', () => {
   it('5 send with text emits message, appends 🧑 row, clears input', () => {
     const { onControl } = mount();
     const i = input();
-    if (i === null) throw new Error('no input');
+    if (null === i) throw new Error('no input');
     i.value = 'try the dark theme';
     i.dispatchEvent(new Event('input', { bubbles: true }));
     click(sendBtn());
@@ -100,14 +100,14 @@ describe('presenter-controls / live-control panel', () => {
       kind: HumanControlKind.MESSAGE,
       text: 'try the dark theme',
     });
-    expect(logTexts().some((t) => t === '🧑 you: try the dark theme')).toBe(true);
+    expect(logTexts().some((t) => '🧑 you: try the dark theme' === t)).toBe(true);
     expect(i.value).toBe('');
   });
 
   it('6 Enter key in input sends', () => {
     const { onControl } = mount();
     const i = input();
-    if (i === null) throw new Error('no input');
+    if (null === i) throw new Error('no input');
     i.value = 'press enter';
     i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(onControl).toHaveBeenCalledWith({
@@ -128,7 +128,7 @@ describe('presenter-controls / live-control panel', () => {
   it('8 send with whitespace-only emits nothing and appends no 🧑 row', () => {
     const { onControl } = mount();
     const i = input();
-    if (i === null) throw new Error('no input');
+    if (null === i) throw new Error('no input');
     i.value = '   ';
     click(sendBtn());
     expect(onControl).not.toHaveBeenCalled();
@@ -321,7 +321,7 @@ describe('presenter-controls / live-control panel', () => {
   it('17 human log text never leaks to snapshot', () => {
     mount();
     const i = input();
-    if (i === null) throw new Error('no input');
+    if (null === i) throw new Error('no input');
     i.value = 'secret guidance text';
     click(sendBtn());
     const snap = buildSnapshot({ mode: 'full' });

@@ -13,9 +13,9 @@ import { asNumber, asRecord, asString } from './tools-helpers.js';
 
 /** The strongest consequence grade a set of expected links proves (signal > net > state > presence). */
 export function gradeOf(links: readonly ExpectedLink[]): HonestyGrade {
-  if (links.some((l) => l.kind === 'signal')) return HonestyGrade.SIGNAL;
-  if (links.some((l) => l.kind === 'net')) return HonestyGrade.NET;
-  if (links.some((l) => l.kind === 'state')) return HonestyGrade.STATE;
+  if (links.some((l) => 'signal' === l.kind)) return HonestyGrade.SIGNAL;
+  if (links.some((l) => 'net' === l.kind)) return HonestyGrade.NET;
+  if (links.some((l) => 'state' === l.kind)) return HonestyGrade.STATE;
   return HonestyGrade.PRESENCE;
 }
 

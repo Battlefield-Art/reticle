@@ -48,7 +48,7 @@ function parseJson(text: string | undefined): Record<string, unknown> | undefine
   if (text === undefined) return undefined;
   try {
     const parsed: unknown = JSON.parse(text);
-    return typeof parsed === 'object' && parsed !== null
+    return 'object' === typeof parsed && parsed !== null
       ? (parsed as Record<string, unknown>)
       : undefined;
   } catch {
@@ -57,7 +57,7 @@ function parseJson(text: string | undefined): Record<string, unknown> | undefine
 }
 
 function record(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  return 'object' === typeof value && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 /**
@@ -92,7 +92,7 @@ function diagnoseTauri(read: ReadFile, port: number): DesktopDiagnosis[] {
   const conf = parseJson(read(TAURI_CONF));
   if (conf === undefined) return [];
   const security = record(record(conf['app'])['security']);
-  const csp = typeof security['csp'] === 'string' ? security['csp'] : undefined;
+  const csp = 'string' === typeof security['csp'] ? security['csp'] : undefined;
   const findings: DesktopDiagnosis[] = [];
 
   if (!cspAllowsBridge(csp, port)) {
@@ -223,6 +223,6 @@ export function diagnoseDesktop(read: ReadFile, port: number): DesktopDiagnosis[
   if (pkg === undefined) return [];
   const deps = { ...record(pkg['dependencies']), ...record(pkg['devDependencies']) };
   if (deps['electron'] === undefined) return [];
-  const main = typeof pkg['main'] === 'string' ? pkg['main'] : undefined;
+  const main = 'string' === typeof pkg['main'] ? pkg['main'] : undefined;
   return main === undefined ? [] : diagnoseElectron(read, main);
 }

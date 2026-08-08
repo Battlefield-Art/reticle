@@ -37,7 +37,7 @@ export function stddev(stats: MetricStats): number {
 /** How many stddevs above the mean `x` sits (0 when there's no spread yet). */
 export function zScore(stats: MetricStats, x: number): number {
   const sd = stddev(stats);
-  return sd === 0 ? 0 : (x - stats.mean) / sd;
+  return 0 === sd ? 0 : (x - stats.mean) / sd;
 }
 
 /** The metrics an envelope tracks per route. */

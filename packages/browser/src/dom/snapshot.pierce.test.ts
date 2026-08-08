@@ -46,7 +46,7 @@ describe('snapshot pierces what query can reach', () => {
     const frame = document.createElement('iframe');
     document.body.appendChild(frame);
     const doc = frame.contentDocument;
-    if (doc === null) throw new Error('jsdom gave no frame document');
+    if (null === doc) throw new Error('jsdom gave no frame document');
     doc.body.innerHTML = '<button>Escalate</button>';
     expect(buildSnapshot().tree).toContain('Escalate');
   });

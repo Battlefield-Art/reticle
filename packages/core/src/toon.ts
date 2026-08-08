@@ -83,8 +83,8 @@ function abbreviateRole(role: string): string {
 
 function encodeStates(states: string[], visible?: boolean): string {
   const flags: string[] = [];
-  if (visible === true) flags.push('vis');
-  else if (visible === false) flags.push('hid');
+  if (true === visible) flags.push('vis');
+  else if (false === visible) flags.push('hid');
   for (const s of states) {
     switch (s) {
       case 'visible':
@@ -122,8 +122,8 @@ function encodeStates(states: string[], visible?: boolean): string {
 /** Coerce a wire field to a string. resultToToon receives UNVALIDATED wire data cast to ToonElement,
  * so a missing/numeric `name` must not make `.replace` throw and lose the whole encode. */
 function toText(v: unknown): string {
-  if (typeof v === 'string') return v;
-  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
+  if ('string' === typeof v) return v;
+  if ('number' === typeof v || 'boolean' === typeof v || 'bigint' === typeof v) return String(v);
   return ''; // undefined / null / object / symbol have no representable text on a wire field
 }
 
@@ -141,7 +141,7 @@ function encodeLine(el: ToonElement, depth: number): string {
   const states = encodeStates(Array.isArray(el.states) ? el.states : [], el.visible);
   const ref = toText(el.ref) || '?';
   const parts: string[] = [indent + type, ref, encodeName(el.name), ...(states ? [states] : [])];
-  if (typeof el.value === 'string' && el.value.length > 0)
+  if ('string' === typeof el.value && el.value.length > 0)
     parts.push(`val=${encodeValue(el.value)}`);
   if (el.childCount !== undefined) parts.push(`count=${String(el.childCount)}`);
   return parts.join(' ');
@@ -165,7 +165,7 @@ function encodeTree(elements: ToonElement[], depth = 0): string {
 
 /** Encode an array of ElementDescriptor-shaped objects to TOON text. */
 export function toToon(elements: ToonElement[]): string {
-  if (elements.length === 0) return '# TOON v1 — empty';
+  if (0 === elements.length) return '# TOON v1 — empty';
   return `# TOON v1\n${encodeTree(elements)}`;
 }
 
@@ -179,7 +179,7 @@ export function resultToToon(result: Record<string, unknown>): string {
 /** Whether a tool result object should be encoded as TOON (has an elements array). */
 export function isToonable(result: unknown): boolean {
   return (
-    typeof result === 'object' &&
+    'object' === typeof result &&
     result !== null &&
     !Array.isArray(result) &&
     Array.isArray((result as Record<string, unknown>)['elements'])

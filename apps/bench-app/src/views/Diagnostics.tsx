@@ -35,7 +35,7 @@ const FAULTS: FaultDef[] = [
 ];
 
 const statusTone = (s: number | 'ERR'): string =>
-  s === 'ERR'
+  'ERR' === s
     ? 'var(--danger)'
     : s >= 500
       ? 'var(--danger)'
@@ -142,7 +142,7 @@ export function Diagnostics(): React.ReactElement {
           </span>
         </div>
         <div data-testid="request-log" style={{ maxHeight: 460, overflowY: 'auto' }}>
-          {log.length === 0 ? (
+          {0 === log.length ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--faint)' }}>
               Inject a fault to watch the wire.
             </div>

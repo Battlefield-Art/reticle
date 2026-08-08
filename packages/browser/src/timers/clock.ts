@@ -30,7 +30,7 @@ export function isClockFrozen(): boolean {
 }
 
 export function freezeClock(): void {
-  if (installed || typeof window === 'undefined') return;
+  if (installed || 'undefined' === typeof window) return;
   installed = true;
   virtualNow = 0;
   realBase = Date.now();
@@ -101,7 +101,7 @@ export function advanceClock(ms: number): void {
  * in still has ~3s to go), and the ids the app is holding keep working — see the translation note.
  */
 export function resetClock(): void {
-  if (!installed || originals === null) return;
+  if (!installed || null === originals) return;
   const natives = originals;
   const pending = tasks;
   window.setTimeout = natives.setTimeout;
@@ -114,7 +114,7 @@ export function resetClock(): void {
   tasks = [];
   installed = false;
   virtualNow = 0;
-  if (pending.length === 0) return;
+  if (0 === pending.length) return;
 
   // Re-arm the app's pending work onto REAL timers, translating ids as we go.
   //
@@ -131,7 +131,7 @@ export function resetClock(): void {
   const reArmed = new Map<number, number>();
   const done = (virtualId: number): void => {
     reArmed.delete(virtualId);
-    if (reArmed.size === 0) restoreRawClears(natives);
+    if (0 === reArmed.size) restoreRawClears(natives);
   };
   for (const task of pending) {
     if (task.interval !== undefined) {

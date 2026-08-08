@@ -42,9 +42,9 @@ export function readProjectPort(cwd: string): number | undefined {
   try {
     const raw = readFileSync(`${cwd}/.reticle.json`, 'utf8');
     const config: unknown = JSON.parse(raw);
-    if (typeof config === 'object' && config !== null) {
+    if ('object' === typeof config && config !== null) {
       const p = (config as Record<string, unknown>)['port'];
-      if (typeof p === 'number' && Number.isInteger(p) && p > 0 && p < 65536) return p;
+      if ('number' === typeof p && Number.isInteger(p) && p > 0 && p < 65536) return p;
     }
   } catch {
     //.reticle.json absent or unreadable — fall through to default
@@ -61,9 +61,9 @@ export function readProjectId(cwd: string): string | undefined {
   try {
     const raw = readFileSync(`${cwd}/.reticle.json`, 'utf8');
     const config: unknown = JSON.parse(raw);
-    if (typeof config === 'object' && config !== null) {
+    if ('object' === typeof config && config !== null) {
       const id = (config as Record<string, unknown>)['projectId'];
-      if (typeof id === 'string' && id.length > 0) return id;
+      if ('string' === typeof id && id.length > 0) return id;
     }
   } catch {
     //.reticle.json absent or unreadable — no default scope
@@ -79,14 +79,14 @@ export function readProjectId(cwd: string): string | undefined {
 export function readJournalEnabled(cwd: string, env: string | undefined): boolean {
   if (env !== undefined) {
     const v = env.trim().toLowerCase();
-    if (v === '0' || v === 'false' || v === 'off') return false;
-    if (v === '1' || v === 'true' || v === 'on') return true;
+    if ('0' === v || 'false' === v || 'off' === v) return false;
+    if ('1' === v || 'true' === v || 'on' === v) return true;
   }
   try {
     const raw = readFileSync(`${cwd}/.reticle.json`, 'utf8');
     const config: unknown = JSON.parse(raw);
-    if (typeof config === 'object' && config !== null) {
-      if ((config as Record<string, unknown>)['journal'] === false) return false;
+    if ('object' === typeof config && config !== null) {
+      if (false === (config as Record<string, unknown>)['journal']) return false;
     }
   } catch {
     //.reticle.json absent or unreadable — journaling stays on by default

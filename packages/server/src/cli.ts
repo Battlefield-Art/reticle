@@ -129,7 +129,7 @@ function handleServe(parsed: {
 
 function handleStop(port: number, quiet: boolean): void {
   const pid = readPid(port);
-  if (pid === null || !isAlive(pid)) {
+  if (null === pid || !isAlive(pid)) {
     removePid(port);
     if (!quiet) log('reticle_daemon_not_running', { port });
     return;
@@ -153,7 +153,7 @@ function handleStop(port: number, quiet: boolean): void {
 
 function handleStatus(port: number): void {
   const pid = readPid(port);
-  if (pid === null || !isAlive(pid)) {
+  if (null === pid || !isAlive(pid)) {
     log('reticle_status', { port, running: false });
     return;
   }
@@ -274,7 +274,7 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
       await ensureDaemon(port);
       const { sessions } = summarizeStatus(await fetchStatus(port));
       const decision = decideOpen(sessions, url);
-      if (decision.action === 'need-url') {
+      if ('need-url' === decision.action) {
         log('reticle_open', {
           port,
           error:
@@ -283,7 +283,7 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
         });
         return;
       }
-      if (decision.action === 'reuse') {
+      if ('reuse' === decision.action) {
         log('reticle_open', { port, reusing: decision.url });
         return;
       }
@@ -370,7 +370,7 @@ function handleDaemonInner(parsed: {
         // Only when the var is actually SET. `resolveIdleShutdownMs(undefined)` returns the 5-minute
         // DEFAULT, so passing it unconditionally would override the derived attached grace with the
         // very number this change exists to stop using — shipping the bug while looking fixed.
-        ...(attachedGraceEnv === undefined || attachedGraceEnv.trim() === ''
+        ...(attachedGraceEnv === undefined || '' === attachedGraceEnv.trim()
           ? {}
           : { attachedGraceMs: resolveIdleShutdownMs(attachedGraceEnv) }),
         onShutdown: () => {

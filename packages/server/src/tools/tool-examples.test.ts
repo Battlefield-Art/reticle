@@ -103,7 +103,7 @@ describe('cost-saving and bug-catching options are discoverable in the DEFAULT p
     const predicateText = advertised
       .flatMap((tool) =>
         Object.entries(advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID).inputSchema)
-          .filter(([key]) => key === 'predicate' || key === 'until')
+          .filter(([key]) => 'predicate' === key || 'until' === key)
           .map(([, schema]) => schema.description ?? ''),
       )
       .join(' ');
@@ -137,7 +137,7 @@ describe('session resolution is advertised as the default, not the exception', (
   it('never re-introduces the "only one session" condition that caused the hand-filtering', () => {
     for (const tool of advertised) {
       const text = sessionParam(tool.name);
-      if (text === '') continue;
+      if ('' === text) continue;
       expect(text, `${tool.name} must not condition omission on a single session`).not.toMatch(
         /omit when only one/i,
       );

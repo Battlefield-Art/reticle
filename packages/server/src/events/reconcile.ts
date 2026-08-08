@@ -55,7 +55,7 @@ const STATE_FIELDS = new Set(['status', 'state']);
 const ITEM_KEYS = ['items', 'results', 'data', 'records', 'rows', 'entries'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return 'object' === typeof value && value !== null && !Array.isArray(value);
 }
 
 /** Every object carrying an `id`, at any depth. These are the things a UI renders as rows. */
@@ -121,7 +121,7 @@ function wrongCurrencyMark(text: string, amounts: string[], expected: string): s
 
 function markBefore(text: string, amount: string, expected: string): string | undefined {
   const at = text.indexOf(amount);
-  if (at === -1) return undefined; // this rendering is not on screen — try the next
+  if (-1 === at) return undefined; // this rendering is not on screen — try the next
   // Look just before the number, where a symbol or code sits. A window, not the whole page: the
   // point is what is attached to THIS amount.
   const before = text.slice(Math.max(0, at - 12), at);
@@ -186,9 +186,9 @@ export function reconcile(bodies: readonly unknown[], pageText: string): Mismatc
     // number must appear with a currency marker attached. A non-money number that happens to share a
     // decimal form (a weight, a count) is rendered bare and never reaches the comparison.
     const currency = entity['currency'];
-    if (typeof currency === 'string') {
+    if ('string' === typeof currency) {
       for (const [field, value] of Object.entries(entity)) {
-        if (typeof value !== 'number' || field === 'currency') continue;
+        if (typeof value !== 'number' || 'currency' === field) continue;
         const printed = majorForms(value, currency);
         const wrong = wrongCurrencyMark(pageText, printed, currency);
         const key = `${id}:currency`;
@@ -212,7 +212,7 @@ export function reconcile(bodies: readonly unknown[], pageText: string): Mismatc
       const others = [...(vocabulary.get(field) ?? [])].filter((v) => v !== value);
       const shown = others.filter((v) => shows(pageText, v));
       const key = `${id}:${field}`;
-      if (shown.length === 0 || seen.has(key)) continue;
+      if (0 === shown.length || seen.has(key)) continue;
       seen.add(key);
       found.push({
         entity: id,

@@ -25,7 +25,7 @@ const IDLE_WAITING_SUMMARY = 'Agent idle — your turn. Continue in your termina
  * it rides the end banner so the human can copy it into their terminal. No notes → the base unchanged.
  */
 export function composeEndedNotice(base: string, undelivered: string[]): string {
-  if (undelivered.length === 0) return base;
+  if (0 === undelivered.length) return base;
   const notes = undelivered.map((text) => `"${text}"`).join(', ');
   return `${base} · ${UNDELIVERED_NOTES_LABEL} ${notes}`;
 }

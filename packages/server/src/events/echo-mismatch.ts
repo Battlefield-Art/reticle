@@ -35,7 +35,7 @@ import type { Contradiction } from './contradictions.js';
 const MAX_ECHO_KEYS = 200;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return 'object' === typeof value && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -44,7 +44,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * silently excluded every desktop write from this check — the exact platform the finding came from.
  */
 function parse(raw: unknown): unknown {
-  if (typeof raw !== 'string' || raw.length === 0) return undefined;
+  if (typeof raw !== 'string' || 0 === raw.length) return undefined;
   try {
     return JSON.parse(raw) as unknown;
   } catch {
@@ -54,9 +54,9 @@ function parse(raw: unknown): unknown {
 
 /** Comparable form of a scalar. Non-scalars return undefined and are never compared. */
 function normalize(value: unknown): string | undefined {
-  if (typeof value === 'string') return value.trim().toLowerCase();
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : undefined;
-  if (typeof value === 'boolean') return String(value);
+  if ('string' === typeof value) return value.trim().toLowerCase();
+  if ('number' === typeof value) return Number.isFinite(value) ? String(value) : undefined;
+  if ('boolean' === typeof value) return String(value);
   return undefined;
 }
 
@@ -102,7 +102,7 @@ export function findEchoMismatches(events: readonly ReticleEvent[]): Contradicti
     // IPC reports `ok` rather than a status; HTTP reports a status. Either must say success — a write
     // that already failed is a different (and louder) finding than one that half-applied.
     const status = event.data['status'];
-    const httpOk = typeof status === 'number' && status >= OK_MIN && status < OK_MAX;
+    const httpOk = 'number' === typeof status && status >= OK_MIN && status < OK_MAX;
     if (!httpOk && event.data['ok'] !== true) continue;
 
     const request = parse(event.data['requestBody']);
@@ -120,15 +120,15 @@ export function findEchoMismatches(events: readonly ReticleEvent[]): Contradicti
       const values = echoed.get(key);
       // Not echoed at all = no evidence either way. Only a key the server chose to report back can
       // contradict the request, and silence is not a contradiction.
-      if (values === undefined || values.size === 0) continue;
+      if (values === undefined || 0 === values.size) continue;
       const [want] = [...wanted];
       if (want !== undefined && !values.has(want))
         dropped.push(`${key}: asked ${want}, got ${[...values].join('/')}`);
     }
-    if (dropped.length === 0) continue;
+    if (0 === dropped.length) continue;
 
-    const url = typeof event.data['url'] === 'string' ? event.data['url'] : '';
-    const method = typeof event.data['method'] === 'string' ? event.data['method'] : '';
+    const url = 'string' === typeof event.data['url'] ? event.data['url'] : '';
+    const method = 'string' === typeof event.data['method'] ? event.data['method'] : '';
     found.push({
       kind: ContradictionKind.WRITE_FIELD_IGNORED,
       claim: 'the write returned success and the page treated it as saved',

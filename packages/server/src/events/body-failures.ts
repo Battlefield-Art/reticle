@@ -31,24 +31,24 @@ const ERROR_KEYS = ['error', 'errors', 'errorMessage', 'failureReason'] as const
 const ITEM_KEYS = ['results', 'items', 'data', 'records', 'responses'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return 'object' === typeof value && value !== null && !Array.isArray(value);
 }
 
 /** Whether one object reports a failure of its own. */
 function reportsFailure(item: unknown): boolean {
   if (!isRecord(item)) return false;
   for (const flag of FAILURE_FLAGS) {
-    if (item[flag] === false) return true;
+    if (false === item[flag]) return true;
   }
   for (const key of ERROR_KEYS) {
     const value = item[key];
-    if (value === undefined || value === null) continue;
+    if (value === undefined || null === value) continue;
     if (Array.isArray(value)) {
       if (value.length > 0) return true;
       continue;
     }
     // An empty string or an explicit null is an API saying "no error", not an error.
-    if (typeof value === 'string' && value.length === 0) continue;
+    if ('string' === typeof value && 0 === value.length) continue;
     return true;
   }
   return false;
@@ -58,7 +58,7 @@ function reportsFailure(item: unknown): boolean {
 function itemOutcomes(body: Record<string, unknown>): { failed: number; total: number } {
   for (const key of ITEM_KEYS) {
     const list = body[key];
-    if (!Array.isArray(list) || list.length === 0) continue;
+    if (!Array.isArray(list) || 0 === list.length) continue;
     const failed = list.filter(reportsFailure).length;
     return { failed, total: list.length };
   }
@@ -66,7 +66,7 @@ function itemOutcomes(body: Record<string, unknown>): { failed: number; total: n
 }
 
 function parse(raw: unknown): Record<string, unknown> | undefined {
-  if (typeof raw !== 'string' || raw.length === 0) return undefined;
+  if (typeof raw !== 'string' || 0 === raw.length) return undefined;
   try {
     const parsed: unknown = JSON.parse(raw);
     return isRecord(parsed) ? parsed : undefined;
@@ -88,8 +88,8 @@ export function findBodyFailures(events: readonly ReticleEvent[]): Contradiction
     const body = parse(event.data['responseBody']);
     if (body === undefined) continue;
 
-    const url = typeof event.data['url'] === 'string' ? event.data['url'] : '';
-    const method = typeof event.data['method'] === 'string' ? event.data['method'] : '';
+    const url = 'string' === typeof event.data['url'] ? event.data['url'] : '';
+    const method = 'string' === typeof event.data['method'] ? event.data['method'] : '';
     const where = `${method} ${url} → ${String(status)}`;
 
     const { failed, total } = itemOutcomes(body);

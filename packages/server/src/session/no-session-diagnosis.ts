@@ -70,7 +70,7 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
     );
   }
 
-  if (listening.length === 0) {
+  if (0 === listening.length) {
     return (
       'no browser session connected, and nothing is listening on any of the usual dev-server ports ' +
       '— so the app is almost certainly not running. This is not a Reticle wiring problem: ask the ' +

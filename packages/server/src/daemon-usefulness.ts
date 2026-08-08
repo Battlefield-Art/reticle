@@ -53,7 +53,7 @@ export interface UsefulnessFacts {
  * pause; "no tool call ever" cannot.
  */
 export function isUselessDaemon(facts: UsefulnessFacts): boolean {
-  return !facts.servedToolCall && !facts.everConnected && facts.activeLeases === 0;
+  return !facts.servedToolCall && !facts.everConnected && 0 === facts.activeLeases;
 }
 
 /** The little of SessionManager the idle predicate reads — structural, so a fake needs two methods. */
@@ -88,6 +88,6 @@ export function buildIdlePredicate(
         everConnected: sessions.everConnected(),
         activeLeases: pool.activeCount(),
       })) &&
-    sessions.count() === 0 &&
-    pool.activeCount() === 0;
+    0 === sessions.count() &&
+    0 === pool.activeCount();
 }

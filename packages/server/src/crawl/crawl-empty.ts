@@ -19,7 +19,7 @@ export function crawlEmptyNote(outcome: CrawlOutcome): string | undefined {
   if (outcome.maxSteps <= 0) {
     return 'nothing was clicked because maxSteps is 0 — raise it to crawl at all';
   }
-  if (outcome.interactiveFound === 0) {
+  if (0 === outcome.interactiveFound) {
     const capped = outcome.truncated
       ? ' The snapshot was also truncated, so controls past the cap were never seen — narrow `scope` and retry.'
       : '';

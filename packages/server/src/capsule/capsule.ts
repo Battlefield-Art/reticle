@@ -24,12 +24,12 @@ function blastRadius(
 ): string[] {
   const declaredSignals = new Set(
     expected
-      .filter((l): l is Extract<ExpectedLink, { kind: 'signal' }> => l.kind === 'signal')
+      .filter((l): l is Extract<ExpectedLink, { kind: 'signal' }> => 'signal' === l.kind)
       .map((l) => l.name),
   );
   const declaredStates = new Set(
     expected
-      .filter((l): l is Extract<ExpectedLink, { kind: 'state' }> => l.kind === 'state')
+      .filter((l): l is Extract<ExpectedLink, { kind: 'state' }> => 'state' === l.kind)
       .map((l) => l.name),
   );
   const radius: string[] = [];

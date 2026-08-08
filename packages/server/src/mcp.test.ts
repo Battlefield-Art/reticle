@@ -117,7 +117,7 @@ describe('lean profiles drop the advertised outputSchema without losing structur
     await client.connect(clientTransport);
 
     const listed = await client.listTools();
-    const tool = listed.tools.find((t) => t.name === 'noschema');
+    const tool = listed.tools.find((t) => 'noschema' === t.name);
     expect(tool?.outputSchema).toBeUndefined(); // nothing advertised → no schema tax
 
     const result = await client.callTool({ name: 'noschema', arguments: {} });
@@ -247,7 +247,7 @@ describe('a wrong-shaped call is answered with a correct one', () => {
     const blocks = Array.isArray(content) ? content : [];
     return blocks
       .map((b) =>
-        typeof b === 'object' && b !== null ? String((b as { text?: unknown }).text) : '',
+        'object' === typeof b && b !== null ? String((b as { text?: unknown }).text) : '',
       )
       .join(' ');
   };
@@ -347,7 +347,7 @@ describe('an unknown parameter is refused, never silently dropped', () => {
     const content = (result as { content?: unknown }).content;
     return (Array.isArray(content) ? content : [])
       .map((b) =>
-        typeof b === 'object' && b !== null ? String((b as { text?: unknown }).text) : '',
+        'object' === typeof b && b !== null ? String((b as { text?: unknown }).text) : '',
       )
       .join(' ');
   };

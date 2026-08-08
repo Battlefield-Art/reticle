@@ -110,7 +110,7 @@ export class Annotator {
   }
 
   mount(): void {
-    if (this.#root !== undefined || typeof document === 'undefined') return;
+    if (this.#root !== undefined || 'undefined' === typeof document) return;
     const style = document.createElement('style');
     style.setAttribute(MARK_ATTR, 'style');
     style.textContent = CSS;
@@ -223,7 +223,7 @@ export class Annotator {
       return;
     }
     const rect = target.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) {
+    if (0 === rect.width && 0 === rect.height) {
       this.#hi.setAttribute('data-on', '0');
       return;
     }
@@ -271,19 +271,19 @@ export class Annotator {
     const send = pop.querySelector<HTMLButtonElement>('button[data-send]');
     const submit = (): void => {
       const note = textarea?.value.trim() ?? '';
-      if (note.length === 0) return; // never send an empty mark
+      if (0 === note.length) return; // never send an empty mark
       this.#sendMark(note, resolved, x, y);
       this.#closePopover();
     };
     textarea?.addEventListener('input', () => {
-      if (send !== null) send.disabled = textarea.value.trim().length === 0;
+      if (send !== null) send.disabled = 0 === textarea.value.trim().length;
     });
     // Keyboard ergonomics devs expect: ⌘/Ctrl+Enter sends, Esc cancels — without leaving the textarea.
     textarea?.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
+      if ('Escape' === e.key) {
         e.preventDefault();
         this.#closePopover();
-      } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      } else if ('Enter' === e.key && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         submit();
       }
@@ -304,7 +304,7 @@ export class Annotator {
       anchor: resolved.anchor,
       strategy: resolved.strategy,
       label: resolved.label,
-      route: typeof location === 'undefined' ? '' : location.pathname + location.search,
+      route: 'undefined' === typeof location ? '' : location.pathname + location.search,
     };
     if (resolved.source !== undefined) data['source'] = resolved.source;
     this.#emit(EventType.HUMAN_MARK, data);

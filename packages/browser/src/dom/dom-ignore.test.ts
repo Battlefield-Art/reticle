@@ -13,7 +13,7 @@ describe('dom-ignore — Reticle-owned UI is excluded from observation/snapshot'
     document.body.innerHTML = '<button data-reticle-mark="fab">Flag a bug</button>';
     const fab = document.querySelector('[data-reticle-mark]');
     expect(fab).not.toBeNull();
-    if (fab === null) return;
+    if (null === fab) return;
     expect(isReticleOverlay(fab)).toBe(true);
     expect(isIgnored(fab)).toBe(true);
   });
@@ -36,7 +36,7 @@ describe('dom-ignore — Reticle-owned UI is excluded from observation/snapshot'
     document.body.innerHTML = '<button>Real app button</button>';
     const btn = document.querySelector('button');
     expect(btn).not.toBeNull();
-    if (btn === null) return;
+    if (null === btn) return;
     expect(isReticleOverlay(btn)).toBe(false);
     expect(isIgnored(btn)).toBe(false);
   });

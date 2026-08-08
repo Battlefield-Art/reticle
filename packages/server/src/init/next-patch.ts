@@ -44,11 +44,11 @@ export interface ReticleDevLocation {
 export function reticleDevLocation(mountPath: string, typescript: boolean): ReticleDevLocation {
   const ext = typescript ? '.tsx' : '.jsx';
   const slash = mountPath.lastIndexOf('/');
-  const dir = slash === -1 ? '' : mountPath.slice(0, slash);
+  const dir = -1 === slash ? '' : mountPath.slice(0, slash);
   const isPagesRouter = /(^|\/)pages$/.test(dir);
   if (!isPagesRouter) {
     return {
-      path: `${dir === '' ? '' : `${dir}/`}${RETICLE_DEV_BASENAME}${ext}`,
+      path: `${'' === dir ? '' : `${dir}/`}${RETICLE_DEV_BASENAME}${ext}`,
       importSpecifier: RETICLE_DEV_SIBLING,
     };
   }
@@ -108,7 +108,7 @@ export function patchPagesApp(
   if (source.includes(RETICLE_DEV_COMPONENT)) return { kind: PatchKind.ALREADY };
 
   const matches = [...source.matchAll(PAGES_APP_COMPONENT)];
-  const match = matches.length === 1 ? matches[0] : undefined;
+  const match = 1 === matches.length ? matches[0] : undefined;
   if (match?.index === undefined) return { kind: PatchKind.MANUAL, reason: NO_PAGES_COMPONENT_REASON };
 
   const wrapped = `<>${RETICLE_DEV_MOUNT}${match[0]}</>`;
@@ -123,7 +123,7 @@ export function patchRootLayout(source: string): SourcePatch {
   const tags = [...source.matchAll(BODY_OPEN_TAG)];
   // Exactly one <body> or we cannot tell which one actually renders — and mounting into the wrong
   // one is the same silent no-connect as not mounting at all.
-  const tag = tags.length === 1 ? tags[0] : undefined;
+  const tag = 1 === tags.length ? tags[0] : undefined;
   if (tag?.index === undefined) return { kind: PatchKind.MANUAL, reason: NO_BODY_REASON };
 
   const insertAt = tag.index + tag[0].length;

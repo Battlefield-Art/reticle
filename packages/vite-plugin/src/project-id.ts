@@ -46,9 +46,9 @@ function readNearestPackageName(startDir: string): string | undefined {
     if (existsSync(pkgPath)) {
       try {
         const parsed: unknown = JSON.parse(readFileSync(pkgPath, 'utf8'));
-        if (typeof parsed === 'object' && parsed !== null) {
+        if ('object' === typeof parsed && parsed !== null) {
           const name = (parsed as Record<string, unknown>)['name'];
-          if (typeof name === 'string' && name.length > 0) return name;
+          if ('string' === typeof name && name.length > 0) return name;
         }
       } catch {
         // unreadable package.json → keep walking up

@@ -35,7 +35,7 @@ function snapshotHealth(): {
   engine: string;
 } {
   return {
-    hidden: document.visibilityState === 'hidden',
+    hidden: 'hidden' === document.visibilityState,
     focused: document.hasFocus(),
     runtime: detectRuntime(),
     engine: detectEngine(),

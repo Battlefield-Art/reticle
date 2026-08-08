@@ -68,8 +68,8 @@ function makeFakeLaunched(navigateRejects?: DriveError): FakeLaunched {
 
 function fakeSession(state: { actCalls: number }): Session {
   const command = (name: string, args: Record<string, unknown> = {}): Promise<CommandResult> => {
-    if (name === 'inspect') {
-      const ref = typeof args['ref'] === 'string' ? args['ref'] : '';
+    if ('inspect' === name) {
+      const ref = 'string' === typeof args['ref'] ? args['ref'] : '';
       void ref;
       return Promise.resolve({
         kind: 'command_result',
@@ -78,7 +78,7 @@ function fakeSession(state: { actCalls: number }): Session {
         result: { box: SOURCE_BOX },
       });
     }
-    if (name === 'act') {
+    if ('act' === name) {
       state.actCalls += 1;
       return Promise.resolve({
         kind: 'command_result',

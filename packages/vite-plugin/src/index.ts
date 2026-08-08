@@ -240,10 +240,10 @@ function stamp(code: string, id: string): { code: string; map: string | null } |
     configFile: false,
     babelrc: false,
   });
-  if (out?.code === undefined || out.code === null) return null;
+  if (out?.code === undefined || null === out.code) return null;
   return {
     code: out.code,
-    map: out.map === undefined || out.map === null ? null : JSON.stringify(out.map),
+    map: out.map === undefined || null === out.map ? null : JSON.stringify(out.map),
   };
 }
 
@@ -308,11 +308,11 @@ function connectArgs(options: ReticleVitePluginOptions): string {
   }
   // A desktop renderer is a production build by construction; without this the SDK's prod backstop
   // refuses to connect and the app is silently uninstrumented.
-  if (options.desktop === true) args['allowInProduction'] = true;
+  if (true === options.desktop) args['allowInProduction'] = true;
   // Env wins nothing — it only turns the flag ON, so a config that never set it can still be
   // switched on for one debugging session without editing vite.config and restarting the mental
   // model with it.
-  if (options.captureNetworkBodies === true || process.env['VITE_RETICLE_CAPTURE_BODIES'] === '1') {
+  if (true === options.captureNetworkBodies || '1' === process.env['VITE_RETICLE_CAPTURE_BODIES']) {
     args['captureNetworkBodies'] = true;
   }
   return Object.keys(args).length > 0 ? JSON.stringify(args) : '';
@@ -350,7 +350,7 @@ export function connectModuleSource(
   const base = `import { reticle, install } from '${RETICLE_PACKAGE}';\ninstall();\nreticle.connect(${args});\n`;
   // AFTER connect: registerStore subscribes through the live SDK, and registering before there is a
   // session to report into drops the first diffs.
-  return devModule === null ? base : `${base}import('${devModule}');\n`;
+  return null === devModule ? base : `${base}import('${devModule}');\n`;
 }
 
 /**
@@ -371,7 +371,7 @@ export function connectModuleSource(
 export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlugin {
   const sourceMapping = options.sourceMapping !== false;
   const inject = options.inject !== false;
-  const desktop = options.desktop === true;
+  const desktop = true === options.desktop;
   // Resolve the stable projectId once (explicit option, else derived from package.json + cwd) so the
   // app is identifiable across port changes with zero config.
   const resolved: ReticleVitePluginOptions = {
@@ -449,7 +449,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     // Web: serve-only, so a production bundle can never carry the SDK — gating is the tool's job.
     // Desktop: a packaged renderer IS a production build with no dev server, so the plugin must also
     // run for `vite build` or the shipped app has no connect() at all.
-    ...(options.desktop === true ? {} : { apply: 'serve' as const }),
+    ...(true === options.desktop ? {} : { apply: 'serve' as const }),
     enforce: 'pre',
     /**
      * Declare the SDK's CJS runtime deps so Vite pre-bundles them.
@@ -536,7 +536,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       // map: the insertions are within a line and never move one, and a wrong map is worse than none.
       if (shouldStampSvelte(id)) {
         const stamped = stampSvelte(code, id);
-        return stamped === null ? null : { code: stamped, map: null };
+        return null === stamped ? null : { code: stamped, map: null };
       }
       if (!shouldStamp(id)) return null;
       return stamp(code, id);
@@ -580,7 +580,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       // In serve, the HTML is sent BEFORE the browser requests the entry module, so the check has to
       // be deferred — asserting here would fire on every healthy start. Unref'd so a dev server is
       // never held open by it.
-      if (desktop && inject && command === 'serve') {
+      if (desktop && inject && 'serve' === command) {
         const timer = setTimeout(checkInjected, DEV_INJECTION_GRACE_MS);
         (timer as { unref?: () => void }).unref?.();
       }

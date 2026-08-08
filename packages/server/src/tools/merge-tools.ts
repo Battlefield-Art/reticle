@@ -79,7 +79,7 @@ export function applyMerges(
 
 export function mergeTools(spec: MergeSpec): ToolDef {
   const actionNames = Object.keys(spec.actions);
-  if (actionNames.length === 0) throw new Error(`mergeTools(${spec.name}): no actions`);
+  if (0 === actionNames.length) throw new Error(`mergeTools(${spec.name}): no actions`);
   return {
     name: spec.name,
     description: spec.description,
@@ -91,7 +91,7 @@ export function mergeTools(spec: MergeSpec): ToolDef {
     },
     handler: (deps: ToolDeps, args: Record<string, unknown>) => {
       const action = args['action'];
-      const chosen = typeof action === 'string' ? spec.actions[action] : undefined;
+      const chosen = 'string' === typeof action ? spec.actions[action] : undefined;
       if (chosen === undefined) {
         return Promise.resolve({
           error: `unknown action '${String(action)}' for ${spec.name}`,

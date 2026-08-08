@@ -36,15 +36,15 @@ async function capturedBodies(
   let truncated = 0;
   for (const event of events) {
     if (event.type !== EventType.NET_REQUEST) continue;
-    const url = typeof event.data['url'] === 'string' ? event.data['url'] : '';
+    const url = 'string' === typeof event.data['url'] ? event.data['url'] : '';
     if (urlContains !== undefined && !url.includes(urlContains)) continue;
     total += 1;
     const raw = event.data['responseBody'];
-    if (typeof raw !== 'string' || raw.length === 0) continue;
+    if (typeof raw !== 'string' || 0 === raw.length) continue;
     // A capped body is not an absent one. Recover the records that closed before the cut rather than
     // reporting nothing about the page with the most data on it.
     const salvaged = salvageJson(raw);
-    if (salvaged.values.length === 0) continue;
+    if (0 === salvaged.values.length) continue;
     bodies.push(...salvaged.values);
     withBody += 1;
     if (salvaged.partial) truncated += 1;
@@ -90,12 +90,12 @@ export const RECONCILE_TOOLS: ToolDef[] = [
 
       // An empty result over data that was never read is the exact false green this tool exists to
       // prevent, so the two cases are reported differently and neither is silent.
-      if (bodies.length === 0) {
+      if (0 === bodies.length) {
         return withControl(session, {
           mismatches: [],
           compared: 0,
           note:
-            total === 0
+            0 === total
               ? 'no responses in this window matched — nothing was compared'
               : `${String(total)} response(s) matched but NONE carried a recorded body, so nothing was compared. Enable it where your app calls connect(): \`reticle.connect({ captureNetworkBodies: true })\`, then re-run`,
         });
@@ -105,7 +105,7 @@ export const RECONCILE_TOOLS: ToolDef[] = [
         mode: SnapshotMode.FULL,
       });
       const tree = (snapshot as { tree?: unknown }).tree;
-      const mismatches: Mismatch[] = reconcile(bodies, typeof tree === 'string' ? tree : '');
+      const mismatches: Mismatch[] = reconcile(bodies, 'string' === typeof tree ? tree : '');
       // A truncated body is declared whether or not anything was found in it: "no mismatches" over a
       // partially-read payload is a weaker statement than over a whole one, and the difference is
       // exactly the kind of omission this layer exists to refuse.
@@ -114,7 +114,7 @@ export const RECONCILE_TOOLS: ToolDef[] = [
           ? {
               note: `${String(truncated)} of ${String(withBody)} response(s) exceeded the body cap and were read only up to the cut — records after it were not compared`,
             }
-          : mismatches.length === 0
+          : 0 === mismatches.length
             ? {
                 note: `compared ${String(withBody)} response(s); nothing on screen contradicts them`,
               }

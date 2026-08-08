@@ -16,7 +16,7 @@ describe('bridge round-trip (north-star)', () => {
     deps = makeDeps(bridge);
     browser = new FakeBrowser(port, 'demo', true);
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
   });
 
   afterAll(async () => {
@@ -72,7 +72,7 @@ describe('bridge round-trip (north-star)', () => {
     });
     browser.emit(EventType.DOM_ADDED, { role: 'dialog', name: 'Order confirmed' }, 'e12');
     browser.emit(EventType.ANIM_END, { name: 'dialog-in' }, 'e12');
-    browser.matcher = (q) => q.role === 'dialog' || (q.name ?? '').includes('Order confirmed');
+    browser.matcher = (q) => 'dialog' === q.role || (q.name ?? '').includes('Order confirmed');
 
     await waitUntil(() => bridge.sessions.resolve('demo').eventsSince(0).length >= 3);
 
@@ -264,11 +264,11 @@ describe('a repeat hello is an identity refresh, not a violation', () => {
     const port = await bridge.ready;
     const browser = new FakeBrowser(port, 'refresh-1', false);
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
     expect(bridge.sessions.get('refresh-1')?.hasCapabilities).toBe(false);
 
     browser.reannounce({ hasCapabilities: true });
-    await waitUntil(() => bridge.sessions.get('refresh-1')?.hasCapabilities === true);
+    await waitUntil(() => true === bridge.sessions.get('refresh-1')?.hasCapabilities);
 
     expect(bridge.sessions.get('refresh-1')?.hasCapabilities).toBe(true);
     expect(bridge.sessions.count(), 'the session must survive the refresh').toBe(1);
@@ -281,10 +281,10 @@ describe('a repeat hello is an identity refresh, not a violation', () => {
     const port = await bridge.ready;
     const browser = new FakeBrowser(port, 'refresh-2', false);
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
 
     browser.reannounce({ sessionId: 'someone-else' });
-    await waitUntil(() => bridge.sessions.count() === 0);
+    await waitUntil(() => 0 === bridge.sessions.count());
     expect(bridge.sessions.count()).toBe(0);
     await bridge.close();
   });

@@ -84,7 +84,7 @@ function hasAnyConfig(files: ReadonlySet<string>, candidates: readonly string[])
 export function parseMajor(range: string | undefined): number | undefined {
   if (range === undefined) return undefined;
   const match = range.match(/(\d+)/);
-  if (match === null || match[1] === undefined) return undefined;
+  if (null === match || match[1] === undefined) return undefined;
   const major = parseInt(match[1], 10);
   return isNaN(major) ? undefined : major;
 }
@@ -194,7 +194,7 @@ export function installCommandParts(
   pm: PackageManager,
   pkgs: string | readonly string[],
 ): InstallCommand {
-  const list = typeof pkgs === 'string' ? [pkgs] : pkgs;
+  const list = 'string' === typeof pkgs ? [pkgs] : pkgs;
   return { command: pm, args: [...INSTALL_ARGS[pm], ...list] };
 }
 

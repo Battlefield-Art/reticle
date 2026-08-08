@@ -43,12 +43,12 @@ function validateNpmInfo(info: NpmPackageInfo): NpmPackageInfo {
     throw new Error('npm registry returned an implausible version');
   }
   const changelog =
-    typeof info.reticle?.changelog === 'string'
+    'string' === typeof info.reticle?.changelog
       ? info.reticle.changelog.slice(0, MAX_MANIFEST_TEXT)
       : undefined;
   const breakingChanges = Array.isArray(info.reticle?.breakingChanges)
     ? info.reticle.breakingChanges
-        .filter((x): x is string => typeof x === 'string')
+        .filter((x): x is string => 'string' === typeof x)
         .slice(0, 100)
         .map((s) => s.slice(0, MAX_MANIFEST_TEXT))
     : undefined;

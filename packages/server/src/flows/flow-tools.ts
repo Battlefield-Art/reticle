@@ -47,7 +47,7 @@ async function syncSavedFlowToCloud(
 ): Promise<void> {
   // Per-project cloud: sync a saved flow only when cloud is attached AND flow sync is enabled.
   const cloud = await resolveProjectCloud(deps.fs, deps.reticleRoot, homedir(), process.env);
-  if (cloud.config === null || !cloud.policy.flows) return; // not attached / flows disabled → local only
+  if (null === cloud.config || !cloud.policy.flows) return; // not attached / flows disabled → local only
   const result = await syncFlowToCloud(flow, cloud.config, projectId, (url, init) =>
     fetch(url, init),
   );
@@ -67,7 +67,7 @@ async function syncSavedFlowToCloud(
 export function leasableAppUrl(deps: ToolDeps, sessionId: string | undefined): string | undefined {
   try {
     const url = deps.sessions.resolve(sessionId).url;
-    if (typeof url !== 'string' || url.length === 0) return undefined;
+    if (typeof url !== 'string' || 0 === url.length) return undefined;
     return new URL(url).origin;
   } catch {
     return undefined; // no live session (or an unparseable URL) → sequential path
@@ -385,7 +385,7 @@ export const FLOW_TOOLS: ToolDef[] = [
       // "Replay all" means all of THIS app's flows (+ legacy), not every project's on a shared daemon.
       const projectId = sessionProjectId(deps, sessionId);
       const requested = Array.isArray(args['names'])
-        ? args['names'].filter((n): n is string => typeof n === 'string')
+        ? args['names'].filter((n): n is string => 'string' === typeof n)
         : await deps.flows.list(projectId);
       // verify:server — hand the whole suite to the hosted runner; it records the verification itself.
       const cloud = await resolveProjectCloud(deps.fs, deps.reticleRoot, homedir(), process.env);

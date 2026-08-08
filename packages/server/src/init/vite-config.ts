@@ -47,7 +47,7 @@ function insertImport(source: string): string {
 function insertPlugin(source: string, port: number | undefined): string {
   return source.replace(PLUGINS_ARRAY, (match, _g, offset: number) => {
     const next = source[offset + match.length] ?? '';
-    const separator = next === '' || /\s/.test(next) ? '' : ' ';
+    const separator = '' === next || /\s/.test(next) ? '' : ' ';
     return `${match}${reticlePluginCall(port)},${separator}`;
   });
 }

@@ -81,7 +81,7 @@ function toVerifyOptions(body: VerifyRequestBody): VerifyOptions {
 
 /** Constant-time token check. Empty expected token ⇒ open (localhost-only deployments). */
 export function tokenOk(provided: string | undefined, expected: string): boolean {
-  if (expected.length === 0) return true;
+  if (0 === expected.length) return true;
   if (provided === undefined) return false;
   const a = Buffer.from(provided);
   const b = Buffer.from(expected);

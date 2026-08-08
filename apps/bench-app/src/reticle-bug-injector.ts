@@ -347,7 +347,7 @@ function installNetFaults(bugs: ReadonlySet<string>): void {
     .map((id) => NET_PAYLOAD[id])
     .filter((b): b is NetPayloadBug => b !== undefined);
   const hangs = [...bugs].map((id) => NET_HANG[id]).filter((b): b is NetHangBug => b !== undefined);
-  if (statuses.length === 0 && payloads.length === 0 && hangs.length === 0) return;
+  if (0 === statuses.length && 0 === payloads.length && 0 === hangs.length) return;
 
   const base = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -356,7 +356,7 @@ function installNetFaults(bugs: ReadonlySet<string>): void {
     // net-hang: never resolve (or abort), so the request stays pending on the wire forever.
     const hang = hangs.find((h) => url.includes(h.urlContains));
     if (hang !== undefined) {
-      if (hang.uiDone === true) {
+      if (true === hang.uiDone) {
         // Optimistic completion the app never reconciles: hand back a fake OK while the REAL request is
         // left hanging, so the DOM reads "done" and the wire never finishes.
         void base(input, init).catch(() => undefined);
@@ -365,18 +365,18 @@ function installNetFaults(bugs: ReadonlySet<string>): void {
           headers: { 'content-type': 'application/json' },
         });
       }
-      if (hang.abort === true) return Promise.reject(new DOMException('aborted', 'AbortError'));
+      if (true === hang.abort) return Promise.reject(new DOMException('aborted', 'AbortError'));
       return new Promise<Response>(() => undefined); // never settles
     }
 
     // net-status payload: mutate the OUTGOING body before it leaves.
     const payload = payloads.find((pl) => url.includes(pl.urlContains));
     let outInit = init;
-    if (payload !== undefined && typeof init?.body === 'string') {
+    if (payload !== undefined && 'string' === typeof init?.body) {
       try {
         // JSON.parse returns `any`; narrow at the boundary instead of trusting it (no-explicit-any).
         const parsed: unknown = JSON.parse(init.body);
-        if (typeof parsed !== 'object' || parsed === null) throw new Error('not an object body');
+        if (typeof parsed !== 'object' || null === parsed) throw new Error('not an object body');
         const body = parsed as Record<string, unknown>;
         if (payload.dropField !== undefined) delete body[payload.dropField];
         if (payload.overwrite !== undefined)
@@ -392,7 +392,7 @@ function installNetFaults(bugs: ReadonlySet<string>): void {
     // net-status: rewrite what the APP sees, while the real wire status stays observable to Reticle.
     const rewrite = statuses.find((s) => url.includes(s.urlContains));
     if (rewrite === undefined) return response;
-    const body = rewrite.emptyBody === true ? '' : await response.clone().text();
+    const body = true === rewrite.emptyBody ? '' : await response.clone().text();
     return new Response(body, {
       status: rewrite.status ?? response.status,
       headers: {
@@ -417,7 +417,7 @@ function installSilentRemoval(bugs: ReadonlySet<string>): void {
   const targets = [...bugs]
     .map((id) => SILENT_REMOVAL[id])
     .filter((v): v is string => v !== undefined);
-  if (targets.length === 0) return;
+  if (0 === targets.length) return;
   const strip = (): void => {
     for (const testid of targets) {
       document.querySelector(`[data-testid="${testid}"]`)?.remove();
@@ -537,7 +537,7 @@ function installRouteFaults(bugs: ReadonlySet<string>): void {
   const active = [...bugs]
     .map((id) => ROUTE_BUGS[id])
     .filter((b): b is RouteBug => b !== undefined);
-  if (active.length === 0) return;
+  if (0 === active.length) return;
   const base = history.pushState.bind(history);
   history.pushState = (data: unknown, unused: string, url?: string | URL | null): void => {
     const path = String(url ?? '');
@@ -579,7 +579,7 @@ function installSignalFaults(bugs: ReadonlySet<string>): void {
   const active = [...bugs]
     .map((id) => SIGNAL_BUGS[id])
     .filter((b): b is SignalBug => b !== undefined);
-  if (active.length === 0) return;
+  if (0 === active.length) return;
   const base = reticle.signal.bind(reticle);
   reticle.signal = (name: string, data: Record<string, unknown> = {}): void => {
     for (const bug of active) {
@@ -631,7 +631,7 @@ function installStorageFaults(bugs: ReadonlySet<string>): void {
   const active = [...bugs]
     .map((id) => STORAGE_BUGS[id])
     .filter((b): b is StorageBug => b !== undefined);
-  if (active.length === 0) return;
+  if (0 === active.length) return;
 
   const localSet = localStorage.setItem.bind(localStorage);
   const localRemove = localStorage.removeItem.bind(localStorage);
@@ -661,7 +661,7 @@ function installStorageFaults(bugs: ReadonlySet<string>): void {
     sessionSet(key, value);
   };
 
-  if (active.some((b) => b.dropCookie === true)) {
+  if (active.some((b) => true === b.dropCookie)) {
     // `cookie` is defined on Document.prototype, NOT on the document's immediate prototype
     // (HTMLDocument.prototype), so getPrototypeOf(document) found no descriptor and the patch silently
     // did nothing — the bug never fired and the check passed on the buggy build.
@@ -893,10 +893,10 @@ function installStatusDesync(): void {
   const apply = (): void => {
     const real = useApp.getState().deployments[0]?.status;
     if (real === undefined) return;
-    const lie = real === 'live' ? 'failed' : 'live';
+    const lie = 'live' === real ? 'failed' : 'live';
     const tone = STATUS_TONE[lie];
     const row = document.querySelector(`[data-testid="row-${String(STATUS_DESYNC_ROW_ID)}"]`);
-    if (row === null) return;
+    if (null === row) return;
     const badge = [...row.querySelectorAll('.badge')].find((b) => b.querySelector('.dot') !== null);
     if (!(badge instanceof HTMLElement)) return;
     const textNode = [...badge.childNodes].find(
@@ -930,7 +930,7 @@ function installOcclusion(testid: string): void {
   const overlayId = `reticle-hard-bug-overlay-${testid}`;
   const apply = (): void => {
     const target = document.querySelector(sel(testid));
-    if (target === null || document.getElementById(overlayId) !== null) return;
+    if (null === target || document.getElementById(overlayId) !== null) return;
     const rect = target.getBoundingClientRect();
     const overlay = document.createElement('div');
     overlay.id = overlayId;
@@ -955,7 +955,7 @@ function installClickBugs(bugs: ReadonlySet<string>): void {
   const fetches = [...bugs]
     .map((id) => EXTRA_FETCH[id])
     .filter((f): f is ExtraFetch => f !== undefined);
-  if (tampers.length === 0 && leaks.length === 0 && fetches.length === 0) return;
+  if (0 === tampers.length && 0 === leaks.length && 0 === fetches.length) return;
   document.addEventListener(
     'click',
     (e) => {
@@ -973,7 +973,7 @@ function installClickBugs(bugs: ReadonlySet<string>): void {
       for (const f of fetches) {
         if (!hit(f.trigger)) continue;
         const init: RequestInit =
-          f.method === 'POST' ? { method: 'POST', body: '{}' } : { method: 'GET' };
+          'POST' === f.method ? { method: 'POST', body: '{}' } : { method: 'GET' };
         void window.fetch(f.url, init).catch(() => undefined);
       }
     },
@@ -986,7 +986,7 @@ function installDomTextBugs(bugs: ReadonlySet<string>): void {
   const active = [...bugs]
     .map((id) => DOM_TEXT[id])
     .filter((b): b is { testid: string; wrong: string } => b !== undefined);
-  if (active.length === 0) return;
+  if (0 === active.length) return;
   const apply = (): void => {
     for (const b of active) {
       const el = document.querySelector(sel(b.testid));
@@ -1004,7 +1004,7 @@ function installDomTextBugs(bugs: ReadonlySet<string>): void {
 /** Append the combined CSS for the active CSS-based bugs into one <style>. */
 function installCss(bugs: ReadonlySet<string>): void {
   const rules = [...bugs].map((id) => CSS_BUGS[id]).filter((r): r is string => r !== undefined);
-  if (rules.length === 0) return;
+  if (0 === rules.length) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = rules.join('\n');
@@ -1021,7 +1021,7 @@ function installDoubleFetch(bugs: ReadonlySet<string>): void {
   const doubles = [...bugs]
     .map((id) => DOUBLE_FETCH[id])
     .filter((d): d is DoubleFetch => d !== undefined);
-  if (doubles.length === 0) return;
+  if (0 === doubles.length) return;
   const base = window.fetch.bind(window);
   let cloning = false;
   window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -1058,7 +1058,7 @@ export function installBugInjector(): void {
   // Before the early return: a CLEAN run carries no bug id but still needs the known starting state.
   resetStorageIfAsked(params);
   const raw = params.get(BUG_PARAM);
-  if (raw === null || raw.length === 0) return;
+  if (null === raw || 0 === raw.length) return;
   const bugs = new Set(
     raw
       .split(',')

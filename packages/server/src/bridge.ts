@@ -75,7 +75,7 @@ function replayRequest(event: { type: string; data: Record<string, unknown> }): 
   if (event.type !== EventType.HUMAN_CONTROL) return undefined;
   if (event.data['kind'] !== HumanControlKind.REPLAY) return undefined;
   const name = event.data['text'];
-  return typeof name === 'string' && name.length > 0 ? name : undefined;
+  return 'string' === typeof name && name.length > 0 ? name : undefined;
 }
 
 interface BridgeOptions {
@@ -124,7 +124,7 @@ function helloProtocolMismatch(text: string): number | null {
     const json = JSON.parse(text) as { kind?: unknown; protocolVersion?: unknown };
     if (
       json.kind === MessageKind.HELLO &&
-      typeof json.protocolVersion === 'number' &&
+      'number' === typeof json.protocolVersion &&
       json.protocolVersion !== RETICLE_PROTOCOL_VERSION
     ) {
       return json.protocolVersion;
@@ -137,7 +137,7 @@ function helloProtocolMismatch(text: string): number | null {
 
 /** Normalize ws RawData (string | Buffer | Buffer[] | ArrayBuffer) into a UTF-8 string. */
 function rawToString(raw: RawData): string {
-  if (typeof raw === 'string') return raw;
+  if ('string' === typeof raw) return raw;
   if (Array.isArray(raw)) return Buffer.concat(raw).toString('utf8');
   if (raw instanceof ArrayBuffer) return Buffer.from(raw).toString('utf8');
   return raw.toString('utf8');
@@ -180,7 +180,7 @@ export class Bridge {
         `Reticle pairing token exceeds ${String(TRANSPORT_LIMITS.MAX_TOKEN_LENGTH)} characters`,
       );
     }
-    if (!isLoopbackHostname(host) && (options.token === undefined || options.token.length === 0)) {
+    if (!isLoopbackHostname(host) && (options.token === undefined || 0 === options.token.length)) {
       throw new Error('a pairing token is required when the Reticle bridge binds beyond localhost');
     }
     this.#clock = options.clock ?? (() => Date.now());
@@ -194,7 +194,7 @@ export class Bridge {
     // Binding beyond localhost means the browser dials in from a non-loopback Origin. With no
     // allow-list, #originAllowed rejects every such Origin at the WS handshake, so the bridge comes
     // up but accepts nothing — a silent, fail-closed footgun. Refuse to start with a clear message.
-    if (!isLoopbackHostname(host) && this.#allowedOrigins.size === 0) {
+    if (!isLoopbackHostname(host) && 0 === this.#allowedOrigins.size) {
       throw new Error(
         `${ReticleEnv.ALLOWED_ORIGINS} must list the app origin(s) when the Reticle bridge binds ` +
           'beyond localhost — otherwise every non-loopback browser is rejected at the WebSocket ' +
@@ -308,7 +308,7 @@ export class Bridge {
 
       const text = rawToString(raw);
       const parsed = this.#parse(text);
-      if (parsed === null) {
+      if (null === parsed) {
         const got = helloProtocolMismatch(text);
         if (got !== null) {
           log('protocol_version_mismatch', { got, expected: RETICLE_PROTOCOL_VERSION });
@@ -462,7 +462,7 @@ export class Bridge {
     // unless a pairing token is required, in which case the HELLO token check is the real gate.
     if (origin === undefined) return this.#token !== undefined;
     const normalized = normalizeOrigin(origin);
-    if (normalized === null) return false;
+    if (null === normalized) return false;
     if (this.#allowedOrigins.has(normalized)) return true;
     // A desktop webview (Electron, Tauri) or a file:// document sends an opaque Origin: no host to
     // check, so it is exactly as attributable as a missing Origin — defer to the token, as above.

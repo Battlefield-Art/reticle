@@ -61,7 +61,7 @@ const HIDDEN_ADVICE =
 
 /** True when this session is a WebKit desktop shell — the only runtime that suffers this. */
 function isWebKitDesktop(context: TimeoutContext): boolean {
-  if (context.runtime === 'tauri') return true;
+  if ('tauri' === context.runtime) return true;
   // A `tauri://` origin is unambiguous even before the first health report lands.
   if (context.runtime !== undefined) return false;
   return isOpaqueOrigin(context.url) && context.url.startsWith('tauri:');

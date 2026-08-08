@@ -30,34 +30,34 @@ export function summarizeStatus(payload: unknown): {
   sessionCount: number;
   sessions: StatusSession[];
 } {
-  if (typeof payload !== 'object' || payload === null) return { sessionCount: 0, sessions: [] };
+  if (typeof payload !== 'object' || null === payload) return { sessionCount: 0, sessions: [] };
   const obj = payload as Record<string, unknown>;
   const raw = Array.isArray(obj['sessions']) ? obj['sessions'] : [];
   const sessions = raw
     .map((s): StatusSession | null => {
-      if (typeof s !== 'object' || s === null) return null;
+      if (typeof s !== 'object' || null === s) return null;
       const r = s as Record<string, unknown>;
-      const sessionId = typeof r['sessionId'] === 'string' ? r['sessionId'] : '';
-      if (sessionId === '') return null;
+      const sessionId = 'string' === typeof r['sessionId'] ? r['sessionId'] : '';
+      if ('' === sessionId) return null;
       return {
         sessionId,
-        url: typeof r['url'] === 'string' ? r['url'] : '',
-        throttled: r['throttled'] === true,
-        stale: r['stale'] === true,
-        pendingMarks: typeof r['pendingMarks'] === 'number' ? r['pendingMarks'] : 0,
+        url: 'string' === typeof r['url'] ? r['url'] : '',
+        throttled: true === r['throttled'],
+        stale: true === r['stale'],
+        pendingMarks: 'number' === typeof r['pendingMarks'] ? r['pendingMarks'] : 0,
       };
     })
     .filter((s): s is StatusSession => s !== null);
   const sessionCount =
-    typeof obj['sessionCount'] === 'number' ? obj['sessionCount'] : sessions.length;
+    'number' === typeof obj['sessionCount'] ? obj['sessionCount'] : sessions.length;
   return { sessionCount, sessions };
 }
 
 /** A string field off the /status body, or undefined on a daemon too old to report it. */
 function statusField(payload: unknown, key: string): string | undefined {
-  if (typeof payload !== 'object' || payload === null) return undefined;
+  if (typeof payload !== 'object' || null === payload) return undefined;
   const value = (payload as Record<string, unknown>)[key];
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
+  return 'string' === typeof value && value.length > 0 ? value : undefined;
 }
 
 /**
@@ -158,8 +158,8 @@ export function openCommand(
   url: string,
   platform: NodeJS.Platform,
 ): { cmd: string; args: string[] } {
-  if (platform === 'darwin') return { cmd: 'open', args: [url] };
-  if (platform === 'win32') {
+  if ('darwin' === platform) return { cmd: 'open', args: [url] };
+  if ('win32' === platform) {
     return { cmd: 'cmd', args: ['/c', 'start', '', encodeForWindowsStart(url)] };
   }
   return { cmd: 'xdg-open', args: [url] };

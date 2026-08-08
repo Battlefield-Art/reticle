@@ -79,7 +79,7 @@ export async function scrollToFind(
     if (hit !== undefined) return { found: true, element: hit, scrolls, exhausted: false };
     // Fall through to linear refinement from current position (already near the target).
     const data = asRecord(sr.result);
-    if (data['atEnd'] === true || data['scrolled'] === false) {
+    if (true === data['atEnd'] || false === data['scrolled']) {
       return { found: false, scrolls, exhausted: true };
     }
   }
@@ -96,7 +96,7 @@ export async function scrollToFind(
     if (hit !== undefined) return { found: true, element: hit, scrolls, exhausted: false };
 
     // Reached the bottom or the container would not move — no more rows to reveal.
-    if (data['atEnd'] === true || data['scrolled'] === false) {
+    if (true === data['atEnd'] || false === data['scrolled']) {
       return { found: false, scrolls, exhausted: true };
     }
   }

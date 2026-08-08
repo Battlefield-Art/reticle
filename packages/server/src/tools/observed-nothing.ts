@@ -28,7 +28,7 @@ export function noteEmptyRead(
   key: string,
   context: EmptyReadContext,
 ): Record<string, unknown> {
-  if (typeof result['error'] === 'string') return result;
+  if ('string' === typeof result['error']) return result;
   const value = result[key];
   if (!Array.isArray(value) || value.length > 0) return result;
   if (result['note'] !== undefined) return result;

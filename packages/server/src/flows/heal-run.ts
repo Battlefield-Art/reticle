@@ -43,7 +43,7 @@ export async function healFlow(
   args: Record<string, unknown>,
 ): Promise<FlowHealResult> {
   const name = asString(args['flowName']) ?? '';
-  const apply = args['apply'] === true;
+  const apply = true === args['apply'];
   const projectId = sessionProjectId(deps, asString(args['sessionId']));
   const loaded = await deps.flows.load(name, projectId);
   if (!loaded.ok) {
@@ -64,7 +64,7 @@ export async function healFlow(
     loaded.value,
     waitForPredicate,
     FLOW_SIGNAL_TIMEOUT_MS,
-    args['confirmDangerous'] === true,
+    true === args['confirmDangerous'],
   );
   const drifted = steps.some((s) => s.drift !== undefined);
   const failed = steps.find((s) => !s.ok && s.drift === undefined);
@@ -92,7 +92,7 @@ export async function healFlow(
   }
 
   const proposals = collectProposals(steps);
-  if (proposals.length === 0) {
+  if (0 === proposals.length) {
     return {
       name,
       status: HealStatus.UNHEALABLE,
@@ -130,7 +130,7 @@ export async function healFlow(
       toVerify,
       waitForPredicate,
       FLOW_SIGNAL_TIMEOUT_MS,
-      args['confirmDangerous'] === true,
+      true === args['confirmDangerous'],
     );
     const verifyClean =
       verifySteps.length > 0 && verifySteps.every((s) => s.ok && s.drift === undefined);

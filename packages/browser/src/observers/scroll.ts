@@ -47,7 +47,7 @@ export function installScroll(emit: Emit): Teardown {
   window.addEventListener('scroll', onScroll, { passive: true });
 
   let io: IntersectionObserver | undefined;
-  if (typeof IntersectionObserver === 'function') {
+  if ('function' === typeof IntersectionObserver) {
     io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {

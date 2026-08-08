@@ -61,7 +61,7 @@ function netCall(e: ReticleEvent): NetCall {
     ok:
       e.data['ok'] === undefined && status === undefined
         ? undefined
-        : e.data['ok'] === true || (e.data['ok'] === undefined && (status ?? 0) < 400),
+        : true === e.data['ok'] || (e.data['ok'] === undefined && (status ?? 0) < 400),
   };
 }
 
@@ -149,7 +149,7 @@ function failureAcknowledged(events: readonly ReticleEvent[]): boolean {
     if (e.type !== EventType.STATE_CHANGE) return false;
     const path = asString(e.data['path']) ?? '';
     const value = e.data['value'];
-    return ACKNOWLEDGED.test(path) || (typeof value === 'string' && ACKNOWLEDGED.test(value));
+    return ACKNOWLEDGED.test(path) || ('string' === typeof value && ACKNOWLEDGED.test(value));
   });
 }
 
@@ -185,7 +185,7 @@ function didNothing(
   requests: readonly NetCall[],
   mutatedWithin: number | undefined,
 ): boolean {
-  if (mutatedWithin === undefined) return events.length === 0;
+  if (mutatedWithin === undefined) return 0 === events.length;
   if (mutatedWithin > 0 || requests.length > 0) return false;
   return !events.some(
     (e) => e.type === EventType.ROUTE_CHANGE || e.type === EventType.VISIBLE_SHOWN,
@@ -256,7 +256,7 @@ export function findContradictions(
       },
     ];
   }
-  const failed = settled.filter((c) => c.ok === false);
+  const failed = settled.filter((c) => false === c.ok);
   const advanced = uiAdvanced(events);
   const signals = events
     .filter((e) => e.type === EventType.SIGNAL)
@@ -304,7 +304,7 @@ export function findContradictions(
   // the app did not claim success, it claimed the wrong failure. Telling someone their password is
   // wrong while the backend is down sends them to fix something they cannot fix.
   const serverFaults = settled.filter(
-    (c) => c.ok === false && c.status !== undefined && c.status >= SERVER_FAULT_MIN,
+    (c) => false === c.ok && c.status !== undefined && c.status >= SERVER_FAULT_MIN,
   );
   const userBlame = [
     ...signals.filter((name) => BLAMES_USER.test(name)),
@@ -348,7 +348,7 @@ export function findContradictions(
   // Writes only: a GET that changes nothing is a prefetch; a POST that changes nothing is a lost
   // write, a response parsed into the void, or a render that never happened.
   if (!advanced) {
-    const ignoredWrites = settled.filter((c) => c.ok === true && isMutating(c));
+    const ignoredWrites = settled.filter((c) => true === c.ok && isMutating(c));
     if (ignoredWrites.length > 0) {
       found.push({
         kind: ContradictionKind.RESPONSE_IGNORED,

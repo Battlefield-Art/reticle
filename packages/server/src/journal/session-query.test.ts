@@ -53,7 +53,7 @@ describe('Session.queryEvents', () => {
 
     const all = await session.queryEvents({});
     expect(reads).toBe(1);
-    expect(all.some((e) => e.seq === 0)).toBe(true); // survived eviction via the journal
+    expect(all.some((e) => 0 === e.seq)).toBe(true); // survived eviction via the journal
   });
 
   it('never touches the journal when the buffer has not evicted (fast path)', async () => {

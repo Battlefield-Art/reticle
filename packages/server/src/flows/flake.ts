@@ -43,5 +43,5 @@ export function isFlaky(record: FlakeRecord, minRuns: number = DEFAULT_MIN_FLAKE
 
 /** Observed intermittent-failure rate (0 when too few runs to judge). */
 export function flakeRate(record: FlakeRecord): number {
-  return record.runs === 0 ? 0 : record.fails / record.runs;
+  return 0 === record.runs ? 0 : record.fails / record.runs;
 }

@@ -351,11 +351,11 @@ export class SessionMetrics {
   /** True when nothing at all happened — a flush of an idle daemon is not worth an event. */
   get empty(): boolean {
     return (
-      this.#toolCalls === 0 &&
-      this.#verifications === 0 &&
-      this.#toolErrors === 0 &&
-      this.#bugsFound === 0 &&
-      this.#sdkFailures === 0
+      0 === this.#toolCalls &&
+      0 === this.#verifications &&
+      0 === this.#toolErrors &&
+      0 === this.#bugsFound &&
+      0 === this.#sdkFailures
     );
   }
 

@@ -74,7 +74,7 @@ interface JsonRpcLike {
 function parseJsonRpc(line: string): JsonRpcLike | null {
   try {
     const parsed: unknown = JSON.parse(line);
-    return typeof parsed === 'object' && parsed !== null ? parsed : null;
+    return 'object' === typeof parsed && parsed !== null ? parsed : null;
   } catch {
     return null;
   }
@@ -103,13 +103,13 @@ export class PendingRequests {
 
   observeOutbound(line: string): void {
     const msg = parseJsonRpc(line);
-    if (msg === null || msg.id === undefined || msg.method === undefined) return;
+    if (null === msg || msg.id === undefined || msg.method === undefined) return;
     this.#ids.add(JSON.stringify(msg.id));
   }
 
   observeInbound(line: string): void {
     const msg = parseJsonRpc(line);
-    if (msg === null || msg.id === undefined) return;
+    if (null === msg || msg.id === undefined) return;
     this.#ids.delete(JSON.stringify(msg.id));
   }
 
@@ -145,29 +145,29 @@ export class HandshakeReplay {
   /** Record one outbound client line. Cheap enough to call for every stdin message. */
   observeOutbound(line: string): void {
     const msg = parseJsonRpc(line);
-    if (msg === null) return;
+    if (null === msg) return;
     // The first initialize is the session's identity; a client re-issuing one does not change it.
-    if (msg.method === INITIALIZE_METHOD && this.#initialize === null) this.#initialize = line;
+    if (msg.method === INITIALIZE_METHOD && null === this.#initialize) this.#initialize = line;
     else if (msg.method === INITIALIZED_METHOD) this.#initialized = line;
   }
 
   /** Lines to POST into a freshly-established session, before any queued client traffic. */
   replayLines(): string[] {
-    if (this.#initialize === null) return [];
+    if (null === this.#initialize) return [];
     const msg = parseJsonRpc(this.#initialize);
-    if (msg === null) return [];
+    if (null === msg) return [];
     this.#pendingReplayId = RECONNECT_INITIALIZE_ID;
     const reinit = { ...msg, id: RECONNECT_INITIALIZE_ID };
-    return this.#initialized === null
+    return null === this.#initialized
       ? [JSON.stringify(reinit)]
       : [JSON.stringify(reinit), this.#initialized];
   }
 
   /** True when this inbound daemon line is the echo of our replayed handshake and must not be forwarded. */
   shouldSuppressInbound(line: string): boolean {
-    if (this.#pendingReplayId === null) return false;
+    if (null === this.#pendingReplayId) return false;
     const msg = parseJsonRpc(line);
-    if (msg === null || msg.id !== this.#pendingReplayId) return false;
+    if (null === msg || msg.id !== this.#pendingReplayId) return false;
     this.#pendingReplayId = null; // one response per replay — anything later is not ours to swallow
     return true;
   }
@@ -203,7 +203,7 @@ export class SseFrameParser {
     this.#buffer = lines.pop() ?? '';
     const frames: SseFrame[] = [];
     for (const line of lines) {
-      if (line === '') {
+      if ('' === line) {
         if (this.#data !== '') {
           frames.push({ event: this.#event !== '' ? this.#event : 'message', data: this.#data });
         }
@@ -336,7 +336,7 @@ export function startMcpProxy(
     let attempts = 0;
 
     function onSseEvent(event: string, data: string, p: number): void {
-      if (event === 'endpoint') {
+      if ('endpoint' === event) {
         const url = buildSessionUrl(data, p);
         postUrl = url;
         // The new session's McpServer has never seen the client's initialize — replay it first, then
@@ -345,7 +345,7 @@ export function startMcpProxy(
         for (const queued of stdinQueue.splice(0)) void postToSession(url, queued);
         return;
       }
-      if (event === 'message' && !replay.shouldSuppressInbound(data)) {
+      if ('message' === event && !replay.shouldSuppressInbound(data)) {
         // Remember the tool catalog as it goes past: it is what makes a locally-answered handshake
         // useful rather than toolless. See tool-catalog-cache.
         catalog.observe(data);
@@ -443,7 +443,7 @@ export function startMcpProxy(
     const armLocalHandshake = (line: string): void => {
       if (handshakeAnswered) return;
       const response = localInitializeResponse(line);
-      if (response === null) return;
+      if (null === response) return;
       setTimeout(() => {
         if (handshakeAnswered || postUrl !== null) return;
         handshakeAnswered = true;
@@ -468,7 +468,7 @@ export function startMcpProxy(
       stdinBuffer = lines.pop() ?? '';
       for (const line of lines) {
         const trimmed = line.trim();
-        if (trimmed === '') continue;
+        if ('' === trimmed) continue;
         replay.observeOutbound(trimmed);
         pending.observeOutbound(trimmed);
         const action = onClientRequest(postUrl !== null, dormant);
@@ -522,14 +522,14 @@ export function startMcpProxy(
         stopped = true;
         process.exit(code);
       };
-      if (pending.unanswered.length === 0) {
+      if (0 === pending.unanswered.length) {
         quit(0);
         return;
       }
       const deadline = Date.now() + SHUTDOWN_DRAIN_MS;
       const poll = setInterval(() => {
         const stuck = pending.unanswered;
-        if (stuck.length === 0) {
+        if (0 === stuck.length) {
           clearInterval(poll);
           quit(0);
           return;

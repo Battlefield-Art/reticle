@@ -65,7 +65,7 @@ describe('bugsInResult', () => {
     expect(bugs.filter((b) => b.falseGreen).map((b) => b.kind)).toEqual([
       'ui-advanced-request-failed',
     ]);
-    expect(bugs.every((b) => b.source === 'crawl')).toBe(true);
+    expect(bugs.every((b) => 'crawl' === b.source)).toBe(true);
   });
 
   it('counts a failed flow replay as a regression, one per failing flow', () => {

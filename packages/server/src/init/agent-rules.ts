@@ -84,7 +84,7 @@ export function mergeMarkedInstruction(existing: string | null | undefined): Age
     return refreshMarkedBlock(existing);
   }
   const block = markedBlock();
-  if (existing === null || existing === undefined || existing.trim().length === 0) {
+  if (null === existing || existing === undefined || 0 === existing.trim().length) {
     return { status: AgentRuleStatus.APPLY, content: block };
   }
   const separator = existing.endsWith('\n') ? '\n' : '\n\n';
@@ -101,7 +101,7 @@ export function mergeMarkedInstruction(existing: string | null | undefined): Age
 function refreshMarkedBlock(existing: string): AgentRuleResult {
   const start = existing.indexOf(RULE_BEGIN);
   const endAt = existing.indexOf(RULE_END, start);
-  if (endAt === -1) return { status: AgentRuleStatus.ALREADY, content: existing };
+  if (-1 === endAt) return { status: AgentRuleStatus.ALREADY, content: existing };
   const current = existing.slice(start, endAt + RULE_END.length);
   const wanted = markedBlock().trimEnd();
   if (current === wanted) return { status: AgentRuleStatus.ALREADY, content: existing };

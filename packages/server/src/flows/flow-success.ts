@@ -34,7 +34,7 @@ export function successLabel(success: FlowExpect): string {
   if (success.signal !== undefined) return success.signal;
   if (success.net !== undefined) return success.net.urlContains ?? success.net.method ?? 'net';
   if (success.console !== undefined) {
-    return `console:${success.console.absent === true ? 'clean' : (success.console.level ?? 'error')}`;
+    return `console:${true === success.console.absent ? 'clean' : (success.console.level ?? 'error')}`;
   }
   if (success.state !== undefined) return `state:${success.state.path}`;
   return success.element?.testid ?? success.element?.name ?? success.element?.role ?? 'success';
@@ -93,7 +93,7 @@ export function successToPredicate(
     // wait-for-change. A wait-until-true waiter would pass the instant the path already equals the
     // value — which, for "an unrelated path stayed put", is true BEFORE a side-effect leak fires. Gate
     // on `settled` so the read happens after the page quiets, by which point the leak has landed.
-    if (state.hold === true) parts.push({ kind: 'settled' });
+    if (true === state.hold) parts.push({ kind: 'settled' });
     parts.push(part);
   }
 
@@ -111,8 +111,8 @@ export function successToPredicate(
   }
 
   const [first] = parts;
-  if (parts.length === 0) return undefined;
-  if (parts.length === 1 && first !== undefined) return first;
+  if (0 === parts.length) return undefined;
+  if (1 === parts.length && first !== undefined) return first;
   return { kind: 'allOf', predicates: parts };
 }
 

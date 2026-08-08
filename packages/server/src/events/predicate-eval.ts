@@ -46,9 +46,9 @@ const PREDICATE_ALIASES: Readonly<Record<string, Readonly<Record<string, string>
 
 /** Rename known aliases before parse; an explicit canonical key always wins. */
 function applyPredicateAliases(input: unknown): unknown {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) return input;
+  if (typeof input !== 'object' || null === input || Array.isArray(input)) return input;
   const obj = input as Record<string, unknown>;
-  const aliases = PREDICATE_ALIASES[typeof obj['kind'] === 'string' ? obj['kind'] : ''];
+  const aliases = PREDICATE_ALIASES['string' === typeof obj['kind'] ? obj['kind'] : ''];
   if (aliases === undefined) return input;
   const out = { ...obj };
   for (const [from, to] of Object.entries(aliases)) {
@@ -155,10 +155,10 @@ export interface EvalResult {
 }
 
 function str(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+  return 'string' === typeof value ? value : undefined;
 }
 function num(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
+  return 'number' === typeof value ? value : undefined;
 }
 
 /**
@@ -166,19 +166,19 @@ function num(value: unknown): number | undefined {
  * `{$gte,$lte,$gt,$lt}` (numbers), `{$contains}` (array membership or substring), `{$length}`.
  */
 export function matchValue(got: unknown, want: unknown): boolean {
-  if (want === '*') return got !== undefined;
+  if ('*' === want) return got !== undefined;
   // An object is an OPERATOR container only if it actually carries a `$`-prefixed operator. An empty
   // `{}` (or an object with no `$` key) used to enter this branch, iterate zero recognized operators,
   // and `return true` — so `equals: {}` / `dataMatches: {status: {}}` was a green assertion that
   // passed against ANYTHING, undefined included: the exact false green the oracle exists to catch.
   // Without an operator it is a literal to compare, and falls through to strict equality below.
   const ops =
-    typeof want === 'object' && want !== null && !Array.isArray(want)
+    'object' === typeof want && want !== null && !Array.isArray(want)
       ? Object.entries(want as Record<string, unknown>)
       : undefined;
   if (ops !== undefined && ops.some(([op]) => op.startsWith('$'))) {
     for (const [op, val] of ops) {
-      const n = typeof got === 'number' ? got : NaN;
+      const n = 'number' === typeof got ? got : NaN;
       switch (op) {
         case '$gte':
           if (!(n >= (val as number))) return false;
@@ -195,14 +195,14 @@ export function matchValue(got: unknown, want: unknown): boolean {
         case '$contains':
           if (Array.isArray(got)) {
             if (!got.includes(val)) return false;
-          } else if (typeof got === 'string') {
+          } else if ('string' === typeof got) {
             if (!got.includes(String(val))) return false;
           } else {
             return false;
           }
           break;
         case '$length':
-          if (!((Array.isArray(got) || typeof got === 'string') && got.length === val)) {
+          if (!((Array.isArray(got) || 'string' === typeof got) && got.length === val)) {
             return false;
           }
           break;
@@ -233,7 +233,7 @@ function dataMatches(actual: Record<string, unknown>, pattern: Record<string, un
  * This exists so an agent can assert on the OUTCOME rather than on a number Reticle invented.
  */
 function callSucceeded(data: Record<string, unknown>): boolean {
-  if (typeof data['ok'] === 'boolean') return data['ok'];
+  if ('boolean' === typeof data['ok']) return data['ok'];
   const status = num(data['status']);
   return status === undefined || status < 400;
 }
@@ -367,16 +367,16 @@ export function evalConsole(
         e.type === EventType.ERROR_UNCAUGHT
       );
     }
-    if (p.level === 'error') return isErr;
+    if ('error' === p.level) return isErr;
     return e.type === CONSOLE_LEVEL_TYPE[p.level];
   });
-  if (p.absent === true) {
-    return matches.length === 0
+  if (true === p.absent) {
+    return 0 === matches.length
       ? { pass: true, evidence: { absent: true } }
       : {
           pass: false,
           failureReason: `expected no ${p.level ?? 'console'} entries but found ${String(matches.length)}`,
-          observed: `${String(matches.length)} ${p.level ?? 'console'} entr${matches.length === 1 ? 'y' : 'ies'}`,
+          observed: `${String(matches.length)} ${p.level ?? 'console'} entr${1 === matches.length ? 'y' : 'ies'}`,
           expected: `no ${p.level ?? 'console'} entries`,
           assertion: 'console.absent',
           evidence: matches.map((e) => e.data),
@@ -397,7 +397,7 @@ export function evalAnimation(
   events: ReticleEvent[],
   p: Extract<Predicate, { kind: 'animation' }>,
 ): EvalResult {
-  const wantType = p.completed === true ? EventType.ANIM_END : EventType.ANIM_START;
+  const wantType = true === p.completed ? EventType.ANIM_END : EventType.ANIM_START;
   const hit = events.find((e) => {
     if (e.type !== wantType) return false;
     if (p.name !== undefined && str(e.data['name']) !== p.name) return false;
@@ -543,16 +543,16 @@ export function evalSettled(
     const id = str(e.data['id']);
     if (id === undefined) continue;
     const direction = str(e.data['direction']);
-    if (direction === 'open') openStreams.add(id);
-    else if (direction === 'close') openStreams.delete(id);
+    if ('open' === direction) openStreams.add(id);
+    else if ('close' === direction) openStreams.delete(id);
   }
   const streaming = openStreams.size;
 
   if (inFlight + streaming > 0) {
     const what =
-      streaming === 0
+      0 === streaming
         ? `${String(inFlight)} request(s) still in flight`
-        : inFlight === 0
+        : 0 === inFlight
           ? `${String(streaming)} response body(ies) still streaming`
           : `${String(inFlight)} request(s) in flight and ${String(streaming)} response body(ies) still streaming`;
     return {

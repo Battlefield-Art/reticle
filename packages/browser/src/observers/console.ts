@@ -17,7 +17,7 @@ const METHOD_EVENT: Record<ConsoleMethod, EventType> = {
 function stringifyArgs(args: unknown[]): string {
   return args
     .map((a) => {
-      if (typeof a === 'string') return a;
+      if ('string' === typeof a) return a;
       if (a instanceof Error) return a.message;
       return safeStringify(a);
     })
@@ -28,7 +28,7 @@ function stringifyArgs(args: unknown[]): string {
 const MAX_STACK_LEN = TRANSPORT_LIMITS.MAX_STACK_LENGTH;
 
 function capStack(stack: string | undefined): string | undefined {
-  if (stack === undefined || stack.length === 0) return undefined;
+  if (stack === undefined || 0 === stack.length) return undefined;
   return stack.length > MAX_STACK_LEN ? stack.slice(0, MAX_STACK_LEN) : stack;
 }
 
@@ -53,7 +53,7 @@ export function installConsole(emit: Emit): Teardown {
     const callOriginal = original.bind(console);
     const wrapper = (...args: unknown[]): void => {
       // Only console.error carries a stack — the diagnosis case; log/warn stay lean.
-      const stack = method === 'error' ? firstErrorStack(args) : undefined;
+      const stack = 'error' === method ? firstErrorStack(args) : undefined;
       emit(METHOD_EVENT[method], {
         message: stringifyArgs(args),
         ...(stack === undefined ? {} : { stack }),

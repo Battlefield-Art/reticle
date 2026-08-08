@@ -38,14 +38,14 @@ export function cursorServerEntry(): Record<string, unknown> {
 type ParseResult = { ok: true; config: CursorConfigShape } | { ok: false };
 
 function parseConfig(existing: string | null): ParseResult {
-  if (existing === null || existing.trim().length === 0) return { ok: true, config: {} };
+  if (null === existing || 0 === existing.trim().length) return { ok: true, config: {} };
   try {
     const parsed: unknown = JSON.parse(existing);
     // Valid JSON that is not a PLAIN OBJECT — `[]`, `3`, `"x"`, `null` — used to fall through to an
     // empty config, and the file was then rewritten wholesale. Unparseable JSON was already handled
     // conservatively; this adjacent case destroyed the file instead. Whatever is in there is the
     // user's, and we do not understand it, so we do not touch it.
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return { ok: false };
+    if (typeof parsed !== 'object' || null === parsed || Array.isArray(parsed)) return { ok: false };
     return { ok: true, config: parsed as CursorConfigShape };
   } catch {
     return { ok: false };
@@ -67,13 +67,13 @@ function parseConfig(existing: string | null): ParseResult {
  */
 function leaveEntryAlone(existing: unknown): boolean {
   if (JSON.stringify(existing) === JSON.stringify(cursorServerEntry())) return true;
-  if (typeof existing !== 'object' || existing === null) return true;
+  if (typeof existing !== 'object' || null === existing) return true;
   const command = (existing as { command?: unknown }).command;
   const args = (existing as { args?: unknown }).args;
   const ours =
     command === NPX &&
     Array.isArray(args) &&
-    args.some((arg) => typeof arg === 'string' && arg.includes(RETICLE_NPM_PACKAGE));
+    args.some((arg) => 'string' === typeof arg && arg.includes(RETICLE_NPM_PACKAGE));
   return !ours;
 }
 

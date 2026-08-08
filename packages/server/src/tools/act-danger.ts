@@ -30,7 +30,7 @@ export function assertNotDestructive(
   inspected: unknown,
 ): void {
   if (action !== ActionType.CLICK && action !== ActionType.DBLCLICK) return;
-  if (innerArgs[DANGEROUS_ACTION_CONFIRM_ARG] === true) return;
+  if (true === innerArgs[DANGEROUS_ACTION_CONFIRM_ARG]) return;
   if (!isDangerousActionText(descriptorText(inspected))) return;
   throw new Error(
     `potentially destructive native action blocked; retry with args.${DANGEROUS_ACTION_CONFIRM_ARG}=true`,
@@ -46,7 +46,7 @@ export function assertDragNotDestructive(
   from: unknown,
   to: unknown,
 ): void {
-  if (innerArgs[DANGEROUS_ACTION_CONFIRM_ARG] === true) return;
+  if (true === innerArgs[DANGEROUS_ACTION_CONFIRM_ARG]) return;
   if (!isDangerousActionText(`${descriptorText(from)} ${descriptorText(to)}`)) return;
   throw new Error(
     `potentially destructive native action blocked; retry with args.${DANGEROUS_ACTION_CONFIRM_ARG}=true`,

@@ -15,11 +15,11 @@ export function navigateResult(result: {
   url?: unknown;
   reason?: unknown;
 }): Record<string, unknown> {
-  const ok = result.ok === true;
+  const ok = true === result.ok;
   const base: Record<string, unknown> = {
     ok,
-    ...(typeof result.url === 'string' ? { url: result.url } : {}),
-    ...(typeof result.reason === 'string' ? { reason: result.reason } : {}),
+    ...('string' === typeof result.url ? { url: result.url } : {}),
+    ...('string' === typeof result.reason ? { reason: result.reason } : {}),
   };
   // A refusal is conclusive: the page never moved, so there is nothing unconfirmed to report.
   if (!ok) return base;

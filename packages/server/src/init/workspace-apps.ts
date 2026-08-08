@@ -27,7 +27,7 @@ export interface WorkspaceSources {
 /** `packages/*` -> `packages`; `web` -> `web`. The base directory a glob searches. */
 function globBase(pattern: string): string | undefined {
   const base = pattern.split('/')[0]?.trim().replace(/^['"]|['"]$/g, '');
-  return base === undefined || base === '' || base === '.' || base.includes('*') ? undefined : base;
+  return base === undefined || '' === base || '.' === base || base.includes('*') ? undefined : base;
 }
 
 function fromPnpm(yaml: string): string[] {
@@ -54,12 +54,12 @@ function fromPnpm(yaml: string): string[] {
 function fromPkg(workspaces: unknown): string[] {
   const list = Array.isArray(workspaces)
     ? workspaces
-    : typeof workspaces === 'object' && workspaces !== null
+    : 'object' === typeof workspaces && workspaces !== null
       ? (workspaces as { packages?: unknown }).packages
       : undefined;
   if (!Array.isArray(list)) return [];
   return list
-    .filter((p): p is string => typeof p === 'string')
+    .filter((p): p is string => 'string' === typeof p)
     .map(globBase)
     .filter((p): p is string => p !== undefined);
 }

@@ -37,15 +37,15 @@ export function verificationOf(
   // A paused session REFUSES the call — nothing driven, nothing asserted. The refusal carries a
   // verdict field so the agent never reads undefined off it, and that field must not be mistaken
   // here for work that happened.
-  if (result['paused'] === true) return undefined;
-  const verified = typeof result['verified'] === 'string' ? result['verified'] : undefined;
+  if (true === result['paused']) return undefined;
+  const verified = 'string' === typeof result['verified'] ? result['verified'] : undefined;
   // flow_verify reports `status: pass|fail|unverifiable`; assert reports a boolean `pass`. Accept
   // either shape so the whole family is covered without normalizing four tools' contracts for a
   // metric's convenience — but a status that is neither pass nor fail is NOT a verdict, and an empty
   // suite reports exactly that.
   const status = result['status'];
   const passed =
-    typeof result['pass'] === 'boolean'
+    'boolean' === typeof result['pass']
       ? result['pass']
       : status === SuiteStatus.PASS
         ? true
@@ -55,9 +55,9 @@ export function verificationOf(
   if (verified === undefined && passed === undefined) return undefined;
   return {
     via: toolName,
-    verified: verified ?? (passed === true ? 'yes' : 'no'),
-    passed: passed ?? verified === 'yes',
-    falseGreenCaught: passed === true && verified === 'no',
+    verified: verified ?? (true === passed ? 'yes' : 'no'),
+    passed: passed ?? 'yes' === verified,
+    falseGreenCaught: true === passed && 'no' === verified,
     durationMs,
     // Headless CI, a human watching, or somebody's own dev server — three different products behind
     // one number until this was recorded.

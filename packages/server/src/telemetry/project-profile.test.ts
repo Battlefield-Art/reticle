@@ -166,7 +166,7 @@ describe('git facts — what makes "users per project" answerable, or honestly u
     const facts = gitFacts(
       '/p/packages/web',
       () => config('git@github.com:a/b.git'),
-      (path) => path === '/p/.git',
+      (path) => '/p/.git' === path,
     );
     expect(facts.state).toBe('remote');
   });

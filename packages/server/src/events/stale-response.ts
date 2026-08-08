@@ -34,12 +34,12 @@ interface Flight {
 
 function pathOf(url: string): string {
   const q = url.indexOf('?');
-  return q === -1 ? url : url.slice(0, q);
+  return -1 === q ? url : url.slice(0, q);
 }
 
 function queryOf(url: string): string {
   const q = url.indexOf('?');
-  return q === -1 ? '' : url.slice(q + 1);
+  return -1 === q ? '' : url.slice(q + 1);
 }
 
 /**
@@ -87,12 +87,12 @@ function flights(events: readonly ReticleEvent[]): Flight[] {
   const issued = new Map<string, { url: string; method: string; at: number }>();
   const out: Flight[] = [];
   for (const event of events) {
-    const id = typeof event.data['id'] === 'string' ? event.data['id'] : undefined;
+    const id = 'string' === typeof event.data['id'] ? event.data['id'] : undefined;
     if (id === undefined) continue;
-    const at = typeof event.t === 'number' ? event.t : 0;
+    const at = 'number' === typeof event.t ? event.t : 0;
     if (event.type === EventType.NET_PENDING) {
-      const url = typeof event.data['url'] === 'string' ? event.data['url'] : '';
-      const method = typeof event.data['method'] === 'string' ? event.data['method'] : 'GET';
+      const url = 'string' === typeof event.data['url'] ? event.data['url'] : '';
+      const method = 'string' === typeof event.data['method'] ? event.data['method'] : 'GET';
       issued.set(id, { url, method, at });
       continue;
     }

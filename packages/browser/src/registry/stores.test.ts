@@ -22,7 +22,7 @@ describe('store registry — passing the STORE auto-wires change diffs', () => {
     };
     registerStore('ws_store', store);
     expect(readStores('ws_store')).toEqual({ ws_store: { count: 1 } });
-    const subs = subscribableStores().filter(([n]) => n === 'ws_store');
+    const subs = subscribableStores().filter(([n]) => 'ws_store' === n);
     expect(subs).toHaveLength(1); // ← auto-subscribed, no 3rd argument needed
     subs[0]?.[2](() => undefined);
     expect(listener).toBeDefined(); // the store's own subscribe was used
@@ -43,7 +43,7 @@ describe('store registry — passing the STORE auto-wires change diffs', () => {
     });
     registerStore('ws_zustand', useApp);
     expect(readStores('ws_zustand')).toEqual({ ws_zustand: { count: 7 } });
-    const subs = subscribableStores().filter(([n]) => n === 'ws_zustand');
+    const subs = subscribableStores().filter(([n]) => 'ws_zustand' === n);
     expect(subs).toHaveLength(1);
     subs[0]?.[2](() => undefined);
     expect(subscribed).toBe(true);
@@ -53,7 +53,7 @@ describe('store registry — passing the STORE auto-wires change diffs', () => {
   it('a plain getter still registers (back-compat) but is NOT auto-subscribed', () => {
     registerStore('ws_getter', () => ({ count: 1 }));
     expect(readStores('ws_getter')).toEqual({ ws_getter: { count: 1 } });
-    expect(subscribableStores().filter(([n]) => n === 'ws_getter')).toHaveLength(0);
+    expect(subscribableStores().filter(([n]) => 'ws_getter' === n)).toHaveLength(0);
     unregisterStore('ws_getter');
   });
 });

@@ -127,7 +127,7 @@ export async function flowsAsSpecs(
   opts?: FlowsAsSpecsOptions,
 ): Promise<FlowSpec[]> {
   const store =
-    typeof source === 'string'
+    'string' === typeof source
       ? new FlowStore(opts?.fs ?? createNodeFileSystem(), source, opts?.clock ?? { now: () => 0 })
       : source;
 

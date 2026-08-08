@@ -111,7 +111,7 @@ export class RingBuffer {
         continue;
       }
       const victim = this.#findChurnAfterHead();
-      if (victim === -1) {
+      if (-1 === victim) {
         // Buffer genuinely full of high-signal events — fall back to FIFO so it stays bounded.
         this.#totalBytes -= this.#eventBytes[this.#head] ?? 0;
         this.#head += 1;

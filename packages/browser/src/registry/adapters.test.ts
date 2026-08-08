@@ -22,7 +22,7 @@ describe('elementHasHoverHandlers', () => {
     registerAdapter({
       name: 'mock-hover',
       identify: () => null,
-      hasHoverHandlers: (el) => el.tagName === 'BUTTON',
+      hasHoverHandlers: (el) => 'BUTTON' === el.tagName,
     });
     expect(elementHasHoverHandlers(document.createElement('button'))).toBe(true);
     expect(elementHasHoverHandlers(document.createElement('div'))).toBe(false);

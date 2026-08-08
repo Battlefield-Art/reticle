@@ -38,7 +38,7 @@ export type DeltaDecision =
 export function snapshotDelta(prevTree: string | undefined, nextTree: string): DeltaDecision {
   if (prevTree === undefined) return { mode: SnapshotDeltaMode.FULL };
   const { added, removed } = diffLines(normalizeLines(prevTree), normalizeLines(nextTree));
-  if (added.length === 0 && removed.length === 0) return { mode: SnapshotDeltaMode.UNCHANGED };
+  if (0 === added.length && 0 === removed.length) return { mode: SnapshotDeltaMode.UNCHANGED };
   return {
     mode: SnapshotDeltaMode.DELTA,
     delta: { added, removed, addedCount: added.length, removedCount: removed.length },
@@ -112,16 +112,16 @@ export function applySnapshotDelta(
   opts: SnapshotDeltaOpts,
   cache: SnapshotCache,
 ): unknown {
-  if (typeof raw !== 'object' || raw === null) return raw;
+  if (typeof raw !== 'object' || null === raw) return raw;
   const r = raw as Record<string, unknown>;
   // Only shape genuine snapshots (have a string tree). An error envelope passes through untouched.
   if (typeof r['tree'] !== 'string') return raw;
   const tree = r['tree'];
   const status =
-    typeof r['status'] === 'object' && r['status'] !== null
+    'object' === typeof r['status'] && r['status'] !== null
       ? (r['status'] as Record<string, unknown>)
       : {};
-  const route = typeof status['route'] === 'string' ? status['route'] : '';
+  const route = 'string' === typeof status['route'] ? status['route'] : '';
   const key = snapshotCacheKey(opts.sessionId, opts.scope, opts.mode);
 
   if (!opts.diff) {
@@ -137,7 +137,7 @@ export function applySnapshotDelta(
   // large page are identical whenever the change happened past the cap — and "unchanged" is then a
   // statement about the cap, not about the page. Carried through on both branches: a delta computed
   // over a prefix is real but not exhaustive either.
-  const capped = r['truncated'] === true ? { truncated: true, note: CAPPED_DIFF_NOTE } : {};
+  const capped = true === r['truncated'] ? { truncated: true, note: CAPPED_DIFF_NOTE } : {};
   if (decision.mode === SnapshotDeltaMode.UNCHANGED) {
     return { mode: SnapshotDeltaMode.UNCHANGED, status: r['status'], ...capped };
   }

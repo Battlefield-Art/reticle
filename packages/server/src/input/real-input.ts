@@ -197,7 +197,7 @@ export async function capturePage(page: Page, opts: ScreenshotOpts): Promise<Uin
   const buf = await page.screenshot(
     opts.clip !== undefined
       ? { ...SCREENSHOT_DETERMINISM, clip: opts.clip }
-      : opts.fullPage === true
+      : true === opts.fullPage
         ? { ...SCREENSHOT_DETERMINISM, fullPage: true }
         : { ...SCREENSHOT_DETERMINISM },
   );
@@ -548,7 +548,7 @@ export function selectPage<T extends { url(): string }>(
   if (exact !== undefined) return exact;
   const target = stripVolatile(sessionUrl);
   const loose = pages.filter((p) => stripVolatile(p.url()) === target);
-  return loose.length === 1 ? loose[0] : undefined;
+  return 1 === loose.length ? loose[0] : undefined;
 }
 
 function stripVolatile(url: string): string {

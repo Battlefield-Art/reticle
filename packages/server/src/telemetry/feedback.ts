@@ -86,7 +86,7 @@ export function redactFeedbackText(input: string, max: number): Redaction {
       removed.add(label);
       // A rule with a leading capture keeps it (the scheme, the `api_key=` key) so the reader still
       // sees WHAT was removed, not just that something was.
-      const prefix = typeof groups[0] === 'string' ? groups[0] : '';
+      const prefix = 'string' === typeof groups[0] ? groups[0] : '';
       return `${prefix}${REDACTED}`;
     });
   }
@@ -96,7 +96,7 @@ export function redactFeedbackText(input: string, max: number): Redaction {
 /** True when the feedback channel is switched off on its own (the emitter's switches apply as well). */
 export function feedbackDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const value = (env[FEEDBACK_ENV] ?? '').toLowerCase();
-  return value === '0' || value === 'false' || value === 'off' || value === 'no';
+  return '0' === value || 'false' === value || 'off' === value || 'no' === value;
 }
 
 /**
@@ -160,7 +160,7 @@ export async function submitFeedback(
   // addition. Deriving the set means a sixth field is covered the moment it exists.
   const redactions = new Map<string, Redaction>();
   for (const [key, value] of Object.entries(input)) {
-    if (typeof value !== 'string' || value === '') continue;
+    if (typeof value !== 'string' || '' === value) continue;
     if (!AUTHOR_WRITTEN_FIELDS.has(key)) continue;
     redactions.set(key, redactFeedbackText(value, FIELD_CAPS[key] ?? FEEDBACK_FIELD_MAX));
   }

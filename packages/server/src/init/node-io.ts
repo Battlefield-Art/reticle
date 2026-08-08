@@ -19,7 +19,7 @@ import type { InitIo } from './run.js';
  * no error anyone can read.
  */
 function shellOpt(): { shell?: true } {
-  return process.platform === 'win32' ? { shell: true } : {};
+  return 'win32' === process.platform ? { shell: true } : {};
 }
 
 /** Under a shell, quote what the shell would otherwise split. Windows only, where shell is required. */
@@ -81,12 +81,12 @@ export function buildNodeIo(cwd: string): InitIo {
     exec(command, args) {
       // Inherit stdio so the install's own progress is visible to the user.
       const result = spawnSync(command, shellSafe(args), { cwd, stdio: 'inherit', ...shellOpt() });
-      return result.status === 0;
+      return 0 === result.status;
     },
     probe(command, args) {
       // Quiet yes/no check (CLI availability, existing registration). Never throws.
       const result = spawnSync(command, shellSafe(args), { cwd, stdio: 'ignore', ...shellOpt() });
-      return result.status === 0;
+      return 0 === result.status;
     },
     print(line) {
       process.stdout.write(`${line}\n`);

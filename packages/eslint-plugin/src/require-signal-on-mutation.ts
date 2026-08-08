@@ -31,7 +31,7 @@ function calleeName(node: TSESTree.CallExpression): string | null {
   }
   if (
     callee.type === AST_NODE_TYPES.MemberExpression &&
-    callee.computed === false &&
+    false === callee.computed &&
     callee.property.type === AST_NODE_TYPES.Identifier
   ) {
     return callee.property.name;
@@ -64,7 +64,7 @@ export const requireSignalOnMutation = createRule<Options, MessageIds>({
     function exitFn(): void {
       const frame = stack.pop();
       if (frame === undefined) return;
-      if (frame.mutatorNode !== null && frame.calledSignal === false) {
+      if (frame.mutatorNode !== null && false === frame.calledSignal) {
         context.report({
           node: frame.mutatorNode,
           messageId: MessageId.MUTATION_WITHOUT_SIGNAL,
@@ -83,8 +83,8 @@ export const requireSignalOnMutation = createRule<Options, MessageIds>({
         const frame = stack.at(-1);
         if (frame === undefined) return;
         const name = calleeName(node);
-        if (name === null) return;
-        if (mutators.has(name) && frame.mutatorNode === null) {
+        if (null === name) return;
+        if (mutators.has(name) && null === frame.mutatorNode) {
           frame.mutatorNode = node;
         }
         if (signalCallees.has(name)) {

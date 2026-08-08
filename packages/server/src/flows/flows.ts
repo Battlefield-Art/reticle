@@ -59,9 +59,9 @@ function sourceArg(
   const source = asRecord(src['source']);
   const file = source['file'];
   const line = source['line'];
-  if (typeof file !== 'string' || file.length === 0 || typeof line !== 'number') return undefined;
+  if (typeof file !== 'string' || 0 === file.length || typeof line !== 'number') return undefined;
   const out: { file: string; line: number; column?: number } = { file, line };
-  if (typeof source['column'] === 'number') out.column = source['column'];
+  if ('number' === typeof source['column']) out.column = source['column'];
   return out;
 }
 
@@ -145,7 +145,7 @@ export function recordedStepToFlowStep(step: RecordedStep): FlowStep {
   if (step.tool === ReticleTool.ACT_SEQUENCE) {
     const rawSubs = Array.isArray(step.args['steps']) ? step.args['steps'] : [];
     const subs = rawSubs.map(subStepToFlowStep);
-    const degraded = subs.some((s) => s.degraded === true);
+    const degraded = subs.some((s) => true === s.degraded);
     // The first sub-step that HAS an anchor, not blindly the first. Taking subs[0] handed the whole
     // sequence the degraded sentinel whenever sub-step 0 lacked a testid — even with every later
     // sub-step perfectly anchored — and replay then queried the DOM for a testid literally named
@@ -252,14 +252,14 @@ export class FlowStore {
     const flow = withAnnotations(base, annotations);
     await this.#fs.mkdir(flowDir(this.#root, pid));
     await this.#fs.writeFile(flowPath(this.#root, program.name, pid), this.#serialize(flow));
-    const degraded = flow.steps.filter((s) => s.degraded === true).length;
+    const degraded = flow.steps.filter((s) => true === s.degraded).length;
     return {
       ok: true,
       value: {
         name: program.name,
         stepCount: flow.steps.length,
         degraded,
-        empty: flow.steps.length === 0,
+        empty: 0 === flow.steps.length,
       },
     };
   }
@@ -283,14 +283,14 @@ export class FlowStore {
       flowPath(this.#root, asFlowName(valid.name), pid),
       this.#serialize(valid),
     );
-    const degraded = valid.steps.filter((s) => s.degraded === true).length;
+    const degraded = valid.steps.filter((s) => true === s.degraded).length;
     return {
       ok: true,
       value: {
         name: valid.name,
         stepCount: valid.steps.length,
         degraded,
-        empty: valid.steps.length === 0,
+        empty: 0 === valid.steps.length,
       },
     };
   }
@@ -320,7 +320,7 @@ export class FlowStore {
     // Write back to the SAME file load resolved (nested if it lives there, else legacy flat), so a
     // heal never forks a second copy and byte-stability holds regardless of where the flow lives.
     const path = await this.#resolveReadPath(name, pid);
-    if (path === null) return { ok: false, code: FlowErrorCode.NOT_FOUND };
+    if (null === path) return { ok: false, code: FlowErrorCode.NOT_FOUND };
     const { flow: next, applied } = applyHealChanges(flow, changes);
     await this.#fs.writeFile(path, this.#serialize(next));
     return { ok: true, value: { name, changed: applied } };
@@ -411,7 +411,7 @@ export class FlowStore {
   async load(name: string, projectId?: string): Promise<FlowResult<FlowFile>> {
     if (!isValidFlowName(name)) return { ok: false, code: FlowErrorCode.INVALID_NAME };
     const path = await this.#resolveReadPath(name, safeProjectId(projectId));
-    if (path === null) return { ok: false, code: FlowErrorCode.NOT_FOUND };
+    if (null === path) return { ok: false, code: FlowErrorCode.NOT_FOUND };
 
     let text: string;
     try {
@@ -443,7 +443,7 @@ export class FlowStore {
   async remove(name: string, projectId?: string): Promise<FlowResult<void>> {
     if (!isValidFlowName(name)) return { ok: false, code: FlowErrorCode.INVALID_NAME };
     const path = await this.#resolveReadPath(name, safeProjectId(projectId));
-    if (path === null) return { ok: false, code: FlowErrorCode.NOT_FOUND };
+    if (null === path) return { ok: false, code: FlowErrorCode.NOT_FOUND };
     await this.#fs.rm(path);
     return { ok: true, value: undefined };
   }

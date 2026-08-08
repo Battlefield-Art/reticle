@@ -41,7 +41,7 @@ export interface EnterpriseConfig {
 const PARAM_PREFIX = 'enterprise-';
 
 function search(): URLSearchParams {
-  return new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
+  return new URLSearchParams('undefined' === typeof location ? '' : location.search);
 }
 
 /** Any `?enterprise` / `?enterprise-*` param turns the fixture on. Nothing else does. */
@@ -54,7 +54,7 @@ export function isEnterpriseEnabled(): boolean {
 
 function readCount(params: URLSearchParams, key: string, fallback: number): number {
   const raw = params.get(key);
-  if (raw === null) return fallback;
+  if (null === raw) return fallback;
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0) return fallback;
   return Math.floor(n);

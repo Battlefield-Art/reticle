@@ -50,9 +50,9 @@ interface TransportDeps {
 
 /** Default visibility source: fire `handler` whenever the document returns to the foreground. */
 function subscribeDocumentVisible(handler: () => void): () => void {
-  if (typeof document === 'undefined') return () => undefined;
+  if ('undefined' === typeof document) return () => undefined;
   const listener = (): void => {
-    if (document.visibilityState === 'visible') handler();
+    if ('visible' === document.visibilityState) handler();
   };
   document.addEventListener('visibilitychange', listener);
   return () => document.removeEventListener('visibilitychange', listener);
@@ -118,7 +118,7 @@ export class Transport {
   }
 
   connect(): void {
-    if (typeof WebSocket === 'undefined') return;
+    if ('undefined' === typeof WebSocket) return;
     this.#closed = false;
     this.#unsubscribeVisible ??= (this.#deps.onVisible ?? subscribeDocumentVisible)(() =>
       this.#onVisible(),
@@ -171,7 +171,7 @@ export class Transport {
     };
     ws.onmessage = (event: MessageEvent): void => {
       const data: unknown = event.data;
-      void this.#onMessage(typeof data === 'string' ? data : String(data));
+      void this.#onMessage('string' === typeof data ? data : String(data));
     };
     ws.onclose = (event: CloseEvent): void => {
       this.#ws = undefined;
@@ -246,7 +246,7 @@ export class Transport {
       // failure mode where the cause is knowable and was being thrown away. Reply if we can recover
       // an id; a message without one is not a command we can answer at all.
       const id: unknown = (parsed as { id?: unknown } | null)?.id;
-      if (typeof id === 'string' && id.length > 0) {
+      if ('string' === typeof id && id.length > 0) {
         this.#sendRaw(
           safeStringify({
             kind: MessageKind.COMMAND_RESULT,

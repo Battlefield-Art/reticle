@@ -65,7 +65,7 @@ describe('startDaemon port collision', () => {
     const port = await new Promise<number>((resolve) => {
       blocker?.listen(0, LOOPBACK_HOST, () => {
         const addr = blocker?.address();
-        resolve(typeof addr === 'object' && addr !== null ? addr.port : 0);
+        resolve('object' === typeof addr && addr !== null ? addr.port : 0);
       });
     });
     const dir = await mkdtemp(join(tmpdir(), 'reticle-daemon-collide-'));

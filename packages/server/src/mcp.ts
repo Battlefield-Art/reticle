@@ -173,7 +173,7 @@ function leanZodShape(shape: z.ZodRawShape, predicateAnchor?: string): z.ZodRawS
       continue;
     }
     const desc = schema.description;
-    out[key] = typeof desc === 'string' ? schema.describe(firstSentence(desc)) : schema;
+    out[key] = 'string' === typeof desc ? schema.describe(firstSentence(desc)) : schema;
   }
   return out;
 }
@@ -299,7 +299,7 @@ type InputValidator = (tool: unknown, args: unknown, toolName: string) => Promis
 
 /** Argument keys the tool never declared. Empty when the tool's shape is unknown to us. */
 function unknownKeys(args: unknown, allowed?: ReadonlySet<string>): string[] {
-  if (allowed === undefined || typeof args !== 'object' || args === null) return [];
+  if (allowed === undefined || typeof args !== 'object' || null === args) return [];
   return Object.keys(args as Record<string, unknown>).filter((key) => !allowed.has(key));
 }
 
@@ -322,7 +322,7 @@ export function installFriendlyArgErrors(
       const example = examples.get(toolName);
       throw new McpError(
         ErrorCode.InvalidParams,
-        `Unknown ${unknown.length === 1 ? 'parameter' : 'parameters'} for ${toolName}: ${unknown.join(', ')}. ` +
+        `Unknown ${1 === unknown.length ? 'parameter' : 'parameters'} for ${toolName}: ${unknown.join(', ')}. ` +
           `They were NOT applied — a result computed without them would look like an answer. ` +
           (example === undefined
             ? `Call reticle_tools { names: ["${toolName}"] } for its parameters.`
@@ -374,11 +374,11 @@ export function installUnadvertisedToolHelp(
 
 /** The requested tool name, when the request has the shape we expect. */
 function toolNameOf(request: unknown): string | undefined {
-  if (typeof request !== 'object' || request === null) return undefined;
+  if (typeof request !== 'object' || null === request) return undefined;
   const params = (request as { params?: unknown }).params;
-  if (typeof params !== 'object' || params === null) return undefined;
+  if (typeof params !== 'object' || null === params) return undefined;
   const name = (params as { name?: unknown }).name;
-  return typeof name === 'string' ? name : undefined;
+  return 'string' === typeof name ? name : undefined;
 }
 
 export function createMcpServer(

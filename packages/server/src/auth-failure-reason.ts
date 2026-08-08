@@ -25,7 +25,7 @@ export function authFailureReason(
   servedProjects: ReadonlySet<string>,
   helloProject: string | undefined,
 ): string {
-  if (helloProject === undefined || servedProjects.size === 0) return PLAIN;
+  if (helloProject === undefined || 0 === servedProjects.size) return PLAIN;
   if (servedProjects.has(helloProject)) return PLAIN;
   const reason = `this daemon serves a different project — run \`reticle stop\` and retry`;
   return Buffer.byteLength(reason, 'utf8') <= MAX_REASON_BYTES ? reason : PLAIN;

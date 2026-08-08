@@ -35,7 +35,7 @@ export function sameOriginFrameBodies(root: ParentNode): HTMLElement[] {
     if (depth >= DEPTH_MAX) return;
     for (const frame of node.querySelectorAll('iframe')) {
       const body = bodyOf(frame);
-      if (body === null) continue;
+      if (null === body) continue;
       found.push(body);
       walk(body, depth + 1);
     }

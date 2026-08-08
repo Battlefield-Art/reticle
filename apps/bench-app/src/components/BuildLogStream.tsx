@@ -43,8 +43,8 @@ export function BuildLogStream(): React.ReactElement {
       try {
         const frame: unknown = JSON.parse(String(ev.data));
         const step =
-          typeof frame === 'object' && frame !== null && 'step' in frame ? String(frame.step) : '';
-        if (step.length === 0) return;
+          'object' === typeof frame && frame !== null && 'step' in frame ? String(frame.step) : '';
+        if (0 === step.length) return;
         setSteps((prev) => [...prev, step]);
         if (step === DONE_LABEL) setStatus(DONE_LABEL);
       } catch {
@@ -61,7 +61,7 @@ export function BuildLogStream(): React.ReactElement {
       try {
         const reply: unknown = JSON.parse(String(ev.data));
         const channel =
-          typeof reply === 'object' && reply !== null && 'channel' in reply
+          'object' === typeof reply && reply !== null && 'channel' in reply
             ? String(reply.channel)
             : '';
         // A reply on a channel we never subscribed to is ignored — so the UI simply never updates.

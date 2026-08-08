@@ -88,8 +88,8 @@ export function CommandPalette(): React.ReactElement | null {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setPalette(false);
-              if (e.key === 'Enter' && filtered[0]) filtered[0].run();
+              if ('Escape' === e.key) setPalette(false);
+              if ('Enter' === e.key && filtered[0]) filtered[0].run();
             }}
             style={{ border: 'none', background: 'none', padding: 0, fontSize: 15 }}
           />
@@ -113,7 +113,7 @@ export function CommandPalette(): React.ReactElement | null {
               </span>
             </button>
           ))}
-          {filtered.length === 0 ? (
+          {0 === filtered.length ? (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--faint)' }}>
               No matches
             </div>

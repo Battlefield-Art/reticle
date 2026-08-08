@@ -258,11 +258,11 @@ describe('predicate engine', () => {
     // It's green — but only via the clean-console branch.
     expect((await evaluatePredicate(session, anyOf)).pass).toBe(true);
     // Declared links still claim the signal consequence (every branch flattens in).
-    expect(predicateToExpectedLinks(anyOf).some((l) => l.kind === 'signal')).toBe(true);
+    expect(predicateToExpectedLinks(anyOf).some((l) => 'signal' === l.kind)).toBe(true);
     // Proven links must NOT — the signal was one of the options and never happened. Grading off these
     // yields PRESENCE, so a minGrade:signal/net gate correctly refuses to trust this green.
     const proven = await provenExpectedLinks(session, anyOf);
-    expect(proven.some((l) => l.kind === 'signal')).toBe(false);
+    expect(proven.some((l) => 'signal' === l.kind)).toBe(false);
   });
 
   it('proven links keep every allOf branch (all held for it to be green)', async () => {
@@ -278,8 +278,8 @@ describe('predicate engine', () => {
       ],
     };
     const proven = await provenExpectedLinks(session, allOf);
-    expect(proven.some((l) => l.kind === 'signal')).toBe(true);
-    expect(proven.some((l) => l.kind === 'net')).toBe(true);
+    expect(proven.some((l) => 'signal' === l.kind)).toBe(true);
+    expect(proven.some((l) => 'net' === l.kind)).toBe(true);
   });
 
   it('not inverts', async () => {
@@ -341,7 +341,7 @@ describe('predicate engine', () => {
   it('element predicate reports a near-miss when the name is wrong', async () => {
     const session = new FakeSession([], (query) => {
       // Only a button named "Cancel" exists.
-      if (query.role === 'button' && query.name === undefined) {
+      if ('button' === query.role && query.name === undefined) {
         return {
           matched: true,
           count: 1,
@@ -366,7 +366,7 @@ describe('predicate engine', () => {
     let matchCalls = 0;
     const session = new FakeSession([], (query) => {
       matchCalls += 1;
-      if (query.role === 'button' && query.name === undefined) {
+      if ('button' === query.role && query.name === undefined) {
         return {
           matched: true,
           count: 1,
@@ -951,7 +951,7 @@ describe('element failures carry observed/expected/assertion', () => {
       // Honours the state filter the way matchQuery does — without that, a state assertion "matches"
       // its own relaxed retry and the near-miss branch is never reached.
       command: (_cmd: string, args?: Record<string, unknown>) => {
-        const want = typeof args?.['state'] === 'string' ? args['state'] : undefined;
+        const want = 'string' === typeof args?.['state'] ? args['state'] : undefined;
         const all = elements.map((e, i) => ({
           ref: `e${String(i)}`,
           role: 'button',

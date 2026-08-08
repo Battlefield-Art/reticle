@@ -56,7 +56,7 @@ function numericDelta(before: number | undefined, after: number | undefined): nu
  */
 async function cloudRegression(deps: ToolDeps, sessionId: string | undefined): Promise<unknown> {
   const config = resolveCloudConfig(process.env);
-  if (config === null) return undefined;
+  if (null === config) return undefined;
   let projectId: string | undefined;
   try {
     projectId = deps.sessions.resolve(sessionId).projectId;
@@ -203,7 +203,7 @@ export const PROJECT_TOOLS: ToolDef[] = [
       const kindArg = args['kind'];
       const summary = asString(args['summary']);
       await deps.project.recordRun({
-        kind: typeof kindArg === 'string' ? (kindArg as RunKind) : RunKind.MANUAL,
+        kind: 'string' === typeof kindArg ? (kindArg as RunKind) : RunKind.MANUAL,
         name,
         status,
         ...(summary !== undefined ? { summary } : {}),

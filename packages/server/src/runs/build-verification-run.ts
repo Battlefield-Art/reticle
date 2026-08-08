@@ -68,7 +68,7 @@ export function computeVerdict(input: VerificationRunInput): RunVerdict {
 
   const ran = input.flows.length + input.checks.length;
   let confidence: RunConfidence;
-  if (ran === 0) confidence = RunConfidence.LOW;
+  if (0 === ran) confidence = RunConfidence.LOW;
   else if (input.flows.some((f) => f.oracle !== undefined) || input.checks.length > 0)
     confidence = RunConfidence.HIGH;
   else confidence = RunConfidence.MEDIUM;

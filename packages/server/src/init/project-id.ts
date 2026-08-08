@@ -33,9 +33,9 @@ export function deriveProjectId(pkgName: string | undefined, rootPath: string): 
 
 /** Pull a string `name` out of an already-parsed package.json object, or undefined. */
 export function packageName(pkg: unknown): string | undefined {
-  if (typeof pkg === 'object' && pkg !== null) {
+  if ('object' === typeof pkg && pkg !== null) {
     const name = (pkg as Record<string, unknown>)['name'];
-    if (typeof name === 'string' && name.length > 0) return name;
+    if ('string' === typeof name && name.length > 0) return name;
   }
   return undefined;
 }

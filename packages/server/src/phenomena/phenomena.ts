@@ -46,12 +46,12 @@ export function detectHidden500(events: readonly ReticleEvent[]): Finding[] {
   for (const event of events) {
     if (event.type === EventType.PAGE_HEALTH) {
       const h = event.data['hidden'];
-      if (typeof h === 'boolean') hidden = h;
+      if ('boolean' === typeof h) hidden = h;
       continue;
     }
     if (event.type !== EventType.NET_REQUEST) continue;
     const status = event.data['status'];
-    if (hidden && typeof status === 'number' && status >= 500) {
+    if (hidden && 'number' === typeof status && status >= 500) {
       findings.push({
         phenomenon: PhenomenonType.HIDDEN_500,
         evidence: { url: event.data['url'], status, method: event.data['method'] },
@@ -105,7 +105,7 @@ export function detectSwallowedErrors(events: readonly ReticleEvent[]): Finding[
       findings.push({
         phenomenon: PhenomenonType.SWALLOWED_ERROR,
         evidence:
-          typeof detail === 'object' && detail !== null ? (detail as Record<string, unknown>) : {},
+          'object' === typeof detail && detail !== null ? (detail as Record<string, unknown>) : {},
       });
     }
   }

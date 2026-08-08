@@ -50,19 +50,19 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
   }
   state.nodes += 1;
 
-  if (value === null || typeof value === 'boolean') return value;
-  if (typeof value === 'string') {
+  if (null === value || 'boolean' === typeof value) return value;
+  if ('string' === typeof value) {
     return boundedString(
       value,
       state,
-      key?.toLowerCase() === 'error'
+      'error' === key?.toLowerCase()
         ? TRANSPORT_LIMITS.MAX_ERROR_LENGTH
         : TRANSPORT_LIMITS.MAX_STRING_LENGTH,
     );
   }
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'bigint') return value.toString();
-  if (typeof value === 'undefined' || typeof value === 'function' || typeof value === 'symbol') {
+  if ('number' === typeof value) return Number.isFinite(value) ? value : null;
+  if ('bigint' === typeof value) return value.toString();
+  if ('undefined' === typeof value || 'function' === typeof value || 'symbol' === typeof value) {
     return OMIT_VALUE;
   }
   // An invalid Date (`new Date(NaN)` / `new Date(undefined)`, easy to land in app state) throws
@@ -84,7 +84,7 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
         state.droppedItems += value.size - n;
         break;
       }
-      const sk = boundedString(typeof k === 'string' ? k : String(k), state, MAX_KEY_LENGTH);
+      const sk = boundedString('string' === typeof k ? k : String(k), state, MAX_KEY_LENGTH);
       const sv = sanitize(v, state, depth + 1, sk);
       if (sv !== OMIT_VALUE) out[sk] = sv;
       n += 1;
@@ -195,7 +195,7 @@ function sanitize(value: unknown, state: SanitizeState, depth: number, key?: str
     const read = keys.map((key) => {
       try {
         const v = (value as Record<string, unknown>)[key];
-        return { key, value: v, scalar: v === null || typeof v !== 'object', ok: true };
+        return { key, value: v, scalar: null === v || typeof v !== 'object', ok: true };
       } catch {
         return { key, value: undefined, scalar: true, ok: false };
       }
@@ -261,7 +261,7 @@ export function sanitizeWithReport(value: unknown): {
   };
   const sanitized = sanitize(value, state, 0);
   const out = sanitized === OMIT_VALUE ? null : sanitized;
-  if (state.droppedItems === 0 && state.truncatedValues === 0) return { value: out };
+  if (0 === state.droppedItems && 0 === state.truncatedValues) return { value: out };
   const parts: string[] = [];
   if (state.droppedItems > 0) parts.push(`${state.droppedItems} item(s) dropped`);
   if (state.truncatedValues > 0) parts.push(`${state.truncatedValues} value(s) truncated`);

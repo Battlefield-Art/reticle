@@ -39,13 +39,13 @@ export function hasUnreadWriteOutcome(events: readonly ReticleEvent[]): boolean 
   return events.some((event) => {
     if (event.type !== EventType.NET_REQUEST) return false;
     const method = (
-      typeof event.data['method'] === 'string' ? event.data['method'] : ''
+      'string' === typeof event.data['method'] ? event.data['method'] : ''
     ).toUpperCase();
     if (method === IPC_METHOD || !MUTATING_METHODS.includes(method)) return false;
     const status = event.data['status'];
     if (typeof status !== 'number' || status < OK_MIN || status >= OK_MAX) return false;
     if (event.data['responseBody'] !== undefined) return false; // read — findBodyFailures judged it
     const size = event.data['responseSize'];
-    return typeof size === 'number' && size > 0;
+    return 'number' === typeof size && size > 0;
   });
 }

@@ -29,7 +29,7 @@ interface JsonRpcLike {
 function parseLine(line: string): JsonRpcLike | null {
   try {
     const parsed: unknown = JSON.parse(line);
-    return typeof parsed === 'object' && parsed !== null ? parsed : null;
+    return 'object' === typeof parsed && parsed !== null ? parsed : null;
   } catch {
     return null;
   }
@@ -38,14 +38,14 @@ function parseLine(line: string): JsonRpcLike | null {
 /** True when this queued client line is the handshake we answered ourselves. */
 export function isHandshakeLine(line: string): boolean {
   const msg = parseLine(line);
-  return msg?.method === 'initialize' || msg?.method === 'notifications/initialized';
+  return 'initialize' === msg?.method || 'notifications/initialized' === msg?.method;
 }
 
 export function localInitializeResponse(line: string): string | null {
   const msg = parseLine(line);
-  if (msg === null || msg.method !== 'initialize') return null;
+  if (null === msg || msg.method !== 'initialize') return null;
   // A notification carries no id and expects no reply; answering one is a protocol error.
-  if (msg.id === undefined || msg.id === null) return null;
+  if (msg.id === undefined || null === msg.id) return null;
   const proposed = msg.params?.protocolVersion;
   return JSON.stringify({
     jsonrpc: '2.0',
@@ -53,7 +53,7 @@ export function localInitializeResponse(line: string): string | null {
     result: {
       // Echo what the client asked for: answering with a version it did not offer is its own
       // handshake failure.
-      protocolVersion: typeof proposed === 'string' ? proposed : FALLBACK_PROTOCOL_VERSION,
+      protocolVersion: 'string' === typeof proposed ? proposed : FALLBACK_PROTOCOL_VERSION,
       capabilities: { tools: {} },
       serverInfo: { name: MCP_SERVER_NAME, version: SERVER_VERSION },
     },

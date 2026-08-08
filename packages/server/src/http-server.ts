@@ -86,14 +86,14 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
       }
     }
 
-    if (req.method === 'GET' && path === STATUS_PATH) {
+    if ('GET' === req.method && path === STATUS_PATH) {
       const body = JSON.stringify(statusProvider?.() ?? { running: true });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(body);
       return;
     }
 
-    if (req.method === 'GET' && path === MCP_SSE_PATH) {
+    if ('GET' === req.method && path === MCP_SSE_PATH) {
       // The agent's MCP server announces itself here, on the connect it already makes. The daemon is
       // the single judge of skew, so this is where the third pair is decided — and unlike the CLI's
       // own check (a stderr line no agent reads), a nudge queued here rides out on the agent's next
@@ -115,13 +115,13 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
       const transport = new SSEServerTransport(MCP_MESSAGE_PATH, res);
       const sid = transport.sessionId;
       transports.set(sid, transport);
-      if (transports.size === 1) agentPresence?.(true); // first agent attached
+      if (1 === transports.size) agentPresence?.(true); // first agent attached
       res.on('close', () => {
         transports.delete(sid);
         transport.close().catch(() => undefined);
         mcpServer.close().catch(() => undefined);
         log('mcp_client_disconnected', { sessionId: sid });
-        if (transports.size === 0) agentPresence?.(false); // last agent detached → it's the human's turn
+        if (0 === transports.size) agentPresence?.(false); // last agent detached → it's the human's turn
       });
       mcpServer
         .connect(transport)
@@ -139,9 +139,9 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
       return;
     }
 
-    if (req.method === 'POST' && path === MCP_MESSAGE_PATH) {
+    if ('POST' === req.method && path === MCP_MESSAGE_PATH) {
       const sessionId = url.searchParams.get('sessionId');
-      if (sessionId === null) {
+      if (null === sessionId) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('missing sessionId');
         return;

@@ -36,7 +36,7 @@ function memoryIo(
   const present = { ...files };
   if (cursor) present[`${HOME}/.cursor`] = '';
   // Absolute paths (home-dir config) bypass the scoping prefix, matching the real IO.
-  const key = (p: string): string => (p.startsWith('/') || prefix === '' ? p : `${prefix}/${p}`);
+  const key = (p: string): string => (p.startsWith('/') || '' === prefix ? p : `${prefix}/${p}`);
   return {
     written,
     lines,
@@ -48,7 +48,7 @@ function memoryIo(
     exists: (p) => key(p) in present || key(p) in written,
     homeDir: () => HOME,
     rootFiles: () => {
-      const scope = prefix === '' ? '' : `${prefix}/`;
+      const scope = '' === prefix ? '' : `${prefix}/`;
       return Object.keys(files)
         .filter((p) => p.startsWith(scope))
         .map((p) => p.slice(scope.length))
@@ -81,7 +81,7 @@ function memoryIo(
 
 describe('resolveLockfiles — package-manager detection in a monorepo', () => {
   it('walks up to the workspace-root lockfile when the sub-package has none', () => {
-    const io = { exists: (p: string) => p === '/repo/pnpm-lock.yaml' };
+    const io = { exists: (p: string) => '/repo/pnpm-lock.yaml' === p };
     const set = resolveLockfiles(
       new Set(['package.json', 'vite.config.ts']),
       '/repo/apps/bench-app',
@@ -133,20 +133,20 @@ describe('runInit', () => {
     const r = runInit(OPTS, io);
     expect(r.ok).toBe(true);
     expect(io.written['.mcp.json']).toBeUndefined();
-    expect(io.execCalls.some((c) => c.command === 'claude' && c.args.includes('add'))).toBe(true);
+    expect(io.execCalls.some((c) => 'claude' === c.command && c.args.includes('add'))).toBe(true);
     expect(io.written['vite.config.ts']).toContain('@reticlehq/vite-plugin');
   });
 
   it('does not re-register when an reticle server already exists (idempotent, install-once)', () => {
     const io = memoryIo(VITE_FILES, { mcpExists: true });
     runInit(OPTS, io);
-    expect(io.execCalls.some((c) => c.command === 'claude')).toBe(false);
+    expect(io.execCalls.some((c) => 'claude' === c.command)).toBe(false);
   });
 
   it('prints manual global instructions when no agent is detected', () => {
     const io = memoryIo(VITE_FILES, { claudeAvailable: false, cursor: false });
     runInit(OPTS, io);
-    expect(io.execCalls.some((c) => c.command === 'claude' && c.args.includes('add'))).toBe(false);
+    expect(io.execCalls.some((c) => 'claude' === c.command && c.args.includes('add'))).toBe(false);
     expect(io.lines.join('\n')).toContain('-s user');
   });
 
@@ -159,7 +159,7 @@ describe('runInit', () => {
   it('registers with BOTH Claude and Cursor when both are present', () => {
     const io = memoryIo(VITE_FILES, { claudeAvailable: true, cursor: true });
     runInit(OPTS, io);
-    expect(io.execCalls.some((c) => c.command === 'claude' && c.args.includes('add'))).toBe(true);
+    expect(io.execCalls.some((c) => 'claude' === c.command && c.args.includes('add'))).toBe(true);
     expect(io.written['/home/u/.cursor/mcp.json']).toContain('@reticlehq/server');
   });
 

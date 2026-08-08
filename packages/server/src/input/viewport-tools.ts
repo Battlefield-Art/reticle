@@ -17,7 +17,7 @@ type ViewportCapable = RealInputProvider & {
 
 function viewportProvider(deps: ToolDeps): ViewportCapable | undefined {
   const p = deps.realInput;
-  return p !== undefined && typeof p.setViewport === 'function'
+  return p !== undefined && 'function' === typeof p.setViewport
     ? (p as ViewportCapable)
     : undefined;
 }
@@ -66,6 +66,6 @@ export const VIEWPORT_TOOLS: ToolDef[] = [
 
 /** Clamp a requested dimension into [MIN_DIM, MAX_DIM]; a missing/NaN value falls back to MIN_DIM. */
 function clampDim(value: unknown): number {
-  const n = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : MIN_DIM;
+  const n = 'number' === typeof value && Number.isFinite(value) ? Math.round(value) : MIN_DIM;
   return Math.max(MIN_DIM, Math.min(n, MAX_DIM));
 }

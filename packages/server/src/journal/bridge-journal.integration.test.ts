@@ -33,7 +33,7 @@ describe('durable journal over a live bridge session', () => {
     deps = makeDeps(bridge);
     browser = new FakeBrowser(port, 'demo', true);
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
   });
 
   afterAll(async () => {
@@ -72,6 +72,6 @@ describe('durable journal over a live bridge session', () => {
       .split('\n')
       .filter((l) => l.length > 0)
       .map((l) => JSON.parse(l) as JournalAction);
-    expect(actions.some((a) => a.tool === ReticleTool.ACT && a.settled === true)).toBe(true);
+    expect(actions.some((a) => a.tool === ReticleTool.ACT && true === a.settled)).toBe(true);
   });
 });

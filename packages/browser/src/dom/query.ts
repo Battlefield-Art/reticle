@@ -214,7 +214,7 @@ function embeddedRootsUnder(root: HTMLElement): HTMLElement[] {
       if (depth >= FRAME_DEPTH_MAX) continue;
       if (!isFrame(el)) continue;
       const body = readableFrameBody(el);
-      if (body === null) continue; // cross-origin — declared, not searched
+      if (null === body) continue; // cross-origin — declared, not searched
       found.push(body);
       walk(body, depth + 1);
     }
@@ -248,7 +248,7 @@ function findCandidates(query: ElementQuery): { candidates: HTMLElement[]; scope
   const { container, scopeMissing } = resolveContainer(query.scope);
   // A given-but-missing scope searches NOTHING — never the whole page. The empty result plus the
   // scopeMissing flag is what keeps "gone scope" distinct from "absent element".
-  if (container === null) return { candidates: [], scopeMissing: true };
+  if (null === container) return { candidates: [], scopeMissing: true };
   const seen = new Set<HTMLElement>();
   const out: HTMLElement[] = [];
   const collect = (els: HTMLElement[]): void => {
@@ -287,7 +287,7 @@ function projectAttrs(el: Element, keys: readonly string[]): Record<string, stri
   const out: Record<string, string> = {};
   for (const key of keys.slice(0, ATTR_KEYS_MAX)) {
     const raw = el.getAttribute(key);
-    if (raw === null) continue;
+    if (null === raw) continue;
     out[key] = isSensitiveKey(key) ? REDACTED_VALUE : raw.slice(0, ATTR_VALUE_MAX);
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -340,7 +340,7 @@ export function matchQuery(
   const described = filtered.slice(0, Math.max(0, Math.min(limit, MAX_DESCRIBED)));
   const descriptors: ElementDescriptor[] = described.map((el) => {
     const base = describe(el, visMemo);
-    if (attrs === undefined || attrs.length === 0) return base;
+    if (attrs === undefined || 0 === attrs.length) return base;
     const projected = projectAttrs(el, attrs);
     return projected === undefined ? base : { ...base, attrs: projected };
   });
@@ -353,7 +353,7 @@ export function matchQuery(
     // PREDICATE uses, so without this a failed assertion was a dead end ("no element matched") while
     // the identical failure through reticle_query listed the testids that ARE present. Computed only
     // when there is nothing to report, so the hot path pays nothing.
-    ...(filtered.length === 0 ? { hint: buildEmptyHint(query) } : {}),
+    ...(0 === filtered.length ? { hint: buildEmptyHint(query) } : {}),
   };
 }
 
@@ -361,7 +361,7 @@ export function matchQuery(
  * not a human-readable name. Undefined when unset or nothing resolves. */
 function resolveLabelledBy(el: Element): string | undefined {
   const ids = el.getAttribute('aria-labelledby');
-  if (ids === null) return undefined;
+  if (null === ids) return undefined;
   const text = ids
     .split(/\s+/)
     .map((id) =>
@@ -465,8 +465,8 @@ function buildEmptyHint(query: ElementQuery): QueryEmptyHint {
  */
 export function runQuery(query: ElementQuery, limit?: number): QueryResult {
   const result = matchQuery(query, undefined, limit);
-  const scopeFields = result.scopeMissing === true ? { scopeMissing: true as const } : {};
-  if (result.elements.length === 0) {
+  const scopeFields = true === result.scopeMissing ? { scopeMissing: true as const } : {};
+  if (0 === result.elements.length) {
     return {
       elements: result.elements,
       count: result.count,

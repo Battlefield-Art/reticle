@@ -197,7 +197,7 @@ export class SessionManager {
       found.markAgentActivity(); // liveness — a targeted tool keeps the session alive / revives it
       return found;
     }
-    if (this.#sessions.size === 0) {
+    if (0 === this.#sessions.size) {
       const closure = this.lastClosure();
       // A diagnosis beats a checklist: it names which of the three causes this actually is.
       const hint = this.#noSessionHint?.();
@@ -215,14 +215,14 @@ export class SessionManager {
     const effectiveScope = scope ?? this.#defaultScope;
     const connected = [...this.#sessions.values()];
     const all = scopeSessions(connected, effectiveScope);
-    if (all.length === 0) {
+    if (0 === all.length) {
       // Sessions exist, but none belong to the scoped project — never fall back to a foreign tab.
       // ponytail: still a refusal, deliberately. Auto-targeting the only connected tab would be the
       // friendlier 90% case and would also silently defeat the anti-cross-talk guard this scope
       // exists to be. Naming the tab and its sessionId costs the agent one extra argument.
       throw new Error(scopeMissError(connected, effectiveScope));
     }
-    if (all.length === 1) {
+    if (1 === all.length) {
       const [only] = all;
       if (only === undefined) throw new Error('session lookup failed');
       only.markAgentActivity();
@@ -250,7 +250,7 @@ export class SessionManager {
     // desktop), the gap requirement is dropped: every session is already in "background" mode
     // so we just pick the one with the freshest heartbeat and let the agent proceed. Requiring
     // a gap here only produces spurious "ambiguous" errors while the user works elsewhere.
-    const allThrottled = bestScore === 1;
+    const allThrottled = 1 === bestScore;
     const RECENCY_GAP_MS = allThrottled ? 0 : 1_000;
     const clearWinner = runnerUp === undefined || best.ms + RECENCY_GAP_MS < runnerUp.ms;
 

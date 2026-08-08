@@ -48,7 +48,7 @@ function sourceFromResult(res: Record<string, unknown>): Record<string, unknown>
   const source = asRecord(res['source']);
   if (typeof source['file'] !== 'string' || typeof source['line'] !== 'number') return undefined;
   const out: Record<string, unknown> = { file: source['file'], line: source['line'] };
-  if (typeof source['column'] === 'number') out['column'] = source['column'];
+  if ('number' === typeof source['column']) out['column'] = source['column'];
   return out;
 }
 
@@ -64,7 +64,7 @@ export function captureAct(
   args: Record<string, unknown>,
   res: unknown,
 ): void {
-  if (recordings.active().length === 0) return;
+  if (0 === recordings.active().length) return;
   const step = compileActStep(args, res);
   // Keep the assertion the agent actually made. `act_and_wait { until }` IS the agent saying what
   // success means — 12 of 14 calls in a day carried one — and dropping it produced a flow graded
@@ -250,7 +250,7 @@ async function resolveRef(
       : { ref };
   }
   const ref = asString(step.ref);
-  if (ref === undefined || ref.length === 0) {
+  if (ref === undefined || 0 === ref.length) {
     throw new Error('step has no resolvable anchor (testid, role+name, component) and no ref');
   }
   return { ref, note: 'replayed by stale ref (not portable across sessions)' };

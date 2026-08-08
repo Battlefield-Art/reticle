@@ -52,7 +52,7 @@ export class SessionJournal {
   }
 
   async appendEvents(events: readonly ReticleEvent[]): Promise<void> {
-    if (events.length === 0) return;
+    if (0 === events.length) return;
     await this.#ensureDir();
     const text = `${events.map((e) => JSON.stringify(e)).join('\n')}\n`;
     await this.#fs.appendFile(journalEventsPath(this.#root, this.#sessionId), text);
@@ -124,10 +124,10 @@ export class SessionJournal {
   #ingestTail(tail: string): number {
     const cache = this.#eventCache ?? (this.#eventCache = []);
     const end = tail.lastIndexOf('\n') + 1;
-    if (end === 0) return 0; // no complete line yet
+    if (0 === end) return 0; // no complete line yet
     const complete = tail.slice(0, end);
     for (const line of complete.split('\n')) {
-      if (line.length === 0) continue;
+      if (0 === line.length) continue;
       let parsed: unknown;
       try {
         parsed = JSON.parse(line);
@@ -160,7 +160,7 @@ export class SessionJournal {
     }
     const out: z.infer<S>[] = [];
     for (const line of text.split('\n')) {
-      if (line.length === 0) continue;
+      if (0 === line.length) continue;
       let parsed: unknown;
       try {
         parsed = JSON.parse(line);

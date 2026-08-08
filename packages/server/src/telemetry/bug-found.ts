@@ -38,7 +38,7 @@ function kindsOf(value: unknown): string[] {
   return value
     .map((entry) => {
       const kind = (entry as Anomaly)?.kind;
-      return typeof kind === 'string' ? kind : undefined;
+      return 'string' === typeof kind ? kind : undefined;
     })
     .filter((kind): kind is string => kind !== undefined);
 }
@@ -61,16 +61,16 @@ function kindsOf(value: unknown): string[] {
  * shape of its own envelope.
  */
 function verdictOf(result: Record<string, unknown>): boolean | undefined {
-  if (typeof result['pass'] === 'boolean') return result['pass'];
+  if ('boolean' === typeof result['pass']) return result['pass'];
   const verdict = result['verdict'];
-  if (typeof verdict === 'object' && verdict !== null) {
+  if ('object' === typeof verdict && verdict !== null) {
     const nested = (verdict as Record<string, unknown>)['pass'];
-    if (typeof nested === 'boolean') return nested;
+    if ('boolean' === typeof nested) return nested;
   }
   // `verified` is the field the agent is told to gate on; "unknown" is deliberately not a verdict.
   const verified = result['verified'];
-  if (verified === 'yes') return true;
-  if (verified === 'no') return false;
+  if ('yes' === verified) return true;
+  if ('no' === verified) return false;
   return undefined;
 }
 
@@ -78,7 +78,7 @@ function verdictOf(result: Record<string, unknown>): boolean | undefined {
 function assertionOf(result: Record<string, unknown>): unknown {
   if (result['assertion'] !== undefined) return result['assertion'];
   const verdict = result['verdict'];
-  return typeof verdict === 'object' && verdict !== null
+  return 'object' === typeof verdict && verdict !== null
     ? (verdict as Record<string, unknown>)['assertion']
     : undefined;
 }
@@ -91,18 +91,18 @@ function assertionOf(result: Record<string, unknown>): unknown {
 function isInconclusive(result: Record<string, unknown>): boolean {
   const verdict = result['verdict'];
   return (
-    typeof verdict === 'object' &&
+    'object' === typeof verdict &&
     verdict !== null &&
-    typeof (verdict as Record<string, unknown>)['inconclusive'] === 'string'
+    'string' === typeof (verdict as Record<string, unknown>)['inconclusive']
   );
 }
 
 /** A suite row whose replay never STARTED — see SuiteFlowResult.couldNotRun. */
 function couldNotRun(failure: unknown): boolean {
   return (
-    typeof failure === 'object' &&
+    'object' === typeof failure &&
     failure !== null &&
-    (failure as { couldNotRun?: unknown }).couldNotRun === true
+    true === (failure as { couldNotRun?: unknown }).couldNotRun
   );
 }
 
@@ -119,7 +119,7 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
   if (toolName === ReticleTool.RUN) return [];
   const bugs: BugCandidate[] = [];
   const verdict = verdictOf(result);
-  const passed = verdict === true;
+  const passed = true === verdict;
 
   // 1. Contradictions — channels disagreeing. Invisible to a human watching the screen.
   for (const kind of kindsOf(result['contradictions'])) {
@@ -146,13 +146,13 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
   // sweep, every bug_found emitted was one of these two: "no session connected" from reticle_run and
   // an unverifiable suite from reticle_verify_change, counted as defects in the user's app.
   const reticleFailure =
-    result['verified'] === 'unknown' || typeof result['error'] === 'string';
-  if (verdict === false && bugs.length === 0 && !isInconclusive(result) && !reticleFailure) {
+    'unknown' === result['verified'] || 'string' === typeof result['error'];
+  if (false === verdict && 0 === bugs.length && !isInconclusive(result) && !reticleFailure) {
     const reason = assertionOf(result);
     bugs.push({
       source: BugSource.ASSERTION,
       kind:
-        typeof reason === 'string' && reason.length > 0 ? reason.slice(0, 64) : 'assertion-failed',
+        'string' === typeof reason && reason.length > 0 ? reason.slice(0, 64) : 'assertion-failed',
       falseGreen: false,
       tool: toolName,
     });
@@ -160,7 +160,7 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
 
   // 4. Replay failures — a saved flow that used to pass no longer does. That is a regression caught,
   //    which is a different and stronger claim than "a check failed".
-  if (result['status'] === 'fail' && Array.isArray(result['failures'])) {
+  if ('fail' === result['status'] && Array.isArray(result['failures'])) {
     for (const failure of result['failures'].slice(0, MAX_BUGS_PER_CALL)) {
       // A suite that failed because nothing could RUN is not a regression in the user's app. This
       // rule never looked past `status`, so a project whose flow files did not resolve reported one

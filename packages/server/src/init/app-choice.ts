@@ -18,14 +18,14 @@ export function chooseWorkspaceApp(
   requested: string | undefined,
   apps: readonly string[],
 ): AppChoice {
-  if (requested === undefined || requested === '') return { ok: true, app: undefined };
+  if (requested === undefined || '' === requested) return { ok: true, app: undefined };
   // Tab-completion adds a trailing slash; the discovered names never carry one.
   const wanted = requested.replace(/\/+$/, '');
   if (apps.includes(wanted)) return { ok: true, app: wanted };
   return {
     ok: false,
     message:
-      apps.length === 0
+      0 === apps.length
         ? `--app ${requested} was given, but no app was found in this workspace`
         : `--app ${requested} is not one of the apps found here: ${apps.join(', ')}`,
   };

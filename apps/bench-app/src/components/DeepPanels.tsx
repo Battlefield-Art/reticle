@@ -53,8 +53,8 @@ export function DeepPanels(): React.ReactElement {
 
   useEffect(() => {
     const host = hostRef.current;
-    if (host === null) return;
-    if (host.querySelector(SHADOW_TAG) === null) {
+    if (null === host) return;
+    if (null === host.querySelector(SHADOW_TAG)) {
       host.append(document.createElement(SHADOW_TAG));
     }
   }, []);

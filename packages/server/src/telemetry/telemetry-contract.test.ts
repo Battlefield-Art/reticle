@@ -53,7 +53,7 @@ describe('every telemetry event kind is real and reachable', () => {
   it('names an EVENT, not an object — every name is <noun>_<verbed> or a lifecycle moment', () => {
     for (const kind of EMITTED_SOMEWHERE) {
       expect(
-        kind.includes('_') || kind === 'identified',
+        kind.includes('_') || 'identified' === kind,
         `'${kind}' should read as something that happened`,
       ).toBe(true);
     }

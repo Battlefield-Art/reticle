@@ -259,7 +259,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const projectId = deriveProjectId(packageName(pkg), options.cwd);
   const rootFiles = new Set(io.rootFiles());
   const detectInput: DetectInput = {
-    pkg: typeof pkg === 'object' && pkg !== null ? pkg : {},
+    pkg: 'object' === typeof pkg && pkg !== null ? pkg : {},
     configFiles: rootFiles,
     // Walk up for the lockfile so a monorepo sub-package picks the workspace's package manager.
     lockfiles: resolveLockfiles(rootFiles, options.cwd, io),
@@ -269,7 +269,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const detection = detect(detectInput);
 
   const vitePath = firstPresent(rootFiles, VITE_CONFIG_CANDIDATES);
-  const viteSource = vitePath === null ? null : io.readFile(vitePath);
+  const viteSource = null === vitePath ? null : io.readFile(vitePath);
   const viteConfig =
     vitePath !== null && viteSource !== null ? { path: vitePath, source: viteSource } : null;
 
@@ -292,7 +292,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const cursorConfig = cursorPresent ? io.readFile(cursorConfigPath) : null;
 
   const astroPath = firstPresent(rootFiles, ASTRO_CONFIG_CANDIDATES);
-  const astroSource = astroPath === null ? null : io.readFile(astroPath);
+  const astroSource = null === astroPath ? null : io.readFile(astroPath);
   // Which file owns the DOCUMENT, not how many files sit in a directory. The old rule ("exactly one
   // .astro in src/layouts") fired on neither real Astro app: one has no layouts directory and
   // renders from src/pages/index.astro, the other has three files there of which two are partials.
@@ -314,7 +314,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     NEXT_LAYOUT_CANDIDATES.find((p) => io.exists(p)) ??
     NEXT_PAGES_APP_CANDIDATES.find((p) => io.exists(p)) ??
     null;
-  const layoutSource = layoutPath === null ? null : io.readFile(layoutPath);
+  const layoutSource = null === layoutPath ? null : io.readFile(layoutPath);
   // Where the component goes depends on WHICH router mounts it: `pages/` routes on presence, so a
   // component there becomes a broken route; `app/` routes on filename, so a sibling is inert.
   const devLocation = reticleDevLocation(layoutPath ?? 'app/layout.tsx', detection.typescript);
@@ -335,7 +335,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
         ? { path: layoutRelPath, source: astroLayoutSource }
         : null,
     nextConfigFile,
-    nextConfigSource: nextConfigFile === null ? null : io.readFile(nextConfigFile),
+    nextConfigSource: null === nextConfigFile ? null : io.readFile(nextConfigFile),
     nextLayout:
       layoutPath !== null && layoutSource !== null
         ? { path: layoutPath, source: layoutSource }
@@ -377,7 +377,7 @@ const APP_DEPS = ['next', 'vite'] as const;
 
 function looksLikeApp(dir: string, io: Pick<InitIo, 'exists' | 'readFile'>): boolean {
   const pkgRaw = io.readFile(`${dir}/${PACKAGE_JSON}`);
-  if (pkgRaw === null) return false;
+  if (null === pkgRaw) return false;
   const configs = [...VITE_CONFIG_CANDIDATES, ...NEXT_CONFIG_CANDIDATES];
   if (configs.some((c) => io.exists(`${dir}/${c}`))) return true;
   // `next.config` is optional in Next, so the dependency list is the other half of the signal.
@@ -400,16 +400,16 @@ export function findWorkspaceApps(io: Pick<InitIo, 'exists' | 'readFile' | 'list
   const pkgRaw = io.readFile(PACKAGE_JSON);
   let pkgWorkspaces: unknown;
   try {
-    const parsed: unknown = pkgRaw === null ? undefined : JSON.parse(pkgRaw);
+    const parsed: unknown = null === pkgRaw ? undefined : JSON.parse(pkgRaw);
     pkgWorkspaces =
-      typeof parsed === 'object' && parsed !== null
+      'object' === typeof parsed && parsed !== null
         ? (parsed as { workspaces?: unknown }).workspaces
         : undefined;
   } catch {
     pkgWorkspaces = undefined;
   }
   const parents = workspaceParents({
-    ...(io.readFile(PNPM_WORKSPACE) === null
+    ...(null === io.readFile(PNPM_WORKSPACE)
       ? {}
       : { pnpmWorkspace: io.readFile(PNPM_WORKSPACE) ?? '' }),
     ...(pkgWorkspaces === undefined ? {} : { pkgWorkspaces }),
@@ -520,7 +520,7 @@ function applyEffects(
   let installFailed = false;
   for (const s of plan.steps) {
     if (s.status !== StepStatus.APPLY) continue;
-    if (installFailed && s.dependsOnInstall === true) {
+    if (installFailed && true === s.dependsOnInstall) {
       skipped.add(s.target);
       continue;
     }
@@ -567,11 +567,11 @@ function redirectToWorkspaceApp(
   io: InitIo,
   pkgRaw: string,
 ): InitResult | null {
-  if (options.redirected === true) return null;
+  if (true === options.redirected) return null;
   const pkg: unknown = JSON.parse(pkgRaw);
   const rootFiles = new Set(io.rootFiles());
   const here = detect({
-    pkg: typeof pkg === 'object' && pkg !== null ? pkg : {},
+    pkg: 'object' === typeof pkg && pkg !== null ? pkg : {},
     configFiles: rootFiles,
     lockfiles: new Set(),
   });
@@ -586,9 +586,9 @@ function redirectToWorkspaceApp(
     io.print(chosen.message);
     return { ok: false, applied: 0, manual: 1 };
   }
-  const target = chosen.app ?? (apps.length === 1 ? apps[0] : undefined);
+  const target = chosen.app ?? (1 === apps.length ? apps[0] : undefined);
   if (target === undefined) {
-    if (apps.length === 0) return null; // not a workspace — fall through to the normal HTML plan
+    if (0 === apps.length) return null; // not a workspace — fall through to the normal HTML plan
     io.print(AMBIGUOUS_HEADER);
     for (const a of apps) io.print(`  ${a}`);
     io.print('');
@@ -605,7 +605,7 @@ function redirectToWorkspaceApp(
 
 export function runInit(options: InitOptions, io: InitIo): InitResult {
   const pkgRaw = io.readFile(PACKAGE_JSON);
-  if (pkgRaw === null) {
+  if (null === pkgRaw) {
     io.print('No package.json found. Run `reticle init` from your project root.');
     // The onboarding funnel had NO instrumentation, so a setup that died here was indistinguishable
     // from someone who never ran the command — the two failure modes with the most different fixes.

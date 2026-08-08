@@ -115,7 +115,7 @@ export function Enterprise(): React.ReactElement {
 
   // Background network churn against the real API (default ~20 req/sec).
   useEffect(() => {
-    if (cfg.pollHz === 0) return;
+    if (0 === cfg.pollHz) return;
     const id = setInterval(
       () => {
         void health().then(() => setPolls((n) => n + 1));
@@ -128,7 +128,7 @@ export function Enterprise(): React.ReactElement {
   // Mount/unmount churn: a few-hundred-node subtree appearing and vanishing on a timer, so
   // MutationObserver work scales with subtree size rather than with single nodes.
   useEffect(() => {
-    if (cfg.churnMs === 0 || cfg.churnNodes === 0) return;
+    if (0 === cfg.churnMs || 0 === cfg.churnNodes) return;
     const id = setInterval(() => setChurnOn((on) => !on), cfg.churnMs);
     return () => clearInterval(id);
   }, [cfg.churnMs, cfg.churnNodes]);
@@ -137,11 +137,11 @@ export function Enterprise(): React.ReactElement {
   // ponytail: toggled imperatively — re-rendering 1000 rows to move a highlight would measure
   // React's cost, not the observer's. Swap to state if the band ever needs to be readable state.
   useEffect(() => {
-    if (cfg.hotMs === 0 || cfg.rows === 0) return;
+    if (0 === cfg.hotMs || 0 === cfg.rows) return;
     let band = 0;
     const id = setInterval(() => {
       const root = gridRef.current;
-      if (root === null) return;
+      if (null === root) return;
       for (const el of root.querySelectorAll(`.${HOT_CLASS}`)) el.classList.remove(HOT_CLASS);
       const rows = root.querySelectorAll(`.${ROW_CLASS}`);
       for (let i = 0; i < HOT_BAND_SIZE; i += 1) {

@@ -28,10 +28,10 @@ const FIELD_TO_STRATEGY: readonly (readonly [string, string])[] = [
 
 export function normalizeQueryArgs(args: Record<string, unknown>): Record<string, unknown> {
   // An explicit pair is the contract; never second-guess it.
-  if (typeof args['by'] === 'string' && typeof args['value'] === 'string') return args;
+  if ('string' === typeof args['by'] && 'string' === typeof args['value']) return args;
   for (const [field, strategy] of FIELD_TO_STRATEGY) {
     const value = args[field];
-    if (typeof value === 'string' && value.length > 0) {
+    if ('string' === typeof value && value.length > 0) {
       // `name` stays as-is: with role it is the accessible-name filter the predicate also uses.
       return { ...args, by: strategy, value };
     }

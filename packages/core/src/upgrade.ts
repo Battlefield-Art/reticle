@@ -60,7 +60,7 @@ export type UpgradeHint = z.infer<typeof UpgradeHintSchema>;
 
 /** Narrow an unknown wire value to a CloudCapability. */
 export function isCloudCapability(value: unknown): value is CloudCapability {
-  return typeof value === 'string' && (Object.values(CloudCapability) as string[]).includes(value);
+  return 'string' === typeof value && (Object.values(CloudCapability) as string[]).includes(value);
 }
 
 interface CapabilityCopy {

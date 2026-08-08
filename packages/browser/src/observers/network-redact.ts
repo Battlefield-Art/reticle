@@ -15,11 +15,11 @@ const PATH_TOKEN_MIN_LENGTH = 12;
  */
 export function redactUrl(raw: string): string {
   const hashStart = raw.indexOf('#');
-  const hash = hashStart === -1 ? '' : raw.slice(hashStart);
-  const beforeHash = hashStart === -1 ? raw : raw.slice(0, hashStart);
+  const hash = -1 === hashStart ? '' : raw.slice(hashStart);
+  const beforeHash = -1 === hashStart ? raw : raw.slice(0, hashStart);
   const queryStart = beforeHash.indexOf('?');
-  const pathPart = queryStart === -1 ? beforeHash : beforeHash.slice(0, queryStart);
-  const query = queryStart === -1 ? '' : beforeHash.slice(queryStart + 1);
+  const pathPart = -1 === queryStart ? beforeHash : beforeHash.slice(0, queryStart);
+  const query = -1 === queryStart ? '' : beforeHash.slice(queryStart + 1);
 
   let changed = false;
 
@@ -75,6 +75,6 @@ export function redactUrl(raw: string): string {
   }
 
   if (!changed) return raw;
-  const queryOut = queryStart === -1 ? '' : `?${newQuery}`;
+  const queryOut = -1 === queryStart ? '' : `?${newQuery}`;
   return `${segments.join('/')}${queryOut}${newHash}`;
 }

@@ -90,7 +90,7 @@ export const SESSION_EXEMPT_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return 'object' === typeof value && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -127,7 +127,7 @@ function recordVerification(
  */
 function reportBugsFound(toolName: string, result: Record<string, unknown>): void {
   const bugs = bugsInResult(toolName, result);
-  if (bugs.length === 0) return;
+  if (0 === bugs.length) return;
   const metrics = getSessionMetrics();
   for (const bug of bugs) {
     // `recordBug` answers whether this kind is new to the session, which is the only thing that

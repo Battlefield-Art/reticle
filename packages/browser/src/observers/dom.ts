@@ -10,7 +10,7 @@ import { refs } from '../dom/refs.js';
  */
 function regionKeyOf(target: Node): string | undefined {
   const el = isElement(target) ? target : null;
-  if (el === null) return undefined;
+  if (null === el) return undefined;
   const labelled = el.closest('[data-testid]');
   return labelled?.getAttribute('data-testid') ?? refs.refFor(el);
 }
@@ -41,7 +41,7 @@ const WATCHED_ATTRS = [
 const MAX_ATTR_VALUE_LEN = 120;
 
 function capValue(value: string | null): string | undefined {
-  if (value === null) return undefined;
+  if (null === value) return undefined;
   return value.length > MAX_ATTR_VALUE_LEN ? `${value.slice(0, MAX_ATTR_VALUE_LEN)}…` : value;
 }
 
@@ -90,7 +90,7 @@ export function installDom(emit: Emit): Teardown {
     // (it can include not-yet-inspected noise) but `dropped > 0` honestly means "this batch was capped".
     let dropped = 0;
     for (const record of records) {
-      if (record.type === 'attributes') {
+      if ('attributes' === record.type) {
         const target = record.target;
         if (isElement(target) && record.attributeName !== null && !isReticleOverlay(target)) {
           if (changed >= MAX_PER_BATCH) {
@@ -113,7 +113,7 @@ export function installDom(emit: Emit): Teardown {
         }
         continue;
       }
-      if (record.type === 'characterData') {
+      if ('characterData' === record.type) {
         // In-place text change inside an existing subtree (wizard steps, inline edits) —
         // childList-only would miss this.
         const parent = record.target.parentElement;
@@ -175,7 +175,7 @@ export function installDom(emit: Emit): Teardown {
         if (
           DIALOG_ROLES.has(role) ||
           LIVE_ROLES.has(role) ||
-          node.getAttribute('aria-modal') === 'true'
+          'true' === node.getAttribute('aria-modal')
         ) {
           if (isVisible(node)) emit(EventType.VISIBLE_SHOWN, { role, name }, ref);
         }

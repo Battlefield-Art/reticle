@@ -64,7 +64,7 @@ function patchSetAttribute(broken: ReadonlySet<string>): void {
  * flow with a consequence oracle (assert-signal / assert-net / success-state) catches it.
  */
 function installBrokenClicks(brokenClicks: ReadonlySet<string>): void {
-  if (brokenClicks.size === 0) return;
+  if (0 === brokenClicks.size) return;
   document.addEventListener(
     'click',
     (event) => {
@@ -85,7 +85,7 @@ function installBrokenClicks(brokenClicks: ReadonlySet<string>): void {
 /** Parse a comma-separated URL param into a set of trimmed, non-empty tokens. */
 function parseSet(params: URLSearchParams, key: string): Set<string> {
   const raw = params.get(key);
-  if (raw === null || raw.length === 0) return new Set();
+  if (null === raw || 0 === raw.length) return new Set();
   return new Set(
     raw
       .split(',')

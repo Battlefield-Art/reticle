@@ -43,7 +43,7 @@ export function discoverDaemonPort(
     return undefined; // no ~/.reticle yet
   }
   for (const file of files) {
-    if (daemonRegistryPort(file) === null) continue;
+    if (null === daemonRegistryPort(file)) continue;
     try {
       const parsed = DaemonRegistryEntrySchema.safeParse(
         JSON.parse(readFileSync(join(home, file), 'utf8')),

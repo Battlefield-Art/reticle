@@ -40,7 +40,7 @@ describe('reclaimStaleDaemons', () => {
     writePidFile(4401, 222); // live
     writePidFile(4402, 333); // dead
 
-    const alive = (pid: number): boolean => pid === 222;
+    const alive = (pid: number): boolean => 222 === pid;
     const reclaimed = reclaimStaleDaemons(home, alive).sort((a, b) => a - b);
 
     expect(reclaimed).toEqual([4400, 4402]);

@@ -71,7 +71,7 @@ async function evalElement(
   //    silently widening to the whole page is the original false green. So scopeMissing FAILS presence
   //    (on the wait_for path this just keeps polling until the scope appears).
   if (absent) {
-    if (match.scopeMissing === true) {
+    if (true === match.scopeMissing) {
       return { pass: true, evidence: { absent: true, scopeMissing: true } };
     }
     return match.matched
@@ -85,7 +85,7 @@ async function evalElement(
         }
       : { pass: true, evidence: { absent: true } };
   }
-  if (match.scopeMissing === true) {
+  if (true === match.scopeMissing) {
     return {
       pass: false,
       failureReason: `scope resolved to no element — cannot confirm ${subject} is present`,
@@ -153,7 +153,7 @@ async function evalElement(
   const present = match.hint?.presentTestids ?? [];
   const alsoHere =
     query.testid === undefined ? undefined : describeTestidMiss(query.testid, present);
-  const suffix = alsoHere === undefined || alsoHere === '' ? '' : ` — ${alsoHere}`;
+  const suffix = alsoHere === undefined || '' === alsoHere ? '' : ` — ${alsoHere}`;
   return {
     pass: false,
     failureReason: `no element matched ${subject}${state === undefined ? '' : ` in state '${state}'`}${suffix}`,
@@ -183,13 +183,13 @@ async function evalState(
   }
   const stores = ((res.result ?? {}) as { stores?: Record<string, unknown> }).stores ?? {};
   const names = Object.keys(stores);
-  const storeName = p.store ?? (names.length === 1 ? names[0] : undefined);
+  const storeName = p.store ?? (1 === names.length ? names[0] : undefined);
   if (storeName === undefined) {
     // Neither of these is a finding about the app. With several stores registered the call simply did
     // not say which one to read; with none, there is nothing to read at all. No assertion was
     // evaluated either way, so this is inconclusive rather than failed — see honesty/inconclusive.
     const reason =
-      names.length === 0
+      0 === names.length
         ? 'no registered store to read state from'
         : `multiple stores (${names.join(', ')}); name one with \`store\``;
     return { pass: false, failureReason: reason, inconclusive: reason };
@@ -224,7 +224,7 @@ async function evalState(
 
 /** The predicate's own event-time floor, if its kind carries one. */
 function predicateSince(predicate: Predicate): number {
-  return 'since' in predicate && typeof predicate.since === 'number' ? predicate.since : 0;
+  return 'since' in predicate && 'number' === typeof predicate.since ? predicate.since : 0;
 }
 
 export async function evaluatePredicate(
@@ -255,7 +255,7 @@ export async function evaluatePredicate(
       return evalElement(
         session,
         { text: predicate.contains },
-        predicate.visible === true ? ElementState.VISIBLE : undefined,
+        true === predicate.visible ? ElementState.VISIBLE : undefined,
         predicate.absent ?? false,
         diagnose,
       );
@@ -346,11 +346,11 @@ const COUNT_CONFIRM_MS = 300;
  * must stay that way, or every ordinary wait pays the confirmation delay for nothing.
  */
 function assertsExactCount(predicate: Predicate): boolean {
-  if (predicate.kind === 'allOf' || predicate.kind === 'anyOf') {
+  if ('allOf' === predicate.kind || 'anyOf' === predicate.kind) {
     return predicate.predicates.some(assertsExactCount);
   }
-  if (predicate.kind === 'not') return assertsExactCount(predicate.predicate);
-  return predicate.kind === 'net' && predicate.count !== undefined;
+  if ('not' === predicate.kind) return assertsExactCount(predicate.predicate);
+  return 'net' === predicate.kind && predicate.count !== undefined;
 }
 
 /**
@@ -487,13 +487,13 @@ export async function provenExpectedLinks(
   predicate: Predicate,
   since = 0,
 ): Promise<ExpectedLink[]> {
-  if (predicate.kind === 'allOf') {
+  if ('allOf' === predicate.kind) {
     const per = await Promise.all(
       predicate.predicates.map((p) => provenExpectedLinks(session, p, since)),
     );
     return per.flat();
   }
-  if (predicate.kind === 'anyOf') {
+  if ('anyOf' === predicate.kind) {
     const per = await Promise.all(
       predicate.predicates.map(async (p) =>
         (await evaluatePredicate(session, p, since)).pass

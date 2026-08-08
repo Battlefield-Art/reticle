@@ -147,8 +147,8 @@ export function ShipmentsTable(): React.ReactElement {
         {total} shipments · page {page} of {pages}
       </p>
 
-      {notice === null ? null : <p data-testid="notice">{notice}</p>}
-      <button data-testid="hold-selected" disabled={selected.length === 0} onClick={holdSelected}>
+      {null === notice ? null : <p data-testid="notice">{notice}</p>}
+      <button data-testid="hold-selected" disabled={0 === selected.length} onClick={holdSelected}>
         Hold selected
       </button>
 

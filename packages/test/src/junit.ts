@@ -28,7 +28,7 @@ function escapeXml(value: string): string {
 /** First line of text (for the attribute summary). Handles LF, CRLF, and bare CR. */
 function firstLine(text: string): string {
   const match = /\r?\n|\r/.exec(text);
-  return match === null ? text : text.slice(0, match.index);
+  return null === match ? text : text.slice(0, match.index);
 }
 
 function seconds(ms: number): string {

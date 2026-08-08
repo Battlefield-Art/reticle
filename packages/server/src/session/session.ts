@@ -148,7 +148,7 @@ export class Session {
   applyHealth(hidden: boolean, focused: boolean, runtime?: string, engine?: string): void {
     this.#hidden = hidden;
     this.#focused = focused;
-    if (runtime === 'electron' || runtime === 'tauri' || runtime === 'web') {
+    if ('electron' === runtime || 'tauri' === runtime || 'web' === runtime) {
       this.#runtime = runtime;
     }
     if (engine !== undefined) this.#engine = engine;
@@ -231,7 +231,7 @@ export class Session {
       // pushState/replaceState/popstate; without this the URL stays frozen at the hello value, and
       // URL-based CDP correlation (real input) silently breaks after the first client-side nav.
       const to = event.data['to'];
-      if (typeof to === 'string' && to.length > 0) this.url = to;
+      if ('string' === typeof to && to.length > 0) this.url = to;
     }
     const t = this.elapsed();
     const stamped: ReticleEvent = { ...event, t, sessionId: this.id };
@@ -266,18 +266,18 @@ export class Session {
    */
   private recordActedLabelFrom(result: CommandResult): void {
     const payload = result.result;
-    if (typeof payload !== 'object' || payload === null) return;
+    if (typeof payload !== 'object' || null === payload) return;
     const record = payload as Record<string, unknown>;
     // The TESTID first: it is the strongest identity a control has and it survives any re-render.
     // Coverage previously matched only on `role "name"`, so a control with a testid but no accessible
     // name — or on a stack where the act reply carried neither — was unrecognisable after a
     // re-render, and coverage read `exercised: 0` however much work had been done.
     const testid = record['testid'];
-    if (typeof testid === 'string' && testid.length > 0) this.#observed.recordActedLabel(testid);
+    if ('string' === typeof testid && testid.length > 0) this.#observed.recordActedLabel(testid);
     const role = record['role'];
     const name = record['name'];
     if (typeof role !== 'string' || typeof name !== 'string') return;
-    if (role.length === 0 || name.length === 0) return;
+    if (0 === role.length || 0 === name.length) return;
     this.#observed.recordActedLabel(`${role} "${name}"`);
   }
 
@@ -434,7 +434,7 @@ export class Session {
     // still wrong, and it made the number depend on which tool the agent happened to use.
     if (name === ReticleCommand.ACT) {
       const ref = args['ref'];
-      if (typeof ref === 'string') this.recordActedRef(ref);
+      if ('string' === typeof ref) this.recordActedRef(ref);
     }
     const id = this.#pending.nextId(COMMAND_ID_PREFIX);
     const payload = JSON.stringify({
@@ -600,7 +600,7 @@ export class Session {
     // still wrong, and it made the number depend on which tool the agent happened to use.
     if (name === ReticleCommand.ACT) {
       const ref = args['ref'];
-      if (typeof ref === 'string') this.recordActedRef(ref);
+      if ('string' === typeof ref) this.recordActedRef(ref);
     }
     const id = this.#pending.nextId(COMMAND_ID_PREFIX);
     const payload = JSON.stringify({

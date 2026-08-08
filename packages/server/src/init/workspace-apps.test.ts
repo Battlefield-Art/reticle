@@ -61,6 +61,6 @@ describe('where a workspace keeps its packages', () => {
       pkgWorkspaces: ['apps/*'],
       topLevelDirs: ['apps', 'web'],
     });
-    expect(parents.filter((p) => p === 'apps')).toHaveLength(1);
+    expect(parents.filter((p) => 'apps' === p)).toHaveLength(1);
   });
 });

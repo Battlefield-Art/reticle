@@ -26,14 +26,14 @@ interface PredicateKinds {
 }
 
 function walk(predicate: Predicate): PredicateKinds {
-  if (predicate.kind === 'allOf' || predicate.kind === 'anyOf') {
+  if ('allOf' === predicate.kind || 'anyOf' === predicate.kind) {
     const subs = predicate.predicates.map(walk);
     return {
       consequence: subs.some((s) => s.consequence),
       presence: subs.some((s) => s.presence),
     };
   }
-  if (predicate.kind === 'not') return walk(predicate.predicate);
+  if ('not' === predicate.kind) return walk(predicate.predicate);
   // Leaf: classify against the single source of truth in core. Kinds that are neither consequence
   // nor presence (route/console/settled/animation) correctly return false for both.
   return {
@@ -64,10 +64,10 @@ export const DERIVED_IPC_STATUS_ADVICE =
  * Recognised by the `ipc://` scheme, so a genuine HTTP status is never second-guessed.
  */
 export function assertsDerivedIpcStatus(predicate: Predicate): boolean {
-  if (predicate.kind === 'allOf' || predicate.kind === 'anyOf') {
+  if ('allOf' === predicate.kind || 'anyOf' === predicate.kind) {
     return predicate.predicates.some(assertsDerivedIpcStatus);
   }
-  if (predicate.kind === 'not') return assertsDerivedIpcStatus(predicate.predicate);
+  if ('not' === predicate.kind) return assertsDerivedIpcStatus(predicate.predicate);
   if (predicate.kind !== 'net') return false;
   return (
     predicate.status !== undefined &&

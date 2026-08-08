@@ -89,7 +89,7 @@ async function recordReplayRun(
   });
   // Per-project cloud: push memory outcomes only when cloud is attached AND memory sync is enabled.
   const cloud = await resolveProjectCloud(deps.fs, deps.reticleRoot, homedir(), process.env);
-  if (cloud.config === null || !cloud.policy.memory) return; // not attached / memory disabled → local only
+  if (null === cloud.config || !cloud.policy.memory) return; // not attached / memory disabled → local only
   const result = await syncRunRecordToCloud(
     { kind: RunKind.FLOW_REPLAY, name, status: runStatus, at: deps.now(), durationMs },
     projectId,
@@ -115,7 +115,7 @@ export function startPathMismatchHint(
   session: { eventsSince(cursor: number): ReticleEvent[] },
 ): string | undefined {
   const startPath = flow.startPath;
-  if (startPath === undefined || startPath.length === 0) return undefined;
+  if (startPath === undefined || 0 === startPath.length) return undefined;
   const routes = session.eventsSince(0).filter((e) => e.type === EventType.ROUTE_CHANGE);
   const last = routes.at(-1);
   const data = last?.data ?? {};
@@ -166,7 +166,7 @@ export async function replayNamedFlow(
     loaded.value,
     waitForPredicate,
     FLOW_SIGNAL_TIMEOUT_MS,
-    args['confirmDangerous'] === true,
+    true === args['confirmDangerous'],
   );
   // "green means intent satisfied": when every step ran clean, assert the flow's success
   // end-condition as a real consequence. A signal/net success that never fires FAILS the replay
@@ -240,7 +240,7 @@ async function computeReplayDeviation(
 ): Promise<DeviationReport | undefined> {
   try {
     const segments = computeSegments(session.eventsSince(floor));
-    if (segments.length === 0) return undefined;
+    if (0 === segments.length) return undefined;
     return await reportAndAccumulate(new EnvelopeStore(deps.fs, deps.reticleRoot), segments);
   } catch {
     return undefined;

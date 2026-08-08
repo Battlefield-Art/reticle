@@ -44,7 +44,7 @@ describe('matchQuery by component / source (auto-anchors)', () => {
       name: 'test-fake',
       identify: (el: Element): ComponentInfo | null => {
         const owner = el.closest('[data-component]')?.getAttribute('data-component');
-        return owner === null || owner === undefined ? null : { componentStack: [owner] };
+        return null === owner || owner === undefined ? null : { componentStack: [owner] };
       },
     });
     render(
@@ -54,8 +54,8 @@ describe('matchQuery by component / source (auto-anchors)', () => {
     const r = matchQuery({ by: QueryBy.COMPONENT, component: 'Deployments' });
     expect(r.matched).toBe(true);
     // The Deployments subtree button (and its wrapper) resolve; the Sidebar button does not.
-    expect(r.elements.some((e) => e.name === 'New deploy')).toBe(true);
-    expect(r.elements.some((e) => e.name === 'Home')).toBe(false);
+    expect(r.elements.some((e) => 'New deploy' === e.name)).toBe(true);
+    expect(r.elements.some((e) => 'Home' === e.name)).toBe(false);
   });
 
   it('source takes precedence over component name when both are present', () => {

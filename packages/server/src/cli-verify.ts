@@ -104,7 +104,7 @@ export async function runVerify(args: VerifyArgs, ports: VerifyPorts): Promise<v
       return;
     }
     const names = await conn.listFlows();
-    if (names.length === 0) {
+    if (0 === names.length) {
       ports.fail(MSG_NO_FLOWS);
       ports.exit(EXIT_FAIL);
       return;
@@ -129,7 +129,7 @@ export async function runVerify(args: VerifyArgs, ports: VerifyPorts): Promise<v
  */
 async function pushRunToCloud(run: ReticleVerificationRun, ports: VerifyPorts): Promise<void> {
   const config = resolveCloudConfig(process.env);
-  if (config === null) return;
+  if (null === config) return;
   const result = await syncRunToCloud(run, config, (url, init) => fetch(url, init));
   if (result.outcome === SyncOutcome.SYNCED) {
     ports.out(`↑ run ${run.runId} recorded on the Reticle Cloud dashboard`);

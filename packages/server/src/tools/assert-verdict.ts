@@ -47,7 +47,7 @@ export async function assertVerdict(
   // Omitted entirely when coverage is full, so an intact page pays nothing and the field's PRESENCE
   // is the warning.
   const coverage =
-    statement.coverage === 'partial'
+    'partial' === statement.coverage
       ? {
           coverage: statement.note ?? 'partial',
           coverage_spots: statement.spots.map((sp) => ({ kind: sp.kind, count: sp.count })),
@@ -72,7 +72,7 @@ export async function assertVerdict(
     honesty: buildHonestyBlock({
       grade: gradeOfPredicate(predicate),
       attribution: 'window',
-      coveragePartial: statement.coverage === 'partial',
+      coveragePartial: 'partial' === statement.coverage,
       ...(impeaching.note === undefined ? {} : { blindSpots: [impeaching.note] }),
     }),
     contradictions,

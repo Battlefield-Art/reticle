@@ -50,7 +50,7 @@ async function nearestRoleNameOnPage(
   session: FlowReplaySession,
   anchor: { role: string; name?: unknown },
 ): Promise<string | null> {
-  const wanted = typeof anchor.name === 'string' ? anchor.name : undefined;
+  const wanted = 'string' === typeof anchor.name ? anchor.name : undefined;
   if (wanted === undefined) return null;
   try {
     // Straight off the QUERY result: resolveQuery reduces to refs, and the NAMES are what this needs.
@@ -60,17 +60,17 @@ async function nearestRoleNameOnPage(
     });
     const payload = result.result;
     const elements =
-      typeof payload === 'object' && payload !== null
+      'object' === typeof payload && payload !== null
         ? (payload as { elements?: unknown }).elements
         : undefined;
     if (!Array.isArray(elements)) return null;
     const candidates: RoleCandidate[] = elements
       .map((element) =>
-        typeof element === 'object' && element !== null
+        'object' === typeof element && element !== null
           ? (element as { name?: unknown }).name
           : undefined,
       )
-      .filter((name): name is string => typeof name === 'string' && name.length > 0)
+      .filter((name): name is string => 'string' === typeof name && name.length > 0)
       .map((name) => ({ role: anchor.role, name }));
     return nearestRoleName(anchor.role, wanted, candidates);
   } catch {
@@ -106,7 +106,7 @@ export async function runRoleStep(
       drift: {
         reasonKind: DriftReason.COMPONENT_NOT_FOUND,
         reason:
-          nearest === null
+          null === nearest
             ? `role anchor ${label} not found, and no surviving ${anchor.role} has a similar name — anchor this step to a data-testid`
             : `role anchor ${label} not found; the closest surviving ${anchor.role} is "${nearest}" — confirm it is the same control before rebinding, or add a data-testid`,
         anchor: label,
@@ -156,7 +156,7 @@ export async function runComponentStep(
 ): Promise<FlowStepResult> {
   const label = componentLabel(anchor);
   const { refs } = await resolveQuery(session, componentQueryArgs(anchor), sleep);
-  if (refs.length === 0) {
+  if (0 === refs.length) {
     return {
       step: index,
       tool: step.tool,
@@ -263,7 +263,7 @@ export async function runSequenceStep(
   for (const [subIndex, sub] of subs.entries()) {
     const label = `${anchorLabel(sub.anchor)} (sub-step ${String(subIndex)})`;
     const queryArgs = anchorQueryArgs(sub.anchor);
-    if (queryArgs === null) return degradedStepResult(step, index, label);
+    if (null === queryArgs) return degradedStepResult(step, index, label);
     const { refs, hint } = await resolveQuery(session, queryArgs, sleep);
     const ref = refs[0];
     if (ref === undefined) {

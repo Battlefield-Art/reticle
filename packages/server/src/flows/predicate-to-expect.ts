@@ -37,20 +37,20 @@ export function predicateToExpect(predicate: Predicate): FlowExpect | undefined 
       if (predicate.urlContains !== undefined) net.urlContains = predicate.urlContains;
       if (predicate.status !== undefined) net.status = predicate.status;
       if (predicate.count !== undefined) net.count = predicate.count;
-      return Object.keys(net).length === 0 ? undefined : { net };
+      return 0 === Object.keys(net).length ? undefined : { net };
     }
     case 'console': {
       const console_: NonNullable<FlowExpect['console']> = {};
       if (predicate.level !== undefined) console_.level = predicate.level;
       if (predicate.absent !== undefined) console_.absent = predicate.absent;
-      return Object.keys(console_).length === 0 ? undefined : { console: console_ };
+      return 0 === Object.keys(console_).length ? undefined : { console: console_ };
     }
     case 'element': {
       const element: NonNullable<FlowExpect['element']> = {};
       if (predicate.query.testid !== undefined) element.testid = predicate.query.testid;
       if (predicate.query.role !== undefined) element.role = predicate.query.role;
       if (predicate.query.name !== undefined) element.name = predicate.query.name;
-      return Object.keys(element).length === 0 ? undefined : { element };
+      return 0 === Object.keys(element).length ? undefined : { element };
     }
     case 'state': {
       const state: NonNullable<FlowExpect['state']> = { path: predicate.path };
@@ -96,5 +96,5 @@ export function enforcedOnReplay(expect: FlowExpect | undefined): FlowExpect | u
   const kept: FlowExpect = {};
   if (expect.element?.testid !== undefined) kept.element = expect.element;
   if (expect.state !== undefined) kept.state = expect.state;
-  return Object.keys(kept).length === 0 ? undefined : kept;
+  return 0 === Object.keys(kept).length ? undefined : kept;
 }

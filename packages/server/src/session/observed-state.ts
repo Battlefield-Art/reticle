@@ -35,7 +35,7 @@ export class ObservedState {
     if (event.type === EventType.BLIND_SPOT) {
       const kind = event.data['kind'];
       const count = event.data['count'];
-      if (typeof kind === 'string' && typeof count === 'number') this.#blindSpots[kind] = count;
+      if ('string' === typeof kind && 'number' === typeof count) this.#blindSpots[kind] = count;
     }
   }
 

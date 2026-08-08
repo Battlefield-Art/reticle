@@ -123,7 +123,7 @@ export function handleWatch(): void {
     .then((flows) => emitBuddyStatus(fs, reticleRoot, flows, []))
     .catch(() => undefined);
   watch(process.cwd(), { recursive: true }, (_event, filename) => {
-    if (typeof filename === 'string' && WATCHED_EXTENSIONS.test(filename))
+    if ('string' === typeof filename && WATCHED_EXTENSIONS.test(filename))
       batcher.onChange(filename);
   });
 }

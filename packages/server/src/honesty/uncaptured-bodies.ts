@@ -18,7 +18,7 @@ export function bodiesNotCaptured(calls: { method?: string; requestBody?: string
   bodiesNotCaptured?: string;
 } {
   const bodyBearing = calls.filter((c) => BODY_BEARING_METHODS.has((c.method ?? '').toUpperCase()));
-  if (bodyBearing.length === 0) return {};
+  if (0 === bodyBearing.length) return {};
   if (bodyBearing.some((c) => c.requestBody !== undefined)) return {};
   return {
     // Framework-neutral on purpose. The first version named vite.config, and driving a Next.js app

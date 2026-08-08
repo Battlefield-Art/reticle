@@ -19,7 +19,7 @@ function nearestScrollable(el: Element): Element {
   let cur: Element | null = el;
   while (cur !== null && cur !== document.body) {
     const oy = getComputedStyle(cur).overflowY;
-    if ((oy === 'auto' || oy === 'scroll') && cur.scrollHeight > cur.clientHeight) return cur;
+    if (('auto' === oy || 'scroll' === oy) && cur.scrollHeight > cur.clientHeight) return cur;
     cur = cur.parentElement;
   }
   return document.scrollingElement ?? document.documentElement;

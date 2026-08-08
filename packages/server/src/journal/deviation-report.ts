@@ -35,13 +35,13 @@ function headlineFor(report: Omit<DeviationReport, 'headline'>): string {
   if (report.insufficientSamples) {
     return `envelope too new (need ${String(MIN_ENVELOPE_SAMPLES)} runs) — see causal summary${truncNote}`;
   }
-  if (report.deviations.length === 0) {
-    const s = report.nominalSegments === 1 ? '' : 's';
+  if (0 === report.deviations.length) {
+    const s = 1 === report.nominalSegments ? '' : 's';
     return `${String(report.nominalSegments)} segment${s} nominal${truncNote}`;
   }
   const routes = [...new Set(report.deviations.map((d) => d.route))].join(', ');
   const n = report.deviations.length;
-  return `${String(n)} deviation${n === 1 ? '' : 's'}: ${routes}${truncNote}`;
+  return `${String(n)} deviation${1 === n ? '' : 's'}: ${routes}${truncNote}`;
 }
 
 /**
@@ -60,7 +60,7 @@ export function buildDeviationReport(
   for (const segment of segments) {
     if (segment.route === undefined) continue;
     // A truncated segment's counts understate reality — judging it could read a false "nominal".
-    if (segment.truncated === true) {
+    if (true === segment.truncated) {
       truncated += 1;
       continue;
     }
@@ -68,7 +68,7 @@ export function buildDeviationReport(
     if (envelope === undefined || envelope.samples < MIN_ENVELOPE_SAMPLES) continue;
     judged += 1;
     const segDeviations = compareSegment(envelope, segment, zThreshold);
-    if (segDeviations.length === 0) nominal += 1;
+    if (0 === segDeviations.length) nominal += 1;
     else deviations.push(...segDeviations);
   }
   deviations.sort((a, b) => b.z - a.z);
@@ -77,7 +77,7 @@ export function buildDeviationReport(
     nominalSegments: nominal,
     judgedSegments: judged,
     truncatedSegments: truncated,
-    insufficientSamples: judged === 0,
+    insufficientSamples: 0 === judged,
   };
   return { ...base, headline: headlineFor(base) };
 }

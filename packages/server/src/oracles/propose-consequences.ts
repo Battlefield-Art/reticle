@@ -46,7 +46,7 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
     switch (event.type) {
       case EventType.SIGNAL: {
         const name = data['name'];
-        if (typeof name === 'string') {
+        if ('string' === typeof name) {
           add(`signal:${name}`, {
             predicate: { kind: 'signal', name },
             tier: TIER.SIGNAL,
@@ -58,7 +58,7 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
       }
       case EventType.NET_REQUEST: {
         const path = pathname(data['url']);
-        const method = typeof data['method'] === 'string' ? data['method'] : 'GET';
+        const method = 'string' === typeof data['method'] ? data['method'] : 'GET';
         if (path !== undefined) {
           add(`net:${method} ${path}`, {
             predicate: { kind: 'net', method, urlContains: path, status: data['status'] },
@@ -71,7 +71,7 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
       }
       case EventType.STATE_CHANGE: {
         const name = data['name'];
-        if (typeof name === 'string') {
+        if ('string' === typeof name) {
           add(`state:${name}`, {
             predicate: { kind: 'state', store: name, path: data['path'] },
             tier: TIER.CONSEQUENCE,
@@ -83,7 +83,7 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
       }
       case EventType.ROUTE_CHANGE: {
         const to = data['pathname'];
-        if (typeof to === 'string') {
+        if ('string' === typeof to) {
           add(`route:${to}`, {
             predicate: { kind: 'route', to },
             tier: TIER.CONSEQUENCE,
@@ -95,7 +95,7 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
       }
       case EventType.DOM_ADDED: {
         const name = data['name'];
-        if (typeof name === 'string' && name.length > 0) {
+        if ('string' === typeof name && name.length > 0) {
           add(`presence:${name}`, {
             predicate: { kind: 'element', name },
             tier: TIER.PRESENCE,

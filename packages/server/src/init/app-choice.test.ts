@@ -32,8 +32,8 @@ describe('choosing which app to wire', () => {
     const result = chooseWorkspaceApp('frontend', APPS);
     expect(result.ok).toBe(false);
     // Naming the candidates is the difference between one retry and a guessing game.
-    expect(result.ok === false && result.message).toContain('web');
-    expect(result.ok === false && result.message).toContain('frontend');
+    expect(false === result.ok && result.message).toContain('web');
+    expect(false === result.ok && result.message).toContain('frontend');
   });
 
   it('refuses when there are no apps at all, rather than accepting anything', () => {

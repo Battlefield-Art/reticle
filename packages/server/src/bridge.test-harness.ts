@@ -154,7 +154,7 @@ export class FakeBrowser {
       };
     } else if (name === ReticleCommand.STATE_READ) {
       result = {
-        stores: { workspace: { tab: args['store'] === 'workspace' ? 'open' : 'all' } },
+        stores: { workspace: { tab: 'workspace' === args['store'] ? 'open' : 'all' } },
         storeNames: ['workspace'],
         component: args['ref'] !== undefined ? { component: 'PayButton', hooks: [0] } : undefined,
       };

@@ -156,7 +156,7 @@ export interface ToolProfileOrigin {
  */
 export function describeToolProfile(active: ToolProfile): ToolProfileOrigin {
   const env = process.env[TOOL_PROFILE_ENV];
-  if (env === undefined || env.length === 0) {
+  if (env === undefined || 0 === env.length) {
     return active === resolveToolProfile()
       ? { active, source: `default (${TOOL_PROFILE_ENV} unset when the daemon started)` }
       : { active, source: 'set explicitly when the daemon was started' };

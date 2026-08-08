@@ -98,7 +98,7 @@ describe('ProjectStore — temp-dir filesystem, never touches the repo', () => {
     expect(r.file.runs).toHaveLength(PROJECT_RUN_CAP.PER_NAME);
     // The OLDEST were dropped: newest summary survives, oldest does not.
     expect(r.file.runs.at(-1)?.summary).toBe(`r${PROJECT_RUN_CAP.PER_NAME + 9}`);
-    expect(r.file.runs.some((x) => x.summary === 'r0')).toBe(false);
+    expect(r.file.runs.some((x) => 'r0' === x.summary)).toBe(false);
   });
 
   it('7: keeps every distinct flow last-known-good even past TOTAL (durable local regression memory)', async () => {
@@ -111,7 +111,7 @@ describe('ProjectStore — temp-dir filesystem, never touches the repo', () => {
     const r = await store.read();
     if (!r.ok) throw new Error('expected ok');
     expect(r.file.runs).toHaveLength(PROJECT_RUN_CAP.TOTAL + 25);
-    expect(r.file.runs.some((x) => x.name === 'flow-0')).toBe(true); // the oldest flow's LKG survives
+    expect(r.file.runs.some((x) => 'flow-0' === x.name)).toBe(true); // the oldest flow's LKG survives
     expect(r.file.runs.at(-1)?.name).toBe(`flow-${PROJECT_RUN_CAP.TOTAL + 24}`);
   }, 30_000);
 

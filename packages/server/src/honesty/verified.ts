@@ -65,7 +65,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
 
   // A failed assertion is the most actionable fact there is; it leads — including over
   // `alreadyTrue`, because a condition that held before AND fails now is a real regression.
-  if (pass === false) {
+  if (false === pass) {
     return { verified: Verified.NO, because: 'the declared consequence did not hold' };
   }
 
@@ -74,7 +74,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   // with routeChanges 0, because the text was the nav link already on screen — the real navigation
   // landed 1.8s later. UNKNOWN rather than NO on purpose: the app may well be fine, and reporting a
   // failure we did not observe would be its own false claim.
-  if (inputs.alreadyTrue === true) {
+  if (true === inputs.alreadyTrue) {
     return {
       verified: Verified.UNKNOWN,
       because:
@@ -123,7 +123,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   // optimistically rendered "dispatched", the page settled, and the verdict came back `yes` — then
   // the server REVERTED it to `held` 1.2s later. Every channel agreed, and every channel was early.
   // UNKNOWN rather than NO: nothing has failed, and saying it has would be its own false report.
-  if (outcomePending === true) {
+  if (true === outcomePending) {
     return {
       verified: Verified.UNKNOWN,
       because:
@@ -138,7 +138,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   //
   // UNKNOWN, not NO: nothing is known to have failed. The remedy is in the sentence, because an
   // agent that cannot act on a caveat will learn to skip it.
-  if (outcomeUnread === true) {
+  if (true === outcomeUnread) {
     return {
       verified: Verified.UNKNOWN,
       because:
@@ -147,7 +147,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   }
 
   // Never settled: the page may still be moving, so the observation window may have closed early.
-  if (settled === false) {
+  if (false === settled) {
     return {
       verified: Verified.UNKNOWN,
       because:
@@ -166,7 +166,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   return {
     verified: Verified.YES,
     because:
-      honesty.coverage?.partial === true
+      true === honesty.coverage?.partial
         ? `assertion held at ${honesty.grade} grade with no channel disagreeing, but coverage was PARTIAL — see \`coverage\` for what went unobserved`
         : `assertion held at ${honesty.grade} grade over a clean capture with no channel disagreeing`,
   };

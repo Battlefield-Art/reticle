@@ -12,7 +12,7 @@ function session(events: ReticleEvent[], elementPresent = true): FlowReplaySessi
         kind: 'command_result',
         id: 'q',
         ok: true,
-        result: name === 'query' ? { elements: elementPresent ? [{ ref: 'e1' }] : [] } : {},
+        result: 'query' === name ? { elements: elementPresent ? [{ ref: 'e1' }] : [] } : {},
       } as CommandResult),
     eventsSince: () => events,
     onEvent: () => () => undefined,

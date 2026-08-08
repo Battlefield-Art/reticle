@@ -75,12 +75,12 @@ interface ActionResult {
 }
 
 function asString(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value : fallback;
+  return 'string' === typeof value ? value : fallback;
 }
 
 function requireElement(ref: string): HTMLElement {
   const el = refs.resolve(ref);
-  if (el === null) throw new Error(`ref '${ref}' no longer resolves to an element`);
+  if (null === el) throw new Error(`ref '${ref}' no longer resolves to an element`);
   if (!isHtmlElement(el)) throw new Error(`ref '${ref}' is not an HTMLElement`);
   return el;
 }
@@ -207,7 +207,7 @@ function assertActionAllowed(el: HTMLElement, action: string, args: Record<strin
     action === ActionType.DBLCLICK ||
     action === ActionType.DRAG ||
     action === ActionType.SUBMIT ||
-    (action === ActionType.PRESS && asString(args['key'], 'Enter') === 'Enter');
+    (action === ActionType.PRESS && 'Enter' === asString(args['key'], 'Enter'));
   const dragTarget = action === ActionType.DRAG ? refs.resolve(asString(args['toRef'])) : null;
   const context = isHtmlElement(dragTarget)
     ? `${dangerousActionContext(el)} ${dangerousActionContext(dragTarget)}`
@@ -249,7 +249,7 @@ function valueOf(el: Element): string | undefined {
 /** Ref of the currently-focused element, treating body/null as "no focus". */
 function activeRef(el: Element): string | null {
   const active = el.ownerDocument.activeElement;
-  if (active === null || active === el.ownerDocument.body) return null;
+  if (null === active || active === el.ownerDocument.body) return null;
   return refs.refFor(active);
 }
 
@@ -285,7 +285,7 @@ async function dispatchFor(
         new MouseEvent('mousemove', { bubbles: true, cancelable: true }),
       );
       // hover-dwell: keep "hovering" for holdMs so timer-gated reveals can mount.
-      const holdMs = typeof args['holdMs'] === 'number' ? args['holdMs'] : 0;
+      const holdMs = 'number' === typeof args['holdMs'] ? args['holdMs'] : 0;
       if (holdMs > 0) await sleep(holdMs);
       return !moved;
     }
@@ -370,7 +370,7 @@ async function dispatchFor(
       throw new Error(`cannot (un)check a <${el.tagName.toLowerCase()}>`);
     case ActionType.SUBMIT: {
       const form = isForm(el) ? el : el.closest('form');
-      if (form === null) throw new Error('no form to submit');
+      if (null === form) throw new Error('no form to submit');
       form.requestSubmit();
       return false; // requestSubmit returns void; the internal submit event is unobservable.
     }

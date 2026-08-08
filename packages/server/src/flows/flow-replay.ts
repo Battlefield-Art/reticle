@@ -129,10 +129,10 @@ function readQuery(result: CommandResult): { refs: string[]; hint?: QueryEmptyHi
   if (!result.ok) return { refs };
   const payload = asRecord(result.result);
   const rawHint = payload['hint'];
-  if (typeof rawHint === 'object' && rawHint !== null) {
+  if ('object' === typeof rawHint && rawHint !== null) {
     const hint = asRecord(rawHint);
     const present = Array.isArray(hint['presentTestids'])
-      ? hint['presentTestids'].filter((t): t is string => typeof t === 'string')
+      ? hint['presentTestids'].filter((t): t is string => 'string' === typeof t)
       : [];
     return {
       refs,
@@ -140,7 +140,7 @@ function readQuery(result: CommandResult): { refs: string[]; hint?: QueryEmptyHi
         route: asString(hint['route']) ?? '',
         presentTestids: present,
         presentRegions: [],
-        knownEmptyState: hint['knownEmptyState'] === true,
+        knownEmptyState: true === hint['knownEmptyState'],
       },
     };
   }
@@ -193,7 +193,7 @@ export async function resolveQuery(
   sleep: Sleep,
 ): Promise<{ refs: string[]; hint?: QueryEmptyHint }> {
   let last = readQuery(await session.command(ReticleCommand.QUERY, queryArgs));
-  for (let attempt = 1; last.refs.length === 0 && attempt < ANCHOR_SETTLE_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; 0 === last.refs.length && attempt < ANCHOR_SETTLE_ATTEMPTS; attempt += 1) {
     await sleep(ANCHOR_SETTLE_DELAY_MS);
     last = readQuery(await session.command(ReticleCommand.QUERY, queryArgs));
   }
@@ -256,7 +256,7 @@ function summarizeConsequence(events: ReticleEvent[]): string | undefined {
     const data = n.data ?? {};
     const method = asString(data['method']) ?? 'GET';
     const path = trimUrl(asString(data['url']) ?? '');
-    const status = typeof data['status'] === 'number' ? ` ${data['status']}` : '';
+    const status = 'number' === typeof data['status'] ? ` ${data['status']}` : '';
     parts.push(`${method} ${path}${status}`.trim());
   }
   const errors = events.filter(
@@ -307,7 +307,7 @@ async function runTestidStep(
   sleep: Sleep,
 ): Promise<FlowStepResult> {
   const { refs, hint } = await resolveTestid(session, value, sleep);
-  if (refs.length === 0) {
+  if (0 === refs.length) {
     return {
       step: index,
       tool: step.tool,
@@ -341,7 +341,7 @@ async function runTestidStep(
   const expectTestid = step.expect?.element?.testid;
   if (expectTestid !== undefined && !dynamic.has(expectTestid)) {
     const expectRefs = await resolveTestid(session, expectTestid, sleep);
-    if (expectRefs.refs.length === 0) {
+    if (0 === expectRefs.refs.length) {
       return {
         step: index,
         tool: step.tool,

@@ -37,7 +37,7 @@ async function makeBridge(options: Omit<ConstructorParameters<typeof Bridge>[0],
 function openSocket(port: number, origin: string | null = 'http://localhost'): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}${RETICLE_WS_PATH}`, {
-      ...(origin === null ? {} : { origin }),
+      ...(null === origin ? {} : { origin }),
     });
     sockets.push(socket);
     socket.once('open', () => resolve(socket));
@@ -93,7 +93,7 @@ describe('Bridge security boundary', () => {
     const { bridge, port } = await makeBridge();
     const socket = await openSocket(port, 'http://tauri.localhost');
     socket.send(JSON.stringify(hello('tauri-win')));
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
     expect(bridge.sessions.get('tauri-win')).toBeDefined();
   });
 
@@ -117,7 +117,7 @@ describe('Bridge security boundary', () => {
 
     const good = await openSocket(port, 'https://app.example');
     good.send(JSON.stringify(hello('good', 'shared-secret')));
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
     expect(bridge.sessions.get('good')).toBeDefined();
   });
 
@@ -130,7 +130,7 @@ describe('Bridge security boundary', () => {
     const { bridge, port } = await makeBridge({ token: 'shared-secret' });
     const socket = await openSocket(port, null);
     socket.send(JSON.stringify(hello('nobrowser', 'shared-secret')));
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
     expect(bridge.sessions.get('nobrowser')).toBeDefined();
   });
 
@@ -149,7 +149,7 @@ describe('Bridge security boundary', () => {
       const { bridge, port } = await makeBridge({ token: 'shared-secret' });
       const socket = await openSocket(port, origin);
       socket.send(JSON.stringify(hello('desktop', 'shared-secret')));
-      await waitUntil(() => bridge.sessions.count() === 1);
+      await waitUntil(() => 1 === bridge.sessions.count());
       expect(bridge.sessions.get('desktop')).toBeDefined();
     });
   }
@@ -161,7 +161,7 @@ describe('Bridge security boundary', () => {
     });
     const socket = await openSocket(port, 'tauri://localhost');
     socket.send(JSON.stringify(hello('tauri', 'shared-secret')));
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
     expect(bridge.sessions.get('tauri')).toBeDefined();
   });
 
@@ -198,13 +198,13 @@ describe('Bridge security boundary', () => {
     const { bridge, port } = await makeBridge();
     const first = await openSocket(port);
     first.send(JSON.stringify(hello('same-id')));
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
 
     const second = await openSocket(port);
     const firstClosed = waitForClose(first);
     second.send(JSON.stringify(hello('same-id')));
     expect(await firstClosed).toBe(1008);
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
 
     second.send(
       JSON.stringify({
@@ -217,14 +217,14 @@ describe('Bridge security boundary', () => {
         },
       }),
     );
-    await waitUntil(() => bridge.sessions.resolve('same-id').eventsSince(0).length === 1);
+    await waitUntil(() => 1 === bridge.sessions.resolve('same-id').eventsSince(0).length);
   });
 
   it('caps concurrent sessions', async () => {
     const limitedSessions = await makeBridge({ maxSessions: 1 });
     const first = await openSocket(limitedSessions.port);
     first.send(JSON.stringify(hello('one')));
-    await waitUntil(() => limitedSessions.bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === limitedSessions.bridge.sessions.count());
     const second = await openSocket(limitedSessions.port);
     const sessionLimitClose = waitForClose(second);
     second.send(JSON.stringify(hello('two')));
@@ -244,7 +244,7 @@ describe('Bridge security boundary', () => {
     const rateLimited = await makeBridge({ maxMessagesPerSecond: 2 });
     const noisy = await openSocket(rateLimited.port);
     noisy.send(JSON.stringify(hello('noisy')));
-    await waitUntil(() => rateLimited.bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === rateLimited.bridge.sessions.count());
 
     for (let i = 0; i < 30; i += 1) {
       noisy.send(
@@ -279,7 +279,7 @@ describe('Bridge security boundary', () => {
     const rateLimited = await makeBridge({ maxMessagesPerSecond: 2 });
     const noisy = await openSocket(rateLimited.port);
     noisy.send(JSON.stringify(hello('mixed')));
-    await waitUntil(() => rateLimited.bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === rateLimited.bridge.sessions.count());
 
     // A churn flood far past the cap, then the one event that matters, in the SAME window.
     for (let i = 0; i < 50; i += 1) {
@@ -320,7 +320,7 @@ describe('Bridge security boundary', () => {
     const noisy = await openSocket(rateLimited.port);
     noisy.send(JSON.stringify(hello('ctrl')));
     // The hello itself is already over a cap of 1; the session must still exist.
-    await waitUntil(() => rateLimited.bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === rateLimited.bridge.sessions.count());
     expect(rateLimited.bridge.sessions.get('ctrl')).toBeDefined();
     expect(noisy.readyState).toBe(WebSocket.OPEN);
   });

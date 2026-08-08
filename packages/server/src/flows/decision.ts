@@ -50,7 +50,7 @@ export function buildDecision(result: FlowReplayResult, flow?: FlowFile): Replay
     // Green — but is it green-for-the-right-reason? A flow that asserts no consequence can pass while
     // broken, so the honest next action is to add one.
     const grade = flow !== undefined ? classifyFlowAssertions(flow) : undefined;
-    const verifiesOutcome = grade?.hasConsequenceAssertion === true;
+    const verifiesOutcome = true === grade?.hasConsequenceAssertion;
     const intent = flow?.intent;
     return {
       verdict: 'pass',
@@ -124,7 +124,7 @@ function suiteVerdictOf(status: ReplayStatus): 'pass' | 'drift' | 'fail' {
  */
 function unverifiableReason(flow: FlowFile | undefined): string | undefined {
   if (flow === undefined) return undefined;
-  if (flow.steps.length === 0) {
+  if (0 === flow.steps.length) {
     return 'the flow has no steps — it replays green whatever the app does. Record it again, or add steps with reticle_annotate.';
   }
   const c = classifyFlowAssertions(flow);
@@ -158,7 +158,7 @@ export function buildSuiteVerdict(
     // never reaches here. Both arrive as ReplayStatus.ERROR, so without this the suite cannot tell
     // "the app broke" from "Reticle could not run this" — and the bug metric reported the second as
     // the first, 8 times in one sweep.
-    if (replay.steps.length === 0 && replay.error !== undefined) row.couldNotRun = true;
+    if (0 === replay.steps.length && replay.error !== undefined) row.couldNotRun = true;
     if (decision.whatChanged !== undefined) row.whatChanged = decision.whatChanged;
     if (decision.whereInSource !== undefined) row.whereInSource = decision.whereInSource;
     row.nextAction = decision.nextAction;
@@ -173,17 +173,17 @@ export function buildSuiteVerdict(
   // any project where the flows directory failed to resolve. Found by the adversarial MCP sweep; it
   // was the only invented answer in 994 calls.
   const status: SuiteVerdict['status'] =
-    failed > 0 ? 'fail' : unverifiable.length > 0 || total === 0 ? 'unverifiable' : 'pass';
+    failed > 0 ? 'fail' : unverifiable.length > 0 || 0 === total ? 'unverifiable' : 'pass';
   const cannotFail =
-    unverifiable.length === 0
+    0 === unverifiable.length
       ? ''
       : ` — ${String(unverifiable.length)} verified nothing (${unverifiable.map((u) => u.flow).join(', ')})`;
   const summary =
-    total === 0
+    0 === total
       ? 'no flows to verify — nothing was checked. Record one with reticle_record { action: "start" }, then reticle_flow_save.'
-      : failed === 0
-      ? unverifiable.length === 0
-        ? `all ${total} flow${total === 1 ? '' : 's'} pass`
+      : 0 === failed
+      ? 0 === unverifiable.length
+        ? `all ${total} flow${1 === total ? '' : 's'} pass`
         : `${String(passed)}/${String(total)} flows verified${cannotFail}`
       : `${passed}/${total} flows pass — ${failed} need attention: ${failures.map((f) => f.flow).join(', ')}${cannotFail}`;
   return {

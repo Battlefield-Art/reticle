@@ -34,7 +34,7 @@ export function DeployTable({ rows }: { rows: Deployment[] }): React.ReactElemen
   };
   const onHandleMove = (e: React.PointerEvent): void => {
     const d = drag.current;
-    if (d === null) return;
+    if (null === d) return;
     const wantOffset = Math.round((e.clientY - d.startY) / ROW_H);
     const curIndex = rows.findIndex((r) => r.id === d.id);
     const targetIndex = Math.max(0, Math.min(rows.length - 1, d.index + wantOffset));
@@ -98,7 +98,7 @@ export function DeployTable({ rows }: { rows: Deployment[] }): React.ReactElemen
                 {dep.region}
               </span>
               <span className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>
-                {dep.durationMs === 0 ? '—' : `${(dep.durationMs / 1000).toFixed(1)}s`}
+                {0 === dep.durationMs ? '—' : `${(dep.durationMs / 1000).toFixed(1)}s`}
               </span>
 
               <button

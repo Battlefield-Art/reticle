@@ -30,7 +30,7 @@ type ScreenshotCapable = RealInputProvider & {
 
 function screenshotProvider(deps: ToolDeps): ScreenshotCapable | undefined {
   const p = deps.realInput;
-  return p !== undefined && typeof p.screenshot === 'function'
+  return p !== undefined && 'function' === typeof p.screenshot
     ? (p as ScreenshotCapable)
     : undefined;
 }
@@ -72,7 +72,7 @@ async function buildOpts(
     const box = res.ok ? asBox(res.result) : undefined;
     if (box !== undefined) return { clip: box };
   }
-  return args['fullPage'] === true ? { fullPage: true } : {};
+  return true === args['fullPage'] ? { fullPage: true } : {};
 }
 
 /**
@@ -129,7 +129,7 @@ function isCapturePath(path: string): boolean {
  */
 function isCompletePng(bytes: Buffer): boolean {
   if (bytes.byteLength < 12) return false;
-  return bytes.subarray(bytes.byteLength - 8, bytes.byteLength - 4).toString('ascii') === 'IEND';
+  return 'IEND' === bytes.subarray(bytes.byteLength - 8, bytes.byteLength - 4).toString('ascii');
 }
 
 /**
@@ -160,7 +160,7 @@ async function capture(
     const png = await provider.screenshot(session.url, await buildOpts(deps, sessionId, args));
     if (png !== undefined) return { png };
   }
-  const desktop = await desktopCapture(deps, sessionId, args['fullPage'] === true);
+  const desktop = await desktopCapture(deps, sessionId, true === args['fullPage']);
   if (desktop.png !== undefined) return { png: desktop.png };
   if (desktop.reason !== undefined) return { reason: desktop.reason };
   return {

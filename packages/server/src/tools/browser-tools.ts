@@ -42,10 +42,10 @@ export const BROWSER_TOOLS: ToolDef[] = [
     },
     handler: async (deps, args) => {
       // reload:true is the absorbed reticle_refresh — same command, one fewer advertised tool.
-      if (args['reload'] === true) {
+      if (true === args['reload']) {
         const before = deps.sessions.resolve(asString(args['sessionId']));
         await commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.REFRESH, {
-          hard: args['hard'] === true,
+          hard: true === args['hard'],
         });
         // WAIT for the page to come back, rather than telling the agent to. The id survives the
         // reload, but the seconds between dispatch and the new HELLO are seconds in which every call
@@ -64,7 +64,7 @@ export const BROWSER_TOOLS: ToolDef[] = [
         return reloadResult(back);
       }
       const url = asString(args['url']);
-      if (url === undefined || url.length === 0) return { ok: false, reason: 'url required' };
+      if (url === undefined || 0 === url.length) return { ok: false, reason: 'url required' };
       // Record navigate as an action. Its window is usually empty (the page unloads and the SDK
       // reconnects), but the action record itself — "navigated to X" — is the causal fact worth keeping.
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -99,7 +99,7 @@ export const BROWSER_TOOLS: ToolDef[] = [
     },
     handler: async (deps, args) => {
       await commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.REFRESH, {
-        hard: args['hard'] === true,
+        hard: true === args['hard'],
       });
       return { ok: true };
     },

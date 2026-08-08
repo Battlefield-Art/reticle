@@ -10,7 +10,7 @@ function frame(
   throwOnAccess = false,
 ): HTMLIFrameElement {
   return {
-    getAttribute: (n: string) => (n === 'src' ? src : null),
+    getAttribute: (n: string) => ('src' === n ? src : null),
     get contentDocument() {
       if (throwOnAccess) throw new DOMException('cross-origin');
       return contentDocument as Document | null;
@@ -61,7 +61,7 @@ describe('installBlindSpots', () => {
     const foreign = frame('https://pay.stripe.com', null);
     const original = document.querySelectorAll.bind(document);
     document.querySelectorAll = ((sel: string) =>
-      sel === 'iframe' ? [foreign] : original(sel)) as typeof document.querySelectorAll;
+      'iframe' === sel ? [foreign] : original(sel)) as typeof document.querySelectorAll;
 
     const events: { type: EventType; data: Record<string, unknown> }[] = [];
     const emit: Emit = (type, data) => events.push({ type, data });
@@ -88,7 +88,7 @@ describe('installBlindSpots', () => {
     let frames: HTMLIFrameElement[] = [];
     const original = document.querySelectorAll.bind(document);
     document.querySelectorAll = ((sel: string) =>
-      sel === 'iframe' ? frames : original(sel)) as typeof document.querySelectorAll;
+      'iframe' === sel ? frames : original(sel)) as typeof document.querySelectorAll;
 
     const events: { type: EventType; data: Record<string, unknown> }[] = [];
     const emit: Emit = (type, data) => events.push({ type, data });
@@ -105,7 +105,7 @@ describe('installBlindSpots', () => {
       // suite instead of reading it.
       const deadline = Date.now() + 5000;
       while (
-        events.filter((e) => e.type === EventType.BLIND_SPOT).length === 0 &&
+        0 === events.filter((e) => e.type === EventType.BLIND_SPOT).length &&
         Date.now() < deadline
       ) {
         await new Promise((r) => setTimeout(r, 25));
@@ -122,7 +122,7 @@ describe('installBlindSpots', () => {
   it('stays silent when the DOM churns but no frame appears', async () => {
     const original = document.querySelectorAll.bind(document);
     document.querySelectorAll = ((sel: string) =>
-      sel === 'iframe' ? [] : original(sel)) as typeof document.querySelectorAll;
+      'iframe' === sel ? [] : original(sel)) as typeof document.querySelectorAll;
 
     const events: { type: EventType; data: Record<string, unknown> }[] = [];
     const emit: Emit = (type, data) => events.push({ type, data });

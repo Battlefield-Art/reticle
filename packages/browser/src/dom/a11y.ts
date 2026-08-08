@@ -47,11 +47,11 @@ const INPUT_TEXT_TYPES = new Set(['text', 'email', 'tel', 'url', 'search', 'pass
 function inputRole(input: HTMLInputElement): string {
   const type = input.type.toLowerCase();
   if (INPUT_TEXT_TYPES.has(type)) return 'textbox';
-  if (type === 'checkbox') return 'checkbox';
-  if (type === 'radio') return 'radio';
-  if (type === 'range') return 'slider';
-  if (type === 'number') return 'spinbutton';
-  if (type === 'submit' || type === 'button' || type === 'reset') return 'button';
+  if ('checkbox' === type) return 'checkbox';
+  if ('radio' === type) return 'radio';
+  if ('range' === type) return 'slider';
+  if ('number' === type) return 'spinbutton';
+  if ('submit' === type || 'button' === type || 'reset' === type) return 'button';
   return 'textbox';
 }
 
@@ -114,7 +114,7 @@ function collapse(text: string): string {
 
 function labelledByText(el: Element): string | null {
   const ids = el.getAttribute('aria-labelledby');
-  if (ids === null) return null;
+  if (null === ids) return null;
   const parts: string[] = [];
   for (const id of ids.split(/\s+/)) {
     const ref = el.ownerDocument.getElementById(id);
@@ -140,7 +140,7 @@ function textWithoutHidden(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
   const el = node as Element;
-  if (el.getAttribute('aria-hidden') === 'true') return '';
+  if ('true' === el.getAttribute('aria-hidden')) return '';
   let out = '';
   for (const child of el.childNodes) out += textWithoutHidden(child);
   return out;
@@ -186,8 +186,8 @@ export function getAccessibleName(el: Element): string {
 
 function ariaBool(el: Element, attr: string): boolean | undefined {
   const value = el.getAttribute(attr);
-  if (value === null) return undefined;
-  return value === 'true';
+  if (null === value) return undefined;
+  return 'true' === value;
 }
 
 /**
@@ -200,12 +200,12 @@ export function getStates(el: Element, visible: boolean = isVisible(el)): Elemen
 
   const disabledProp =
     (isButton(el) || isInput(el) || isSelect(el) || isTextArea(el)) && el.disabled;
-  const disabled = disabledProp || ariaBool(el, 'aria-disabled') === true;
+  const disabled = disabledProp || true === ariaBool(el, 'aria-disabled');
   states.push(disabled ? ElementState.DISABLED : ElementState.ENABLED);
 
-  const checkedProp = isInput(el) && (el.type === 'checkbox' || el.type === 'radio') && el.checked;
-  if (checkedProp || ariaBool(el, 'aria-checked') === true) states.push(ElementState.CHECKED);
-  if (ariaBool(el, 'aria-expanded') === true) states.push(ElementState.EXPANDED);
+  const checkedProp = isInput(el) && ('checkbox' === el.type || 'radio' === el.type) && el.checked;
+  if (checkedProp || true === ariaBool(el, 'aria-checked')) states.push(ElementState.CHECKED);
+  if (true === ariaBool(el, 'aria-expanded')) states.push(ElementState.EXPANDED);
   if (el.ownerDocument.activeElement === el) states.push(ElementState.FOCUSED);
 
   return states;
@@ -231,7 +231,7 @@ export function isSensitiveField(el: Element): boolean {
   const sensitiveAutocomplete =
     /current-password|new-password|cc-number|cc-csc|one-time-code/i.test(autocomplete);
   return (
-    (isInput(el) && el.type.toLowerCase() === 'password') ||
+    (isInput(el) && 'password' === el.type.toLowerCase()) ||
     sensitiveAutocomplete ||
     identifiers.some(isSensitiveKey)
   );
@@ -248,19 +248,19 @@ export function getValue(el: Element): string | undefined {
 
 /** Whether the element's OWN box hides it — one forced-style resolution, no ancestor walk. */
 function selfHidden(el: Element): boolean {
-  if (el.getAttribute('aria-hidden') === 'true') return true;
+  if ('true' === el.getAttribute('aria-hidden')) return true;
   if (isHtmlElement(el) && el.hidden) return true;
   const view = el.ownerDocument.defaultView;
   if (view !== null) {
     const style = view.getComputedStyle(el);
     if (
-      style.display === 'none' ||
-      style.visibility === 'hidden' ||
-      style.visibility === 'collapse'
+      'none' === style.display ||
+      'hidden' === style.visibility ||
+      'collapse' === style.visibility
     ) {
       return true;
     }
-    if (Number.parseFloat(style.opacity || '1') === 0) return true;
+    if (0 === Number.parseFloat(style.opacity || '1')) return true;
   }
   return false;
 }
@@ -281,7 +281,7 @@ export function isVisible(el: Element, memo?: Map<Element, boolean>): boolean {
   // Each cached boolean already folds in that node's own aria-hidden/[hidden]/display/visibility/opacity,
   // so inherited visibility composes by AND up the chain and a sibling short-circuits at the first
   // cached ancestor.
-  const result = !selfHidden(el) && (parent === null || isVisible(parent, memo));
+  const result = !selfHidden(el) && (null === parent || isVisible(parent, memo));
   if (memo !== undefined) memo.set(el, result);
   return result;
 }

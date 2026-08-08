@@ -7,7 +7,7 @@ describe('mapWithConcurrency (parallel suite scheduler)', () => {
   it('preserves INPUT order even when items finish out of order', async () => {
     // A suite verdict must be stable: flow 3 finishing first cannot reorder the report.
     const out = await mapWithConcurrency(['a', 'b', 'c'], 3, async (item) => {
-      await tick(item === 'a' ? 30 : item === 'b' ? 10 : 1);
+      await tick('a' === item ? 30 : 'b' === item ? 10 : 1);
       return item.toUpperCase();
     });
     expect(out.map((o) => o.value)).toEqual(['A', 'B', 'C']);
@@ -34,7 +34,7 @@ describe('mapWithConcurrency (parallel suite scheduler)', () => {
   it('captures a per-item failure instead of sinking the whole suite', async () => {
     // A suite that aborts on the first crash tells you nothing about the other flows.
     const out = await mapWithConcurrency(['ok1', 'boom', 'ok2'], 2, (item) =>
-      item === 'boom' ? Promise.reject(new Error('flow crashed')) : Promise.resolve(item),
+      'boom' === item ? Promise.reject(new Error('flow crashed')) : Promise.resolve(item),
     );
     expect(out.map((o) => o.ok)).toEqual([true, false, true]);
     expect(out[1]?.error).toBe('flow crashed');

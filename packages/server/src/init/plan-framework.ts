@@ -55,7 +55,7 @@ export const CAPABILITIES_TITLE = 'Capabilities + store';
  * only when absent, because it is the one generated file a user is expected to EDIT.
  */
 function capabilitiesStep(input: PlanInput): Step[] {
-  if (input.viteDevModuleExists === true) {
+  if (true === input.viteDevModuleExists) {
     return [
       {
         title: CAPABILITIES_TITLE,
@@ -92,7 +92,7 @@ export function viteSteps(input: PlanInput, detail: string = VITE_PLUGIN_DETAIL.
 function viteConfigSteps(input: PlanInput, detail: string): Step[] {
   const cfg = input.viteConfig;
   const port = input.options.port;
-  if (cfg === null) {
+  if (null === cfg) {
     return [
       {
         title: 'Vite plugin',
@@ -200,7 +200,7 @@ export function nextSteps(input: PlanInput): Step[] {
       };
 
   const configPatch: SourcePatch =
-    input.nextConfigSource === null || input.nextConfigSource === undefined
+    null === input.nextConfigSource || input.nextConfigSource === undefined
       ? { kind: PatchKind.MANUAL, reason: `no ${configFile} found` }
       : patchNextConfig(input.nextConfigSource);
   const layout = input.nextLayout ?? null;
@@ -208,7 +208,7 @@ export function nextSteps(input: PlanInput): Step[] {
   // and picking by path is what stops a Pages app being handed the layout patch that cannot apply.
   const isPagesRouter = layout !== null && /(^|\/)pages\/_app\.[jt]sx?$/.test(layout.path);
   const layoutPatch: SourcePatch =
-    layout === null
+    null === layout
       ? { kind: PatchKind.MANUAL, reason: 'no root layout (app/layout.tsx) or pages/_app found' }
       : isPagesRouter
         ? patchPagesApp(layout.source, input.nextReticleDevImport)
@@ -274,7 +274,7 @@ export function craSteps(input: PlanInput): Step[] {
       write: { path: CRA_ENV_PATH, content: env },
     });
   }
-  if (entry === null) {
+  if (null === entry) {
     steps.push({
       title: 'Connect snippet (CRA)',
       target: 'src/index.tsx',
@@ -285,7 +285,7 @@ export function craSteps(input: PlanInput): Step[] {
   }
   const patched = craImportPatch(entry.source);
   steps.push(
-    patched === null
+    null === patched
       ? {
           title: 'Connect snippet (CRA)',
           target: entry.path,
@@ -313,7 +313,7 @@ export function svelteKitSteps(input: PlanInput): Step[] {
   };
   // SvelteKit can't use the Vite-plugin injection (it renders via app.html) — wire a client hook
   // that SvelteKit runs on startup, which is the path that can register a session at all.
-  if (input.svelteKitHooksExists === true) {
+  if (true === input.svelteKitHooksExists) {
     return [
       unverified,
       {
@@ -352,7 +352,7 @@ export function astroSteps(input: PlanInput): Step[] {
   const config = input.astroConfig ?? null;
   const layout = input.astroLayout ?? null;
   const manual = astroManual(input.options.port, input.options.projectId);
-  if (config === null || layout === null) {
+  if (null === config || null === layout) {
     return [
       {
         title: 'Connect snippet (Astro)',

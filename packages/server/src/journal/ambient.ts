@@ -27,7 +27,7 @@ export function ambientKeyOf(event: {
   data?: Record<string, unknown>;
 }): string | undefined {
   const region = event.data?.['region'];
-  if (typeof region === 'string' && region.length > 0) return region;
+  if ('string' === typeof region && region.length > 0) return region;
   return event.ref;
 }
 

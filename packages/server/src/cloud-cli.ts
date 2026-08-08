@@ -178,8 +178,8 @@ const DevicePollSchema = z.object({
 /** Best-effort open the approval page in the default browser; the printed URL is the headless fallback. */
 const openBrowser = (target: string): void => {
   const cmd =
-    process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
-  const args = process.platform === 'win32' ? ['/c', 'start', '', target] : [target];
+    'darwin' === process.platform ? 'open' : 'win32' === process.platform ? 'cmd' : 'xdg-open';
+  const args = 'win32' === process.platform ? ['/c', 'start', '', target] : [target];
   try {
     const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
     child.on('error', () => undefined);
@@ -221,11 +221,11 @@ const cmdLoginDevice = async (): Promise<number> => {
     const poll = DevicePollSchema.parse(
       await api('POST', `${url}/v1/auth/device/token`, null, { deviceCode: started.deviceCode }),
     );
-    if (poll.status === 'approved' && poll.token !== undefined && poll.org !== undefined) {
+    if ('approved' === poll.status && poll.token !== undefined && poll.org !== undefined) {
       await writeSession(url, poll.token, poll.org.name);
       return 0;
     }
-    if (poll.status === 'pending') {
+    if ('pending' === poll.status) {
       if (Date.now() > started.expiresAt) {
         err('device login expired — run `reticle login` again');
         return 1;
@@ -233,7 +233,7 @@ const cmdLoginDevice = async (): Promise<number> => {
       continue;
     }
     err(
-      poll.status === 'denied'
+      'denied' === poll.status
         ? 'device login was denied in the browser'
         : 'device login expired — run `reticle login` again',
     );
@@ -307,7 +307,7 @@ const cmdWhoami = async (): Promise<number> => {
       verify: cloud.verify,
     },
   });
-  if (cloud.config === null) hint('this repo is not attached — run `reticle link`');
+  if (null === cloud.config) hint('this repo is not attached — run `reticle link`');
   return 0;
 };
 
@@ -316,18 +316,18 @@ const cmdProject = async (argv: readonly string[]): Promise<number> => {
   const session = await readSession();
   const token = bearer(session);
   const url = baseUrl(session);
-  if (token === null) {
+  if (null === token) {
     err('run `reticle login` first, or set RETICLE_CLOUD_KEY');
     return 2;
   }
   const sub = argv[0];
-  if (sub === 'ls') {
+  if ('ls' === sub) {
     emit(await api('GET', `${url}/v1/projects`, token));
     return 0;
   }
-  if (sub === 'create') {
+  if ('create' === sub) {
     const name = argv.slice(1).join(' ').trim();
-    if (name.length === 0) {
+    if (0 === name.length) {
       err('usage: reticle project create <name>');
       return 2;
     }
@@ -338,17 +338,17 @@ const cmdProject = async (argv: readonly string[]): Promise<number> => {
     hint(`next: \`reticle link --project ${created.projectId}\` to bind this repo`);
     return 0;
   }
-  if (sub === 'rename') {
+  if ('rename' === sub) {
     const id = argv[1];
     const name = argv.slice(2).join(' ').trim();
-    if (id === undefined || name.length === 0) {
+    if (id === undefined || 0 === name.length) {
       err('usage: reticle project rename <projectId> <new name>');
       return 2;
     }
     emit(await api('PATCH', `${url}/v1/projects/${encodeURIComponent(id)}`, token, { name }));
     return 0;
   }
-  if (sub === 'rm' || sub === 'delete') {
+  if ('rm' === sub || 'delete' === sub) {
     const id = argv[1];
     if (id === undefined) {
       err('usage: reticle project rm <projectId>');
@@ -407,7 +407,7 @@ const cmdLink = async (argv: readonly string[]): Promise<number> => {
   const linkPath = join(reticleDir, CLOUD_LINK_FILE);
   const prev = await readJson(linkPath);
   const prevObj =
-    typeof prev === 'object' && prev !== null ? (prev as Record<string, unknown>) : {};
+    'object' === typeof prev && prev !== null ? (prev as Record<string, unknown>) : {};
   const cloudJson = {
     projectId,
     projectName,
@@ -421,7 +421,7 @@ const cmdLink = async (argv: readonly string[]): Promise<number> => {
   const credPath = join(home(), CREDENTIALS_FILE);
   const creds = (await readJson(credPath)) ?? {};
   const credObj =
-    typeof creds === 'object' && creds !== null ? (creds as Record<string, unknown>) : {};
+    'object' === typeof creds && creds !== null ? (creds as Record<string, unknown>) : {};
   credObj[projectId] = key;
   await writeFile(credPath, `${JSON.stringify(credObj, null, 2)}\n`);
 
@@ -437,17 +437,17 @@ const cmdConfig = async (argv: readonly string[]): Promise<number> => {
   const f = flags(argv);
   const linkPath = join(process.cwd(), RETICLE_DIR, CLOUD_LINK_FILE);
   const raw = await readJson(linkPath);
-  if (raw === null || typeof raw !== 'object') {
+  if (null === raw || typeof raw !== 'object') {
     err('no .reticle/cloud.json here — run `reticle link` first');
     return 2;
   }
   const cfg = raw as Record<string, unknown>;
   const sync =
-    typeof cfg['sync'] === 'object' && cfg['sync'] !== null
+    'object' === typeof cfg['sync'] && cfg['sync'] !== null
       ? (cfg['sync'] as Record<string, boolean>)
       : { runs: true, memory: true, flows: true };
   const onoff = (v: string | undefined): boolean | undefined =>
-    v === 'on' ? true : v === 'off' ? false : undefined;
+    'on' === v ? true : 'off' === v ? false : undefined;
   for (const k of ['runs', 'memory', 'flows'] as const) {
     if (f[k] === undefined) continue;
     const b = onoff(f[k]);
@@ -475,7 +475,7 @@ const cmdPush = async (): Promise<number> => {
   const fs = createNodeFileSystem();
   const reticleRoot = join(process.cwd(), RETICLE_DIR);
   const cloud = await resolveProjectCloud(fs, reticleRoot, homedir(), process.env);
-  if (cloud.config === null) {
+  if (null === cloud.config) {
     err('cloud not attached here — run `reticle link` (or set RETICLE_CLOUD_URL/KEY)');
     return 1;
   }
@@ -508,7 +508,7 @@ const repoCloud = async (): Promise<{ url: string; apiKey: string }> => {
     homedir(),
     process.env,
   );
-  if (cloud.config === null)
+  if (null === cloud.config)
     throw new Error('cloud not attached here — run `reticle link` (or set RETICLE_CLOUD_URL/KEY)');
   return cloud.config;
 };

@@ -48,7 +48,7 @@ export function pickDaemonPort(
   projectId: string | undefined,
   isAlive: (pid: number) => boolean,
 ): number | null {
-  if (projectId === undefined || projectId.length === 0) return null;
+  if (projectId === undefined || 0 === projectId.length) return null;
   const matches = entries
     .filter((e) => e.projectId === projectId && isAlive(e.pid))
     .map((e) => e.port)

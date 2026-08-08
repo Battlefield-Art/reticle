@@ -27,8 +27,8 @@ const LAYOUT_DIR = 'layouts/';
 
 export function pickAstroHost(candidates: readonly AstroCandidate[]): AstroCandidate | undefined {
   const owners = candidates.filter((c) => CLOSES_BODY.test(c.source));
-  if (owners.length === 0) return undefined;
+  if (0 === owners.length) return undefined;
   const layouts = owners.filter((c) => c.path.includes(LAYOUT_DIR));
   const preferred = layouts.length > 0 ? layouts : owners;
-  return preferred.length === 1 ? preferred[0] : undefined;
+  return 1 === preferred.length ? preferred[0] : undefined;
 }

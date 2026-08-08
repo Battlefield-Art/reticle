@@ -34,7 +34,7 @@ import { editDistance } from './flow-replay.js';
 export function confidenceFor(from: string, to: string): number {
   if (from === to) return 1;
   const span = Math.max(from.length, to.length);
-  if (span === 0) return 1;
+  if (0 === span) return 1;
   const raw = 1 - editDistance(from, to) / span;
   if (raw >= 1) return 1;
   if (raw <= 0) return Number.EPSILON;
@@ -79,9 +79,9 @@ function proposeRebindWith(
   // Never auto-heal an ambiguous drift: when two present testids tie at the minimum distance, the
   // `nearest` pick is arbitrary, so a rebind would be a coin-flip that can land on the wrong element
   // and ship a bug green. Surface it (the drift still carries `nearest`) and defer to a human.
-  if (drift.ambiguous === true) return undefined;
+  if (true === drift.ambiguous) return undefined;
   const to = drift.nearest;
-  if (to === null) return undefined;
+  if (null === to) return undefined;
   const confidence = confidenceFor(drift.anchor, to);
   if (confidence < minConfidence) return undefined;
   return { step, from: drift.anchor, to, confidence };

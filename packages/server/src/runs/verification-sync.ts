@@ -65,7 +65,7 @@ export async function persistAndSyncVerificationRun(
   timed: TimedReplay[],
   projectId: string | undefined,
 ): Promise<string | undefined> {
-  if (timed.length === 0) return undefined;
+  if (0 === timed.length) return undefined;
   let run: ReticleVerificationRun;
   try {
     run = assembleRun(deps, timed, projectId);
@@ -78,7 +78,7 @@ export async function persistAndSyncVerificationRun(
   }
   // Per-project cloud: only push when THIS project has cloud attached AND its policy allows runs.
   const cloud = await resolveProjectCloud(deps.fs, deps.reticleRoot, homedir(), process.env);
-  if (cloud.config === null || !cloud.policy.runs) return run.runId; // not attached / runs disabled → local only
+  if (null === cloud.config || !cloud.policy.runs) return run.runId; // not attached / runs disabled → local only
   const result = await syncRunToCloud(run, cloud.config, (url, init) => fetch(url, init));
   if (result.outcome !== SyncOutcome.SYNCED) {
     log('cloud-run-sync-failed', { runId: run.runId, status: result.status, error: result.error });

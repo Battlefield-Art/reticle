@@ -168,7 +168,7 @@ export const ACT_TOOLS: ToolDef[] = [
         captureAct(deps.recordings, args, result.result);
         // lift dispatch/settle status to the envelope (a settle timeout is NOT a failure).
         const r = asRecord(result.result);
-        if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
+        if ('boolean' === typeof r['settled']) settledOutcome = r['settled'];
         // Keep what only this call measured, so the observe that judges this window can ask whether
         // anything happened INSIDE the target — the one fact that separates a dead control from a
         // page that was merely busy with something else.
@@ -182,7 +182,7 @@ export const ACT_TOOLS: ToolDef[] = [
           settled: r['settled'] ?? null,
           settleReason: r['settleReason'] ?? null,
           result: leanActResult(result.result),
-          ...(real.fellBack === true ? { warning: ActionWarning.REAL_INPUT_FELL_BACK } : {}),
+          ...(true === real.fellBack ? { warning: ActionWarning.REAL_INPUT_FELL_BACK } : {}),
           ...healthEnvelope(session),
         });
       } finally {
@@ -190,7 +190,7 @@ export const ACT_TOOLS: ToolDef[] = [
         session.finishAction(
           undefined,
           settledOutcome,
-          settledOutcome === true ? session.elapsed() - since : undefined,
+          true === settledOutcome ? session.elapsed() - since : undefined,
         );
       }
     },
@@ -421,7 +421,7 @@ export const ACT_TOOLS: ToolDef[] = [
             : await evaluatePredicate(session, until, since);
 
         const r = asRecord(actResult.result);
-        if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
+        if ('boolean' === typeof r['settled']) settledOutcome = r['settled'];
         // Where the acted element is written. Captured at act time alongside the anchor, so it is
         // available even when the action unmounted its own target.
         const actedSource = sourceOf(r['source']);
@@ -459,7 +459,7 @@ export const ACT_TOOLS: ToolDef[] = [
           grade: gradeOf(gradedLinks),
           attribution: 'window',
           truncated: session.bufferHealth().dropped > droppedBefore,
-          coveragePartial: coverage.coverage === 'partial',
+          coveragePartial: 'partial' === coverage.coverage,
           ...(impeaching.note === undefined ? {} : { blindSpots: [impeaching.note] }),
         });
         const capsuleSaved = await saveFailedAssertCapsule({
@@ -527,7 +527,7 @@ export const ACT_TOOLS: ToolDef[] = [
         session.finishAction(
           undefined,
           settledOutcome,
-          settledOutcome === true ? session.elapsed() - since : undefined,
+          true === settledOutcome ? session.elapsed() - since : undefined,
         );
       }
     },

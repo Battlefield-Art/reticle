@@ -21,7 +21,7 @@ describe('reticle_act_and_wait (composite)', () => {
     deps = makeDeps(bridge);
     browser = new FakeBrowser(port, 'demo');
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
   });
 
   afterAll(async () => {
@@ -30,7 +30,7 @@ describe('reticle_act_and_wait (composite)', () => {
   });
 
   it('is registered with ref/action/until in its schema', () => {
-    const tool = TOOLS.find((t) => t.name === 'reticle_act_and_wait');
+    const tool = TOOLS.find((t) => 'reticle_act_and_wait' === t.name);
     expect(tool).toBeDefined();
     expect(tool?.inputSchema['ref']).toBeDefined();
     expect(tool?.inputSchema['action']).toBeDefined();
@@ -38,7 +38,7 @@ describe('reticle_act_and_wait (composite)', () => {
   });
 
   it('acts and returns effect + passing verdict + trace when the predicate holds', async () => {
-    browser.matcher = (q) => q.role === 'dialog' || (q.name ?? '').includes('Order confirmed');
+    browser.matcher = (q) => 'dialog' === q.role || (q.name ?? '').includes('Order confirmed');
     const result = (await callTool(deps, 'reticle_act_and_wait', {
       ref: 'e7',
       action: 'click',
@@ -90,7 +90,7 @@ describe('reticle_act_and_wait (composite)', () => {
   });
 
   it('evaluates the predicate once when timeout_ms is 0', async () => {
-    browser.matcher = (q) => q.role === 'dialog' || (q.name ?? '').includes('Order confirmed');
+    browser.matcher = (q) => 'dialog' === q.role || (q.name ?? '').includes('Order confirmed');
     const result = (await callTool(deps, 'reticle_act_and_wait', {
       ref: 'e7',
       action: 'click',
@@ -143,7 +143,7 @@ describe('reticle_act_and_wait reports where the failure came from', () => {
     deps = makeDeps(bridge);
     browser = new FakeBrowser(port, 'demo');
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
   });
 
   afterAll(async () => {
@@ -181,7 +181,7 @@ describe('reticle_act_and_wait reports where the failure came from', () => {
 
   it('stays quiet on a passing action', async () => {
     browser.actSource = { file: 'src/views/Checkout.tsx', line: 88 };
-    browser.matcher = (q) => q.role === 'dialog';
+    browser.matcher = (q) => 'dialog' === q.role;
     const result = (await callTool(deps, 'reticle_act_and_wait', {
       ref: 'e7',
       action: 'click',
@@ -214,7 +214,7 @@ describe('coverage reflects blind spots reported before this act', () => {
     deps = makeDeps(bridge);
     browser = new FakeBrowser(port, 'demo');
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
   });
 
   afterAll(async () => {
@@ -241,7 +241,7 @@ describe('coverage reflects blind spots reported before this act', () => {
 
   it('still reports partial on a LATER act, long after the one-shot blind-spot event', async () => {
     browser.emit(EventType.BLIND_SPOT, { kind: 'cross-origin-iframe', count: 2 });
-    await waitUntil(() => bridge.sessions.list().length === 1);
+    await waitUntil(() => 1 === bridge.sessions.list().length);
     // Two acts: by the second, the announcing event is well outside this act's window — which is
     // exactly the situation that used to report 100%.
     await actOnce();

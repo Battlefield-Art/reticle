@@ -11,7 +11,7 @@ const adapters = ((
 
 function refOf(selector: string): string {
   const el = document.querySelector(selector);
-  if (el === null) throw new Error(`no element for ${selector}`);
+  if (null === el) throw new Error(`no element for ${selector}`);
   return refs.refFor(el);
 }
 

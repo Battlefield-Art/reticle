@@ -258,7 +258,7 @@ describe('replayFlow — anchor re-resolution + legible drift', () => {
 
   it('2: returns drift with the nearest-match when a testid is renamed', async () => {
     const script = (testid: string): QueryScript =>
-      testid === 'chat-send'
+      'chat-send' === testid
         ? { elements: [], hint: present(['chat-submit', 'sidebar-toggle']) }
         : { elements: [el(`e-${testid}`, testid)] };
     const session = new FakeSession(script);

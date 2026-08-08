@@ -59,7 +59,7 @@ interface SynthesizedAnchor {
 }
 
 function nonEmpty(s: string | undefined): s is string {
-  return typeof s === 'string' && s.length > 0;
+  return 'string' === typeof s && s.length > 0;
 }
 
 /** Source as a compact `file:line` suffix; basename only to stay terse and path-independent. */

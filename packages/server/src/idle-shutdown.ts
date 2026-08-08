@@ -94,14 +94,14 @@ export class IdleShutdown {
  * falls back rather than throwing, and 0/negative is not a legal cadence (it would spin).
  */
 export function resolveIdleCheckMs(raw: string | undefined): number {
-  if (raw === undefined || raw.trim() === '') return SESSION_LIFECYCLE.DAEMON_IDLE_CHECK_MS;
+  if (raw === undefined || '' === raw.trim()) return SESSION_LIFECYCLE.DAEMON_IDLE_CHECK_MS;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return SESSION_LIFECYCLE.DAEMON_IDLE_CHECK_MS;
   return Math.floor(n);
 }
 
 export function resolveIdleShutdownMs(raw: string | undefined): number {
-  if (raw === undefined || raw.trim() === '') return SESSION_LIFECYCLE.DAEMON_IDLE_SHUTDOWN_MS;
+  if (raw === undefined || '' === raw.trim()) return SESSION_LIFECYCLE.DAEMON_IDLE_SHUTDOWN_MS;
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0) return SESSION_LIFECYCLE.DAEMON_IDLE_SHUTDOWN_MS;
   return Math.floor(n);

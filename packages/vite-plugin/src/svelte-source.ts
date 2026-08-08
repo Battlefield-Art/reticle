@@ -87,7 +87,7 @@ export function offsetToLineColumn(
   let line = 1;
   let lineStart = 0;
   for (let i = 0; i < offset && i < source.length; i++) {
-    if (source[i] === '\n') {
+    if ('\n' === source[i]) {
       line += 1;
       lineStart = i + 1;
     }
@@ -108,13 +108,13 @@ interface ElementNode {
 }
 
 function isElementNode(value: unknown): value is ElementNode {
-  if (value === null || typeof value !== 'object') return false;
+  if (null === value || typeof value !== 'object') return false;
   const node = value as Partial<ElementNode>;
   return (
-    typeof node.type === 'string' &&
+    'string' === typeof node.type &&
     HOST_ELEMENT_TYPES.has(node.type) &&
-    typeof node.name === 'string' &&
-    typeof node.start === 'number'
+    'string' === typeof node.name &&
+    'number' === typeof node.start
   );
 }
 
@@ -122,7 +122,7 @@ function isAlreadyStamped(node: ElementNode): boolean {
   return (node.attributes ?? []).some(
     (attr) =>
       attr !== null &&
-      typeof attr === 'object' &&
+      'object' === typeof attr &&
       (attr as { name?: unknown }).name === DATA_RETICLE_SOURCE_ATTR,
   );
 }
@@ -140,7 +140,7 @@ function collectElements(root: unknown): ElementNode[] {
   const found: ElementNode[] = [];
   const seen = new Set<object>();
   const visit = (value: unknown): void => {
-    if (value === null || typeof value !== 'object' || seen.has(value)) return;
+    if (null === value || typeof value !== 'object' || seen.has(value)) return;
     seen.add(value);
     if (Array.isArray(value)) {
       for (const item of value) visit(item);
@@ -169,7 +169,7 @@ export function stampSvelte(
   load: LoadSvelteCompiler = defaultLoadCompiler,
 ): string | null {
   const compiler = load();
-  if (compiler === null) return null;
+  if (null === compiler) return null;
   let ast: unknown;
   try {
     // `modern: true` selects Svelte 5's AST; Svelte 4 ignores the option and returns its own shape.
@@ -179,7 +179,7 @@ export function stampSvelte(
     return null;
   }
   const elements = collectElements(ast);
-  if (elements.length === 0) return null;
+  if (0 === elements.length) return null;
   const file = sourcePathFor(id);
   // Insert from the LAST element backwards: every insertion shifts the offsets after it, and
   // applying them in source order would put each stamp progressively further from its own tag.

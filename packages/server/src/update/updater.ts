@@ -41,7 +41,7 @@ export async function reportVersionChange(
   }
 }
 
-const NPM_BIN = platform() === 'win32' ? 'npm.cmd' : 'npm';
+const NPM_BIN = 'win32' === platform() ? 'npm.cmd' : 'npm';
 const NPM_TIMEOUT_MS = 120_000;
 
 /** How this reticle process was launched — determines which npm strategy to use for updates. */
@@ -150,7 +150,7 @@ export function installArgs(
 async function installVersion(version: string, kind: ExecutionKind): Promise<void> {
   const localRoot = kind === ExecutionKind.LOCAL ? findLocalProjectRoot() : null;
   const plan = installArgs(version, kind, localRoot);
-  if (plan === null) {
+  if (null === plan) {
     // npx re-resolves the package from npm on the next Claude Code restart — no npm
     // install needed. The restart itself is what triggers the update.
     log('reticle_update_npx_strategy', {
@@ -158,7 +158,7 @@ async function installVersion(version: string, kind: ExecutionKind): Promise<voi
     });
     return;
   }
-  if (kind === ExecutionKind.LOCAL && localRoot === null) {
+  if (kind === ExecutionKind.LOCAL && null === localRoot) {
     // Could not find a project root — fell back to a global install as a safe default.
     log('reticle_update_local_no_root', { fallback: 'global' });
   }
@@ -204,7 +204,7 @@ export async function applyUpdate(targetVersion: string): Promise<void> {
  */
 export async function rollback(): Promise<void> {
   const manifest = loadManifest();
-  if (manifest === null || manifest.previousVersion === undefined) {
+  if (null === manifest || manifest.previousVersion === undefined) {
     throw new Error('No previous version available for rollback');
   }
   const prev = manifest.previousVersion;

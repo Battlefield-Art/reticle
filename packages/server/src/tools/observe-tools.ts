@@ -81,7 +81,7 @@ function lastActSourceOnFailure(session: Session, pass: boolean): { source?: str
  * really do interleave; it is only redundant at this boundary.
  */
 function withoutConstantSessionId(event: unknown): unknown {
-  if (typeof event !== 'object' || event === null) return event;
+  if (typeof event !== 'object' || null === event) return event;
   const { sessionId: _sessionId, ...rest } = event as Record<string, unknown>;
   return rest;
 }
@@ -483,7 +483,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const method = asString(args['method']);
       const urlContains = asString(args['urlContains']);
       const status = asNumber(args['status']);
-      const ok = typeof args['ok'] === 'boolean' ? args['ok'] : undefined;
+      const ok = 'boolean' === typeof args['ok'] ? args['ok'] : undefined;
       const limit = asNumber(args['limit']);
       const buffer = bufferEnvelope(session);
       // Completed calls + unresolved in-flight requests (a hung request shows as pending).
@@ -496,7 +496,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       );
       const matched = allNet.filter((e) => matchNet(e, method, urlContains, status, ok));
       // zero-match filter returns what DID fire, not a bare [].
-      if (matched.length === 0 && allNet.length > 0) {
+      if (0 === matched.length && allNet.length > 0) {
         return withSizeCost({ calls: matched, hint: netEmptyHint(allNet), ...buffer });
       }
       // Default the cap so an omitted `limit` can't dump a whole flooded session (since defaults to 0).
@@ -581,7 +581,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       ).filter(isConsoleEvent);
       const matched = allConsole.filter((e) => matchConsole(e, level));
       // zero matches at this level → report what levels ARE present (not a bare []).
-      if (matched.length === 0 && allConsole.length > 0) {
+      if (0 === matched.length && allConsole.length > 0) {
         return withSizeCost({ logs: matched, hint: consoleEmptyHint(allConsole), ...buffer });
       }
       // Default the cap so an omitted `limit` can't dump a whole flooded session (since defaults to 0).
@@ -622,5 +622,5 @@ export const OBSERVE_TOOLS: ToolDef[] = [
 
 /** Narrow a command result to something noteEmptyRead can annotate. */
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return 'object' === typeof value && value !== null && !Array.isArray(value);
 }

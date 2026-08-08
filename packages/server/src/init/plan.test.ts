@@ -444,14 +444,14 @@ describe('buildPlan — the Cursor rule is a project file, not a machine-wide on
     const steps = buildPlan(
       input({ cursorPresent: true, claudeCli: true, cursorProjectPresent: false }),
     ).steps;
-    expect(steps.some((s) => s.write?.path === '.cursor/rules/reticle.mdc')).toBe(false);
+    expect(steps.some((s) => '.cursor/rules/reticle.mdc' === s.write?.path)).toBe(false);
   });
 
   it('is written when the repo itself has a .cursor dir', () => {
     const steps = buildPlan(
       input({ cursorPresent: true, claudeCli: true, cursorProjectPresent: true }),
     ).steps;
-    expect(steps.some((s) => s.write?.path === '.cursor/rules/reticle.mdc')).toBe(true);
+    expect(steps.some((s) => '.cursor/rules/reticle.mdc' === s.write?.path)).toBe(true);
   });
 
   it('is written when Cursor is the only agent found', () => {

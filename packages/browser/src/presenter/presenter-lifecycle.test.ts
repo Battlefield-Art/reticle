@@ -184,7 +184,7 @@ describe('presenter v2 session border', () => {
     // Poll instead of a fixed wait: the busy→fading→idle chain runs on real timers, which fire late
     // under load — a fixed sleep flaked ("fading" instead of "idle"). The clock (now) is fixed, so
     // the logic is deterministic; only the timer scheduling is slow.
-    expect(await until(() => p.glowPhase() === 'idle')).toBe(true);
+    expect(await until(() => 'idle' === p.glowPhase())).toBe(true);
     expect(dataBusy()).toBe('0');
     expect(dataOn()).toBe('1');
     p.destroy();
@@ -225,7 +225,7 @@ describe("presenter v2 border:'busy' back-compat", () => {
     // parallel test load they do not, so this asserted "still fading" as a failure only in CI. Waiting
     // for the terminal state up to a generous bound tests the invariant (it eventually goes idle),
     // not the machine's timer latency.
-    const settled = await until(() => p.glowPhase() === 'idle', 2000);
+    const settled = await until(() => 'idle' === p.glowPhase(), 2000);
     expect(settled, 'glow never reached idle within the bound').toBe(true);
     expect(flips.enters).toBe(1);
     expect(flips.exits).toBe(1);
@@ -337,7 +337,7 @@ describe('presenter glow state machine', () => {
 
     // Go quiet: jump clock past the idle window, let native timers fire the fade-out.
     t += 1000;
-    expect(await until(() => p.glowPhase() === 'idle')).toBe(true);
+    expect(await until(() => 'idle' === p.glowPhase())).toBe(true);
     await flush();
 
     expect(flips.enters).toBe(1);
@@ -365,7 +365,7 @@ describe('presenter glow state machine', () => {
     expect(p.glowPhase()).toBe('busy');
 
     t += 1000;
-    expect(await until(() => p.glowPhase() === 'idle')).toBe(true);
+    expect(await until(() => 'idle' === p.glowPhase())).toBe(true);
     await flush();
 
     expect(p.glowPhase()).toBe('idle');
@@ -391,7 +391,7 @@ describe('presenter glow state machine', () => {
 
     p.status('one');
     t += 1000;
-    expect(await until(() => p.glowPhase() === 'fading')).toBe(true);
+    expect(await until(() => 'fading' === p.glowPhase())).toBe(true);
     expect(p.glowPhase()).toBe('fading');
 
     p.status('resumed'); // activity during fade

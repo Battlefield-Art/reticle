@@ -20,7 +20,7 @@ describe('act result — auto-anchor fallback (component/source when no testid)'
       identify: (el: Element): ComponentInfo | null => {
         const owner = el.closest('[data-component]');
         const name = owner?.getAttribute('data-component');
-        if (name === null || name === undefined) return null;
+        if (null === name || name === undefined) return null;
         const src = owner?.getAttribute('data-src');
         const info: ComponentInfo = { componentStack: [name] };
         if (src !== null && src !== undefined) {
@@ -62,7 +62,7 @@ describe('act result — auto-anchor fallback (component/source when no testid)'
       identify: (el: Element): ComponentInfo | null => {
         const owner = el.closest('[data-component]');
         const name = owner?.getAttribute('data-component');
-        if (name === null || name === undefined) return null;
+        if (null === name || name === undefined) return null;
         return { componentStack: [name], source: { file: 'src/Topbar.tsx', line: 31 } };
       },
     });
@@ -111,7 +111,7 @@ describe('anchor identity when there is no accessible name', () => {
   it('reports the role even when the name is empty', async () => {
     document.body.innerHTML = '<button id="icon"><svg></svg></button>';
     const el = document.querySelector('#icon');
-    if (el === null) throw new Error('fixture missing');
+    if (null === el) throw new Error('fixture missing');
     const ref = refs.refFor(el);
     const out = await executeAction(ref, 'click', {});
     expect(out.role).toBe('button');
@@ -121,7 +121,7 @@ describe('anchor identity when there is no accessible name', () => {
   it('still reports both when both exist', async () => {
     document.body.innerHTML = '<button id="named">Details</button>';
     const el = document.querySelector('#named');
-    if (el === null) throw new Error('fixture missing');
+    if (null === el) throw new Error('fixture missing');
     const out = await executeAction(refs.refFor(el), 'click', {});
     expect(out.role).toBe('button');
     expect(out.name).toBe('Details');

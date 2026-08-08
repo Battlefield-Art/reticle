@@ -55,7 +55,7 @@ export function gateDecision(input: GateInput): GateResult {
   const downgraded = [...(input.downgraded ?? [])];
   const deleted = [...(input.deleted ?? [])];
   return {
-    pass: uncovered.length === 0 && downgraded.length === 0 && deleted.length === 0,
+    pass: 0 === uncovered.length && 0 === downgraded.length && 0 === deleted.length,
     uncovered,
     quarantined,
     downgraded,

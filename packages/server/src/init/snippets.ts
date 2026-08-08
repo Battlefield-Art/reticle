@@ -56,10 +56,10 @@ export function nextReticleDevFile(
   stores: readonly string[] = [],
 ): string {
   const base = connectArg(port, projectId);
-  const fields = base === '' ? '' : `${base.slice(1, -1).trim()}, `;
+  const fields = '' === base ? '' : `${base.slice(1, -1).trim()}, `;
   const ids = testids.map((t) => `'${t}'`).join(', ');
   const storeBlock =
-    stores.length === 0
+    0 === stores.length
       ? '      // No state library detected. If you add one, register it here — see docs/usage.md.'
       : stores.map((h) => `      // import your store, then: ${h}`).join('\n');
   return `'use client';
@@ -83,7 +83,7 @@ export function ReticleDev() {
       // form wires \`subscribe\` too, so every mutation emits a diff; the getter form is read-only.
 ${storeBlock}
       registerCapabilities({
-        testids: [${ids}],${testids.length === 0 ? ' // none found — add data-testid to your key elements' : ''}
+        testids: [${ids}],${0 === testids.length ? ' // none found — add data-testid to your key elements' : ''}
         signals: [], // names you pass to reticle.signal()
         stores: [], // the keys you registered above
       });
@@ -170,7 +170,7 @@ Start the daemon BEFORE \`astro dev\`, so the token file exists when the config 
 export function viteDevModuleFile(testids: readonly string[], stores: readonly string[]): string {
   const ids = testids.map((t) => `'${t}'`).join(', ');
   const storeBlock =
-    stores.length === 0
+    0 === stores.length
       ? '  // No state library detected. If you add one, register it here — see docs/usage.md.'
       : stores.map((h) => `  // import your store, then: ${h}`).join('\n');
   return `// Dev-only. Imported automatically by @reticlehq/vite-plugin — you do not need to import it.
@@ -190,7 +190,7 @@ if (import.meta.env.DEV) {
 ${storeBlock}
 
   registerCapabilities({
-    testids: [${ids}],${testids.length === 0 ? ' // none found — add data-testid to your key elements' : ''}
+    testids: [${ids}],${0 === testids.length ? ' // none found — add data-testid to your key elements' : ''}
     signals: [], // names you pass to reticle.signal()
     stores: [], // the keys you registered above
   });
@@ -262,7 +262,7 @@ export const UNVERIFIED_FRAMEWORK_NOTE =
  */
 export function svelteKitHooksFile(port: number | undefined, projectId?: string): string {
   const base = connectArg(port, projectId);
-  const fields = base === '' ? '' : `${base.slice(1, -1).trim()}, `;
+  const fields = '' === base ? '' : `${base.slice(1, -1).trim()}, `;
   return `// Dev-only: connect Reticle on the client. SvelteKit renders via app.html, so the Vite-plugin
 // index.html injection doesn't fire — connect from this client hook instead.
 if (import.meta.env.DEV) {

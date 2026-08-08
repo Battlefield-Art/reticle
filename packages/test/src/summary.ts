@@ -10,7 +10,7 @@ export function summarize(results: readonly SpecResult[]): RunSummary {
     else if (r.status === TestStatus.FAIL) failed += 1;
     else skipped += 1;
   }
-  return { total: results.length, passed, failed, skipped, ok: failed === 0 };
+  return { total: results.length, passed, failed, skipped, ok: 0 === failed };
 }
 
 function resultLine(r: SpecResult): string {

@@ -30,7 +30,7 @@ if (import.meta.env.DEV) {
 }
 
 const rootElement = document.getElementById('root');
-if (rootElement === null) throw new Error('Root element #root not found');
+if (null === rootElement) throw new Error('Root element #root not found');
 
 createRoot(rootElement).render(
   <StrictMode>

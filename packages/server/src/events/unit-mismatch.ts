@@ -43,7 +43,7 @@ const SCALES = [100, 1000] as const;
 const ID_PATTERN = /[A-Za-z]{2,}_[A-Za-z0-9]{2,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/g;
 
 function parse(raw: unknown): unknown {
-  if (typeof raw !== 'string' || raw.length === 0) return undefined;
+  if (typeof raw !== 'string' || 0 === raw.length) return undefined;
   try {
     return JSON.parse(raw) as unknown;
   } catch {
@@ -57,11 +57,11 @@ function moneyByEntity(node: unknown, into: Map<string, Map<string, number>>): v
     for (const item of node) moneyByEntity(item, into);
     return;
   }
-  if (typeof node !== 'object' || node === null) return;
+  if (typeof node !== 'object' || null === node) return;
   const record = node as Record<string, unknown>;
   // An id may arrive as a number (`{"id": 9}`) — normalised so a numeric path segment matches it.
   const raw = record['id'];
-  const id = typeof raw === 'string' ? raw : typeof raw === 'number' ? String(raw) : undefined;
+  const id = 'string' === typeof raw ? raw : 'number' === typeof raw ? String(raw) : undefined;
   if (id !== undefined) {
     for (const [key, value] of Object.entries(record)) {
       if (!MONEY_FIELDS.has(key) || typeof value !== 'number') continue;
@@ -80,9 +80,9 @@ function idsIn(url: string, body: unknown): string[] {
   for (const segment of url.split('?')[0]?.split('/') ?? []) {
     if (segment.length > 0 && /^\d+$/.test(segment)) found.add(segment);
   }
-  if (typeof body === 'object' && body !== null) {
+  if ('object' === typeof body && body !== null) {
     for (const value of Object.values(body as Record<string, unknown>)) {
-      if (typeof value === 'string') for (const id of value.match(ID_PATTERN) ?? []) found.add(id);
+      if ('string' === typeof value) for (const id of value.match(ID_PATTERN) ?? []) found.add(id);
     }
   }
   return Array.from(found);
@@ -90,7 +90,7 @@ function idsIn(url: string, body: unknown): string[] {
 
 /** The scale between a known value and a sent one, or undefined when they are consistent. */
 function scaleBetween(known: number, sent: number): number | undefined {
-  if (sent === 0 || known === 0) return undefined;
+  if (0 === sent || 0 === known) return undefined;
   for (const scale of SCALES) {
     // A tolerance, because the major-unit form is a rounded render of the minor one.
     if (Math.abs(known - sent * scale) <= scale / 2) return scale;
@@ -127,12 +127,12 @@ export function findUnitMismatches(
 
   for (const event of events) {
     if (event.type !== EventType.NET_REQUEST) continue;
-    const url = typeof event.data['url'] === 'string' ? event.data['url'] : '';
+    const url = 'string' === typeof event.data['url'] ? event.data['url'] : '';
     const requestBody = parse(event.data['requestBody']);
 
     // Compare BEFORE recording this call's own response, or a request that echoes its own reply
     // would compare against itself.
-    if (typeof requestBody === 'object' && requestBody !== null) {
+    if ('object' === typeof requestBody && requestBody !== null) {
       const sentFields = requestBody as Record<string, unknown>;
       for (const id of idsIn(url, requestBody)) {
         const fields = known.get(id);

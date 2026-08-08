@@ -142,7 +142,7 @@ describe('reticle.ts -> presenter log wiring', () => {
     reticle.connect({ present: true, pace: 0 });
     await dispatch(ReticleCommand.SNAPSHOT);
     const rows = logRows();
-    const readRows = rows.filter((r) => r.querySelector('.reticle-chip')?.textContent === 'READ');
+    const readRows = rows.filter((r) => 'READ' === r.querySelector('.reticle-chip')?.textContent);
     expect(readRows.length).toBeGreaterThanOrEqual(1);
     expect(readRows[0]?.querySelector('.reticle-log-text')?.textContent).toBe(
       'Looking at the page',
@@ -162,7 +162,7 @@ describe('reticle.ts -> presenter log wiring', () => {
     await dispatch(ReticleCommand.ACT, { ref: 'r-missing', action: 'click' });
     const actRows = logRows()
       .slice(before)
-      .filter((r) => r.querySelector('.reticle-chip')?.textContent === 'ACT');
+      .filter((r) => 'ACT' === r.querySelector('.reticle-chip')?.textContent);
     expect(actRows.length).toBeGreaterThanOrEqual(1);
     // result glyph present (pass or fail depending on ref resolution)
     const last = actRows[actRows.length - 1];
@@ -207,7 +207,7 @@ describe('reticle.ts -> live-control wiring', () => {
     const reticle = new Reticle();
     reticle.connect({ present: true, pace: 0 });
     const inp = document.querySelector<HTMLInputElement>('[data-reticle-input]');
-    if (inp === null) throw new Error('no input');
+    if (null === inp) throw new Error('no input');
     inp.value = 'check the cart total';
     clickSel('[data-reticle-send]');
     const evs = humanControlEvents();

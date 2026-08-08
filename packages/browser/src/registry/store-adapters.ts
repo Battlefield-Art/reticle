@@ -305,7 +305,7 @@ interface SvelteReadable {
 }
 
 function stopSubscription(handle: (() => void) | { unsubscribe: () => void }): void {
-  if (typeof handle === 'function') {
+  if ('function' === typeof handle) {
     handle();
     return;
   }

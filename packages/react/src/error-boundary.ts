@@ -17,7 +17,7 @@ export interface ErrorBoundaryData {
 }
 
 function cap(value: string | undefined): string | undefined {
-  if (value === undefined || value.length === 0) return undefined;
+  if (value === undefined || 0 === value.length) return undefined;
   return value.length > MAX_STACK_LEN ? value.slice(0, MAX_STACK_LEN) : value;
 }
 

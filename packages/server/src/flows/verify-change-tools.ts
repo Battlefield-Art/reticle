@@ -94,14 +94,14 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
     },
     handler: async (deps: ToolDeps, args) => {
       const files = Array.isArray(args['files'])
-        ? (args['files'] as unknown[]).filter((f): f is string => typeof f === 'string')
+        ? (args['files'] as unknown[]).filter((f): f is string => 'string' === typeof f)
         : [];
       const since = asString(args['since']);
       const changedFiles = await resolveChangedFiles(files, since);
       const flows = await loadNamedFlows(deps.fs, deps.reticleRoot);
       const { affected, unknownProvenance } = affectedSavedFlows(flows, changedFiles);
 
-      if (changedFiles.length === 0) {
+      if (0 === changedFiles.length) {
         return {
           verified: Verified.UNKNOWN,
           because: 'no changed files were given, so there was nothing to decide about',
@@ -116,10 +116,10 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
 
       // The guard: an uncovered change is UNKNOWN. Reporting `yes` here would mean "your change is
       // fine" on the strength of having run nothing at all.
-      if (affected.length === 0) {
+      if (0 === affected.length) {
         return {
           verified: Verified.UNKNOWN,
-          because: `no saved flow covers ${changedFiles.length === 1 ? 'this file' : 'these files'} — record one with reticle_record { action: "start" } then reticle_flow_save, or verify by driving the app directly`,
+          because: `no saved flow covers ${1 === changedFiles.length ? 'this file' : 'these files'} — record one with reticle_record { action: "start" } then reticle_flow_save, or verify by driving the app directly`,
           changedFiles,
           flowsRun: [],
           unknownProvenance,
@@ -160,7 +160,7 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
       // explanation admitted the evidence was not tied to the file. See attributed-failure.
       const failingNames = Array.isArray(suite.failures)
         ? suite.failures
-            .map((f) => (typeof f === 'object' && f !== null ? asString(asRecord(f)['flow']) : undefined))
+            .map((f) => ('object' === typeof f && f !== null ? asString(asRecord(f)['flow']) : undefined))
             .filter((n): n is string => n !== undefined)
         : // No per-failure detail: the failure is somewhere in the set that ran, so ask the question
           // of all of them rather than guessing which.

@@ -32,14 +32,14 @@ function reticleSourcePlugin({ types: t }: PluginApi): PluginObj<PluginPass> {
 
         const alreadyStamped = node.attributes.some(
           (attr) =>
-            attr.type === 'JSXAttribute' &&
-            attr.name.type === 'JSXIdentifier' &&
+            'JSXAttribute' === attr.type &&
+            'JSXIdentifier' === attr.name.type &&
             attr.name.name === SOURCE_ATTR,
         );
         if (alreadyStamped) return;
 
         const loc = node.loc;
-        if (loc === null || loc === undefined) return;
+        if (null === loc || loc === undefined) return;
 
         const filename = state.filename ?? 'unknown';
         // Forward slashes always. `relative` returns the PLATFORM separator, so on Windows this

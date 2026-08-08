@@ -33,7 +33,7 @@ describe('record -> compile -> replay', () => {
     deps = makeDeps(bridge);
     browser = new FakeBrowser(port, 'demo');
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
   });
 
   afterAll(async () => {

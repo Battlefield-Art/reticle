@@ -48,14 +48,14 @@ export function TimingPanel(): React.ReactElement {
   // Debounced search. With debounceMs > 0 a burst of keystrokes produces ONE request; with it at 0
   // every keystroke fires. Identical results either way — only the request count differs.
   useEffect(() => {
-    if (query.length === 0) return;
+    if (0 === query.length) return;
     const fire = (): void => {
       void fetch(`${API}/api/search?q=${encodeURIComponent(query)}`)
         .then((r) => r.json())
         .then((d: { matches?: number }) => setMatches(d.matches ?? 0))
         .catch(() => undefined);
     };
-    if (TIMING_CONFIG.debounceMs === 0) {
+    if (0 === TIMING_CONFIG.debounceMs) {
       fire();
       return;
     }
@@ -99,7 +99,7 @@ export function TimingPanel(): React.ReactElement {
         onChange={(e) => setQuery(e.target.value)}
       />
       <div data-testid={SEARCH_RESULT_TESTID}>
-        {matches === null ? 'no search yet' : `${String(matches)} matches`}
+        {null === matches ? 'no search yet' : `${String(matches)} matches`}
       </div>
       <div className="row" style={{ gap: 8 }}>
         <button

@@ -86,7 +86,7 @@ function specFiles(): string[] {
 function benchFiles(dir: string = BENCH_DIR): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules') continue;
+    if ('node_modules' === entry) continue;
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) out.push(...benchFiles(full));
     else if (entry.endsWith('.mjs')) out.push(full);
@@ -187,7 +187,7 @@ const ANY_TOOL_MENTION = /reticle_[a-z0-9_]+/g;
 function serverSources(dir: string = SERVER_SRC): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === 'dist') continue;
+    if ('node_modules' === entry || 'dist' === entry) continue;
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) out.push(...serverSources(full));
     // tool-names.ts DECLARES the constants; the names there are the vocabulary, not advice.
@@ -248,7 +248,7 @@ describe('shipped docs never name a tool a reader cannot call', () => {
   function docFiles(dir: string = DOCS): string[] {
     const out: string[] = [];
     for (const entry of readdirSync(dir)) {
-      if (entry === 'node_modules' || entry.startsWith('.')) continue;
+      if ('node_modules' === entry || entry.startsWith('.')) continue;
       const full = join(dir, entry);
       if (statSync(full).isDirectory()) out.push(...docFiles(full));
       else if (entry.endsWith('.md')) out.push(full);

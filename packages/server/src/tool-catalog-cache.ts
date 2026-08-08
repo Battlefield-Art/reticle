@@ -27,7 +27,7 @@ interface JsonRpcLike {
 function parse(line: string): JsonRpcLike | null {
   try {
     const value: unknown = JSON.parse(line);
-    return typeof value === 'object' && value !== null ? value : null;
+    return 'object' === typeof value && value !== null ? value : null;
   } catch {
     return null;
   }
@@ -56,7 +56,7 @@ export class ToolCatalogCache {
     if (this.#tools === undefined) return null;
     const msg = parse(request);
     if (msg?.method !== LIST_METHOD) return null;
-    if (msg.id === undefined || msg.id === null) return null;
+    if (msg.id === undefined || null === msg.id) return null;
     return JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { tools: this.#tools } });
   }
 }

@@ -31,11 +31,11 @@ export interface PersistedSession {
  * `token-not-persisted` bug, on a clean build. Fall back rather than let sign-in half-succeed.
  */
 function randomId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (typeof crypto !== 'undefined' && 'function' === typeof crypto.randomUUID) {
     return crypto.randomUUID();
   }
   const bytes = new Uint8Array(16);
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+  if (typeof crypto !== 'undefined' && 'function' === typeof crypto.getRandomValues) {
     crypto.getRandomValues(bytes);
   }
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');

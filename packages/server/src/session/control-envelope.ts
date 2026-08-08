@@ -58,7 +58,7 @@ type ControlSpread = { control?: ControlEnvelope };
 export function buildControlEnvelope(session: Session): ControlEnvelope | undefined {
   const state = session.getState();
   const guidance = session.drainInbox().map((m) => m.text);
-  if (state === SessionState.ACTIVE && guidance.length === 0) return undefined;
+  if (state === SessionState.ACTIVE && 0 === guidance.length) return undefined;
   return { state, guidance };
 }
 

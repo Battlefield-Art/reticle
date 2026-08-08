@@ -115,7 +115,7 @@ export function gitFacts(
       const url = section?.match(/^\s*url\s*=\s*(.+)$/m)?.[1];
       if (url === undefined) return { state: GitState.LOCAL_ONLY };
       const origin = normalizeGitOrigin(url);
-      if (origin === '') return { state: GitState.LOCAL_ONLY };
+      if ('' === origin) return { state: GitState.LOCAL_ONLY };
       return { state: GitState.REMOTE, origin, forge: forgeOf(origin) };
     }
     const parent = dirname(dir);

@@ -79,7 +79,7 @@ export const CRAWL_TOOLS: ToolDef[] = [
         ...(maxSteps !== undefined ? { maxSteps } : {}),
         ...(settleMs !== undefined ? { settleMs } : {}),
         ...(scope !== undefined ? { scope } : {}),
-        ...(args['confirmDangerous'] === true ? { confirmDangerous: true } : {}),
+        ...(true === args['confirmDangerous'] ? { confirmDangerous: true } : {}),
       };
       return crawl(session, opts, nodeSleep);
     },
