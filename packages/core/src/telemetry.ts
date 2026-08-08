@@ -62,6 +62,20 @@ export const TelemetryEventKind = {
    */
   DAEMON_STOPPED: 'daemon_stopped',
   /**
+   * A PERIODIC roll-up from a daemon that is still running — same payload shape as DAEMON_STOPPED,
+   * `final: false`.
+   *
+   * It used to be emitted AS `daemon_stopped`, which made an event named for an exit fire while the
+   * process was alive. Measured over one day: 98 `daemon_stopped` events were 73 real exits plus 25
+   * flushes, so anything counting sessions over-stated by 34% — and worse, the two populations are
+   * opposites. Every one of the 25 flushes had tool calls; not one of the 73 exits did (a daemon that
+   * served a tool never idle-exits, so only the idle ones ever reach a clean shutdown). A funnel over
+   * the raw event therefore describes active sessions at one end and abandoned ones at the other.
+   *
+   * Count sessions with DAEMON_STOPPED. Sum work with both.
+   */
+  SESSION_PROGRESS: 'session_progress',
+  /**
    * A verification produced a verdict. The product's reason to exist, and the one metric an investor
    * should be shown: not "tools were called" but "an app was actually verified, and here is how often
    * that caught something a green test would have missed".

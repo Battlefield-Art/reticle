@@ -37,6 +37,8 @@ So every `bug_found` carries **`repeat`**: false the first time a KIND is seen i
 
 The denominator is **`verification_completed`**, which fires per verdict with `via`, `verified`, `passed` and `falseGreenCaught`. Defects per verification is the honest rate; raw defect counts grow with usage and say nothing on their own.
 
+**And `repeat` only means anything if the session remembers.** `SessionMetrics.reset()` runs at every periodic flush and used to clear the seen-kinds set with the window counters — so the same defect, re-found after a flush, reported `repeat: false` again. Sessions in the data run to 11.5 hours. Window counters zero on a flush; session-lifetime memory does not. (`session-window.test.ts`)
+
 Two rules follow, and both are gated:
 
 - **`repeat` is set at the EMISSION site, never by the classifier.** `bugsInResult` is a pure function over one tool result and cannot know what a session has already seen; if it ever grows a `repeat` field it will be guessing, and the guess becomes the published number. (`telemetry-contract.test.ts`)
@@ -77,6 +79,16 @@ A copied enum is a drift hazard anywhere. It is a **correctness** hazard when th
 Every send is wrapped and best-effort. A telemetry failure must not fail a tool call, a verification, a daemon start, or `reticle init`.
 
 The single exception is `daemon_stopped`, which is **awaited** — because the process exits immediately after and the send would otherwise be killed. Even then a failure resolves rather than throws.
+
+## Sessions: `daemon_stopped` vs `session_progress`
+
+Count sessions with **`daemon_stopped`** (`final: true`). It fires once, at a clean exit.
+
+A running daemon rolls its window up every 5 minutes as **`session_progress`** (`final: false`), same payload shape. Sum work across both; count sessions with neither summed nor doubled.
+
+This split exists because the flush used to be emitted AS `daemon_stopped` — an event named for an exit, fired while the process was alive. One day's export: 98 `daemon_stopped` events were 73 exits + 25 flushes, so a session count was 34% high. Worse, the two populations are opposites — every one of the 25 flushes had tool calls and **not one of the 73 exits did**, because a daemon that has served a tool never idle-exits and so never reaches a clean shutdown. A funnel over the raw event describes active sessions at one end and abandoned ones at the other.
+
+The flush interval is also the **bound on what is lost**: nothing calls shutdown when a working daemon is finally killed, so its last partial window dies with it. At 30 minutes against a median 28-minute session that was most of the session. Only non-empty windows emit, so a short interval costs nothing on the daemons that never serve a tool.
 
 ## Adding things: what to do
 
