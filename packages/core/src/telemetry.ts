@@ -114,6 +114,23 @@ export const TelemetryEventKind = {
    */
   MCP_CLIENT_CONNECTED: 'mcp_client_connected',
   /**
+   * The agent LOST its Reticle tools — the worst thing this product does to anyone, and until now
+   * completely invisible in the field.
+   *
+   * `mcp_client_connected` shows reconnect churn only from the daemon's side, and the proxy's own
+   * account of an outage went to a local file nobody sends us. So "how often does a real user's MCP
+   * server go down, and does it come back" — the single question the transport has to answer — could
+   * not be asked of any dashboard.
+   *
+   * Deliberately capped at TWO per proxy process: once on the first outage of a session, and once if
+   * the retry budget is spent (the severe case, where it stopped retrying and went dormant). The
+   * per-call `tool` event was already removed here for cost, and one measured afternoon produced 547
+   * proxy reconnects — an event per reconnect would bill for the pathology instead of measuring it.
+   * The first-outage event answers "what share of sessions lose MCP at all", which is the number
+   * that decides whether this is fixed.
+   */
+  MCP_CONNECTION_LOST: 'mcp_connection_lost',
+  /**
    * `reticle init` finished. The onboarding funnel had no instrumentation at all, so a setup that
    * failed on a missing dependency was indistinguishable from a user who never tried.
    */

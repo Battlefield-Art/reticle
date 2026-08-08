@@ -30,6 +30,7 @@ Thirteen kinds of events, each a single small JSON object:
 | `version_changed` | You update or roll back | The two version numbers, and which direction |
 | `runtime_crashed` | The daemon hits an uncaught error | The error's type, **Reticle's own** stack frames, and the message with variables stripped — see below |
 | `mcp_client_connected` | An agent attaches to the daemon | Whether it is a reconnect, and how long the daemon had been idle |
+| `mcp_connection_lost` | The agent's MCP tools go away | Which stage (`first`, or `budget_spent` when it stopped retrying), the cause, and the attempt count. **At most twice per session** — one measured afternoon produced 547 reconnects, and an event each would bill for the pathology instead of measuring it |
 | `init_completed` | `reticle init` finishes | Whether it worked, and a classified reason when it did not |
 | `bug_found` | Reticle finds a defect in the app under test | The **kind** of defect (`signal-contradicted`, `console-error`, …) and how it was found — never what it was found in |
 | `feedback_submitted` | **Only** when you or your agent explicitly send feedback | The report — see [Feedback](#feedback) |

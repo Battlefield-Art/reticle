@@ -236,6 +236,22 @@ export interface TelemetryExtra {
   init?: InitOutcome;
   /** `bug_found`: one defect Reticle found in the app under test. */
   bug?: BugFound;
+  /** `mcp_connection_lost`: the agent lost its tools — which stage, and why. */
+  outage?: McpOutage;
+}
+
+/**
+ * One stage of an MCP outage. The counterpart to `connection`: that one says an agent attached, this
+ * one says it lost the tools again — the question no dashboard could ask before, because the proxy's
+ * account of an outage only ever reached a local file.
+ */
+export interface McpOutage {
+  /** `first` (this session lost MCP at all) or `budget_spent` (it stopped retrying). */
+  stage: string;
+  /** Why the stream went away, from the proxy's own vocabulary — never a URL or a path. */
+  reason: string;
+  /** How many consecutive reconnects had been tried when this was reported. */
+  attempts: number;
 }
 
 export interface Telemetry {

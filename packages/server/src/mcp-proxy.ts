@@ -16,6 +16,7 @@ import {
   OnRequest,
 } from './proxy-lifecycle.js';
 import { log } from './log.js';
+import { OutageStage, reportMcpOutage } from './mcp-outage.js';
 
 const DEFAULT_DAEMON_READY_TIMEOUT_MS = 10_000;
 /**
@@ -366,7 +367,13 @@ export function startMcpProxy(
       if (stopped) return;
       postUrl = null;
       attempts++;
+      // Once per process: this session has now lost its tools at least once, which is the number
+      // that says whether the transport work actually landed for real users.
+      reportMcpOutage(OutageStage.FIRST, { reason, attempts });
+      // The severe stage: we are about to stop retrying. Reported so the share of sessions where
+      // MCP never came back on its own is a number rather than an anecdote.
       if (attempts > MAX_RECONNECT_ATTEMPTS) {
+        reportMcpOutage(OutageStage.BUDGET_SPENT, { reason, attempts });
         // Stop RETRYING, never stop SERVING. See onReconnectBudgetSpent: exiting here made the
         // client mark the MCP server disconnected and left a human to reconnect it by hand.
         dormant = onReconnectBudgetSpent() === OnDrop.DORMANT;
