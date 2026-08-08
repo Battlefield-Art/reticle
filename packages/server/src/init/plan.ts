@@ -311,7 +311,7 @@ function mcpSteps(input: PlanInput): Step[] {
       },
     ];
   }
-  const steps = [claudeMcpStep(input), cursorMcpStep(input)].filter((s): s is Step => s !== null);
+  const steps = stepsForAgents(input, (a) => a.mcpStep);
   if (steps.length > 0) return steps;
   // No supported agent detected — print the one-time global instructions. Reached when the `claude`
   // CLI is absent AND ~/.cursor does not exist, which includes Cursor installed with a fresh profile
@@ -342,42 +342,37 @@ function commandIsSettled(content: string | null | undefined): boolean {
 
 /**
  * `/reticle` — the entry point SKILL.md promises in three places and nothing ever created, so it
- * silently did nothing in every tool. One file per agent that supports custom commands.
+ * silently did nothing in every tool.
+ *
+ * CURRENT, not merely present — same reason as the Cursor rule: a command file frozen at whatever
+ * release created it is a command that can never be improved for anyone who already ran init. The
+ * whole file is Reticle's, so a stale one is rewritten.
  */
-function slashCommandSteps(input: PlanInput): Step[] {
-  // CURRENT, not merely present — same reason as the Cursor rule: a command file frozen at whatever
-  // release created it is a command that can never be improved for anyone who already ran init. The
-  // whole file is Reticle's, so a stale one is rewritten.
-  const targets: { path: string; when: boolean; exists: boolean }[] = [
-    {
-      path: CLAUDE_COMMAND_PATH,
-      when: input.claudeCli,
-      exists: commandIsSettled(input.claudeCommandContent),
-    },
-    {
-      path: CURSOR_COMMAND_PATH,
-      when: true === input.cursorProjectPresent || (input.cursorPresent && !input.claudeCli),
-      exists: commandIsSettled(input.cursorCommandContent),
-    },
-  ];
-  return targets
-    .filter((t) => t.when)
-    .map((t) =>
-      t.exists
-        ? {
-            title: SLASH_COMMAND_TITLE,
-            target: t.path,
-            status: StepStatus.ALREADY,
-            detail: 'command already exists',
-          }
-        : {
-            title: SLASH_COMMAND_TITLE,
-            target: t.path,
-            status: StepStatus.APPLY,
-            detail: 'type /reticle to verify one flow in the browser',
-            write: { path: t.path, content: SLASH_COMMAND_BODY },
-          },
-    );
+function commandStepFor(path: string, present: boolean, content: string | null | undefined): Step | null {
+  if (!present) return null;
+  return commandIsSettled(content)
+    ? {
+        title: SLASH_COMMAND_TITLE,
+        target: path,
+        status: StepStatus.ALREADY,
+        detail: 'command already exists',
+      }
+    : {
+        title: SLASH_COMMAND_TITLE,
+        target: path,
+        status: StepStatus.APPLY,
+        detail: 'type /reticle to verify one flow in the browser',
+        write: { path, content: SLASH_COMMAND_BODY },
+      };
+}
+
+function claudeCommandStep(input: PlanInput): Step | null {
+  return commandStepFor(CLAUDE_COMMAND_PATH, input.claudeCli, input.claudeCommandContent);
+}
+
+function cursorCommandStep(input: PlanInput): Step | null {
+  const present = true === input.cursorProjectPresent || (input.cursorPresent && !input.claudeCli);
+  return commandStepFor(CURSOR_COMMAND_PATH, present, input.cursorCommandContent);
 }
 
 const AGENT_RULE_TITLE = 'Agent verification rule';
@@ -431,6 +426,66 @@ function cursorRuleStep(input: PlanInput): Step | null {
   };
 }
 
+
+/**
+ * Every coding agent `reticle init` knows how to wire itself into, and the three surfaces it wires:
+ * the global MCP registration, the project rule file that makes the agent USE Reticle, and the
+ * `/reticle` command.
+ *
+ * One list, because those three surfaces used to enumerate Claude and Cursor separately in three
+ * places — so supporting a fourth agent meant finding all three and getting each right. Adding one
+ * is now an entry here plus its builders; each builder answers null when that agent is not present
+ * for this user or this project, which is also how "no agent detected" falls through to the
+ * cross-agent AGENTS.md.
+ *
+ * Deliberately functions rather than data: registering with Claude runs its CLI while Cursor merges
+ * a JSON file, and pretending those are the same shape would cost more than it saves.
+ */
+export const AgentId = {
+  CLAUDE: 'claude',
+  CURSOR: 'cursor',
+} as const;
+export type AgentId = (typeof AgentId)[keyof typeof AgentId];
+
+interface AgentIntegration {
+  readonly id: AgentId;
+  /** Global MCP registration. Global on purpose: registered once, used by every project. */
+  readonly mcpStep: (input: PlanInput) => Step | null;
+  /** The project instruction file this agent re-reads every session. */
+  readonly ruleStep: (input: PlanInput) => Step | null;
+  /** The project slash-command file, for agents that have a command surface. */
+  readonly commandStep: (input: PlanInput) => Step | null;
+}
+
+const AGENT_INTEGRATIONS: readonly AgentIntegration[] = [
+  {
+    id: AgentId.CLAUDE,
+    mcpStep: claudeMcpStep,
+    ruleStep: claudeRuleStep,
+    commandStep: claudeCommandStep,
+  },
+  {
+    id: AgentId.CURSOR,
+    mcpStep: cursorMcpStep,
+    ruleStep: cursorRuleStep,
+    commandStep: cursorCommandStep,
+  },
+];
+
+/** The steps one surface contributes across every known agent, in registry order. */
+function stepsForAgents(
+  input: PlanInput,
+  surface: (a: AgentIntegration) => (input: PlanInput) => Step | null,
+): Step[] {
+  return AGENT_INTEGRATIONS.map((a) => surface(a)(input)).filter((s): s is Step => s !== null);
+}
+
+/** The `/reticle` command file for every agent that has a command surface and is present here. */
+function slashCommandSteps(input: PlanInput): Step[] {
+  return stepsForAgents(input, (a) => a.commandStep);
+}
+
+
 /**
  * The behavioral rule that makes the agent actually USE Reticle. Written into the detected agent's
  * instruction file (Claude / Cursor, or both), falling back to the cross-agent AGENTS.md when neither
@@ -438,9 +493,7 @@ function cursorRuleStep(input: PlanInput): Step | null {
  */
 function agentRuleSteps(input: PlanInput): Step[] {
   if (!input.options.mcp) return [];
-  const detected = [claudeRuleStep(input), cursorRuleStep(input)].filter(
-    (s): s is Step => s !== null,
-  );
+  const detected = stepsForAgents(input, (a) => a.ruleStep);
   if (detected.length > 0) return detected;
   const r = mergeMarkedInstruction(input.agentsMdContent);
   return [
