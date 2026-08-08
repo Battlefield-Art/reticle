@@ -1,4 +1,4 @@
-import { HumanControlKind, PresenterTone, SessionState } from '@reticlehq/core';
+import { HumanControlKind, PresenterTone, SessionState, type FlowChip } from '@reticlehq/core';
 import { nativeSetTimeout, nativeClearTimeout } from '../timers/native-timers.js';
 
 // Live-control panel: the two-way control surface inside the floating HUD — Pause/Resume + End
@@ -37,15 +37,6 @@ export const ENDED_FADE_MS = 4000;
 /** Max composer height (px) before it scrolls. One source for both the CSS cap and the JS auto-grow
  * clamp — they measure the same border-box, so the scrollbar appears exactly when growth stops. */
 const MSG_MAX_H = 96;
-
-/**
- * One replayable flow as pushed to the panel. `start` is the first step's testid anchor — a page hint
- * used to show a flow only where it can actually begin. Absent when the first step isn't testid-anchored.
- */
-export interface FlowChip {
-  name: string;
-  start?: string;
-}
 
 /** Payload the panel hands to its host when the human drives a control. */
 export interface ControlIntent {
