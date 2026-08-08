@@ -2,6 +2,7 @@
  * Observe / wait / assert tools — reticle_observe, reticle_wait_for, reticle_assert, reticle_network,
  * reticle_console, reticle_animations. Split out of tools.ts; assembled back via...OBSERVE_TOOLS.
  */
+import { noteEmptyRead } from './observed-nothing.js';
 import { z } from 'zod';
 import { aliasParam } from './alias-args.js';
 import { ReticleCommand, DEFAULT_ASSERT_TIMEOUT_MS } from '@reticlehq/core';
@@ -504,12 +505,21 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         limit ?? DEFAULT_QUERY_LIMIT,
       );
       const calls = budgeted.map(projectNetCall);
-      return withSizeCost({
-        calls,
-        ...(droppedOldest > 0 ? { total: matched.length, droppedOldest } : {}),
-        ...bodiesNotCaptured(calls),
-        ...buffer,
-      });
+      // A zero-match FILTER already reports what did fire (netEmptyHint above). Zero calls at all
+      // fell through as a bare `[]`, which is indistinguishable from an observer that is not
+      // recording — and those need opposite responses. Say the look happened.
+      return withSizeCost(
+        noteEmptyRead(
+          {
+            calls,
+            ...(droppedOldest > 0 ? { total: matched.length, droppedOldest } : {}),
+            ...bodiesNotCaptured(calls),
+            ...buffer,
+          },
+          'calls',
+          { noun: 'network calls', ...(since > 0 ? {} : {}) },
+        ),
+      );
     },
   },
   {

@@ -259,9 +259,11 @@ export const READ_TOOLS: ToolDef[] = [
       reset: z.boolean().optional().describe('Restore the real clock.'),
       ...sessionIdShape,
     },
+    // The command returns `{ frozen }`. It used to declare `{ ok, elapsed }` — neither of which any
+    // clock code path produces — and MCP strips undeclared fields from structuredContent, so a
+    // successful freeze and a failed one both validated to `{}` and became indistinguishable.
     outputSchema: {
-      ok: z.boolean().optional(),
-      elapsed: z.number().optional(),
+      frozen: z.boolean().optional(),
     },
     handler: (deps, args) =>
       commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.CLOCK, {
