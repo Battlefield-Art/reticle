@@ -25,4 +25,12 @@ describe('what a reload reports', () => {
     // An agent that reads `ok: true` and acts immediately is the failure this prevents.
     expect(String(reloadResult().note)).toContain('reticle_sessions');
   });
+
+  it('confirms the reload once the page has re-announced itself', () => {
+    // The tool now WAITS for the reconnect (see session-reconnect), so the common case is a
+    // confirmed one — and the agent must not be sent to re-select a session that is already live.
+    const out = reloadResult(true);
+    expect(out.confirmed).toBe(true);
+    expect(String(out.note)).not.toContain('reticle_sessions');
+  });
 });

@@ -19,6 +19,16 @@ export const RELOAD_NOTE =
   'the session reconnected before acting; the session id is preserved across a reload, so it will ' +
   'be the same one.';
 
-export function reloadResult(): Record<string, unknown> {
-  return { ok: true, confirmed: false, note: RELOAD_NOTE };
+/**
+ * What a CONFIRMED reload says. The page re-announced itself under the same id before this returned,
+ * so the next call is safe — which is the whole reason the tool now waits instead of advising.
+ */
+export const RELOAD_RECONNECTED_NOTE =
+  'the page came back and re-announced itself under the same session id, so this session is live ' +
+  'again — no re-selection needed. Anything captured before the reload is gone with the old document.';
+
+export function reloadResult(reconnected = false): Record<string, unknown> {
+  return reconnected
+    ? { ok: true, confirmed: true, note: RELOAD_RECONNECTED_NOTE }
+    : { ok: true, confirmed: false, note: RELOAD_NOTE };
 }
