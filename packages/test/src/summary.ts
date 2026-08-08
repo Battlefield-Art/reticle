@@ -10,7 +10,12 @@ export function summarize(results: readonly SpecResult[]): RunSummary {
     else if (r.status === TestStatus.FAIL) failed += 1;
     else skipped += 1;
   }
-  return { total: results.length, passed, failed, skipped, ok: 0 === failed };
+  // `ok` is NOT merely "nothing failed". A suite whose every spec skipped — no browser, no real
+  // input, no session — has verified nothing, and reporting that as ok is the false green this
+  // product exists to prevent, in its own CI gate. An EMPTY suite stays ok: having recorded no
+  // flows yet is a different statement from having recorded flows and run none of them.
+  const total = results.length;
+  return { total, passed, failed, skipped, ok: 0 === failed && (0 === total || passed > 0) };
 }
 
 function resultLine(r: SpecResult): string {

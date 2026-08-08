@@ -31,6 +31,13 @@ export interface RunSummary {
   passed: number;
   failed: number;
   skipped: number;
+  /**
+   * The one field a CI gate should branch on: nothing failed AND something actually ran.
+   *
+   * Deliberately not `failed === 0` — a suite where every spec skipped has verified nothing, and
+   * calling that a pass is exactly the false green this product exists to catch. An empty suite is
+   * still ok, because recording no flows yet is not the same as running none of the ones you have.
+   */
   ok: boolean;
 }
 

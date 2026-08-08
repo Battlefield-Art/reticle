@@ -29,6 +29,27 @@ describe('summarize', () => {
     expect(summarize(mixed).ok).toBe(false);
   });
 
+  /**
+   * The failure mode this whole product sells against, in its own CI gate.
+   *
+   * `ok` was `0 === failed`, so a suite whose every spec SKIPPED — no browser, no real input, no
+   * session — reported ok:true and a CI script gating on it went green having verified nothing. A
+   * run where nothing ran is not a run where everything passed.
+   *
+   * An empty suite stays ok: having recorded no flows yet is a different statement from having
+   * recorded flows and run none of them.
+   */
+  it('is NOT ok when specs existed and every one of them skipped', () => {
+    const allSkipped: SpecResult[] = [
+      { name: 'a', status: TestStatus.SKIP, durationMs: 0, skipReason: 'no real input' },
+      { name: 'b', status: TestStatus.SKIP, durationMs: 0, skipReason: 'no real input' },
+    ];
+    const summary = summarize(allSkipped);
+    expect(summary.failed).toBe(0);
+    expect(summary.skipped).toBe(2);
+    expect(summary.ok).toBe(false);
+  });
+
   it('an empty result set is vacuously ok', () => {
     expect(summarize([])).toEqual({ total: 0, passed: 0, failed: 0, skipped: 0, ok: true });
   });
