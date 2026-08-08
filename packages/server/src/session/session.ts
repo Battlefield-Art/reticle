@@ -254,6 +254,27 @@ export class Session {
   recordActedRef(ref: string): void {
     this.#observed.recordActedRef(ref);
   }
+  actedLabels(): ReadonlySet<string> {
+    return this.#observed.actedLabels();
+  }
+
+  /**
+   * Derive the snapshot-shaped label (`button "Deploy"`) from an act reply and remember it.
+   *
+   * Same shape the interactive snapshot emits, so coverage can match a control the agent drove
+   * against the same control after a re-render gave it a different ref.
+   */
+  private recordActedLabelFrom(result: CommandResult): void {
+    const payload = result.result;
+    if (typeof payload !== 'object' || payload === null) return;
+    const record = payload as Record<string, unknown>;
+    const role = record['role'];
+    const name = record['name'];
+    if (typeof role !== 'string' || typeof name !== 'string') return;
+    if (role.length === 0 || name.length === 0) return;
+    this.#observed.recordActedLabel(`${role} "${name}"`);
+  }
+
   actedRefs(): ReadonlySet<string> {
     return this.#observed.actedRefs();
   }
@@ -429,7 +450,14 @@ export class Session {
     );
     this.#socket.send(payload);
     const sentAt = Date.now(); // browser-leg timing; see recordBrowserLatency for why it is split out
-    return awaited.finally(() => recordBrowserLatency(Date.now() - sentAt));
+    return awaited
+      .then((result) => {
+        // The label is only knowable from the REPLY — the request carries a ref, and a ref dies with
+        // the next re-render. Recorded here so coverage survives frameworks that replace nodes.
+        if (name === ReticleCommand.ACT) this.recordActedLabelFrom(result);
+        return result;
+      })
+      .finally(() => recordBrowserLatency(Date.now() - sentAt));
   }
 
   handleResult(result: CommandResult): void {

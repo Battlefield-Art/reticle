@@ -15,6 +15,10 @@ import { buildDynamicTools } from './tools/dynamic-tools.js';
 import { runTool, SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
 import { sessionEnvelopeShape } from './tools/tool-kit.js';
 import { buildErrorPayload } from './tools/error-recovery.js';
+import { unadvertisedToolHelp } from './tools/unadvertised-help.js';
+
+/** The JSON-RPC method the SDK registers its tool dispatcher under. */
+const CALL_TOOL_METHOD = 'tools/call';
 import { log } from './log.js';
 import { SERVER_VERSION } from './server-version.js';
 import { MCP_SERVER_NAME } from './init/mcp.js';
@@ -336,6 +340,42 @@ export function installFriendlyArgErrors(
   };
 }
 
+/**
+ * Answer a call for a real-but-un-advertised tool with the way to make it work.
+ *
+ * Wraps the SDK's own `tools/call` handler rather than registering the missing tools: registering
+ * them would put their schemas back into `tools/list`, which is the exact cost the trim exists to
+ * avoid. Delegates untouched for every other name, so an advertised tool's errors stay the SDK's.
+ */
+export function installUnadvertisedToolHelp(
+  server: McpServer,
+  advertised: ReadonlySet<string>,
+  known: ReadonlySet<string>,
+): void {
+  const inner = server.server as unknown as {
+    _requestHandlers?: Map<string, (request: unknown, extra: unknown) => Promise<unknown>>;
+  };
+  const handlers = inner._requestHandlers;
+  const original = handlers?.get(CALL_TOOL_METHOD);
+  if (handlers === undefined || original === undefined) return;
+  handlers.set(CALL_TOOL_METHOD, async (request: unknown, extra: unknown) => {
+    const name = toolNameOf(request);
+    const help =
+      name === undefined ? undefined : unadvertisedToolHelp(name, advertised, known);
+    if (help !== undefined) throw new McpError(ErrorCode.InvalidParams, help);
+    return original(request, extra);
+  });
+}
+
+/** The requested tool name, when the request has the shape we expect. */
+function toolNameOf(request: unknown): string | undefined {
+  if (typeof request !== 'object' || request === null) return undefined;
+  const params = (request as { params?: unknown }).params;
+  if (typeof params !== 'object' || params === null) return undefined;
+  const name = (params as { name?: unknown }).name;
+  return typeof name === 'string' ? name : undefined;
+}
+
 export function createMcpServer(
   deps: ToolDeps,
   profile: ToolProfile = TOOL_PROFILE.HYBRID,
@@ -423,5 +463,14 @@ export function createMcpServer(
       }
     });
   }
+  // AFTER the registration loop, and that ordering is the whole trick: the SDK installs its
+  // `tools/call` dispatcher lazily on the FIRST registerTool, so wrapping before this point finds
+  // nothing to wrap and silently does nothing. Verified live rather than assumed — the first attempt
+  // sat here doing exactly that.
+  installUnadvertisedToolHelp(
+    server,
+    new Set(advertised.map((tool) => tool.name)),
+    new Set(TOOLS.map((tool) => tool.name)),
+  );
   return server;
 }

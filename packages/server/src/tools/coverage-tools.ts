@@ -3,6 +3,7 @@ import { ReticleCommand, SnapshotMode } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import type { ToolDef, ToolDeps } from './tools.js';
 import { asString } from './tools-helpers.js';
+import { exercisedCount } from './coverage-identity.js';
 import { commandOrThrow, sessionIdShape } from './tool-kit.js';
 
 /**
@@ -84,21 +85,20 @@ export const COVERAGE_TOOLS: ToolDef[] = [
       });
       const tree = asString((result as Record<string, unknown>)['tree']) ?? '';
 
-      const acted = session.actedRefs();
-      const controls = parseControls(tree);
-      const present = new Set(controls.map((control) => control.ref));
-      const untouched = controls.filter((control) => !acted.has(control.ref));
-      // Drives that landed on controls no longer in the DOM. Without this the number is biased
-      // against the actions that WORKED: archive, delete, submit and navigate all remove their own
-      // control, so clicking one and asking again reported `exercised: 0` — measured on the Electron
-      // demo right after a successful archive. An agent reading "0" concludes it has done nothing
-      // and re-drives ground it already covered.
-      const drovenGone = [...acted].filter((ref) => !present.has(ref)).length;
+      // Matched by ref AND by label — see coverage-identity. A ref dies with the next re-render, so
+      // on a framework that replaces nodes this reported `exercised: 0` however much work was done.
+      // `droveGone` keeps the other honesty: archive/delete/submit remove their own control, so a
+      // drive that WORKED must not read as no coverage at all.
+      const { exercised, droveGone, untouched } = exercisedCount(
+        parseControls(tree),
+        session.actedRefs(),
+        session.actedLabels(),
+      );
       return {
-        total: controls.length,
-        exercised: controls.length - untouched.length,
+        total: parseControls(tree).length,
+        exercised,
         untouched,
-        ...(drovenGone > 0 ? { alsoDroveGone: drovenGone } : {}),
+        ...(droveGone > 0 ? { alsoDroveGone: droveGone } : {}),
       };
     },
   },

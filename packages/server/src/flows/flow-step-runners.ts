@@ -19,6 +19,7 @@ import { ReticleTool } from '../tools/tool-names.js';
 import { replayActionArgs } from './replay.js';
 import type { FlowReplaySession, Sleep } from './flow-replay.js';
 import { componentLabel, componentQueryArgs, resolveQuery } from './flow-replay.js';
+import { nearestRoleName, type RoleCandidate } from './role-anchor-nearest.js';
 
 /** Query args for a NAMED role anchor — the handle that identifies an instance, not a JSX site. */
 function roleQueryArgs(
@@ -32,6 +33,45 @@ function roleQueryArgs(
 }
 
 /** Run one role+name-anchored step: re-resolve via QUERY by:'role', ACT on the live ref, else drift. */
+/**
+ * The controls actually on the page, as role + name, for the nearest-match scan.
+ *
+ * Reads the interactive snapshot rather than a second query per candidate: one round trip, and it is
+ * the same view the coverage tool uses, so "what is on this page" has one definition.
+ */
+async function nearestRoleNameOnPage(
+  session: FlowReplaySession,
+  anchor: { role: string; name?: unknown },
+): Promise<string | null> {
+  const wanted = typeof anchor.name === 'string' ? anchor.name : undefined;
+  if (wanted === undefined) return null;
+  try {
+    // Straight off the QUERY result: resolveQuery reduces to refs, and the NAMES are what this needs.
+    const result = await session.command(ReticleCommand.QUERY, {
+      by: QueryBy.ROLE,
+      value: anchor.role,
+    });
+    const payload = result.result;
+    const elements =
+      typeof payload === 'object' && payload !== null
+        ? (payload as { elements?: unknown }).elements
+        : undefined;
+    if (!Array.isArray(elements)) return null;
+    const candidates: RoleCandidate[] = elements
+      .map((element) =>
+        typeof element === 'object' && element !== null
+          ? (element as { name?: unknown }).name
+          : undefined,
+      )
+      .filter((name): name is string => typeof name === 'string' && name.length > 0)
+      .map((name) => ({ role: anchor.role, name }));
+    return nearestRoleName(anchor.role, wanted, candidates);
+  } catch {
+    // A drift report must never fail because the suggestion lookup did.
+    return null;
+  }
+}
+
 export async function runRoleStep(
   session: FlowReplaySession,
   step: FlowStep,
@@ -44,6 +84,13 @@ export async function runRoleStep(
   const { refs } = await resolveQuery(session, roleQueryArgs(anchor), sleep);
   const ref = refs[0];
   if (ref === undefined) {
+    // `nearest` used to be the literal null, so heal answered "no nearest match cleared the
+    // confidence floor" for EVERY role-anchored drift — a structural limit reported as a judgement
+    // about candidates, when nothing had looked. It looks now, and it is deliberately stricter than
+    // the testid path: a role name is user-visible text, so a near-match is far more likely to be a
+    // different control than a renamed one. A candidate here is INFORMATION for the agent; heal
+    // still refuses to rebind a role anchor on its own.
+    const nearest = await nearestRoleNameOnPage(session, anchor);
     return {
       step: index,
       tool: step.tool,
@@ -51,9 +98,12 @@ export async function runRoleStep(
       ok: false,
       drift: {
         reasonKind: DriftReason.COMPONENT_NOT_FOUND,
-        reason: `role anchor ${label} not found`,
+        reason:
+          nearest === null
+            ? `role anchor ${label} not found, and no surviving ${anchor.role} has a similar name — anchor this step to a data-testid`
+            : `role anchor ${label} not found; the closest surviving ${anchor.role} is "${nearest}" — confirm it is the same control before rebinding, or add a data-testid`,
         anchor: label,
-        nearest: null,
+        nearest,
       },
     };
   }
