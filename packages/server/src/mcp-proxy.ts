@@ -5,7 +5,13 @@ import * as net from 'node:net';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { LOOPBACK_HOST, MCP_SSE_PATH, ReticleDir, CONTRACT_FINGERPRINT } from '@reticlehq/core';
+import {
+  LOOPBACK_HOST,
+  MCP_SSE_PATH,
+  ReticleDir,
+  ReticleEnv,
+  CONTRACT_FINGERPRINT,
+} from '@reticlehq/core';
 import { SERVER_VERSION } from './server-version.js';
 import { PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './peer-announce.js';
 import {
@@ -46,7 +52,16 @@ const RECONNECT_CAP_MS = 5_000;
  * At the capped backoff this is a few minutes — long enough to ride out a daemon restart without
  * spinning on a port that is wedged or held by a foreign process.
  */
-export const MAX_RECONNECT_ATTEMPTS = 60;
+const DEFAULT_MAX_RECONNECT_ATTEMPTS = 60;
+/**
+ * Overridable so the survival spec can reach exhaustion in seconds instead of minutes — the same
+ * reason the idle windows take an env override. A positive integer only; anything else falls back,
+ * so a typo cannot silently disable the retry loop.
+ */
+export const MAX_RECONNECT_ATTEMPTS = ((): number => {
+  const raw = Number(process.env[ReticleEnv.RECONNECT_ATTEMPTS]);
+  return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_MAX_RECONNECT_ATTEMPTS;
+})();
 
 export function reconnectDelayMs(attempt: number): number {
   return Math.min(RECONNECT_BASE_MS * attempt, RECONNECT_CAP_MS);

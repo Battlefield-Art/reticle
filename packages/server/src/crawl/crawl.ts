@@ -1,3 +1,4 @@
+import { span } from '../trace.js';
 import {
   ActionType,
   CRAWL_DEFAULTS,
@@ -179,12 +180,18 @@ export async function crawl(
     session.beginAction?.(ReticleTool.CRAWL, { ref: item.ref, action: ActionType.CLICK });
     let act;
     try {
-      act = await session.command(ReticleCommand.ACT, {
-        ref: item.ref,
-        action: ActionType.CLICK,
-        args: true === opts.confirmDangerous ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
+      // One span per control clicked, so a slow crawl names the control rather than reporting a
+      // single multi-second total. The settle sleep below is INSIDE it deliberately: it is part of
+      // what a step costs, and hiding it would make the fixed budget look free.
+      act = await span('crawl.step', { ref: item.ref, desc: item.desc }, async () => {
+        const clicked = await session.command(ReticleCommand.ACT, {
+          ref: item.ref,
+          action: ActionType.CLICK,
+          args: true === opts.confirmDangerous ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
+        });
+        await sleep(settleMs);
+        return clicked;
       });
-      await sleep(settleMs);
     } finally {
       // Close on every exit so a throw cannot leak the window onto the next control's events.
       session.finishAction?.();

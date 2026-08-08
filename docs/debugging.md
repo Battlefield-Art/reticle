@@ -40,13 +40,14 @@ RETICLE_TRACE=1 reticle serve --port 4400
 Every instrumented stage then emits one line **when it ends**, carrying its own duration:
 
 ```json
-{"event":"trace","span":"browser.command","ms":412,"depth":1,"callId":"c7","ok":true,"command":"act"}
-{"event":"trace","span":"tool.handler","ms":430,"depth":0,"callId":"c7","ok":true,"tool":"reticle_act"}
+{"event":"trace","span":"browser.command","ms":412,"depth":1,"callId":"p8123-c7","ok":true,"command":"act"}
+{"event":"trace","span":"tool.handler","ms":430,"depth":0,"callId":"p8123-c7","ok":true,"tool":"reticle_act"}
 ```
 
 Read it like this:
 
-- **`callId`** groups every stage of one tool call. Several agents can be inside the daemon at once,
+- **`callId`** groups every stage of one tool call, and is prefixed with the daemon's pid so two
+  daemons (or one that restarted) can never claim the same id. Several agents can be inside the daemon at once,
   so lines interleave — the id is the only thing that makes the output a tree instead of a pile.
 - **`depth`** is the nesting level. `0` is the tool handler; anything deeper ran inside it.
 - **`ms`** is that stage's own wall-clock. A parent's `ms` includes its children's.
@@ -58,12 +59,17 @@ something the end line already implies.
 
 ### Where the time goes
 
-The two spans that ship today are the two that answer *"is this slow because of us or because of the
-app under test?"*:
+The spans that ship today:
 
-- `tool.handler` — the whole tool call, at the one dispatch point both MCP and programmatic callers
-  pass through.
-- `browser.command` — the round-trip to the page.
+| Span | What it covers |
+| --- | --- |
+| `tool.handler` | the whole tool call, at the one dispatch point both MCP and programmatic callers pass through |
+| `browser.command` | one round-trip to the page |
+| `flow.step` | one step of a replayed flow, with its anchor kind |
+| `crawl.step` | one control the crawl clicked, including its settle budget |
+| `init.plan` / `init.apply` / `init.exec` / `init.exec.retry` / `init.write` | the install, phase by phase |
+
+The first two answer *"is this slow because of us or because of the app under test?"* —
 
 `browser.command` close to `tool.handler` means the app is taking the time. A large gap between them
 is Reticle's own overhead, and that is a performance bug of ours.
@@ -71,7 +77,7 @@ is Reticle's own overhead, and that is a performance bug of ours.
 Filter to one call:
 
 ```bash
-grep '"event":"trace"' ~/.reticle/daemon-4400.log | jq -c 'select(.callId=="c7")'
+grep '"event":"trace"' ~/.reticle/daemon-4400.log | jq -c 'select(.callId=="p8123-c7")'
 ```
 
 Or find the slowest stages across a session:

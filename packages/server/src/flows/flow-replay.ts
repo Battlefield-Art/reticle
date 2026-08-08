@@ -1,3 +1,4 @@
+import { span } from '../trace.js';
 import {
   AnchorKind,
   DriftReason,
@@ -469,32 +470,43 @@ export async function replayFlow(
     const page = currentRoute(session);
     // Event-time floor so the consequence reflects only THIS step's aftermath, not prior steps'.
     const cursorBefore = session.elapsed();
-    let result: FlowStepResult;
     const subSteps = step.steps;
-    if (isDegradedAnchor(step.anchor)) {
-      // Never QUERY the sentinel — it marks "no anchor was determined", not an element to find.
-      result = degradedStepResult(step, index, label);
-    } else if (subSteps !== undefined && subSteps.length > 0) {
-      result = await runSequenceStep(session, step, index, subSteps, confirmDangerous, sleep);
-    } else if (step.anchor.kind === AnchorKind.SIGNAL) {
-      result = await runSignalStep(
-        session,
-        step,
-        index,
-        label,
-        waitForSignal,
-        signalTimeoutMs,
-        replayFloor,
-      );
-    } else if (step.anchor.kind === AnchorKind.COMPONENT) {
-      result = await runComponentStep(session, step, index, step.anchor, confirmDangerous, sleep);
-    } else if (step.anchor.kind === AnchorKind.ROLE && step.anchor.name !== undefined) {
-      // A NAMED role anchor addresses one element. The nameless one is the degraded placeholder and
-      // keeps its old path, where it fails legibly rather than querying a role as if it were a testid.
-      result = await runRoleStep(session, step, index, step.anchor, confirmDangerous, sleep);
-    } else {
-      result = await runTestidStep(session, step, index, label, dynamic, confirmDangerous, sleep);
-    }
+    // Traced per step, so a slow replay says WHICH step and which anchor kind spent the time. The
+    // per-step `durationMs` below is what the agent gets back; this is what a developer profiling
+    // the replay engine gets, nested under the tool call with the browser round-trips beneath it.
+    const result: FlowStepResult = await span(
+      'flow.step',
+      { index, anchor: step.anchor.kind, label },
+      async () => {
+        if (isDegradedAnchor(step.anchor)) {
+          // Never QUERY the sentinel — it marks "no anchor was determined", not an element to find.
+          return degradedStepResult(step, index, label);
+        }
+        if (subSteps !== undefined && subSteps.length > 0) {
+          return runSequenceStep(session, step, index, subSteps, confirmDangerous, sleep);
+        }
+        if (step.anchor.kind === AnchorKind.SIGNAL) {
+          return runSignalStep(
+            session,
+            step,
+            index,
+            label,
+            waitForSignal,
+            signalTimeoutMs,
+            replayFloor,
+          );
+        }
+        if (step.anchor.kind === AnchorKind.COMPONENT) {
+          return runComponentStep(session, step, index, step.anchor, confirmDangerous, sleep);
+        }
+        if (step.anchor.kind === AnchorKind.ROLE && step.anchor.name !== undefined) {
+          // A NAMED role anchor addresses one element. The nameless one is the degraded placeholder
+          // and keeps its old path, where it fails legibly rather than querying a role as a testid.
+          return runRoleStep(session, step, index, step.anchor, confirmDangerous, sleep);
+        }
+        return runTestidStep(session, step, index, label, dynamic, confirmDangerous, sleep);
+      },
+    );
     // Once the anchor resolved and the action ran, the step's own expect is evaluated — signal, net,
     // console and store truth alike — deterministically, in the same cheap replay loop, with no LLM.
     const stepExpect = step.expect;

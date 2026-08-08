@@ -38,6 +38,11 @@ const ORDER = [
   // Needs no servers and no browser — it watches the daemon's own life cycle, which nothing else
   // here can see (every other spec drives a daemon immediately, never leaving one idle).
   'daemon-lifecycle-test',
+  // The other half of the transport story. daemon-lifecycle covers the daemon exiting on its OWN
+  // terms; this one SIGKILLs it under a live client and asserts the stdio MCP server survives —
+  // the failure a user experiences as "my tools vanished, open /mcp and reconnect". Also needs no
+  // servers and no browser.
+  'mcp-survives-test',
   'live-control-test',
   'real-world-tests',
   'multi-agent-lease-test',

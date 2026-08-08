@@ -93,6 +93,13 @@ export const ReticleEnv = {
    * Off by default and free when off — a trace on every tool call is a cost on the hot path.
    */
   TRACE: 'RETICLE_TRACE',
+  /**
+   * How many consecutive reconnects the MCP proxy attempts before it stops retrying and goes
+   * dormant. Overridable for the same reason the idle windows are: the real budget takes MINUTES to
+   * exhaust, so the one spec that proves the proxy SURVIVES exhaustion could not run at all without
+   * shortening it. A budget nobody can reach in a test is a budget nobody tests.
+   */
+  RECONNECT_ATTEMPTS: 'RETICLE_RECONNECT_ATTEMPTS',
 } as const;
 
 /** Hard transport bounds shared by the browser and bridge. */

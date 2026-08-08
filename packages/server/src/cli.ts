@@ -440,12 +440,26 @@ function handleMcp(opts: {
     log('reticle_mcp_daemon_started', { port, ...(driveUrl !== undefined ? { driveUrl } : {}) });
     await waitForDaemon(port);
   };
-  ensure()
-    .then(() => startMcpProxy(port, ensure))
+  // Start the proxy WHATEVER happened to the daemon.
+  //
+  // This used to exit(1) when `ensure` failed, which is the third way an MCP server disappears on a
+  // user: something else is holding the bridge port — a foreign daemon from another project, a
+  // half-dead process, a port a colleague's tool grabbed — the spawned daemon cannot bind, and the
+  // editor shows a server that failed to start. Nothing about that is unrecoverable: the proxy
+  // answers `initialize` itself, serves the cached catalog, and its wake path retries a daemon on
+  // every client request. Present-and-complaining beats absent, because absent needs a human.
+  // `void`: the chain handles its own failure and the process must not wait on it — the proxy is
+  // started from `finally` either way.
+  void ensure()
     .catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      log('reticle_mcp_proxy_error', { error: message });
-      process.exit(1);
+      log('reticle_mcp_daemon_unavailable', {
+        error: err instanceof Error ? err.message : String(err),
+        note: 'serving anyway — the next tool call will try to start a daemon again',
+      });
+    })
+    .finally(() => {
+      // Also `void`: the proxy runs for the life of the process and is never awaited by anyone.
+      void startMcpProxy(port, ensure);
     });
 }
 
