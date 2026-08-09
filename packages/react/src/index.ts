@@ -72,6 +72,10 @@ interface Fiber {
   _debugSource?: DebugSource | null;
   memoizedState?: unknown; // for a function component this is the head of the hook list
   memoizedProps?: unknown; // host fiber props incl. JSX event handlers
+  /** The other half of React's fiber pair (current ↔ work-in-progress). Null before the 2nd render. */
+  alternate?: Fiber | null;
+  /** On the HostRoot fiber this is the FiberRoot, whose `current` names the committed tree. */
+  stateNode?: unknown;
 }
 
 const FIBER_PREFIXES = ['__reactFiber$', '__reactInternalInstance$'];
@@ -98,11 +102,42 @@ function isFrameworkNoise(name: string): boolean {
   return FRAMEWORK_NOISE.test(name);
 }
 
+/**
+ * Resolve a fiber to the one in the COMMITTED tree.
+ *
+ * React keeps two fibers per element — `current` and its `alternate` (the work-in-progress) — and
+ * swaps which is which on every commit. The `__reactFiber$…` key on a host DOM node keeps pointing at
+ * the fiber object created at mount, so from the second render on it is the previous commit's fiber
+ * half the time: hooks read off it alternate correct/stale, one commit behind.
+ *
+ * The principled test, not a heuristic: climb `return` to the HostRoot, whose `stateNode` is the
+ * FiberRoot. The tree we climbed is the committed one iff `fiberRoot.current` is the top fiber we
+ * reached. If it is not, the committed counterpart is `fiber.alternate`. Anything unrecognizable
+ * (no alternate, no FiberRoot, a detached fiber) returns the fiber unchanged — a possibly-stale read
+ * is still better than none, and this must never throw on a React version we have not seen.
+ */
+function currentFiber(fiber: Fiber): Fiber {
+  const alternate = fiber.alternate;
+  if (alternate === undefined || null === alternate) return fiber;
+  let top = fiber;
+  let depth = 0;
+  while (top.return !== null && depth < MAX_DEPTH) {
+    top = top.return;
+    depth += 1;
+  }
+  const fiberRoot = top.stateNode;
+  if (typeof fiberRoot !== 'object' || null === fiberRoot) return fiber;
+  const committed = (fiberRoot as { current?: unknown }).current;
+  if (typeof committed !== 'object' || null === committed) return fiber;
+  return committed === top ? fiber : alternate;
+}
+
 function getFiber(el: Element): Fiber | null {
   const key = Object.keys(el).find((k) => FIBER_PREFIXES.some((p) => k.startsWith(p)));
   if (key === undefined) return null;
   const value = (el as unknown as Record<string, unknown>)[key];
-  return (value ?? null) as Fiber | null;
+  if (value === undefined || null === value) return null;
+  return currentFiber(value as Fiber);
 }
 
 /** Display name of a component type (function, forwardRef/memo object, or host string). */

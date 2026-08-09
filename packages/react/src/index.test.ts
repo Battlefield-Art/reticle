@@ -1,4 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { act, createElement, useState } from 'react';
+import { createRoot } from 'react-dom/client';
 import { ComponentStateReason, type ComponentStateResult } from '@reticlehq/core';
 import { identify, readState, hasHoverHandlers } from './index.js';
 
@@ -138,6 +140,49 @@ describe('react adapter readState', () => {
       result = readState(el);
     }).not.toThrow();
     expect(result).toEqual({ ok: false, reason: ComponentStateReason.UNAVAILABLE });
+  });
+});
+
+/**
+ * React keeps TWO fibers per component (current and its `alternate`), and the `__reactFiber$…` key on
+ * a host DOM node keeps pointing at the fiber object created at MOUNT — which is current on every
+ * other commit and the previous commit's fiber the rest of the time. Reading it blind reports hook
+ * state that is one commit behind, alternating correct/stale: DOM says 1, hooks say [0]; DOM says 2,
+ * hooks say [2]. A verification tool that is silently one commit stale is worse than no tool.
+ */
+describe('react adapter readState reads the committed fiber, not its alternate', () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+  function Counter(): ReturnType<typeof createElement> {
+    const [count, setCount] = useState(0);
+    return createElement(
+      'button',
+      { 'data-testid': 'inc', onClick: () => setCount(count + 1) },
+      `${count}`,
+    );
+  }
+
+  it('reports the hook value the DOM shows after every click, not the previous one', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+      act(() => root.render(createElement(Counter)));
+      const el = container.querySelector('[data-testid="inc"]');
+      expect(el).not.toBeNull();
+      if (null === el) return;
+
+      for (let click = 1; click <= 4; click += 1) {
+        act(() => {
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        expect(el.textContent).toBe(String(click));
+        expect(readState(el).hooks, `after click ${click}`).toEqual([click]);
+      }
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
   });
 });
 

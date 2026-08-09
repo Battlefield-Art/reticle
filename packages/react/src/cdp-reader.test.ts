@@ -50,6 +50,22 @@ describe('readComponentAt (zero-install fiber read)', () => {
     expect(read.hooks).toEqual([7, 'deploys']);
   });
 
+  // React keeps two fibers per component; the `__reactFiber$…` key on a host node keeps pointing at
+  // the one created at mount, which is the PREVIOUS commit's fiber on every other commit. Reading it
+  // blind reports hook state one commit behind, alternating correct/stale.
+  it('reads the committed fiber after re-renders, not the stale alternate', () => {
+    act(() => root.render(createElement(Counter)));
+    const el = container.querySelector('[data-testid="inc"]');
+    expect(el).not.toBeNull();
+    if (null === el) return;
+    for (let click = 1; click <= 4; click += 1) {
+      act(() => {
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      expect(readComponentAt(el).hooks, `after click ${click}`).toEqual([7 + click, 'deploys']);
+    }
+  });
+
   it('degrades to a structured reason on a non-React element, never throws', () => {
     const bare = document.createElement('span');
     expect(readComponentAt(bare)).toEqual({ ok: false, reason: 'no-fiber' });
