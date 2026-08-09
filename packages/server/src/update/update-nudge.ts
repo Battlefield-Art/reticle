@@ -68,13 +68,46 @@ let delivered = false;
  * for 24h on disk, and falls back to the cached manifest when the registry is unreachable — so this
  * costs one npm registry request per day per machine, and nothing at all when offline.
  */
-function buildNudge(latestVersion: string, currentVersion: string): UpdateNudge {
+/** How much of the release description may ride on a tool result. See buildNudge. */
+const MAX_CHANGELOG_CHARS = 240;
+const MAX_LISTED_BREAKING = 4;
+
+/**
+ * Describe the release, not just its number.
+ *
+ * `packages/server/package.json` carries `reticle.changelog` and `reticle.breakingChanges`, and
+ * `update-checker` parses both into the manifest — where they stopped. This function named two
+ * versions and nothing else, so both fields were written, shipped, parsed and discarded. Latent
+ * metadata nobody ever printed.
+ *
+ * Survivable while releases are additive; actively harmful for one that is not. An agent told only
+ * "2.4.1 → 2.5.0" runs `reticle update` mid-task and discovers a retired environment variable and
+ * six newly-strict parameters by breaking on them.
+ *
+ * Bounded on purpose: this rides on a tool result every turn until it is delivered, so a long
+ * changelog is a per-turn tax. The count of anything elided is stated rather than silently dropped.
+ */
+export function buildNudge(
+  latestVersion: string,
+  currentVersion: string,
+  release?: { changelog?: string; breakingChanges?: string[] },
+): UpdateNudge {
+  const changelog = (release?.changelog ?? '').trim();
+  const breaking = (release?.breakingChanges ?? []).filter((line) => 0 < line.trim().length);
+  const listed = breaking.slice(0, MAX_LISTED_BREAKING);
+  const rest = breaking.length - listed.length;
   return {
     currentVersion,
     latestVersion,
     command: UPDATE_COMMAND,
     action:
       `A newer Reticle is available (${currentVersion} → ${latestVersion}). ` +
+      ('' === changelog ? '' : `${changelog.slice(0, MAX_CHANGELOG_CHARS)} `) +
+      (0 === breaking.length
+        ? ''
+        : `This release has BREAKING changes: ${listed.join('; ')}` +
+          (0 < rest ? ` (+${String(rest)} more — see the changelog)` : '') +
+          '. Read them before updating. ') +
       `Tell the human, and run \`${UPDATE_COMMAND}\` if they agree — it restarts the daemon, ` +
       'so do it between tasks rather than mid-verification. Continue your current task first.',
   };
@@ -88,7 +121,14 @@ export function startUpdateCheck(now: () => number = () => Date.now()): void {
       .then((manifest) => {
         if (!manifest.updateAvailable || manifest.latestVersion === undefined) return;
         if (!isNewerVersion(manifest.latestVersion, SERVER_VERSION)) return;
-        pending = buildNudge(manifest.latestVersion, SERVER_VERSION);
+        // WITH the release description. The manifest has carried `changelog` and `breakingChanges`
+        // all along; nothing read them.
+        pending = buildNudge(manifest.latestVersion, SERVER_VERSION, {
+          ...(manifest.changelog === undefined ? {} : { changelog: manifest.changelog }),
+          ...(manifest.breakingChanges === undefined
+            ? {}
+            : { breakingChanges: manifest.breakingChanges }),
+        });
         delivered = false;
         log('reticle_update_available', {
           from: SERVER_VERSION,
@@ -129,12 +169,23 @@ export function updateTarget(
  * answer is already on disk; use it now and let the network refresh behind it.
  */
 export function armUpdateNudgeFrom(
-  cached: { latestVersion?: string; updateAvailable?: boolean } | null,
+  cached: {
+    latestVersion?: string;
+    updateAvailable?: boolean;
+    changelog?: string;
+    breakingChanges?: string[];
+  } | null,
   currentVersion: string = SERVER_VERSION,
 ): void {
   const latest = cached?.latestVersion;
   if (latest === undefined || !isNewerVersion(latest, currentVersion)) return;
-  pending = buildNudge(latest, currentVersion);
+  // The CACHED path matters more than the live one: it is what the very first tool call carries, and
+  // it is the only nudge an offline machine ever sees. Dropping the release description here would
+  // have left the fields unread on the commonest path while looking fixed.
+  pending = buildNudge(latest, currentVersion, {
+    ...(cached?.changelog === undefined ? {} : { changelog: cached.changelog }),
+    ...(cached?.breakingChanges === undefined ? {} : { breakingChanges: cached.breakingChanges }),
+  });
   delivered = false;
 }
 

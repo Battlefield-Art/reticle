@@ -20,6 +20,25 @@ import { createHash } from 'node:crypto';
  * quoted value often contains the very numbers and paths the later rules would only partly catch.
  */
 const VARIABLE_PARTS: readonly RegExp[] = [
+  // ── Identifiers and credentials FIRST ────────────────────────────────────────────────────────
+  //
+  // The rules below this block were written to make messages GROUPABLE — blank the variable parts so
+  // the same defect hashes the same everywhere. Redaction was a side effect of that, and a side
+  // effect is not a guarantee. A telemetry audit caught `bob@acme.com` arriving verbatim in
+  // `crash_message`; probing further, API-key-shaped tokens survived intact and a JWT was only
+  // half-masked. This function also feeds `session.errors[]` on EVERY session summary, so the
+  // exposure was every session that logged an error naming a user, not a rare crash path.
+  //
+  // Order matters: these run before the generic patterns, because `\d+` and the hex rule would chew
+  // a token into pieces that no longer match a credential shape while still leaking most of it —
+  // which is exactly what happened to the JWT.
+  /[\w.+-]+@[\w-]+\.[\w.-]+/g, // email addresses
+  /\beyJ[\w-]*\.[\w-]*\.?[\w-]*/g, // JWTs (header segment is always base64 `eyJ`)
+  /\b(?:sk|pk|rk|ghp|gho|ghs|ghu|ghr|github_pat|xox[abposr]|AKIA|ASIA|glpat)[_-][A-Za-z0-9_-]{8,}/gi,
+  // Anything else long enough and dense enough to be a secret rather than a word. The catch-all for
+  // formats nobody here has seen: on a privacy boundary, unrecognised is not the same as safe.
+  /\b[A-Za-z0-9_-]{24,}\b/g,
+  // ── Then the grouping rules ──────────────────────────────────────────────────────────────────
   /"[^"]*"|'[^']*'|`[^`]*`/g, // quoted values — names, selectors, snippets
   /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, // URLs
   /(?:\/[\w.-]+){2,}\/?/g, // POSIX-ish paths
