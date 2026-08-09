@@ -8,7 +8,7 @@ wrong one is why investigations here have historically started by reading source
 
 | Question | Signal | Where |
 | --- | --- | --- |
-| What did the **agent** do to the app, and what did the app do back? | the journal | `reticle_journal`, `~/.reticle/journal/` |
+| What did the **agent** do to the app, and what did the app do back? | the journal | `reticle_observe` (the event window), `reticle_run_export` (a saved run), `~/.reticle/journal/` |
 | What did **Reticle** do internally to answer that call? | the **trace** | daemon log, with `RETICLE_TRACE=1` |
 | What happened at a milestone (daemon start, skew, refusal)? | structured log lines | daemon log |
 | How much is this being used, and does it work? | telemetry | [telemetry.md](telemetry.md) |

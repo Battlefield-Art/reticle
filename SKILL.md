@@ -633,7 +633,7 @@ The MCP proxy lost its stream to the daemon. From 2.3.1 it reconnects on its own
 
 Read `~/.reticle/mcp-proxy.log` — it records every drop and reconnect with a reason (`sse_ended`, `sse_error`, `connect_error`) and the attempt number. It is the only place this is visible; the disconnect is silent from the agent's side.
 
-If the tools stay gone, the proxy exhausted its reconnect budget (`reticle_mcp_proxy_gave_up` in that log) and only the human can restore them by running `/mcp`. Until then, use the CLI for anything that doesn't need the tools: `npx @reticlehq/server status | doctor | open | drive`.
+If the tools stay gone, the proxy has stopped RETRYING (`reticle_mcp_proxy_dormant_after_budget` in that log) — it has not stopped serving. Just call a tool again: the next request wakes it and starts a daemon. It used to exit here, which is what made a human open `/mcp`; that no longer happens. If a call still fails after that, use the CLI for anything that doesn't need the tools: `npx @reticlehq/server status | doctor | open | drive`.
 
 ### Multiple projects / port conflicts
 
@@ -691,7 +691,7 @@ Then reload Claude Code (`/mcp`) so the new version is picked up on next connect
 
 2. **Check for the Stop hook:** `cat ~/.claude/settings.json | grep reticle` If present, delete that hook entry, then repeat step 1.
 
-3. **If -32000 persists**, the daemon may be crashing on startup. Check the log: `cat ~/.reticle/daemon-4400.log | tail -30` Look for `reticle_daemon_start_failed` or `reticle_mcp_proxy_error`. If the port is taken by another process: `lsof -i :4400` to identify it, then kill it and retry.
+3. **If -32000 persists**, the daemon may be crashing on startup. Check the log: `cat ~/.reticle/daemon-4400.log | tail -30` Look for `reticle_daemon_start_failed` or `reticle_mcp_daemon_unavailable`. If the port is taken by another process: `lsof -i :4400` to identify it, then kill it and retry.
 
 4. **Confirm the MCP config is user-level** (not project-level) and has no pinned version:
 

@@ -263,6 +263,18 @@ export const AnnotationSchema = z.discriminatedUnion('kind', [
     equals: z.unknown().optional(),
   }),
   z.object({
+    kind: z.literal(AnnotationKind.ASSERT_NET),
+    // Same shape SUCCESS_STATE already accepts, so one vocabulary describes a network consequence
+    // whether it gates a step or ends the flow. `count` is the point of it: presence says the
+    // request fired, cardinality catches the double-submit that fired it twice.
+    net: z.object({
+      method: z.string().min(1).optional(),
+      urlContains: z.string().min(1).optional(),
+      status: z.number().optional(),
+      count: z.number().int().nonnegative().optional(),
+    }),
+  }),
+  z.object({
     kind: z.literal(AnnotationKind.MARK_DYNAMIC),
     testid: z.string().min(1),
   }),

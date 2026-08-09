@@ -127,6 +127,11 @@ export const AnnotationKind = {
   ASSERT_SIGNAL: 'assert-signal', // → step.expect.signal (invariant)
   ASSERT_VISIBLE: 'assert-visible', // → step.expect.element (invariant)
   ASSERT_STATE: 'assert-state', // → step.expect.state (store-truth invariant on the last step)
+  // → step.expect.net (the request the action must have caused, with an optional exact count).
+  // Documented in agent-cheatsheet.md long before it existed: an agent following that advice got
+  // `annotate_unknown_kind`, the annotation was dropped, and the flow stayed presence-only — able
+  // to pass while broken, which is the failure this whole product is pointed at.
+  ASSERT_NET: 'assert-net',
   MARK_DYNAMIC: 'mark-dynamic', // → flow.dynamic[] (don't assert words/content)
   SUCCESS_STATE: 'success-state', // → flow.success (golden end condition)
   INTENT: 'intent', // → flow.intent (the business goal this flow exists to verify)

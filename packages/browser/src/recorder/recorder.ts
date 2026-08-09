@@ -50,6 +50,7 @@ const ANNOTATION_LABEL: Record<AnnotationKind, string> = {
   [AnnotationKind.ASSERT_SIGNAL]: 'assert signal',
   [AnnotationKind.ASSERT_VISIBLE]: 'assert visible',
   [AnnotationKind.ASSERT_STATE]: 'assert state',
+  [AnnotationKind.ASSERT_NET]: 'assert request',
   [AnnotationKind.MARK_DYNAMIC]: 'mark dynamic',
   [AnnotationKind.SUCCESS_STATE]: 'success state',
   [AnnotationKind.INTENT]: 'intent',
