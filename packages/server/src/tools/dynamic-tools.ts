@@ -122,6 +122,17 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
   const runShape = {
     tool: z.string().describe('Tool name to invoke, e.g. reticle_network.'),
     args: z.record(z.unknown()).optional().describe('Arguments object for that tool.'),
+    // Accepted AND FORWARDED, not merely tolerated. reticle_run is the only way to reach an
+    // unadvertised tool, so on a machine running several projects it has to be aimable — and
+    // `sessionId` is the shape an agent already uses on every other tool. Reported across 6 of 6
+    // apps: it took this key, dropped it, resolved by the daemon's cwd project, and failed with
+    // "no browser session for project X" while naming the very session it had been given.
+    sessionId: z
+      .string()
+      .optional()
+      .describe(
+        'Target tab for the invoked tool. Forwarded to it — an explicit args.sessionId wins.',
+      ),
   };
   const reticleRun: ToolDef = {
     name: ReticleTool.RUN,
@@ -142,10 +153,11 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
         };
       }
       const name = 'string' === typeof args['tool'] ? args['tool'] : '';
-      const callArgs =
+      const given =
         'object' === typeof args['args'] && args['args'] !== null
           ? (args['args'] as Record<string, unknown>)
           : {};
+      const aimed = args['sessionId'];
       const target = byName.get(name);
       if (target === undefined) {
         // A non-zero count here means our advertised surface is confusing the agent — it reached for
@@ -163,6 +175,16 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
         }
         return { error: `unknown tool '${name}'`, available: allTools.map((t) => t.name) };
       }
+      // The outer aim, forwarded ONLY to a tool that declares a session — injecting it into one that
+      // does not would trip the unknown-key check below and refuse a call the caller got right. An
+      // inner args.sessionId wins as the more specific instruction, and an absent aim stays absent so
+      // auto-selection still applies.
+      const callArgs =
+        'string' === typeof aimed &&
+        given['sessionId'] === undefined &&
+        undefined !== target.inputSchema['sessionId']
+          ? { ...given, sessionId: aimed }
+          : given;
       // The escape hatch is where a typo is MOST likely, because an unadvertised tool's parameters
       // are not in front of the agent at all — and it is the one path the SDK's own validation never
       // sees, since `reticle_run`'s own args (`tool`, `args`) are perfectly valid. Left unchecked,

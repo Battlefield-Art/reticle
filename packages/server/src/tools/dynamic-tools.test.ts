@@ -138,12 +138,15 @@ describe('reticle_run reports a failure the way the rest of the surface does', (
     const out = (await run?.handler(NO_DEPS, {
       tool: 'reticle_alpha',
       args: { ref: 'e1' },
-      sessionId: 's1',
+      // NOT sessionId — that one is now accepted and FORWARDED, because reticle_run is the only way
+      // to reach an unadvertised tool and on a multi-project daemon it has to be aimable. Reported
+      // across 6 of 6 apps: it took sessionId, dropped it, resolved by the daemon's cwd project and
+      // then failed naming the very session it had been handed. Refusing the key was more honest
+      // than dropping it and still left the escape hatch un-aimable. See run-session-id.test.ts.
+      nonsense: 'x',
     })) as { error?: string; params?: unknown };
-    expect(out.error).toContain('sessionId');
+    expect(out.error).toContain('nonsense');
     expect(out.error).toContain('NOT applied');
-    // Named for reticle_run itself — the unknown key is ITS parameter, not the wrapped tool's.
-    expect(out.error).toContain(ReticleTool.RUN);
   });
 
   it('still points at the parameters when the arguments really are the problem', async () => {
