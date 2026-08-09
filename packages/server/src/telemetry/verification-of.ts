@@ -12,7 +12,7 @@
  * Extracted because a rule this easy to get wrong, feeding the one number shown to investors, should
  * be readable and testable on its own rather than inferred from a ternary inside a dispatcher.
  */
-import { type Verification } from '@reticlehq/core';
+import { type BrowserBrand, type Verification } from '@reticlehq/core';
 import { VERIFICATION_TOOLS } from '../tools/feedback-tools.js';
 import { getBrowserMode } from './browser-mode.js';
 
@@ -32,6 +32,7 @@ export function verificationOf(
   toolName: string,
   result: Record<string, unknown>,
   durationMs: number,
+  brand?: BrowserBrand,
 ): Verification | undefined {
   if (!VERIFICATION_TOOLS.has(toolName)) return undefined;
   // A paused session REFUSES the call — nothing driven, nothing asserted. The refusal carries a
@@ -62,5 +63,10 @@ export function verificationOf(
     // Headless CI, a human watching, or somebody's own dev server — three different products behind
     // one number until this was recorded.
     browser: getBrowserMode(),
+    // WHICH browser, when the page said. `attached` is the common case and says only that Reticle
+    // launched nothing; the brand is the difference between "somebody's own browser" and knowing it
+    // was Edge. Omitted when unreported — a desktop webview and an older SDK both have no answer,
+    // and "unknown" would be a value on a dashboard rather than a gap.
+    ...(brand !== undefined ? { brand } : {}),
   };
 }

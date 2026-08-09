@@ -65,6 +65,9 @@ const ORDER = [
   // telemetry-events-test, which only proves each kind can be sent. Owns a browser and writes a flow,
   // so it sits beside the sweep at the end.
   'telemetry-stitch-test',
+  // Feedback is the only qualitative channel the product has. This proves a report survives a dead
+  // network (outbox), that a delivered one drains, and that filing from a Reticle checkout works.
+  'feedback-durability-test',
   // Last: it drives every tool over real MCP, including navigate/crawl/clock, and owns a browser of
   // its own. Running it earlier would leave the shared bench-app in a state later specs assume fresh.
   'tool-surface-sweep-test',

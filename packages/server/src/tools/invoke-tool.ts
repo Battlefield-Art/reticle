@@ -1,5 +1,5 @@
 import { healthEnvelope } from '../session/session-health.js';
-import { TelemetryActor, TelemetryEventKind } from '@reticlehq/core';
+import { type BrowserBrand, TelemetryActor, TelemetryEventKind } from '@reticlehq/core';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
 import { getTelemetry } from '../telemetry/telemetry.js';
 import { takeUpdateNudge } from '../update/update-nudge.js';
@@ -110,8 +110,9 @@ function recordVerification(
   toolName: string,
   result: Record<string, unknown>,
   durationMs: number,
+  brand: BrowserBrand | undefined,
 ): void {
-  const verification = verificationOf(toolName, result, durationMs);
+  const verification = verificationOf(toolName, result, durationMs, brand);
   if (verification === undefined) return;
   getSessionMetrics().recordVerification();
   void getTelemetry().emit(TelemetryEventKind.VERIFICATION_COMPLETED, {
@@ -208,7 +209,10 @@ export async function runTool(
   // session-bound early return, because two of the four verification tools (flow_verify,
   // verify_change) are session-EXEMPT and would otherwise never carry it.
   if (isPlainObject(raw)) {
-    recordVerification(tool.name, raw, Date.now() - startedAt);
+    // The brand comes from the session's own PAGE_HEALTH report, so it is present for the four
+    // session-bound verification tools and absent for flow_verify (session-exempt) — which replays
+    // into a browser Reticle launched, where `browser` already says what happened.
+    recordVerification(tool.name, raw, Date.now() - startedAt, session?.brand);
     reportBugsFound(tool.name, raw);
   }
   const prompt = isPlainObject(raw) ? takeFeedbackPrompt(tool.name) : undefined;

@@ -21,7 +21,7 @@ import {
   ProjectProfileSchema,
   SessionSummarySchema,
 } from './telemetry-session.js';
-import { FeedbackSchema } from './telemetry-feedback.js';
+import { BrowserBrand, FeedbackSchema } from './telemetry-feedback.js';
 import { IdentitySchema } from './telemetry-feedback.js';
 
 /** Bump when the event shape changes so the analytics side can segment old senders. */
@@ -247,6 +247,19 @@ export const VerificationSchema = z.object({
    * last one is what most installs actually do.
    */
   browser: z.string().min(1).max(16).optional(),
+  /**
+   * WHICH browser it was — `chrome` | `edge` | `arc` | `dia` | `brave` | `opera` | `firefox` |
+   * `safari` | `other`, from `BrowserBrand`.
+   *
+   * `browser` above says who drove it, and its most common value by far is `attached`: the SDK
+   * connected from a browser Reticle never launched. That leaves the actual browser unknown, and
+   * the engine cannot fill the gap — Chrome, Edge, Arc, Dia and Brave are one `blink`.
+   *
+   * OPTIONAL and absent rather than `"unknown"` when the page did not say: a desktop webview has no
+   * brand, and an older SDK does not report one. A guessed value would be indistinguishable from a
+   * measured one on a dashboard.
+   */
+  brand: z.nativeEnum(BrowserBrand).optional(),
 });
 export type Verification = z.infer<typeof VerificationSchema>;
 

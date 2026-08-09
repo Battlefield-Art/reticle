@@ -1,4 +1,4 @@
-import { BUFFER_EVICTION_WARNING, THROTTLED_WARNING } from '@reticlehq/core';
+import { BrowserBrand, BUFFER_EVICTION_WARNING, THROTTLED_WARNING } from '@reticlehq/core';
 import type { Session } from './session.js';
 
 /**
@@ -68,6 +68,12 @@ interface HealthReport {
   runtime: string | undefined;
   /** Coarse rendering engine (blink/gecko/webkit) — context for a feedback report, not a health input. */
   engine: string | undefined;
+  /**
+   * Which browser the page is. Narrowed to `BrowserBrand` HERE rather than trusted: the SDK already
+   * normalises, so anything else is a stale or hand-forged payload and is dropped — the point of the
+   * closed list is that an unbounded string can never reach telemetry through it.
+   */
+  brand: BrowserBrand | undefined;
 }
 
 /**
@@ -81,5 +87,6 @@ export function readHealthEvent(data: Record<string, unknown>): HealthReport {
     focused: 'boolean' === typeof data['focused'] ? data['focused'] : undefined,
     runtime: 'string' === typeof data['runtime'] ? data['runtime'] : undefined,
     engine: 'string' === typeof data['engine'] ? data['engine'] : undefined,
+    brand: Object.values(BrowserBrand).find((known) => known === data['brand']),
   };
 }

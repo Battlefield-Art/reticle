@@ -20,6 +20,7 @@ import {
   SESSION_LEASE,
   SESSION_LIFECYCLE,
   SessionState,
+  type BrowserBrand,
   type CommandResult,
   type HelloMessage,
   type HumanControlData,
@@ -91,6 +92,8 @@ export class Session {
   /** Which shell the page reported (PAGE_HEALTH). Undefined until the first report lands. */
   #runtime: PageRuntime | undefined;
   #engine: string | undefined;
+  /** Which browser the page said it is (chrome/edge/arc/…). Undefined on an SDK too old to report one. */
+  #brand: BrowserBrand | undefined;
   #focused = true;
   /** Liveness: wall-clock of the last AGENT command (distinct from browser chatter / lastSeen). */
   #lastAgentActivityAt: number;
@@ -147,7 +150,13 @@ export class Session {
    * `runtime` is optional so an older SDK (which does not report it) still works — it simply loses
    * the desktop-specific timeout diagnosis rather than breaking.
    */
-  applyHealth(hidden: boolean, focused: boolean, runtime?: string, engine?: string): void {
+  applyHealth(
+    hidden: boolean,
+    focused: boolean,
+    runtime?: string,
+    engine?: string,
+    brand?: BrowserBrand,
+  ): void {
     this.#hidden = hidden;
     this.#focused = focused;
     if (
@@ -158,6 +167,7 @@ export class Session {
       this.#runtime = runtime;
     }
     if (engine !== undefined) this.#engine = engine;
+    if (brand !== undefined) this.#brand = brand;
   }
 
   /** The shell (web/electron/tauri) and rendering engine the SDK reported. Undefined on an older SDK. */
@@ -166,6 +176,10 @@ export class Session {
   }
   get engine(): string | undefined {
     return this.#engine;
+  }
+  /** The browser brand the SDK reported. Absent (never guessed) when the page did not say. */
+  get brand(): BrowserBrand | undefined {
+    return this.#brand;
   }
 
   /** Throttled if the tab is hidden OR we have not heard from it recently. */
@@ -214,7 +228,13 @@ export class Session {
   pushEvent(event: ReticleEvent, byteSize?: number): void {
     if (event.type === EventType.PAGE_HEALTH) {
       const r = readHealthEvent(event.data);
-      this.applyHealth(r.hidden ?? this.#hidden, r.focused ?? this.#focused, r.runtime, r.engine);
+      this.applyHealth(
+        r.hidden ?? this.#hidden,
+        r.focused ?? this.#focused,
+        r.runtime,
+        r.engine,
+        r.brand,
+      );
     }
     // The in-page half of Reticle reporting its own failure — recorded like a tool error
     // (fingerprinted, variables stripped) so a broken observer is as visible as a broken tool.

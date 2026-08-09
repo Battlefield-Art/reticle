@@ -17,6 +17,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { BrowserBrand } from '@reticlehq/core';
 import { verificationOf } from './verification-of.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import { BrowserMode, setBrowserMode, resetBrowserMode } from './browser-mode.js';
@@ -47,9 +48,9 @@ describe('verificationOf', () => {
     expect(
       verificationOf(ReticleTool.ACT_AND_WAIT, { verified: 'no', verdict: { pass: true } }, 5),
     ).toMatchObject({ verified: 'no', falseGreenCaught: false });
-    expect(verificationOf(ReticleTool.ACT_AND_WAIT, { verified: 'no', pass: true }, 5)).toMatchObject(
-      { falseGreenCaught: true },
-    );
+    expect(
+      verificationOf(ReticleTool.ACT_AND_WAIT, { verified: 'no', pass: true }, 5),
+    ).toMatchObject({ falseGreenCaught: true });
   });
 
   it('a tool that is not a verification tool never counts', () => {
@@ -86,5 +87,25 @@ describe('how the browser got there rides on the event', () => {
     setBrowserMode(BrowserMode.HEADED);
     expect(verificationOf(VERIFY, { status: 'fail' }, 1)?.browser).toBe(BrowserMode.HEADED);
     resetBrowserMode();
+  });
+});
+
+/**
+ * `attached` says Reticle launched nothing; it does not say WHICH browser the SDK is sitting in, and
+ * Chrome, Edge, Arc and Brave are one `blink` as far as the engine field is concerned. The brand
+ * comes from the page (`navigator.userAgentData`), so it is absent whenever the page has not said —
+ * an older SDK, a desktop webview — and absent must mean absent, never a guessed `"unknown"`.
+ */
+describe('the browser brand rides alongside the mode', () => {
+  it('carries the brand the session reported', () => {
+    expect(verificationOf(VERIFY, { status: 'pass' }, 1, BrowserBrand.ARC)?.brand).toBe(
+      BrowserBrand.ARC,
+    );
+  });
+
+  it('omits the field entirely when no brand was reported', () => {
+    const verification = verificationOf(VERIFY, { status: 'pass' }, 1);
+    expect(verification).toBeDefined();
+    expect(verification !== undefined && 'brand' in verification).toBe(false);
   });
 });
