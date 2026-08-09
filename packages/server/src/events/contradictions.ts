@@ -1,4 +1,10 @@
-import { ContradictionKind, EventType, MUTATING_METHODS, type ReticleEvent } from '@reticlehq/core';
+import {
+  ContradictionKind,
+  EventType,
+  MUTATING_METHODS,
+  isDevToolingUrl,
+  type ReticleEvent,
+} from '@reticlehq/core';
 import { findStaleResponses } from './stale-response.js';
 import { findBodyFailures } from './body-failures.js';
 import { findEchoMismatches } from './echo-mismatch.js';
@@ -217,11 +223,44 @@ export interface ContradictionOptions {
   mutatedWithin?: number | undefined;
 }
 
+/** Net-shaped events — the only ones that carry a URL a dev-tooling channel could occupy. */
+const NET_TYPES: ReadonlySet<EventType> = new Set([
+  EventType.NET_PENDING,
+  EventType.NET_REQUEST,
+  EventType.NET_STREAM,
+]);
+
+/**
+ * Split the window into the app's traffic and the dev toolchain's own (see `DevToolingChannel`).
+ *
+ * NOTHING below may judge the toolchain. Reported from a real drive: a correct Next.js navigation
+ * graded `verified: "no"` because the dev overlay was resolving a source map for an unrelated React
+ * key warning, and that in-flight `POST /__nextjs_original-stack-frames` read as "the UI advanced
+ * over a request that never settled". Every app that logs one dev warning got a false negative on
+ * every action. The overlay's own 404s and duplicate fetches are the same story on other checks,
+ * which is why the split happens ONCE here rather than in the one check that reported it.
+ */
+function splitDevTooling(events: readonly ReticleEvent[]): {
+  app: readonly ReticleEvent[];
+  ignored: string[];
+} {
+  const ignored: string[] = [];
+  const app = events.filter((e) => {
+    if (!NET_TYPES.has(e.type)) return true;
+    const url = asString(e.data['url']);
+    if (!isDevToolingUrl(url)) return true;
+    if (url !== undefined && !ignored.includes(url)) ignored.push(url);
+    return false;
+  });
+  return { app, ignored };
+}
+
 export function findContradictions(
-  events: readonly ReticleEvent[],
+  allEvents: readonly ReticleEvent[],
   options: ContradictionOptions = {},
 ): Contradiction[] {
   const found: Contradiction[] = [];
+  const { app: events, ignored: ignoredDevTooling } = splitDevTooling(allEvents);
 
   const settled = events.filter((e) => e.type === EventType.NET_REQUEST).map(netCall);
 
@@ -396,7 +435,14 @@ export function findContradictions(
         kind: ContradictionKind.REQUEST_NEVER_SETTLED,
         claim: 'the UI moved forward and the action reported done',
         counter: `${String(inFlight.length)} request(s) were still in flight`,
-        detail: inFlight.map((p) => describe(p.call)).join('; '),
+        // The exclusion is never silent: if the toolchain's own traffic was dropped from this count,
+        // the finding says which URLs, so an agent reading it can see what Reticle chose to ignore.
+        detail: [
+          inFlight.map((p) => describe(p.call)).join('; '),
+          ...(0 === ignoredDevTooling.length
+            ? []
+            : [`ignored as dev tooling: ${ignoredDevTooling.join(', ')}`]),
+        ].join(' — '),
       });
     }
   }

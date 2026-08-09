@@ -4,6 +4,7 @@ import {
   EventType,
   PredicateKind,
   StreamDirection,
+  isDevToolingUrl,
   type ElementQuery,
   type ReticleEvent,
 } from '@reticlehq/core';
@@ -498,6 +499,13 @@ const SETTLE_ACTIVITY: ReadonlySet<EventType> = new Set([
   EventType.DOM_ATTR,
 ]);
 
+/** The three net-shaped event types a URL can be read off — the only ones dev tooling can produce. */
+const NET_TYPES: ReadonlySet<EventType> = new Set([
+  EventType.NET_PENDING,
+  EventType.NET_REQUEST,
+  EventType.NET_STREAM,
+]);
+
 /** Default quiet window — enough to absorb a render+xhr settle without waiting on slow polls. */
 const DEFAULT_QUIET_MS = 500;
 
@@ -508,11 +516,25 @@ const DEFAULT_QUIET_MS = 500;
  * poll interval is what eventually flips this to pass once activity stops.
  */
 export function evalSettled(
-  events: ReticleEvent[],
+  allEvents: ReticleEvent[],
   p: Extract<Predicate, { kind: typeof PredicateKind.SETTLED }>,
   now: number,
 ): EvalResult {
   const quietMs = p.quietMs ?? DEFAULT_QUIET_MS;
+
+  // Dev-tooling traffic is the framework talking about ITSELF (see DevToolingChannel) and says
+  // nothing about whether the app finished its work — but it was holding settle open. Dropped from
+  // both halves of the calculation below (in-flight AND the quiet timer) and DISCLOSED on the
+  // evidence, never silently swallowed.
+  const ignoredDevTooling: string[] = [];
+  const events = allEvents.filter((e) => {
+    if (!NET_TYPES.has(e.type)) return true;
+    const url = str(e.data['url']);
+    if (!isDevToolingUrl(url)) return true;
+    if (url !== undefined && !ignoredDevTooling.includes(url)) ignoredDevTooling.push(url);
+    return false;
+  });
+  const disclosure = 0 === ignoredDevTooling.length ? {} : { ignoredDevTooling };
 
   // A request that STARTED (NET_PENDING) but never completed (NET_REQUEST with the same id) is
   // still in flight — the page is NOT settled no matter how quiet the DOM has gone. Without this,
@@ -570,7 +592,7 @@ export function evalSettled(
       observed: what,
       expected: 'no requests in flight and no response bodies still streaming',
       assertion: 'settled.in-flight',
-      evidence: { settled: false, inFlight, ...(streaming > 0 ? { streaming } : {}) },
+      evidence: { settled: false, inFlight, ...(streaming > 0 ? { streaming } : {}), ...disclosure },
     };
   }
 
@@ -585,12 +607,15 @@ export function evalSettled(
   if (lastT < 0) {
     return {
       pass: true,
-      evidence: { settled: true, quietForMs: null, note: 'no activity to settle' },
+      evidence: { settled: true, quietForMs: null, note: 'no activity to settle', ...disclosure },
     };
   }
   const quietForMs = now - lastT;
   if (quietForMs >= quietMs) {
-    return { pass: true, evidence: { settled: true, quietForMs, lastActivity: lastType } };
+    return {
+      pass: true,
+      evidence: { settled: true, quietForMs, lastActivity: lastType, ...disclosure },
+    };
   }
   return {
     pass: false,
@@ -598,7 +623,7 @@ export function evalSettled(
     observed: `last activity was ${String(lastType)}, ${String(quietForMs)}ms ago`,
     expected: `${String(quietMs)}ms of quiet`,
     assertion: 'settled.quiet',
-    evidence: { quietForMs, lastActivity: lastType },
+    evidence: { quietForMs, lastActivity: lastType, ...disclosure },
     // The one failure in this file that knows exactly when it could stop being one: if nothing else
     // happens, the window closes in this many ms. A waiter that re-checks THEN instead of on its next
     // blind tick stops paying up to a full poll interval on the hottest call in the product. Only a

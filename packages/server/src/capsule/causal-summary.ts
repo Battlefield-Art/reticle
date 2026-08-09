@@ -1,4 +1,4 @@
-import { EventType, PerfMetric, type ReticleEvent } from '@reticlehq/core';
+import { EventType, PerfMetric, isDevToolingUrl, type ReticleEvent } from '@reticlehq/core';
 
 /**
  * The causal summary (Tier 1) — the bounded ~50–100 token block on EVERY act, green included: what the
@@ -27,7 +27,14 @@ export interface StorageDiff {
   to?: unknown;
 }
 export interface CausalSummary {
-  net: { total: number; errors: number; headline?: string };
+  /**
+   * `total`/`errors` describe the APP's traffic. `ignoredDevTooling` is the count of calls the dev
+   * toolchain made about itself (Next's error overlay, HMR, the Vite client — see
+   * `DevToolingChannel`), which Reticle deliberately leaves out of the settle decision and out of
+   * contradiction hunting. Present only when there were any: a trim is never silent, so an agent can
+   * always see that something was ignored and go read it in the timeline.
+   */
+  net: { total: number; errors: number; ignoredDevTooling?: number; headline?: string };
   consoleErrors: number;
   statePathsChanged: string[];
   storageKeysChanged: string[];
@@ -89,6 +96,7 @@ function stateSettle(diffs: readonly StateDiff[]): { stateSettleMs?: number } {
 export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
   let netTotal = 0;
   let netErrors = 0;
+  let ignoredDevTooling = 0;
   let headline: string | undefined;
   let consoleErrors = 0;
   const statePathsChanged: string[] = [];
@@ -104,6 +112,10 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
     const data = event.data;
     switch (event.type) {
       case EventType.NET_REQUEST: {
+        if (isDevToolingUrl('string' === typeof data['url'] ? data['url'] : undefined)) {
+          ignoredDevTooling += 1;
+          break;
+        }
         netTotal += 1;
         const status = data['status'];
         const failed = false === data['ok'] || ('number' === typeof status && status >= 400);
@@ -163,7 +175,12 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
   }
 
   return {
-    net: { total: netTotal, errors: netErrors, ...(headline === undefined ? {} : { headline }) },
+    net: {
+      total: netTotal,
+      errors: netErrors,
+      ...(0 === ignoredDevTooling ? {} : { ignoredDevTooling }),
+      ...(headline === undefined ? {} : { headline }),
+    },
     consoleErrors,
     statePathsChanged,
     storageKeysChanged,
