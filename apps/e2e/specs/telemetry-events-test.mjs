@@ -81,7 +81,35 @@ if (!getTelemetry().enabled) {
 
 const results = [];
 const check = (name, ok, detail = '') => results.push({ name, ok, detail });
-const settle = () => new Promise((r) => setTimeout(r, 700));
+/**
+ * Wait until the capture endpoint has gone QUIET, rather than sleeping a fixed guess.
+ *
+ * This was `setTimeout(700)`, used fifteen times before assertions that an event had arrived — a
+ * statement about the machine, not about the product, and exactly the shape CLAUDE.md calls a bug.
+ * It is the flake: this spec failed the battery twice with no name attached and passed every time it
+ * was re-run, which is what a too-short fixed wait looks like from the outside.
+ *
+ * Adaptive in both directions. On an idle machine it returns in ~120ms instead of 700 (the whole
+ * spec settles fifteen times, so that is most of a second back); under load it keeps waiting up to
+ * the cap. Nothing about the assertions changes — they still require the events to actually arrive.
+ */
+const SETTLE_QUIET_MS = 120;
+const SETTLE_CAP_MS = 10_000;
+const settle = async () => {
+  const deadline = Date.now() + SETTLE_CAP_MS;
+  let seen = captured.length;
+  let quietSince = Date.now();
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 25));
+    if (captured.length !== seen) {
+      seen = captured.length;
+      quietSince = Date.now();
+      continue;
+    }
+    if (Date.now() - quietSince >= SETTLE_QUIET_MS) return;
+    if (Date.now() >= deadline) return; // cap: let the assertion below report what is missing
+  }
+};
 const find = (ev) => captured.filter((e) => e.event === ev);
 
 // ── 1. CLI command + flags ────────────────────────────────────────────────────
