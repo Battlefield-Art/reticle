@@ -187,8 +187,13 @@ const DEFAULT_EXPORT_PATTERN = /^export\s+default\b/gm;
 // Matches `export { a, b as c };` and, deliberately, `export { a, b as c } from '...'` the same way:
 // a named re-export creates a binding under THIS module's name (`c`), which is exactly what the guard
 // tracks. `export * from '...'` cannot be resolved this way — see hasWildcardReexport below.
-const EXPORT_LIST_PATTERN = /^export\s*\{([\s\S]*?)\}/gm;
-const EXPORT_LIST_ENTRY_PATTERN = new RegExp(`^(${IDENTIFIER})(?:\\s+as\\s+(${IDENTIFIER}))?$`);
+// The `type` modifier is skipped in both positions — `export type { A }` and `export { type A }` are
+// the same binding to this guard, and a type-only export the pattern refuses to match is a name that
+// disappears from the drift check entirely, which is the one outcome a guard must never have.
+const EXPORT_LIST_PATTERN = /^export\s*(?:type\s+)?\{([\s\S]*?)\}/gm;
+const EXPORT_LIST_ENTRY_PATTERN = new RegExp(
+  `^(?:type\\s+)?(${IDENTIFIER})(?:\\s+as\\s+(${IDENTIFIER}))?$`,
+);
 
 /** Every top-level export name in a TypeScript source, read as text. */
 export function exportedNames(source) {
@@ -319,6 +324,10 @@ function selfTest() {
     'function reexportedLocal() {}',
     'export { reexportedLocal };',
     'export { declared as declaredAlias };',
+    'interface TypeOnlyList {}',
+    'interface TypeOnlyEntry {}',
+    'export type { TypeOnlyList };',
+    'export { type TypeOnlyEntry };',
     'export default function () {}',
     "export * from './helpers.js';",
   ].join('\n');
@@ -338,6 +347,8 @@ function selfTest() {
       'declaredAlias',
       'an export list alias (export { x as y }) must be classified by its exported name',
     ],
+    ['TypeOnlyList', 'a type-only export list (export type { x }) must be classified'],
+    ['TypeOnlyEntry', 'a type-only list entry (export { type x }) must be classified'],
     ['default', 'export default must be classified'],
     [WILDCARD_REEXPORT, 'a wildcard re-export (export * from) must fail loudly, not pass silently'],
   ];
