@@ -70,17 +70,39 @@ export function reconnectDelayMs(attempt: number): number {
 /** JSON-RPC id the proxy uses for its own replayed `initialize` — never one the client could send. */
 export const RECONNECT_INITIALIZE_ID = '__reticle_proxy_reinit';
 
+/**
+ * Which port this proxy serves, for the log file name. Set once at startup.
+ *
+ * One file per port, matching `daemon-<port>.log`. A single shared file interleaved every proxy on
+ * the machine into one stream, so the first question anyone asks of it — "what happened to MY
+ * session?" — needed a filter before it could be answered.
+ */
+let logPort: number | undefined;
+
+/** Name the proxy log after the port it serves. Called before anything can log. */
+export function setProxyLogPort(port: number): void {
+  logPort = port;
+}
+
 /** The proxy's own log file, so a silent drop leaves a readable trace the agent can go read. */
-function proxyLogPath(): string {
-  return join(homedir(), ReticleDir.ROOT, 'mcp-proxy.log');
+export function proxyLogPath(port: number | undefined = logPort): string {
+  const name = port === undefined ? 'mcp-proxy.log' : `proxy-${String(port)}.log`;
+  return join(homedir(), ReticleDir.ROOT, name);
 }
 
 /**
- * Log to stderr (which the agent host usually swallows) AND to ~/.reticle/mcp-proxy.log, which it
+ * Log to stderr (which the agent host usually swallows) AND to ~/.reticle/proxy-<port>.log, which it
  * does not. A dropped MCP connection is invisible from the agent's side — no message, no exit code —
  * so the one thing that makes it diagnosable at all is a file somebody can read afterwards.
+ *
+ * EXPORTED because the crash handlers need it. `installProxyResilience` was wired to the bare stderr
+ * logger, so the proxy's own uncaught exceptions and unhandled rejections — the exact events that
+ * present to a human as "the MCP server disconnected" — were written to a stream the editor throws
+ * away. The handler ran, the process kept serving, and the reason went nowhere. Reported as "the
+ * proxy has no log file… when it dies the diagnostic dies with it", which was half right: the file
+ * existed, and the one path that most needed it was not using it.
  */
-function proxyLog(event: string, fields: Record<string, unknown> = {}): void {
+export function proxyLog(event: string, fields: Record<string, unknown> = {}): void {
   log(event, fields);
   try {
     const dir = join(homedir(), ReticleDir.ROOT);

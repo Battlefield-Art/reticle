@@ -30,7 +30,13 @@ import {
   discoverDaemonPort,
   writeDaemonRegistry,
 } from './daemon/daemon.js';
-import { waitForDaemon, startMcpProxy, probeDaemon } from './mcp/mcp-proxy.js';
+import {
+  waitForDaemon,
+  startMcpProxy,
+  probeDaemon,
+  proxyLog,
+  setProxyLogPort,
+} from './mcp/mcp-proxy.js';
 import { installDaemonResilience, installProxyResilience } from './daemon/daemon-resilience.js';
 import { IdleShutdown, resolveIdleShutdownMs, resolveIdleCheckMs } from './daemon/idle-shutdown.js';
 import {
@@ -409,7 +415,11 @@ function handleMcp(opts: {
   // is what a user experiences as "the MCP server disconnected — open /mcp and reconnect". Log it,
   // report it, keep serving: the reconnect and dormant paths already know how to rebuild the only
   // state this process has. See installProxyResilience for why its rule inverts the daemon's.
-  installProxyResilience(process, log);
+  // The proxy's crash handlers must write to the proxy's LOG FILE, not just stderr. The editor
+  // swallows stderr, so wiring these to `log` meant a crash was handled and then unrecorded — the
+  // failure a user reports as "it disconnected" left nothing behind to read.
+  setProxyLogPort(port);
+  installProxyResilience(process, proxyLog);
   /**
    * Make sure a daemon is on the port, spawning one if not.
    *

@@ -9,6 +9,8 @@ import {
   openSync,
   closeSync,
   readdirSync,
+  statSync,
+  renameSync,
 } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { daemonRegistryFileName, ReticleEnv, type DaemonRegistryEntry } from '@reticlehq/core';
@@ -41,6 +43,36 @@ function registryPath(port: number): string {
 
 export function logPath(port: number): string {
   return join(reticleStateHome(), `daemon-${port}.log`);
+}
+
+/**
+ * How large a daemon log may get before it is rolled over to `<name>.1`.
+ *
+ * It was unbounded. A real dev machine reached **24MB** on one port, which is not merely untidy: it
+ * is the difference between a log somebody opens and a log somebody gives up on, and it is disk that
+ * nothing ever reclaims. One previous generation is kept, because the question people bring to this
+ * file ("what happened just now?") is answered by the current one and the question they bring next
+ * ("and just before that?") is answered by the other.
+ */
+export const MAX_DAEMON_LOG_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Roll the log over if it has grown past the cap. Best-effort: a daemon must still start when the
+ * log cannot be rotated, because failing to launch over housekeeping is strictly worse than a large
+ * file.
+ */
+export function rotateDaemonLog(
+  path: string,
+  deps: { fileSize(p: string): number; renameFile(from: string, to: string): void },
+  max: number = MAX_DAEMON_LOG_BYTES,
+): boolean {
+  try {
+    if (max >= deps.fileSize(path)) return false;
+    deps.renameFile(path, `${path}.1`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function readPid(port: number, home: string = reticleStateHome()): number | null {
@@ -200,6 +232,9 @@ export interface SpawnDaemonDeps {
   readonly home: string;
   openFile(path: string, flags: string): number;
   closeFile(fd: number): void;
+  /** Size in bytes, or 0 when the file does not exist yet. */
+  fileSize(path: string): number;
+  renameFile(from: string, to: string): void;
   spawnChild(
     command: string,
     args: readonly string[],
@@ -213,6 +248,8 @@ function defaultSpawnDaemonDeps(): SpawnDaemonDeps {
     home: reticleStateHome(),
     openFile: openSync,
     closeFile: closeSync,
+    fileSize: (path) => (existsSync(path) ? statSync(path).size : 0),
+    renameFile: renameSync,
     spawnChild: (command, args, options) =>
       spawn(command, [...args], { detached: options.detached, stdio: [...options.stdio] }),
     pidAlive: isAlive,
@@ -265,6 +302,9 @@ export function spawnDaemon(
       return false; // lost a concurrent reclaim race
     }
   }
+  // Roll the log BEFORE opening the append handle, or the daemon writes into the renamed file
+  // through an fd that no longer matches any name anyone can find.
+  rotateDaemonLog(logFilePath, deps);
   let logFd: number;
   try {
     logFd = deps.openFile(logFilePath, 'a');

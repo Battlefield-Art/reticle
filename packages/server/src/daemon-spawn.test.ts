@@ -6,6 +6,8 @@ import {
   readFileSync,
   writeFileSync,
   openSync,
+  statSync,
+  renameSync,
   closeSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -40,6 +42,8 @@ describe('spawnDaemon with injectable deps', () => {
         opened.push({ path, flags, fd });
         return fd;
       },
+      fileSize: (path) => (existsSync(path) ? statSync(path).size : 0),
+      renameFile: renameSync,
       closeFile: (fd) => {
         closed.push(fd);
         closeSync(fd);

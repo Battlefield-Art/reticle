@@ -61,6 +61,8 @@ describe('spawnDaemon with an unwritable state directory', () => {
         home: join(blocker, '.reticle'),
         openFile: () => 3,
         closeFile: () => undefined,
+    fileSize: () => 0,
+    renameFile: () => undefined,
         pidAlive: () => false,
         spawnChild: () => ({ unref: () => undefined }) as never,
       });
