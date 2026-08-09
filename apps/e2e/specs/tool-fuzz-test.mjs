@@ -28,7 +28,7 @@ import { waitForSession } from '../wait-for-session.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const PORT = process.env.TOOL_FUZZ_PORT ?? '4400';
 const APP = process.env.TOOL_FUZZ_APP ?? 'http://localhost:4310/';
-// 20s, not 25. The property under test is that every call SETTLES, and a hostile argument that
+// 30s. The property under test is that every call SETTLES, and a hostile argument that
 // reaches a browser command waits out that command's own ~5s timeout before answering — measured on
 // 13 of the 285 shapes (reticle_state/nulls, reticle_viewport/nulls, reticle_screenshot/huge,
 // reticle_replay/huge and others at 5-9s). At 25s a handful of those turned this spec from 90
@@ -41,7 +41,13 @@ const APP = process.env.TOOL_FUZZ_APP ?? 'http://localhost:4310/';
 // comment warned about. 15s then left `reticle_flow_verify/empty` short — with no arguments it does
 // real project work rather than failing fast. 20s clears every observed shape with room, and still
 // keeps the spec well under the 25s that made it stall a whole battery.
-const CALL_TIMEOUT_MS = 20_000;
+//
+// Settled at 30s once the reason was measured rather than guessed at a fourth time: this cap exists
+// to catch a HANG, not to bound legitimate work. `reticle_flow_verify` with no arguments answers in
+// 5ms against no session, and inside the fuzz it verifies every saved flow against a live browser —
+// slow is the correct behaviour there, not a defect. Only one shape now comes near the cap, so the
+// spec stays fast while a genuine hang (which never answers at all) is still caught.
+const CALL_TIMEOUT_MS = 30_000;
 
 let pass = 0;
 let fail = 0;

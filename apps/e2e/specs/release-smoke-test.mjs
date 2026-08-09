@@ -82,7 +82,11 @@ chk('an action dispatches', true === acted.dispatched || true === acted.result?.
 
 {
   const verdict = await call('reticle_assert', {
-    predicate: { testid: 'no-such-testid-4f3a9c' },
+    // The element predicate nests its query — verified against PredicateSchema rather than
+    // guessed. Two earlier guesses (`{kind:'testid',value}` and a bare `{testid}`) were rejected as
+    // an invalid discriminator and read as a product failure, which is its own small lesson: an
+    // assertion written from memory tests the author, not the product.
+    predicate: { kind: 'element', query: { by: 'testid', value: 'no-such-testid-4f3a9c' } },
     timeout_ms: 2000,
     sessionId,
   });
