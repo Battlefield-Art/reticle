@@ -302,9 +302,19 @@ await settle();
   // own bad predicates and an empty ref, all published as defects in the customer's app — precision
   // 1 in 8. Without this the headline defect number is not defensible to anyone who asks how it is
   // computed, and `attribution: 'app'` is the only bucket that belongs in it.
-  check('  a contradiction is attributed to the APP', bugs.some((b) => b.properties.bug_kind === 'signal-contradicted' && b.properties.bug_attribution === 'app'));
-  check('  a crawl anomaly is attributed to the APP', bugs.some((b) => b.properties.bug_kind === 'console-error' && b.properties.bug_attribution === 'app'));
-  check('  an ambiguous assertion failure claims NO owner rather than guessing', bugs.some((b) => b.properties.bug_kind === 'element.visible' && b.properties.bug_attribution === undefined));
+  // `bug_attribution` was REMOVED. It shipped twice and was wrong both times — across two real drives
+  // every `app` was a misattribution, so a session would have published defects against a customer's
+  // product that did not exist. A metric confidently wrong about whose fault something is, is worse
+  // than none. The defect is still COUNTED; only the blame is gone, and these pin that.
+  check(
+    '  no defect claims an owner — attribution was removed',
+    bugs.every((b) => b.properties.bug_attribution === undefined),
+  );
+  check(
+    '  and the defects are still counted',
+    bugs.some((b) => b.properties.bug_kind === 'signal-contradicted') &&
+      bugs.some((b) => b.properties.bug_kind === 'console-error'),
+  );
 }
 
 // ── 4b. SDK failures from the in-page half, arriving over the bridge ──────────

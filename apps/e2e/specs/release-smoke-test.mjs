@@ -82,14 +82,14 @@ chk('an action dispatches', true === acted.dispatched || true === acted.result?.
 
 {
   const verdict = await call('reticle_assert', {
-    predicate: { kind: 'testid', value: 'no-such-testid-4f3a9c' },
+    predicate: { testid: 'no-such-testid-4f3a9c' },
     timeout_ms: 2000,
     sessionId,
   });
   chk(
     'a missing element is reported as not verified',
     'no' === verdict.verified || false === verdict.pass,
-    `verified=${String(verdict.verified)}`,
+    `verified=${String(verdict.verified)} ${JSON.stringify(verdict).slice(0, 60)}`,
   );
 }
 
