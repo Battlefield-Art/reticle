@@ -146,7 +146,7 @@ describe('transport churn-aware eviction', () => {
     expect(markers[0]?.data['dropped']).toBe(3);
   });
 
-  it('command results are never classified as churn', () => {
+  it('a signal event arriving into a full churn queue survives', () => {
     const t = makeTransport();
     t.connect();
     const ws = FakeWebSocket.instances.at(-1);
@@ -158,5 +158,27 @@ describe('transport churn-aware eviction', () => {
     const replayed = eventsOn(ws).filter((e) => e.type !== EventType.TRANSPORT_OVERFLOW);
     const signalEvents = replayed.filter((e) => e.type === EventType.NET_REQUEST);
     expect(signalEvents).toHaveLength(1);
+  });
+
+  it('stamps the gap marker with the OLDEST drop, never ahead of a surviving event', () => {
+    // Churn-first eviction can sacrifice an event NEWER than a signal event that survives. If the
+    // marker carried the latest drop it would claim a hole covering events the bridge is about to
+    // receive in the same replay — a truncation marker that over-reports what is missing.
+    const t = makeTransport();
+    t.connect();
+    const ws = FakeWebSocket.instances.at(-1);
+
+    t.sendEvent(signalEvt(500)); // t = 5000, survives — and is NEWER than every churn event below
+    for (let i = 1; i <= MAX_QUEUE + 5; i += 1) t.sendEvent(churnEvt(i)); // t = 10..
+
+    ws?.open();
+    const sent = eventsOn(ws);
+    const marker = sent.find((e) => e.type === EventType.TRANSPORT_OVERFLOW);
+    const survivors = sent.filter((e) => e.type !== EventType.TRANSPORT_OVERFLOW);
+    const oldestSurvivorT = Math.min(...survivors.map((e) => e.t));
+
+    expect(marker).toBeDefined();
+    expect(marker?.t).toBe(10); // the first churn event evicted, not the last
+    expect(marker?.t).toBeLessThanOrEqual(oldestSurvivorT);
   });
 });

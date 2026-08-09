@@ -166,12 +166,11 @@ export class Transport {
       const greeting = this.#deps.hello();
       this.#sessionId ??= greeting.sessionId;
       ws.send(JSON.stringify(greeting));
-      // Declare any gap BEFORE replaying the backlog. The queue evicts its OLDEST entries, so the
-      // hole always precedes everything that survived it.
+      // Declare any gap BEFORE replaying the backlog, stamped with the OLDEST event the queue
+      // dropped — see #sendRaw. The two queues are drained back into one stream in insertion order,
+      // so what the bridge receives is the order the page produced, minus the holes.
       this.#sendGapMarker(ws, greeting.sessionId);
-      const replay = [...this.#churnQueue, ...this.#signalQueue].sort(
-        (a, b) => a.order - b.order,
-      );
+      const replay = [...this.#churnQueue, ...this.#signalQueue].sort((a, b) => a.order - b.order);
       for (const msg of replay) ws.send(msg.text);
       this.#churnQueue = [];
       this.#signalQueue = [];
@@ -344,7 +343,14 @@ export class Transport {
         this.#churnQueue.length > 0 ? this.#churnQueue.shift() : this.#signalQueue.shift();
       if (evicted?.event !== undefined) {
         this.#dropped += 1;
-        this.#gap = evicted.event;
+        // Keep the EARLIEST drop, not the latest. Under plain FIFO the two were the same thing, so
+        // "latest evicted" was a precise boundary: everything before it was gone. Churn-first
+        // eviction breaks that — a churn event newer than a surviving signal event can be the one
+        // sacrificed, and stamping the marker with it would claim a hole that swallows events the
+        // agent is about to receive. The oldest drop is the honest floor: the hole starts no later
+        // than here. A truncation marker may over-state its reach; it must never under-state it.
+        const previous = this.#gap;
+        if (previous === undefined || evicted.event.t < previous.t) this.#gap = evicted.event;
       }
     }
     const isChurn = event !== undefined && CHURN_TYPES.has(event.type);
