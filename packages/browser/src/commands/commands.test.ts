@@ -158,8 +158,8 @@ describe('command registry (driven by the bridge)', () => {
     identify: () => null,
     readState: (el) => {
       const kind = el.getAttribute(STATE_ATTR);
-      if (kind === 'ok') return { ok: true, hooks: [1] } satisfies ComponentStateResult;
-      if (kind === 'raw') return { hooks: [1] }; // non-conforming (no `ok`)
+      if ('ok' === kind) return { ok: true, hooks: [1] } satisfies ComponentStateResult;
+      if ('raw' === kind) return { hooks: [1] }; // non-conforming (no `ok`)
       return undefined; // unowned element -> no value
     },
   });
@@ -244,6 +244,6 @@ describe('command registry (driven by the bridge)', () => {
       flows: { name: string; steps: string[] }[];
     };
     expect(result.testids).toContain('item-list');
-    expect(result.flows.some((f) => f.name === 'checkout')).toBe(true);
+    expect(result.flows.some((f) => 'checkout' === f.name)).toBe(true);
   });
 });

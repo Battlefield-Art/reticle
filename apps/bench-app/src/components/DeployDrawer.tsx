@@ -8,7 +8,7 @@ export function DeployDrawer(): React.ReactElement | null {
   const dep = useApp((s) => s.deployments.find((d) => d.id === id));
   const close = useApp((s) => s.closeDrawer);
   const ship = useApp((s) => s.shipDeployment);
-  if (id === null || dep === undefined) return null;
+  if (null === id || dep === undefined) return null;
 
   const Field = ({ k, v }: { k: string; v: string }): React.ReactElement => (
     <div
@@ -61,7 +61,7 @@ export function DeployDrawer(): React.ReactElement | null {
           <Field k="Author" v={dep.author} />
           <Field
             k="Duration"
-            v={dep.durationMs === 0 ? 'building…' : `${(dep.durationMs / 1000).toFixed(1)}s`}
+            v={0 === dep.durationMs ? 'building…' : `${(dep.durationMs / 1000).toFixed(1)}s`}
           />
           <Field k="Created" v={dep.createdAt} />
 
@@ -85,7 +85,7 @@ export function DeployDrawer(): React.ReactElement | null {
 ▸ building ${dep.service} … ok
 ▸ uploading artifact (4.2 MB) … ok
 ▸ routing ${dep.env} traffic → ${dep.region}
-✓ ${dep.status === 'live' ? 'live' : dep.status}`}
+✓ ${'live' === dep.status ? 'live' : dep.status}`}
           </pre>
 
           {dep.status !== 'live' ? (

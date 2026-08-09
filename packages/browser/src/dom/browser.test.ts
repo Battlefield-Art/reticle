@@ -242,7 +242,7 @@ describe('query empty hint', () => {
       <ul role="list" aria-labelledby="cart-heading"><li role="listitem">item</li></ul>
     `);
     const r = runQuery({ role: 'button', name: 'nope' });
-    const listRegion = r.hint?.presentRegions.find((reg) => reg.role === 'list');
+    const listRegion = r.hint?.presentRegions.find((reg) => 'list' === reg.role);
     expect(listRegion?.name).toBe('Your Cart'); // resolved text, not "cart-heading"
   });
 });

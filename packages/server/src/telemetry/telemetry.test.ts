@@ -2,7 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { TelemetryEventSchema, TelemetryEventKind } from '@reticlehq/core';
+import {
+  OutageReason,
+  OutageStage,
+  TelemetryEventSchema,
+  TelemetryEventKind,
+  VerifiedReason,
+} from '@reticlehq/core';
 import { createTelemetry, describeTelemetry, setTelemetryEnabled } from './telemetry.js';
 
 /** A key so the emitter is live in tests — dev builds ship an empty embedded key (telemetry off). */
@@ -80,12 +86,14 @@ describe('telemetry emitter', () => {
       now: () => 1700,
       fetchImpl: impl,
     });
-    await t.emit(TelemetryEventKind.CLI_COMMAND_RUN);
+    // A DAEMON event, because that is the shape carrying every optional block. The CLI event's own
+    // (deliberately session-less) shape is asserted in the case below.
+    await t.emit(TelemetryEventKind.DAEMON_STARTED);
     expect(calls[0]?.url).toBe('http://example.test/batch/');
     const body = calls[0]?.body;
     expect(body?.api_key).toBe('phc_test');
     const item = body?.batch[0];
-    expect(item?.event).toBe(TelemetryEventKind.CLI_COMMAND_RUN);
+    expect(item?.event).toBe(TelemetryEventKind.DAEMON_STARTED);
     expect(item?.timestamp).toBe(new Date(1700).toISOString());
     // Reassembled, the capture item must round-trip through the core contract.
     const parsed = TelemetryEventSchema.safeParse({
@@ -167,7 +175,7 @@ describe('telemetry emitter', () => {
     }
   });
 
-  it('never rejects when the network throws (best-effort)', async () => {
+  it('never rejects when the network throws — and reports the failure rather than hiding it', async () => {
     const failing = (() => Promise.reject(new Error('offline'))) as unknown as typeof fetch;
     const t = createTelemetry({
       cwd: USER_PROJECT,
@@ -175,6 +183,114 @@ describe('telemetry emitter', () => {
       env: TEST_ENV,
       fetchImpl: failing,
     });
-    await expect(t.emit(TelemetryEventKind.CLI_COMMAND_RUN)).resolves.toBeUndefined();
+    // Resolving is the contract — a lost metric must never surface to a user. But it resolves FALSE,
+    // because one caller (reticle_feedback) shows a receipt to an agent and must not claim delivery.
+    await expect(t.emit(TelemetryEventKind.CLI_COMMAND_RUN)).resolves.toBe(false);
+  });
+
+  /**
+   * The other half of the same contract. `reticle_feedback` returned `sent: true` unconditionally
+   * while the send could fail silently, so a DNS miss and a 4xx both read as filed — on the only
+   * qualitative channel the product has. `emit` now answers whether the event actually landed.
+   */
+  it('reports TRUE when the event actually lands', async () => {
+    const { impl } = recordingFetch();
+    const t = createTelemetry({ cwd: USER_PROJECT, version: '1', env: TEST_ENV, fetchImpl: impl });
+    await expect(t.emit(TelemetryEventKind.CLI_COMMAND_RUN)).resolves.toBe(true);
+  });
+
+  it('reports FALSE when the endpoint REJECTS the payload — a 4xx is not a delivery', async () => {
+    const rejecting = (() =>
+      Promise.resolve({ ok: false, status: 400 })) as unknown as typeof fetch;
+    const t = createTelemetry({
+      cwd: USER_PROJECT,
+      version: '1',
+      env: TEST_ENV,
+      fetchImpl: rejecting,
+    });
+    await expect(t.emit(TelemetryEventKind.CLI_COMMAND_RUN)).resolves.toBe(false);
+  });
+});
+
+/**
+ * `emit()` builds its event from an EXPLICIT allow-list of keys, so a block that exists on the input
+ * type and not in that list is dropped in silence — it typechecks, it sends, and the payload simply
+ * is not there. `outage` did exactly that: two deliberately different outages, `first`/`sse_ended`/3
+ * and `budget_spent`/`connect_error`/12, produced byte-identical events for months, against a
+ * standing "MCP must never go down" mandate.
+ *
+ * Asserting the KIND arrived is what let that pass. These assert the FIELDS.
+ */
+describe('a block on the input type reaches the wire', () => {
+  it('carries the outage stage, reason and attempt count', async () => {
+    const { impl, calls } = recordingFetch();
+    const t = createTelemetry({
+      version: '9.9.9',
+      env: TEST_ENV,
+      cwd: USER_PROJECT,
+      fetchImpl: impl,
+    });
+    await t.emit(TelemetryEventKind.MCP_CONNECTION_LOST, {
+      outage: { stage: OutageStage.BUDGET_SPENT, reason: OutageReason.CONNECT_ERROR, attempts: 12 },
+    });
+    const props = calls[0]?.body.batch[0]?.properties;
+    expect(props?.['outage_stage']).toBe(OutageStage.BUDGET_SPENT);
+    expect(props?.['outage_reason']).toBe(OutageReason.CONNECT_ERROR);
+    expect(props?.['outage_attempts']).toBe(12);
+  });
+
+  it('makes two DIFFERENT outages distinguishable — the whole point of the event', async () => {
+    const { impl, calls } = recordingFetch();
+    const t = createTelemetry({
+      version: '9.9.9',
+      env: TEST_ENV,
+      cwd: USER_PROJECT,
+      fetchImpl: impl,
+    });
+    await t.emit(TelemetryEventKind.MCP_CONNECTION_LOST, {
+      outage: { stage: OutageStage.FIRST, reason: OutageReason.SSE_ENDED, attempts: 3 },
+    });
+    await t.emit(TelemetryEventKind.MCP_CONNECTION_LOST, {
+      outage: { stage: OutageStage.BUDGET_SPENT, reason: OutageReason.CONNECT_ERROR, attempts: 12 },
+    });
+    expect(JSON.stringify(calls[0]?.body.batch[0])).not.toBe(
+      JSON.stringify(calls[1]?.body.batch[0]),
+    );
+  });
+
+  it('is a valid wire event — the schema knows the block, so nothing is stripped downstream', () => {
+    const parsed = TelemetryEventSchema.safeParse({
+      v: 3,
+      anonymousId: 'a',
+      event: TelemetryEventKind.MCP_CONNECTION_LOST,
+      ts: 0,
+      version: '1.0.0',
+      ci: false,
+      os: 'darwin',
+      outage: { stage: OutageStage.FIRST, reason: OutageReason.SSE_ABORTED, attempts: 1 },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('carries the verdict REASON alongside the verdict', async () => {
+    const { impl, calls } = recordingFetch();
+    const t = createTelemetry({
+      version: '9.9.9',
+      env: TEST_ENV,
+      cwd: USER_PROJECT,
+      fetchImpl: impl,
+    });
+    await t.emit(TelemetryEventKind.VERIFICATION_COMPLETED, {
+      verification: {
+        via: 'reticle_assert',
+        verified: 'unknown',
+        passed: true,
+        falseGreenCaught: false,
+        reason: VerifiedReason.ALREADY_TRUE,
+      },
+    });
+    expect(calls[0]?.body.batch[0]?.properties['verification_reason']).toBe(
+      VerifiedReason.ALREADY_TRUE,
+    );
   });
 });

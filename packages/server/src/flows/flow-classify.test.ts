@@ -33,20 +33,28 @@ describe('classifyFlowAssertions', () => {
     expect(c.warning).toContain('element presence');
   });
 
-  it('treats a signal assertion as a real consequence', () => {
+  // Replay evaluates these (assertStepExpect); the coupling itself is guarded in
+  // step-consequence.test.ts, which is where the false green that made this necessary is written up.
+  it('treats a step signal assertion as a real consequence', () => {
     const c = classifyFlowAssertions(flow([step({ signal: 'order:placed' })]));
     expect(c.grade).toBe(FlowAssertionGrade.ASSERTED);
     expect(c.hasConsequenceAssertion).toBe(true);
     expect(c.consequenceSteps).toBe(1);
-    expect(c.warning).toBeUndefined();
   });
 
-  it('treats a network assertion as a real consequence', () => {
+  it('and a step network assertion', () => {
     const c = classifyFlowAssertions(
       flow([step({ net: { urlContains: '/api/order', status: 200 } })]),
     );
     expect(c.grade).toBe(FlowAssertionGrade.ASSERTED);
     expect(c.consequenceSteps).toBe(1);
+  });
+
+  it('a step STATE assertion is a consequence — assertStepState really does check it', () => {
+    const c = classifyFlowAssertions(flow([step({ state: { path: 'order.id', equals: 'x' } })]));
+    expect(c.grade).toBe(FlowAssertionGrade.ASSERTED);
+    expect(c.consequenceSteps).toBe(1);
+    expect(c.warning).toBeUndefined();
   });
 
   it('counts a consequence success end-condition even with no step expects', () => {
@@ -65,7 +73,7 @@ describe('classifyFlowAssertions', () => {
     const seq: FlowStep = {
       tool: ReticleTool.ACT_SEQUENCE,
       anchor: { kind: AnchorKind.TESTID, value: 'x' },
-      steps: [step(), step({ signal: 'saved' })],
+      steps: [step(), step({ state: { path: 'saved', equals: true } })],
     };
     const c = classifyFlowAssertions(flow([seq]));
     expect(c.hasConsequenceAssertion).toBe(true);

@@ -4,11 +4,11 @@
  * a quiet window, so we compute affected flows once per edit, not per keystroke. The scheduler (setTimeout)
  * is injected, keeping the batching logic pure and unit-testable.
  */
-export interface WatchBatcher {
+interface WatchBatcher {
   onChange(file: string): void;
 }
 
-export interface WatchBatcherOptions {
+interface WatchBatcherOptions {
   debounceMs: number;
   /** Injected scheduler (setTimeout) — deterministic in tests. */
   schedule: (fn: () => void, ms: number) => void;

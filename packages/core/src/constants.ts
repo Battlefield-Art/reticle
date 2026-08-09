@@ -50,6 +50,10 @@ export const ReticleEnv = {
   ALLOWED_ORIGINS: 'RETICLE_ALLOWED_ORIGINS',
   /** Bridge/daemon WS port override. */
   PORT: 'RETICLE_PORT',
+  /** Daemon state — pidfiles, discovery registry, logs. Defaults to `~/.reticle`. Overridable
+   * because a read-only $HOME (sandboxed agent, locked-down Windows profile, container) otherwise
+   * makes the daemon unstartable with a raw EACCES naming nothing. Reported by a Windows user. */
+  STATE_DIR: 'RETICLE_STATE_DIR',
   /** Attach to an already-running browser over CDP instead of launching one. */
   CDP_URL: 'RETICLE_CDP_URL',
   /** Max simultaneous leased headless contexts in the browser pool (resource cap). */
@@ -67,10 +71,35 @@ export const ReticleEnv = {
   /** Ms of continuous idleness (no agent, no browser session, no lease) before the daemon self-exits;
    * `0` disables. Keeps Reticle from lingering on a user's machine after the editor closes. */
   IDLE_SHUTDOWN: 'RETICLE_IDLE_SHUTDOWN_MS',
+  /** Idle re-check cadence (default 30s). Overridable so daemon-lifecycle-test can watch a full
+   * exit/wake cycle in seconds rather than minutes. */
+  IDLE_CHECK: 'RETICLE_IDLE_CHECK_MS',
+  /**
+   * Grace for a daemon with an agent ATTACHED. Longer than the base on purpose: quiet with a client
+   * present means a slow install or a thinking human, not an unwanted daemon — a flat 5 minutes was
+   * killing live runs mid-install. Derived from the base when unset.
+   */
+  IDLE_ATTACHED: 'RETICLE_IDLE_ATTACHED_MS',
   /** Directory holding the auto-provisioned pairing token. Defaults to ~/.reticle; relocatable for CI. */
   PAIRING_TOKEN_DIR: 'RETICLE_PAIRING_TOKEN_DIR',
   /** Force the durable causal journal off (`0`/`false`/`off`) or on (`1`/`true`/`on`); default on. */
   JOURNAL: 'RETICLE_JOURNAL',
+  /**
+   * Verbose internal flow tracing for people working ON Reticle (`1`/`true`/`on`); default off.
+   *
+   * Distinct from the journal, which records what the AGENT did to the app. This records what
+   * RETICLE did to answer it: one line per internal stage, with its duration and nesting, so a
+   * developer can see which code a tool call actually went through and where the time went.
+   * Off by default and free when off — a trace on every tool call is a cost on the hot path.
+   */
+  TRACE: 'RETICLE_TRACE',
+  /**
+   * How many consecutive reconnects the MCP proxy attempts before it stops retrying and goes
+   * dormant. Overridable for the same reason the idle windows are: the real budget takes MINUTES to
+   * exhaust, so the one spec that proves the proxy SURVIVES exhaustion could not run at all without
+   * shortening it. A budget nobody can reach in a test is a budget nobody tests.
+   */
+  RECONNECT_ATTEMPTS: 'RETICLE_RECONNECT_ATTEMPTS',
 } as const;
 
 /** Hard transport bounds shared by the browser and bridge. */
@@ -109,6 +138,14 @@ export const REDACTED_VALUE = '[REDACTED]';
 
 /** Explicit opt-in argument required for potentially destructive actions. */
 export const DANGEROUS_ACTION_CONFIRM_ARG = 'confirmDangerous';
+
+/**
+ * Opt-in argument for a TRUSTED native click, for the handlers a synthetic one cannot satisfy —
+ * file pickers, clipboard, anything gated on `isTrusted`. Only `reticle_act` can honour it: the
+ * native driver is a pointer gesture at coordinates, and the act-then-wait tool drives the page
+ * through the SDK instead.
+ */
+export const NATIVE_INPUT_ARG = 'native';
 
 /** Schema version stamped onto compiled replay programs. */
 export const REPLAY_PROGRAM_VERSION = 1;
@@ -443,6 +480,20 @@ export const DRIVE_PLAYWRIGHT_MISSING_MSG =
   "reticle drive needs the optional 'playwright' package — install it: pnpm add -D playwright && npx playwright install chromium";
 
 /** Actions the executor can perform against a ref (plan/03 + plan/05). */
+/**
+ * The console levels an agent can filter by, DERIVED from the console EventTypes rather than
+ * retyped. `reticle_console { level }` matches by building `console.${level}`, so any list written
+ * out by hand is one rename away from filtering everything into an empty result — which reads as
+ * "no errors on this page".
+ */
+export const CONSOLE_LEVEL_PREFIX = 'console.';
+export const CONSOLE_LEVELS = [
+  EventType.CONSOLE_LOG,
+  EventType.CONSOLE_WARN,
+  EventType.CONSOLE_ERROR,
+  EventType.CONSOLE_INFO,
+].map((type) => type.slice(CONSOLE_LEVEL_PREFIX.length));
+
 export const ActionType = {
   CLICK: 'click',
   DBLCLICK: 'dblclick',
@@ -489,6 +540,11 @@ export interface ComponentStateResult {
   component?: string;
   /** Positional, JSON-safe hook states. */
   hooks?: unknown[];
+  /**
+   * Present ONLY when `hooks` is a PROJECTION — effect entries were removed. A trim is never silent:
+   * without this, a hook list short by three entries reads as the component's complete hook list.
+   */
+  truncation?: { droppedItems: number; note: string };
 }
 
 /** Element states the assertion engine can check (plan/06). */

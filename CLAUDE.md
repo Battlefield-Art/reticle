@@ -42,7 +42,7 @@ This is **one git repo** at the root (pnpm + turbo monorepo). The TS library pac
 3. **No free strings.** Every domain/wire/UI string is a named constant.
 4. **No non-null `!`.** Use optional chaining + explicit null checks.
 5. **Tests first.** RED → GREEN → REFACTOR.
-6. **600-line file cap.** Over it = a cohesion failure; split before adding. (A few cohesive units — a stateful class, a package's public-API barrel + bootstrap — sit naturally in the 500–600 band and don't decompose without artificial seams.)
+6. **1000-line file cap.** Over it = a cohesion failure; split before adding. (Raised from 600: the old cap was forcing splits of genuinely cohesive units — a stateful class, a package's public-API barrel + bootstrap — and turning a two-line fix into a refactor. Cohesion is still the actual rule; the number is only the backstop.)
 7. **Inject the clock.** Never call `Date.now()`/`Math.random()` inside pure logic — pass them in.
 8. **Scope every data access to the authenticated principal.**
 9. **Design tokens are the only place design values live.**
@@ -63,7 +63,7 @@ This is **one git repo** at the root (pnpm + turbo monorepo). The TS library pac
 
 ## Pre/post-coding checklist
 
-**Before coding:** scan for existing code to reuse → identify the constants you'll need and add them first → write the failing test. **After coding:** refactor with tests green → check file < 500 lines → run `pnpm lint && pnpm typecheck && pnpm test:unit` **before committing, not chained after it** → confirm no `any`, no free strings, no `console.log`.
+**Before coding:** scan for existing code to reuse → identify the constants you'll need and add them first → write the failing test. **After coding:** refactor with tests green → check the file is still cohesive (and under the 1000-line backstop) → run `pnpm lint && pnpm typecheck && pnpm test:unit` **before committing, not chained after it** → confirm no `any`, no free strings, no `console.log`.
 
 **Touching the tool surface, the wire contract, or an observer?** Also run `pnpm test:e2e` (boots api + bench-app + next-smoke — **~70s**, measured; it was documented as "~20 min" for months, which is why nobody ran it). The unit gate cannot see cross-package drift: a tool rename once left four e2e specs dead across a whole framework and nothing caught it, because the battery is not part of `test:unit`. `e2e-surface-drift.test.ts` now catches the name-lookup half of that in the fast gate; the rest still needs the battery.
 

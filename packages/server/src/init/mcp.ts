@@ -12,9 +12,19 @@
  * global agent config.
  */
 
-import { RETICLE_NPM_PACKAGE } from '../server-version.js';
+import { RETICLE_NPM_PACKAGE } from '../version/server-version.js';
 
 export const MCP_SERVER_NAME = 'reticle';
+
+/**
+ * The registered command is STILL bare `npx` on every platform, deliberately.
+ *
+ * Windows is 66% of Reticle's users (65 of 99 in a day of telemetry) and has NO CI, no fixture, and
+ * nothing in this repo has ever run there. Switching the majority platform to a launch command
+ * nobody can test — where `.cmd` also has its own spawn caveats in some hosts — risks breaking the
+ * users it is meant to help. So the fallback is DOCUMENTED (see mcpManual) rather than defaulted,
+ * until somebody can run it on Windows.
+ */
 export const NPX = 'npx';
 // The `reticle` bin lives in the server package, so `npx <pkg> mcp` runs the bridge without the
 // retired `core` umbrella. Sourced from the single derived identity so it can never drift.
@@ -22,8 +32,24 @@ const RETICLE_PACKAGE = RETICLE_NPM_PACKAGE;
 const MCP_SUBCOMMAND = 'mcp';
 const CLAUDE_CLI = 'claude';
 
-/** Args after `npx` that launch the bridge: `@reticlehq/server mcp`. Portless — the port comes from
- * the project's `.reticle.json` at runtime, so one global entry works for every project. */
+/**
+ * Args after `npx` that launch the bridge: `@reticlehq/server mcp`. Portless — the port comes from
+ * the project's `.reticle.json` at runtime, so one global entry works for every project.
+ *
+ * DELIBERATELY UNPINNED, and the trade is worth stating. `reticle init` pins the SDK to the CLI's
+ * exact version, so on release day the app can be on the new one while npx serves a cached older
+ * build — a real skew, reported from the field. Pinning this entry would remove that window.
+ *
+ * It would also freeze the agent's MCP server at whatever version was installed the day `init` ran,
+ * for as long as that entry survives — and `reticle update` upgrades the CLI, not a global agent
+ * config. Reticle's biggest measured problem is fixes not reaching people (2.4.0 reached zero users
+ * before its nudge existed), and a permanent pin makes that worse for every install, to close a
+ * window that lasts until the next npx cache miss.
+ *
+ * So it stays unpinned, and the skew is handled where it actually shows up: the contract fingerprint
+ * makes a real mismatch loud on the next tool result (see version-skew), and a stale entry of our own
+ * shape is now repaired on re-run rather than reported "already registered" (see cursor.ts).
+ */
 export function npxServerArgs(): string[] {
   return [RETICLE_PACKAGE, MCP_SUBCOMMAND];
 }
@@ -49,6 +75,11 @@ export function claudeAddCommand(): ClaudeAddCommand {
 
 /** Probe args that tell us whether an `reticle` server already exists in any scope (exit 0 = exists). */
 export function claudeExistsProbe(): { command: string; args: string[] } {
+  // NO `-s`: `claude mcp get` takes no options at all, so passing one exits 1 with "unknown option
+  // '-s'" — the probe answered "not registered" on EVERY machine, init then ran `claude mcp add`,
+  // which exits 1 with "already exists", and a re-run reported `[⚠] step failed` plus a manual
+  // command that fails the same way. A false positive from a project-scoped entry costs one skipped
+  // registration; the flag cost every re-run a failed step.
   return { command: CLAUDE_CLI, args: [MCP_SUBCOMMAND, 'get', MCP_SERVER_NAME] };
 }
 
@@ -66,5 +97,11 @@ export function mcpManual(): string {
 
 Or, for another agent, add this to its global MCP config (e.g. Cursor's ~/.cursor/mcp.json):
 
-  "${MCP_SERVER_NAME}": { "command": "${NPX}", "args": ${JSON.stringify(serverInvocation().slice(1))} }`;
+  "${MCP_SERVER_NAME}": { "command": "${NPX}", "args": ${JSON.stringify(serverInvocation().slice(1))} }
+
+On Windows, if the agent cannot start Reticle because npx is blocked ("running scripts is disabled
+on this system" — a PowerShell execution policy), register it through cmd instead, which that policy
+does not gate:
+
+  "${MCP_SERVER_NAME}": { "command": "cmd", "args": ${JSON.stringify(['/c', NPX, ...serverInvocation().slice(1)])} }`;
 }

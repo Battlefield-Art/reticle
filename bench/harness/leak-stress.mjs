@@ -92,7 +92,7 @@ const portsBefore = listeningPorts();
 const PORT = RETICLE_PORT;
 const client = new McpStdioClient('node', [CLI, 'mcp', '--port', PORT, '--drive', APP], {
   RETICLE_PORT: PORT,
-  RETICLE_TOOL_PROFILE: 'full',
+  RETICLE_ADVERTISE_ALL_TOOLS: '1',
 });
 await client.start();
 await sleep(4000); // driven browser + SDK handshake

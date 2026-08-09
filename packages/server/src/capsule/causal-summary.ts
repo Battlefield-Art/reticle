@@ -1,4 +1,4 @@
-import { EventType, PerfMetric, type ReticleEvent } from '@reticlehq/core';
+import { EventType, PerfMetric, isDevToolingUrl, type ReticleEvent } from '@reticlehq/core';
 
 /**
  * The causal summary (Tier 1) — the bounded ~50–100 token block on EVERY act, green included: what the
@@ -27,7 +27,14 @@ export interface StorageDiff {
   to?: unknown;
 }
 export interface CausalSummary {
-  net: { total: number; errors: number; headline?: string };
+  /**
+   * `total`/`errors` describe the APP's traffic. `ignoredDevTooling` is the count of calls the dev
+   * toolchain made about itself (Next's error overlay, HMR, the Vite client — see
+   * `DevToolingChannel`), which Reticle deliberately leaves out of the settle decision and out of
+   * contradiction hunting. Present only when there were any: a trim is never silent, so an agent can
+   * always see that something was ignored and go read it in the timeline.
+   */
+  net: { total: number; errors: number; ignoredDevTooling?: number; headline?: string };
   consoleErrors: number;
   statePathsChanged: string[];
   storageKeysChanged: string[];
@@ -52,7 +59,7 @@ export interface CausalSummary {
 }
 
 function pushUnique(list: string[], value: unknown): void {
-  if (typeof value === 'string' && value.length > 0 && !list.includes(value)) list.push(value);
+  if ('string' === typeof value && value.length > 0 && !list.includes(value)) list.push(value);
 }
 
 /** Keep a diff value bounded so the per-act summary never bloats: primitives capped to a short string. */
@@ -62,9 +69,9 @@ function truncate(text: string): string {
   return text.length > MAX_DIFF_LEN ? `${text.slice(0, MAX_DIFF_LEN - 1)}…` : text;
 }
 function capValue(value: unknown): unknown {
-  if (value === undefined || value === null) return value;
-  if (typeof value === 'string') return truncate(value);
-  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (value === undefined || null === value) return value;
+  if ('string' === typeof value) return truncate(value);
+  if ('number' === typeof value || 'boolean' === typeof value) return value;
   // Objects/arrays: a shallow, length-capped JSON repr (never a deep dump on the hot path).
   try {
     return truncate(JSON.stringify(value));
@@ -89,6 +96,7 @@ function stateSettle(diffs: readonly StateDiff[]): { stateSettleMs?: number } {
 export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
   let netTotal = 0;
   let netErrors = 0;
+  let ignoredDevTooling = 0;
   let headline: string | undefined;
   let consoleErrors = 0;
   const statePathsChanged: string[] = [];
@@ -104,9 +112,13 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
     const data = event.data;
     switch (event.type) {
       case EventType.NET_REQUEST: {
+        if (isDevToolingUrl('string' === typeof data['url'] ? data['url'] : undefined)) {
+          ignoredDevTooling += 1;
+          break;
+        }
         netTotal += 1;
         const status = data['status'];
-        const failed = data['ok'] === false || (typeof status === 'number' && status >= 400);
+        const failed = false === data['ok'] || ('number' === typeof status && status >= 400);
         if (failed) {
           netErrors += 1;
           // Headline is the first failing request — the thing most worth the agent's eye.
@@ -123,9 +135,9 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
         // The subscribed-store observer emits { name, path, value, old } — `value` is the AFTER side
         // (`new` is accepted too for any producer that uses it). Presence of either makes it a real
         // before→after diff rather than a bare reading.
-        const path = typeof data['path'] === 'string' ? data['path'] : data['name'];
+        const path = 'string' === typeof data['path'] ? data['path'] : data['name'];
         const hasAfter = 'value' in data || 'new' in data;
-        if (typeof path === 'string' && path.length > 0 && ('old' in data || hasAfter)) {
+        if ('string' === typeof path && path.length > 0 && ('old' in data || hasAfter)) {
           const after = 'value' in data ? data['value'] : data['new'];
           stateDiffs.push({
             path,
@@ -139,19 +151,19 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
       case EventType.STORAGE_CHANGE: {
         pushUnique(storageKeysChanged, data['key']);
         const key = data['key'];
-        if (typeof key === 'string' && key.length > 0) {
+        if ('string' === typeof key && key.length > 0) {
           storageDiffs.push({ key, from: capValue(data['old']), to: capValue(data['new']) });
         }
         break;
       }
       case EventType.ROUTE_CHANGE:
-        if (typeof data['pathname'] === 'string') route = data['pathname'];
+        if ('string' === typeof data['pathname']) route = data['pathname'];
         break;
       case EventType.SIGNAL:
         pushUnique(signals, data['name']);
         break;
       case EventType.PERF:
-        if (data['metric'] === PerfMetric.CLS && typeof data['value'] === 'number') {
+        if (data['metric'] === PerfMetric.CLS && 'number' === typeof data['value']) {
           layoutShift = Math.max(layoutShift ?? 0, data['value']);
         } else if (data['metric'] === PerfMetric.LONGTASK) {
           longTasks += 1;
@@ -163,7 +175,12 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
   }
 
   return {
-    net: { total: netTotal, errors: netErrors, ...(headline === undefined ? {} : { headline }) },
+    net: {
+      total: netTotal,
+      errors: netErrors,
+      ...(0 === ignoredDevTooling ? {} : { ignoredDevTooling }),
+      ...(headline === undefined ? {} : { headline }),
+    },
     consoleErrors,
     statePathsChanged,
     storageKeysChanged,

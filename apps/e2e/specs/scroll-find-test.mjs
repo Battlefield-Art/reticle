@@ -3,6 +3,7 @@
 // reticle_scroll_to must scroll the container until that row mounts, then return it.
 import { chromium } from 'playwright';
 import { start, TOOLS } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0,
   fail = 0;
@@ -17,14 +18,10 @@ const T = (n, a = {}) => TOOLS.find((t) => t.name === n).handler(deps, { session
 const b = await chromium.launch({ headless: true });
 const p = await b.newPage();
 await p.goto('http://localhost:3100/');
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
-for (let i = 0; i < 200 && !hasOwn(); i++) await sleep(50);
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 
 console.log('\n=== SCROLLFIND: reticle_scroll_to reveals a virtualized off-screen row ===');
-chk('app SDK connected', server.bridge.sessions.count() > 0);
+chk('app SDK connected', server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke'));
 
 const TARGET = 'row-40';
 const before = await T('reticle_query', { by: 'testid', value: TARGET });

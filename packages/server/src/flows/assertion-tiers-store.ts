@@ -21,7 +21,7 @@ import type { StepExpect } from './assertion-integrity.js';
  * unreadable file would be worse than missing one downgrade.
  */
 
-export const AssertionTiersFileSchema = z.object({
+const AssertionTiersFileSchema = z.object({
   version: z.literal(1),
   flows: z.record(
     z.object({
@@ -33,13 +33,13 @@ export const AssertionTiersFileSchema = z.object({
   ),
 });
 
-export interface FlowBaseline {
+interface FlowBaseline {
   steps: StepExpect[];
   sources: string[];
 }
-export type FlowTiers = Record<string, FlowBaseline>;
+type FlowTiers = Record<string, FlowBaseline>;
 
-export const ASSERTION_TIERS_VERSION = 1;
+const ASSERTION_TIERS_VERSION = 1;
 
 export class AssertionTiersStore {
   readonly #fs: FileSystemPort;

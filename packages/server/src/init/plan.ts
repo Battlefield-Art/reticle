@@ -18,6 +18,7 @@ import {
   CLAUDE_COMMAND_PATH,
   CURSOR_COMMAND_PATH,
   SLASH_COMMAND_BODY,
+  SLASH_COMMAND_SIGNATURE,
 } from './slash-command.js';
 import {
   mergeMarkedInstruction,
@@ -27,13 +28,15 @@ import {
   AGENTS_MD_PATH,
   CURSOR_RULE_PATH,
 } from './agent-rules.js';
-import { viteSteps, nextSteps, svelteKitSteps, VITE_PLUGIN_DETAIL } from './plan-framework.js';
 import {
-  htmlManual,
-  reticleConfigContent,
-  unverifiedUiLibraryNote,
-  astroManual,
-} from './snippets.js';
+  viteSteps,
+  nextSteps,
+  craSteps,
+  svelteKitSteps,
+  astroSteps,
+  VITE_PLUGIN_DETAIL,
+} from './plan-framework.js';
+import { htmlManual, reticleConfigContent, unverifiedUiLibraryNote } from './snippets.js';
 
 // An app dev installs exactly the audience-scoped browser-side dependencies — never the retired
 // `@reticlehq/core` umbrella (which dragged the Node MCP server + ws into every app). The kit is the
@@ -56,12 +59,12 @@ export function pinnedPackages(
   packages: readonly string[],
   version: string | undefined,
 ): readonly string[] {
-  if (version === undefined || version.length === 0) return packages;
+  if (version === undefined || 0 === version.length) return packages;
   return packages.map((p) => `${p}@${version}`);
 }
 
 /** The dev-dependencies `reticle init` installs for a given framework — kit first, build plugin next. */
-export function frameworkPackages(framework: Framework): readonly string[] {
+function frameworkPackages(framework: Framework): readonly string[] {
   switch (framework) {
     case Framework.NEXT:
       return [RETICLE_REACT_KIT, RETICLE_NEXT_PLUGIN];
@@ -73,6 +76,10 @@ export function frameworkPackages(framework: Framework): readonly string[] {
       // Astro owns its own Vite instance and renders its own HTML, so there is no config for the
       // plugin to attach to — the kit alone, connected from a page <script> (see astroManual).
       return [RETICLE_REACT_KIT];
+    case Framework.CRA:
+      // react-scripts owns its webpack config and cannot be extended without ejecting, so there is
+      // no build plugin — the kit alone, imported from src/index.tsx (see cra.ts).
+      return [RETICLE_REACT_KIT];
     case Framework.HTML:
       // No bundler plugin to install — just the kit; connect is wired by hand (see htmlManual).
       return [RETICLE_REACT_KIT];
@@ -81,6 +88,29 @@ export function frameworkPackages(framework: Framework): readonly string[] {
 
 /** Exported so the init telemetry can tell an MCP-registration failure from a dependency install. */
 export const MCP_TARGET = 'global (claude user scope)';
+
+/**
+ * Titles of the steps WITHOUT which no session ever appears.
+ *
+ * A ⚠ on one of these is not a warning, it is a guaranteed failure: nothing performs the manual step,
+ * so the app will not connect and every Reticle tool will answer "no browser session connected".
+ * Reported from a field sweep, where the ⚠ count and "did it connect" were treated as independent
+ * signals and are not.
+ */
+const CONNECT_STEP_TITLES: ReadonlySet<string> = new Set([
+  'Connect snippet',
+  'Connect snippet (CRA)',
+  'Connect snippet (Astro)',
+  'Reticle client hook',
+  'Reticle connect module',
+  'ReticleDev component',
+  'Vite plugin',
+]);
+
+/** True when this step is what makes the app dial the daemon. */
+export function isConnectStep(title: string): boolean {
+  return CONNECT_STEP_TITLES.has(title);
+}
 /** The step that runs the package manager — the other thing that commonly fails on a user's machine. */
 export const DEPS_TARGET = 'package.json';
 const RETICLE_CONFIG_FILE = '.reticle.json';
@@ -109,6 +139,16 @@ export interface Step {
   write?: { path: string; content: string };
   /** Present only when status is APPLY and a subprocess must run (the dependency install). */
   exec?: { command: string; args: string[]; fallback: string };
+  /**
+   * A second, weaker attempt to run when `exec` fails, with what to tell the user if it succeeds.
+   *
+   * The pinned install is refused outright by pnpm's `minimumReleaseAge` for as long as its window
+   * lasts — so for ~48 hours after every release, a project with that setting could not install
+   * Reticle at all. An unpinned install still works there (it resolves the newest MATURE version), so
+   * the fallback trades an exact version for a working install and says which it did. It must never
+   * be silent: an older SDK against a newer daemon is the skew this pin exists to prevent.
+   */
+  retry?: { command: string; args: string[]; note: string };
   /**
    * This step wires the app to a package the install step provides. If that install fails, applying
    * it anyway leaves the app importing a module that is not there — `next.config.ts` importing
@@ -139,6 +179,16 @@ export interface PlanInput {
   cursorConfigPath: string;
   /** Discovered Vite config: its path + source, or null if none found. */
   viteConfig: { path: string; source: string } | null;
+  /** Discovered Astro config: its path + source, or null if none found. */
+  astroConfig?: { path: string; source: string } | null | undefined;
+  /**
+   * The single layout to instrument, or null when the choice is not obvious.
+   *
+   * WHICH page or layout to instrument is a real decision — so `init` only makes it when there is
+   * exactly one candidate. Zero or several falls back to the printed recipe rather than guessing at
+   * the file every page of the user's site inherits from.
+   */
+  astroLayout?: { path: string; source: string } | null | undefined;
   /** Discovered Next config filename (e.g. 'next.config.mjs'), or null. */
   nextConfigFile: string | null;
   /** Source of that Next config, so the export can be wrapped in withReticle. */
@@ -159,18 +209,30 @@ export interface PlanInput {
   viteDevModuleExists?: boolean | undefined;
   /** Whether src/hooks.client.ts already exists (SvelteKit idempotency). */
   svelteKitHooksExists?: boolean;
+  /** CRA's bundled entry (src/index.tsx or .js) — where the connect import has to go. */
+  craEntry?: { path: string; source: string } | null;
+  /** Existing .env.development.local, so an unrelated variable in it survives. */
+  craEnv?: string | null;
+  /** The daemon's pairing token, inlined for CRA through the one channel it supports. */
+  pairingToken?: string;
   /** Whether .reticle.json already exists in the project root (idempotency). */
   reticleConfigExists?: boolean;
   /** Current project-root CLAUDE.md content (for the idempotent agent-rule merge), or null/undefined. */
   claudeMdContent?: string | null | undefined;
   /** Current project-root AGENTS.md content (cross-agent fallback rule), or null/undefined. */
   agentsMdContent?: string | null | undefined;
-  /** Whether .cursor/rules/reticle.mdc already exists (agent-rule idempotency). */
-  cursorRuleExists?: boolean | undefined;
-  /** Whether .claude/commands/reticle.md already exists (slash-command idempotency). */
-  claudeCommandExists?: boolean | undefined;
-  /** Whether .cursor/commands/reticle.md already exists. */
-  cursorCommandExists?: boolean | undefined;
+  /**
+   * Current .cursor/rules/reticle.mdc content, or null when absent.
+   *
+   * CONTENT, not existence. Gating on the file merely being there froze a Cursor project's rule at
+   * whatever release wrote it — so the CLAUDE.md path refreshed itself while the Cursor one never
+   * could, and a rule added later (`version_skew`) never reached a Cursor-only project at all.
+   */
+  cursorRuleContent?: string | null | undefined;
+  /** Current .claude/commands/reticle.md content, or null when absent (slash-command idempotency). */
+  claudeCommandContent?: string | null | undefined;
+  /** Current .cursor/commands/reticle.md content, or null when absent. */
+  cursorCommandContent?: string | null | undefined;
   options: {
     port: number | undefined;
     mcp: boolean;
@@ -241,13 +303,19 @@ function mcpSteps(input: PlanInput): Step[] {
         title: 'MCP server (global)',
         target: MCP_TARGET,
         status: StepStatus.SKIP,
-        detail: '--no-mcp',
+        // Names everything it turns off. `--no-mcp` reads like "skip one step" and skips three: the
+        // registration, the agent rule files, and the /reticle command. A gate running with this flag
+        // therefore covers far less than its name suggests, which is worth saying out loud.
+        detail:
+          '--no-mcp — also skips the agent rule files (CLAUDE.md / AGENTS.md / .cursor) and the /reticle command',
       },
     ];
   }
-  const steps = [claudeMcpStep(input), cursorMcpStep(input)].filter((s): s is Step => s !== null);
+  const steps = stepsForAgents(input, (a) => a.mcpStep);
   if (steps.length > 0) return steps;
-  // No supported agent detected — print the one-time global instructions.
+  // No supported agent detected — print the one-time global instructions. Reached when the `claude`
+  // CLI is absent AND ~/.cursor does not exist, which includes Cursor installed with a fresh profile
+  // that has not written its config directory yet, so the manual text covers both agents.
   return [
     {
       title: 'MCP server (global)',
@@ -261,36 +329,54 @@ function mcpSteps(input: PlanInput): Step[] {
 const SLASH_COMMAND_TITLE = 'The /reticle command';
 
 /**
- * `/reticle` — the entry point SKILL.md promises in three places and nothing ever created, so it
- * silently did nothing in every tool. One file per agent that supports custom commands.
+ * Nothing to do for this command file: it already holds the CURRENT body, or it is not ours at all.
+ *
+ * Gating on mere existence froze the command at whatever release wrote it. Rewriting anything found
+ * there would be worse — a human may have claimed `/reticle` for their own prompt — so a file without
+ * our signature is left exactly as it is.
  */
-function slashCommandSteps(input: PlanInput): Step[] {
-  const targets: { path: string; when: boolean; exists: boolean }[] = [
-    { path: CLAUDE_COMMAND_PATH, when: input.claudeCli, exists: input.claudeCommandExists === true },
-    {
-      path: CURSOR_COMMAND_PATH,
-      when: input.cursorProjectPresent === true || (input.cursorPresent && !input.claudeCli),
-      exists: input.cursorCommandExists === true,
-    },
-  ];
-  return targets
-    .filter((t) => t.when)
-    .map((t) =>
-      t.exists
-        ? {
-            title: SLASH_COMMAND_TITLE,
-            target: t.path,
-            status: StepStatus.ALREADY,
-            detail: 'command already exists',
-          }
-        : {
-            title: SLASH_COMMAND_TITLE,
-            target: t.path,
-            status: StepStatus.APPLY,
-            detail: 'type /reticle to verify one flow in the browser',
-            write: { path: t.path, content: SLASH_COMMAND_BODY },
-          },
-    );
+function commandIsSettled(content: string | null | undefined): boolean {
+  if (null === content || content === undefined) return false;
+  return content === SLASH_COMMAND_BODY || !content.includes(SLASH_COMMAND_SIGNATURE);
+}
+
+/**
+ * `/reticle` — the entry point SKILL.md promises in three places and nothing ever created, so it
+ * silently did nothing in every tool.
+ *
+ * CURRENT, not merely present — same reason as the Cursor rule: a command file frozen at whatever
+ * release created it is a command that can never be improved for anyone who already ran init. The
+ * whole file is Reticle's, so a stale one is rewritten.
+ */
+function commandStepFor(
+  path: string,
+  present: boolean,
+  content: string | null | undefined,
+): Step | null {
+  if (!present) return null;
+  return commandIsSettled(content)
+    ? {
+        title: SLASH_COMMAND_TITLE,
+        target: path,
+        status: StepStatus.ALREADY,
+        detail: 'command already exists',
+      }
+    : {
+        title: SLASH_COMMAND_TITLE,
+        target: path,
+        status: StepStatus.APPLY,
+        detail: 'type /reticle to verify one flow in the browser',
+        write: { path, content: SLASH_COMMAND_BODY },
+      };
+}
+
+function claudeCommandStep(input: PlanInput): Step | null {
+  return commandStepFor(CLAUDE_COMMAND_PATH, input.claudeCli, input.claudeCommandContent);
+}
+
+function cursorCommandStep(input: PlanInput): Step | null {
+  const present = true === input.cursorProjectPresent || (input.cursorPresent && !input.claudeCli);
+  return commandStepFor(CURSOR_COMMAND_PATH, present, input.cursorCommandContent);
 }
 
 const AGENT_RULE_TITLE = 'Agent verification rule';
@@ -325,7 +411,9 @@ function claudeRuleStep(input: PlanInput): Step | null {
 function cursorRuleStep(input: PlanInput): Step | null {
   if (!input.cursorPresent) return null;
   if (input.cursorProjectPresent !== true && input.claudeCli) return null;
-  if (input.cursorRuleExists === true) {
+  // The whole file is Reticle's — init created it — so a stale one is REWRITTEN rather than merged.
+  // Comparing content is what makes the rule updatable; comparing existence made it permanent.
+  if (input.cursorRuleContent === cursorRuleFile()) {
     return {
       title: AGENT_RULE_TITLE,
       target: CURSOR_RULE_PATH,
@@ -343,15 +431,71 @@ function cursorRuleStep(input: PlanInput): Step | null {
 }
 
 /**
+ * Every coding agent `reticle init` knows how to wire itself into, and the three surfaces it wires:
+ * the global MCP registration, the project rule file that makes the agent USE Reticle, and the
+ * `/reticle` command.
+ *
+ * One list, because those three surfaces used to enumerate Claude and Cursor separately in three
+ * places — so supporting a fourth agent meant finding all three and getting each right. Adding one
+ * is now an entry here plus its builders; each builder answers null when that agent is not present
+ * for this user or this project, which is also how "no agent detected" falls through to the
+ * cross-agent AGENTS.md.
+ *
+ * Deliberately functions rather than data: registering with Claude runs its CLI while Cursor merges
+ * a JSON file, and pretending those are the same shape would cost more than it saves.
+ */
+const AgentId = {
+  CLAUDE: 'claude',
+  CURSOR: 'cursor',
+} as const;
+export type AgentId = (typeof AgentId)[keyof typeof AgentId];
+
+interface AgentIntegration {
+  readonly id: AgentId;
+  /** Global MCP registration. Global on purpose: registered once, used by every project. */
+  readonly mcpStep: (input: PlanInput) => Step | null;
+  /** The project instruction file this agent re-reads every session. */
+  readonly ruleStep: (input: PlanInput) => Step | null;
+  /** The project slash-command file, for agents that have a command surface. */
+  readonly commandStep: (input: PlanInput) => Step | null;
+}
+
+const AGENT_INTEGRATIONS: readonly AgentIntegration[] = [
+  {
+    id: AgentId.CLAUDE,
+    mcpStep: claudeMcpStep,
+    ruleStep: claudeRuleStep,
+    commandStep: claudeCommandStep,
+  },
+  {
+    id: AgentId.CURSOR,
+    mcpStep: cursorMcpStep,
+    ruleStep: cursorRuleStep,
+    commandStep: cursorCommandStep,
+  },
+];
+
+/** The steps one surface contributes across every known agent, in registry order. */
+function stepsForAgents(
+  input: PlanInput,
+  surface: (a: AgentIntegration) => (input: PlanInput) => Step | null,
+): Step[] {
+  return AGENT_INTEGRATIONS.map((a) => surface(a)(input)).filter((s): s is Step => s !== null);
+}
+
+/** The `/reticle` command file for every agent that has a command surface and is present here. */
+function slashCommandSteps(input: PlanInput): Step[] {
+  return stepsForAgents(input, (a) => a.commandStep);
+}
+
+/**
  * The behavioral rule that makes the agent actually USE Reticle. Written into the detected agent's
  * instruction file (Claude / Cursor, or both), falling back to the cross-agent AGENTS.md when neither
  * is detected. Rides with the MCP wiring — `--no-mcp` opts out of registering the tools AND the rule.
  */
 function agentRuleSteps(input: PlanInput): Step[] {
   if (!input.options.mcp) return [];
-  const detected = [claudeRuleStep(input), cursorRuleStep(input)].filter(
-    (s): s is Step => s !== null,
-  );
+  const detected = stepsForAgents(input, (a) => a.ruleStep);
   if (detected.length > 0) return detected;
   const r = mergeMarkedInstruction(input.agentsMdContent);
   return [
@@ -382,6 +526,17 @@ function agentRuleSteps(input: PlanInput): Step[] {
  * with nothing naming a version. Pinning turns that into this loud failure, which is the better
  * trade — but only if the message says what to do about it.
  */
+/** Said out loud when the exact-version install was refused and the unpinned one worked. */
+function unpinnedRetryNote(version: string | undefined): string {
+  const wanted = version === undefined ? 'the exact version' : version;
+  return (
+    `the registry refused ${wanted} (pnpm's minimumReleaseAge holds new releases back), so the ` +
+    `newest ACCEPTED version was installed instead. That may not match the daemon — if the agent ` +
+    `reports protocol errors, check \`versionSkew\` in reticle_sessions, then either wait out the ` +
+    `window or allow these packages: pnpm config set minimumReleaseAgeExclude "@reticlehq/*"`
+  );
+}
+
 function installFailureHint(pm: PackageManager): string {
   if (pm !== PackageManager.PNPM) return 'If the version was refused, install the SDK yourself.';
   return (
@@ -419,11 +574,17 @@ function installStep(input: PlanInput): Step {
       args: parts.args,
       fallback: `${command}\n\n${installFailureHint(pm)}`,
     },
+    // Unpinned. pnpm resolves the newest MATURE version there, which is how a project with a
+    // release-age hold gets a working install instead of no install.
+    retry: {
+      ...installCommandParts(pm, frameworkPackages(input.detection.framework)),
+      note: unpinnedRetryNote(input.options.sdkVersion),
+    },
   };
 }
 
 function reticleConfigStep(input: PlanInput): Step {
-  if (input.reticleConfigExists === true) {
+  if (true === input.reticleConfigExists) {
     return {
       title: 'Reticle config',
       target: RETICLE_CONFIG_FILE,
@@ -477,12 +638,9 @@ export function buildPlan(input: PlanInput): Plan {
   } else if (input.detection.framework === Framework.NEXT) {
     steps.push(...nextSteps(input));
   } else if (input.detection.framework === Framework.ASTRO) {
-    steps.push({
-      title: 'Connect snippet (Astro)',
-      target: 'astro.config + layout',
-      status: StepStatus.MANUAL,
-      detail: astroManual(input.options.port, input.options.projectId),
-    });
+    steps.push(...astroSteps(input));
+  } else if (input.detection.framework === Framework.CRA) {
+    steps.push(...craSteps(input));
   } else if (input.detection.framework === Framework.SVELTEKIT) {
     steps.push(...svelteKitSteps(input));
     // The Vite plugin as well as the client hook. `init` already INSTALLS @reticlehq/vite-plugin for

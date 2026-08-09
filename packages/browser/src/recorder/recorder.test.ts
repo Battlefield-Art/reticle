@@ -46,7 +46,7 @@ function toolbarButton(action: string): HTMLElement {
   const btn = document.querySelector<HTMLElement>(
     `[data-reticle-overlay] [data-reticle-action="${action}"]`,
   );
-  if (btn === null) throw new Error(`no toolbar button ${action}`);
+  if (null === btn) throw new Error(`no toolbar button ${action}`);
   return btn;
 }
 

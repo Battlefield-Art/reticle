@@ -10,7 +10,7 @@ export function Compose(): React.ReactElement {
   const logRequest = useApp((s) => s.logRequest);
 
   const generate = async (): Promise<void> => {
-    if (compose.prompt.trim().length === 0) return;
+    if (0 === compose.prompt.trim().length) return;
     setCompose({ generating: true, result: '' });
     const { script, source, r } = await generateScript(compose.prompt.trim());
     logRequest(r);
@@ -59,7 +59,7 @@ export function Compose(): React.ReactElement {
           className="btn btn-primary"
           data-testid="compose-generate"
           onClick={() => void generate()}
-          disabled={compose.generating || compose.prompt.trim().length === 0}
+          disabled={compose.generating || 0 === compose.prompt.trim().length}
           style={{ marginTop: 18 }}
         >
           {compose.generating ? (

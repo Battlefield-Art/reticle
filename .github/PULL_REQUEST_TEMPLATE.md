@@ -16,6 +16,6 @@ Closes #
 - [ ] `pnpm lint && pnpm typecheck && pnpm test:unit` all pass locally
 - [ ] No `any`, no free strings (wire strings live in `@reticlehq/core`), no non-null `!`
 - [ ] No `console.log` or internal tracking codes left in the diff
-- [ ] Each changed file is under the 600-line cap
+- [ ] Each changed file is under the 1000-line cap
 - [ ] Docs and `CHANGELOG.md` updated if this is user-facing (entry under `[Unreleased]`)
 - [ ] Security-affecting? Auth/redaction/trust-boundary changes keep the localhost-only, no-app-data-leaves-the-machine, no-arbitrary-JS posture (usage telemetry stays anonymous + opt-out per `docs/telemetry.md`) and are covered by a test

@@ -95,13 +95,13 @@ export function installReticle(): void {
   // The daemon requires its pairing token on the websocket hello; vite.config injects it (env wins).
   const injectedToken = typeof __RETICLE_TOKEN__ !== 'undefined' ? __RETICLE_TOKEN__ : '';
   const envToken = import.meta.env.VITE_RETICLE_TOKEN;
-  const token = typeof envToken === 'string' && envToken.length > 0 ? envToken : injectedToken;
+  const token = 'string' === typeof envToken && envToken.length > 0 ? envToken : injectedToken;
   const configuredUrl = import.meta.env.VITE_RETICLE_WS_URL;
   const url =
-    typeof configuredUrl === 'string' && configuredUrl.length > 0
+    'string' === typeof configuredUrl && configuredUrl.length > 0
       ? configuredUrl
       : `ws://localhost:${reticlePort}/reticle`;
-  const allowNonLocalhost = import.meta.env.VITE_RETICLE_ALLOW_NON_LOCALHOST === 'true';
+  const allowNonLocalhost = 'true' === import.meta.env.VITE_RETICLE_ALLOW_NON_LOCALHOST;
   reticle.connect({
     session,
     present,
@@ -110,7 +110,7 @@ export function installReticle(): void {
     // high-volume case, so the SDK makes it opt-in. The streams bugs are invisible without it.
     captureNetworkBodies: true,
     ...(allowNonLocalhost ? { allowNonLocalhost: true } : {}),
-    ...(typeof token === 'string' && token.length > 0 ? { token } : {}),
+    ...('string' === typeof token && token.length > 0 ? { token } : {}),
   });
   // Pass the store itself (not a getter) so Reticle wires subscribe too — every mutation emits a
   // STATE_CHANGE path diff, which is what fills `stateDiffs` in the causal summary.

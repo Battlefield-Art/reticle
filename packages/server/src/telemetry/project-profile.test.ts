@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { ProjectSize } from '@reticlehq/core';
 import { profileProject, projectAgeWeeks, sizeBucket, isMonorepo } from './project-profile.js';
 import { forgeOf, gitFacts, normalizeGitOrigin } from './git-facts.js';
-import { knownCommand, UNKNOWN_COMMAND } from '../cli-parse.js';
+import { knownCommand, UNKNOWN_COMMAND } from '../cli/cli-parse.js';
 
 const withTempProject = (build: (root: string) => void, assert: (root: string) => void): void => {
   const root = mkdtempSync(join(tmpdir(), 'reticle-profile-'));
@@ -166,7 +166,7 @@ describe('git facts — what makes "users per project" answerable, or honestly u
     const facts = gitFacts(
       '/p/packages/web',
       () => config('git@github.com:a/b.git'),
-      (path) => path === '/p/.git',
+      (path) => '/p/.git' === path,
     );
     expect(facts.state).toBe('remote');
   });

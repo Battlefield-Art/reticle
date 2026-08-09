@@ -30,7 +30,7 @@ If you genuinely cannot determine something, pick the sensible default, say whic
 
 **Never ask about the port.** There are two different ports and conflating them is the single most common setup failure:
 
-| | What it is | Who owns it |
+|  | What it is | Who owns it |
 | --- | --- | --- |
 | Dev-server port (3000, 5173, 4321, …) | where the app is served | the user's `npm run dev` — Reticle never touches it |
 | Bridge port (**4400**) | the daemon ↔ SDK channel | Reticle, and it defaults correctly |
@@ -41,16 +41,18 @@ Reticle **attaches** to whatever is already running; it never starts or manages 
 
 Then read the report. Each line is marked:
 
-| Mark | Meaning | What you do |
-| --- | --- | --- |
-| `✓` | applied | nothing |
-| `·` | already wired | nothing |
-| `–` | skipped by a flag | nothing |
-| `⚠` | needs a human/agent edit | **only these** — the line carries the exact snippet |
+| Mark | Meaning                  | What you do                                         |
+| ---- | ------------------------ | --------------------------------------------------- |
+| `✓`  | applied                  | nothing                                             |
+| `·`  | already wired            | nothing                                             |
+| `–`  | skipped by a flag        | nothing                                             |
+| `⚠`  | needs a human/agent edit | **only these** — the line carries the exact snippet |
 
 **If every line is `✓`, `·` or `–`, skip to Step 4 and validate.** The manual sections below exist for the `⚠` lines only.
 
-Useful flags: `--port N` (only when running several apps at once), `--no-install` (you'll run the package manager yourself), `--no-mcp` (skip agent registration), `--dry-run` (preview).
+**`init` exits non-zero when a `⚠` lands on a step that makes the app CONNECT** (the Vite plugin, the `ReticleDev` component, the connect snippet). Nothing else applies that step, so the app will never dial the daemon and every tool will answer "no browser session connected" until you paste it in. A non-zero exit is therefore a to-do list for you, not a failed install — apply the snippet on that line, then validate. Other `⚠` lines (MCP registration, the agent rule) exit 0.
+
+Useful flags: `--port N` (only when running several apps at once), `--no-install` (you'll run the package manager yourself), `--no-mcp` (skips the agent registration **and** the agent rule files and the `/reticle` command — all three only make sense once the tools are reachable), `--dry-run` (preview), `--app <dir>` (pick which app in a monorepo).
 
 **What is proven:** Vite + React, Next.js, Remix and Astro each have an app in this repo and a CI gate that drives it — the first two in the `pnpm test:e2e` battery, Remix and Astro in `pnpm test:integration`. Plain HTML and bundled non-Vite apps (CRA, webpack, Parcel) are wired by hand and have **no** app and no gate: they may well work, nothing proves it. The SDK is framework-agnostic and will usually connect elsewhere — but on a Vue, Preact or Svelte app `init` prints an UNVERIFIED line saying which parts work (DOM, network, console, state) and which do not (component names, `file:line`). Repeat that to the user rather than reporting a clean install.
 
@@ -64,10 +66,10 @@ There is no single MCP config file all tools share. Each harness has its own fil
 
 | Tool | File | Root key | Command format | `type` needed? |
 | --- | --- | --- | --- | --- |
-| Claude Code | `~/.claude/claude_mcp_config.json` | `mcpServers` | `"command"` + `"args"` split | no |
+| Claude Code | `~/.claude.json` (user scope; prefer the `claude mcp add` CLI) | `mcpServers` | `"command"` + `"args"` split | no |
 | OpenCode | `opencode.json` | `mcp` | `"command"` flat array | `"local"` required |
 | Codex CLI | `.codex/config.toml` | `[mcp_servers.reticle]` | TOML `command` + `args` | no |
-| Cursor | `.cursor/mcp.json` | `mcpServers` | `"command"` + `"args"` split | no |
+| Cursor | `~/.cursor/mcp.json` (global — what `reticle init` writes) | `mcpServers` | `"command"` + `"args"` split | no |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` | `"command"` + `"args"` split | no |
 | VS Code | `.vscode/mcp.json` | `"servers"` | `"command"` + `"args"` split | no |
 | Zed | `~/.config/zed/settings.json` | `context_servers` | `"command"` + `"args"` split | no |
@@ -82,7 +84,7 @@ claude mcp add reticle -s user -- npx @reticlehq/server mcp
 
 Confirm with `claude mcp list` — `reticle` should appear. **After adding, restart Claude Code** (or run `/mcp` to refresh) so it picks up the server.
 
-**If the `claude` CLI is unavailable**, fall back to writing `~/.claude/claude_mcp_config.json` (create if missing, merge `"reticle"` if it exists):
+**If the `claude` CLI is unavailable**, fall back to merging `"reticle"` into `mcpServers` in `~/.claude.json` — Claude Code's user-scope config, and the same file `claude mcp add` writes. It is a large stateful file, so merge one key; never rewrite it:
 
 ```jsonc
 {
@@ -120,7 +122,7 @@ command = "npx"
 args    = ["@reticlehq/server", "mcp"]
 ```
 
-**Cursor — `.cursor/mcp.json`** (same schema as Claude Code, different path)
+**Cursor — `~/.cursor/mcp.json`** (same schema as Claude Code, different path. Global, not project-relative: `reticle init` manages this file, so editing a project-local `.cursor/mcp.json` edits something nothing else reads)
 
 ```jsonc
 {
@@ -326,7 +328,7 @@ import { withReticle } from '@reticlehq/next';
 export default withReticle(nextConfig);
 ```
 
-It configures **both** Turbopack and webpack, so it is correct on Next 16 (Turbopack by default) and on Next 15 and earlier. If you are on `@reticlehq/next` older than 2.3.1, `next dev` on Next 16 dies with *"This build is using Turbopack, with a webpack config and no turbopack config"* — upgrade rather than dropping `withReticle`.
+It configures **both** Turbopack and webpack, so it is correct on Next 16 (Turbopack by default) and on Next 15 and earlier. If `next dev` on Next 16 dies with _"This build is using Turbopack, with a webpack config and no turbopack config"_, you are on an old `@reticlehq/next` — upgrade it rather than dropping `withReticle`.
 
 **Other frameworks** — call `reticle.connect()` and `install()` inside a dev guard. Vanilla / HTML: use a dynamic `import('@reticlehq/react')` inside `if (location.hostname === 'localhost')`.
 
@@ -350,7 +352,7 @@ If setting up manually, write `.reticle.json` to the project root (commit this �
 }
 ```
 
-`framework` is one of `vite`, `next`, `sveltekit`, `astro`, `html`. **Leave `port` out** — it defaults to `4400` and everything just works for a single app.
+`framework` is one of `vite`, `next`, `sveltekit`, `astro`, `cra`, `html`. **Leave `port` out** — it defaults to `4400` and everything just works for a single app.
 
 > **`port` here is the Reticle _bridge_ port — NOT your dev server port.** The bridge is the daemon ↔ SDK channel (default `4400`); your dev server (e.g. 5173) is a separate thing Reticle never touches. Do **not** set `.reticle.json` `port` to your dev-server port — that collides the daemon with your app.
 >
@@ -383,21 +385,13 @@ Most no-connect cases are one of these. Fastest signal first:
 
 ## Step 5 — Prove it on ONE flow, while the user watches
 
-**Do not stop at "connected".** A connected session is not a result; the user has installed something
-and seen nothing happen. Drive one flow now, in front of them. This is the whole first impression.
+**Do not stop at "connected".** A connected session is not a result; the user has installed something and seen nothing happen. Drive one flow now, in front of them. This is the whole first impression.
 
-**One flow. Not the app.** The person installing this has an existing project with dozens of flows. An
-agent that tries to instrument all of them spends ten minutes producing nothing to look at. Pick the
-single most important flow that completes in a handful of steps — the one a user would do first — say
-which one you picked in a line, and drive only that.
+**One flow. Not the app.** The person installing this has an existing project with dozens of flows. An agent that tries to instrument all of them spends ten minutes producing nothing to look at. Pick the single most important flow that completes in a handful of steps — the one a user would do first — say which one you picked in a line, and drive only that.
 
-**You do not need to add `data-testid` anywhere to do this.** `reticle_snapshot` addresses elements by
-role and name, and it works on an app that has never heard of Reticle. Adding testids is an
-optimisation for flows you will replay often — it is not a prerequisite, and treating it as one is
-what turns a two-minute setup into an afternoon.
+**You do not need to add `data-testid` anywhere to do this.** `reticle_snapshot` addresses elements by role and name, and it works on an app that has never heard of Reticle. Adding testids is an optimisation for flows you will replay often — it is not a prerequisite, and treating it as one is what turns a two-minute setup into an afternoon.
 
-1. Tell the user: **"Keep the tab visible — you'll see this happen."** The HUD is on by default: a glow
-   border, a moving cursor, and a narration line per step.
+1. Tell the user: **"Keep the tab visible — you'll see this happen."** The HUD is on by default: a glow border, a moving cursor, and a narration line per step.
 2. `reticle_snapshot` → find the elements the flow needs.
 3. Walk it with `reticle_act_and_wait`, narrating each step before you take it.
 4. `reticle_assert` after each step — that the effect happened, not just that the click dispatched.
@@ -407,8 +401,7 @@ Then report what you drove and what it produced, with `file:line` for anything b
 
 **Only after that flow has run**, tell the user:
 
-> "Reticle is set up, and you just watched it drive <flow>. Type `/reticle` any time to verify a flow
-> after a change — `init` created that command in this project."
+> "Reticle is set up, and you just watched it drive <flow>. Type `/reticle` any time to verify a flow after a change — `init` created that command in this project."
 
 **Setup complete — stop here. Do not proceed to Test mode.**
 
@@ -444,14 +437,14 @@ Call these in parallel:
 
 ```
 reticle_snapshot({ sessionId, mode: "interactive" })
-reticle_run({ tool: "reticle_capabilities", args: { sessionId } })   // not advertised in the default hybrid profile — reach it via reticle_run
+reticle_run({ tool: "reticle_capabilities", sessionId })   // not advertised directly — reach it via reticle_run
 reticle_network({ sessionId, limit: 10 })
 reticle_console({ sessionId, limit: 20 })
 ```
 
-> **Default `hybrid` profile: 16 tools advertised.** Everything else the skill names — `reticle_capabilities`, `reticle_act_sequence`, `reticle_session {action:"yield"}`, `reticle_session {action:"review"}`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list its params first with `reticle_tools`). Measured surfaces: `hybrid` 16 tools / ~74k chars, `standard` 33 / ~117k, `full` 46 / ~166k — so the default costs ~55% fewer schema characters than `full`.
+> **There is one tool surface, and nothing to pick.** The verify loop is advertised directly (navigate / snapshot / query / act / act_and_wait / observe / network / console / wait_for / assert / state / inspect / sessions / session / feedback). Everything else the skill names — `reticle_capabilities`, `reticle_act_sequence`, the flow and record tools — is one hop away through two meta-tools: `reticle_run({ tool, args })` invokes any tool by name, `reticle_tools` lists them (pass `names:[…]` for full params). `reticle_run` takes `sessionId` at the top level and forwards it, so you do not have to nest it in `args`. Advertised counts, checked by a gate (`surface-sizes.test.ts`): `default` 17, `all` 48.
 >
-> **`RETICLE_TOOL_PROFILE` is read by the DAEMON at startup, not by your client.** Setting it in the agent's environment while a daemon is already running changes nothing, and the two profiles then look identical because you are still talking to the old one. Run `npx @reticlehq/server stop` first.
+> `all` is a verification switch, not a mode to drive agents in: `RETICLE_ADVERTISE_ALL_TOOLS=1` advertises every tool **with its output schema**, at several times the per-turn cost. It is read by the DAEMON at startup, never by your client — exporting it while a daemon is already running changes nothing, so run `npx @reticlehq/server stop` first.
 
 Build a mental model:
 
@@ -511,7 +504,7 @@ reticle_run({ tool: "reticle_act_sequence", args: { sessionId, steps: [
   { ref: emailRef,    action: "fill",   args: { value: "a@b.com" } },
   { ref: passwordRef, action: "fill",   args: { value: "hunter2"  } },
   { ref: submitRef,   action: "click" }
-] }})   // act_sequence is not advertised under the default hybrid profile — hence reticle_run
+] }})   // act_sequence is not advertised directly — hence reticle_run
 → reticle_assert({ sessionId, since, predicate: { kind: "allOf", predicates: [
     { kind: "signal",  name: "auth:granted" },
     { kind: "net",     method: "POST", urlContains: "/api/login", status: 200 },
@@ -564,7 +557,7 @@ For flows worth re-checking forever — the actual test suite — record them, t
 
    On a failure the envelope tells you exactly what changed, the `file:line`, and the fix (e.g. "rebind to 'new-deploy'") — act on `nextAction` directly. A single flow: `reticle_flow_replay({ flowName })`.
 
-   > **Tool profile (default `hybrid`).** Reticle advertises 16 core verify tools directly and keeps everything else (record/replay/verify/heal, screenshots, network-mock, `act_sequence`, …) one call away behind two meta-tools — ~55% fewer schema characters per turn than `full`. Reach a non-core tool with `reticle_run({ tool: "reticle_flow_verify", args: { sessionId } })`, or `reticle_tools` first to list its params. Want them advertised directly? Set `RETICLE_TOOL_PROFILE=standard` (33 tools) or `=full` (46) **and restart the daemon** — the profile is read at daemon startup, not per client.
+   > **Reaching the flow tools.** Record/replay/verify/heal, screenshots, network-mock and `act_sequence` are not advertised directly — call `reticle_run({ tool: "reticle_flow_verify", sessionId })`, or `reticle_tools` first to list a tool's params.
 
 ### Read program truth in one call — instead of reconstructing it from the DOM
 
@@ -629,11 +622,11 @@ If something failed, call `reticle_inspect({ sessionId, ref })` on the failing e
 
 ### The `reticle_*` tools disappeared mid-session
 
-The MCP proxy lost its stream to the daemon. From 2.3.1 it reconnects on its own and replays the handshake, so this should heal without anyone doing anything — the daemon stays up across the drop, and `npx @reticlehq/server status` will confirm it (`running:true`).
+The MCP proxy lost its stream to the daemon. It reconnects on its own and replays the handshake, so this should heal without anyone doing anything — the daemon stays up across the drop, and `npx @reticlehq/server status` will confirm it (`running:true`).
 
 Read `~/.reticle/mcp-proxy.log` — it records every drop and reconnect with a reason (`sse_ended`, `sse_error`, `connect_error`) and the attempt number. It is the only place this is visible; the disconnect is silent from the agent's side.
 
-If the tools stay gone, the proxy exhausted its reconnect budget (`reticle_mcp_proxy_gave_up` in that log) and only the human can restore them by running `/mcp`. Until then, use the CLI for anything that doesn't need the tools: `npx @reticlehq/server status | doctor | open | drive`.
+If the tools stay gone, the proxy has stopped RETRYING (`reticle_mcp_proxy_dormant_after_budget` in that log) — it has not stopped serving. Just call a tool again: the next request wakes it and starts a daemon. It used to exit here, which is what made a human open `/mcp`; that no longer happens. If a call still fails after that, use the CLI for anything that doesn't need the tools: `npx @reticlehq/server status | doctor | open | drive`.
 
 ### Multiple projects / port conflicts
 
@@ -691,16 +684,16 @@ Then reload Claude Code (`/mcp`) so the new version is picked up on next connect
 
 2. **Check for the Stop hook:** `cat ~/.claude/settings.json | grep reticle` If present, delete that hook entry, then repeat step 1.
 
-3. **If -32000 persists**, the daemon may be crashing on startup. Check the log: `cat ~/.reticle/daemon-4400.log | tail -30` Look for `reticle_daemon_start_failed` or `reticle_mcp_proxy_error`. If the port is taken by another process: `lsof -i :4400` to identify it, then kill it and retry.
+3. **If -32000 persists**, the daemon may be crashing on startup. Check the log: `cat ~/.reticle/daemon-4400.log | tail -30` Look for `reticle_daemon_start_failed` or `reticle_mcp_daemon_unavailable`. If the port is taken by another process: `lsof -i :4400` to identify it, then kill it and retry.
 
 4. **Confirm the MCP config is user-level** (not project-level) and has no pinned version:
 
    ```bash
-   cat ~/.claude/claude_mcp_config.json
-   # Should contain: {"mcpServers": {"reticle": {"command": "npx", "args": ["@reticlehq/server", "mcp"]}}}
+   claude mcp list        # ~/.claude.json is large and stateful — ask the CLI, do not read it
+   # Should show: reticle → npx @reticlehq/server mcp   (no --port, no pinned version)
    ```
 
-   If the project has a `.mcp.json` or `.claude/mcp.json` that overrides the user-level config with pinned args (e.g., `["@reticlehq/server@0.x.y", "mcp"]`), rename it out of the way and re-register:
+   If the project has a `.mcp.json` or `.claude/mcp.json` that overrides the user-level config with a pinned version in its args (`["@reticlehq/server@<pinned>", "mcp"]`), rename it out of the way and re-register:
 
    ```bash
    claude mcp add reticle -s user -- npx @reticlehq/server mcp

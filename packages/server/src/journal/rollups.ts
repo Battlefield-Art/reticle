@@ -1,4 +1,4 @@
-import { EventType, type ReticleEvent } from '@reticlehq/core';
+import { EventType, StreamDirection, type ReticleEvent } from '@reticlehq/core';
 
 /**
  * A route-segment rollup: what happened between two ROUTE_CHANGE events. Aggregated, not raw — the
@@ -65,14 +65,14 @@ function finalize(acc: SegmentAcc): SegmentRollup {
     net: { total: acc.netTotal, errors: acc.netErrors },
     consoleErrors: acc.consoleErrors,
     statePathsChanged: acc.statePaths,
-    ...(acc.streams.frames === 0 ? {} : { streams: acc.streams }),
+    ...(0 === acc.streams.frames ? {} : { streams: acc.streams }),
     ...(acc.truncated ? { truncated: true } : {}),
   };
 }
 
 function isNetError(event: ReticleEvent): boolean {
   const status = event.data['status'];
-  return event.data['ok'] === false || (typeof status === 'number' && status >= 400);
+  return false === event.data['ok'] || ('number' === typeof status && status >= 400);
 }
 
 /**
@@ -100,12 +100,12 @@ export function computeSegments(events: readonly ReticleEvent[]): SegmentRollup[
     if (event.type === EventType.ROUTE_CHANGE) {
       if (acc !== undefined) segments.push(finalize(acc));
       const pathname = event.data['pathname'];
-      acc = open(typeof pathname === 'string' ? pathname : undefined, event.t);
+      acc = open('string' === typeof pathname ? pathname : undefined, event.t);
       continue;
     }
     if (acc === undefined) acc = open(undefined, event.t);
     acc.to = event.t;
-    if (typeof event.actionId === 'string') acc.actionIds.add(event.actionId);
+    if ('string' === typeof event.actionId) acc.actionIds.add(event.actionId);
     if (event.type === EventType.NET_REQUEST) {
       acc.netTotal += 1;
       if (isNetError(event)) acc.netErrors += 1;
@@ -115,14 +115,14 @@ export function computeSegments(events: readonly ReticleEvent[]): SegmentRollup[
     }
     if (event.type === EventType.STATE_CHANGE) {
       const name = event.data['name'];
-      if (typeof name === 'string' && !acc.statePaths.includes(name)) acc.statePaths.push(name);
+      if ('string' === typeof name && !acc.statePaths.includes(name)) acc.statePaths.push(name);
     }
     if (event.type === EventType.NET_STREAM) {
       acc.streams.frames += 1;
       const direction = event.data['direction'];
-      if (direction === 'open') acc.streams.opened += 1;
-      else if (direction === 'in') acc.streams.in += 1;
-      else if (direction === 'out') acc.streams.out += 1;
+      if (StreamDirection.OPEN === direction) acc.streams.opened += 1;
+      else if (StreamDirection.IN === direction) acc.streams.in += 1;
+      else if (StreamDirection.OUT === direction) acc.streams.out += 1;
     }
     if (event.type === EventType.TRUNCATED || event.type === EventType.TRANSPORT_OVERFLOW) {
       acc.truncated = true;

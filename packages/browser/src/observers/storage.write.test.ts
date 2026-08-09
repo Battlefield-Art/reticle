@@ -77,7 +77,7 @@ describe('installStorage — storage write events', () => {
       expect(c.data['area']).toBe('local');
       expect(c.data['new']).toBeUndefined(); // removal
     }
-    const authChange = changes.find((c) => c.data['key'] === 'auth_token');
+    const authChange = changes.find((c) => 'auth_token' === c.data['key']);
     expect(authChange?.data['old']).toBe('[REDACTED]'); // credential redacted, not leaked on clear
     expect(localStorage.length).toBe(0); // the app's clear still happened
   });

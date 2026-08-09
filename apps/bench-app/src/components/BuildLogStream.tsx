@@ -11,10 +11,10 @@ import { useEffect, useRef, useState } from 'react';
  * `captureNetworkBodies` — a chatty stream is the high-volume case, so it is opt-in.
  */
 
-export const STREAM_STATUS_TESTID = 'stream-status';
-export const STREAM_STEPS_TESTID = 'stream-steps';
-export const WS_STATUS_TESTID = 'ws-status';
-export const WS_SEND_TESTID = 'ws-send';
+const STREAM_STATUS_TESTID = 'stream-status';
+const STREAM_STEPS_TESTID = 'stream-steps';
+const WS_STATUS_TESTID = 'ws-status';
+const WS_SEND_TESTID = 'ws-send';
 
 /** Overridable so the injector can point the app at a deliberately broken stream. */
 export const STREAM_URLS = {
@@ -43,8 +43,8 @@ export function BuildLogStream(): React.ReactElement {
       try {
         const frame: unknown = JSON.parse(String(ev.data));
         const step =
-          typeof frame === 'object' && frame !== null && 'step' in frame ? String(frame.step) : '';
-        if (step.length === 0) return;
+          'object' === typeof frame && frame !== null && 'step' in frame ? String(frame.step) : '';
+        if (0 === step.length) return;
         setSteps((prev) => [...prev, step]);
         if (step === DONE_LABEL) setStatus(DONE_LABEL);
       } catch {
@@ -61,7 +61,7 @@ export function BuildLogStream(): React.ReactElement {
       try {
         const reply: unknown = JSON.parse(String(ev.data));
         const channel =
-          typeof reply === 'object' && reply !== null && 'channel' in reply
+          'object' === typeof reply && reply !== null && 'channel' in reply
             ? String(reply.channel)
             : '';
         // A reply on a channel we never subscribed to is ignored — so the UI simply never updates.

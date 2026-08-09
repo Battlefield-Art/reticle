@@ -20,6 +20,25 @@ import { createHash } from 'node:crypto';
  * quoted value often contains the very numbers and paths the later rules would only partly catch.
  */
 const VARIABLE_PARTS: readonly RegExp[] = [
+  // ── Identifiers and credentials FIRST ────────────────────────────────────────────────────────
+  //
+  // The rules below this block were written to make messages GROUPABLE — blank the variable parts so
+  // the same defect hashes the same everywhere. Redaction was a side effect of that, and a side
+  // effect is not a guarantee. A telemetry audit caught `bob@acme.com` arriving verbatim in
+  // `crash_message`; probing further, API-key-shaped tokens survived intact and a JWT was only
+  // half-masked. This function also feeds `session.errors[]` on EVERY session summary, so the
+  // exposure was every session that logged an error naming a user, not a rare crash path.
+  //
+  // Order matters: these run before the generic patterns, because `\d+` and the hex rule would chew
+  // a token into pieces that no longer match a credential shape while still leaking most of it —
+  // which is exactly what happened to the JWT.
+  /[\w.+-]+@[\w-]+\.[\w.-]+/g, // email addresses
+  /\beyJ[\w-]*\.[\w-]*\.?[\w-]*/g, // JWTs (header segment is always base64 `eyJ`)
+  /\b(?:sk|pk|rk|ghp|gho|ghs|ghu|ghr|github_pat|xox[abposr]|AKIA|ASIA|glpat)[_-][A-Za-z0-9_-]{8,}/gi,
+  // Anything else long enough and dense enough to be a secret rather than a word. The catch-all for
+  // formats nobody here has seen: on a privacy boundary, unrecognised is not the same as safe.
+  /\b[A-Za-z0-9_-]{24,}\b/g,
+  // ── Then the grouping rules ──────────────────────────────────────────────────────────────────
   /"[^"]*"|'[^']*'|`[^`]*`/g, // quoted values — names, selectors, snippets
   /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, // URLs
   /(?:\/[\w.-]+){2,}\/?/g, // POSIX-ish paths
@@ -55,7 +74,7 @@ export function reticleFrames(stack: string): string[] {
   for (const line of stack.split('\n')) {
     if (!/@reticlehq[/\\]|[/\\]reticle[/\\]dist[/\\]/.test(line)) continue;
     const location = line.match(/([\w.-]+\.(?:js|mjs|cjs|ts)):(\d+)/);
-    if (location === null) continue;
+    if (null === location) continue;
     // `at Object.runTool (/path/to/invoke-tool.js:88:3)` → `runTool`. The function name is half the
     // value of a frame in an RCA — "it died in act-tools.js" narrows to a file, "it died in
     // resolveAnchor" names the thing that broke. Anonymous frames just report the location.
@@ -63,7 +82,7 @@ export function reticleFrames(stack: string): string[] {
     const where = `${location[1] ?? ''}:${location[2] ?? ''}`;
     // `Object.` / `Module.` prefixes are V8 noise that make the same function look like two.
     const name = fn?.replace(/^(?:Object|Module|Function)\./, '');
-    frames.push(name === undefined || name === '' ? where : `${name}@${where}`);
+    frames.push(name === undefined || '' === name ? where : `${name}@${where}`);
   }
   return frames;
 }

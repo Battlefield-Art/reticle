@@ -14,8 +14,15 @@ import { reticleDirPaths } from '../project/reticle-dir.js';
  * replay through the existing machinery rather than needing a second runner.
  */
 
+/**
+ * The capsule file-format version. Declared ABOVE the schema so the schema, the writer and this
+ * constant cannot disagree: the number was previously written as a bare `1` in three places — here,
+ * in the schema literal, and in act-capsule's writer — with the named one used by nobody.
+ */
+export const CAPSULE_VERSION = 1;
+
 export const CapsuleSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(CAPSULE_VERSION),
   id: z.string(),
   /** The flow the failure happened in, when it came from one (a bare assert has no flow). */
   flow: z.string().optional(),
@@ -30,8 +37,6 @@ export const CapsuleSchema = z.object({
   steps: z.array(FlowStepSchema),
 });
 export type Capsule = z.infer<typeof CapsuleSchema>;
-
-export const CAPSULE_VERSION = 1;
 
 /** Capsule ids are filenames — refuse anything that could escape the capsules directory. */
 export function isValidCapsuleId(id: string): boolean {

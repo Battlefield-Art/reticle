@@ -43,7 +43,7 @@ export function normalizeOptions(raw: RawRuleOptions | undefined): NormalizedOpt
   let signalList: readonly string[];
   if (rawSignal === undefined) {
     signalList = DEFAULT_SIGNAL_CALLEES;
-  } else if (typeof rawSignal === 'string') {
+  } else if ('string' === typeof rawSignal) {
     signalList = [rawSignal];
   } else {
     signalList = rawSignal;

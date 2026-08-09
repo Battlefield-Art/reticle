@@ -67,7 +67,7 @@ const DEFAULT_POLICY: RedactionPolicy = { isSensitiveKey: defaultIsSensitiveKey 
  */
 function redactByKey(value: unknown, policy: RedactionPolicy): unknown {
   if (Array.isArray(value)) return value.map((v) => redactByKey(v, policy));
-  if (value !== null && typeof value === 'object') {
+  if (value !== null && 'object' === typeof value) {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
       out[k] = policy.isSensitiveKey(k) ? REDACTED_VALUE : redactByKey(v, policy);
@@ -148,16 +148,16 @@ export function buildNetworkDetail(
     status: raw.status,
     headers: projectHeaders(raw.headers, policy),
     ...(raw.resourceType === undefined ? {} : { resourceType: raw.resourceType }),
-    ...(raw.requestBody === undefined || raw.requestBody.length === 0
+    ...(raw.requestBody === undefined || 0 === raw.requestBody.length
       ? {}
       : { requestBody: projectWireBody(raw.requestBody, policy) }),
-    ...(raw.pageUrl === undefined || raw.pageUrl.length === 0 ? {} : { pageUrl: raw.pageUrl }),
+    ...(raw.pageUrl === undefined || 0 === raw.pageUrl.length ? {} : { pageUrl: raw.pageUrl }),
   };
 }
 
 function keyOf(url: unknown, method: unknown): string {
-  const m = typeof method === 'string' ? method.toUpperCase() : '';
-  const u = typeof url === 'string' ? url : '';
+  const m = 'string' === typeof method ? method.toUpperCase() : '';
+  const u = 'string' === typeof url ? url : '';
   return `${m} ${u}`;
 }
 
@@ -195,9 +195,9 @@ export function mergeNetworkDetail(events: readonly ReticleEvent[]): ReticleEven
       // finding — that is the whole reason for capturing it — so the authoritative one wins and the
       // divergence is flagged rather than silently resolved.
       const wireBody = e.data['requestBody'];
-      if (typeof wireBody === 'string') {
+      if ('string' === typeof wireBody) {
         const pageBody = data['requestBody'];
-        if (typeof pageBody === 'string' && pageBody !== wireBody) {
+        if ('string' === typeof pageBody && pageBody !== wireBody) {
           data['requestBodyDivergedFromPage'] = true;
         }
         data['requestBody'] = wireBody;
@@ -244,7 +244,7 @@ export function attachNetworkDetail(page: PageLike, emit: (detail: NetworkDetail
             status: response.status(),
             headers,
             ...(resourceType === undefined ? {} : { resourceType }),
-            ...(postData === null ? {} : { requestBody: postData }),
+            ...(null === postData ? {} : { requestBody: postData }),
             pageUrl: page.url(),
           },
           // Resolved per response, not per attachment: a session declaring extra keys can connect

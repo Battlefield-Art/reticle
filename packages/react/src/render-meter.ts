@@ -42,7 +42,7 @@ function reticleInstance(): { renderCommit?: (n: number) => void } | undefined {
 // storm is one event of magnitude N, never a per-render flood. requestAnimationFrame when available.
 const commitStream = createCommitAggregator({
   schedule: (fn) => {
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => fn());
+    if ('function' === typeof requestAnimationFrame) requestAnimationFrame(() => fn());
     else setTimeout(fn, 16);
   },
   flush: (n) => reticleInstance()?.renderCommit?.(n),
@@ -135,7 +135,7 @@ export function installRenderMeter(): void {
       };
     } else {
       const original =
-        typeof existing.onCommitFiberRoot === 'function'
+        'function' === typeof existing.onCommitFiberRoot
           ? existing.onCommitFiberRoot.bind(existing)
           : undefined;
       existing.onCommitFiberRoot = (...args: unknown[]) => {

@@ -30,7 +30,7 @@ const MIN_ENVELOPE_SAMPLES = 3;
 /** Coverage when the SDK reported no blind spots during the window — it saw everything it can see. */
 const FULL_COVERAGE_PCT = 100;
 
-export interface HonestyInputs {
+interface HonestyInputs {
   grade: HonestyGrade;
   /** Present when a causal chain is presented; `window` = time-heuristic, never dataflow truth. */
   attribution?: string;
@@ -53,7 +53,7 @@ export interface HonestyBlock {
 
 export function buildHonestyBlock(inputs: HonestyInputs): HonestyBlock {
   const issues: string[] = [];
-  if (inputs.truncated === true) issues.push('capture truncated');
+  if (true === inputs.truncated) issues.push('capture truncated');
   for (const spot of inputs.blindSpots ?? []) issues.push(`blind spot: ${spot}`);
 
   // Report only what was measured. `envelope` used to be emitted unconditionally with samples=0, so
@@ -73,11 +73,11 @@ export function buildHonestyBlock(inputs: HonestyInputs): HonestyBlock {
       ? {}
       : { envelope: { samples, sufficient: samples >= MIN_ENVELOPE_SAMPLES } }),
     coverage: { ...(pct === undefined ? {} : { pct }), partial },
-    integrity: { clean: issues.length === 0, issues },
+    integrity: { clean: 0 === issues.length, issues },
   };
 }
 
-export interface HonestyBar {
+interface HonestyBar {
   /** The minimum grade a green must carry to be trusted (default: any). */
   minGrade?: HonestyGrade;
   /** Require capture integrity to be clean (no truncation / blind spots). */
@@ -93,8 +93,8 @@ export function meetsHonestyBar(
   if (bar.minGrade !== undefined && GRADE_RANK[block.grade] < GRADE_RANK[bar.minGrade]) {
     reasons.push(`grade ${block.grade} below required ${bar.minGrade}`);
   }
-  if (bar.requireIntegrityClean === true && !block.integrity.clean) {
+  if (true === bar.requireIntegrityClean && !block.integrity.clean) {
     reasons.push(`integrity not clean: ${block.integrity.issues.join('; ')}`);
   }
-  return { ok: reasons.length === 0, reasons };
+  return { ok: 0 === reasons.length, reasons };
 }

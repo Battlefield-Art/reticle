@@ -86,9 +86,9 @@ export function humanDuration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
-  if (m < 60) return s % 60 === 0 ? `${m}m` : `${m}m ${s % 60}s`;
+  if (m < 60) return 0 === s % 60 ? `${m}m` : `${m}m ${s % 60}s`;
   const h = Math.floor(m / 60);
-  return m % 60 === 0 ? `${h}h` : `${h}h ${m % 60}m`;
+  return 0 === m % 60 ? `${h}h` : `${h}h ${m % 60}m`;
 }
 
 /** Per-row timestamp: time since the session's first row, human-readable (e.g. "2m", not "+132.4s"). */

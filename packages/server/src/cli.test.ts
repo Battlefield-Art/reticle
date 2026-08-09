@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CLI_USAGE, parseCliArgs } from './cli.js';
-import { summarizeStatus } from './cli-launch.js';
+import { parseCliArgs } from './cli.js';
+import { summarizeStatus } from './cli/cli-launch.js';
 
 const PORT = 7333;
 const URL = 'http://localhost:3000';
@@ -67,8 +67,21 @@ describe('parseCliArgs', () => {
     });
   });
 
-  it('rejects `affected` with no files', () => {
-    expect(parseCliArgs(['affected'], PORT).kind).toBe('error');
+  /**
+   * The rule `reticle init` writes into CLAUDE.md tells the agent to run `reticle gate` — bare, no
+   * arguments — and the parser answered with a usage error. An instruction an agent cannot follow is
+   * worse than none: it spends a turn on it and learns the tool is broken.
+   *
+   * Bare means "what I just changed", which is the working tree against HEAD — the same question the
+   * agent is asking when it reaches for the command at all.
+   */
+  it('bare `gate` and `affected` mean the working tree, not a usage error', () => {
+    expect(parseCliArgs(['gate'], PORT)).toEqual({ kind: 'gate', files: [], since: 'HEAD' });
+    expect(parseCliArgs(['affected'], PORT)).toEqual({
+      kind: 'affected',
+      files: [],
+      since: 'HEAD',
+    });
   });
 
   it('parses `gate <file...>` into the changed-file list', () => {
@@ -86,10 +99,6 @@ describe('parseCliArgs', () => {
       files: ['src/a.ts'],
       since: 'HEAD~1',
     });
-  });
-
-  it('rejects `gate` with no files', () => {
-    expect(parseCliArgs(['gate'], PORT).kind).toBe('error');
   });
 
   it('parses the lifecycle commands moved to the CLI', () => {
@@ -160,8 +169,11 @@ describe('parseCliArgs', () => {
     });
   });
 
-  it('verify with no url is an error', () => {
-    expect(parseCliArgs(['verify'], PORT)).toEqual({ kind: 'error', message: CLI_USAGE });
+  it('verify with no url says it needs a url', () => {
+    expect(parseCliArgs(['verify'], PORT)).toEqual({
+      kind: 'error',
+      message: 'verify needs a url',
+    });
   });
 
   it('verify <url> --storage-state captures the auth file path', () => {
@@ -173,10 +185,10 @@ describe('parseCliArgs', () => {
     });
   });
 
-  it('verify --storage-state with no path is an error', () => {
+  it('verify --storage-state with no path names the flag', () => {
     expect(parseCliArgs(['verify', URL, '--storage-state'], PORT)).toEqual({
       kind: 'error',
-      message: CLI_USAGE,
+      message: '--storage-state needs a value',
     });
   });
 
@@ -212,11 +224,31 @@ describe('parseCliArgs', () => {
     });
   });
 
-  it('init rejects unknown flags', () => {
-    expect(parseCliArgs(['init', '--bogus'], PORT)).toEqual({
-      kind: 'error',
-      message: CLI_USAGE,
-    });
+  /**
+   * A usage error has to name the argument it rejected.
+   *
+   * The install gate reported `init crashed:` followed by 600 characters of unrelated help text —
+   * the whole CLI_USAGE block, JSON-escaped onto one stderr line by `log()`, with no mention of
+   * which flag was wrong. That is the same experience a human gets after one typo, and it made a
+   * one-word mistake unreadable in a report and undiagnosable from a CI log.
+   */
+  it('init rejects unknown flags, and says which one', () => {
+    const parsed = parseCliArgs(['init', '--bogus'], PORT);
+    expect(parsed.kind).toBe('error');
+    expect('error' === parsed.kind && parsed.message).toMatch(/--bogus/);
+  });
+
+  it('a flag that needs a value says so by name', () => {
+    const parsed = parseCliArgs(['init', '--app'], PORT);
+    expect(parsed.kind).toBe('error');
+    expect('error' === parsed.kind && parsed.message).toMatch(/--app/);
+  });
+
+  it('a usage error stays short — the help text is not the message', () => {
+    // It is rendered separately, as readable text. Carrying it in `message` is what put an escaped
+    // 600-character wall into a log line and a fixtures report.
+    const parsed = parseCliArgs(['init', '--bogus'], PORT);
+    expect('error' === parsed.kind && parsed.message.length).toBeLessThan(120);
   });
 
   it('stop returns stop result with quiet false', () => {
@@ -316,15 +348,14 @@ describe('parseCliArgs', () => {
     });
   });
 
-  it('drive without a url is a usage error', () => {
-    expect(parseCliArgs(['drive'], PORT)).toEqual({ kind: 'error', message: CLI_USAGE });
+  it('drive without a url says it needs a url', () => {
+    expect(parseCliArgs(['drive'], PORT)).toEqual({ kind: 'error', message: 'drive needs a url' });
   });
 
-  it('drive with an unknown flag is a usage error', () => {
-    expect(parseCliArgs(['drive', URL, '--nope'], PORT)).toEqual({
-      kind: 'error',
-      message: CLI_USAGE,
-    });
+  it('drive with an unknown flag names the flag', () => {
+    const parsed = parseCliArgs(['drive', URL, '--nope'], PORT);
+    expect(parsed.kind).toBe('error');
+    expect('error' === parsed.kind && parsed.message).toMatch(/--nope/);
   });
 
   it('_daemon returns _daemon result', () => {
@@ -410,8 +441,11 @@ describe('parseCliArgs', () => {
     });
   });
 
-  it('unknown command is a usage error', () => {
-    expect(parseCliArgs(['nope'], PORT)).toEqual({ kind: 'error', message: CLI_USAGE });
+  it('an unknown command names the command', () => {
+    expect(parseCliArgs(['nope'], PORT)).toEqual({
+      kind: 'error',
+      message: "unknown command 'nope'",
+    });
   });
 });
 

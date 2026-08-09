@@ -5,13 +5,13 @@
  * about what everything means. Pure set math; the deviation report + gate carry the number.
  */
 
-export interface DeclaredSurface {
+interface DeclaredSurface {
   testids: readonly string[];
   signals: readonly string[];
   flows: readonly string[];
 }
 
-export interface CoverageDimension {
+interface CoverageDimension {
   total: number;
   covered: number;
   /** Percent covered, rounded; 100 when nothing is declared (vacuously complete). */
@@ -31,7 +31,7 @@ export interface Coverage {
 function dimension(declared: readonly string[], exercised: ReadonlySet<string>): CoverageDimension {
   const uncovered = declared.filter((d) => !exercised.has(d));
   const covered = declared.length - uncovered.length;
-  const pct = declared.length === 0 ? 100 : Math.round((covered / declared.length) * 100);
+  const pct = 0 === declared.length ? 100 : Math.round((covered / declared.length) * 100);
   return { total: declared.length, covered, pct, uncovered };
 }
 
@@ -41,6 +41,6 @@ export function computeCoverage(declared: DeclaredSurface, exercised: DeclaredSu
   const flows = dimension(declared.flows, new Set(exercised.flows));
   const total = testids.total + signals.total + flows.total;
   const covered = testids.covered + signals.covered + flows.covered;
-  const overallPct = total === 0 ? 100 : Math.round((covered / total) * 100);
+  const overallPct = 0 === total ? 100 : Math.round((covered / total) * 100);
   return { testids, signals, flows, overallPct };
 }

@@ -1,10 +1,10 @@
-import { ReticleCommand, PresenterMode } from '@reticlehq/core';
+import { ReticleCommand, PresenterMode, QueryBy } from '@reticlehq/core';
 import { refs } from './dom/refs.js';
 import { describe } from './dom/a11y.js';
 
 /** Coerce an unknown arg to a string, falling back to `fallback` (default empty) when it isn't one. */
 export function str(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value : fallback;
+  return 'string' === typeof value ? value : fallback;
 }
 
 /** A short human label for a ref ("button \"Save\"") for the presenter HUD. */
@@ -73,7 +73,8 @@ export function presentStatus(commandName: string, args: Record<string, unknown>
 
 /** Compact "what we're looking for" from a query's args (testid/value/name/role/text/label). */
 function queryTarget(q: Record<string, unknown>): string | undefined {
-  const testid = str(q['testid']) ?? (str(q['by']) === 'testid' ? str(q['value']) : undefined);
+  const testid =
+    str(q['testid']) ?? (QueryBy.TESTID === str(q['by']) ? str(q['value']) : undefined);
   if (testid !== undefined) return `[testid=${testid}]`;
   const name = str(q['name']);
   const value = str(q['value']) ?? str(q['text']) ?? str(q['label']) ?? str(q['role']);

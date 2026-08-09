@@ -1,27 +1,28 @@
 /**
- * Action tools — reticle_act, reticle_act_sequence, reticle_act_and_wait — plus the native-input machinery
- * (asBox / tryRealInput). Split out of tools.ts to keep that file under the line cap; assembled back
- * into the tool list there via...ACT_TOOLS.
+ * Action tools — reticle_act, reticle_act_sequence, reticle_act_and_wait. Split out of tools.ts to keep
+ * that file under the line cap and assembled back into the tool list there via ...ACT_TOOLS; the
+ * native-input attempt itself lives in real-input-attempt.ts for the same reason.
  */
 import { z } from 'zod';
-import { compileActStep, compileSequenceStep } from '../flows/replay.js';
+import { aliasParam } from './alias-args.js';
+import { captureAct, compileSequenceStep } from '../flows/replay.js';
 import {
   ActionType,
   ActionWarning,
   DEFAULT_ASSERT_TIMEOUT_MS,
   InputMode,
-  InputModeReason,
   ReticleCommand,
+  Verified,
+  PredicateKind,
 } from '@reticlehq/core';
-import type { Session } from '../session/session.js';
-import type { ElementBox, RealInputArgs } from '../input/real-input.js';
-import { isPointerAction } from '../input/real-input.js';
+import { assertNativeInputSupported } from './act-danger.js';
 import { leanActResult, mutatedWithin } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
 import { causalSummary } from '../capsule/causal-summary.js';
 import { findContradictions } from '../events/contradictions.js';
 import { decideVerified } from '../honesty/verified.js';
+import { readsDomState } from '../honesty/already-true.js';
 import { saveFailedAssertCapsule } from './act-capsule.js';
 import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
@@ -29,11 +30,11 @@ import { buildHonestyBlock } from '../honesty/honesty.js';
 import {
   buildCoverageStatement,
   blindSpotsFromState,
+  Coverage,
   impeachesCapture,
 } from '../honesty/blind-spots.js';
 import { hasAcceptedWrite } from '../honesty/accepted-write.js';
 import { hasUnreadWriteOutcome } from '../honesty/unread-outcome.js';
-import { assertDragNotDestructive, assertNotDestructive } from './act-danger.js';
 import {
   evaluatePredicate,
   waitForPredicate,
@@ -41,96 +42,16 @@ import {
   PredicateSchema,
 } from '../events/predicate.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
-import { pausedShortCircuit, pausedOutputShape, withControl } from '../session/control-envelope.js';
+import {
+  pausedShortCircuit,
+  pausedOutputShape,
+  withControl,
+  PAUSED_NO_VERDICT,
+} from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
-import { type ToolDef, type ToolDeps, sessionIdShape, commandOrThrow } from './tool-kit.js';
-import { asActionType, asBox, gradeOf } from './act-helpers.js';
-
-interface RealActResult {
-  /** Defined only on a successful native action; `undefined` means the synthetic path runs. */
-  result: unknown;
-  settled: boolean;
-  /** Set when a provider was available but threw — surfaces the fallback to the agent. */
-  fellBack?: boolean;
-  /** Why we went synthetic despite a configured provider (field bug #2: never a silent fallback). */
-  reason?: InputModeReason;
-}
-
-/** Synthetic outcome with a diagnostic reason (provider configured but native input skipped). */
-function synthetic(reason?: InputModeReason): RealActResult {
-  return reason === undefined
-    ? { result: undefined, settled: false }
-    : { result: undefined, settled: false, reason };
-}
-
-/**
- * Attempt to drive a pointer action via native input. Returns a synthetic outcome (with a
- * `reason` when a provider is configured) whenever the synthetic path should run — no matching
- * page, unresolvable box, declined, etc. A throw inside the provider becomes a synthetic fallback
- * flagged with `fellBack`. `result` is defined only on a real success.
- */
-async function tryRealInput(
-  deps: ToolDeps,
-  session: Session,
-  ref: string,
-  action: ActionType,
-  args: Record<string, unknown>,
-): Promise<RealActResult> {
-  const provider = deps.realInput;
-  if (provider === undefined) return synthetic(); // real input not configured — no diagnostic
-  if (!isPointerAction(action)) return synthetic(InputModeReason.NOT_POINTER); // fill/type stay synthetic
-
-  const inner = asRecord(args['args']);
-  // "Don't click, run the code": a click/dblclick runs the occlusion-honest SYNTHETIC path by default
-  // even with a provider configured — no coordinate gesture to be intercepted by the HUD or missed
-  // off-screen. Opt into a trusted native click with args.native:true (file pickers, clipboard,
-  // isTrusted-gated handlers). hover/drag genuinely need native pointer state, so they stay real.
-  if ((action === ActionType.CLICK || action === ActionType.DBLCLICK) && inner['native'] !== true) {
-    return synthetic(InputModeReason.SYNTHETIC_CLICK_PREFERRED);
-  }
-
-  if (!(await provider.isAvailableFor(session.url)))
-    return synthetic(InputModeReason.PAGE_NOT_CORRELATED);
-
-  const inspected = await commandOrThrow(deps, session.id, ReticleCommand.INSPECT, { ref });
-  assertNotDestructive(action, inner, inspected);
-  const box = asBox(inspected);
-  if (box === undefined) return synthetic(InputModeReason.ELEMENT_NOT_LOCATABLE);
-
-  let toBox: ElementBox | undefined;
-  if (action === ActionType.DRAG) {
-    const toRef = asString(inner['toRef']);
-    if (toRef === undefined) return synthetic(InputModeReason.DRAG_TARGET_UNRESOLVED);
-    const targetInspected = await commandOrThrow(deps, session.id, ReticleCommand.INSPECT, {
-      ref: toRef,
-    });
-    // A drag is judged on BOTH ends: dropping onto "Trash" is destructive however innocent the
-    // thing being dragged looks.
-    assertDragNotDestructive(inner, inspected, targetInspected);
-    toBox = asBox(targetInspected);
-    if (toBox === undefined) return synthetic(InputModeReason.DRAG_TARGET_UNRESOLVED);
-  }
-
-  const performArgs: RealInputArgs = {};
-  const value = asString(inner['value']);
-  if (value !== undefined) performArgs.value = value;
-  const text = asString(inner['text']);
-  if (text !== undefined) performArgs.text = text;
-  if (toBox !== undefined) performArgs.toBox = toBox;
-
-  try {
-    const performed = await provider.perform(session.url, action, box, performArgs);
-    if (!performed.performed) return synthetic(InputModeReason.PROVIDER_DECLINED);
-    return { result: { performed: true, center: performed.center, action }, settled: true };
-  } catch {
-    return {
-      result: undefined,
-      settled: false,
-      fellBack: true,
-      reason: InputModeReason.PROVIDER_ERROR,
-    };
-  }
-}
+import { type ToolDef, sessionIdShape } from './tool-kit.js';
+import { asActionType, gradeOf } from './act-helpers.js';
+import { tryRealInput } from './real-input-attempt.js';
 
 /**
  * Narrow the wire's `action` to a real ActionType, or undefined.
@@ -141,23 +62,33 @@ async function tryRealInput(
  * unknown-plus-narrowing rule, so a typo is rejected where it can still be explained.
  */
 
+/**
+ * The action vocabulary, derived from ActionType — never retyped.
+ *
+ * The description used to list thirteen actions while ActionType had seventeen: blur, upload, drag
+ * and webmcp were real, callable, and undocumented, because a hand-copied list drifts the moment
+ * someone adds an arm. Deriving both the schema and the prose from the enum makes that impossible.
+ *
+ * The handler already refused an unknown action with a good message; the schema now refuses it
+ * one layer earlier, before any session is resolved or any work is done.
+ */
+const ACTION_TYPE_VALUES = Object.values(ActionType);
+const ACTION_TYPE_LIST = ACTION_TYPE_VALUES.join(' | ');
+const actionTypeEnum = z.enum(ACTION_TYPE_VALUES as [string, ...string[]]);
+
 export const ACT_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.ACT,
     example: { ref: 'e42', action: 'fill', args: { value: 'hello' } },
     description:
-      'Execute one action against a ref: click|dblclick|hover|focus|fill|type|clear|select|check|uncheck|submit|press|scrollIntoView. Returns immediately with a `since` cursor — observe the reaction with reticle_observe. Carries effect:{dispatched,targetMatched,visible,enabled,focusMoved,valueChanged,domMutatedWithin,occluded,occludedBy,scrolledIntoView} to tell "action missed" from "app didn\'t react"; dispatched=landed, settled=a real frame flushed, and a settle timeout never fails the tool. Fields at their uninformative default are OMITTED so a clean action collapses to its consequence: an absent dispatched/targetMatched/visible/enabled means true, an absent occluded/scrolledIntoView/valueChanged/defaultPrevented means false, an absent focusMoved/occludedBy means null. occluded=true means the click point is covered by another element (a real user could not click it) — synthetic dispatch still delivered the event; scrolledIntoView=true means an off-viewport target was scrolled in first. inputMode is "real" (native CDP, no synthetic effect block) or "synthetic"; clicks default to the occlusion-honest synthetic path even when CDP is configured — pass args.native:true to force a trusted native click (file pickers, clipboard). inputModeReason explains any real→synthetic choice so it is never silent. Full model (real-input, throttled tabs, `reticle drive`): docs/usage.md §18.',
+      'Execute one action against a ref: click|dblclick|hover|focus|fill|type|clear|select|check|uncheck|submit|press|scrollIntoView. Returns immediately with a `since` cursor — observe the reaction with reticle_observe. For a VERDICT instead of a cursor use reticle_act_and_wait { until } — the same action plus the assertion, in one call; prefer it whenever the action is supposed to cause something. Carries effect:{dispatched,targetMatched,visible,enabled,focusMoved,valueChanged,domMutatedWithin,occluded,occludedBy,scrolledIntoView} to tell "action missed" from "app didn\'t react"; dispatched=landed, settled=a real frame flushed, and a settle timeout never fails the tool. Fields at their uninformative default are OMITTED so a clean action collapses to its consequence: an absent dispatched/targetMatched/visible/enabled means true, an absent occluded/scrolledIntoView/valueChanged/defaultPrevented means false, an absent focusMoved/occludedBy means null. occluded=true means the click point is covered by another element (a real user could not click it) — synthetic dispatch still delivered the event; scrolledIntoView=true means an off-viewport target was scrolled in first. inputMode is "real" (native CDP, no synthetic effect block) or "synthetic"; clicks default to the occlusion-honest synthetic path even when CDP is configured — pass args.native:true to force a trusted native click (file pickers, clipboard). inputModeReason explains any real→synthetic choice so it is never silent. Full model (real-input, throttled tabs, `reticle drive`): docs/usage.md §18.',
     inputSchema: {
       ref: z
         .string()
         .describe(
           `Element ref (e.g. 'e42') from reticle_snapshot/reticle_query — stable until the element leaves the DOM, so no re-snapshot between actions.`,
         ),
-      action: z
-        .string()
-        .describe(
-          'Action to perform: click | dblclick | hover | focus | fill | type | clear | select | check | uncheck | submit | press | scrollIntoView',
-        ),
+      action: actionTypeEnum.describe(`Action to perform: ${ACTION_TYPE_LIST}`),
       args: z
         .record(z.unknown())
         .optional()
@@ -209,10 +140,8 @@ export const ACT_TOOLS: ToolDef[] = [
       if (paused !== undefined) return paused;
       refuseIfThrottled(session, args['refuseWhenThrottled']);
       const since = session.elapsed();
-      session.lastAct.markCursor(since); // honesty: wait_for/assert default their floor to this cursor
-      // Cleared up front: a throw between here and the result must not leave the PREVIOUS act's
-      // measurement standing, which would judge this window with the last one's evidence.
-      session.lastAct.markEffect(asString(args['action']), undefined);
+      // The act cursor + effect are marked only once the action has actually DISPATCHED (below, on
+      // each success path) — a refused act must leave nothing behind for the next observe to judge.
       const ref = asString(args['ref']) ?? '';
 
       // Open the journal's action-attribution window BEFORE dispatching, so it covers the native path
@@ -228,10 +157,11 @@ export const ACT_TOOLS: ToolDef[] = [
         // drive native pointer input when a provider is available; otherwise fall back.
         const real = await tryRealInput(deps, session, ref, action, args);
         if (real.result !== undefined) {
-          if (deps.recordings.active().length > 0) {
-            deps.recordings.capture(compileActStep(args, real.result));
-          }
+          captureAct(deps.recordings, args, real.result);
           settledOutcome = real.settled ?? undefined;
+          // Native input reports no synthetic effect block, so nothing measured in-target: undefined
+          // (the weaker empty-window test), never a fabricated zero.
+          session.lastAct.markActed(since, action, undefined);
           return withControl(session, {
             since,
             inputMode: InputMode.REAL,
@@ -249,16 +179,14 @@ export const ACT_TOOLS: ToolDef[] = [
           args: args['args'] ?? {},
         });
         if (!result.ok) throw new Error(result.error ?? 'act failed');
-        if (deps.recordings.active().length > 0) {
-          deps.recordings.capture(compileActStep(args, result.result));
-        }
+        captureAct(deps.recordings, args, result.result);
         // lift dispatch/settle status to the envelope (a settle timeout is NOT a failure).
         const r = asRecord(result.result);
-        if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
+        if ('boolean' === typeof r['settled']) settledOutcome = r['settled'];
         // Keep what only this call measured, so the observe that judges this window can ask whether
         // anything happened INSIDE the target — the one fact that separates a dead control from a
         // page that was merely busy with something else.
-        session.lastAct.markEffect(asString(args['action']), mutatedWithin(r));
+        session.lastAct.markActed(since, action, mutatedWithin(r));
         return withControl(session, {
           since,
           inputMode: InputMode.SYNTHETIC,
@@ -268,7 +196,7 @@ export const ACT_TOOLS: ToolDef[] = [
           settled: r['settled'] ?? null,
           settleReason: r['settleReason'] ?? null,
           result: leanActResult(result.result),
-          ...(real.fellBack === true ? { warning: ActionWarning.REAL_INPUT_FELL_BACK } : {}),
+          ...(true === real.fellBack ? { warning: ActionWarning.REAL_INPUT_FELL_BACK } : {}),
           ...healthEnvelope(session),
         });
       } finally {
@@ -276,7 +204,7 @@ export const ACT_TOOLS: ToolDef[] = [
         session.finishAction(
           undefined,
           settledOutcome,
-          settledOutcome === true ? session.elapsed() - since : undefined,
+          true === settledOutcome ? session.elapsed() - since : undefined,
         );
       }
     },
@@ -309,11 +237,14 @@ export const ACT_TOOLS: ToolDef[] = [
       const paused = pausedShortCircuit(session);
       if (paused !== undefined) return paused;
       const since = session.elapsed();
-      session.lastAct.markCursor(since); // honesty: a later wait_for/assert floors at this cursor
       session.beginAction(ReticleTool.ACT_SEQUENCE, asRecord(args));
       try {
         const result = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: args['steps'] });
         if (!result.ok) throw new Error(result.error ?? 'act_sequence failed');
+        // Marked only once the sequence ran: a refused sequence must leave no cursor behind for a
+        // later observe to judge. No single action and no in-target measurement here — per-step
+        // effects live in steps[] — so the effect is cleared rather than inherited from an earlier act.
+        session.lastAct.markActed(since, undefined, undefined);
         if (deps.recordings.active().length > 0) {
           deps.recordings.capture(compileSequenceStep(args, result.result));
         }
@@ -332,7 +263,11 @@ export const ACT_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.ACT_AND_WAIT,
-    example: { ref: 'e42', action: 'click', until: { kind: 'signal', name: 'todos:loaded' } },
+    example: {
+      ref: 'e42',
+      action: 'click',
+      until: { kind: PredicateKind.SIGNAL, name: 'todos:loaded' },
+    },
     description:
       'Act on a ref, then wait for a predicate to hold — one hop for the act->observe->assert loop. ' +
       'Omit `until` to wait for the page to settle (network + DOM idle) — use this instead of a fixed sleep. ' +
@@ -346,17 +281,16 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           `Element ref (e.g. 'e42') from reticle_snapshot/reticle_query — stable until the element leaves the DOM, so no re-snapshot between actions.`,
         ),
-      action: z
-        .string()
-        .describe(
-          'Action to perform: click | dblclick | hover | focus | fill | type | clear | select | check | uncheck | submit | press | scrollIntoView',
-        ),
+      action: actionTypeEnum.describe(`Action to perform: ${ACTION_TYPE_LIST}`),
       args: z
         .record(z.unknown())
         .optional()
         .describe(
           'Action-specific arguments: { value } for fill/select, { text } for type/press, { confirmDangerous: true } for a potentially destructive control.',
         ),
+      predicate: PredicateSchema.optional().describe(
+        'Alias for `until` (the name reticle_assert / reticle_wait_for use).',
+      ),
       until: PredicateSchema.optional().describe(
         'Predicate to wait for after the action completes (same shape as reticle_assert). OMIT to wait for the page to SETTLE — network + DOM idle — the deterministic default instead of a sleep. To assert a consequence AND settle, allOf them: { kind: "allOf", predicates: [<your predicate>, { kind: "settled" }] }.',
       ),
@@ -450,15 +384,28 @@ export const ACT_TOOLS: ToolDef[] = [
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
       // Live-control: refuse to drive the page (no act, no predicate eval) while paused.
+      //
+      // A VERDICT rides out with the refusal. This is the one tool here that promises `verified`,
+      // and the bare pause payload omitted it — so an agent reading `result.verified` got undefined
+      // from a call that carried no error, which is neither yes, no, nor unknown. It also broke this
+      // tool's own outputSchema, where `because` is required.
       const paused = pausedShortCircuit(session);
-      if (paused !== undefined) return paused;
+      if (paused !== undefined) {
+        return { ...paused, verified: Verified.UNKNOWN, because: PAUSED_NO_VERDICT };
+      }
       refuseIfThrottled(session, args['refuseWhenThrottled']);
       // Omitting `until` waits for the page to settle (idle) — the deterministic default vs a sleep.
+      // `predicate` is what reticle_assert / reticle_wait_for call this — see alias-args.ts.
+      const withUntil = aliasParam(args, 'until', ['predicate']);
       const until =
-        args['until'] !== undefined
-          ? PredicateSchema.parse(args['until'])
-          : ({ kind: 'settled' } as const);
+        withUntil['until'] !== undefined
+          ? PredicateSchema.parse(withUntil['until'])
+          : ({ kind: PredicateKind.SETTLED } as const);
       const timeout = asNumber(args['timeout_ms']) ?? DEFAULT_ASSERT_TIMEOUT_MS;
+
+      // Before anything is driven: this path cannot honour a native-input request, and taking the
+      // argument and ignoring it told the agent its trusted click had happened. See act-danger.
+      assertNativeInputSupported(asRecord(args['args']));
 
       const since = session.elapsed();
       // `dropped` is cumulative for the SESSION, so comparing against a pre-action reading is what
@@ -466,11 +413,19 @@ export const ACT_TOOLS: ToolDef[] = [
       // honesty block means. Reading the raw total pinned every later verdict to `unknown` after a
       // single early eviction (measured on the Next.js demo at dropped:51, windows intact).
       const droppedBefore = session.bufferHealth().dropped;
-      session.lastAct.markCursor(since);
+      // The cursor + effect are marked after the act dispatches (below) — a refused act leaves none.
       // The attribution window stays open across the settle wait below, so post-dispatch async events
       // (the whole point of act_and_wait) attribute to this action. finishAction fires after the wait.
       session.beginAction(ReticleTool.ACT_AND_WAIT, asRecord(args));
       let settledOutcome: boolean | undefined;
+      // Was the declared consequence ALREADY TRUE? Only asked for predicates that read live DOM
+      // state — event-based ones are floored at this act's cursor and cannot be satisfied by the
+      // past, so they need no pre-check and pay nothing. One extra query, on the path where a green
+      // is otherwise unfalsifiable. See honesty/already-true.
+      const alreadyTrue =
+        until !== undefined && readsDomState(until)
+          ? (await evaluatePredicate(session, until, since, false)).pass
+          : false;
       try {
         const actResult = await session.command(ReticleCommand.ACT, {
           ref: args['ref'],
@@ -478,6 +433,14 @@ export const ACT_TOOLS: ToolDef[] = [
           args: args['args'] ?? {},
         });
         if (!actResult.ok) throw new Error(actResult.error ?? 'act failed');
+        captureAct(deps.recordings, args, actResult.result);
+        // Dispatched — now this act owns the cursor and the effect. Marking its OWN measurement also
+        // stops the spread below from inheriting an earlier reticle_act's action and mutation count.
+        session.lastAct.markActed(
+          since,
+          asString(args['action']),
+          mutatedWithin(asRecord(actResult.result)),
+        );
 
         // Honesty: floor the predicate at this act's cursor so a stale buffered event can't satisfy it.
         const verdict =
@@ -486,7 +449,7 @@ export const ACT_TOOLS: ToolDef[] = [
             : await evaluatePredicate(session, until, since);
 
         const r = asRecord(actResult.result);
-        if (typeof r['settled'] === 'boolean') settledOutcome = r['settled'];
+        if ('boolean' === typeof r['settled']) settledOutcome = r['settled'];
         // Where the acted element is written. Captured at act time alongside the anchor, so it is
         // available even when the action unmounted its own target.
         const actedSource = sourceOf(r['source']);
@@ -524,7 +487,7 @@ export const ACT_TOOLS: ToolDef[] = [
           grade: gradeOf(gradedLinks),
           attribution: 'window',
           truncated: session.bufferHealth().dropped > droppedBefore,
-          coveragePartial: coverage.coverage === 'partial',
+          coveragePartial: Coverage.PARTIAL === coverage.coverage,
           ...(impeaching.note === undefined ? {} : { blindSpots: [impeaching.note] }),
         });
         const capsuleSaved = await saveFailedAssertCapsule({
@@ -549,6 +512,9 @@ export const ACT_TOOLS: ToolDef[] = [
         const outcomeUnread = hasUnreadWriteOutcome(windowEvents);
         const decision = decideVerified({
           pass: verdict.pass,
+          ...(alreadyTrue ? { alreadyTrue } : {}),
+          // An assertion nobody could evaluate must not be reported as one the app failed.
+          ...(verdict.inconclusive === undefined ? {} : { inconclusive: verdict.inconclusive }),
           honesty,
           contradictions,
           ...(outcomePending ? { outcomePending } : {}),
@@ -589,7 +555,7 @@ export const ACT_TOOLS: ToolDef[] = [
         session.finishAction(
           undefined,
           settledOutcome,
-          settledOutcome === true ? session.elapsed() - since : undefined,
+          true === settledOutcome ? session.elapsed() - since : undefined,
         );
       }
     },

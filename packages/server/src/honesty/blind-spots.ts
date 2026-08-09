@@ -10,13 +10,27 @@
 export { BlindSpotKind } from '@reticlehq/core';
 import { BlindSpotKind, EventType, type ReticleEvent } from '@reticlehq/core';
 
-export interface BlindSpot {
+interface BlindSpot {
   kind: BlindSpotKind;
   count: number;
 }
 
-export interface CoverageStatement {
-  coverage: 'full' | 'partial';
+/**
+ * Whether the observation window saw everything it was asked about.
+ *
+ * NOT core's VerdictStatus, which happens to spell one of its values 'partial' too: that one grades
+ * a verification RUN (some flows passed, some failed), this one grades what could be OBSERVED. Two
+ * meanings behind one string is exactly how a comparison ends up reading the wrong field, so they
+ * stay separate vocabularies.
+ */
+export const Coverage = {
+  FULL: 'full',
+  PARTIAL: 'partial',
+} as const;
+export type Coverage = (typeof Coverage)[keyof typeof Coverage];
+
+interface CoverageStatement {
+  coverage: Coverage;
   /** Present only when partial — the human/agent-legible list of what went unobserved. */
   note?: string;
   spots: BlindSpot[];
@@ -24,26 +38,26 @@ export interface CoverageStatement {
 
 const LABEL: Record<BlindSpotKind, (n: number) => string> = {
   [BlindSpotKind.CLOSED_SHADOW_ROOT]: (n) =>
-    `${String(n)} closed shadow root${n === 1 ? '' : 's'} unobserved`,
+    `${String(n)} closed shadow root${1 === n ? '' : 's'} unobserved`,
   [BlindSpotKind.CROSS_ORIGIN_IFRAME]: (n) =>
-    `${String(n)} cross-origin frame${n === 1 ? '' : 's'} unobserved`,
+    `${String(n)} cross-origin frame${1 === n ? '' : 's'} unobserved`,
   // The DOM of these frames IS observed; only their network is not. Saying so precisely matters — a
   // flat "unobserved" would discard a real capability and push agents back to guessing.
   [BlindSpotKind.UNINSTRUMENTED_FRAME]: (n) =>
-    `${String(n)} same-origin frame${n === 1 ? '' : 's'} observed for DOM but not network — requests they make are invisible`,
+    `${String(n)} same-origin frame${1 === n ? '' : 's'} observed for DOM but not network — requests they make are invisible`,
   [BlindSpotKind.VIRTUALIZED_UNMOUNTED]: (n) =>
-    `${String(n)} virtualized unmounted row${n === 1 ? '' : 's'} unobserved`,
+    `${String(n)} virtualized unmounted row${1 === n ? '' : 's'} unobserved`,
   // Not "some rows we could not see" — the events never reached the observer, so this window is a
   // SAMPLE of what the app did. Phrased as a caveat on what the whole result MEANS.
   [BlindSpotKind.RATE_LIMITED]: (n) =>
-    `${String(n)} event${n === 1 ? '' : 's'} dropped by the bridge rate cap, so this window is SAMPLED — raise RETICLE_MAX_MESSAGES_PER_SECOND for a busy app`,
+    `${String(n)} event${1 === n ? '' : 's'} dropped by the bridge rate cap, so this window is SAMPLED — raise RETICLE_MAX_MESSAGES_PER_SECOND for a busy app`,
   // Not a count of things — a single fact about the page. Phrased so the coverage line reads as a
   // caveat on what the network view MEANS, not as a tally.
   // A count of unverifiable ACTIONS, not of things we failed to look at. The distinction matters:
   // nothing here was missed, there was simply never a verdict to observe, and no amount of extra
   // instrumentation would produce one.
   [BlindSpotKind.VERDICTLESS_SEND]: (n) =>
-    `${String(n)} one-way IPC send${n === 1 ? '' : 's'} dispatched with NO verdict — the renderer never learns whether the main process handled ${n === 1 ? 'it' : 'them'}, so this cannot be confirmed from the page`,
+    `${String(n)} one-way IPC send${1 === n ? '' : 's'} dispatched with NO verdict — the renderer never learns whether the main process handled ${1 === n ? 'it' : 'them'}, so this cannot be confirmed from the page`,
   [BlindSpotKind.WRAPPED_NETWORK]: () =>
     'fetch was already wrapped before Reticle, so recorded requests may differ from what was sent',
   // A fact about the app's wiring, not a tally. Says what the empty network view MEANS, because an
@@ -77,7 +91,7 @@ export function impeachesCapture(kind: BlindSpotKind): boolean {
 /** Compose the coverage statement. `full` (no note) when nothing was unobserved. */
 export function buildCoverageStatement(spots: readonly BlindSpot[]): CoverageStatement {
   const present = spots.filter((s) => s.count > 0);
-  if (present.length === 0) return { coverage: 'full', spots: [] };
+  if (0 === present.length) return { coverage: Coverage.FULL, spots: [] };
   // Each label carries its own ending. Appending a blanket " unobserved" here produced
   // "...may differ from what was sent unobserved" for the wrapped-network caveat, which is a
   // sentence rather than a count — and the same dangle appeared the moment a second prose-shaped
@@ -87,9 +101,9 @@ export function buildCoverageStatement(spots: readonly BlindSpot[]): CoverageSta
   // did — turning "there is something I could not see" into a crashed assert, which is worse than
   // either the caveat or the silence. Unknown kinds degrade to their own name.
   const label = (s: BlindSpot): string =>
-    typeof LABEL[s.kind] === 'function' ? LABEL[s.kind](s.count) : `${s.kind} (${String(s.count)})`;
-  const note = `partial — ${present.map(label).join(', ')}`;
-  return { coverage: 'partial', note, spots: present };
+    'function' === typeof LABEL[s.kind] ? LABEL[s.kind](s.count) : `${s.kind} (${String(s.count)})`;
+  const note = `${Coverage.PARTIAL} — ${present.map(label).join(', ')}`;
+  return { coverage: Coverage.PARTIAL, note, spots: present };
 }
 
 /**
@@ -103,7 +117,7 @@ export function blindSpotsFromEvents(events: readonly ReticleEvent[]): BlindSpot
     if (e.type !== EventType.BLIND_SPOT) continue;
     const kind = e.data['kind'];
     const count = e.data['count'];
-    if (typeof kind === 'string' && typeof count === 'number') {
+    if ('string' === typeof kind && 'number' === typeof count) {
       latest.set(kind as BlindSpotKind, count);
     }
   }

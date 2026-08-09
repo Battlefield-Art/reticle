@@ -21,7 +21,8 @@ import {
   ProjectProfileSchema,
   SessionSummarySchema,
 } from './telemetry-session.js';
-import { FeedbackSchema } from './telemetry-feedback.js';
+import { BrowserBrand, FeedbackSchema } from './telemetry-feedback.js';
+import { VerifiedReason } from './verified-constants.js';
 import { IdentitySchema } from './telemetry-feedback.js';
 
 /** Bump when the event shape changes so the analytics side can segment old senders. */
@@ -62,6 +63,20 @@ export const TelemetryEventKind = {
    */
   DAEMON_STOPPED: 'daemon_stopped',
   /**
+   * A PERIODIC roll-up from a daemon that is still running — same payload shape as DAEMON_STOPPED,
+   * `final: false`.
+   *
+   * It used to be emitted AS `daemon_stopped`, which made an event named for an exit fire while the
+   * process was alive. Measured over one day: 98 `daemon_stopped` events were 73 real exits plus 25
+   * flushes, so anything counting sessions over-stated by 34% — and worse, the two populations are
+   * opposites. Every one of the 25 flushes had tool calls; not one of the 73 exits did (a daemon that
+   * served a tool never idle-exits, so only the idle ones ever reach a clean shutdown). A funnel over
+   * the raw event therefore describes active sessions at one end and abandoned ones at the other.
+   *
+   * Count sessions with DAEMON_STOPPED. Sum work with both.
+   */
+  SESSION_PROGRESS: 'session_progress',
+  /**
    * A verification produced a verdict. The product's reason to exist, and the one metric an investor
    * should be shown: not "tools were called" but "an app was actually verified, and here is how often
    * that caught something a green test would have missed".
@@ -100,6 +115,23 @@ export const TelemetryEventKind = {
    */
   MCP_CLIENT_CONNECTED: 'mcp_client_connected',
   /**
+   * The agent LOST its Reticle tools — the worst thing this product does to anyone, and until now
+   * completely invisible in the field.
+   *
+   * `mcp_client_connected` shows reconnect churn only from the daemon's side, and the proxy's own
+   * account of an outage went to a local file nobody sends us. So "how often does a real user's MCP
+   * server go down, and does it come back" — the single question the transport has to answer — could
+   * not be asked of any dashboard.
+   *
+   * Deliberately capped at TWO per proxy process: once on the first outage of a session, and once if
+   * the retry budget is spent (the severe case, where it stopped retrying and went dormant). The
+   * per-call `tool` event was already removed here for cost, and one measured afternoon produced 547
+   * proxy reconnects — an event per reconnect would bill for the pathology instead of measuring it.
+   * The first-outage event answers "what share of sessions lose MCP at all", which is the number
+   * that decides whether this is fixed.
+   */
+  MCP_CONNECTION_LOST: 'mcp_connection_lost',
+  /**
    * `reticle init` finished. The onboarding funnel had no instrumentation at all, so a setup that
    * failed on a missing dependency was indistinguishable from a user who never tried.
    */
@@ -119,6 +151,34 @@ export const TelemetryEventKind = {
   BUG_FOUND: 'bug_found',
 } as const;
 export type TelemetryEventKind = (typeof TelemetryEventKind)[keyof typeof TelemetryEventKind];
+
+/**
+ * Events that belong to a DAEMON RUN, and therefore carry `sessionId`.
+ *
+ * `sessionId` is minted per process, which is right for a daemon (a daemon run IS the session) and
+ * wrong for a one-shot CLI command, which invents one that joins to nothing. Measured over a real
+ * day: uniq(sessionId) was 704, of which 561 came from `cli_command_run` and NOT ONE was shared with
+ * a daemon. The real number of daemon runs was 121, so every tile counting sessions was ~6x high.
+ *
+ * Omitting the id on the one-shot events costs nothing — no join on those ids could ever have
+ * succeeded — and makes `uniq(sessionId)` mean the thing every dashboard already assumes it means.
+ */
+const SESSION_SCOPED: ReadonlySet<string> = new Set([
+  TelemetryEventKind.DAEMON_STARTED,
+  TelemetryEventKind.DAEMON_STOPPED,
+  TelemetryEventKind.SESSION_PROGRESS,
+  TelemetryEventKind.MCP_CLIENT_CONNECTED,
+  TelemetryEventKind.PROJECT_PROFILED,
+  TelemetryEventKind.VERIFICATION_COMPLETED,
+  TelemetryEventKind.BUG_FOUND,
+  TelemetryEventKind.RUNTIME_CRASHED,
+  TelemetryEventKind.FEEDBACK_SUBMITTED,
+]);
+
+/** True when this event happened inside a daemon run, so a `sessionId` on it means something. */
+export function isSessionScoped(kind: string): boolean {
+  return SESSION_SCOPED.has(kind);
+}
 
 /**
  * Who caused this. The only honest split available to us: a `reticle` command was TYPED by a person,
@@ -179,6 +239,40 @@ export const VerificationSchema = z.object({
    */
   falseGreenCaught: z.boolean(),
   durationMs: z.number().int().nonnegative().optional(),
+  /**
+   * `headless` | `headed` | `attached` — how the browser under verification got there.
+   *
+   * Without it, "verifications run" is one undifferentiated number covering three different
+   * products: unattended CI, a human watching an agent work, and the SDK in somebody's own dev
+   * server. They have different costs, different failure modes and different value, and only the
+   * last one is what most installs actually do.
+   */
+  browser: z.string().min(1).max(16).optional(),
+  /**
+   * WHICH browser it was — `chrome` | `edge` | `arc` | `dia` | `brave` | `opera` | `firefox` |
+   * `safari` | `other`, from `BrowserBrand`.
+   *
+   * `browser` above says who drove it, and its most common value by far is `attached`: the SDK
+   * connected from a browser Reticle never launched. That leaves the actual browser unknown, and
+   * the engine cannot fill the gap — Chrome, Edge, Arc, Dia and Brave are one `blink`.
+   *
+   * OPTIONAL and absent rather than `"unknown"` when the page did not say: a desktop webview has no
+   * brand, and an older SDK does not report one. A guessed value would be indistinguishable from a
+   * measured one on a dashboard.
+   */
+  brand: z.nativeEnum(BrowserBrand).optional(),
+  /**
+   * WHICH clause of the honesty rule decided this — see `VerifiedReason`.
+   *
+   * `verified` alone cannot answer the question the product is judged on. `unknown` + `passed:false`
+   * was measured covering "Reticle caught a real bug", "the agent wrote a bad predicate" and
+   * "Reticle itself could not see", which need opposite responses and arrive as one value; `no`
+   * collapses "channels disagree" into "the agent's predicate failed" the same way.
+   *
+   * OPTIONAL because not every verdict comes from `decideVerified` — a suite reports pass/fail with
+   * no clause behind it, and an older SDK reports none. Absent means unclassified, never guessed.
+   */
+  reason: z.nativeEnum(VerifiedReason).optional(),
 });
 export type Verification = z.infer<typeof VerificationSchema>;
 
@@ -186,6 +280,15 @@ export type Verification = z.infer<typeof VerificationSchema>;
 export const VersionChangeSchema = z.object({
   from: z.string().min(1).max(64),
   to: z.string().min(1).max(64),
+  /**
+   * True when an agent had been told about exactly this version recently — so the nudge plausibly
+   * caused the update.
+   *
+   * Without it, `version_changed` says a version moved and never why, which leaves "the nudge never
+   * fired" and "the nudge fired and nobody acted" indistinguishable. Those need opposite responses,
+   * and the whole adoption story rests on knowing which one is happening.
+   */
+  nudged: z.boolean().optional(),
   /** `update` (forward) or `rollback` (back) — a rollback is a release-quality alarm. */
   direction: z.string().min(1).max(16),
 });
@@ -264,6 +367,30 @@ export const BugSource = {
 export type BugSource = (typeof BugSource)[keyof typeof BugSource];
 
 /**
+ * WHOSE fault the defect was.
+ *
+ * `bugsFound` is the number this product would most like to publish, and it is not publishable
+ * without this. Measured over one real session: 8 `bug_found` events, of which **one** was a defect
+ * in the app under test. The other seven were the agent's own bad predicates (a store path that
+ * never existed, an impossible selector) and one empty ref, all published as defects in the
+ * customer's product. A founder steering on that number is steering on noise.
+ *
+ * Deliberately OMITTED rather than guessed when the evidence does not say. A failed `element.present`
+ * covers "the button is missing", "the API is down" and "the agent mistyped a testid" identically,
+ * and inventing an owner for it would put a guess into the one number we intend to publish — the
+ * same mistake `brand` refuses to make by being absent rather than `"unknown"`.
+ */
+export const BugAttribution = {
+  /** A defect in the app under test — the only bucket that belongs in a published defect count. */
+  APP: 'app',
+  /** The agent's own call was wrong: a path, store or target that never existed. Teach the agent. */
+  REQUEST: 'request',
+  /** Reticle could not see or could not drive. Our bug, or our configuration. Ship a fix. */
+  RETICLE: 'reticle',
+} as const;
+export type BugAttribution = (typeof BugAttribution)[keyof typeof BugAttribution];
+
+/**
  * One defect Reticle found in the app under test.
  *
  * `kind` is the taxonomy value from `findings.ts` — `signal-contradicted`, `console-error`,
@@ -305,6 +432,11 @@ export const BugFoundSchema = z.object({
    * as one — and must not be, since that would need data this event refuses to collect.
    */
   repeat: z.boolean(),
+  /**
+   * Whose fault it was — `app` | `request` | `reticle`. ABSENT when the evidence cannot say; see
+   * `BugAttribution`. Count `attribution: 'app'` for defects found in anybody's product.
+   */
+  attribution: z.nativeEnum(BugAttribution).optional(),
 });
 export type BugFound = z.infer<typeof BugFoundSchema>;
 
@@ -322,6 +454,55 @@ export const McpConnectionSchema = z.object({
   client: z.string().min(1).max(64).optional(),
 });
 export type McpConnection = z.infer<typeof McpConnectionSchema>;
+
+/**
+ * WHICH stage of an MCP outage this is. Reported at most twice per proxy process, and the two are
+ * different facts: `first` says the session lost its tools at all, `budget_spent` says the proxy
+ * stopped retrying and never came back on its own.
+ */
+export const OutageStage = {
+  FIRST: 'first',
+  BUDGET_SPENT: 'budget_spent',
+} as const;
+export type OutageStage = (typeof OutageStage)[keyof typeof OutageStage];
+
+/**
+ * WHY the stream went away, as far as the proxy can tell. A closed vocabulary because the proxy's
+ * own reason strings are free text feeding a log — `OTHER` is the bucket that lets a new one arrive
+ * without a raw string reaching the wire, per the classifier rule.
+ */
+export const OutageReason = {
+  /** The SSE stream ended cleanly — usually the daemon exiting. */
+  SSE_ENDED: 'sse_ended',
+  /** The stream errored. */
+  SSE_ERROR: 'sse_error',
+  /** The socket died under us with neither `end` nor `error` — daemon killed, network reset. */
+  SSE_ABORTED: 'sse_aborted',
+  /** The response closed. */
+  SSE_CLOSED: 'sse_closed',
+  /** A reconnect attempt could not reach the daemon at all. */
+  CONNECT_ERROR: 'connect_error',
+  /** Anything the proxy reported that this list does not name. A classifier must be able to say so. */
+  OTHER: 'other',
+} as const;
+export type OutageReason = (typeof OutageReason)[keyof typeof OutageReason];
+
+/**
+ * The agent LOST its Reticle tools.
+ *
+ * This block existed on the emitter's input type and never on the wire: `emit()` builds its event
+ * from an explicit allow-list of keys and `outage` was not in it, so two deliberately different
+ * outages — `first`/`sse_ended`/3 and `budget_spent`/`connect_error`/12 — produced byte-identical
+ * events. Against a standing "MCP must never go down" mandate, the metric that measures it reported
+ * a bare count with no cause and no recovery signal. This is the schema half of the fix.
+ */
+export const McpOutageSchema = z.object({
+  stage: z.nativeEnum(OutageStage),
+  reason: z.nativeEnum(OutageReason),
+  /** Consecutive reconnects tried when this was reported. `first` is near 1; a spent budget is high. */
+  attempts: z.number().int().nonnegative(),
+});
+export type McpOutage = z.infer<typeof McpOutageSchema>;
 
 /** How `reticle init` went. The onboarding funnel, which had no instrumentation whatsoever. */
 export const InitOutcomeSchema = z.object({
@@ -354,7 +535,12 @@ export const TelemetryEventSchema = z.object({
    * explicitly supports) interleaved into one undifferentiated stream, and no per-session funnel could
    * be built at all. It cannot be backfilled, which is why it is worth adding before the data matters.
    */
-  sessionId: z.string().min(1).max(64),
+  /**
+   * The daemon run this happened inside. ABSENT on one-shot CLI events — see isSessionScoped: a
+   * per-process id on `reticle status` is not a session, it is a number that inflates every session
+   * count and joins to nothing.
+   */
+  sessionId: z.string().min(1).max(64).optional(),
   event: z.nativeEnum(TelemetryEventKind),
   /** Client epoch-ms when the event happened (the server also stamps its own receive time). */
   ts: z.number().int().nonnegative(),
@@ -370,6 +556,14 @@ export const TelemetryEventSchema = z.object({
   projectIdSource: z.nativeEnum(ProjectIdSource).optional(),
   /** `process.platform` (darwin/linux/win32) — OS mix, low cardinality, non-identifying. */
   os: z.string().min(1).max(32),
+  /**
+   * Minutes this machine's local time is offset from UTC.
+   *
+   * "When do they work" was answerable only through ingest-side GeoIP, which may be off and is a
+   * coarser thing than a working day. One integer, no location, identifies nobody — and it turns
+   * every time-of-day tile from "which continent" into "9am or 11pm".
+   */
+  tzOffsetMin: z.number().int().min(-900).max(900).optional(),
   /** Only on `feedback`: the author-submitted report + its environment context. Never sent otherwise. */
   feedback: FeedbackSchema.optional(),
   /** Human or agent. Absent on events that are neither (a crash, a version change). */
@@ -400,5 +594,7 @@ export const TelemetryEventSchema = z.object({
   init: InitOutcomeSchema.optional(),
   /** Only on `bug_found`. */
   bug: BugFoundSchema.optional(),
+  /** Only on `mcp_connection_lost`: which stage of the outage, why, and after how many retries. */
+  outage: McpOutageSchema.optional(),
 });
 export type TelemetryEvent = z.infer<typeof TelemetryEventSchema>;

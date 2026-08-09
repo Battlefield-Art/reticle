@@ -30,14 +30,14 @@ export function renderTally(
 ): TallyCounts {
   const next = countVerdicts(runLog);
   if (el === undefined) return next;
-  if (next.passes === 0 && next.fails === 0) {
+  if (0 === next.passes && 0 === next.fails) {
     el.setAttribute('hidden', '');
     return next;
   }
   const bumpPass = next.passes > prev.passes ? ' data-bump="1"' : '';
   const bumpFail = next.fails > prev.fails ? ' data-bump="1"' : '';
-  const dimP = next.passes === 0 ? ' data-z="1"' : '';
-  const dimF = next.fails === 0 ? ' data-z="1"' : '';
+  const dimP = 0 === next.passes ? ' data-z="1"' : '';
+  const dimF = 0 === next.fails ? ' data-z="1"' : '';
   el.removeAttribute('hidden');
   el.innerHTML =
     `<span class="reticle-t-pass"${dimP}${bumpPass}>✓ ${String(next.passes)}</span>` +

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LastAct } from './last-act.js';
-import { SessionState } from '@reticlehq/core';
+import { SessionState, Verified } from '@reticlehq/core';
 import type { CommandResult } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from '../tools/tools.js';
 import { ReticleTool } from '../tools/tool-names.js';
@@ -139,7 +139,7 @@ describe('live-control: pause short-circuit', () => {
     expect('result' in res).toBe(true);
     expect('control' in res).toBe(false);
     expect('paused' in res).toBe(false);
-    expect(session.__sent.filter((c) => c.name === 'act')).toHaveLength(1);
+    expect(session.__sent.filter((c) => 'act' === c.name)).toHaveLength(1);
   });
 
   it('reticle_act short-circuits when paused — no ACT dispatched', async () => {
@@ -178,6 +178,22 @@ describe('live-control: pause short-circuit', () => {
     expect(session.__sent).toHaveLength(0);
   });
 
+  /**
+   * A verification tool must always answer the one field its verdict hangs on. The pause
+   * short-circuit returned a plain `{ paused, guidance, hint }`, so `verified` was ABSENT — not
+   * yes/no/unknown — and an agent reading `result.verified` got undefined from a call that looked
+   * like it had succeeded. Reported from the field on two apps.
+   */
+  it('reticle_act_and_wait says verified:unknown while paused, never nothing at all', async () => {
+    const session = fakeSession({ state: SessionState.PAUSED, inbox: [] });
+    const res = (await tool(ReticleTool.ACT_AND_WAIT).handler(fakeDeps(session), {
+      ...ACT_ARGS,
+      until: { kind: 'console', level: 'error', absent: true },
+    })) as PausedShape & { verified?: string; because?: string };
+    expect(res.verified).toBe(Verified.UNKNOWN);
+    expect(res.because).toBeTruthy();
+  });
+
   it('reticle_act_sequence short-circuits when paused', async () => {
     const session = fakeSession({ state: SessionState.PAUSED, inbox: ['stop'] });
     const res = (await tool(ReticleTool.ACT_SEQUENCE).handler(fakeDeps(session), {
@@ -199,7 +215,7 @@ describe('live-control: piggyback', () => {
       state: SessionState.ACTIVE,
       guidance: ['look here'],
     });
-    expect(session.__sent.filter((c) => c.name === 'act')).toHaveLength(1);
+    expect(session.__sent.filter((c) => 'act' === c.name)).toHaveLength(1);
   });
 
   it('piggyback guidance is delivered once', async () => {
@@ -245,7 +261,7 @@ describe('live-control: piggyback', () => {
     const verdict = res.verdict as { pass: boolean; evidence?: { settled?: boolean } };
     expect(verdict.pass).toBe(true);
     expect(verdict.evidence?.settled).toBe(true);
-    expect(session.__sent.filter((c) => c.name === 'act')).toHaveLength(1);
+    expect(session.__sent.filter((c) => 'act' === c.name)).toHaveLength(1);
   });
 
   it('reticle_assert piggybacks control while paused (observe-only)', async () => {
@@ -264,7 +280,7 @@ describe('live-control: piggyback', () => {
     const res = (await tool(ReticleTool.ACT).handler(fakeDeps(session), ACT_ARGS)) as ControlShape &
       PausedShape;
     expect('paused' in res).toBe(false);
-    expect(session.__sent.filter((c) => c.name === 'act')).toHaveLength(1);
+    expect(session.__sent.filter((c) => 'act' === c.name)).toHaveLength(1);
     expect(res.control).toEqual({ state: SessionState.ENDED, guidance: [] });
   });
 });
@@ -273,7 +289,7 @@ describe('live-control: read tools stay open while paused', () => {
   it('read tools are NOT blocked by pause — snapshot', async () => {
     const session = fakeSession({ state: SessionState.PAUSED });
     await tool(ReticleTool.SNAPSHOT).handler(fakeDeps(session), {});
-    expect(session.__sent.filter((c) => c.name === 'snapshot')).toHaveLength(1);
+    expect(session.__sent.filter((c) => 'snapshot' === c.name)).toHaveLength(1);
   });
 
   it('read tools are NOT blocked by pause — query', async () => {
@@ -283,7 +299,7 @@ describe('live-control: read tools stay open while paused', () => {
       value: 'button',
     })) as PausedShape;
     expect('paused' in res).toBe(false);
-    expect(session.__sent.filter((c) => c.name === 'query')).toHaveLength(1);
+    expect(session.__sent.filter((c) => 'query' === c.name)).toHaveLength(1);
   });
 });
 
@@ -299,7 +315,7 @@ describe('live-control: agent tools', () => {
     expect(session.__pushed.at(-1)).toEqual({ state: SessionState.ACTIVE });
     const act = (await tool(ReticleTool.ACT).handler(fakeDeps(session), ACT_ARGS)) as ControlShape;
     expect('result' in act).toBe(true);
-    expect(session.__sent.filter((c) => c.name === 'act')).toHaveLength(1);
+    expect(session.__sent.filter((c) => 'act' === c.name)).toHaveLength(1);
   });
 
   it('reticle_resume returns ok and pushes PRESENTER', async () => {

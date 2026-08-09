@@ -49,8 +49,8 @@ describe('buildDomainModel', () => {
       ],
       contract(),
     );
-    const checkout = m.flows.find((f) => f.name === 'checkout');
-    const browse = m.flows.find((f) => f.name === 'browse');
+    const checkout = m.flows.find((f) => 'checkout' === f.name);
+    const browse = m.flows.find((f) => 'browse' === f.name);
     expect(checkout?.mustHold).toBe('order:placed'); // the consequence that must hold
     expect(browse?.mustHold).toBeUndefined(); // tests nothing observable
     expect(browse?.asserts).toBe(false);
@@ -99,8 +99,8 @@ describe('buildDomainModel', () => {
     ] as Parameters<typeof buildDomainModel>[2];
     const m = buildDomainModel(flows, null, runs);
     expect(m.riskRanked[0]).toBe('broken'); // failed run surfaces first
-    expect(m.flows.find((f) => f.name === 'broken')?.risk?.level).toBe('high');
-    expect(m.flows.find((f) => f.name === 'clean')?.risk?.level).toBe('low');
+    expect(m.flows.find((f) => 'broken' === f.name)?.risk?.level).toBe('high');
+    expect(m.flows.find((f) => 'clean' === f.name)?.risk?.level).toBe('low');
     // the summary headlines the riskiest flow to test first.
     expect(m.summary).toContain('test first: broken');
   });

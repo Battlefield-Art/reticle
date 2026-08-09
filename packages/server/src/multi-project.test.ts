@@ -17,8 +17,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Bridge } from './bridge.js';
-import { FakeBrowser, callTool, makeDeps, waitUntil } from './bridge.test-harness.js';
+import { Bridge } from './bridge/bridge.js';
+import { FakeBrowser, callTool, makeDeps, waitUntil } from './bridge/bridge.test-harness.js';
 import { ReticleTool } from './tools/tool-names.js';
 import { LIVE_CONTROL_TOOLS } from './session/live-control-tools.js';
 import type { ToolDeps } from './tools/tools.js';
@@ -49,9 +49,9 @@ describe('port isolation', () => {
 
     await Promise.all([browserA.open(), browserB.open(), browserC.open()]);
     await Promise.all([
-      waitUntil(() => a.bridge.sessions.count() === 1),
-      waitUntil(() => b.bridge.sessions.count() === 1),
-      waitUntil(() => c.bridge.sessions.count() === 1),
+      waitUntil(() => 1 === a.bridge.sessions.count()),
+      waitUntil(() => 1 === b.bridge.sessions.count()),
+      waitUntil(() => 1 === c.bridge.sessions.count()),
     ]);
 
     const [sessA, sessB, sessC] = await Promise.all([
@@ -82,7 +82,7 @@ describe('port isolation', () => {
 
     const browser = new FakeBrowser(projectPort.port, 'my-app');
     await browser.open();
-    await waitUntil(() => projectPort.bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === projectPort.bridge.sessions.count());
 
     // Agent mistakenly queries the wrong daemon
     const wrongSessions = (await callTool(wrongPort.deps, ReticleTool.SESSIONS)) as {
@@ -137,7 +137,7 @@ describe('multiple browsers on same daemon', () => {
 
     const tabs = Array.from({ length: 4 }, (_, i) => new FakeBrowser(port, `tab-${i}`));
     await Promise.all(tabs.map((t) => t.open()));
-    await waitUntil(() => bridge.sessions.count() === 4, 3000);
+    await waitUntil(() => 4 === bridge.sessions.count(), 3000);
 
     const result = (await callTool(deps, ReticleTool.SESSIONS)) as { sessions: unknown[] };
     expect(result.sessions).toHaveLength(4);
@@ -153,7 +153,7 @@ describe('multiple browsers on same daemon', () => {
     const tabA = new FakeBrowser(port, 'tab-checkout');
     const tabB = new FakeBrowser(port, 'tab-home');
     await Promise.all([tabA.open(), tabB.open()]);
-    await waitUntil(() => bridge.sessions.count() === 2);
+    await waitUntil(() => 2 === bridge.sessions.count());
 
     // Tab A emits an event; tab B doesn't
     tabA.emit(EventType.NET_REQUEST, {
@@ -187,7 +187,7 @@ describe('daemon killed mid-session', () => {
     const port = await bridge.ready;
     const browser = new FakeBrowser(port, 'orphaned-session');
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
 
     // Verify connected: session is live
     expect(bridge.sessions.count()).toBe(1);
@@ -211,7 +211,7 @@ describe('daemon killed mid-session', () => {
     const port = await bridge1.ready;
     const browser1 = new FakeBrowser(port, 'session-before');
     await browser1.open();
-    await waitUntil(() => bridge1.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge1.sessions.count());
 
     // Kill the first daemon
     browser1.close();
@@ -224,7 +224,7 @@ describe('daemon killed mid-session', () => {
 
     const browser2 = new FakeBrowser(port, 'session-after');
     await browser2.open();
-    await waitUntil(() => bridge2.sessions.count() === 1, 3000);
+    await waitUntil(() => 1 === bridge2.sessions.count(), 3000);
 
     const result = (await callTool(deps2, ReticleTool.SESSIONS)) as { sessions: unknown[] };
     expect(result.sessions).toHaveLength(1);
@@ -270,7 +270,7 @@ describe('musical chairs', () => {
     const portA = await bridgeA.ready;
     const browserA = new FakeBrowser(portA, 'app-a');
     await browserA.open();
-    await waitUntil(() => bridgeA.sessions.count() === 1);
+    await waitUntil(() => 1 === bridgeA.sessions.count());
 
     // Project A stops
     browserA.close();
@@ -284,7 +284,7 @@ describe('musical chairs', () => {
     // New browser connects to project B
     const browserB = new FakeBrowser(portA, 'app-b');
     await browserB.open();
-    await waitUntil(() => bridgeB.sessions.count() === 1, 3000);
+    await waitUntil(() => 1 === bridgeB.sessions.count(), 3000);
 
     const sessions = (await callTool(depsB, ReticleTool.SESSIONS)) as {
       sessions: { sessionId: string }[];
@@ -305,7 +305,7 @@ describe('event volume stress', () => {
     const browsers = stacks.map((s, i) => new FakeBrowser(s.port, `app-${i}`));
 
     await Promise.all(browsers.map((b) => b.open()));
-    await Promise.all(stacks.map((s) => waitUntil(() => s.bridge.sessions.count() === 1, 3000)));
+    await Promise.all(stacks.map((s) => waitUntil(() => 1 === s.bridge.sessions.count(), 3000)));
 
     // Emit 50 events per browser in rapid succession
     for (const [i, b] of browsers.entries()) {
@@ -397,7 +397,7 @@ describe('messy human scenarios', () => {
     // User eventually opens browser
     const browser = new FakeBrowser(port, 'late-browser');
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1, 3000);
+    await waitUntil(() => 1 === bridge.sessions.count(), 3000);
 
     // Agent checks again: session appears
     const after = (await callTool(deps, ReticleTool.SESSIONS)) as { sessions: unknown[] };
@@ -445,7 +445,7 @@ describe('messy human scenarios', () => {
       connectWithUrl('other-app', 'http://localhost:8080'),
     ]);
 
-    await waitUntil(() => bridge.sessions.count() === 3, 3000);
+    await waitUntil(() => 3 === bridge.sessions.count(), 3000);
 
     const deps = makeDeps(bridge);
     const result = (await callTool(deps, ReticleTool.SESSIONS)) as {
@@ -500,7 +500,7 @@ describe('messy human scenarios', () => {
 
     const browserA = new FakeBrowser(port, 'project-a-session');
     await browserA.open();
-    await waitUntil(() => bridgeA.sessions.count() === 1);
+    await waitUntil(() => 1 === bridgeA.sessions.count());
 
     // Project B tries to claim the same port — must fail, not corrupt A
     const bridgeB = new Bridge({ port });
@@ -524,7 +524,7 @@ describe('default port vs project port', () => {
     const port = await bridge.ready;
     const browser = new FakeBrowser(port, 'default-port-project');
     await browser.open();
-    await waitUntil(() => bridge.sessions.count() === 1);
+    await waitUntil(() => 1 === bridge.sessions.count());
     expect(bridge.sessions.count()).toBe(1);
     browser.close();
     await bridge.close();
@@ -541,8 +541,8 @@ describe('default port vs project port', () => {
 
     await Promise.all([browserDefault.open(), browserCustom.open()]);
     await Promise.all([
-      waitUntil(() => defaultProj.bridge.sessions.count() === 1),
-      waitUntil(() => customProj.bridge.sessions.count() === 1),
+      waitUntil(() => 1 === defaultProj.bridge.sessions.count()),
+      waitUntil(() => 1 === customProj.bridge.sessions.count()),
     ]);
 
     // Emit different events in each
@@ -597,7 +597,7 @@ describe('temp-dir isolation (simulates reticle init per project)', () => {
     // Each project connects one browser
     const browsers = stacks.map((s, i) => new FakeBrowser(s.port, `project-${i}`));
     await Promise.all(browsers.map((b) => b.open()));
-    await Promise.all(stacks.map((s) => waitUntil(() => s.bridge.sessions.count() === 1, 2000)));
+    await Promise.all(stacks.map((s) => waitUntil(() => 1 === s.bridge.sessions.count(), 2000)));
 
     // Verify isolation: each daemon has exactly 1 session, not 3
     for (const [i, s] of stacks.entries()) {

@@ -22,7 +22,7 @@ export interface SessionEndTarget {
   ownAmbientCounts(): AmbientCounts;
 }
 
-export interface SessionEndDeps {
+interface SessionEndDeps {
   fs: FileSystemPort;
   reticleRoot: string;
   /** Journaling/persistence off (opt-out) → teardown is a no-op. */

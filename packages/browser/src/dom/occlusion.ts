@@ -8,11 +8,11 @@ import { isReticleUi } from './dom-ignore.js';
  * we never false-positive an occlusion. Reticle's own HUD is never treated as an occluder.
  */
 export function hitTestOccluder(el: Element, rect: DOMRect): Element | null {
-  if (rect.width === 0 || rect.height === 0) return null;
+  if (0 === rect.width || 0 === rect.height) return null;
   const doc = el.ownerDocument;
   if (typeof doc.elementFromPoint !== 'function') return null;
   const top = doc.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-  if (top === null || isReticleUi(top)) return null;
+  if (null === top || isReticleUi(top)) return null;
   const lands = top === el || el.contains(top) || top.contains(el);
   return lands ? null : top;
 }

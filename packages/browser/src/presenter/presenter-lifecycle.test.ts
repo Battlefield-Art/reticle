@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { PresenterMode } from '@reticlehq/core';
 import { Presenter } from './presenter.js';
+import { BRAND_NAME } from './presenter-brand.js';
 import {
   FAST_IDLE_MS,
   FAST_FADE_MS,
@@ -107,6 +108,47 @@ describe('presenter v2 session border', () => {
     p.destroy();
   });
 
+  it('3c-brand collapsing swaps the wordmark for the mark alone', () => {
+    document.body.innerHTML = '';
+    const p = new Presenter({ border: 'session' });
+    p.mount();
+    const head = document.querySelector('.reticle-hud-head') as HTMLElement;
+    const mark = document.querySelector('.reticle-mark') as SVGElement;
+    const wordmark = document.querySelector('.reticle-wordmark') as SVGElement;
+    const shown = (el: Element): boolean => 'none' !== getComputedStyle(el).display;
+
+    expect(shown(wordmark)).toBe(true); // expanded → wordmark
+    expect(shown(mark)).toBe(false);
+
+    (document.querySelector('[data-reticle-min-btn]') as HTMLElement).click();
+    expect(shown(mark)).toBe(true); // collapsed → mark only
+    expect(shown(wordmark)).toBe(false);
+    // The decorative blinking dot was removed — the mark identifies the panel on its own, and a dot
+    // that never changed carried no state to lose. Pinned so it does not creep back in.
+    expect(document.querySelector('.reticle-dot')).toBeNull();
+    expect(shown(document.querySelector('.reticle-live') as HTMLElement)).toBe(true);
+
+    head.click(); // restore
+    expect(shown(wordmark)).toBe(true);
+    expect(shown(mark)).toBe(false);
+    p.destroy();
+  });
+
+  it('3c-a11y the marks are decorative; the HUD keeps its name in both states', () => {
+    document.body.innerHTML = '';
+    const p = new Presenter({ border: 'session' });
+    p.mount();
+    const brand = document.querySelector('.reticle-brand') as HTMLElement;
+    for (const svg of brand.querySelectorAll('svg')) {
+      expect(svg.getAttribute('aria-hidden')).toBe('true');
+    }
+    expect(brand.querySelector('.reticle-brand-sr')?.textContent).toBe(BRAND_NAME);
+    (document.querySelector('[data-reticle-min-btn]') as HTMLElement).click();
+    // the name survives the collapse — the brand block is no longer hidden with the rest
+    expect(getComputedStyle(brand).display).not.toBe('none');
+    p.destroy();
+  });
+
   it('3d the minimised bar shows the latest activity in the live line', () => {
     document.body.innerHTML = '';
     const p = new Presenter({ border: 'session' });
@@ -184,7 +226,7 @@ describe('presenter v2 session border', () => {
     // Poll instead of a fixed wait: the busy→fading→idle chain runs on real timers, which fire late
     // under load — a fixed sleep flaked ("fading" instead of "idle"). The clock (now) is fixed, so
     // the logic is deterministic; only the timer scheduling is slow.
-    expect(await until(() => p.glowPhase() === 'idle')).toBe(true);
+    expect(await until(() => 'idle' === p.glowPhase())).toBe(true);
     expect(dataBusy()).toBe('0');
     expect(dataOn()).toBe('1');
     p.destroy();
@@ -225,7 +267,7 @@ describe("presenter v2 border:'busy' back-compat", () => {
     // parallel test load they do not, so this asserted "still fading" as a failure only in CI. Waiting
     // for the terminal state up to a generous bound tests the invariant (it eventually goes idle),
     // not the machine's timer latency.
-    const settled = await until(() => p.glowPhase() === 'idle', 2000);
+    const settled = await until(() => 'idle' === p.glowPhase(), 2000);
     expect(settled, 'glow never reached idle within the bound').toBe(true);
     expect(flips.enters).toBe(1);
     expect(flips.exits).toBe(1);
@@ -337,7 +379,7 @@ describe('presenter glow state machine', () => {
 
     // Go quiet: jump clock past the idle window, let native timers fire the fade-out.
     t += 1000;
-    expect(await until(() => p.glowPhase() === 'idle')).toBe(true);
+    expect(await until(() => 'idle' === p.glowPhase())).toBe(true);
     await flush();
 
     expect(flips.enters).toBe(1);
@@ -365,7 +407,7 @@ describe('presenter glow state machine', () => {
     expect(p.glowPhase()).toBe('busy');
 
     t += 1000;
-    expect(await until(() => p.glowPhase() === 'idle')).toBe(true);
+    expect(await until(() => 'idle' === p.glowPhase())).toBe(true);
     await flush();
 
     expect(p.glowPhase()).toBe('idle');
@@ -391,7 +433,7 @@ describe('presenter glow state machine', () => {
 
     p.status('one');
     t += 1000;
-    expect(await until(() => p.glowPhase() === 'fading')).toBe(true);
+    expect(await until(() => 'fading' === p.glowPhase())).toBe(true);
     expect(p.glowPhase()).toBe('fading');
 
     p.status('resumed'); // activity during fade

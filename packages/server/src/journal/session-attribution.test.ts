@@ -59,11 +59,11 @@ describe('Session journal attribution (begin/pushEvent/finish)', () => {
     session.finishAction(undefined, true, 12);
     await session.flushJournal();
 
-    const attributed = sink.events.find((e) => e.seq === 5);
+    const attributed = sink.events.find((e) => 5 === e.seq);
     expect(attributed?.actionId).toBe('a2');
     expect(attributed?.attribution).toBe('window');
 
-    const a2 = sink.actions.find((a) => a.actionId === 'a2');
+    const a2 = sink.actions.find((a) => 'a2' === a.actionId);
     expect(a2?.seqRange).toEqual({ from: 5, to: 5 });
     expect(a2?.settled).toBe(true);
     expect(a2?.settledInMs).toBe(12);

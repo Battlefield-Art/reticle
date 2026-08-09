@@ -20,6 +20,9 @@
     },
     "test:unit": {
       "dependsOn": ["^build"]
+    },
+    "test:coverage": {
+      "dependsOn": ["^build"]
     }
   }
 }

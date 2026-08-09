@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { EventType, PerfMetric } from './constants.js';
 import { BlindSpotKind } from './verified-constants.js';
+import { BrowserBrand } from './telemetry-feedback.js';
 import { HumanControlDataSchema, HumanMarkDataSchema } from './messages.js';
 
 /**
@@ -147,7 +148,17 @@ export const EVENT_PAYLOAD_SCHEMAS = {
     new: z.string().optional(),
   }),
   [EventType.PAGE_HEALTH]: z
-    .object({ hidden: z.boolean(), focused: z.boolean(), reason: z.string().optional() })
+    .object({
+      hidden: z.boolean(),
+      focused: z.boolean(),
+      reason: z.string().optional(),
+      /**
+       * Which browser the page is, normalised in the SDK to a closed list before it is sent — never
+       * a UA string and never a raw `userAgentData` brand. Optional: an older SDK does not report
+       * one, and a desktop webview has no brand to report.
+       */
+      brand: z.nativeEnum(BrowserBrand).optional(),
+    })
     .passthrough(),
   [EventType.RENDER_COMMIT]: z.object({ commits: z.number() }),
   [EventType.FOCUS_CHANGE]: z.object({

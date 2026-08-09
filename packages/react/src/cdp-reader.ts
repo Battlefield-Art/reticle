@@ -42,14 +42,35 @@ export interface CdpComponentRead {
  * an opaque evaluation error).
  */
 export function readComponentAt(el: Element | null): CdpComponentRead {
-  if (el === null) return { ok: false, reason: 'no-element' };
+  if (null === el) return { ok: false, reason: 'no-element' };
   try {
     const FIBER_PREFIXES = ['__reactFiber$', '__reactInternalInstance$'];
     const key = Object.keys(el).find((k) => FIBER_PREFIXES.some((p) => k.startsWith(p)));
     if (key === undefined) return { ok: false, reason: 'no-fiber' };
-    let fiber = (el as unknown as Record<string, { type?: unknown; return?: unknown } | undefined>)[
-      key
-    ];
+    type AnyFiber = {
+      type?: unknown;
+      return?: AnyFiber | null;
+      alternate?: AnyFiber | null;
+      stateNode?: unknown;
+    };
+    let fiber = (el as unknown as Record<string, AnyFiber | undefined>)[key];
+    // React keeps two fibers per element (current ↔ work-in-progress) and swaps them on every commit,
+    // but the `__reactFiber$…` key keeps pointing at the one created at mount — so from the second
+    // render on it is the PREVIOUS commit's fiber half the time, and hooks read one commit behind.
+    // Climb to the HostRoot: the tree is the committed one iff its FiberRoot's `current` is the top
+    // fiber reached. Otherwise the committed counterpart is `alternate`. Unknown shape => leave as-is.
+    const alternate = fiber?.alternate;
+    if (fiber !== null && fiber !== undefined && alternate !== null && alternate !== undefined) {
+      let top: AnyFiber = fiber;
+      let climbed = 0;
+      while (top.return !== null && top.return !== undefined && climbed < 200) {
+        top = top.return;
+        climbed += 1;
+      }
+      const committed = (top.stateNode as { current?: unknown } | null | undefined)?.current;
+      if ('object' === typeof committed && null !== committed && committed !== top)
+        fiber = alternate;
+    }
     // Climb to the nearest function-component fiber; host fibers (strings) carry no hook state.
     let guard = 0;
     while (
@@ -61,19 +82,19 @@ export function readComponentAt(el: Element | null): CdpComponentRead {
       fiber = (fiber as { return?: typeof fiber }).return;
       guard += 1;
     }
-    if (fiber === null || fiber === undefined) return { ok: false, reason: 'no-component-fiber' };
+    if (null === fiber || fiber === undefined) return { ok: false, reason: 'no-component-fiber' };
     const type = (fiber as { type?: { displayName?: string; name?: string } }).type;
     const component = type?.displayName ?? type?.name ?? undefined;
     const hooks: unknown[] = [];
     let hook = (fiber as { memoizedState?: unknown }).memoizedState;
     let i = 0;
-    while (hook !== null && typeof hook === 'object' && i < 100) {
+    while (hook !== null && 'object' === typeof hook && i < 100) {
       const state = (hook as { memoizedState?: unknown }).memoizedState;
       // Only carry JSON-serializable primitives/plain values across the boundary; a function or DOM
       // node in a hook (a ref, a callback) is dropped rather than breaking the whole read.
-      hooks.push(typeof state === 'function' ? '[fn]' : state);
+      hooks.push('function' === typeof state ? '[fn]' : state);
       const next = (hook as { next?: unknown }).next;
-      if (next === null || typeof next !== 'object') break;
+      if (null === next || typeof next !== 'object') break;
       hook = next;
       i += 1;
     }
@@ -99,7 +120,7 @@ export function buildReaderExpression(selector: string): string {
 export function parseComponentRead(raw: unknown): CdpComponentRead {
   if (
     typeof raw !== 'object' ||
-    raw === null ||
+    null === raw ||
     typeof (raw as { ok?: unknown }).ok !== 'boolean'
   ) {
     return { ok: false, reason: 'malformed-read' };

@@ -20,7 +20,7 @@ export function App(): React.ReactElement {
   // ⌘K / Ctrl-K opens the command palette.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if ((e.metaKey || e.ctrlKey) && 'k' === e.key.toLowerCase()) {
         e.preventDefault();
         setPalette(true);
       }
@@ -29,7 +29,7 @@ export function App(): React.ReactElement {
     return () => window.removeEventListener('keydown', onKey);
   }, [setPalette]);
 
-  if (auth === null) return <Login />;
+  if (null === auth) return <Login />;
 
   return (
     <div className="shell">
@@ -37,12 +37,12 @@ export function App(): React.ReactElement {
       <div className="main">
         <Topbar />
         <div className="content">
-          {view === 'overview' ? <Overview /> : null}
-          {view === 'deployments' ? <Deployments /> : null}
-          {view === 'compose' ? <Compose /> : null}
-          {view === 'diagnostics' ? <Diagnostics /> : null}
-          {view === 'hostile' ? <Hostile /> : null}
-          {view === 'enterprise' ? <Enterprise /> : null}
+          {'overview' === view ? <Overview /> : null}
+          {'deployments' === view ? <Deployments /> : null}
+          {'compose' === view ? <Compose /> : null}
+          {'diagnostics' === view ? <Diagnostics /> : null}
+          {'hostile' === view ? <Hostile /> : null}
+          {'enterprise' === view ? <Enterprise /> : null}
         </div>
       </div>
       <Toasts />

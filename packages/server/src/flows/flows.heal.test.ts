@@ -365,9 +365,9 @@ describe('FlowStore.heal + reticle_flow_heal', () => {
     await store.saveFlow(flowFile('multi', [clickStep('old-id'), clickStep('save')]));
     // step0 'old-id' renamed to confident 'new-id'; step1 'save' has only a far 'delete-everything'.
     const session = new FakeSession((testid) => {
-      if (testid === 'old-id')
+      if ('old-id' === testid)
         return { elements: [], hint: present(['new-id', 'delete-everything']) };
-      if (testid === 'save')
+      if ('save' === testid)
         return { elements: [], hint: present(['new-id', 'delete-everything']) };
       return { elements: [el(`e-${testid}`, testid)] };
     });

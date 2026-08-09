@@ -1,15 +1,17 @@
 import { execFile } from 'node:child_process';
+import { NodePlatform } from '../platform.js';
 import { existsSync } from 'node:fs';
 import { platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { loadManifest, saveManifest } from './update-checker.js';
-import { RETICLE_NPM_PACKAGE, SERVER_VERSION } from '../server-version.js';
+import { RETICLE_NPM_PACKAGE, SERVER_VERSION } from '../version/server-version.js';
 import { log } from '../log.js';
 import { TelemetryEventKind } from '@reticlehq/core';
 import { getTelemetry } from '../telemetry/telemetry.js';
+import { wasNudged } from './nudge-credit.js';
 
 /** Which way the installed version moved. A rollback means a release hurt someone enough to retreat. */
-export const VersionChangeDirection = {
+const VersionChangeDirection = {
   UPDATE: 'update',
   ROLLBACK: 'rollback',
 } as const;
@@ -29,15 +31,18 @@ export async function reportVersionChange(
   direction: VersionChangeDirection,
 ): Promise<void> {
   try {
+    const nudged = wasNudged(to);
     await getTelemetry().emit(TelemetryEventKind.VERSION_CHANGED, {
-      versionChange: { from, to, direction },
+      // Only when true: an absent flag reads as "we do not know", which is honest for a machine that
+      // updated from a shell script or a package bump with no agent involved at all.
+      versionChange: { from, to, direction, ...(nudged ? { nudged } : {}) },
     });
   } catch {
     /* best-effort, like every other send */
   }
 }
 
-const NPM_BIN = platform() === 'win32' ? 'npm.cmd' : 'npm';
+const NPM_BIN = NodePlatform.WINDOWS === platform() ? 'npm.cmd' : 'npm';
 const NPM_TIMEOUT_MS = 120_000;
 
 /** How this reticle process was launched — determines which npm strategy to use for updates. */
@@ -58,7 +63,7 @@ type ExecutionKind = (typeof ExecutionKind)[keyof typeof ExecutionKind];
  * most reliable cross-platform signal. Local installs always live inside a
  * `node_modules` directory. Everything else is treated as a global install.
  */
-export function detectExecutionKind(): ExecutionKind {
+function detectExecutionKind(): ExecutionKind {
   return classifyExecutionKind(process.argv[1] ?? '');
 }
 
@@ -146,7 +151,7 @@ export function installArgs(
 async function installVersion(version: string, kind: ExecutionKind): Promise<void> {
   const localRoot = kind === ExecutionKind.LOCAL ? findLocalProjectRoot() : null;
   const plan = installArgs(version, kind, localRoot);
-  if (plan === null) {
+  if (null === plan) {
     // npx re-resolves the package from npm on the next Claude Code restart — no npm
     // install needed. The restart itself is what triggers the update.
     log('reticle_update_npx_strategy', {
@@ -154,7 +159,7 @@ async function installVersion(version: string, kind: ExecutionKind): Promise<voi
     });
     return;
   }
-  if (kind === ExecutionKind.LOCAL && localRoot === null) {
+  if (kind === ExecutionKind.LOCAL && null === localRoot) {
     // Could not find a project root — fell back to a global install as a safe default.
     log('reticle_update_local_no_root', { fallback: 'global' });
   }
@@ -200,7 +205,7 @@ export async function applyUpdate(targetVersion: string): Promise<void> {
  */
 export async function rollback(): Promise<void> {
   const manifest = loadManifest();
-  if (manifest === null || manifest.previousVersion === undefined) {
+  if (null === manifest || manifest.previousVersion === undefined) {
     throw new Error('No previous version available for rollback');
   }
   const prev = manifest.previousVersion;

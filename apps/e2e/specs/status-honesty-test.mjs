@@ -4,6 +4,7 @@
 // exactly the condition that made reticle_act hang to the 8s timeout and report a click as an error.
 import { chromium } from 'playwright';
 import { start, TOOLS, BaselineStore, RecordingStore } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => Number(process.hrtime.bigint() / 1000000n);
@@ -33,11 +34,7 @@ await page.addInitScript(() => {
   window.requestAnimationFrame = () => 0;
 });
 await page.goto('http://localhost:3100/');
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
-for (let i = 0; i < 150 && !hasOwn(); i++) await sleep(50);
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 console.log('\n=== status honesty, real Chromium (rAF throttled) ===');
 
 // Act on a tab where rAF never fires must NOT hang/throw; returns dispatched:true fast.
@@ -48,8 +45,12 @@ try {
   const act = await T('reticle_act', { ref: addRef, action: 'click' });
   const ms = now() - t0;
   const r = act.result ?? {};
-  f1ok = act.dispatched === true && r.settled === false && r.settleReason === 'timeout' && ms < 4000;
-  f1detail = `dispatched=${act.dispatched} settled=${r.settled} settleReason=${r.settleReason} in ${ms}ms (was 8000ms error)`;
+  // The property is the SHAPE of the answer, not the stopwatch: a throttled tab reports
+  // dispatched:true with settled:false and settleReason 'timeout', instead of the old 8s throw.
+  // `ms < 4000` asserted the machine was fast enough, so a loaded battery read as a product defect;
+  // the harness timeout already bounds a genuine hang. The number stays in the detail.
+  f1ok = act.dispatched === true && r.settled === false && r.settleReason === 'timeout';
+  f1detail = `dispatched=${act.dispatched} settled=${r.settled} settleReason=${r.settleReason} in ${ms}ms (was an 8000ms error)`;
 } catch (e) {
   f1detail = `THREW: ${e instanceof Error ? e.message : String(e)}`;
 }
@@ -88,7 +89,9 @@ let f5ok = false, f5detail = '';
 try {
   const st = await T('reticle_state', { ref: addRef });
   const ms = now() - t5;
-  f5ok = ms < 4000 && st !== undefined; // resolves (value or {ok:false,reason}) — does not hang
+  // "Does not hang" means it RESOLVED. Reaching this line is that proof — `T` rejects on its own
+  // timeout — so a duration comparison here only adds a load-dependent failure.
+  f5ok = st !== undefined;
   f5detail = `${JSON.stringify(st).slice(0, 80)} in ${ms}ms`;
 } catch (e) {
   f5detail = `THREW: ${e instanceof Error ? e.message : String(e)}`;

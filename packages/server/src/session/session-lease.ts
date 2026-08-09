@@ -22,7 +22,7 @@ export interface SessionLease {
  *
  * Any edit here is a per-session tax on every user: say it in as few words as still work.
  */
-export const SESSION_LEASE_NOTICE =
+const SESSION_LEASE_NOTICE =
   'When you stop driving, call reticle_session {action:"yield", mode:"waiting"|"ask"} — the panel reads "live" until you do. {action:"end"} when the task is done; it revives on your next action.';
 
 export function buildSessionLease(sessionId: string, openedAt: number): SessionLease {

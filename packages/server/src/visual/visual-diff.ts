@@ -96,7 +96,7 @@ function changedRegion(out: Buffer, width: number, height: number): VisualRect |
     for (let x = 0; x < width; x += 1) {
       const i = (y * width + x) * RGBA;
       // pixelmatch marks a changed pixel solid red (default diffColor) at full alpha.
-      if (out[i] === 255 && out[i + 1] === 0 && out[i + 2] === 0 && out[i + 3] === 255) {
+      if (255 === out[i] && 0 === out[i + 1] && 0 === out[i + 2] && 255 === out[i + 3]) {
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (x > maxX) maxX = x;
@@ -147,7 +147,7 @@ export async function diffPng(
   const threshold = opts.threshold ?? VISUAL_PIXEL_THRESHOLD;
   const changedPixels = pixelmatch(a.data, b.data, out.data, width, height, { threshold });
   const totalPixels = width * height;
-  const ratio = totalPixels === 0 ? 0 : changedPixels / totalPixels;
+  const ratio = 0 === totalPixels ? 0 : changedPixels / totalPixels;
   const maxRatio = opts.maxRatio ?? 0;
 
   const region = changedPixels > 0 ? changedRegion(out.data, width, height) : undefined;

@@ -31,6 +31,29 @@ describe('inspect computed styles (for hover/visual checks)', () => {
 });
 
 /**
+ * A stale ref is the most ordinary thing that follows a click, and `inspect` answered it with a
+ * PROTOCOL error.
+ *
+ * `inspect` RETURNED `{ error }` as a successful command result, so the server passed it straight
+ * into reticle_inspect's outputSchema — which requires ref/role/name/states/visible — and the MCP
+ * layer rejected the tool's own response. Measured over real MCP: `reticle_act` on ref 'e99999'
+ * answers "that ref is stale, re-query and retry", while `reticle_inspect` on the SAME ref answers
+ * `-32602 Output validation error: … "path": ["ref"], "message": "Required"`. Same condition, one
+ * hop apart, and the tool an agent reaches for to ask where something lives is the one that breaks.
+ *
+ * It has to THROW, like `executeAction` does, and with the same wording: the server's recovery table
+ * matches /no longer resolves to an element/, so the shorter message this used to carry would have
+ * missed the stale-ref recovery even once it was surfaced as an error.
+ */
+describe('inspect on a stale ref', () => {
+  it('throws the same stale-ref error act does, instead of returning an error payload', () => {
+    const handler = reg.get('inspect');
+    if (handler === undefined) throw new Error('no inspect handler');
+    expect(() => handler({ ref: 'e99999' })).toThrow(/no longer resolves to an element/);
+  });
+});
+
+/**
  * `inspect` and `act` disagreed about the same element.
  *
  * `describe()` reads the cheap DOM-attribute source, because it runs per element on paths that

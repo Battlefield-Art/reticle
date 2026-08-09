@@ -38,13 +38,13 @@ function fakePage(state: FakePageState): unknown {
     unroute: () => Promise.resolve(),
     goto: (url: string) => {
       state.gotoCalls.push(url);
-      if (state.gotoThrows === true) return Promise.reject(new Error('goto boom'));
+      if (true === state.gotoThrows) return Promise.reject(new Error('goto boom'));
       state.url = url;
       return Promise.resolve(null);
     },
     waitForFunction: () => {
       state.waitForFunctionCalls += 1;
-      if (state.waitForFunctionThrows === true) return Promise.reject(new Error('no SDK on page'));
+      if (true === state.waitForFunctionThrows) return Promise.reject(new Error('no SDK on page'));
       return Promise.resolve(null);
     },
     evaluate: (arg: unknown) => {
@@ -107,10 +107,10 @@ interface LaunchSpy {
 function makeLaunch(spy: LaunchSpy) {
   return (headless: boolean) => {
     spy.calls.push({ headless });
-    if (spy.mode === 'missing') {
+    if ('missing' === spy.mode) {
       return Promise.reject(new DriveError(DriveErrorCode.PLAYWRIGHT_MISSING, 'no playwright'));
     }
-    if (spy.mode === 'launchFails') {
+    if ('launchFails' === spy.mode) {
       return Promise.reject(new DriveError(DriveErrorCode.LAUNCH_FAILED, 'chromium crashed'));
     }
     return Promise.resolve(fakeBrowser(spy.state) as never);
@@ -270,7 +270,7 @@ describe('LaunchedRealInputProvider', () => {
     const res = await provider.perform(DRIVE_URL, 'hover', SOURCE_BOX, {});
     const center = boxCenter(SOURCE_BOX);
     expect(res).toEqual({ performed: true, center });
-    expect(spy.state.page.mouse.some((m) => m.kind === 'move' && m.x === center.cx)).toBe(true);
+    expect(spy.state.page.mouse.some((m) => 'move' === m.kind && m.x === center.cx)).toBe(true);
   });
 
   it('perform drag presses, interpolates, and releases on the launched page', async () => {
@@ -284,7 +284,7 @@ describe('LaunchedRealInputProvider', () => {
     expect(kinds).toContain('down');
     expect(kinds).toContain('up');
     const dst = boxCenter(TARGET_BOX);
-    const lastMove = [...spy.state.page.mouse].reverse().find((m) => m.kind === 'move');
+    const lastMove = [...spy.state.page.mouse].reverse().find((m) => 'move' === m.kind);
     expect(lastMove?.x).toBeCloseTo(dst.cx);
     expect(lastMove?.y).toBeCloseTo(dst.cy);
   });

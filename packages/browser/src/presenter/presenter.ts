@@ -1,4 +1,5 @@
 import {
+  ActionType,
   ReticleCommand,
   PresenterMode,
   type PresenterTone,
@@ -23,12 +24,13 @@ import {
   type LogHandle,
 } from './presenter-log.js';
 import { PRESENTER_CSS } from './presenter-styles.js';
+import { BRAND_HTML } from './presenter-brand.js';
 import {
   BorderMode,
   DEFAULT_BORDER_MODE,
   DATA_BUSY,
   BUSY_OFF,
-  DEFAULT_PACE,
+  effectivePaceMs,
   GlowPhase,
   IDLE_AFTER_MS,
   HEARTBEAT_MS,
@@ -119,7 +121,7 @@ export class Presenter {
   readonly #panel: ControlPanel;
 
   constructor(options: PresenterOptions = {}) {
-    this.#paceMs = options.paceMs ?? DEFAULT_PACE;
+    this.#paceMs = effectivePaceMs(options.paceMs);
     this.#now = options.now ?? nativeNow;
     this.#heartbeatMs = options.heartbeatMs ?? HEARTBEAT_MS;
     this.#idleNoticeMs = options.idleNoticeMs ?? IDLE_NOTICE_MS;
@@ -178,7 +180,7 @@ export class Presenter {
     if (command.name === ReticleCommand.FLOWS) return void this.#panel.setFlows(a['flows']);
     const state = a['state'];
     const tone = a['tone'];
-    const text = typeof a['text'] === 'string' && a['text'].length > 0 ? a['text'] : undefined;
+    const text = 'string' === typeof a['text'] && a['text'].length > 0 ? a['text'] : undefined;
     if (isSessionState(state)) this.setState(state, text, isPresenterTone(tone) ? tone : undefined);
   }
 
@@ -193,7 +195,7 @@ export class Presenter {
   }
 
   mount(): void {
-    if (this.#root !== undefined || typeof document === 'undefined') return;
+    if (this.#root !== undefined || 'undefined' === typeof document) return;
     const style = document.createElement('style');
     style.setAttribute('data-reticle-overlay', '');
     style.textContent = PRESENTER_CSS;
@@ -206,7 +208,7 @@ export class Presenter {
       <div data-reticle-cursor></div>
       <div data-reticle-ring></div>
       <div data-reticle-hud>
-        <div class="reticle-hud-head"><span class="reticle-dot"></span><span class="reticle-brand">Reticle</span><span class="reticle-chip" data-reticle-chip></span><span class="reticle-tally" data-reticle-tally hidden></span><span class="reticle-live"></span><span class="reticle-head-sp"></span><button type="button" data-reticle-min-btn title="Minimise" aria-label="Minimise the panel">⌄</button>${CONTROLS_HEAD_HTML}<span class="reticle-maxhint" aria-hidden="true">⌃</span></div>
+        <div class="reticle-hud-head">${BRAND_HTML}<span class="reticle-chip" data-reticle-chip></span><span class="reticle-tally" data-reticle-tally hidden></span><span class="reticle-live"></span><span class="reticle-head-sp"></span><button type="button" data-reticle-min-btn title="Minimise" aria-label="Minimise the panel">⌄</button>${CONTROLS_HEAD_HTML}<span class="reticle-maxhint" aria-hidden="true">⌃</span></div>
         <div class="reticle-act-strip"><span class="reticle-act">idle</span></div>
         ${CONTROLS_BANNER_HTML}
         <div ${DATA_RETICLE_LOG}></div>
@@ -231,7 +233,7 @@ export class Presenter {
       setMin(true);
     });
     root.querySelector<HTMLElement>('.reticle-hud-head')?.addEventListener('click', () => {
-      if (root.getAttribute(MIN_ATTR) === '1') setMin(false); // clicking the minimised bar restores
+      if ('1' === root.getAttribute(MIN_ATTR)) setMin(false); // clicking the minimised bar restores
     });
     this.#glowCtl.setElements(this.#glow, this.#cursor);
     // The panel queries its refs, binds listeners, and paints the initial active state.
@@ -421,7 +423,7 @@ export class Presenter {
     this.#glowCtl.markActivity(ms);
     if (this.#log === undefined) return undefined;
     const trimmed = text.trim();
-    if (trimmed.length === 0) return undefined;
+    if (0 === trimmed.length) return undefined;
 
     this.#logBaseMs ??= ms;
     // Structured run-log entry (mirrors the DOM row) for the exported run state, capped like the DOM.
@@ -455,7 +457,7 @@ export class Presenter {
 
   /** Back-compat: narration appends to the live log (append-only, never overwrites). */
   narrate(text: string, level = 'info'): LogHandle | undefined {
-    const line = level === 'info' ? text : `[${level}] ${text}`;
+    const line = 'info' === level ? text : `[${level}] ${text}`;
     return this.log(LOG_KIND.NARRATION, line);
   }
 
@@ -493,7 +495,11 @@ export class Presenter {
     moveCursor(this.#cursor, cx, cy);
     ringAround(this.#ring, rect);
     await pace(this.#paceMs);
-    if (action === 'click' || action === 'dblclick' || action === 'submit')
+    if (
+      ActionType.CLICK === action ||
+      ActionType.DBLCLICK === action ||
+      ActionType.SUBMIT === action
+    )
       spawnRipple(this.#root, cx, cy);
   }
 }

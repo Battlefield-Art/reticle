@@ -103,6 +103,13 @@ export const DriftReason = {
   SIGNAL_NOT_OBSERVED: 'signal_not_observed', // a signal anchor never fired within the timeout
   COMPONENT_NOT_FOUND: 'component_not_found', // a component/source auto-anchor resolved to zero live elements
   STATE_MISMATCH: 'state_mismatch', // a step's expect.state assertion did not hold against the store
+  /**
+   * The step carries DEGRADED_ANCHOR_ROLE — no anchor was ever resolvable, so nothing was queried.
+   * Distinct from TESTID_NOT_FOUND deliberately: "your element disappeared" and "this step never had
+   * an element bound to it" need different fixes, and reporting the second as the first sent heal
+   * hunting for the nearest testid to the literal word "unresolved".
+   */
+  ANCHOR_DEGRADED: 'anchor_degraded',
 } as const;
 export type DriftReason = (typeof DriftReason)[keyof typeof DriftReason];
 
@@ -120,6 +127,11 @@ export const AnnotationKind = {
   ASSERT_SIGNAL: 'assert-signal', // → step.expect.signal (invariant)
   ASSERT_VISIBLE: 'assert-visible', // → step.expect.element (invariant)
   ASSERT_STATE: 'assert-state', // → step.expect.state (store-truth invariant on the last step)
+  // → step.expect.net (the request the action must have caused, with an optional exact count).
+  // Documented in agent-cheatsheet.md long before it existed: an agent following that advice got
+  // `annotate_unknown_kind`, the annotation was dropped, and the flow stayed presence-only — able
+  // to pass while broken, which is the failure this whole product is pointed at.
+  ASSERT_NET: 'assert-net',
   MARK_DYNAMIC: 'mark-dynamic', // → flow.dynamic[] (don't assert words/content)
   SUCCESS_STATE: 'success-state', // → flow.success (golden end condition)
   INTENT: 'intent', // → flow.intent (the business goal this flow exists to verify)

@@ -25,21 +25,25 @@ import {
 export function compileAnnotation(a: Annotation, stepCount: number): AnnotateOutcome {
   switch (a.kind) {
     case AnnotationKind.ASSERT_SIGNAL: {
-      if (stepCount === 0) return noStep();
+      if (0 === stepCount) return noStep();
       const expect: FlowExpect = { signal: a.name };
       if (a.dataMatches !== undefined) expect.signalData = a.dataMatches;
       return stepPatch(a, stepCount, expect);
     }
     case AnnotationKind.ASSERT_VISIBLE: {
-      if (stepCount === 0) return noStep();
+      if (0 === stepCount) return noStep();
       return stepPatch(a, stepCount, { element: { testid: a.testid } });
     }
     case AnnotationKind.ASSERT_STATE: {
-      if (stepCount === 0) return noStep();
+      if (0 === stepCount) return noStep();
       const state: FlowExpect['state'] = { path: a.statePath };
       if (a.store !== undefined) state.store = a.store;
       if (a.equals !== undefined) state.equals = a.equals;
       return stepPatch(a, stepCount, { state });
+    }
+    case AnnotationKind.ASSERT_NET: {
+      if (0 === stepCount) return noStep();
+      return stepPatch(a, stepCount, { net: a.net });
     }
     case AnnotationKind.MARK_DYNAMIC:
       return {
@@ -115,6 +119,14 @@ export function describeCompiled(a: Annotation): string {
       return `${COMPILED_PREDICATE_PREFIX} assert state ${a.statePath}${
         a.equals !== undefined ? ` == ${JSON.stringify(a.equals)}` : ''
       }`;
+    case AnnotationKind.ASSERT_NET: {
+      // Say the COUNT out loud when there is one. "will assert POST /refund" and "will assert
+      // exactly 1x POST /refund" are different gates, and the confirmation is the only place the
+      // author sees which one they just attached.
+      const what = `${a.net.method ?? 'any'} ${a.net.urlContains ?? '(any url)'}`;
+      const times = a.net.count === undefined ? '' : ` exactly ${String(a.net.count)}x`;
+      return `${COMPILED_PREDICATE_PREFIX} assert${times} request ${what}`;
+    }
     case AnnotationKind.MARK_DYNAMIC:
       return `${COMPILED_PREDICATE_PREFIX} ignore ${a.testid} (dynamic)`;
     case AnnotationKind.SUCCESS_STATE:
@@ -135,7 +147,7 @@ export function describeCompiled(a: Annotation): string {
       if (a.console !== undefined) {
         const level = a.console.level ?? 'error';
         return `${COMPILED_PREDICATE_PREFIX} succeed when ${
-          a.console.absent === true ? `no console.${level}` : `console.${level}`
+          true === a.console.absent ? `no console.${level}` : `console.${level}`
         }`;
       }
       return `${COMPILED_PREDICATE_PREFIX} succeed when ${a.testid ?? ''} visible`;

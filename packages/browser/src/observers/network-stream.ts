@@ -60,7 +60,7 @@ export function watchStreamedBody(
     return; // already consumed or locked — the app owns it; observing it would take it away
   }
   const body = clone.body;
-  if (body === null) return;
+  if (null === body) return;
   emit(EventType.NET_STREAM, {
     transport: StreamTransport.FETCH,
     direction: StreamDirection.OPEN,
@@ -81,7 +81,7 @@ export function watchStreamedBody(
     try {
       for (;;) {
         const next = await Promise.race([reader.read(), expired]);
-        if (next === 'expired') {
+        if ('expired' === next) {
           gaveUp = true;
           void reader.cancel().catch(() => undefined);
           break;

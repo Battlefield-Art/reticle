@@ -77,7 +77,7 @@ export function EmbeddedPanels(): React.ReactElement {
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
         {/* Reachable: a tool that walks open shadow roots sees the text and the button. */}
         <div data-testid="open-shadow-host">
-          {/* eslint-disable-next-line */}
+          {}
           <atlas-open-badge />
         </div>
         {/* Unreachable by anyone. The honest answer is "there is content here I cannot read". */}

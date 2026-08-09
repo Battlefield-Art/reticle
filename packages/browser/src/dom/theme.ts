@@ -18,11 +18,11 @@ let cached: ThemePalette | null = null;
 
 /** Resolve any CSS color string to canonical computed `rgb...)`/`rgba...)`, or null if not a color. */
 function toRgb(value: string): string | null {
-  if (value.length === 0) return null;
+  if (0 === value.length) return null;
   const probe = document.createElement('span');
   probe.style.color = '';
   probe.style.color = value; // invalid colors leave it empty (the setter rejects them)
-  if (probe.style.color === '') return null;
+  if ('' === probe.style.color) return null;
   probe.style.position = 'absolute';
   probe.style.pointerEvents = 'none';
   document.body.appendChild(probe);
@@ -41,7 +41,7 @@ function collectTokens(): Record<string, string> {
     } catch {
       continue;
     }
-    if (rules === null) continue;
+    if (null === rules) continue;
     for (const rule of Array.from(rules)) {
       if (!(rule instanceof CSSStyleRule)) continue;
       if (!/(^|,)\s*(:root|html)\b/.test(rule.selectorText)) continue;
@@ -67,7 +67,7 @@ function palette(): ThemePalette {
 
 /** True for a color that carries no visual weight (fully transparent) — never flagged off-theme. */
 function isTransparent(rgb: string): boolean {
-  return rgb === 'rgba(0, 0, 0, 0)' || rgb === 'transparent';
+  return 'rgba(0, 0, 0, 0)' === rgb || 'transparent' === rgb;
 }
 
 interface ThemeReport {
@@ -86,8 +86,8 @@ export function themeReport(cs: CSSStyleDeclaration): ThemeReport {
   const p = palette();
   const colorToken = p.byColor.get(cs.color) ?? null;
   const backgroundToken = p.byColor.get(cs.backgroundColor) ?? null;
-  const colorOff = !isTransparent(cs.color) && colorToken === null;
-  const bgOff = !isTransparent(cs.backgroundColor) && backgroundToken === null;
+  const colorOff = !isTransparent(cs.color) && null === colorToken;
+  const bgOff = !isTransparent(cs.backgroundColor) && null === backgroundToken;
   return {
     colorToken,
     backgroundToken,

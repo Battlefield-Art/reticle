@@ -1,3 +1,4 @@
+import { span } from '../trace.js';
 import {
   ActionType,
   CRAWL_DEFAULTS,
@@ -9,6 +10,7 @@ import {
   type CommandResult,
   type ReticleEvent,
 } from '@reticlehq/core';
+import { crawlEmptyNote } from './crawl-empty.js';
 import {
   parseInteractive,
   asRecord,
@@ -156,7 +158,7 @@ export async function crawl(
   // the controls it never reached are not merely unclicked — they were never seen. Reporting
   // `interactiveFound` without this would state a control count that is really a cap, and
   // `truncated:false` would positively assert that nothing was cut.
-  const coverageCapped = snapshot.truncated === true;
+  const coverageCapped = true === snapshot.truncated;
 
   const anomalies: CrawlAnomaly[] = [];
   const visited: string[] = [];
@@ -178,12 +180,18 @@ export async function crawl(
     session.beginAction?.(ReticleTool.CRAWL, { ref: item.ref, action: ActionType.CLICK });
     let act;
     try {
-      act = await session.command(ReticleCommand.ACT, {
-        ref: item.ref,
-        action: ActionType.CLICK,
-        args: opts.confirmDangerous === true ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
+      // One span per control clicked, so a slow crawl names the control rather than reporting a
+      // single multi-second total. The settle sleep below is INSIDE it deliberately: it is part of
+      // what a step costs, and hiding it would make the fixed budget look free.
+      act = await span('crawl.step', { ref: item.ref, desc: item.desc }, async () => {
+        const clicked = await session.command(ReticleCommand.ACT, {
+          ref: item.ref,
+          action: ActionType.CLICK,
+          args: true === opts.confirmDangerous ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
+        });
+        await sleep(settleMs);
+        return clicked;
       });
-      await sleep(settleMs);
     } finally {
       // Close on every exit so a throw cannot leak the window onto the next control's events.
       session.finishAction?.();
@@ -246,7 +254,7 @@ export async function crawl(
     const dispatched = asRecord(act.result)['dispatched'] !== false && act.ok;
     if (
       dispatched &&
-      errs.length === 0 &&
+      0 === errs.length &&
       !events.some(isActivity) &&
       !legitimatelyInert(item.desc)
     ) {
@@ -272,5 +280,16 @@ export async function crawl(
     // partial sweep into "all controls healthy".
     truncated: items.length > stepsRun || coverageCapped,
     ...(coverageCapped ? { coverageNote: CAPPED_SNAPSHOT_NOTE } : {}),
+    // A bare `stepsRun: 0` made "the page had no controls" and "it had 34 and none were clicked" the
+    // same answer. See crawl-empty.
+    ...(() => {
+      const note = crawlEmptyNote({
+        interactiveFound: items.length,
+        stepsRun,
+        maxSteps,
+        truncated: coverageCapped,
+      });
+      return note === undefined ? {} : { note };
+    })(),
   };
 }

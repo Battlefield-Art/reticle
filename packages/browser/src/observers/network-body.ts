@@ -49,7 +49,7 @@ const ENDLESS_BY_DESIGN = /event-stream/i;
  */
 export function isStreamingBody(contentType: string | null, contentLength: string | null): boolean {
   if (contentType !== null && ENDLESS_BY_DESIGN.test(contentType)) return false;
-  return contentLength === null;
+  return null === contentLength;
 }
 
 /**
@@ -89,7 +89,7 @@ export async function withBodyDeadline(read: Promise<string>): Promise<string | 
 }
 
 export function isCapturableType(contentType: string | null): boolean {
-  if (contentType === null) return false;
+  if (null === contentType) return false;
   if (STREAMING_CONTENT.test(contentType)) return false;
   return CAPTURABLE_CONTENT.test(contentType);
 }

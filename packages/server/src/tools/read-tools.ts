@@ -2,6 +2,7 @@
  * Read / record / replay tools — baselines + diff, recordings + replay, narrate, clock, state,
  * explore. Split out of tools.ts; assembled back via...READ_TOOLS.
  */
+import { resolveAnnotateTarget } from '../flows/annotate-target.js';
 import { z } from 'zod';
 import { EventType, ReticleCommand, REPLAY_PROGRAM_VERSION, SnapshotMode } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
@@ -9,12 +10,40 @@ import { proposeConsequences } from '../oracles/propose-consequences.js';
 import type { CompiledProgram } from '../flows/recordings.js';
 import { replayProgram } from '../flows/replay.js';
 import { diffLines } from '../project/baselines.js';
-import { selectPath, capDepth } from '../session/state-select.js';
+import { selectPath, capDepth, projectComponentState } from '../session/state-select.js';
 import { costHint } from '../session/output-budget.js';
 import { buildReactionReport } from '../events/reaction.js';
 import { asString, asNumber, parseInteractive } from './tools-helpers.js';
 import { type ToolDef, sessionIdShape, commandOrThrow, snapshotTree } from './tool-kit.js';
 import { bufferEnvelope } from '../session/session-health.js';
+
+/**
+ * What record-stop says about a step that compiled to no anchor at all.
+ *
+ * `stable: false` does not mean "brittle". It means the compiler found no testid, no accessible
+ * role+name and no component/source, so the step is bound to a live `ref` — a handle that dies with
+ * the session. The replayer already states this outcome in full (see DEGRADED_STEP_REASON): the step
+ * can never resolve on replay.
+ *
+ * The old wording here — "replay may be brittle (in-session only)" — described a fatal condition as
+ * a quality note, so the agent saved the flow and learned the truth several calls later, as an
+ * unhealable `anchor_degraded` drift at flow_verify, by which point nothing on screen points back
+ * to the element that needed the attribute. Capture time is the only moment the fix is cheap: the
+ * element is still on the page and the human is still in the loop.
+ */
+function unanchoredWarning(count: number): string {
+  return (
+    `${String(count)} step(s) not bound to a testid, an accessible role+name, or a component — ` +
+    'they are pinned to a live ref, so they will replay in THIS session and can never resolve in ' +
+    'another one. Add a data-testid to those elements and record the flow again, or accept that ' +
+    'this recording is single-session only.'
+  );
+}
+
+/** Severities the presenter HUD can render. */
+const HUD_LEVELS = ['info', 'warn', 'error'] as const;
+const HUD_LEVEL_LIST = HUD_LEVELS.join(' | ');
+const hudLevelEnum = z.enum(HUD_LEVELS);
 
 export const READ_TOOLS: ToolDef[] = [
   {
@@ -72,7 +101,11 @@ export const READ_TOOLS: ToolDef[] = [
       buffer: z.unknown().optional(),
     },
     handler: async (deps, args) => {
-      const name = asString(args['baseline']) ?? 'default';
+      // `name` too: the merged reticle_baseline family made this required field optional, and the
+      // SIBLING that creates a baseline calls it `name` — its description even says to reuse it
+      // here. So `{ action:"diff", name:"x" }` is a valid call that used to look up 'default' and
+      // report "no baseline named 'default'", naming something the caller never mentioned.
+      const name = asString(args['baseline']) ?? asString(args['name']) ?? 'default';
       const base = deps.baselines.get(name);
       if (base === undefined) throw new Error(`no baseline named '${name}'`);
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -141,9 +174,19 @@ export const READ_TOOLS: ToolDef[] = [
     },
     handler: (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      const name = asString(args['recordingName']) ?? 'default';
+      // The recording actually RUNNING when there is exactly one, not the literal name `default` —
+      // the same defaulting that made `annotate` report "no steps" against a recording full of them.
+      // With several running, `default` stays the documented answer rather than a guess.
+      const name = resolveAnnotateTarget(asString(args['recordingName']), deps.recordings.active());
       const rec = deps.recordings.stop(name);
-      if (rec === undefined) throw new Error(`no active recording named '${name}'`);
+      if (rec === undefined) {
+        const active = deps.recordings.active();
+        throw new Error(
+          0 === active.length
+            ? `no active recording named '${name}' — none is in progress`
+            : `no active recording named '${name}'; in progress: ${active.map((r) => `'${r}'`).join(', ')}`,
+        );
+      }
       const events = session.eventsSince(rec.cursor);
       const program: CompiledProgram = {
         name,
@@ -160,7 +203,7 @@ export const READ_TOOLS: ToolDef[] = [
         program,
         ...(unstable > 0
           ? {
-              warning: `${String(unstable)} step(s) not bound to a testid; replay may be brittle (in-session only)`,
+              warning: unanchoredWarning(unstable),
             }
           : {}),
         ...(proposedConsequences.length > 0 ? { proposedConsequences } : {}),
@@ -203,7 +246,7 @@ export const READ_TOOLS: ToolDef[] = [
       if (program === undefined) throw new Error(`no compiled recording named '${name}'`);
       const session = deps.sessions.resolve(asString(args['sessionId']));
       const since = session.elapsed();
-      const steps = await replayProgram(session, program, args['confirmDangerous'] === true);
+      const steps = await replayProgram(session, program, true === args['confirmDangerous']);
       return { recordingName: name, since, steps, ok: steps.every((s) => s.ok) };
     },
   },
@@ -217,10 +260,11 @@ export const READ_TOOLS: ToolDef[] = [
         .describe(
           'Short sentence describing your next action, shown on the presenter HUD for the developer watching.',
         ),
-      level: z
-        .string()
+      // Derived, like every other advertised vocabulary here: a free string let a typo through to
+      // a HUD that then rendered an unknown severity.
+      level: hudLevelEnum
         .optional()
-        .describe('Display severity: info | warn | error. Default: info.'),
+        .describe(`Display severity: ${HUD_LEVEL_LIST}. Default: info.`),
       ...sessionIdShape,
     },
     outputSchema: { ok: z.boolean() },
@@ -255,9 +299,11 @@ export const READ_TOOLS: ToolDef[] = [
       reset: z.boolean().optional().describe('Restore the real clock.'),
       ...sessionIdShape,
     },
+    // The command returns `{ frozen }`. It used to declare `{ ok, elapsed }` — neither of which any
+    // clock code path produces — and MCP strips undeclared fields from structuredContent, so a
+    // successful freeze and a failed one both validated to `{}` and became indistinguishable.
     outputSchema: {
-      ok: z.boolean().optional(),
-      elapsed: z.number().optional(),
+      frozen: z.boolean().optional(),
     },
     handler: (deps, args) =>
       commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.CLOCK, {
@@ -311,7 +357,21 @@ export const READ_TOOLS: ToolDef[] = [
       // concludes the key it wants is absent when it is merely past the cap.
       totalKeys: z.number().optional(),
       component: z
-        .object({ ok: z.boolean(), reason: z.string().optional(), state: z.unknown().optional() })
+        .object({
+          ok: z.boolean(),
+          reason: z.string().optional(),
+          state: z.unknown().optional(),
+          // The component name and the projected hook VALUES — declared so a schema-strict client
+          // keeps them (they were the point of passing `ref` at all).
+          component: z.string().optional(),
+          hooks: z.array(z.unknown()).optional(),
+          // Present only when effect hooks were projected out. Declared for the same reason as the
+          // store truncation report below: a shortened list with no marker reads as a complete one.
+          truncation: z
+            .object({ droppedItems: z.number(), note: z.string() })
+            .optional()
+            .describe('Present only when effect hooks were dropped — `hooks` is a projection.'),
+        })
         .optional(),
       // Truncation report — present ONLY when a transport cap trimmed the value. Declared so a
       // schema-strict client on the `full` profile KEEPS it: this is a false-green GUARD, and dropping
@@ -334,7 +394,7 @@ export const READ_TOOLS: ToolDef[] = [
       // Forward path/depth so a CURRENT browser SDK scopes the read IN-PAGE, before the transport —
       // the value never gets size-truncated in transit. (An older SDK ignores them and returns the
       // whole store; we then scope server-side below as a back-compat fallback.)
-      const result = await commandOrThrow(
+      const raw = await commandOrThrow(
         deps,
         asString(args['sessionId']),
         ReticleCommand.STATE_READ,
@@ -345,6 +405,15 @@ export const READ_TOOLS: ToolDef[] = [
           depth,
         },
       );
+      // Project the component hook read BEFORE anything else touches it: React hands back the raw
+      // fiber hook list, whose effect entries are chained null-filled internals an agent cannot act
+      // on (measured: 2632 -> 1459 bytes on a five-state/three-effect component). Done here rather
+      // than in the SDK so an older browser build gets the same projection. The drop is disclosed
+      // on `component.truncation`.
+      const result =
+        'object' === typeof raw && null !== raw && 'component' in raw
+          ? { ...raw, component: projectComponentState(raw.component) }
+          : raw;
       // Normalize storeNames to a string[] regardless of how the wire delivered it — the
       // outputSchema requires an array, and a non-array here makes MCP reject the whole result
       // (so the agent gets nothing instead of the state). Defensive: a string becomes a 1-element array.
@@ -354,13 +423,13 @@ export const READ_TOOLS: ToolDef[] = [
         found?: unknown;
       };
       const names = Array.isArray(root.storeNames)
-        ? root.storeNames.filter((n): n is string => typeof n === 'string')
-        : typeof root.storeNames === 'string' && root.storeNames.length > 0
+        ? root.storeNames.filter((n): n is string => 'string' === typeof n)
+        : 'string' === typeof root.storeNames && root.storeNames.length > 0
           ? [root.storeNames]
           : [];
 
       // The browser already scoped it in-page (the `found` shape) — pass through, just safe storeNames.
-      if (typeof root.found === 'boolean') {
+      if ('boolean' === typeof root.found) {
         return { ...(root as Record<string, unknown>), storeNames: names };
       }
 
@@ -427,7 +496,7 @@ export const READ_TOOLS: ToolDef[] = [
         // The walk stops at its node cap and returns a document-order prefix, so an inventory taken
         // from a big page is a floor, not a census — and this is the tool crawl's description points
         // agents at first for "a non-destructive list of what is here".
-        ...(snap.truncated === true ? { truncated: true } : {}),
+        ...(true === snap.truncated ? { truncated: true } : {}),
         consoleErrors,
         hint: 'act on each ref, observe the reaction, and report failed requests / console errors / dead controls',
         // Buffer-honesty: the console-error count spans the whole buffer, which evicts — signal it.
@@ -473,7 +542,7 @@ export const READ_TOOLS: ToolDef[] = [
         ReticleCommand.STORAGE_READ,
         area !== undefined ? { area } : {},
       );
-      const data = (typeof result === 'object' && result !== null ? result : {}) as Record<
+      const data = ('object' === typeof result && result !== null ? result : {}) as Record<
         string,
         unknown
       >;
@@ -481,7 +550,7 @@ export const READ_TOOLS: ToolDef[] = [
       // Look up the key in the scoped area, or across all three areas when none was named.
       const areas = area !== undefined ? [data] : [data['local'], data['session'], data['cookies']];
       for (const a of areas) {
-        if (typeof a === 'object' && a !== null && key in a) {
+        if ('object' === typeof a && a !== null && key in a) {
           return { area, key, value: String((a as Record<string, unknown>)[key]), found: true };
         }
       }

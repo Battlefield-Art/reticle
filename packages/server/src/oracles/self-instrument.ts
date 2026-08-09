@@ -24,7 +24,7 @@ export interface InstrumentationGap {
   context?: string;
 }
 
-export interface InstrumentationProposal {
+interface InstrumentationProposal {
   file: string;
   line: number;
   /** The code to insert. */
@@ -34,7 +34,7 @@ export interface InstrumentationProposal {
 
 /** PascalCase a store name for a `useX.getState` hint (cart → Cart). */
 function pascal(name: string): string {
-  return name.length === 0 ? name : name[0]?.toUpperCase() + name.slice(1);
+  return 0 === name.length ? name : name[0]?.toUpperCase() + name.slice(1);
 }
 
 function insertFor(gap: InstrumentationGap): string {

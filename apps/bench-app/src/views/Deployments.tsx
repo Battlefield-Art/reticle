@@ -23,8 +23,8 @@ export function Deployments(): React.ReactElement {
     () =>
       deployments.filter(
         (d) =>
-          (filter.env === 'all' || d.env === filter.env) &&
-          (filter.query === '' || d.service.toLowerCase().includes(filter.query.toLowerCase())),
+          ('all' === filter.env || d.env === filter.env) &&
+          ('' === filter.query || d.service.toLowerCase().includes(filter.query.toLowerCase())),
       ),
     [deployments, filter],
   );

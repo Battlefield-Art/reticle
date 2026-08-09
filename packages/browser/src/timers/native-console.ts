@@ -4,7 +4,7 @@
 // events to the agent, polluting the observation stream with SDK internals.
 const g: typeof globalThis = globalThis;
 
-const realWarn = typeof g.console?.warn === 'function' ? g.console.warn.bind(g.console) : null;
+const realWarn = 'function' === typeof g.console?.warn ? g.console.warn.bind(g.console) : null;
 
 export const nativeWarn = (...args: unknown[]): void => {
   realWarn?.(...args);

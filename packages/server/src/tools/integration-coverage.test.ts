@@ -60,7 +60,7 @@ describe('every shipped integration is covered by an app AND a gate', () => {
 
   it.each(INTEGRATIONS)('%s has a gate that actually runs its app', (pkg) => {
     const entry = COVERAGE[pkg];
-    if (entry !== undefined && 'why' in entry && entry.gate === null) {
+    if (entry !== undefined && 'why' in entry && null === entry.gate) {
       // A declared hole is allowed to exist, but not to be silent.
       expect(
         entry.why.length,

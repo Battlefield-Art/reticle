@@ -8,18 +8,18 @@ import {
   handleGate,
   loadNamedFlows,
   resolveChangedFiles,
-} from './cli-flow-commands.js';
+} from './cli/cli-flow-commands.js';
 import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv } from '@reticlehq/core';
 import { loadDotEnv } from './telemetry/dev-repo.js';
 import { createNodeFileSystem } from './project/fs-port.js';
 import { affectedSavedFlows } from './flows/flow-sources.js';
 
-import { checkForUpdate } from './update/update-checker.js';
-import { applyUpdate, rollback } from './update/updater.js';
+import { availableUpdate } from './update/update-nudge.js';
+import { handleUpdate, handleRollback } from './cli/cli-update-commands.js';
 
 import { start, startDaemon } from './index.js';
-import { isCloudCommand, runCloudCommand } from './cloud-cli.js';
-import { SERVER_VERSION } from './server-version.js';
+import { isCloudCommand, runCloudCommand } from './cli/cloud-cli.js';
+import { SERVER_VERSION } from './version/server-version.js';
 import { log } from './log.js';
 import {
   readPid,
@@ -29,18 +29,35 @@ import {
   spawnDaemon,
   discoverDaemonPort,
   writeDaemonRegistry,
-} from './daemon.js';
-import { waitForDaemon, startMcpProxy, probeDaemon } from './mcp-proxy.js';
-import { installDaemonResilience } from './daemon-resilience.js';
-import { IdleShutdown, resolveIdleShutdownMs } from './idle-shutdown.js';
-import { fetchStatus, summarizeStatus, decideOpen, openInBrowser } from './cli-launch.js';
-import { handleVerify } from './cli-verify.js';
+} from './daemon/daemon.js';
+import {
+  waitForDaemon,
+  startMcpProxy,
+  probeDaemon,
+  proxyLog,
+  setProxyLogPort,
+} from './mcp/mcp-proxy.js';
+import { installDaemonResilience, installProxyResilience } from './daemon/daemon-resilience.js';
+import { IdleShutdown, resolveIdleShutdownMs, resolveIdleCheckMs } from './daemon/idle-shutdown.js';
+import {
+  fetchStatus,
+  summarizeStatus,
+  warnOnDaemonSkew,
+  decideOpen,
+  openInBrowser,
+} from './cli/cli-launch.js';
+import { handleVerify } from './cli/cli-verify.js';
 import { summarizeHunt, type HuntAnomaly, type HuntRun } from './hunt/hunt-report.js';
 import { runInit } from './init/run.js';
-import { handleDoctor } from './cli-doctor.js';
+import { handleDoctor } from './cli/cli-doctor.js';
 import { buildNodeIo } from './init/node-io.js';
 import { describeLicense } from './license/license.js';
-import { isLikelyDevServerPort, devServerPortWarning, readProjectPort, readProjectId } from './cli-port.js';
+import {
+  isLikelyDevServerPort,
+  devServerPortWarning,
+  readProjectPort,
+  readProjectId,
+} from './cli/cli-port.js';
 import type { StartOptions } from './index.js';
 
 import {
@@ -53,24 +70,32 @@ import {
   HTTP_TOKEN_FLAG,
   parseCliArgs,
   CLI_USAGE,
-} from './cli-parse.js';
+} from './cli/cli-parse.js';
 import { handleFeedback, handleIdentify, handleTelemetry } from './telemetry/feedback-cli.js';
 import { installDaemonTelemetry } from './telemetry/daemon-telemetry.js';
 import { reportCliRun } from './telemetry/cli-telemetry.js';
 
 // Re-exported so existing imports (and the CLI tests) keep resolving from './cli.js'.
 export { parseCliArgs, CLI_USAGE };
-export type { CliResult } from './cli-parse.js';
+export type { CliResult } from './cli/cli-parse.js';
 
 function handleInit(parsed: {
   port: number | undefined;
   mcp: boolean;
   dryRun: boolean;
   install: boolean;
+  app?: string | undefined;
 }): void {
   const cwd = process.cwd();
   const result = runInit(
-    { cwd, port: parsed.port, mcp: parsed.mcp, dryRun: parsed.dryRun, install: parsed.install },
+    {
+      cwd,
+      port: parsed.port,
+      mcp: parsed.mcp,
+      dryRun: parsed.dryRun,
+      install: parsed.install,
+      ...(parsed.app === undefined ? {} : { app: parsed.app }),
+    },
     buildNodeIo(cwd),
   );
   if (!result.ok) process.exit(1);
@@ -110,7 +135,7 @@ function handleServe(parsed: {
 
 function handleStop(port: number, quiet: boolean): void {
   const pid = readPid(port);
-  if (pid === null || !isAlive(pid)) {
+  if (null === pid || !isAlive(pid)) {
     removePid(port);
     if (!quiet) log('reticle_daemon_not_running', { port });
     return;
@@ -134,17 +159,22 @@ function handleStop(port: number, quiet: boolean): void {
 
 function handleStatus(port: number): void {
   const pid = readPid(port);
-  if (pid === null || !isAlive(pid)) {
+  if (null === pid || !isAlive(pid)) {
     log('reticle_status', { port, running: false });
     return;
   }
   // The daemon is up — ask it for live sessions + health so status is at-a-glance, not just a pid.
   void fetchStatus(port).then((payload) => {
+    // `status` is the second-most-run command and the one a HUMAN types. The update nudge otherwise
+    // only rides a tool result, which the majority of daemons never produce — so the people most in
+    // need of an upgrade were the ones with no path to hearing about it.
+    const update = availableUpdate();
+    const nudge = update === undefined ? {} : { updateAvailable: update };
     if (payload === undefined) {
-      log('reticle_status', { port, running: true, pid });
+      log('reticle_status', { port, running: true, pid, ...nudge });
       return;
     }
-    log('reticle_status', { port, running: true, pid, ...summarizeStatus(payload) });
+    log('reticle_status', { port, running: true, pid, ...summarizeStatus(payload), ...nudge });
   });
 }
 
@@ -217,42 +247,14 @@ async function handleHunt(dir: string): Promise<void> {
   }
 }
 
-/** `reticle update` — install the latest server version and restart (moved off the MCP surface). */
-async function handleUpdate(): Promise<void> {
-  try {
-    const manifest = await checkForUpdate(SERVER_VERSION, () => Date.now());
-    if (!manifest.updateAvailable || manifest.latestVersion === undefined) {
-      log('reticle_update', {
-        ok: false,
-        message: 'already on the latest version',
-        version: SERVER_VERSION,
-      });
-      return;
-    }
-    log('reticle_update', { ok: true, from: SERVER_VERSION, to: manifest.latestVersion });
-    await applyUpdate(manifest.latestVersion); // calls process.exit; Claude Code restarts
-  } catch (error) {
-    log('reticle_update_failed', { error: error instanceof Error ? error.message : String(error) });
-    process.exitCode = 1;
-  }
-}
-
-/** `reticle rollback` — restore the previous server version and restart. */
-async function handleRollback(): Promise<void> {
-  try {
-    await rollback(); // calls process.exit
-  } catch (error) {
-    log('reticle_rollback_failed', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    process.exitCode = 1;
-  }
-}
-
 /** Ensure a daemon is reachable on `port` (probe the real port; spawn + wait only if nothing's there). */
 function ensureDaemon(port: number): Promise<void> {
-  return probeDaemon(port).then((listening) => {
-    if (listening) return undefined;
+  return probeDaemon(port).then(async (listening) => {
+    // Attaching to whatever already owns the port is the whole point of a daemon — but it means an
+    // upgrade does NOT take effect until that daemon dies, and nothing used to say so. Say it here,
+    // where both versions are in hand, and keep attaching: killing another agent's daemon on a
+    // version bump is worse than a loud warning.
+    if (listening) return warnOnDaemonSkew(port);
     const scriptPath = process.argv[1];
     if (scriptPath === undefined) throw new Error('cannot locate the reticle daemon script');
     spawnDaemon(
@@ -271,6 +273,25 @@ function ensureDaemon(port: number): Promise<void> {
  * the daemon, then reuses the already-connected tab or opens a new browser at the url. Idempotent:
  * re-running never piles up duplicate tabs.
  */
+/** How long `reticle open` waits for the launched page to register before reporting on it. */
+const OPEN_SESSION_WAIT_MS = 8000;
+
+/**
+ * Poll until a NEW session shows up, or the wait runs out. Returns whether one did.
+ *
+ * Compares against the count taken before launching rather than against zero, so opening a second
+ * app while one is already connected is not reported as an instant success.
+ */
+async function waitForNewSession(port: number, before: number): Promise<boolean> {
+  const deadline = Date.now() + OPEN_SESSION_WAIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const { sessions } = summarizeStatus(await fetchStatus(port));
+    if (sessions.length > before) return true;
+  }
+  return false;
+}
+
 function handleOpen(requestedPort: number, url: string | undefined): void {
   probeDaemon(requestedPort)
     .then((here) => (here ? requestedPort : (discoverDaemonPort() ?? requestedPort)))
@@ -278,7 +299,7 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
       await ensureDaemon(port);
       const { sessions } = summarizeStatus(await fetchStatus(port));
       const decision = decideOpen(sessions, url);
-      if (decision.action === 'need-url') {
+      if ('need-url' === decision.action) {
         log('reticle_open', {
           port,
           error:
@@ -287,12 +308,56 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
         });
         return;
       }
-      if (decision.action === 'reuse') {
+      if ('reuse' === decision.action) {
         log('reticle_open', { port, reusing: decision.url });
         return;
       }
-      openInBrowser(decision.url);
-      log('reticle_open', { port, opened: decision.url });
+      // A tab on the right origin, on the WRONG page. Kept (that is what stops a tab piling up per
+      // run) but never reported as done: `reusing` here read as "your url is open" for a page nobody
+      // had opened.
+      if ('left-as-is' === decision.action) {
+        log('reticle_open', {
+          port,
+          reusing: decision.url,
+          requested: decision.requested,
+          note:
+            `a tab is connected on this origin but sitting on ${decision.url} — it was LEFT THERE, ` +
+            `not navigated to ${decision.requested}. Drive it with reticle_navigate, or open the url ` +
+            'in the browser yourself.',
+        });
+        return;
+      }
+      const launchError = await openInBrowser(decision.url);
+      if (launchError !== null) {
+        log('reticle_open', {
+          port,
+          error: `could not launch a browser: ${launchError}`,
+          recovery:
+            'Open the url yourself, or run `reticle doctor` — it checks the pieces this command ' +
+            'depends on.',
+        });
+        process.exit(1);
+        return;
+      }
+      // Say whether a SESSION appeared, not merely that a launcher was invoked. `{"opened": url}`
+      // was printed unconditionally, so a run where nothing ever opened looked identical to a run
+      // where it did — reported from the field as twenty minutes lost to a phantom port problem.
+      const connected = await waitForNewSession(port, sessions.length);
+      log('reticle_open', {
+        port,
+        opened: decision.url,
+        connected,
+        ...(connected
+          ? {}
+          : {
+              note:
+                'the browser was launched but no Reticle session appeared. The app may still be ' +
+                'loading, or it is not wired to this bridge — run `reticle doctor`, and check the ' +
+                'app connects on port ' +
+                String(port) +
+                '.',
+            }),
+      });
     })
     .catch((err: unknown) => {
       log('reticle_open', { error: err instanceof Error ? err.message : String(err) });
@@ -365,9 +430,18 @@ function handleDaemonInner(parsed: {
       process.on('SIGINT', shutdown);
       // Self-shut-down when idle so a detached daemon (and any headless Chromium it launched) never
       // lingers on the user's machine after the editor closes. Reuses the same clean shutdown path.
+      const attachedGraceEnv = process.env[ReticleEnv.IDLE_ATTACHED];
       const idleShutdown = new IdleShutdown({
         graceMs: resolveIdleShutdownMs(process.env[ReticleEnv.IDLE_SHUTDOWN]),
+        checkIntervalMs: resolveIdleCheckMs(process.env[ReticleEnv.IDLE_CHECK]),
         isIdle: server.isIdle ?? (() => false),
+        ...(server.agentAttached === undefined ? {} : { agentAttached: server.agentAttached }),
+        // Only when the var is actually SET. `resolveIdleShutdownMs(undefined)` returns the 5-minute
+        // DEFAULT, so passing it unconditionally would override the derived attached grace with the
+        // very number this change exists to stop using — shipping the bug while looking fixed.
+        ...(attachedGraceEnv === undefined || '' === attachedGraceEnv.trim()
+          ? {}
+          : { attachedGraceMs: resolveIdleShutdownMs(attachedGraceEnv) }),
         onShutdown: () => {
           log('reticle_daemon_idle_exit', { port: parsed.port });
           shutdown();
@@ -400,40 +474,65 @@ function handleMcp(opts: {
   httpToken?: string;
 }): void {
   const { port, driveUrl, headless, http, httpPort, httpToken } = opts;
-  // Probe the port first — a daemon with a stale PID file is still usable.
-  // Only spawn when nothing is actually listening on the port.
-  probeDaemon(port)
-    .then((listening) => {
-      if (!listening) {
-        const scriptPath = process.argv[1];
-        if (scriptPath === undefined) {
-          log('reticle_mcp_no_script', {});
-          process.exit(1);
-          return;
-        }
-        const daemonArgs = [DAEMON_INNER_COMMAND, PORT_FLAG, String(port)];
-        if (driveUrl !== undefined) {
-          daemonArgs.push(DRIVE_FLAG, driveUrl);
-          if (!headless) daemonArgs.push(HEADED_FLAG);
-        }
-        // Forward the HTTP-verify flags too (previously silently dropped for `reticle mcp`).
-        if (http) {
-          daemonArgs.push(HTTP_FLAG);
-          if (httpPort !== undefined) daemonArgs.push(HTTP_PORT_FLAG, String(httpPort));
-          if (httpToken !== undefined) daemonArgs.push(HTTP_TOKEN_FLAG, httpToken);
-        }
-        spawnDaemon(process.execPath, scriptPath, daemonArgs, port);
-        log('reticle_mcp_daemon_started', {
-          port,
-          ...(driveUrl !== undefined ? { driveUrl } : {}),
-        });
-      }
-      return waitForDaemon(port).then(() => startMcpProxy(port));
-    })
-    .catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      log('reticle_mcp_proxy_error', { error: message });
+  // The proxy IS the MCP server the editor launched. Nothing respawns it, so an uncaught throw here
+  // is what a user experiences as "the MCP server disconnected — open /mcp and reconnect". Log it,
+  // report it, keep serving: the reconnect and dormant paths already know how to rebuild the only
+  // state this process has. See installProxyResilience for why its rule inverts the daemon's.
+  // The proxy's crash handlers must write to the proxy's LOG FILE, not just stderr. The editor
+  // swallows stderr, so wiring these to `log` meant a crash was handled and then unrecorded — the
+  // failure a user reports as "it disconnected" left nothing behind to read.
+  setProxyLogPort(port);
+  installProxyResilience(process, proxyLog);
+  /**
+   * Make sure a daemon is on the port, spawning one if not.
+   *
+   * Called on first start AND on every reconnect. The proxy used to only retry the socket, so a
+   * daemon that exited — crashed, `reticle stop`, or self-shut-down as idle — meant the retries hit
+   * a dead port until the budget ran out and the agent's MCP server exited with it. Reticle simply
+   * disappeared mid-session with nothing said. Respawning here makes the reconnect self-healing.
+   */
+  const ensure = async (): Promise<void> => {
+    if (await probeDaemon(port)) return;
+    const scriptPath = process.argv[1];
+    if (scriptPath === undefined) {
+      log('reticle_mcp_no_script', {});
       process.exit(1);
+    }
+    const daemonArgs = [DAEMON_INNER_COMMAND, PORT_FLAG, String(port)];
+    if (driveUrl !== undefined) {
+      daemonArgs.push(DRIVE_FLAG, driveUrl);
+      if (!headless) daemonArgs.push(HEADED_FLAG);
+    }
+    // Forward the HTTP-verify flags too (previously silently dropped for `reticle mcp`).
+    if (http) {
+      daemonArgs.push(HTTP_FLAG);
+      if (httpPort !== undefined) daemonArgs.push(HTTP_PORT_FLAG, String(httpPort));
+      if (httpToken !== undefined) daemonArgs.push(HTTP_TOKEN_FLAG, httpToken);
+    }
+    spawnDaemon(process.execPath, scriptPath, daemonArgs, port);
+    log('reticle_mcp_daemon_started', { port, ...(driveUrl !== undefined ? { driveUrl } : {}) });
+    await waitForDaemon(port);
+  };
+  // Start the proxy WHATEVER happened to the daemon.
+  //
+  // This used to exit(1) when `ensure` failed, which is the third way an MCP server disappears on a
+  // user: something else is holding the bridge port — a foreign daemon from another project, a
+  // half-dead process, a port a colleague's tool grabbed — the spawned daemon cannot bind, and the
+  // editor shows a server that failed to start. Nothing about that is unrecoverable: the proxy
+  // answers `initialize` itself, serves the cached catalog, and its wake path retries a daemon on
+  // every client request. Present-and-complaining beats absent, because absent needs a human.
+  // `void`: the chain handles its own failure and the process must not wait on it — the proxy is
+  // started from `finally` either way.
+  void ensure()
+    .catch((err: unknown) => {
+      log('reticle_mcp_daemon_unavailable', {
+        error: err instanceof Error ? err.message : String(err),
+        note: 'serving anyway — the next tool call will try to start a daemon again',
+      });
+    })
+    .finally(() => {
+      // Also `void`: the proxy runs for the life of the process and is never awaited by anyone.
+      void startMcpProxy(port, ensure);
     });
 }
 
@@ -491,7 +590,13 @@ function main(): void {
 
   switch (parsed.kind) {
     case 'error':
+      // Two audiences, two channels. The structured line is for logs and scripts; the plain text is
+      // for the person who just typed the command. Emitting only the JSON meant a single typo came
+      // back as an escaped one-line wall of the entire help text — see the ParseError builders.
       log('reticle_usage_error', { message: parsed.message });
+      process.stderr.write(
+        parsed.message === CLI_USAGE ? `${CLI_USAGE}\n` : `${parsed.message}\n\n${CLI_USAGE}\n`,
+      );
       process.exit(1);
       break;
     case 'init':

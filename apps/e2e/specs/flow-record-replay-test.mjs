@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import os from 'node:os'; import path from 'node:path'; import nfs from 'node:fs';
 import { start, TOOLS, BaselineStore, RecordingStore, FlowStore, ProjectStore, AnnotationStore, createNodeFileSystem } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 let pass=0,fail=0; const chk=(l,o,d='')=>{console.log(`   ${o?'✅':'❌'} ${l}${d?'  — '+d:''}`);o?pass++:fail++;};
 const reticleRoot=path.join(os.tmpdir(),`reticle-flow-record-${process.pid}`,'.reticle');
@@ -13,11 +14,7 @@ const deps={sessions:server.bridge.sessions,baselines:new BaselineStore(),record
 const T=(n,a={})=>TOOLS.find(t=>t.name===n).handler(deps,{sessionId:'next-smoke',...a});
 const b=await chromium.launch({headless:true}); const p=await b.newPage();
 await p.goto('http://localhost:3100/');
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
-for (let i = 0; i < 200 && !hasOwn(); i++) await sleep(50);
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 const refOf=async(by,value)=>{for(let i=0;i<30;i++){const r=(await T('reticle_query',{by,value})).elements?.[0]?.ref;if(r)return r;await sleep(100);}throw new Error('not found '+value);};
 console.log('\n=== record → .reticle/ flow → replay → drift (real browser) ===');
 // record + save

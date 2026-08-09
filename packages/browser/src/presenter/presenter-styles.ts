@@ -8,8 +8,8 @@ import { CONTROLS_CSS } from './presenter-controls.js';
  */
 // No web-font @import: a dev-only SDK must not make the host page issue a cross-origin request to
 // fonts.googleapis.com (and trip a `style-src 'self'` CSP with a console violation) just for HUD
-// polish. The font vars below already prefer Inter/IBM Plex Serif if present and fall back to the
-// system stack otherwise — so the overlay stays self-contained and never touches the network.
+// polish. The font var below already prefers Inter if present and falls back to the system stack
+// otherwise — so the overlay stays self-contained and never touches the network.
 export const PRESENTER_CSS = `
 [data-reticle-glow]{position:fixed;inset:0;pointer-events:none;z-index:2147483600;opacity:0;
   transition:opacity .25s ease;box-shadow:inset 0 0 0 3px rgba(99,102,241,.9),inset 0 0 28px 6px rgba(99,102,241,.45);}
@@ -37,7 +37,6 @@ export const PRESENTER_CSS = `
   --reticle-line:rgba(255,255,255,.09);--reticle-line2:rgba(255,255,255,.05);
   --reticle-read:#54d2e6;--reticle-ok:#3dd7a6;--reticle-bad:#ff7a7a;
   --reticle-font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  --reticle-serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
   position:fixed;left:50%;right:auto;bottom:20px;box-sizing:border-box;
   width:384px;height:468px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);
   display:flex;flex-direction:column;overflow:hidden;text-align:left;z-index:2147483647;pointer-events:none;
@@ -69,11 +68,15 @@ export const PRESENTER_CSS = `
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud][data-on="1"]{pointer-events:auto;}
 [data-reticle-hud] .reticle-hud-head{display:flex;align-items:center;gap:8px;flex:none;
   padding:12px 12px 12px 15px;border-bottom:1px solid var(--reticle-line2);}
-[data-reticle-hud] .reticle-dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--reticle-accent);
-  animation:reticle-breathe 2.6s ease-in-out infinite;}
-@keyframes reticle-breathe{0%,100%{box-shadow:0 0 0 0 var(--reticle-accent),0 0 7px 1px var(--reticle-accent);opacity:.85}
-  50%{box-shadow:0 0 0 4px var(--reticle-accent-soft),0 0 15px 3px var(--reticle-accent);opacity:1}}
-[data-reticle-hud] .reticle-brand{font-family:var(--reticle-serif);font-weight:500;font-size:15px;letter-spacing:.01em;color:var(--reticle-fg);}
+/* Brand block: both marks always in the DOM, CSS picks one off data-reticle-min (see below) so the
+   collapsed/expanded swap needs no JS state. Artwork paints with currentColor, so it inherits
+   --reticle-fg and reads correctly on any HUD surface instead of baking in the export's #FAFAFA. */
+[data-reticle-hud] .reticle-brand{display:inline-flex;align-items:center;flex:none;color:var(--reticle-fg);}
+[data-reticle-hud] .reticle-mark{display:none;height:18px;width:auto;flex:none;}
+[data-reticle-hud] .reticle-wordmark{display:block;height:16px;width:auto;flex:none;}
+/* Visually hidden, still announced — the marks are aria-hidden artwork, this names the HUD. */
+[data-reticle-hud] .reticle-brand-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+  overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;}
 [data-reticle-hud] .reticle-head-sp{flex:1;}
 [data-reticle-hud] .reticle-live{display:none;flex:1;min-width:0;color:var(--reticle-muted);font-size:12.5px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -104,7 +107,6 @@ export const PRESENTER_CSS = `
 [data-reticle-hud] .reticle-chip[data-mode="idle"]{display:none;}
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud]{height:50px;border-radius:25px;cursor:pointer;}
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] .reticle-hud-head{border-bottom:none;height:50px;padding:0 12px 0 16px;}
-[data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] .reticle-brand,
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] .reticle-chip,
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] .reticle-head-sp,
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] [data-reticle-min-btn],
@@ -114,6 +116,9 @@ export const PRESENTER_CSS = `
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] [data-reticle-log],
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] [data-reticle-foot],
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] .reticle-banner{display:none;}
+/* Collapsed to a pill: mark only, beside the dot. Expanded: the full wordmark. */
+[data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] .reticle-wordmark{display:none;}
+[data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] .reticle-mark{display:block;}
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] .reticle-live{display:block;}
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud] .reticle-maxhint{display:inline-flex;}
 [data-reticle-mode="reading"] [data-reticle-glow][data-on="1"]{
@@ -123,5 +128,11 @@ export const PRESENTER_CSS = `
 [data-reticle-overlay][data-reticle-throttled="1"] [data-reticle-glow][data-on="1"]{
   box-shadow:inset 0 0 0 3px rgba(251,191,36,.9),inset 0 0 28px 6px rgba(251,191,36,.45);}
 [data-reticle-overlay][data-reticle-throttled="1"] [data-reticle-hud]{--reticle-accent:#fbbf24;--reticle-accent-soft:rgba(251,191,36,.16);}
+/* The two INFINITE animations — the header dot and the border glow — are pure decoration and were
+   blinking regardless of the user's motion preference. Everything else the presenter animates is a
+   one-shot (ripple, tally pop) or a transition, which reduce-motion tolerates. */
+@media (prefers-reduced-motion:reduce){
+  [data-reticle-glow][data-on="1"],
+  [data-reticle-glow][data-on="1"][data-busy="1"]{animation:none;}}
 ${LOG_CSS}
 ${CONTROLS_CSS}`;

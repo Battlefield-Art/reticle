@@ -1,4 +1,4 @@
-import { EventType, type ReticleEvent } from '@reticlehq/core';
+import { ConsequenceKind, EventType, type ReticleEvent } from '@reticlehq/core';
 import { causalSummary, type CausalSummary } from './causal-summary.js';
 import { firstDivergence, type Divergence, type ExpectedLink } from './divergence.js';
 
@@ -24,12 +24,18 @@ function blastRadius(
 ): string[] {
   const declaredSignals = new Set(
     expected
-      .filter((l): l is Extract<ExpectedLink, { kind: 'signal' }> => l.kind === 'signal')
+      .filter(
+        (l): l is Extract<ExpectedLink, { kind: typeof ConsequenceKind.SIGNAL }> =>
+          ConsequenceKind.SIGNAL === l.kind,
+      )
       .map((l) => l.name),
   );
   const declaredStates = new Set(
     expected
-      .filter((l): l is Extract<ExpectedLink, { kind: 'state' }> => l.kind === 'state')
+      .filter(
+        (l): l is Extract<ExpectedLink, { kind: typeof ConsequenceKind.STATE }> =>
+          ConsequenceKind.STATE === l.kind,
+      )
       .map((l) => l.name),
   );
   const radius: string[] = [];

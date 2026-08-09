@@ -79,7 +79,7 @@ export function buildRedactionPolicy(
   onWarn?: (message: string) => void,
 ): RedactionPolicy {
   const literalKeys = normalizeNames(
-    config?.keys?.filter((k): k is string => typeof k === 'string'),
+    config?.keys?.filter((k): k is string => 'string' === typeof k),
   );
   const patterns = (config?.keys ?? []).filter((k): k is RegExp => k instanceof RegExp);
   const allowed = normalizeNames(config?.allow);
@@ -94,8 +94,8 @@ export function buildRedactionPolicy(
   if (exemptedCredentials.length > 0 && onWarn !== undefined) {
     onWarn(
       `[reticle] redact.allow is exempting ${exemptedCredentials.join(', ')} from redaction. The ` +
-        `default rule treats ${exemptedCredentials.length === 1 ? 'that key' : 'those keys'} as a ` +
-        `credential, so ${exemptedCredentials.length === 1 ? 'its value' : 'their values'} will now ` +
+        `default rule treats ${1 === exemptedCredentials.length ? 'that key' : 'those keys'} as a ` +
+        `credential, so ${1 === exemptedCredentials.length ? 'its value' : 'their values'} will now ` +
         `reach the agent transcript and the on-disk journal in cleartext.`,
     );
   }
@@ -168,7 +168,7 @@ export function wireRedactionKeys(config?: RedactionConfig): string[] {
   for (const key of config?.keys ?? []) {
     if (typeof key !== 'string') continue;
     const trimmed = key.trim();
-    if (trimmed.length === 0 || trimmed.length > MAX_WIRE_REDACT_KEY_LENGTH) continue;
+    if (0 === trimmed.length || trimmed.length > MAX_WIRE_REDACT_KEY_LENGTH) continue;
     const normalized = trimmed.toLowerCase();
     if (seen.has(normalized)) continue;
     seen.add(normalized);

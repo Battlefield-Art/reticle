@@ -10,6 +10,7 @@
  * pay for it; the type-only import is elided by `tsc`, so the build stays green without it.
  */
 import type { Browser, Page } from 'playwright';
+import { gotoOptions } from '../pool/playwright-launcher.js';
 import { BrowserLaunchKind } from '@reticlehq/core';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
 import { classifyConnectFailure } from '../telemetry/connect-failure.js';
@@ -197,7 +198,7 @@ export async function capturePage(page: Page, opts: ScreenshotOpts): Promise<Uin
   const buf = await page.screenshot(
     opts.clip !== undefined
       ? { ...SCREENSHOT_DETERMINISM, clip: opts.clip }
-      : opts.fullPage === true
+      : true === opts.fullPage
         ? { ...SCREENSHOT_DETERMINISM, fullPage: true }
         : { ...SCREENSHOT_DETERMINISM },
   );
@@ -437,7 +438,11 @@ export class LaunchedRealInputProvider implements OwnedRealInputProvider {
     // Capture CDP-authoritative response detail into the driven session's journal (best-effort).
     if (this.#onNetworkDetail !== undefined) attachNetworkDetail(page, this.#onNetworkDetail);
     try {
-      await page.goto(this.#driveUrl);
+      // Same navigation rule as the pool, and for the same measured reason: Playwright's default
+      // waits for `load`, which an app with one never-finishing subresource never fires — 30s of
+      // nothing and then a failure that blames the app. The SDK connect is a module script, so it
+      // has already run by DOMContentLoaded. See gotoOptions.
+      await page.goto(this.#driveUrl, gotoOptions(undefined));
     } catch (e) {
       throw new DriveError(
         DriveErrorCode.NAVIGATE_FAILED,
@@ -548,7 +553,7 @@ export function selectPage<T extends { url(): string }>(
   if (exact !== undefined) return exact;
   const target = stripVolatile(sessionUrl);
   const loose = pages.filter((p) => stripVolatile(p.url()) === target);
-  return loose.length === 1 ? loose[0] : undefined;
+  return 1 === loose.length ? loose[0] : undefined;
 }
 
 function stripVolatile(url: string): string {

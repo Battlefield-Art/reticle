@@ -21,7 +21,12 @@ import { McpStdioClient, RETICLE_CLI as CLI } from './mcp-client.mjs';
 import { measure } from './tokenizer.mjs';
 
 /** Ours, one entry per advertised profile — the whole point is that the DEFAULT is what gets paid. */
-const RETICLE_PROFILES = ['dynamic', 'hybrid', 'standard', 'full'];
+// There is one tool surface plus the ALL verification switch — `dynamic`, `core`, `hybrid` and
+// `standard` were retired (see packages/server/src/tools/tool-surface.ts). Measured per surface here.
+const RETICLE_SURFACES = [
+  { label: 'default', env: {} },
+  { label: 'all', env: { RETICLE_ADVERTISE_ALL_TOOLS: '1' } },
+];
 
 const COMPETITORS = {
   playwright_mcp: {
@@ -55,13 +60,13 @@ const only = process.argv[2];
 const results = {};
 
 let port = 4480;
-for (const profile of RETICLE_PROFILES) {
+for (const surface of RETICLE_SURFACES) {
   const p = String(port++);
-  results[`reticle_${profile}`] = await taxOf('node', [CLI, 'mcp', '--port', p], {
+  results[`reticle_${surface.label}`] = await taxOf('node', [CLI, 'mcp', '--port', p], {
     RETICLE_PORT: p,
-    RETICLE_TOOL_PROFILE: profile,
+    ...surface.env,
   });
-  console.log(`reticle:${profile}`, JSON.stringify(results[`reticle_${profile}`]));
+  console.log(`reticle:${surface.label}`, JSON.stringify(results[`reticle_${surface.label}`]));
 }
 
 if (only !== 'reticle') {

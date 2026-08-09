@@ -15,9 +15,9 @@ export const AUTH_TOKEN_KEY = 'reticle.bench.authToken';
 /** Deliberately session-scoped: a session id that outlives the tab is the `session-in-localstorage` bug. */
 export const SESSION_ID_KEY = 'reticle.bench.sessionId';
 /** The server-visible half; a client that drops it looks signed in until the next API call. */
-export const SESSION_COOKIE = 'bench_session';
+const SESSION_COOKIE = 'bench_session';
 
-export interface PersistedSession {
+interface PersistedSession {
   token: string;
   sessionId: string;
 }
@@ -31,11 +31,11 @@ export interface PersistedSession {
  * `token-not-persisted` bug, on a clean build. Fall back rather than let sign-in half-succeed.
  */
 function randomId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (typeof crypto !== 'undefined' && 'function' === typeof crypto.randomUUID) {
     return crypto.randomUUID();
   }
   const bytes = new Uint8Array(16);
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+  if (typeof crypto !== 'undefined' && 'function' === typeof crypto.getRandomValues) {
     crypto.getRandomValues(bytes);
   }
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -56,8 +56,4 @@ export function clearSession(): void {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   sessionStorage.removeItem(SESSION_ID_KEY);
   document.cookie = `${SESSION_COOKIE}=; path=/; Max-Age=0; SameSite=Lax`;
-}
-
-export function readToken(): string | null {
-  return localStorage.getItem(AUTH_TOKEN_KEY);
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { QueryBy } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import { asNumber, asString } from '../tools/tools-helpers.js';
 import { scrollToFind, type ScrollFindQuery } from './scroll-find.js';
@@ -9,17 +10,22 @@ import type { ToolDef, ToolDeps } from '../tools/tools.js';
  * only sees rendered nodes, so an off-screen row in a react-window/react-virtualized list returns
  * nothing. This scrolls the container until the row mounts, then returns its ref.
  */
+/**
+ * The query strategies, derived from QueryBy — the same vocabulary reticle_query uses, and for the
+ * same reason. A free string here produced the identical false negative: `by:'css'` scrolled the
+ * whole list and reported `{ found: false, exhausted: true }`, which reads as "the row is not in
+ * this list" rather than "that strategy does not exist".
+ */
+const QUERY_BY_LIST = Object.values(QueryBy).join(' | ');
+const queryByEnum = z.enum(Object.values(QueryBy) as [string, ...string[]]);
+
 export const SCROLL_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.SCROLL_TO,
     description:
-      'Find an element in a VIRTUALIZED list that has not rendered yet. Pass `by` (role|text|testid|label|placeholder|alt) and `value` (query string) to identify the target row. Scrolls the container until the row mounts, the list ends, or maxScrolls (default 20) is spent. Pass targetIndex + totalCount for bisection — jumps directly to the estimated offset in one scroll (e.g. targetIndex:800 totalCount:1000 jumps to 80% of scrollHeight). Returns { found, element?, scrolls, exhausted }.',
+      'Find an element in a VIRTUALIZED list that has not rendered yet. Pass `by` (see the parameter for the exact strategies) and `value` (query string) to identify the target row. Scrolls the container until the row mounts, the list ends, or maxScrolls (default 20) is spent. Pass targetIndex + totalCount for bisection — jumps directly to the estimated offset in one scroll (e.g. targetIndex:800 totalCount:1000 jumps to 80% of scrollHeight). Returns { found, element?, scrolls, exhausted }.',
     inputSchema: {
-      by: z
-        .string()
-        .describe(
-          'Query strategy for finding the target: role | text | testid | label | placeholder | alt',
-        ),
+      by: queryByEnum.describe(`Query strategy for finding the target: ${QUERY_BY_LIST}`),
       value: z
         .string()
         .describe('Query value for the selected strategy (the element to scroll into view).'),

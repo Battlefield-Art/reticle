@@ -18,11 +18,11 @@ export const CloudEnv = {
 } as const;
 
 /** Paths the OSS server pushes to (match the cloud app's contract). */
-export const CLOUD_FLOWS_PATH = '/v1/flows';
-export const CLOUD_RUNS_PATH = '/v1/runs';
-export const CLOUD_PROJECT_RUNS_PATH = '/v1/project/runs';
-export const CLOUD_PROJECT_REGRESSION_PATH = '/v1/project/regression';
-export const CLOUD_VERIFICATIONS_PATH = '/v1/verifications';
+const CLOUD_FLOWS_PATH = '/v1/flows';
+const CLOUD_RUNS_PATH = '/v1/runs';
+const CLOUD_PROJECT_RUNS_PATH = '/v1/project/runs';
+const CLOUD_PROJECT_REGRESSION_PATH = '/v1/project/regression';
+const CLOUD_VERIFICATIONS_PATH = '/v1/verifications';
 
 export interface CloudConfig {
   url: string;
@@ -33,8 +33,8 @@ export interface CloudConfig {
 export function resolveCloudConfig(env: NodeJS.ProcessEnv): CloudConfig | null {
   const url = env[CloudEnv.URL];
   const apiKey = env[CloudEnv.KEY];
-  if (typeof url !== 'string' || url.length === 0) return null;
-  if (typeof apiKey !== 'string' || apiKey.length === 0) return null;
+  if (typeof url !== 'string' || 0 === url.length) return null;
+  if (typeof apiKey !== 'string' || 0 === apiKey.length) return null;
   return { url: url.replace(/\/+$/, ''), apiKey };
 }
 
@@ -45,7 +45,7 @@ export const SyncOutcome = {
 } as const;
 export type SyncOutcome = (typeof SyncOutcome)[keyof typeof SyncOutcome];
 
-export interface SyncResult {
+interface SyncResult {
   outcome: SyncOutcome;
   status?: number;
   error?: string;
@@ -73,7 +73,7 @@ export async function syncFlowToCloud(
   projectId: string | undefined,
   fetchImpl: FetchLike,
 ): Promise<SyncResult> {
-  if (config === null) return { outcome: SyncOutcome.SKIPPED };
+  if (null === config) return { outcome: SyncOutcome.SKIPPED };
   try {
     const res = await fetchImpl(`${config.url}${CLOUD_FLOWS_PATH}`, {
       method: 'POST',
@@ -103,7 +103,7 @@ export async function syncRunToCloud(
   config: CloudConfig | null,
   fetchImpl: FetchLike,
 ): Promise<SyncResult> {
-  if (config === null) return { outcome: SyncOutcome.SKIPPED };
+  if (null === config) return { outcome: SyncOutcome.SKIPPED };
   try {
     const res = await fetchImpl(`${config.url}${CLOUD_RUNS_PATH}`, {
       method: 'POST',
@@ -133,7 +133,7 @@ export async function syncRunRecordToCloud(
   config: CloudConfig | null,
   fetchImpl: FetchLike,
 ): Promise<SyncResult> {
-  if (config === null) return { outcome: SyncOutcome.SKIPPED };
+  if (null === config) return { outcome: SyncOutcome.SKIPPED };
   try {
     const res = await fetchImpl(`${config.url}${CLOUD_PROJECT_RUNS_PATH}`, {
       method: 'POST',
@@ -170,7 +170,7 @@ export async function fetchProjectRegressionFromCloud(
   projectId: string | undefined,
   fetchImpl: FetchGetLike,
 ): Promise<unknown> {
-  if (config === null) return null;
+  if (null === config) return null;
   try {
     const query = projectId === undefined ? '' : `?projectId=${encodeURIComponent(projectId)}`;
     const res = await fetchImpl(`${config.url}${CLOUD_PROJECT_REGRESSION_PATH}${query}`, {
@@ -210,7 +210,7 @@ export async function submitServerVerification(
   config: CloudConfig | null,
   fetchImpl: FetchPostJsonLike,
 ): Promise<ServerVerification | null> {
-  if (config === null) return null;
+  if (null === config) return null;
   try {
     const res = await fetchImpl(`${config.url}${CLOUD_VERIFICATIONS_PATH}`, {
       method: 'POST',

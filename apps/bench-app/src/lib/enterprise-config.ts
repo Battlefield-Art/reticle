@@ -6,7 +6,7 @@
  * for every existing benchmark URL, so the nav item is not rendered and the view never mounts.
  */
 
-export const EnterpriseParam = {
+const EnterpriseParam = {
   ENABLED: 'enterprise',
   ROWS: 'enterprise-rows',
   COLS: 'enterprise-cols',
@@ -18,7 +18,7 @@ export const EnterpriseParam = {
 } as const;
 
 /** Defaults land on ~10k nodes / depth ~15 / 20 req-per-sec — the "real enterprise React app" shape. */
-export const EnterpriseDefault = {
+const EnterpriseDefault = {
   ROWS: 1000,
   COLS: 4,
   DEPTH: 15,
@@ -28,7 +28,7 @@ export const EnterpriseDefault = {
   HOT_MS: 500,
 } as const;
 
-export interface EnterpriseConfig {
+interface EnterpriseConfig {
   rows: number;
   cols: number;
   depth: number;
@@ -41,7 +41,7 @@ export interface EnterpriseConfig {
 const PARAM_PREFIX = 'enterprise-';
 
 function search(): URLSearchParams {
-  return new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
+  return new URLSearchParams('undefined' === typeof location ? '' : location.search);
 }
 
 /** Any `?enterprise` / `?enterprise-*` param turns the fixture on. Nothing else does. */
@@ -54,7 +54,7 @@ export function isEnterpriseEnabled(): boolean {
 
 function readCount(params: URLSearchParams, key: string, fallback: number): number {
   const raw = params.get(key);
-  if (raw === null) return fallback;
+  if (null === raw) return fallback;
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0) return fallback;
   return Math.floor(n);

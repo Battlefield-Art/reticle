@@ -53,13 +53,13 @@ export function verifyLicenseKey(
   publicKey: KeyObject,
   now: number,
 ): LicenseCheck {
-  if (key === undefined || key.length === 0) return { status: LicenseStatus.MISSING };
+  if (key === undefined || 0 === key.length) return { status: LicenseStatus.MISSING };
   const parts = key.split(KEY_SEP);
   if (
     parts.length !== 2 ||
     parts[0] === undefined ||
     parts[1] === undefined ||
-    parts[0].length === 0
+    0 === parts[0].length
   ) {
     return { status: LicenseStatus.MALFORMED };
   }
@@ -116,7 +116,7 @@ export interface GateContext {
 /** The issuer public key from the environment (set at release / by the operator); undefined if unset. */
 function issuerPublicKey(): KeyObject | undefined {
   const pem = process.env[LICENSE_PUBLIC_KEY_ENV];
-  if (pem === undefined || pem.length === 0) return undefined;
+  if (pem === undefined || 0 === pem.length) return undefined;
   try {
     return createPublicKey(pem);
   } catch {
@@ -154,14 +154,14 @@ export const LICENSE_PUBLIC_KEY_ENV = 'RETICLE_LICENSE_PUBLIC_KEY';
  * never setting RETICLE_LICENSE_PUBLIC_KEY, because the baked key takes precedence. The public key is
  * safe to ship openly — it can only verify licenses, never mint them (that needs the private key).
  */
-export const BAKED_ISSUER_PUBLIC_KEY_PEM = '';
+const BAKED_ISSUER_PUBLIC_KEY_PEM = '';
 
 /**
  * Resolve the issuer public-key PEM enforcement uses: the baked-in release key wins, so it can't be
  * turned off from the environment. Only when nothing is baked (dev/repo) does the env var apply — that
  * env path is the test/self-eval escape hatch, not the production switch.
  */
-export function resolveIssuerPublicKeyPem(
+function resolveIssuerPublicKeyPem(
   env: NodeJS.ProcessEnv,
   baked: string = BAKED_ISSUER_PUBLIC_KEY_PEM,
 ): string | undefined {
@@ -181,7 +181,7 @@ interface LicenseReport {
 }
 
 function loadPublicKey(pem: string | undefined): KeyObject | undefined {
-  if (pem === undefined || pem.length === 0) return undefined;
+  if (pem === undefined || 0 === pem.length) return undefined;
   try {
     return createPublicKey(pem);
   } catch {
@@ -200,7 +200,7 @@ export function describeLicense(
   baked: string = BAKED_ISSUER_PUBLIC_KEY_PEM,
 ): LicenseReport {
   const pem = resolveIssuerPublicKeyPem(env, baked);
-  if (pem === undefined || pem.length === 0) {
+  if (pem === undefined || 0 === pem.length) {
     // In a production runtime this is NOT a benign eval session — it is a mis-built release whose gate
     // is off, and assertEnterpriseFromEnv now denies rather than unlocking. Say so loudly here too.
     return isProductionEnv(env)
@@ -248,7 +248,7 @@ export function describeLicense(
 /** True in a production runtime (NODE_ENV=production) — where a missing issuer key is a mis-built
  *  release, not an eval session, so the gate must fail CLOSED rather than run features free. */
 function isProductionEnv(env: NodeJS.ProcessEnv): boolean {
-  return env['NODE_ENV'] === 'production';
+  return 'production' === env['NODE_ENV'];
 }
 
 /**

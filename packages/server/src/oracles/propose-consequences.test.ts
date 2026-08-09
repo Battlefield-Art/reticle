@@ -21,7 +21,7 @@ describe('proposeConsequences', () => {
     expect(proposals[0]?.weak).toBe(false);
     expect(proposals[proposals.length - 1]?.weak).toBe(true); // presence last
     // deduped: only one signal proposal
-    expect(proposals.filter((p) => p.predicate['kind'] === 'signal')).toHaveLength(1);
+    expect(proposals.filter((p) => 'signal' === p.predicate['kind'])).toHaveLength(1);
   });
 
   it('extracts the pathname for a net proposal', () => {

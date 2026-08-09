@@ -43,7 +43,7 @@ export const RUN_TOOLS: ToolDef[] = [
     handler: async (deps: ToolDeps, args: Record<string, unknown>) => {
       const store = new RunStore(deps.fs, deps.reticleRoot);
       // format:"diff" is a whole-history operation (two most-recent runs), not a single-run read.
-      if (asString(args['format']) === 'diff') {
+      if ('diff' === asString(args['format'])) {
         const pair = await store.latestTwo();
         if (pair === undefined) {
           return {
@@ -81,7 +81,7 @@ export const RUN_TOOLS: ToolDef[] = [
         }
         run = latest;
       }
-      return asString(args['format']) === 'report' ? { report: renderRunReport(run) } : { run };
+      return 'report' === asString(args['format']) ? { report: renderRunReport(run) } : { run };
     },
   },
 ];

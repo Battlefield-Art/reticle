@@ -23,7 +23,7 @@ export interface RunDiff {
 }
 
 /** Below this percent, a duration change is noise (machine jitter), not a regression. */
-export const DEFAULT_NOISE_FLOOR_PCT = 10;
+const DEFAULT_NOISE_FLOOR_PCT = 10;
 
 function pct(before: number, delta: number): number {
   return before > 0 ? Math.round((delta / before) * 100) : 0;
@@ -39,7 +39,7 @@ function headlineFor(diff: Omit<RunDiff, 'headline'>): string {
   if (regressions.length > 0) {
     const worst = regressions[0];
     parts.push(
-      `${String(regressions.length)} regression${regressions.length === 1 ? '' : 's'} (worst: ${worst?.name ?? ''} ${String(worst?.durationDeltaPct ?? 0)}%)`,
+      `${String(regressions.length)} regression${1 === regressions.length ? '' : 's'} (worst: ${worst?.name ?? ''} ${String(worst?.durationDeltaPct ?? 0)}%)`,
     );
   }
   if (diff.newFlows.length > 0) parts.push(`+${String(diff.newFlows.length)} flow`);
@@ -47,7 +47,7 @@ function headlineFor(diff: Omit<RunDiff, 'headline'>): string {
   if (diff.verdictChange !== undefined) {
     parts.push(`verdict ${diff.verdictChange.from}→${diff.verdictChange.to}`);
   }
-  return parts.length === 0 ? 'no significant change between runs' : parts.join(', ');
+  return 0 === parts.length ? 'no significant change between runs' : parts.join(', ');
 }
 
 /**

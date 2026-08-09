@@ -11,13 +11,13 @@ export interface Verdict {
 }
 
 function asVerdict(value: unknown): Verdict {
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value !== 'object' || null === value) {
     return { pass: false, failureReason: 'assert returned a non-object result' };
   }
   const record = value as Record<string, unknown>;
-  const pass = record['pass'] === true;
+  const pass = true === record['pass'];
   const failureReason =
-    typeof record['failureReason'] === 'string' ? record['failureReason'] : undefined;
+    'string' === typeof record['failureReason'] ? record['failureReason'] : undefined;
   return {
     pass,
     evidence: record['evidence'],

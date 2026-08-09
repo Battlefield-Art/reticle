@@ -4,7 +4,7 @@ import { reticleDirPaths } from '../project/reticle-dir.js';
 import { AmbientFileSchema, type AmbientCounts } from './ambient.js';
 
 /** Bumped on any breaking change to the persisted ambient-map shape. */
-export const AMBIENT_FILE_VERSION = 1;
+const AMBIENT_FILE_VERSION = 1;
 
 /**
  * Persists the learned ambient-churn region map at `.reticle/ambient.json`. Local, single-project

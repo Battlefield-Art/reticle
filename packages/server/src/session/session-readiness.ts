@@ -16,11 +16,16 @@ interface WaitForReadyOptions {
   now: () => number;
   /** Injected delay between polls. */
   sleep: (ms: number) => Promise<void>;
-  /** Poll interval (ms). Default 100. */
+  /** Poll interval (ms). Default 25 — see DEFAULT_POLL_MS. */
   pollMs?: number;
 }
 
-const DEFAULT_POLL_MS = 100;
+/**
+ * Same reasoning as session-reconnect: the check is an in-memory lookup and the thing awaited is an
+ * event (a session registering), so a coarse grid only adds latency to the first call an agent
+ * makes. Four times the checks of something with no I/O costs nothing measurable.
+ */
+const DEFAULT_POLL_MS = 25;
 
 /**
  * One-line orientation for a FRESH agent — the Reticle loop, returned by reticle_wait_ready (the first call)

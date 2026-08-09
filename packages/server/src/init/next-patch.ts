@@ -9,8 +9,8 @@
 import { PatchKind, type SourcePatch } from './patch-kind.js';
 
 const RETICLE_NEXT_PACKAGE = '@reticlehq/next';
-export const NEXT_CONFIG_IMPORT = `import { withReticle } from '${RETICLE_NEXT_PACKAGE}';`;
-export const NEXT_CONFIG_REQUIRE = `const { withReticle } = require('${RETICLE_NEXT_PACKAGE}');`;
+const NEXT_CONFIG_IMPORT = `import { withReticle } from '${RETICLE_NEXT_PACKAGE}';`;
+const NEXT_CONFIG_REQUIRE = `const { withReticle } = require('${RETICLE_NEXT_PACKAGE}');`;
 
 const RETICLE_DEV_COMPONENT = 'ReticleDev';
 const RETICLE_DEV_BASENAME = 'reticle-dev';
@@ -18,10 +18,10 @@ const RETICLE_DEV_BASENAME = 'reticle-dev';
 const RETICLE_DEV_SIBLING = `./${RETICLE_DEV_BASENAME}`;
 const reticleDevImport = (specifier: string): string =>
   `import { ${RETICLE_DEV_COMPONENT} } from '${specifier}';`;
-export const RETICLE_DEV_IMPORT = reticleDevImport(RETICLE_DEV_SIBLING);
+const RETICLE_DEV_IMPORT = reticleDevImport(RETICLE_DEV_SIBLING);
 
 /** Where the generated connect component goes, and how the mount file should import it. */
-export interface ReticleDevLocation {
+interface ReticleDevLocation {
   /** Project-relative path to write. */
   path: string;
   /** What the mount file (`app/layout.*` or `pages/_app.*`) should import. */
@@ -44,11 +44,11 @@ export interface ReticleDevLocation {
 export function reticleDevLocation(mountPath: string, typescript: boolean): ReticleDevLocation {
   const ext = typescript ? '.tsx' : '.jsx';
   const slash = mountPath.lastIndexOf('/');
-  const dir = slash === -1 ? '' : mountPath.slice(0, slash);
+  const dir = -1 === slash ? '' : mountPath.slice(0, slash);
   const isPagesRouter = /(^|\/)pages$/.test(dir);
   if (!isPagesRouter) {
     return {
-      path: `${dir === '' ? '' : `${dir}/`}${RETICLE_DEV_BASENAME}${ext}`,
+      path: `${'' === dir ? '' : `${dir}/`}${RETICLE_DEV_BASENAME}${ext}`,
       importSpecifier: RETICLE_DEV_SIBLING,
     };
   }
@@ -62,29 +62,122 @@ export function reticleDevLocation(mountPath: string, typescript: boolean): Reti
 /** The dev-guarded mount. Production strips it — `process.env.NODE_ENV` is inlined at build time. */
 const RETICLE_DEV_MOUNT = `{process.env.NODE_ENV === 'development' ? <${RETICLE_DEV_COMPONENT} /> : null}`;
 
-/** `export default <expr>;` — the ESM shape every `create-next-app` config uses. */
-const ESM_DEFAULT_EXPORT = /export\s+default\s+([\s\S]+?);?\s*$/;
-/** `module.exports = <expr>;` — the CJS shape older configs use. */
-const CJS_EXPORT = /module\.exports\s*=\s*([\s\S]+?);?\s*$/;
+/**
+ * `export default ` / `module.exports = ` at the START of a line — the head of the assignment, not
+ * the whole statement. Where the exported expression ENDS is decided by `expressionEnd` below.
+ *
+ * These used to be `/…([\s\S]+?);?\s*$/`, which reads as "the expression, lazily". It is not: with
+ * no `m` flag the `$` is end-of-FILE and the trailing `;?\s*` is satisfiable only there, so the
+ * capture always ran to the last non-blank character of the file. Every config whose export was not
+ * the final statement got everything after it swallowed into the wrap. On a config exporting
+ * conditionally that produced an unbalanced paren — a syntax error, so `next dev` exited 1 while
+ * `init` reported the step as ✓ and the only symptom was "dev server never served".
+ */
+const ESM_DEFAULT_HEAD = /^[ \t]*export[ \t]+default[ \t]+/gm;
+const CJS_EXPORT_HEAD = /^[ \t]*module\.exports[ \t]*=[ \t]*/gm;
 /** The opening `<body ...>` tag, whose first child is where the mount goes. */
 const BODY_OPEN_TAG = /<body(\s[^>]*)?>/g;
 
 const NO_EXPORT_REASON = "couldn't find an `export default` or `module.exports` to wrap";
 const NO_BODY_REASON = "couldn't find a single <body> tag to mount <ReticleDev /> inside";
 
+/** Bracket pairs that keep an expression open. A `;` at depth 0 is what ends it. */
+const OPENERS = '([{';
+const CLOSERS = ')]}';
+const LINE_COMMENT = '//';
+const BLOCK_COMMENT_OPEN = '/*';
+const BLOCK_COMMENT_CLOSE = '*/';
+const QUOTES = '\'"`';
+
+/**
+ * Index just past the exported expression that starts at `from` — the `;` that closes it, or end of
+ * file. Tracks bracket depth so a multi-line object or a nested call ends in the right place, and
+ * skips strings and comments so a `;` or a brace inside one cannot end it early.
+ *
+ * Deliberately a scanner and not a parser: `next.config.*` is arbitrary JS and this file's contract
+ * is to recognise the obvious shape or bail. It only has to be right about where ONE expression
+ * stops, and wrong is caught by the caller bailing to manual, never by a half-edit.
+ */
+function expressionEnd(source: string, from: number): number {
+  let depth = 0;
+  for (let i = from; i < source.length; i++) {
+    const ch = source[i] ?? '';
+    const pair = source.slice(i, i + 2);
+    if (pair === LINE_COMMENT) {
+      const nl = source.indexOf('\n', i);
+      if (-1 === nl) return source.length;
+      i = nl;
+      continue;
+    }
+    if (pair === BLOCK_COMMENT_OPEN) {
+      const close = source.indexOf(BLOCK_COMMENT_CLOSE, i + 2);
+      i = -1 === close ? source.length : close + 1;
+      continue;
+    }
+    if (QUOTES.includes(ch)) {
+      for (i++; i < source.length; i++) {
+        if ('\\' === source[i]) i++;
+        else if (source[i] === ch) break;
+      }
+      continue;
+    }
+    if (OPENERS.includes(ch)) depth++;
+    else if (CLOSERS.includes(ch)) {
+      // A closer at depth 0 belongs to an enclosing block, so the expression ended before it.
+      if (0 === depth) return i;
+      depth--;
+    } else if (';' === ch && 0 === depth) return i;
+  }
+  return source.length;
+}
+
+interface ExportSite {
+  /** Index of the first character of the exported expression. */
+  start: number;
+  /** Index just past the expression (at its `;`, or end of file). */
+  end: number;
+}
+
+/** Every top-level export assignment in the file, in source order. */
+function exportSites(source: string, head: RegExp): ExportSite[] {
+  const sites: ExportSite[] = [];
+  for (const match of source.matchAll(head)) {
+    if (match.index === undefined) continue;
+    const start = match.index + match[0].length;
+    sites.push({ start, end: expressionEnd(source, start) });
+  }
+  return sites;
+}
+
+/**
+ * Wrap every listed expression in `withReticle(...)`, leaving every other byte of the file alone.
+ *
+ * All of them, not just the first: a config can export CONDITIONALLY — Sentry-wrapped in one branch,
+ * plain in the other — and which branch runs is an environment variable's business, not ours.
+ * Wrapping each assignment is correct whichever one executes, and it is what turns that shape from a
+ * manual step (an app that boots and never connects) into a working install.
+ *
+ * Applied back-to-front so each splice leaves the earlier offsets valid.
+ */
+function wrapAll(source: string, sites: readonly ExportSite[]): string {
+  let out = source;
+  for (const site of [...sites].sort((a, b) => b.start - a.start)) {
+    out = `${out.slice(0, site.start)}withReticle(${out.slice(site.start, site.end)})${out.slice(site.end)}`;
+  }
+  return out;
+}
+
 export function patchNextConfig(source: string): SourcePatch {
   if (source.includes(RETICLE_NEXT_PACKAGE)) return { kind: PatchKind.ALREADY };
 
-  const esm = ESM_DEFAULT_EXPORT.exec(source);
-  if (esm?.[1] !== undefined) {
-    const wrapped = source.replace(ESM_DEFAULT_EXPORT, `export default withReticle(${esm[1]});\n`);
-    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_IMPORT}\n${wrapped}` };
+  const esm = exportSites(source, ESM_DEFAULT_HEAD);
+  if (esm.length > 0) {
+    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_IMPORT}\n${wrapAll(source, esm)}` };
   }
 
-  const cjs = CJS_EXPORT.exec(source);
-  if (cjs?.[1] !== undefined) {
-    const wrapped = source.replace(CJS_EXPORT, `module.exports = withReticle(${cjs[1]});\n`);
-    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_REQUIRE}\n${wrapped}` };
+  const cjs = exportSites(source, CJS_EXPORT_HEAD);
+  if (cjs.length > 0) {
+    return { kind: PatchKind.APPLY, code: `${NEXT_CONFIG_REQUIRE}\n${wrapAll(source, cjs)}` };
   }
 
   return { kind: PatchKind.MANUAL, reason: NO_EXPORT_REASON };
@@ -108,12 +201,12 @@ export function patchPagesApp(
   if (source.includes(RETICLE_DEV_COMPONENT)) return { kind: PatchKind.ALREADY };
 
   const matches = [...source.matchAll(PAGES_APP_COMPONENT)];
-  const match = matches.length === 1 ? matches[0] : undefined;
-  if (match?.index === undefined) return { kind: PatchKind.MANUAL, reason: NO_PAGES_COMPONENT_REASON };
+  const match = 1 === matches.length ? matches[0] : undefined;
+  if (match?.index === undefined)
+    return { kind: PatchKind.MANUAL, reason: NO_PAGES_COMPONENT_REASON };
 
   const wrapped = `<>${RETICLE_DEV_MOUNT}${match[0]}</>`;
-  const code =
-    source.slice(0, match.index) + wrapped + source.slice(match.index + match[0].length);
+  const code = source.slice(0, match.index) + wrapped + source.slice(match.index + match[0].length);
   return { kind: PatchKind.APPLY, code: `${reticleDevImport(importSpecifier)}\n${code}` };
 }
 
@@ -123,7 +216,7 @@ export function patchRootLayout(source: string): SourcePatch {
   const tags = [...source.matchAll(BODY_OPEN_TAG)];
   // Exactly one <body> or we cannot tell which one actually renders — and mounting into the wrong
   // one is the same silent no-connect as not mounting at all.
-  const tag = tags.length === 1 ? tags[0] : undefined;
+  const tag = 1 === tags.length ? tags[0] : undefined;
   if (tag?.index === undefined) return { kind: PatchKind.MANUAL, reason: NO_BODY_REASON };
 
   const insertAt = tag.index + tag[0].length;

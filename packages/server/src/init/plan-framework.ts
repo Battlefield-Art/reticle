@@ -6,6 +6,16 @@
 
 import { patchViteConfig, VitePatchKind } from './vite-config.js';
 import { patchNextConfig, patchRootLayout, patchPagesApp } from './next-patch.js';
+import { patchAstroConfig, patchAstroLayout } from './astro-patch.js';
+import {
+  CRA_DEV_MODULE_IMPORT,
+  CRA_DEV_MODULE_PATH,
+  CRA_ENV_PATH,
+  TOKEN_VAR,
+  craDevModuleFile,
+  craEnvPatch,
+  craImportPatch,
+} from './cra.js';
 import { PatchKind, type SourcePatch } from './patch-kind.js';
 import {
   viteManual,
@@ -19,6 +29,7 @@ import {
   svelteKitHooksFile,
   SVELTEKIT_HOOKS_PATH,
   UNVERIFIED_FRAMEWORK_NOTE,
+  astroManual,
 } from './snippets.js';
 import { StepStatus, type PlanInput, type Step } from './plan.js';
 
@@ -35,7 +46,7 @@ export const VITE_PLUGIN_DETAIL = {
   SVELTEKIT: 'add reticle() to plugins (stamps data-reticle-source in .svelte components)',
 } as const;
 
-export const CAPABILITIES_TITLE = 'Capabilities + store';
+const CAPABILITIES_TITLE = 'Capabilities + store';
 
 /**
  * The dev module carrying `registerCapabilities` / `registerStore`.
@@ -45,7 +56,7 @@ export const CAPABILITIES_TITLE = 'Capabilities + store';
  * only when absent, because it is the one generated file a user is expected to EDIT.
  */
 function capabilitiesStep(input: PlanInput): Step[] {
-  if (input.viteDevModuleExists === true) {
+  if (true === input.viteDevModuleExists) {
     return [
       {
         title: CAPABILITIES_TITLE,
@@ -58,7 +69,9 @@ function capabilitiesStep(input: PlanInput): Step[] {
   const testids = input.testids ?? [];
   const stores = input.storeHints ?? [];
   const found =
-    testids.length > 0 ? `${String(testids.length)} data-testid values` : 'no data-testid values yet';
+    testids.length > 0
+      ? `${String(testids.length)} data-testid values`
+      : 'no data-testid values yet';
   return [
     {
       title: CAPABILITIES_TITLE,
@@ -80,7 +93,7 @@ export function viteSteps(input: PlanInput, detail: string = VITE_PLUGIN_DETAIL.
 function viteConfigSteps(input: PlanInput, detail: string): Step[] {
   const cfg = input.viteConfig;
   const port = input.options.port;
-  if (cfg === null) {
+  if (null === cfg) {
     return [
       {
         title: 'Vite plugin',
@@ -188,7 +201,7 @@ export function nextSteps(input: PlanInput): Step[] {
       };
 
   const configPatch: SourcePatch =
-    input.nextConfigSource === null || input.nextConfigSource === undefined
+    null === input.nextConfigSource || input.nextConfigSource === undefined
       ? { kind: PatchKind.MANUAL, reason: `no ${configFile} found` }
       : patchNextConfig(input.nextConfigSource);
   const layout = input.nextLayout ?? null;
@@ -196,7 +209,7 @@ export function nextSteps(input: PlanInput): Step[] {
   // and picking by path is what stops a Pages app being handed the layout patch that cannot apply.
   const isPagesRouter = layout !== null && /(^|\/)pages\/_app\.[jt]sx?$/.test(layout.path);
   const layoutPatch: SourcePatch =
-    layout === null
+    null === layout
       ? { kind: PatchKind.MANUAL, reason: 'no root layout (app/layout.tsx) or pages/_app found' }
       : isPagesRouter
         ? patchPagesApp(layout.source, input.nextReticleDevImport)
@@ -229,6 +242,81 @@ export function nextSteps(input: PlanInput): Step[] {
  * wiring is real and may well work; what is missing is anything that would tell us when it stops.
  * Silently emitting it reads as a support claim, which is the thing this project exists to not do.
  */
+/**
+ * Create React App: the connect goes in `src/index.tsx`, the token in `.env.development.local`.
+ *
+ * The previous plan pointed at `index.html`, which cannot work — CRA's is a static template the
+ * bundler never processes for modules. Reported from a real cra-redux-saga app.
+ */
+export function craSteps(input: PlanInput): Step[] {
+  const entry = input.craEntry ?? null;
+  const steps: Step[] = [
+    {
+      title: 'Reticle connect module',
+      target: CRA_DEV_MODULE_PATH,
+      status: StepStatus.APPLY,
+      detail: 'create the dev-only connect (CRA cannot inject through public/index.html)',
+      write: {
+        path: CRA_DEV_MODULE_PATH,
+        content: craDevModuleFile(input.options.port, input.options.projectId),
+      },
+      dependsOnInstall: true,
+    },
+  ];
+  const token = input.pairingToken ?? '';
+  const env = craEnvPatch(input.craEnv ?? null, token);
+  if (env !== null) {
+    steps.push({
+      title: 'Pairing token',
+      target: CRA_ENV_PATH,
+      status: StepStatus.APPLY,
+      // REACT_APP_* is the only thing CRA inlines into browser code; without the token the bridge
+      // refuses the connection and no session appears. Say the file is gitignored HERE, at the one
+      // moment someone is looking: the token is per-machine and cannot travel, so every teammate
+      // has to run init once or their clone is dead with no explanation.
+      detail: `set ${TOKEN_VAR} (the only channel CRA inlines) — ${CRA_ENV_PATH} is gitignored, so each teammate must run \`reticle init\` on their own machine`,
+      write: { path: CRA_ENV_PATH, content: env },
+    });
+  } else if ('' === token) {
+    // No daemon has ever run here, so there is no token to inline. Omitting the step entirely made
+    // init report all-green for an app that could never pair.
+    steps.push({
+      title: 'Pairing token',
+      target: CRA_ENV_PATH,
+      status: StepStatus.MANUAL,
+      detail: `no pairing token yet — run \`reticle start\`, then \`reticle init\` again to write ${TOKEN_VAR}`,
+    });
+  }
+  if (null === entry) {
+    steps.push({
+      title: 'Connect snippet (CRA)',
+      target: 'src/index.tsx',
+      status: StepStatus.MANUAL,
+      detail: `Add \`${CRA_DEV_MODULE_IMPORT}\` to your app entry (src/index.tsx or src/index.js), after the existing imports.`,
+    });
+    return steps;
+  }
+  const patched = craImportPatch(entry.source);
+  steps.push(
+    null === patched
+      ? {
+          title: 'Connect snippet (CRA)',
+          target: entry.path,
+          status: StepStatus.ALREADY,
+          detail: 'already imported',
+        }
+      : {
+          title: 'Connect snippet (CRA)',
+          target: entry.path,
+          status: StepStatus.APPLY,
+          detail: 'import the dev-only connect module',
+          write: { path: entry.path, content: patched },
+          dependsOnInstall: true,
+        },
+  );
+  return steps;
+}
+
 export function svelteKitSteps(input: PlanInput): Step[] {
   const unverified: Step = {
     title: 'SvelteKit is UNVERIFIED',
@@ -238,7 +326,7 @@ export function svelteKitSteps(input: PlanInput): Step[] {
   };
   // SvelteKit can't use the Vite-plugin injection (it renders via app.html) — wire a client hook
   // that SvelteKit runs on startup, which is the path that can register a session at all.
-  if (input.svelteKitHooksExists === true) {
+  if (true === input.svelteKitHooksExists) {
     return [
       unverified,
       {
@@ -262,5 +350,66 @@ export function svelteKitSteps(input: PlanInput): Step[] {
       },
       dependsOnInstall: true,
     },
+  ];
+}
+
+/**
+ * Astro: the config define + build target, and the connect script in ONE layout.
+ *
+ * Astro was the last gated stack left printing a recipe it did not apply. It still falls back to the
+ * printed one whenever the choice is not obvious — no config, no single layout, or a shape the
+ * patchers do not fully recognise — because which page or layout to instrument is a real decision
+ * and a half-edited build config is worse than a documented manual step.
+ */
+export function astroSteps(input: PlanInput): Step[] {
+  const config = input.astroConfig ?? null;
+  const layout = input.astroLayout ?? null;
+  const manual = astroManual(input.options.port, input.options.projectId, layout?.path);
+  if (null === config || null === layout) {
+    return [
+      {
+        title: 'Connect snippet (Astro)',
+        // Name what is actually there. `astro.config + layout` pointed at a layout this project may
+        // not have — reported on a fixture with only src/pages/index.astro.
+        target:
+          null === layout ? 'astro.config + a page (no layout found)' : 'astro.config + layout',
+        status: StepStatus.MANUAL,
+        detail: manual,
+      },
+    ];
+  }
+  // ATOMIC. The connect snippet is useless without the config: the token is inlined by the config,
+  // so a layout patched on its own gives an app that dials the bridge and is refused. Measured on a
+  // real fixture — config ⚠, layout ✓ — which reads as one step done and one caveat when it is
+  // actually a guaranteed non-connection. If either half cannot be applied, BOTH go manual with the
+  // single recipe that does the whole job.
+  const manualWithLayout = astroManual(input.options.port, input.options.projectId, layout.path);
+  const configPatch = patchAstroConfig(config.source);
+  const layoutPatch = patchAstroLayout(layout.source, input.options.port, input.options.projectId);
+  if (configPatch.kind === PatchKind.MANUAL || layoutPatch.kind === PatchKind.MANUAL) {
+    return [
+      {
+        title: 'Connect snippet (Astro)',
+        target: `${config.path} + ${layout.path}`,
+        status: StepStatus.MANUAL,
+        detail: manualWithLayout,
+      },
+    ];
+  }
+  return [
+    patchStep(
+      'Astro config (token + build target)',
+      config.path,
+      configPatch,
+      'inline the pairing token and raise build.target to es2022',
+      manualWithLayout,
+    ),
+    patchStep(
+      'Connect snippet (Astro)',
+      layout.path,
+      layoutPatch,
+      'add the dev-only connect <script> before </body>',
+      manualWithLayout,
+    ),
   ];
 }

@@ -112,3 +112,8 @@ leads/
 # yarn monorepo, which breaks this pnpm workspace the moment it sits under apps/*), and they need
 # a branch model this repo cannot give them: a pristine `clean` branch to install into, because a
 # fresh install is only meaningful on a surface that has never seen Reticle.
+
+# Copied into packages/server at prepack so the skill and docs ship with the CLI users npx.
+# The originals at the repo root are the only editable copies.
+/packages/server/SKILL.md
+/packages/server/docs/

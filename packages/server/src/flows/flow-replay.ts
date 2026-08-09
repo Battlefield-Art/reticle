@@ -1,3 +1,4 @@
+import { span } from '../trace.js';
 import {
   AnchorKind,
   DriftReason,
@@ -7,17 +8,24 @@ import {
   type CommandResult,
   type Drift,
   type FlowAnchor,
-  type FlowExpect,
   type FlowFile,
   type FlowStep,
   type FlowStepResult,
   type ReticleEvent,
   type QueryEmptyHint,
+  PredicateKind,
 } from '@reticlehq/core';
 import type { EvalResult, Predicate } from '../events/predicate.js';
 import { asRecord, asString } from '../tools/tools-helpers.js';
 import { replayActionArgs, ambiguousTestidNote, queryRefs } from './replay.js';
-import { runRoleStep, runComponentStep } from './flow-step-runners.js';
+import {
+  degradedStepResult,
+  isDegradedAnchor,
+  runComponentStep,
+  runRoleStep,
+  runSequenceStep,
+} from './flow-step-runners.js';
+import { successToPredicate } from './flow-success.js';
 import { ReticleTool } from '../tools/tool-names.js';
 
 /**
@@ -123,10 +131,10 @@ function readQuery(result: CommandResult): { refs: string[]; hint?: QueryEmptyHi
   if (!result.ok) return { refs };
   const payload = asRecord(result.result);
   const rawHint = payload['hint'];
-  if (typeof rawHint === 'object' && rawHint !== null) {
+  if ('object' === typeof rawHint && rawHint !== null) {
     const hint = asRecord(rawHint);
     const present = Array.isArray(hint['presentTestids'])
-      ? hint['presentTestids'].filter((t): t is string => typeof t === 'string')
+      ? hint['presentTestids'].filter((t): t is string => 'string' === typeof t)
       : [];
     return {
       refs,
@@ -134,7 +142,7 @@ function readQuery(result: CommandResult): { refs: string[]; hint?: QueryEmptyHi
         route: asString(hint['route']) ?? '',
         presentTestids: present,
         presentRegions: [],
-        knownEmptyState: hint['knownEmptyState'] === true,
+        knownEmptyState: true === hint['knownEmptyState'],
       },
     };
   }
@@ -163,7 +171,7 @@ export function nearestIsAmbiguous(missing: string, present: string[]): boolean 
 }
 
 /** Build the legible-drift record for a testid anchor that resolved to zero live elements. */
-function testidDrift(value: string, hint: QueryEmptyHint | undefined): Drift {
+export function testidDrift(value: string, hint: QueryEmptyHint | undefined): Drift {
   const present = hint?.presentTestids ?? [];
   const drift: Drift = {
     reasonKind: DriftReason.TESTID_NOT_FOUND,
@@ -181,14 +189,45 @@ function testidDrift(value: string, hint: QueryEmptyHint | undefined): Drift {
  * so a present anchor costs one query; a genuinely missing one costs the full (bounded) settle and
  * then drifts. The last result's near-miss hint is returned for the drift record.
  */
+
+/**
+ * One wait between anchor attempts: the fixed tick, or the next DOM event — whichever comes first.
+ *
+ * An element mounting IS a mutation, and the session already streams those, so sleeping out the rest
+ * of a 150ms tick after the thing has already appeared is pure latency. Measured on next-app-router:
+ * a single `flow.step` span was 1079ms around nine QUERY round-trips of 1–2ms each — the cost was
+ * entirely the sleeping, and four such steps made up 4.3s of that app's 7.6s.
+ *
+ * It can only resolve the wait EARLIER, never end the loop earlier: the attempt budget above is
+ * untouched, so a genuinely missing anchor still spends the full settle before it drifts. An early
+ * "not found" would be a false drift, which is the failure this loop exists to prevent.
+ */
+async function settleTick(session: FlowReplaySession, sleep: Sleep): Promise<void> {
+  let unsubscribe: (() => void) | undefined;
+  try {
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = (): void => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      unsubscribe = session.onEvent(finish);
+      void sleep(ANCHOR_SETTLE_DELAY_MS).then(finish);
+    });
+  } finally {
+    unsubscribe?.();
+  }
+}
+
 export async function resolveQuery(
   session: FlowReplaySession,
   queryArgs: Record<string, unknown>,
   sleep: Sleep,
 ): Promise<{ refs: string[]; hint?: QueryEmptyHint }> {
   let last = readQuery(await session.command(ReticleCommand.QUERY, queryArgs));
-  for (let attempt = 1; last.refs.length === 0 && attempt < ANCHOR_SETTLE_ATTEMPTS; attempt += 1) {
-    await sleep(ANCHOR_SETTLE_DELAY_MS);
+  for (let attempt = 1; 0 === last.refs.length && attempt < ANCHOR_SETTLE_ATTEMPTS; attempt += 1) {
+    await settleTick(session, sleep);
     last = readQuery(await session.command(ReticleCommand.QUERY, queryArgs));
   }
   return last;
@@ -250,7 +289,7 @@ function summarizeConsequence(events: ReticleEvent[]): string | undefined {
     const data = n.data ?? {};
     const method = asString(data['method']) ?? 'GET';
     const path = trimUrl(asString(data['url']) ?? '');
-    const status = typeof data['status'] === 'number' ? ` ${data['status']}` : '';
+    const status = 'number' === typeof data['status'] ? ` ${data['status']}` : '';
     parts.push(`${method} ${path}${status}`.trim());
   }
   const errors = events.filter(
@@ -273,7 +312,7 @@ export function componentLabel(
 }
 
 /** The value of a step's primary anchor, for labelling the result row. */
-function anchorLabel(anchor: FlowAnchor): string {
+export function anchorLabel(anchor: FlowAnchor): string {
   if (anchor.kind === AnchorKind.TESTID) return anchor.value;
   if (anchor.kind === AnchorKind.SIGNAL) return anchor.name;
   if (anchor.kind === AnchorKind.COMPONENT) return componentLabel(anchor);
@@ -301,7 +340,7 @@ async function runTestidStep(
   sleep: Sleep,
 ): Promise<FlowStepResult> {
   const { refs, hint } = await resolveTestid(session, value, sleep);
-  if (refs.length === 0) {
+  if (0 === refs.length) {
     return {
       step: index,
       tool: step.tool,
@@ -335,7 +374,7 @@ async function runTestidStep(
   const expectTestid = step.expect?.element?.testid;
   if (expectTestid !== undefined && !dynamic.has(expectTestid)) {
     const expectRefs = await resolveTestid(session, expectTestid, sleep);
-    if (expectRefs.refs.length === 0) {
+    if (0 === expectRefs.refs.length) {
       return {
         step: index,
         tool: step.tool,
@@ -350,29 +389,52 @@ async function runTestidStep(
 }
 
 /**
- * After a step's anchor resolves + its action runs, an `expect.state` additionally asserts STORE
- * TRUTH — the source of truth no DOM read can reach. Evaluated with the same predicate engine (waits
- * up to the timeout so an async store update can settle); a mismatch is legible drift, not a blind
- * fail. Returns the drift on mismatch, else undefined.
+ * After a step's anchor resolves and its action runs, its `expect` is EVALUATED — every kind of it.
+ *
+ * For a long time only `expect.state` was, so a recorded `expect.signal` or `expect.net` was written
+ * to disk and read by nothing while `flow_save` graded the flow "asserted". Driven end to end over
+ * MCP: annotate a step with a signal that never fires, save (grade "asserted"), replay -> status
+ * "ok". A green that cannot go red, inside the feature whose job is catching exactly that.
+ *
+ * It compiles through the SAME `successToPredicate` the flow-level `success` has always used, so
+ * there is one definition of what an expect means and the step form cannot drift from it again.
+ * Turning this on makes previously-green flows go red. That is the point — they were green because
+ * nothing was looking.
  */
-async function assertStepState(
+async function assertStepExpect(
   session: FlowReplaySession,
-  state: NonNullable<FlowExpect['state']>,
+  expect: NonNullable<FlowStep['expect']>,
+  dynamic: ReadonlySet<string>,
   waitForSignal: WaitForSignal,
   timeoutMs: number,
   since: number,
 ): Promise<Drift | undefined> {
-  const predicate: Extract<Predicate, { kind: 'state' }> = { kind: 'state', path: state.path };
-  if (state.store !== undefined) predicate.store = state.store;
-  if (state.equals !== undefined) predicate.equals = state.equals;
+  // `element` is deliberately dropped: the step runner already asserts expect.element.testid against
+  // the live DOM before we get here, and re-asserting it through the predicate engine would be a
+  // second round trip for the same fact.
+  const { element: _element, ...consequences } = expect;
+  const predicate = successToPredicate(consequences, dynamic);
+  if (predicate === undefined) return undefined;
   const verdict = await waitForSignal(session, predicate, timeoutMs, since);
   if (verdict.pass) return undefined;
   return {
-    reasonKind: DriftReason.STATE_MISMATCH,
-    reason: verdict.failureReason ?? `state '${state.path}' did not hold`,
-    anchor: `state:${state.path}`,
+    // The store case keeps its own kind because heal and the run report branch on it; everything
+    // else is a consequence that did not hold, and the reason carries observed-vs-expected.
+    reasonKind:
+      expect.state !== undefined ? DriftReason.STATE_MISMATCH : DriftReason.SIGNAL_NOT_OBSERVED,
+    reason: verdict.failureReason ?? "the step's declared consequence did not hold",
+    anchor: expectLabel(expect),
     nearest: null,
   };
+}
+
+/** Name the thing that was asserted, for the drift's `anchor` column. */
+function expectLabel(expect: NonNullable<FlowStep['expect']>): string {
+  if (expect.signal !== undefined) return `signal:${expect.signal}`;
+  if (expect.net !== undefined) return `net:${expect.net.urlContains ?? expect.net.method ?? '*'}`;
+  if (expect.state !== undefined) return `state:${expect.state.path}`;
+  if (expect.console !== undefined) return `console:${expect.console.level ?? '*'}`;
+  return 'expect';
 }
 
 /** Run one signal-anchored step: wait for the signal predicate, else drift (no nearest for signals). */
@@ -394,7 +456,12 @@ async function runSignalStep(
   // satisfied a LATER flow's signal step even when that flow's own action never fired it — a
   // cross-flow false green on the exact suite-verify path the regression-cost claim rests on. The
   // replay-start floor excludes prior flows/runs while still seeing this run's adjacent-step signal.
-  const verdict = await waitForSignal(session, { kind: 'signal', name }, signalTimeoutMs, since);
+  const verdict = await waitForSignal(
+    session,
+    { kind: PredicateKind.SIGNAL, name },
+    signalTimeoutMs,
+    since,
+  );
   if (verdict.pass) return { step: index, tool: step.tool, anchor: name, ok: true };
   return {
     step: index,
@@ -441,39 +508,58 @@ export async function replayFlow(
     const page = currentRoute(session);
     // Event-time floor so the consequence reflects only THIS step's aftermath, not prior steps'.
     const cursorBefore = session.elapsed();
-    let result: FlowStepResult;
-    if (step.anchor.kind === AnchorKind.SIGNAL) {
-      result = await runSignalStep(
+    const subSteps = step.steps;
+    // Traced per step, so a slow replay says WHICH step and which anchor kind spent the time. The
+    // per-step `durationMs` below is what the agent gets back; this is what a developer profiling
+    // the replay engine gets, nested under the tool call with the browser round-trips beneath it.
+    const result: FlowStepResult = await span(
+      'flow.step',
+      { index, anchor: step.anchor.kind, label },
+      async () => {
+        if (isDegradedAnchor(step.anchor)) {
+          // Never QUERY the sentinel — it marks "no anchor was determined", not an element to find.
+          return degradedStepResult(step, index, label);
+        }
+        if (subSteps !== undefined && subSteps.length > 0) {
+          return runSequenceStep(session, step, index, subSteps, confirmDangerous, sleep);
+        }
+        if (step.anchor.kind === AnchorKind.SIGNAL) {
+          return runSignalStep(
+            session,
+            step,
+            index,
+            label,
+            waitForSignal,
+            signalTimeoutMs,
+            replayFloor,
+          );
+        }
+        if (step.anchor.kind === AnchorKind.COMPONENT) {
+          return runComponentStep(session, step, index, step.anchor, confirmDangerous, sleep);
+        }
+        if (step.anchor.kind === AnchorKind.ROLE && step.anchor.name !== undefined) {
+          // A NAMED role anchor addresses one element. The nameless one is the degraded placeholder
+          // and keeps its old path, where it fails legibly rather than querying a role as a testid.
+          return runRoleStep(session, step, index, step.anchor, confirmDangerous, sleep);
+        }
+        return runTestidStep(session, step, index, label, dynamic, confirmDangerous, sleep);
+      },
+    );
+    // Once the anchor resolved and the action ran, the step's own expect is evaluated — signal, net,
+    // console and store truth alike — deterministically, in the same cheap replay loop, with no LLM.
+    const stepExpect = step.expect;
+    if (result.ok && result.drift === undefined && stepExpect !== undefined) {
+      const expectDrift = await assertStepExpect(
         session,
-        step,
-        index,
-        label,
-        waitForSignal,
-        signalTimeoutMs,
-        replayFloor,
-      );
-    } else if (step.anchor.kind === AnchorKind.COMPONENT) {
-      result = await runComponentStep(session, step, index, step.anchor, confirmDangerous, sleep);
-    } else if (step.anchor.kind === AnchorKind.ROLE && step.anchor.name !== undefined) {
-      // A NAMED role anchor addresses one element. The nameless one is the degraded placeholder and
-      // keeps its old path, where it fails legibly rather than querying a role as if it were a testid.
-      result = await runRoleStep(session, step, index, step.anchor, confirmDangerous, sleep);
-    } else {
-      result = await runTestidStep(session, step, index, label, dynamic, confirmDangerous, sleep);
-    }
-    // A step may additionally assert STORE TRUTH (expect.state) once its action has run — caught
-    // deterministically here, in the same cheap replay loop, with no LLM.
-    if (result.ok && result.drift === undefined && step.expect?.state !== undefined) {
-      const stateDrift = await assertStepState(
-        session,
-        step.expect.state,
+        stepExpect,
+        dynamic,
         waitForSignal,
         signalTimeoutMs,
         cursorBefore,
       );
-      if (stateDrift !== undefined) {
+      if (expectDrift !== undefined) {
         result.ok = false;
-        result.drift = stateDrift;
+        result.drift = expectDrift;
       }
     }
     if (page !== undefined) result.page = page;

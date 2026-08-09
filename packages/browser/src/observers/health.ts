@@ -1,4 +1,10 @@
-import { EventType, HealthReason, RETICLE_IPC_GLOBAL, SESSION_HEALTH } from '@reticlehq/core';
+import {
+  BrowserBrand,
+  EventType,
+  HealthReason,
+  RETICLE_IPC_GLOBAL,
+  SESSION_HEALTH,
+} from '@reticlehq/core';
 import { nativeSetInterval } from '../timers/native-timers.js';
 import type { Emit, Teardown } from './types.js';
 
@@ -28,17 +34,79 @@ function detectEngine(): 'blink' | 'gecko' | 'webkit' {
   return 'webkit';
 }
 
+/**
+ * Brand names as the Chromium family and the UA string spell them, mapped to our closed vocabulary.
+ * Matched on the WHOLE lowercased name, never a substring: brand strings are attacker-influenced
+ * free text, and a substring rule is how "Search Browser" becomes `arc`.
+ */
+const BRAND_BY_NAME: Readonly<Record<string, BrowserBrand>> = {
+  'google chrome': BrowserBrand.CHROME,
+  chrome: BrowserBrand.CHROME,
+  'microsoft edge': BrowserBrand.EDGE,
+  edge: BrowserBrand.EDGE,
+  brave: BrowserBrand.BRAVE,
+  opera: BrowserBrand.OPERA,
+  arc: BrowserBrand.ARC,
+  dia: BrowserBrand.DIA,
+  firefox: BrowserBrand.FIREFOX,
+  safari: BrowserBrand.SAFARI,
+};
+
+/** Chromium's own filler entries: the greased `Not_A Brand` (spelt differently every release) and the generic engine name. */
+function isFiller(name: string): boolean {
+  return 'chromium' === name || (name.includes('not') && name.includes('brand'));
+}
+
+/**
+ * The brand, from `navigator.userAgentData.brands` where it exists and the UA string where it does
+ * not (Firefox and Safari expose no userAgentData at all). Every fork claims `Google Chrome`
+ * alongside its own entry, so a non-Chrome match always wins; a Chromium that names nothing but
+ * filler is `other`, because calling it Chrome would be a guess.
+ *
+ * Never throws — a desktop webview may expose a `userAgentData` of any shape, and health reporting
+ * must survive it.
+ */
+function detectBrand(): BrowserBrand {
+  try {
+    const nav = navigator as Navigator & { userAgentData?: { brands?: unknown } };
+    const brands = nav.userAgentData?.brands;
+    if (Array.isArray(brands)) {
+      let chrome: BrowserBrand | undefined;
+      for (const entry of brands as { brand?: unknown }[]) {
+        const name = 'string' === typeof entry?.brand ? entry.brand.toLowerCase() : '';
+        if ('' === name || isFiller(name)) continue;
+        const known = BRAND_BY_NAME[name];
+        if (known === undefined) continue;
+        if (BrowserBrand.CHROME === known) chrome = known;
+        else return known;
+      }
+      return chrome ?? BrowserBrand.OTHER;
+    }
+  } catch {
+    /* a health report must never depend on an exotic userAgentData */
+  }
+  const ua = navigator.userAgent;
+  if (/Edg\//.test(ua)) return BrowserBrand.EDGE;
+  if (/OPR\/|Opera/.test(ua)) return BrowserBrand.OPERA;
+  if (/Firefox/.test(ua)) return BrowserBrand.FIREFOX;
+  if (/Chrome|Chromium/.test(ua)) return BrowserBrand.CHROME;
+  if (/Safari/.test(ua)) return BrowserBrand.SAFARI;
+  return BrowserBrand.OTHER;
+}
+
 function snapshotHealth(): {
   hidden: boolean;
   focused: boolean;
   runtime: string;
   engine: string;
+  brand: BrowserBrand;
 } {
   return {
-    hidden: document.visibilityState === 'hidden',
+    hidden: 'hidden' === document.visibilityState,
     focused: document.hasFocus(),
     runtime: detectRuntime(),
     engine: detectEngine(),
+    brand: detectBrand(),
   };
 }
 

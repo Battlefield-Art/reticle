@@ -116,7 +116,7 @@ export function startVerifyServer(
   return new Promise((resolve) => {
     server.listen(port, LOCALHOST, () => {
       const address = server.address();
-      const boundPort = typeof address === 'object' && address !== null ? address.port : port;
+      const boundPort = 'object' === typeof address && address !== null ? address.port : port;
       resolve({ server, port: boundPort });
     });
   });

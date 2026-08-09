@@ -47,15 +47,15 @@ export interface TestContext {
 
 function asVerdict(value: unknown): Verdict {
   const record =
-    typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+    'object' === typeof value && value !== null ? (value as Record<string, unknown>) : {};
   const verdict = record['verdict'];
-  if (typeof verdict !== 'object' || verdict === null) {
+  if (typeof verdict !== 'object' || null === verdict) {
     return { pass: false, failureReason: 'act_and_wait returned no verdict' };
   }
   const v = verdict as Record<string, unknown>;
-  const failureReason = typeof v['failureReason'] === 'string' ? v['failureReason'] : undefined;
+  const failureReason = 'string' === typeof v['failureReason'] ? v['failureReason'] : undefined;
   return {
-    pass: v['pass'] === true,
+    pass: true === v['pass'],
     evidence: v['evidence'],
     ...(failureReason !== undefined ? { failureReason } : {}),
   };

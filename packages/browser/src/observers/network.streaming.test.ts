@@ -32,7 +32,7 @@ const flushBody = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 /** A response whose body never completes — an SSE endpoint held open by the server. */
 function neverEndingResponse(contentType: string): Response {
   const res = {
-    headers: { get: (k: string) => (k.toLowerCase() === 'content-type' ? contentType : null) },
+    headers: { get: (k: string) => ('content-type' === k.toLowerCase() ? contentType : null) },
     status: 200,
     ok: true,
     clone: () => ({ text: () => new Promise<string>(() => undefined) }),

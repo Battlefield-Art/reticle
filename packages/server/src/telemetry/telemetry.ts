@@ -16,7 +16,14 @@
  */
 import { spawn } from 'node:child_process';
 import { randomUUID, createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import {
+  appendFileSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  rmSync,
+} from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -27,8 +34,10 @@ import {
   type Feedback,
   type Identity,
   type BugFound,
+  isSessionScoped,
   type InitOutcome,
   type McpConnection,
+  type McpOutage,
   type ProjectProfile,
   type SessionSummary,
   type TelemetryActor,
@@ -36,7 +45,7 @@ import {
   type Verification,
   type VersionChange,
 } from '@reticlehq/core';
-import { SERVER_VERSION } from '../server-version.js';
+import { SERVER_VERSION } from '../version/server-version.js';
 
 const RETICLE_DIR = join(homedir(), '.reticle');
 const ID_FILE = join(RETICLE_DIR, 'telemetry-id');
@@ -62,6 +71,23 @@ const POSTHOG_PERSONLESS = { $process_person_profile: false } as const;
 const SEND_TIMEOUT_MS = 2000;
 
 /**
+ * Feedback gets its own, much larger budget — and a retry.
+ *
+ * 2s + drop is right for a usage counter: the metric is worthless if it costs the user latency, and
+ * losing one changes nothing. Feedback is the opposite on both counts. It is the only qualitative
+ * channel the product has, it carries an agent's entire root-cause analysis, and losing one loses
+ * work that cannot be reconstructed.
+ *
+ * Measured to the collector with a WARM DNS cache: dns 0.003s, connect 0.233s, tls 0.467s, total
+ * 0.694s — a third of the old budget gone before any payload moves, on the good path. A fresh
+ * short-lived CLI process pays cold DNS and a cold route on top, which is exactly the case that
+ * failed in the field and then succeeded on retry from a warmer process.
+ */
+export const FEEDBACK_TIMEOUT_MS = 15_000;
+export const FEEDBACK_RETRIES = 1;
+export const FEEDBACK_RETRY_BACKOFF_MS = 750;
+
+/**
  * The sender a `detach: true` emit runs in a disowned child (argv: [url, body]) — an in-process fetch
  * keeps Node's event loop alive until the POST finishes, which taxed every short-lived CLI command
  * (`reticle version`/`gate`) ~800ms. Long-lived daemon events still send in-process: a spawn per tool
@@ -80,6 +106,7 @@ const Env = {
   DISABLE: 'RETICLE_TELEMETRY', // "0" / "false" / "off" → disabled
   DO_NOT_TRACK: 'DO_NOT_TRACK', // the cross-tool opt-out convention (any truthy value)
   URL: 'RETICLE_TELEMETRY_URL', // override the PostHog host (EU cloud / self-hosted)
+  FILE: 'RETICLE_TELEMETRY_FILE', // record to a local JSONL file and send NOTHING — see the sink note
   KEY: 'RETICLE_TELEMETRY_KEY', // override the PostHog project key
   CI: 'CI', // presence marks a CI environment
   VITEST: 'VITEST', // set by vitest — unit tests must never phone home
@@ -88,14 +115,33 @@ const Env = {
 const isDisabled = (env: NodeJS.ProcessEnv, cwd: string = process.cwd()): boolean => {
   const off = new Set(['0', 'false', 'off', 'no']);
   if (off.has((env[Env.DISABLE] ?? '').toLowerCase())) return true;
+  // Recording to a local file is not "phoning home", and the guards below exist to stop us phoning
+  // home. Chief among them is the source-checkout rule — which is exactly where a release sweep is
+  // driven from, so a sink that inherited it would record nothing and look like it had worked.
+  if ((env[Env.FILE] ?? '') !== '') return false;
   if (env[Env.VITEST] !== undefined) return true; // a test run is not a user
   // Developing Reticle is not using Reticle. The `.env` carrying RETICLE_TELEMETRY=0 is gitignored,
   // so it only exists on the machine that made it — a fresh clone would phone home on a
   // contributor's first `reticle serve`. The repo marker is committed, so this guarantee travels.
   if (isReticleSourceCheckout(cwd)) return true;
   const dnt = env[Env.DO_NOT_TRACK];
-  return typeof dnt === 'string' && dnt !== '' && dnt !== '0';
+  return 'string' === typeof dnt && dnt !== '' && dnt !== '0';
 };
+
+/**
+ * Would telemetry be on here if we ignored the source-checkout guard alone?
+ *
+ * That guard exists so a fresh clone does not phone home on a contributor's first `reticle serve` —
+ * a rule about PASSIVE collection. Feedback is never passive: somebody typed it. Applying the guard
+ * to it means anyone dogfooding from their own checkout files nothing and is told "not sent, unknown
+ * reason", which silently loses every report from exactly the people most likely to write good ones.
+ * Reported from the field, and the reporter only escaped it by happening to run from another repo.
+ *
+ * Every explicit opt-out still applies — RETICLE_TELEMETRY=0, DO_NOT_TRACK, the persisted opt-out
+ * file, and a test run. This lifts one implicit guard for one user-initiated event kind.
+ */
+const onlyBlockedBySourceCheckout = (env: NodeJS.ProcessEnv, cwd: string): boolean =>
+  isDisabled(env, cwd) && !isDisabled(env, '/');
 
 /** Read (or mint-and-persist) the anonymous machine id. `firstRun` is true the run that created it. */
 const resolveIdentity = (): { anonymousId: string; firstRun: boolean } => {
@@ -230,6 +276,8 @@ export interface TelemetryExtra {
   init?: InitOutcome;
   /** `bug_found`: one defect Reticle found in the app under test. */
   bug?: BugFound;
+  /** `mcp_connection_lost`: the agent lost its tools — which stage, and why. */
+  outage?: McpOutage;
 }
 
 export interface Telemetry {
@@ -238,13 +286,21 @@ export interface Telemetry {
    * CLI process can exit immediately instead of waiting out the POST (use it from command entry
    * points; daemon-side events send in-process).
    */
-  emit(kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<void>;
+  /**
+   * Send one event. Resolves to whether it was DELIVERED.
+   *
+   * Almost every caller ignores the result and should — a lost metric must never surface to a user.
+   * `reticle_feedback` is the exception: it hands a receipt to an agent, and reporting "filed" for a
+   * send that failed loses the report and lies about it in the same breath.
+   */
+  emit(kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<boolean>;
   readonly enabled: boolean;
   /** True the very first run on this machine — the CLI emits INSTALL alongside the first INVOKE. */
   readonly firstRun: boolean;
 }
 
-const NOOP: Telemetry = { emit: async () => {}, enabled: false, firstRun: false };
+// A disabled emitter delivers nothing, and says so — `false` is the honest answer, not a courtesy.
+const NOOP: Telemetry = { emit: () => Promise.resolve(false), enabled: false, firstRun: false };
 
 /**
  * Build the telemetry emitter for this process. Resolves identity + opt-out ONCE; each `emit` builds a
@@ -262,20 +318,24 @@ export const createTelemetry = (opts: {
 }): Telemetry => {
   const env = opts.env ?? process.env;
   const cwd = opts.cwd ?? process.cwd();
-  if (isDisabled(env, cwd)) return NOOP;
+  // A source checkout silences metrics but must not silence FEEDBACK — see onlyBlockedBySourceCheckout.
+  const feedbackOnly = onlyBlockedBySourceCheckout(env, cwd);
+  if (isDisabled(env, cwd) && !feedbackOnly) return NOOP;
   try {
     if (existsSync(OPT_OUT_FILE)) return NOOP; // the persistent `reticle telemetry disable` opt-out
   } catch {
     /* unreadable home dir — fall through; the env-var opt-outs above still apply */
   }
   const apiKey = env[Env.KEY] ?? POSTHOG_KEY;
-  if (apiKey === '') return NOOP; // no key baked in (dev/test build) — nowhere to send, stay silent
+  if ('' === apiKey) return NOOP; // no key baked in (dev/test build) — nowhere to send, stay silent
 
   const now = opts.now ?? (() => Date.now());
   const doFetch = opts.fetchImpl ?? fetch;
   const url = `${(env[Env.URL] ?? DEFAULT_URL).replace(/\/+$/, '')}${TELEMETRY_PATH}`;
   const ci = env[Env.CI] !== undefined && env[Env.CI] !== '';
   const os = platform();
+  // Negated so it reads the way people say it: UTC+2 is +120, not -120.
+  const tzOffsetMin = -new Date().getTimezoneOffset();
   const { anonymousId, firstRun } = resolveIdentity();
   /**
    * One id per PROCESS, minted in memory and never persisted — which is exactly right: a daemon run
@@ -292,7 +352,21 @@ export const createTelemetry = (opts: {
       spawn(command, args, { detached: true, stdio: 'ignore' }).unref();
     });
 
-  const emit = async (kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<void> => {
+  /**
+   * Returns whether the event was actually DELIVERED.
+   *
+   * Every caller but one ignores this and should: a lost metric must never surface to a user. The
+   * exception is `reticle_feedback`, which hands a receipt back to an agent — `sent: true` there was
+   * unconditional, so a DNS miss or a 4xx both read as "filed", and the only qualitative channel the
+   * product has could fail silently while telling the reporter it had worked.
+   *
+   * A detached send reports false: it is handed to a disowned child precisely so the caller does not
+   * wait, so its outcome is genuinely unknown and claiming success would be the same lie.
+   */
+  const emit = async (kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<boolean> => {
+    // In a Reticle source checkout the emitter carries FEEDBACK and nothing else: somebody typed the
+    // feedback, and no metric is worth phoning home from a contributor's clone.
+    if (feedbackOnly && TelemetryEventKind.FEEDBACK_SUBMITTED !== kind) return false;
     const event: TelemetryEvent = {
       v: TELEMETRY_EVENT_VERSION,
       anonymousId,
@@ -303,6 +377,7 @@ export const createTelemetry = (opts: {
       version: opts.version,
       ci,
       os,
+      tzOffsetMin,
       projectIdSource,
       ...(extra?.actor !== undefined ? { actor: extra.actor } : {}),
       ...(extra?.command !== undefined ? { command: extra.command } : {}),
@@ -317,6 +392,7 @@ export const createTelemetry = (opts: {
       ...(extra?.connection !== undefined ? { connection: extra.connection } : {}),
       ...(extra?.init !== undefined ? { init: extra.init } : {}),
       ...(extra?.bug !== undefined ? { bug: extra.bug } : {}),
+      ...(extra?.outage !== undefined ? { outage: extra.outage } : {}),
     };
     // Map the core contract onto PostHog's capture shape: id/name/time move up, the rest are properties.
     // The feedback body is FLATTENED into `feedback_*` properties rather than sent as a nested object:
@@ -338,14 +414,17 @@ export const createTelemetry = (opts: {
       connection,
       init,
       bug,
+      outage,
       ...rest
     } = event;
     // `$session_id` is PostHog's OWN session property, so sending ours under that name lights up
     // its built-in session views and funnels for free rather than requiring custom HogQL everywhere.
+    // `sessionId` rides only on events that happened inside a daemon run. A one-shot CLI command
+    // mints a per-process id that joins to nothing and inflates every session count — see
+    // isSessionScoped for the measurement.
     const properties: Record<string, unknown> = {
       ...rest,
-      sessionId: eventSessionId,
-      $session_id: eventSessionId,
+      ...(isSessionScoped(name) ? { sessionId: eventSessionId, $session_id: eventSessionId } : {}),
     };
     // Each block is flattened under its own prefix rather than nested. PostHog filters, breakdowns and
     // insight builders all operate on TOP-LEVEL properties, so a nested `project.stack` is invisible to
@@ -365,36 +444,64 @@ export const createTelemetry = (opts: {
       connection,
       init,
       bug,
+      outage,
     };
     for (const [prefix, block] of Object.entries(blocks)) {
       for (const [key, value] of Object.entries(block ?? {})) {
         properties[`${prefix}_${key}`] = value;
       }
     }
-    const body = JSON.stringify({
-      api_key: apiKey,
-      batch: [
-        {
-          event: name,
-          distinct_id: distinctId,
-          timestamp: new Date(ts).toISOString(),
-          properties: { ...properties, ...POSTHOG_PERSONLESS },
-        },
-      ],
-    });
-    try {
-      if (extra?.detach === true && opts.fetchImpl === undefined) {
-        spawnDetached(process.execPath, ['-e', DETACHED_SEND_SCRIPT, url, body]);
-        return;
+    const capture = {
+      event: name,
+      distinct_id: distinctId,
+      timestamp: new Date(ts).toISOString(),
+      properties: { ...properties, ...POSTHOG_PERSONLESS },
+    };
+    const body = JSON.stringify({ api_key: apiKey, batch: [capture] });
+    const filePath = env[Env.FILE];
+    if (filePath !== undefined && filePath !== '') {
+      // The SAME payload the wire would have carried, built by the same code path and redacted by
+      // the same rules — so what a run records is what a user would have sent. One JSON object per
+      // line, appended, so a whole sweep lands in one file in order.
+      try {
+        appendFileSync(filePath, `${JSON.stringify(capture)}\n`, 'utf8');
+        return true;
+      } catch {
+        return false; // a sink that cannot write must not take the daemon down
       }
-      await doFetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body,
-        signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
-      });
+    }
+    try {
+      if (true === extra?.detach && opts.fetchImpl === undefined) {
+        spawnDetached(process.execPath, ['-e', DETACHED_SEND_SCRIPT, url, body]);
+        return false; // handed off, outcome unknowable from here
+      }
+      // Feedback is slower and retried; everything else keeps the fire-and-forget budget.
+      const isFeedback = TelemetryEventKind.FEEDBACK_SUBMITTED === kind;
+      const timeoutMs = isFeedback ? FEEDBACK_TIMEOUT_MS : SEND_TIMEOUT_MS;
+      const attempts = 1 + (isFeedback ? FEEDBACK_RETRIES : 0);
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        if (0 < attempt) {
+          await new Promise((r) => setTimeout(r, FEEDBACK_RETRY_BACKOFF_MS * attempt));
+        }
+        try {
+          const response = await doFetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body,
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+          // A 4xx is a rejected payload, not a delivery. It must not read as filed. It is also not
+          // worth retrying — the payload will be rejected again — so only a THROW (timeout, DNS,
+          // connection reset) goes round again.
+          return response.ok !== false;
+        } catch (error) {
+          if (attempt === attempts - 1) throw error;
+        }
+      }
+      return false;
     } catch {
       /* best-effort: a lost metric must never surface to the user */
+      return false;
     }
   };
 

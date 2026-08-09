@@ -25,7 +25,7 @@ const client =
           '--drive',
           driveUrl ?? 'http://localhost:4312/',
         ],
-        { RETICLE_PORT: '4460', RETICLE_TOOL_PROFILE: 'core' },
+        { RETICLE_PORT: '4460', RETICLE_ADVERTISE_ALL_TOOLS: '0' },
       )
     : new McpStdioClient('npx', ['-y', '@playwright/mcp@0.0.76', '--headless', '--isolated'], {});
 

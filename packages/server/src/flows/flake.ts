@@ -7,7 +7,7 @@ import { z } from 'zod';
  * outcome ONLY for unchanged-code replays (a fail after a code change is a legitimate red, not flake).
  */
 
-export const FlakeRecordSchema = z.object({
+const FlakeRecordSchema = z.object({
   runs: z.number().int().min(0),
   fails: z.number().int().min(0),
 });
@@ -43,5 +43,5 @@ export function isFlaky(record: FlakeRecord, minRuns: number = DEFAULT_MIN_FLAKE
 
 /** Observed intermittent-failure rate (0 when too few runs to judge). */
 export function flakeRate(record: FlakeRecord): number {
-  return record.runs === 0 ? 0 : record.fails / record.runs;
+  return 0 === record.runs ? 0 : record.fails / record.runs;
 }

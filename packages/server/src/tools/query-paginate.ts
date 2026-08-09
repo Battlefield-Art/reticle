@@ -23,7 +23,7 @@ export function paginateQueryResult(
   limit: number | undefined,
   countOnly: boolean,
 ): unknown {
-  if (typeof result !== 'object' || result === null) return result;
+  if (typeof result !== 'object' || null === result) return result;
   const record = result as Record<string, unknown>;
   const elements = record['elements'];
   if (!Array.isArray(elements)) return result;
@@ -31,7 +31,7 @@ export function paginateQueryResult(
   const counted = record['count'];
   // Older browser SDKs (and the zero-match hint path) may not carry `count`; fall back rather than
   // report nothing, but never prefer the array when the browser told us the real number.
-  const total = typeof counted === 'number' ? counted : elements.length;
+  const total = 'number' === typeof counted ? counted : elements.length;
   const truncatedOnWire = total > elements.length;
 
   if (countOnly) {

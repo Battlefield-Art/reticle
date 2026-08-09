@@ -68,7 +68,7 @@ function memoryFs(files: Record<string, string>): FileSystemPort {
       return Promise.resolve();
     },
     stat: () => Promise.resolve({ mtimeMs: 0 }),
-    isNotFound: (error) => (error as { code?: string } | undefined)?.code === 'ENOENT',
+    isNotFound: (error) => 'ENOENT' === (error as { code?: string } | undefined)?.code,
   };
 }
 
@@ -91,7 +91,7 @@ function fakeSession(config: FakeSessionConfig): FlowReplaySessionLike {
   const command = (name: string, args?: Record<string, unknown>): Promise<CommandResult> => {
     if (name === ReticleCommand.QUERY) {
       const raw = args?.['value'];
-      const value = typeof raw === 'string' ? raw : '';
+      const value = 'string' === typeof raw ? raw : '';
       const has = present.has(value);
       return Promise.resolve(
         ok({
@@ -144,7 +144,7 @@ function signalWait(events: ReticleEvent[]) {
     predicate: { kind: string; name?: string },
   ): Promise<EvalResult> => {
     if (predicate.kind !== 'signal') return Promise.resolve({ pass: false });
-    const hit = events.find((e) => e.type === 'signal' && e.data['name'] === predicate.name);
+    const hit = events.find((e) => 'signal' === e.type && e.data['name'] === predicate.name);
     if (hit !== undefined) return Promise.resolve({ pass: true, evidence: hit.data });
     return Promise.resolve({
       pass: false,
@@ -340,8 +340,8 @@ describe('flowsAsSpecs — enumeration', () => {
       waitForSignal: signalWait([]),
     });
     expect(specs).toHaveLength(2);
-    const bad = specs.find((s) => s.name === 'bad');
-    const goodSpec = specs.find((s) => s.name === 'good');
+    const bad = specs.find((s) => 'bad' === s.name);
+    const goodSpec = specs.find((s) => 'good' === s.name);
     expect(bad?.kind).toBe(SpecKind.ERROR);
     expect(bad?.loadError?.code).toBe(FlowErrorCode.PARSE_FAILED);
     expect(goodSpec?.kind).toBe(SpecKind.RUNNABLE);
@@ -379,10 +379,10 @@ describe('flowsAsSpecs — enumeration', () => {
       clock: fixedClock,
       waitForSignal: signalWait([]),
     });
-    const bad = specs.find((s) => s.name === '.secret');
+    const bad = specs.find((s) => '.secret' === s.name);
     expect(bad?.kind).toBe(SpecKind.ERROR);
     expect(bad?.loadError?.code).toBe(FlowErrorCode.INVALID_NAME);
-    expect(specs.find((s) => s.name === 'good')?.kind).toBe(SpecKind.RUNNABLE);
+    expect(specs.find((s) => 'good' === s.name)?.kind).toBe(SpecKind.RUNNABLE);
   });
 
   it('accepts a pre-built FlowStore as the source', async () => {

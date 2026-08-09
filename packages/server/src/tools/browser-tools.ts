@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { navigateResult } from './navigate-result.js';
+import { reloadResult } from './reload-result.js';
+import { waitForReconnect, RELOAD_RECONNECT_TIMEOUT_MS } from '../session/session-reconnect.js';
 import { ReticleCommand } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { asString } from './tools-helpers.js';
@@ -10,7 +13,7 @@ export const BROWSER_TOOLS: ToolDef[] = [
     name: ReticleTool.NAVIGATE,
     example: { url: '/settings' },
     description:
-      'Navigate the connected browser tab to a URL, or reload it in place with { reload: true } (add { hard: true } to bypass the cache). The SDK reconnects automatically after the page loads. Use reticle_sessions to confirm the new tab is connected before acting.',
+      'Navigate the connected browser tab to a URL, or reload it in place with { reload: true } (add { hard: true } to bypass the cache). `ok` means the navigation was DISPATCHED, not that the page arrived — the SDK is torn down by the navigation, so nothing can observe the new document. Call reticle_sessions to confirm a session reconnected at the new URL before acting.',
     inputSchema: {
       url: z.string().optional().describe('The URL to navigate to. Omit when using reload.'),
       reload: z
@@ -29,17 +32,36 @@ export const BROWSER_TOOLS: ToolDef[] = [
       ok: z.boolean(),
       url: z.string().optional(),
       reason: z.string().optional(),
+      // Present on a dispatched navigation: nothing here can see the new document, so arrival is
+      // reported as unconfirmed rather than implied by `ok`. See navigate-result.ts.
+      confirmed: z.boolean().optional(),
+      note: z.string().optional(),
     },
     handler: async (deps, args) => {
       // reload:true is the absorbed reticle_refresh — same command, one fewer advertised tool.
-      if (args['reload'] === true) {
+      if (true === args['reload']) {
+        const before = deps.sessions.resolve(asString(args['sessionId']));
         await commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.REFRESH, {
-          hard: args['hard'] === true,
+          hard: true === args['hard'],
         });
-        return { ok: true };
+        // WAIT for the page to come back, rather than telling the agent to. The id survives the
+        // reload, but the seconds between dispatch and the new HELLO are seconds in which every call
+        // lands in the old, disconnected session — measured as reticle_run failing 5 of 5 on a page
+        // that was healthy immediately afterwards. Returns on the first poll in the common case.
+        const back = await waitForReconnect({
+          current: () => deps.sessions.get(before.id),
+          previous: before,
+          timeoutMs: RELOAD_RECONNECT_TIMEOUT_MS,
+          now: deps.now,
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        });
+        // Not a bare `{ ok: true }`. The URL branch below already discloses that `ok` means
+        // DISPATCHED — the reload branch had identical semantics and said nothing, on the path most
+        // likely to need it. See reload-result.
+        return reloadResult(back);
       }
       const url = asString(args['url']);
-      if (url === undefined || url.length === 0) return { ok: false, reason: 'url required' };
+      if (url === undefined || 0 === url.length) return { ok: false, reason: 'url required' };
       // Record navigate as an action. Its window is usually empty (the page unloads and the SDK
       // reconnects), but the action record itself — "navigated to X" — is the causal fact worth keeping.
       const session = deps.sessions.resolve(asString(args['sessionId']));
@@ -51,11 +73,8 @@ export const BROWSER_TOOLS: ToolDef[] = [
           ReticleCommand.NAVIGATE,
           { url },
         )) as { ok?: unknown; url?: unknown; reason?: unknown };
-        return {
-          ok: result.ok === true,
-          ...(typeof result.url === 'string' ? { url: result.url } : {}),
-          ...(typeof result.reason === 'string' ? { reason: result.reason } : {}),
-        };
+        // `ok` is the browser accepting the instruction, not the page arriving — see navigate-result.
+        return navigateResult(result);
       } finally {
         session.finishAction();
       }
@@ -77,7 +96,7 @@ export const BROWSER_TOOLS: ToolDef[] = [
     },
     handler: async (deps, args) => {
       await commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.REFRESH, {
-        hard: args['hard'] === true,
+        hard: true === args['hard'],
       });
       return { ok: true };
     },

@@ -8,6 +8,8 @@ export const Framework = {
   VITE: 'vite',
   SVELTEKIT: 'sveltekit',
   ASTRO: 'astro',
+  /** Create React App. No config file exists, so `react-scripts` in the dependencies is the signal. */
+  CRA: 'cra',
   HTML: 'html',
 } as const;
 export type Framework = (typeof Framework)[keyof typeof Framework];
@@ -68,7 +70,12 @@ export interface Detection {
 const NEXT_CONFIGS = ['next.config.js', 'next.config.mjs', 'next.config.ts', 'next.config.cjs'];
 const VITE_CONFIGS = ['vite.config.js', 'vite.config.ts', 'vite.config.mjs', 'vite.config.mts'];
 const SVELTE_CONFIGS = ['svelte.config.js', 'svelte.config.ts', 'svelte.config.mjs'];
-const ASTRO_CONFIGS = ['astro.config.mjs', 'astro.config.js', 'astro.config.ts', 'astro.config.cjs'];
+const ASTRO_CONFIGS = [
+  'astro.config.mjs',
+  'astro.config.js',
+  'astro.config.ts',
+  'astro.config.cjs',
+];
 
 function depVersion(pkg: PackageJsonLike, name: string): string | undefined {
   return pkg.dependencies?.[name] ?? pkg.devDependencies?.[name] ?? pkg.peerDependencies?.[name];
@@ -82,7 +89,7 @@ function hasAnyConfig(files: ReadonlySet<string>, candidates: readonly string[])
 export function parseMajor(range: string | undefined): number | undefined {
   if (range === undefined) return undefined;
   const match = range.match(/(\d+)/);
-  if (match === null || match[1] === undefined) return undefined;
+  if (null === match || match[1] === undefined) return undefined;
   const major = parseInt(match[1], 10);
   return isNaN(major) ? undefined : major;
 }
@@ -103,14 +110,12 @@ const NODE_MODULES_MARKERS: readonly (readonly [string, PackageManager])[] = [
 ];
 
 /** Marker basenames present inside the project's `node_modules`, if it has one. */
-export function packageManagerFromNodeModules(
-  markers: ReadonlySet<string>,
-): PackageManager | undefined {
+function packageManagerFromNodeModules(markers: ReadonlySet<string>): PackageManager | undefined {
   for (const [name, pm] of NODE_MODULES_MARKERS) if (markers.has(name)) return pm;
   return undefined;
 }
 
-function detectPackageManager(
+export function detectPackageManager(
   lockfiles: ReadonlySet<string>,
   nodeModulesMarkers: ReadonlySet<string>,
 ): PackageManager {
@@ -140,6 +145,9 @@ function detectFramework(input: DetectInput): Framework {
   if (depVersion(pkg, 'vite') !== undefined || hasAnyConfig(configFiles, VITE_CONFIGS)) {
     return Framework.VITE;
   }
+  // Checked after Vite, never before: a project migrating off CRA can carry both, and the Vite path
+  // is the one that works. CRA has no config file at all, so the dependency is the only signal.
+  if (depVersion(pkg, 'react-scripts') !== undefined) return Framework.CRA;
   return Framework.HTML;
 }
 
@@ -189,7 +197,7 @@ export function installCommandParts(
   pm: PackageManager,
   pkgs: string | readonly string[],
 ): InstallCommand {
-  const list = typeof pkgs === 'string' ? [pkgs] : pkgs;
+  const list = 'string' === typeof pkgs ? [pkgs] : pkgs;
   return { command: pm, args: [...INSTALL_ARGS[pm], ...list] };
 }
 

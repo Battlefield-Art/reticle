@@ -48,7 +48,7 @@ export function Sidebar(): React.ReactElement {
         >
           <Ico className="nav-ico" />
           {label}
-          {id === 'deployments' ? <span className="nav-badge mono">{deployCount}</span> : null}
+          {'deployments' === id ? <span className="nav-badge mono">{deployCount}</span> : null}
         </button>
       ))}
 

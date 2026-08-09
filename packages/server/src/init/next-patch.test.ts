@@ -54,6 +54,74 @@ export default nextConfig;
     const r = patchNextConfig('const nextConfig = {};\n');
     expect(r.kind).toBe(PatchKind.MANUAL);
   });
+
+  /**
+   * The shape that broke a real app. The old pattern ran from `module.exports =` to END OF FILE, so
+   * on a config that exports conditionally it captured the first assignment AND everything after it
+   * — the else-branch, the closing brace, all of it — and emitted
+   *
+   *     module.exports = withReticle(withSentryConfig(nextConfig, sentryConfig);
+   *     } else {
+   *       module.exports = nextConfig;
+   *     });
+   *
+   * an unbalanced-paren SYNTAX ERROR. `next dev` exited 1, the gate reported only "dev server never
+   * served", and `init` had reported the step as ✓.
+   *
+   * Both branches get wrapped, because which one runs is an env var's business: the result is
+   * correct whichever executes, and the app connects instead of landing on a manual step.
+   */
+  it('wraps both branches of a conditional export', () => {
+    const source = `const nextConfig = {};
+if (process.env.SENTRY) {
+  module.exports = withSentryConfig(nextConfig, sentryConfig);
+} else {
+  module.exports = nextConfig;
+}
+`;
+    const r = patchNextConfig(source);
+    expect(r.kind).toBe(PatchKind.APPLY);
+    if (r.kind !== PatchKind.APPLY) return;
+    expect(r.code).toContain(
+      'module.exports = withReticle(withSentryConfig(nextConfig, sentryConfig));',
+    );
+    expect(r.code).toContain('module.exports = withReticle(nextConfig);');
+    // The braces must still balance — the whole point.
+    const opens = (r.code.match(/\(/g) ?? []).length;
+    const closes = (r.code.match(/\)/g) ?? []).length;
+    expect(opens).toBe(closes);
+  });
+
+  /** Same root cause, single export: anything AFTER the export used to be swallowed into the wrap. */
+  it('wraps only the exported expression when code follows the export', () => {
+    const source = `const nextConfig = {};
+module.exports = withSentryConfig(nextConfig, sentryConfig);
+
+// a trailing statement the old pattern swallowed into the wrap
+process.on('exit', () => undefined);
+`;
+    const r = patchNextConfig(source);
+    expect(r.kind).toBe(PatchKind.APPLY);
+    if (r.kind !== PatchKind.APPLY) return;
+    expect(r.code).toContain(
+      'module.exports = withReticle(withSentryConfig(nextConfig, sentryConfig));',
+    );
+    expect(r.code).toContain("process.on('exit', () => undefined);");
+  });
+
+  /** A multi-line inline object must be wrapped whole — the brace depth is what ends the expression. */
+  it('wraps a multi-line inline object export', () => {
+    const source = `export default {
+  reactStrictMode: true,
+  images: { unoptimized: true },
+};
+`;
+    const r = patchNextConfig(source);
+    expect(r.kind).toBe(PatchKind.APPLY);
+    if (r.kind !== PatchKind.APPLY) return;
+    expect(r.code).toContain('export default withReticle({');
+    expect(r.code).toContain('});');
+  });
 });
 
 describe('patchRootLayout', () => {
@@ -74,7 +142,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     if (r.kind !== PatchKind.APPLY) return;
     expect(r.code).toContain("import { ReticleDev } from './reticle-dev';");
     expect(r.code).toContain(
-      "<body className=\"x\">{process.env.NODE_ENV === 'development' ? <ReticleDev /> : null}{children}</body>",
+      '<body className="x">{process.env.NODE_ENV === \'development\' ? <ReticleDev /> : null}{children}</body>',
     );
   });
 
@@ -97,7 +165,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
    * directory that does not exist and the app connected to nothing, silently.
    */
   it('imports the component from wherever it was written, not a fixed sibling path', () => {
-    const APP = 'export default function App({ Component, pageProps }) {\n  return <Component {...pageProps} />;\n}\n';
+    const APP =
+      'export default function App({ Component, pageProps }) {\n  return <Component {...pageProps} />;\n}\n';
     const r = patchPagesApp(APP, '../components/reticle-dev');
     if (r.kind !== PatchKind.APPLY) throw new Error('expected apply');
     expect(r.code).toContain("import { ReticleDev } from '../components/reticle-dev';");
@@ -119,7 +188,8 @@ export default function App({ Component, pageProps }: AppProps) {
   });
 
   it('pages/_app patch is idempotent and bails when there is no <Component .../>', () => {
-    const APP = 'export default function App({ Component, pageProps }) {\n  return <Component {...pageProps} />;\n}\n';
+    const APP =
+      'export default function App({ Component, pageProps }) {\n  return <Component {...pageProps} />;\n}\n';
     const once = patchPagesApp(APP);
     if (once.kind !== PatchKind.APPLY) throw new Error('expected apply');
     expect(patchPagesApp(once.code).kind).toBe(PatchKind.ALREADY);

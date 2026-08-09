@@ -83,7 +83,7 @@ describe('scrollToFind', () => {
   it('6: forwards the container ref to each SCROLL command', async () => {
     const { session, scrollArgs } = fakeSession({ foundAtScroll: 2 });
     await scrollToFind(session, { ...Q, container: 'e9' }, { maxScrolls: 10 });
-    expect(scrollArgs.every((a) => (a as { ref?: string }).ref === 'e9')).toBe(true);
+    expect(scrollArgs.every((a) => 'e9' === (a as { ref?: string }).ref)).toBe(true);
     expect(scrollArgs.length).toBe(2);
   });
 });

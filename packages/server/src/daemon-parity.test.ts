@@ -22,9 +22,9 @@ const SOURCE = readFileSync(join(__dirname, 'index.ts'), 'utf8');
 /** Body of a top-level `export async function <name>(` up to the next top-level declaration. */
 function functionBody(source: string, name: string): string {
   const start = source.indexOf(`export async function ${name}(`);
-  if (start === -1) throw new Error(`${name} not found in index.ts`);
+  if (-1 === start) throw new Error(`${name} not found in index.ts`);
   const next = source.indexOf('\nexport ', start + 1);
-  return source.slice(start, next === -1 ? source.length : next);
+  return source.slice(start, -1 === next ? source.length : next);
 }
 
 const ENTRY_POINTS = ['start', 'startDaemon'] as const;

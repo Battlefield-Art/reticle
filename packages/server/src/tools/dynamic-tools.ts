@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import type { ToolDef, ToolDeps } from './tools.js';
 import { runTool } from './invoke-tool.js';
+import { buildErrorPayload } from './error-recovery.js';
+import { mergedNameRedirect, mergedNameMessage } from './merged-name-redirect.js';
 import { ReticleTool } from './tool-names.js';
+import { TOOL_PROFILE_ENV, type ToolSurfaceOrigin } from './tool-surface.js';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
 
 /**
@@ -48,11 +51,41 @@ function paramInfo(shape: z.ZodRawShape): ParamInfo[] {
 }
 
 /**
+ * The one wording for "you named a parameter that does not exist", shared by both checks in
+ * `reticle_run` — the one over the WRAPPED tool's `args`, and the one over reticle_run's own
+ * top-level keys. Two spellings of the same refusal is how one of them ends up not existing.
+ */
+function unknownParamsError(toolName: string, unknown: readonly string[]): string {
+  return `unknown ${1 === unknown.length ? 'parameter' : 'parameters'} for ${toolName}: ${unknown.join(', ')} — NOT applied, so any result would be an answer to a different question`;
+}
+
+/** The keys not declared by `shape`, in call order. */
+function unknownKeys(args: Record<string, unknown>, shape: object): string[] {
+  const declared = new Set(Object.keys(shape));
+  return Object.keys(args).filter((key) => !declared.has(key));
+}
+
+/**
  * Build the two dynamic meta-tools over the full tool table. `reticle_run` dispatches through the same
  * `runTool` chokepoint as a direct call, so session-health splicing and every other invariant hold.
  */
-export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
+export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrigin): ToolDef[] {
   const byName = new Map(allTools.map((t) => [t.name, t]));
+  // The profile is a DAEMON-startup decision, so an agent that exported RETICLE_TOOL_PROFILE into its
+  // own environment sees no change and has, until now, no way to tell. Reported with the catalog.
+  const profileBlock =
+    profile === undefined
+      ? {}
+      : {
+          profile: {
+            ...profile,
+            // NOT "every tool is reachable via reticle_run under any profile" — measured false:
+            // `full` advertises all 46 tools DIRECTLY and carries no meta-tools at all, so
+            // reticle_run does not exist there. Saying otherwise sends the agent to a tool the
+            // profile does not have.
+            note: `The profile is read once at daemon startup — change ${TOOL_PROFILE_ENV} and restart the daemon, or it has no effect. Under this profile every unadvertised tool is reachable through reticle_run; under \`full\` there are no meta-tools because every tool is advertised directly.`,
+          },
+        };
 
   const reticleTools: ToolDef = {
     name: ReticleTool.TOOLS,
@@ -66,11 +99,12 @@ export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
     },
     handler: (_deps: ToolDeps, args: Record<string, unknown>) => {
       const names = Array.isArray(args['names'])
-        ? (args['names'] as unknown[]).filter((n): n is string => typeof n === 'string')
+        ? (args['names'] as unknown[]).filter((n): n is string => 'string' === typeof n)
         : undefined;
-      if (names === undefined || names.length === 0) {
+      if (names === undefined || 0 === names.length) {
         return Promise.resolve({
           tools: allTools.map((t) => ({ name: t.name, summary: firstSentence(t.description) })),
+          ...profileBlock,
           next: 'Load params with reticle_tools { names:[…] }, then call reticle_run { tool, args }.',
         });
       }
@@ -85,37 +119,81 @@ export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
     },
   };
 
+  const runShape = {
+    tool: z.string().describe('Tool name to invoke, e.g. reticle_network.'),
+    args: z.record(z.unknown()).optional().describe('Arguments object for that tool.'),
+    // Accepted AND FORWARDED, not merely tolerated. reticle_run is the only way to reach an
+    // unadvertised tool, so on a machine running several projects it has to be aimable — and
+    // `sessionId` is the shape an agent already uses on every other tool. Reported across 6 of 6
+    // apps: it took this key, dropped it, resolved by the daemon's cwd project, and failed with
+    // "no browser session for project X" while naming the very session it had been given.
+    sessionId: z
+      .string()
+      .optional()
+      .describe(
+        'Target tab for the invoked tool. Forwarded to it — an explicit args.sessionId wins.',
+      ),
+  };
   const reticleRun: ToolDef = {
     name: ReticleTool.RUN,
     description:
       "Invoke any Reticle tool by name (discover names/params first with reticle_tools). On an unknown tool or bad arguments it returns the available names or the tool's params, so you can correct and retry.",
-    inputSchema: {
-      tool: z.string().describe('Tool name to invoke, e.g. reticle_network.'),
-      args: z.record(z.unknown()).optional().describe('Arguments object for that tool.'),
-    },
+    inputSchema: runShape,
     handler: async (deps: ToolDeps, args: Record<string, unknown>) => {
-      const name = typeof args['tool'] === 'string' ? args['tool'] : '';
-      const callArgs =
-        typeof args['args'] === 'object' && args['args'] !== null
+      // reticle_run's OWN parameters, checked first and with the same wording as the inner check.
+      // It refused an unknown key inside `args` and silently dropped one beside them: an agent that
+      // wrote `reticle_run { tool, args, sessionId }` — the shape it uses on every other tool — had
+      // its sessionId ignored and got a confident answer about whichever session auto-selection
+      // picked. Every other tool on the surface refuses this; the escape hatch has to as well.
+      const strayTop = unknownKeys(args, runShape);
+      if (strayTop.length > 0) {
+        return {
+          error: unknownParamsError(ReticleTool.RUN, strayTop),
+          hint: `pass them inside args: reticle_run { tool, args: { ${strayTop.join(', ')}: … } } if the target tool declares them`,
+        };
+      }
+      const name = 'string' === typeof args['tool'] ? args['tool'] : '';
+      const given =
+        'object' === typeof args['args'] && args['args'] !== null
           ? (args['args'] as Record<string, unknown>)
           : {};
+      const aimed = args['sessionId'];
       const target = byName.get(name);
       if (target === undefined) {
         // A non-zero count here means our advertised surface is confusing the agent — it reached for
         // something it believed existed. That is a docs/naming defect, and it was invisible.
         getSessionMetrics().recordUnknownTool();
+        // ...and for 22 of those names the capability DOES exist, it just moved when tools merged.
+        // Answering "unknown tool" there is simply wrong; see merged-name-redirect.
+        const moved = mergedNameRedirect(name);
+        if (moved !== undefined) {
+          return {
+            error: mergedNameMessage(name, moved),
+            tool: moved.tool,
+            ...(moved.action === undefined ? {} : { action: moved.action }),
+          };
+        }
         return { error: `unknown tool '${name}'`, available: allTools.map((t) => t.name) };
       }
+      // The outer aim, forwarded ONLY to a tool that declares a session — injecting it into one that
+      // does not would trip the unknown-key check below and refuse a call the caller got right. An
+      // inner args.sessionId wins as the more specific instruction, and an absent aim stays absent so
+      // auto-selection still applies.
+      const callArgs =
+        'string' === typeof aimed &&
+        given['sessionId'] === undefined &&
+        undefined !== target.inputSchema['sessionId']
+          ? { ...given, sessionId: aimed }
+          : given;
       // The escape hatch is where a typo is MOST likely, because an unadvertised tool's parameters
       // are not in front of the agent at all — and it is the one path the SDK's own validation never
       // sees, since `reticle_run`'s own args (`tool`, `args`) are perfectly valid. Left unchecked,
       // `reticle_run { tool: "reticle_clock", args: { action: "freeze" } }` returned
       // `{"frozen":false}`: a well-formed answer to a question nobody asked.
-      const declared = new Set(Object.keys(target.inputSchema));
-      const unknown = Object.keys(callArgs).filter((key) => !declared.has(key));
+      const unknown = unknownKeys(callArgs, target.inputSchema);
       if (unknown.length > 0) {
         return {
-          error: `unknown ${unknown.length === 1 ? 'parameter' : 'parameters'} for ${name}: ${unknown.join(', ')} — NOT applied, so any result would be an answer to a different question`,
+          error: unknownParamsError(name, unknown),
           tool: name,
           params: paramInfo(target.inputSchema),
           ...(target.example === undefined ? {} : { example: target.example }),
@@ -125,12 +203,12 @@ export function buildDynamicTools(allTools: ToolDef[]): ToolDef[] {
       try {
         return await runTool(target, deps, callArgs);
       } catch (error) {
-        return {
-          error: error instanceof Error ? error.message : String(error),
-          tool: name,
-          params: paramInfo(target.inputSchema),
-          hint: 'fix the arguments and call reticle_run again',
-        };
+        // The SAME payload the direct tool path builds — recovery included. Answering every failure
+        // with "fix the arguments" threw that away, and under the default profile nearly every tool
+        // is reached through here: a stale ref, a paused session, a missing pairing token all came
+        // back as the agent's arguments being wrong, which is advice that spends the retry.
+        const message = error instanceof Error ? error.message : String(error);
+        return { ...buildErrorPayload(message), tool: name };
       }
     },
   };

@@ -29,8 +29,19 @@ describe('claudeAddCommand', () => {
 });
 
 describe('claudeExistsProbe', () => {
-  it('uses `claude mcp get reticle`', () => {
-    expect(claudeExistsProbe()).toEqual({ command: 'claude', args: ['mcp', 'get', 'reticle'] });
+  it('passes NO options — `claude mcp get` accepts none', () => {
+    // With `-s user` the probe exits 1 ("unknown option '-s'") on every machine, so init concluded
+    // "not registered", ran `claude mcp add`, and that exits 1 with "already exists" — every re-run
+    // reported a failed MCP step and a manual command that fails identically.
+    expect(claudeExistsProbe()).toEqual({
+      command: 'claude',
+      args: ['mcp', 'get', 'reticle'],
+    });
+  });
+
+  it('probes the server claudeAddCommand registers', () => {
+    expect(claudeAddCommand().args).toContain('reticle');
+    expect(claudeExistsProbe().args).toContain('reticle');
   });
 });
 

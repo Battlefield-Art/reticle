@@ -24,6 +24,7 @@ export * from './net.js'; // NetInitiator / ipc:// scheme — network + desktop-
 export * from './findings.js'; // crawl anomalies + cross-channel contradictions
 export * from './desktop-contract.js'; // the Electron preload/main/renderer/daemon string contract
 export * from './consequence.js';
+export * from './project-id.js';
 export * from './notices.js';
 export * from './journal.js';
 
@@ -37,3 +38,4 @@ export * from './upgrade.js'; // self-update policy shared by the CLI
 export * from './telemetry.js';
 export * from './telemetry-session.js'; // the session/project rollup payloads
 export * from './telemetry-feedback.js'; // the two things a PERSON writes: feedback + a self-declared identity // anonymous adoption telemetry wire contract (DAU/WAU/MAU/installs)
+export { CONTRACT_FINGERPRINT, fingerprintOf } from './contract-fingerprint.js';

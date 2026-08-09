@@ -170,11 +170,11 @@ function buildSummary(
   gaps: DomainGaps,
   topRisk: { name: string; reason: string } | undefined,
 ): string {
-  if (flowCount === 0) {
+  if (0 === flowCount) {
     return 'No saved flows yet — record the critical journeys (reticle_record{action:"start"}) so the agent learns the app.';
   }
   const parts = [
-    `${String(flowCount)} flow${flowCount === 1 ? '' : 's'}: ${String(coverage.asserted)} asserted, ${String(coverage.presenceOnly)} presence-only, ${String(coverage.assertionFree)} assertion-free`,
+    `${String(flowCount)} flow${1 === flowCount ? '' : 's'}: ${String(coverage.asserted)} asserted, ${String(coverage.presenceOnly)} presence-only, ${String(coverage.assertionFree)} assertion-free`,
   ];
   if (topRisk !== undefined) {
     parts.push(`test first: ${topRisk.name} (${topRisk.reason})`);

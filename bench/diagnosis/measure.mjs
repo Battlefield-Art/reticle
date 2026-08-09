@@ -90,7 +90,7 @@ const sameFile = (reported, truth) =>
 async function main() {
   const client = new McpStdioClient('node', [CLI, 'mcp', '--port', PORT], {
     RETICLE_PORT: PORT,
-    RETICLE_TOOL_PROFILE: 'full',
+    RETICLE_ADVERTISE_ALL_TOOLS: '1',
   });
   await client.start();
 

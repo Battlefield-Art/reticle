@@ -4,6 +4,7 @@ import { findContradictions, type Contradiction } from '../events/contradictions
 import {
   blindSpotsFromState,
   buildCoverageStatement,
+  Coverage,
   impeachesCapture,
 } from '../honesty/blind-spots.js';
 import { buildHonestyBlock } from '../honesty/honesty.js';
@@ -30,6 +31,8 @@ export async function assertVerdict(
   predicate: Predicate,
   pass: boolean,
   since: number,
+  /** Set when the assertion was never evaluated — see honesty/verified.ts. */
+  inconclusive?: string,
 ): Promise<{
   decision: Record<string, unknown>;
   contradictions: Contradiction[];
@@ -45,9 +48,9 @@ export async function assertVerdict(
   // Omitted entirely when coverage is full, so an intact page pays nothing and the field's PRESENCE
   // is the warning.
   const coverage =
-    statement.coverage === 'partial'
+    Coverage.PARTIAL === statement.coverage
       ? {
-          coverage: statement.note ?? 'partial',
+          coverage: statement.note ?? Coverage.PARTIAL,
           coverage_spots: statement.spots.map((sp) => ({ kind: sp.kind, count: sp.count })),
         }
       : {};
@@ -66,10 +69,11 @@ export async function assertVerdict(
   const outcomeUnread = hasUnreadWriteOutcome(windowEvents);
   const decision = decideVerified({
     pass,
+    ...(inconclusive === undefined ? {} : { inconclusive }),
     honesty: buildHonestyBlock({
       grade: gradeOfPredicate(predicate),
       attribution: 'window',
-      coveragePartial: statement.coverage === 'partial',
+      coveragePartial: Coverage.PARTIAL === statement.coverage,
       ...(impeaching.note === undefined ? {} : { blindSpots: [impeaching.note] }),
     }),
     contradictions,

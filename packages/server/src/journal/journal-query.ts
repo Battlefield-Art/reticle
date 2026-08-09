@@ -23,7 +23,7 @@ export function mergeEventsBySeq(
   const bySeq = new Map<number, ReticleEvent>();
   const noSeq: ReticleEvent[] = [];
   for (const event of [...journal, ...buffer]) {
-    if (typeof event.seq === 'number') bySeq.set(event.seq, event);
+    if ('number' === typeof event.seq) bySeq.set(event.seq, event);
     else noSeq.push(event);
   }
   return [...bySeq.values(), ...noSeq].sort((a, b) => {

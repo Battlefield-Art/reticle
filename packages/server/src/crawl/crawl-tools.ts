@@ -45,6 +45,9 @@ export const CRAWL_TOOLS: ToolDef[] = [
     outputSchema: {
       interactiveFound: z.number(),
       stepsRun: z.number(),
+      // Present only when nothing was clicked, saying WHICH zero this is — an empty page, a step
+      // budget of zero, or controls found and none driven. A bare zero was unactionable.
+      note: z.string().optional(),
       anomalies: z.array(
         z.object({
           kind: z.string(),
@@ -76,7 +79,7 @@ export const CRAWL_TOOLS: ToolDef[] = [
         ...(maxSteps !== undefined ? { maxSteps } : {}),
         ...(settleMs !== undefined ? { settleMs } : {}),
         ...(scope !== undefined ? { scope } : {}),
-        ...(args['confirmDangerous'] === true ? { confirmDangerous: true } : {}),
+        ...(true === args['confirmDangerous'] ? { confirmDangerous: true } : {}),
       };
       return crawl(session, opts, nodeSleep);
     },

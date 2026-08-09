@@ -35,7 +35,7 @@ export class ObservedState {
     if (event.type === EventType.BLIND_SPOT) {
       const kind = event.data['kind'];
       const count = event.data['count'];
-      if (typeof kind === 'string' && typeof count === 'number') this.#blindSpots[kind] = count;
+      if ('string' === typeof kind && 'number' === typeof count) this.#blindSpots[kind] = count;
     }
   }
 
@@ -82,15 +82,34 @@ export class ObservedState {
    * "recently untouched" — a number that reads as thorough while drifting toward the opposite.
    */
   readonly #actedRefs = new Set<string>();
+  /**
+   * The same drives, keyed by something that SURVIVES a re-render.
+   *
+   * A ref is invalidated whenever the DOM changes, so on a framework that replaces nodes rather than
+   * reconciling in place (Next's app router, for one) every driven ref is stale by the time coverage
+   * is asked and the number reads 0 forever. The snapshot label — `button "Deploy"` — names the same
+   * control on both sides of a re-render.
+   */
+  readonly #actedLabels = new Set<string>();
 
   /** Record a driven ref. Idempotent. */
   recordActedRef(ref: string): void {
     if (ref.length > 0) this.#actedRefs.add(ref);
   }
 
+  /** Record a driven control's re-render-surviving label. Idempotent; empty labels are not identities. */
+  recordActedLabel(label: string): void {
+    if (label.length > 0) this.#actedLabels.add(label);
+  }
+
   /** Every ref driven so far this session. */
   actedRefs(): ReadonlySet<string> {
     return this.#actedRefs;
+  }
+
+  /** Every driven control's label, for matching across re-renders. */
+  actedLabels(): ReadonlySet<string> {
+    return this.#actedLabels;
   }
 
   /**

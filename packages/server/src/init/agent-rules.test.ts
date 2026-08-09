@@ -14,7 +14,9 @@ describe('agent verification rule — content', () => {
     expect(block).toContain('before');
     expect(block).toMatch(/reticle_act/);
     expect(block).toMatch(/reticle_assert/);
-    expect(block).toContain('reticle gate');
+    // Every command the rule names must be one the agent can actually RUN: `reticle` is not on its
+    // PATH (init installs the SDK, not the server), so a bare `reticle gate` was unfollowable.
+    expect(block).toContain('npx @reticlehq/server gate');
     expect(block).toContain('Never weaken a check');
     // Wrapped in idempotency markers.
     expect(block).toContain('reticle:begin');

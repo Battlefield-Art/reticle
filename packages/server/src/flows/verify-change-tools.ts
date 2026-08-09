@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import { verdictForSuite } from './verify-change-verdict.js';
+import { attributedFailures } from './attributed-failure.js';
 import { Verified } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 import { asNumber, asRecord, asString } from '../tools/tools-helpers.js';
-import { loadNamedFlows, resolveChangedFiles } from '../cli-flow-commands.js';
+import { loadNamedFlows, resolveChangedFiles } from '../cli/cli-flow-commands.js';
 import { affectedSavedFlows } from './flow-sources.js';
 import { FLOW_TOOLS } from './flow-tools.js';
 import { findContradictions } from '../events/contradictions.js';
@@ -33,8 +35,6 @@ interface SuiteResult {
   summary?: string;
   failures?: unknown[];
 }
-
-const PASS = 'pass';
 
 export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
   {
@@ -93,14 +93,14 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
     },
     handler: async (deps: ToolDeps, args) => {
       const files = Array.isArray(args['files'])
-        ? (args['files'] as unknown[]).filter((f): f is string => typeof f === 'string')
+        ? (args['files'] as unknown[]).filter((f): f is string => 'string' === typeof f)
         : [];
       const since = asString(args['since']);
       const changedFiles = await resolveChangedFiles(files, since);
       const flows = await loadNamedFlows(deps.fs, deps.reticleRoot);
       const { affected, unknownProvenance } = affectedSavedFlows(flows, changedFiles);
 
-      if (changedFiles.length === 0) {
+      if (0 === changedFiles.length) {
         return {
           verified: Verified.UNKNOWN,
           because: 'no changed files were given, so there was nothing to decide about',
@@ -115,10 +115,10 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
 
       // The guard: an uncovered change is UNKNOWN. Reporting `yes` here would mean "your change is
       // fine" on the strength of having run nothing at all.
-      if (affected.length === 0) {
+      if (0 === affected.length) {
         return {
           verified: Verified.UNKNOWN,
-          because: `no saved flow covers ${changedFiles.length === 1 ? 'this file' : 'these files'} — record one with reticle_record { action: "start" } then reticle_flow_save, or verify by driving the app directly`,
+          because: `no saved flow covers ${1 === changedFiles.length ? 'this file' : 'these files'} — record one with reticle_record { action: "start" } then reticle_flow_save, or verify by driving the app directly`,
           changedFiles,
           flowsRun: [],
           unknownProvenance,
@@ -149,11 +149,34 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
       const failed = suite.failed ?? 0;
       const passed = suite.passed ?? 0;
 
-      const failedSuite = suite.status !== PASS || failed > 0;
-      if (failedSuite) {
+      // `unverifiable` is NOT a failure — the suite ran and proved nothing, which is the same fact
+      // this tool answers UNKNOWN for an uncovered change. Treating it as a red emitted a bug_found
+      // that nothing earned. See verify-change-verdict.
+      const verdict = verdictForSuite(String(suite.status), failed);
+      // A NO must be EARNED by a failing flow genuinely tied to the changed files. `affectedSavedFlows`
+      // re-runs any flow whose sources it cannot determine — over-running beats skipping — and those
+      // land in `unknownProvenance`. Judging the change on them produced a negative verdict whose own
+      // explanation admitted the evidence was not tied to the file. See attributed-failure.
+      const failingNames = Array.isArray(suite.failures)
+        ? suite.failures
+            .map((f) =>
+              'object' === typeof f && f !== null ? asString(asRecord(f)['flow']) : undefined,
+            )
+            .filter((n): n is string => n !== undefined)
+        : // No per-failure detail: the failure is somewhere in the set that ran, so ask the question
+          // of all of them rather than guessing which.
+          affected;
+      const attributed = attributedFailures(failingNames, unknownProvenance);
+      const earnedNo = verdict === Verified.NO && attributed.length > 0;
+      const reported = verdict === Verified.NO && !earnedNo ? Verified.UNKNOWN : verdict;
+      if (reported !== Verified.YES) {
         return {
-          verified: Verified.NO,
-          because: `${String(failed)} of ${String(suite.total ?? affected.length)} covering flows failed${provenanceNote}`,
+          verified: reported,
+          because: earnedNo
+            ? `${String(failed)} of ${String(suite.total ?? affected.length)} covering flows failed, including ${attributed.join(', ')}, which cover the changed files${provenanceNote}`
+            : verdict === Verified.NO
+              ? `flows failed, but Reticle cannot tell which sources any of them cover (${failingNames.join(', ')}) — so this says nothing about the files you changed. Re-record them so their sources are stamped, or read the replay yourself`
+              : `the covering flows ran but proved nothing (${String(suite.status)}) — they assert no observable consequence, so a green from them would not have meant your change is safe${provenanceNote}`,
           changedFiles,
           flowsRun: affected,
           suite,

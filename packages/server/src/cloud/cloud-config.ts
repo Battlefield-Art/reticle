@@ -28,7 +28,7 @@ export interface SyncPolicy {
   /** Sync saved flow files (the shared regression suite). */
   flows: boolean;
 }
-export const DEFAULT_SYNC_POLICY: SyncPolicy = { runs: true, memory: true, flows: true };
+const DEFAULT_SYNC_POLICY: SyncPolicy = { runs: true, memory: true, flows: true };
 
 /** Where a verification actually executes. Reserved for the hosted-runner path; default local. */
 export const VerifyMode = { LOCAL: 'local', SERVER: 'server' } as const;
@@ -50,7 +50,7 @@ interface CloudLink {
   verify: VerifyMode;
 }
 
-const asBool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean' ? v : fallback);
+const asBool = (v: unknown, fallback: boolean): boolean => ('boolean' === typeof v ? v : fallback);
 
 /** Read + JSON-parse a file, or null on any problem (missing/malformed) — never throws. */
 async function readJson(fs: FileSystemPort, path: string): Promise<unknown> {
@@ -64,12 +64,12 @@ async function readJson(fs: FileSystemPort, path: string): Promise<unknown> {
 
 /** Validate the shape of `.reticle/cloud.json`. Requires projectId + url; policy/verify default in. */
 function parseLink(raw: unknown): CloudLink | null {
-  if (typeof raw !== 'object' || raw === null) return null;
+  if (typeof raw !== 'object' || null === raw) return null;
   const o = raw as Record<string, unknown>;
-  if (typeof o.projectId !== 'string' || o.projectId.length === 0) return null;
-  if (typeof o.url !== 'string' || o.url.length === 0) return null;
+  if (typeof o.projectId !== 'string' || 0 === o.projectId.length) return null;
+  if (typeof o.url !== 'string' || 0 === o.url.length) return null;
   const sync =
-    typeof o.sync === 'object' && o.sync !== null ? (o.sync as Record<string, unknown>) : {};
+    'object' === typeof o.sync && o.sync !== null ? (o.sync as Record<string, unknown>) : {};
   return {
     projectId: o.projectId,
     url: o.url,
@@ -84,9 +84,9 @@ function parseLink(raw: unknown): CloudLink | null {
 
 /** Look up the API key for a cloud project id in the user credentials map. */
 function credentialFor(raw: unknown, projectId: string): string | null {
-  if (typeof raw !== 'object' || raw === null) return null;
+  if (typeof raw !== 'object' || null === raw) return null;
   const key = (raw as Record<string, unknown>)[projectId];
-  return typeof key === 'string' && key.length > 0 ? key : null;
+  return 'string' === typeof key && key.length > 0 ? key : null;
 }
 
 /**
@@ -101,7 +101,7 @@ export async function resolveProjectCloud(
   env: NodeJS.ProcessEnv,
 ): Promise<ProjectCloud> {
   const link = parseLink(await readJson(fs, join(reticleRoot, CLOUD_LINK_FILE)));
-  if (link === null) {
+  if (null === link) {
     // No per-project link → the env vars are the whole story (legacy single-project / CI behaviour).
     return {
       config: resolveCloudConfig(env),

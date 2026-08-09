@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { TRANSPORT_LIMITS } from '@reticlehq/core';
 import { FEEDBACK_ASK, RECOVERY, buildErrorPayload, recoveryFor } from './error-recovery.js';
 import { TOOLS } from './tools.js';
+import { diagnoseNoSession } from '../session/no-session-diagnosis.js';
 
 describe('recoveryFor — every known error carries an actionable next move', () => {
   it('maps the no-session footgun to a concrete recovery', () => {
@@ -148,5 +150,331 @@ describe("Reticle's own validation errors are recognized, not reported as unknow
   it('still returns undefined for a genuinely unknown failure, so real defects keep the ask', () => {
     expect(recoveryFor('Cannot read properties of undefined (reading foo)')).toBeUndefined();
     expect(recoveryFor('ECONNRESET')).toBeUndefined();
+  });
+});
+
+/**
+ * The whole browser-side action-validation family was classified as an unknown Reticle defect.
+ *
+ * Measured over real MCP against bench-app: `reticle_act { action: 'frobnicate' }` came back with
+ * "unknown action 'frobnicate' — expected one of: click, dblclick, …" — a message Reticle wrote,
+ * listing the valid answers — and then "This error is not one Reticle recognizes, which means it
+ * may be a defect in Reticle". Same for `cannot fill a <button>`.
+ *
+ * These are every guard in executeAction: the wrong element for the action, a disabled or readonly
+ * field, a valueless fill, an unknown action, and the destructive-action block — which is a
+ * DELIBERATE refusal carrying its own retry instruction, and was still telling the agent Reticle
+ * might be broken. The prior rule only caught server-authored messages that named a `reticle_*`
+ * tool, so none of these matched.
+ */
+describe('browser-side action guards are recognized refusals, not unknown defects', () => {
+  // Without this, every expectation below reads `expect(undefined).toBe(undefined)` while the
+  // constant is missing — a suite that passes with the bug fully present. Assert the hints EXIST
+  // before asserting anything maps to them.
+  it('the hints these map to are real strings', () => {
+    for (const key of [
+      'WRONG_TARGET',
+      'NOT_EDITABLE',
+      'CONFIRM_DANGEROUS',
+      'UNSUPPORTED_SURFACE',
+    ] as const) {
+      expect(typeof RECOVERY[key], key).toBe('string');
+    }
+  });
+
+  it('an unknown action is a bad call — the message already lists the valid ones', () => {
+    expect(
+      recoveryFor("unknown action 'frobnicate' — expected one of: click, dblclick, hover"),
+    ).toBe(RECOVERY.BAD_ARGUMENTS);
+  });
+
+  it('a missing value/text is a bad call', () => {
+    expect(
+      recoveryFor('fill requires a string `value` — pass it nested, as args: { value: … }'),
+    ).toBe(RECOVERY.BAD_ARGUMENTS);
+    expect(
+      recoveryFor('type requires a string `text` — pass it nested, as args: { text: … }'),
+    ).toBe(RECOVERY.BAD_ARGUMENTS);
+  });
+
+  it('the wrong element for the action points at re-querying, not at a bug report', () => {
+    for (const msg of [
+      'cannot fill a <button>',
+      'cannot type into a <div>',
+      'cannot clear a <span>',
+      'cannot select on a <input>',
+      'cannot (un)check a <div>',
+      'no form to submit',
+      'upload target must be a <input type="file">',
+      "ref 'e12' is not an HTMLElement",
+    ]) {
+      expect(recoveryFor(msg), msg).toBe(RECOVERY.WRONG_TARGET);
+    }
+  });
+
+  it('a disabled or readonly field is the app refusing, not Reticle failing', () => {
+    expect(recoveryFor('cannot fill a disabled <input> — a user could not edit it')).toBe(
+      RECOVERY.NOT_EDITABLE,
+    );
+    expect(recoveryFor('cannot type a readonly <textarea> — a user could not edit it')).toBe(
+      RECOVERY.NOT_EDITABLE,
+    );
+  });
+
+  it('the destructive-action block carries its own retry, and must never read as a defect', () => {
+    expect(
+      recoveryFor('potentially destructive action blocked; retry with args.confirmDangerous=true'),
+    ).toBe(RECOVERY.CONFIRM_DANGEROUS);
+  });
+
+  it('an unsupported surface is named as unsupported, not as a possible bug', () => {
+    expect(
+      recoveryFor(
+        'cannot fill a contenteditable element — rich-text editors keep their own document model',
+      ),
+    ).toBe(RECOVERY.UNSUPPORTED_SURFACE);
+  });
+});
+
+/**
+ * The no-session diagnosis inspects the machine and says which of three causes this actually is.
+ * Pairing it with the generic hint produced a result that contradicted itself — the error saying a
+ * server IS listening, the recovery saying to go start one — and suppressing only the recovery then
+ * dropped it into the feedback ask, telling the agent that a condition Reticle had just diagnosed
+ * might be a defect in Reticle. A message that recovers itself gets nothing appended.
+ */
+describe('a self-diagnosing message is left alone', () => {
+  const diagnosis = diagnoseNoSession({
+    everConnected: false,
+    initialized: true,
+    listening: [5173],
+    port: 4400,
+  });
+
+  it('gets no second, generic recovery', () => {
+    expect(recoveryFor(diagnosis)).toBeUndefined();
+  });
+
+  it('and is NOT reported as a possible Reticle defect', () => {
+    const payload = buildErrorPayload(diagnosis);
+    expect(payload.recovery).toBeUndefined();
+    expect(payload.feedback).toBeUndefined();
+    expect(payload.error).toBe(diagnosis);
+  });
+
+  it('while the plain static message still gets its hint', () => {
+    expect(recoveryFor('no browser session connected. Two things to check')).toBe(
+      RECOVERY.NO_SESSION,
+    );
+  });
+});
+
+/**
+ * A schema rejection is the agent's argument to fix, not evidence of a Reticle defect.
+ *
+ * Reported from the field: a clean `unrecognized_keys: ["value"]` rejection came back wrapped in
+ * "This error is not one Reticle recognizes, which means it may be a defect in Reticle". Nothing
+ * misbehaved — the call named a parameter that does not exist, and the schema said so precisely.
+ * Inviting a bug report there spends the agent's turn and fills the feedback channel with reports
+ * about calls that were simply wrong, which is the fastest way to make real reports unfindable.
+ */
+describe('argument rejections are not Reticle defects', () => {
+  it.each([
+    ['an unknown key', "Unrecognized key(s) in object: 'value'"],
+    ['a zod code', 'invalid_type: expected string, received number at path ["by"]'],
+    [
+      'the MCP wrapper',
+      'Invalid arguments for tool reticle_query: Expected string, received number',
+    ],
+    ['a missing required arg', 'Required at path ["action"]'],
+  ])('%s gets a recovery, never the defect ask', (_label, message) => {
+    const payload = buildErrorPayload(message);
+    expect(payload.feedback, message).toBeUndefined();
+    expect(payload.recovery, message).toBeDefined();
+  });
+
+  /**
+   * Found by the tool fuzz: `reticle_screenshot { name: <100KB> }` was answered with "this error is
+   * not one Reticle recognizes, which means it may be a defect in Reticle". Reticle wrote that
+   * validator. The caller's name was invalid — a rejected ARGUMENT, and the one class of error we
+   * already decided never to blame on ourselves.
+   *
+   * These get their own recovery rather than the generic schema one: the parameter exists and the
+   * types are right, so "re-read the tool's parameters" is the wrong advice. What the caller needs
+   * is the shape a name must have.
+   */
+  it.each([
+    ['a baseline name', 'invalid visual baseline name: ../etc/passwd'],
+    ['a diff name', 'invalid visual diff name: has spaces'],
+  ])("%s is the caller's to fix, not a Reticle defect", (_label, message) => {
+    const payload = buildErrorPayload(message);
+    expect(payload.feedback, message).toBeUndefined();
+    expect(payload.recovery, message).toBe(RECOVERY.INVALID_NAME);
+  });
+
+  it('the invalid-name recovery states the shape a name must have', () => {
+    // A recovery that does not say what "valid" means costs the agent a guessing turn.
+    expect(RECOVERY.INVALID_NAME).toMatch(/letters|a-z/i);
+    expect(RECOVERY.INVALID_NAME).toMatch(/64/);
+  });
+
+  it('a genuinely unrecognized failure still asks for feedback', () => {
+    // The ask must keep working, or this fix trades one silence for another.
+    const payload = buildErrorPayload('ECONNRESET while flushing the observer queue');
+    expect(payload.feedback).toBeDefined();
+  });
+});
+
+/**
+ * A tool error must never hand the agent back its own argument at full size.
+ *
+ * Found by fuzzing all 48 tools with a 100KB string in their first string parameter.
+ * `reticle_screenshot { name: 'x'.repeat(100_000) }` answered with a **100,392-byte** tool result:
+ * the whole argument, echoed inside "invalid visual baseline name: …". In a library that sells
+ * token efficiency, a caller's typo should not be able to bill them for 25k tokens — and the same
+ * echo is how an unbounded value reaches a log, a terminal, or a transcript.
+ *
+ * Capping is not enough on its own: the classifier keys off substrings that usually sit at the END
+ * of the message ("… no longer resolves to an element"), so a plain head-truncation severs exactly
+ * the part that makes the error recognizable and turns a known condition into "may be a defect in
+ * Reticle". That is not hypothetical — it is the second half of what the fuzz reported. So the cap
+ * elides the MIDDLE and keeps both ends.
+ */
+describe('error messages are bounded before they reach the agent', () => {
+  const huge = 'x'.repeat(100_000);
+
+  it('caps a message that echoes a huge argument', () => {
+    const payload = buildErrorPayload(`invalid visual baseline name: ${huge}`);
+    expect(payload.error.length).toBeLessThanOrEqual(TRANSPORT_LIMITS.MAX_ERROR_LENGTH);
+  });
+
+  it('keeps the head, so the caller still learns what was wrong', () => {
+    const payload = buildErrorPayload(`invalid visual baseline name: ${huge}`);
+    expect(payload.error).toMatch(/^invalid visual baseline name: x+/);
+  });
+
+  it('keeps the TAIL, so a known error is still recognized after capping', () => {
+    // Head-only truncation loses "no longer resolves to an element" and the stale-ref recovery with
+    // it — the agent is then told its own stale ref may be a Reticle bug.
+    const payload = buildErrorPayload(`ref '${huge}' no longer resolves to an element`);
+    expect(payload.recovery).toBe(RECOVERY.STALE_REF);
+    expect(payload.feedback).toBeUndefined();
+  });
+
+  it('says that it elided, rather than silently presenting a partial value', () => {
+    const payload = buildErrorPayload(`invalid visual baseline name: ${huge}`);
+    expect(payload.error).toMatch(/elided/i);
+  });
+
+  it('leaves an ordinary message untouched', () => {
+    const message = 'no browser session connected — is your app running?';
+    expect(buildErrorPayload(message).error).toBe(message);
+  });
+});
+
+/**
+ * The sweep the e2e tool-surface spec does over a live daemon, done in the fast gate over the real
+ * thrown strings instead.
+ *
+ * `tool-surface-sweep-test.mjs` asserts ONE property — no response carries "not one Reticle
+ * recognizes" for a condition Reticle itself authored — but it can only see the conditions a single
+ * drive happens to provoke. A scope mismatch needs two projects, a mid-call disconnect needs a tab
+ * closing at the right instant, and a command timeout needs a wedged page: none of those occur in a
+ * sweep, so all three shipped with the defect ask attached while the spec stayed green.
+ *
+ * So the same property is asserted here against messages COPIED from the throw sites (each case
+ * names its source), which is the only part of the check that does not need a browser.
+ */
+describe('no condition Reticle itself authored is reported as a possible Reticle defect', () => {
+  it.each([
+    // session-manager.ts — scopeMissError
+    [
+      'a scope mismatch',
+      "no browser session for project 'shop', but 1 session(s) ARE connected under a different " +
+        "project: 'atlas' (http://localhost:4310/, sessionId 's1'). The daemon scopes to the " +
+        '.reticle.json of the directory it was started in, so this is a scope mismatch, not a dead ' +
+        "app. Pass the sessionId above to target one, or restart the daemon from that app's directory.",
+      RECOVERY.SCOPE_MISMATCH,
+    ],
+    // session-manager.ts — remove() rejects every in-flight command with this exact reason
+    ['a session that disconnected mid-call', 'session disconnected', RECOVERY.SESSION_GONE],
+    // command-timeout.ts — the bare form, and both forms that already carry advice
+    ['a command timeout', "command 'snapshot' timed out after 8000ms", RECOVERY.COMMAND_TIMEOUT],
+    [
+      'an act timeout',
+      "command 'act' timed out after 8000ms. The page is ALIVE — the SDK last reported to the " +
+        'bridge 200ms ago — but it is not answering commands.',
+      RECOVERY.COMMAND_TIMEOUT,
+    ],
+    // act-danger.ts — the two destructive blocks the existing rule did not cover
+    [
+      'a blocked WebMCP tool',
+      'potentially destructive WebMCP tool blocked; retry with confirmDangerous=true',
+      RECOVERY.CONFIRM_DANGEROUS,
+    ],
+    [
+      'a blocked native action',
+      'potentially destructive native action blocked; retry with args.confirmDangerous=true',
+      RECOVERY.CONFIRM_DANGEROUS,
+    ],
+    // query-strategy.ts
+    [
+      'an unsupported query strategy',
+      "unsupported query strategy 'colour' — use one of: role, text, testid",
+      RECOVERY.BAD_ARGUMENTS,
+    ],
+    // flows/replay.ts — a recorded step whose anchor is gone
+    [
+      'a flow anchor that no longer resolves',
+      "testid 'save-button' did not resolve in current page",
+      RECOVERY.FLOW_STEP_MISSING,
+    ],
+    // lease-tools.ts / playwright-launcher.ts — the pool is simply not there
+    [
+      'an unavailable browser pool',
+      'browser pool unavailable — the lease tools need the daemon-managed pool (start Reticle via `reticle mcp`).',
+      RECOVERY.NO_POOL,
+    ],
+    [
+      'a missing Chromium',
+      'Chromium is not installed for Playwright. Run: npx playwright install chromium',
+      RECOVERY.NO_POOL,
+    ],
+  ])('%s is recognized', (_label, message, expected) => {
+    const payload = buildErrorPayload(message);
+    expect(payload.feedback, message).toBeUndefined();
+    expect(payload.recovery, message).toBe(expected);
+  });
+
+  /**
+   * act-danger.ts prescribes the exact retry ("use reticle_act { args: { native: true } } …"), so a
+   * second, more generic hint would only argue with it — but it must not collect the defect ask.
+   */
+  it('a refusal that already prescribes its own retry gets neither a hint nor the ask', () => {
+    const payload = buildErrorPayload(
+      'reticle_act_and_wait cannot drive native input, so args.native would be ignored. Use ' +
+        'reticle_act { args: { native: true } } for the trusted click, then assert the consequence.',
+    );
+    expect(payload.feedback).toBeUndefined();
+    expect(payload.recovery).toBeUndefined();
+  });
+});
+
+/**
+ * A refused select must arrive as an invalid call, not as a possible Reticle defect — and the
+ * recovery has to warn that option VALUES are not the visible labels, which is the mistake that
+ * produces this error most often.
+ */
+describe("a select with no such option is the caller's to fix", () => {
+  it('gets the option recovery, never the defect ask', () => {
+    const payload = buildErrorPayload(
+      "no <option> with value 'English' — available: en (English), fr (French)",
+    );
+    expect(payload.feedback).toBeUndefined();
+    expect(payload.recovery).toBe(RECOVERY.NO_SUCH_OPTION);
+  });
+
+  it('warns that values are not labels', () => {
+    expect(RECOVERY.NO_SUCH_OPTION).toMatch(/label/i);
   });
 });

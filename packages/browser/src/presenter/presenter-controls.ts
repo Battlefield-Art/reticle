@@ -1,4 +1,4 @@
-import { HumanControlKind, PresenterTone, SessionState } from '@reticlehq/core';
+import { HumanControlKind, PresenterTone, SessionState, type FlowChip } from '@reticlehq/core';
 import { nativeSetTimeout, nativeClearTimeout } from '../timers/native-timers.js';
 
 // Live-control panel: the two-way control surface inside the floating HUD — Pause/Resume + End
@@ -37,15 +37,6 @@ export const ENDED_FADE_MS = 4000;
 /** Max composer height (px) before it scrolls. One source for both the CSS cap and the JS auto-grow
  * clamp — they measure the same border-box, so the scrollbar appears exactly when growth stops. */
 const MSG_MAX_H = 96;
-
-/**
- * One replayable flow as pushed to the panel. `start` is the first step's testid anchor — a page hint
- * used to show a flow only where it can actually begin. Absent when the first step isn't testid-anchored.
- */
-export interface FlowChip {
-  name: string;
-  start?: string;
-}
 
 /** Payload the panel hands to its host when the human drives a control. */
 export interface ControlIntent {
@@ -233,7 +224,7 @@ export class ControlPanel {
     this.#refs.sendBtn?.addEventListener('click', () => this.#onSend());
     this.#refs.input?.addEventListener('keydown', (e) => {
       // Enter sends; Shift+Enter inserts a newline (falls through to the textarea's default).
-      if (e instanceof KeyboardEvent && e.key === 'Enter' && !e.shiftKey) {
+      if (e instanceof KeyboardEvent && 'Enter' === e.key && !e.shiftKey) {
         e.preventDefault();
         this.#onSend();
       }
@@ -305,7 +296,7 @@ export class ControlPanel {
   #onSend(): void {
     if (this.#state === SessionState.ENDED) return;
     const text = (this.#refs.input?.value ?? '').trim();
-    if (text.length === 0) return;
+    if (0 === text.length) return;
     this.#host.emit(HumanControlKind.MESSAGE, text);
     this.#host.logHuman(text);
     if (this.#refs.input !== undefined) this.#refs.input.value = '';
@@ -327,13 +318,13 @@ export class ControlPanel {
     const list: unknown[] = Array.isArray(flows) ? (flows as unknown[]) : [];
     this.#flowItems = list
       .map((f): FlowChip | null => {
-        if (typeof f === 'string') return f.length > 0 ? { name: f } : null;
-        if (typeof f === 'object' && f !== null) {
+        if ('string' === typeof f) return f.length > 0 ? { name: f } : null;
+        if ('object' === typeof f && f !== null) {
           const rec = f as Record<string, unknown>;
           const name = rec['name'];
-          if (typeof name !== 'string' || name.length === 0) return null;
+          if (typeof name !== 'string' || 0 === name.length) return null;
           const start = rec['start'];
-          return typeof start === 'string' && start.length > 0 ? { name, start } : { name };
+          return 'string' === typeof start && start.length > 0 ? { name, start } : { name };
         }
         return null;
       })
@@ -417,5 +408,3 @@ export class ControlPanel {
     }
   }
 }
-
-export { DATA_RETICLE_STATE };

@@ -1,4 +1,4 @@
-import { isOpaqueOrigin } from '@reticlehq/core';
+import { AppRuntime, isOpaqueOrigin } from '@reticlehq/core';
 
 /**
  * Turn a bare command timeout into something the reader can act on.
@@ -24,10 +24,16 @@ import { isOpaqueOrigin } from '@reticlehq/core';
  * that can actually suffer it, since misdirecting an Electron user costs them the same hour.
  */
 
-/** What the page told us about its shell, via PAGE_HEALTH. Undefined before the first report. */
-export type PageRuntime = 'electron' | 'tauri' | 'web';
+/**
+ * What the page told us about its shell, via PAGE_HEALTH. Undefined before the first report.
+ *
+ * An alias of core's AppRuntime rather than a second list of the same three strings: the SDK reports
+ * this value, so it is a wire value, and two independent spellings of it is how one side gains a
+ * runtime the other silently refuses to recognise.
+ */
+export type PageRuntime = AppRuntime;
 
-export interface TimeoutContext {
+interface TimeoutContext {
   url: string;
   /** The page's own last visibility report. */
   hidden: boolean;
@@ -61,7 +67,7 @@ const HIDDEN_ADVICE =
 
 /** True when this session is a WebKit desktop shell — the only runtime that suffers this. */
 function isWebKitDesktop(context: TimeoutContext): boolean {
-  if (context.runtime === 'tauri') return true;
+  if (AppRuntime.TAURI === context.runtime) return true;
   // A `tauri://` origin is unambiguous even before the first health report lands.
   if (context.runtime !== undefined) return false;
   return isOpaqueOrigin(context.url) && context.url.startsWith('tauri:');

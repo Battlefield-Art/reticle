@@ -13,11 +13,12 @@ import {
 } from '@reticlehq/core';
 import type { FlowReplayResult } from '@reticlehq/core';
 import { originOf } from './session/session-manager.js';
+import { setBrowserMode, BrowserMode } from './telemetry/browser-mode.js';
 import type { NetworkDetail } from './input/network-detail.js';
 import { replayNamedFlow } from './flows/flow-tools.js';
 import { createSharedServer } from './http-server.js';
-import { resolveBridgeSecurityWithAutoToken } from './bridge-security.js';
-import { Bridge } from './bridge.js';
+import { resolveBridgeSecurityWithAutoToken } from './bridge/bridge-security.js';
+import { Bridge } from './bridge/bridge.js';
 import { BaselineStore } from './project/baselines.js';
 import { RecordingStore } from './flows/recordings.js';
 import { FlowStore } from './flows/flows.js';
@@ -29,15 +30,18 @@ import { ReticleRunner } from './runs/reticle-runner.js';
 import { createRunnerPort } from './runs/runner-port.js';
 import { RunStore } from './runs/run-store.js';
 import { startVerifyServer } from './runs/verify-server.js';
-import { createMcpServer } from './mcp.js';
+import { createMcpServer } from './mcp/mcp.js';
 import { SessionReaper, endAllSessions, MCP_DISCONNECT_SUMMARY } from './session/session-reaper.js';
-import { resolveToolProfile } from './tools/profiles.js';
+import { wireSessionScope } from './session/no-session-watch.js';
+import { buildIdlePredicate } from './daemon/daemon-usefulness.js';
+import { resolveToolSurface } from './tools/tool-surface.js';
+import { statusPayload } from './status-payload.js';
 import { CdpRealInputProvider, LaunchedRealInputProvider } from './input/real-input.js';
 import { cpus } from 'node:os';
 import { BrowserPool } from './pool/browser-pool.js';
 import { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launcher.js';
 import { LeaseReaper } from './pool/lease-reaper.js';
-import { readJournalEnabled, readProjectId } from './cli-port.js';
+import { readJournalEnabled, readProjectId } from './cli/cli-port.js';
 import { makeJournalAttach } from './journal/attach-journal.js';
 import { makeSessionEnd } from './journal/session-end.js';
 import { AmbientStore } from './journal/ambient-store.js';
@@ -59,7 +63,7 @@ function replayVerdictLine(result: FlowReplayResult): string {
 
 export { ReticleTool } from './tools/tool-names.js';
 export { RingBuffer } from './events/ring-buffer.js';
-export { Bridge } from './bridge.js';
+export { Bridge } from './bridge/bridge.js';
 export { Session, SessionManager } from './session/session.js';
 export type { SessionInfo, SessionHealth } from './session/session.js';
 export { buildSessionRecommendation } from './session/session-recommendation.js';
@@ -95,18 +99,18 @@ export { BrowserPool, DEFAULT_LEASE_TTL_MS } from './pool/browser-pool.js';
 export type { Lease, Launcher, PooledBrowser } from './pool/browser-pool.js';
 export { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launcher.js';
 export { appendReticleParams } from './tools/lease-tools.js';
-export { writePid, removePid, isRunning, logPath, readPid, isAlive } from './daemon.js';
+export { writePid, removePid, isRunning, logPath, readPid, isAlive } from './daemon/daemon.js';
 export type { CrawlReport, CrawlAnomaly, CrawlOptions, CrawlSession } from './crawl/crawl.js';
 export { scrollToFind } from './input/scroll-find.js';
 export type { ScrollFindResult, ScrollFindQuery, ScrollFindSession } from './input/scroll-find.js';
 export {
   CORE_TOOL_NAMES,
-  TOOL_PROFILE,
+  TOOL_SURFACE,
   TOOL_PROFILE_ENV,
   filterTools,
-  resolveToolProfile,
-} from './tools/profiles.js';
-export type { ToolProfile } from './tools/profiles.js';
+  resolveToolSurface,
+} from './tools/tool-surface.js';
+export type { ToolSurface } from './tools/tool-surface.js';
 export { AnnotationStore } from './flows/annotation-store.js';
 export { replayFlow, nearestTestid } from './flows/flow-replay.js';
 export type { FlowReplaySession, WaitForSignal } from './flows/flow-replay.js';
@@ -212,12 +216,14 @@ export interface RunningServer {
   /** True when nothing is using the daemon: no agent connected, no browser session, no pool lease.
    * The daemon entry (cli.ts) polls this to self-shut-down when idle so Reticle never lingers. */
   isIdle?: () => boolean;
+  /** True while an agent's MCP client is attached — see IdleShutdownOptions.agentAttached. */
+  agentAttached?: () => boolean;
   /** The pairing token the bridge is enforcing (explicit, env, or auto-provisioned); undefined if none. */
   token?: string;
   close: () => Promise<void>;
 }
 
-export { resolveBridgeSecurity } from './bridge-security.js';
+export { resolveBridgeSecurity } from './bridge/bridge-security.js';
 
 /**
  * Build the shared browser pool (one headless Chromium, N capped isolated leased contexts). Lazy —
@@ -227,7 +233,7 @@ function createBrowserPool(headless: boolean): BrowserPool {
   const maxContexts = resolveMaxContexts(process.env[ReticleEnv.MAX_CONTEXTS], cpus().length);
   const genSessionId = (): string =>
     `lease-${
-      typeof globalThis.crypto?.randomUUID === 'function'
+      'function' === typeof globalThis.crypto?.randomUUID
         ? globalThis.crypto.randomUUID()
         : String(Date.now())
     }`;
@@ -321,6 +327,9 @@ async function resolveRealInput(
   const driveUrl = options.driveUrl;
   if (driveUrl !== undefined && driveUrl.length > 0) {
     const headless = options.headless ?? true;
+    // The one place that knows. Everything downstream reads it rather than re-deriving it, and a
+    // daemon that launches nothing keeps the default (ATTACHED) rather than guessing.
+    setBrowserMode(headless ? BrowserMode.HEADLESS : BrowserMode.HEADED);
     const injectConnect = options.injectConnect;
     const storageState = options.storageState;
     const factory =
@@ -408,8 +417,9 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
       fs,
       reticleRoot,
       now,
+      bridgePort: port,
     };
-    const profile = resolveToolProfile(options.toolProfile);
+    const profile = resolveToolSurface(options.toolProfile);
     const server = createMcpServer(
       realInput !== undefined ? { ...deps, realInput } : deps,
       profile,
@@ -454,11 +464,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   // mirror rejection so a port collision can't surface as an unhandled promise rejection.
   void bridge.ready.catch(() => undefined);
   // `reticle status` GETs this for a live, at-a-glance view of connected tabs + their health.
-  shared.attachStatus(() => ({
-    running: true,
-    sessionCount: bridge.sessions.count(),
-    sessions: bridge.sessions.list(),
-  }));
+  shared.attachStatus(() => statusPayload(bridge.sessions.count(), bridge.sessions.list()));
   // Agent-independent presence: the daemon outlives any single agent, so when the LAST agent's MCP
   // connection drops (it stopped, or is waiting on the human), end every session and push a clear
   // "go to your terminal" notice to the panel — the human is on the browser and must not lose a typed
@@ -475,10 +481,9 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   reaper.start();
   // Scope auto-selection to the active project (from .reticle.json) so a stray tab from another app is
   // never picked when the agent omits a sessionId. Explicit per-call scope/sessionId still overrides.
-  const activeProjectId = readProjectId(process.cwd());
-  if (activeProjectId !== undefined) {
-    bridge.sessions.setDefaultScope({ projectId: activeProjectId });
-  }
+  // Scope + the no-session diagnosis: "no browser session connected" is the error that ends most
+  // sessions, and the agent is told to check two things it cannot see. See no-session-diagnosis.ts.
+  wireSessionScope(bridge.sessions, readProjectId(process.cwd()), port);
 
   const { realInput, owned } = await resolveRealInput(
     options,
@@ -508,8 +513,9 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     fs,
     reticleRoot,
     now,
+    bridgePort: port,
   };
-  const profile = resolveToolProfile(options.toolProfile);
+  const profile = resolveToolSurface(options.toolProfile);
   const effectiveDeps = realInput !== undefined ? { ...deps, realInput } : deps;
   shared.attachMcp(() => createMcpServer(effectiveDeps, profile));
 
@@ -517,7 +523,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   // driving the same flow-replay machinery the agent uses — no MCP stdio, no human. Each verdict is
   // persisted via RunStore. Localhost-bound + token-guarded. Off unless `reticle serve --http`.
   let verifyHttp: { server: Server; port: number } | undefined;
-  if (options.httpVerify === true) {
+  if (true === options.httpVerify) {
     const runStore = new RunStore(fs, reticleRoot);
     const runner = new ReticleRunner(createRunnerPort(effectiveDeps));
     const token = options.httpVerifyToken ?? process.env[ReticleEnv.VERIFY_TOKEN] ?? '';
@@ -583,9 +589,12 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     ...(realInput !== undefined ? { realInput } : {}),
     ...(verifyHttp !== undefined ? { verifyPort: verifyHttp.port } : {}),
     ...(security.token !== undefined ? { token: security.token } : {}),
-    // Idle = nobody is using the daemon: no agent attached, no browser tab connected, no pool lease.
-    // The daemon entry self-shuts-down after this holds for the grace window (see cli.ts / IdleShutdown).
-    isIdle: () => !agentConnected && bridge.sessions.count() === 0 && pool.activeCount() === 0,
+    // Nobody is using this daemon — self-shuts-down once it holds for the grace window. See
+    // daemon-usefulness.ts for the two ways that can be true.
+    isIdle: buildIdlePredicate(() => agentConnected, bridge.sessions, pool),
+    // Exposed so the shutdown watcher can give an ATTACHED daemon a longer grace. The predicate above
+    // says WHETHER it is idle; this says how long that quiet should be tolerated — see idle-grace.
+    agentAttached: () => agentConnected,
     close: async () => {
       reaper.stop();
       const vh = verifyHttp;

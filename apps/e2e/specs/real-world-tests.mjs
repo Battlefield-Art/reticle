@@ -8,6 +8,7 @@ import {
 } from '@reticlehq/server';
 import os from 'node:os';
 import path from 'node:path';
+import { waitForSession } from '../wait-for-session.mjs';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0;
 const chk = (l, o, d = '') => { console.log(`   ${o ? '✅' : '❌'} ${l}${d ? '  — ' + d : ''}`); o ? pass++ : fail++; };
@@ -31,14 +32,10 @@ const p = await b.newPage();
 // MACHINE, not about the app. The readiness that actually matters is the next line: the app's SDK
 // dialing the bridge, which is app-specific and is what every assertion below depends on.
 await p.goto('http://localhost:4310/?session=demo');
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='demo');
-for (let i = 0; i < 200 && !hasOwn(); i++) await sleep(50);
+await waitForSession(()=>server.bridge.sessions.list(), 'demo');
 
 console.log('\n=== Reticle × showcase dashboard (:4310) ===');
-chk('dashboard SDK connected', server.bridge.sessions.count() > 0);
+chk('dashboard SDK connected', server.bridge.sessions.list().some(s=>s.sessionId==='demo'));
 
 const caps = await T('reticle_capabilities');
 chk('reticle_capabilities advertises the testable surface', (caps.testids?.length ?? 0) >= 30 && caps.stores?.includes('app'), `${caps.testids?.length} testids, ${caps.signals?.length} signals`);

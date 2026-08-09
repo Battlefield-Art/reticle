@@ -20,7 +20,7 @@ export const dataOn = (): string | null =>
 export const dataBusy = (): string | null =>
   document.querySelector('[data-reticle-glow]')?.getAttribute('data-busy') ?? null;
 
-export interface GlowFlips {
+interface GlowFlips {
   enters: number;
   exits: number;
   stop: () => void;
@@ -32,8 +32,8 @@ export function trackGlowFlips(glow: HTMLElement): GlowFlips {
     for (const r of recs) {
       if (r.attributeName !== 'data-on') continue;
       const v = glow.getAttribute('data-on');
-      if (v === '1') counts.enters++;
-      if (v === '0') counts.exits++;
+      if ('1' === v) counts.enters++;
+      if ('0' === v) counts.exits++;
     }
   });
   obs.observe(glow, { attributes: true, attributeFilter: ['data-on'] });

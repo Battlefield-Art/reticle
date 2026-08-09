@@ -1,5 +1,5 @@
 import { reticleTest, bootSession, runSpecs, createTestContext } from '@reticlehq/test';
-const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+import { waitForSession } from '../wait-for-session.mjs';
 
 reticleTest('hover reveals words — guarded by real input', async (t) => {
   await t.expectInputModeReal();              // skips-with-reason if synthetic; passes under reticle drive
@@ -17,7 +17,10 @@ reticleTest('ping fires GET /api/ping 200 and opens the modal', async (t) => {
 
 console.log('\n=== @reticlehq/test running 3 specs headless via reticle drive ===');
 const booted = await bootSession({ driveUrl: 'http://localhost:3100/', headless: true });
-for (let i = 0; i < 200; i++) { const s = await booted.invoke('reticle_sessions', {}); if ((s.sessions ?? []).length > 0) break; await sleep(50); }
+await waitForSession(
+  async () => (await booted.invoke('reticle_sessions', {})).sessions ?? [],
+  'next-smoke',
+);
 const print = (l) => process.stdout.write('   ' + l + '\n');
 const { summary } = await runSpecs({
   invoke: booted.invoke,

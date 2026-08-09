@@ -4,13 +4,7 @@
  * app's flows. These pure helpers pick the flows that belong on a given session's panel and shape them
  * into replay chips — testable without a bridge or a filesystem.
  */
-import { AnchorKind, type FlowFile } from '@reticlehq/core';
-
-/** A replayable flow as the HUD renders it: a name + an optional page it can start from. */
-export interface FlowChip {
-  name: string;
-  start?: string;
-}
+import { AnchorKind, type FlowChip, type FlowFile } from '@reticlehq/core';
 
 /**
  * A flow belongs on a session's HUD when it carries no projectId (legacy/global — visible everywhere

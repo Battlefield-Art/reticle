@@ -6,12 +6,12 @@
 // patched (frozen) timer once reticle_clock freezes the clock — which would hang the SDK.
 const g: typeof globalThis = globalThis;
 
-const realSetTimeout = typeof g.setTimeout === 'function' ? g.setTimeout.bind(g) : null;
-const realClearTimeout = typeof g.clearTimeout === 'function' ? g.clearTimeout.bind(g) : null;
+const realSetTimeout = 'function' === typeof g.setTimeout ? g.setTimeout.bind(g) : null;
+const realClearTimeout = 'function' === typeof g.clearTimeout ? g.clearTimeout.bind(g) : null;
 const realRaf =
-  typeof g.requestAnimationFrame === 'function' ? g.requestAnimationFrame.bind(g) : null;
+  'function' === typeof g.requestAnimationFrame ? g.requestAnimationFrame.bind(g) : null;
 const realPerfNow =
-  typeof g.performance?.now === 'function' ? g.performance.now.bind(g.performance) : null;
+  'function' === typeof g.performance?.now ? g.performance.now.bind(g.performance) : null;
 
 /**
  * Monotonic "now" bound at load. clock.ts deliberately does NOT patch performance.now, so this

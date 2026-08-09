@@ -80,7 +80,7 @@ function memoryFs(): FileSystemPort {
       return Promise.resolve({ mtimeMs: 0 });
     },
     isNotFound(error) {
-      return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+      return 'ENOENT' === (error as NodeJS.ErrnoException | undefined)?.code;
     },
   };
 }

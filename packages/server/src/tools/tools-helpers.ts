@@ -18,15 +18,15 @@ export function parseInteractive(tree: string): InteractiveItem[] {
 }
 
 export function asString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+  return 'string' === typeof value ? value : undefined;
 }
 
 export function asNumber(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
+  return 'number' === typeof value ? value : undefined;
 }
 
 export function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  return 'object' === typeof value && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 /**
@@ -39,12 +39,12 @@ export function asRecord(value: unknown): Record<string, unknown> {
 export function sourceOf(
   value: unknown,
 ): { file: string; line: number; column?: number } | undefined {
-  if (value === null || typeof value !== 'object') return undefined;
+  if (null === value || typeof value !== 'object') return undefined;
   const record = value as Record<string, unknown>;
   const file = record['file'];
   const line = record['line'];
-  if (typeof file !== 'string' || file.length === 0 || typeof line !== 'number') return undefined;
+  if (typeof file !== 'string' || 0 === file.length || typeof line !== 'number') return undefined;
   const out: { file: string; line: number; column?: number } = { file, line };
-  if (typeof record['column'] === 'number') out.column = record['column'];
+  if ('number' === typeof record['column']) out.column = record['column'];
   return out;
 }

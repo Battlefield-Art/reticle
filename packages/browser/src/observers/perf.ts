@@ -48,7 +48,7 @@ export function installPerf(emit: Emit): Teardown {
   observe('layout-shift', (e) => {
     const ls = e as LayoutShiftEntry;
     // Shifts within 500ms of a user input are expected (not CLS) — the spec's hadRecentInput flag.
-    if (ls.hadRecentInput === true) return;
+    if (true === ls.hadRecentInput) return;
     cls += ls.value ?? 0;
     emit(EventType.PERF, { metric: PerfMetric.CLS, value: cls, at: Math.round(e.startTime) });
   });

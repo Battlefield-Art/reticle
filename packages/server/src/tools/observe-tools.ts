@@ -2,8 +2,15 @@
  * Observe / wait / assert tools — reticle_observe, reticle_wait_for, reticle_assert, reticle_network,
  * reticle_console, reticle_animations. Split out of tools.ts; assembled back via...OBSERVE_TOOLS.
  */
+import { noteEmptyRead } from './observed-nothing.js';
 import { z } from 'zod';
-import { ReticleCommand, DEFAULT_ASSERT_TIMEOUT_MS } from '@reticlehq/core';
+import { aliasParam } from './alias-args.js';
+import {
+  CONSOLE_LEVELS,
+  ReticleCommand,
+  DEFAULT_ASSERT_TIMEOUT_MS,
+  PredicateKind,
+} from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport } from '../events/reaction.js';
 import { findContradictions } from '../events/contradictions.js';
@@ -79,10 +86,21 @@ function lastActSourceOnFailure(session: Session, pass: boolean): { source?: str
  * really do interleave; it is only redundant at this boundary.
  */
 function withoutConstantSessionId(event: unknown): unknown {
-  if (typeof event !== 'object' || event === null) return event;
+  if (typeof event !== 'object' || null === event) return event;
   const { sessionId: _sessionId, ...rest } = event as Record<string, unknown>;
   return rest;
 }
+
+/**
+ * The console levels, derived from core's console EventTypes — see CONSOLE_LEVELS.
+ *
+ * A free string here filtered by building `console.${level}`, so `level:'ERROR'` or `level:'fatal'`
+ * matched nothing and returned an empty log list. On a page that HAS logs the zero-match hint saves
+ * it (it reports which levels are present), but on a quiet page the answer is identical to a genuine
+ * all-clear. Refusing the value outright is the only reading with no ambiguity.
+ */
+const CONSOLE_LEVEL_LIST = CONSOLE_LEVELS.join(' | ');
+const consoleLevelEnum = z.enum(CONSOLE_LEVELS as [string, ...string[]]);
 
 export const OBSERVE_TOOLS: ToolDef[] = [
   {
@@ -229,13 +247,15 @@ export const OBSERVE_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.WAIT_FOR,
-    example: { predicate: { kind: 'state', path: 'todos.length', equals: 3 } },
+    example: { predicate: { kind: PredicateKind.STATE, path: 'todos.length', equals: 3 } },
     description:
       'Block until a predicate is satisfied (or already true in the recent buffer), else time out. Returns matching evidence or a near-miss diagnosis. By default it only counts events since your last act, so a signal buffered BEFORE the action can never fake a pass; pass `since` (an observe/act cursor) to widen or narrow that window explicitly.',
     inputSchema: {
-      predicate: PredicateSchema.describe(
+      predicate: PredicateSchema.optional().describe(
         'Predicate to wait for: { signal }, { net }, { element }, { kind: "net", ok: false } (assert on the OUTCOME — the honest field for IPC, which has no status code), { kind: "state", store, path, equals } (assert a registered store\'s value directly — the source of truth no DOM read can reach; equals takes a literal or { $gte | $contains | $length } pattern), { kind: "settled", quietMs } (deterministic network + DOM idle — prefer this over a fixed sleep), or a combination via allOf/anyOf.',
       ),
+      // Same concept, the neighbouring tool's name. See alias-args.ts.
+      until: PredicateSchema.optional().describe("Alias for `predicate` (act_and_wait's name)."),
       timeout_ms: z.number().optional().describe('Maximum wait in milliseconds. Default: 4000.'),
       since: z
         .number()
@@ -278,7 +298,10 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      const predicate = PredicateSchema.parse(args['predicate']);
+      // `until` is act_and_wait's name for this — see alias-args.ts.
+      const predicate = PredicateSchema.parse(
+        aliasParam(args, 'predicate', ['until'])['predicate'],
+      );
       // Honesty: explicit since wins; else default to the last act's cursor; else the whole buffer.
       const since = asNumber(args['since']) ?? session.lastAct.cursor() ?? 0;
       const verdict = await waitForPredicate(
@@ -299,13 +322,14 @@ export const OBSERVE_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.ASSERT,
-    example: { predicate: { kind: 'signal', name: 'todos:loaded' } },
+    example: { predicate: { kind: PredicateKind.SIGNAL, name: 'todos:loaded' } },
     description:
       'Evaluate a predicate (optionally waiting up to timeout_ms). Returns { pass, evidence, failureReason? }. The end of every verify loop. Prefer a { signal } or { net } consequence over { element }/{ text } presence — a passing presence-only assertion returns `advice` because a wrong/healed element can fake it. By default it only counts events since your last act, so a stale buffered signal can never fake a pass; pass `since` (an observe/act cursor) to set the window explicitly.',
     inputSchema: {
-      predicate: PredicateSchema.describe(
+      predicate: PredicateSchema.optional().describe(
         'Predicate to evaluate: { signal }, { net }, { element } or a combination.',
       ),
+      until: PredicateSchema.optional().describe("Alias for `predicate` (act_and_wait's name)."),
       timeout_ms: z
         .number()
         .optional()
@@ -369,7 +393,10 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      const predicate = PredicateSchema.parse(args['predicate']);
+      // `until` is act_and_wait's name for this — see alias-args.ts.
+      const predicate = PredicateSchema.parse(
+        aliasParam(args, 'predicate', ['until'])['predicate'],
+      );
       const timeout = asNumber(args['timeout_ms']) ?? 0;
       // Honesty: explicit since wins; else default to the last act's cursor; else the whole buffer.
       const since = asNumber(args['since']) ?? session.lastAct.cursor() ?? 0;
@@ -394,6 +421,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         predicate,
         verdict.pass,
         since,
+        verdict.inconclusive,
       );
       return withControl(session, {
         ...decision,
@@ -471,7 +499,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const method = asString(args['method']);
       const urlContains = asString(args['urlContains']);
       const status = asNumber(args['status']);
-      const ok = typeof args['ok'] === 'boolean' ? args['ok'] : undefined;
+      const ok = 'boolean' === typeof args['ok'] ? args['ok'] : undefined;
       const limit = asNumber(args['limit']);
       const buffer = bufferEnvelope(session);
       // Completed calls + unresolved in-flight requests (a hung request shows as pending).
@@ -484,7 +512,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       );
       const matched = allNet.filter((e) => matchNet(e, method, urlContains, status, ok));
       // zero-match filter returns what DID fire, not a bare [].
-      if (matched.length === 0 && allNet.length > 0) {
+      if (0 === matched.length && allNet.length > 0) {
         return withSizeCost({ calls: matched, hint: netEmptyHint(allNet), ...buffer });
       }
       // Default the cap so an omitted `limit` can't dump a whole flooded session (since defaults to 0).
@@ -493,12 +521,21 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         limit ?? DEFAULT_QUERY_LIMIT,
       );
       const calls = budgeted.map(projectNetCall);
-      return withSizeCost({
-        calls,
-        ...(droppedOldest > 0 ? { total: matched.length, droppedOldest } : {}),
-        ...bodiesNotCaptured(calls),
-        ...buffer,
-      });
+      // A zero-match FILTER already reports what did fire (netEmptyHint above). Zero calls at all
+      // fell through as a bare `[]`, which is indistinguishable from an observer that is not
+      // recording — and those need opposite responses. Say the look happened.
+      return withSizeCost(
+        noteEmptyRead(
+          {
+            calls,
+            ...(droppedOldest > 0 ? { total: matched.length, droppedOldest } : {}),
+            ...bodiesNotCaptured(calls),
+            ...buffer,
+          },
+          'calls',
+          { noun: 'network calls' },
+        ),
+      );
     },
   },
   {
@@ -507,10 +544,9 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     description:
       'Console/error log. Fast path for "were there any errors during this flow?". When a level filter matches nothing, returns a `hint` { totalInWindow, byLevel } so 0 errors is distinguishable from a silent page.',
     inputSchema: {
-      level: z
-        .string()
+      level: consoleLevelEnum
         .optional()
-        .describe('Log level filter: error | warn | info | log. Omit to return all levels.'),
+        .describe(`Log level filter: ${CONSOLE_LEVEL_LIST}. Omit to return all levels.`),
       since: z
         .number()
         .optional()
@@ -560,7 +596,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       ).filter(isConsoleEvent);
       const matched = allConsole.filter((e) => matchConsole(e, level));
       // zero matches at this level → report what levels ARE present (not a bare []).
-      if (matched.length === 0 && allConsole.length > 0) {
+      if (0 === matched.length && allConsole.length > 0) {
         return withSizeCost({ logs: matched, hint: consoleEmptyHint(allConsole), ...buffer });
       }
       // Default the cap so an omitted `limit` can't dump a whole flooded session (since defaults to 0).
@@ -569,10 +605,18 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         limit ?? DEFAULT_QUERY_LIMIT,
       );
       const logs = budgeted.map(projectConsoleLog);
+      // Say the look HAPPENED when it found nothing. A quiet page and a dead console observer both
+      // produced `{ logs: [] }`, and "no console errors" is the claim agents lean on most — see
+      // observed-nothing.ts, whose own header names this exact case and which every other array-
+      // returning read here was already wired to.
       return withSizeCost(
-        droppedOldest > 0
-          ? { logs, total: matched.length, droppedOldest, ...buffer }
-          : { logs, ...buffer },
+        noteEmptyRead(
+          droppedOldest > 0
+            ? { logs, total: matched.length, droppedOldest, ...buffer }
+            : { logs, ...buffer },
+          'logs',
+          { noun: 'console lines' },
+        ),
       );
     },
   },
@@ -583,7 +627,23 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     outputSchema: {
       animations: z.array(z.unknown()),
     },
-    handler: (deps, args) =>
-      commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.ANIMATIONS, {}),
+    handler: async (deps, args) => {
+      const result = await commandOrThrow(
+        deps,
+        asString(args['sessionId']),
+        ReticleCommand.ANIMATIONS,
+        {},
+      );
+      // A page with nothing animating and an observer that is not watching both return `[]`, and the
+      // second means the run should not be trusted. Say the look happened.
+      return isPlainRecord(result)
+        ? noteEmptyRead(result, 'animations', { noun: 'animations running or completed' })
+        : result;
+    },
   },
 ];
+
+/** Narrow a command result to something noteEmptyRead can annotate. */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return 'object' === typeof value && value !== null && !Array.isArray(value);
+}

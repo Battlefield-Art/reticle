@@ -24,7 +24,16 @@ const PROJECT_PROFILE_DELAY_MS = 5_000;
  * (most daemons stop cleanly and send exactly one summary). If the lost windows ever show up as a
  * real gap, the upgrade is a small on-disk journal replayed at the next start, not a shorter timer.
  */
-const SESSION_FLUSH_MS = 30 * 60 * 1000;
+/**
+ * How often a running daemon rolls up its window.
+ *
+ * Exported because it is the BOUND ON WHAT IS LOST: a daemon that has served a tool never
+ * idle-exits, so nothing calls shutdown, so its last partial window dies with the process. At 30
+ * minutes against a median 28-minute session that meant the median session reported nothing at all.
+ * Only non-empty windows emit, so a shorter interval costs nothing on the 74% of daemons that never
+ * serve a tool.
+ */
+export const SESSION_FLUSH_MS = 5 * 60 * 1000;
 
 /** Stops the timers this installed. Called from the daemon's shutdown path. */
 export interface DaemonTelemetry {
@@ -71,7 +80,8 @@ export function installDaemonTelemetry(
 
   const flush = setInterval(() => {
     if (metrics.empty) return; // an idle window is not worth an event
-    void getTelemetry().emit(TelemetryEventKind.DAEMON_STOPPED, {
+    // NOT daemon_stopped: the daemon is still running. See SESSION_PROGRESS.
+    void getTelemetry().emit(TelemetryEventKind.SESSION_PROGRESS, {
       session: metrics.summarize(false),
     });
     metrics.reset();

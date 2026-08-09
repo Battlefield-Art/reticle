@@ -26,7 +26,7 @@ export async function reportAndAccumulate(
     for (const segment of segments) {
       if (segment.route === undefined) continue;
       // Never learn from a truncated sample — its understated counts would poison the baseline.
-      if (segment.truncated === true) continue;
+      if (true === segment.truncated) continue;
       const current = envelopes.get(segment.route) ?? emptyEnvelope(segment.route);
       envelopes.set(segment.route, addSegmentToEnvelope(current, segment));
     }

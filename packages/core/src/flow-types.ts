@@ -236,6 +236,13 @@ export interface ReplayDecision {
  */
 export interface SuiteFlowResult {
   flow: string;
+  /**
+   * The flow never ran: its file failed to load, or its leased context never came up. Nothing was
+   * learned about the app, so this row is not a regression — it is Reticle reporting its own failure
+   * in the same array as the app's. Measured: one sweep emitted 8 `flow-regression` bug_found events
+   * off rows like these, from a suite where no flow ever executed.
+   */
+  couldNotRun?: boolean;
   verdict: 'pass' | 'drift' | 'fail';
   whatChanged?: string;
   whereInSource?: string;
@@ -391,3 +398,20 @@ export interface FlowHealResult {
 }
 
 export type RecordedFlow = z.infer<typeof RecordedFlowSchema>;
+
+/**
+ * One replayable-flow chip on the in-page HUD.
+ *
+ * Crosses the bridge: the daemon builds these from the flows on disk and pushes them with
+ * `ReticleCommand.FLOWS`; the presenter panel renders one ▶ button per chip. It lived as two
+ * identical `interface FlowChip` declarations — one in the server, one in the browser — which is the
+ * shape that drifts silently, because nothing links the two and no test crosses the boundary.
+ *
+ * A TYPE and not a zod schema on purpose: the browser SDK ships into the user's app and carries no
+ * zod, so the receiving side narrows the raw wire value by hand. The type is what both ends agree on.
+ */
+export interface FlowChip {
+  name: string;
+  /** The testid the flow's first step anchors to, when it has one — the panel hides chips that cannot start on the current page. */
+  start?: string;
+}

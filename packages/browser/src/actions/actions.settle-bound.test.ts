@@ -23,7 +23,7 @@ describe('settle is bounded — never hangs on a throttled rAF', () => {
 
     document.body.innerHTML = '<button>Save</button>';
     const el = document.querySelector('button');
-    if (el === null) throw new Error('no button');
+    if (null === el) throw new Error('no button');
     const ref = refs.refFor(el);
 
     const start = Date.now();
@@ -43,7 +43,7 @@ describe('settle is bounded — never hangs on a throttled rAF', () => {
     const { refs } = await import('../dom/refs.js');
     document.body.innerHTML = '<button>gone</button>';
     const el = document.querySelector('button');
-    if (el === null) throw new Error('no button');
+    if (null === el) throw new Error('no button');
     const ref = refs.refFor(el);
     document.body.innerHTML = ''; // detach → requireElement throws
     await expect(executeAction(ref, 'click')).rejects.toThrow();
@@ -57,7 +57,7 @@ describe('settle is bounded — never hangs on a throttled rAF', () => {
     document.body.innerHTML = '<button id="a">A</button><button id="b">B</button>';
     const a = document.querySelector('#a');
     const b = document.querySelector('#b');
-    if (a === null || b === null) throw new Error('missing buttons');
+    if (null === a || null === b) throw new Error('missing buttons');
     const refA = refs.refFor(a);
     const refB = refs.refFor(b);
 
@@ -68,9 +68,9 @@ describe('settle is bounded — never hangs on a throttled rAF', () => {
 
     expect(res.ok).toBe(true);
     expect(res.count).toBe(2);
-    expect(res.effects.every((e) => e.dispatched === true)).toBe(true);
-    expect(res.steps.every((s) => s.dispatched === true)).toBe(true);
-    expect(res.steps.every((s) => s.settled === false)).toBe(true);
-    expect(res.steps.every((s) => s.settleReason === 'timeout')).toBe(true);
+    expect(res.effects.every((e) => true === e.dispatched)).toBe(true);
+    expect(res.steps.every((s) => true === s.dispatched)).toBe(true);
+    expect(res.steps.every((s) => false === s.settled)).toBe(true);
+    expect(res.steps.every((s) => 'timeout' === s.settleReason)).toBe(true);
   }, 5000);
 });

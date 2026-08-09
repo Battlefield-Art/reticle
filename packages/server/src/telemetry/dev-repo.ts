@@ -25,7 +25,7 @@ export function isReticleSourceCheckout(cwd: string): boolean {
       try {
         const parsed: unknown = JSON.parse(readFileSync(pkg, 'utf8'));
         const name =
-          typeof parsed === 'object' && parsed !== null
+          'object' === typeof parsed && parsed !== null
             ? (parsed as { name?: unknown }).name
             : undefined;
         if (name === MONOREPO_NAME) return true;
@@ -43,7 +43,7 @@ export function isReticleSourceCheckout(cwd: string): boolean {
 /** Strip one layer of matching quotes from a .env value. */
 function unquote(value: string): string {
   const first = value[0];
-  if ((first === '"' || first === "'") && value.endsWith(first) && value.length >= 2) {
+  if (('"' === first || "'" === first) && value.endsWith(first) && value.length >= 2) {
     return value.slice(1, -1);
   }
   return value;
@@ -67,11 +67,11 @@ export function loadDotEnv(dir: string, env: NodeJS.ProcessEnv = process.env): v
   }
   for (const raw of text.split('\n')) {
     const line = raw.trim();
-    if (line.length === 0 || line.startsWith('#')) continue;
+    if (0 === line.length || line.startsWith('#')) continue;
     const eq = line.indexOf('=');
     if (eq <= 0) continue; // not a KEY=value pair — skip rather than fail the whole file
     const key = line.slice(0, eq).trim();
-    if (key.length === 0 || env[key] !== undefined) continue;
+    if (0 === key.length || env[key] !== undefined) continue;
     env[key] = unquote(line.slice(eq + 1).trim());
   }
 }

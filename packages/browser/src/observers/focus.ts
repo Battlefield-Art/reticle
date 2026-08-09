@@ -11,7 +11,7 @@ export function focusLabel(el: EventTarget | null): string | undefined {
 }
 
 function toBody(el: EventTarget | null): boolean {
-  return el === null || el === document.body;
+  return null === el || el === document.body;
 }
 
 /**

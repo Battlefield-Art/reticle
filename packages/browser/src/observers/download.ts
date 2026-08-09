@@ -39,7 +39,7 @@ interface PendingBlob {
   text: Promise<string | undefined>;
 }
 
-export interface DownloadOptions {
+interface DownloadOptions {
   /** Include a content preview. Gated for the same reason request bodies are: exports hold PII. */
   capturePreview?: boolean;
 }
@@ -88,7 +88,7 @@ export function installDownload(emit: Emit, opts: DownloadOptions = {}): Teardow
       // The LINE COUNT is reported even without preview capture: it is a number, not content, and it
       // is the whole tell for "25 rows in a file the toast calls 128".
       data['lines'] = text.split('\n').filter((l) => l.length > 0).length;
-      if (opts.capturePreview === true) {
+      if (true === opts.capturePreview) {
         const { body, truncated } = projectBody(text.slice(0, PREVIEW_CHARS), record.type);
         data['preview'] = body;
         if (truncated) data['previewTruncated'] = true;
@@ -105,7 +105,7 @@ export function installDownload(emit: Emit, opts: DownloadOptions = {}): Teardow
     const target = event.target;
     const anchor =
       target instanceof Element ? target.closest<HTMLAnchorElement>('a[download]') : null;
-    if (anchor === null) return;
+    if (null === anchor) return;
     report(anchor.getAttribute('href') ?? '', anchor.getAttribute('download') ?? undefined);
   };
   document.addEventListener('click', onClick, true);

@@ -40,7 +40,7 @@ function invalidate(): void {
 
 /** Record what a session declared sensitive. Called when its hello lands. */
 export function declareDrivenRedactionKeys(sessionId: string, keys: readonly string[]): void {
-  if (keys.length === 0) {
+  if (0 === keys.length) {
     if (declaredBySession.delete(sessionId)) invalidate();
     return;
   }

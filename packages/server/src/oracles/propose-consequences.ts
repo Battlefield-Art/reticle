@@ -1,4 +1,4 @@
-import { EventType, type ReticleEvent } from '@reticlehq/core';
+import { EventType, type ReticleEvent, PredicateKind } from '@reticlehq/core';
 
 /**
  * Self-generating oracles, v1. Given the window a recording captured, propose ranked mustHold
@@ -9,7 +9,7 @@ import { EventType, type ReticleEvent } from '@reticlehq/core';
  * (OSS-VS-SERVER); these local rules are OSS.
  */
 
-export interface ProposedConsequence {
+interface ProposedConsequence {
   /** A predicate object, directly usable as a mustHold. */
   predicate: Record<string, unknown>;
   /** Ranking tier: 0 strongest (signal) … 2 weakest (presence). */
@@ -46,9 +46,9 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
     switch (event.type) {
       case EventType.SIGNAL: {
         const name = data['name'];
-        if (typeof name === 'string') {
+        if ('string' === typeof name) {
           add(`signal:${name}`, {
-            predicate: { kind: 'signal', name },
+            predicate: { kind: PredicateKind.SIGNAL, name },
             tier: TIER.SIGNAL,
             label: `signal "${name}" fires`,
             weak: false,
@@ -58,10 +58,15 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
       }
       case EventType.NET_REQUEST: {
         const path = pathname(data['url']);
-        const method = typeof data['method'] === 'string' ? data['method'] : 'GET';
+        const method = 'string' === typeof data['method'] ? data['method'] : 'GET';
         if (path !== undefined) {
           add(`net:${method} ${path}`, {
-            predicate: { kind: 'net', method, urlContains: path, status: data['status'] },
+            predicate: {
+              kind: PredicateKind.NET,
+              method,
+              urlContains: path,
+              status: data['status'],
+            },
             tier: TIER.CONSEQUENCE,
             label: `${method} ${path} responds`,
             weak: false,
@@ -71,9 +76,9 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
       }
       case EventType.STATE_CHANGE: {
         const name = data['name'];
-        if (typeof name === 'string') {
+        if ('string' === typeof name) {
           add(`state:${name}`, {
-            predicate: { kind: 'state', store: name, path: data['path'] },
+            predicate: { kind: PredicateKind.STATE, store: name, path: data['path'] },
             tier: TIER.CONSEQUENCE,
             label: `state "${name}" changes`,
             weak: false,
@@ -83,9 +88,9 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
       }
       case EventType.ROUTE_CHANGE: {
         const to = data['pathname'];
-        if (typeof to === 'string') {
+        if ('string' === typeof to) {
           add(`route:${to}`, {
-            predicate: { kind: 'route', to },
+            predicate: { kind: PredicateKind.ROUTE, to },
             tier: TIER.CONSEQUENCE,
             label: `route changes to ${to}`,
             weak: false,
@@ -95,9 +100,9 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
       }
       case EventType.DOM_ADDED: {
         const name = data['name'];
-        if (typeof name === 'string' && name.length > 0) {
+        if ('string' === typeof name && name.length > 0) {
           add(`presence:${name}`, {
-            predicate: { kind: 'element', name },
+            predicate: { kind: PredicateKind.ELEMENT, name },
             tier: TIER.PRESENCE,
             label: `"${name}" appears (presence only — prefer a consequence)`,
             weak: true,

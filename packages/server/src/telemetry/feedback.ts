@@ -31,8 +31,11 @@ import {
 } from '@reticlehq/core';
 import { platform } from 'node:os';
 import { getTelemetry } from './telemetry.js';
-import { SERVER_VERSION } from '../server-version.js';
+import { noteFeedbackUndelivered } from './feedback-delivery.js';
+import { isReticleSourceCheckout } from './dev-repo.js';
+import { SERVER_VERSION } from '../version/server-version.js';
 import { feedbackContext, type SessionFacts } from './feedback-context.js';
+import { markDelivered, outboxPath, queueFeedback } from './feedback-outbox.js';
 
 /** Kills the feedback channel ONLY — adoption counters keep flowing. */
 export const FEEDBACK_ENV = 'RETICLE_FEEDBACK';
@@ -85,7 +88,7 @@ export function redactFeedbackText(input: string, max: number): Redaction {
       removed.add(label);
       // A rule with a leading capture keeps it (the scheme, the `api_key=` key) so the reader still
       // sees WHAT was removed, not just that something was.
-      const prefix = typeof groups[0] === 'string' ? groups[0] : '';
+      const prefix = 'string' === typeof groups[0] ? groups[0] : '';
       return `${prefix}${REDACTED}`;
     });
   }
@@ -95,7 +98,7 @@ export function redactFeedbackText(input: string, max: number): Redaction {
 /** True when the feedback channel is switched off on its own (the emitter's switches apply as well). */
 export function feedbackDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const value = (env[FEEDBACK_ENV] ?? '').toLowerCase();
-  return value === '0' || value === 'false' || value === 'off' || value === 'no';
+  return '0' === value || 'false' === value || 'off' === value || 'no' === value;
 }
 
 /**
@@ -129,8 +132,21 @@ export type FeedbackInput = Pick<
 >;
 
 export interface FeedbackReceipt {
-  /** False when a kill switch is on — the report was DROPPED, and the caller is told so plainly. */
+  /**
+   * DELIVERY confirmed. Only ever true when the send was awaited and the endpoint accepted it —
+   * never as an optimistic stand-in for "we handed it to the emitter". That distinction is the whole
+   * value of this field: it was once unconditional, so a DNS miss and a 4xx both reported "filed".
+   *
+   * A backgrounded send (the agent tool) therefore returns `sent: false` with `accepted: true` —
+   * see below. It is not a failure, and the note says so.
+   */
   sent: boolean;
+  /**
+   * Validated, redacted and handed to the emitter. TRUE says the report is well-formed and on its
+   * way; it does NOT say it arrived. If a backgrounded send then fails, the reporter is told on its
+   * next tool result — see feedback-delivery.ts.
+   */
+  accepted: boolean;
   reason?: string;
   /** Which redaction rules fired. Empty when nothing needed removing. */
   redacted: string[];
@@ -145,7 +161,19 @@ export interface FeedbackReceipt {
  */
 export async function submitFeedback(
   input: FeedbackInput,
-  opts: { cwd?: string; session?: SessionFacts; env?: NodeJS.ProcessEnv } = {},
+  opts: {
+    cwd?: string;
+    session?: SessionFacts;
+    env?: NodeJS.ProcessEnv;
+    /**
+     * Return as soon as the report is validated and queued, instead of waiting out the POST.
+     *
+     * Used by the AGENT tool: ~340ms of network on a call made mid-task is the product blocking the
+     * user's work to talk about itself. NOT used by `reticle feedback`, where a human typed the
+     * command and is waiting for an answer — there, confirmed delivery is the answer.
+     */
+    background?: boolean;
+  } = {},
 ): Promise<FeedbackReceipt> {
   const env = opts.env ?? process.env;
   const context = feedbackContext(opts.cwd ?? process.cwd(), opts.session);
@@ -159,7 +187,7 @@ export async function submitFeedback(
   // addition. Deriving the set means a sixth field is covered the moment it exists.
   const redactions = new Map<string, Redaction>();
   for (const [key, value] of Object.entries(input)) {
-    if (typeof value !== 'string' || value === '') continue;
+    if (typeof value !== 'string' || '' === value) continue;
     if (!AUTHOR_WRITTEN_FIELDS.has(key)) continue;
     redactions.set(key, redactFeedbackText(value, FIELD_CAPS[key] ?? FEEDBACK_FIELD_MAX));
   }
@@ -167,13 +195,25 @@ export async function submitFeedback(
   const redacted = [...new Set([...redactions.values()].flatMap((r) => r.removed))];
 
   if (feedbackDisabled(env)) {
-    return { sent: false, reason: `feedback is disabled by ${FEEDBACK_ENV}`, redacted, context };
+    return {
+      sent: false,
+      accepted: false,
+      reason: `feedback is disabled by ${FEEDBACK_ENV}`,
+      redacted,
+      context,
+    };
   }
   const telemetry = getTelemetry();
   if (!telemetry.enabled) {
     return {
       sent: false,
-      reason: 'telemetry is disabled on this machine, so feedback has nowhere to go',
+      accepted: false,
+      // Named precisely, because the commonest cause is not what the old wording suggested: a
+      // Reticle SOURCE CHECKOUT disables telemetry by cwd, and that is exactly where release runs and
+      // contributor sessions happen — so the reports most worth having were the ones silently lost.
+      reason: isReticleSourceCheckout(opts.cwd ?? process.cwd())
+        ? 'this is a Reticle source checkout, where telemetry is disabled by design — so feedback has nowhere to go. Open an issue at https://github.com/reticlehq/reticle/issues instead, or run from the app you are verifying.'
+        : `telemetry is disabled on this machine, so feedback has nowhere to go. Re-enable with \`reticle telemetry enable\`, or open an issue at https://github.com/reticlehq/reticle/issues.`,
       redacted,
       context,
     };
@@ -194,13 +234,58 @@ export async function submitFeedback(
   if (!parsed.success) {
     return {
       sent: false,
+      accepted: false,
       reason: parsed.error.issues[0]?.message ?? 'invalid feedback',
       redacted,
       context,
     };
   }
-  await telemetry.emit(TelemetryEventKind.FEEDBACK_SUBMITTED, { feedback: parsed.data });
-  return { sent: true, redacted, context };
+  // BACKGROUND: return now, deliver after. The agent calls this mid-task and a ~340ms POST is the
+  // product blocking the user's work to talk about itself. The honesty that the awaited version was
+  // written for is kept elsewhere: `sent` stays false (nothing is confirmed yet), `accepted` says
+  // the report is well-formed and queued, and a send that then fails reaches the reporter on its
+  // next tool result instead of vanishing.
+  // Written down BEFORE the network is touched, on both paths. A failed send is then a queued report
+  // rather than a lost one — see feedback-outbox. Reported from the field: a 1.3s hiccup destroyed a
+  // root-cause analysis that took an hour of driving to produce, and it survived only because the
+  // reporter happened to have written the markdown by hand first.
+  const queued = queueFeedback(parsed.data);
+
+  if (true === opts.background) {
+    void telemetry
+      .emit(TelemetryEventKind.FEEDBACK_SUBMITTED, { feedback: parsed.data })
+      .then((ok) => {
+        if (ok) markDelivered(queued);
+        else noteFeedbackUndelivered('the telemetry endpoint did not accept it');
+      })
+      .catch((error: unknown) => {
+        noteFeedbackUndelivered(error instanceof Error ? error.message : String(error));
+      });
+    return { sent: false, accepted: true, redacted, context };
+  }
+
+  // `sent` reflects DELIVERY, not handing the payload to the emitter. It was unconditional, so a DNS
+  // miss or a 4xx both reported "filed" — and this is the only qualitative channel the product has,
+  // so a silent failure here loses the report AND tells the reporter it worked.
+  const delivered = await telemetry.emit(TelemetryEventKind.FEEDBACK_SUBMITTED, {
+    feedback: parsed.data,
+  });
+  if (delivered) {
+    markDelivered(queued);
+    return { sent: true, accepted: true, redacted, context };
+  }
+  // Undelivered, but no longer lost. `accepted` is true when it reached the outbox: the report is
+  // well-formed and on disk, which is a materially different situation from "it is gone".
+  return {
+    sent: false,
+    accepted: queued !== null,
+    reason:
+      queued !== null
+        ? `the report could not be delivered (the network call failed or was rejected), but it is SAVED at ${outboxPath()} and nothing was lost. It will be retried; you can also open an issue at https://github.com/reticlehq/reticle/issues with the same detail.`
+        : 'the report could not be delivered and could not be saved locally either — it was NOT filed. Retry, or open an issue at https://github.com/reticlehq/reticle/issues with the same detail.',
+    redacted,
+    context,
+  };
 }
 
 /**

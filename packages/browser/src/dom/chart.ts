@@ -78,11 +78,11 @@ export function hasNonFiniteCoordinate(value: string): boolean {
 /** True when the geometry encloses no area — no coordinates, or every coordinate pair identical. */
 export function isDegenerate(value: string): boolean {
   const nums = geometryNumbers(value).filter((n) => Number.isFinite(n));
-  if (nums.length === 0) return true;
+  if (0 === nums.length) return true;
   // A polyline of one repeated point draws nothing. Compare pairs, not raw numbers, so a legitimately
   // flat line (varying x, constant y) is NOT flagged — that is a real chart of constant data.
-  const xs = nums.filter((_, i) => i % 2 === 0);
-  const ys = nums.filter((_, i) => i % 2 === 1);
+  const xs = nums.filter((_, i) => 0 === i % 2);
+  const ys = nums.filter((_, i) => 1 === i % 2);
   const allSame = (arr: number[]): boolean => arr.every((v) => v === arr[0]);
   return xs.length > 1 && allSame(xs) && allSame(ys);
 }
@@ -99,12 +99,12 @@ export function inspectChart(root: Element): ChartReport {
     for (const el of Array.from(root.querySelectorAll(tag))) {
       for (const attr of GEOMETRY_ATTRS) {
         const value = el.getAttribute(attr);
-        if (value === null) continue;
+        if (null === value) continue;
         examined += 1;
         const sample = value.length > SAMPLE_MAX ? `${value.slice(0, SAMPLE_MAX)}…` : value;
         if (hasNonFiniteCoordinate(value)) {
           findings.push({ kind: 'non-finite-coordinates', tag, attr, sample });
-        } else if (value.trim().length === 0) {
+        } else if (0 === value.trim().length) {
           findings.push({ kind: 'empty-geometry', tag, attr, sample });
         } else if (isDegenerate(value)) {
           findings.push({ kind: 'degenerate-geometry', tag, attr, sample });

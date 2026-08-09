@@ -183,7 +183,7 @@ describe('BrowserPool', () => {
       await lease.release();
       released += 1;
       await new Promise((r) => setTimeout(r, 0));
-      if (released === 1) {
+      if (1 === released) {
         expect(pool.activeCount()).toBe(2);
         expect(pool.queuedCount()).toBe(3);
       }
@@ -377,7 +377,7 @@ describe('BrowserPool', () => {
       const realNew = b.newContext.bind(b);
       b.newContext = (): Promise<PooledContext> => {
         calls += 1;
-        if (calls === 1) return Promise.reject(new Error('context boom'));
+        if (1 === calls) return Promise.reject(new Error('context boom'));
         return realNew();
       };
       return Promise.resolve(b);

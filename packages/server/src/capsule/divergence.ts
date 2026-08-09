@@ -1,4 +1,4 @@
-import { EventType, type ReticleEvent } from '@reticlehq/core';
+import { ConsequenceKind, EventType, type ReticleEvent } from '@reticlehq/core';
 
 /**
  * First-divergence — the brain of the divergence capsule (Tier 2). Given the chain the flow DECLARED
@@ -8,10 +8,15 @@ import { EventType, type ReticleEvent } from '@reticlehq/core';
  * hidden-500 / hung-request fixture it names the correct link.
  */
 
+/**
+ * The links a capsule can walk. Exactly core's ConsequenceKind — a link is a thing the app provably
+ * DID, which is the same set signal/net/state names everywhere else. Spelled through the shared
+ * constant so the two can never drift apart.
+ */
 export type ExpectedLink =
-  | { kind: 'signal'; name: string }
-  | { kind: 'net'; urlContains: string; status?: number }
-  | { kind: 'state'; name: string };
+  | { kind: typeof ConsequenceKind.SIGNAL; name: string }
+  | { kind: typeof ConsequenceKind.NET; urlContains: string; status?: number }
+  | { kind: typeof ConsequenceKind.STATE; name: string };
 
 export interface Divergence {
   /** The declared link that did not hold. */
@@ -26,14 +31,14 @@ function net(events: readonly ReticleEvent[]): ReticleEvent[] {
 
 function satisfies(link: ExpectedLink, events: readonly ReticleEvent[]): boolean {
   switch (link.kind) {
-    case 'signal':
+    case ConsequenceKind.SIGNAL:
       return events.some((e) => e.type === EventType.SIGNAL && e.data['name'] === link.name);
-    case 'state':
+    case ConsequenceKind.STATE:
       return events.some((e) => e.type === EventType.STATE_CHANGE && e.data['name'] === link.name);
-    case 'net':
+    case ConsequenceKind.NET:
       return net(events).some(
         (e) =>
-          typeof e.data['url'] === 'string' &&
+          'string' === typeof e.data['url'] &&
           e.data['url'].includes(link.urlContains) &&
           (link.status === undefined || e.data['status'] === link.status),
       );
@@ -42,14 +47,14 @@ function satisfies(link: ExpectedLink, events: readonly ReticleEvent[]): boolean
 
 /** Describe what WAS observed for a link that failed — the closest attempt, for a side-by-side. */
 function observedFor(link: ExpectedLink, events: readonly ReticleEvent[]): string {
-  if (link.kind === 'net') {
+  if (ConsequenceKind.NET === link.kind) {
     const match = net(events).find(
-      (e) => typeof e.data['url'] === 'string' && e.data['url'].includes(link.urlContains),
+      (e) => 'string' === typeof e.data['url'] && e.data['url'].includes(link.urlContains),
     );
     if (match === undefined) return `no request to ${link.urlContains}`;
     return `${link.urlContains} responded ${String(match.data['status'])} (expected ${String(link.status)})`;
   }
-  if (link.kind === 'signal') return `signal "${link.name}" never fired`;
+  if (ConsequenceKind.SIGNAL === link.kind) return `signal "${link.name}" never fired`;
   return `state "${link.name}" never changed`;
 }
 

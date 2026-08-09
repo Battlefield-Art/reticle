@@ -1,6 +1,7 @@
 // Drive the real Next.js app (apps/next-smoke, :3100) with Reticle to de-risk Next.
 import { chromium } from 'playwright';
 import { start, TOOLS, BaselineStore, RecordingStore } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const deps = { sessions: null, baselines: new BaselineStore(), recordings: new RecordingStore() };
@@ -25,14 +26,10 @@ deps.sessions = server.bridge.sessions;
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 await page.goto('http://localhost:3100/');
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
-for (let i = 0; i < 150 && !hasOwn(); i++) await sleep(50);
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 
 console.log('\n=== Reticle on a real Next.js 15 / React 19 app ===');
-check('Reticle session connected from Next', server.bridge.sessions.count() >= 1,
+check('Reticle session connected from Next', server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke'),
   JSON.stringify((await T('reticle_sessions')).sessions.map((s) => s.sessionId)));
 
 const snap = await T('reticle_snapshot', { mode: 'interactive' });

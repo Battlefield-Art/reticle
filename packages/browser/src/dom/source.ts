@@ -32,12 +32,12 @@ export interface SourceLocation {
 
 /** Parse a `data-reticle-source="file:line:column"` value into `{ file, line }` (column dropped). */
 export function parseSourceAttr(value: string | null): SourceLocation | undefined {
-  if (value === null) return undefined;
+  if (null === value) return undefined;
   const m = /^(.*):(\d+):(\d+)$/.exec(value);
-  if (m === null) return undefined;
+  if (null === m) return undefined;
   const file = m[1];
   const line = Number(m[2]);
-  if (file === undefined || file.length === 0 || !Number.isFinite(line)) return undefined;
+  if (file === undefined || 0 === file.length || !Number.isFinite(line)) return undefined;
   return { file, line };
 }
 

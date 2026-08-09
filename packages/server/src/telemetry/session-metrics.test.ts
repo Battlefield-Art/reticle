@@ -267,10 +267,13 @@ describe('recordBug reports whether this KIND is new to the session', () => {
     expect(m.recordBug('a-genuinely-new-kind')).toBe(false);
   });
 
-  it('a reset session starts fresh, so firstness is per session', () => {
+  it('firstness survives a flush — reset() ends a WINDOW, not the session', () => {
+    // This used to assert the opposite, which is what shipped the double-count: reset() is the
+    // periodic roll-up, and the daemon process is the session. A defect re-found 5 minutes later is
+    // the same defect. See session-window.test.ts.
     const m = new SessionMetrics(clock());
     expect(m.recordBug('route-rendered-nothing')).toBe(true);
     m.reset();
-    expect(m.recordBug('route-rendered-nothing')).toBe(true);
+    expect(m.recordBug('route-rendered-nothing')).toBe(false);
   });
 });

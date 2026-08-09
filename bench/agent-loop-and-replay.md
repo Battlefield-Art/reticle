@@ -1,5 +1,7 @@
 # Agent loop and replay — historical real-LLM (gpt-4o era) agent-loop benchmark + deterministic replay results
 
+> **Profile names in this document are RETIRED.** These are recorded measurements, so the numbers and the reasoning are left exactly as they were taken — but `core`, `hybrid`, `standard` and `dynamic` no longer exist as settings. There is one tool surface (what `hybrid` was), plus `RETICLE_ADVERTISE_ALL_TOOLS=1` for the full schema-carrying surface (what `full` was). `core` was byte-identical to `hybrid`; `standard` cost tokens every turn for reach `reticle_run` already gave; `dynamic` is contradicted by the very measurement on line 146 below. Read any `RETICLE_TOOL_PROFILE=…` recommendation here as a statement about the surface that value selected, not as a setting to apply.
+
 Historical record ("Layer B" of the original study): a real LLM drives each tool end-to-end, plus the Layer C deterministic-replay results. Numbers below are from the gpt-4o-era run and are preserved as recorded.
 
 > Layer A drives each tool with a fixed, expert recipe — it measures the **ceiling** (what's possible with perfect tool-driving). Layer B puts a **real LLM (gpt-4o) in the loop**: the model chooses every call until it emits a verdict. Token counts are authoritative OpenAI `usage` (prompt + completion), summed across turns. Harness: `harness/openai-agent-loop.mjs`; raw: `raw/agent-loop-openai.json`. 5 scenarios × 3 tools = 15 cells, model `gpt-4o`, max 14 turns. Run cost ≈ $2.50.

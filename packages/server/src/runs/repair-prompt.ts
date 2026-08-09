@@ -48,10 +48,10 @@ function suggestedPrompt(
  * the decision's whatChanged, falling back to the replay error or a generic message.
  */
 /** The deviation report's headline when it flagged something — narrows the replay's `unknown` deviation. */
-export function deviationHeadline(deviation: unknown): string | undefined {
-  if (typeof deviation !== 'object' || deviation === null) return undefined;
+function deviationHeadline(deviation: unknown): string | undefined {
+  if (typeof deviation !== 'object' || null === deviation) return undefined;
   const d = deviation as { headline?: unknown; deviations?: unknown };
-  if (Array.isArray(d.deviations) && d.deviations.length > 0 && typeof d.headline === 'string') {
+  if (Array.isArray(d.deviations) && d.deviations.length > 0 && 'string' === typeof d.headline) {
     return d.headline;
   }
   return undefined;

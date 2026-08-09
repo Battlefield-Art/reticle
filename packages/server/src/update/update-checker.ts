@@ -3,7 +3,7 @@ import * as https from 'node:https';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { UpdateCheckIntervalMs } from '@reticlehq/core';
-import { RETICLE_NPM_PACKAGE } from '../server-version.js';
+import { RETICLE_NPM_PACKAGE } from '../version/server-version.js';
 import { log } from '../log.js';
 
 const RETICLE_HOME = join(homedir(), '.reticle');
@@ -43,12 +43,12 @@ function validateNpmInfo(info: NpmPackageInfo): NpmPackageInfo {
     throw new Error('npm registry returned an implausible version');
   }
   const changelog =
-    typeof info.reticle?.changelog === 'string'
+    'string' === typeof info.reticle?.changelog
       ? info.reticle.changelog.slice(0, MAX_MANIFEST_TEXT)
       : undefined;
   const breakingChanges = Array.isArray(info.reticle?.breakingChanges)
     ? info.reticle.breakingChanges
-        .filter((x): x is string => typeof x === 'string')
+        .filter((x): x is string => 'string' === typeof x)
         .slice(0, 100)
         .map((s) => s.slice(0, MAX_MANIFEST_TEXT))
     : undefined;

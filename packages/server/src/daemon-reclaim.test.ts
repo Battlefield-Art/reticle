@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { reclaimStaleDaemons, shouldRemovePid } from './daemon.js';
+import { reclaimStaleDaemons, shouldRemovePid } from './daemon/daemon.js';
 
 describe('shouldRemovePid — orphan-race guard', () => {
   it('removes a pidfile we own, an empty one, or a dead-owner one', () => {
@@ -40,7 +40,7 @@ describe('reclaimStaleDaemons', () => {
     writePidFile(4401, 222); // live
     writePidFile(4402, 333); // dead
 
-    const alive = (pid: number): boolean => pid === 222;
+    const alive = (pid: number): boolean => 222 === pid;
     const reclaimed = reclaimStaleDaemons(home, alive).sort((a, b) => a - b);
 
     expect(reclaimed).toEqual([4400, 4402]);

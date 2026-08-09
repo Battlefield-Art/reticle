@@ -36,7 +36,7 @@ function memoryIo(
   const present = { ...files };
   if (cursor) present[`${HOME}/.cursor`] = '';
   // Absolute paths (home-dir config) bypass the scoping prefix, matching the real IO.
-  const key = (p: string): string => (p.startsWith('/') || prefix === '' ? p : `${prefix}/${p}`);
+  const key = (p: string): string => (p.startsWith('/') || '' === prefix ? p : `${prefix}/${p}`);
   return {
     written,
     lines,
@@ -48,7 +48,7 @@ function memoryIo(
     exists: (p) => key(p) in present || key(p) in written,
     homeDir: () => HOME,
     rootFiles: () => {
-      const scope = prefix === '' ? '' : `${prefix}/`;
+      const scope = '' === prefix ? '' : `${prefix}/`;
       return Object.keys(files)
         .filter((p) => p.startsWith(scope))
         .map((p) => p.slice(scope.length))
@@ -81,7 +81,7 @@ function memoryIo(
 
 describe('resolveLockfiles — package-manager detection in a monorepo', () => {
   it('walks up to the workspace-root lockfile when the sub-package has none', () => {
-    const io = { exists: (p: string) => p === '/repo/pnpm-lock.yaml' };
+    const io = { exists: (p: string) => '/repo/pnpm-lock.yaml' === p };
     const set = resolveLockfiles(
       new Set(['package.json', 'vite.config.ts']),
       '/repo/apps/bench-app',
@@ -133,20 +133,20 @@ describe('runInit', () => {
     const r = runInit(OPTS, io);
     expect(r.ok).toBe(true);
     expect(io.written['.mcp.json']).toBeUndefined();
-    expect(io.execCalls.some((c) => c.command === 'claude' && c.args.includes('add'))).toBe(true);
+    expect(io.execCalls.some((c) => 'claude' === c.command && c.args.includes('add'))).toBe(true);
     expect(io.written['vite.config.ts']).toContain('@reticlehq/vite-plugin');
   });
 
   it('does not re-register when an reticle server already exists (idempotent, install-once)', () => {
     const io = memoryIo(VITE_FILES, { mcpExists: true });
     runInit(OPTS, io);
-    expect(io.execCalls.some((c) => c.command === 'claude')).toBe(false);
+    expect(io.execCalls.some((c) => 'claude' === c.command)).toBe(false);
   });
 
   it('prints manual global instructions when no agent is detected', () => {
     const io = memoryIo(VITE_FILES, { claudeAvailable: false, cursor: false });
     runInit(OPTS, io);
-    expect(io.execCalls.some((c) => c.command === 'claude' && c.args.includes('add'))).toBe(false);
+    expect(io.execCalls.some((c) => 'claude' === c.command && c.args.includes('add'))).toBe(false);
     expect(io.lines.join('\n')).toContain('-s user');
   });
 
@@ -159,7 +159,7 @@ describe('runInit', () => {
   it('registers with BOTH Claude and Cursor when both are present', () => {
     const io = memoryIo(VITE_FILES, { claudeAvailable: true, cursor: true });
     runInit(OPTS, io);
-    expect(io.execCalls.some((c) => c.command === 'claude' && c.args.includes('add'))).toBe(true);
+    expect(io.execCalls.some((c) => 'claude' === c.command && c.args.includes('add'))).toBe(true);
     expect(io.written['/home/u/.cursor/mcp.json']).toContain('@reticlehq/server');
   });
 
@@ -306,8 +306,26 @@ describe('runInit — workspace roots', () => {
   it('still falls through to the manual HTML plan when nothing app-like is anywhere', () => {
     const io = memoryIo({ 'package.json': JSON.stringify({ dependencies: {} }) });
     const result = runInit(OPTS, io);
-    expect(result.ok).toBe(true);
+    // The config IS written and everything automatable happened...
     expect(io.written['.reticle.json']).toBeDefined();
+    // ...but the connect step is manual, so nothing will dial the daemon and this run did NOT leave a
+    // working install. `ok` used to be hardcoded true, which made the ⚠ count and "did it connect"
+    // read as independent signals when one implies the other.
+    expect(result.ok).toBe(false);
+    expect(result.manual).toBeGreaterThan(0);
+  });
+
+  /**
+   * `ok` drives the CLI's exit code, and CI reads it. A ⚠ that is not the CONNECT step — an MCP
+   * registration the agent's own CLI refused, say — leaves an app that boots, connects and verifies;
+   * exiting non-zero on it reports a working install as a failed one, which is enough to make a
+   * release gate unrunnable and keep it from ever being run.
+   */
+  it('a manual step that is NOT the connect step still exits successfully', () => {
+    const io = memoryIo(VITE_FILES, { execOk: false });
+    const result = runInit(OPTS, io);
+    expect(result.manual).toBeGreaterThan(0);
+    expect(result.ok).toBe(true);
   });
 });
 
@@ -387,7 +405,10 @@ describe('runInit — the capabilities module', () => {
 
   it('is created on a RE-RUN too — it used to ride on the config patch and vanish when that was already done', () => {
     const io = memoryIo(
-      { ...APP, 'vite.config.ts': `import { reticle } from '@reticlehq/vite-plugin';\nexport default { plugins: [reticle()] };\n` },
+      {
+        ...APP,
+        'vite.config.ts': `import { reticle } from '@reticlehq/vite-plugin';\nexport default { plugins: [reticle()] };\n`,
+      },
       { mcpExists: true },
     );
     runInit(OPTS, io);
@@ -401,10 +422,7 @@ describe('runInit — the capabilities module', () => {
   });
 
   it('still writes the module when an app has no testids yet, and says so', () => {
-    const io = memoryIo(
-      { ...APP, 'src/App.tsx': '<button>Pay</button>' },
-      { mcpExists: true },
-    );
+    const io = memoryIo({ ...APP, 'src/App.tsx': '<button>Pay</button>' }, { mcpExists: true });
     runInit(OPTS, io);
     const mod = io.written['src/reticle-dev.ts'] ?? '';
     expect(mod).toContain('registerCapabilities');
@@ -442,6 +460,23 @@ describe('runInit — the /reticle command', () => {
     expect(io.written['.cursor/commands/reticle.md']).toContain('reticle_snapshot');
   });
 
+  /**
+   * A command file frozen at whatever release created it can never be improved for anyone who
+   * already ran init — the same existence-gate that kept the Cursor RULE stale. A file carrying our
+   * frontmatter signature is refreshed; one that does not (a human's own /reticle) is untouchable,
+   * which the test below pins.
+   */
+  it('refreshes a STALE Reticle command, recognised by its own frontmatter', () => {
+    const stale =
+      '---\ndescription: Verify this app in the browser with Reticle\n---\n\nold body\n';
+    const io = memoryIo(
+      { ...VITE_FILES, '.claude/commands/reticle.md': stale },
+      { claudeAvailable: true },
+    );
+    runInit(OPTS, io);
+    expect(io.written['.claude/commands/reticle.md']).toContain('Pick ONE flow');
+  });
+
   it('is idempotent — an existing command is left alone', () => {
     const io = memoryIo(
       { ...VITE_FILES, '.claude/commands/reticle.md': '# mine\n' },
@@ -449,5 +484,57 @@ describe('runInit — the /reticle command', () => {
     );
     runInit(OPTS, io);
     expect(io.written['.claude/commands/reticle.md']).toBeUndefined();
+  });
+});
+
+/**
+ * For ~48 hours after every release, a pnpm project with `minimumReleaseAge` could not install
+ * Reticle AT ALL: `init` pins the SDK to the CLI's version and pnpm refuses anything younger than
+ * its window. Measured against the live 2.4.0, three minutes after publish.
+ *
+ * The pin exists to stop SILENT version skew, so it cannot simply be dropped — but a blocked install
+ * is worse than a reported one. Fall back to unpinned, and say so.
+ */
+describe('runInit — a refused pin falls back instead of blocking the install', () => {
+  /** Fails the exact-version install, accepts the unpinned retry — what pnpm does inside the window. */
+  function pinRefusingIo(files: Record<string, string>): MemoryIo {
+    const io = memoryIo(files, { mcpExists: true });
+    const realExec = io.exec.bind(io);
+    return {
+      ...io,
+      exec(command: string, args: readonly string[]) {
+        realExec(command, args); // still recorded, so the test can see BOTH attempts
+        return !args.some((a) => a.includes('@reticlehq/react@'));
+      },
+    };
+  }
+
+  const VITE_APP = {
+    'package.json': JSON.stringify({ devDependencies: { vite: '^5', react: '^19' } }),
+    'vite.config.ts': 'export default { plugins: [] };\n',
+    'pnpm-lock.yaml': '',
+  };
+
+  it('retries unpinned, so the user ends up installed rather than blocked', () => {
+    const io = pinRefusingIo(VITE_APP);
+    runInit({ ...OPTS, install: true }, io);
+    const attempts = io.execCalls.filter((c) => c.args.includes('add'));
+    expect(attempts.length, 'it must try the pin first, then the fallback').toBe(2);
+    expect(attempts[0]?.args.some((a) => /@reticlehq\/react@\d/.test(a))).toBe(true);
+    expect(attempts[1]?.args).toContain('@reticlehq/react');
+  });
+
+  it('never does it silently — the pin is what keeps SDK and daemon in step', () => {
+    const io = pinRefusingIo(VITE_APP);
+    runInit({ ...OPTS, install: true }, io);
+    const out = io.lines.join('\n');
+    expect(out).toContain('minimumReleaseAge');
+    expect(out).toContain('versionSkew');
+  });
+
+  it('still wires the app — a fallback install is a real install', () => {
+    const io = pinRefusingIo(VITE_APP);
+    runInit({ ...OPTS, install: true }, io);
+    expect(io.written['vite.config.ts']).toContain('reticle()');
   });
 });

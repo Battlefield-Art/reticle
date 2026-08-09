@@ -1,12 +1,16 @@
 import {
   ElementState,
+  PredicateKind,
   ReticleCommand,
   type CommandResult,
   type ElementQuery,
   type ReticleEvent,
   type MatchResult,
 } from '@reticlehq/core';
+import { log } from '../log.js';
+import { bindSpanContext } from '../trace.js';
 import { selectPath, capDepth } from '../session/state-select.js';
+import { describeTestidMiss } from './testid-near-miss.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import type { ExpectedLink } from '../capsule/divergence.js';
 import { isAmbient, ambientKeyOf, type AmbientCounts } from '../journal/ambient.js';
@@ -23,7 +27,7 @@ import {
   type EvalResult,
 } from './predicate-eval.js';
 
-export { PredicateSchema };
+export { PredicateSchema, PredicateKind };
 export type { Predicate, EvalResult };
 
 /** The subset of Session the predicate engine needs — keeps it testable with a fake. */
@@ -70,7 +74,7 @@ async function evalElement(
   //    silently widening to the whole page is the original false green. So scopeMissing FAILS presence
   //    (on the wait_for path this just keeps polling until the scope appears).
   if (absent) {
-    if (match.scopeMissing === true) {
+    if (true === match.scopeMissing) {
       return { pass: true, evidence: { absent: true, scopeMissing: true } };
     }
     return match.matched
@@ -84,7 +88,7 @@ async function evalElement(
         }
       : { pass: true, evidence: { absent: true } };
   }
-  if (match.scopeMissing === true) {
+  if (true === match.scopeMissing) {
     return {
       pass: false,
       failureReason: `scope resolved to no element — cannot confirm ${subject} is present`,
@@ -146,18 +150,26 @@ async function evalElement(
       };
     }
   }
+  // The testid near-miss: name what IS here, so a typo is one step from fixed rather than a dead
+  // end. reticle_query has always done this; the predicate path had no equivalent. See
+  // testid-near-miss.ts.
+  const present = match.hint?.presentTestids ?? [];
+  const alsoHere =
+    query.testid === undefined ? undefined : describeTestidMiss(query.testid, present);
+  const suffix = alsoHere === undefined || '' === alsoHere ? '' : ` — ${alsoHere}`;
   return {
     pass: false,
-    failureReason: `no element matched ${subject}${state === undefined ? '' : ` in state '${state}'`}`,
-    observed: 'no matching element on the page',
+    failureReason: `no element matched ${subject}${state === undefined ? '' : ` in state '${state}'`}${suffix}`,
+    observed: `no matching element on the page${suffix}`,
     expected: `an element matching ${subject}${state === undefined ? '' : ` in state '${state}'`}`,
     assertion: 'element.present',
+    ...(present.length > 0 ? { evidence: { presentTestids: present } } : {}),
   };
 }
 
 async function evalState(
   session: PredicateSession,
-  p: Extract<Predicate, { kind: 'state' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.STATE }>,
 ): Promise<EvalResult> {
   const res = await session.command(
     ReticleCommand.STATE_READ,
@@ -174,15 +186,16 @@ async function evalState(
   }
   const stores = ((res.result ?? {}) as { stores?: Record<string, unknown> }).stores ?? {};
   const names = Object.keys(stores);
-  const storeName = p.store ?? (names.length === 1 ? names[0] : undefined);
+  const storeName = p.store ?? (1 === names.length ? names[0] : undefined);
   if (storeName === undefined) {
-    return {
-      pass: false,
-      failureReason:
-        names.length === 0
-          ? 'no registered store to read state from'
-          : `multiple stores (${names.join(', ')}); name one with \`store\``,
-    };
+    // Neither of these is a finding about the app. With several stores registered the call simply did
+    // not say which one to read; with none, there is nothing to read at all. No assertion was
+    // evaluated either way, so this is inconclusive rather than failed — see honesty/inconclusive.
+    const reason =
+      0 === names.length
+        ? 'no registered store to read state from'
+        : `multiple stores (${names.join(', ')}); name one with \`store\``;
+    return { pass: false, failureReason: reason, inconclusive: reason };
   }
   const selection = selectPath(stores[storeName], p.path);
   if (!selection.found) {
@@ -212,6 +225,11 @@ async function evalState(
   };
 }
 
+/** The predicate's own event-time floor, if its kind carries one. */
+function predicateSince(predicate: Predicate): number {
+  return 'since' in predicate && 'number' === typeof predicate.since ? predicate.since : 0;
+}
+
 export async function evaluatePredicate(
   session: PredicateSession,
   predicate: Predicate,
@@ -222,9 +240,13 @@ export async function evaluatePredicate(
   // reads. Only element/text failures have a near-miss; everything else ignores this.
   diagnose = true,
 ): Promise<EvalResult> {
-  const events = session.eventsSince(since);
+  // A predicate's own `since` is a TIGHTER event-time floor than the caller's — an agent that took
+  // `since` from the act it just performed is scoping the assertion to that action's aftermath. It is
+  // applied here, once, rather than in each eval: the floor means the same thing for every kind that
+  // reads the event stream, and net/console re-applying it is a no-op.
+  const events = session.eventsSince(Math.max(since, predicateSince(predicate)));
   switch (predicate.kind) {
-    case 'element':
+    case PredicateKind.ELEMENT:
       return evalElement(
         session,
         predicate.query,
@@ -232,27 +254,27 @@ export async function evaluatePredicate(
         predicate.absent ?? false,
         diagnose,
       );
-    case 'text':
+    case PredicateKind.TEXT:
       return evalElement(
         session,
         { text: predicate.contains },
-        predicate.visible === true ? ElementState.VISIBLE : undefined,
+        true === predicate.visible ? ElementState.VISIBLE : undefined,
         predicate.absent ?? false,
         diagnose,
       );
-    case 'net':
+    case PredicateKind.NET:
       return evalNet(events, predicate);
-    case 'route':
+    case PredicateKind.ROUTE:
       return evalRoute(events, predicate);
-    case 'console':
+    case PredicateKind.CONSOLE:
       return evalConsole(events, predicate);
-    case 'animation':
+    case PredicateKind.ANIMATION:
       return evalAnimation(events, predicate);
-    case 'signal':
+    case PredicateKind.SIGNAL:
       return evalSignal(events, predicate);
-    case 'state':
+    case PredicateKind.STATE:
       return evalState(session, predicate);
-    case 'settled': {
+    case PredicateKind.SETTLED: {
       // Drop events on learned-ambient regions (chat/ticker churn) before the settle check — by ref
       // alone, NOT by attribution: window-attribution ("happened during the action window") is a time
       // heuristic, never causation, so a chat message arriving mid-window must not hold settle open.
@@ -261,7 +283,7 @@ export async function evaluatePredicate(
         counts === undefined ? events : events.filter((e) => !isAmbient(counts, ambientKeyOf(e)));
       return evalSettled(settleEvents, predicate, session.elapsed());
     }
-    case 'allOf': {
+    case PredicateKind.ALL_OF: {
       const results = await Promise.all(
         predicate.predicates.map((p) => evaluatePredicate(session, p, since, diagnose)),
       );
@@ -274,7 +296,7 @@ export async function evaluatePredicate(
             evidence: results,
           };
     }
-    case 'anyOf': {
+    case PredicateKind.ANY_OF: {
       const results = await Promise.all(
         predicate.predicates.map((p) => evaluatePredicate(session, p, since, diagnose)),
       );
@@ -283,7 +305,7 @@ export async function evaluatePredicate(
         ? { pass: true, evidence: passed.evidence }
         : { pass: false, failureReason: 'no sub-predicate of anyOf matched', evidence: results };
     }
-    case 'not': {
+    case PredicateKind.NOT: {
       const inner = await evaluatePredicate(session, predicate.predicate, since, diagnose);
       return inner.pass
         ? { pass: false, failureReason: 'negated predicate unexpectedly held', evidence: inner }
@@ -327,11 +349,11 @@ const COUNT_CONFIRM_MS = 300;
  * must stay that way, or every ordinary wait pays the confirmation delay for nothing.
  */
 function assertsExactCount(predicate: Predicate): boolean {
-  if (predicate.kind === 'allOf' || predicate.kind === 'anyOf') {
+  if (PredicateKind.ALL_OF === predicate.kind || PredicateKind.ANY_OF === predicate.kind) {
     return predicate.predicates.some(assertsExactCount);
   }
-  if (predicate.kind === 'not') return assertsExactCount(predicate.predicate);
-  return predicate.kind === 'net' && predicate.count !== undefined;
+  if (PredicateKind.NOT === predicate.kind) return assertsExactCount(predicate.predicate);
+  return PredicateKind.NET === predicate.kind && predicate.count !== undefined;
 }
 
 /**
@@ -351,10 +373,25 @@ export function waitForPredicate(
       failureReason: error instanceof Error ? error.message : String(error),
     });
     let cooldownTimer: ReturnType<typeof setTimeout> | undefined;
+    /** One-shot re-check timed to when a time-based predicate could first pass. See retryAfterMs. */
+    let hintTimer: ReturnType<typeof setTimeout> | undefined;
     // An exact-count wait keeps watching after it first reads true — see COUNT_CONFIRM_MS.
     const holdsForCount = assertsExactCount(predicate);
     let confirming = false;
     let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+    /** Report a wait that could not run, and END it — see guardedCheck. */
+    const failWait = (error: unknown): void => {
+      log('reticle_wait_failed', {
+        predicate: predicate.kind,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      finish({
+        ...failed(error),
+        failureReason:
+          'the wait could not be evaluated and was ended rather than left pending: ' +
+          (error instanceof Error ? error.message : String(error)),
+      });
+    };
     const finish = (result: EvalResult): void => {
       if (done) return;
       done = true;
@@ -362,6 +399,7 @@ export function waitForPredicate(
       clearInterval(interval);
       clearTimeout(timer);
       if (cooldownTimer !== undefined) clearTimeout(cooldownTimer);
+      if (hintTimer !== undefined) clearTimeout(hintTimer);
       if (confirmTimer !== undefined) clearTimeout(confirmTimer);
       resolve(result);
     };
@@ -389,7 +427,19 @@ export function waitForPredicate(
       // final timeout eval below runs with full diagnostics.
       void evaluatePredicate(session, predicate, since, false)
         .then((r) => {
-          if (!r.pass) return;
+          if (!r.pass) {
+            // A time-based failure knows when it could stop being one — re-check THEN rather than on
+            // the next blind tick. Without this, every `settled` wait paid up to a full poll interval
+            // of dead time after the quiet window had already closed: measured at 566–627ms across
+            // the fleet for a 500ms window, on the call an agent makes after almost every action.
+            // Additive — the backstop interval below still runs, so a missed hint costs nothing.
+            const hint = r.retryAfterMs;
+            if ('number' === typeof hint && hint > 0 && hint < POLL_INTERVAL_MS) {
+              clearTimeout(hintTimer);
+              hintTimer = setTimeout(check, hint);
+            }
+            return;
+          }
           // "Exactly N" cannot be concluded from a passing sample — the count can still rise. Hold,
           // re-evaluate WITH diagnostics, and let that second read be the verdict: if an N+1th
           // arrived in the meantime it now fails, carrying observed/expected rather than a bare no.
@@ -425,10 +475,39 @@ export function waitForPredicate(
           }, MIN_RECHECK_GAP_MS);
         });
     };
+    /**
+     * Run a re-check so that NOTHING can leave this promise pending.
+     *
+     * `check` is fired from an event listener and an interval, neither of which is inside the
+     * awaited chain. A synchronous throw there reached the process as an uncaughtException; a
+     * rejection reached it as an unhandledRejection. Either way the wait never resolved and the tool
+     * handler never returned — the agent sees a call that simply never comes back.
+     *
+     * That is the exact shape reported from a Plane (Next 14 + MobX) session, which tears the page
+     * session down and rebuilds it on EVERY navigation, so a `{kind:"route"}` predicate always races
+     * a teardown of the very session it is watching: `browser.command ok:true` for the click, and
+     * then no `tool.handler` for that callId, ever.
+     *
+     * A wait that cannot evaluate is a FAILED wait, not an eternal one. It now says so and finishes.
+     */
+    const guardedCheck = (): void => {
+      try {
+        const pending = check() as unknown;
+        if (pending instanceof Promise) pending.catch(failWait);
+      } catch (error) {
+        failWait(error);
+      }
+    };
+    // Bound to the CALL that started this wait. The listener fires from the WebSocket message
+    // handler and the interval from the timer queue — neither is in the awaited chain, so without
+    // this every re-check opened a new call at depth 0 and emitted a `browser.command` with no
+    // `tool.handler`. Measured on one healthy run: 23 such orphans, which is precisely the
+    // documented signature of a HUNG call. A diagnostic that fires on healthy runs is not one.
+    const boundCheck = bindSpanContext(guardedCheck);
     const unsub = session.onEvent(() => {
-      check();
+      boundCheck();
     });
-    const interval = setInterval(check, POLL_INTERVAL_MS);
+    const interval = setInterval(boundCheck, POLL_INTERVAL_MS);
     const timer = setTimeout(() => {
       void evaluatePredicate(session, predicate, since)
         .then((r) => {
@@ -468,13 +547,13 @@ export async function provenExpectedLinks(
   predicate: Predicate,
   since = 0,
 ): Promise<ExpectedLink[]> {
-  if (predicate.kind === 'allOf') {
+  if (PredicateKind.ALL_OF === predicate.kind) {
     const per = await Promise.all(
       predicate.predicates.map((p) => provenExpectedLinks(session, p, since)),
     );
     return per.flat();
   }
-  if (predicate.kind === 'anyOf') {
+  if (PredicateKind.ANY_OF === predicate.kind) {
     const per = await Promise.all(
       predicate.predicates.map(async (p) =>
         (await evaluatePredicate(session, p, since)).pass

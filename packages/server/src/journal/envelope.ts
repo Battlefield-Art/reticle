@@ -37,11 +37,11 @@ export function stddev(stats: MetricStats): number {
 /** How many stddevs above the mean `x` sits (0 when there's no spread yet). */
 export function zScore(stats: MetricStats, x: number): number {
   const sd = stddev(stats);
-  return sd === 0 ? 0 : (x - stats.mean) / sd;
+  return 0 === sd ? 0 : (x - stats.mean) / sd;
 }
 
 /** The metrics an envelope tracks per route. */
-export const ENVELOPE_METRICS = ['durationMs', 'net', 'netErrors', 'consoleErrors'] as const;
+const ENVELOPE_METRICS = ['durationMs', 'net', 'netErrors', 'consoleErrors'] as const;
 export type EnvelopeMetric = (typeof ENVELOPE_METRICS)[number];
 
 export interface RouteEnvelope {
@@ -55,7 +55,7 @@ export interface RouteEnvelope {
 export const MIN_ENVELOPE_SAMPLES = 3;
 
 /** Default flag threshold in stddevs. The number is a placeholder for fleet-calibrated priors. */
-export const DEFAULT_Z_THRESHOLD = 3;
+const DEFAULT_Z_THRESHOLD = 3;
 
 const MetricStatsSchema = z.object({
   count: z.number(),

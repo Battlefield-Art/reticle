@@ -136,7 +136,15 @@ function findIn(container: HTMLElement, query: ElementQuery): HTMLElement[] {
         // value is the component name;.source (if present) still takes precedence inside.
         return findByComponent(container, { ...query, component: query.component ?? value });
       default:
-        return [];
+        // THROW, never `return []`. An unsupported strategy answering "no matches" is
+        // indistinguishable from the element genuinely being absent, so `by:'css'` — the first thing
+        // anyone arriving from Playwright reaches for — reported a page with a <body> as empty. The
+        // server now rejects unknown strategies at the schema; this is the same guarantee for every
+        // other path in (replay, reticle_run, an internal caller), because a false negative invented
+        // by the tool is the exact failure this product exists to prevent.
+        throw new Error(
+          `unsupported query strategy '${String(by)}' — use one of: ${Object.values(QueryBy).join(', ')}`,
+        );
     }
   }
 
@@ -214,7 +222,7 @@ function embeddedRootsUnder(root: HTMLElement): HTMLElement[] {
       if (depth >= FRAME_DEPTH_MAX) continue;
       if (!isFrame(el)) continue;
       const body = readableFrameBody(el);
-      if (body === null) continue; // cross-origin — declared, not searched
+      if (null === body) continue; // cross-origin — declared, not searched
       found.push(body);
       walk(body, depth + 1);
     }
@@ -248,7 +256,7 @@ function findCandidates(query: ElementQuery): { candidates: HTMLElement[]; scope
   const { container, scopeMissing } = resolveContainer(query.scope);
   // A given-but-missing scope searches NOTHING — never the whole page. The empty result plus the
   // scopeMissing flag is what keeps "gone scope" distinct from "absent element".
-  if (container === null) return { candidates: [], scopeMissing: true };
+  if (null === container) return { candidates: [], scopeMissing: true };
   const seen = new Set<HTMLElement>();
   const out: HTMLElement[] = [];
   const collect = (els: HTMLElement[]): void => {
@@ -287,7 +295,7 @@ function projectAttrs(el: Element, keys: readonly string[]): Record<string, stri
   const out: Record<string, string> = {};
   for (const key of keys.slice(0, ATTR_KEYS_MAX)) {
     const raw = el.getAttribute(key);
-    if (raw === null) continue;
+    if (null === raw) continue;
     out[key] = isSensitiveKey(key) ? REDACTED_VALUE : raw.slice(0, ATTR_VALUE_MAX);
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -320,15 +328,15 @@ export function matchQuery(
   state?: ElementState,
   limit: number = MAX_DESCRIBED,
 ): MatchResult {
-  let elements: HTMLElement[];
-  let scopeMissing = false;
-  try {
-    const found = findCandidates(query);
-    elements = found.candidates;
-    scopeMissing = found.scopeMissing;
-  } catch {
-    elements = [];
-  }
+  // NO blanket try/catch here. It used to turn ANY exception during candidate-finding into
+  // `elements = []`, which is the same lie as the `default` arm above: a query that could not run
+  // reported that the element is not on the page. The one failure it was plausibly guarding —
+  // a scope selector that matches nothing — is already handled explicitly and distinctly, as
+  // `scopeMissing`, so what remained was a net that could only convert real faults into false
+  // negatives.
+  const found = findCandidates(query);
+  const elements: HTMLElement[] = found.candidates;
+  const scopeMissing = found.scopeMissing;
   // One visibility cache for the whole (synchronous) query pass. isVisible is an O(depth) forced-style
   // walk; the state filter runs it over EVERY candidate (the count must be exact) — on a match-heavy
   // page (e.g. a 3k-row grid) that is tens of thousands of getComputedStyle calls on the host's main
@@ -340,7 +348,7 @@ export function matchQuery(
   const described = filtered.slice(0, Math.max(0, Math.min(limit, MAX_DESCRIBED)));
   const descriptors: ElementDescriptor[] = described.map((el) => {
     const base = describe(el, visMemo);
-    if (attrs === undefined || attrs.length === 0) return base;
+    if (attrs === undefined || 0 === attrs.length) return base;
     const projected = projectAttrs(el, attrs);
     return projected === undefined ? base : { ...base, attrs: projected };
   });
@@ -349,6 +357,11 @@ export function matchQuery(
     count: filtered.length,
     elements: descriptors,
     ...(scopeMissing ? { scopeMissing: true } : {}),
+    // On a MISS, carry the same diagnosis `runQuery` has always returned. MATCH is the command every
+    // PREDICATE uses, so without this a failed assertion was a dead end ("no element matched") while
+    // the identical failure through reticle_query listed the testids that ARE present. Computed only
+    // when there is nothing to report, so the hot path pays nothing.
+    ...(0 === filtered.length ? { hint: buildEmptyHint(query) } : {}),
   };
 }
 
@@ -356,7 +369,7 @@ export function matchQuery(
  * not a human-readable name. Undefined when unset or nothing resolves. */
 function resolveLabelledBy(el: Element): string | undefined {
   const ids = el.getAttribute('aria-labelledby');
-  if (ids === null) return undefined;
+  if (null === ids) return undefined;
   const text = ids
     .split(/\s+/)
     .map((id) =>
@@ -460,8 +473,8 @@ function buildEmptyHint(query: ElementQuery): QueryEmptyHint {
  */
 export function runQuery(query: ElementQuery, limit?: number): QueryResult {
   const result = matchQuery(query, undefined, limit);
-  const scopeFields = result.scopeMissing === true ? { scopeMissing: true as const } : {};
-  if (result.elements.length === 0) {
+  const scopeFields = true === result.scopeMissing ? { scopeMissing: true as const } : {};
+  if (0 === result.elements.length) {
     return {
       elements: result.elements,
       count: result.count,

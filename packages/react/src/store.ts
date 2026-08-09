@@ -31,7 +31,7 @@ export function useReticleStore(name: string, value: unknown): void {
 
   useEffect(() => {
     const current = handle.current;
-    if (current === null) return;
+    if (null === current) return;
     registerStore(name, current.store);
     return () => unregisterStore(name);
   }, [name]);

@@ -56,10 +56,10 @@ export function nextReticleDevFile(
   stores: readonly string[] = [],
 ): string {
   const base = connectArg(port, projectId);
-  const fields = base === '' ? '' : `${base.slice(1, -1).trim()}, `;
+  const fields = '' === base ? '' : `${base.slice(1, -1).trim()}, `;
   const ids = testids.map((t) => `'${t}'`).join(', ');
   const storeBlock =
-    stores.length === 0
+    0 === stores.length
       ? '      // No state library detected. If you add one, register it here — see docs/usage.md.'
       : stores.map((h) => `      // import your store, then: ${h}`).join('\n');
   return `'use client';
@@ -83,7 +83,7 @@ export function ReticleDev() {
       // form wires \`subscribe\` too, so every mutation emits a diff; the getter form is read-only.
 ${storeBlock}
       registerCapabilities({
-        testids: [${ids}],${testids.length === 0 ? ' // none found — add data-testid to your key elements' : ''}
+        testids: [${ids}],${0 === testids.length ? ' // none found — add data-testid to your key elements' : ''}
         signals: [], // names you pass to reticle.signal()
         stores: [], // the keys you registered above
       });
@@ -106,9 +106,35 @@ ${storeBlock}
  * the config because there is no plugin in the page's path to inject it, and `build.target` has to be
  * raised or Astro down-levels the modern SDK bundle and dies on a destructuring transform.
  */
-export function astroManual(port: number | undefined, projectId?: string): string {
-  const extra = port !== undefined && port !== RETICLE_DEFAULT_PORT ? `\n          url: '${bridgeWsUrl(port)}',` : '';
-  const id = projectId !== undefined && projectId.length > 0 ? `\n          projectId: '${projectId}',` : '';
+/**
+ * Name the file the connect <script> should go in — the layout when one exists, otherwise the page,
+ * because a project with no layout has nowhere else to put it and should not be told otherwise.
+ */
+function layoutHost(layoutPath: string | undefined): string {
+  return layoutPath === undefined
+    ? '2. This project has no layout, so put it in the page you want instrumented (e.g.\n   src/pages/index.astro) — every page you want a session from needs it — inside <body>:'
+    : `2. In ${layoutPath} (or any other page you want instrumented), inside <body>:`;
+}
+
+export function astroManual(
+  port: number | undefined,
+  projectId?: string,
+  /**
+   * A layout file that actually exists, when one does.
+   *
+   * Reported from the field: on `examples/framework-react` — which has no layout at all, only
+   * `src/pages/index.astro` — init printed thirty lines telling the user to paste into "your
+   * layout". Instructions that name a file the project does not have read as a mistake by the
+   * reader, and cost them the time it takes to go and confirm it is missing.
+   */
+  layoutPath?: string,
+): string {
+  const extra =
+    port !== undefined && port !== RETICLE_DEFAULT_PORT
+      ? `\n          url: '${bridgeWsUrl(port)}',`
+      : '';
+  const id =
+    projectId !== undefined && projectId.length > 0 ? `\n          projectId: '${projectId}',` : '';
   return `Astro renders its own HTML, so the connect goes in a page <script> and the pairing token is inlined by the config.
 
 1. In astro.config.mjs — inline the daemon's token and raise the build target:
@@ -136,7 +162,7 @@ export function astroManual(port: number | undefined, projectId?: string): strin
     },
   });
 
-2. In your layout (or the page you want instrumented), inside <body>:
+${layoutHost(layoutPath)}
 
   <script>
     if (import.meta.env.DEV) {
@@ -166,7 +192,7 @@ Start the daemon BEFORE \`astro dev\`, so the token file exists when the config 
 export function viteDevModuleFile(testids: readonly string[], stores: readonly string[]): string {
   const ids = testids.map((t) => `'${t}'`).join(', ');
   const storeBlock =
-    stores.length === 0
+    0 === stores.length
       ? '  // No state library detected. If you add one, register it here — see docs/usage.md.'
       : stores.map((h) => `  // import your store, then: ${h}`).join('\n');
   return `// Dev-only. Imported automatically by @reticlehq/vite-plugin — you do not need to import it.
@@ -186,7 +212,7 @@ if (import.meta.env.DEV) {
 ${storeBlock}
 
   registerCapabilities({
-    testids: [${ids}],${testids.length === 0 ? ' // none found — add data-testid to your key elements' : ''}
+    testids: [${ids}],${0 === testids.length ? ' // none found — add data-testid to your key elements' : ''}
     signals: [], // names you pass to reticle.signal()
     stores: [], // the keys you registered above
   });
@@ -220,10 +246,11 @@ export function htmlManual(port: number | undefined, projectId?: string): string
   • Bundled app (Create React App, webpack, Parcel, Vue/Svelte CLI, etc.) — add to your ENTRY module
     (e.g. src/index.js or src/main.js), where '@reticlehq/react' resolves through your bundler:
 
-      if (location.hostname === 'localhost') {
-        const { reticle, install } = await import('@reticlehq/react');
-        install();
-        reticle.connect(${arg});
+      if (window.location.hostname === 'localhost') {
+        void import('@reticlehq/react').then(({ reticle, install }) => {
+          install();
+          reticle.connect(${arg});
+        });
       }
 
   • Plain static HTML with no build step — the browser can't resolve the bare '@reticlehq/react' import, so
@@ -245,7 +272,7 @@ export const SVELTEKIT_HOOKS_PATH = 'src/hooks.client.ts';
  * here is the one thing this project exists not to do.
  */
 export function unverifiedUiLibraryNote(library: string): string {
-  return `Detected a ${library} app. Reticle's DOM, network, console and state tools work here, but @reticlehq/react is a React adapter: component names and data-reticle-source file:line will be missing, and no CI gate covers ${library}. Gated today: Vite + React, Next.js, Remix, Astro. If something doesn't work, please open an issue.`;
+  return `Detected a ${library} app. Reticle's DOM, network, console and state tools work here, and source file:line does too — the build plugin stamps data-reticle-source regardless of UI library (measured on preact and svelte). What @reticlehq/react adds and you will NOT get is React component identity: component names and component stacks. No CI gate covers ${library}. Gated today: Vite + React, Next.js, Remix, Astro. If something doesn't work, please open an issue.`;
 }
 
 export const UNVERIFIED_FRAMEWORK_NOTE =
@@ -258,7 +285,7 @@ export const UNVERIFIED_FRAMEWORK_NOTE =
  */
 export function svelteKitHooksFile(port: number | undefined, projectId?: string): string {
   const base = connectArg(port, projectId);
-  const fields = base === '' ? '' : `${base.slice(1, -1).trim()}, `;
+  const fields = '' === base ? '' : `${base.slice(1, -1).trim()}, `;
   return `// Dev-only: connect Reticle on the client. SvelteKit renders via app.html, so the Vite-plugin
 // index.html injection doesn't fire — connect from this client hook instead.
 if (import.meta.env.DEV) {
@@ -268,11 +295,19 @@ if (import.meta.env.DEV) {
     // file it lives in, so @reticlehq/vite-plugin inlines it here at build time. Without it the
     // console reads "bridge refused the connection: authentication failed" and no session appears.
     const token = typeof __RETICLE_TOKEN__ !== 'undefined' ? __RETICLE_TOKEN__ : '';
-    reticle.connect({ ${fields}...(token.length > 0 ? { token } : {}) });
+    const root = typeof __RETICLE_ROOT__ !== 'undefined' ? __RETICLE_ROOT__ : '';
+    const sdkVersion = typeof __RETICLE_SDK_VERSION__ !== 'undefined' ? __RETICLE_SDK_VERSION__ : '';
+    reticle.connect({
+      ${fields}...(token.length > 0 ? { token } : {}),
+      ...(root.length > 0 ? { root } : {}),
+      ...(sdkVersion.length > 0 ? { sdkVersion } : {}),
+    });
   });
 }
 
 declare const __RETICLE_TOKEN__: string | undefined;
+declare const __RETICLE_ROOT__: string | undefined;
+declare const __RETICLE_SDK_VERSION__: string | undefined;
 `;
 }
 

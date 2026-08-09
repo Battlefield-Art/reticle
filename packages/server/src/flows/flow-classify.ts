@@ -64,6 +64,18 @@ const INTENT_WITHOUT_OUTCOME_WARNING =
 const expectIsConsequence = flowExpectHasConsequence;
 const expectIsWeak = flowExpectIsPresenceOnly;
 
+/**
+ * A step expect counts the same as a flow-level one, because replay now evaluates the same set.
+ *
+ * This was briefly narrowed to `state` only — correctly, at the time: replay checked element presence
+ * and state and nothing else, so grading a step signal/net as a consequence produced a flow that
+ * reported `grade: "asserted"` and could not go red. `assertStepExpect` closed that by compiling
+ * every step expect through the same `successToPredicate` the flow-level path uses, so the narrow
+ * rule is no longer true and would now UNDER-grade real assertions.
+ *
+ * The invariant to keep: this function and what replay enforces must move together. If one ever
+ * describes more than the other, the difference is a false green or a lost verification.
+ */
 /** Walk steps + act_sequence sub-steps so an expect on either level is counted. */
 function flattenSteps(steps: readonly FlowStep[]): FlowStep[] {
   const out: FlowStep[] = [];

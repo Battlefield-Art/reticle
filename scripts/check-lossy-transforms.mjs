@@ -92,6 +92,10 @@ export const READ_PATH = Object.freeze({
       Declaration.REPORT,
       'a miss returns { found:false, availableKeys } and, when that key list is a SAMPLE, totalKeys beside it',
     ],
+    projectComponentState: [
+      Declaration.REPORT,
+      'drops React effect hooks (chained, null-filled fiber internals) from a component hook read and reports the drop as component.truncation = { droppedItems, note }; every state/memo/ref hook value passes through untouched',
+    ],
     capDepth: [
       Declaration.MARKER,
       'collapses past the budget to a sized sentinel — "[Array(5)]", "{…3 keys}", "[Set(2)]", "{Map(3)}". In-band because the caller asked for a depth cap and the value shape has to survive it',

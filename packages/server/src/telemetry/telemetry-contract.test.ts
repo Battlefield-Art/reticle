@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   BugSource,
   ConnectFailure,
+  OutageReason,
   ContradictionKind,
   ActionType,
   FeedbackKind,
@@ -53,7 +55,7 @@ describe('every telemetry event kind is real and reachable', () => {
   it('names an EVENT, not an object — every name is <noun>_<verbed> or a lifecycle moment', () => {
     for (const kind of EMITTED_SOMEWHERE) {
       expect(
-        kind.includes('_') || kind === 'identified',
+        kind.includes('_') || 'identified' === kind,
         `'${kind}' should read as something that happened`,
       ).toBe(true);
     }
@@ -80,6 +82,30 @@ describe('every telemetry event kind is real and reachable', () => {
  * The tool surface is the thing that grows. A new tool is added most weeks; a new telemetry hook is
  * added almost never — so the failure mode is always "the tool shipped and the metric did not".
  */
+/**
+ * The contract doc is the thing anyone reads before touching an emitter, and CLAUDE.md points at it
+ * as the reference. It described 7 of the 15 event kinds. The other 8 — including `mcp_client_connected`,
+ * `mcp_connection_lost` and `init_completed`, the ones that answer "does the transport stay up" and
+ * "does install work" — existed only in the enum, so nobody reading the contract knew they were being
+ * sent, and nobody adding a dashboard knew to look for them.
+ *
+ * Telemetry fails silently, which is exactly why the doc is load-bearing rather than decorative. A
+ * kind that nothing documents is a kind nobody queries.
+ */
+describe('every telemetry event kind is documented', () => {
+  it('appears by name in the contract doc', () => {
+    const doc = readFileSync(
+      new URL('../../../../docs/telemetry-contract.md', import.meta.url),
+      'utf8',
+    );
+    const undocumented = Object.values(TelemetryEventKind).filter((kind) => !doc.includes(kind));
+    expect(
+      undocumented,
+      `add these to docs/telemetry-contract.md: ${undocumented.join(', ')}`,
+    ).toEqual([]);
+  });
+});
+
 describe('every tool is classified for telemetry', () => {
   it('routes through runTool, which is the ONLY place tool usage is counted', () => {
     // A tool absent from TOOLS is unreachable; a tool present in TOOLS is dispatched through runTool
@@ -105,6 +131,37 @@ describe('every tool is classified for telemetry', () => {
         VERIFICATION_TOOLS.has(name),
         `'${name}' looks like it produces a verdict but is not in VERIFICATION_TOOLS — ` +
           'it will not emit verification_completed. Add it there, or rename it if it does not.',
+      ).toBe(true);
+    }
+  });
+
+  /**
+   * The name check above has a hole exactly the shape of the product's MAIN verification path.
+   *
+   * `reticle_act_and_wait` declares `verified` in its outputSchema, returns the full verdict block
+   * (verified / because / honesty), and its own description calls it "one hop for the act->observe->
+   * assert loop". It matches neither /assert/ nor /verify/, so the tripwire never fired and it was
+   * never added to VERIFICATION_TOOLS — meaning every verification performed through it emitted no
+   * `verification_completed` at all.
+   *
+   * Measured over a day of real telemetry: `reticle_act_and_wait` 14 calls, `reticle_assert` ZERO,
+   * and `verification_completed` = 2. Agents were verifying the whole time, through the tool built
+   * for exactly that, and the metric the product exists to report could not see any of it.
+   *
+   * So the check is on the SHAPE, not the name: a tool that declares a `verified` verdict is a
+   * verification tool, whatever it happens to be called.
+   */
+  it('every tool that DECLARES a `verified` verdict is in VERIFICATION_TOOLS', () => {
+    const declaresVerdict = TOOLS.filter(
+      (tool) => tool.outputSchema !== undefined && 'verified' in tool.outputSchema,
+    ).map((tool) => tool.name);
+    // If this ever comes back empty the check has silently stopped guarding anything.
+    expect(declaresVerdict.length).toBeGreaterThan(0);
+    for (const name of declaresVerdict) {
+      expect(
+        VERIFICATION_TOOLS.has(name),
+        `'${name}' declares a \`verified\` verdict in its outputSchema but is not in ` +
+          'VERIFICATION_TOOLS, so every verdict it returns is invisible to verification_completed.',
       ).toBe(true);
     }
   });
@@ -206,6 +263,16 @@ describe('failure vocabularies stay closed', () => {
   it('connection failures keep an explicit unknown bucket', () => {
     expect(Object.values(ConnectFailure)).toContain(ConnectFailure.OTHER);
     expect(new Set(Object.values(ConnectFailure)).size).toBe(Object.values(ConnectFailure).length);
+  });
+
+  /**
+   * The proxy's own drop reasons are free strings feeding a log, so the wire narrows them — and the
+   * narrowing needs somewhere to put a reason the list does not name, or the next drop path added to
+   * the proxy either leaks raw text or vanishes.
+   */
+  it('outage reasons keep an explicit unknown bucket', () => {
+    expect(Object.values(OutageReason)).toContain(OutageReason.OTHER);
+    expect(new Set(Object.values(OutageReason)).size).toBe(Object.values(OutageReason).length);
   });
 });
 

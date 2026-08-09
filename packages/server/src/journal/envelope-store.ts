@@ -5,7 +5,7 @@ import { reticleDirPaths } from '../project/reticle-dir.js';
 import { RouteEnvelopeSchema, type RouteEnvelope } from './envelope.js';
 
 /** Bumped on any breaking change to the persisted envelope shape (matches the runs/contract convention). */
-export const ENVELOPE_FILE_VERSION = 1;
+const ENVELOPE_FILE_VERSION = 1;
 
 const EnvelopeFileSchema = z.object({
   version: z.literal(ENVELOPE_FILE_VERSION),

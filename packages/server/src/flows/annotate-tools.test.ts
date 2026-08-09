@@ -208,7 +208,7 @@ describe('reticle_annotate handler — temp dir, never touches the repo', () => 
       success?: { signal?: string };
     };
     expect(loaded.steps[1]?.expect?.signal).toBe('diff:shown');
-    expect(loaded.dynamic?.some((d) => d.value === 'caption-text')).toBe(true);
+    expect(loaded.dynamic?.some((d) => 'caption-text' === d.value)).toBe(true);
     expect(loaded.success?.signal).toBe('diff:shown');
   });
 

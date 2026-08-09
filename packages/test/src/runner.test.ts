@@ -174,7 +174,7 @@ describe('runSpecs', () => {
     const mk = (): ReticleSpec => ({ name: 'x', fn: () => undefined });
     const { results } = await runSpecs(options({ specs: [mk(), mk()] }));
     expect(results).toHaveLength(2);
-    expect(results.every((r) => r.name === 'x')).toBe(true);
+    expect(results.every((r) => 'x' === r.name)).toBe(true);
   });
 });
 

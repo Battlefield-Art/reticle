@@ -10,7 +10,7 @@ export function authToken(): string {
   return token;
 }
 
-export interface ApiResult {
+interface ApiResult {
   method: string;
   path: string;
   status: number | 'ERR';
@@ -75,7 +75,7 @@ export async function health(): Promise<ApiResult> {
 
 /** Each fault is a distinct real failure mode (404/500/cors/wrong-format/wrong-data). */
 export async function fault(kind: string): Promise<ApiResult> {
-  const authed = kind === 'wrong-data';
+  const authed = 'wrong-data' === kind;
   const { r } = await timed(
     'GET',
     `/api/broken/${kind}`,

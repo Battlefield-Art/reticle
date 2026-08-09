@@ -24,12 +24,12 @@ export { redactUrl };
  * succeeded means nothing to a network observer — so the knowledge lives in the IPC observer and is
  * passed IN, rather than this module importing it. Returns undefined to leave the record untouched.
  */
-export type NetResponseReinterpreter = (
+type NetResponseReinterpreter = (
   url: string,
   header: (name: string) => string | null,
 ) => Record<string, unknown> | undefined;
 
-export interface NetworkOptions {
+interface NetworkOptions {
   /** Capture request/response bodies (text-like content only, redacted, per-body capped). */
   captureBodies?: boolean;
   /** Optional hook that reinterprets a completed request — see NetResponseReinterpreter. */
@@ -71,7 +71,7 @@ function projectRequestBody(body: unknown, captureBodies: boolean): Record<strin
   if (!captureBodies) return {};
   let text: string | undefined;
   let contentType = 'application/json';
-  if (typeof body === 'string') {
+  if ('string' === typeof body) {
     text = body;
   } else if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
     text = body.toString();
@@ -80,7 +80,7 @@ function projectRequestBody(body: unknown, captureBodies: boolean): Record<strin
     const shape = (body as { constructor?: { name?: string } }).constructor?.name ?? typeof body;
     return { requestBodyType: shape };
   }
-  if (text === undefined || text.length === 0) return {};
+  if (text === undefined || 0 === text.length) return {};
   const { body: out, truncated } = projectBody(text, contentType);
   return truncated ? { requestBody: out, requestBodyTruncated: true } : { requestBody: out };
 }
@@ -115,7 +115,7 @@ function netResponseMeta(
 }
 
 function urlOf(input: RequestInfo | URL): string {
-  if (typeof input === 'string') return input;
+  if ('string' === typeof input) return input;
   if (input instanceof URL) return input.href;
   return input.url;
 }
@@ -147,7 +147,7 @@ export function firstAppFrame(stack: string | undefined): string | undefined {
   for (const line of stack.split('\n').slice(1)) {
     if (NON_APP_FRAME.test(line)) continue;
     const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
+    if (0 === trimmed.length) continue;
     return trimmed.slice(0, 300);
   }
   return undefined;
@@ -158,7 +158,7 @@ function initiatorFrame(): string | undefined {
 }
 
 /** The timing fields we lift from a resource entry — TTFB is the perf signal a duration alone hides. */
-export interface NetTiming {
+interface NetTiming {
   ttfbMs?: number;
   transferSize?: number;
 }
@@ -233,7 +233,7 @@ function isNativeFetch(fn: typeof window.fetch): boolean {
 const OURS = new WeakSet<typeof window.fetch>();
 
 export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown {
-  const captureBodies = opts.captureBodies === true;
+  const captureBodies = true === opts.captureBodies;
   const reinterpret = opts.reinterpret;
   // Keep the true original for teardown identity, plus a window-bound copy to invoke
   // (fetch throws "Illegal invocation" if called with the wrong `this`).
@@ -416,7 +416,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
           const xhrContentType = this.getResponseHeader('content-type');
           let responseBodyFields: Record<string, unknown> = {};
           // responseText throws unless responseType is '' or 'text' — guard before reading.
-          const textReadable = this.responseType === '' || this.responseType === 'text';
+          const textReadable = '' === this.responseType || 'text' === this.responseType;
           if (captureBodies && textReadable && isCapturableType(xhrContentType)) {
             try {
               const { body: rb, truncated } = projectBody(this.responseText, xhrContentType);
@@ -458,7 +458,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
   const origWebSocket = window.WebSocket;
   let patchedEventSource: typeof window.EventSource | undefined;
   let patchedWebSocket: typeof window.WebSocket | undefined;
-  if (captureBodies && typeof origEventSource === 'function') {
+  if (captureBodies && 'function' === typeof origEventSource) {
     window.EventSource = class extends origEventSource {
       constructor(u: string | URL, init?: EventSourceInit) {
         super(u, init);
@@ -480,7 +480,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     };
     patchedEventSource = window.EventSource;
   }
-  if (captureBodies && typeof origWebSocket === 'function') {
+  if (captureBodies && 'function' === typeof origWebSocket) {
     window.WebSocket = class extends origWebSocket {
       /** Reticle's own bridge socket is never observed — see isBridgeSocket. */
       readonly #isBridge: boolean;
@@ -528,7 +528,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     typeof navigator !== 'undefined' ? Object.getPrototypeOf(navigator) : null
   ) as Navigator | null;
   const origBeacon = (
-    navProto === null ? undefined : Object.getOwnPropertyDescriptor(navProto, 'sendBeacon')?.value
+    null === navProto ? undefined : Object.getOwnPropertyDescriptor(navProto, 'sendBeacon')?.value
   ) as BeaconFn | undefined;
   let patchedBeacon: BeaconFn | undefined;
   if (navProto !== null && origBeacon !== undefined) {

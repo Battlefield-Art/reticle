@@ -129,7 +129,7 @@ describe('reconcileNet (in-flight / hung requests)', () => {
     ];
     const out = reconcileNet(events);
     expect(out).toHaveLength(2);
-    const hung = out.find((e) => e.data['url'] === '/api/broken/timeout');
+    const hung = out.find((e) => '/api/broken/timeout' === e.data['url']);
     expect(hung?.data).toMatchObject({ status: 'pending', pending: true });
   });
 

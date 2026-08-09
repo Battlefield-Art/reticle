@@ -132,19 +132,19 @@ export function projectNetCall(e: ReticleEvent): NetCallView {
     method: asString(e.data['method']) ?? '',
     url: asString(e.data['url']) ?? '',
   };
-  if (typeof status === 'number' || typeof status === 'string') view.status = status;
+  if ('number' === typeof status || 'string' === typeof status) view.status = status;
   if (statusText !== undefined) view.statusText = statusText;
   if (contentType !== undefined) view.contentType = contentType;
   if (responseSize !== undefined) view.responseSize = responseSize;
   if (requestBody !== undefined) view.requestBody = requestBody;
   if (responseBody !== undefined) view.responseBody = responseBody;
-  if (e.data['requestBodyTruncated'] === true || e.data['responseBodyTruncated'] === true) {
+  if (true === e.data['requestBodyTruncated'] || true === e.data['responseBodyTruncated']) {
     view.bodyTruncated = true;
   }
   if (ms !== undefined) view.ms = ms;
-  if (e.data['oneWay'] === true) view.oneWay = true;
+  if (true === e.data['oneWay']) view.oneWay = true;
   const headers = e.data['headers'];
-  if (headers !== null && typeof headers === 'object') {
+  if (headers !== null && 'object' === typeof headers) {
     view.headers = headers as Record<string, string>;
   }
   return view;
@@ -188,7 +188,7 @@ export function projectConsoleLog(e: ReticleEvent): ConsoleLogView {
   const source = asString(e.data['source']);
   const line = e.data['line'];
   if (source !== undefined && source.length > 0) {
-    view.source = typeof line === 'number' ? `${source}:${String(line)}` : source;
+    view.source = 'number' === typeof line ? `${source}:${String(line)}` : source;
   }
   return view;
 }
@@ -210,7 +210,7 @@ export function matchConsole(e: ReticleEvent, level: string | undefined): boolea
   if (!isConsoleEvent(e)) return false;
   if (level === undefined) return true;
   return (
-    e.type === `console.${level}` || (level === 'error' && e.type === EventType.ERROR_UNCAUGHT)
+    e.type === `console.${level}` || ('error' === level && e.type === EventType.ERROR_UNCAUGHT)
   );
 }
 

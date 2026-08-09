@@ -17,13 +17,16 @@
  *
  * State flags (inside []):
  * vis visible hid hidden en enabled dis disabled
- * chk checked uch unchecked exp expanded col collapsed focus
+ * chk checked exp expanded focus focused
+ * (`present` is on every element, so it is never encoded — see STATE_FLAG.)
  *
  * Attributes (key=value, space-separated):
  * val="..." current value of the element
  * count=N child count (for containers, replaces expanding children)
  * ph="..." placeholder text
  */
+
+import { ElementState } from './constants.js';
 
 /** Encode an ElementDescriptor to a TOON line. */
 export interface ToonElement {
@@ -81,40 +84,39 @@ function abbreviateRole(role: string): string {
   return ROLE_MAP[role] ?? 'el';
 }
 
+/**
+ * Short flags for the states the SDK reports.
+ *
+ * `present` is deliberately absent: `getStates` seeds every element's array with it, so it is true
+ * of everything that could appear here and encodes nothing — while costing eight characters per
+ * element in the layer whose entire job is cutting the agent's token bill. `visible`/`hidden` are
+ * likewise absent because the `visible` field already carries them.
+ *
+ * An unlisted state falls through to its own name, so an SDK newer than this daemon still reaches
+ * the agent with something readable instead of losing the state.
+ */
+const STATE_FLAG: Partial<Record<ElementState, string>> = {
+  [ElementState.ENABLED]: 'en',
+  [ElementState.DISABLED]: 'dis',
+  [ElementState.CHECKED]: 'chk',
+  [ElementState.EXPANDED]: 'exp',
+  [ElementState.FOCUSED]: 'focus',
+};
+
+/** States the `visible` field already encodes, plus the one that is true of everything. */
+const UNENCODED_STATES: ReadonlySet<string> = new Set<string>([
+  ElementState.PRESENT,
+  ElementState.VISIBLE,
+  ElementState.HIDDEN,
+]);
+
 function encodeStates(states: string[], visible?: boolean): string {
   const flags: string[] = [];
-  if (visible === true) flags.push('vis');
-  else if (visible === false) flags.push('hid');
+  if (true === visible) flags.push('vis');
+  else if (false === visible) flags.push('hid');
   for (const s of states) {
-    switch (s) {
-      case 'visible':
-        break; // handled above
-      case 'hidden':
-        break; // handled above
-      case 'enabled':
-        flags.push('en');
-        break;
-      case 'disabled':
-        flags.push('dis');
-        break;
-      case 'checked':
-        flags.push('chk');
-        break;
-      case 'unchecked':
-        flags.push('uch');
-        break;
-      case 'expanded':
-        flags.push('exp');
-        break;
-      case 'collapsed':
-        flags.push('col');
-        break;
-      case 'focused':
-        flags.push('focus');
-        break;
-      default:
-        flags.push(s);
-    }
+    if (UNENCODED_STATES.has(s)) continue;
+    flags.push(STATE_FLAG[s as ElementState] ?? s);
   }
   return flags.length > 0 ? `[${flags.join(',')}]` : '';
 }
@@ -122,8 +124,8 @@ function encodeStates(states: string[], visible?: boolean): string {
 /** Coerce a wire field to a string. resultToToon receives UNVALIDATED wire data cast to ToonElement,
  * so a missing/numeric `name` must not make `.replace` throw and lose the whole encode. */
 function toText(v: unknown): string {
-  if (typeof v === 'string') return v;
-  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
+  if ('string' === typeof v) return v;
+  if ('number' === typeof v || 'boolean' === typeof v || 'bigint' === typeof v) return String(v);
   return ''; // undefined / null / object / symbol have no representable text on a wire field
 }
 
@@ -141,7 +143,7 @@ function encodeLine(el: ToonElement, depth: number): string {
   const states = encodeStates(Array.isArray(el.states) ? el.states : [], el.visible);
   const ref = toText(el.ref) || '?';
   const parts: string[] = [indent + type, ref, encodeName(el.name), ...(states ? [states] : [])];
-  if (typeof el.value === 'string' && el.value.length > 0)
+  if ('string' === typeof el.value && el.value.length > 0)
     parts.push(`val=${encodeValue(el.value)}`);
   if (el.childCount !== undefined) parts.push(`count=${String(el.childCount)}`);
   return parts.join(' ');
@@ -165,7 +167,7 @@ function encodeTree(elements: ToonElement[], depth = 0): string {
 
 /** Encode an array of ElementDescriptor-shaped objects to TOON text. */
 export function toToon(elements: ToonElement[]): string {
-  if (elements.length === 0) return '# TOON v1 — empty';
+  if (0 === elements.length) return '# TOON v1 — empty';
   return `# TOON v1\n${encodeTree(elements)}`;
 }
 
@@ -179,7 +181,7 @@ export function resultToToon(result: Record<string, unknown>): string {
 /** Whether a tool result object should be encoded as TOON (has an elements array). */
 export function isToonable(result: unknown): boolean {
   return (
-    typeof result === 'object' &&
+    'object' === typeof result &&
     result !== null &&
     !Array.isArray(result) &&
     Array.isArray((result as Record<string, unknown>)['elements'])

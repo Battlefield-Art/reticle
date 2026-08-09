@@ -20,7 +20,7 @@ export function Overview(): React.ReactElement {
       <div className="grid-kpi stagger" style={{ marginBottom: 16 }}>
         {kpis.map((k) => {
           const up = k.delta >= 0;
-          const decimals = k.suffix === '%' ? 1 : 0;
+          const decimals = '%' === k.suffix ? 1 : 0;
           return (
             <div key={k.key} className="panel kpi" data-testid={`kpi-${k.key}`}>
               <div className="eyebrow">{k.label}</div>
@@ -29,7 +29,7 @@ export function Overview(): React.ReactElement {
               </div>
               <div className={`kpi-delta ${up ? 'up' : 'down'}`}>
                 {up ? '▲' : '▼'} {Math.abs(k.delta).toFixed(1)}
-                {k.suffix === '%' ? 'pt' : '%'}{' '}
+                {'%' === k.suffix ? 'pt' : '%'}{' '}
                 <span style={{ color: 'var(--faint)' }}>vs last week</span>
               </div>
               <div className="kpi-spark">

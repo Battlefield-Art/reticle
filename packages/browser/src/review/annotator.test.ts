@@ -25,7 +25,7 @@ function clickAt(el: Element, x = 100, y = 120): void {
 
 function popover(): HTMLElement {
   const pop = document.querySelector<HTMLElement>('[data-reticle-mark="pop"]');
-  if (pop === null) throw new Error('no popover open');
+  if (null === pop) throw new Error('no popover open');
   return pop;
 }
 
@@ -64,7 +64,7 @@ describe('Annotator — human marks a mistake on the page', () => {
     clickAt(document.querySelector('[data-testid="checkout"]') as Element);
 
     const textarea = popover().querySelector('textarea');
-    if (textarea === null) throw new Error('no textarea');
+    if (null === textarea) throw new Error('no textarea');
     textarea.value = 'This button is misaligned';
     textarea.dispatchEvent(new Event('input'));
     popover().querySelector<HTMLButtonElement>('button[data-send]')?.click();
@@ -94,7 +94,7 @@ describe('Annotator — human marks a mistake on the page', () => {
     document.body.insertAdjacentHTML('beforeend', '<button data-testid="cta">Pay</button>');
     clickAt(document.querySelector('[data-testid="cta"]') as Element);
     const textarea = popover().querySelector('textarea');
-    if (textarea === null) throw new Error('no textarea');
+    if (null === textarea) throw new Error('no textarea');
     textarea.value = 'wrong color';
     textarea.dispatchEvent(new Event('input'));
     popover().querySelector<HTMLButtonElement>('button[data-send]')?.click();
@@ -117,7 +117,7 @@ describe('Annotator — human marks a mistake on the page', () => {
     document.body.insertAdjacentHTML('beforeend', '<button data-testid="cta">Pay</button>');
     clickAt(document.querySelector('[data-testid="cta"]') as Element);
     const textarea = popover().querySelector('textarea');
-    if (textarea === null) throw new Error('no textarea');
+    if (null === textarea) throw new Error('no textarea');
     textarea.value = 'misaligned';
     textarea.dispatchEvent(new Event('input'));
     textarea.dispatchEvent(

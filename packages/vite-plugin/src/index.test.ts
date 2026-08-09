@@ -1,4 +1,5 @@
 import { afterAll, describe, it, expect } from 'vitest';
+import { optimizerOptionsKey, viteMajor } from './installed.js';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -121,10 +122,13 @@ describe('reticle vite plugin', () => {
     }
   });
 
-  it('omits the token when the daemon has not provisioned one yet (no file)', () => {
-    // Env points at the empty dir from the top of the file — no token file present.
+  it('PROVISIONS a token when the daemon has not run yet, instead of shipping none', () => {
+    // This used to assert the opposite, and the opposite is the bug. A dev server started before the
+    // daemon froze an empty token into every page it served; the bridge refused each one and no
+    // session ever appeared, while the SDK loaded and the socket opened. The daemon read-or-creates
+    // the same file, so whichever starts first can provision it and the two agree. See ensure-token.
     const code = reticle().load?.(RETICLE_CONNECT_MODULE);
-    expect(code).not.toContain('"token"');
+    expect(code).toContain('token');
   });
 
   it('auto-stamps a derived projectId with zero config', () => {
@@ -321,8 +325,11 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
     );
     const patch = plugin.config?.({}) ?? {};
     const include = (patch['optimizeDeps'] as { include?: string[] } | undefined)?.include ?? [];
-    expect(include).toContain('@testing-library/dom');
-    expect(include).toContain('aria-query');
+    // Either spelling counts: the bare specifier when the app root can resolve it, or Vite's nested
+    // `a > b > c` chain when only the SDK can. Asserting the bare form alone would forbid the fix
+    // for pnpm layouts, where naming it bare is what breaks the app — see installed.test.ts.
+    expect(include.some((e) => e.endsWith('@testing-library/dom'))).toBe(true);
+    expect(include.some((e) => e.endsWith('aria-query'))).toBe(true);
   });
 
   /**
@@ -378,26 +385,36 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
    * in the browser and it looks like the fix does not work. That produced a real false negative
    * while hunting the null-fiber crash, and every in-place upgrade hits it.
    */
+  /**
+   * Read the optimizer options from whichever key THIS Vite uses. Vite 7 renamed
+   * `esbuildOptions` to `rolldownOptions` and warns on the old one, so the plugin picks the key from
+   * the installed major — and a test that hardcodes either name asserts the local Vite version
+   * rather than the behaviour.
+   */
+  const optimizerDefine = (patch: Record<string, unknown>): Record<string, string> => {
+    const opt = (patch['optimizeDeps'] ?? {}) as Record<string, unknown>;
+    const options = opt[optimizerOptionsKey(viteMajor())] as
+      | { define?: Record<string, string> }
+      | undefined;
+    return options?.define ?? {};
+  };
+
   it('mixes the installed SDK build into the cache key so an in-place upgrade is noticed', () => {
     const plugin = reticle() as unknown as {
       config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
     };
-    const patch = plugin.config?.({}) ?? {};
-    const opt = patch['optimizeDeps'] as
-      | { esbuildOptions?: { define?: Record<string, string> } }
-      | undefined;
-    expect(Object.keys(opt?.esbuildOptions?.define ?? {})).toContain('__RETICLE_SDK_BUILD__');
+    expect(Object.keys(optimizerDefine(plugin.config?.({}) ?? {}))).toContain(
+      '__RETICLE_SDK_BUILD__',
+    );
   });
 
-  it("does not clobber the app's own esbuildOptions.define", () => {
+  it("does not clobber the app's own optimizer define", () => {
     const plugin = reticle() as unknown as {
       config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
     };
-    const patch =
-      plugin.config?.({ optimizeDeps: { esbuildOptions: { define: { THEIRS: '"x"' } } } }) ?? {};
-    const define =
-      (patch['optimizeDeps'] as { esbuildOptions?: { define?: Record<string, string> } })
-        .esbuildOptions?.define ?? {};
+    const define = optimizerDefine(
+      plugin.config?.({ optimizeDeps: { esbuildOptions: { define: { THEIRS: '"x"' } } } }) ?? {},
+    );
     expect(define['THEIRS']).toBe('"x"');
     expect(Object.keys(define)).toContain('__RETICLE_SDK_BUILD__');
   });
@@ -409,7 +426,7 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
     const patch = plugin.config?.({ optimizeDeps: { include: ['their-dep'] } }) ?? {};
     const include = (patch['optimizeDeps'] as { include?: string[] } | undefined)?.include ?? [];
     expect(include, "the app's own entries must survive").toContain('their-dep');
-    expect(include).toContain('aria-query');
+    expect(include.some((e) => e.endsWith('aria-query'))).toBe(true);
   });
 });
 

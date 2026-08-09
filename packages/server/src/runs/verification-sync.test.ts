@@ -21,8 +21,8 @@ const stubFetch = (mode: 'ok' | 'fail' | 'throw'): { calls: FetchArgs[] } => {
   const calls: FetchArgs[] = [];
   globalThis.fetch = ((url: string, init: FetchInit) => {
     calls.push([url, init]);
-    if (mode === 'throw') return Promise.reject(new Error('network down'));
-    return Promise.resolve({ ok: mode === 'ok', status: mode === 'ok' ? 201 : 500 } as Response);
+    if ('throw' === mode) return Promise.reject(new Error('network down'));
+    return Promise.resolve({ ok: 'ok' === mode, status: 'ok' === mode ? 201 : 500 } as Response);
   }) as unknown as typeof fetch;
   return { calls };
 };

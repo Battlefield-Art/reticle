@@ -6,7 +6,7 @@ import {
   isDangerousActionText,
   SettleReason,
 } from '@reticlehq/core';
-import { refs } from '../dom/refs.js';
+import { echoRef, refs } from '../dom/refs.js';
 import { assertEditable, assertNotRichText, setNativeValue } from './value-input.js';
 import { getAccessibleName, getRole, isVisible, getStates } from '../dom/a11y.js';
 import { elementHasHoverHandlers, identifyComponent } from '../registry/adapters.js';
@@ -75,13 +75,13 @@ interface ActionResult {
 }
 
 function asString(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value : fallback;
+  return 'string' === typeof value ? value : fallback;
 }
 
 function requireElement(ref: string): HTMLElement {
   const el = refs.resolve(ref);
-  if (el === null) throw new Error(`ref '${ref}' no longer resolves to an element`);
-  if (!isHtmlElement(el)) throw new Error(`ref '${ref}' is not an HTMLElement`);
+  if (null === el) throw new Error(`ref '${echoRef(ref)}' no longer resolves to an element`);
+  if (!isHtmlElement(el)) throw new Error(`ref '${echoRef(ref)}' is not an HTMLElement`);
   return el;
 }
 
@@ -123,12 +123,18 @@ function anchorOf(el: Element): CapturedAnchor {
   const component = info?.componentStack[0];
   if (component !== undefined) out.component = component;
   if (info?.source !== undefined) out.source = info.source;
+  // Reported INDEPENDENTLY. They used to be all-or-nothing, so an element with a role and no
+  // accessible name — an icon button, a clickable div, a control labelled by an SVG — came back with
+  // no identity at all once identifyComponent (React-specific) also found nothing. Two features read
+  // this and both silently degrade without it: the flow recorder anchors a step by it, and coverage
+  // recognises a control it already drove across a re-render by it.
+  //
+  // A role alone is not a unique anchor, and the flow compiler still requires role AND name before it
+  // will anchor a step that way. But it is real information, and reporting it beats reporting nothing.
   const role = getRole(el);
   const name = getAccessibleName(el);
-  if (role.length > 0 && name.length > 0) {
-    out.role = role;
-    out.name = name;
-  }
+  if (role.length > 0) out.role = role;
+  if (name.length > 0) out.name = name;
   return out;
 }
 
@@ -201,7 +207,7 @@ function assertActionAllowed(el: HTMLElement, action: string, args: Record<strin
     action === ActionType.DBLCLICK ||
     action === ActionType.DRAG ||
     action === ActionType.SUBMIT ||
-    (action === ActionType.PRESS && asString(args['key'], 'Enter') === 'Enter');
+    (action === ActionType.PRESS && 'Enter' === asString(args['key'], 'Enter'));
   const dragTarget = action === ActionType.DRAG ? refs.resolve(asString(args['toRef'])) : null;
   const context = isHtmlElement(dragTarget)
     ? `${dangerousActionContext(el)} ${dangerousActionContext(dragTarget)}`
@@ -243,7 +249,7 @@ function valueOf(el: Element): string | undefined {
 /** Ref of the currently-focused element, treating body/null as "no focus". */
 function activeRef(el: Element): string | null {
   const active = el.ownerDocument.activeElement;
-  if (active === null || active === el.ownerDocument.body) return null;
+  if (null === active || active === el.ownerDocument.body) return null;
   return refs.refFor(active);
 }
 
@@ -279,7 +285,7 @@ async function dispatchFor(
         new MouseEvent('mousemove', { bubbles: true, cancelable: true }),
       );
       // hover-dwell: keep "hovering" for holdMs so timer-gated reveals can mount.
-      const holdMs = typeof args['holdMs'] === 'number' ? args['holdMs'] : 0;
+      const holdMs = 'number' === typeof args['holdMs'] ? args['holdMs'] : 0;
       if (holdMs > 0) await sleep(holdMs);
       return !moved;
     }
@@ -341,15 +347,31 @@ async function dispatchFor(
       if (isSelect(el)) {
         // A MISSING value assigned '' to the <select>. No option carries that, so the browser sets
         // selectedIndex to -1 — deselecting everything — from a call that was simply malformed.
-        // (Selecting a value that no option carries is a different case and is deliberately NOT
-        // refused: `actions.effect.test.ts` pins it as a detectable no-op, where the reported
-        // valueChanged delta is what tells the agent the option never took.)
         if (typeof args['value'] !== 'string') {
           throw new Error(
             "select requires a string `value` — pass it nested, as args: { value: '…' }.",
           );
         }
-        el.value = args['value'];
+        const wanted = args['value'];
+        const options = Array.from(el.options);
+        // REFUSE an option that does not exist, before touching the element.
+        //
+        // This used to assign anyway and report the resulting `valueChanged` delta as proof the
+        // option never took. That only works if nobody is listening. An unmatched value drives
+        // selectedIndex to -1, so `el.value` becomes '' — and we then dispatched `change`. Reported
+        // from a real session: the app read that empty value in its change handler and persisted it,
+        // corrupting a stored language setting. The "detectable no-op" both mutated the app into a
+        // state no user could reach AND did it through the app's own handler.
+        //
+        // Same rule as the readonly/disabled refusal: if a real user could not do it, forcing it is
+        // not a test, it is damage.
+        if (!options.some((option) => option.value === wanted)) {
+          const available = options.map((option) => `${option.value} (${option.label})`).join(', ');
+          throw new Error(
+            `no <option> with value '${echoRef(wanted)}' — available: ${0 === options.length ? '(none)' : available}`,
+          );
+        }
+        el.value = wanted;
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return false; // change is not cancelable.
       }
@@ -364,7 +386,7 @@ async function dispatchFor(
       throw new Error(`cannot (un)check a <${el.tagName.toLowerCase()}>`);
     case ActionType.SUBMIT: {
       const form = isForm(el) ? el : el.closest('form');
-      if (form === null) throw new Error('no form to submit');
+      if (null === form) throw new Error('no form to submit');
       form.requestSubmit();
       return false; // requestSubmit returns void; the internal submit event is unobservable.
     }
@@ -517,7 +539,16 @@ interface SequenceStepResult {
   dispatched: boolean;
   settled: boolean;
   settleReason: SettleReason | null;
+  /**
+   * The SAME anchors a single act reports. Reporting only the testid meant a testid-less app
+   * compiled every sub-step to a volatile ref, so the saved flow carried the degraded sentinel and
+   * every replay drifted.
+   */
   testid?: string;
+  component?: string;
+  role?: string;
+  name?: string;
+  source?: { file: string; line: number; column?: number };
   /** best-effort caveat for this step (e.g. synthetic hover may not fire enter/leave). */
   warning?: string;
 }
@@ -541,6 +572,10 @@ export async function executeSequence(steps: ActionStep[]): Promise<{
       settleReason: res.settleReason,
     };
     if (res.testid !== undefined) stepBase.testid = res.testid;
+    if (res.component !== undefined) stepBase.component = res.component;
+    if (res.role !== undefined) stepBase.role = res.role;
+    if (res.name !== undefined) stepBase.name = res.name;
+    if (res.source !== undefined) stepBase.source = res.source;
     if (res.warning !== undefined) stepBase.warning = res.warning;
     stepResults.push(stepBase);
   }

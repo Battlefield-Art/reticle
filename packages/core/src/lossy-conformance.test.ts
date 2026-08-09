@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { capDepth, selectPath } from './state-select.js';
+import { capDepth, selectPath, projectComponentState } from './state-select.js';
 import { toToon, resultToToon } from './toon.js';
 
 /**
@@ -65,7 +65,8 @@ describe('selectPath declares its loss beside the value', () => {
       Object.fromEntries(Array.from({ length: 120 }, (_, i) => [`k${String(i)}`, i])),
       120,
     ],
-    ['an array', Array.from({ length: 120 }, (_, i) => i), 120],
+    // 121, not 120: `length` is a selectable segment on an array, so it counts as available.
+    ['an array', Array.from({ length: 120 }, (_, i) => i), 121],
     ['a Map', new Map(Array.from({ length: 120 }, (_, i) => [`k${String(i)}`, i])), 120],
   ])('reports the true size for %s', (_label, value, total) => {
     expect(selectPath(value, 'definitely-not-here').totalKeys).toBe(total);
@@ -91,5 +92,30 @@ describe('toToon declares a collapsed subtree with its size', () => {
     // resultToToon on a payload with no `elements` array must not silently produce an empty tree —
     // that would turn "this is not a snapshot" into "the snapshot was empty".
     expect(resultToToon({ verdict: 'pass' })).toBe(JSON.stringify({ verdict: 'pass' }));
+  });
+});
+
+describe('projectComponentState declares the hooks it dropped', () => {
+  const effect = {
+    tag: 9,
+    create: null,
+    deps: ['', false],
+    inst: { destroy: null },
+    next: null,
+  };
+
+  it('reports droppedItems + a note when effect hooks are removed', () => {
+    const projected = projectComponentState({ ok: true, hooks: [1, effect, effect] }) as {
+      hooks: unknown[];
+      truncation?: { droppedItems: number; note: string };
+    };
+    expect(projected.hooks).toEqual([1]); // the two effect entries are gone
+    expect(projected.truncation?.droppedItems).toBe(2);
+    expect(projected.truncation?.note).toContain('effect');
+  });
+
+  it('says nothing when nothing was dropped (the marker IS the warning)', () => {
+    const intact = { ok: true, hooks: [1, 'two', { current: null }] };
+    expect(projectComponentState(intact)).toEqual(intact);
   });
 });

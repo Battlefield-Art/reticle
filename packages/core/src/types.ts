@@ -97,6 +97,12 @@ export interface MatchResult {
    * confirmed absence (a false negative); both are the false-green shape this tool exists to prevent.
    */
   scopeMissing?: boolean;
+  /**
+   * Zero-match diagnosis, present only on a miss: what IS on the page. `reticle_query` has always
+   * returned this; MATCH (the command every PREDICATE uses) did not, so a failed assertion was a
+   * dead end while the same failure through query was one step from fixed.
+   */
+  hint?: QueryEmptyHint;
 }
 
 /**
@@ -257,6 +263,18 @@ export const AnnotationSchema = z.discriminatedUnion('kind', [
     equals: z.unknown().optional(),
   }),
   z.object({
+    kind: z.literal(AnnotationKind.ASSERT_NET),
+    // Same shape SUCCESS_STATE already accepts, so one vocabulary describes a network consequence
+    // whether it gates a step or ends the flow. `count` is the point of it: presence says the
+    // request fired, cardinality catches the double-submit that fired it twice.
+    net: z.object({
+      method: z.string().min(1).optional(),
+      urlContains: z.string().min(1).optional(),
+      status: z.number().optional(),
+      count: z.number().int().nonnegative().optional(),
+    }),
+  }),
+  z.object({
     kind: z.literal(AnnotationKind.MARK_DYNAMIC),
     testid: z.string().min(1),
   }),
@@ -305,7 +323,19 @@ export type Annotation = z.infer<typeof AnnotationSchema>;
  * recorder confirmation strip shows ("will assert signal diff:shown").
  */
 export type AnnotateResult =
-  | { ok: true; target: AnnotationTarget; compiled: string }
+  | {
+      ok: true;
+      target: AnnotationTarget;
+      compiled: string;
+      /**
+       * Set when the compiled annotation is NOT something a replay evaluates, so `compiled` on its
+       * own would overstate it. `assert-signal` writes a STEP expect, and replay checks exactly two
+       * things per step — element presence and state — so a step signal is recorded and then never
+       * checked. Saying "will assert signal X" and passing regardless is a false green in the
+       * feature whose whole job is to catch them.
+       */
+      note?: string;
+    }
   /**
    * A failure carries its own way out. `code` alone told the caller WHAT was wrong and never what to
    * do, and the recovery hints elsewhere only attach to THROWN messages — a structured `{ ok: false }`

@@ -16,7 +16,7 @@ export interface JournalReader {
   readEvents(): Promise<ReticleEvent[]>;
 }
 
-export interface JournalRecorderOptions {
+interface JournalRecorderOptions {
   /** Injected elapsed-ms clock (never read from Date here — the clock-injection rule). */
   now: () => number;
   /** Flush the pending-event batch once this many accumulate. */
@@ -63,7 +63,7 @@ export class JournalRecorder {
     const active = this.#active;
     if (active !== undefined) {
       out = { ...event, actionId: active.actionId, attribution: EventAttribution.WINDOW };
-      if (typeof event.seq === 'number') {
+      if ('number' === typeof event.seq) {
         active.seqFrom =
           active.seqFrom === undefined ? event.seq : Math.min(active.seqFrom, event.seq);
         active.seqTo = active.seqTo === undefined ? event.seq : Math.max(active.seqTo, event.seq);
@@ -110,7 +110,7 @@ export class JournalRecorder {
   }
 
   #enqueueFlush(): void {
-    if (this.#pending.length === 0) return;
+    if (0 === this.#pending.length) return;
     const batch = this.#pending;
     this.#pending = [];
     this.#chain = this.#chain.then(() => this.#sink.appendEvents(batch)).catch(() => undefined);

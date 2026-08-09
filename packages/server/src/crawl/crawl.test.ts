@@ -34,7 +34,7 @@ function fakeSession(
     command: (name, args = {}) => {
       if (name === ReticleCommand.SNAPSHOT) return ok({ tree, truncated: snapshotTruncated });
       if (name === ReticleCommand.ACT) {
-        const ref = typeof args['ref'] === 'string' ? args['ref'] : '';
+        const ref = 'string' === typeof args['ref'] ? args['ref'] : '';
         clock += 1;
         for (const e of perRef[ref]?.events ?? []) {
           buffer.push({ t: clock, type: e.type, sessionId: 's', data: e.data ?? {} });

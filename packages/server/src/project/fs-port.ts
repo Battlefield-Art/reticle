@@ -95,6 +95,6 @@ export function createNodeFileSystem(): FileSystemPort {
       const s = await stat(path);
       return { mtimeMs: s.mtimeMs };
     },
-    isNotFound: (error) => (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT',
+    isNotFound: (error) => 'ENOENT' === (error as NodeJS.ErrnoException | undefined)?.code,
   };
 }

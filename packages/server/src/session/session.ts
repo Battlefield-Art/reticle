@@ -5,7 +5,9 @@ import { readHealthEvent, type SessionHealth } from './session-health.js';
 
 export type { SessionHealth };
 import { PendingCommands } from './pending-commands.js';
+import { span } from '../trace.js';
 import {
+  AppRuntime,
   EventType,
   HumanControlDataSchema,
   HumanControlKind,
@@ -18,6 +20,7 @@ import {
   SESSION_LEASE,
   SESSION_LIFECYCLE,
   SessionState,
+  type BrowserBrand,
   type CommandResult,
   type HelloMessage,
   type HumanControlData,
@@ -41,6 +44,7 @@ import { buildPresenterArgs } from './presenter-args.js';
 import { buildSessionLease, type SessionLease } from './session-lease.js';
 import type { SessionInfo } from './session-info.js';
 export type { SessionInfo } from './session-info.js';
+import { buildSessionInfo } from './session-info.js';
 
 type Clock = () => number;
 
@@ -67,6 +71,8 @@ export class Session {
   title: string;
   adapters: string[];
   hasCapabilities: boolean;
+  /** Set when the page's SDK version differs from the daemon's (see version-skew.ts). */
+  versionSkew?: string;
   /**
    * Extra key names this app declared sensitive via `connect({ redact: { keys } })`. Held so the
    * DRIVEN path can redact them too — a request body the daemon captures from the network stack
@@ -86,6 +92,8 @@ export class Session {
   /** Which shell the page reported (PAGE_HEALTH). Undefined until the first report lands. */
   #runtime: PageRuntime | undefined;
   #engine: string | undefined;
+  /** Which browser the page said it is (chrome/edge/arc/…). Undefined on an SDK too old to report one. */
+  #brand: BrowserBrand | undefined;
   #focused = true;
   /** Liveness: wall-clock of the last AGENT command (distinct from browser chatter / lastSeen). */
   #lastAgentActivityAt: number;
@@ -142,13 +150,24 @@ export class Session {
    * `runtime` is optional so an older SDK (which does not report it) still works — it simply loses
    * the desktop-specific timeout diagnosis rather than breaking.
    */
-  applyHealth(hidden: boolean, focused: boolean, runtime?: string, engine?: string): void {
+  applyHealth(
+    hidden: boolean,
+    focused: boolean,
+    runtime?: string,
+    engine?: string,
+    brand?: BrowserBrand,
+  ): void {
     this.#hidden = hidden;
     this.#focused = focused;
-    if (runtime === 'electron' || runtime === 'tauri' || runtime === 'web') {
+    if (
+      AppRuntime.ELECTRON === runtime ||
+      AppRuntime.TAURI === runtime ||
+      AppRuntime.WEB === runtime
+    ) {
       this.#runtime = runtime;
     }
     if (engine !== undefined) this.#engine = engine;
+    if (brand !== undefined) this.#brand = brand;
   }
 
   /** The shell (web/electron/tauri) and rendering engine the SDK reported. Undefined on an older SDK. */
@@ -157,6 +176,10 @@ export class Session {
   }
   get engine(): string | undefined {
     return this.#engine;
+  }
+  /** The browser brand the SDK reported. Absent (never guessed) when the page did not say. */
+  get brand(): BrowserBrand | undefined {
+    return this.#brand;
   }
 
   /** Throttled if the tab is hidden OR we have not heard from it recently. */
@@ -181,29 +204,19 @@ export class Session {
   }
 
   info(): SessionInfo {
-    const base: SessionInfo = {
-      sessionId: this.id,
+    return buildSessionInfo({
+      id: this.id,
       url: this.url,
-      ...(this.projectId === undefined ? {} : { projectId: this.projectId }),
+      projectId: this.projectId,
       title: this.title,
       adapters: this.adapters,
       hasCapabilities: this.hasCapabilities,
+      versionSkew: this.versionSkew,
       hidden: this.#hidden,
-      ...this.health(),
-    };
-    if (this.staleMs() > SESSION_LEASE.STALE_AFTER_MS) {
-      base.stale = true;
-      base.cleanup_suggestion =
-        'Call reticle_session{action:"end"} to free this session before starting new work.';
-    }
-    // Surface human bug reports in reticle_sessions (only when > 0, so a clean session adds nothing).
-    const marks = this.#review.pendingCount();
-    if (marks > 0) {
-      base.pendingMarks = marks;
-      const s = marks === 1 ? '' : 's';
-      base.review_suggestion = `The human flagged ${String(marks)} issue${s} on this tab — call reticle_session{action:"review"} to see and fix ${marks === 1 ? 'it' : 'them'}.`;
-    }
-    return base;
+      health: () => this.health(),
+      staleMs: () => this.staleMs(),
+      pendingMarkCount: () => this.#review.pendingCount(),
+    });
   }
 
   /** Wall-clock age of the session in milliseconds. */
@@ -215,7 +228,13 @@ export class Session {
   pushEvent(event: ReticleEvent, byteSize?: number): void {
     if (event.type === EventType.PAGE_HEALTH) {
       const r = readHealthEvent(event.data);
-      this.applyHealth(r.hidden ?? this.#hidden, r.focused ?? this.#focused, r.runtime, r.engine);
+      this.applyHealth(
+        r.hidden ?? this.#hidden,
+        r.focused ?? this.#focused,
+        r.runtime,
+        r.engine,
+        r.brand,
+      );
     }
     // The in-page half of Reticle reporting its own failure — recorded like a tool error
     // (fingerprinted, variables stripped) so a broken observer is as visible as a broken tool.
@@ -238,7 +257,7 @@ export class Session {
       // pushState/replaceState/popstate; without this the URL stays frozen at the hello value, and
       // URL-based CDP correlation (real input) silently breaks after the first client-side nav.
       const to = event.data['to'];
-      if (typeof to === 'string' && to.length > 0) this.url = to;
+      if ('string' === typeof to && to.length > 0) this.url = to;
     }
     const t = this.elapsed();
     const stamped: ReticleEvent = { ...event, t, sessionId: this.id };
@@ -261,6 +280,33 @@ export class Session {
   recordActedRef(ref: string): void {
     this.#observed.recordActedRef(ref);
   }
+  actedLabels(): ReadonlySet<string> {
+    return this.#observed.actedLabels();
+  }
+
+  /**
+   * Derive the snapshot-shaped label (`button "Deploy"`) from an act reply and remember it.
+   *
+   * Same shape the interactive snapshot emits, so coverage can match a control the agent drove
+   * against the same control after a re-render gave it a different ref.
+   */
+  private recordActedLabelFrom(result: CommandResult): void {
+    const payload = result.result;
+    if (typeof payload !== 'object' || null === payload) return;
+    const record = payload as Record<string, unknown>;
+    // The TESTID first: it is the strongest identity a control has and it survives any re-render.
+    // Coverage previously matched only on `role "name"`, so a control with a testid but no accessible
+    // name — or on a stack where the act reply carried neither — was unrecognisable after a
+    // re-render, and coverage read `exercised: 0` however much work had been done.
+    const testid = record['testid'];
+    if ('string' === typeof testid && testid.length > 0) this.#observed.recordActedLabel(testid);
+    const role = record['role'];
+    const name = record['name'];
+    if (typeof role !== 'string' || typeof name !== 'string') return;
+    if (0 === role.length || 0 === name.length) return;
+    this.#observed.recordActedLabel(`${role} "${name}"`);
+  }
+
   actedRefs(): ReadonlySet<string> {
     return this.#observed.actedRefs();
   }
@@ -414,7 +460,7 @@ export class Session {
     // still wrong, and it made the number depend on which tool the agent happened to use.
     if (name === ReticleCommand.ACT) {
       const ref = args['ref'];
-      if (typeof ref === 'string') this.recordActedRef(ref);
+      if ('string' === typeof ref) this.recordActedRef(ref);
     }
     const id = this.#pending.nextId(COMMAND_ID_PREFIX);
     const payload = JSON.stringify({
@@ -436,7 +482,16 @@ export class Session {
     );
     this.#socket.send(payload);
     const sentAt = Date.now(); // browser-leg timing; see recordBrowserLatency for why it is split out
-    return awaited.finally(() => recordBrowserLatency(Date.now() - sentAt));
+    // Traced because this is the boundary that decides whether a slow tool call is OUR overhead or
+    // the app taking its time — the split telemetry reports in aggregate, made visible per call.
+    return span('browser.command', { command: name, sessionId: this.id }, () => awaited)
+      .then((result) => {
+        // The label is only knowable from the REPLY — the request carries a ref, and a ref dies with
+        // the next re-render. Recorded here so coverage survives frameworks that replace nodes.
+        if (name === ReticleCommand.ACT) this.recordActedLabelFrom(result);
+        return result;
+      })
+      .finally(() => recordBrowserLatency(Date.now() - sentAt));
   }
 
   handleResult(result: CommandResult): void {
@@ -573,7 +628,7 @@ export class Session {
     // still wrong, and it made the number depend on which tool the agent happened to use.
     if (name === ReticleCommand.ACT) {
       const ref = args['ref'];
-      if (typeof ref === 'string') this.recordActedRef(ref);
+      if ('string' === typeof ref) this.recordActedRef(ref);
     }
     const id = this.#pending.nextId(COMMAND_ID_PREFIX);
     const payload = JSON.stringify({

@@ -2,16 +2,25 @@ import {
   ElementQuerySchema,
   ElementState,
   EventType,
+  PredicateKind,
+  StreamDirection,
+  isDevToolingUrl,
   type ElementQuery,
   type ReticleEvent,
 } from '@reticlehq/core';
 import { z } from 'zod';
+import { describeObserved } from './observed-in-window.js';
 
 export type Predicate =
-  | { kind: 'element'; query: ElementQuery; state?: ElementState; absent?: boolean }
-  | { kind: 'text'; contains: string; visible?: boolean; absent?: boolean }
   | {
-      kind: 'net';
+      kind: typeof PredicateKind.ELEMENT;
+      query: ElementQuery;
+      state?: ElementState;
+      absent?: boolean;
+    }
+  | { kind: typeof PredicateKind.TEXT; contains: string; visible?: boolean; absent?: boolean }
+  | {
+      kind: typeof PredicateKind.NET;
       method?: string;
       urlContains?: string;
       status?: number;
@@ -20,76 +29,166 @@ export type Predicate =
       since?: number;
       count?: number;
     }
-  | { kind: 'route'; pathname?: string; contains?: string }
-  | { kind: 'console'; level?: string; absent?: boolean; since?: number }
-  | { kind: 'animation'; name?: string; target?: string; completed?: boolean }
-  | { kind: 'signal'; name?: string; dataMatches?: Record<string, unknown> }
-  | { kind: 'state'; store?: string; path: string; equals?: unknown }
-  | { kind: 'settled'; quietMs?: number }
-  | { kind: 'allOf'; predicates: Predicate[] }
-  | { kind: 'anyOf'; predicates: Predicate[] }
-  | { kind: 'not'; predicate: Predicate };
+  | { kind: typeof PredicateKind.ROUTE; pathname?: string; contains?: string; since?: number }
+  | { kind: typeof PredicateKind.CONSOLE; level?: string; absent?: boolean; since?: number }
+  | {
+      kind: typeof PredicateKind.ANIMATION;
+      name?: string;
+      target?: string;
+      completed?: boolean;
+      since?: number;
+    }
+  | {
+      kind: typeof PredicateKind.SIGNAL;
+      name?: string;
+      dataMatches?: Record<string, unknown>;
+      since?: number;
+    }
+  | { kind: typeof PredicateKind.STATE; store?: string; path: string; equals?: unknown }
+  | { kind: typeof PredicateKind.SETTLED; quietMs?: number }
+  | { kind: typeof PredicateKind.ALL_OF; predicates: Predicate[] }
+  | { kind: typeof PredicateKind.ANY_OF; predicates: Predicate[] }
+  | { kind: typeof PredicateKind.NOT; predicate: Predicate };
 
+/**
+ * Spellings an agent plausibly reaches for, mapped to the real field.
+ *
+ * `route` spells its field `pathname` while `state`, in the same union, spells its `path`. Every one
+ * of these was silently DROPPED before, and because these kinds have all-optional fields, dropping
+ * the only key supplied left a predicate that asserts nothing and passes on anything.
+ */
+const PREDICATE_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  [PredicateKind.ROUTE]: { path: 'pathname' },
+  [PredicateKind.NET]: { url: 'urlContains' },
+  [PredicateKind.SIGNAL]: { data: 'dataMatches' },
+};
+
+/** Rename known aliases before parse; an explicit canonical key always wins. */
+function applyPredicateAliases(input: unknown): unknown {
+  if (typeof input !== 'object' || null === input || Array.isArray(input)) return input;
+  const obj = input as Record<string, unknown>;
+  const aliases = PREDICATE_ALIASES['string' === typeof obj['kind'] ? obj['kind'] : ''];
+  if (aliases === undefined) return input;
+  const out = { ...obj };
+  for (const [from, to] of Object.entries(aliases)) {
+    if (out[from] === undefined) continue;
+    if (out[to] === undefined) out[to] = out[from];
+    delete out[from];
+  }
+  return out;
+}
+
+/**
+ * Strict on every branch. A key that is nobody's spelling is now a schema error naming it, instead of
+ * a stripped field and a green — see predicate-strict.test.ts for the MCP session that found this.
+ */
 export const PredicateSchema = z.lazy(() =>
-  z.discriminatedUnion('kind', [
-    z.object({
-      kind: z.literal('element'),
-      query: ElementQuerySchema,
-      state: z.nativeEnum(ElementState).optional(),
-      absent: z.boolean().optional(),
-    }),
-    z.object({
-      kind: z.literal('text'),
-      contains: z.string(),
-      visible: z.boolean().optional(),
-      absent: z.boolean().optional(),
-    }),
-    z.object({
-      kind: z.literal('net'),
-      method: z.string().optional(),
-      urlContains: z.string().optional(),
-      status: z.number().optional(),
-      ok: z.boolean().optional(),
-      since: z.number().optional(),
-      count: z.number().int().nonnegative().optional(),
-    }),
-    z.object({
-      kind: z.literal('route'),
-      pathname: z.string().optional(),
-      contains: z.string().optional(),
-    }),
-    z.object({
-      kind: z.literal('console'),
-      level: z.string().optional(),
-      absent: z.boolean().optional(),
-      since: z.number().optional(),
-    }),
-    z.object({
-      kind: z.literal('animation'),
-      name: z.string().optional(),
-      target: z.string().optional(),
-      completed: z.boolean().optional(),
-    }),
-    z.object({
-      kind: z.literal('signal'),
-      name: z.string().optional(),
-      dataMatches: z.record(z.unknown()).optional(),
-    }),
-    z.object({
-      kind: z.literal('state'),
-      store: z.string().optional(),
-      path: z.string(),
-      equals: z.unknown().optional(),
-    }),
-    z.object({ kind: z.literal('settled'), quietMs: z.number().positive().optional() }),
-    z.object({ kind: z.literal('allOf'), predicates: z.array(PredicateSchema) }),
-    z.object({ kind: z.literal('anyOf'), predicates: z.array(PredicateSchema) }),
-    z.object({ kind: z.literal('not'), predicate: PredicateSchema }),
-  ]),
+  z.preprocess(
+    applyPredicateAliases,
+    z.discriminatedUnion('kind', [
+      z
+        .object({
+          kind: z.literal(PredicateKind.ELEMENT),
+          query: ElementQuerySchema,
+          state: z.nativeEnum(ElementState).optional(),
+          absent: z.boolean().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.TEXT),
+          contains: z.string(),
+          visible: z.boolean().optional(),
+          absent: z.boolean().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.NET),
+          method: z.string().optional(),
+          urlContains: z.string().optional(),
+          status: z.number().optional(),
+          ok: z.boolean().optional(),
+          since: z.number().optional(),
+          count: z.number().int().nonnegative().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.ROUTE),
+          pathname: z.string().optional(),
+          contains: z.string().optional(),
+          since: z.number().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.CONSOLE),
+          level: z.string().optional(),
+          absent: z.boolean().optional(),
+          since: z.number().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.ANIMATION),
+          name: z.string().optional(),
+          target: z.string().optional(),
+          completed: z.boolean().optional(),
+          since: z.number().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.SIGNAL),
+          name: z.string().optional(),
+          dataMatches: z.record(z.unknown()).optional(),
+          since: z.number().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.STATE),
+          store: z.string().optional(),
+          path: z.string(),
+          equals: z.unknown().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.SETTLED),
+          quietMs: z.number().positive().optional(),
+        })
+        .strict(),
+      z
+        .object({ kind: z.literal(PredicateKind.ALL_OF), predicates: z.array(PredicateSchema) })
+        .strict(),
+      z
+        .object({ kind: z.literal(PredicateKind.ANY_OF), predicates: z.array(PredicateSchema) })
+        .strict(),
+      z.object({ kind: z.literal(PredicateKind.NOT), predicate: PredicateSchema }).strict(),
+    ]),
+  ),
 ) as unknown as z.ZodType<Predicate>;
 
 export interface EvalResult {
   pass: boolean;
+  /**
+   * For a TIME-based failure: how long until this predicate could first become true, if nothing else
+   * changes. Purely a scheduling hint for `waitForPredicate` — it replaces a blind poll tick with one
+   * timed to the moment that matters, and never decides anything. Absent when the wait is on an
+   * external event (a request in flight settles when the server answers, not on a clock).
+   */
+  retryAfterMs?: number;
+  /**
+   * Set when the assertion could not be EVALUATED — the call was under-specified or there was
+   * nothing instrumented to read — rather than evaluated and found false. Carries the sentence that
+   * names what is missing.
+   *
+   * `pass` stays false because nothing was proven, but a false that nobody could have made true is
+   * not a defect in the user's app, and reporting it as one puts agent mistakes into the bug count.
+   */
+  inconclusive?: string;
   evidence?: unknown;
   failureReason?: string;
   /**
@@ -110,10 +209,10 @@ export interface EvalResult {
 }
 
 function str(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+  return 'string' === typeof value ? value : undefined;
 }
 function num(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
+  return 'number' === typeof value ? value : undefined;
 }
 
 /**
@@ -121,19 +220,19 @@ function num(value: unknown): number | undefined {
  * `{$gte,$lte,$gt,$lt}` (numbers), `{$contains}` (array membership or substring), `{$length}`.
  */
 export function matchValue(got: unknown, want: unknown): boolean {
-  if (want === '*') return got !== undefined;
+  if ('*' === want) return got !== undefined;
   // An object is an OPERATOR container only if it actually carries a `$`-prefixed operator. An empty
   // `{}` (or an object with no `$` key) used to enter this branch, iterate zero recognized operators,
   // and `return true` — so `equals: {}` / `dataMatches: {status: {}}` was a green assertion that
   // passed against ANYTHING, undefined included: the exact false green the oracle exists to catch.
   // Without an operator it is a literal to compare, and falls through to strict equality below.
   const ops =
-    typeof want === 'object' && want !== null && !Array.isArray(want)
+    'object' === typeof want && want !== null && !Array.isArray(want)
       ? Object.entries(want as Record<string, unknown>)
       : undefined;
   if (ops !== undefined && ops.some(([op]) => op.startsWith('$'))) {
     for (const [op, val] of ops) {
-      const n = typeof got === 'number' ? got : NaN;
+      const n = 'number' === typeof got ? got : NaN;
       switch (op) {
         case '$gte':
           if (!(n >= (val as number))) return false;
@@ -150,14 +249,14 @@ export function matchValue(got: unknown, want: unknown): boolean {
         case '$contains':
           if (Array.isArray(got)) {
             if (!got.includes(val)) return false;
-          } else if (typeof got === 'string') {
+          } else if ('string' === typeof got) {
             if (!got.includes(String(val))) return false;
           } else {
             return false;
           }
           break;
         case '$length':
-          if (!((Array.isArray(got) || typeof got === 'string') && got.length === val)) {
+          if (!((Array.isArray(got) || 'string' === typeof got) && got.length === val)) {
             return false;
           }
           break;
@@ -188,14 +287,14 @@ function dataMatches(actual: Record<string, unknown>, pattern: Record<string, un
  * This exists so an agent can assert on the OUTCOME rather than on a number Reticle invented.
  */
 function callSucceeded(data: Record<string, unknown>): boolean {
-  if (typeof data['ok'] === 'boolean') return data['ok'];
+  if ('boolean' === typeof data['ok']) return data['ok'];
   const status = num(data['status']);
   return status === undefined || status < 400;
 }
 
 export function evalNet(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'net' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.NET }>,
 ): EvalResult {
   const since = p.since ?? 0;
   const matches = events.filter((e) => {
@@ -231,7 +330,14 @@ export function evalNet(
     : {
         pass: false,
         failureReason: `no network call matched ${JSON.stringify(p)}`,
-        observed: 'no matching network call in the window',
+        // Same reasoning as the signal miss: "no matching call" cannot be told apart from "the app
+        // made no calls at all", and those need different fixes.
+        observed: describeObserved(
+          'calls',
+          events
+            .filter((e) => e.type === EventType.NET_REQUEST)
+            .map((e) => `${str(e.data['method']) ?? 'GET'} ${str(e.data['url']) ?? ''}`),
+        ),
         expected: `at least one call matching ${JSON.stringify(p)}`,
         assertion: 'net.present',
       };
@@ -239,7 +345,7 @@ export function evalNet(
 
 export function evalRoute(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'route' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.ROUTE }>,
 ): EvalResult {
   const routes = events.filter((e) => e.type === EventType.ROUTE_CHANGE);
   const last = routes.at(-1);
@@ -289,7 +395,7 @@ const CONSOLE_LEVEL_TYPE: Readonly<Record<string, EventType>> = {
 
 export function evalConsole(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'console' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.CONSOLE }>,
 ): EvalResult {
   const since = p.since ?? 0;
   // Reticle only instruments console.log/warn/error. A level outside that set is never captured,
@@ -315,16 +421,16 @@ export function evalConsole(
         e.type === EventType.ERROR_UNCAUGHT
       );
     }
-    if (p.level === 'error') return isErr;
+    if ('error' === p.level) return isErr;
     return e.type === CONSOLE_LEVEL_TYPE[p.level];
   });
-  if (p.absent === true) {
-    return matches.length === 0
+  if (true === p.absent) {
+    return 0 === matches.length
       ? { pass: true, evidence: { absent: true } }
       : {
           pass: false,
           failureReason: `expected no ${p.level ?? 'console'} entries but found ${String(matches.length)}`,
-          observed: `${String(matches.length)} ${p.level ?? 'console'} entr${matches.length === 1 ? 'y' : 'ies'}`,
+          observed: `${String(matches.length)} ${p.level ?? 'console'} entr${1 === matches.length ? 'y' : 'ies'}`,
           expected: `no ${p.level ?? 'console'} entries`,
           assertion: 'console.absent',
           evidence: matches.map((e) => e.data),
@@ -343,9 +449,9 @@ export function evalConsole(
 
 export function evalAnimation(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'animation' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.ANIMATION }>,
 ): EvalResult {
-  const wantType = p.completed === true ? EventType.ANIM_END : EventType.ANIM_START;
+  const wantType = true === p.completed ? EventType.ANIM_END : EventType.ANIM_START;
   const hit = events.find((e) => {
     if (e.type !== wantType) return false;
     if (p.name !== undefined && str(e.data['name']) !== p.name) return false;
@@ -365,7 +471,7 @@ export function evalAnimation(
 
 export function evalSignal(
   events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'signal' }>,
+  p: Extract<Predicate, { kind: typeof PredicateKind.SIGNAL }>,
 ): EvalResult {
   const hit = events.find((e) => {
     if (e.type !== EventType.SIGNAL) return false;
@@ -394,7 +500,12 @@ export function evalSignal(
     observed:
       sameName.length > 0
         ? `signal '${p.name ?? '(any)'}' fired ${String(sameName.length)}x, payload: ${JSON.stringify(sameName[0])}`
-        : `signal '${p.name ?? '(any)'}' never fired in the window`,
+        : // Name what DID fire: a typo'd signal name and a genuinely dead action produce the same
+          // sentence otherwise, and the agent cannot tell them apart. See observed-in-window.ts.
+          `signal '${p.name ?? '(any)'}' never fired — ${describeObserved(
+            'signals',
+            events.filter((e) => e.type === EventType.SIGNAL).map((e) => str(e.data['name']) ?? ''),
+          )}`,
     expected:
       p.dataMatches === undefined
         ? `signal '${p.name ?? '(any)'}' to fire`
@@ -432,6 +543,13 @@ const SETTLE_ACTIVITY: ReadonlySet<EventType> = new Set([
   EventType.DOM_ATTR,
 ]);
 
+/** The three net-shaped event types a URL can be read off — the only ones dev tooling can produce. */
+const NET_TYPES: ReadonlySet<EventType> = new Set([
+  EventType.NET_PENDING,
+  EventType.NET_REQUEST,
+  EventType.NET_STREAM,
+]);
+
 /** Default quiet window — enough to absorb a render+xhr settle without waiting on slow polls. */
 const DEFAULT_QUIET_MS = 500;
 
@@ -442,11 +560,25 @@ const DEFAULT_QUIET_MS = 500;
  * poll interval is what eventually flips this to pass once activity stops.
  */
 export function evalSettled(
-  events: ReticleEvent[],
-  p: Extract<Predicate, { kind: 'settled' }>,
+  allEvents: ReticleEvent[],
+  p: Extract<Predicate, { kind: typeof PredicateKind.SETTLED }>,
   now: number,
 ): EvalResult {
   const quietMs = p.quietMs ?? DEFAULT_QUIET_MS;
+
+  // Dev-tooling traffic is the framework talking about ITSELF (see DevToolingChannel) and says
+  // nothing about whether the app finished its work — but it was holding settle open. Dropped from
+  // both halves of the calculation below (in-flight AND the quiet timer) and DISCLOSED on the
+  // evidence, never silently swallowed.
+  const ignoredDevTooling: string[] = [];
+  const events = allEvents.filter((e) => {
+    if (!NET_TYPES.has(e.type)) return true;
+    const url = str(e.data['url']);
+    if (!isDevToolingUrl(url)) return true;
+    if (url !== undefined && !ignoredDevTooling.includes(url)) ignoredDevTooling.push(url);
+    return false;
+  });
+  const disclosure = 0 === ignoredDevTooling.length ? {} : { ignoredDevTooling };
 
   // A request that STARTED (NET_PENDING) but never completed (NET_REQUEST with the same id) is
   // still in flight — the page is NOT settled no matter how quiet the DOM has gone. Without this,
@@ -486,16 +618,16 @@ export function evalSettled(
     const id = str(e.data['id']);
     if (id === undefined) continue;
     const direction = str(e.data['direction']);
-    if (direction === 'open') openStreams.add(id);
-    else if (direction === 'close') openStreams.delete(id);
+    if (StreamDirection.OPEN === direction) openStreams.add(id);
+    else if (StreamDirection.CLOSE === direction) openStreams.delete(id);
   }
   const streaming = openStreams.size;
 
   if (inFlight + streaming > 0) {
     const what =
-      streaming === 0
+      0 === streaming
         ? `${String(inFlight)} request(s) still in flight`
-        : inFlight === 0
+        : 0 === inFlight
           ? `${String(streaming)} response body(ies) still streaming`
           : `${String(inFlight)} request(s) in flight and ${String(streaming)} response body(ies) still streaming`;
     return {
@@ -504,7 +636,12 @@ export function evalSettled(
       observed: what,
       expected: 'no requests in flight and no response bodies still streaming',
       assertion: 'settled.in-flight',
-      evidence: { settled: false, inFlight, ...(streaming > 0 ? { streaming } : {}) },
+      evidence: {
+        settled: false,
+        inFlight,
+        ...(streaming > 0 ? { streaming } : {}),
+        ...disclosure,
+      },
     };
   }
 
@@ -519,12 +656,15 @@ export function evalSettled(
   if (lastT < 0) {
     return {
       pass: true,
-      evidence: { settled: true, quietForMs: null, note: 'no activity to settle' },
+      evidence: { settled: true, quietForMs: null, note: 'no activity to settle', ...disclosure },
     };
   }
   const quietForMs = now - lastT;
   if (quietForMs >= quietMs) {
-    return { pass: true, evidence: { settled: true, quietForMs, lastActivity: lastType } };
+    return {
+      pass: true,
+      evidence: { settled: true, quietForMs, lastActivity: lastType, ...disclosure },
+    };
   }
   return {
     pass: false,
@@ -532,6 +672,11 @@ export function evalSettled(
     observed: `last activity was ${String(lastType)}, ${String(quietForMs)}ms ago`,
     expected: `${String(quietMs)}ms of quiet`,
     assertion: 'settled.quiet',
-    evidence: { quietForMs, lastActivity: lastType },
+    evidence: { quietForMs, lastActivity: lastType, ...disclosure },
+    // The one failure in this file that knows exactly when it could stop being one: if nothing else
+    // happens, the window closes in this many ms. A waiter that re-checks THEN instead of on its next
+    // blind tick stops paying up to a full poll interval on the hottest call in the product. Only a
+    // hint — the predicate is still evaluated at that moment, and can still fail.
+    retryAfterMs: quietMs - quietForMs,
   };
 }

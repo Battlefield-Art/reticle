@@ -61,10 +61,20 @@ export function describeParam(name: string, value: unknown): string {
   return `${name}:${allowed.has(value) ? value : OTHER_VALUE}`;
 }
 
+/**
+ * Parameters that carry no information about how the tool is USED, and so are not counted.
+ *
+ * `sessionId` is accepted by nearly every tool and passed on nearly every call, so counting it
+ * produced a row per tool saying only "the agent addressed a session" — in one real day's export it
+ * was a third of the toolParams block. This histogram exists to answer "is anyone using the argument
+ * we shipped last release", and a parameter every call carries can never answer it.
+ */
+const UNINFORMATIVE_PARAMS: ReadonlySet<string> = new Set(['sessionId']);
+
 /** Every parameter an agent actually passed to one tool call, reduced to names (+ safe enums). */
 export function describeToolParams(args: Record<string, unknown>): string[] {
   return Object.keys(args)
-    .filter((key) => args[key] !== undefined)
+    .filter((key) => args[key] !== undefined && !UNINFORMATIVE_PARAMS.has(key))
     .map((key) => describeParam(key, args[key]))
     .sort();
 }

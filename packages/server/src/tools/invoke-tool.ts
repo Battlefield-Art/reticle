@@ -1,14 +1,18 @@
 import { healthEnvelope } from '../session/session-health.js';
-import { TelemetryActor, TelemetryEventKind } from '@reticlehq/core';
+import { type BrowserBrand, TelemetryActor, TelemetryEventKind } from '@reticlehq/core';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
 import { getTelemetry } from '../telemetry/telemetry.js';
-import { VERIFICATION_TOOLS } from './feedback-tools.js';
 import { takeUpdateNudge } from '../update/update-nudge.js';
+import { takeVersionSkew } from '../version/version-nudge.js';
+import { noteToolCall } from '../daemon/daemon-usefulness.js';
 import { bugsInResult } from '../telemetry/bug-found.js';
+import { verificationOf } from '../telemetry/verification-of.js';
 import { asString } from './tools-helpers.js';
 import { ReticleTool } from './tool-names.js';
 import { takeFeedbackPrompt } from './feedback-tools.js';
+import { takeFeedbackUndelivered } from '../telemetry/feedback-delivery.js';
 import type { Session } from '../session/session.js';
+import { span } from '../trace.js';
 import type { ToolDef, ToolDeps } from './tools.js';
 
 /**
@@ -17,6 +21,17 @@ import type { ToolDef, ToolDeps } from './tools.js';
  * can never return a healthy-looking result from any of these. `runTool` is the single choke point
  * (mcp.ts + tool-invoker.ts) that splices health on; the guard test asserts the set is exhaustive.
  */
+/**
+ * Tools that DRIVE the page. An action with no verdict after it is the signature of the loop
+ * breaking mid-task — see `abandonedActions`. `act_and_wait` is one of these AND a verification, so
+ * it settles its own action, which is exactly right: it is the tool that does both.
+ */
+const ACTION_TOOLS: ReadonlySet<string> = new Set([
+  ReticleTool.ACT,
+  ReticleTool.ACT_SEQUENCE,
+  ReticleTool.ACT_AND_WAIT,
+]);
+
 export const SESSION_BOUND_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.SNAPSHOT,
   ReticleTool.QUERY,
@@ -77,7 +92,7 @@ export const SESSION_EXEMPT_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return 'object' === typeof value && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -85,40 +100,24 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *
  * Read off the RESULT here rather than emitted from `decideVerified`, which is where the verdict is
  * actually decided: that function is pure, and the repo's rules keep clocks, IO and side effects out
- * of pure logic for good reason. Reading the result also means all four verification tools are covered
- * by one site instead of four handler edits, and a fifth is covered the moment it joins the set.
+ * of pure logic for good reason. Reading the result also means all the verification tools are covered
+ * by one site instead of N handler edits, and the next one is covered the moment it joins the set.
  *
- * `falseGreenCaught` is the one that matters: the assertion PASSED and Reticle still refused to call
- * it verified. That is the product's entire thesis reduced to a boolean, and it is the number worth
- * putting in front of an investor — not "tools were called" but "this many greens were caught lying".
+ * The RULE itself lives in verification-of.ts, because getting it wrong is silent and it feeds the
+ * one number shown to investors — see that file for the two ways it was wrong.
  */
 function recordVerification(
   toolName: string,
   result: Record<string, unknown>,
   durationMs: number,
+  brand: BrowserBrand | undefined,
 ): void {
-  if (!VERIFICATION_TOOLS.has(toolName)) return;
-  const verified = typeof result['verified'] === 'string' ? result['verified'] : undefined;
-  // flow_verify reports `status: pass|fail`; assert reports a boolean `pass`. Accept either shape so
-  // the whole family is covered without normalizing four tools' contracts for a metric's convenience.
-  const passed =
-    typeof result['pass'] === 'boolean'
-      ? result['pass']
-      : result['status'] === 'pass'
-        ? true
-        : undefined;
-  if (verified === undefined && passed === undefined) return; // not a verdict-bearing result
-  const metrics = getSessionMetrics();
-  metrics.recordVerification();
+  const verification = verificationOf(toolName, result, durationMs, brand);
+  if (verification === undefined) return;
+  getSessionMetrics().recordVerification();
   void getTelemetry().emit(TelemetryEventKind.VERIFICATION_COMPLETED, {
     actor: TelemetryActor.AGENT,
-    verification: {
-      via: toolName,
-      verified: verified ?? (passed === true ? 'yes' : 'no'),
-      passed: passed ?? verified === 'yes',
-      falseGreenCaught: passed === true && verified === 'no',
-      durationMs,
-    },
+    verification,
   });
 }
 
@@ -131,7 +130,7 @@ function recordVerification(
  */
 function reportBugsFound(toolName: string, result: Record<string, unknown>): void {
   const bugs = bugsInResult(toolName, result);
-  if (bugs.length === 0) return;
+  if (0 === bugs.length) return;
   const metrics = getSessionMetrics();
   for (const bug of bugs) {
     // `recordBug` answers whether this kind is new to the session, which is the only thing that
@@ -165,6 +164,11 @@ export async function runTool(
   // Started/settled as a pair rather than a bare counter: several agents can be inside runTool at
   // once, so a single "last start" field would attribute one tool's duration to another. The returned
   // closure carries this call's own identity, which is also what makes peak-concurrency measurable.
+  // A daemon that has served even one tool call is doing a job for somebody; see daemon-usefulness.
+  noteToolCall();
+  // An ACTION is what gets abandoned. Counted here, against verifications, so "the agent drove the
+  // page and then wandered off" becomes a number instead of an impression.
+  if (ACTION_TOOLS.has(tool.name)) getSessionMetrics().recordAction();
   const settleTiming = getSessionMetrics().startToolCall(tool.name, args);
   const startedAt = Date.now();
   const rawSessionId = asString(args['sessionId']);
@@ -189,7 +193,12 @@ export async function runTool(
 
   let raw: unknown;
   try {
-    raw = await tool.handler(deps, args);
+    // The one dispatch point every tool call passes through, so it is where the trace's root span
+    // belongs: with RETICLE_TRACE on, every stage that runs underneath inherits this call's id and
+    // nests under it. Free when off — see trace.ts.
+    raw = await span('tool.handler', { tool: tool.name, session: session?.id }, () =>
+      tool.handler(deps, args),
+    );
   } finally {
     // In a `finally` so a THROWN call still settles: otherwise every failing tool would leak a
     // concurrency slot and peakConcurrentTools would climb forever on an unhealthy session.
@@ -200,7 +209,10 @@ export async function runTool(
   // session-bound early return, because two of the four verification tools (flow_verify,
   // verify_change) are session-EXEMPT and would otherwise never carry it.
   if (isPlainObject(raw)) {
-    recordVerification(tool.name, raw, Date.now() - startedAt);
+    // The brand comes from the session's own PAGE_HEALTH report, so it is present for the four
+    // session-bound verification tools and absent for flow_verify (session-exempt) — which replays
+    // into a browser Reticle launched, where `browser` already says what happened.
+    recordVerification(tool.name, raw, Date.now() - startedAt, session?.brand);
     reportBugsFound(tool.name, raw);
   }
   const prompt = isPlainObject(raw) ? takeFeedbackPrompt(tool.name) : undefined;
@@ -208,13 +220,29 @@ export async function runTool(
   // and ASK for is something it will never ask for. Spliced on ANY tool result, not just a
   // verification, because an out-of-date install is worth mentioning whatever the agent is doing.
   const update = isPlainObject(raw) ? takeUpdateNudge() : undefined;
+  // Same one-shot channel, for the same reason. Skew was only ever reported in
+  // reticle_sessions.versionSkew and a CLI log line — two places an agent driving a flow never
+  // looks — so it could work a whole session against a mismatched pair and never learn the one fact
+  // that explains the behaviour. It rides out here on whatever tool it happens to be calling.
+  const skew = isPlainObject(raw) ? takeVersionSkew() : undefined;
+  // A feedback report that was accepted and then failed to send. Same one-shot channel, because the
+  // reporter is the only person who can act on it and they are not reading the daemon log — and a
+  // report announced as accepted and then silently lost is the failure the awaited send existed to
+  // prevent. See feedback-delivery.ts.
+  const undelivered = isPlainObject(raw) ? takeFeedbackUndelivered() : undefined;
   const result =
-    prompt === undefined && update === undefined
+    prompt === undefined && update === undefined && skew === undefined && undelivered === undefined
       ? raw
       : {
           ...(raw as object),
           ...(prompt !== undefined ? { feedback_prompt: prompt } : {}),
           ...(update !== undefined ? { update_available: update } : {}),
+          ...(skew !== undefined ? { version_skew: skew } : {}),
+          ...(undelivered !== undefined
+            ? {
+                feedback_undelivered: `your earlier report did NOT send: ${undelivered}. Tell the human what you found so it is not lost.`,
+              }
+            : {}),
         };
   if (!bound || !isPlainObject(result)) return result;
   // Reuse the session resolved above so the health envelope describes the SAME session the handler

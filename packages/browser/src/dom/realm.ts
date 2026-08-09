@@ -20,11 +20,11 @@ interface Realm {
 
 /** The constructor named `name` in the realm that owns `node`, or undefined if there isn't one. */
 function ctorIn(node: unknown, name: string): unknown {
-  if (node === null || typeof node !== 'object') return undefined;
+  if (null === node || typeof node !== 'object') return undefined;
   // A Document owns itself; every other node reports an ownerDocument.
   const doc = (node as Node).ownerDocument ?? (node as Node);
   const view: unknown = (doc as Document).defaultView;
-  if (view === null || view === undefined) return undefined;
+  if (null === view || view === undefined) return undefined;
   return (view as unknown as Realm)[name];
 }
 
@@ -36,62 +36,62 @@ function ctorIn(node: unknown, name: string): unknown {
  */
 function isIn<T>(node: unknown, name: string, ambient: unknown): node is T {
   const ctor = ctorIn(node, name) ?? ambient;
-  return typeof ctor === 'function' && node instanceof (ctor as new () => unknown);
+  return 'function' === typeof ctor && node instanceof (ctor as new () => unknown);
 }
 
 export const isElement = (n: unknown): n is Element =>
-  isIn<Element>(n, 'Element', typeof Element === 'undefined' ? undefined : Element);
+  isIn<Element>(n, 'Element', 'undefined' === typeof Element ? undefined : Element);
 
 export const isImage = (n: unknown): n is HTMLImageElement =>
   isIn<HTMLImageElement>(
     n,
     'HTMLImageElement',
-    typeof HTMLImageElement === 'undefined' ? undefined : HTMLImageElement,
+    'undefined' === typeof HTMLImageElement ? undefined : HTMLImageElement,
   );
 
 export const isHtmlElement = (n: unknown): n is HTMLElement =>
-  isIn<HTMLElement>(n, 'HTMLElement', typeof HTMLElement === 'undefined' ? undefined : HTMLElement);
+  isIn<HTMLElement>(n, 'HTMLElement', 'undefined' === typeof HTMLElement ? undefined : HTMLElement);
 
 export const isInput = (n: unknown): n is HTMLInputElement =>
   isIn<HTMLInputElement>(
     n,
     'HTMLInputElement',
-    typeof HTMLInputElement === 'undefined' ? undefined : HTMLInputElement,
+    'undefined' === typeof HTMLInputElement ? undefined : HTMLInputElement,
   );
 
 export const isTextArea = (n: unknown): n is HTMLTextAreaElement =>
   isIn<HTMLTextAreaElement>(
     n,
     'HTMLTextAreaElement',
-    typeof HTMLTextAreaElement === 'undefined' ? undefined : HTMLTextAreaElement,
+    'undefined' === typeof HTMLTextAreaElement ? undefined : HTMLTextAreaElement,
   );
 
 export const isSelect = (n: unknown): n is HTMLSelectElement =>
   isIn<HTMLSelectElement>(
     n,
     'HTMLSelectElement',
-    typeof HTMLSelectElement === 'undefined' ? undefined : HTMLSelectElement,
+    'undefined' === typeof HTMLSelectElement ? undefined : HTMLSelectElement,
   );
 
 export const isButton = (n: unknown): n is HTMLButtonElement =>
   isIn<HTMLButtonElement>(
     n,
     'HTMLButtonElement',
-    typeof HTMLButtonElement === 'undefined' ? undefined : HTMLButtonElement,
+    'undefined' === typeof HTMLButtonElement ? undefined : HTMLButtonElement,
   );
 
 export const isForm = (n: unknown): n is HTMLFormElement =>
   isIn<HTMLFormElement>(
     n,
     'HTMLFormElement',
-    typeof HTMLFormElement === 'undefined' ? undefined : HTMLFormElement,
+    'undefined' === typeof HTMLFormElement ? undefined : HTMLFormElement,
   );
 
 export const isFrame = (n: unknown): n is HTMLIFrameElement =>
   isIn<HTMLIFrameElement>(
     n,
     'HTMLIFrameElement',
-    typeof HTMLIFrameElement === 'undefined' ? undefined : HTMLIFrameElement,
+    'undefined' === typeof HTMLIFrameElement ? undefined : HTMLIFrameElement,
   );
 
 /**
@@ -104,5 +104,5 @@ export function valuePrototypeOf(el: Element): object | undefined {
   const ctor = ctorIn(el, name);
   if (typeof ctor !== 'function') return undefined;
   const proto: unknown = (ctor as { prototype?: unknown }).prototype;
-  return typeof proto === 'object' && proto !== null ? proto : undefined;
+  return 'object' === typeof proto && proto !== null ? proto : undefined;
 }

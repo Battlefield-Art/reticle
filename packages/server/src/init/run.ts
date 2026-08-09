@@ -5,7 +5,43 @@
  */
 
 import { dirname, join } from 'node:path';
+import { spanSync } from '../trace.js';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { detect, Framework, type DetectInput } from './detect.js';
+import { wasMcpRegistered } from './mcp-registered.js';
+import { pickAstroHost } from './astro-host.js';
+import { workspaceParents } from './workspace-apps.js';
+import { chooseWorkspaceApp } from './app-choice.js';
+import { isConnectStep } from './plan.js';
+import { CURSOR_RULE_PATH } from './agent-rules.js';
+import { CRA_ENV_PATH } from './cra.js';
+
+/** CRA's bundled entry, in the order create-react-app itself generates them. */
+const CRA_ENTRY_CANDIDATES = ['src/index.tsx', 'src/index.jsx', 'src/index.ts', 'src/index.js'];
+
+function craEntryOf(io: InitIo): { path: string; source: string } | null {
+  for (const path of CRA_ENTRY_CANDIDATES) {
+    const source = io.readFile(path);
+    if (source !== null) return { path, source };
+  }
+  return null;
+}
+
+/**
+ * The daemon's pairing token, for the one stack that cannot read it at build time.
+ *
+ * Every other framework's snippet reads this file in Node when the dev server starts, so the token
+ * is never written into the project. CRA bundles browser code and inlines only REACT_APP_*, so it
+ * has to be materialised into .env.development.local — which CRA's own template gitignores.
+ */
+function readPairingToken(): string {
+  try {
+    return readFileSync(join(homedir(), '.reticle', 'pairing-token'), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
 import {
   DEPS_TARGET,
   MCP_TARGET,
@@ -21,7 +57,7 @@ import { CURSOR_DIR_RELPATH, CURSOR_MCP_RELPATH } from './cursor.js';
 import { deriveProjectId, packageName } from './project-id.js';
 import { VITE_DEV_MODULE_PATH } from './snippets.js';
 import { CLAUDE_COMMAND_PATH, CURSOR_COMMAND_PATH } from './slash-command.js';
-import { SERVER_VERSION } from '../server-version.js';
+import { SERVER_VERSION } from '../version/server-version.js';
 import { InitFailure, reportInitOutcome } from '../telemetry/init-telemetry.js';
 
 /** Lockfile basenames, in package-manager preference order (mirrors detect.ts). */
@@ -120,6 +156,16 @@ const VITE_CONFIG_CANDIDATES = [
   'vite.config.mjs',
   'vite.config.mts',
 ];
+const ASTRO_CONFIG_CANDIDATES = [
+  'astro.config.mjs',
+  'astro.config.js',
+  'astro.config.ts',
+  'astro.config.cjs',
+];
+/** Where a conventional Astro app keeps the layout every page wraps itself in. */
+const ASTRO_LAYOUTS_DIR = 'src/layouts';
+/** Also searched: an app with no layouts directory renders the document straight from a page. */
+const ASTRO_PAGES_DIR = 'src/pages';
 const NEXT_CONFIG_CANDIDATES = [
   'next.config.mjs',
   'next.config.js',
@@ -133,6 +179,11 @@ export interface InitOptions {
   mcp: boolean;
   dryRun: boolean;
   install: boolean;
+  /**
+   * Which app in a monorepo to wire, when several are found. Without it `init` refuses to guess, and
+   * "re-run inside the one you want" is not an instruction a script or an agent can follow.
+   */
+  app?: string;
   /** Set on the recursive call after a workspace redirect, so the search happens at most once. */
   redirected?: boolean;
 }
@@ -171,6 +222,25 @@ interface InitResult {
  * decide whether the install finished. A notice gets its own mark so "steps remaining" can reach zero
  * on a working install that happens to be on an ungated stack.
  */
+/**
+ * A step's status AFTER the run, which is what actually happened to it.
+ *
+ * `report` applies the same downgrade when printing: a step that failed or was skipped is shown as
+ * MANUAL whatever it planned to be. Reading the planned status alone would say a step applied when
+ * the run had already given up on it.
+ */
+function resolvedStatus(
+  plan: { steps: readonly { target: string; status: StepStatus }[] },
+  target: string,
+  failed: ReadonlySet<string>,
+  skipped: ReadonlySet<string>,
+): StepStatus | undefined {
+  const step = plan.steps.find((s) => s.target === target);
+  if (step === undefined) return undefined;
+  if (failed.has(target) || skipped.has(target)) return StepStatus.MANUAL;
+  return step.status;
+}
+
 const STATUS_SYMBOL: Record<StepStatus, string> = {
   [StepStatus.APPLY]: '✓',
   [StepStatus.MANUAL]: '⚠',
@@ -190,7 +260,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const projectId = deriveProjectId(packageName(pkg), options.cwd);
   const rootFiles = new Set(io.rootFiles());
   const detectInput: DetectInput = {
-    pkg: typeof pkg === 'object' && pkg !== null ? pkg : {},
+    pkg: 'object' === typeof pkg && pkg !== null ? pkg : {},
     configFiles: rootFiles,
     // Walk up for the lockfile so a monorepo sub-package picks the workspace's package manager.
     lockfiles: resolveLockfiles(rootFiles, options.cwd, io),
@@ -200,7 +270,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const detection = detect(detectInput);
 
   const vitePath = firstPresent(rootFiles, VITE_CONFIG_CANDIDATES);
-  const viteSource = vitePath === null ? null : io.readFile(vitePath);
+  const viteSource = null === vitePath ? null : io.readFile(vitePath);
   const viteConfig =
     vitePath !== null && viteSource !== null ? { path: vitePath, source: viteSource } : null;
 
@@ -211,18 +281,41 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const existsProbe = claudeExistsProbe();
   const mcpExists = claudeCli ? io.probe(existsProbe.command, existsProbe.args) : false;
 
-  const cursorDir = `${io.homeDir()}/${CURSOR_DIR_RELPATH}`;
-  const cursorConfigPath = `${io.homeDir()}/${CURSOR_MCP_RELPATH}`;
-  const cursorPresent = options.mcp && io.exists(cursorDir);
+  // join(), not a literal '/': this path is checked and WRITTEN on the user's machine, and a
+  // backslash platform silently misses the config it is meant to find.
+  const cursorDir = join(io.homeDir(), CURSOR_DIR_RELPATH);
+  const cursorConfigPath = join(io.homeDir(), CURSOR_MCP_RELPATH);
+  // Cursor is "present" if its global config directory exists OR the project carries a `.cursor/`.
+  // The directory alone missed a real case: Cursor installed with a FRESH profile has not written
+  // ~/.cursor yet, so a user who had it open got no Cursor step and no message about one. A
+  // project-level .cursor/ is unambiguous evidence somebody uses it here.
+  const cursorPresent = options.mcp && (io.exists(cursorDir) || io.exists(CURSOR_DIR_RELPATH));
   const cursorConfig = cursorPresent ? io.readFile(cursorConfigPath) : null;
+
+  const astroPath = firstPresent(rootFiles, ASTRO_CONFIG_CANDIDATES);
+  const astroSource = null === astroPath ? null : io.readFile(astroPath);
+  // Which file owns the DOCUMENT, not how many files sit in a directory. The old rule ("exactly one
+  // .astro in src/layouts") fired on neither real Astro app: one has no layouts directory and
+  // renders from src/pages/index.astro, the other has three files there of which two are partials.
+  // `</body>` is the discriminator — see astro-host.
+  const astroCandidates = [ASTRO_LAYOUTS_DIR, ASTRO_PAGES_DIR].flatMap((dir) =>
+    io
+      .listFiles(dir)
+      .filter((f) => f.endsWith('.astro'))
+      .map((f) => ({ path: `${dir}/${f}`, source: io.readFile(`${dir}/${f}`) }))
+      .filter((c): c is { path: string; source: string } => c.source !== null),
+  );
+  const astroHost = pickAstroHost(astroCandidates);
+  const layoutRelPath = astroHost?.path ?? null;
+  const astroLayoutSource = astroHost?.source ?? null;
 
   const nextConfigFile = firstPresent(rootFiles, NEXT_CONFIG_CANDIDATES);
   // App Router first; a Pages Router app has no layout, and its mount point is pages/_app.
   const layoutPath =
-    (NEXT_LAYOUT_CANDIDATES.find((p) => io.exists(p)) ??
-      NEXT_PAGES_APP_CANDIDATES.find((p) => io.exists(p))) ??
+    NEXT_LAYOUT_CANDIDATES.find((p) => io.exists(p)) ??
+    NEXT_PAGES_APP_CANDIDATES.find((p) => io.exists(p)) ??
     null;
-  const layoutSource = layoutPath === null ? null : io.readFile(layoutPath);
+  const layoutSource = null === layoutPath ? null : io.readFile(layoutPath);
   // Where the component goes depends on WHICH router mounts it: `pages/` routes on presence, so a
   // component there becomes a broken route; `app/` routes on filename, so a sibling is inert.
   const devLocation = reticleDevLocation(layoutPath ?? 'app/layout.tsx', detection.typescript);
@@ -236,8 +329,14 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     cursorConfig,
     cursorConfigPath,
     viteConfig,
+    astroConfig:
+      astroPath !== null && astroSource !== null ? { path: astroPath, source: astroSource } : null,
+    astroLayout:
+      layoutRelPath !== null && astroLayoutSource !== null
+        ? { path: layoutRelPath, source: astroLayoutSource }
+        : null,
     nextConfigFile,
-    nextConfigSource: nextConfigFile === null ? null : io.readFile(nextConfigFile),
+    nextConfigSource: null === nextConfigFile ? null : io.readFile(nextConfigFile),
     nextLayout:
       layoutPath !== null && layoutSource !== null
         ? { path: layoutPath, source: layoutSource }
@@ -250,13 +349,16 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     nextReticleDevImport: devLocation.importSpecifier,
     nextReticleDevExists: io.exists(devLocation.path),
     svelteKitHooksExists: io.exists(SVELTEKIT_HOOKS),
+    craEntry: craEntryOf(io),
+    craEnv: io.readFile(CRA_ENV_PATH),
+    pairingToken: readPairingToken(),
     reticleConfigExists: io.exists('.reticle.json'),
     // Read the agent instruction files so the rule merge stays idempotent across re-runs.
     claudeMdContent: io.readFile('CLAUDE.md'),
     agentsMdContent: io.readFile('AGENTS.md'),
-    cursorRuleExists: io.exists('.cursor/rules/reticle.mdc'),
-    claudeCommandExists: io.exists(CLAUDE_COMMAND_PATH),
-    cursorCommandExists: io.exists(CURSOR_COMMAND_PATH),
+    cursorRuleContent: io.readFile(CURSOR_RULE_PATH),
+    claudeCommandContent: io.readFile(CLAUDE_COMMAND_PATH),
+    cursorCommandContent: io.readFile(CURSOR_COMMAND_PATH),
     options: {
       port: options.port,
       mcp: options.mcp,
@@ -269,13 +371,14 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
 }
 
 /** Where workspace tooling conventionally puts packages. */
-const WORKSPACE_PARENTS = ['apps', 'packages'] as const;
+/** pnpm's workspace declaration, read when present — it is authoritative about where packages live. */
+const PNPM_WORKSPACE = 'pnpm-workspace.yaml';
 /** Deps that mark a directory as a runnable web app even when it has no bundler config file. */
 const APP_DEPS = ['next', 'vite'] as const;
 
 function looksLikeApp(dir: string, io: Pick<InitIo, 'exists' | 'readFile'>): boolean {
   const pkgRaw = io.readFile(`${dir}/${PACKAGE_JSON}`);
-  if (pkgRaw === null) return false;
+  if (null === pkgRaw) return false;
   const configs = [...VITE_CONFIG_CANDIDATES, ...NEXT_CONFIG_CANDIDATES];
   if (configs.some((c) => io.exists(`${dir}/${c}`))) return true;
   // `next.config` is optional in Next, so the dependency list is the other half of the signal.
@@ -292,13 +395,37 @@ function looksLikeApp(dir: string, io: Pick<InitIo, 'exists' | 'readFile'>): boo
  */
 export function findWorkspaceApps(io: Pick<InitIo, 'exists' | 'readFile' | 'listDirs'>): string[] {
   const found: string[] = [];
-  for (const parent of WORKSPACE_PARENTS) {
+  // A workspace DECLARES its packages; `['apps','packages']` was a guess that missed a real repo
+  // with three Next apps at web/, admin/ and space/ — and missing them meant init ran against the
+  // root and reported ✓ for a file Next never compiles. See workspace-apps.
+  const pkgRaw = io.readFile(PACKAGE_JSON);
+  let pkgWorkspaces: unknown;
+  try {
+    const parsed: unknown = null === pkgRaw ? undefined : JSON.parse(pkgRaw);
+    pkgWorkspaces =
+      'object' === typeof parsed && parsed !== null
+        ? (parsed as { workspaces?: unknown }).workspaces
+        : undefined;
+  } catch {
+    pkgWorkspaces = undefined;
+  }
+  const parents = workspaceParents({
+    ...(null === io.readFile(PNPM_WORKSPACE)
+      ? {}
+      : { pnpmWorkspace: io.readFile(PNPM_WORKSPACE) ?? '' }),
+    ...(pkgWorkspaces === undefined ? {} : { pkgWorkspaces }),
+    topLevelDirs: io.listDirs('.'),
+  });
+  // A declared parent can itself BE the app (`workspaces: ["web"]`), so check both the directory and
+  // its children rather than assuming one level of nesting.
+  for (const parent of parents) {
+    if (looksLikeApp(parent, io)) found.push(parent);
     for (const name of io.listDirs(parent)) {
       const dir = `${parent}/${name}`;
       if (looksLikeApp(dir, io)) found.push(dir);
     }
   }
-  return found;
+  return [...new Set(found)];
 }
 
 function restartHint(framework: Framework): string {
@@ -322,14 +449,27 @@ function report(
   dryRun: boolean,
   failed: ReadonlySet<string>,
   skipped: ReadonlySet<string>,
+  degraded: ReadonlyMap<string, string>,
   io: InitIo,
 ): InitResult {
   io.print(dryRun ? 'reticle init (dry run — no files written)' : 'reticle init');
   io.print('');
   let applied = 0;
   let manual = 0;
+  // A ⚠ on a CONNECT step is a guaranteed failure, not a caveat: nothing performs the manual step, so
+  // the app never dials the daemon and every tool answers "no browser session connected". `ok` was
+  // hardcoded true, so a run that could not possibly work reported success.
+  let connectPending = false;
   for (const s of plan.steps) {
     // A side effect that failed to apply is reported as a manual step with its fallback command.
+    const note = degraded.get(s.target);
+    if (note !== undefined) {
+      // Applied, but not the way it was asked for. A NOTICE, not work — the install did happen.
+      io.print(`  [${STATUS_SYMBOL[StepStatus.NOTICE]}] ${s.title} → ${s.target}`);
+      for (const line of note.split('\n')) io.print(`      ${line}`);
+      applied++;
+      continue;
+    }
     const downgraded = failed.has(s.target) || skipped.has(s.target);
     const status = downgraded ? StepStatus.MANUAL : s.status;
     const detail = skipped.has(s.target)
@@ -341,15 +481,25 @@ function report(
     if (status === StepStatus.APPLY) applied++;
     if (status === StepStatus.MANUAL || status === StepStatus.NOTICE) {
       // A notice prints in full like a manual step — it is worth reading — but is NOT counted as work.
-      if (status === StepStatus.MANUAL) manual++;
+      if (status === StepStatus.MANUAL) {
+        manual++;
+        if (isConnectStep(s.title)) connectPending = true;
+      }
       for (const line of detail.split('\n')) io.print(`      ${line}`);
     } else if (detail.length > 0) {
       io.print(`      ${detail}`);
     }
   }
   io.print('');
+  if (connectPending) {
+    io.print(
+      'This app will NOT connect until the ⚠ step above is done by hand — Reticle tools will report ' +
+        '"no browser session connected" until then. Everything else is already in place.',
+    );
+    io.print('');
+  }
   io.print(restartHint(plan.framework));
-  return { ok: true, applied, manual };
+  return { ok: !connectPending, applied, manual };
 }
 
 /**
@@ -361,23 +511,60 @@ function report(
  * MODULE_NOT_FOUND, so the app stops booting *because* Reticle was installed. A skipped step is a
  * message; a half-wired app is a broken project.
  */
-function applyEffects(plan: Plan, io: InitIo): { failed: Set<string>; skipped: Set<string> } {
+function applyEffects(
+  plan: Plan,
+  io: InitIo,
+): { failed: Set<string>; skipped: Set<string>; degraded: Map<string, string> } {
   const failed = new Set<string>();
   const skipped = new Set<string>();
+  const degraded = new Map<string, string>();
   let installFailed = false;
   for (const s of plan.steps) {
     if (s.status !== StepStatus.APPLY) continue;
-    if (installFailed && s.dependsOnInstall === true) {
+    if (installFailed && true === s.dependsOnInstall) {
       skipped.add(s.target);
       continue;
     }
-    if (s.write !== undefined) io.writeFile(s.write.path, s.write.content);
-    if (s.exec !== undefined && !io.exec(s.exec.command, s.exec.args)) {
+    const write = s.write;
+    if (write !== undefined) {
+      spanSync('init.write', { target: s.target, path: write.path }, () => {
+        io.writeFile(write.path, write.content);
+      });
+    }
+    // Bound once so the traced call cannot need a `?? ''` fallback — a default there would turn a
+    // narrowing mistake into an empty command that silently "succeeds".
+    const exec = s.exec;
+    // Per-step, because the interesting part of init's wall-clock is WHICH step spent it: a
+    // package-manager install and a `claude mcp add` are both subprocesses, and one of them being
+    // slow is a completely different problem from the other.
+    if (
+      exec !== undefined &&
+      !spanSync('init.exec', { target: s.target, command: exec.command }, () =>
+        io.exec(exec.command, exec.args),
+      )
+    ) {
+      // A weaker second attempt beats no install at all — but only when it is REPORTED, because the
+      // thing it gives up is the version pin that keeps SDK and daemon in step.
+      //
+      // Traced separately, and it is the reason init can take twice as long as it looks like it
+      // should: this is a SECOND full package-manager run, and until it had its own span 1.6 of
+      // init's 2.3 seconds simply vanished — the span above accounted for the first attempt and
+      // nothing accounted for this one.
+      const retry = s.retry;
+      if (
+        retry !== undefined &&
+        spanSync('init.exec.retry', { target: s.target, command: retry.command }, () =>
+          io.exec(retry.command, retry.args),
+        )
+      ) {
+        degraded.set(s.target, retry.note);
+        continue;
+      }
       failed.add(s.target);
       if (s.target === DEPS_TARGET) installFailed = true;
     }
   }
-  return { failed, skipped };
+  return { failed, skipped, degraded };
 }
 
 /**
@@ -408,22 +595,32 @@ function redirectToWorkspaceApp(
   io: InitIo,
   pkgRaw: string,
 ): InitResult | null {
-  if (options.redirected === true) return null;
+  if (true === options.redirected) return null;
   const pkg: unknown = JSON.parse(pkgRaw);
   const rootFiles = new Set(io.rootFiles());
   const here = detect({
-    pkg: typeof pkg === 'object' && pkg !== null ? pkg : {},
+    pkg: 'object' === typeof pkg && pkg !== null ? pkg : {},
     configFiles: rootFiles,
     lockfiles: new Set(),
   });
   if (here.framework !== Framework.HTML) return null; // this directory IS the app
 
   const apps = findWorkspaceApps(io);
-  const target = apps.length === 1 ? apps[0] : undefined;
+  // An explicitly named app answers the ambiguity. Refusing to guess is right, but "re-run inside the
+  // one you want" is not something a script, a CI step, or an agent that cannot change directory can
+  // act on — so the refusal was a dead end for exactly the callers most likely to hit it.
+  const chosen = chooseWorkspaceApp(options.app, apps);
+  if (!chosen.ok) {
+    io.print(chosen.message);
+    return { ok: false, applied: 0, manual: 1 };
+  }
+  const target = chosen.app ?? (1 === apps.length ? apps[0] : undefined);
   if (target === undefined) {
-    if (apps.length === 0) return null; // not a workspace — fall through to the normal HTML plan
+    if (0 === apps.length) return null; // not a workspace — fall through to the normal HTML plan
     io.print(AMBIGUOUS_HEADER);
     for (const a of apps) io.print(`  ${a}`);
+    io.print('');
+    io.print(`Or name one without changing directory:  reticle init --app ${apps[0] ?? '<dir>'}`);
     return { ok: false, applied: 0, manual: apps.length };
   }
   io.print(`No app in this directory — wiring ${target} instead.`);
@@ -436,7 +633,7 @@ function redirectToWorkspaceApp(
 
 export function runInit(options: InitOptions, io: InitIo): InitResult {
   const pkgRaw = io.readFile(PACKAGE_JSON);
-  if (pkgRaw === null) {
+  if (null === pkgRaw) {
     io.print('No package.json found. Run `reticle init` from your project root.');
     // The onboarding funnel had NO instrumentation, so a setup that died here was indistinguishable
     // from someone who never ran the command — the two failure modes with the most different fixes.
@@ -447,19 +644,23 @@ export function runInit(options: InitOptions, io: InitIo): InitResult {
   const redirected = redirectToWorkspaceApp(options, io, pkgRaw);
   if (redirected !== null) return redirected;
 
-  const plan = buildPlan(gatherPlanInput(options, io, pkgRaw));
+  // Init is the flow a user experiences the wait of personally, and the fixture gate measures it at
+  // 1–6s per app with no explanation of the spread. These three spans split that number into detect
+  // (filesystem probing), plan (pure), and apply (writes + package-manager and CLI subprocesses).
+  const plan = spanSync('init.plan', {}, () => buildPlan(gatherPlanInput(options, io, pkgRaw)));
   const effects = options.dryRun
-    ? { failed: new Set<string>(), skipped: new Set<string>() }
-    : applyEffects(plan, io);
-  const { failed, skipped } = effects;
-  const result = report(plan, options.dryRun, failed, skipped, io);
+    ? { failed: new Set<string>(), skipped: new Set<string>(), degraded: new Map<string, string>() }
+    : spanSync('init.apply', { steps: plan.steps.length }, () => applyEffects(plan, io));
+  const { failed, skipped, degraded } = effects;
+  const result = report(plan, options.dryRun, failed, skipped, degraded, io);
   // A dry run is a preview, not an outcome — reporting it would inflate both success and failure.
   if (!options.dryRun) {
     reportInitOutcome({
       ok: result.ok,
       ...(result.ok ? {} : { reason: classifyInitFailure(failed) }),
       stack: plan.framework,
-      mcpRegistered: !failed.has(MCP_TARGET),
+      // The step's REAL final status, not the absence of a failure — see mcp-registered.
+      mcpRegistered: wasMcpRegistered(resolvedStatus(plan, MCP_TARGET, failed, skipped)),
     });
   }
   return result;

@@ -29,6 +29,19 @@ import { machineSnapshot } from './machine-snapshot.js';
 
 /** Cap the distinct error shapes held in memory — a pathological loop must not grow unbounded. */
 const MAX_ERROR_KINDS = 40;
+/** Distinct tool names whose repeat-runs are tracked. Its own cap: the tool surface, not error shapes. */
+const MAX_REPEAT_TOOLS = 64;
+
+/**
+ * Tool errors that all mean the same thing to a user: the agent asked, and there was no app it could
+ * reach. Three different messages, one experience — "nothing is connected" — and it is the error
+ * that ends most sessions before a single verification happens.
+ *
+ * `multiple sessions connected` belongs here too: the agent could not reach AN app because it could
+ * not tell which one, and the outcome is identical.
+ */
+const NO_SESSION_ERROR =
+  /no browser session connected|no connected session with id|multiple sessions connected/i;
 /** Cap distinct MCP clients recorded; more than a handful on one daemon is already the story. */
 const MAX_CLIENTS = 8;
 /** Bounds on the parameter map. Our own schemas are already finite; these are a belt-and-braces cap. */
@@ -80,6 +93,25 @@ export class SessionMetrics {
    * capped: the kind vocabulary is a bounded enum plus oracle names, not user data.
    */
   readonly #seenBugKinds = new Set<string>();
+  /**
+   * Tool errors meaning "the agent could not reach an app at all" — the single biggest drop-off in
+   * the funnel, and until now reachable only by unpacking `errors[]` in HogQL. 74% of daemons never
+   * call a tool, and of the sessions that made exactly one call, most bounced on this.
+   */
+  #noSessionErrors = 0;
+  /** Longest back-to-back run per tool — a retry loop, which `toolCounts` cannot distinguish. */
+  readonly #repeatRuns = new Map<string, number>();
+  #lastTool: string | undefined;
+  #currentRun = 0;
+  /**
+   * Actions driven since the last verdict — the run that is left hanging if the loop stops here.
+   *
+   * NOT `actions - verifications`. That difference ignores ORDER, so a verdict that drove nothing
+   * (a `flow_verify` over saved flows) silently paid for a genuinely abandoned action elsewhere, and
+   * a session could verify first and act after and look settled. What is abandoned is the trailing
+   * run, which is exactly what the field claims to mean.
+   */
+  #unsettledActions = 0;
   readonly #clients = new Set<string>();
   readonly #startedAt: number;
   readonly #now: () => number;
@@ -132,6 +164,18 @@ export class SessionMetrics {
   }
 
   recordToolCall(tool: string, args?: Record<string, unknown>): void {
+    // A run of the same tool back to back. Five calls to reticle_act is engagement; five in a row
+    // after four failures is an agent stuck, and toolCounts reports both as "5".
+    this.#currentRun = tool === this.#lastTool ? this.#currentRun + 1 : 1;
+    this.#lastTool = tool;
+    if (this.#currentRun > 1) {
+      const best = this.#repeatRuns.get(tool) ?? 0;
+      if (
+        this.#currentRun > best &&
+        (this.#repeatRuns.has(tool) || this.#repeatRuns.size < MAX_REPEAT_TOOLS)
+      )
+        this.#repeatRuns.set(tool, this.#currentRun);
+    }
     this.#toolCalls += 1;
     bump(this.#toolCounts, tool);
     this.#inFlight = tool;
@@ -159,6 +203,7 @@ export class SessionMetrics {
    */
   recordToolError(message: string, tool?: string): void {
     this.#toolErrors += 1;
+    if (NO_SESSION_ERROR.test(message)) this.#noSessionErrors += 1;
     const fingerprint = fingerprintError(message);
     const existing = this.#errorKinds.get(fingerprint);
     if (existing !== undefined) {
@@ -204,8 +249,15 @@ export class SessionMetrics {
     return { breadcrumb: [...this.#breadcrumb], inFlight: this.#inFlight };
   }
 
+  /** One action driven at the page. Settled by the next verdict; see #unsettledActions. */
+  recordAction(): void {
+    this.#unsettledActions += 1;
+  }
+
   recordVerification(): void {
     this.#verifications += 1;
+    // A verdict settles whatever was outstanding, however many actions it took to get there.
+    this.#unsettledActions = 0;
   }
 
   /**
@@ -270,6 +322,12 @@ export class SessionMetrics {
       verifications: this.#verifications,
       bugsFound: this.#bugsFound,
       ...(this.#bugKinds.size > 0 ? { bugKinds: Object.fromEntries(this.#bugKinds) } : {}),
+      ...(this.#noSessionErrors > 0 ? { noSessionErrors: this.#noSessionErrors } : {}),
+      ...(this.#repeatRuns.size > 0
+        ? { consecutiveRepeats: Object.fromEntries(this.#repeatRuns) }
+        : {}),
+      // Absent rather than zero, so the PRESENCE of the field is the signal on a dashboard.
+      ...(this.#unsettledActions > 0 ? { abandonedActions: this.#unsettledActions } : {}),
       ...(this.#toolParams.size > 0
         ? {
             toolParams: Object.fromEntries(
@@ -293,11 +351,11 @@ export class SessionMetrics {
   /** True when nothing at all happened — a flush of an idle daemon is not worth an event. */
   get empty(): boolean {
     return (
-      this.#toolCalls === 0 &&
-      this.#verifications === 0 &&
-      this.#toolErrors === 0 &&
-      this.#bugsFound === 0 &&
-      this.#sdkFailures === 0
+      0 === this.#toolCalls &&
+      0 === this.#verifications &&
+      0 === this.#toolErrors &&
+      0 === this.#bugsFound &&
+      0 === this.#sdkFailures
     );
   }
 
@@ -306,6 +364,11 @@ export class SessionMetrics {
     this.#toolCalls = 0;
     this.#toolErrors = 0;
     this.#verifications = 0;
+    this.#noSessionErrors = 0;
+    this.#repeatRuns.clear();
+    this.#lastTool = undefined;
+    this.#currentRun = 0;
+    this.#unsettledActions = 0;
     this.#toolCounts.clear();
     this.#toolParams.clear();
     this.#errorKinds.clear();
@@ -320,7 +383,10 @@ export class SessionMetrics {
     this.#unknownToolCalls = 0;
     this.#bugsFound = 0;
     this.#bugKinds.clear();
-    this.#seenBugKinds.clear();
+    // #seenBugKinds is deliberately NOT cleared. It is not a window counter — it is the
+    // session-lifetime memory behind `repeat` on bug_found, and zeroing it made the same defect,
+    // found again after a flush, report as a newly distinct one. Sessions run to 11.5 hours in the
+    // data, so that was up to 23 chances to count one defect many times.
   }
 }
 

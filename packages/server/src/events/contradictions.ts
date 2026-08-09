@@ -1,4 +1,10 @@
-import { ContradictionKind, EventType, MUTATING_METHODS, type ReticleEvent } from '@reticlehq/core';
+import {
+  ContradictionKind,
+  EventType,
+  MUTATING_METHODS,
+  isDevToolingUrl,
+  type ReticleEvent,
+} from '@reticlehq/core';
 import { findStaleResponses } from './stale-response.js';
 import { findBodyFailures } from './body-failures.js';
 import { findEchoMismatches } from './echo-mismatch.js';
@@ -61,7 +67,7 @@ function netCall(e: ReticleEvent): NetCall {
     ok:
       e.data['ok'] === undefined && status === undefined
         ? undefined
-        : e.data['ok'] === true || (e.data['ok'] === undefined && (status ?? 0) < 400),
+        : true === e.data['ok'] || (e.data['ok'] === undefined && (status ?? 0) < 400),
   };
 }
 
@@ -149,7 +155,7 @@ function failureAcknowledged(events: readonly ReticleEvent[]): boolean {
     if (e.type !== EventType.STATE_CHANGE) return false;
     const path = asString(e.data['path']) ?? '';
     const value = e.data['value'];
-    return ACKNOWLEDGED.test(path) || (typeof value === 'string' && ACKNOWLEDGED.test(value));
+    return ACKNOWLEDGED.test(path) || ('string' === typeof value && ACKNOWLEDGED.test(value));
   });
 }
 
@@ -185,7 +191,7 @@ function didNothing(
   requests: readonly NetCall[],
   mutatedWithin: number | undefined,
 ): boolean {
-  if (mutatedWithin === undefined) return events.length === 0;
+  if (mutatedWithin === undefined) return 0 === events.length;
   if (mutatedWithin > 0 || requests.length > 0) return false;
   return !events.some(
     (e) => e.type === EventType.ROUTE_CHANGE || e.type === EventType.VISIBLE_SHOWN,
@@ -217,11 +223,44 @@ export interface ContradictionOptions {
   mutatedWithin?: number | undefined;
 }
 
+/** Net-shaped events — the only ones that carry a URL a dev-tooling channel could occupy. */
+const NET_TYPES: ReadonlySet<EventType> = new Set([
+  EventType.NET_PENDING,
+  EventType.NET_REQUEST,
+  EventType.NET_STREAM,
+]);
+
+/**
+ * Split the window into the app's traffic and the dev toolchain's own (see `DevToolingChannel`).
+ *
+ * NOTHING below may judge the toolchain. Reported from a real drive: a correct Next.js navigation
+ * graded `verified: "no"` because the dev overlay was resolving a source map for an unrelated React
+ * key warning, and that in-flight `POST /__nextjs_original-stack-frames` read as "the UI advanced
+ * over a request that never settled". Every app that logs one dev warning got a false negative on
+ * every action. The overlay's own 404s and duplicate fetches are the same story on other checks,
+ * which is why the split happens ONCE here rather than in the one check that reported it.
+ */
+function splitDevTooling(events: readonly ReticleEvent[]): {
+  app: readonly ReticleEvent[];
+  ignored: string[];
+} {
+  const ignored: string[] = [];
+  const app = events.filter((e) => {
+    if (!NET_TYPES.has(e.type)) return true;
+    const url = asString(e.data['url']);
+    if (!isDevToolingUrl(url)) return true;
+    if (url !== undefined && !ignored.includes(url)) ignored.push(url);
+    return false;
+  });
+  return { app, ignored };
+}
+
 export function findContradictions(
-  events: readonly ReticleEvent[],
+  allEvents: readonly ReticleEvent[],
   options: ContradictionOptions = {},
 ): Contradiction[] {
   const found: Contradiction[] = [];
+  const { app: events, ignored: ignoredDevTooling } = splitDevTooling(allEvents);
 
   const settled = events.filter((e) => e.type === EventType.NET_REQUEST).map(netCall);
 
@@ -256,7 +295,7 @@ export function findContradictions(
       },
     ];
   }
-  const failed = settled.filter((c) => c.ok === false);
+  const failed = settled.filter((c) => false === c.ok);
   const advanced = uiAdvanced(events);
   const signals = events
     .filter((e) => e.type === EventType.SIGNAL)
@@ -267,8 +306,21 @@ export function findContradictions(
   // the control worked, the DESTINATION is empty — which is why every "did the click do something"
   // heuristic passes it, a route change being unambiguously something.
   const routed = events.some((e) => e.type === EventType.ROUTE_CHANGE);
+  // `dom.text` counts as rendered, and it has to: React reconciles a destination IN PLACE far more
+  // often than it adds nodes. Measured on three ordinary sidebar navigations of the bench app — every
+  // one emitted { dom.attr:2, dom.text:2, render.commit, state.change } and ZERO dom.added/removed,
+  // so all three were flagged as blank destinations, `verified` came back "no" on a correct green,
+  // and a bug_found was emitted for a navigation that worked.
+  //
+  // Deliberately NOT `dom.attr`: the nav link marks itself active whether or not the destination
+  // rendered, which is the true positive this rule exists for. Deliberately NOT `render.commit`
+  // either: React commits a render for a component that returns null, which is one of the very bugs
+  // named in `detail` below.
   const rendered = events.some(
-    (e) => e.type === EventType.DOM_ADDED || e.type === EventType.DOM_REMOVED,
+    (e) =>
+      e.type === EventType.DOM_ADDED ||
+      e.type === EventType.DOM_REMOVED ||
+      e.type === EventType.DOM_TEXT,
   );
   const fetched = events.some(
     (e) => e.type === EventType.NET_REQUEST || e.type === EventType.NET_PENDING,
@@ -291,7 +343,7 @@ export function findContradictions(
   // the app did not claim success, it claimed the wrong failure. Telling someone their password is
   // wrong while the backend is down sends them to fix something they cannot fix.
   const serverFaults = settled.filter(
-    (c) => c.ok === false && c.status !== undefined && c.status >= SERVER_FAULT_MIN,
+    (c) => false === c.ok && c.status !== undefined && c.status >= SERVER_FAULT_MIN,
   );
   const userBlame = [
     ...signals.filter((name) => BLAMES_USER.test(name)),
@@ -335,7 +387,7 @@ export function findContradictions(
   // Writes only: a GET that changes nothing is a prefetch; a POST that changes nothing is a lost
   // write, a response parsed into the void, or a render that never happened.
   if (!advanced) {
-    const ignoredWrites = settled.filter((c) => c.ok === true && isMutating(c));
+    const ignoredWrites = settled.filter((c) => true === c.ok && isMutating(c));
     if (ignoredWrites.length > 0) {
       found.push({
         kind: ContradictionKind.RESPONSE_IGNORED,
@@ -383,7 +435,14 @@ export function findContradictions(
         kind: ContradictionKind.REQUEST_NEVER_SETTLED,
         claim: 'the UI moved forward and the action reported done',
         counter: `${String(inFlight.length)} request(s) were still in flight`,
-        detail: inFlight.map((p) => describe(p.call)).join('; '),
+        // The exclusion is never silent: if the toolchain's own traffic was dropped from this count,
+        // the finding says which URLs, so an agent reading it can see what Reticle chose to ignore.
+        detail: [
+          inFlight.map((p) => describe(p.call)).join('; '),
+          ...(0 === ignoredDevTooling.length
+            ? []
+            : [`ignored as dev tooling: ${ignoredDevTooling.join(', ')}`]),
+        ].join(' — '),
       });
     }
   }

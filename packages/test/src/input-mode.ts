@@ -4,12 +4,12 @@ import { ReticleSkip } from './skip.js';
 import { SKIP_REASON_REAL_INPUT } from './constants.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return 'object' === typeof value && value !== null;
 }
 
 /** The act envelope's inputMode field, narrowed from the raw tool result. */
 export function readInputMode(actResult: unknown): InputMode | undefined {
-  if (typeof actResult !== 'object' || actResult === null) return undefined;
+  if (typeof actResult !== 'object' || null === actResult) return undefined;
   const mode = (actResult as Record<string, unknown>)['inputMode'];
   if (mode === InputMode.REAL || mode === InputMode.SYNTHETIC) return mode;
   return undefined;
@@ -63,7 +63,7 @@ async function probeInputMode(invoke: ToolInvoker, sessionId?: string): Promise<
   for (const session of sessions) {
     if (!isRecord(session)) continue;
     if (sessionId === undefined || session['sessionId'] === sessionId) {
-      return session['realInputAvailable'] === true ? InputMode.REAL : InputMode.SYNTHETIC;
+      return true === session['realInputAvailable'] ? InputMode.REAL : InputMode.SYNTHETIC;
     }
   }
   return InputMode.SYNTHETIC;

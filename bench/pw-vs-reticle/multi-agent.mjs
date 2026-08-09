@@ -69,7 +69,7 @@ async function reticleLevel(C, bugs) {
   stopDaemon();
   const client = new McpStdioClient('node', [CLI, 'mcp', '--port', PORT], {
     RETICLE_PORT: PORT,
-    RETICLE_TOOL_PROFILE: 'full',
+    RETICLE_ADVERTISE_ALL_TOOLS: '1',
   });
   await client.start();
   const call = async (name, args) => parseText((await client.callTool(name, args)).text ?? '');

@@ -98,6 +98,12 @@ const results = await Promise.allSettled(
 clearInterval(sampler);
 
 const ok = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+// Print WHY an agent failed. `0/6` on its own says nothing: the same number covers a dead app, a
+// pool at capacity, and a lease that never connected. One line here turned an opaque failure into
+// `ERR_CONNECTION_REFUSED` — a spec run without its bench-app — in a single read.
+for (const r of results) {
+  if ('rejected' === r.status) console.log('   rejected:', String(r.reason).slice(0, 200));
+}
 chk('all 6 agents leased + drove + released', ok.length === 6, `${ok.length}/6`);
 chk('resource bounded: peak contexts never exceeded the cap of 3', peak > 0 && peak <= 3, `peak=${peak}`);
 chk('ONE shared browser served the whole fleet', launches === 1, `launches=${launches}`);

@@ -24,11 +24,40 @@ interface DebugSource {
  * app was on — and `/Users/someone/tmp/wt/apps/x/src/A.tsx` is noise in a report, not a pointer.
  * The build plugins define the root; without one we return the path unchanged rather than guessing.
  */
-function relativeToRoot(file: string): string {
+/** Backslashes to forward slashes, so a Windows path can be compared with a posix one. */
+function toPosix(path: string): string {
+  return path.replace(/\\/g, '/');
+}
+
+/**
+ * Make a source pointer repo-relative.
+ *
+ * Both sides of this comparison are native paths, and on Windows that means BACKSLASHES on both:
+ * `C:\Users\dev\app` and `C:\Users\dev\app\src\Counter.tsx`. Building the prefix as
+ * `root + '/'` produced `C:\Users\dev\app/` — a mixed separator that can never match the start of
+ * the file — so on Windows the root was never stripped and every pointer came back as an absolute
+ * path from the developer's own machine. Exactly what the root exists to prevent, on the platform
+ * carrying two thirds of Reticle's users.
+ *
+ * Normalizing to posix fixes three cases at once: native Windows, the mixed pair Vite produces (it
+ * normalizes module ids to forward slashes while `cwd()` stays native), and plain posix. The result
+ * is always forward-slashed, because flow anchors and `file:line` pointers all speak posix.
+ *
+ * The drive letter is compared case-insensitively — Windows treats `C:\App` and `c:\app` as the
+ * same path, and the two spellings routinely come from different APIs — but the returned suffix is
+ * sliced from the ORIGINAL file, so nothing else gets case-folded.
+ */
+export function relativeToRoot(file: string): string {
   const root = (globalThis as Record<string, unknown>)[RETICLE_ROOT_GLOBAL];
-  if (typeof root !== 'string' || root.length === 0) return file;
-  const prefix = root.endsWith('/') ? root : `${root}/`;
-  return file.startsWith(prefix) ? file.slice(prefix.length) : file;
+  if (typeof root !== 'string' || 0 === root.length) return file;
+  const normalizedRoot = toPosix(root).replace(/\/+$/, '');
+  if (0 === normalizedRoot.length) return file;
+  const normalizedFile = toPosix(file);
+  const prefix = `${normalizedRoot}/`;
+  const matches =
+    normalizedFile.startsWith(prefix) ||
+    normalizedFile.toLowerCase().startsWith(prefix.toLowerCase());
+  return matches ? normalizedFile.slice(prefix.length) : file;
 }
 
 interface Fiber {
@@ -43,6 +72,10 @@ interface Fiber {
   _debugSource?: DebugSource | null;
   memoizedState?: unknown; // for a function component this is the head of the hook list
   memoizedProps?: unknown; // host fiber props incl. JSX event handlers
+  /** The other half of React's fiber pair (current ↔ work-in-progress). Null before the 2nd render. */
+  alternate?: Fiber | null;
+  /** On the HostRoot fiber this is the FiberRoot, whose `current` names the committed tree. */
+  stateNode?: unknown;
 }
 
 const FIBER_PREFIXES = ['__reactFiber$', '__reactInternalInstance$'];
@@ -69,21 +102,52 @@ function isFrameworkNoise(name: string): boolean {
   return FRAMEWORK_NOISE.test(name);
 }
 
+/**
+ * Resolve a fiber to the one in the COMMITTED tree.
+ *
+ * React keeps two fibers per element — `current` and its `alternate` (the work-in-progress) — and
+ * swaps which is which on every commit. The `__reactFiber$…` key on a host DOM node keeps pointing at
+ * the fiber object created at mount, so from the second render on it is the previous commit's fiber
+ * half the time: hooks read off it alternate correct/stale, one commit behind.
+ *
+ * The principled test, not a heuristic: climb `return` to the HostRoot, whose `stateNode` is the
+ * FiberRoot. The tree we climbed is the committed one iff `fiberRoot.current` is the top fiber we
+ * reached. If it is not, the committed counterpart is `fiber.alternate`. Anything unrecognizable
+ * (no alternate, no FiberRoot, a detached fiber) returns the fiber unchanged — a possibly-stale read
+ * is still better than none, and this must never throw on a React version we have not seen.
+ */
+function currentFiber(fiber: Fiber): Fiber {
+  const alternate = fiber.alternate;
+  if (alternate === undefined || null === alternate) return fiber;
+  let top = fiber;
+  let depth = 0;
+  while (top.return !== null && depth < MAX_DEPTH) {
+    top = top.return;
+    depth += 1;
+  }
+  const fiberRoot = top.stateNode;
+  if (typeof fiberRoot !== 'object' || null === fiberRoot) return fiber;
+  const committed = (fiberRoot as { current?: unknown }).current;
+  if (typeof committed !== 'object' || null === committed) return fiber;
+  return committed === top ? fiber : alternate;
+}
+
 function getFiber(el: Element): Fiber | null {
   const key = Object.keys(el).find((k) => FIBER_PREFIXES.some((p) => k.startsWith(p)));
   if (key === undefined) return null;
   const value = (el as unknown as Record<string, unknown>)[key];
-  return (value ?? null) as Fiber | null;
+  if (value === undefined || null === value) return null;
+  return currentFiber(value as Fiber);
 }
 
 /** Display name of a component type (function, forwardRef/memo object, or host string). */
 function componentName(type: unknown): string | null {
-  if (typeof type === 'function') {
+  if ('function' === typeof type) {
     const fn = type as { displayName?: string; name?: string };
     if (fn.displayName !== undefined && fn.displayName.length > 0) return fn.displayName;
     return fn.name !== undefined && fn.name.length > 0 ? fn.name : null;
   }
-  if (typeof type === 'object' && type !== null) {
+  if ('object' === typeof type && type !== null) {
     const obj = type as { displayName?: string };
     return obj.displayName !== undefined && obj.displayName.length > 0 ? obj.displayName : null;
   }
@@ -127,7 +191,7 @@ export function identify(el: Element): ComponentInfo | null {
 
   // Prefer the de-noised stack; fall back to the nearest raw name if filtering left nothing.
   const componentStack = stack.length > 0 ? stack : rawStack.slice(0, 1);
-  if (componentStack.length === 0 && source === undefined) return null;
+  if (0 === componentStack.length && source === undefined) return null;
   const info: ComponentInfo = { componentStack };
   if (source !== undefined) info.source = source;
   return info;
@@ -136,9 +200,9 @@ export function identify(el: Element): ComponentInfo | null {
 function sourceFromAttribute(el: Element): ComponentSource | undefined {
   const stamped = el.closest(`[${DATA_RETICLE_SOURCE_ATTR}]`);
   const raw = stamped?.getAttribute(DATA_RETICLE_SOURCE_ATTR);
-  if (raw === null || raw === undefined) return undefined;
+  if (null === raw || raw === undefined) return undefined;
   const match = /^(.*):(\d+):(\d+)$/.exec(raw);
-  if (match === null) return undefined;
+  if (null === match) return undefined;
   const [, file, line, column] = match;
   if (file === undefined || line === undefined || column === undefined) return undefined;
   return { file, line: Number(line), column: Number(column) };
@@ -150,7 +214,7 @@ function nearestComponentFiber(el: Element): Fiber | null {
   let depth = 0;
   while (fiber !== null && depth < MAX_DEPTH) {
     depth += 1;
-    if (typeof fiber.type === 'function' || typeof fiber.elementType === 'function') return fiber;
+    if ('function' === typeof fiber.type || 'function' === typeof fiber.elementType) return fiber;
     fiber = fiber.return;
   }
   return null;
@@ -163,10 +227,10 @@ function nearestComponentFiber(el: Element): Fiber | null {
  * serializing those un-guarded can cause hangs. Never throws.
  */
 function safeValue(value: unknown, depth: number, seen: WeakSet<object>): unknown {
-  if (value === null) return null;
+  if (null === value) return null;
   const t = typeof value;
-  if (t === 'string' || t === 'number' || t === 'boolean') return value;
-  if (t === 'undefined' || t === 'function' || t === 'symbol' || t === 'bigint') return null;
+  if ('string' === t || 'number' === t || 'boolean' === t) return value;
+  if ('undefined' === t || 'function' === t || 'symbol' === t || 'bigint' === t) return null;
   if (typeof Node !== 'undefined' && value instanceof Node) return DOM_NODE_MARKER;
   if (depth >= MAX_SERIALIZE_DEPTH) return null;
   const obj = value as object;
@@ -194,28 +258,28 @@ function safeValue(value: unknown, depth: number, seen: WeakSet<object>): unknow
  */
 /** Build a success result, omitting `component` when the name is unknown (exactOptional-safe). */
 function ok(name: string | null, hooks: unknown[]): ComponentStateResult {
-  return name === null ? { ok: true, hooks } : { ok: true, component: name, hooks };
+  return null === name ? { ok: true, hooks } : { ok: true, component: name, hooks };
 }
 
 export function readState(el: Element): ComponentStateResult {
   try {
     const fiber = nearestComponentFiber(el);
-    if (fiber === null) {
+    if (null === fiber) {
       return { ok: false, reason: ComponentStateReason.UNAVAILABLE };
     }
     const name = componentName(fiber.elementType ?? fiber.type);
     const head = fiber.memoizedState;
-    if (typeof head !== 'object' || head === null) {
+    if (typeof head !== 'object' || null === head) {
       return ok(name, []);
     }
     const hooks: unknown[] = [];
     const seen = new WeakSet<object>();
     let hook = head as Hook;
     let i = 0;
-    while (typeof hook === 'object' && i < MAX_HOOKS) {
+    while ('object' === typeof hook && i < MAX_HOOKS) {
       hooks.push(safeValue(hook.memoizedState, 0, seen));
       const next = hook.next;
-      if (next === null || typeof next !== 'object') break;
+      if (null === next || typeof next !== 'object') break;
       hook = next;
       i += 1;
     }
@@ -240,9 +304,9 @@ const HOVER_HANDLER_KEYS = [
 export function hasHoverHandlers(el: Element): boolean {
   const fiber = getFiber(el);
   const props = fiber?.memoizedProps;
-  if (typeof props !== 'object' || props === null) return false;
+  if (typeof props !== 'object' || null === props) return false;
   const p = props as Record<string, unknown>;
-  return HOVER_HANDLER_KEYS.some((k) => typeof p[k] === 'function');
+  return HOVER_HANDLER_KEYS.some((k) => 'function' === typeof p[k]);
 }
 
 import { installRenderMeter } from './render-meter.js';

@@ -42,15 +42,32 @@ function scopeSessions(sessions: Session[], scope?: ResolveScope): Session[] {
   return sessions;
 }
 
-/** Honest, scoped error when sessions exist but none match the agent's project. */
-function scopeMissError(scope?: ResolveScope): string {
+/**
+ * Honest, scoped error when sessions exist but none match the agent's project.
+ *
+ * The daemon takes its default scope from the `.reticle.json` of whichever directory started it, so
+ * attaching from a second project — or another worktree of the SAME project — makes every tool
+ * refuse while `reticle_sessions` shows the tab sitting right there. The old message asked "is that
+ * app running with @reticlehq/core enabled?", which is the one thing that is definitely true, so the
+ * reader goes looking at their app instead of at the scope. Name what IS connected and how to
+ * target it: both facts are already in hand here.
+ */
+function scopeMissError(connected: Session[], scope?: ResolveScope): string {
   const who =
     scope?.projectId !== undefined
       ? `project '${scope.projectId}'`
       : scope?.url !== undefined
         ? `your app at ${scope.url}`
         : 'the active project';
-  return `no browser session for ${who} — is that app running with @reticlehq/core enabled? (other apps may be connected, but they won't be driven by mistake)`;
+  const listed = connected
+    .map((s) => `'${s.projectId ?? 'untagged'}' (${s.url}, sessionId '${s.id}')`)
+    .join(', ');
+  return (
+    `no browser session for ${who}, but ${String(connected.length)} session(s) ARE connected under a ` +
+    `different project: ${listed}. The daemon scopes to the .reticle.json of the directory it was ` +
+    `started in, so this is a scope mismatch, not a dead app. Pass the sessionId above to target one, ` +
+    `or restart the daemon from that app's directory.`
+  );
 }
 
 /**
@@ -76,6 +93,7 @@ export class SessionManager {
   }
 
   add(session: Session): Session | undefined {
+    this.#everConnected = true;
     const previous = this.#sessions.get(session.id);
     this.#sessions.set(session.id, session);
     // Publish what this app declared sensitive to the driven-path rule. Here rather than in the
@@ -136,6 +154,29 @@ export class SessionManager {
    */
   readonly #recentClosures: { at: number; reason: string }[] = [];
 
+  /**
+   * What the daemon knows about WHY nothing is connected, refreshed in the background.
+   *
+   * Measured: of the sessions that call any tool, half make exactly one call — usually
+   * reticle_sessions — and stop, because the answer they get names two things they cannot check and
+   * nothing they can do. The daemon can tell "no app is running" from "an app is running and never
+   * dialled us" from "one was connected and left", and each has a different fix. Optional so a
+   * bridge constructed without a daemon (every unit test) keeps the plain message.
+   */
+  #noSessionHint: (() => string | undefined) | undefined;
+
+  /** Wire the diagnosis provider (daemon boot). Absent ⇒ the plain, static message. */
+  setNoSessionHint(hint: (() => string | undefined) | undefined): void {
+    this.#noSessionHint = hint;
+  }
+
+  /** Whether any session has connected since this daemon booted — half the diagnosis. */
+  #everConnected = false;
+
+  everConnected(): boolean {
+    return this.#everConnected;
+  }
+
   /** Record a bridge-initiated close so `resolve` can explain a session that vanished. */
   noteClosure(reason: string, at: number): void {
     this.#recentClosures.push({ at, reason });
@@ -156,8 +197,11 @@ export class SessionManager {
       found.markAgentActivity(); // liveness — a targeted tool keeps the session alive / revives it
       return found;
     }
-    if (this.#sessions.size === 0) {
+    if (0 === this.#sessions.size) {
       const closure = this.lastClosure();
+      // A diagnosis beats a checklist: it names which of the three causes this actually is.
+      const hint = this.#noSessionHint?.();
+      if (hint !== undefined && closure === undefined) throw new Error(hint);
       throw new Error(
         closure === undefined
           ? NO_SESSION_CONNECTED_ERROR
@@ -169,12 +213,16 @@ export class SessionManager {
     // candidate set, no matter how recently it was heard from. This is the anti-cross-talk guard.
     // An explicit per-call scope wins; otherwise the daemon's active-project default applies.
     const effectiveScope = scope ?? this.#defaultScope;
-    const all = scopeSessions([...this.#sessions.values()], effectiveScope);
-    if (all.length === 0) {
+    const connected = [...this.#sessions.values()];
+    const all = scopeSessions(connected, effectiveScope);
+    if (0 === all.length) {
       // Sessions exist, but none belong to the scoped project — never fall back to a foreign tab.
-      throw new Error(scopeMissError(effectiveScope));
+      // ponytail: still a refusal, deliberately. Auto-targeting the only connected tab would be the
+      // friendlier 90% case and would also silently defeat the anti-cross-talk guard this scope
+      // exists to be. Naming the tab and its sessionId costs the agent one extra argument.
+      throw new Error(scopeMissError(connected, effectiveScope));
     }
-    if (all.length === 1) {
+    if (1 === all.length) {
       const [only] = all;
       if (only === undefined) throw new Error('session lookup failed');
       only.markAgentActivity();
@@ -202,7 +250,7 @@ export class SessionManager {
     // desktop), the gap requirement is dropped: every session is already in "background" mode
     // so we just pick the one with the freshest heartbeat and let the agent proceed. Requiring
     // a gap here only produces spurious "ambiguous" errors while the user works elsewhere.
-    const allThrottled = bestScore === 1;
+    const allThrottled = 1 === bestScore;
     const RECENCY_GAP_MS = allThrottled ? 0 : 1_000;
     const clearWinner = runnerUp === undefined || best.ms + RECENCY_GAP_MS < runnerUp.ms;
 

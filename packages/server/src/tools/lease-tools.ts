@@ -10,7 +10,8 @@
  */
 
 import { z } from 'zod';
-import { RETICLE_URL_PARAM } from '@reticlehq/core';
+import { leaseNotConnectedHint } from './lease-hint.js';
+import { RETICLE_URL_PARAM, RETICLE_DEFAULT_PORT } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import type { ToolDef, ToolDeps } from './tool-kit.js';
 import { asString } from './tools-helpers.js';
@@ -64,7 +65,7 @@ export function cleanNavError(err: unknown): string {
 /** A fresh, collision-resistant lease id. Uses crypto at the I/O boundary (not pure logic). */
 function newLeaseId(): string {
   const uuid =
-    typeof globalThis.crypto?.randomUUID === 'function'
+    'function' === typeof globalThis.crypto?.randomUUID
       ? globalThis.crypto.randomUUID()
       : `${String(Date.now())}-${String(performance.now())}`;
   return `lease-${uuid}`;
@@ -147,7 +148,7 @@ export const LEASE_TOOLS: ToolDef[] = [
       const pool = deps.pool;
       if (pool === undefined) throw new Error(POOL_UNAVAILABLE);
       const url = asString(args['url']);
-      if (url === undefined || url.length === 0)
+      if (url === undefined || 0 === url.length)
         throw new Error('reticle_lease{action:"acquire"} requires a url');
       const projectId = asString(args['projectId']);
       const sessionId = newLeaseId();
@@ -175,7 +176,7 @@ export const LEASE_TOOLS: ToolDef[] = [
         ...(ready
           ? {}
           : {
-              hint: `leased tab did not connect — is ${url} running with @reticlehq/core enabled?`,
+              hint: leaseNotConnectedHint(url, deps.bridgePort ?? RETICLE_DEFAULT_PORT),
             }),
       };
     },
@@ -197,7 +198,7 @@ export const LEASE_TOOLS: ToolDef[] = [
       const pool = deps.pool;
       if (pool === undefined) throw new Error(POOL_UNAVAILABLE);
       const sessionId = asString(args['sessionId']);
-      if (sessionId === undefined || sessionId.length === 0) {
+      if (sessionId === undefined || 0 === sessionId.length) {
         throw new Error('reticle_lease{action:"release"} requires a sessionId');
       }
       await pool.release(sessionId);

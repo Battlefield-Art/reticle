@@ -6,6 +6,7 @@
  */
 
 import { NPX, MCP_SERVER_NAME, npxServerArgs } from './mcp.js';
+import { RETICLE_NPM_PACKAGE } from '../version/server-version.js';
 
 /** Path of Cursor's global MCP config, relative to the user's home directory. */
 export const CURSOR_MCP_RELPATH = '.cursor/mcp.json';
@@ -37,14 +38,44 @@ export function cursorServerEntry(): Record<string, unknown> {
 type ParseResult = { ok: true; config: CursorConfigShape } | { ok: false };
 
 function parseConfig(existing: string | null): ParseResult {
-  if (existing === null || existing.trim().length === 0) return { ok: true, config: {} };
+  if (null === existing || 0 === existing.trim().length) return { ok: true, config: {} };
   try {
     const parsed: unknown = JSON.parse(existing);
-    if (typeof parsed !== 'object' || parsed === null) return { ok: true, config: {} };
+    // Valid JSON that is not a PLAIN OBJECT — `[]`, `3`, `"x"`, `null` — used to fall through to an
+    // empty config, and the file was then rewritten wholesale. Unparseable JSON was already handled
+    // conservatively; this adjacent case destroyed the file instead. Whatever is in there is the
+    // user's, and we do not understand it, so we do not touch it.
+    if (typeof parsed !== 'object' || null === parsed || Array.isArray(parsed))
+      return { ok: false };
     return { ok: true, config: parsed as CursorConfigShape };
   } catch {
     return { ok: false };
   }
+}
+
+/**
+ * Should this entry be left exactly as it is?
+ *
+ * Two different reasons to leave one alone, and only one of them is "it is correct":
+ *   - it already matches what we would write; or
+ *   - it is not an entry WE wrote. Somebody pointing `reticle` at their own local build is a
+ *     deliberate choice, and silently replacing it with the published npx command would break their
+ *     setup to fix a problem they do not have.
+ *
+ * What IS repaired is a stale entry of our own shape — an old pin, a command that has moved — which
+ * presence-only idempotency reported as "already registered" and never fixed, so an upgrade could
+ * not repair the thing an upgrade exists to repair.
+ */
+function leaveEntryAlone(existing: unknown): boolean {
+  if (JSON.stringify(existing) === JSON.stringify(cursorServerEntry())) return true;
+  if (typeof existing !== 'object' || null === existing) return true;
+  const command = (existing as { command?: unknown }).command;
+  const args = (existing as { args?: unknown }).args;
+  const ours =
+    command === NPX &&
+    Array.isArray(args) &&
+    args.some((arg) => 'string' === typeof arg && arg.includes(RETICLE_NPM_PACKAGE));
+  return !ours;
 }
 
 export function mergeCursorConfig(existing: string | null): CursorMergeResult {
@@ -54,7 +85,14 @@ export function mergeCursorConfig(existing: string | null): CursorMergeResult {
   }
   const config = parsed.config;
   const servers = config.mcpServers ?? {};
-  if (Object.prototype.hasOwnProperty.call(servers, MCP_SERVER_NAME)) {
+  // Presence alone used to mean "already registered", so a `reticle` entry left by an older release —
+  // a command that no longer exists, or a stale pin — was reported done and never repaired. An
+  // upgrade could not fix a bad entry, which is exactly when it needs to. Only OUR key is replaced;
+  // every other server and top-level key is carried through untouched by the spread below.
+  if (
+    Object.prototype.hasOwnProperty.call(servers, MCP_SERVER_NAME) &&
+    leaveEntryAlone(servers[MCP_SERVER_NAME])
+  ) {
     return { status: CursorMergeStatus.ALREADY, content: existing ?? '' };
   }
   const merged: CursorConfigShape = {

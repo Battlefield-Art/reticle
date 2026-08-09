@@ -44,7 +44,7 @@ export interface HuntRun {
   stepsRun?: number;
 }
 
-export interface HuntSummary {
+interface HuntSummary {
   runs: number;
   /** Runs that actually drove at least one control. The denominator that can honestly be quoted. */
   runsWithCoverage: number;
@@ -108,10 +108,10 @@ export function summarizeHunt(runs: readonly HuntRun[]): HuntSummary {
  * this project exists to distrust.
  */
 function buildHeadline(withCoverage: number, flaggedRuns: number, contradictions: number): string {
-  if (withCoverage === 0) {
+  if (0 === withCoverage) {
     return 'no run drove a single control — nothing was measured, which is not the same as nothing being wrong';
   }
-  if (flaggedRuns === 0) {
+  if (0 === flaggedRuns) {
     return `${String(withCoverage)} merged changes crawled, no cross-channel contradictions found — confirm coverage was real before reading this as clean`;
   }
   return `${String(flaggedRuns)} of ${String(withCoverage)} merged, already-green changes carried a candidate false green (${String(contradictions)} contradictions) — each needs manual confirmation before it is counted`;

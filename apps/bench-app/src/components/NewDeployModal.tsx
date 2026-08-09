@@ -16,7 +16,7 @@ export function NewDeployModal(): React.ReactElement | null {
   if (!open) return null;
 
   const submit = (): void => {
-    if (service.trim().length === 0) return;
+    if (0 === service.trim().length) return;
     create(service.trim(), env);
     setService('');
     close();
@@ -59,7 +59,7 @@ export function NewDeployModal(): React.ReactElement | null {
           autoFocus
           onChange={(e) => setService(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') submit();
+            if ('Enter' === e.key) submit();
           }}
         />
 
@@ -90,7 +90,7 @@ export function NewDeployModal(): React.ReactElement | null {
             className="btn btn-primary"
             data-testid="deploy-submit"
             onClick={submit}
-            disabled={service.trim().length === 0}
+            disabled={0 === service.trim().length}
           >
             <IconRocket size={15} /> Deploy
           </button>

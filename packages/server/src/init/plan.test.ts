@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildPlan, StepStatus, type PlanInput } from './plan.js';
 import { Framework, PackageManager, UiLibrary, type Detection } from './detect.js';
+import { cursorRuleFile } from './agent-rules.js';
 
 const CLAUDE_STEP = 'MCP server (Claude, global)';
 const CURSOR_STEP = 'MCP server (Cursor, global)';
@@ -32,6 +33,8 @@ function input(partial: Partial<PlanInput>): PlanInput {
     cursorConfig: partial.cursorConfig ?? null,
     cursorConfigPath: partial.cursorConfigPath ?? '/home/u/.cursor/mcp.json',
     viteConfig: partial.viteConfig ?? null,
+    astroConfig: partial.astroConfig,
+    astroLayout: partial.astroLayout,
     nextConfigFile: partial.nextConfigFile ?? null,
     nextConfigSource: partial.nextConfigSource,
     nextLayout: partial.nextLayout,
@@ -43,7 +46,10 @@ function input(partial: Partial<PlanInput>): PlanInput {
     nextReticleDevExists: partial.nextReticleDevExists ?? false,
     claudeMdContent: partial.claudeMdContent,
     agentsMdContent: partial.agentsMdContent,
-    cursorRuleExists: partial.cursorRuleExists,
+    cursorRuleContent: partial.cursorRuleContent,
+    ...(partial.craEntry === undefined ? {} : { craEntry: partial.craEntry }),
+    ...(partial.craEnv === undefined ? {} : { craEnv: partial.craEnv }),
+    ...(partial.pairingToken === undefined ? {} : { pairingToken: partial.pairingToken }),
     options: partial.options ?? { port: undefined, mcp: true, install: false },
   };
 }
@@ -71,7 +77,7 @@ describe('buildPlan — agent verification rule (makes the agent USE Reticle)', 
     expect(s.status).toBe(StepStatus.APPLY);
     expect(s.write?.path).toBe('CLAUDE.md');
     expect(s.write?.content).toContain('Verifying with Reticle');
-    expect(s.write?.content).toContain('reticle gate');
+    expect(s.write?.content).toContain('npx @reticlehq/server gate');
   });
 
   it('appends to an existing CLAUDE.md, preserving it', () => {
@@ -98,7 +104,7 @@ describe('buildPlan — agent verification rule (makes the agent USE Reticle)', 
 
   it('writes a Cursor .mdc rule when Cursor is present', () => {
     const s = step(
-      buildPlan(input({ claudeCli: false, cursorPresent: true, cursorRuleExists: false })),
+      buildPlan(input({ claudeCli: false, cursorPresent: true, cursorRuleContent: null })),
       AGENT_RULE_STEP,
     );
     expect(s.status).toBe(StepStatus.APPLY);
@@ -106,12 +112,34 @@ describe('buildPlan — agent verification rule (makes the agent USE Reticle)', 
     expect(s.write?.content).toContain('alwaysApply: true');
   });
 
-  it('Cursor rule step is ALREADY when the .mdc already exists', () => {
+  it('Cursor rule step is ALREADY only when the .mdc holds the CURRENT rule', () => {
+    const current = cursorRuleFile();
     const s = step(
-      buildPlan(input({ claudeCli: false, cursorPresent: true, cursorRuleExists: true })),
+      buildPlan(input({ claudeCli: false, cursorPresent: true, cursorRuleContent: current })),
       AGENT_RULE_STEP,
     );
     expect(s.status).toBe(StepStatus.ALREADY);
+  });
+
+  /**
+   * The Cursor rule was gated on the file EXISTING, while CLAUDE.md compares content and refreshes.
+   * So a Cursor project that ran init once kept that release's rule text forever — a rule about a
+   * field introduced later (`version_skew`) could never reach it, on the only agent surface those
+   * projects have.
+   */
+  it('refreshes a STALE Cursor rule instead of calling it done', () => {
+    const s = step(
+      buildPlan(
+        input({
+          claudeCli: false,
+          cursorPresent: true,
+          cursorRuleContent: '---\nalwaysApply: true\n---\n\n## Verifying with Reticle\n\nold text',
+        }),
+      ),
+      AGENT_RULE_STEP,
+    );
+    expect(s.status).toBe(StepStatus.APPLY);
+    expect(s.write?.content).toContain('version_skew');
   });
 
   it('falls back to AGENTS.md when neither Claude nor Cursor is detected', () => {
@@ -283,6 +311,37 @@ describe('buildPlan — install', () => {
   });
 });
 
+describe('buildPlan — CRA pairing token', () => {
+  const TOKEN_STEP = 'Pairing token';
+  const craPlan = (partial: Partial<PlanInput> = {}): ReturnType<typeof buildPlan> =>
+    buildPlan(
+      input({
+        detection: detection(Framework.CRA),
+        craEntry: { path: 'src/index.tsx', source: "import React from 'react';\n" },
+        ...partial,
+      }),
+    );
+
+  it('warns that the env file is gitignored, so a teammate cloning must run init too', () => {
+    const written = maybeStep(craPlan({ pairingToken: 'tok-1' }), TOKEN_STEP);
+    expect(StepStatus.APPLY).toBe(written?.status);
+    expect(written?.detail).toContain('gitignored');
+  });
+
+  it('says the token is missing rather than reporting a clean install with no token step at all', () => {
+    // No daemon has ever run, so ~/.reticle/pairing-token does not exist. The plan used to simply
+    // omit the step: init read all-green and the app could never pair.
+    const missing = maybeStep(craPlan({ pairingToken: '' }), TOKEN_STEP);
+    expect(StepStatus.MANUAL).toBe(missing?.status);
+    expect(missing?.detail).toContain('reticle start');
+  });
+
+  it('stays quiet when the correct token is already in the env file', () => {
+    const plan = craPlan({ pairingToken: 'tok-1', craEnv: 'REACT_APP_RETICLE_TOKEN=tok-1\n' });
+    expect(undefined).toBe(maybeStep(plan, TOKEN_STEP));
+  });
+});
+
 describe('buildPlan — Next', () => {
   const NEXT_CONFIG_SRC = 'const nextConfig = {};\nexport default nextConfig;\n';
   const LAYOUT_SRC =
@@ -419,14 +478,14 @@ describe('buildPlan — the Cursor rule is a project file, not a machine-wide on
     const steps = buildPlan(
       input({ cursorPresent: true, claudeCli: true, cursorProjectPresent: false }),
     ).steps;
-    expect(steps.some((s) => s.write?.path === '.cursor/rules/reticle.mdc')).toBe(false);
+    expect(steps.some((s) => '.cursor/rules/reticle.mdc' === s.write?.path)).toBe(false);
   });
 
   it('is written when the repo itself has a .cursor dir', () => {
     const steps = buildPlan(
       input({ cursorPresent: true, claudeCli: true, cursorProjectPresent: true }),
     ).steps;
-    expect(steps.some((s) => s.write?.path === '.cursor/rules/reticle.mdc')).toBe(true);
+    expect(steps.some((s) => '.cursor/rules/reticle.mdc' === s.write?.path)).toBe(true);
   });
 
   it('is written when Cursor is the only agent found', () => {
@@ -437,6 +496,45 @@ describe('buildPlan — the Cursor rule is a project file, not a machine-wide on
 });
 
 describe('buildPlan — Astro', () => {
+  /**
+   * Astro was the last gated stack whose wiring `init` printed and did not apply — the only ⚠ left
+   * on a supported framework. With a config and exactly one layout in hand, both halves are written.
+   */
+  it('APPLIES both halves when there is a config and exactly one layout', () => {
+    const plan = buildPlan(
+      input({
+        detection: detection(Framework.ASTRO, 19),
+        astroConfig: {
+          path: 'astro.config.mjs',
+          source:
+            "import { defineConfig } from 'astro/config';\nexport default defineConfig({});\n",
+        },
+        astroLayout: {
+          path: 'src/layouts/Layout.astro',
+          source: '<html><body><slot /></body></html>\n',
+        },
+      }),
+    );
+    const config = step(plan, 'Astro config (token + build target)');
+    expect(config.status).toBe(StepStatus.APPLY);
+    expect(config.write?.content).toContain('__RETICLE_TOKEN__');
+    const layout = step(plan, 'Connect snippet (Astro)');
+    expect(layout.status).toBe(StepStatus.APPLY);
+    expect(layout.write?.path).toBe('src/layouts/Layout.astro');
+    expect(layout.write?.content).toContain('reticle.connect');
+  });
+
+  it('falls back to the printed recipe when the layout is ambiguous', () => {
+    const plan = buildPlan(
+      input({
+        detection: detection(Framework.ASTRO, 19),
+        astroConfig: { path: 'astro.config.mjs', source: 'export default defineConfig({});\n' },
+        astroLayout: null, // zero or several candidates — not init's decision to make
+      }),
+    );
+    expect(step(plan, 'Connect snippet (Astro)').status).toBe(StepStatus.MANUAL);
+  });
+
   it('gets Astro-specific instructions, not the generic HTML connect snippet', () => {
     const plan = buildPlan(input({ detection: detection(Framework.ASTRO, 19) }));
     expect(maybeStep(plan, 'Connect snippet')).toBeUndefined();
@@ -449,7 +547,10 @@ describe('buildPlan — Astro', () => {
   });
 
   it('installs the kit but no bundler plugin — Astro owns its own Vite', () => {
-    const s = step(buildPlan(input({ detection: detection(Framework.ASTRO, 19) })), 'Install dependencies');
+    const s = step(
+      buildPlan(input({ detection: detection(Framework.ASTRO, 19) })),
+      'Install dependencies',
+    );
     expect(s.detail).toContain('@reticlehq/react');
     expect(s.detail).not.toContain('@reticlehq/vite-plugin');
   });
@@ -503,7 +604,11 @@ describe('the generated Next component is valid JavaScript', () => {
         detection: detection(Framework.NEXT),
         nextConfigFile: 'next.config.js',
         nextConfigSource: 'module.exports = {};\n',
-        nextLayout: { path: 'pages/_app.js', source: 'export default function App({ Component, pageProps }) {\n  return <Component {...pageProps} />;\n}\n' },
+        nextLayout: {
+          path: 'pages/_app.js',
+          source:
+            'export default function App({ Component, pageProps }) {\n  return <Component {...pageProps} />;\n}\n',
+        },
         nextReticleDevPath: 'components/reticle-dev.jsx',
       }),
     );
@@ -512,8 +617,12 @@ describe('the generated Next component is valid JavaScript', () => {
 
   it('contains no TypeScript-only syntax', () => {
     const src = body();
-    expect(src, 'an `as` cast does not parse as JavaScript').not.toMatch(/\bas\s+(Record|any|unknown|string)\b/);
-    expect(src, 'a type annotation does not parse as JavaScript').not.toMatch(/:\s*Record<|:\s*string\b|<[A-Z]\w*>/);
+    expect(src, 'an `as` cast does not parse as JavaScript').not.toMatch(
+      /\bas\s+(Record|any|unknown|string)\b/,
+    );
+    expect(src, 'a type annotation does not parse as JavaScript').not.toMatch(
+      /:\s*Record<|:\s*string\b|<[A-Z]\w*>/,
+    );
   });
 
   it('carries the capabilities scaffold too — only the Vite path used to get one', () => {

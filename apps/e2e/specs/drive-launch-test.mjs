@@ -1,6 +1,7 @@
 // HONESTY-CRITICAL: prove `reticle drive` LAUNCHES its own browser, navigates to the app, and drives
 // the hover-gated smart-sentence with inputMode:"real" — headless, no manual CDP flags.
 import { start, TOOLS, BaselineStore, RecordingStore, LaunchedRealInputProvider } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 let pass=0,fail=0; const chk=(l,o,d='')=>{console.log(`   ${o?'✅':'❌'} ${l}${d?'  — '+d:''}`);o?pass++:fail++;};
 const server=await start({port:4400,mcp:false});
@@ -8,14 +9,9 @@ const provider=new LaunchedRealInputProvider({driveUrl:'http://localhost:3100/',
 await provider.navigate(); // launches Chromium + goto → page SDK connects to the bridge
 const deps={sessions:server.bridge.sessions,baselines:new BaselineStore(),recordings:new RecordingStore(),realInput:provider};
 const T=(n,a={})=>TOOLS.find(t=>t.name===n).handler(deps,{sessionId:'next-smoke',...a});
-// Wait for OUR session, not for any session. `count()>0` is satisfied by any instrumented page that
-// happens to be open on the machine — a tab from another project keeps retrying the bridge and
-// connects the instant one appears, so this loop would exit before the browser we just launched had
-// connected, and the resolve() below would fail with "no connected session with id 'next-smoke'".
-const has=(id)=>server.bridge.sessions.list().some(s=>s.sessionId===id);
-for(let i=0;i<200&&!has('next-smoke');i++) await sleep(50);
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 console.log('\n=== reticle drive (launched browser) vs smart-sentence, headless ===');
-chk('reticle drive launched a browser + the app SDK connected', has('next-smoke'), `sessions=${server.bridge.sessions.count()}`);
+chk('reticle drive launched a browser + the app SDK connected', server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke'), `sessions=${server.bridge.sessions.count()}`);
 const sess=server.bridge.sessions.resolve('next-smoke');
 const refOf=async(by,value)=>{for(let i=0;i<30;i++){const r=(await T('reticle_query',{by,value})).elements?.[0]?.ref;if(r)return r;await sleep(100);}throw new Error('not found '+value);};
 const ref=await refOf('testid','smart-sentence');

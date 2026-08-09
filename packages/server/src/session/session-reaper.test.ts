@@ -131,7 +131,7 @@ describe('endAllSessions surfaces an undelivered panel prompt', () => {
     endAllSessions(mgr, 'Agent stopped — switch to your terminal to continue.');
 
     const presenter = sent.find(
-      (m) => m['name'] === 'presenter' && (m['args'] as { state?: string }).state === 'ended',
+      (m) => 'presenter' === m['name'] && 'ended' === (m['args'] as { state?: string }).state,
     );
     const text = (presenter?.['args'] as { text?: string } | undefined)?.text ?? '';
     expect(text).toContain('also fix the date picker on mobile');

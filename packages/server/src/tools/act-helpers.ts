@@ -5,7 +5,7 @@
  * session, a command, or a tool definition — these are total functions over their arguments, which
  * is why they can be tested without a browser and why they were the right thing to move.
  */
-import { ActionType } from '@reticlehq/core';
+import { ActionType, ConsequenceKind } from '@reticlehq/core';
 import type { ElementBox } from '../input/real-input.js';
 import { HonestyGrade } from '../honesty/honesty.js';
 import type { ExpectedLink } from '../capsule/divergence.js';
@@ -13,9 +13,9 @@ import { asNumber, asRecord, asString } from './tools-helpers.js';
 
 /** The strongest consequence grade a set of expected links proves (signal > net > state > presence). */
 export function gradeOf(links: readonly ExpectedLink[]): HonestyGrade {
-  if (links.some((l) => l.kind === 'signal')) return HonestyGrade.SIGNAL;
-  if (links.some((l) => l.kind === 'net')) return HonestyGrade.NET;
-  if (links.some((l) => l.kind === 'state')) return HonestyGrade.STATE;
+  if (links.some((l) => ConsequenceKind.SIGNAL === l.kind)) return HonestyGrade.SIGNAL;
+  if (links.some((l) => ConsequenceKind.NET === l.kind)) return HonestyGrade.NET;
+  if (links.some((l) => ConsequenceKind.STATE === l.kind)) return HonestyGrade.STATE;
   return HonestyGrade.PRESENCE;
 }
 

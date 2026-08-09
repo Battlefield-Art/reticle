@@ -1,4 +1,4 @@
-import { Verified } from '@reticlehq/core';
+import { Verified, VerifiedReason } from '@reticlehq/core';
 import { HonestyGrade, type HonestyBlock } from './honesty.js';
 
 /**
@@ -13,10 +13,21 @@ import { HonestyGrade, type HonestyBlock } from './honesty.js';
  * should be told the most actionable fact rather than the first true one.
  */
 
-export interface VerifiedInputs {
+interface VerifiedInputs {
   /** Did the declared consequence hold? Undefined when the action declared none. */
   pass?: boolean;
   honesty: HonestyBlock;
+  /**
+   * Set when the assertion could not be EVALUATED at all — an under-specified call, or nothing
+   * instrumented to read. Carries the sentence naming what is missing.
+   */
+  inconclusive?: string;
+  /**
+   * The declared consequence was ALREADY TRUE before the action ran, so its holding afterwards says
+   * nothing about the action. Only meaningful for predicates that read live DOM state — event-based
+   * ones are floored at the act's cursor and cannot be satisfied by the past.
+   */
+  alreadyTrue?: boolean;
   /** Cross-channel disagreements found in the action's window. */
   contradictions?: readonly { kind: string }[];
   /** Did a real frame flush before the wait gave up? */
@@ -33,8 +44,15 @@ export interface VerifiedInputs {
   outcomeUnread?: boolean;
 }
 
-export interface VerifiedVerdict {
+interface VerifiedVerdict {
   verified: Verified;
+  /**
+   * WHICH clause below decided this, as a closed enum. `verified` has three values and this rule has
+   * ten clauses, so the verdict alone collapses opposite facts — "Reticle caught a real bug", "the
+   * agent wrote a bad predicate" and "Reticle could not see" all arrived as one string. Named here,
+   * beside the sentence, so the vocabulary cannot drift from the branches that produce it.
+   */
+  verifiedReason: VerifiedReason;
   /** One sentence naming the deciding evidence — never a restatement of the field. */
   because: string;
 }
@@ -42,9 +60,25 @@ export interface VerifiedVerdict {
 export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   const { pass, honesty, contradictions = [], settled, outcomePending, outcomeUnread } = inputs;
 
-  // A failed assertion is the most actionable fact there is; it leads.
-  if (pass === false) {
-    return { verified: Verified.NO, because: 'the declared consequence did not hold' };
+  // Ahead of the failure clause, because a failure is only the most actionable fact when there WAS
+  // one. An assertion nobody could evaluate is not a defect in the app, and calling it one was
+  // putting the agent's own malformed calls into the bug count.
+  if (inputs.inconclusive !== undefined) {
+    return {
+      verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.INCONCLUSIVE,
+      because: `the assertion could not be evaluated: ${inputs.inconclusive}`,
+    };
+  }
+
+  // A failed assertion is the most actionable fact there is; it leads — including over
+  // `alreadyTrue`, because a condition that held before AND fails now is a real regression.
+  if (false === pass) {
+    return {
+      verified: Verified.NO,
+      verifiedReason: VerifiedReason.ASSERTION_FAILED,
+      because: 'the declared consequence did not hold',
+    };
   }
 
   // A contradiction outranks a passing assertion, and that inversion is the whole point: the case
@@ -55,7 +89,28 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
     const kinds = contradictions.map((c) => c.kind).join(', ');
     return {
       verified: Verified.NO,
+      verifiedReason: VerifiedReason.CONTRADICTED,
       because: `channels disagree about this action (${kinds}) even though the assertion passed`,
+    };
+  }
+
+  // Below the contradiction clause, and for the same reason a contradiction outranks a dirty
+  // capture: evidence AGAINST beats absence of evidence, whichever absence it is. Both can hold at
+  // once — assert `{ text: 'Saved' }` that was already on screen while the write 500s — and ordering
+  // this first downgraded a DETECTED false green from NO to UNKNOWN, which reads as "assert
+  // something else" rather than "this is broken".
+  //
+  // A green that was already green before the action is not evidence about the action. Measured in
+  // the field: a click asserted with `{ text: 'Parallel Routes' }` returned verified "yes" in 478ms
+  // with routeChanges 0, because the text was the nav link already on screen — the real navigation
+  // landed 1.8s later. UNKNOWN rather than NO on purpose: the app may well be fine, and reporting a
+  // failure we did not observe would be its own false claim.
+  if (true === inputs.alreadyTrue) {
+    return {
+      verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.ALREADY_TRUE,
+      because:
+        'the declared consequence was already true before this action, so it proves nothing about it — assert something the action CHANGES (a signal, a request, a route, or store state)',
     };
   }
 
@@ -65,6 +120,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (!honesty.integrity.clean) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.UNCLEAN_CAPTURE,
       because: `capture was not clean (${honesty.integrity.issues.join('; ')}), so a green here would only describe what was observed`,
     };
   }
@@ -75,6 +131,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (honesty.grade === HonestyGrade.NONE) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.VACUOUS_GRADE,
       because:
         'nothing was asserted at a real grade, so passing proves nothing — assert a signal, request, or state path',
     };
@@ -88,9 +145,10 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   // optimistically rendered "dispatched", the page settled, and the verdict came back `yes` — then
   // the server REVERTED it to `held` 1.2s later. Every channel agreed, and every channel was early.
   // UNKNOWN rather than NO: nothing has failed, and saying it has would be its own false report.
-  if (outcomePending === true) {
+  if (true === outcomePending) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.OUTCOME_PENDING,
       because:
         'a write returned 202 Accepted, so the server has not finished processing it — this window cannot contain the outcome; re-check once it reconciles',
     };
@@ -103,18 +161,20 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   //
   // UNKNOWN, not NO: nothing is known to have failed. The remedy is in the sentence, because an
   // agent that cannot act on a caveat will learn to skip it.
-  if (outcomeUnread === true) {
+  if (true === outcomeUnread) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.OUTCOME_UNREAD,
       because:
         'a write returned 2xx with a response body that was never recorded, so its outcome is unread — a 200 describes the transport, not the result (a batch reports per-item failures in the body, and every GraphQL error is a 200). Enable it where your app calls connect(): `reticle.connect({ captureNetworkBodies: true })`, then re-run',
     };
   }
 
   // Never settled: the page may still be moving, so the observation window may have closed early.
-  if (settled === false) {
+  if (false === settled) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.UNSETTLED,
       because:
         'the page never settled, so the reaction window may have closed before the app finished',
     };
@@ -130,8 +190,9 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   // own. Seen on a one-way IPC send: coverage said the outcome was unobservable, `because` said clean.
   return {
     verified: Verified.YES,
+    verifiedReason: VerifiedReason.PROVED,
     because:
-      honesty.coverage?.partial === true
+      true === honesty.coverage?.partial
         ? `assertion held at ${honesty.grade} grade with no channel disagreeing, but coverage was PARTIAL — see \`coverage\` for what went unobserved`
         : `assertion held at ${honesty.grade} grade over a clean capture with no channel disagreeing`,
   };

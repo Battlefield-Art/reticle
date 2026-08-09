@@ -1,0 +1,124 @@
+/**
+ * A misspelled predicate key used to WEAKEN the assertion instead of failing.
+ *
+ * Found by driving `reticle_act_and_wait` over real MCP against bench-app:
+ *
+ *   until: { kind: 'route', path: '/nowhere-xyz' }
+ *   -> verdict.expected: "a route change to ANY route"
+ *
+ * The `path` was stripped. It failed only because nothing navigated at all — had the click changed
+ * the route to anything whatsoever, this would have PASSED while the assertion was false.
+ *
+ * `path` is not an exotic typo: the `state` predicate, in the same discriminated union, spells its
+ * field `path`. The `route` predicate spells it `pathname`. An agent that learned one and applied it
+ * to the other gets a check that cannot fail.
+ *
+ * And it generalises. Five predicate kinds have ALL-optional fields, so stripping the only key the
+ * agent supplied leaves a tautology:
+ *
+ *   { kind: 'net',    url: '/api/x' }   -> "any network call at all"
+ *   { kind: 'signal', data: {...} }     -> "any signal named X"
+ *   { kind: 'console', message: 'x' }   -> "any console line"
+ *
+ * This is the path that now counts as a `verification_completed`, so a silent weakening here does
+ * not just mislead one agent — it inflates the number we publish.
+ *
+ * Fix: reject unknown keys, and accept the three confusable spellings as aliases so a rejection is
+ * not simply a different dead end.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { PredicateSchema, evalRoute } from './predicate-eval.js';
+import { EventType, type ReticleEvent } from '@reticlehq/core';
+
+describe('a predicate key that is not real is refused, never dropped', () => {
+  it('route { path } no longer degrades to "any route change"', () => {
+    const parsed = PredicateSchema.parse({ kind: 'route', path: '/checkout' });
+    expect(
+      parsed,
+      "path is the state predicate's spelling — accept it, do not silently drop it",
+    ).toMatchObject({ kind: 'route', pathname: '/checkout' });
+  });
+
+  it('net { url } no longer degrades to "any network call"', () => {
+    expect(PredicateSchema.parse({ kind: 'net', url: '/api/orders' })).toMatchObject({
+      kind: 'net',
+      urlContains: '/api/orders',
+    });
+  });
+
+  it('signal { data } no longer degrades to "any signal with that name"', () => {
+    expect(
+      PredicateSchema.parse({ kind: 'signal', name: 'order:placed', data: { id: 1 } }),
+    ).toMatchObject({ kind: 'signal', name: 'order:placed', dataMatches: { id: 1 } });
+  });
+
+  it("a key that is nobody's spelling is rejected, not stripped", () => {
+    // The agent gets a schema error naming the key. Before, it got a green.
+    expect(() => PredicateSchema.parse({ kind: 'route', pathnmae: '/checkout' })).toThrow();
+    expect(() => PredicateSchema.parse({ kind: 'signal', naem: 'x' })).toThrow();
+    expect(() => PredicateSchema.parse({ kind: 'console', message: 'boom' })).toThrow();
+  });
+
+  it('an explicit canonical key wins over its alias, so nothing existing changes meaning', () => {
+    expect(
+      PredicateSchema.parse({ kind: 'route', pathname: '/real', path: '/ignored' }),
+    ).toMatchObject({ pathname: '/real' });
+  });
+
+  it('every real predicate still parses untouched', () => {
+    const ok = [
+      { kind: 'element', query: { testid: 'submit' } },
+      { kind: 'text', contains: 'Deploy' },
+      { kind: 'net', urlContains: '/api/x', status: 200, count: 1 },
+      { kind: 'route', pathname: '/a' },
+      { kind: 'route', contains: 'checkout' },
+      { kind: 'console', level: 'error', absent: true },
+      { kind: 'animation', name: 'fade', completed: true },
+      { kind: 'signal', name: 's', dataMatches: { a: 1 } },
+      { kind: 'state', store: 'app', path: 'cart.total', equals: 2 },
+      { kind: 'settled', quietMs: 300 },
+      { kind: 'not', predicate: { kind: 'route', pathname: '/a' } },
+      { kind: 'allOf', predicates: [{ kind: 'settled' }, { kind: 'route', contains: 'x' }] },
+      { kind: 'anyOf', predicates: [{ kind: 'signal', name: 's' }] },
+    ];
+    for (const p of ok) expect(() => PredicateSchema.parse(p), JSON.stringify(p)).not.toThrow();
+  });
+
+  it('the alias works nested inside a combinator too', () => {
+    expect(
+      PredicateSchema.parse({ kind: 'allOf', predicates: [{ kind: 'route', path: '/deep' }] }),
+    ).toMatchObject({ predicates: [{ pathname: '/deep' }] });
+  });
+
+  it('and what the stripped form actually did: pass on ANY navigation', () => {
+    // Not asserted — evaluated. This is the green the live MCP session would have received:
+    // `{ kind: 'route', path: '/nowhere' }` parsed to a bare `{ kind: 'route' }`, and a bare route
+    // predicate is satisfied by any route change whatsoever.
+    const navigated: ReticleEvent[] = [
+      { t: 1, type: EventType.ROUTE_CHANGE, sessionId: 's', data: { pathname: '/deployments' } },
+    ];
+    expect(evalRoute(navigated, { kind: 'route' }).pass, 'the tautology').toBe(true);
+    expect(evalRoute(navigated, { kind: 'route', pathname: '/nowhere' }).pass).toBe(false);
+  });
+
+  it('`since` is real on every EVENT-based kind, not just net/console', () => {
+    // Found by strictness, in our own e2e battery: next-blur-clock-test asserted
+    //   { kind: 'signal', name: 'field:committed', dataMatches: {...}, since }
+    // with `since` taken from the blur's own result — and it was dropped, so "the signal fired AFTER
+    // the blur" was really "at any point in the window". `since` is an event-time floor and means the
+    // same thing for every kind that reads the event stream.
+    for (const p of [
+      { kind: 'signal', name: 's', since: 5 },
+      { kind: 'route', pathname: '/a', since: 5 },
+      { kind: 'animation', name: 'fade', since: 5 },
+    ]) {
+      expect(() => PredicateSchema.parse(p), JSON.stringify(p)).not.toThrow();
+    }
+    // element/text read the live DOM, not the event window — `since` there would mean nothing, so it
+    // stays refused rather than accepted and ignored.
+    expect(() =>
+      PredicateSchema.parse({ kind: 'element', query: { testid: 'x' }, since: 5 }),
+    ).toThrow();
+  });
+});

@@ -2,6 +2,7 @@ import * as http from 'node:http';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { MCP_SSE_PATH, MCP_MESSAGE_PATH, STATUS_PATH } from '@reticlehq/core';
+import { noteAgentPeer, PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './version/peer-announce.js';
 import { log } from './log.js';
 import { reportMcpConnected } from './telemetry/mcp-connection.js';
 import {
@@ -10,7 +11,7 @@ import {
   isLoopbackPeer,
   requestToken,
   tokensMatch,
-} from './token-auth.js';
+} from './bridge/token-auth.js';
 
 export interface SharedServer {
   readonly httpServer: http.Server;
@@ -85,14 +86,23 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
       }
     }
 
-    if (req.method === 'GET' && path === STATUS_PATH) {
+    if ('GET' === req.method && path === STATUS_PATH) {
       const body = JSON.stringify(statusProvider?.() ?? { running: true });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(body);
       return;
     }
 
-    if (req.method === 'GET' && path === MCP_SSE_PATH) {
+    if ('GET' === req.method && path === MCP_SSE_PATH) {
+      // The agent's MCP server announces itself here, on the connect it already makes. The daemon is
+      // the single judge of skew, so this is where the third pair is decided — and unlike the CLI's
+      // own check (a stderr line no agent reads), a nudge queued here rides out on the agent's next
+      // tool result. That is the pair the user hits after `npm update`: a cached npx MCP package
+      // talking to a daemon from a different build.
+      noteAgentPeer(
+        url.searchParams.get(PEER_VERSION_PARAM),
+        url.searchParams.get(PEER_CONTRACT_PARAM),
+      );
       if (mcpFactory === undefined) {
         res.writeHead(503, { 'Content-Type': 'text/plain' });
         res.end('MCP server not ready');
@@ -105,13 +115,13 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
       const transport = new SSEServerTransport(MCP_MESSAGE_PATH, res);
       const sid = transport.sessionId;
       transports.set(sid, transport);
-      if (transports.size === 1) agentPresence?.(true); // first agent attached
+      if (1 === transports.size) agentPresence?.(true); // first agent attached
       res.on('close', () => {
         transports.delete(sid);
         transport.close().catch(() => undefined);
         mcpServer.close().catch(() => undefined);
         log('mcp_client_disconnected', { sessionId: sid });
-        if (transports.size === 0) agentPresence?.(false); // last agent detached → it's the human's turn
+        if (0 === transports.size) agentPresence?.(false); // last agent detached → it's the human's turn
       });
       mcpServer
         .connect(transport)
@@ -129,9 +139,9 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
       return;
     }
 
-    if (req.method === 'POST' && path === MCP_MESSAGE_PATH) {
+    if ('POST' === req.method && path === MCP_MESSAGE_PATH) {
       const sessionId = url.searchParams.get('sessionId');
-      if (sessionId === null) {
+      if (null === sessionId) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('missing sessionId');
         return;

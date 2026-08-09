@@ -5,6 +5,8 @@ import {
   type CommandResult,
 } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
+import { predicateToExpect, enforcedOnReplay } from './predicate-to-expect.js';
+import { PredicateSchema } from '../events/predicate.js';
 import type { RecordedStep, CompiledProgram } from './recordings.js';
 import type { Session } from '../session/session.js';
 import { asString, asRecord } from '../tools/tools-helpers.js';
@@ -46,8 +48,39 @@ function sourceFromResult(res: Record<string, unknown>): Record<string, unknown>
   const source = asRecord(res['source']);
   if (typeof source['file'] !== 'string' || typeof source['line'] !== 'number') return undefined;
   const out: Record<string, unknown> = { file: source['file'], line: source['line'] };
-  if (typeof source['column'] === 'number') out['column'] = source['column'];
+  if ('number' === typeof source['column']) out['column'] = source['column'];
   return out;
+}
+
+/**
+ * Capture an act into every in-flight recording, or do nothing when none is running.
+ *
+ * Every tool that drives the page must call this. reticle_act_and_wait did not, which is the tool
+ * the documented agent recipe drives with — so "record start -> drive -> record stop -> flow_save"
+ * saved a flow with zero steps.
+ */
+export function captureAct(
+  recordings: { active: () => string[]; capture: (step: RecordedStep) => void },
+  args: Record<string, unknown>,
+  res: unknown,
+): void {
+  if (0 === recordings.active().length) return;
+  const step = compileActStep(args, res);
+  // Keep the assertion the agent actually made. `act_and_wait { until }` IS the agent saying what
+  // success means — 12 of 14 calls in a day carried one — and dropping it produced a flow graded
+  // "assertion-free: it will pass even if the feature is broken", which is the regression-suite
+  // story failing at its last step. Only kinds FlowExpect can express survive; see
+  // predicate-to-expect.ts.
+  const until = args['until'] ?? args['predicate'];
+  if (until !== undefined) {
+    const parsed = PredicateSchema.safeParse(until);
+    // Only what a replay actually CHECKS — recording an unenforced assertion would grade the flow
+    // "asserted" while nothing verifies it, which is a false green in the feature built to prevent
+    // them. See enforcedOnReplay.
+    const expect = parsed.success ? enforcedOnReplay(predicateToExpect(parsed.data)) : undefined;
+    if (expect !== undefined) step.expect = expect;
+  }
+  recordings.capture(step);
 }
 
 /**
@@ -57,10 +90,31 @@ function sourceFromResult(res: Record<string, unknown>): Record<string, unknown>
  * a volatile ref. Only when neither is available is the step ref-bound (in-session only).
  */
 export function compileActStep(args: Record<string, unknown>, res: unknown): RecordedStep {
-  const r = asRecord(res);
+  const { args: compiled, stable } = compileAnchorArgs(
+    asRecord(res),
+    asString(args['ref']) ?? '',
+    asString(args['action']) ?? '',
+    replayActionArgs(args['args']),
+  );
+  return { tool: ReticleTool.ACT, stable, args: compiled };
+}
+
+/**
+ * The ONE anchor chooser: testid (gold) > role+name (identifies an instance) > component/source
+ * (the JSX site) > a volatile ref (in-session only).
+ *
+ * It is shared because it was not: `compileSequenceStep` understood only a testid, so every
+ * act_sequence sub-step on a testid-less app compiled to a ref, saved as the degraded `unresolved`
+ * sentinel, and drifted on every replay — while a single act on the very same element compiled a
+ * perfectly stable anchor.
+ */
+function compileAnchorArgs(
+  r: Record<string, unknown>,
+  ref: string,
+  action: string,
+  actArgs: Record<string, unknown>,
+): { args: Record<string, unknown>; stable: boolean } {
   const testid = asString(r['testid']);
-  const action = asString(args['action']) ?? '';
-  const actArgs = replayActionArgs(args['args']);
   const source = sourceFromResult(r);
   if (testid !== undefined) {
     // The testid anchors the step; source rides along purely so a failure can name a file. Carrying
@@ -72,7 +126,7 @@ export function compileActStep(args: Record<string, unknown>, res: unknown): Rec
       args: actArgs,
     };
     if (source !== undefined) testidArgs['source'] = source;
-    return { tool: ReticleTool.ACT, stable: true, args: testidArgs };
+    return { args: testidArgs, stable: true };
   }
   // Role + NAME before component: a component/source anchor names the JSX site, so every row's copy
   // of the same control collapses onto it. The accessible name separates them, and it is also the
@@ -89,47 +143,39 @@ export function compileActStep(args: Record<string, unknown>, res: unknown): Rec
       args: actArgs,
     };
     if (source !== undefined) roleArgs['source'] = source;
-    return { tool: ReticleTool.ACT, stable: true, args: roleArgs };
+    return { args: roleArgs, stable: true };
   }
   const component = asString(r['component']);
   if (component !== undefined || source !== undefined) {
     const componentArgs: Record<string, unknown> = { by: QueryBy.COMPONENT, action, args: actArgs };
     if (component !== undefined) componentArgs['component'] = component;
     if (source !== undefined) componentArgs['source'] = source;
-    return { tool: ReticleTool.ACT, stable: true, args: componentArgs };
+    return { args: componentArgs, stable: true };
   }
-  return {
-    tool: ReticleTool.ACT,
-    stable: false,
-    args: { ref: asString(args['ref']) ?? '', action, args: actArgs },
-  };
+  return { args: { ref, action, args: actArgs }, stable: false };
 }
 
-interface CompiledSubStep {
-  by?: string;
-  value?: string;
-  ref?: string;
-  action: string;
-  args: Record<string, unknown>;
-}
-
-/** Compile an reticle_act_sequence invocation, normalizing each sub-step to its testid where resolvable. */
+/**
+ * Compile an reticle_act_sequence invocation, normalizing each sub-step through the SAME anchor
+ * priority a single act uses (see compileAnchorArgs) — not testid-or-nothing, which is what made
+ * every sequence unreplayable on an app without testids.
+ */
 export function compileSequenceStep(args: Record<string, unknown>, res: unknown): RecordedStep {
   const inputSteps = Array.isArray(args['steps']) ? args['steps'] : [];
   const resolved = Array.isArray(asRecord(res)['steps'])
     ? (asRecord(res)['steps'] as unknown[])
     : [];
   let stable = inputSteps.length > 0;
-  const subSteps: CompiledSubStep[] = inputSteps.map((raw, i) => {
+  const subSteps = inputSteps.map((raw, i) => {
     const step = asRecord(raw);
-    const action = asString(step['action']) ?? '';
-    const stepArgs = replayActionArgs(step['args']);
-    const testid = asString(asRecord(resolved[i])['testid']);
-    if (testid !== undefined) {
-      return { by: QueryBy.TESTID, value: testid, action, args: stepArgs };
-    }
-    stable = false;
-    return { ref: asString(step['ref']) ?? '', action, args: stepArgs };
+    const compiled = compileAnchorArgs(
+      asRecord(resolved[i]),
+      asString(step['ref']) ?? '',
+      asString(step['action']) ?? '',
+      replayActionArgs(step['args']),
+    );
+    if (!compiled.stable) stable = false;
+    return compiled.args;
   });
   return { tool: ReticleTool.ACT_SEQUENCE, stable, args: { steps: subSteps } };
 }
@@ -204,7 +250,7 @@ async function resolveRef(
       : { ref };
   }
   const ref = asString(step.ref);
-  if (ref === undefined || ref.length === 0) {
+  if (ref === undefined || 0 === ref.length) {
     throw new Error('step has no resolvable anchor (testid, role+name, component) and no ref');
   }
   return { ref, note: 'replayed by stale ref (not portable across sessions)' };

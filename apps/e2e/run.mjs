@@ -20,6 +20,9 @@ const ORDER = [
   // Needs no browser and none of the three servers — real dist modules against a real capture
   // endpoint. Runs first because it is the fastest way to learn the build is sane.
   'telemetry-events-test',
+  // Also needs no browser and no servers: a fake MCP peer and a hand-rolled HELLO, both LYING about
+  // their contract. Runs early for the same reason — it is a cheap check that the three pieces agree.
+  'version-skew-test',
   'next-smoke-test',
   'next-blur-clock-test',
   'status-honesty-test',
@@ -32,20 +35,51 @@ const ORDER = [
   'flow-self-heal-test',
   'project-history-test',
   'spec-runner-test',
+  // Needs no servers and no browser — it watches the daemon's own life cycle, which nothing else
+  // here can see (every other spec drives a daemon immediately, never leaving one idle).
+  'daemon-lifecycle-test',
+  // The other half of the transport story. daemon-lifecycle covers the daemon exiting on its OWN
+  // terms; this one SIGKILLs it under a live client and asserts the stdio MCP server survives —
+  // the failure a user experiences as "my tools vanished, open /mcp and reconnect". Also needs no
+  // servers and no browser.
+  'mcp-survives-test',
+  // Brute force against the same transport: repeated kills, kills mid-call, concurrent bursts,
+  // garbage on stdin, and a foreign process stealing the port. Survival is only half the bar — the
+  // other half is that every request gets an ANSWER, because a hung call is a hung agent.
+  'mcp-stress-test',
+  // The wire under both of those: SDK <-> daemon. Session cap, oversized frames, malformed frames,
+  // a message flood, and sockets killed mid-handshake. Owns its own daemon on its own port.
+  'bridge-stress-test',
+  // The other channel: daemon <-> page. Tabs closed mid-command, two tabs at once, a backgrounded
+  // page, and a reload under a live ref. Needs the bench-app the dashboard specs use.
+  'browser-stress-test',
+  // Every shipped tool, called WRONG: empty, nulls, wrong types, junk keys, a 100KB argument.
+  // The surface sweep proves the tools work; this proves they refuse safely — bounded, actionable,
+  // and never blaming the caller's typo on Reticle. Needs the same bench-app.
+  'tool-fuzz-test',
   'live-control-test',
   'real-world-tests',
   'multi-agent-lease-test',
   'atlas-hard-fixture-test',
+  // Drives a real session and then checks that the EVENTS describe it — a different question from
+  // telemetry-events-test, which only proves each kind can be sent. Owns a browser and writes a flow,
+  // so it sits beside the sweep at the end.
+  'telemetry-stitch-test',
+  // Feedback is the only qualitative channel the product has. This proves a report survives a dead
+  // network (outbox), that a delivered one drains, and that filing from a Reticle checkout works.
+  'feedback-durability-test',
   // Last: it drives every tool over real MCP, including navigate/crawl/clock, and owns a browser of
   // its own. Running it earlier would leave the shared bench-app in a state later specs assume fresh.
   'tool-surface-sweep-test',
+  // Last: drive the demo app the way a user's agent does, including a false assertion that MUST be
+  // refused. Everything above proves the pieces; this proves the product.
+  'release-smoke-test',
 ];
 // The desktop battery — `pnpm e2e:desktop`. Each of these starts its OWN runtime (an Electron main
 // process, a packaged Tauri binary) and waits for it to dial the bridge, so they need no server from
 // run-ci.sh and would only fail inside it for want of a display.
 const DESKTOP = ['electron-desktop-test', 'tauri-desktop-test'];
 // Specs intentionally excluded from BOTH batteries (add here WITH a reason, never by omission).
-const SKIP = new Set([]);
 const present = new Set(
   readdirSync(specsDir)
     .filter((f) => f.endsWith('.mjs'))
@@ -54,12 +88,12 @@ const present = new Set(
 // ORDER only SEQUENCES; a spec present on disk but in no list is silently un-run rot (this is how
 // new-features-test.mjs rotted). Fail loud so every new spec must be classified.
 const unclassified = [...present].filter(
-  (n) => !ORDER.includes(n) && !DESKTOP.includes(n) && !SKIP.has(n),
+  (n) => !ORDER.includes(n) && !DESKTOP.includes(n),
 );
 if (unclassified.length > 0) {
   console.error(
-    `\ne2e: spec(s) present but not in ORDER, DESKTOP or SKIP: ${unclassified.join(', ')}\n` +
-      'Add each to ORDER (web battery), DESKTOP (Electron/Tauri battery), or SKIP (with a reason).',
+    `\ne2e: spec(s) present but not in ORDER or DESKTOP: ${unclassified.join(', ')}\n` +
+      'Add each to ORDER (web battery) or DESKTOP (Electron/Tauri battery).',
   );
   process.exit(1);
 }
@@ -115,7 +149,75 @@ async function freePort() {
   }
 }
 
+/**
+ * Warn when something that is NOT ours will join the bridge.
+ *
+ * The battery runs on 4400 — Reticle's default, and therefore the port every developer's own app
+ * dials. A single fixture tab left open in a normal browser joins every daemon the battery starts,
+ * and any spec that assumes it owns the session fails with "multiple sessions connected".
+ *
+ * That cost most of an afternoon: three different specs failed across three runs, each of them
+ * correct, all of them poisoned by two Chrome tabs on :4310 and :7699. Every hypothesis about the
+ * code was wrong, because the fault was not in the code.
+ *
+ * It has to BAIT them rather than just look: before the battery starts nothing is listening, so
+ * there is nothing for a stray tab to be connected TO. The tabs reconnect to whatever appears on
+ * 4400, so this stands a daemon up for a few seconds and sees who turns up. The first version of
+ * this check polled an empty port, found nothing, and would have reported all-clear every time.
+ *
+ * Moving the battery to a private port is the real fix and is a bigger job: bench-app, next-smoke
+ * and atlas each hardcode how they dial, and half of them silently stopped connecting when the port
+ * moved. Until that is done, this names the cause in one line at the top of the run instead of
+ * letting a different innocent spec fail each time.
+ */
+async function warnAboutForeignSessions() {
+  await freePort();
+  const daemon = spawn('node', ['packages/server/dist/cli.js', 'serve', '--port', String(BRIDGE_PORT)], {
+    stdio: 'ignore',
+    detached: true,
+  });
+  let sessions = [];
+  try {
+    // 12s, not 4: an SDK reconnects with backoff, so a stray tab whose last attempt just failed
+    // can take longer than a short probe to reappear. A run where the bait window closed too early
+    // reported all-clear and then lost a spec to the very tab it had missed.
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      await new Promise((r) => setTimeout(r, 500));
+      const raw = await sh(
+        `curl -s --max-time 2 http://localhost:${String(BRIDGE_PORT)}/status 2>/dev/null`,
+      );
+      if (raw === '') continue;
+      try {
+        sessions = JSON.parse(raw).sessions ?? [];
+      } catch {
+        /* daemon still coming up */
+      }
+      if (0 < sessions.length) break;
+    }
+  } finally {
+    try {
+      process.kill(-daemon.pid, 'SIGKILL');
+    } catch {
+      /* already gone */
+    }
+    await freePort();
+  }
+  if (0 === sessions.length) return;
+  process.stdout.write(
+    `\n[e2e] WARNING: ${String(sessions.length)} FOREIGN session(s) joined :${String(BRIDGE_PORT)} before the battery started:\n` +
+      sessions.map((session) => `        ${session.sessionId}  ${session.url}`).join('\n') +
+      `\n        These are not ours — most likely app tabs open in your normal browser. They will join\n` +
+      `        every daemon this battery starts, and any spec that assumes it owns the session will fail\n` +
+      `        with "multiple sessions connected". The spec will look broken and will not be.\n` +
+      `        Close those tabs before trusting a failure below.\n`,
+  );
+}
+
+await warnAboutForeignSessions();
+
 let failed = 0;
+/** Names of the specs that failed, so the SUMMARY can name them — see below. */
+const failures = [];
 for (const name of specs) {
   await freePort();
   process.stdout.write(`\n──────── ${name} ────────\n`);
@@ -130,16 +232,23 @@ for (const name of specs) {
     stdio: 'inherit',
     detached: true,
   });
-  const code = await new Promise((res) => child.on('close', res));
+  // Capture the SIGNAL too. `close` reports (code, signal), and a spec killed by a signal arrives
+  // with code === null — which the failure line then printed as "exit null", a message that says
+  // only "something went wrong somewhere" and sent me to re-run the spec by hand to learn anything.
+  const { code, signal } = await new Promise((res) =>
+    child.on('close', (c, sig) => res({ code: c, signal: sig })),
+  );
   try {
     // Negative pid targets the group. ESRCH just means everything already exited, which is the norm.
     process.kill(-child.pid, 'SIGKILL');
   } catch {
     /* group already gone */
   }
-  if (code !== 0) {
+  if (0 !== code) {
+    const how = signal === null || signal === undefined ? `exit ${code}` : `killed by ${signal}`;
     failed += 1;
-    process.stdout.write(`\n[e2e] ✗ ${name} FAILED (exit ${code})\n`);
+    failures.push(`${name} (${how})`);
+    process.stdout.write(`\n[e2e] ✗ ${name} FAILED (${how})\n`);
   }
 }
 
@@ -147,4 +256,11 @@ await freePort();
 process.stdout.write(
   `\n================ e2e ${desktop ? 'desktop ' : ''}battery: ${specs.length - failed}/${specs.length} specs passed ================\n`,
 );
+// Name them HERE too, not only where they happened. The per-spec line is thousands of lines up by
+// the time the battery ends, so "21/22" was in practice an unnamed failure: two intermittent ones
+// were investigated from scratch because the summary — the part anyone actually reads, and all that
+// survives in a CI tail — did not say which spec it was.
+if (failures.length > 0) {
+  process.stdout.write(`   failed: ${failures.join(', ')}\n`);
+}
 process.exit(failed === 0 ? 0 : 1);

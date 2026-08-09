@@ -69,7 +69,7 @@ interface PreloadChannel {
  * returned Ok or Err — the verdict is in this response header, which Tauri explicitly CORS-exposes so
  * JS may read it. Without translating it, every failed command is recorded as a successful request.
  */
-export const TAURI_RESPONSE_HEADER_NAME = 'Tauri-Response';
+const TAURI_RESPONSE_HEADER_NAME = 'Tauri-Response';
 const TAURI_RESPONSE_ERROR = 'error';
 
 /** Rust/IPC vocabulary rather than HTTP's, so the text never claims a transport status it lacks. */
@@ -131,7 +131,7 @@ function isElectronRenderer(): boolean {
  * Subscribe to the Electron preload shim, if this app installed it. Inert on Tauri (whose calls the
  * network observer handles) and on a plain web page.
  */
-export interface IpcOptions {
+interface IpcOptions {
   /** Forward the IPC payloads the preload recorded. Off by default, like the HTTP body capture. */
   captureBodies?: boolean;
 }
@@ -153,7 +153,7 @@ export function installIpc(emit: Emit, options: IpcOptions = {}): Teardown {
   const token = channel.subscribe((record) => {
     observeSafely(() => {
       const url = `${IPC_URL_SCHEME}${record.channel}`;
-      if (record.phase === 'start') {
+      if ('start' === record.phase) {
         emit(EventType.NET_PENDING, {
           id: record.id,
           method: NetInitiator.IPC,
@@ -166,18 +166,18 @@ export function installIpc(emit: Emit, options: IpcOptions = {}): Teardown {
       // main process handled it. Emitting `ok/status` anyway would manufacture the success nobody
       // reported, so both are omitted and `oneWay` says why. `reticle_network { ok }` then matches
       // such a record in neither direction, which is the honest answer to "did it work".
-      const verdictless = record.oneWay === true && record.ok === undefined;
+      const verdictless = true === record.oneWay && record.ok === undefined;
       // Declared, not inferred: the server cannot tell "no verdict" from "not yet settled" without
       // being told, and a send with nothing to observe must not read as a clean green.
       if (verdictless)
         emit(EventType.BLIND_SPOT, { kind: BlindSpotKind.VERDICTLESS_SEND, count: 1 });
-      const ok = record.ok === true;
+      const ok = true === record.ok;
       emit(EventType.NET_REQUEST, {
         id: record.id,
         method: NetInitiator.IPC,
         url,
         ...(verdictless ? {} : { ok, status: ok ? IpcStatus.OK : IpcStatus.ERROR }),
-        ...(record.oneWay === true ? { oneWay: true } : {}),
+        ...(true === record.oneWay ? { oneWay: true } : {}),
         durationMs: record.durationMs ?? 0,
         initiator: NetInitiator.IPC,
         ...(record.error === undefined ? {} : { error: record.error }),
@@ -185,11 +185,11 @@ export function installIpc(emit: Emit, options: IpcOptions = {}): Teardown {
         // write returned ok and its payload went unread" from the size alone, and it cannot infer that
         // from an absent field — an unread payload and an empty one would look identical.
         ...(record.responseSize === undefined ? {} : { responseSize: record.responseSize }),
-        ...(options.captureBodies === true
+        ...(true === options.captureBodies
           ? {
               ...(record.requestBody === undefined ? {} : { requestBody: record.requestBody }),
               ...(record.responseBody === undefined ? {} : { responseBody: record.responseBody }),
-              ...(record.responseBodyTruncated === true ? { responseBodyTruncated: true } : {}),
+              ...(true === record.responseBodyTruncated ? { responseBodyTruncated: true } : {}),
             }
           : {}),
       });

@@ -1,20 +1,26 @@
 const DANGEROUS_ACTION =
   /\b(delete|remove|destroy|erase|drop|terminate|revoke|reset|logout|log out|sign out|close account|cancel subscription|purchase|buy|pay|place order|confirm order|deploy|publish|send|transfer|withdraw|refund)\b/i;
 
+/** The hostnames that ARE loopback outright, with no parsing: the name, and IPv6 ::1 both ways. */
+const LOOPBACK_HOSTNAMES: readonly string[] = ['localhost', '::1', '0:0:0:0:0:0:0:1'];
+
+/** IPv4 loopback is the whole 127.0.0.0/8 block, so the first octet is the entire test. */
+const IPV4_LOOPBACK_FIRST_OCTET = '127';
+const IPV4_OCTET_COUNT = 4;
+const IPV4_OCTET_MAX = 255;
+
 /** True only for literal loopback hosts, never lookalike DNS names such as 127.example.com. */
 export function isLoopbackHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (normalized === 'localhost' || normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') {
-    return true;
-  }
+  if (LOOPBACK_HOSTNAMES.includes(normalized)) return true;
   const octets = normalized.split('.');
   return (
-    octets.length === 4 &&
-    octets[0] === '127' &&
+    IPV4_OCTET_COUNT === octets.length &&
+    IPV4_LOOPBACK_FIRST_OCTET === octets[0] &&
     octets.every((octet) => {
       if (!/^\d{1,3}$/.test(octet)) return false;
       const value = Number(octet);
-      return value >= 0 && value <= 255;
+      return value >= 0 && value <= IPV4_OCTET_MAX;
     })
   );
 }

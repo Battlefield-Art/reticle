@@ -92,6 +92,17 @@ describe('session health', () => {
     expect(h.focused).toBe(true);
   });
 
+  it('carries the engine and brand the page reported on PAGE_HEALTH', () => {
+    const { session } = makeSession();
+    expect(session.brand).toBeUndefined(); // an SDK too old to report one says nothing
+    session.pushEvent({
+      type: EventType.PAGE_HEALTH,
+      data: { hidden: false, focused: true, engine: 'blink', brand: 'arc' },
+    } as unknown as ReticleEvent);
+    expect(session.engine).toBe('blink');
+    expect(session.brand).toBe('arc');
+  });
+
   it('exposes health on info()', () => {
     const { session } = makeSession();
     session.applyHealth(true, false);

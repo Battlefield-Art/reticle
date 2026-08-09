@@ -14,7 +14,7 @@ function frameRealm(): Document {
   const frame = document.createElement('iframe');
   document.body.appendChild(frame);
   const doc = frame.contentDocument;
-  if (doc === null) throw new Error('jsdom did not provide a frame document');
+  if (null === doc) throw new Error('jsdom did not provide a frame document');
   return doc;
 }
 

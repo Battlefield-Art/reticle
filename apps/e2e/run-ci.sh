@@ -45,5 +45,19 @@ curl -s -o /dev/null http://localhost:8787/api/health || { echo "api never came 
 curl -s -o /dev/null http://localhost:4310 || { echo "bench-app never came up"; cat /tmp/e2e-demo.log; exit 1; }
 curl -s -o /dev/null http://localhost:3100 || { echo "next never came up"; cat /tmp/e2e-next.log; exit 1; }
 
+# A port that ANSWERS is not the same as OUR app answering. `next dev` exits instantly with
+# EADDRINUSE when something else already holds :3100, and the curl above then happily succeeds
+# against that stranger — so the whole battery drove somebody else's app. Measured: every next-smoke
+# spec failed with "no connected session with id 'next-smoke'" (that app connects with a per-tab id),
+# which reads exactly like a product defect and is not one. The servers we started must still be
+# ALIVE; if one is not, say which, and say why.
+for pair in "$API:api:/tmp/e2e-api.log" "$DEMO:bench-app:/tmp/e2e-demo.log" "$NEXT:next-smoke:/tmp/e2e-next.log"; do
+  pid="${pair%%:*}"; rest="${pair#*:}"; name="${rest%%:*}"; log="${rest#*:}"
+  kill -0 "$pid" 2>/dev/null && continue
+  echo "==> $name died during boot — the battery would run against whatever else holds its port:"
+  cat "$log"
+  exit 1
+done
+
 echo "==> running e2e battery"
 node apps/e2e/run.mjs

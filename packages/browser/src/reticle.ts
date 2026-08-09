@@ -15,11 +15,14 @@ import {
   setActiveRedactionPolicy,
   wireRedactionKeys,
   RETICLE_ROOT_GLOBAL,
+  RETICLE_SDK_VERSION_GLOBAL,
+  CONTRACT_FINGERPRINT,
   type CommandMessage,
   type HelloMessage,
   type RedactionConfig,
   type ReticleEvent,
 } from '@reticlehq/core';
+import { rememberSessionLabel } from './session-continuity.js';
 import {
   createCommandRegistry,
   RELOAD_CACHE_BUST_PARAM,
@@ -64,7 +67,7 @@ export function shouldBlockProduction(
   nodeEnv: string | undefined,
   allowInProduction: boolean,
 ): boolean {
-  return nodeEnv === 'production' && !allowInProduction;
+  return 'production' === nodeEnv && !allowInProduction;
 }
 
 export function connectionPolicy(
@@ -103,7 +106,7 @@ export function connectionPolicy(
         'Reticle is disabled outside localhost unless allowNonLocalhost is explicitly enabled',
     };
   }
-  if (token === undefined || token.length === 0) {
+  if (token === undefined || 0 === token.length) {
     return { allowed: false, reason: 'a pairing token is required outside localhost' };
   }
   return { allowed: true };
@@ -211,6 +214,7 @@ export class Reticle {
   #annotator: Annotator | undefined;
   #eventCount = 0;
   #token: string | undefined;
+  #sdkVersion: string | undefined;
   #projectId: string | undefined;
   /** App-declared extra redaction keys, announced in hello so the driven path honours them too. */
   #redactKeys: string[] = [];
@@ -219,13 +223,13 @@ export class Reticle {
 
   connect(options: ReticleConnectOptions = {}): void {
     if (this.#connected) return;
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if ('undefined' === typeof window || 'undefined' === typeof document) return;
 
     // Dev-only backstop: refuse to activate in a production build (SSR healthcheck, prod bundle opened
     // on localhost). `process` may not exist in a raw browser, so read NODE_ENV off globalThis.
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
     const nodeEnv = proc?.env?.NODE_ENV;
-    if (shouldBlockProduction(nodeEnv, options.allowInProduction === true)) {
+    if (shouldBlockProduction(nodeEnv, true === options.allowInProduction)) {
       globalThis.console.warn(
         '[Reticle] disabled in production (NODE_ENV=production). Gate the import behind ' +
           'import.meta.env.DEV, or pass allowInProduction:true to override.',
@@ -242,7 +246,7 @@ export class Reticle {
     const policy = connectionPolicy(
       window.location.hostname,
       url,
-      options.allowNonLocalhost === true,
+      true === options.allowNonLocalhost,
       options.token,
       window.location.protocol,
     );
@@ -256,14 +260,29 @@ export class Reticle {
     if (options.root !== undefined && options.root.length > 0) {
       (globalThis as Record<string, unknown>)[RETICLE_ROOT_GLOBAL] = options.root;
     }
+    // The build plugin defines this; a hand-wired connect can pass it explicitly. Either way an
+    // absent value means UNKNOWN, so the bridge never reports an unknown pair as in sync.
+    const declaredVersion =
+      options.sdkVersion ?? (globalThis as Record<string, unknown>)[RETICLE_SDK_VERSION_GLOBAL];
+    this.#sdkVersion =
+      'string' === typeof declaredVersion && declaredVersion.length > 0
+        ? declaredVersion
+        : undefined;
 
     // A pooled/headless launcher can stamp identity via namespaced URL params; explicit (non-auto)
     // options win, but the `auto` sentinel defers to the URL param so leases correlate.
     const identity = resolveConnectIdentity(options, window.location.search);
-    this.#session = resolveSessionLabel(identity.session, () =>
-      typeof globalThis.crypto?.randomUUID === 'function'
-        ? `s${globalThis.crypto.randomUUID()}`
-        : `s${Date.now().toString(36)}`,
+    // Remembered per TAB, so a reload rejoins the same session instead of appearing as a new one and
+    // stranding the agent's handle — see session-continuity. An explicit id (connect option, or the
+    // lease's URL param) still wins.
+    const explicitSession = resolveSessionLabel(identity.session, () => '');
+    this.#session = rememberSessionLabel(
+      explicitSession.length > 0 ? explicitSession : undefined,
+      'undefined' === typeof globalThis.sessionStorage ? undefined : globalThis.sessionStorage,
+      () =>
+        'function' === typeof globalThis.crypto?.randomUUID
+          ? `s${globalThis.crypto.randomUUID()}`
+          : `s${Date.now().toString(36)}`,
     );
     this.#token =
       options.token !== undefined && options.token.length > 0 ? options.token : undefined;
@@ -292,7 +311,7 @@ export class Reticle {
         // lodash debounce/throttle in the app (now - lastCall stays 0), so search boxes, autosave
         // and resize handlers stop firing until a reload — with nothing on screen explaining why.
         resetClock();
-        if (this.#presenter?.sessionActive === true) {
+        if (true === this.#presenter?.sessionActive) {
           this.#presenter.setState(SessionState.ENDED, BRIDGE_LOST_SUMMARY);
         }
       },
@@ -314,10 +333,10 @@ export class Reticle {
 
     const emit = this.#emit;
     this.#teardowns = installAllObservers(emit, {
-      captureBodies: options.captureNetworkBodies === true,
+      captureBodies: true === options.captureNetworkBodies,
     });
 
-    if (options.overlay === true) {
+    if (true === options.overlay) {
       this.#overlay = installOverlay();
       this.#overlay.update({ connected: true, events: 0 });
     }
@@ -348,7 +367,7 @@ export class Reticle {
       this.#presenter.mount();
     }
 
-    if (options.recorder === true) {
+    if (true === options.recorder) {
       this.#recorder = installRecorder({ emit, now: () => Date.now() });
       this.#recorder.mount();
     }
@@ -469,7 +488,12 @@ export class Reticle {
       adapters: adapterNames(),
       ...(this.#token === undefined ? {} : { token: this.#token }),
       hasCapabilities: hasCapabilities(),
-      ...(this.#redactKeys.length === 0 ? {} : { redactKeys: this.#redactKeys }),
+      // Absent when no build plugin supplied one — "unknown", never "matching".
+      ...(this.#sdkVersion === undefined ? {} : { sdkVersion: this.#sdkVersion }),
+      // Always present: derived from THIS build's core, so it needs no build plugin to supply it.
+      // It is the half of the skew check that works on a hand-wired connect.
+      contract: CONTRACT_FINGERPRINT,
+      ...(0 === this.#redactKeys.length ? {} : { redactKeys: this.#redactKeys }),
     };
   }
 
@@ -484,7 +508,7 @@ export class Reticle {
     // SESSION_CONFIG: the agent tunes the session for the app (currently the idle-end window).
     if (command.name === ReticleCommand.SESSION_CONFIG) {
       const idleEndMs = command.args['idleEndMs'];
-      if (typeof idleEndMs === 'number') this.#presenter?.setIdleEndMs(idleEndMs);
+      if ('number' === typeof idleEndMs) this.#presenter?.setIdleEndMs(idleEndMs);
       return { ok: true, result: { applied: this.#presenter !== undefined, idleEndMs } };
     }
 

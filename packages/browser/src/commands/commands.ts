@@ -23,7 +23,7 @@ import {
 import { describe } from '../dom/a11y.js';
 import { sourceFor, formatSource } from '../dom/source.js';
 import { themeReport } from '../dom/theme.js';
-import { refs } from '../dom/refs.js';
+import { echoRef, refs } from '../dom/refs.js';
 import { isButton, isInput } from '../dom/realm.js';
 import { hitTestOccluder } from '../dom/occlusion.js';
 import { readStorage } from '../observers/storage.js';
@@ -41,19 +41,19 @@ export type CommandHandler = (args: Record<string, unknown>) => unknown;
 export const RELOAD_CACHE_BUST_PARAM = '_reticle_reload';
 
 function str(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+  return 'string' === typeof value ? value : undefined;
 }
 
 function num(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
+  return 'number' === typeof value ? value : undefined;
 }
 
 function record(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  return 'object' === typeof value && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 function sourceLocation(value: unknown): ElementQuery['source'] {
-  if (typeof value !== 'object' || value === null) return undefined;
+  if (typeof value !== 'object' || null === value) return undefined;
   const obj = value as Record<string, unknown>;
   if (typeof obj['file'] !== 'string' || typeof obj['line'] !== 'number') return undefined;
   return { file: obj['file'], line: obj['line'], column: num(obj['column']) };
@@ -73,7 +73,7 @@ function queryFromArgs(args: Record<string, unknown>): ElementQuery {
     component: str(args['component']),
     scope: str(args['scope']),
     attrs: Array.isArray(args['attrs'])
-      ? args['attrs'].filter((a): a is string => typeof a === 'string')
+      ? args['attrs'].filter((a): a is string => 'string' === typeof a)
       : undefined,
     source: sourceLocation(args['source']),
   };
@@ -81,7 +81,12 @@ function queryFromArgs(args: Record<string, unknown>): ElementQuery {
 
 function inspect(ref: string): unknown {
   const el = refs.resolve(ref);
-  if (el === null) return { error: `ref '${ref}' no longer resolves` };
+  // THROW, exactly as executeAction does. Returning an error payload made it a SUCCESSFUL command
+  // result, which the server then handed to reticle_inspect's outputSchema (ref/role/name/states/
+  // visible all required) — so the MCP layer answered -32602 Output validation error for the most
+  // ordinary thing that follows a click. The wording matches actions.ts because the server's
+  // recovery table keys off /no longer resolves to an element/ to attach the stale-ref recovery.
+  if (null === el) throw new Error(`ref '${echoRef(ref)}' no longer resolves to an element`);
   const rect = el.getBoundingClientRect();
   const component = identifyComponent(el);
   const view = el.ownerDocument.defaultView;
@@ -133,7 +138,7 @@ function isOccluded(el: Element, rect: DOMRect): boolean {
 /** Narrowing guard: an adapter returned a ComponentStateResult (has a boolean `ok`). */
 function isComponentStateResult(value: unknown): value is ComponentStateResult {
   return (
-    typeof value === 'object' && value !== null && 'ok' in value && typeof value.ok === 'boolean'
+    'object' === typeof value && value !== null && 'ok' in value && 'boolean' === typeof value.ok
   );
 }
 
@@ -202,7 +207,7 @@ function readState(
   if (truncation !== undefined) result.truncation = truncation;
   if (ref !== undefined && ref.length > 0) {
     const el = refs.resolve(ref);
-    if (el === null) {
+    if (null === el) {
       result.component = COMPONENT_UNAVAILABLE;
     } else {
       const state = readComponentState(el);
@@ -228,10 +233,10 @@ function listAnimations(): unknown {
 }
 
 export function resolveNavigationUrl(rawUrl: string, baseUrl: string): string | null {
-  if (rawUrl.length === 0 || rawUrl.length > TRANSPORT_LIMITS.MAX_URL_LENGTH) return null;
+  if (0 === rawUrl.length || rawUrl.length > TRANSPORT_LIMITS.MAX_URL_LENGTH) return null;
   try {
     const url = new URL(rawUrl, baseUrl);
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+    return 'http:' === url.protocol || 'https:' === url.protocol ? url.toString() : null;
   } catch {
     return null;
   }
@@ -248,7 +253,7 @@ export function createCommandRegistry(): Map<string, CommandHandler> {
   );
   reg.set(ReticleCommand.QUERY, (args) => {
     const limit = args['limit'];
-    return runQuery(queryFromArgs(args), typeof limit === 'number' ? limit : undefined);
+    return runQuery(queryFromArgs(args), 'number' === typeof limit ? limit : undefined);
   });
   reg.set(ReticleCommand.MATCH, (args) =>
     matchQuery(
@@ -263,7 +268,7 @@ export function createCommandRegistry(): Map<string, CommandHandler> {
       return dispatchWebMcp(
         str(inner['tool']) ?? '',
         record(inner['params']),
-        inner[DANGEROUS_ACTION_CONFIRM_ARG] === true,
+        true === inner[DANGEROUS_ACTION_CONFIRM_ARG],
       );
     }
     return executeAction(str(args['ref']) ?? '', action, record(args['args']));
@@ -274,12 +279,12 @@ export function createCommandRegistry(): Map<string, CommandHandler> {
   reg.set(ReticleCommand.INSPECT, (args) => inspect(str(args['ref']) ?? ''));
   reg.set(ReticleCommand.ANIMATIONS, () => listAnimations());
   reg.set(ReticleCommand.CLOCK, (args) => {
-    if (args['reset'] === true) {
+    if (true === args['reset']) {
       resetClock();
     } else {
-      if (args['freeze'] === true) freezeClock();
+      if (true === args['freeze']) freezeClock();
       const adv = args['advanceMs'];
-      if (typeof adv === 'number') advanceClock(adv);
+      if ('number' === typeof adv) advanceClock(adv);
     }
     return { frozen: isClockFrozen() };
   });
@@ -288,26 +293,26 @@ export function createCommandRegistry(): Map<string, CommandHandler> {
   );
   reg.set(ReticleCommand.STORAGE_READ, (args) => readStorage(str(args['area'])));
   reg.set(ReticleCommand.CAPABILITIES, () => getCapabilities());
-  reg.set(ReticleCommand.CAPTURE, (args) => captureDesktopWindow(args['fullPage'] === true));
+  reg.set(ReticleCommand.CAPTURE, (args) => captureDesktopWindow(true === args['fullPage']));
   reg.set(ReticleCommand.SCROLL, (args) => {
     const dy = args['dy'];
     const fraction = args['fraction'];
     return scrollContainer(
       str(args['ref']),
-      typeof dy === 'number' ? dy : undefined,
-      typeof fraction === 'number' ? fraction : undefined,
+      'number' === typeof dy ? dy : undefined,
+      'number' === typeof fraction ? fraction : undefined,
     );
   });
   reg.set(ReticleCommand.NAVIGATE, (args) => {
     const rawUrl = str(args['url']);
-    if (rawUrl === undefined || rawUrl.length === 0) return { ok: false, reason: 'url required' };
+    if (rawUrl === undefined || 0 === rawUrl.length) return { ok: false, reason: 'url required' };
     const url = resolveNavigationUrl(rawUrl, window.location.href);
-    if (url === null) return { ok: false, reason: 'only http(s) navigation is allowed' };
+    if (null === url) return { ok: false, reason: 'only http(s) navigation is allowed' };
     window.location.assign(url);
     return { ok: true, url };
   });
   reg.set(ReticleCommand.REFRESH, (args) => {
-    if (args['hard'] === true) {
+    if (true === args['hard']) {
       // Hard reload: navigate to self with a cache-busting param then replace history.
       const url = new URL(window.location.href);
       url.searchParams.set(RELOAD_CACHE_BUST_PARAM, String(Date.now()));

@@ -12,7 +12,7 @@ import {
 } from '@reticlehq/core';
 import { MCP_SSE_PATH } from '@reticlehq/core';
 import { createSharedServer, type SharedServer } from './http-server.js';
-import { Bridge } from './bridge.js';
+import { Bridge } from './bridge/bridge.js';
 import { endAllSessions } from './session/session-reaper.js';
 
 /**

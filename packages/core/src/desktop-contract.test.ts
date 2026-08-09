@@ -94,7 +94,7 @@ describe('desktop contract — the Rust capture helper', () => {
 
   it('registers the command name the SDK invokes', () => {
     const capture = existsSync(CRATE) ? readFileSync(CRATE, 'utf8') : '';
-    if (capture === '') return;
+    if ('' === capture) return;
     expect(capture).toContain(`pub async fn ${DESKTOP_CONTRACT.RETICLE_TAURI_CAPTURE_COMMAND}(`);
   });
 });

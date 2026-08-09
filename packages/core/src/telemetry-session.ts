@@ -197,6 +197,30 @@ export const SessionSummarySchema = z.object({
   peakConcurrentTools: z.number().int().nonnegative().optional(),
   /** Calls for a tool name that does not exist. A non-zero value means our surface is confusing. */
   unknownToolCalls: z.number().int().nonnegative().optional(),
+  /**
+   * Tool calls that failed because there was no app to reach — no session connected, no session by
+   * that id, or several with none named.
+   *
+   * The single biggest drop-off in the funnel, and it used to be reachable only by unpacking
+   * `errors[]` in HogQL. 74% of daemons never call a tool at all, and of the sessions that made
+   * exactly one call, most bounced on precisely this. Absent when it never happened, so the field's
+   * PRESENCE is the signal.
+   */
+  noSessionErrors: z.number().int().nonnegative().optional(),
+  /**
+   * Longest back-to-back run per tool name — the shape of a retry loop.
+   *
+   * `toolCounts` reports five useful calls and five retries of one failing call identically, and
+   * those are opposite facts: engagement versus an agent stuck. Only tools actually repeated appear.
+   */
+  consecutiveRepeats: z.record(z.number().int().positive()).optional(),
+  /**
+   * Actions driven with no verdict after them — the signature of the loop breaking mid-task.
+   *
+   * An agent that acts and then verifies is the product working; one that acts and wanders off has
+   * either given up or lost the thread, and nothing distinguished the two before.
+   */
+  abandonedActions: z.number().int().nonnegative().optional(),
   /** The machine at shutdown — was it starved while all this was happening? */
   machine: MachineSnapshotSchema.optional(),
   /** Distinct MCP clients seen (`claude-code`, `cursor`), so multi-agent use is visible. */

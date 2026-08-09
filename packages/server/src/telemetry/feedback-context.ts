@@ -147,6 +147,48 @@ export interface SessionFacts {
   engine?: string;
   /** True when Reticle drives the page over CDP rather than observing the human's own browser. */
   driven?: boolean;
+  /** What the APP said it is running, from the SDK's hello. The only session-scoped stack evidence. */
+  adapters?: string[];
+}
+
+/**
+ * Which cwd-derived stacks each SDK adapter is consistent with.
+ *
+ * The adapter names a UI library; the directory may name a meta-framework built on it. `react` and
+ * `next` are the same app described at two levels, so the more specific one is kept. `react` and
+ * `sveltekit` are not — that pairing means the daemon's directory is not this session's project.
+ */
+const ADAPTER_IMPLIES: Readonly<Record<string, readonly string[]>> = {
+  react: ['react', 'next', 'remix'],
+  svelte: ['svelte', 'sveltekit'],
+  vue: ['vue', 'nuxt'],
+  solid: ['solid'],
+  angular: ['angular'],
+};
+
+/**
+ * Reconcile what the DIRECTORY says with what the APP says.
+ *
+ * `detectStack` reads the daemon's cwd, which is not the session's project whenever one daemon
+ * serves several apps — the normal case for anyone with two dev servers, and the default in the
+ * fixtures. Reported from the field: feedback filed from an astro session arrived stamped
+ * `"stack":"sveltekit"`, because that was the directory the daemon happened to be started in. The
+ * sessionId was passed and ignored.
+ *
+ * The rule: keep the directory's answer only while the app agrees with it. An adapter that implies a
+ * different family means the directory is describing somebody else's project, so the app's own
+ * report wins — less specific, and true, which is the right trade for an attribution field.
+ */
+export function reconcileStack(
+  fromCwd: { stack?: string; stackMajor?: number },
+  adapters: readonly string[] | undefined,
+): { stack?: string; stackMajor?: number } {
+  const claimed = adapters?.find((adapter) => adapter in ADAPTER_IMPLIES);
+  if (claimed === undefined) return fromCwd;
+  const consistent = ADAPTER_IMPLIES[claimed] ?? [];
+  if (fromCwd.stack !== undefined && consistent.includes(fromCwd.stack)) return fromCwd;
+  // The major belonged to the directory's framework, so it cannot travel with a different stack.
+  return { stack: claimed };
 }
 
 function asRuntime(value: string | undefined): AppRuntime | undefined {
@@ -166,7 +208,10 @@ export function feedbackContext(cwd: string, session?: SessionFacts): FeedbackCo
   const engine = asEngine(session?.engine);
   const client = detectClient();
   return {
-    ...detectStack(cwd),
+    // Session-scoped when the app reports something that contradicts the directory — see
+    // reconcileStack. A daemon serving two apps otherwise stamps both with whichever one it was
+    // started next to.
+    ...reconcileStack(detectStack(cwd), session?.adapters),
     ...client,
     ...(runtime !== undefined ? { runtime } : {}),
     ...(engine !== undefined ? { engine } : {}),

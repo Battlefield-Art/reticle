@@ -42,15 +42,18 @@ Per-payload leanness is only half the token story. Before an agent reads a singl
 
 Measured live, all servers in one run, same tokenizer (`bench/harness/schema-tax.mjs`):
 
-| MCP server                       | tools | schema tokens |
-| -------------------------------- | ----: | ------------: |
-| Reticle — `dynamic` profile      |     2 |       **282** |
-| **Reticle — `hybrid` (default)** |    14 |     **2,832** |
-| Playwright MCP                   |    23 |         3,725 |
-| Chrome DevTools MCP              |    29 |         5,116 |
-| Reticle — `full` (all tools)     |    41 |        22,520 |
+| MCP server                                | tools | schema tokens |
+| ----------------------------------------- | ----: | ------------: |
+| **Reticle — the tool surface**            |    17 |    **~4,500** |
+| Playwright MCP                            |    23 |         3,725 |
+| Chrome DevTools MCP                       |    29 |         5,116 |
+| Reticle — `RETICLE_ADVERTISE_ALL_TOOLS=1` |    48 |       ~32,000 |
 
-The default profile is **below both competitors**, and the minimal `dynamic` profile — which advertises two meta-tools and loads the rest on demand — is **13× leaner than Playwright**. The typed result object still travels as `structuredContent` on every profile; the lean profiles simply do not advertise the output schema, which the agent (reading the `text` block) never consumed anyway.
+There is one tool surface: the verify loop advertised directly, plus two meta-tools (`reticle_tools`, `reticle_run`) that reach every other tool on demand. Nothing is unreachable; the cold tail simply is not re-sent every turn.
+
+`RETICLE_ADVERTISE_ALL_TOOLS=1` advertises everything WITH output schemas — a verification switch for suites that call by name, not a mode to run agents in. It is roughly 7x the per-turn cost, which is why it is opt-in: measured, carrying output schemas on the default surface takes it from 18,183 to 41,117 bytes.
+
+The typed result object still travels as `structuredContent` either way; the default surface simply does not advertise the output schema, which an agent reading the `text` block never consumed.
 
 ## The honest version
 

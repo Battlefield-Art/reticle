@@ -37,7 +37,7 @@ export const CONTRACT_TOOLS: ToolDef[] = [
       governance: z.unknown().optional(),
     },
     handler: async (deps, args) => {
-      if (args[FROM_DISK_ARG] === true) {
+      if (true === args[FROM_DISK_ARG]) {
         const r = await readContract(deps.fs, deps.reticleRoot);
         if (!r.ok)
           throw new Error(

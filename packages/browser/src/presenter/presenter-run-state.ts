@@ -49,7 +49,7 @@ export function buildRunState(input: RunStateInput): PresenterRunState {
   }
   return {
     session: input.sessionId,
-    url: typeof location === 'undefined' ? '' : location.href,
+    url: 'undefined' === typeof location ? '' : location.href,
     state: input.state,
     startedMs: start,
     durationMs: Math.max(0, (input.endMs ?? input.now) - start),

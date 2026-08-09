@@ -33,6 +33,7 @@ function sessionFacts(
   runtime?: string;
   engine?: string;
   driven?: boolean;
+  adapters?: string[];
 } {
   const driven = deps.realInput !== undefined;
   try {
@@ -40,6 +41,9 @@ function sessionFacts(
     return {
       ...(session.runtime !== undefined ? { runtime: session.runtime } : {}),
       ...(session.engine !== undefined ? { engine: session.engine } : {}),
+      // The app's own account of what it is. Without this the reported stack came from the daemon's
+      // working directory, so feedback from one app was filed against another's framework.
+      ...(0 < session.adapters.length ? { adapters: session.adapters } : {}),
       driven,
     };
   } catch {
@@ -110,7 +114,10 @@ export const FEEDBACK_TOOLS: ToolDef[] = [
         ),
     },
     outputSchema: {
+      /** Confirmed delivery. Always false here: the agent path queues and returns. */
       sent: z.boolean(),
+      /** Validated, redacted and queued. This is the one to read. */
+      accepted: z.boolean(),
       reason: z.string().optional(),
       redacted: z.array(z.string()),
       context: z.unknown(),
@@ -135,13 +142,18 @@ export const FEEDBACK_TOOLS: ToolDef[] = [
           ...optionalText(args, 'currentApproach'),
           ...optionalText(args, 'model'),
         },
-        { session: sessionFacts(deps, asString(args['sessionId'])) },
+        {
+          session: sessionFacts(deps, asString(args['sessionId'])),
+          // The AGENT does not wait for the network. `reticle feedback` (a human, at a terminal,
+          // watching for an answer) still does — see submitFeedback's `background`.
+          background: true,
+        },
       );
       return {
         ...receipt,
-        note: receipt.sent
-          ? 'Filed — thank you. Continue your task; do not retry a failing call just to re-report it.'
-          : 'NOT sent (see reason). Tell the human what you found so it is not lost.',
+        note: receipt.accepted
+          ? 'Accepted — thank you. It sends in the background so you are not kept waiting; if it fails you will be told on a later tool result. Continue your task; do not retry a failing call just to re-report it.'
+          : 'NOT accepted (see reason). Tell the human what you found so it is not lost.',
       };
     },
   },
@@ -160,8 +172,20 @@ export const FEEDBACK_PROMPT = {
   command: 'reticle feedback',
 } as const;
 
-/** Tools whose completion means "a verification just happened" — the only moment worth asking at. */
+/**
+ * Tools whose completion means "a verification just happened" — the only moment worth asking at,
+ * and the set that decides what `verification_completed` counts.
+ *
+ * ACT_AND_WAIT belongs here and was missing for a long time. It declares `verified` in its
+ * outputSchema, returns the whole verdict block, and its own description calls it "one hop for the
+ * act->observe->assert loop" — it IS the verification path most agents take. The guard that should
+ * have caught the omission keyed on the tool NAME (/assert|verify/), which act_and_wait does not
+ * match, so it slipped through in silence. Measured over a day of real telemetry: act_and_wait 14
+ * calls, assert ZERO, verification_completed 2. Agents were verifying the entire time and the metric
+ * could not see it. The contract test now checks the SHAPE instead.
+ */
 export const VERIFICATION_TOOLS: ReadonlySet<string> = new Set([
+  ReticleTool.ACT_AND_WAIT,
   ReticleTool.ASSERT,
   ReticleTool.FLOW_VERIFY,
   ReticleTool.VERIFY_CHANGE,

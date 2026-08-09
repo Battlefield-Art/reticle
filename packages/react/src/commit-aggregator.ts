@@ -8,7 +8,7 @@ export interface CommitAggregator {
   onCommit(): void;
 }
 
-export interface CommitAggregatorOptions {
+interface CommitAggregatorOptions {
   /** Injected scheduler (rAF / setTimeout) — deterministic in tests. */
   schedule: (fn: () => void) => void;
   /** Called once per window with the number of commits accumulated since the last flush. */

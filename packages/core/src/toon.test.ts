@@ -1,11 +1,34 @@
 import { describe, it, expect } from 'vitest';
 import { toToon, resultToToon, isToonable, type ToonElement } from './toon.js';
+import { ElementState } from './constants.js';
 
 function el(over: Partial<ToonElement> = {}): ToonElement {
   return { ref: 'e1', role: 'button', name: 'Save', ...over };
 }
 
 describe('toToon', () => {
+  /**
+   * `present` is on EVERY element the SDK describes — getStates seeds the array with it — so it
+   * carries no information and cost eight characters per element in the layer whose whole job is
+   * cutting tokens. On a 500-element snapshot that is ~4KB of nothing, on every snapshot call.
+   */
+  it('omits the present state, which is true of every element it could encode', () => {
+    const out = toToon([
+      el({
+        states: [ElementState.PRESENT, ElementState.VISIBLE, ElementState.ENABLED],
+        visible: true,
+      }),
+    ]);
+    expect(out).not.toContain('present');
+    expect(out).toContain('vis');
+    expect(out).toContain('en');
+  });
+
+  /** An unknown state — a newer SDK than this daemon — still reaches the agent verbatim. */
+  it('passes through a state it does not know', () => {
+    expect(toToon([el({ states: ['teleporting'] })])).toContain('teleporting');
+  });
+
   it('emits an explicit empty marker for no elements', () => {
     expect(toToon([])).toBe('# TOON v1 — empty');
   });

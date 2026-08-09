@@ -1,4 +1,9 @@
-import { ActionType, DANGEROUS_ACTION_CONFIRM_ARG, isDangerousActionText } from '@reticlehq/core';
+import {
+  ActionType,
+  DANGEROUS_ACTION_CONFIRM_ARG,
+  NATIVE_INPUT_ARG,
+  isDangerousActionText,
+} from '@reticlehq/core';
 import { asRecord, asString } from './tools-helpers.js';
 
 /**
@@ -30,7 +35,7 @@ export function assertNotDestructive(
   inspected: unknown,
 ): void {
   if (action !== ActionType.CLICK && action !== ActionType.DBLCLICK) return;
-  if (innerArgs[DANGEROUS_ACTION_CONFIRM_ARG] === true) return;
+  if (true === innerArgs[DANGEROUS_ACTION_CONFIRM_ARG]) return;
   if (!isDangerousActionText(descriptorText(inspected))) return;
   throw new Error(
     `potentially destructive native action blocked; retry with args.${DANGEROUS_ACTION_CONFIRM_ARG}=true`,
@@ -46,9 +51,28 @@ export function assertDragNotDestructive(
   from: unknown,
   to: unknown,
 ): void {
-  if (innerArgs[DANGEROUS_ACTION_CONFIRM_ARG] === true) return;
+  if (true === innerArgs[DANGEROUS_ACTION_CONFIRM_ARG]) return;
   if (!isDangerousActionText(`${descriptorText(from)} ${descriptorText(to)}`)) return;
   throw new Error(
     `potentially destructive native action blocked; retry with args.${DANGEROUS_ACTION_CONFIRM_ARG}=true`,
   );
+}
+
+/**
+ * `reticle_act_and_wait` cannot drive native input, and used to take `args.native` and ignore it.
+ *
+ * An open `args` passthrough accepted the field, the handler drove the page through the SDK anyway,
+ * and the result claimed success — so an agent asking for the one thing a synthetic click cannot do
+ * (a file picker, the clipboard, an `isTrusted`-gated handler) got a synthetic click and no hint
+ * that its request had been dropped. A silently ignored argument is a false promise; refusing with
+ * the route that DOES work is the honest answer.
+ */
+export const NATIVE_INPUT_UNSUPPORTED =
+  `reticle_act_and_wait cannot drive native input, so args.${NATIVE_INPUT_ARG} would be ignored. ` +
+  `Use reticle_act { args: { ${NATIVE_INPUT_ARG}: true } } for the trusted click, then assert the ` +
+  'consequence with reticle_assert / reticle_observe using the `since` cursor it returns.';
+
+/** Refuse rather than silently drop a native-input request the act-then-wait path cannot honour. */
+export function assertNativeInputSupported(innerArgs: Record<string, unknown>): void {
+  if (true === innerArgs[NATIVE_INPUT_ARG]) throw new Error(NATIVE_INPUT_UNSUPPORTED);
 }

@@ -1,10 +1,23 @@
 import { z } from 'zod';
-import { ReticleCommand, SnapshotMode } from '@reticlehq/core';
+import { QueryBy, ReticleCommand, SnapshotMode } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { withSizeCost } from '../session/output-budget.js';
 import { applySnapshotDelta, SnapshotCache } from './snapshot-delta.js';
 import { asString, asNumber } from './tools-helpers.js';
+import { normalizeQueryArgs } from './query-shape.js';
 import { paginateQueryResult } from './query-paginate.js';
+
+/**
+ * The query strategies, derived from the enum in core — never retyped.
+ *
+ * The description used to hand-list them and had already drifted: it named six and omitted
+ * `component`, which is real and works. Deriving both the schema and the prose from one source is
+ * the repo's own rule, and here it is also the difference between refusing `by:'css'` and silently
+ * answering "0 matches" to it.
+ */
+const QUERY_BY_VALUES = Object.values(QueryBy);
+const QUERY_BY_LIST = QUERY_BY_VALUES.join(' | ');
+const queryByEnum = z.enum(QUERY_BY_VALUES as [string, ...string[]]);
 import { CONTRACT_TOOLS } from './contract-tools.js';
 import { DOMAIN_TOOLS } from '../domain/domain-tools.js';
 import { BROWSER_TOOLS } from './browser-tools.js';
@@ -55,6 +68,12 @@ const RAW_TOOLS: ToolDef[] = [
             title: z.string().optional(),
             adapters: z.array(z.string()),
             hasCapabilities: z.boolean(),
+            versionSkew: z
+              .string()
+              .optional()
+              .describe(
+                "Present only when this page's SDK version differs from the daemon's. A skewed pair connects and then disagrees about tool behaviour — usually surfacing as a bare -32000. Fix it before trusting any verdict from this session.",
+              ),
             lastSeenMs: z.number(),
             throttled: z.boolean(),
             focused: z.boolean(),
@@ -179,7 +198,7 @@ const RAW_TOOLS: ToolDef[] = [
               sessionId: resolved.id,
               scope: asString(args['scope']) ?? '',
               mode,
-              diff: args['diff'] === true,
+              diff: true === args['diff'],
             },
             SNAPSHOT_CACHE,
           ),
@@ -190,14 +209,18 @@ const RAW_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.QUERY,
     example: { by: 'testid', value: 'todo-list' },
-    description:
-      'Find elements by Testing-Library semantics, INCLUDING open shadow roots — `count_only:true` gives just the count (~30x smaller); `limit` caps descriptors. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `attrs:["href"]` to project attributes (link/image URLs) onto each match. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
+    description: `Find elements by Testing-Library semantics, INCLUDING open shadow roots — \`count_only:true\` gives just the count (~30x smaller); \`limit\` caps descriptors. Pass \`by\` (${QUERY_BY_LIST}) and \`value\` (the query string). Returns matching refs + descriptors + visibility. Pass \`attrs:["href"]\` to project attributes (link/image URLs) onto each match. Pass \`limit\` to cap descriptors (broad role queries can be large) or \`count_only:true\` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.`,
     inputSchema: {
-      by: z.string().describe('Query strategy: role | text | label | placeholder | testid | alt'),
+      // Constrained to the enum, NOT z.string(). A free string let `by:'css'` through to the
+      // browser's `default: return []`, so an unsupported strategy answered "0 matches" — which
+      // reads as "the element is not on the page". Measured on a live page: by:'css' value:'body'
+      // returned count 0. A false negative is the one answer this product must never invent.
+      by: queryByEnum.optional().describe(`Query strategy: ${QUERY_BY_LIST}`),
       value: z
         .string()
+        .optional()
         .describe(
-          'Query value for the selected strategy (e.g. by=role value=button, or by=testid value=submit-btn).',
+          'Query value for the selected strategy (e.g. by=role value=button, or by=testid value=submit-btn). Or use the predicate spelling directly: { testid: "submit" }, { text: "Deploy" }.',
         ),
       name: z
         .string()
@@ -228,6 +251,14 @@ const RAW_TOOLS: ToolDef[] = [
         .describe(
           'Return just { count } (no element descriptors) — use when you only need "how many match?" and not their refs.',
         ),
+      // The predicate's spelling, accepted as an alias for by/value so the shape an agent learns from
+      // act_and_wait/assert also works here. See query-shape.ts.
+      testid: z.string().optional().describe('Alias for by="testid" value=… (predicate spelling).'),
+      text: z.string().optional().describe('Alias for by="text" value=… (predicate spelling).'),
+      role: z.string().optional().describe('Alias for by="role" value=… (predicate spelling).'),
+      label: z.string().optional().describe('Alias for by="label" value=… (predicate spelling).'),
+      placeholder: z.string().optional().describe('Alias for by="placeholder" value=… .'),
+      alt: z.string().optional().describe('Alias for by="alt" value=… (predicate spelling).'),
       ...sessionIdShape,
     },
     outputSchema: {
@@ -318,8 +349,10 @@ const RAW_TOOLS: ToolDef[] = [
           'True when a `scope` was given but resolved to nothing — zero matches then means the scope is gone, NOT that the element is absent. The search did not widen to the whole page. Re-check the scope before concluding anything.',
         ),
     },
-    handler: (deps, args) =>
-      commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.QUERY, {
+    handler: (deps, rawArgs) => {
+      // Accept the predicate's named-field spelling too — see query-shape.ts.
+      const args = normalizeQueryArgs(rawArgs);
+      return commandOrThrow(deps, asString(args['sessionId']), ReticleCommand.QUERY, {
         by: args['by'],
         value: args['value'],
         name: args['name'],
@@ -330,9 +363,10 @@ const RAW_TOOLS: ToolDef[] = [
         attrs: args['attrs'],
       }).then((result) =>
         withSizeCost(
-          paginateQueryResult(result, asNumber(args['limit']), args['count_only'] === true),
+          paginateQueryResult(result, asNumber(args['limit']), true === args['count_only']),
         ),
-      ),
+      );
+    },
   },
   {
     name: ReticleTool.INSPECT,
@@ -454,7 +488,7 @@ const RAW_TOOLS: ToolDef[] = [
  * Guardrail (from the plan): the 12-tool core hot-set keeps its EXACT names and shapes and is never
  * merged — sessions/navigate/snapshot/query/act/act_and_wait/observe/network/console/wait_for/assert/state.
  */
-const MERGE_PLANS: MergePlan[] = [
+export const MERGE_PLANS: MergePlan[] = [
   {
     name: ReticleTool.BASELINE,
     description:
@@ -494,6 +528,9 @@ const MERGE_PLANS: MergePlan[] = [
       review: ReticleTool.REVIEW,
       narrate: ReticleTool.NARRATE,
     },
+    // The handback the lease block orders on every session — the one call an agent MUST make, so it
+    // is the one that must not need a schema lookup first.
+    example: { action: 'yield', mode: 'waiting' },
   },
   {
     name: ReticleTool.LEASE,
@@ -507,7 +544,7 @@ const MERGE_PLANS: MergePlan[] = [
  * Retired from the MCP surface entirely (capability preserved elsewhere, per the plan):
  * - run_record: auto-recording on flow_replay already persists run outcomes.
  */
-const RETIRED_FROM_SURFACE: string[] = [
+export const RETIRED_FROM_SURFACE: string[] = [
   ReticleTool.RUN_RECORD, // auto-recording on flow_replay already persists run outcomes
   ReticleTool.REFRESH, // absorbed into reticle_navigate { reload: true }
   ReticleTool.WAIT_READY, // server-internal: the first live call already blocks for the session

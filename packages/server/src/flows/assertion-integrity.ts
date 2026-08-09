@@ -25,7 +25,7 @@ export interface StepExpect {
   expect?: FlowExpect;
 }
 
-export interface DowngradeFinding {
+interface DowngradeFinding {
   step: number;
 }
 

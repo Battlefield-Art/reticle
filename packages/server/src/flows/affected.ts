@@ -42,7 +42,7 @@ export function affectedFlows(
   const affected: string[] = [];
   const unknownProvenance: string[] = [];
   for (const flow of flows) {
-    if (flow.sources === undefined || flow.sources.length === 0) {
+    if (flow.sources === undefined || 0 === flow.sources.length) {
       affected.push(flow.name);
       unknownProvenance.push(flow.name);
       continue;

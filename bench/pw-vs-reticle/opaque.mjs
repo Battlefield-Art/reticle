@@ -51,7 +51,7 @@ const SAMPLE = [
 async function reticleRun() {
   const c = new McpStdioClient('node', [CLI, 'mcp', '--port', '4460'], {
     RETICLE_PORT: '4460',
-    RETICLE_TOOL_PROFILE: 'full',
+    RETICLE_ADVERTISE_ALL_TOOLS: '1',
   });
   await c.start();
   const chrome = spawn(

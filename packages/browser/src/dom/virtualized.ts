@@ -31,7 +31,7 @@ function rowHost(container: HTMLElement): HTMLElement {
     const children = Array.from(host.children).filter(
       (c): c is HTMLElement => c instanceof HTMLElement,
     );
-    const only = children.length === 1 ? children[0] : undefined;
+    const only = 1 === children.length ? children[0] : undefined;
     if (only === undefined) return host;
     // A spacer is a single child that fills (or over-fills) the scroll area.
     if (only.offsetHeight < host.scrollHeight * 0.9) return host;

@@ -30,7 +30,7 @@ function renderEvidence(result: SpecRunResult): string {
     .filter((s) => s.drift !== undefined)
     .map((s) => {
       const nearest = s.drift?.nearest;
-      const fix = nearest === null || nearest === undefined ? '' : ` (nearest: ${nearest})`;
+      const fix = null === nearest || nearest === undefined ? '' : ` (nearest: ${nearest})`;
       return `  step ${String(s.step)}: ${s.drift?.reason ?? 'drift'}${fix}`;
     });
   const successLine =
@@ -93,6 +93,3 @@ export async function registerFlowSpecs(
     register(spec.name, specToCase(spec, getSession));
   }
 }
-
-/** Public alias matching the design's stated entrypoint name. */
-export const reticleFlowsAsSpecs = registerFlowSpecs;

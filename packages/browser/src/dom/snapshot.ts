@@ -35,7 +35,7 @@ const TEXT_MAX = 80;
 function directText(el: Element): string {
   let out = '';
   for (const node of el.childNodes) {
-    if (node.nodeType === 3 /* Node.TEXT_NODE */) out += node.textContent ?? '';
+    if (3 === node.nodeType /* Node.TEXT_NODE */) out += node.textContent ?? '';
   }
   const collapsed = out.replace(/\s+/g, ' ').trim();
   return collapsed.length > TEXT_MAX ? `${collapsed.slice(0, TEXT_MAX)}…` : collapsed;
@@ -72,7 +72,7 @@ interface SnapshotOptions {
 function skipEarly(el: Element): boolean {
   if (SKIP_TAGS.has(el.tagName.toLowerCase())) return true;
   if (isIgnored(el)) return true; // Reticle overlay + known dev overlays
-  if (el.getAttribute('aria-hidden') === 'true') return true;
+  if ('true' === el.getAttribute('aria-hidden')) return true;
   if (el instanceof HTMLElement && el.hidden) return true;
   return false;
 }
@@ -115,12 +115,12 @@ function formatTextLine(depth: number, text: string): string {
  * snapshot is blind to it; this line makes it visible. Empty for non-container elements.
  */
 function layoutSignature(style: CSSStyleDeclaration | null): string {
-  if (style === null) return '';
+  if (null === style) return '';
   const display = style.display;
   // Grid track templates are the high-signal CLS case (column/row count + sizing) and there are
   // few grid containers per page. Flex is intentionally excluded: nearly every row is a flex
   // box, so signing them all floods the snapshot for little regression value.
-  if (display === 'grid' || display === 'inline-grid') {
+  if ('grid' === display || 'inline-grid' === display) {
     const cols = style.gridTemplateColumns;
     return cols !== '' && cols !== 'none' ? `grid-cols:${cols}` : 'grid';
   }
@@ -175,14 +175,14 @@ function walk(parent: Element, depth: number, ctx: WalkCtx): void {
     // display-none skip and the layout signature — was two forced style resolutions per node.
     const view = child.ownerDocument.defaultView;
     const style = view !== null ? view.getComputedStyle(child) : null;
-    if (style !== null && style.display === 'none') continue;
+    if (style !== null && 'none' === style.display) continue;
     const role = getRole(child);
     const name = getAccessibleName(child);
     const interactive = INTERACTIVE.has(role);
     // A generic, unnamed container's own text content — only consulted outside INTERACTIVE mode,
     // so the actionable-only view stays lean while FULL/meaningful views see content regressions.
     const lean = ctx.mode === SnapshotMode.INTERACTIVE;
-    const text = !lean && role === 'generic' && name.length === 0 ? directText(child) : '';
+    const text = !lean && 'generic' === role && 0 === name.length ? directText(child) : '';
     // Layout signature for grid/flex containers — makes CLS/layout regressions visible.
     const layout = lean ? '' : layoutSignature(style);
     const meaningful =
@@ -191,7 +191,7 @@ function walk(parent: Element, depth: number, ctx: WalkCtx): void {
     if (include) {
       ctx.nodes += 1;
       ctx.lines.push(
-        text.length > 0 && name.length === 0 && layout.length === 0
+        text.length > 0 && 0 === name.length && 0 === layout.length
           ? formatTextLine(depth, text)
           : formatLine(child, depth, role, name, layout),
       );

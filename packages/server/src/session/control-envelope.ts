@@ -16,6 +16,14 @@ interface ControlEnvelope {
 export const PAUSE_HINT =
   'Paused by the human. Address the guidance, then call reticle_session{action:"resume"} (or wait for the human to resume).';
 
+/**
+ * `because` for the verdict a paused verification returns. Nothing was driven and nothing was
+ * asserted, which is the definition of unknown — never `no`, which would report the human's own
+ * pause as the app failing.
+ */
+export const PAUSED_NO_VERDICT =
+  'the human paused this session, so nothing was driven and nothing was asserted';
+
 /** Shape returned by the short-circuit when an action tool refuses while paused. */
 interface PausedResult {
   paused: true;
@@ -50,7 +58,7 @@ type ControlSpread = { control?: ControlEnvelope };
 export function buildControlEnvelope(session: Session): ControlEnvelope | undefined {
   const state = session.getState();
   const guidance = session.drainInbox().map((m) => m.text);
-  if (state === SessionState.ACTIVE && guidance.length === 0) return undefined;
+  if (state === SessionState.ACTIVE && 0 === guidance.length) return undefined;
   return { state, guidance };
 }
 

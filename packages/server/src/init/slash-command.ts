@@ -17,8 +17,18 @@ export const CLAUDE_COMMAND_PATH = '.claude/commands/reticle.md';
 /** Cursor reads them from `.cursor/commands/<name>.md`. */
 export const CURSOR_COMMAND_PATH = '.cursor/commands/reticle.md';
 
+/**
+ * The frontmatter line that marks a command file as OURS.
+ *
+ * A stale command has to be refreshable — a file frozen at whatever release created it can never be
+ * improved for anyone who already ran init — but the path is one a human may have claimed for their
+ * own `/reticle`, and overwriting that would be destroying somebody's work. This line is how the two
+ * are told apart.
+ */
+export const SLASH_COMMAND_SIGNATURE = 'description: Verify this app in the browser with Reticle';
+
 export const SLASH_COMMAND_BODY = `---
-description: Verify this app in the browser with Reticle — drive one real flow and report what happened.
+${SLASH_COMMAND_SIGNATURE} — drive one real flow and report what happened.
 ---
 
 Verify this running app with Reticle. Drive it; do not read the code and guess.

@@ -1,4 +1,6 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { missingTokenWarning } from './missing-token.js';
+import { ensurePairingToken } from './ensure-token.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { transformSync } from '@babel/core';
@@ -10,11 +12,18 @@ import {
   ReticleDir,
   ReticleEnv,
   RETICLE_ROOT_GLOBAL,
+  RETICLE_SDK_VERSION_GLOBAL,
 } from '@reticlehq/core';
 import { resolveProjectId } from './project-id.js';
 import { discoverDaemonPort } from './discover-port.js';
 import { SVELTE_FILE, stampSvelte } from './svelte-source.js';
-import { createRequire } from 'node:module';
+import {
+  resolvableChain,
+  sdkPackageVersion,
+  sdkBuildFingerprint,
+  viteMajor,
+  optimizerOptionsKey,
+} from './installed.js';
 
 export const RETICLE_VITE_PLUGIN_NAME = 'reticle';
 
@@ -28,42 +37,6 @@ const RETICLE_PACKAGE = '@reticlehq/react';
  * file it lives in.
  */
 export const RETICLE_TOKEN_GLOBAL = '__RETICLE_TOKEN__';
-
-/**
- * Whether a package can be resolved from this process. Used to avoid declaring an optimizeDeps entry
- * for something the app does not have, which Vite reports as a resolve failure on every boot.
- */
-function isResolvable(specifier: string): boolean {
-  try {
-    createRequire(import.meta.url).resolve(specifier);
-    return true;
-  } catch {
-    return false;
-  }
-}
-/**
- * A fingerprint of the installed SDK build, mixed into `optimizeDeps` so Vite re-bundles when the
- * SDK changes.
- *
- * Vite's dep-optimizer cache is keyed on the `optimizeDeps` config and the lockfile — NOT on the
- * contents of the packages it bundled. Upgrade the SDK in place (a patched dist, a linked checkout,
- * an overlay) and the version in `package.json` can stay the same, so Vite keeps serving the OLD
- * pre-bundled copy out of `node_modules/.vite` across dev-server restarts. The fix you just shipped
- * is simply not in the browser, and it looks like the fix does not work. That cost a real
- * false-negative during this bug hunt, and every user upgrading in place hits the same thing.
- *
- * Size+mtime is enough: it changes whenever the bundle does and costs one `stat`.
- */
-function sdkBuildFingerprint(): string {
-  try {
-    const entry = createRequire(import.meta.url).resolve(RETICLE_PACKAGE);
-    const { size, mtimeMs } = statSync(entry);
-    return `${String(size)}-${String(Math.trunc(mtimeMs))}`;
-  } catch {
-    // Unresolvable (not installed yet, exotic layout) — a constant is still correct, just inert.
-    return 'unknown';
-  }
-}
 
 /** Files we stamp with source info — JSX/TSX only. */
 const JSX_FILE = /\.[jt]sx$/;
@@ -112,6 +85,16 @@ const DEV_INJECTION_GRACE_MS = 10_000;
 export interface ReticleVitePluginOptions {
   /** Bridge WebSocket port. Defaults to the SDK default; only baked into connect when non-default. */
   port?: number;
+  /**
+   * Project root, so React's absolute `_debugSource.fileName` reports repo-relative. Resolved from
+   * the Vite config at injection time; set it only to override.
+   */
+  root?: string;
+  /**
+   * The installed SDK's version, so a pair skewed against the daemon can name itself instead of
+   * surfacing as a bare -32000. Read from the installed package; set it only to override.
+   */
+  sdkVersion?: string;
   /** Stable session label for the bridge. Defaults to the SDK's auto-generated id. */
   session?: string;
   /**
@@ -181,7 +164,10 @@ export interface ReticleVitePlugin {
   }) => {
     optimizeDeps: {
       include: string[];
-      esbuildOptions: { define: Record<string, string> };
+      // Either `esbuildOptions` or `rolldownOptions`, chosen from the installed Vite's major — v7
+      // deprecated the former and warns on every boot, blaming the plugin that set it. Typed as an
+      // index signature because the key is computed; the shape under it is the same either way.
+      [optionsKey: string]: unknown;
     };
     define: Record<string, string>;
   };
@@ -263,10 +249,10 @@ function stamp(code: string, id: string): { code: string; map: string | null } |
     configFile: false,
     babelrc: false,
   });
-  if (out?.code === undefined || out.code === null) return null;
+  if (out?.code === undefined || null === out.code) return null;
   return {
     code: out.code,
-    map: out.map === undefined || out.map === null ? null : JSON.stringify(out.map),
+    map: out.map === undefined || null === out.map ? null : JSON.stringify(out.map),
   };
 }
 
@@ -285,16 +271,63 @@ const SDK_CJS_DEPS = {
   ARIA_QUERY: 'aria-query',
 } as const;
 
+/**
+ * Name each CJS dep ONLY in the bare form, and only when the app root can resolve it.
+ *
+ * This used to try three layouts and emit Vite's nested `a > b > c` form when a hoisted lookup
+ * failed. The guard asked the wrong question: it tested NODE resolvability, walking the chain
+ * segment by segment, and under pnpm that succeeds exactly where Vite fails. Measured on the
+ * sveltekit fixture:
+ *
+ *   ['@testing-library/dom']                                           -> null
+ *   ['@reticlehq/browser', '@testing-library/dom']                     -> null
+ *   ['@reticlehq/react', '@reticlehq/browser', '@testing-library/dom'] -> emitted
+ *
+ * So we emitted the three-segment chain, Vite could not follow it, and the boot warning this
+ * function exists to prevent appeared anyway — `Failed to resolve dependency: …, present in
+ * optimizeDeps.include`, pointing at Reticle, naming a package the developer has never heard of,
+ * and forcing a full re-optimization on every cold start. The comment stated the rule correctly and
+ * the code broke it.
+ *
+ * Dropping the nested form loses nothing that matters: the SDK itself is still pre-bundled, and Vite
+ * follows its imports when it does that, so these deps are handled as part of it. Naming them
+ * separately was belt-and-braces for a locally-aliased SDK, where the bare form resolves anyway.
+ */
+export function cjsDepIncludes(
+  appRoot: string,
+  // Injected so the rule can be tested hermetically. Real module resolution is not: under vitest,
+  // `createRequire` from a directory that does not exist still resolves packages out of the runner's
+  // own graph, so a filesystem-based test of "nothing is reachable here" silently asserts nothing.
+  canResolve: (dep: string) => boolean = (dep) => null !== resolvableChain([dep], appRoot),
+): string[] {
+  return [SDK_CJS_DEPS.TESTING_LIBRARY, SDK_CJS_DEPS.ARIA_QUERY].filter(canResolve);
+}
+
 export function readPairingToken(): string | undefined {
   const override = process.env[ReticleEnv.PAIRING_TOKEN_DIR];
   const dir =
     override !== undefined && override.length > 0 ? override : join(homedir(), ReticleDir.ROOT);
-  try {
-    const token = readFileSync(join(dir, ReticleDir.PAIRING_TOKEN_FILE), 'utf8').trim();
-    return token.length > 0 ? token : undefined;
-  } catch {
-    return undefined;
+  // Read-or-CREATE, matching the daemon. Reading alone meant a dev server started before the daemon
+  // baked in an empty token and every page it served was refused — with the SDK loading and the
+  // socket opening, so nothing looked broken. See ensure-token for the bisect.
+  return ensurePairingToken(dir);
+}
+
+/**
+ * Pass the token through, saying so once when it is absent.
+ *
+ * Warned HERE rather than at connect time because this is the moment the value is frozen: by the
+ * time the app is refused, the empty string was inlined minutes ago and restarting the dev server is
+ * the only fix. Once per config resolve, so a watch-mode rebuild does not repeat it.
+ */
+let tokenWarned = false;
+function warnIfTokenMissing(token: string | undefined): string | undefined {
+  const warning = missingTokenWarning(token);
+  if (warning !== undefined && !tokenWarned) {
+    tokenWarned = true;
+    console.warn(warning);
   }
+  return token;
 }
 
 /** Build the `reticle.connect` argument literal — only includes keys the user set. */
@@ -305,13 +338,22 @@ function connectArgs(options: ReticleVitePluginOptions): string {
   if (options.session !== undefined) args['session'] = options.session;
   if (options.projectId !== undefined) args['projectId'] = options.projectId;
   if (options.token !== undefined) args['token'] = options.token;
+  // Passed as connect ARGUMENTS, not as a `define`. A define substitutes a bare identifier in the
+  // source it transforms; the SDK reads these as `globalThis[NAME]`, a dynamic lookup no define can
+  // ever reach — so defining them looked right, shipped, and did nothing. Baking them into the
+  // generated connect call is a literal in generated source: no bundler subtleties, works the same
+  // in dev and in a desktop build.
+  if (options.root !== undefined && options.root.length > 0) args['root'] = options.root;
+  if (options.sdkVersion !== undefined && options.sdkVersion.length > 0) {
+    args['sdkVersion'] = options.sdkVersion;
+  }
   // A desktop renderer is a production build by construction; without this the SDK's prod backstop
   // refuses to connect and the app is silently uninstrumented.
-  if (options.desktop === true) args['allowInProduction'] = true;
+  if (true === options.desktop) args['allowInProduction'] = true;
   // Env wins nothing — it only turns the flag ON, so a config that never set it can still be
   // switched on for one debugging session without editing vite.config and restarting the mental
   // model with it.
-  if (options.captureNetworkBodies === true || process.env['VITE_RETICLE_CAPTURE_BODIES'] === '1') {
+  if (true === options.captureNetworkBodies || '1' === process.env['VITE_RETICLE_CAPTURE_BODIES']) {
     args['captureNetworkBodies'] = true;
   }
   return Object.keys(args).length > 0 ? JSON.stringify(args) : '';
@@ -349,7 +391,7 @@ export function connectModuleSource(
   const base = `import { reticle, install } from '${RETICLE_PACKAGE}';\ninstall();\nreticle.connect(${args});\n`;
   // AFTER connect: registerStore subscribes through the live SDK, and registering before there is a
   // session to report into drops the first diffs.
-  return devModule === null ? base : `${base}import('${devModule}');\n`;
+  return null === devModule ? base : `${base}import('${devModule}');\n`;
 }
 
 /**
@@ -370,7 +412,7 @@ export function connectModuleSource(
 export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlugin {
   const sourceMapping = options.sourceMapping !== false;
   const inject = options.inject !== false;
-  const desktop = options.desktop === true;
+  const desktop = true === options.desktop;
   // Resolve the stable projectId once (explicit option, else derived from package.json + cwd) so the
   // app is identifiable across port changes with zero config.
   const resolved: ReticleVitePluginOptions = {
@@ -401,7 +443,12 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     const port = resolved.port ?? discoverDaemonPort(resolved.projectId);
     const withPort = port !== undefined ? { ...resolved, port } : resolved;
     const token = withPort.token ?? readPairingToken();
-    return token !== undefined ? { ...withPort, token } : withPort;
+    const withToken = token !== undefined ? { ...withPort, token } : withPort;
+    // Resolved here for the same reason as the token: these are Node-side facts about the installed
+    // tree, and they travel in the generated connect call rather than through a `define`.
+    const appRoot = withToken.root ?? root ?? process.cwd();
+    const sdkVersion = withToken.sdkVersion ?? sdkPackageVersion(appRoot);
+    return { ...withToken, root: appRoot, sdkVersion };
   };
   /**
    * The BUILD message. A build always runs every transform, so "my transform never ran" and "the
@@ -443,7 +490,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
     // Web: serve-only, so a production bundle can never carry the SDK — gating is the tool's job.
     // Desktop: a packaged renderer IS a production build with no dev server, so the plugin must also
     // run for `vite build` or the shipped app has no connect() at all.
-    ...(options.desktop === true ? {} : { apply: 'serve' as const }),
+    ...(true === options.desktop ? {} : { apply: 'serve' as const }),
     enforce: 'pre',
     /**
      * Declare the SDK's CJS runtime deps so Vite pre-bundles them.
@@ -468,6 +515,9 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       /** Vite's UserConfig root; undefined means the cwd. `configResolved` runs too late for this. */
       root?: string;
     }) {
+      // Everything below asks what the APP has installed, so every lookup is rooted here and never
+      // at the plugin's own location. Vite defaults an omitted root to the cwd; so do we.
+      const appRoot = config.root ?? process.cwd();
       return {
         // Expose the daemon's pairing token to hand-written connects in the same Vite app. The
         // plugin's own injected connect gets the token directly, but a connect the USER writes —
@@ -476,19 +526,27 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
         // failed". Empty until the daemon has provisioned one; the page reloads once it has.
         define: {
           ...(config.define ?? {}),
-          [RETICLE_TOKEN_GLOBAL]: JSON.stringify(readPairingToken() ?? ''),
+          [RETICLE_TOKEN_GLOBAL]: JSON.stringify(warnIfTokenMissing(readPairingToken()) ?? ''),
           // Lets the SDK report React's absolute `_debugSource.fileName` as a repo-relative path,
           // so source looks the same whichever React version an app is on.
-          [RETICLE_ROOT_GLOBAL]: JSON.stringify(config.root ?? process.cwd()),
+          // Kept for HAND-WRITTEN connects (SvelteKit's hook, a custom entry): those live in app
+          // source, where a define does substitute. The plugin's own injected connect passes both as
+          // arguments instead — see connectArgs.
+          [RETICLE_ROOT_GLOBAL]: JSON.stringify(appRoot),
+          [RETICLE_SDK_VERSION_GLOBAL]: JSON.stringify(sdkPackageVersion(appRoot)),
         },
         optimizeDeps: {
           // Part of the cache key, not of the build: changing it is what makes Vite notice that the
           // SDK on disk is not the SDK it pre-bundled. See sdkBuildFingerprint.
-          esbuildOptions: {
+          //
+          // Under the key THIS Vite wants. Vite 7 moved the optimizer to rolldown and deprecated
+          // `esbuildOptions`, warning on every boot — a warning attributed to the plugin that set
+          // it, which is us.
+          [optimizerOptionsKey(viteMajor(appRoot))]: {
             ...(config.optimizeDeps?.esbuildOptions ?? {}),
             define: {
               ...(config.optimizeDeps?.esbuildOptions?.define ?? {}),
-              __RETICLE_SDK_BUILD__: JSON.stringify(sdkBuildFingerprint()),
+              __RETICLE_SDK_BUILD__: JSON.stringify(sdkBuildFingerprint(appRoot)),
             },
           },
           include: [
@@ -500,9 +558,9 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
             // the one the whole product is judged on — silently did nothing, and it worked on the
             // next refresh, which is the worst possible shape for a bug like this.
             RETICLE_PACKAGE,
-            // Only if present — see above; naming an absent package produces a boot warning that
-            // blames Reticle for nothing.
-            ...[SDK_CJS_DEPS.TESTING_LIBRARY, SDK_CJS_DEPS.ARIA_QUERY].filter(isResolvable),
+            // Only in a form that resolves — see above; a name Vite cannot resolve produces a boot
+            // warning that blames Reticle, and a forced re-optimization on every cold start.
+            ...cjsDepIncludes(appRoot),
           ],
         },
       };
@@ -523,7 +581,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       // map: the insertions are within a line and never move one, and a wrong map is worse than none.
       if (shouldStampSvelte(id)) {
         const stamped = stampSvelte(code, id);
-        return stamped === null ? null : { code: stamped, map: null };
+        return null === stamped ? null : { code: stamped, map: null };
       }
       if (!shouldStamp(id)) return null;
       return stamp(code, id);
@@ -567,7 +625,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       // In serve, the HTML is sent BEFORE the browser requests the entry module, so the check has to
       // be deferred — asserting here would fire on every healthy start. Unref'd so a dev server is
       // never held open by it.
-      if (desktop && inject && command === 'serve') {
+      if (desktop && inject && 'serve' === command) {
         const timer = setTimeout(checkInjected, DEV_INJECTION_GRACE_MS);
         (timer as { unref?: () => void }).unref?.();
       }

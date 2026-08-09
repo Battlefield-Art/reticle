@@ -23,6 +23,14 @@ import { fileURLToPath } from 'node:url';
 const DIST = join(fileURLToPath(new URL('../../../packages/server/dist', import.meta.url)));
 const PORT = 9960;
 
+// Events that happen inside a DAEMON RUN and therefore carry `sessionId`. Mirrors core's
+// isSessionScoped; a one-shot CLI command is not a session and must not invent one.
+const SESSION_SCOPED_EVENTS = new Set([
+  'daemon_started', 'daemon_stopped', 'session_progress', 'mcp_client_connected',
+  'project_profiled', 'verification_completed', 'bug_found', 'runtime_crashed',
+  'feedback_submitted',
+]);
+
 const captured = [];
 const server = createServer((req, res) => {
   let body = '';
@@ -54,7 +62,7 @@ writeFileSync(join(root, '.git', 'config'), '[remote "origin"]\n\turl = git@gith
 const { getTelemetry } = await import(`${DIST}/telemetry/telemetry.js`);
 const { getSessionMetrics, resetSessionMetrics } = await import(`${DIST}/telemetry/session-metrics.js`);
 const { installDaemonTelemetry } = await import(`${DIST}/telemetry/daemon-telemetry.js`);
-const { installDaemonResilience } = await import(`${DIST}/daemon-resilience.js`);
+const { installDaemonResilience } = await import(`${DIST}/daemon/daemon-resilience.js`);
 const { submitFeedback } = await import(`${DIST}/telemetry/feedback.js`);
 const { submitIdentity } = await import(`${DIST}/telemetry/identify.js`);
 const { reportCliRun } = await import(`${DIST}/telemetry/cli-telemetry.js`);
@@ -64,6 +72,12 @@ const { buildErrorPayload } = await import(`${DIST}/tools/error-recovery.js`);
 const { reportVersionChange } = await import(`${DIST}/update/updater.js`);
 const { reportMcpConnected, markDaemonStart } = await import(`${DIST}/telemetry/mcp-connection.js`);
 const { reportInitOutcome, InitFailure } = await import(`${DIST}/telemetry/init-telemetry.js`);
+const { reportMcpOutage, resetOutageReporting, OutageStage } = await import(`${DIST}/mcp/mcp-outage.js`);
+const { decideVerified } = await import(`${DIST}/honesty/verified.js`);
+// Derived from core, never re-listed here — a copied vocabulary is correct on the day it is written
+// and silently wrong at the next addition, which has already cost this repo twice.
+const { VerifiedReason } = await import(new URL('../../../packages/core/dist/index.js', import.meta.url).href);
+const VERIFIED_REASONS = new Set(Object.values(VerifiedReason));
 const { classifyConnectFailure } = await import(`${DIST}/telemetry/connect-failure.js`);
 
 if (!getTelemetry().enabled) {
@@ -73,7 +87,35 @@ if (!getTelemetry().enabled) {
 
 const results = [];
 const check = (name, ok, detail = '') => results.push({ name, ok, detail });
-const settle = () => new Promise((r) => setTimeout(r, 700));
+/**
+ * Wait until the capture endpoint has gone QUIET, rather than sleeping a fixed guess.
+ *
+ * This was `setTimeout(700)`, used fifteen times before assertions that an event had arrived — a
+ * statement about the machine, not about the product, and exactly the shape CLAUDE.md calls a bug.
+ * It is the flake: this spec failed the battery twice with no name attached and passed every time it
+ * was re-run, which is what a too-short fixed wait looks like from the outside.
+ *
+ * Adaptive in both directions. On an idle machine it returns in ~120ms instead of 700 (the whole
+ * spec settles fifteen times, so that is most of a second back); under load it keeps waiting up to
+ * the cap. Nothing about the assertions changes — they still require the events to actually arrive.
+ */
+const SETTLE_QUIET_MS = 120;
+const SETTLE_CAP_MS = 10_000;
+const settle = async () => {
+  const deadline = Date.now() + SETTLE_CAP_MS;
+  let seen = captured.length;
+  let quietSince = Date.now();
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 25));
+    if (captured.length !== seen) {
+      seen = captured.length;
+      quietSince = Date.now();
+      continue;
+    }
+    if (Date.now() - quietSince >= SETTLE_QUIET_MS) return;
+    if (Date.now() >= deadline) return; // cap: let the assertion below report what is missing
+  }
+};
 const find = (ev) => captured.filter((e) => e.event === ev);
 
 // ── 1. CLI command + flags ────────────────────────────────────────────────────
@@ -91,13 +133,22 @@ const beforeDaemonArg = find('cli_command_run').length;
 reportCliRun(['_daemon', '--port', '9000']);
 await settle();
 check('_daemon spawn does NOT count as a CLI run', find('cli_command_run').length === beforeDaemonArg);
+// Nor does `mcp`. It is the agent's MCP client opening its transport, which no person typed — and it
+// was 475 of 561 of this event (85%) in one real day, on an event whose purpose is human intent.
+// `mcp_client_connected` already reports an agent attaching, with strictly more detail.
+reportCliRun(['mcp', '--port', '9000']);
+await settle();
+check('`mcp` does NOT count as a CLI run — it is the agent\'s transport, not a typed command', find('cli_command_run').length === beforeDaemonArg);
 
 // ── 1b. Session correlation — the key that ties one daemon run together ───────
 {
-  const ids = new Set(captured.map((e) => e.properties.sessionId));
-  check('every event carries a sessionId', captured.every((e) => typeof e.properties.sessionId === 'string'));
-  check('  all events from one daemon share ONE sessionId', ids.size === 1, `${ids.size} distinct`);
-  check('  also sent as PostHog\'s own $session_id, so its session tooling works', captured.every((e) => e.properties.$session_id === e.properties.sessionId));
+  // A sessionId means A DAEMON RUN. A one-shot CLI command mints one per PROCESS that joins to
+  // nothing — measured over a real day, uniq(sessionId) was 704, of which 561 came from
+  // cli_command_run and not one was shared with a daemon. The true daemon count was 121, so every
+  // tile counting sessions was ~6x high.
+  check('every DAEMON event carries a sessionId', captured.filter((e) => SESSION_SCOPED_EVENTS.has(e.event)).every((e) => typeof e.properties.sessionId === 'string'));
+  check('  a one-shot CLI run carries NONE — it is not a session', find('cli_command_run').every((e) => e.properties.sessionId === undefined && e.properties.$session_id === undefined));
+  check('  nor does it carry `actor` — human by definition once `mcp` is excluded', find('cli_command_run').every((e) => e.properties.actor === undefined));
   // Dead fields from the v2→v3 migration that nothing set any more.
   check('  the dead sessionMs/tool fields are gone', captured.every((e) => e.properties.sessionMs === undefined && e.properties.tool === undefined));
 }
@@ -128,7 +179,17 @@ const falseGreenTool = {
   name: 'reticle_assert',
   description: '',
   inputSchema: {},
-  handler: async () => ({ pass: true, verified: 'no', because: 'channels disagree' }),
+  // The REAL rule, not a hand-written imitation: `verification_reason` only means anything if the
+  // clause that decided the verdict is the one that travelled.
+  handler: async () => ({
+    pass: true,
+    ...decideVerified({
+      pass: true,
+      settled: true,
+      honesty: { grade: 'signal', coverage: { partial: false }, integrity: { clean: true, issues: [] } },
+      contradictions: [{ kind: 'signal-contradicted' }],
+    }),
+  }),
 };
 await runTool(falseGreenTool, deps, { predicate: { kind: 'console' }, since: 1 });
 // A clean pass.
@@ -138,14 +199,43 @@ await runTool(cleanTool, deps, { predicate: { kind: 'console' } });
 const actTool = { name: 'reticle_act', description: '', inputSchema: {}, handler: async () => ({ dispatched: true }) };
 await runTool(actTool, deps, { ref: 'e7', action: 'type', args: 'hunter2-password' });
 await settle();
+// The envelope the product's MAIN verification tool returns: no top-level `pass`, the verdict
+// nested under `verdict`, the summary at `verified`. act_and_wait was absent from
+// VERIFICATION_TOOLS AND unreadable by bugsInResult, so every verdict it produced — and every
+// failure — was invisible to both metrics. Measured: act_and_wait 14 calls/day, assert 0.
+const actAndWaitFail = {
+  name: 'reticle_act_and_wait',
+  description: '',
+  inputSchema: {},
+  handler: async () => ({ verified: 'no', verdict: { pass: false, assertion: 'element.visible' } }),
+};
+await runTool(actAndWaitFail, deps, { ref: 'e7', action: 'click' });
+await settle();
 {
   const vs = find('verification_completed');
-  check('verification_completed fires per verdict', vs.length === 2, `got ${vs.length}`);
+  check('verification_completed fires per verdict', vs.length === 3, `got ${vs.length}`);
+  const aw = vs.find((e) => e.properties.verification_via === 'reticle_act_and_wait');
+  check('  act_and_wait counts as a verification', aw !== undefined);
+  check('  and its failed verdict is recorded as not-passed', aw?.properties.verification_passed === false, String(aw?.properties.verification_passed));
+  const bugs = find('bug_found').filter((e) => e.properties.bug_tool === 'reticle_act_and_wait');
+  check('  a failed act_and_wait verdict is counted as a bug', bugs.length === 1, `got ${bugs.length}`);
+}
+{
+  const vs = find('verification_completed');
   const fg = vs.find((e) => e.properties.verification_falseGreenCaught === true);
   check('  falseGreenCaught set when a PASS is refused', fg !== undefined);
   check('  clean pass NOT marked as a false green', vs.some((e) => e.properties.verification_falseGreenCaught === false));
   check('  carries which tool produced it', fg?.properties.verification_via === 'reticle_assert');
   check('  actor is the agent', fg?.properties.actor === 'agent', fg?.properties.actor);
+}
+{
+  // WHY the verdict came out that way. `verified: 'unknown'` covered seven different clauses of the
+  // honesty rule belonging to three different owners — the agent, the app, and Reticle's own blind
+  // spots — and they reached the wire as one value needing three opposite responses.
+  const reasoned = find('verification_completed').filter((e) => e.properties.verification_reason !== undefined);
+  check('  a verdict from the honesty rule names the clause that decided it', reasoned.length > 0);
+  check('  and the clause is from the closed list', reasoned.every((e) => VERIFIED_REASONS.has(e.properties.verification_reason)), reasoned.map((e) => e.properties.verification_reason).join(','));
+  check('  a refused green says WHY it was refused', reasoned.some((e) => e.properties.verification_reason === 'contradicted' && e.properties.verification_falseGreenCaught === true));
 }
 
 // ── 4. Tool errors → fingerprints ─────────────────────────────────────────────
@@ -175,12 +265,15 @@ await runTool(contradictedTool, deps, { predicate: { kind: 'console' } });
 await settle();
 {
   const bugs = find('bug_found');
-  check('bug_found fires — the number we can publish', bugs.length === 3, `got ${bugs.length}`);
+  check('bug_found fires — the number we can publish', bugs.length === 4, `got ${bugs.length}`);
   const fg = bugs.filter((b) => b.properties.bug_falseGreen === true);
   check('  a passing assertion over a contradiction IS a false green', fg.some((b) => b.properties.bug_kind === 'signal-contradicted'));
   check('  a crawl contradiction counts as a false green too', fg.some((b) => b.properties.bug_kind === 'ui-advanced-request-failed'));
   check('  a single-channel console error is NOT inflated into a false green', bugs.some((b) => b.properties.bug_kind === 'console-error' && b.properties.bug_falseGreen === false));
-  check('  carries the source so the headline can be broken down', new Set(bugs.map((b) => b.properties.bug_source)).size === 2);
+  // The property is "the headline can be broken down", not "there are exactly N sources" — an exact
+  // count turns every added case into a failure and says nothing about the breakdown being usable.
+  const sources = new Set(bugs.map((b) => b.properties.bug_source));
+  check('  carries the source so the headline can be broken down', sources.size >= 2 && !sources.has(undefined), [...sources].join(','));
   // Distinct defects vs instances. Every bug_found must say which it is, or a distinct count read
   // off this stream is silently inflated — one defect hit five times looks like five defects, and
   // that is the number that would end up in a deck. Measured on a real app: 7 events, 3 defects.
@@ -199,8 +292,29 @@ await settle();
   // adding one is a deliberate act reviewed against "does this describe the user's app?". Failing
   // here on a new field is the guard doing its job. `bug_repeat` is a boolean about OUR counting —
   // whether this kind was already seen this session — and says nothing about the app it was found in.
-  check('  carries only the classified kind, source and dedup flag', bugs.every((b) =>
-    Object.keys(b.properties).filter((k) => k.startsWith('bug_')).sort().join() === 'bug_falseGreen,bug_kind,bug_repeat,bug_source,bug_tool'));
+  // `bug_attribution` is optional BY DESIGN — absent means the evidence could not say whose fault it
+  // was, which is why the check is "every field is on the list" rather than "the list is exactly
+  // this". Guessing an owner would put a guess into the one number we intend to publish.
+  const BUG_FIELDS = new Set(['bug_falseGreen', 'bug_kind', 'bug_repeat', 'bug_source', 'bug_tool', 'bug_attribution']);
+  check('  carries only the classified kind, source, dedup flag and attribution', bugs.every((b) =>
+    Object.keys(b.properties).filter((k) => k.startsWith('bug_')).every((k) => BUG_FIELDS.has(k))));
+  // Whose fault it was. In a real captured session SEVEN of eight bug_found events were the agent's
+  // own bad predicates and an empty ref, all published as defects in the customer's app — precision
+  // 1 in 8. Without this the headline defect number is not defensible to anyone who asks how it is
+  // computed, and `attribution: 'app'` is the only bucket that belongs in it.
+  // `bug_attribution` was REMOVED. It shipped twice and was wrong both times — across two real drives
+  // every `app` was a misattribution, so a session would have published defects against a customer's
+  // product that did not exist. A metric confidently wrong about whose fault something is, is worse
+  // than none. The defect is still COUNTED; only the blame is gone, and these pin that.
+  check(
+    '  no defect claims an owner — attribution was removed',
+    bugs.every((b) => b.properties.bug_attribution === undefined),
+  );
+  check(
+    '  and the defects are still counted',
+    bugs.some((b) => b.properties.bug_kind === 'signal-contradicted') &&
+      bugs.some((b) => b.properties.bug_kind === 'console-error'),
+  );
 }
 
 // ── 4b. SDK failures from the in-page half, arriving over the bridge ──────────
@@ -233,6 +347,37 @@ await settle();
   check('  first attach is not a reconnect', cs[0]?.properties.connection_reconnect === false);
   check('  a re-attach IS flagged, so churn is distinguishable from usage', cs[1]?.properties.connection_reconnect === true);
   check('  carries how long the daemon sat before anyone used it', (cs[0]?.properties.connection_daemonAgeMs ?? 0) >= 5000);
+}
+
+// ── 4d-bis. MCP outage — the transport-stability metric ──────────────────────
+// The event fired for months with an EMPTY payload: `emit()` builds its event from an explicit
+// allow-list of keys and `outage` was not on it, so two deliberately different outages produced
+// byte-identical events. It typechecked, it sent, and the data is permanently gone. Against a
+// standing "MCP must never go down" mandate, the metric measuring it reported a bare count with no
+// cause and no recovery signal. A kind-only assertion is what let that pass — so these assert the
+// FIELDS.
+reportMcpOutage(OutageStage.FIRST, { reason: 'sse_ended', attempts: 3 });
+reportMcpOutage(OutageStage.BUDGET_SPENT, { reason: 'connect_error', attempts: 12 });
+await settle();
+{
+  const os_ = find('mcp_connection_lost');
+  check('mcp_connection_lost fires when the agent loses its tools', os_.length === 2, `got ${os_.length}`);
+  const first = os_.find((e) => e.properties.outage_stage === 'first');
+  const spent = os_.find((e) => e.properties.outage_stage === 'budget_spent');
+  check('  the two stages are distinguishable — "did it come back" depends on it', first !== undefined && spent !== undefined);
+  check('  carries WHY the stream went away', first?.properties.outage_reason === 'sse_ended', String(first?.properties.outage_reason));
+  check('  carries how many reconnects had been tried', spent?.properties.outage_attempts === 12, String(spent?.properties.outage_attempts));
+  check('  two DIFFERENT outages are not byte-identical', JSON.stringify(first) !== JSON.stringify(spent));
+}
+{
+  // The reason is a closed vocabulary: the proxy's own strings are free text feeding a log, and an
+  // unbounded value must never reach the wire.
+  resetOutageReporting();
+  reportMcpOutage(OutageStage.FIRST, { reason: 'socket hang up talking to 10.0.0.7', attempts: 1 });
+  await settle();
+  const last = find('mcp_connection_lost').at(-1);
+  check('  an unrecognised cause reports `other`, never the raw string', last?.properties.outage_reason === 'other', String(last?.properties.outage_reason));
+  check('  and leaks nothing from it', !JSON.stringify(last).includes('10.0.0.7'));
 }
 
 // ── 4e. Onboarding funnel ─────────────────────────────────────────────────────
@@ -300,7 +445,16 @@ await settle();
 {
   const f = find('feedback_submitted')[0];
   check('feedback_submitted fires from the agent tool', f !== undefined);
-  check('  receipt reports it was sent', receipt?.sent === true, JSON.stringify(receipt?.reason ?? ''));
+  // ACCEPTED, not sent. The agent path no longer waits for the POST — a ~340ms round-trip mid-task
+  // is the product blocking the user's work to talk about itself — so `sent` (confirmed delivery)
+  // is deliberately false here and `accepted` (validated, redacted, queued) is the field that
+  // carries the promise. `sent` still means delivery on the HUMAN path below, which does wait.
+  check('  receipt reports it was accepted', receipt?.accepted === true, JSON.stringify(receipt?.reason ?? ''));
+  check(
+    '  and does NOT claim delivery it has not confirmed',
+    receipt?.sent === false,
+    `sent=${String(receipt?.sent)}`,
+  );
   check('  carries the kind', f?.properties.feedback_kind === 'gap');
   check('  source is the agent', f?.properties.feedback_source === 'agent');
   check('  carries detected stack context', f?.properties.feedback_stack === 'next', f?.properties.feedback_stack);
@@ -408,9 +562,9 @@ await daemon.shutdown();
   // the thing that broke is exactly the failure this file was written to catch.
   const p = s?.properties ?? {};
   check('  marked final', arrived && p.session_final === true);
-  check('  counted tool calls', arrived && p.session_toolCalls === 8, String(p.session_toolCalls));
+  check('  counted tool calls', arrived && p.session_toolCalls === 9, String(p.session_toolCalls));
   check('  histogram by tool name', arrived && JSON.stringify(p.session_toolCounts ?? {}).includes('reticle_act'));
-  check('  counted verifications', arrived && p.session_verifications === 3, String(p.session_verifications));
+  check('  counted verifications', arrived && p.session_verifications === 4, String(p.session_verifications));
   check('  counted tool errors', arrived && p.session_toolErrors === 3, String(p.session_toolErrors));
   const errors = p.session_errors ?? [];
   check('  grouped 2 same-shape errors into 1 fingerprint', arrived && errors.length === 2, `${errors.length} shapes`);
@@ -434,7 +588,7 @@ await daemon.shutdown();
   check('  a refused CDP attach is classified, not lumped into `other`', conns['attached']?.failures?.cdp_unreachable === 1, JSON.stringify(conns['attached']));
   check('  machine state captured at session end', arrived && (p.session_machine?.cpuCount ?? 0) > 0);
   // The outcome number, rolled up and broken down.
-  check('  session counts the bugs found', arrived && p.session_bugsFound === 3, String(p.session_bugsFound));
+  check('  session counts the bugs found', arrived && p.session_bugsFound === 4, String(p.session_bugsFound));
   check('  and keeps them broken down by kind', JSON.stringify(p.session_bugKinds ?? {}).includes('signal-contradicted'));
   // Reticle's overhead vs the app's own slowness — opposite fixes, previously indistinguishable.
   check('  reports browser-leg latency separately from total busy time', arrived && typeof p.session_browserMs === 'number');
@@ -461,6 +615,18 @@ await new Promise((r) => setTimeout(r, 6000));
     check('  counted saved flows', p.project_flowCount === 1, String(p.project_flowCount));
     check('  computed featureDepth', typeof p.project_featureDepth === 'number');
   }
+}
+
+// ── the session key, checked once EVERY event has been emitted ────────────────
+// Placed last on purpose: run in section 1b it saw only CLI events, which deliberately carry no
+// sessionId, so it compared an empty set and passed for the wrong reason.
+{
+  const scoped = captured.filter((e) => SESSION_SCOPED_EVENTS.has(e.event));
+  const ids = new Set(scoped.map((e) => e.properties.sessionId));
+  check('all events from one daemon share ONE sessionId', ids.size === 1, `${ids.size} distinct across ${scoped.length} events`);
+  check('  also sent as PostHog\'s own $session_id, so its session tooling works', scoped.every((e) => e.properties.$session_id === e.properties.sessionId));
+  const unscoped = captured.filter((e) => !SESSION_SCOPED_EVENTS.has(e.event));
+  check('  and no one-shot event invents one', unscoped.every((e) => e.properties.sessionId === undefined), unscoped.map((e) => e.event).join(','));
 }
 
 // ── report ────────────────────────────────────────────────────────────────────
