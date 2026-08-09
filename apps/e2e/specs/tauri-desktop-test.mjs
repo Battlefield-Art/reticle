@@ -169,19 +169,36 @@ try {
    * call. Nothing here had ever checked that the session survives an ordinary pause.
    *
    * It does: this passes. The check exists because the absence of it is unfalsifiable, not because a
-   * failure was found. (A probe that appeared to show the session dying at ~9s did not reproduce once
-   * the machine was quiet, and is not evidence of anything.)
+   * failure was found.
+   *
+   * ONE ATTEMPT WAS NOT ENOUGH, and the note that used to sit here — "did not reproduce once the
+   * machine was quiet, and is not evidence of anything" — turned out to be the whole story rather
+   * than an aside. Measured: three consecutive failures on a loaded machine, then four consecutive
+   * passes on a quiet one across four different commits INCLUDING the same HEAD that had just
+   * failed. The assertion was flipping on machine load, which makes it useless as a gate: it blocks
+   * a good release at random, and teaches everyone to re-run until green.
+   *
+   * The claim being made is "the session is still ALIVE after a pause", and that is kept exactly.
+   * What changes is the waiting: a hidden WKWebView is throttled by the platform, so a single 8s
+   * command can time out on a webview that is merely slow to be scheduled rather than dead. It now
+   * retries until the session answers or the window closes — a dead session still fails, it just
+   * takes the full window to say so.
    */
   await sleep(12_000);
   let aliveLater = false;
-  try {
-    await tool('reticle_snapshot', {});
-    aliveLater = true;
-  } catch (error) {
-    aliveLater = false;
-    console.log(`   (durability probe: ${String(error).slice(0, 140)})`);
+  let lastError = '';
+  const aliveDeadline = Date.now() + 30_000;
+  while (!aliveLater && Date.now() < aliveDeadline) {
+    try {
+      await tool('reticle_snapshot', {});
+      aliveLater = true;
+    } catch (error) {
+      lastError = String(error).slice(0, 140);
+      await sleep(1000);
+    }
   }
-  chk('the session still answers 12s after connect, not just immediately', aliveLater);
+  if (!aliveLater) console.log(`   (durability probe: ${lastError})`);
+  chk('the session still answers after a pause, not just immediately', aliveLater);
 } finally {
   await session?.shutdown();
 }
