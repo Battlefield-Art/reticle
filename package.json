@@ -16,6 +16,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test:unit",
     "test:unit": "turbo run test:unit",
+    "test:coverage": "turbo run test:coverage",
     "test:e2e": "bash apps/e2e/run-ci.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
