@@ -517,7 +517,13 @@ function main(): void {
 
   switch (parsed.kind) {
     case 'error':
+      // Two audiences, two channels. The structured line is for logs and scripts; the plain text is
+      // for the person who just typed the command. Emitting only the JSON meant a single typo came
+      // back as an escaped one-line wall of the entire help text — see the ParseError builders.
       log('reticle_usage_error', { message: parsed.message });
+      process.stderr.write(
+        parsed.message === CLI_USAGE ? `${CLI_USAGE}\n` : `${parsed.message}\n\n${CLI_USAGE}\n`,
+      );
       process.exit(1);
       break;
     case 'init':

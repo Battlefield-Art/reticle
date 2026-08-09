@@ -227,6 +227,41 @@ type ServeFlags =
  * them headed changed timing enough to break four e2e specs. The headed default belongs to the
  * INTERACTIVE command (`drive`), where a human asked to see the run. `--headed` still opts in here.
  */
+/**
+ * A usage error names the thing that was wrong.
+ *
+ * These used to return CLI_USAGE as the MESSAGE, so every mistake — a typo'd flag, a flag missing
+ * its value, an unknown command — produced the same 600-character help block, JSON-escaped onto one
+ * stderr line by `log()`, with no mention of what the parser actually rejected. The install gate
+ * reported it verbatim as "init crashed: <the entire help text>", which is unreadable in a report
+ * and undiagnosable from a CI log; a human who typed one wrong flag got the same wall.
+ *
+ * The help text is still shown — cli.ts renders it as readable text underneath. It is just not the
+ * message any more.
+ */
+type ParseError = { kind: 'error'; message: string };
+
+const unknownArgument = (arg: string): ParseError => ({
+  kind: 'error',
+  message: `unknown argument '${arg}'`,
+});
+const missingValue = (flag: string): ParseError => ({
+  kind: 'error',
+  message: `${flag} needs a value`,
+});
+const notANumber = (flag: string, value: string): ParseError => ({
+  kind: 'error',
+  message: `${flag} expects a number, got '${value}'`,
+});
+const missingOperand = (command: string, what: string): ParseError => ({
+  kind: 'error',
+  message: `${command} needs ${what}`,
+});
+const unknownCommand = (command: string): ParseError => ({
+  kind: 'error',
+  message: `unknown command '${command}'`,
+});
+
 function parseServeFlags(args: string[], defaultPort: number, _defaultHeadless: boolean): ServeFlags {
   let port = defaultPort;
   let driveUrl: string | undefined;
@@ -237,17 +272,20 @@ function parseServeFlags(args: string[], defaultPort: number, _defaultHeadless: 
   let i = 0;
   while (i < args.length) {
     const arg = args[i];
+    // `i < args.length` already guarantees this, but the index signature does not say so and the
+    // unknown-argument error needs a real string to name.
+    if (arg === undefined) break;
     if (arg === PORT_FLAG) {
       i++;
       const n = args[i];
-      if (n === undefined) return { kind: 'error', message: CLI_USAGE };
+      if (n === undefined) return missingValue(PORT_FLAG);
       const parsed = parseInt(n, 10);
-      if (isNaN(parsed)) return { kind: 'error', message: CLI_USAGE };
+      if (isNaN(parsed)) return notANumber(PORT_FLAG, n);
       port = parsed;
     } else if (arg === DRIVE_FLAG) {
       i++;
       driveUrl = args[i];
-      if (driveUrl === undefined) return { kind: 'error', message: CLI_USAGE };
+      if (driveUrl === undefined) return missingValue(DRIVE_FLAG);
     } else if (arg === HEADED_FLAG) {
       headless = false;
     } else if (arg === HEADLESS_FLAG) {
@@ -257,16 +295,16 @@ function parseServeFlags(args: string[], defaultPort: number, _defaultHeadless: 
     } else if (arg === HTTP_PORT_FLAG) {
       i++;
       const n = args[i];
-      if (n === undefined) return { kind: 'error', message: CLI_USAGE };
+      if (n === undefined) return missingValue(HTTP_PORT_FLAG);
       const parsed = parseInt(n, 10);
-      if (isNaN(parsed)) return { kind: 'error', message: CLI_USAGE };
+      if (isNaN(parsed)) return notANumber(HTTP_PORT_FLAG, n);
       httpPort = parsed;
     } else if (arg === HTTP_TOKEN_FLAG) {
       i++;
       httpToken = args[i];
-      if (httpToken === undefined) return { kind: 'error', message: CLI_USAGE };
+      if (httpToken === undefined) return missingValue(HTTP_TOKEN_FLAG);
     } else {
-      return { kind: 'error', message: CLI_USAGE };
+      return unknownArgument(arg);
     }
     i++;
   }
@@ -303,14 +341,14 @@ function parseDriveSuffix(args: string[], port: number, defaultHeadless: boolean
     } else if (arg === HEADLESS_FLAG) {
       headless = true;
     } else if (arg.startsWith('--')) {
-      return { kind: 'error', message: CLI_USAGE };
+      return unknownArgument(arg);
     } else if (driveUrl === undefined) {
       driveUrl = arg;
     } else {
-      return { kind: 'error', message: CLI_USAGE };
+      return unknownArgument(arg);
     }
   }
-  if (driveUrl === undefined) return { kind: 'error', message: CLI_USAGE };
+  if (driveUrl === undefined) return missingOperand(DRIVE_COMMAND, 'a url');
   return { kind: 'ok', port, driveUrl, headless };
 }
 
@@ -336,25 +374,25 @@ function parseVerifySuffix(args: string[]): VerifySuffix {
     } else if (arg === TIMEOUT_FLAG) {
       i++;
       const n = args[i];
-      if (n === undefined) return { kind: 'error', message: CLI_USAGE };
+      if (n === undefined) return missingValue(TIMEOUT_FLAG);
       const parsed = parseInt(n, 10);
-      if (isNaN(parsed)) return { kind: 'error', message: CLI_USAGE };
+      if (isNaN(parsed)) return notANumber(TIMEOUT_FLAG, n);
       timeoutMs = parsed;
     } else if (arg === STORAGE_STATE_FLAG) {
       i++;
       const v = args[i];
-      if (v === undefined) return { kind: 'error', message: CLI_USAGE };
+      if (v === undefined) return missingValue(STORAGE_STATE_FLAG);
       storageState = v;
     } else if (arg.startsWith('--')) {
-      return { kind: 'error', message: CLI_USAGE };
+      return unknownArgument(arg);
     } else if (url === undefined) {
       url = arg;
     } else {
-      return { kind: 'error', message: CLI_USAGE };
+      return unknownArgument(arg);
     }
     i++;
   }
-  if (url === undefined) return { kind: 'error', message: CLI_USAGE };
+  if (url === undefined) return missingOperand(VERIFY_COMMAND, 'a url');
   return {
     kind: 'ok',
     url,
@@ -384,17 +422,20 @@ function parseInitFlags(args: string[]): InitFlags {
   let i = 0;
   while (i < args.length) {
     const arg = args[i];
+    // `i < args.length` already guarantees this, but the index signature does not say so and the
+    // unknown-argument error needs a real string to name.
+    if (arg === undefined) break;
     if (arg === PORT_FLAG) {
       i++;
       const n = args[i];
-      if (n === undefined) return { kind: 'error', message: CLI_USAGE };
+      if (n === undefined) return missingValue(PORT_FLAG);
       const parsed = parseInt(n, 10);
-      if (isNaN(parsed)) return { kind: 'error', message: CLI_USAGE };
+      if (isNaN(parsed)) return notANumber(PORT_FLAG, n);
       port = parsed;
     } else if (arg === APP_FLAG) {
       i++;
       const value = args[i];
-      if (value === undefined) return { kind: 'error', message: CLI_USAGE };
+      if (value === undefined) return missingValue(APP_FLAG);
       app = value;
     } else if (arg === NO_MCP_FLAG) {
       mcp = false;
@@ -405,7 +446,7 @@ function parseInitFlags(args: string[]): InitFlags {
     } else if (arg === YES_FLAG) {
       // Accepted for scripting/CI; init has no interactive prompts today.
     } else {
-      return { kind: 'error', message: CLI_USAGE };
+      return unknownArgument(arg);
     }
     i++;
   }
@@ -462,6 +503,8 @@ export function parseCliArgs(
   if (0 === argv.length) return { kind: 'serve', port: defaultPort, headless: true, http: false };
 
   const [cmd, ...rest] = argv;
+  // Guaranteed by the bare-argv check above; restated so the unknown-command error can name it.
+  if (cmd === undefined) return { kind: 'error', message: CLI_USAGE };
 
   // `version` (or the conventional -v/--version flags) prints the running version — the diagnostic the
   // troubleshooting docs lean on to confirm which npx-resolved build is actually executing.
@@ -635,6 +678,8 @@ export function parseCliArgs(
       };
     }
     default:
-      return { kind: 'error', message: CLI_USAGE };
+      // A bare `reticle` never lands here — it defaults to `serve` above — so `cmd` is always a real
+      // word somebody typed, and naming it is strictly more useful than reprinting the whole help.
+      return unknownCommand(cmd);
   }
 }
