@@ -17,7 +17,7 @@ const deps = { sessions: server.bridge.sessions };
 const T = (n, a = {}) => TOOLS.find((t) => t.name === n).handler(deps, { sessionId: 'next-smoke', ...a });
 const b = await chromium.launch({ headless: true });
 const p = await b.newPage();
-await p.goto('http://localhost:3101/');
+await p.goto('http://localhost:3100/');
 await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 
 console.log('\n=== EXPLORE: reticle_crawl autonomously drives the app (real browser) ===');

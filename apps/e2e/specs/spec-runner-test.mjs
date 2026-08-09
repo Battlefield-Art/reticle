@@ -16,7 +16,7 @@ reticleTest('ping fires GET /api/ping 200 and opens the modal', async (t) => {
 });
 
 console.log('\n=== @reticlehq/test running 3 specs headless via reticle drive ===');
-const booted = await bootSession({ driveUrl: 'http://localhost:3101/', headless: true });
+const booted = await bootSession({ driveUrl: 'http://localhost:3100/', headless: true });
 await waitForSession(
   async () => (await booted.invoke('reticle_sessions', {})).sessions ?? [],
   'next-smoke',

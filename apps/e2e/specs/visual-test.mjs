@@ -24,7 +24,7 @@ const chk = (l, o, d = '') => {
 const reticleRoot = path.join(os.tmpdir(), `reticle-visual-${process.pid}`, '.reticle');
 const fsp = createNodeFileSystem();
 const server = await start({ port: 4400, mcp: false });
-const provider = new LaunchedRealInputProvider({ driveUrl: 'http://localhost:3101/', headless: true });
+const provider = new LaunchedRealInputProvider({ driveUrl: 'http://localhost:3100/', headless: true });
 await provider.navigate(); // launches Chromium + goto → page SDK connects to the bridge
 const deps = {
   sessions: server.bridge.sessions,

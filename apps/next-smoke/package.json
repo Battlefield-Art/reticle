@@ -4,7 +4,7 @@
   "private": true,
   "description": "A real Next.js (app router, React 19) app to smoke-test Reticle on Next.",
   "scripts": {
-    "dev": "next dev -p 3101"
+    "dev": "next dev -p 3100"
   },
   "dependencies": {
     "next": "^15.5.21",

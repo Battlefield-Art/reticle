@@ -7,7 +7,7 @@ const T=(n,a={})=>TOOLS.find(t=>t.name===n).handler(deps,{sessionId:'next-smoke'
 let pass=0,fail=0; const chk=(l,o,d='')=>{console.log(`   ${o?'✅':'❌'} ${l}${d?'  — '+d:''}`);o?pass++:fail++;};
 const server=await start({port:4400,mcp:false}); deps.sessions=server.bridge.sessions;
 const b=await chromium.launch({headless:true}); const p=await b.newPage();
-await p.goto('http://localhost:3101/');
+await p.goto('http://localhost:3100/');
 await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 const sess=server.bridge.sessions.resolve('next-smoke');
 const ref=(await T('reticle_query',{by:'testid',value:'add-task'})).elements[0].ref;

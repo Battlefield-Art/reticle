@@ -21,7 +21,7 @@ if [ ! -s "$TOKEN_FILE" ]; then
   chmod 600 "$TOKEN_FILE"
 fi
 
-echo "==> starting api (:8787), bench-app (:4310), next-smoke (:3101)"
+echo "==> starting api (:8787), bench-app (:4310), next-smoke (:3100)"
 REFLECT_MS=6000 node apps/api/server.mjs > /tmp/e2e-api.log 2>&1 &
 API=$!
 # bench-app on :4310, dialing the per-spec bridge (:4400) and presenting the token the bridge requires.
@@ -37,16 +37,16 @@ echo "==> waiting for servers"
 for _ in $(seq 1 120); do
   curl -s -o /dev/null http://localhost:8787/api/health \
     && curl -s -o /dev/null http://localhost:4310 \
-    && curl -s -o /dev/null http://localhost:3101 \
+    && curl -s -o /dev/null http://localhost:3100 \
     && break
   sleep 2
 done
 curl -s -o /dev/null http://localhost:8787/api/health || { echo "api never came up"; cat /tmp/e2e-api.log; exit 1; }
 curl -s -o /dev/null http://localhost:4310 || { echo "bench-app never came up"; cat /tmp/e2e-demo.log; exit 1; }
-curl -s -o /dev/null http://localhost:3101 || { echo "next never came up"; cat /tmp/e2e-next.log; exit 1; }
+curl -s -o /dev/null http://localhost:3100 || { echo "next never came up"; cat /tmp/e2e-next.log; exit 1; }
 
 # A port that ANSWERS is not the same as OUR app answering. `next dev` exits instantly with
-# EADDRINUSE when something else already holds :3101, and the curl above then happily succeeds
+# EADDRINUSE when something else already holds :3100, and the curl above then happily succeeds
 # against that stranger — so the whole battery drove somebody else's app. Measured: every next-smoke
 # spec failed with "no connected session with id 'next-smoke'" (that app connects with a per-tab id),
 # which reads exactly like a product defect and is not one. The servers we started must still be

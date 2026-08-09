@@ -16,7 +16,7 @@
  * anyone's app: that a class of defect was found, never what it was found in.
  */
 import { ReticleTool } from '../tools/tool-names.js';
-import { BugAttribution, BugSource, ContradictionKind, type BugFound } from '@reticlehq/core';
+import { BugSource, ContradictionKind, type BugFound } from '@reticlehq/core';
 
 /**
  * A defect as the CLASSIFIER sees it — everything except `repeat`.
@@ -107,39 +107,25 @@ function couldNotRun(failure: unknown): boolean {
 }
 
 /**
- * WHOSE fault a failed ASSERTION was, from the assertion label the evaluator wrote.
+ * `bug.attribution` was REMOVED, deliberately, and this note is here so it is not re-added casually.
  *
- * Only the unambiguous labels are here, and the omissions are the point. In one real session seven
- * of eight `bug_found` events were the agent's own bad calls, published as defects in the customer's
- * app — but `element.present` is genuinely ambiguous ("the button is missing", "the API is down",
- * "the agent mistyped a testid" all produce it), and inventing an owner for it would replace an
- * inflated number with a confident wrong one. Anything not named here reports NO attribution, which
- * a dashboard can exclude from a published defect count. Absent means unclassified, never `app`.
+ * It shipped twice and was wrong both times. First it stamped `app` on every contradiction, including
+ * `request-never-settled` — which Reticle raises from the ABSENCE of a settle event, so a dev-overlay
+ * poll manufactured it with the app doing nothing wrong. That was fixed, and a real drive then found
+ * it still inverted: across two full runs, EVERY `attribution: 'app'` was a misattribution, while the
+ * one defect that genuinely was a bad agent predicate carried none. One session would have published
+ * "2 defects in the app" against a true count of 0.
  *
- * The labels are free string literals in `predicate.ts`/`predicate-eval.ts` rather than an exported
- * enum, so this map cannot import them; that is a copy hazard, and the guard is `bug-found.test.ts`,
- * which drives the real evaluator paths that produce each one.
+ * A metric that is confidently wrong about WHOSE fault a defect is, is worse than no metric: it is
+ * the number a founder steers on, and it points at the customer. Counting nothing is recoverable;
+ * publishing a false accusation about somebody's product is not.
+ *
+ * Bringing it back needs evidence that actually separates the cases. It does not exist in the payload
+ * today: `element.present` covers "the button is missing", "the API is down" and "the agent mistyped
+ * a testid" identically, and `signal.absent` covers both a signal the app never fired and a ref
+ * Reticle drove into nothing. Until a verdict carries the reason it came out that way, the honest
+ * output is no owner at all.
  */
-const ASSERTION_ATTRIBUTION: Readonly<Record<string, BugAttribution>> = {
-  /** The agent named a store path that the store does not expose. Its call, not the app. */
-  'state.path-missing': BugAttribution.REQUEST,
-  /** No readable registered store — nothing instrumented to read. Reticle's setup, not a defect. */
-  'state.unreadable': BugAttribution.RETICLE,
-};
-
-/**
- * WHOSE fault a CONTRADICTION was.
- *
- * Two of the app's own channels disagreeing is the app's, with one exception: `request-never-settled`
- * is raised from the ABSENCE of a settle event, so every gap in Reticle's own observation produces
- * it too. Driven for real against a Next app it fired twice, both times on the framework's dev
- * overlay, and both were published as defects found in the customer's app — a true count of 0
- * reported as 2. Anything the observer can manufacture on its own cannot name an owner, so it names
- * none: absent is a bucket a dashboard excludes, `app` is a defect somebody has to go and not find.
- */
-function contradictionAttribution(kind: string): BugAttribution | undefined {
-  return ContradictionKind.REQUEST_NEVER_SETTLED === kind ? undefined : BugAttribution.APP;
-}
 
 export function bugsInResult(toolName: string, result: Record<string, unknown>): BugCandidate[] {
   // `reticle_run` is a WRAPPER: its handler calls runTool on the real tool, which already reported
@@ -160,13 +146,11 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
   for (const kind of kindsOf(result['contradictions'])) {
     // A contradiction is two of the APP's own channels disagreeing — never the agent's phrasing.
     // Omitted for the one kind Reticle can produce on its own: see contradictionAttribution.
-    const attribution = contradictionAttribution(kind);
     bugs.push({
       source: BugSource.CONTRADICTION,
       kind,
       falseGreen: passed,
       tool: toolName,
-      ...(attribution === undefined ? {} : { attribution }),
     });
   }
 
@@ -176,9 +160,6 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
     // Crawl reports contradictions in this array too, so the same kind must get the same owner
     // wherever it arrives — a `request-never-settled` found by the crawler is no better evidence
     // about whose fault it was than one found by an assertion.
-    const attribution = CONTRADICTION_KINDS.has(kind)
-      ? contradictionAttribution(kind)
-      : BugAttribution.APP;
     bugs.push({
       source: BugSource.CRAWL,
       kind,
@@ -188,7 +169,6 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
       tool: toolName,
       // Nobody wrote a predicate here, so there is no bad request to blame: a crawl anomaly is a
       // fault the app produced on its own.
-      ...(attribution === undefined ? {} : { attribution }),
     });
   }
 
@@ -203,14 +183,12 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
     const reason = assertionOf(result);
     const kind =
       'string' === typeof reason && reason.length > 0 ? reason.slice(0, 64) : 'assertion-failed';
-    const attribution = ASSERTION_ATTRIBUTION[kind];
     bugs.push({
       source: BugSource.ASSERTION,
       kind,
       falseGreen: false,
       tool: toolName,
       // Omitted when the label cannot say whose fault it was — see ASSERTION_ATTRIBUTION.
-      ...(attribution === undefined ? {} : { attribution }),
     });
   }
 
@@ -229,7 +207,6 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
         tool: toolName,
         // A saved flow that used to pass and no longer does is a regression in the app. Rows that
         // never RAN are skipped above precisely so Reticle's own failures do not land here.
-        attribution: BugAttribution.APP,
       });
     }
   }

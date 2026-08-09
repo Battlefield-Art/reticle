@@ -139,20 +139,13 @@ Captured against the real classifier: `verified: 'unknown'` covered "the agent m
 
 Optional on purpose: a suite verdict (`flow_verify`) is a pass/fail with no clause behind it, and an older sender has none. Absent means unclassified.
 
-## Whose defect it was — `bug.attribution`
+## Whose defect it was — removed, on purpose
 
-`bugsFound` was **not publishable**. In one real captured session it scored **1 in 8**: seven of the eight events were the agent's own bad predicates (`state.path-missing` from a store that never existed) and one empty ref (`signal.absent`), every one of them published as a defect found in the customer's app.
+`bug.attribution` shipped twice and was wrong both times. A real drive found that across two full runs EVERY `attribution: 'app'` was a misattribution, while the one defect that genuinely was a bad agent predicate carried none — a single session would have published "2 defects in the app" against a true count of 0.
 
-| Value | Means | Set from |
-| --- | --- | --- |
-| `app` | a defect in the app under test — **the only bucket that belongs in a published count** | any contradiction **except `request-never-settled`**, any other crawl anomaly, any replay regression |
-| `request` | the agent's own call was wrong | `state.path-missing` — a store path that does not exist |
-| `reticle` | Reticle could not see or could not drive; our bug or our config | `state.unreadable` — nothing instrumented to read |
-| _absent_ | the evidence does not say | everything else |
+A metric that is confidently wrong about whose fault a defect is, is worse than no metric: it is the number a founder steers on, and it points at the customer. Counting nothing is recoverable; publishing a false accusation about somebody's product is not.
 
-**The omissions are the design.** `element.present` covers "the button is missing", "the API is down" and "the agent mistyped a testid" identically; `signal.absent` covers both a signal the app never fired and a ref Reticle drove into nothing. Inventing an owner there would swap an inflated number for a confident wrong one — the same reason `brand` is absent rather than `"unknown"`. A dashboard counts `attribution: 'app'` and excludes the rest.
-
-**One contradiction kind is an omission too: `request-never-settled`.** Every other contradiction is two of the app's OWN channels disagreeing, which the app owns. That one is raised from the ABSENCE of a settle event, so any gap in Reticle's own observation produces it without the app doing anything — driven against a Next app it fired twice, both on the framework's dev overlay, and a true count of 0 defects would have been published as 2. Absence of evidence names no owner. The rule holds wherever the kind arrives, including inside a crawl's `anomalies`.
+It comes back when a verdict carries the reason it came out that way. Today the payload cannot separate the cases — `element.present` covers "the button is missing", "the API is down" and "the agent mistyped a testid" identically.
 
 ## What is NOT a crash — expected disconnects
 

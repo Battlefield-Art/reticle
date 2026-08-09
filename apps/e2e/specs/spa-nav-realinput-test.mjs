@@ -8,7 +8,7 @@ const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 let pass=0,fail=0; const chk=(l,o,d='')=>{console.log(`   ${o?'✅':'❌'} ${l}${d?'  — '+d:''}`);o?pass++:fail++;};
 const browser=await chromium.launch({headless:true,args:['--remote-debugging-port=9222']});
 const page=await browser.newPage();
-await page.goto('http://localhost:3101/');
+await page.goto('http://localhost:3100/');
 const server=await start({port:4400,mcp:false});
 const provider=new CdpRealInputProvider({cdpUrl:'http://localhost:9222'});
 const deps={sessions:server.bridge.sessions,baselines:new BaselineStore(),recordings:new RecordingStore(),realInput:provider};

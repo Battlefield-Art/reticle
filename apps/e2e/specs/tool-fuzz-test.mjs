@@ -28,16 +28,18 @@ import { waitForSession } from '../wait-for-session.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const PORT = process.env.TOOL_FUZZ_PORT ?? '4400';
 const APP = process.env.TOOL_FUZZ_APP ?? 'http://localhost:4310/';
-// 10s, not 25. The property under test is that every call SETTLES, and a hostile argument that
+// 15s, not 25. The property under test is that every call SETTLES, and a hostile argument that
 // reaches a browser command waits out that command's own ~5s timeout before answering — measured on
 // 13 of the 285 shapes (reticle_state/nulls, reticle_viewport/nulls, reticle_screenshot/huge,
 // reticle_replay/huge and others at 5-9s). At 25s a handful of those turned this spec from 90
 // seconds into 25+ minutes and stalled the whole battery.
 //
-// 10s still proves the property with headroom over the slowest observed answer. It is deliberately
-// NOT lowered to the observed maximum: a cap that only just clears the current worst case reddens on
-// a slow machine and reports load as a defect.
-const CALL_TIMEOUT_MS = 10_000;
+// I first set this to 10s and it was too tight: 4 of the 285 shapes did not settle inside it
+// (reticle_reconcile/huge-string, reticle_flow_verify/empty, reticle_screenshot/huge-string,
+// reticle_replay/huge-string) on a loaded machine — a cap that only just clears the observed worst
+// case reddens under load and reports the machine as a defect, which is the exact mistake this
+// comment warned about. 15s keeps the spec fast while leaving real headroom.
+const CALL_TIMEOUT_MS = 15_000;
 
 let pass = 0;
 let fail = 0;

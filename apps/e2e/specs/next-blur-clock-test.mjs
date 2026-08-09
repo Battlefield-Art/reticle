@@ -1,5 +1,5 @@
 // Real-browser e2e proving the synthetic-blur commit (synthetic blur -> React onBlur commit) and #3 (fake
-// clock advances a time-gated toast) against the real Next.js app on :3101.
+// clock advances a time-gated toast) against the real Next.js app on :3100.
 import { chromium } from 'playwright';
 import { start, TOOLS, BaselineStore, RecordingStore } from '@reticlehq/server';
 import { waitForSession } from '../wait-for-session.mjs';
@@ -26,7 +26,7 @@ const server = await start({ port: 4400, mcp: false });
 deps.sessions = server.bridge.sessions;
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
-await page.goto('http://localhost:3101/');
+await page.goto('http://localhost:3100/');
 await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 console.log('\n=== blur + fake-clock, real Chromium / Next.js ===');
 

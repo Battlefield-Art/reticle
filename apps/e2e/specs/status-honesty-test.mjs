@@ -1,4 +1,4 @@
-// Real-browser proof of status-honesty against apps/next-smoke (:3101).
+// Real-browser proof of status-honesty against apps/next-smoke (:3100).
 // The key scenario: a THROTTLED tab where requestAnimationFrame never fires. We reproduce it
 // by neutering rAF before page load (addInitScript) so the SDK's bound realRaf never resolves —
 // exactly the condition that made reticle_act hang to the 8s timeout and report a click as an error.
@@ -33,7 +33,7 @@ const page = await browser.newPage();
 await page.addInitScript(() => {
   window.requestAnimationFrame = () => 0;
 });
-await page.goto('http://localhost:3101/');
+await page.goto('http://localhost:3100/');
 await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 console.log('\n=== status honesty, real Chromium (rAF throttled) ===');
 

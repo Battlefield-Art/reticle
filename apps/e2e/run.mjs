@@ -71,13 +71,15 @@ const ORDER = [
   // Last: it drives every tool over real MCP, including navigate/crawl/clock, and owns a browser of
   // its own. Running it earlier would leave the shared bench-app in a state later specs assume fresh.
   'tool-surface-sweep-test',
+  // Last: drive the demo app the way a user's agent does, including a false assertion that MUST be
+  // refused. Everything above proves the pieces; this proves the product.
+  'release-smoke-test',
 ];
 // The desktop battery — `pnpm e2e:desktop`. Each of these starts its OWN runtime (an Electron main
 // process, a packaged Tauri binary) and waits for it to dial the bridge, so they need no server from
 // run-ci.sh and would only fail inside it for want of a display.
 const DESKTOP = ['electron-desktop-test', 'tauri-desktop-test'];
 // Specs intentionally excluded from BOTH batteries (add here WITH a reason, never by omission).
-const SKIP = new Set(['release-smoke-test']);
 const present = new Set(
   readdirSync(specsDir)
     .filter((f) => f.endsWith('.mjs'))
@@ -86,12 +88,12 @@ const present = new Set(
 // ORDER only SEQUENCES; a spec present on disk but in no list is silently un-run rot (this is how
 // new-features-test.mjs rotted). Fail loud so every new spec must be classified.
 const unclassified = [...present].filter(
-  (n) => !ORDER.includes(n) && !DESKTOP.includes(n) && !SKIP.has(n),
+  (n) => !ORDER.includes(n) && !DESKTOP.includes(n),
 );
 if (unclassified.length > 0) {
   console.error(
-    `\ne2e: spec(s) present but not in ORDER, DESKTOP or SKIP: ${unclassified.join(', ')}\n` +
-      'Add each to ORDER (web battery), DESKTOP (Electron/Tauri battery), or SKIP (with a reason).',
+    `\ne2e: spec(s) present but not in ORDER or DESKTOP: ${unclassified.join(', ')}\n` +
+      'Add each to ORDER (web battery) or DESKTOP (Electron/Tauri battery).',
   );
   process.exit(1);
 }

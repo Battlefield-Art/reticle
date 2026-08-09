@@ -1,4 +1,4 @@
-// Drive the real Next.js app (apps/next-smoke, :3101) with Reticle to de-risk Next.
+// Drive the real Next.js app (apps/next-smoke, :3100) with Reticle to de-risk Next.
 import { chromium } from 'playwright';
 import { start, TOOLS, BaselineStore, RecordingStore } from '@reticlehq/server';
 import { waitForSession } from '../wait-for-session.mjs';
@@ -25,7 +25,7 @@ const server = await start({ port: 4400, mcp: false });
 deps.sessions = server.bridge.sessions;
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
-await page.goto('http://localhost:3101/');
+await page.goto('http://localhost:3100/');
 await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 
 console.log('\n=== Reticle on a real Next.js 15 / React 19 app ===');
@@ -69,7 +69,7 @@ console.log('\nTASK D — a SERVER ACTION, the mutation shape with no fetch the 
 // JSON. If that write were invisible, every server-action app would have its entire mutation surface
 // unobserved — the desktop-IPC blind spot in a different costume. The fixture at app/actions has
 // asked this question since it was written and no gate ever answered it.
-await page.goto('http://localhost:3101/actions', { waitUntil: 'domcontentloaded' });
+await page.goto('http://localhost:3100/actions', { waitUntil: 'domcontentloaded' });
 await sleep(1500);
 const countBefore = (await T('reticle_query', { by: 'testid', value: 'note-count' })).elements?.[0]?.text;
 await T('reticle_act', { ref: await refOf('testid', 'note-input'), action: 'fill', args: { value: 'from the battery' } });
