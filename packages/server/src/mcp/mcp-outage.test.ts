@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { TelemetryEventKind } from '@reticlehq/core';
+import { OutageReason, TelemetryEventKind } from '@reticlehq/core';
 import { OutageStage, reportMcpOutage, resetOutageReporting } from './mcp-outage.js';
 import { getTelemetry } from '../telemetry/telemetry.js';
 
@@ -18,9 +18,9 @@ describe('reportMcpOutage', () => {
 
   it('reports the first outage of a session with its cause', () => {
     const emit = vi.spyOn(getTelemetry(), 'emit').mockResolvedValue(true);
-    reportMcpOutage(OutageStage.FIRST, { reason: 'stream ended', attempts: 1 });
+    reportMcpOutage(OutageStage.FIRST, { reason: OutageReason.SSE_ENDED, attempts: 1 });
     expect(emit).toHaveBeenCalledWith(TelemetryEventKind.MCP_CONNECTION_LOST, {
-      outage: { stage: OutageStage.FIRST, reason: 'stream ended', attempts: 1 },
+      outage: { stage: OutageStage.FIRST, reason: OutageReason.SSE_ENDED, attempts: 1 },
     });
     emit.mockRestore();
   });
@@ -33,7 +33,7 @@ describe('reportMcpOutage', () => {
   it('reports each stage at most once, however many times the stream drops', () => {
     const emit = vi.spyOn(getTelemetry(), 'emit').mockResolvedValue(true);
     for (let i = 0; i < 50; i++) {
-      reportMcpOutage(OutageStage.FIRST, { reason: 'stream ended', attempts: i + 1 });
+      reportMcpOutage(OutageStage.FIRST, { reason: OutageReason.SSE_ENDED, attempts: i + 1 });
     }
     expect(emit).toHaveBeenCalledTimes(1);
     emit.mockRestore();
@@ -41,8 +41,8 @@ describe('reportMcpOutage', () => {
 
   it('reports the severe stage separately — stopping retrying is a different fact', () => {
     const emit = vi.spyOn(getTelemetry(), 'emit').mockResolvedValue(true);
-    reportMcpOutage(OutageStage.FIRST, { reason: 'stream ended', attempts: 1 });
-    reportMcpOutage(OutageStage.BUDGET_SPENT, { reason: 'no daemon', attempts: 61 });
+    reportMcpOutage(OutageStage.FIRST, { reason: OutageReason.SSE_ENDED, attempts: 1 });
+    reportMcpOutage(OutageStage.BUDGET_SPENT, { reason: OutageReason.CONNECT_ERROR, attempts: 61 });
     expect(emit).toHaveBeenCalledTimes(2);
     emit.mockRestore();
   });
@@ -50,8 +50,33 @@ describe('reportMcpOutage', () => {
   it('never awaits the POST — the transport must not wait on telemetry to reconnect', () => {
     const emit = vi.spyOn(getTelemetry(), 'emit').mockReturnValue(new Promise(() => undefined));
     expect(() => {
-      reportMcpOutage(OutageStage.FIRST, { reason: 'stream ended', attempts: 1 });
+      reportMcpOutage(OutageStage.FIRST, { reason: OutageReason.SSE_ENDED, attempts: 1 });
     }).not.toThrow();
+    emit.mockRestore();
+  });
+});
+
+/**
+ * The proxy's drop reasons are free strings that also feed a log, and the wire takes no unbounded
+ * text. `other` is the bucket that lets a new drop path exist without one leaking — a classifier
+ * that cannot say "I do not know" lies instead.
+ */
+describe('the reason stays a closed vocabulary', () => {
+  beforeEach(() => {
+    resetOutageReporting();
+  });
+
+  it('forwards a reason the contract names', () => {
+    const emit = vi.spyOn(getTelemetry(), 'emit').mockResolvedValue(true);
+    reportMcpOutage(OutageStage.FIRST, { reason: 'sse_aborted', attempts: 2 });
+    expect(emit.mock.calls[0]?.[1]?.outage?.reason).toBe(OutageReason.SSE_ABORTED);
+    emit.mockRestore();
+  });
+
+  it('reports anything else as `other` rather than putting it on the wire', () => {
+    const emit = vi.spyOn(getTelemetry(), 'emit').mockResolvedValue(true);
+    reportMcpOutage(OutageStage.FIRST, { reason: 'socket hang up to 10.0.0.7', attempts: 2 });
+    expect(emit.mock.calls[0]?.[1]?.outage?.reason).toBe(OutageReason.OTHER);
     emit.mockRestore();
   });
 });

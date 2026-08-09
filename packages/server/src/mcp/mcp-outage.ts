@@ -13,17 +13,24 @@
  * outage) and the share where it never came back on its own (the budget being spent).
  */
 
-import { TelemetryEventKind } from '@reticlehq/core';
+import { OutageReason, OutageStage, TelemetryEventKind } from '@reticlehq/core';
 import { getTelemetry } from '../telemetry/telemetry.js';
 
-/** Why the stream went away, as far as the proxy can tell. */
-export const OutageStage = {
-  /** The first drop of this proxy's life — the session has now experienced an outage. */
-  FIRST: 'first',
-  /** Retries exhausted; the proxy stopped retrying and went dormant until the client asks again. */
-  BUDGET_SPENT: 'budget_spent',
-} as const;
-export type OutageStage = (typeof OutageStage)[keyof typeof OutageStage];
+/**
+ * `OutageStage` and `OutageReason` are core's — this re-export only saves the proxy an import. They
+ * cross the wire, so the vocabulary lives in the contract package and is never re-listed here.
+ */
+export { OutageReason, OutageStage };
+
+/**
+ * The proxy's reason strings are free text: they also feed `proxyLog`, where prose is fine, and the
+ * wire refuses anything unbounded. Unrecognised reports as `other` rather than being forwarded, so a
+ * new drop path can appear in the proxy without an unclassified string leaving the machine.
+ */
+const KNOWN_REASONS: ReadonlySet<string> = new Set(Object.values(OutageReason));
+function outageReason(raw: string): OutageReason {
+  return KNOWN_REASONS.has(raw) ? (raw as OutageReason) : OutageReason.OTHER;
+}
 
 const reported = new Set<OutageStage>();
 
@@ -43,5 +50,7 @@ export function reportMcpOutage(
 ): void {
   if (reported.has(stage)) return;
   reported.add(stage);
-  void getTelemetry().emit(TelemetryEventKind.MCP_CONNECTION_LOST, { outage: { stage, ...facts } });
+  void getTelemetry().emit(TelemetryEventKind.MCP_CONNECTION_LOST, {
+    outage: { stage, reason: outageReason(facts.reason), attempts: facts.attempts },
+  });
 }

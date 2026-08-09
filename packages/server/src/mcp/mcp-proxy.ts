@@ -174,6 +174,14 @@ export class PendingRequests {
     return [...this.#ids];
   }
 
+  /**
+   * Claim ONE unanswered id, so exactly one path may answer it. False means somebody already did —
+   * a duplicate response to one id is a protocol violation, not a belt-and-braces retry.
+   */
+  take(id: unknown): boolean {
+    return this.#ids.delete(JSON.stringify(id));
+  }
+
   /** Take every unanswered id and forget them, so the same request is failed at most once. */
   drain(): string[] {
     const ids = [...this.#ids];
@@ -195,21 +203,28 @@ export class PendingRequests {
  * with the MCP server still perfectly alive. An agent cannot tell that apart from "still working".
  */
 export function streamLossReplies(pending: PendingRequests, reason: string): string[] {
-  return pending.drain().map((id) =>
-    JSON.stringify({
-      jsonrpc: '2.0',
-      id: JSON.parse(id) as unknown,
-      error: {
-        // -32001: a server-defined error. Not -32603 (internal): nothing went wrong INSIDE the
-        // call, the transport under it went away, and the distinction is what tells a caller the
-        // action may be safe to retry.
-        code: -32001,
-        message:
-          `the daemon connection dropped (${reason}) before this call was answered — it did NOT ` +
-          'complete. Reticle has already reconnected; retry if the action is safe to repeat.',
-      },
-    }),
-  );
+  return pending.drain().map((id) => transportLossReply(JSON.parse(id) as unknown, reason));
+}
+
+/**
+ * -32001: a server-defined error. Not -32603 (internal): nothing went wrong INSIDE the call, the
+ * transport under it went away, and the distinction is what tells a caller the action may be safe
+ * to retry.
+ */
+const TRANSPORT_LOSS_CODE = -32001;
+
+/** The one shape every "the transport ate your call" answer takes, whichever leg died. */
+export function transportLossReply(id: unknown, reason: string): string {
+  return JSON.stringify({
+    jsonrpc: '2.0',
+    id,
+    error: {
+      code: TRANSPORT_LOSS_CODE,
+      message:
+        `the daemon connection dropped (${reason}) before this call was answered — it did NOT ` +
+        'complete. Reticle is recovering the connection; retry if the action is safe to repeat.',
+    },
+  });
 }
 
 /**
@@ -362,8 +377,18 @@ export async function waitForDaemon(port: number): Promise<void> {
   );
 }
 
-function postToSession(url: string, body: string): Promise<void> {
-  return new Promise<void>((resolve) => {
+/**
+ * POST one JSON-RPC line into the daemon's session. Resolves null on success, or a short reason
+ * when the request never reached a server that will answer it.
+ *
+ * It used to resolve `void` in every case, logging the failure and moving on. That is the THIRD way
+ * a call goes unanswered, and the only one neither `streamLossReplies` nor the queue timer can see:
+ * the SSE stream is healthy (so nothing drops) and the request was forwarded (so nothing is queued),
+ * but the POST leg is its own TCP connection and an ECONNRESET on it means the daemon never received
+ * the call. Nobody was ever going to reply, and the caller waited for its own timeout.
+ */
+function postToSession(url: string, body: string): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
     const parsed = new URL(url);
     const bodyBuf = Buffer.from(body, 'utf8');
     const options: http.RequestOptions = {
@@ -378,17 +403,18 @@ function postToSession(url: string, body: string): Promise<void> {
     };
     const req = http.request(options, (res) => {
       const status = res.statusCode ?? 0;
-      if (status < 200 || status >= 300) {
+      const rejected = status < 200 || status >= 300;
+      if (rejected) {
         // A non-2xx from the daemon MCP endpoint used to be swallowed, hanging the JSON-RPC call
-        // client-side with no diagnostic. Surface it (the forward is still fire-and-forget).
+        // client-side with no diagnostic. It is a refusal: no response is coming over the stream.
         log('reticle_mcp_proxy_post_non2xx', { status, path: options.path });
       }
       res.resume(); // drain so the socket is reused
-      resolve();
+      resolve(rejected ? `daemon rejected the call with HTTP ${String(status)}` : null);
     });
     req.on('error', (err) => {
       log('reticle_mcp_proxy_post_error', { error: err.message });
-      resolve();
+      resolve(`post failed: ${err.message}`);
     });
     req.write(bodyBuf);
     req.end();
@@ -466,15 +492,41 @@ export function startMcpProxy(
     let stopped = false;
     let attempts = 0;
 
+    /**
+     * The ONE way a line leaves for the daemon — so a POST that never lands still owes an answer.
+     *
+     * Only requests we are holding in `pending` get one: a notification is owed nothing, and the
+     * proxy's own replayed handshake carries a reserved id the client must never see a reply for.
+     */
+    const forward = (url: string, line: string): void => {
+      void postToSession(url, line).then((failure) => {
+        if (null === failure) return;
+        const msg = parseJsonRpc(line);
+        if (null === msg || msg.id === undefined || !pending.take(msg.id)) return;
+        proxyLog('reticle_mcp_proxy_post_unanswered', {
+          port,
+          method: String(msg.method),
+          reason: failure,
+          note: 'the stream is still up, so nothing else would ever have answered this call',
+        });
+        emit(transportLossReply(msg.id, failure));
+      });
+    };
+
     function onSseEvent(event: string, data: string, p: number): void {
       if ('endpoint' === event) {
         const url = buildSessionUrl(data, p);
         postUrl = url;
+        // A stream that reached `endpoint` is a USABLE session — that, not a set of response
+        // headers, is what earns a fresh retry budget. Resetting on headers let a daemon that
+        // accepts SSE and drops it spin the reconnect loop at the 250ms floor forever, never backing
+        // off and never reaching the budget that puts the proxy dormant. Measured: 32 retries in 8s.
+        attempts = 0;
         // The new session's McpServer has never seen the client's initialize — replay it first, then
         // flush whatever the client sent while we were reconnecting.
-        for (const line of replay.replayLines()) void postToSession(url, line);
+        for (const line of replay.replayLines()) forward(url, line);
         clearQueueTimer();
-        for (const queued of stdinQueue.splice(0)) void postToSession(url, queued);
+        for (const queued of stdinQueue.splice(0)) forward(url, queued);
         return;
       }
       if ('message' === event && !replay.shouldSuppressInbound(data)) {
@@ -540,7 +592,6 @@ export function startMcpProxy(
       // of version skew, and this is the only moment it learns the agent's MCP server exists.
       const announce = `${MCP_SSE_PATH}?${PEER_VERSION_PARAM}=${encodeURIComponent(SERVER_VERSION)}&${PEER_CONTRACT_PARAM}=${encodeURIComponent(CONTRACT_FINGERPRINT)}`;
       const req = http.get({ host: LOOPBACK_HOST, port, path: announce }, (res) => {
-        attempts = 0; // a stream we actually established resets the budget
         if (!first) proxyLog('reticle_mcp_proxy_reconnected', { port });
         res.setEncoding('utf8');
         // `end` and `error` can both fire on one response; only the first should drive a reconnect.
@@ -618,7 +669,7 @@ export function startMcpProxy(
         pending.observeOutbound(trimmed);
         const action = onClientRequest(postUrl !== null, dormant);
         if (action === OnRequest.SEND && postUrl !== null) {
-          void postToSession(postUrl, trimmed);
+          forward(postUrl, trimmed);
           continue;
         }
         // A queued `tools/list` with no daemon is the state that leaves an agent "connected with no

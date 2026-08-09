@@ -14,6 +14,9 @@
 // that the transport survives and answers, not that it can drive a browser that is not there.
 import path from 'node:path';
 import net from 'node:net';
+import http from 'node:http';
+import os from 'node:os';
+import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { McpStdioClient } from '../../../bench/harness/mcp-client.mjs';
@@ -21,6 +24,9 @@ import { McpStdioClient } from '../../../bench/harness/mcp-client.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const PORT = process.env.MCP_STRESS_PORT ?? '4731';
 const SQUAT_PORT = process.env.MCP_SQUAT_PORT ?? '4732';
+const RESET_PORT = process.env.MCP_RESET_PORT ?? '4733';
+const FLAP_PORT = process.env.MCP_FLAP_PORT ?? '4734';
+const proxyLogPath = (port) => path.join(os.homedir(), '.reticle', `proxy-${port}.log`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let pass = 0;
@@ -160,5 +166,115 @@ chk('  and answered every call in between', 10 === answered, `${answered}/10 ans
 
 await client.stop();
 killDaemon();
+
+// ── 7. The POST leg is reset while the SSE stream stays up ────────────────────────────────────
+// The third population. Sections 1-3 kill the whole daemon, so the SSE stream drops and
+// `streamLossReplies` answers everything in flight; section 5 leaves requests QUEUED, which the
+// queue timer answers. Neither covers a request that WAS forwarded over a healthy stream and whose
+// POST died on the way — the daemon is still there, the stream never drops, no timer is armed, and
+// the reply the request is owed can never arrive from anywhere.
+//
+// Stand-in for it: a daemon that serves SSE normally and destroys the socket on any `tools/call`
+// POST. That is exactly what the reported ECONNRESET looks like from the proxy's side.
+{
+  let sse = null;
+  const push = (obj) => sse?.write(`event: message\ndata: ${JSON.stringify(obj)}\n\n`);
+  const fake = http.createServer((req, res) => {
+    if ('GET' === req.method && req.url.startsWith('/mcp/sse')) {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+      sse = res;
+      res.write('event: endpoint\ndata: /mcp/message?sessionId=stress\n\n');
+      return;
+    }
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      let msg = null;
+      try {
+        msg = JSON.parse(body);
+      } catch {
+        /* garbage is not what this scenario is about */
+      }
+      if ('tools/call' === msg?.method) {
+        req.socket.destroy(); // ECONNRESET on the POST leg ONLY — the SSE stream is untouched
+        return;
+      }
+      res.writeHead(202);
+      res.end();
+      if ('initialize' === msg?.method) {
+        push({
+          jsonrpc: '2.0',
+          id: msg.id,
+          result: {
+            protocolVersion: '2024-11-05',
+            capabilities: { tools: {} },
+            serverInfo: { name: 'reset-daemon', version: '0.0.0' },
+          },
+        });
+      } else if ('tools/list' === msg?.method) {
+        push({
+          jsonrpc: '2.0',
+          id: msg.id,
+          result: {
+            tools: [{ name: 'reticle_sessions', description: 'x', inputSchema: { type: 'object' } }],
+          },
+        });
+      }
+    });
+  });
+  fake.on('clientError', () => undefined);
+  await new Promise((r) => fake.listen(Number(RESET_PORT), '127.0.0.1', r));
+
+  const resetClient = new McpStdioClient(
+    'node',
+    ['packages/server/dist/cli.js', 'mcp', '--port', RESET_PORT],
+    { RETICLE_PORT: RESET_PORT, RETICLE_TELEMETRY: '0', RETICLE_RECONNECT_ATTEMPTS: '3' },
+  );
+  await resetClient.start();
+  const r = await settled(
+    resetClient.request('tools/call', { name: 'reticle_sessions', arguments: {} }, 25_000),
+  );
+  chk('a POST reset with the stream still up still answers the call', r.answered, r.how);
+  chk('  server still alive after the reset', alive(resetClient));
+  await resetClient.stop();
+  sse?.end();
+  await new Promise((r) => fake.close(r));
+}
+
+// ── 8. A daemon that flaps: SSE accepted, then immediately closed ─────────────────────────────
+// The reported "~4/sec reconnect loop". The budget used to reset the moment response HEADERS
+// arrived, so a listener that serves the stream and drops it reset the counter on every attempt
+// and span at the 250ms floor forever, never backing off and never going dormant.
+{
+  const logFile = proxyLogPath(FLAP_PORT);
+  try {
+    fs.rmSync(logFile);
+  } catch {
+    /* no log yet */
+  }
+  const flapper = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    res.end(); // headers, then gone
+  });
+  flapper.on('clientError', () => undefined);
+  await new Promise((r) => flapper.listen(Number(FLAP_PORT), '127.0.0.1', r));
+
+  const flapClient = new McpStdioClient(
+    'node',
+    ['packages/server/dist/cli.js', 'mcp', '--port', FLAP_PORT],
+    { RETICLE_PORT: FLAP_PORT, RETICLE_TELEMETRY: '0', RETICLE_RECONNECT_ATTEMPTS: '3' },
+  );
+  await flapClient.start().catch(() => undefined);
+  await sleep(8_000);
+  const lines = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').split('\n') : [];
+  const retries = lines.filter((l) => l.includes('reticle_mcp_proxy_reconnecting')).length;
+  // With the budget at 3 a bounded loop logs at most a handful; a 4/sec spin logs ~32 in 8s.
+  chk('a flapping daemon backs off instead of spinning', retries > 0 && retries <= 6, `${retries} retries in 8s`);
+  chk('  and every retry is on the record in the proxy log', retries > 0, logFile);
+  chk('  server still alive after the flap', alive(flapClient));
+  await flapClient.stop();
+  await new Promise((r) => flapper.close(r));
+}
+
 console.log(`\n${0 === fail ? '✅' : '❌'} MCP STRESS (${pass} passed, ${fail} failed)`);
 process.exit(0 === fail ? 0 : 1);
