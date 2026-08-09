@@ -4,6 +4,620 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-08-09
+
+**One tool surface, an MCP server that stays up, and a long list of answers that were wrong.** Most
+of what follows was found by driving the shipped surface against live applications and reading what
+came back — a 48-tool fuzz with hostile arguments, a nine-app fixture fleet under a new trace, and
+four brute-force stress specs against the transports. Every number quoted here was measured.
+
+### BREAKING — read before upgrading
+
+- **`RETICLE_TOOL_PROFILE` is retired. There is one tool surface.** Nothing to choose, nothing to
+  tune. Every value the variable ever took still resolves — `full` selects the full surface, and
+  `core` / `standard` / `hybrid` / `dynamic` all select the default — and the daemon reports that the
+  setting retired rather than reusing the "did not take effect" message, which blamed the daemon's
+  environment and sent people to check something that was fine. "Unset" and "set to `0`" are also
+  distinct messages now, because only one of them means you did not ask.
+
+  The four retired profiles each died for a measured reason. Off the real wire, with a fresh daemon
+  per reading: `dynamic` 2 tools / 1,543 B / ~386 tok per turn, `core` 16 / 18,183 B / ~4,546,
+  `hybrid` 16 / 18,183 B / ~4,546 (byte-identical to `core`), `standard` 33 / 32,234 B / ~8,059,
+  `full` 48 / 127,903 B / ~31,976. `standard` charged ~3,500 tokens every turn for reach `reticle_run`
+  already gave; `dynamic` was selected by nothing and is contradicted by this repo's own accuracy
+  measurement.
+
+  **The replacement for `full` is `RETICLE_ADVERTISE_ALL_TOOLS=1`** (plus a daemon restart). It is the
+  only mode that advertises `outputSchema`, which is what makes the MCP layer validate tool OUTPUT —
+  a verification switch for suites that call by name, not a mode to run agents in. It cannot be the
+  default: carrying output schemas on the 16-tool surface measures 18,183 → 41,117 bytes, 2.26x,
+  +5,733 tokens per turn.
+- **`@reticlehq/browser` — `reticle_act { action: 'select' }` now REFUSES a value matching no
+  `<option>`.** It used to assign the value deliberately, let the browser reject it, and report the
+  resulting `valueChanged` delta as proof the option never took. That reasoning only holds if nobody
+  is listening. An unmatched value drives `selectedIndex` to `-1`, so `el.value` becomes `''` — and
+  the `change` event still fired, so a reporting app read that empty value in its own handler and
+  PERSISTED it, corrupting a stored setting. Reticle caused the defect it exists to catch. The
+  refusal now lists the option values that do exist, with their labels in brackets. **If you relied
+  on the old "detectable no-op", the call now throws.**
+- **Six parameters that advertised a vocabulary now enforce it, at the schema.** `reticle_query.by`
+  and `reticle_scroll_to.by` reject an unsupported strategy, `reticle_console.level` and
+  `reticle_session.level` reject an unknown level, and `reticle_act.action` /
+  `reticle_act_and_wait.action` reject an unknown action. Each of these previously answered a
+  wrong-vocabulary call with a plausible, silent, wrong answer — see the honesty section below. Both
+  the schemas and the prose now derive from the enums in `@reticlehq/core`, so they cannot drift
+  apart again.
+- **`@reticlehq/server` — `reticle_state` no longer returns React effect-hook entries.** They are
+  disclosed as dropped via the existing `truncation` report, and only when something was actually
+  dropped, so an intact read is byte-identical to before and the note's presence IS the warning.
+  Nothing in an effect entry was assertable: `create`/`destroy` arrive `null` because functions do
+  not survive serialization, `deps` restates values the value hooks already carry, and `next`
+  re-chains the whole effect list into every entry.
+- **`@reticlehq/server` — `reticle open` reports `connected: true | false` instead of an
+  unconditional `opened`.** It also reports a launcher failure when there is one, and points at
+  `reticle doctor` when nothing turns up. Sessions are counted against the pre-launch count, so
+  opening a second app while one is connected is not reported as an instant success.
+- **`@reticlehq/server` — `act_and_wait` with an `element` or `text` consequence that was ALREADY
+  TRUE before the act now answers `verified: "unknown"`, not `"yes"`.** Measured on a Next
+  app-router fixture: `until: { kind: 'text', contains: 'Parallel Routes' }` returned `verified:
+  "yes"` at 478ms with `routeChanges: 0`, while the real route change landed 1.8s later — the
+  predicate matched a nav link that was on the page before the click. DOM-state predicates are now
+  evaluated BEFORE the act. Deliberately `unknown` and not `no`: the app may be fine. A real failure
+  still outranks it. Event-based predicates are unaffected and pay nothing.
+- **`@reticlehq/server` — a detected contradiction now outranks an already-true assertion.** Both
+  hold at once whenever an agent asserts something already on screen while the write fails
+  (`{ text: 'Saved' }` over a 500). The already-true clause used to win, so a DETECTED false green was
+  downgraded from `no` to `unknown` and the agent was told to rewrite its assertion instead of being
+  told the app is broken. **Some verdicts that were `unknown` are now `no`.**
+- **`@reticlehq/server` — `reticle_act_and_wait { args: { native: true } }` is refused instead of
+  silently ignored.** `args` is a record, so the flag was accepted and then reached nothing: the
+  agent asked for the one thing a synthetic click cannot do (a file picker, the clipboard, an
+  `isTrusted`-gated handler), got a synthetic click, and read a result that looked like success. The
+  refusal names the route that works — `reticle_act { args: { native: true } }`, then assert with the
+  `since` cursor it returns.
+- **`@reticlehq/server` — a zero-step flow is refused rather than saved.** `flow_save` returned
+  `{ stepCount: 0, grade: "assertion-free" }` with no error, `flow_list` then showed one more flow,
+  and `flow_verify` called it `unverifiable` forever: the agent believed it had saved a regression
+  test and had written a permanent suite entry that can never go green or red.
+- **`@reticlehq/server` — `isError` is now set on every refusal, not only on a thrown handler.**
+  Every tool that RETURNS a well-formed `{ error, recovery }` — the flow tools, `annotate`, `project`,
+  `run_export`, both visual tools, `viewport`, `network_mock`, `navigate` with a missing url, and
+  `feedback` itself — came back as protocol SUCCESS with the flag unset. **Anything branching on
+  `isError` will now see refusals it did not see before.** Top-level `error` only: the key also
+  appears inside console entries and network rows as ordinary data.
+- **`@reticlehq/server` — `reticle_feedback` no longer blocks on the network, and `sent` means
+  something narrower.** The call awaited a real POST — ~340ms measured across the fleet, mid-task. On
+  the agent path `sent` is now false and **`accepted` (validated, redacted, queued) is the field that
+  carries the promise**; `sent` still means CONFIRMED DELIVERY. A background send that fails reaches
+  the reporter on its next tool result. `reticle feedback` typed by a human still waits for the real
+  answer.
+- **`@reticlehq/test` — a suite where every spec skipped no longer reports `ok: true`.** `ok` was
+  `0 === failed`, so a run in which nothing ran at all — no browser, no real input, every spec
+  skipped — was indistinguishable from one where everything passed, and **a CI script gating on
+  `summary.ok` went green having verified nothing.** `ok` now also requires that something ran. An
+  EMPTY suite stays `ok`: having recorded no flows is a different statement from having recorded
+  flows and running none of them.
+- **`@reticlehq/core` — the `present` state flag is no longer emitted in TOON snapshots.** It was
+  seeded onto every element, so it was true of everything and carried no information — 4,000
+  characters of nothing on a 500-element snapshot, in the layer whose entire purpose is cutting the
+  token bill. `btn e0 "Item 0" [vis,present,en]` is now `btn e0 "Item 0" [vis,en]`. **If you parse
+  snapshot flags, `present` is gone.**
+
+### Fixed — correctness and honesty
+
+- **`@reticlehq/server` / `@reticlehq/browser` — `reticle_query` answered "0 matches" for an
+  unsupported strategy instead of refusing.** Measured against a live page that visibly had all of
+  these: `by:'css' value:'body'` → `{ count: 0 }`, `value:'input'` → `{ count: 0 }`, `value:'*'` →
+  `{ count: 0 }`. Zero is the most dangerous answer this product can give — indistinguishable from
+  "the element is genuinely not there", so an agent asking "is the error banner up?" is told no and
+  reports the app is fine. `css` is the first thing anyone arriving from Playwright or Testing
+  Library types. Three causes, each fixed at its own layer: the schema now rejects it, the browser's
+  strategy switch throws and names the strategies that work instead of `default: return []`, and
+  `matchQuery` no longer wraps candidate-finding in `catch { elements = [] }` — which turned ANY
+  exception into "no matches" (the whole 168-test DOM suite is green without it, so nothing was
+  relying on the swallow).
+- **`@reticlehq/server` — `reticle_scroll_to` had the same false negative.** An unsupported strategy
+  scrolled the whole list and reported the row is not in it.
+- **`@reticlehq/server` — `reticle_console` could not tell a quiet page from a broken filter or a
+  dead observer.** `level: 'ERROR'` matched nothing, because the filter builds `console.${level}`; on
+  a page WITH logs the zero-match hint rescued it, but on a quiet page the answer was byte-identical
+  to a genuine all-clear — and "no console errors" is the claim agents lean on hardest. An empty
+  console read now carries `observed: true` and says the look ran and found none.
+- **`@reticlehq/react` / `@reticlehq/browser` — `reticle_state` read the previous commit's hooks,
+  every other commit.** Reported twice, with a measured repro: after click 1 the DOM says 1 and the
+  hooks say `[0]`; after click 2, DOM 2 and hooks `[2]`; after click 3, DOM 3 and hooks `[2]`. React
+  keeps two fibers per element and swaps which is committed on every commit, while the
+  `__reactFiber$…` key on the DOM node keeps pointing at the fiber created at MOUNT. Fixed inside
+  `getFiber()`, so `identify`, `readState` and `hasHoverHandlers` are all fixed at once, and the
+  zero-install CDP reader — which carried an identical copy of the defect nobody had reported yet —
+  got the same check. An unrecognized fiber shape returns unchanged, so an unseen React version
+  degrades instead of throwing.
+- **`@reticlehq/server` — 22 retired tool names answered "unknown tool" for capabilities that
+  exist.** Confirmed live: `reticle_run { tool: "reticle_record_start" }` → unknown tool, and the same
+  for `reticle_diff`, `reticle_yield`, `reticle_flow_load`, `reticle_lease_acquire` and 17 more —
+  exactly what an agent trained on an earlier release, or reading the merged tool's own description,
+  reaches for. They now redirect by name (`reticle_record_start was merged into reticle_record. Call
+  reticle_record { action: "start", … }`), derived from the merge and retirement tables rather than
+  hand-written, on both the by-name and `reticle_run` paths.
+- **`@reticlehq/server` — calling a non-advertised tool BY NAME looked like the tool did not exist.**
+  The default surface advertises 16 of 46; the rest stay callable through `reticle_run`. A by-name
+  call got the SDK's bare `Tool <name> not found`, so one field sweep scored 25 failures that were
+  nothing of the kind — every one of them worked through `reticle_run` seconds later. A name Reticle
+  owns is never answered with "not found".
+- **`@reticlehq/server` — `reticle_run` answered every failure with "fix the arguments".** It caught
+  every error and returned its own shape with `hint: "fix the arguments and call reticle_run again"`,
+  so under the default surface — where most of the tool surface is reached through `reticle_run` —
+  recovery was silenced for nearly every tool. A stale ref, a paused session, a missing pairing token
+  and a destructive-action block all came back as the agent's arguments being wrong. They were not,
+  and wrong advice spends the retry it was meant to save.
+- **`@reticlehq/server` — a caller's typo could bill them 25k tokens and get blamed on Reticle.**
+  Fuzzing all 48 tools with hostile arguments found `reticle_screenshot { name: <100KB> }` returning
+  a **100,392-byte** tool result and `reticle_inspect { ref: <100KB> }` returning 4,458 — both echoing
+  the argument back verbatim and then saying the error "may be a defect in Reticle". After: 4,657 and
+  703 bytes, each with the right recovery. The cap sits in `buildErrorPayload`, the single funnel
+  every tool error crosses, and elides the MIDDLE — the recovery table matches substrings at the END,
+  so head-truncation would sever exactly the part that makes an error recognizable.
+- **`@reticlehq/server` — `act_and_wait` on a paused session answered with no verdict at all.**
+  `verified` is the one field an agent reads off this tool, and the pause short-circuit returned a
+  bare `{ paused, guidance, hint }` — not yes, not no, not unknown: undefined, from a call carrying
+  no error that looked like it had succeeded. Reported from the field on two apps. A pause is the
+  textbook UNKNOWN, and it must never read as `no`, which would report a human's own pause as the app
+  failing.
+- **`@reticlehq/server` — every `act_sequence` step compiled to a volatile ref, so every saved flow
+  drifted.** Measured in a field sweep across five apps: drift 7/7, verify fail 7/7, heal unhealable
+  7/7. Three defects stacked. The sequence compiler understood only the testid, while the act
+  compiler had long since learned role+name and component/source; the sequence took `subs[0].anchor`
+  unconditionally, so a first sub-step without a testid degraded the whole sequence to the
+  "no anchor" sentinel; and replay then queried that sentinel as if it were a locator, asked the DOM
+  eight times for a testid literally named `unresolved`, and offered a rebind candidate that
+  `flow_heal` rightly refused on confidence (0.13 < 0.5) — the reported contradiction between two
+  tools. `replayFlow` also had no `act_sequence` branch at all, so a saved sequence ran ONE act with
+  `action: ''` and sub-steps 2..n never executed; fixing the first two alone would have turned a
+  visible drift into a silent partial replay reporting `ok`.
+- **`@reticlehq/server` — `reticle_annotate` implements `assert-net`, which the docs had been
+  promising.** The cheat-sheet told agents to attach `assert-signal`/`assert-net` when a flow graded
+  below `asserted`. There was no `assert-net`: the call returned `annotate_unknown_kind`, the
+  annotation was dropped, and the flow stayed presence-only — a flow that CAN pass while broken.
+  Everything underneath already existed, including the `count` cardinality check that is the
+  double-submit oracle, so this makes a documented sentence true rather than adding a feature. A new
+  gate fails when any agent-facing doc names a `reticle_*` that is neither a tool nor an emitted
+  event.
+- **`@reticlehq/server` — `annotate` and `record { action: "stop" }` targeted the literal name
+  `default` rather than the recording that is running.** Reported three times: start `"my-flow"`,
+  act into it, annotate → `annotate_no_step`, and the agent's rational response to "no steps" is to
+  record MORE into the same empty recording. A `stop` without a name lost the whole recording. With
+  exactly one recording in progress there is nothing to disambiguate; with several, `default` stays
+  the answer and the error now lists what IS in progress.
+- **`@reticlehq/server` — `record { action: "stop" }` described an unreplayable step as "may be
+  brittle".** `stable: false` does not mean brittle — it means the compiler found no testid, no
+  accessible role+name and no component/source, so the step is pinned to a ref that dies with the
+  session and can never resolve on replay. The agent learned the truth several calls later as an
+  unhealable drift at `flow_verify`, by which point nothing on screen points back to the element.
+  Capture time is the only moment the fix is cheap.
+- **`@reticlehq/server` — `verify_change` no longer answers `no` on evidence it cannot attribute.**
+  Observed in a sweep: `verified: "no"` because "1 of 1 covering flows failed (1 of them re-run only
+  because Reticle cannot tell which sources they cover)" — a negative verdict whose own explanation
+  admits the evidence is not tied to the changed file. A `no` now requires at least one failing flow
+  genuinely attributed to the changed files, and names them; otherwise `unknown`, with the fix.
+- **`@reticlehq/server` — `verify_change` treated an `unverifiable` suite as a failure.** Same call,
+  same uncovered file, measured across a sweep: `no` on five apps and `unknown` on two, and all five
+  also emitted a bug. The suite proved nothing and was reported as proof the change was broken.
+- **`@reticlehq/server` — a role+name anchor was unhealable by construction.** `button named 'Menu'
+  did not resolve` → heal answered "no nearest match cleared the confidence floor", which reads as a
+  judgement about candidates; there were none to judge, because the role step returned `nearest:
+  null` as a literal whatever the drift. It now looks — and role anchors are deliberately still NOT
+  auto-healable: a testid is an identifier a developer put there, a role name is user-visible text
+  where "Save" and "Save as" are one edit apart.
+- **`@reticlehq/server` — `reticle_coverage` reported `exercised: 0` on any framework that replaces
+  nodes.** Reported as `total: 34, exercised: 0` after four successful acts. Coverage was keyed by
+  REF, and a ref dies with the next re-render — Next's app router replaces a whole route segment, so
+  every control the agent drove is a new element by the time coverage is asked, and the number is 0
+  forever while the agent re-drives ground it already covered. The bench app hid it by reconciling in
+  place. A control now counts when its ref OR its label was driven, and matching also uses the
+  testid.
+- **`@reticlehq/browser` — an element with a role but no accessible name reported NEITHER.**
+  `anchorOf` set `role` and `name` together or not at all, so an icon button, a clickable div or a
+  control labelled by an SVG came back with no identity at all once React-specific component
+  identification also found nothing. Two features read that identity and both degrade silently
+  without it: the flow recorder anchors a step by it, and coverage recognises a re-rendered control
+  by it. They are reported independently now.
+- **`@reticlehq/server` — `reticle_clock` declared output fields it never returns.** The schema said
+  `{ ok?, elapsed? }` and the browser command returns `{ frozen }`; MCP strips undeclared fields, so
+  a successful freeze and a failed one both validated to `{}`.
+- **`@reticlehq/server` — five reads where "found nothing" and "did not work" were the same JSON.**
+  `network` with no calls at all, `animations`, `session { messages }`, `crawl`'s bare `stepsRun: 0`,
+  and `affected` now state that the observation RAN. `affected` matters most: no saved flows, nothing
+  changed, and no input given all returned the same answer, and only the first means "nothing to
+  re-verify" — the others mean the question was never asked, which is how a regression ships. A
+  refusal is never annotated, because "I observed nothing" on top of "no browser session connected"
+  would be actively misleading.
+- **`@reticlehq/server` — `crawl`'s zero now says which zero it is.** An empty page says the crawl ran
+  and found none (and names snapshot truncation when the count is a floor); a `maxSteps` of zero says
+  so; and controls-found-but-none-clicked says explicitly that this is NOT an empty page.
+- **`@reticlehq/server` — the dev-server probe reported Apple's AirPlay Receiver as the user's app.**
+  macOS ControlCenter listens on port 5000 by default on every Mac; the probe did a bare TCP connect,
+  saw it accept, and told the agent something was listening while the app under test was on 3100.
+  Measured, that port answers `HTTP/1.1 403 Forbidden … Server: AirTunes/950.7.1`. A dev server
+  answers `GET /` with a document, so that is the test now. Fixing it surfaced a second defect in the
+  same probe: it was pinned to `127.0.0.1`, and a plain `vite --port 4311` listens on `[::1]` only —
+  so it could miss the very dev server it exists to find.
+- **`@reticlehq/server` — a leaked daemon from another project said "authentication failed".** The
+  token is not wrong, it is someone else's, and those need opposite fixes. The discriminator is
+  evidence rather than derivation: the daemon and the SDK derive project ids by different schemes, so
+  comparing them would report "different project" on every auth failure.
+- **`@reticlehq/server` — `reticle_navigate { reload: true }` dropped the session on 6 of 6 apps.**
+  The page came back as a NEW session while the agent still held the old id, and every later call was
+  refused with "no browser session connected". The id is now remembered in `sessionStorage`, which is
+  scoped to exactly the right thing — it survives a reload and is not shared with another tab. An
+  explicit id still wins, so a leased tab that reloads rejoins its own lease.
+
+### Fixed — install and integration
+
+- **`@reticlehq/server` — `reticle init` wrote a syntax error into `next.config.js`.** The export
+  patterns had no `m` flag, so `$` meant end-of-FILE and the capture always ran to the last non-blank
+  character: any config whose export was not the final statement had everything after it swallowed
+  into the wrap, producing an unbalanced paren. `next dev` then exited 1 while init reported the step
+  as ✓ — and this had been sitting in the fixtures repo as a "flaky" fixture for three release runs,
+  filed as a harness timeout, because the last 1500 characters of the dev log were all stack frames.
+  Where the expression ends is now decided by a bracket-depth scan that skips strings and comments. A
+  config that exports more than once goes to manual with a reason. With the syntax error gone, the
+  fixture that found it booted in **37.8s instead of timing out at 300s**.
+- **`@reticlehq/server` — a conditional Next export left the app unable to authenticate.** Which
+  branch of a conditional export runs is an environment variable's business, so every top-level
+  export assignment is now wrapped; a Sentry-wrapped config installs instead of deferring to the
+  user. Without the wrapper the pairing token is never exposed to the client and the bridge refuses
+  the connection.
+- **`@reticlehq/server` — Astro auto-wiring was dead on both real Astro apps.** The rule was "exactly
+  one `.astro` file in `src/layouts/`", and measured on two real projects it fired on neither: one has
+  no `src/layouts/` at all, the other has three files there of which two are partials. A file COUNT
+  cannot tell a layout from a partial and a directory NAME cannot tell you where the document shell
+  is — `</body>` can. Both shapes now auto-wire; genuine ambiguity is still refused rather than
+  guessed.
+- **`@reticlehq/server` — Astro's two install steps are now atomic.** The config patch bailed while
+  the connect snippet applied, producing an app with a snippet, no inlined pairing token and no
+  raised build target — a guaranteed non-connection reported as one ✓ and one ⚠. The token is
+  inlined by the config, so if either half cannot be applied both go manual with one recipe.
+- **`@reticlehq/server` — an Astro config merge silently dropped `build.target`.** Merging into an
+  existing `vite: { … }` inserted keys after the brace, giving the object TWO `build` keys — and the
+  last one wins, so `target: 'es2022'` was discarded while init reported ✓. Astro's default target
+  down-levels the modern SDK bundle and dies on a destructuring transform, so losing it while
+  claiming success is a green that cannot go red. Colliding keys are now merged INTO; a colliding key
+  that is not an object literal goes back to refusing.
+- **`@reticlehq/server` — Astro's connect died on a dependency optimization it was never told about.**
+  The Astro connect does `await import('@reticlehq/react')` and nothing declared the SDK to Vite, so
+  Vite met the import mid-load, pre-bundled it, and the hashed URL the browser had already requested
+  stopped existing. The import rejects, `connect()` never runs, and the page looks completely
+  normal — no session, no error naming us — intermittently, depending on whether the dep cache was
+  warm.
+- **`@reticlehq/server` — monorepos outside `apps/` were invisible to `reticle init`.** Measured on a
+  real repo with three Next apps at `web/`, `admin/` and `space/`: it found none, ran against the
+  ROOT, warned about a `next.config.mjs` that exists nowhere, and reported ✓ for writing
+  `app/reticle-dev.tsx` into a directory Next never compiles. It now reads what the workspace
+  DECLARES (`workspaces`, `packages:`), and where nothing is declared it checks every top-level
+  directory rather than two hardcoded names.
+- **`@reticlehq/server` — `reticle init --app <dir>` picks the app in a monorepo.** The ambiguity
+  refusal was correct but told you to re-run inside the app you want, which a script, a CI step or an
+  agent that cannot change directory can do nothing with. A name that is not one of the discovered
+  apps is refused and the real ones listed.
+- **`@reticlehq/server` — Create React App had no automated connect path at all.** Init reported
+  `⚠ Connect snippet → index.html`, a target that cannot work: CRA's `public/index.html` is a static
+  template the bundler never processes for modules. The connect now arrives through `src/index.tsx`
+  and the token through `.env.development.local` (CRA's own documented mechanism, gitignored by CRA's
+  own template). CRA is detected after Vite, never before, because a project migrating off CRA can
+  carry both.
+- **`@reticlehq/server` — the CRA snippet did not compile.** `location.hostname` trips CRA's default
+  `no-restricted-globals`, and the snippet also used top-level `await import(...)` — CRA is webpack 5,
+  where top-level await is behind an experiment that is off by default. Fixing only the first would
+  have handed the next user a parse error instead of a lint error. No gate in this repo can catch
+  that class: the snippet is a string, so it is only ever compiled on a stranger's machine.
+- **`@reticlehq/server` — a ⚠ on a connect step is not a warning, and `ok` said otherwise.** `ok` was
+  hardcoded `true`, so a run whose connect step needed a human reported success — and nothing
+  performs a manual step, so the app never dials the daemon and every tool answers "no browser
+  session connected". The run now says, in words, that the app will NOT connect until the manual step
+  is done.
+- **`@reticlehq/server` — `mcpRegistered: true` when nothing was registered.** The flag was the
+  negation of one narrow failure set, so a SKIPPED step (`--no-mcp`, which the install gate uses) and
+  a MANUAL one both reported success — the onboarding funnel's most important field, wrong in the
+  flattering direction on exactly the runs least likely to have a working install.
+- **`@reticlehq/server` — `claude mcp get reticle` answered about the wrong scope.** Unscoped, it
+  exits 0 for a PROJECT-scoped entry in some unrelated repo the user once ran init in, so the global
+  registration was skipped and reported done and the agent had Reticle in one directory and nowhere
+  else.
+- **`@reticlehq/server` — `shell: true` on every exec broke paths with spaces.** It exists so
+  `pnpm.cmd` and `npx.cmd` resolve on Windows; on POSIX the arguments are re-parsed, so
+  `/Users/ada/My Projects/app` silently becomes two arguments and registration fails with nothing to
+  read. Shell is now used only on win32.
+- **`@reticlehq/server` — a stale `reticle` MCP entry could never be repaired.** Idempotency was
+  key-presence only, so an entry left by an older release was reported "already registered" forever:
+  an upgrade could not fix the thing an upgrade exists to fix. Repair is scoped to entries that look
+  like ours, so a user pointing `reticle` at their own local build is left alone.
+- **`@reticlehq/server` — a Cursor config that parses but is not an object was destroyed.** `[]`, `3`,
+  `"x"` and `null` fell through to an empty config and the file was rewritten wholesale. Cursor is
+  also now detected by a project-level `.cursor/`, not only by `~/.cursor`, which a fresh profile has
+  not written yet.
+- **`@reticlehq/vite-plugin` / `@reticlehq/next` — the install probes asked the wrong
+  `node_modules`.** `isResolvable`, `sdkPackageVersion` and `sdkBuildFingerprint` all resolved
+  `@reticlehq/react` from the PLUGIN's location, which under pnpm's strict layout cannot succeed, so
+  all three silently returned the not-installed answer for an app that had the SDK installed. The
+  consequences: no `sdkVersion` on the HELLO, so a skewed pair surfaced as a bare `-32000`; the build
+  fingerprint pinned to the constant `'unknown'`, so Vite's `optimizeDeps` cache never noticed a
+  changed SDK and kept serving the stale pre-bundle — the exact false negative the fingerprint was
+  added to prevent, broken since it was added; and the SDK left out of `optimizeDeps` entirely.
+  Measured in this repo's own bench app: version `''`, fingerprint `'unknown'`, resolvable false.
+  `@reticlehq/next` reported `''` before and the real version after.
+- **`@reticlehq/vite-plugin` — a dev server started BEFORE the daemon connects nothing, silently.**
+  The pairing token is read from disk once, when Vite resolves its config, so a dev server started
+  first — the common order, and what an automated harness does — bakes in an empty token and every
+  app it serves opens a WebSocket the bridge then refuses. Nothing about that looks broken: the SDK
+  module loads, the socket opens, a session simply never appears. The warning now fires where the
+  value is FROZEN, because by the time the app is refused, restarting the dev server is the only fix.
+- **`@reticlehq/vite-plugin` — the plugin named a dependency Vite cannot resolve.** The guard meant to
+  prevent `Failed to resolve dependency: @testing-library/dom, present in optimizeDeps.include` tested
+  NODE resolvability of Vite's nested `a > b > c` form, which under pnpm succeeds precisely where Vite
+  fails — so the plugin emitted a three-segment chain Vite could not follow and the warning it exists
+  to prevent appeared anyway, blaming Reticle and naming a package the developer has never heard of.
+  Nested chains are gone; only the bare specifier, only when it resolves.
+- **`@reticlehq/server` — `reticle update` updated the daemon and left the SDK behind.** The command
+  whose job is keeping an install current was itself a way to create a version-skewed pair, and the
+  skew message told people to fix an outdated SDK by running it. The app's `@reticlehq/*` packages are
+  synced first, then the CLI (which execs and never returns), pinned to the exact target so an
+  unpinned add cannot reinstall the very skew being fixed. Best-effort: a directory with no manifest
+  has nothing to sync and must never stop the CLI half.
+- **`@reticlehq/server` — `reticle update` refuses to install a downgrade.**
+- **`@reticlehq/server` — a read-only `$HOME` no longer stops Reticle from starting.**
+- **`@reticlehq/react` — source pointers were absolute Windows paths for two thirds of users.** The
+  fast gate now also runs on Windows, which had zero coverage.
+- **`@reticlehq/server` — the release could have shipped 40 stale `dist` files.** `tsc -b` is
+  incremental and does not delete the output of a renamed file, so a regrouping left 40 orphaned `.js`
+  files in the published tarball — one of them load-bearing, resolving only because of the stale copy.
+  `prepack` now removes `dist` and rebuilds with `--force`. The shipped package metadata also
+  advertised three retired tool names an agent would have called.
+
+### Reliability
+
+- **`@reticlehq/server` — the MCP server no longer exits when the daemon goes away.** The proxy
+  retried with backoff and then called `process.exit(1)`, justified as "let the agent host respawn
+  the proxy" — no host does that; a stdio MCP server that exits is marked DISCONNECTED and waits for
+  a person to open `/mcp`. Exiting also bought nothing, because the dormant path already answers the
+  handshake locally, answers `tools/list` from cache, and wakes a fresh daemon on the next request.
+  Found in the wild: one machine's 3,283 lines of proxy history held 1,770 reconnects, 266 dormancies
+  and one give-up — 61 consecutive `ECONNREFUSED` against `127.0.0.1:4400` immediately before the
+  exit.
+- **`@reticlehq/server` — an uncaught exception in the proxy no longer kills it.** The existing
+  resilience handler was installed only on the DAEMON, whose rule is the opposite and correct for it
+  (exit, because the next `reticle mcp` respawns it). Nothing respawns the proxy.
+- **`@reticlehq/server` — a third way the server went down: `reticle mcp` exited when the bridge port
+  was held.** A foreign daemon from another project, a half-dead process or a colleague's tool meant
+  no daemon could bind and the MCP server never started AT ALL. Nothing about that is unrecoverable.
+- **`@reticlehq/server` — `reticle mcp` never answered `initialize` against a wedged daemon.**
+  Reported as "no tools ran at all". The proxy queued every client message until the daemon's
+  endpoint frame arrived, and `initialize` is a client message, so the handshake waited on something
+  never coming: 25s with nothing on stderr, and the reported client gave up at 60s. The handshake now
+  completes locally after a bounded wait. The queued copy is DROPPED when answered locally, or the
+  daemon would later answer the same id a second time and corrupt the stream.
+- **`@reticlehq/server` — a locally-answered handshake left the client connected with NO TOOLS.**
+  Measured over one editor session: 25 stream drops, 11 dormancies, 4 reconnects — and each fall back
+  to the local handshake was a state where a human had to notice and type `/mcp`. The proxy now
+  remembers the newest `tools/list` response it has seen and serves it when the daemon cannot.
+  In-memory and per-process: a catalog persisted from a different version would be its own
+  confidently-wrong answer.
+- **`@reticlehq/server` — a lost daemon left tool calls hanging forever.** Killing the daemon under a
+  live client left **5 of 10** tool calls and **20 of 20** concurrent ones hanging until the client's
+  own 30s timeout, with the MCP server perfectly alive — an agent does not see "MCP disconnected", it
+  sees a call that never returns, which it cannot even react to. Two populations, both now answered:
+  FORWARDED-but-unanswered calls get a `-32001` under their own id saying the call did NOT complete
+  and may be safe to retry (re-sending is not an option — a `reticle_act` that already clicked would
+  click twice), and QUEUED-and-never-forwarded calls expire after 20s. After: **10/10 and 20/20**, and
+  a port squatter is answered rather than hanging.
+- **`@reticlehq/server` — a request that arrived with EOF was dropped and called success.** Write
+  `initialize` + `tools/list` and close stdin in the same flush and the proxy answered only the first,
+  then exited 0 — a supervising script saw no error, no missing-response signal, and a success status
+  over a request that was never answered. A 4-second gap between the writes made it work, which is the
+  signature of a teardown race. The proxy now tracks unanswered ids and drains for up to 5s on EOF;
+  still owed means exit 1, because the exit status is the only thing a script reads. Verified on the
+  built binary: pre-fix answered neither id and exited 0, post-fix answers both in 0.37s.
+- **`@reticlehq/server` — the daemon idle-exited at 5 minutes and took live runs with it.** 187 idle
+  shutdowns on one user's machine, in a repeating cycle of client-connected → 5 quiet minutes →
+  shutdown → client-disconnected. In the install gate the same thing fired during long dependency
+  installs, so apps that booted afterwards hit `ERR_CONNECTION_REFUSED` and were scored as INSTALL
+  failures — one of them has no install defect at all. Reverting was not an option (daemons used to
+  sit idle a median of 28 minutes at a 0.04% duty cycle). The distinction is TIME, not state: with a
+  client attached the grace is now 6x the base, 30 minutes at the default, overridable with
+  `RETICLE_IDLE_ATTACHED_MS`.
+- **`@reticlehq/server` — a wait that cannot be evaluated is now a FAILED wait, not an eternal one.**
+  The predicate check fires from an event listener and an interval, neither inside the awaited chain,
+  so a throw there escaped as an uncaught exception and the wait promise stayed pending forever — the
+  tool call simply never came back. An app that rebuilds its page session on every navigation makes a
+  `route` predicate race a teardown of the session it is watching, which is exactly where that throws.
+- **`@reticlehq/server` — a leased tab waited 30s for an event some apps never fire, then blamed the
+  app.** `reticle_lease` on the SvelteKit fixture: **30,501ms**, failing with "could not open
+  http://localhost:5180/ — is the app running?". The app was running. Playwright's `page.goto` defaults
+  to `waitUntil: 'load'`, which waits for every subresource, and that page has one that never
+  finishes. `DOMContentLoaded` is not a weaker bar here: the SDK connect is a module script, and module
+  scripts run before it fires, and the pool waits for the session to register anyway. The same default
+  was also live in the driven browser's own navigation, with no timeout at all. Measured on the same
+  nine apps and 63 calls each: sveltekit **33,532ms → 2,942ms**, next14-mobx-monorepo **31,496ms →
+  3,350ms**, fleet wall **101,850ms → 43,114ms**. The second of those previously reported ZERO browser
+  time because it never got a working browser; it now reports 212ms of it.
+- **`@reticlehq/server` — `reticle_navigate { reload: true }` no longer strands the agent.** The
+  session id survives a reload, but the WINDOW between dispatching it and the new HELLO does not:
+  every call in those seconds lands on the old, disconnected session — measured as `reticle_run`
+  failing 5 of 5 and crawl answering "session disconnected" on a page that was healthy a moment later.
+  The tool now WAITS for the reconnect, up to 5s, and returns `confirmed: true`; a timeout still
+  reports `confirmed: false` so nothing claims an arrival it did not observe. The reload branch also
+  disclosed nothing at all before — it returned a bare `{ ok: true }` where the URL branch had always
+  said `ok` means the browser accepted the instruction, not that the page arrived.
+- **`@reticlehq/server` — a displaced session now names what displaced it.** A session is only ever
+  replaced by one claiming the SAME id, so the disconnect message carries that id and the URL that
+  claimed it. A diagnostic, not a fix for the underlying report.
+
+### Performance / token cost
+
+- **`@reticlehq/browser` — every agent action waited 450ms to animate a cursor nobody was watching.**
+  Measured across the e2e battery with tracing on: 42 `act` round-trips, 40 of them in a 452–460ms
+  band — a fixed cost, not app work — totalling **19.7 seconds, 98.5% of ALL the time the battery
+  spent in the browser**, while every other command was 1–4ms. That is the HUD cursor glide, which is
+  the product working as intended in a browser somebody is looking at and 450ms of nothing in a
+  headless one. `navigator.webdriver` now decides, and an explicit `paceMs` always wins so a recorded
+  demo still glides. Same battery, same 42 acts: act mean **468ms → 16ms**, act median **459ms → 7ms**,
+  act total **19,657ms → 675ms**, all browser time **20,059ms → 1,088ms (18.4x)**. An agent loop of
+  50–200 actions was paying 22–90 seconds for an animation with no audience.
+- **`@reticlehq/server` — `reticle_state` returned about 1,500 tokens of fiber plumbing for two useful
+  values.** Measured on a real React 19 render (5 `useState`, `useRef`, `useMemo`, `useCallback`, 3
+  `useEffect`) through the same path the tool uses: **2,632 → 1,333 bytes, a 49% cut**, and everything
+  removed was plumbing — the three effect entries were ~1,300 of those bytes on their own, because
+  `next` re-chains the whole effect list into every entry, so N effects cost O(N²). Deliberately NOT
+  dropped: `useMemo`/`useCallback` `[value, deps]` tuples, the largest remaining cost (~900 of the
+  1,333 bytes). React exposes no hook KINDS at this layer, so `useState(['lat', ['a','b']])` is
+  byte-identical to a memo tuple and stripping element 1 would silently delete real state to save
+  tokens — the exact class of bug the rest of this release removes.
+- **`@reticlehq/server` — `wait_for` and `act_and_wait` stopped paying a blind poll interval after
+  settle had already closed.** Measured across the nine-app fleet: both are bimodal, ~0ms when the
+  predicate is already true and otherwise 566–627ms, of which 500ms is the definition of "settled"
+  and must not move. The rest was a 150ms backstop poll landing wherever it happened to land, on the
+  call an agent makes after almost every action. A quiet-window failure now reports `retryAfterMs` and
+  the waiter schedules one re-check at that moment. Settle waits land near **505ms instead of ~600ms**,
+  verified by re-running the fleet.
+- **`@reticlehq/server` — a replay anchor wait ends on the DOM event, not on the tick.** Found by the
+  new trace: on a Next app-router fixture a single step was **1079ms wrapped around nine query
+  round-trips of 1–2ms each** — the entire cost was the sleeping between them, and four such steps
+  were 4.3s of that app's 7.6s. It can only resolve a wait EARLIER, never end the loop earlier, so a
+  genuinely missing anchor still spends the full settle before it drifts.
+- **`@reticlehq/server` — two in-memory session waits poll at 25ms instead of 100ms.** What is polled
+  is a map lookup with no I/O while the thing waited for is an event, so a 100ms grid added a full
+  interval of dead time after the fact. Visible in the fleet trace: `reticle_navigate` clustered at
+  105 / 202–206 / 308 / 407ms — the poll grid itself showing up in the data.
+- **`@reticlehq/server` — `reticle_feedback` no longer waits out the network** (~340ms measured). See
+  the breaking note on `sent` / `accepted`.
+
+### Changed
+
+- **`@reticlehq/server` — CLI usage errors name the argument that was rejected.** Every mistake — a
+  typo'd flag, a flag missing its value, an unknown command — produced the same wall of JSON-escaped
+  help text on one stderr line, naming nothing. One install-gate failure was reported, verbatim, as
+  600 characters of unrelated help. Now: `unknown argument '--bogus'`, `--app needs a value`,
+  `--port expects a number, got 'x'`, `verify needs a url`, `unknown command 'nope'` — with the help
+  rendered as readable text underneath. Two audiences, two channels.
+- **`@reticlehq/server` — bare `reticle gate` and `reticle affected` now mean the working tree**
+  (`--since HEAD`), which is the question being asked when you reach for them. The rule init writes
+  into `CLAUDE.md` says to run `reticle gate`, and the parser answered "usage:".
+- **`@reticlehq/server` — three commands in the generated agent rules named a `reticle` binary that
+  init never installs.** Init wires the SDK, not the server. They are now `npx @reticlehq/server …`,
+  derived from the package's own name so the rule and the MCP registration cannot drift.
+- **`@reticlehq/server` — the Cursor rule and both `/reticle` command files are now compared by
+  CONTENT, not by existence.** A Cursor-only project froze its rule at whatever release wrote it and
+  could never receive a later one. A command file without our frontmatter signature is somebody's own
+  `/reticle` and is left untouched.
+- **`@reticlehq/server` — `--no-mcp` skips the agent rule files and the `/reticle` command too**, and
+  now says so, because all three only make sense once the tools are reachable. A gate running with
+  that flag covers far less than it appears to.
+- **`@reticlehq/vite-plugin` — the dependency-optimizer option key is chosen from the installed Vite's
+  major.** Vite 7 moved the optimizer to rolldown and deprecated `optimizeDeps.esbuildOptions`,
+  warning on every boot — and that warning names the plugin that set the option, so it read as Reticle
+  nagging about Reticle. The version is read from the APP's root, not the plugin's, because in a
+  monorepo those resolve different Vites and the user sees the app's. Unknown versions keep the older
+  key: a deprecation notice is a much smaller failure than an option the installed Vite has never
+  heard of.
+- **`@reticlehq/server` — `reticle doctor` prints the daemon log path** (it always existed and nothing
+  said so) and whether tracing is on.
+- **The registered MCP command stays unpinned (`npx @reticlehq/server mcp`), deliberately.** Pinning
+  would close a release-day skew window but freeze the agent's server at install version forever, and
+  `reticle update` upgrades the CLI, not a global agent config. Fixes not reaching people is Reticle's
+  biggest measured problem.
+
+### Observability & telemetry
+
+- **`@reticlehq/server` — every log line carries an ISO-8601 wall clock, first.** Reported after four
+  MCP disconnects: 20MB of daemon events with no timestamps on any line, so no event could be
+  correlated with a wall clock and no outage could be placed in time. Ordering the clock first also
+  means a huge file can be bisected by eye and by `sort` without being parsed.
+- **`@reticlehq/server` — the proxy's crash handlers now write to the proxy log.** They were wired to
+  stderr only, so an uncaught exception in the proxy — exactly what a human experiences as "the MCP
+  server disconnected" — was handled and then thrown away by the editor. The proxy log is also
+  per-port now (`proxy-<port>.log`), matching the daemon's, because one shared file interleaved every
+  proxy on the machine.
+- **`@reticlehq/server` — daemon logs roll at 8MB.** They were unbounded and one had reached 24MB.
+  Rotation happens before the append handle is opened; rotating after would leave the daemon writing
+  through a descriptor to a name nobody can find.
+- **`@reticlehq/server` — every in-process exit is traced**, with its code, and SIGTERM/SIGINT/SIGHUP
+  by name. After this, silence in the log is itself a finding: it narrows to SIGKILL or an OOM abort,
+  which nothing in-process can record.
+- **`@reticlehq/server` — `RETICLE_TRACE=1` turns the daemon's log into a per-stage trace.** One line
+  per stage when it ENDS, carrying its own duration, a `callId` grouping every stage of one tool call,
+  and a `depth` making it a tree; the id and depth ride in `AsyncLocalStorage`, so instrumenting a
+  function five frames down needs no signature change. Off by default, and the cost when off is
+  measured rather than asserted: **126ns per disabled span site against ~9ns for a bare call** — the
+  `process.env` read. Nearly everything in the performance section above was found with it, including
+  the init flow, which is synchronous end to end and had no timings at all: planning is ~2ms, so
+  init's wall clock is essentially all subprocess, and the degraded path runs the package manager
+  TWICE (a pinned install then a full unpinned retry), which is where 1.6 of one 2.3-second init went.
+- **`@reticlehq/server` — losing MCP is now a number.** `mcp_connection_lost` reports the stage
+  (`first`, or `budget_spent` when the proxy stopped retrying), the cause and the attempt count, so
+  "what share of sessions lose MCP at all, and how often does it never come back" is answerable.
+  Capped at TWO events per proxy process, and the cap is the design: one measured afternoon produced
+  547 proxy reconnects, and an event each would bill for the pathology instead of measuring it.
+- **`@reticlehq/core` / `@reticlehq/server` — `RETICLE_TELEMETRY_FILE` records events locally and
+  sends NOTHING.** Set it to a path and every event is appended as one JSON object per line, built by
+  the same code and redacted by the same rules as the wire payload. A release sweep is not a user:
+  driving dozens of sessions through a gate emits real events that are indistinguishable from people
+  in the dashboard. Verified on a real session: 11 events recorded, zero on the network, roll-up
+  intact.
+- **`@reticlehq/server` — `bug_found` stopped counting Reticle's own failures**, 34 of 34 in one run.
+  Two causes. `reticle_run` is a wrapper whose handler calls the real tool, which already reported
+  that result's defects under the real tool's name, so the outer chokepoint reported the same object
+  again — the sweep was a perfect mirror image, and 16 of the 34 were echoes. A headline number that
+  doubles because of HOW a tool was reached is not a measurement. Second: a suite that failed because
+  nothing could RUN is not a regression in the user's app. Genuine failed assertions and genuine flow
+  regressions still count, and tests pin that.
+- **`@reticlehq/server` — a refused `act_and_wait` is excluded from `verification_completed`.**
+- **`@reticlehq/server` — `reticle_installed` never fired: 15 `init_completed`, 0 installs.** The
+  human-command filter sat above the install event, so on the machines where the first-ever contact is
+  the agent spawning `reticle mcp` — most of them — the top of the funnel was silently skipped.
+- **`@reticlehq/server` — the feedback report is no longer sent on a metric's budget.** 2s, no retry,
+  no persistence, for the only qualitative channel the product has, carrying an agent's whole
+  root-cause analysis. Measured to the collector with a WARM DNS cache: **0.694s total, a third of the
+  budget gone before a byte of payload moves, on the GOOD path** — and a cold short-lived CLI process
+  pays cold DNS and a cold route on top. Feedback now gets 15s and one retry with backoff (a 4xx is
+  not retried; the payload will be rejected again), and every report is appended to
+  `~/.reticle/feedback-outbox.jsonl` BEFORE the network is touched and removed on delivery, so
+  `sent: false` means "queued, not lost" and the receipt says where it is. The source-checkout guard
+  no longer silences feedback either — that rule is about PASSIVE collection, and somebody typed this;
+  applying it there meant anyone dogfooding from their own checkout filed nothing and was told "not
+  sent, unknown reason".
+- **All 15 telemetry event kinds are documented, and a test keeps it that way.** The contract doc
+  described 7. The other 8 existed only in the enum — including the MCP-outage metric this release is
+  largely about, and `init_completed`. A kind nobody documents is a kind nobody queries.
+
+### Internal
+
+- **`pnpm test:coverage` reports every package.** There was no coverage tooling at all, which makes
+  "is coverage high enough to release?" a question nobody could answer. Baseline, statements: core
+  98.65%, vite-plugin 91.11%, browser 91.09%, test 90.57%, react 87.03%, server 85.05% — weighted
+  87.3% (29,755/34,093). No threshold is enforced yet; a number nobody has looked at is not a gate.
+- **Four brute-force stress specs now sit in the battery**, covering each transport rather than only
+  the MCP one: ten consecutive daemon kills and a 20-way concurrent burst across one; the
+  daemon↔page socket under a tab closed mid-command, two tabs at once, and a reload underneath a live
+  ref; the bridge socket itself under 40 connections against a cap of 32, malformed and oversized
+  frames, a 5,000-message flood and 60 sockets killed mid-handshake; and a 48-tool argument fuzz. The
+  bridge cap holds at exactly 32 and every abuse leaves the daemon serving.
+- **Three load-only flakes fixed, all the same shape:** asserting a DURATION where the invariant is a
+  BOUND. One spec passed 6/6 alone and failed in the battery, which is the signature of a test
+  reporting load as a defect. A telemetry spec that slept a fixed 700ms fifteen times now waits for
+  the capture endpoint to go quiet instead — idle machines settle in ~120ms, loaded ones wait as long
+  as they need.
+- **`eqeqeq` comparisons put the literal on the left**, enforced by eslint across 1,324 comparisons in
+  352 files: `if (5 = x)` is a syntax error where `if (x = 5)` silently assigns.
+- **The dead-code report went from 95 findings (95% false positives, i.e. an ignored report) to a
+  handful.** 73 symbols and 74 types that no file outside their own ever named lost their `export`;
+  four genuinely-dead exports and one unreachable function were deleted; the two remaining false
+  positives are documented by name rather than silenced. One real finding: an app was building only
+  one of its two pages, so a source file was unreachable from the build graph while working fine under
+  `vite dev`.
+- **No `eslint-disable`, `@ts-ignore` or `@ts-expect-error` remains anywhere in `packages/*/src`.**
+- **The server's 37-file `src` root is grouped into five directories** (56 files moved with their
+  tests, 60 files rewritten by computed path rather than pattern match). One runtime `createRequire`
+  path survived every static check and broke 82 test files while `tsc --noEmit` reported zero errors.
+
 ## [2.4.1] — 2026-08-08
 
 **False greens, and a metric that was measuring the wrong thing.** Almost every fix here was found by

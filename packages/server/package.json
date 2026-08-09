@@ -65,7 +65,7 @@
     "cli"
   ],
   "reticle": {
-    "changelog": "Smart MCP proxy with auto-start daemon, auto-update, and rollback support. Update from the CLI with `reticle update` / `reticle rollback`.",
+    "changelog": "An MCP server that stays up when the daemon dies, one tool surface instead of five profiles (`RETICLE_TOOL_PROFILE` retired for `RETICLE_ADVERTISE_ALL_TOOLS`), and tools that refuse instead of answering wrongly.",
     "breakingChanges": []
   },
   "publishConfig": {
