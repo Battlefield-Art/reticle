@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { PresenterMode } from '@reticlehq/core';
 import { Presenter } from './presenter.js';
+import { BRAND_NAME } from './presenter-brand.js';
 import {
   FAST_IDLE_MS,
   FAST_FADE_MS,
@@ -104,6 +105,46 @@ describe('presenter v2 session border', () => {
     expect(overlay.getAttribute('data-reticle-min')).toBe('1'); // collapsed to the bar
     head.click(); // clicking the minimised bar restores the panel
     expect(overlay.getAttribute('data-reticle-min')).toBe('0');
+    p.destroy();
+  });
+
+  it('3c-brand collapsing swaps the wordmark for the mark alone, beside the dot', () => {
+    document.body.innerHTML = '';
+    const p = new Presenter({ border: 'session' });
+    p.mount();
+    const head = document.querySelector('.reticle-hud-head') as HTMLElement;
+    const mark = document.querySelector('.reticle-mark') as SVGElement;
+    const wordmark = document.querySelector('.reticle-wordmark') as SVGElement;
+    const shown = (el: Element): boolean => 'none' !== getComputedStyle(el).display;
+
+    expect(shown(wordmark)).toBe(true); // expanded → wordmark
+    expect(shown(mark)).toBe(false);
+
+    (document.querySelector('[data-reticle-min-btn]') as HTMLElement).click();
+    expect(shown(mark)).toBe(true); // collapsed → mark only
+    expect(shown(wordmark)).toBe(false);
+    // the blinking dot stays with it, and nothing else was pushed out of the bar
+    expect(shown(document.querySelector('.reticle-dot') as HTMLElement)).toBe(true);
+    expect(shown(document.querySelector('.reticle-live') as HTMLElement)).toBe(true);
+
+    head.click(); // restore
+    expect(shown(wordmark)).toBe(true);
+    expect(shown(mark)).toBe(false);
+    p.destroy();
+  });
+
+  it('3c-a11y the marks are decorative; the HUD keeps its name in both states', () => {
+    document.body.innerHTML = '';
+    const p = new Presenter({ border: 'session' });
+    p.mount();
+    const brand = document.querySelector('.reticle-brand') as HTMLElement;
+    for (const svg of brand.querySelectorAll('svg')) {
+      expect(svg.getAttribute('aria-hidden')).toBe('true');
+    }
+    expect(brand.querySelector('.reticle-brand-sr')?.textContent).toBe(BRAND_NAME);
+    (document.querySelector('[data-reticle-min-btn]') as HTMLElement).click();
+    // the name survives the collapse — the brand block is no longer hidden with the rest
+    expect(getComputedStyle(brand).display).not.toBe('none');
     p.destroy();
   });
 
