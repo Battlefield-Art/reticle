@@ -1,7 +1,8 @@
 // Real-browser e2e proving the synthetic-blur commit (synthetic blur -> React onBlur commit) and #3 (fake
-// clock advances a time-gated toast) against the real Next.js app on :3100.
+// clock advances a time-gated toast) against the real Next.js app on :3101.
 import { chromium } from 'playwright';
 import { start, TOOLS, BaselineStore, RecordingStore } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const deps = { sessions: null, baselines: new BaselineStore(), recordings: new RecordingStore() };
@@ -25,12 +26,8 @@ const server = await start({ port: 4400, mcp: false });
 deps.sessions = server.bridge.sessions;
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
-await page.goto('http://localhost:3100/');
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
-for (let i = 0; i < 150 && !hasOwn(); i++) await sleep(50);
+await page.goto('http://localhost:3101/');
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 console.log('\n=== blur + fake-clock, real Chromium / Next.js ===');
 
 // TEST 1 — synthetic blur triggers React onBlur (commit-on-blur)

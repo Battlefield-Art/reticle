@@ -10,6 +10,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { McpStdioClient } from '../../../bench/harness/mcp-client.mjs';
+import { waitForSession } from '../wait-for-session.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 // Defaults are the BATTERY's: run-ci.sh boots bench-app on :4310 dialing the bridge on :4400.
@@ -69,32 +70,47 @@ async function openTab(url = APP) {
   return page;
 }
 
-async function sessionIds() {
+async function listSessions() {
   const r = await settled(call('reticle_sessions', {}));
   if (!r.answered) return [];
-  return (payload(r.value).sessions ?? []).map((s) => s.sessionId ?? s.id);
+  return payload(r.value).sessions ?? [];
 }
+/**
+ * OUR tabs, and only ours. The bridge is shared: a fixture tab open in the developer's own browser
+ * joins every daemon this battery starts (run.mjs warns about it), so counting all sessions counts
+ * strangers — and, worse, leaves the tools with more than one session to choose from, which is what
+ * "a new tab restores a driveable session" really failed on: the call was answered, with
+ * "multiple sessions connected". Every call below therefore names the session it means.
+ */
+const onApp = (s) => String(s?.url ?? '').startsWith(APP);
+const idOf = (s) => s?.sessionId ?? s?.id;
+const ourIds = async () => (await listSessions()).filter(onApp).map(idOf);
 
 try {
   // ── 1. Two tabs at once ─────────────────────────────────────────────────────────────────────
   const tabA = await openTab();
   const tabB = await openTab();
-  await sleep(3000);
-  const both = await sessionIds();
-  chk('two tabs register as two distinct sessions', both.length >= 2, `${both.length} sessions`);
+  const both = await waitForSession(listSessions, onApp, { count: 2, what: `two tabs on ${APP}` });
+  chk('two tabs register as two distinct sessions', new Set(both.map(idOf)).size >= 2, `${both.length} sessions`);
+  const opened = new Set(both.map(idOf));
 
   // ── 2. Close one tab — the other must still drive ────────────────────────────────────────────
   await tabA.close();
   await sleep(1500);
-  const afterClose = await settled(call('reticle_snapshot', { mode: 'interactive' }));
+  const remaining = (await ourIds()).filter((id) => opened.has(id));
+  let sid = remaining[0];
+  const afterClose = await settled(call('reticle_snapshot', { mode: 'interactive', sessionId: sid }));
   chk('closing one tab does not strand the other', afterClose.answered, afterClose.how);
-  const remaining = await sessionIds();
-  chk('  and the dead session is gone from the list', remaining.length >= 1, `${remaining.length} left`);
+  chk(
+    '  and the dead session is gone from the list',
+    remaining.length < opened.size && 0 < remaining.length,
+    `${remaining.length} of our ${opened.size} left`,
+  );
 
   // ── 3. Close a tab WHILE a command is in flight ──────────────────────────────────────────────
   // The nastiest ordering on this channel: the page accepts the command and dies before replying.
   {
-    const inFlight = settled(call('reticle_snapshot', { mode: 'full' }, 45_000));
+    const inFlight = settled(call('reticle_snapshot', { mode: 'full', sessionId: sid }, 45_000));
     await sleep(30);
     await tabB.close();
     const r = await inFlight;
@@ -103,14 +119,18 @@ try {
 
   // ── 4. Everything gone: no session at all ────────────────────────────────────────────────────
   {
-    const r = await settled(call('reticle_snapshot', {}));
+    // Addressed by the id of the tab that just died: the refusal must NAME it, not hang.
+    const r = await settled(call('reticle_snapshot', { sessionId: sid }));
     chk('with every tab closed, the tool refuses instead of hanging', r.answered, r.how);
   }
 
   // ── 5. A fresh tab after the wipe — the channel recovers ─────────────────────────────────────
   const tabC = await openTab();
-  await sleep(3000);
-  const back = await settled(call('reticle_snapshot', { mode: 'interactive' }));
+  const [fresh] = await waitForSession(listSessions, (s) => onApp(s) && !opened.has(idOf(s)), {
+    what: `a fresh tab on ${APP}`,
+  });
+  sid = idOf(fresh);
+  const back = await settled(call('reticle_snapshot', { mode: 'interactive', sessionId: sid }));
   chk('a new tab restores a driveable session', back.answered && !payload(back.value ?? {}).error, back.how);
 
   // ── 6. Hidden page: the throttling case, on the channel rather than in a WKWebView ───────────
@@ -118,7 +138,7 @@ try {
     // A second tab in the same context pushes the first to the background.
     const front = await openTab('about:blank');
     await sleep(1500);
-    const r = await settled(call('reticle_snapshot', { mode: 'interactive' }, 45_000));
+    const r = await settled(call('reticle_snapshot', { mode: 'interactive', sessionId: sid }, 45_000));
     chk('a backgrounded page still answers, or says why', r.answered, r.how);
     await front.close();
   }
@@ -126,7 +146,7 @@ try {
   // ── 7. Reload underneath a live ref ──────────────────────────────────────────────────────────
   // The ref is invalidated by the reload; the contract is a NAMED refusal, never a wrong element.
   {
-    const snap = await settled(call('reticle_snapshot', { mode: 'interactive' }));
+    const snap = await settled(call('reticle_snapshot', { mode: 'interactive', sessionId: sid }));
     const tree = JSON.stringify(payload(snap.value ?? {}));
     const ref = /\(ref=([A-Za-z0-9_-]+)\)/.exec(tree)?.[1];
     if (ref === undefined) {
@@ -134,7 +154,7 @@ try {
     } else {
       await tabC.reload({ waitUntil: 'domcontentloaded' });
       await sleep(2500);
-      const acted = await settled(call('reticle_act', { ref, action: 'click' }));
+      const acted = await settled(call('reticle_act', { ref, action: 'click', sessionId: sid }));
       const body = acted.answered ? JSON.stringify(payload(acted.value ?? {})) : acted.how;
       chk(
         'a stale ref after reload is refused, not silently mis-clicked',

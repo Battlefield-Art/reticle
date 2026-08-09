@@ -3,6 +3,7 @@
 // WITHOUT a script. Bounded (maxSteps) so it always terminates.
 import { chromium } from 'playwright';
 import { start, TOOLS } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0,
   fail = 0;
@@ -16,15 +17,11 @@ const deps = { sessions: server.bridge.sessions };
 const T = (n, a = {}) => TOOLS.find((t) => t.name === n).handler(deps, { sessionId: 'next-smoke', ...a });
 const b = await chromium.launch({ headless: true });
 const p = await b.newPage();
-await p.goto('http://localhost:3100/');
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
-for (let i = 0; i < 200 && !hasOwn(); i++) await sleep(50);
+await p.goto('http://localhost:3101/');
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 
 console.log('\n=== EXPLORE: reticle_crawl autonomously drives the app (real browser) ===');
-chk('app SDK connected', server.bridge.sessions.count() > 0);
+chk('app SDK connected', server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke'));
 
 const report = await T('reticle_crawl', { maxSteps: 6, settleMs: 150 });
 chk('reticle_crawl discovered interactive controls', report.interactiveFound > 0, `found=${report.interactiveFound}`);

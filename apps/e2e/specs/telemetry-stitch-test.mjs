@@ -26,6 +26,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { McpStdioClient } from '../../../bench/harness/mcp-client.mjs';
+import { waitForSession } from '../wait-for-session.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 // The battery's bench-app dials :4400 (see run-ci.sh), so a spec that needs a session must use it.
@@ -106,15 +107,15 @@ const call = async (name, args = {}) => {
   }
 };
 
-let S = {};
-for (let i = 0; i < 90; i++) {
-  const s = await call('reticle_sessions');
-  if ((s?.sessions ?? []).length) {
-    S = { sessionId: s.sessions[0].sessionId };
-    break;
-  }
-  await sleep(500);
-}
+// The DRIVEN app, not `sessions[0]`: bench-app self-assigns a per-tab id, so the only way to
+// recognise it is the URL it is serving from. Taking the first session handed back a stray tab from
+// another app and every assertion below then ran against the wrong page.
+const [driven] = await waitForSession(
+  async () => (await call('reticle_sessions'))?.sessions ?? [],
+  (s) => String(s?.url ?? '').startsWith(APP),
+  { what: `the driven app on ${APP}` },
+);
+const S = { sessionId: driven.sessionId ?? driven.id };
 chk('a session is connected', S.sessionId !== undefined, S.sessionId ?? 'none');
 
 const q = async (t) => (await call('reticle_query', { ...S, testid: t }))?.elements?.[0]?.ref;

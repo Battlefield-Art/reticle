@@ -25,6 +25,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { McpStdioClient } from '../../../bench/harness/mcp-client.mjs';
+import { waitForSession } from '../wait-for-session.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const PORT = process.env.RETICLE_PORT ?? '4400';
@@ -54,9 +55,21 @@ const client = new McpStdioClient(
  * `callTool` throws on `isError`, which conflates two very different things: a tool that refused for
  * a reason, and a tool that is broken. So this uses the raw request and keeps the envelope.
  */
+/**
+ * The session every call below means. The bridge is shared, so a stray tab in the developer's own
+ * browser is a SECOND session and every unaddressed tool call then comes back "multiple sessions
+ * connected" — a sweep of the whole surface failing on the harness, not the surface. Set once the
+ * driven app has actually connected, and only ever added to tools that DECLARE a sessionId: the MCP
+ * layer rejects unknown argument keys, so blanket-injecting it would refuse half the surface.
+ */
+let DRIVEN;
+const TAKES_SESSION = new Set();
+
 async function callRaw(name, args) {
   try {
-    const result = await client.request('tools/call', { name, arguments: args }, 60_000);
+    const withSession =
+      DRIVEN === undefined || !TAKES_SESSION.has(name) ? args : { sessionId: DRIVEN, ...args };
+    const result = await client.request('tools/call', { name, arguments: withSession }, 60_000);
     const text = (result?.content ?? [])
       .filter((c) => c.type === 'text')
       .map((c) => c.text)
@@ -82,13 +95,26 @@ const record = async (name, args = {}) => {
 };
 
 await client.start();
-// The driven browser has to load the app and its SDK has to dial the bridge before anything is real.
-await sleep(8000);
 
 console.log('\n=== TOOL SURFACE: every shipped tool, over real MCP ===');
 
 const advertised = await client.listTools();
 chk('the MCP server advertises the full tool surface', advertised.length >= 40, `${advertised.length} tools`);
+for (const tool of advertised) {
+  if (tool.inputSchema?.properties?.sessionId !== undefined) TAKES_SESSION.add(tool.name);
+}
+
+// The driven browser has to load the app and its SDK has to dial the bridge before anything is real.
+// bench-app self-assigns a per-tab id, so it is recognised by the URL it is serving from.
+const [driven] = await waitForSession(
+  async () => {
+    const r = await callRaw('reticle_sessions', {});
+    return r.parsed?.sessions ?? [];
+  },
+  (s) => String(s?.url ?? '').startsWith(APP),
+  { what: `the driven app on ${APP}` },
+);
+DRIVEN = driven.sessionId ?? driven.id;
 
 // ── the read-only surface ─────────────────────────────────────────────────────────────────────
 await record('reticle_sessions');

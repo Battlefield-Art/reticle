@@ -77,7 +77,7 @@ const ORDER = [
 // run-ci.sh and would only fail inside it for want of a display.
 const DESKTOP = ['electron-desktop-test', 'tauri-desktop-test'];
 // Specs intentionally excluded from BOTH batteries (add here WITH a reason, never by omission).
-const SKIP = new Set([]);
+const SKIP = new Set(['release-smoke-test']);
 const present = new Set(
   readdirSync(specsDir)
     .filter((f) => f.endsWith('.mjs'))

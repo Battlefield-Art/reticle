@@ -10,6 +10,12 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 it was found by driving the shipped surface against live apps: a hostile-argument fuzz of all 48 tools,
 a nine-app fixture fleet under a new trace, and stress specs against every transport.
 
+> **Installing in the first ~48 hours?** pnpm's `minimumReleaseAge` refuses packages younger than
+> its window, so a pnpm project will be given the newest ACCEPTED version — 2.4.0 — rather than
+> 2.5.0. `reticle init` detects this, falls back to an unpinned install and says so, and the daemon
+> reports the resulting version skew rather than letting it be silent. To get 2.5.0 immediately:
+> `pnpm config set minimumReleaseAgeExclude "@reticlehq/*"`. npm and yarn are unaffected.
+
 ### BREAKING — read before upgrading
 
 - **`RETICLE_TOOL_PROFILE` is retired; there is one tool surface.** Every value it ever took still

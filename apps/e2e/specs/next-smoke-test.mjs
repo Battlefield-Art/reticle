@@ -1,6 +1,7 @@
-// Drive the real Next.js app (apps/next-smoke, :3100) with Reticle to de-risk Next.
+// Drive the real Next.js app (apps/next-smoke, :3101) with Reticle to de-risk Next.
 import { chromium } from 'playwright';
 import { start, TOOLS, BaselineStore, RecordingStore } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const deps = { sessions: null, baselines: new BaselineStore(), recordings: new RecordingStore() };
@@ -24,15 +25,11 @@ const server = await start({ port: 4400, mcp: false });
 deps.sessions = server.bridge.sessions;
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
-await page.goto('http://localhost:3100/');
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
-for (let i = 0; i < 150 && !hasOwn(); i++) await sleep(50);
+await page.goto('http://localhost:3101/');
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 
 console.log('\n=== Reticle on a real Next.js 15 / React 19 app ===');
-check('Reticle session connected from Next', server.bridge.sessions.count() >= 1,
+check('Reticle session connected from Next', server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke'),
   JSON.stringify((await T('reticle_sessions')).sessions.map((s) => s.sessionId)));
 
 const snap = await T('reticle_snapshot', { mode: 'interactive' });
@@ -72,7 +69,7 @@ console.log('\nTASK D — a SERVER ACTION, the mutation shape with no fetch the 
 // JSON. If that write were invisible, every server-action app would have its entire mutation surface
 // unobserved — the desktop-IPC blind spot in a different costume. The fixture at app/actions has
 // asked this question since it was written and no gate ever answered it.
-await page.goto('http://localhost:3100/actions', { waitUntil: 'domcontentloaded' });
+await page.goto('http://localhost:3101/actions', { waitUntil: 'domcontentloaded' });
 await sleep(1500);
 const countBefore = (await T('reticle_query', { by: 'testid', value: 'note-count' })).elements?.[0]?.text;
 await T('reticle_act', { ref: await refOf('testid', 'note-input'), action: 'fill', args: { value: 'from the battery' } });

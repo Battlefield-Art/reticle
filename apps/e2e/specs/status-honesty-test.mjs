@@ -1,9 +1,10 @@
-// Real-browser proof of status-honesty against apps/next-smoke (:3100).
+// Real-browser proof of status-honesty against apps/next-smoke (:3101).
 // The key scenario: a THROTTLED tab where requestAnimationFrame never fires. We reproduce it
 // by neutering rAF before page load (addInitScript) so the SDK's bound realRaf never resolves —
 // exactly the condition that made reticle_act hang to the 8s timeout and report a click as an error.
 import { chromium } from 'playwright';
 import { start, TOOLS, BaselineStore, RecordingStore } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => Number(process.hrtime.bigint() / 1000000n);
@@ -32,12 +33,8 @@ const page = await browser.newPage();
 await page.addInitScript(() => {
   window.requestAnimationFrame = () => 0;
 });
-await page.goto('http://localhost:3100/');
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
-for (let i = 0; i < 150 && !hasOwn(); i++) await sleep(50);
+await page.goto('http://localhost:3101/');
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 console.log('\n=== status honesty, real Chromium (rAF throttled) ===');
 
 // Act on a tab where rAF never fires must NOT hang/throw; returns dispatched:true fast.

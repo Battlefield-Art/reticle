@@ -72,6 +72,12 @@ const { buildErrorPayload } = await import(`${DIST}/tools/error-recovery.js`);
 const { reportVersionChange } = await import(`${DIST}/update/updater.js`);
 const { reportMcpConnected, markDaemonStart } = await import(`${DIST}/telemetry/mcp-connection.js`);
 const { reportInitOutcome, InitFailure } = await import(`${DIST}/telemetry/init-telemetry.js`);
+const { reportMcpOutage, resetOutageReporting, OutageStage } = await import(`${DIST}/mcp/mcp-outage.js`);
+const { decideVerified } = await import(`${DIST}/honesty/verified.js`);
+// Derived from core, never re-listed here — a copied vocabulary is correct on the day it is written
+// and silently wrong at the next addition, which has already cost this repo twice.
+const { VerifiedReason } = await import(new URL('../../../packages/core/dist/index.js', import.meta.url).href);
+const VERIFIED_REASONS = new Set(Object.values(VerifiedReason));
 const { classifyConnectFailure } = await import(`${DIST}/telemetry/connect-failure.js`);
 
 if (!getTelemetry().enabled) {
@@ -173,7 +179,17 @@ const falseGreenTool = {
   name: 'reticle_assert',
   description: '',
   inputSchema: {},
-  handler: async () => ({ pass: true, verified: 'no', because: 'channels disagree' }),
+  // The REAL rule, not a hand-written imitation: `verification_reason` only means anything if the
+  // clause that decided the verdict is the one that travelled.
+  handler: async () => ({
+    pass: true,
+    ...decideVerified({
+      pass: true,
+      settled: true,
+      honesty: { grade: 'signal', coverage: { partial: false }, integrity: { clean: true, issues: [] } },
+      contradictions: [{ kind: 'signal-contradicted' }],
+    }),
+  }),
 };
 await runTool(falseGreenTool, deps, { predicate: { kind: 'console' }, since: 1 });
 // A clean pass.
@@ -211,6 +227,15 @@ await settle();
   check('  clean pass NOT marked as a false green', vs.some((e) => e.properties.verification_falseGreenCaught === false));
   check('  carries which tool produced it', fg?.properties.verification_via === 'reticle_assert');
   check('  actor is the agent', fg?.properties.actor === 'agent', fg?.properties.actor);
+}
+{
+  // WHY the verdict came out that way. `verified: 'unknown'` covered seven different clauses of the
+  // honesty rule belonging to three different owners — the agent, the app, and Reticle's own blind
+  // spots — and they reached the wire as one value needing three opposite responses.
+  const reasoned = find('verification_completed').filter((e) => e.properties.verification_reason !== undefined);
+  check('  a verdict from the honesty rule names the clause that decided it', reasoned.length > 0);
+  check('  and the clause is from the closed list', reasoned.every((e) => VERIFIED_REASONS.has(e.properties.verification_reason)), reasoned.map((e) => e.properties.verification_reason).join(','));
+  check('  a refused green says WHY it was refused', reasoned.some((e) => e.properties.verification_reason === 'contradicted' && e.properties.verification_falseGreenCaught === true));
 }
 
 // ── 4. Tool errors → fingerprints ─────────────────────────────────────────────
@@ -267,8 +292,19 @@ await settle();
   // adding one is a deliberate act reviewed against "does this describe the user's app?". Failing
   // here on a new field is the guard doing its job. `bug_repeat` is a boolean about OUR counting —
   // whether this kind was already seen this session — and says nothing about the app it was found in.
-  check('  carries only the classified kind, source and dedup flag', bugs.every((b) =>
-    Object.keys(b.properties).filter((k) => k.startsWith('bug_')).sort().join() === 'bug_falseGreen,bug_kind,bug_repeat,bug_source,bug_tool'));
+  // `bug_attribution` is optional BY DESIGN — absent means the evidence could not say whose fault it
+  // was, which is why the check is "every field is on the list" rather than "the list is exactly
+  // this". Guessing an owner would put a guess into the one number we intend to publish.
+  const BUG_FIELDS = new Set(['bug_falseGreen', 'bug_kind', 'bug_repeat', 'bug_source', 'bug_tool', 'bug_attribution']);
+  check('  carries only the classified kind, source, dedup flag and attribution', bugs.every((b) =>
+    Object.keys(b.properties).filter((k) => k.startsWith('bug_')).every((k) => BUG_FIELDS.has(k))));
+  // Whose fault it was. In a real captured session SEVEN of eight bug_found events were the agent's
+  // own bad predicates and an empty ref, all published as defects in the customer's app — precision
+  // 1 in 8. Without this the headline defect number is not defensible to anyone who asks how it is
+  // computed, and `attribution: 'app'` is the only bucket that belongs in it.
+  check('  a contradiction is attributed to the APP', bugs.some((b) => b.properties.bug_kind === 'signal-contradicted' && b.properties.bug_attribution === 'app'));
+  check('  a crawl anomaly is attributed to the APP', bugs.some((b) => b.properties.bug_kind === 'console-error' && b.properties.bug_attribution === 'app'));
+  check('  an ambiguous assertion failure claims NO owner rather than guessing', bugs.some((b) => b.properties.bug_kind === 'element.visible' && b.properties.bug_attribution === undefined));
 }
 
 // ── 4b. SDK failures from the in-page half, arriving over the bridge ──────────
@@ -301,6 +337,37 @@ await settle();
   check('  first attach is not a reconnect', cs[0]?.properties.connection_reconnect === false);
   check('  a re-attach IS flagged, so churn is distinguishable from usage', cs[1]?.properties.connection_reconnect === true);
   check('  carries how long the daemon sat before anyone used it', (cs[0]?.properties.connection_daemonAgeMs ?? 0) >= 5000);
+}
+
+// ── 4d-bis. MCP outage — the transport-stability metric ──────────────────────
+// The event fired for months with an EMPTY payload: `emit()` builds its event from an explicit
+// allow-list of keys and `outage` was not on it, so two deliberately different outages produced
+// byte-identical events. It typechecked, it sent, and the data is permanently gone. Against a
+// standing "MCP must never go down" mandate, the metric measuring it reported a bare count with no
+// cause and no recovery signal. A kind-only assertion is what let that pass — so these assert the
+// FIELDS.
+reportMcpOutage(OutageStage.FIRST, { reason: 'sse_ended', attempts: 3 });
+reportMcpOutage(OutageStage.BUDGET_SPENT, { reason: 'connect_error', attempts: 12 });
+await settle();
+{
+  const os_ = find('mcp_connection_lost');
+  check('mcp_connection_lost fires when the agent loses its tools', os_.length === 2, `got ${os_.length}`);
+  const first = os_.find((e) => e.properties.outage_stage === 'first');
+  const spent = os_.find((e) => e.properties.outage_stage === 'budget_spent');
+  check('  the two stages are distinguishable — "did it come back" depends on it', first !== undefined && spent !== undefined);
+  check('  carries WHY the stream went away', first?.properties.outage_reason === 'sse_ended', String(first?.properties.outage_reason));
+  check('  carries how many reconnects had been tried', spent?.properties.outage_attempts === 12, String(spent?.properties.outage_attempts));
+  check('  two DIFFERENT outages are not byte-identical', JSON.stringify(first) !== JSON.stringify(spent));
+}
+{
+  // The reason is a closed vocabulary: the proxy's own strings are free text feeding a log, and an
+  // unbounded value must never reach the wire.
+  resetOutageReporting();
+  reportMcpOutage(OutageStage.FIRST, { reason: 'socket hang up talking to 10.0.0.7', attempts: 1 });
+  await settle();
+  const last = find('mcp_connection_lost').at(-1);
+  check('  an unrecognised cause reports `other`, never the raw string', last?.properties.outage_reason === 'other', String(last?.properties.outage_reason));
+  check('  and leaks nothing from it', !JSON.stringify(last).includes('10.0.0.7'));
 }
 
 // ── 4e. Onboarding funnel ─────────────────────────────────────────────────────

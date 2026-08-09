@@ -4,6 +4,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import nfs from 'node:fs';
+import { waitForSession } from '../wait-for-session.mjs';
 import {
   start,
   TOOLS,
@@ -23,7 +24,7 @@ const chk = (l, o, d = '') => {
 const reticleRoot = path.join(os.tmpdir(), `reticle-visual-${process.pid}`, '.reticle');
 const fsp = createNodeFileSystem();
 const server = await start({ port: 4400, mcp: false });
-const provider = new LaunchedRealInputProvider({ driveUrl: 'http://localhost:3100/', headless: true });
+const provider = new LaunchedRealInputProvider({ driveUrl: 'http://localhost:3101/', headless: true });
 await provider.navigate(); // launches Chromium + goto → page SDK connects to the bridge
 const deps = {
   sessions: server.bridge.sessions,
@@ -35,14 +36,10 @@ const deps = {
   now: () => Date.now(),
 };
 const T = (n, a = {}) => TOOLS.find((t) => t.name === n).handler(deps, { sessionId: 'next-smoke', ...a });
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
-for (let i = 0; i < 200 && !hasOwn(); i++) await sleep(50);
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 
 console.log('\n=== VISUAL: reticle drive → screenshot → visual_diff (real browser) ===');
-chk('reticle drive launched a browser + the app SDK connected', server.bridge.sessions.count() > 0);
+chk('reticle drive launched a browser + the app SDK connected', server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke'));
 
 const shot = await T('reticle_screenshot', { name: 'home', fullPage: true });
 chk('reticle_screenshot saved a PNG baseline to .reticle/visual/home.png', shot.saved === true && nfs.existsSync(shot.path), `${shot.bytes} bytes`);

@@ -3,21 +3,18 @@
 // to synthetic. After the fix the server consumes route.change and session.url tracks the live URL.
 import { chromium } from 'playwright';
 import { start, TOOLS, BaselineStore, RecordingStore, CdpRealInputProvider } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 let pass=0,fail=0; const chk=(l,o,d='')=>{console.log(`   ${o?'✅':'❌'} ${l}${d?'  — '+d:''}`);o?pass++:fail++;};
 const browser=await chromium.launch({headless:true,args:['--remote-debugging-port=9222']});
 const page=await browser.newPage();
-await page.goto('http://localhost:3100/');
+await page.goto('http://localhost:3101/');
 const server=await start({port:4400,mcp:false});
 const provider=new CdpRealInputProvider({cdpUrl:'http://localhost:9222'});
 const deps={sessions:server.bridge.sessions,baselines:new BaselineStore(),recordings:new RecordingStore(),realInput:provider};
 const SID='next-smoke';
 const T=(n,a={})=>TOOLS.find(t=>t.name===n).handler(deps,{sessionId:SID,...a});
-// Wait for OUR session, not for any session: `count()>0` is satisfied by any instrumented page
-// open on the machine — a tab from another project retries the bridge and connects the instant
-// one appears, so this would exit before our own app had connected.
-const hasOwn=()=>server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke');
-for (let i = 0; i < 150 && !hasOwn(); i++) await sleep(50);
+await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 const sess=server.bridge.sessions.resolve(SID);
 const refOf=async()=>{for(let i=0;i<30;i++){const r=(await T('reticle_query',{by:'testid',value:'add-task'})).elements?.[0]?.ref;if(r)return r;await sleep(100);}throw new Error('no add-task');};
 console.log('\n=== bug #1: real input survives SPA navigation (real Chromium + CDP) ===');

@@ -17,6 +17,10 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { start, TOOLS, BaselineStore, RecordingStore } from '@reticlehq/server';
+import { waitForSession } from '../wait-for-session.mjs';
+
+/** Atlas serves from here; the session is identified by it, since atlas self-assigns its id. */
+const ATLAS_URL = 'http://localhost:4320/';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0,
@@ -52,23 +56,20 @@ const deps = {
   baselines: new BaselineStore(),
   recordings: new RecordingStore(),
 };
-const sessionId = () => server.bridge.sessions.list()[0]?.sessionId;
+// Atlas self-assigns a per-tab id, so it is identified by the URL it is serving from — `list()[0]`
+// would happily hand back a stray tab from another app.
+const isAtlas = (s) => String(s?.url ?? '').startsWith(ATLAS_URL);
+const sessionId = () => server.bridge.sessions.list().find(isAtlas)?.sessionId;
 const T = (n, a = {}) =>
   TOOLS.find((t) => t.name === n).handler(deps, { sessionId: sessionId(), ...a });
 
 const b = await chromium.launch({ headless: true });
 const p = await b.newPage();
-await p.goto('http://localhost:4320/');
-for (let i = 0; i < 300 && server.bridge.sessions.count() === 0; i++) await sleep(50);
+await p.goto(ATLAS_URL);
+await waitForSession(() => server.bridge.sessions.list(), isAtlas, { what: `an atlas session on ${ATLAS_URL}` });
 
 console.log('\n=== ATLAS: the hard fixture, driven ===');
-chk('atlas SDK connected', server.bridge.sessions.count() > 0);
-if (server.bridge.sessions.count() === 0) {
-  console.error('\n❌ atlas never dialled the bridge — is it running on :4320?');
-  await b.close();
-  stopAtlas();
-  process.exit(1);
-}
+chk('atlas SDK connected', sessionId() !== undefined);
 
 // Give the virtualized table and the SSE stream time to be real.
 await sleep(2500);

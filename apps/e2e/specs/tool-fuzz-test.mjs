@@ -23,11 +23,21 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { McpStdioClient } from '../../../bench/harness/mcp-client.mjs';
+import { waitForSession } from '../wait-for-session.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const PORT = process.env.TOOL_FUZZ_PORT ?? '4400';
 const APP = process.env.TOOL_FUZZ_APP ?? 'http://localhost:4310/';
-const CALL_TIMEOUT_MS = 25_000;
+// 10s, not 25. The property under test is that every call SETTLES, and a hostile argument that
+// reaches a browser command waits out that command's own ~5s timeout before answering — measured on
+// 13 of the 285 shapes (reticle_state/nulls, reticle_viewport/nulls, reticle_screenshot/huge,
+// reticle_replay/huge and others at 5-9s). At 25s a handful of those turned this spec from 90
+// seconds into 25+ minutes and stalled the whole battery.
+//
+// 10s still proves the property with headroom over the slowest observed answer. It is deliberately
+// NOT lowered to the observed maximum: a cap that only just clears the current worst case reddens on
+// a slow machine and reports load as a defect.
+const CALL_TIMEOUT_MS = 10_000;
 
 let pass = 0;
 let fail = 0;
@@ -121,13 +131,22 @@ async function callRaw(name, args) {
 // short-circuits on "no browser session connected" and the whole fuzz passes without reaching a
 // single validator — which is exactly how this spec went green on its first run, hiding a
 // 100,392-byte answer. A vacuous pass is worse than a failure: it reports coverage it does not have.
-let sessionUp = false;
-for (let i = 0; 40 > i && !sessionUp; i += 1) {
-  const probe = await callRaw('reticle_sessions', {});
-  sessionUp = probe.text.includes('sessionId');
-  if (!sessionUp) await new Promise((r) => setTimeout(r, 500));
-}
-chk('a session is driving, so the fuzz reaches real validators', sessionUp);
+// "some sessionId appears in the response" was too weak in the other direction: a stray tab in the
+// developer's own browser satisfies it, and the fuzz then runs with OUR app still absent. Match the
+// app being driven by the URL it is serving from — bench-app self-assigns a per-tab id.
+const driven = await waitForSession(
+  async () => {
+    const probe = await callRaw('reticle_sessions', {});
+    try {
+      return JSON.parse(probe.text)?.sessions ?? [];
+    } catch {
+      return [];
+    }
+  },
+  (s) => String(s?.url ?? '').startsWith(APP),
+  { what: `the driven app on ${APP}` },
+);
+chk('a session is driving, so the fuzz reaches real validators', 0 < driven.length);
 
 /** An answer is actionable if it says something a caller could act on beyond "no". */
 function actionable(text) {
