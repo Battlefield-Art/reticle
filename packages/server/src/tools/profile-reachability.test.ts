@@ -19,7 +19,7 @@ import { advertisedTools } from '../mcp/mcp.js';
  */
 
 /** Profiles that advertise a reduced surface and therefore need an escape hatch. */
-const TRIMMED: ToolProfile[] = [TOOL_PROFILE.CORE, TOOL_PROFILE.STANDARD, TOOL_PROFILE.HYBRID];
+const TRIMMED: ToolProfile[] = [TOOL_PROFILE.HYBRID];
 
 /** Names an agent can invoke under a profile: advertised directly, or via the meta-tools. */
 /**
@@ -75,7 +75,6 @@ describe('tool reachability across profiles', () => {
   }
 
   it('a trimmed profile advertises fewer tools than full — otherwise the trim is pointless', () => {
-    expect(filterTools(TOOLS, TOOL_PROFILE.CORE).length).toBeLessThan(TOOLS.length);
-    expect(filterTools(TOOLS, TOOL_PROFILE.STANDARD).length).toBeLessThan(TOOLS.length);
+    expect(filterTools(TOOLS, TOOL_PROFILE.HYBRID).length).toBeLessThan(TOOLS.length);
   });
 });

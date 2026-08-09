@@ -21,9 +21,7 @@ import { TOOLS } from './tools.js';
 /** The advertised size of each profile. Update WITH the surface, never after it. */
 const EXPECTED_SIZE: Record<ToolProfile, number> = {
   [TOOL_PROFILE.DYNAMIC]: 2,
-  [TOOL_PROFILE.CORE]: 16,
   [TOOL_PROFILE.HYBRID]: 16,
-  [TOOL_PROFILE.STANDARD]: 33,
   // The whole surface PLUS the two meta-tools: every recovery message points at reticle_tools, so a
   // profile without it makes our own advice a dead end.
   [TOOL_PROFILE.FULL]: 48,
@@ -51,7 +49,7 @@ describe('advertised surface sizes', () => {
 
   it('every trimmed profile is smaller than full, or it is not a trim', () => {
     const full = advertisedTools(TOOL_PROFILE.FULL).length;
-    for (const profile of [TOOL_PROFILE.DYNAMIC, TOOL_PROFILE.CORE, TOOL_PROFILE.HYBRID, TOOL_PROFILE.STANDARD]) {
+    for (const profile of [TOOL_PROFILE.DYNAMIC, TOOL_PROFILE.HYBRID, TOOL_PROFILE.HYBRID, TOOL_PROFILE.HYBRID]) {
       expect(advertisedTools(profile).length, profile).toBeLessThan(full);
     }
   });
@@ -69,7 +67,7 @@ describe('advertised surface sizes', () => {
 describe('docs state a surface size exactly once, correctly', () => {
   const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../..');
   /** The one sentence in the docs allowed to carry counts. Built from the numbers the gate proves. */
-  const CANONICAL = `\`hybrid\` ${String(EXPECTED_SIZE[TOOL_PROFILE.HYBRID])}, \`standard\` ${String(EXPECTED_SIZE[TOOL_PROFILE.STANDARD])}, \`full\` ${String(EXPECTED_SIZE[TOOL_PROFILE.FULL])}`;
+  const CANONICAL = `\`dynamic\` ${String(EXPECTED_SIZE[TOOL_PROFILE.DYNAMIC])}, \`hybrid\` ${String(EXPECTED_SIZE[TOOL_PROFILE.HYBRID])}, \`full\` ${String(EXPECTED_SIZE[TOOL_PROFILE.FULL])}`;
   /**
    * Anything that reads like a count of the surface: "46 tools", "33 advertised", "`=full` (48)".
    * Deliberately blind to whether the number is right — a SECOND statement of it is the defect, because

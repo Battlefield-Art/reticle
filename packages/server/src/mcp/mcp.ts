@@ -240,8 +240,9 @@ export function advertisedTools(profile: ToolProfile): ToolDef[] {
   // message this server emits says "Call reticle_tools { names: [...] } for its parameters". Leaving
   // it out made our own advice a dead end on the one profile that advertises everything.
   if (profile === TOOL_PROFILE.FULL) return [...TOOLS, ...buildDynamicTools(TOOLS, origin)];
-  const base = filterTools(TOOLS, profile === TOOL_PROFILE.HYBRID ? TOOL_PROFILE.CORE : profile);
-  return [...base, ...buildDynamicTools(TOOLS, origin)];
+  // Hybrid is the only profile left that filters; the indirection through a second profile name is
+  // gone with the name.
+  return [...filterTools(TOOLS, profile), ...buildDynamicTools(TOOLS, origin)];
 }
 
 /**
@@ -257,10 +258,13 @@ export function advertisedConfig(
   advertised: readonly ToolDef[],
   profile: ToolProfile,
 ): { description: string; inputSchema: z.ZodRawShape; outputSchema?: z.ZodRawShape } {
-  const terse =
-    profile === TOOL_PROFILE.CORE ||
-    profile === TOOL_PROFILE.STANDARD ||
-    profile === TOOL_PROFILE.HYBRID;
+  // Hybrid is the terse one. NOT `profile !== FULL`, which reads equivalent and is not: it also
+  // trims `dynamic`, whose two meta-tools are the ONLY thing that profile advertises — so the
+  // instructions for using them (`names:[…]` loads full params on demand) would be cut to a first
+  // sentence and the agent would have nothing left to learn the surface from. Measured when it
+  // happened: dynamic's tools/list fell 1,543 -> 849 bytes, which looks like a saving and is a
+  // capability loss.
+  const terse = profile === TOOL_PROFILE.HYBRID;
   // The first advertised tool carrying a predicate spells the grammar out; the rest point at it.
   const anchor = advertised.find((t) =>
     Object.values(t.inputSchema).some((schema) => isPredicateParam(schema)),

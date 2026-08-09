@@ -449,7 +449,7 @@ reticle_network({ sessionId, limit: 10 })
 reticle_console({ sessionId, limit: 20 })
 ```
 
-> **Default `hybrid` profile.** Everything else the skill names — `reticle_capabilities`, `reticle_act_sequence`, `reticle_session {action:"yield"}`, `reticle_session {action:"review"}`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list its params first with `reticle_tools`). Advertised counts, checked by a gate (`profile-sizes.test.ts`): `hybrid` 16, `standard` 33, `full` 48 — so the default carries a third of the schema `full` does. (The character figures once printed here were measured wrong, in the direction that flattered the default; the counts are the claim that survives.)
+> **Default `hybrid` profile.** Everything else the skill names — `reticle_capabilities`, `reticle_act_sequence`, `reticle_session {action:"yield"}`, `reticle_session {action:"review"}`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list its params first with `reticle_tools`). Advertised counts, checked by a gate (`profile-sizes.test.ts`): `dynamic` 2, `hybrid` 16, `full` 48 — so the default carries a seventh of the per-turn schema cost `full` does. (The character figures once printed here were measured wrong, in the direction that flattered the default; the counts are the claim that survives.)
 >
 > **`RETICLE_TOOL_PROFILE` is read by the DAEMON at startup, not by your client.** Setting it in the agent's environment while a daemon is already running changes nothing, and the two profiles then look identical because you are still talking to the old one. Run `npx @reticlehq/server stop` first.
 
@@ -564,7 +564,7 @@ For flows worth re-checking forever — the actual test suite — record them, t
 
    On a failure the envelope tells you exactly what changed, the `file:line`, and the fix (e.g. "rebind to 'new-deploy'") — act on `nextAction` directly. A single flow: `reticle_flow_replay({ flowName })`.
 
-   > **Tool profile (default `hybrid`).** Reticle advertises 14 core verify tools directly and keeps everything else (record/replay/verify/heal, screenshots, network-mock, `act_sequence`, …) one call away behind two meta-tools. Reach a non-core tool with `reticle_run({ tool: "reticle_flow_verify", args: { sessionId } })`, or `reticle_tools` first to list its params. Want them advertised directly? Set `RETICLE_TOOL_PROFILE=standard` or `=full` **and restart the daemon** — the profile is read at daemon startup, not per client.
+   > **Tool profile (default `hybrid`).** Reticle advertises 14 core verify tools directly and keeps everything else (record/replay/verify/heal, screenshots, network-mock, `act_sequence`, …) one call away behind two meta-tools. Reach a non-core tool with `reticle_run({ tool: "reticle_flow_verify", args: { sessionId } })`, or `reticle_tools` first to list its params. Want them advertised directly? Set `RETICLE_TOOL_PROFILE=full` **and restart the daemon** — the profile is read at daemon startup, not per client. (`core` and `standard` are retired names: they still resolve, to `hybrid`, and the daemon says so.)
 
 ### Read program truth in one call — instead of reconstructing it from the DOM
 

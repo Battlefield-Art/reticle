@@ -19,7 +19,7 @@ describe('reticle_feedback', () => {
    * feedback channel, means it collects nothing and is indistinguishable from not existing.
    */
   it('is advertised under every profile, not left behind the meta-tool hatch', () => {
-    for (const profile of [TOOL_PROFILE.CORE, TOOL_PROFILE.STANDARD, TOOL_PROFILE.FULL]) {
+    for (const profile of [TOOL_PROFILE.HYBRID, TOOL_PROFILE.FULL]) {
       expect(
         filterTools(TOOLS, profile).map((t) => t.name),
         `profile '${profile}'`,
