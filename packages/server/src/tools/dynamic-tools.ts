@@ -51,6 +51,21 @@ function paramInfo(shape: z.ZodRawShape): ParamInfo[] {
 }
 
 /**
+ * The one wording for "you named a parameter that does not exist", shared by both checks in
+ * `reticle_run` — the one over the WRAPPED tool's `args`, and the one over reticle_run's own
+ * top-level keys. Two spellings of the same refusal is how one of them ends up not existing.
+ */
+function unknownParamsError(toolName: string, unknown: readonly string[]): string {
+  return `unknown ${1 === unknown.length ? 'parameter' : 'parameters'} for ${toolName}: ${unknown.join(', ')} — NOT applied, so any result would be an answer to a different question`;
+}
+
+/** The keys not declared by `shape`, in call order. */
+function unknownKeys(args: Record<string, unknown>, shape: object): string[] {
+  const declared = new Set(Object.keys(shape));
+  return Object.keys(args).filter((key) => !declared.has(key));
+}
+
+/**
  * Build the two dynamic meta-tools over the full tool table. `reticle_run` dispatches through the same
  * `runTool` chokepoint as a direct call, so session-health splicing and every other invariant hold.
  */
@@ -104,15 +119,28 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
     },
   };
 
+  const runShape = {
+    tool: z.string().describe('Tool name to invoke, e.g. reticle_network.'),
+    args: z.record(z.unknown()).optional().describe('Arguments object for that tool.'),
+  };
   const reticleRun: ToolDef = {
     name: ReticleTool.RUN,
     description:
       "Invoke any Reticle tool by name (discover names/params first with reticle_tools). On an unknown tool or bad arguments it returns the available names or the tool's params, so you can correct and retry.",
-    inputSchema: {
-      tool: z.string().describe('Tool name to invoke, e.g. reticle_network.'),
-      args: z.record(z.unknown()).optional().describe('Arguments object for that tool.'),
-    },
+    inputSchema: runShape,
     handler: async (deps: ToolDeps, args: Record<string, unknown>) => {
+      // reticle_run's OWN parameters, checked first and with the same wording as the inner check.
+      // It refused an unknown key inside `args` and silently dropped one beside them: an agent that
+      // wrote `reticle_run { tool, args, sessionId }` — the shape it uses on every other tool — had
+      // its sessionId ignored and got a confident answer about whichever session auto-selection
+      // picked. Every other tool on the surface refuses this; the escape hatch has to as well.
+      const strayTop = unknownKeys(args, runShape);
+      if (strayTop.length > 0) {
+        return {
+          error: unknownParamsError(ReticleTool.RUN, strayTop),
+          hint: `pass them inside args: reticle_run { tool, args: { ${strayTop.join(', ')}: … } } if the target tool declares them`,
+        };
+      }
       const name = 'string' === typeof args['tool'] ? args['tool'] : '';
       const callArgs =
         'object' === typeof args['args'] && args['args'] !== null
@@ -140,11 +168,10 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
       // sees, since `reticle_run`'s own args (`tool`, `args`) are perfectly valid. Left unchecked,
       // `reticle_run { tool: "reticle_clock", args: { action: "freeze" } }` returned
       // `{"frozen":false}`: a well-formed answer to a question nobody asked.
-      const declared = new Set(Object.keys(target.inputSchema));
-      const unknown = Object.keys(callArgs).filter((key) => !declared.has(key));
+      const unknown = unknownKeys(callArgs, target.inputSchema);
       if (unknown.length > 0) {
         return {
-          error: `unknown ${1 === unknown.length ? 'parameter' : 'parameters'} for ${name}: ${unknown.join(', ')} — NOT applied, so any result would be an answer to a different question`,
+          error: unknownParamsError(name, unknown),
           tool: name,
           params: paramInfo(target.inputSchema),
           ...(target.example === undefined ? {} : { example: target.example }),

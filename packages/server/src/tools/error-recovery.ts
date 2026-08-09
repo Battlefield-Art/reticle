@@ -35,9 +35,20 @@ function capMessage(message: string): string {
   return `${message.slice(0, keep)}${ELISION}${message.slice(message.length - keep)}`;
 }
 
+/**
+ * Messages that already spell out the exact retry, so any hint we add can only argue with them.
+ *
+ * The no-session diagnosis is one (it inspected the machine and named the cause). The native-input
+ * refusal is the other: it names the tool, the argument and the follow-up call to make instead — and
+ * it was still collecting the defect ask, inviting a bug report about a refusal that had just told
+ * the agent precisely what to do.
+ */
+const SELF_RECOVERING: readonly RegExp[] = [/cannot drive native input/i];
+
 /** A message that already carries its own concrete next action, so nothing should be appended. */
 function isSelfRecovering(message: string): boolean {
-  return message.includes(SELF_RECOVERING_MARKER);
+  if (message.includes(SELF_RECOVERING_MARKER)) return true;
+  return SELF_RECOVERING.some((pattern) => pattern.test(message));
 }
 
 /** The recovery hints, named so they are not free strings and can be asserted in tests. */
@@ -109,6 +120,34 @@ export const RECOVERY = {
   TOKEN_REQUIRED:
     'The bridge binds beyond localhost and requires a pairing token. Set the same token in the SDK ' +
     'init (@reticlehq/core) and the Reticle server config, then reconnect.',
+  SCOPE_MISMATCH:
+    'A tab IS connected — it just belongs to a different project than the daemon is scoped to, so ' +
+    'nothing is wrong with the app and there is nothing to report. The message above lists each ' +
+    'connected session with its sessionId: pass that sessionId to this tool to target it, or ' +
+    "restart the daemon from that app's directory so it becomes the default. Call reticle_sessions " +
+    'for the same list at any time.',
+  SESSION_GONE:
+    'The tab this call was targeting disconnected while the command was in flight, so the command ' +
+    'never completed — do not assume it applied or that it did not. Call reticle_sessions: a tab ' +
+    'that reloaded comes back under a NEW sessionId (every ref taken before it is gone — re-query), ' +
+    'and an empty list means the page was closed and the human has to reopen it.',
+  COMMAND_TIMEOUT:
+    'The page did not answer within the command window. That is a fact about the page, not a Reticle ' +
+    'failure: check reticle_sessions for `throttled`/`stale` on this session — a backgrounded tab is ' +
+    'throttled and may never answer, so ask the human to bring it to the front or drive your own ' +
+    'browser with reticle_lease. If the tab is in front, the page is busy or blocked (a long ' +
+    'synchronous task, an alert/confirm dialog); reticle_console usually shows what it hit. Retry ' +
+    'once the cause is addressed.',
+  FLOW_STEP_MISSING:
+    'A recorded step points at an element that is not on the page now. Either the app changed under ' +
+    'the flow — run reticle_flow_heal to re-anchor it, then reticle_flow_verify — or an earlier step ' +
+    'did not do what it used to, leaving the run on the wrong page: check reticle_snapshot to see ' +
+    'where it actually is. This is app/flow drift, which is exactly what the flow exists to catch.',
+  NO_POOL:
+    'Reticle cannot launch its own browser here: the daemon-managed pool is absent, or Playwright ' +
+    "has no Chromium installed (the message above says which). Run Reticle via `reticle mcp`, and " +
+    'ask the human for `npx playwright install chromium` if that is what is missing. Meanwhile drive ' +
+    'a tab the human already has open — reticle_sessions lists them.',
 } as const;
 
 /** Ordered match rules; the first hit wins. Substrings track the thrown messages they recover. */
@@ -120,6 +159,18 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   { match: /no baseline named/i, hint: RECOVERY.MISSING_BASELINE },
   { match: /no (?:active|compiled) recording named/i, hint: RECOVERY.MISSING_RECORDING },
   { match: /pairing token is required/i, hint: RECOVERY.TOKEN_REQUIRED },
+  // Three conditions the daemon understands perfectly and still asked for a bug report about. Each
+  // needs its own rule: none of them contains "no browser session connected" (the scope miss is
+  // "no browser session FOR project 'x'", which is the opposite claim — sessions exist).
+  {
+    match: /scope mismatch|session\(s\) ARE connected under a different project/i,
+    hint: RECOVERY.SCOPE_MISMATCH,
+  },
+  { match: /^session disconnected$|session .* never connected/i, hint: RECOVERY.SESSION_GONE },
+  { match: /^command '[^']*' timed out after/i, hint: RECOVERY.COMMAND_TIMEOUT },
+  // Flow replay: the recorded anchor is gone. Ordinary drift, and the tool that fixes it exists.
+  { match: /did not resolve in current page/i, hint: RECOVERY.FLOW_STEP_MISSING },
+  { match: /browser pool (?:unavailable|is shut down)|Chromium is not installed/i, hint: RECOVERY.NO_POOL },
   // The commonest post-action condition there is. Unmatched, it fell through to FEEDBACK_ASK and
   // told the agent a successful click's aftermath might be a bug in Reticle.
   { match: /no longer resolves to an element/i, hint: RECOVERY.STALE_REF },
@@ -131,7 +182,9 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   // so they must be tested before the general wrong-target rule.
   { match: /contenteditable/i, hint: RECOVERY.UNSUPPORTED_SURFACE },
   { match: /cannot \w+ a (disabled|readonly) </i, hint: RECOVERY.NOT_EDITABLE },
-  { match: /potentially destructive action blocked/i, hint: RECOVERY.CONFIRM_DANGEROUS },
+  // Three spellings ship — "action", "native action", "WebMCP tool" — and the rule matched one, so
+  // two thirds of the same deliberate refusal still read as a possible defect.
+  { match: /potentially destructive (?:\w+ )*(?:action|tool) blocked/i, hint: RECOVERY.CONFIRM_DANGEROUS },
   {
     match:
       /^cannot [\w()]+ (?:a|an|into a|on a) <|no form to submit|upload target must be|is not an HTMLElement/i,
@@ -139,6 +192,7 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   },
   // Authored by Reticle, about the caller's arguments: the message already names the valid answers.
   { match: /^unknown action '/i, hint: RECOVERY.BAD_ARGUMENTS },
+  { match: /^unsupported query strategy '/i, hint: RECOVERY.BAD_ARGUMENTS },
   { match: /^\w+ requires a string `\w+`/i, hint: RECOVERY.BAD_ARGUMENTS },
   // A message naming a `reticle_*` tool is one WE authored about our own API — an invalid call, not
   // an unanticipated failure. Left unmatched it collected the feedback ask, which pushed agents to

@@ -21,7 +21,7 @@ import { TOOLS } from './tools.js';
 /** The advertised size of each surface. Update WITH the surface, never after it. */
 const EXPECTED_SIZE: Record<ToolSurface, number> = {
   // The verify loop plus the two meta-tools that reach everything else.
-  [TOOL_SURFACE.DEFAULT]: 16,
+  [TOOL_SURFACE.DEFAULT]: 17,
   // Every tool PLUS the two meta-tools: every recovery message points at reticle_tools, so a
   // surface without it makes our own advice a dead end.
   [TOOL_SURFACE.ALL]: 48,

@@ -29,21 +29,19 @@ describe('claudeAddCommand', () => {
 });
 
 describe('claudeExistsProbe', () => {
-  it('asks about the SAME scope it registers in', () => {
-    // Unscoped, `claude mcp get reticle` exits 0 for a PROJECT-scoped entry in some unrelated repo
-    // the user once ran init in — so the global registration was skipped and reported done, and the
-    // agent had Reticle in one directory and nowhere else.
+  it('passes NO options — `claude mcp get` accepts none', () => {
+    // With `-s user` the probe exits 1 ("unknown option '-s'") on every machine, so init concluded
+    // "not registered", ran `claude mcp add`, and that exits 1 with "already exists" — every re-run
+    // reported a failed MCP step and a manual command that fails identically.
     expect(claudeExistsProbe()).toEqual({
       command: 'claude',
-      args: ['mcp', 'get', 'reticle', '-s', 'user'],
+      args: ['mcp', 'get', 'reticle'],
     });
   });
 
-  it('matches the scope claudeAddCommand writes', () => {
-    const added = claudeAddCommand().args;
-    const probed = claudeExistsProbe().args;
-    const scopeOf = (args: string[]): string | undefined => args[args.indexOf('-s') + 1];
-    expect(scopeOf(probed)).toBe(scopeOf(added));
+  it('probes the server claudeAddCommand registers', () => {
+    expect(claudeAddCommand().args).toContain('reticle');
+    expect(claudeExistsProbe().args).toContain('reticle');
   });
 });
 

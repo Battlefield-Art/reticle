@@ -124,6 +124,28 @@ describe('reticle_run reports a failure the way the rest of the surface does', (
     expect(out.hint).toBeUndefined();
   });
 
+  /**
+   * `reticle_run` refused an unknown key inside `args` and silently dropped one beside them.
+   *
+   * Every other tool on the surface refuses an unknown parameter. This one takes `{tool, args}`, so
+   * `reticle_run { tool, args, sessionId }` — the shape an agent writes when it has just used
+   * `sessionId` on the tool it is now wrapping — dropped `sessionId` on the floor and ran the call
+   * against whatever session auto-selection picked. The answer looks like an answer; it is an answer
+   * to a different question, which is the exact wording the inner check already uses.
+   */
+  it('refuses an unknown TOP-LEVEL parameter, the way it already refuses one inside args', async () => {
+    const run = buildDynamicTools(staleRef).find((t) => t.name === ReticleTool.RUN);
+    const out = (await run?.handler(NO_DEPS, {
+      tool: 'reticle_alpha',
+      args: { ref: 'e1' },
+      sessionId: 's1',
+    })) as { error?: string; params?: unknown };
+    expect(out.error).toContain('sessionId');
+    expect(out.error).toContain('NOT applied');
+    // Named for reticle_run itself — the unknown key is ITS parameter, not the wrapped tool's.
+    expect(out.error).toContain(ReticleTool.RUN);
+  });
+
   it('still points at the parameters when the arguments really are the problem', async () => {
     const run = buildDynamicTools(staleRef).find((t) => t.name === ReticleTool.RUN);
     const out = (await run?.handler(NO_DEPS, { tool: 'reticle_alpha', args: { nope: 1 } })) as {

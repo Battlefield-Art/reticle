@@ -13,10 +13,26 @@ describe('decideOpen', () => {
     expect(decideOpen([], undefined)).toEqual({ action: 'need-url' });
   });
 
-  it('with a url already open on that origin → reuse (idempotent, no pile-up)', () => {
+  it('with a url already open at exactly that url → reuse (idempotent, no pile-up)', () => {
+    expect(
+      decideOpen([{ url: 'http://localhost:4310/checkout' }], 'http://localhost:4310/checkout'),
+    ).toEqual({ action: 'reuse', url: 'http://localhost:4310/checkout' });
+  });
+
+  /**
+   * Reusing the tab is still right — the origin match is what stops `reticle open` piling up a tab
+   * per run. Reporting it as `reusing` was not: `reticle open http://localhost:3000/settings` printed
+   * that it had reused a tab, exited 0, and left the tab sitting on `/`. The caller reads a success
+   * and goes on to assert against a page that was never opened.
+   */
+  it('with a url on the same origin but a DIFFERENT page → says the tab was left where it is', () => {
     expect(
       decideOpen([{ url: 'http://localhost:4310/dashboard' }], 'http://localhost:4310/checkout'),
-    ).toEqual({ action: 'reuse', url: 'http://localhost:4310/dashboard' });
+    ).toEqual({
+      action: 'left-as-is',
+      url: 'http://localhost:4310/dashboard',
+      requested: 'http://localhost:4310/checkout',
+    });
   });
 
   it('with a url on a different origin → open it', () => {

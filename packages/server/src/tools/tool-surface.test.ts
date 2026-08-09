@@ -9,6 +9,8 @@ import {
   filterTools,
   resolveToolSurface,
 } from './tool-surface.js';
+import { PAUSE_HINT } from '../session/control-envelope.js';
+import { buildSessionLease } from '../session/session-lease.js';
 
 describe('tool profiles', () => {
   const original = process.env[TOOL_PROFILE_ENV];
@@ -39,6 +41,27 @@ describe('tool profiles', () => {
 
   it('4: the core set is a strict subset — fewer tools than FULL', () => {
     expect(CORE_TOOL_NAMES.size).toBeLessThan(TOOLS.length);
+  });
+
+  /**
+   * An instruction the agent cannot follow is worse than no instruction.
+   *
+   * These two blocks are not suggestions and not documentation — they are spliced onto tool RESULTS,
+   * every session (the lease) and on every refusal while paused (the pause hint), and each names
+   * exactly one tool as the required next call. The lease says "call reticle_session {action:
+   * 'yield'}"; the pause hint says resuming is the only way out. Neither tool was on the default
+   * surface, so an agent that did as it was told got `unknown tool` — and an agent that did not,
+   * left the panel reading "live" forever.
+   *
+   * The RETICLE_LOOP_GUIDE deliberately is NOT covered here: it names reticle_record/reticle_replay
+   * as optional next steps, which reticle_run reaches fine. Mandatory ≠ suggested.
+   */
+  it('4a: a tool an always-on instruction ORDERS the agent to call is advertised', () => {
+    for (const block of [PAUSE_HINT, buildSessionLease('s1', 0).IMPORTANT]) {
+      for (const named of block.match(/reticle_[a-z_]+/g) ?? []) {
+        expect(CORE_TOOL_NAMES.has(named), `${named} is ordered by "${block}"`).toBe(true);
+      }
+    }
   });
 
   it('4b: server-management ops are NOT on the MCP surface (CLI-only — they restart the daemon)', () => {

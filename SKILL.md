@@ -449,7 +449,7 @@ reticle_network({ sessionId, limit: 10 })
 reticle_console({ sessionId, limit: 20 })
 ```
 
-> **Default `hybrid` profile.** Everything else the skill names — `reticle_capabilities`, `reticle_act_sequence`, `reticle_session {action:"yield"}`, `reticle_session {action:"review"}`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list its params first with `reticle_tools`). Advertised counts, checked by a gate (`surface-sizes.test.ts`): `default` 16, `all` 48 — the default carries a seventh of the per-turn schema cost the full surface does. (The character figures once printed here were measured wrong, in the direction that flattered the default; the counts are the claim that survives.)
+> **Default `hybrid` profile.** Everything else the skill names — `reticle_capabilities`, `reticle_act_sequence`, the flow/record tools — is reached with `reticle_run({ tool, args })` (or list its params first with `reticle_tools`). `reticle_session` is advertised directly, because the session lease and the pause hint ORDER you to call it. Advertised counts, checked by a gate (`surface-sizes.test.ts`): `default` 17, `all` 48 — the default carries a seventh of the per-turn schema cost the full surface does. (The character figures once printed here were measured wrong, in the direction that flattered the default; the counts are the claim that survives.)
 >
 > **`RETICLE_TOOL_PROFILE` is read by the DAEMON at startup, not by your client.** Setting it in the agent's environment while a daemon is already running changes nothing, and the two profiles then look identical because you are still talking to the old one. Run `npx @reticlehq/server stop` first.
 

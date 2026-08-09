@@ -75,11 +75,12 @@ export function claudeAddCommand(): ClaudeAddCommand {
 
 /** Probe args that tell us whether an `reticle` server already exists in any scope (exit 0 = exists). */
 export function claudeExistsProbe(): { command: string; args: string[] } {
-  // SCOPED to `user`, matching what `claudeAddCommand` registers. Unscoped, `claude mcp get reticle`
-  // exits 0 for a PROJECT-scoped entry in some unrelated repo the user once ran init in — so the
-  // global registration was skipped and reported done, and the agent had Reticle in one directory
-  // and nowhere else. Asking about the scope we write is the only answer that means anything.
-  return { command: CLAUDE_CLI, args: [MCP_SUBCOMMAND, 'get', MCP_SERVER_NAME, '-s', 'user'] };
+  // NO `-s`: `claude mcp get` takes no options at all, so passing one exits 1 with "unknown option
+  // '-s'" — the probe answered "not registered" on EVERY machine, init then ran `claude mcp add`,
+  // which exits 1 with "already exists", and a re-run reported `[⚠] step failed` plus a manual
+  // command that fails the same way. A false positive from a project-scoped entry costs one skipped
+  // registration; the flag cost every re-run a failed step.
+  return { command: CLAUDE_CLI, args: [MCP_SUBCOMMAND, 'get', MCP_SERVER_NAME] };
 }
 
 /** Probe args for whether the `claude` CLI is installed at all. */

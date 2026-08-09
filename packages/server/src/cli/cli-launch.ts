@@ -114,6 +114,8 @@ export function fetchStatus(port: number): Promise<unknown> {
 /** What `reticle open` should do: reuse an already-connected tab, open a new one, or ask for a url. */
 type OpenDecision =
   | { action: 'reuse'; url: string }
+  /** A tab on that origin exists, but on another page — kept, and NOT reported as done. */
+  | { action: 'left-as-is'; url: string; requested: string }
   | { action: 'open'; url: string }
   | { action: 'need-url' };
 
@@ -133,16 +135,28 @@ function sameOrigin(a: string, b: string): boolean {
  * Decide what `reticle open [url]` does, given the currently-connected tabs. Pure.
  * - no url + a tab connected → reuse it (the app is already open; don't spawn a duplicate).
  * - no url + nothing connected → ask for one.
- * - url + a tab already on that origin → reuse it (idempotent — re-running never piles up tabs).
+ * - url + a tab already AT that url → reuse it (idempotent — re-running never piles up tabs).
+ * - url + a tab on that origin but another page → keep it, and say so (`left-as-is`).
  * - url + no matching tab → open it.
+ *
+ * The origin match is why re-running this never piles up tabs, and it stays. What changed is the
+ * REPORT: matching by origin meant `reticle open http://localhost:3000/settings` answered `reusing`
+ * for a tab sitting on `http://localhost:3000/` and exited 0, so the caller read a success for a page
+ * that was never opened. Navigating the tab instead was the other option and is worse: `reticle open`
+ * is run by a human whose browser this is, and yanking the page they are looking at to somewhere else
+ * is a bigger surprise than being told where the tab actually is.
  */
 export function decideOpen(sessions: { url: string }[], url: string | undefined): OpenDecision {
   if (url === undefined) {
     const first = sessions[0];
     return first !== undefined ? { action: 'reuse', url: first.url } : { action: 'need-url' };
   }
-  const match = sessions.find((s) => s.url === url || sameOrigin(s.url, url));
-  return match !== undefined ? { action: 'reuse', url: match.url } : { action: 'open', url };
+  const exact = sessions.find((s) => s.url === url);
+  if (exact !== undefined) return { action: 'reuse', url: exact.url };
+  const onOrigin = sessions.find((s) => sameOrigin(s.url, url));
+  return onOrigin !== undefined
+    ? { action: 'left-as-is', url: onOrigin.url, requested: url }
+    : { action: 'open', url };
 }
 
 /**

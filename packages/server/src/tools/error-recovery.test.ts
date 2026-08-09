@@ -370,6 +370,98 @@ describe('error messages are bounded before they reach the agent', () => {
 });
 
 /**
+ * The sweep the e2e tool-surface spec does over a live daemon, done in the fast gate over the real
+ * thrown strings instead.
+ *
+ * `tool-surface-sweep-test.mjs` asserts ONE property — no response carries "not one Reticle
+ * recognizes" for a condition Reticle itself authored — but it can only see the conditions a single
+ * drive happens to provoke. A scope mismatch needs two projects, a mid-call disconnect needs a tab
+ * closing at the right instant, and a command timeout needs a wedged page: none of those occur in a
+ * sweep, so all three shipped with the defect ask attached while the spec stayed green.
+ *
+ * So the same property is asserted here against messages COPIED from the throw sites (each case
+ * names its source), which is the only part of the check that does not need a browser.
+ */
+describe('no condition Reticle itself authored is reported as a possible Reticle defect', () => {
+  it.each([
+    // session-manager.ts — scopeMissError
+    [
+      'a scope mismatch',
+      "no browser session for project 'shop', but 1 session(s) ARE connected under a different " +
+        "project: 'atlas' (http://localhost:4310/, sessionId 's1'). The daemon scopes to the " +
+        '.reticle.json of the directory it was started in, so this is a scope mismatch, not a dead ' +
+        "app. Pass the sessionId above to target one, or restart the daemon from that app's directory.",
+      RECOVERY.SCOPE_MISMATCH,
+    ],
+    // session-manager.ts — remove() rejects every in-flight command with this exact reason
+    ['a session that disconnected mid-call', 'session disconnected', RECOVERY.SESSION_GONE],
+    // command-timeout.ts — the bare form, and both forms that already carry advice
+    [
+      'a command timeout',
+      "command 'snapshot' timed out after 8000ms",
+      RECOVERY.COMMAND_TIMEOUT,
+    ],
+    [
+      'an act timeout',
+      "command 'act' timed out after 8000ms. The page is ALIVE — the SDK last reported to the " +
+        'bridge 200ms ago — but it is not answering commands.',
+      RECOVERY.COMMAND_TIMEOUT,
+    ],
+    // act-danger.ts — the two destructive blocks the existing rule did not cover
+    [
+      'a blocked WebMCP tool',
+      'potentially destructive WebMCP tool blocked; retry with confirmDangerous=true',
+      RECOVERY.CONFIRM_DANGEROUS,
+    ],
+    [
+      'a blocked native action',
+      'potentially destructive native action blocked; retry with args.confirmDangerous=true',
+      RECOVERY.CONFIRM_DANGEROUS,
+    ],
+    // query-strategy.ts
+    [
+      'an unsupported query strategy',
+      "unsupported query strategy 'colour' — use one of: role, text, testid",
+      RECOVERY.BAD_ARGUMENTS,
+    ],
+    // flows/replay.ts — a recorded step whose anchor is gone
+    [
+      'a flow anchor that no longer resolves',
+      "testid 'save-button' did not resolve in current page",
+      RECOVERY.FLOW_STEP_MISSING,
+    ],
+    // lease-tools.ts / playwright-launcher.ts — the pool is simply not there
+    [
+      'an unavailable browser pool',
+      'browser pool unavailable — the lease tools need the daemon-managed pool (start Reticle via `reticle mcp`).',
+      RECOVERY.NO_POOL,
+    ],
+    [
+      'a missing Chromium',
+      'Chromium is not installed for Playwright. Run: npx playwright install chromium',
+      RECOVERY.NO_POOL,
+    ],
+  ])('%s is recognized', (_label, message, expected) => {
+    const payload = buildErrorPayload(message);
+    expect(payload.feedback, message).toBeUndefined();
+    expect(payload.recovery, message).toBe(expected);
+  });
+
+  /**
+   * act-danger.ts prescribes the exact retry ("use reticle_act { args: { native: true } } …"), so a
+   * second, more generic hint would only argue with it — but it must not collect the defect ask.
+   */
+  it('a refusal that already prescribes its own retry gets neither a hint nor the ask', () => {
+    const payload = buildErrorPayload(
+      'reticle_act_and_wait cannot drive native input, so args.native would be ignored. Use ' +
+        'reticle_act { args: { native: true } } for the trusted click, then assert the consequence.',
+    );
+    expect(payload.feedback).toBeUndefined();
+    expect(payload.recovery).toBeUndefined();
+  });
+});
+
+/**
  * A refused select must arrive as an invalid call, not as a possible Reticle defect — and the
  * recovery has to warn that option VALUES are not the visible labels, which is the mistake that
  * produces this error most often.

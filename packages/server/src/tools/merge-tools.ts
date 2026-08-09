@@ -23,6 +23,8 @@ interface MergeSpec {
   description: string;
   /** action value → the original tool whose handler serves it. */
   actions: Record<string, ToolDef>;
+  /** A concrete call, carried through to the merged def (see ToolDef.example). */
+  example?: Record<string, unknown>;
 }
 
 /** The union of member input shapes, every field optional so one schema serves every action. */
@@ -43,6 +45,12 @@ export interface MergePlan {
   description: string;
   /** action value → the existing tool name whose handler serves it. */
   members: Record<string, string>;
+  /**
+   * A concrete call for the merged tool. Merging discards the members' own examples — the schema is
+   * a union and theirs are per-member — so a merged tool that reaches the core surface has no
+   * example at all unless the plan states one.
+   */
+  example?: Record<string, unknown>;
 }
 
 /**
@@ -72,7 +80,14 @@ export function applyMerges(
       actions[action] = member;
       consumed.add(memberName);
     }
-    merged.push(mergeTools({ name: plan.name, description: plan.description, actions }));
+    merged.push(
+      mergeTools({
+        name: plan.name,
+        description: plan.description,
+        actions,
+        ...(plan.example === undefined ? {} : { example: plan.example }),
+      }),
+    );
   }
   return [...tools.filter((t) => !consumed.has(t.name)), ...merged];
 }
@@ -83,6 +98,7 @@ export function mergeTools(spec: MergeSpec): ToolDef {
   return {
     name: spec.name,
     description: spec.description,
+    ...(spec.example === undefined ? {} : { example: spec.example }),
     inputSchema: {
       action: z
         .enum(actionNames as [string, ...string[]])

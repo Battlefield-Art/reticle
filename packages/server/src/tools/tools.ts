@@ -531,6 +531,9 @@ export const MERGE_PLANS: MergePlan[] = [
       review: ReticleTool.REVIEW,
       narrate: ReticleTool.NARRATE,
     },
+    // The handback the lease block orders on every session — the one call an agent MUST make, so it
+    // is the one that must not need a schema lookup first.
+    example: { action: 'yield', mode: 'waiting' },
   },
   {
     name: ReticleTool.LEASE,

@@ -124,6 +124,19 @@ export const CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   // from not having built one. It is also the cheapest tool on the surface to carry (three params) and
   // the only one whose whole purpose is telling us which of the other fifteen are failing.
   ReticleTool.FEEDBACK,
+  // SESSION is here because the product ORDERS the agent to call it. The session lease block is
+  // spliced onto the first result of every session ("call reticle_session {action:'yield'}"), and
+  // the pause hint is spliced onto every refusal while a human has the session paused, where
+  // {action:"resume"} is the only exit. Both were naming a tool the default surface did not
+  // advertise: an agent that obeyed got `unknown tool`, and an agent that did not left the panel
+  // reading "live" after it had stopped driving — which is the state the whole handback protocol
+  // exists to prevent.
+  //
+  // Measured cost: ~1.3 KB of prose (455 B description + ~780 B of parameter descriptions) on a
+  // surface whose prose is ~23.7 KB, so roughly +5%, a few hundred tokens a turn. The alternative —
+  // deleting the instruction from the lease and the pause hint — deletes the handback protocol,
+  // because there is nowhere else those two calls are ever named.
+  ReticleTool.SESSION,
 ]);
 
 
