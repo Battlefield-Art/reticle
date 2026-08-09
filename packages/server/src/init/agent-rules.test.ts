@@ -23,6 +23,24 @@ describe('agent verification rule — content', () => {
     expect(block).toContain('<!-- reticle:end -->');
   });
 
+  // The rule `init` writes is the FIRST thing an agent reads about Reticle, and it lands before any
+  // framework wiring — so it is the only chance to say "report your experience" while the setup is
+  // still being lived through. A rule that only asks for feedback about verifications collects
+  // nothing about the phase that most often breaks.
+  it('asks for feedback as a standing instruction, not only when a verification fails', () => {
+    const block = markedBlock();
+    expect(block).toContain('reticle_feedback');
+    expect(block).toMatch(/feature_request/);
+    expect(block).toMatch(/improvement/);
+    // Setup and install problems, named — they happen before any tool surface exists.
+    expect(block).toMatch(/installing, wiring, or starting Reticle/);
+    // The escape hatch for when there is no daemon and no tools to call. Through npx, like every
+    // other command in this block: `reticle init` installs the SDK, never the server, so a bare
+    // `reticle` is an instruction the agent cannot follow — see the CLI docblock in agent-rules.ts.
+    expect(block).toContain('feedback --agent --kind');
+    expect(block).not.toMatch(/[^/]\breticle feedback\b/);
+  });
+
   it('cursor .mdc carries alwaysApply so it stays in every turn context', () => {
     const mdc = cursorRuleFile();
     expect(mdc.startsWith('---\n')).toBe(true);
