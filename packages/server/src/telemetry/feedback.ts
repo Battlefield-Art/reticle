@@ -35,6 +35,7 @@ import { noteFeedbackUndelivered } from './feedback-delivery.js';
 import { isReticleSourceCheckout } from './dev-repo.js';
 import { SERVER_VERSION } from '../version/server-version.js';
 import { feedbackContext, type SessionFacts } from './feedback-context.js';
+import { markDelivered, outboxPath, queueFeedback } from './feedback-outbox.js';
 
 /** Kills the feedback channel ONLY — adoption counters keep flowing. */
 export const FEEDBACK_ENV = 'RETICLE_FEEDBACK';
@@ -244,11 +245,18 @@ export async function submitFeedback(
   // written for is kept elsewhere: `sent` stays false (nothing is confirmed yet), `accepted` says
   // the report is well-formed and queued, and a send that then fails reaches the reporter on its
   // next tool result instead of vanishing.
+  // Written down BEFORE the network is touched, on both paths. A failed send is then a queued report
+  // rather than a lost one — see feedback-outbox. Reported from the field: a 1.3s hiccup destroyed a
+  // root-cause analysis that took an hour of driving to produce, and it survived only because the
+  // reporter happened to have written the markdown by hand first.
+  const queued = queueFeedback(parsed.data);
+
   if (true === opts.background) {
     void telemetry
       .emit(TelemetryEventKind.FEEDBACK_SUBMITTED, { feedback: parsed.data })
       .then((ok) => {
-        if (!ok) noteFeedbackUndelivered('the telemetry endpoint did not accept it');
+        if (ok) markDelivered(queued);
+        else noteFeedbackUndelivered('the telemetry endpoint did not accept it');
       })
       .catch((error: unknown) => {
         noteFeedbackUndelivered(error instanceof Error ? error.message : String(error));
@@ -262,16 +270,22 @@ export async function submitFeedback(
   const delivered = await telemetry.emit(TelemetryEventKind.FEEDBACK_SUBMITTED, {
     feedback: parsed.data,
   });
-  return delivered
-    ? { sent: true, accepted: true, redacted, context }
-    : {
-        sent: false,
-        accepted: false,
-        reason:
-          'the report could not be delivered (the network call failed or was rejected) — it was NOT filed. Retry, or open an issue at https://github.com/reticlehq/reticle/issues with the same detail.',
-        redacted,
-        context,
-      };
+  if (delivered) {
+    markDelivered(queued);
+    return { sent: true, accepted: true, redacted, context };
+  }
+  // Undelivered, but no longer lost. `accepted` is true when it reached the outbox: the report is
+  // well-formed and on disk, which is a materially different situation from "it is gone".
+  return {
+    sent: false,
+    accepted: queued !== null,
+    reason:
+      queued !== null
+        ? `the report could not be delivered (the network call failed or was rejected), but it is SAVED at ${outboxPath()} and nothing was lost. It will be retried; you can also open an issue at https://github.com/reticlehq/reticle/issues with the same detail.`
+        : 'the report could not be delivered and could not be saved locally either — it was NOT filed. Retry, or open an issue at https://github.com/reticlehq/reticle/issues with the same detail.',
+    redacted,
+    context,
+  };
 }
 
 /**

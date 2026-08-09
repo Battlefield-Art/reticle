@@ -89,7 +89,34 @@ function reportCrash(kind: CrashKind, value: unknown): void {
   }
 }
 
+/**
+ * Log EVERY way this process can leave, so a death always leaves a line.
+ *
+ * Reported from the field: a 115-line daemon log containing zero of `reticle_daemon_idle_exit`,
+ * `reticle_daemon_close_error`, `daemon_stopped`, `uncaught` or `unhandled` — the daemon simply
+ * stopped existing mid-wait. Both crash handlers below already log before exiting, so their silence
+ * ruled themselves out and left nothing else to read: no shutdown path had run at all.
+ *
+ * `exit` fires for every in-process exit including an explicit `process.exit`, and carries the code.
+ * The signals cover an external kill. What neither can catch is SIGKILL or an OOM abort — and that
+ * is the point: after this, silence in the log is itself the finding, because every other door is
+ * now instrumented.
+ */
+export function installExitTrace(proc: ProcessLike, log: LogFn): void {
+  proc.on('exit', (code: unknown) => {
+    log('reticle_daemon_exiting', { code: 'number' === typeof code ? code : null });
+  });
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
+    proc.on(signal, () => {
+      // Log only. Whatever installed a real handler for this signal still runs; adding an exit here
+      // would race the shutdown that flushes the session summary.
+      log('reticle_daemon_signalled', { signal });
+    });
+  }
+}
+
 export function installDaemonResilience(proc: ProcessLike, log: LogFn, onFatal: () => void): void {
+  installExitTrace(proc, log);
   proc.on('unhandledRejection', (reason: unknown) => {
     log('reticle_daemon_unhandled_rejection', { reason: describe(reason) });
     reportCrash(CrashKind.UNHANDLED_REJECTION, reason);

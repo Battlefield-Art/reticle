@@ -63,6 +63,23 @@ const POSTHOG_PERSONLESS = { $process_person_profile: false } as const;
 const SEND_TIMEOUT_MS = 2000;
 
 /**
+ * Feedback gets its own, much larger budget — and a retry.
+ *
+ * 2s + drop is right for a usage counter: the metric is worthless if it costs the user latency, and
+ * losing one changes nothing. Feedback is the opposite on both counts. It is the only qualitative
+ * channel the product has, it carries an agent's entire root-cause analysis, and losing one loses
+ * work that cannot be reconstructed.
+ *
+ * Measured to the collector with a WARM DNS cache: dns 0.003s, connect 0.233s, tls 0.467s, total
+ * 0.694s — a third of the old budget gone before any payload moves, on the good path. A fresh
+ * short-lived CLI process pays cold DNS and a cold route on top, which is exactly the case that
+ * failed in the field and then succeeded on retry from a warmer process.
+ */
+export const FEEDBACK_TIMEOUT_MS = 15_000;
+export const FEEDBACK_RETRIES = 1;
+export const FEEDBACK_RETRY_BACKOFF_MS = 750;
+
+/**
  * The sender a `detach: true` emit runs in a disowned child (argv: [url, body]) — an in-process fetch
  * keeps Node's event loop alive until the POST finishes, which taxed every short-lived CLI command
  * (`reticle version`/`gate`) ~800ms. Long-lived daemon events still send in-process: a spawn per tool
@@ -102,6 +119,21 @@ const isDisabled = (env: NodeJS.ProcessEnv, cwd: string = process.cwd()): boolea
   const dnt = env[Env.DO_NOT_TRACK];
   return 'string' === typeof dnt && dnt !== '' && dnt !== '0';
 };
+
+/**
+ * Would telemetry be on here if we ignored the source-checkout guard alone?
+ *
+ * That guard exists so a fresh clone does not phone home on a contributor's first `reticle serve` —
+ * a rule about PASSIVE collection. Feedback is never passive: somebody typed it. Applying the guard
+ * to it means anyone dogfooding from their own checkout files nothing and is told "not sent, unknown
+ * reason", which silently loses every report from exactly the people most likely to write good ones.
+ * Reported from the field, and the reporter only escaped it by happening to run from another repo.
+ *
+ * Every explicit opt-out still applies — RETICLE_TELEMETRY=0, DO_NOT_TRACK, the persisted opt-out
+ * file, and a test run. This lifts one implicit guard for one user-initiated event kind.
+ */
+const onlyBlockedBySourceCheckout = (env: NodeJS.ProcessEnv, cwd: string): boolean =>
+  isDisabled(env, cwd) && !isDisabled(env, '/');
 
 /** Read (or mint-and-persist) the anonymous machine id. `firstRun` is true the run that created it. */
 const resolveIdentity = (): { anonymousId: string; firstRun: boolean } => {
@@ -292,7 +324,9 @@ export const createTelemetry = (opts: {
 }): Telemetry => {
   const env = opts.env ?? process.env;
   const cwd = opts.cwd ?? process.cwd();
-  if (isDisabled(env, cwd)) return NOOP;
+  // A source checkout silences metrics but must not silence FEEDBACK — see onlyBlockedBySourceCheckout.
+  const feedbackOnly = onlyBlockedBySourceCheckout(env, cwd);
+  if (isDisabled(env, cwd) && !feedbackOnly) return NOOP;
   try {
     if (existsSync(OPT_OUT_FILE)) return NOOP; // the persistent `reticle telemetry disable` opt-out
   } catch {
@@ -336,6 +370,9 @@ export const createTelemetry = (opts: {
    * wait, so its outcome is genuinely unknown and claiming success would be the same lie.
    */
   const emit = async (kind: TelemetryEventKind, extra?: TelemetryExtra): Promise<boolean> => {
+    // In a Reticle source checkout the emitter carries FEEDBACK and nothing else: somebody typed the
+    // feedback, and no metric is worth phoning home from a contributor's clone.
+    if (feedbackOnly && TelemetryEventKind.FEEDBACK_SUBMITTED !== kind) return false;
     const event: TelemetryEvent = {
       v: TELEMETRY_EVENT_VERSION,
       anonymousId,
@@ -443,14 +480,30 @@ export const createTelemetry = (opts: {
         spawnDetached(process.execPath, ['-e', DETACHED_SEND_SCRIPT, url, body]);
         return false; // handed off, outcome unknowable from here
       }
-      const response = await doFetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body,
-        signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
-      });
-      // A 4xx is a rejected payload, not a delivery. It must not read as filed.
-      return response.ok !== false;
+      // Feedback is slower and retried; everything else keeps the fire-and-forget budget.
+      const isFeedback = TelemetryEventKind.FEEDBACK_SUBMITTED === kind;
+      const timeoutMs = isFeedback ? FEEDBACK_TIMEOUT_MS : SEND_TIMEOUT_MS;
+      const attempts = 1 + (isFeedback ? FEEDBACK_RETRIES : 0);
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        if (0 < attempt) {
+          await new Promise((r) => setTimeout(r, FEEDBACK_RETRY_BACKOFF_MS * attempt));
+        }
+        try {
+          const response = await doFetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body,
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+          // A 4xx is a rejected payload, not a delivery. It must not read as filed. It is also not
+          // worth retrying — the payload will be rejected again — so only a THROW (timeout, DNS,
+          // connection reset) goes round again.
+          return response.ok !== false;
+        } catch (error) {
+          if (attempt === attempts - 1) throw error;
+        }
+      }
+      return false;
     } catch {
       /* best-effort: a lost metric must never surface to the user */
       return false;

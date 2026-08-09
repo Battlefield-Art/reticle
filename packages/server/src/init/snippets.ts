@@ -106,7 +106,29 @@ ${storeBlock}
  * the config because there is no plugin in the page's path to inject it, and `build.target` has to be
  * raised or Astro down-levels the modern SDK bundle and dies on a destructuring transform.
  */
-export function astroManual(port: number | undefined, projectId?: string): string {
+/**
+ * Name the file the connect <script> should go in — the layout when one exists, otherwise the page,
+ * because a project with no layout has nowhere else to put it and should not be told otherwise.
+ */
+function layoutHost(layoutPath: string | undefined): string {
+  return layoutPath === undefined
+    ? '2. This project has no layout, so put it in the page you want instrumented (e.g.\n   src/pages/index.astro) — every page you want a session from needs it — inside <body>:'
+    : `2. In ${layoutPath} (or any other page you want instrumented), inside <body>:`;
+}
+
+export function astroManual(
+  port: number | undefined,
+  projectId?: string,
+  /**
+   * A layout file that actually exists, when one does.
+   *
+   * Reported from the field: on `examples/framework-react` — which has no layout at all, only
+   * `src/pages/index.astro` — init printed thirty lines telling the user to paste into "your
+   * layout". Instructions that name a file the project does not have read as a mistake by the
+   * reader, and cost them the time it takes to go and confirm it is missing.
+   */
+  layoutPath?: string,
+): string {
   const extra =
     port !== undefined && port !== RETICLE_DEFAULT_PORT
       ? `\n          url: '${bridgeWsUrl(port)}',`
@@ -140,7 +162,7 @@ export function astroManual(port: number | undefined, projectId?: string): strin
     },
   });
 
-2. In your layout (or the page you want instrumented), inside <body>:
+${layoutHost(layoutPath)}
 
   <script>
     if (import.meta.env.DEV) {
@@ -250,7 +272,7 @@ export const SVELTEKIT_HOOKS_PATH = 'src/hooks.client.ts';
  * here is the one thing this project exists not to do.
  */
 export function unverifiedUiLibraryNote(library: string): string {
-  return `Detected a ${library} app. Reticle's DOM, network, console and state tools work here, but @reticlehq/react is a React adapter: component names and data-reticle-source file:line will be missing, and no CI gate covers ${library}. Gated today: Vite + React, Next.js, Remix, Astro. If something doesn't work, please open an issue.`;
+  return `Detected a ${library} app. Reticle's DOM, network, console and state tools work here, and source file:line does too — the build plugin stamps data-reticle-source regardless of UI library (measured on preact and svelte). What @reticlehq/react adds and you will NOT get is React component identity: component names and component stacks. No CI gate covers ${library}. Gated today: Vite + React, Next.js, Remix, Astro. If something doesn't work, please open an issue.`;
 }
 
 export const UNVERIFIED_FRAMEWORK_NOTE =

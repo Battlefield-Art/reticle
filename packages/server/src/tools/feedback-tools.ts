@@ -33,6 +33,7 @@ function sessionFacts(
   runtime?: string;
   engine?: string;
   driven?: boolean;
+  adapters?: string[];
 } {
   const driven = deps.realInput !== undefined;
   try {
@@ -40,6 +41,9 @@ function sessionFacts(
     return {
       ...(session.runtime !== undefined ? { runtime: session.runtime } : {}),
       ...(session.engine !== undefined ? { engine: session.engine } : {}),
+      // The app's own account of what it is. Without this the reported stack came from the daemon's
+      // working directory, so feedback from one app was filed against another's framework.
+      ...(0 < session.adapters.length ? { adapters: session.adapters } : {}),
       driven,
     };
   } catch {

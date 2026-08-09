@@ -7,6 +7,7 @@ import {
   type ReticleEvent,
   type MatchResult,
 } from '@reticlehq/core';
+import { log } from '../log.js';
 import { selectPath, capDepth } from '../session/state-select.js';
 import { describeTestidMiss } from './testid-near-miss.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
@@ -377,6 +378,19 @@ export function waitForPredicate(
     const holdsForCount = assertsExactCount(predicate);
     let confirming = false;
     let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+    /** Report a wait that could not run, and END it — see guardedCheck. */
+    const failWait = (error: unknown): void => {
+      log('reticle_wait_failed', {
+        predicate: predicate.kind,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      finish({
+        ...failed(error),
+        failureReason:
+          'the wait could not be evaluated and was ended rather than left pending: ' +
+          (error instanceof Error ? error.message : String(error)),
+      });
+    };
     const finish = (result: EvalResult): void => {
       if (done) return;
       done = true;
@@ -460,10 +474,33 @@ export function waitForPredicate(
           }, MIN_RECHECK_GAP_MS);
         });
     };
+    /**
+     * Run a re-check so that NOTHING can leave this promise pending.
+     *
+     * `check` is fired from an event listener and an interval, neither of which is inside the
+     * awaited chain. A synchronous throw there reached the process as an uncaughtException; a
+     * rejection reached it as an unhandledRejection. Either way the wait never resolved and the tool
+     * handler never returned — the agent sees a call that simply never comes back.
+     *
+     * That is the exact shape reported from a Plane (Next 14 + MobX) session, which tears the page
+     * session down and rebuilds it on EVERY navigation, so a `{kind:"route"}` predicate always races
+     * a teardown of the very session it is watching: `browser.command ok:true` for the click, and
+     * then no `tool.handler` for that callId, ever.
+     *
+     * A wait that cannot evaluate is a FAILED wait, not an eternal one. It now says so and finishes.
+     */
+    const guardedCheck = (): void => {
+      try {
+        const pending = check() as unknown;
+        if (pending instanceof Promise) pending.catch(failWait);
+      } catch (error) {
+        failWait(error);
+      }
+    };
     const unsub = session.onEvent(() => {
-      check();
+      guardedCheck();
     });
-    const interval = setInterval(check, POLL_INTERVAL_MS);
+    const interval = setInterval(guardedCheck, POLL_INTERVAL_MS);
     const timer = setTimeout(() => {
       void evaluatePredicate(session, predicate, since)
         .then((r) => {

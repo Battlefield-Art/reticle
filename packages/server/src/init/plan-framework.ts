@@ -351,12 +351,14 @@ export function svelteKitSteps(input: PlanInput): Step[] {
 export function astroSteps(input: PlanInput): Step[] {
   const config = input.astroConfig ?? null;
   const layout = input.astroLayout ?? null;
-  const manual = astroManual(input.options.port, input.options.projectId);
+  const manual = astroManual(input.options.port, input.options.projectId, layout?.path);
   if (null === config || null === layout) {
     return [
       {
         title: 'Connect snippet (Astro)',
-        target: 'astro.config + layout',
+        // Name what is actually there. `astro.config + layout` pointed at a layout this project may
+        // not have — reported on a fixture with only src/pages/index.astro.
+        target: null === layout ? 'astro.config + a page (no layout found)' : 'astro.config + layout',
         status: StepStatus.MANUAL,
         detail: manual,
       },
@@ -367,6 +369,7 @@ export function astroSteps(input: PlanInput): Step[] {
   // real fixture — config ⚠, layout ✓ — which reads as one step done and one caveat when it is
   // actually a guaranteed non-connection. If either half cannot be applied, BOTH go manual with the
   // single recipe that does the whole job.
+  const manualWithLayout = astroManual(input.options.port, input.options.projectId, layout.path);
   const configPatch = patchAstroConfig(config.source);
   const layoutPatch = patchAstroLayout(layout.source, input.options.port, input.options.projectId);
   if (configPatch.kind === PatchKind.MANUAL || layoutPatch.kind === PatchKind.MANUAL) {
@@ -375,7 +378,7 @@ export function astroSteps(input: PlanInput): Step[] {
         title: 'Connect snippet (Astro)',
         target: `${config.path} + ${layout.path}`,
         status: StepStatus.MANUAL,
-        detail: manual,
+        detail: manualWithLayout,
       },
     ];
   }
@@ -385,14 +388,14 @@ export function astroSteps(input: PlanInput): Step[] {
       config.path,
       configPatch,
       'inline the pairing token and raise build.target to es2022',
-      manual,
+      manualWithLayout,
     ),
     patchStep(
       'Connect snippet (Astro)',
       layout.path,
       layoutPatch,
       'add the dev-only connect <script> before </body>',
-      manual,
+      manualWithLayout,
     ),
   ];
 }
