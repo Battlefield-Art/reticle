@@ -1,11 +1,23 @@
 import { z } from 'zod';
-import { ReticleCommand, SnapshotMode } from '@reticlehq/core';
+import { QueryBy, ReticleCommand, SnapshotMode } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { withSizeCost } from '../session/output-budget.js';
 import { applySnapshotDelta, SnapshotCache } from './snapshot-delta.js';
 import { asString, asNumber } from './tools-helpers.js';
 import { normalizeQueryArgs } from './query-shape.js';
 import { paginateQueryResult } from './query-paginate.js';
+
+/**
+ * The query strategies, derived from the enum in core — never retyped.
+ *
+ * The description used to hand-list them and had already drifted: it named six and omitted
+ * `component`, which is real and works. Deriving both the schema and the prose from one source is
+ * the repo's own rule, and here it is also the difference between refusing `by:'css'` and silently
+ * answering "0 matches" to it.
+ */
+const QUERY_BY_VALUES = Object.values(QueryBy);
+const QUERY_BY_LIST = QUERY_BY_VALUES.join(' | ');
+const queryByEnum = z.enum(QUERY_BY_VALUES as [string, ...string[]]);
 import { CONTRACT_TOOLS } from './contract-tools.js';
 import { DOMAIN_TOOLS } from '../domain/domain-tools.js';
 import { BROWSER_TOOLS } from './browser-tools.js';
@@ -198,12 +210,15 @@ const RAW_TOOLS: ToolDef[] = [
     name: ReticleTool.QUERY,
     example: { by: 'testid', value: 'todo-list' },
     description:
-      'Find elements by Testing-Library semantics, INCLUDING open shadow roots — `count_only:true` gives just the count (~30x smaller); `limit` caps descriptors. Pass `by` (role|text|label|placeholder|testid|alt) and `value` (the query string). Returns matching refs + descriptors + visibility. Pass `attrs:["href"]` to project attributes (link/image URLs) onto each match. Pass `limit` to cap descriptors (broad role queries can be large) or `count_only:true` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.',
+      `Find elements by Testing-Library semantics, INCLUDING open shadow roots — \`count_only:true\` gives just the count (~30x smaller); \`limit\` caps descriptors. Pass \`by\` (${QUERY_BY_LIST}) and \`value\` (the query string). Returns matching refs + descriptors + visibility. Pass \`attrs:["href"]\` to project attributes (link/image URLs) onto each match. Pass \`limit\` to cap descriptors (broad role queries can be large) or \`count_only:true\` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.`,
     inputSchema: {
-      by: z
-        .string()
+      // Constrained to the enum, NOT z.string(). A free string let `by:'css'` through to the
+      // browser's `default: return []`, so an unsupported strategy answered "0 matches" — which
+      // reads as "the element is not on the page". Measured on a live page: by:'css' value:'body'
+      // returned count 0. A false negative is the one answer this product must never invent.
+      by: queryByEnum
         .optional()
-        .describe('Query strategy: role | text | label | placeholder | testid | alt'),
+        .describe(`Query strategy: ${QUERY_BY_LIST}`),
       value: z
         .string()
         .optional()

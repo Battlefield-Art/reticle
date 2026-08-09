@@ -136,7 +136,15 @@ function findIn(container: HTMLElement, query: ElementQuery): HTMLElement[] {
         // value is the component name;.source (if present) still takes precedence inside.
         return findByComponent(container, { ...query, component: query.component ?? value });
       default:
-        return [];
+        // THROW, never `return []`. An unsupported strategy answering "no matches" is
+        // indistinguishable from the element genuinely being absent, so `by:'css'` — the first thing
+        // anyone arriving from Playwright reaches for — reported a page with a <body> as empty. The
+        // server now rejects unknown strategies at the schema; this is the same guarantee for every
+        // other path in (replay, reticle_run, an internal caller), because a false negative invented
+        // by the tool is the exact failure this product exists to prevent.
+        throw new Error(
+          `unsupported query strategy '${String(by)}' — use one of: ${Object.values(QueryBy).join(', ')}`,
+        );
     }
   }
 
@@ -320,15 +328,15 @@ export function matchQuery(
   state?: ElementState,
   limit: number = MAX_DESCRIBED,
 ): MatchResult {
-  let elements: HTMLElement[];
-  let scopeMissing = false;
-  try {
-    const found = findCandidates(query);
-    elements = found.candidates;
-    scopeMissing = found.scopeMissing;
-  } catch {
-    elements = [];
-  }
+  // NO blanket try/catch here. It used to turn ANY exception during candidate-finding into
+  // `elements = []`, which is the same lie as the `default` arm above: a query that could not run
+  // reported that the element is not on the page. The one failure it was plausibly guarding —
+  // a scope selector that matches nothing — is already handled explicitly and distinctly, as
+  // `scopeMissing`, so what remained was a net that could only convert real faults into false
+  // negatives.
+  const found = findCandidates(query);
+  const elements: HTMLElement[] = found.candidates;
+  const scopeMissing = found.scopeMissing;
   // One visibility cache for the whole (synchronous) query pass. isVisible is an O(depth) forced-style
   // walk; the state filter runs it over EVERY candidate (the count must be exact) — on a match-heavy
   // page (e.g. a 3k-row grid) that is tens of thousands of getComputedStyle calls on the host's main
