@@ -61,9 +61,27 @@ describe('openCommand — per-platform OS open', () => {
 });
 
 describe('openInBrowser', () => {
-  it('runs the platform command with the url (spawn injected, hermetic)', () => {
+  it('runs the platform command with the url (spawn injected, hermetic)', async () => {
     const calls: { cmd: string; args: string[] }[] = [];
-    openInBrowser('http://localhost:4310', 'darwin', (cmd, args) => calls.push({ cmd, args }));
+    const failure = await openInBrowser('http://localhost:4310', 'darwin', (cmd, args) => {
+      calls.push({ cmd, args });
+      return Promise.resolve(null);
+    });
     expect(calls).toEqual([{ cmd: 'open', args: ['http://localhost:4310'] }]);
+    expect(failure).toBeNull();
+  });
+
+  /**
+   * A launcher that could not run must be REPORTED, not swallowed.
+   *
+   * This returned void and the caller printed `{"opened": url}` regardless, so a machine where the
+   * browser never opened produced output identical to one where it did. Reported from the field as
+   * twenty minutes lost chasing a phantom port problem while nothing had ever been launched.
+   */
+  it('reports the reason when the launcher cannot be run at all', async () => {
+    const failure = await openInBrowser('http://localhost:4310', 'linux', () =>
+      Promise.resolve('spawn xdg-open ENOENT'),
+    );
+    expect(failure).toBe('spawn xdg-open ENOENT');
   });
 });

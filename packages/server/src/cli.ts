@@ -273,6 +273,25 @@ function ensureDaemon(port: number): Promise<void> {
  * the daemon, then reuses the already-connected tab or opens a new browser at the url. Idempotent:
  * re-running never piles up duplicate tabs.
  */
+/** How long `reticle open` waits for the launched page to register before reporting on it. */
+const OPEN_SESSION_WAIT_MS = 8000;
+
+/**
+ * Poll until a NEW session shows up, or the wait runs out. Returns whether one did.
+ *
+ * Compares against the count taken before launching rather than against zero, so opening a second
+ * app while one is already connected is not reported as an instant success.
+ */
+async function waitForNewSession(port: number, before: number): Promise<boolean> {
+  const deadline = Date.now() + OPEN_SESSION_WAIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const { sessions } = summarizeStatus(await fetchStatus(port));
+    if (sessions.length > before) return true;
+  }
+  return false;
+}
+
 function handleOpen(requestedPort: number, url: string | undefined): void {
   probeDaemon(requestedPort)
     .then((here) => (here ? requestedPort : (discoverDaemonPort() ?? requestedPort)))
@@ -293,8 +312,37 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
         log('reticle_open', { port, reusing: decision.url });
         return;
       }
-      openInBrowser(decision.url);
-      log('reticle_open', { port, opened: decision.url });
+      const launchError = await openInBrowser(decision.url);
+      if (launchError !== null) {
+        log('reticle_open', {
+          port,
+          error: `could not launch a browser: ${launchError}`,
+          recovery:
+            'Open the url yourself, or run `reticle doctor` — it checks the pieces this command ' +
+            'depends on.',
+        });
+        process.exit(1);
+        return;
+      }
+      // Say whether a SESSION appeared, not merely that a launcher was invoked. `{"opened": url}`
+      // was printed unconditionally, so a run where nothing ever opened looked identical to a run
+      // where it did — reported from the field as twenty minutes lost to a phantom port problem.
+      const connected = await waitForNewSession(port, sessions.length);
+      log('reticle_open', {
+        port,
+        opened: decision.url,
+        connected,
+        ...(connected
+          ? {}
+          : {
+              note:
+                'the browser was launched but no Reticle session appeared. The app may still be ' +
+                'loading, or it is not wired to this bridge — run `reticle doctor`, and check the ' +
+                'app connects on port ' +
+                String(port) +
+                '.',
+            }),
+      });
     })
     .catch((err: unknown) => {
       log('reticle_open', { error: err instanceof Error ? err.message : String(err) });

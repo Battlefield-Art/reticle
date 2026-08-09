@@ -123,15 +123,39 @@ describe('action effect: valueChanged', () => {
     expect((document.querySelector('select') as HTMLSelectElement).value).toBe('b');
   });
 
-  it('select to a NON-EXISTENT option does not take the requested value (detectable no-op)', async () => {
-    // The false green: the select silently rejects the invalid value, but the action used to report
-    // plain success with valueChanged hardcoded false. Now SELECT is fill-like, so the value delta is
-    // reported AND the resulting value proves the requested option never took.
+  /**
+   * Selecting an option that does not exist is REFUSED, not performed and reported.
+   *
+   * This used to be deliberate: assign the value, let the browser reject it, and report the
+   * resulting `valueChanged` delta as proof the option never took. That reasoning only holds if
+   * nobody is listening. Setting an unmatched value drives `selectedIndex` to -1, so `el.value`
+   * becomes `''` — and we then dispatched `change`. Reported from a real session: the app read the
+   * empty value in its change handler and persisted it, corrupting the stored language setting.
+   *
+   * So the "detectable no-op" was neither. It mutated the app into a state no user could reach, and
+   * it did so through the app's own handler — Reticle causing the defect it exists to catch. This is
+   * the same rule the readonly/disabled refusal already applies: if a real user could not do it,
+   * forcing it is not a test, it is damage.
+   */
+  it('select to a NON-EXISTENT option is refused before anything is dispatched', async () => {
     document.body.innerHTML = '<select><option value="a">A</option></select>';
     const sel = document.querySelector('select') as HTMLSelectElement;
-    const r = await executeAction(refs.refFor(sel), 'select', { value: 'does-not-exist' });
-    expect(sel.value).not.toBe('does-not-exist'); // the invalid option was rejected
-    expect(r.effect.valueChanged).toBe(true); // a -> '' — a real, agent-visible change, not a fake false
+    let changes = 0;
+    sel.addEventListener('change', () => (changes += 1));
+    await expect(executeAction(refs.refFor(sel), 'select', { value: 'does-not-exist' })).rejects.toThrow(
+      /no <option>/i,
+    );
+    expect(sel.value, 'the existing selection must survive a refused select').toBe('a');
+    expect(changes, 'a refused select must not fire change — that is how the app got corrupted').toBe(0);
+  });
+
+  it('the refusal lists the options that DO exist, so the retry is one call away', async () => {
+    document.body.innerHTML =
+      '<select><option value="en">English</option><option value="fr">French</option></select>';
+    const sel = document.querySelector('select') as HTMLSelectElement;
+    await expect(executeAction(refs.refFor(sel), 'select', { value: 'English' })).rejects.toThrow(
+      /en.*fr|fr.*en/s,
+    );
   });
 
   it('clear on a non-field element THROWS instead of reporting silent success', async () => {

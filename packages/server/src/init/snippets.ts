@@ -224,10 +224,11 @@ export function htmlManual(port: number | undefined, projectId?: string): string
   • Bundled app (Create React App, webpack, Parcel, Vue/Svelte CLI, etc.) — add to your ENTRY module
     (e.g. src/index.js or src/main.js), where '@reticlehq/react' resolves through your bundler:
 
-      if (location.hostname === 'localhost') {
-        const { reticle, install } = await import('@reticlehq/react');
-        install();
-        reticle.connect(${arg});
+      if (window.location.hostname === 'localhost') {
+        void import('@reticlehq/react').then(({ reticle, install }) => {
+          install();
+          reticle.connect(${arg});
+        });
       }
 
   • Plain static HTML with no build step — the browser can't resolve the bare '@reticlehq/react' import, so

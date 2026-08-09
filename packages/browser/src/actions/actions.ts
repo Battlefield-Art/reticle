@@ -347,15 +347,31 @@ async function dispatchFor(
       if (isSelect(el)) {
         // A MISSING value assigned '' to the <select>. No option carries that, so the browser sets
         // selectedIndex to -1 — deselecting everything — from a call that was simply malformed.
-        // (Selecting a value that no option carries is a different case and is deliberately NOT
-        // refused: `actions.effect.test.ts` pins it as a detectable no-op, where the reported
-        // valueChanged delta is what tells the agent the option never took.)
         if (typeof args['value'] !== 'string') {
           throw new Error(
             "select requires a string `value` — pass it nested, as args: { value: '…' }.",
           );
         }
-        el.value = args['value'];
+        const wanted = args['value'];
+        const options = Array.from(el.options);
+        // REFUSE an option that does not exist, before touching the element.
+        //
+        // This used to assign anyway and report the resulting `valueChanged` delta as proof the
+        // option never took. That only works if nobody is listening. An unmatched value drives
+        // selectedIndex to -1, so `el.value` becomes '' — and we then dispatched `change`. Reported
+        // from a real session: the app read that empty value in its change handler and persisted it,
+        // corrupting a stored language setting. The "detectable no-op" both mutated the app into a
+        // state no user could reach AND did it through the app's own handler.
+        //
+        // Same rule as the readonly/disabled refusal: if a real user could not do it, forcing it is
+        // not a test, it is damage.
+        if (!options.some((option) => option.value === wanted)) {
+          const available = options.map((option) => `${option.value} (${option.label})`).join(', ');
+          throw new Error(
+            `no <option> with value '${echoRef(wanted)}' — available: ${0 === options.length ? '(none)' : available}`,
+          );
+        }
+        el.value = wanted;
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return false; // change is not cancelable.
       }

@@ -368,3 +368,20 @@ describe('error messages are bounded before they reach the agent', () => {
     expect(buildErrorPayload(message).error).toBe(message);
   });
 });
+
+/**
+ * A refused select must arrive as an invalid call, not as a possible Reticle defect — and the
+ * recovery has to warn that option VALUES are not the visible labels, which is the mistake that
+ * produces this error most often.
+ */
+describe('a select with no such option is the caller\'s to fix', () => {
+  it('gets the option recovery, never the defect ask', () => {
+    const payload = buildErrorPayload("no <option> with value 'English' — available: en (English), fr (French)");
+    expect(payload.feedback).toBeUndefined();
+    expect(payload.recovery).toBe(RECOVERY.NO_SUCH_OPTION);
+  });
+
+  it('warns that values are not labels', () => {
+    expect(RECOVERY.NO_SUCH_OPTION).toMatch(/label/i);
+  });
+});

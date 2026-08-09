@@ -75,6 +75,12 @@ export const RECOVERY = {
     '64 characters. No slashes, no "..", no leading dot: the name becomes a filename under ' +
     '.reticle/, so anything that could escape that directory is refused. Retry with a slug like ' +
     '"checkout-happy-path". This is an invalid call, not a Reticle defect: there is nothing to report.',
+  NO_SUCH_OPTION:
+    'That <select> has no option with the value you asked for, and the message above lists the ones ' +
+    'it does have. Reticle refuses rather than assigning it: an unmatched value deselects everything, ' +
+    'and the change event that follows has been observed persisting an empty setting into the app. ' +
+    'Retry with one of the listed values — note they are option VALUES, which often differ from the ' +
+    'visible labels shown in brackets. This is an invalid call, not a Reticle defect.',
   BAD_ARGUMENTS:
     "That call did not match the tool's schema — the message above names the tool and the exact " +
     "argument it wanted. Re-read that tool's parameters and retry with the missing or corrected " +
@@ -117,6 +123,7 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   // The commonest post-action condition there is. Unmatched, it fell through to FEEDBACK_ASK and
   // told the agent a successful click's aftermath might be a bug in Reticle.
   { match: /no longer resolves to an element/i, hint: RECOVERY.STALE_REF },
+  { match: /no <option> with value/i, hint: RECOVERY.NO_SUCH_OPTION },
   // Every guard in the browser's executeAction. These are Reticle-authored refusals of an invalid
   // call, and ALL of them used to fall through to the feedback ask — including the destructive-action
   // block, which carries its own retry instruction and was still telling the agent Reticle might be

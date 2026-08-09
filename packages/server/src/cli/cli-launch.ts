@@ -166,17 +166,33 @@ export function openCommand(
   return { cmd: 'xdg-open', args: [url] };
 }
 
-/** Launch the default browser at `url` (detached). The spawn is injected so tests stay hermetic. */
-export function openInBrowser(
+/**
+ * Launch the default browser at `url` (detached). The spawn is injected so tests stay hermetic.
+ *
+ * Resolves to whether the launch COMMAND started — not to whether a page appeared. It used to return
+ * nothing at all and the caller printed `{"opened": url}` unconditionally, so a launcher that failed
+ * outright still reported success. Reported from the field as twenty minutes lost chasing a phantom
+ * port problem while nothing had ever opened.
+ */
+export async function openInBrowser(
   url: string,
   platform: NodeJS.Platform = process.platform,
-  run: (cmd: string, args: string[]) => void = defaultRun,
-): void {
+  run: (cmd: string, args: string[]) => Promise<string | null> = defaultRun,
+): Promise<string | null> {
   const { cmd, args } = openCommand(url, platform);
-  run(cmd, args);
+  return run(cmd, args);
 }
 
-function defaultRun(cmd: string, args: string[]): void {
-  const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
-  child.unref();
+/** null when the launcher started; the failure message when it could not be run at all. */
+function defaultRun(cmd: string, args: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+    // An unhandled 'error' on a ChildProcess throws — and ENOENT on the launcher is exactly the case
+    // this function exists to report, so it must be listened for either way.
+    child.on('error', (err: Error) => resolve(err.message));
+    child.on('spawn', () => {
+      child.unref();
+      resolve(null);
+    });
+  });
 }
