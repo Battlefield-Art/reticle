@@ -146,3 +146,39 @@ export function sdkBuildFingerprint(from: string = process.cwd()): string {
     return 'unknown';
   }
 }
+
+/**
+ * The installed Vite's major version, or null when it cannot be read.
+ *
+ * Asked from the APP's root, never the plugin's: the plugin and the app can resolve different Vites
+ * in a monorepo, and the one whose deprecation warnings the user sees is the app's.
+ */
+export function viteMajor(from: string = process.cwd()): number | null {
+  try {
+    const pkg = requireFromApp(from)('vite/package.json') as { version?: string };
+    const major = parseInt((pkg.version ?? '').split('.')[0] ?? '', 10);
+    return isNaN(major) ? null : major;
+  } catch {
+    return null;
+  }
+}
+
+/** Vite renamed the dep-optimizer's passthrough options when it moved to rolldown. */
+export const OPTIMIZER_OPTIONS_KEY = {
+  ESBUILD: 'esbuildOptions',
+  ROLLDOWN: 'rolldownOptions',
+} as const;
+export type OptimizerOptionsKey =
+  (typeof OPTIMIZER_OPTIONS_KEY)[keyof typeof OPTIMIZER_OPTIONS_KEY];
+
+/**
+ * Which key carries optimizer options on this Vite.
+ *
+ * Vite 7 moved the dep optimizer to rolldown and deprecated `optimizeDeps.esbuildOptions`, warning
+ * on every boot to use `rolldownOptions` instead — a warning attributed to whichever plugin set it,
+ * which is us. Unknown versions get the older key: a deprecation notice is a much smaller failure
+ * than an option the installed Vite has never heard of.
+ */
+export function optimizerOptionsKey(major: number | null): OptimizerOptionsKey {
+  return null !== major && 7 <= major ? OPTIMIZER_OPTIONS_KEY.ROLLDOWN : OPTIMIZER_OPTIONS_KEY.ESBUILD;
+}

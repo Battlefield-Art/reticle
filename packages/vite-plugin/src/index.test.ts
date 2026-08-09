@@ -1,4 +1,5 @@
 import { afterAll, describe, it, expect } from 'vitest';
+import { optimizerOptionsKey, viteMajor } from './installed.js';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -384,26 +385,36 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
    * in the browser and it looks like the fix does not work. That produced a real false negative
    * while hunting the null-fiber crash, and every in-place upgrade hits it.
    */
+  /**
+   * Read the optimizer options from whichever key THIS Vite uses. Vite 7 renamed
+   * `esbuildOptions` to `rolldownOptions` and warns on the old one, so the plugin picks the key from
+   * the installed major — and a test that hardcodes either name asserts the local Vite version
+   * rather than the behaviour.
+   */
+  const optimizerDefine = (patch: Record<string, unknown>): Record<string, string> => {
+    const opt = (patch['optimizeDeps'] ?? {}) as Record<string, unknown>;
+    const options = opt[optimizerOptionsKey(viteMajor())] as
+      | { define?: Record<string, string> }
+      | undefined;
+    return options?.define ?? {};
+  };
+
   it('mixes the installed SDK build into the cache key so an in-place upgrade is noticed', () => {
     const plugin = reticle() as unknown as {
       config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
     };
-    const patch = plugin.config?.({}) ?? {};
-    const opt = patch['optimizeDeps'] as
-      | { esbuildOptions?: { define?: Record<string, string> } }
-      | undefined;
-    expect(Object.keys(opt?.esbuildOptions?.define ?? {})).toContain('__RETICLE_SDK_BUILD__');
+    expect(Object.keys(optimizerDefine(plugin.config?.({}) ?? {}))).toContain(
+      '__RETICLE_SDK_BUILD__',
+    );
   });
 
-  it("does not clobber the app's own esbuildOptions.define", () => {
+  it("does not clobber the app's own optimizer define", () => {
     const plugin = reticle() as unknown as {
       config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
     };
-    const patch =
-      plugin.config?.({ optimizeDeps: { esbuildOptions: { define: { THEIRS: '"x"' } } } }) ?? {};
-    const define =
-      (patch['optimizeDeps'] as { esbuildOptions?: { define?: Record<string, string> } })
-        .esbuildOptions?.define ?? {};
+    const define = optimizerDefine(
+      plugin.config?.({ optimizeDeps: { esbuildOptions: { define: { THEIRS: '"x"' } } } }) ?? {},
+    );
     expect(define['THEIRS']).toBe('"x"');
     expect(Object.keys(define)).toContain('__RETICLE_SDK_BUILD__');
   });

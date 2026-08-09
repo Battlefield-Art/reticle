@@ -17,7 +17,13 @@ import {
 import { resolveProjectId } from './project-id.js';
 import { discoverDaemonPort } from './discover-port.js';
 import { SVELTE_FILE, stampSvelte } from './svelte-source.js';
-import { resolvableChain, sdkPackageVersion, sdkBuildFingerprint } from './installed.js';
+import {
+  resolvableChain,
+  sdkPackageVersion,
+  sdkBuildFingerprint,
+  viteMajor,
+  optimizerOptionsKey,
+} from './installed.js';
 
 export const RETICLE_VITE_PLUGIN_NAME = 'reticle';
 
@@ -158,7 +164,10 @@ export interface ReticleVitePlugin {
   }) => {
     optimizeDeps: {
       include: string[];
-      esbuildOptions: { define: Record<string, string> };
+      // Either `esbuildOptions` or `rolldownOptions`, chosen from the installed Vite's major — v7
+      // deprecated the former and warns on every boot, blaming the plugin that set it. Typed as an
+      // index signature because the key is computed; the shape under it is the same either way.
+      [optionsKey: string]: unknown;
     };
     define: Record<string, string>;
   };
@@ -262,43 +271,36 @@ const SDK_CJS_DEPS = {
   ARIA_QUERY: 'aria-query',
 } as const;
 
-/** The package that actually imports them — the middle of the chain under a nested layout. */
-const BROWSER_PACKAGE = '@reticlehq/browser';
-
 /**
- * Name each CJS dep in the form Vite can actually resolve, and omit it when nothing can.
+ * Name each CJS dep ONLY in the bare form, and only when the app root can resolve it.
  *
- * Three layouts, one function. A hoisted install (npm, yarn) resolves the bare specifier from the
- * app root. A strict one (pnpm, npm's nested layout) does not — the dep belongs to
- * `@reticlehq/browser`, which belongs to the SDK — so it has to be named through the chain that
- * reaches it. An app that has neither gets nothing, because a name Vite cannot resolve is worse
- * than no name: it prints `Failed to resolve dependency: …, present in optimizeDeps.include` and
- * forces a full re-optimization on EVERY cold boot. On the sveltekit fixture that reload cost the
- * page its load window twice in a row — a green install reported as a dead one.
+ * This used to try three layouts and emit Vite's nested `a > b > c` form when a hoisted lookup
+ * failed. The guard asked the wrong question: it tested NODE resolvability, walking the chain
+ * segment by segment, and under pnpm that succeeds exactly where Vite fails. Measured on the
+ * sveltekit fixture:
+ *
+ *   ['@testing-library/dom']                                           -> null
+ *   ['@reticlehq/browser', '@testing-library/dom']                     -> null
+ *   ['@reticlehq/react', '@reticlehq/browser', '@testing-library/dom'] -> emitted
+ *
+ * So we emitted the three-segment chain, Vite could not follow it, and the boot warning this
+ * function exists to prevent appeared anyway — `Failed to resolve dependency: …, present in
+ * optimizeDeps.include`, pointing at Reticle, naming a package the developer has never heard of,
+ * and forcing a full re-optimization on every cold start. The comment stated the rule correctly and
+ * the code broke it.
+ *
+ * Dropping the nested form loses nothing that matters: the SDK itself is still pre-bundled, and Vite
+ * follows its imports when it does that, so these deps are handled as part of it. Naming them
+ * separately was belt-and-braces for a locally-aliased SDK, where the bare form resolves anyway.
  */
-function cjsDepIncludes(appRoot: string): string[] {
-  // Ordered widest-to-narrowest: the bare form when the app owns the dep, then through the browser
-  // package if the app depends on it directly (Svelte, Vue, vanilla), then through the React kit
-  // that carries it.
-  const prefixes: readonly (readonly string[])[] = [
-    [],
-    [BROWSER_PACKAGE],
-    [RETICLE_PACKAGE, BROWSER_PACKAGE],
-  ];
-  const first = (chains: readonly (readonly string[])[]): string[] | null => {
-    for (const chain of chains) if (null !== resolvableChain(chain, appRoot)) return [...chain];
-    return null;
-  };
-  const testingLibrary = first(prefixes.map((p) => [...p, SDK_CJS_DEPS.TESTING_LIBRARY]));
-  // `aria-query` hangs off @testing-library/dom, not off the SDK, so its chain is that one plus a
-  // segment — there is no layout where it is reachable by any other route but the bare one.
-  const ariaQuery = first([
-    [SDK_CJS_DEPS.ARIA_QUERY],
-    ...(null === testingLibrary ? [] : [[...testingLibrary, SDK_CJS_DEPS.ARIA_QUERY]]),
-  ]);
-  return [testingLibrary, ariaQuery]
-    .filter((chain): chain is string[] => null !== chain)
-    .map((chain) => chain.join(' > '));
+export function cjsDepIncludes(
+  appRoot: string,
+  // Injected so the rule can be tested hermetically. Real module resolution is not: under vitest,
+  // `createRequire` from a directory that does not exist still resolves packages out of the runner's
+  // own graph, so a filesystem-based test of "nothing is reachable here" silently asserts nothing.
+  canResolve: (dep: string) => boolean = (dep) => null !== resolvableChain([dep], appRoot),
+): string[] {
+  return [SDK_CJS_DEPS.TESTING_LIBRARY, SDK_CJS_DEPS.ARIA_QUERY].filter(canResolve);
 }
 
 export function readPairingToken(): string | undefined {
@@ -536,7 +538,11 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
         optimizeDeps: {
           // Part of the cache key, not of the build: changing it is what makes Vite notice that the
           // SDK on disk is not the SDK it pre-bundled. See sdkBuildFingerprint.
-          esbuildOptions: {
+          //
+          // Under the key THIS Vite wants. Vite 7 moved the optimizer to rolldown and deprecated
+          // `esbuildOptions`, warning on every boot — a warning attributed to the plugin that set
+          // it, which is us.
+          [optimizerOptionsKey(viteMajor(appRoot))]: {
             ...(config.optimizeDeps?.esbuildOptions ?? {}),
             define: {
               ...(config.optimizeDeps?.esbuildOptions?.define ?? {}),
