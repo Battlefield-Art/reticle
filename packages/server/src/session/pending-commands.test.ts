@@ -1,8 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PendingCommands } from './pending-commands.js';
 
-const result = (id: string, ok = true, data?: unknown): {
-  kind: 'command_result'; id: string; ok: boolean; result?: unknown;
+const result = (
+  id: string,
+  ok = true,
+  data?: unknown,
+): {
+  kind: 'command_result';
+  id: string;
+  ok: boolean;
+  result?: unknown;
 } => ({ kind: 'command_result', id, ok, ...(data !== undefined ? { result: data } : {}) });
 
 describe('PendingCommands', () => {
@@ -32,11 +39,21 @@ describe('PendingCommands', () => {
     await expect(b).rejects.toThrow('disconnect');
   });
 
-  it('timeout timer is unrefed so it does not keep the event loop alive', async () => {
-    const pc = new PendingCommands();
-    const id = pc.nextId('c');
-    const promise = pc.track(id, 60_000, () => 'should not fire');
-    pc.settle(result(id));
-    await promise;
+  it('unrefs the timeout timer so an in-flight command cannot hold the daemon open', async () => {
+    // The timer object is private, so reach it through setTimeout's return value. Asserting on
+    // hasRef() is the whole point: without it this test passes identically with and without the
+    // .unref() it exists to prove, which is a green that means nothing.
+    const spy = vi.spyOn(globalThis, 'setTimeout');
+    try {
+      const pc = new PendingCommands();
+      const id = pc.nextId('c');
+      const promise = pc.track(id, 60_000, () => 'should not fire');
+      const timer = spy.mock.results[0]?.value as NodeJS.Timeout | undefined;
+      expect(timer?.hasRef()).toBe(false);
+      pc.settle(result(id));
+      await promise;
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
