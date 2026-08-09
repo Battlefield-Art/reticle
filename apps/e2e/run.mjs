@@ -43,6 +43,10 @@ const ORDER = [
   // the failure a user experiences as "my tools vanished, open /mcp and reconnect". Also needs no
   // servers and no browser.
   'mcp-survives-test',
+  // Brute force against the same transport: repeated kills, kills mid-call, concurrent bursts,
+  // garbage on stdin, and a foreign process stealing the port. Survival is only half the bar — the
+  // other half is that every request gets an ANSWER, because a hung call is a hung agent.
+  'mcp-stress-test',
   'live-control-test',
   'real-world-tests',
   'multi-agent-lease-test',

@@ -151,6 +151,43 @@ export class PendingRequests {
   get unanswered(): string[] {
     return [...this.#ids];
   }
+
+  /** Take every unanswered id and forget them, so the same request is failed at most once. */
+  drain(): string[] {
+    const ids = [...this.#ids];
+    this.#ids.clear();
+    return ids;
+  }
+}
+
+/**
+ * JSON-RPC errors for every request that was in flight when the stream died.
+ *
+ * These are unrecoverable BY CONSTRUCTION: the daemon builds a fresh MCP session per SSE
+ * connection, so the reconnected session has never seen them. Re-sending them is not an option
+ * either — a `reticle_act` that already clicked would click twice, and inventing a second action in
+ * somebody's app is worse than reporting a failure.
+ *
+ * So the proxy answers them itself, under each request's own id. Found by brute force: killing the
+ * daemon under a live client left 20 of 20 concurrent calls hanging until the client's own timeout,
+ * with the MCP server still perfectly alive. An agent cannot tell that apart from "still working".
+ */
+export function streamLossReplies(pending: PendingRequests, reason: string): string[] {
+  return pending.drain().map((id) =>
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: JSON.parse(id) as unknown,
+      error: {
+        // -32001: a server-defined error. Not -32603 (internal): nothing went wrong INSIDE the
+        // call, the transport under it went away, and the distinction is what tells a caller the
+        // action may be safe to retry.
+        code: -32001,
+        message:
+          `the daemon connection dropped (${reason}) before this call was answered — it did NOT ` +
+          'complete. Reticle has already reconnected; retry if the action is safe to repeat.',
+      },
+    }),
+  );
 }
 
 /**
@@ -161,6 +198,19 @@ export class PendingRequests {
  * ending the process.
  */
 const SHUTDOWN_DRAIN_MS = 5_000;
+/**
+ * How long a request may sit in the queue, unsent, before the proxy answers it itself.
+ *
+ * The second population the stress test found. A request that was FORWARDED and lost is failed when
+ * the stream drops; one that never got forwarded — queued while dormant or reconnecting — was
+ * waiting for a session that, with a squatter holding the port, never arrives. It then hung until
+ * the client's own timeout, or forever if the client has none.
+ *
+ * Comfortably longer than a daemon restart (~1-2s) so a normal blip still flushes and succeeds, and
+ * well under the 60s an MCP client typically allows, so the answer comes from us with a reason
+ * rather than from their timer with none.
+ */
+const QUEUE_WAIT_MS = 20_000;
 const SHUTDOWN_DRAIN_POLL_MS = 25;
 
 /**
@@ -360,6 +410,30 @@ export function startMcpProxy(
      */
     let dormant = false;
     const stdinQueue: string[] = [];
+    /**
+     * Fail anything still queued after QUEUE_WAIT_MS. Re-armed on every push and cleared on flush,
+     * so a queue that drains normally never fires it.
+     */
+    let queueTimer: ReturnType<typeof setTimeout> | undefined;
+    const clearQueueTimer = (): void => {
+      if (queueTimer !== undefined) clearTimeout(queueTimer);
+      queueTimer = undefined;
+    };
+    const armQueueTimer = (): void => {
+      if (queueTimer !== undefined) return; // the oldest entry owns the deadline
+      queueTimer = setTimeout(() => {
+        queueTimer = undefined;
+        if (stopped || 0 === stdinQueue.length) return;
+        // Drop what we could never send, and answer it, so the caller is never left guessing.
+        stdinQueue.splice(0);
+        for (const reply of streamLossReplies(pending, 'no daemon could be reached')) emit(reply);
+        proxyLog('reticle_mcp_proxy_queue_expired', {
+          port,
+          note: 'answered queued requests instead of holding them for a daemon that never arrived',
+        });
+      }, QUEUE_WAIT_MS);
+      queueTimer.unref();
+    };
     const replay = new HandshakeReplay();
     const pending = new PendingRequests();
     /** The ONE way a line reaches the client — so nothing can be answered without clearing the debt. */
@@ -377,6 +451,7 @@ export function startMcpProxy(
         // The new session's McpServer has never seen the client's initialize — replay it first, then
         // flush whatever the client sent while we were reconnecting.
         for (const line of replay.replayLines()) void postToSession(url, line);
+        clearQueueTimer();
         for (const queued of stdinQueue.splice(0)) void postToSession(url, queued);
         return;
       }
@@ -451,6 +526,9 @@ export function startMcpProxy(
         const drop = (reason: string, detail?: string): void => {
           if (settled) return;
           settled = true;
+          // Answer anything the dead session owed BEFORE reconnecting. The new session cannot know
+          // about it, so silence here is permanent.
+          for (const reply of streamLossReplies(pending, reason)) emit(reply);
           scheduleReconnect(reason, detail);
         };
         const sse = new SseFrameParser();
@@ -531,6 +609,7 @@ export function startMcpProxy(
           }
         }
         stdinQueue.push(trimmed);
+        armQueueTimer();
         // A queued `initialize` is the one message that must not wait indefinitely. If the daemon
         // port is held by something that never serves SSE — wedged, foreign, or leaked by another
         // project — the handshake never completes and the agent gets NO tools and no diagnosis.
