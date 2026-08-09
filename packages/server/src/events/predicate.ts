@@ -8,6 +8,7 @@ import {
   type MatchResult,
 } from '@reticlehq/core';
 import { log } from '../log.js';
+import { bindSpanContext } from '../trace.js';
 import { selectPath, capDepth } from '../session/state-select.js';
 import { describeTestidMiss } from './testid-near-miss.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
@@ -497,10 +498,16 @@ export function waitForPredicate(
         failWait(error);
       }
     };
+    // Bound to the CALL that started this wait. The listener fires from the WebSocket message
+    // handler and the interval from the timer queue — neither is in the awaited chain, so without
+    // this every re-check opened a new call at depth 0 and emitted a `browser.command` with no
+    // `tool.handler`. Measured on one healthy run: 23 such orphans, which is precisely the
+    // documented signature of a HUNG call. A diagnostic that fires on healthy runs is not one.
+    const boundCheck = bindSpanContext(guardedCheck);
     const unsub = session.onEvent(() => {
-      guardedCheck();
+      boundCheck();
     });
-    const interval = setInterval(guardedCheck, POLL_INTERVAL_MS);
+    const interval = setInterval(boundCheck, POLL_INTERVAL_MS);
     const timer = setTimeout(() => {
       void evaluatePredicate(session, predicate, since)
         .then((r) => {

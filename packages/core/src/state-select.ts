@@ -29,14 +29,28 @@ export interface PathSelection {
  *  10k-entry array in the error payload (that was the token blowup the near-miss exists to avoid). */
 const MAX_AVAILABLE_KEYS = 50;
 
+/**
+ * The ONLY intrinsic (non-own) property a path segment may select, and only on an array or a string.
+ * `todos.length` is the tool's own shipped example, so it has to resolve — but a path walks UNTRUSTED
+ * app state, so this stays a closed one-name set rather than a general property read: anything wider
+ * puts `constructor`/`__proto__`/`toString` (and every array method) back on the path grammar.
+ */
+const LENGTH_SEGMENT = 'length';
+
+/** True where `LENGTH_SEGMENT` is a real, meaningful count — arrays and strings, nothing else. */
+function hasIntrinsicLength(value: unknown): value is unknown[] | string {
+  return Array.isArray(value) || 'string' === typeof value;
+}
+
 /** The keys at a level, as a bounded sample plus the true count when the sample is short. */
 function keysOf(value: unknown): { keys: string[]; total: number } {
   if (Array.isArray(value)) {
-    return {
-      keys: value.slice(0, MAX_AVAILABLE_KEYS).map((_, i) => String(i)),
-      total: value.length,
-    };
+    // `length` is listed because it IS selectable here — answering `["First task"]` with just `["0"]`
+    // sent someone who mistyped `length` looking for a key that does not exist.
+    const indices = value.slice(0, MAX_AVAILABLE_KEYS - 1).map((_, i) => String(i));
+    return { keys: [...indices, LENGTH_SEGMENT], total: value.length + 1 };
   }
+  if ('string' === typeof value) return { keys: [LENGTH_SEGMENT], total: 1 };
   if (value instanceof Map) {
     const keys: string[] = [];
     let total = 0;
@@ -64,11 +78,18 @@ function miss(value: unknown): PathSelection {
   };
 }
 
-/** Walk `path` (e.g. "captionCache.v3.0.text") into `root`. Empty path returns root unchanged. */
+/**
+ * Walk `path` (e.g. "captionCache.v3.0.text") into `root`. Empty path returns root unchanged.
+ * Segments are own keys, canonical array indices, Map keys, or `length` on an array/string.
+ */
 export function selectPath(root: unknown, path: string): PathSelection {
   const segments = path.split('.').filter((s) => s.length > 0);
   let current: unknown = root;
   for (const segment of segments) {
+    if (LENGTH_SEGMENT === segment && hasIntrinsicLength(current)) {
+      current = current.length;
+      continue;
+    }
     if (Array.isArray(current)) {
       // Require a CANONICAL index string. `Number('01')`/`Number('1e0')`/`Number(' 1')` all coerce to 1,
       // so `items.01` silently read index 1 — an assertion on a path that doesn't exist quietly passed.

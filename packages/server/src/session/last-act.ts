@@ -25,8 +25,23 @@ export class LastAct {
   #source: string | undefined;
   #effect: ActEffect | undefined;
 
-  markCursor(cursor: number): void {
+  /**
+   * Record an action that ACTUALLY DISPATCHED — cursor and effect together, never one without the
+   * other.
+   *
+   * It used to be two setters called BEFORE the ref was resolved, so a refused act (stale ref, a
+   * disabled control, a paused page) left a cursor and an empty effect standing. The next observe
+   * saw a cursor inside its window, asked for the effect, found `mutatedWithin: undefined` over a
+   * quiet window and reported "the click was dispatched and the page settled … the target does not
+   * react" — about a click nobody dispatched, blaming a control that was fine, on exactly the
+   * re-query-and-retry path the stale-ref message sends the agent down.
+   *
+   * Marking only on the success path is what makes that unrepeatable: a failure mode added later
+   * cannot forget to clean up state that was never written.
+   */
+  markActed(cursor: number, action: string | undefined, mutatedWithin: number | undefined): void {
     this.#cursor = cursor;
+    this.#effect = { action, mutatedWithin };
   }
 
   cursor(): number | undefined {
@@ -39,10 +54,6 @@ export class LastAct {
 
   source(): string | undefined {
     return this.#source;
-  }
-
-  markEffect(action: string | undefined, mutatedWithin: number | undefined): void {
-    this.#effect = { action, mutatedWithin };
   }
 
   /** Empty when nothing has acted — callers then fall back to checks that need no action context. */

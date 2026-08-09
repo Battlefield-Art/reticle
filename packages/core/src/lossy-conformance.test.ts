@@ -65,7 +65,8 @@ describe('selectPath declares its loss beside the value', () => {
       Object.fromEntries(Array.from({ length: 120 }, (_, i) => [`k${String(i)}`, i])),
       120,
     ],
-    ['an array', Array.from({ length: 120 }, (_, i) => i), 120],
+    // 121, not 120: `length` is a selectable segment on an array, so it counts as available.
+    ['an array', Array.from({ length: 120 }, (_, i) => i), 121],
     ['a Map', new Map(Array.from({ length: 120 }, (_, i) => [`k${String(i)}`, i])), 120],
   ])('reports the true size for %s', (_label, value, total) => {
     expect(selectPath(value, 'definitely-not-here').totalKeys).toBe(total);

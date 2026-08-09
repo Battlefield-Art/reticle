@@ -44,6 +44,34 @@ describe('selectPath', () => {
     expect(selectPath({ a: 1 }, '')).toEqual({ found: true, value: { a: 1 } });
   });
 
+  it('resolves .length on an array — the form the wait_for/assert example itself ships', () => {
+    expect(selectPath({ items: ['First task'] }, 'items.length')).toEqual({ found: true, value: 1 });
+    expect(selectPath({ todos: [1, 2, 3] }, 'todos.length')).toEqual({ found: true, value: 3 });
+    // and it keeps walking afterwards is impossible (number is a leaf), but a nested array works:
+    expect(selectPath({ a: { b: [[], []] } }, 'a.b.0.length')).toEqual({ found: true, value: 0 });
+  });
+
+  it('resolves .length on a string', () => {
+    expect(selectPath({ name: 'abcd' }, 'name.length')).toEqual({ found: true, value: 4 });
+  });
+
+  it('offers length in availableKeys when an array/string path misses', () => {
+    expect(selectPath({ items: ['x'] }, 'items.lenght').availableKeys).toContain('length');
+    expect(selectPath({ name: 'abcd' }, 'name.size').availableKeys).toEqual(['length']);
+  });
+
+  it('allows no intrinsic beyond length — size/constructor/__proto__ on an array stay unreachable', () => {
+    for (const seg of ['size', 'constructor', '__proto__', 'toString', 'map', 'push']) {
+      expect(selectPath({ xs: [1] }, `xs.${seg}`).found, `xs.${seg} must not be found`).toBe(false);
+      expect(selectPath({ s: 'ab' }, `s.${seg}`).found, `s.${seg} must not be found`).toBe(false);
+    }
+  });
+
+  it('does NOT resolve .length on a plain object that has no own length key', () => {
+    expect(selectPath({ a: 1 }, 'length').found).toBe(false);
+    expect(selectPath({ o: { length: 7 } }, 'o.length')).toEqual({ found: true, value: 7 });
+  });
+
   it('does NOT resolve prototype-chain keys — constructor/__proto__/toString are not state paths', () => {
     // `in` walked the prototype, so a typo'd path shadowing a builtin returned found:true against a
     // function from Object.prototype, and a state assertion on it silently passed. Only OWN keys count.

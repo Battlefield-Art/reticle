@@ -9,7 +9,7 @@
 
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { ReticleEnv } from '@reticlehq/core';
-import { span, spanSync, traceEnabled } from './trace.js';
+import { bindSpanContext, span, spanSync, traceEnabled } from './trace.js';
 
 interface TraceLine {
   event: string;
@@ -187,5 +187,62 @@ describe('trace — on', () => {
     } finally {
       cap.restore();
     }
+  });
+});
+
+/**
+ * A callback that runs OUTSIDE the call's async chain must still belong to that call.
+ *
+ * `waitForPredicate` re-checks its predicate from two places that are not in the awaited chain: a
+ * WebSocket event listener and an interval. AsyncLocalStorage does not reach either, so every
+ * re-check opened a BRAND NEW call at depth 0. Measured on one healthy bench-app run: 165 spans
+ * across 60 callIds, of which 25 were `browser.command` with no matching `tool.handler` — all of
+ * them poll traffic from waits that completed perfectly normally.
+ *
+ * That is not merely untidy. The documented signature of a HUNG tool call is exactly "a
+ * browser.command with no tool.handler for that callId, ever" — the invariant that located the
+ * act_and_wait hang. A clean run producing 23 of them makes the invariant unusable and buries a real
+ * hang in noise.
+ */
+describe('bindSpanContext — work dispatched outside the async chain stays in its call', () => {
+  beforeEach(() => {
+    process.env[ReticleEnv.TRACE] = '1';
+  });
+  afterEach(() => {
+    delete process.env[ReticleEnv.TRACE];
+  });
+
+  it('keeps a later callback in the SAME call, one level deeper', async () => {
+    const cap = captureTrace();
+    let later: (() => void) | undefined;
+    await span('tool.handler', {}, () => {
+      later = bindSpanContext(() => {
+        spanSync('browser.command', { command: 'match' }, () => undefined);
+      });
+    });
+    // Fired after the handler resolved, exactly as the event listener and interval do.
+    later?.();
+    cap.restore();
+    const handler = cap.lines.find((l) => 'tool.handler' === l.span);
+    const command = cap.lines.find((l) => 'browser.command' === l.span);
+    expect(handler?.callId, 'the handler must have a call id').toBeDefined();
+    expect(command?.callId, 'the poll must belong to the SAME call').toBe(handler?.callId);
+    expect(command?.depth, 'and sit inside it, not beside it').toBe(1);
+  });
+
+  it('does not invent a call when there was no span to bind to', () => {
+    const cap = captureTrace();
+    bindSpanContext(() => {
+      spanSync('browser.command', { command: 'match' }, () => undefined);
+    })();
+    cap.restore();
+    // Still traced, still correlatable on its own — just parentless, which is the honest answer.
+    expect(cap.lines.find((l) => 'browser.command' === l.span)?.depth).toBe(0);
+  });
+
+  it('passes arguments through untouched', () => {
+    const seen: unknown[] = [];
+    bindSpanContext((...args: unknown[]) => seen.push(...args))(1, 'two');
+    expect(seen).toEqual([1, 'two']);
   });
 });

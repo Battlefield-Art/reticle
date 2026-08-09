@@ -138,10 +138,8 @@ export const ACT_TOOLS: ToolDef[] = [
       if (paused !== undefined) return paused;
       refuseIfThrottled(session, args['refuseWhenThrottled']);
       const since = session.elapsed();
-      session.lastAct.markCursor(since); // honesty: wait_for/assert default their floor to this cursor
-      // Cleared up front: a throw between here and the result must not leave the PREVIOUS act's
-      // measurement standing, which would judge this window with the last one's evidence.
-      session.lastAct.markEffect(asString(args['action']), undefined);
+      // The act cursor + effect are marked only once the action has actually DISPATCHED (below, on
+      // each success path) — a refused act must leave nothing behind for the next observe to judge.
       const ref = asString(args['ref']) ?? '';
 
       // Open the journal's action-attribution window BEFORE dispatching, so it covers the native path
@@ -159,6 +157,9 @@ export const ACT_TOOLS: ToolDef[] = [
         if (real.result !== undefined) {
           captureAct(deps.recordings, args, real.result);
           settledOutcome = real.settled ?? undefined;
+          // Native input reports no synthetic effect block, so nothing measured in-target: undefined
+          // (the weaker empty-window test), never a fabricated zero.
+          session.lastAct.markActed(since, action, undefined);
           return withControl(session, {
             since,
             inputMode: InputMode.REAL,
@@ -183,7 +184,7 @@ export const ACT_TOOLS: ToolDef[] = [
         // Keep what only this call measured, so the observe that judges this window can ask whether
         // anything happened INSIDE the target — the one fact that separates a dead control from a
         // page that was merely busy with something else.
-        session.lastAct.markEffect(asString(args['action']), mutatedWithin(r));
+        session.lastAct.markActed(since, action, mutatedWithin(r));
         return withControl(session, {
           since,
           inputMode: InputMode.SYNTHETIC,
@@ -234,11 +235,14 @@ export const ACT_TOOLS: ToolDef[] = [
       const paused = pausedShortCircuit(session);
       if (paused !== undefined) return paused;
       const since = session.elapsed();
-      session.lastAct.markCursor(since); // honesty: a later wait_for/assert floors at this cursor
       session.beginAction(ReticleTool.ACT_SEQUENCE, asRecord(args));
       try {
         const result = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: args['steps'] });
         if (!result.ok) throw new Error(result.error ?? 'act_sequence failed');
+        // Marked only once the sequence ran: a refused sequence must leave no cursor behind for a
+        // later observe to judge. No single action and no in-target measurement here — per-step
+        // effects live in steps[] — so the effect is cleared rather than inherited from an earlier act.
+        session.lastAct.markActed(since, undefined, undefined);
         if (deps.recordings.active().length > 0) {
           deps.recordings.capture(compileSequenceStep(args, result.result));
         }
@@ -403,7 +407,7 @@ export const ACT_TOOLS: ToolDef[] = [
       // honesty block means. Reading the raw total pinned every later verdict to `unknown` after a
       // single early eviction (measured on the Next.js demo at dropped:51, windows intact).
       const droppedBefore = session.bufferHealth().dropped;
-      session.lastAct.markCursor(since);
+      // The cursor + effect are marked after the act dispatches (below) — a refused act leaves none.
       // The attribution window stays open across the settle wait below, so post-dispatch async events
       // (the whole point of act_and_wait) attribute to this action. finishAction fires after the wait.
       session.beginAction(ReticleTool.ACT_AND_WAIT, asRecord(args));
@@ -424,6 +428,13 @@ export const ACT_TOOLS: ToolDef[] = [
         });
         if (!actResult.ok) throw new Error(actResult.error ?? 'act failed');
         captureAct(deps.recordings, args, actResult.result);
+        // Dispatched — now this act owns the cursor and the effect. Marking its OWN measurement also
+        // stops the spread below from inheriting an earlier reticle_act's action and mutation count.
+        session.lastAct.markActed(
+          since,
+          asString(args['action']),
+          mutatedWithin(asRecord(actResult.result)),
+        );
 
         // Honesty: floor the predicate at this act's cursor so a stale buffered event can't satisfy it.
         const verdict =

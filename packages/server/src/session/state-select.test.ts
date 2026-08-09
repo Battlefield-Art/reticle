@@ -26,7 +26,8 @@ describe('selectPath', () => {
   it('reports a near-miss for an out-of-range array index', () => {
     const r = selectPath(root, 'captionCache.v3.5');
     expect(r.found).toBe(false);
-    expect(r.availableKeys).toEqual(['0', '1']);
+    // `length` is listed alongside the indices because it is genuinely selectable on an array.
+    expect(r.availableKeys).toEqual(['0', '1', 'length']);
   });
 });
 

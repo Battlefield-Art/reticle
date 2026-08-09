@@ -96,6 +96,31 @@ function openSpan(
   };
 }
 
+/**
+ * Bind a callback to the call that is running NOW, so it reports inside that call when it fires later.
+ *
+ * `waitForPredicate` re-checks its predicate from a WebSocket event listener and an interval. Neither
+ * is in the awaited chain, so AsyncLocalStorage does not reach them and every re-check used to open a
+ * brand new call at depth 0. Measured on one healthy run: 165 spans across 60 callIds, 25 of them a
+ * `browser.command` with no matching `tool.handler`.
+ *
+ * That is not cosmetic. The documented signature of a HUNG tool call is exactly "a browser.command
+ * with no tool.handler for that callId, ever" — the invariant that located a real hang. A clean run
+ * emitting 23 of them makes the invariant unusable and hides the next hang in its own noise.
+ *
+ * Returns `fn` unchanged when there is no call to bind to, so a caller outside a span is not given a
+ * fabricated parent.
+ */
+export function bindSpanContext<A extends unknown[]>(
+  fn: (...args: A) => void,
+): (...args: A) => void {
+  const captured = context.getStore();
+  if (captured === undefined) return fn;
+  return (...args: A): void => {
+    context.run(captured, () => fn(...args));
+  };
+}
+
 /** How much of a thrown value to keep. Enough to identify it, not enough to paste a stack into a log. */
 const ERROR_CHARS = 300;
 
