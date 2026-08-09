@@ -188,7 +188,12 @@ jobs:
             echo "::endgroup::"
             echo "attempt $attempt failed — cleaning up before retry"
             pkill -f "cli.js mcp" || true; pkill -f "cli.js _daemon" || true; pkill -f chrome-headless || true
-            pkill -f "vite" || true; pkill -f "apps/api/server.mjs" || true; sleep 3
+            pkill -f "vite" || true; pkill -f "apps/api/server.mjs" || true
+            # By name misses `next-server`, whose parent pnpm wrapper is the only pid the battery
+            # held — it survived attempt 1 and made attempt 2 fail on EADDRINUSE. run-ci.sh's own
+            # trap frees these ports; this repeats it for the case where the trap never ran.
+            for port in 8787 4310 3100 4400; do lsof -ti "tcp:$port" | xargs -r kill -9 || true; done
+            sleep 3
           done
           echo "e2e battery failed after 2 attempts"; exit 1
       - name: Upload server logs on failure

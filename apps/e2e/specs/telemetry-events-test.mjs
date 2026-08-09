@@ -529,6 +529,12 @@ await settle();
     m.reportCliRun(['version']);
     await new Promise(r => setTimeout(r, 1500));
   `;
+  // Count BEFORE, and assert the DELTA. The absolute count is a statement about the machine, not
+  // about the product: a developer's box already has `~/.reticle`, so only this child fires the
+  // event and the total is 1 — but a fresh CI runner does not, so everything earlier in this spec
+  // fires it too and the total was 3. The contract is "a machine that has never run Reticle emits
+  // it exactly once", which is a delta.
+  const installedBefore = find('reticle_installed').length;
   try {
     execFileSync(process.execPath, ['--input-type=module', '-e', script], {
       env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome },
@@ -537,7 +543,8 @@ await settle();
     });
   } catch {}
   await settle();
-  check('reticle_installed fires on a machine that has never run Reticle', find('reticle_installed').length === 1, `got ${find('reticle_installed').length}`);
+  const fromPristineHome = find('reticle_installed').length - installedBefore;
+  check('reticle_installed fires on a machine that has never run Reticle', fromPristineHome === 1, `got ${fromPristineHome} from the pristine HOME`);
   rmSync(fakeHome, { recursive: true, force: true });
 }
 

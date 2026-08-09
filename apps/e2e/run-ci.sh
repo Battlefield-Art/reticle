@@ -30,7 +30,24 @@ RETICLE_PORT=4400 VITE_RETICLE_TOKEN="$(cat "$TOKEN_FILE")" \
 DEMO=$!
 pnpm --filter @reticlehq/next-smoke dev > /tmp/e2e-next.log 2>&1 &
 NEXT=$!
-cleanup() { kill "$API" "$DEMO" "$NEXT" 2>/dev/null || true; }
+# Free the PORTS, not just the pids we happen to hold.
+#
+# Each of these was started through `pnpm --filter … exec`, so `$NEXT` is a pnpm wrapper and the
+# thing actually bound to :3100 is its `next-server` grandchild. Killing the wrapper orphans it: the
+# CI retry then booted into `EADDRINUSE: :::3100`, next dev exited instantly, and the second attempt
+# failed for a reason that had nothing to do with the first. The runner's own orphan sweep named the
+# survivor — `next-server (v15.5.22)` — after the job had already gone red.
+#
+# `lsof -ti tcp:PORT` is on both the ubuntu runner and macOS, and asks the only question that
+# matters: is anything still holding the port the next attempt needs.
+E2E_PORTS='8787 4310 3100'
+cleanup() {
+  kill "$API" "$DEMO" "$NEXT" 2>/dev/null || true
+  sleep 1
+  for port in $E2E_PORTS; do
+    lsof -ti "tcp:$port" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+  done
+}
 trap cleanup EXIT
 
 echo "==> waiting for servers"
