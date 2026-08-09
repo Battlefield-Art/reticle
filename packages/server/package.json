@@ -24,7 +24,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint src",
     "test:unit": "vitest run src --passWithNoTests",
-    "prepack": "tsc -b && find dist -name \"*.test.*\" -delete && node ../../scripts/strip-maps.mjs dist && cp ../../SKILL.md . && rm -rf docs && cp -R ../../docs ."
+    "prepack": "rm -rf dist && tsc -b --force && find dist -name \"*.test.*\" -delete && node ../../scripts/strip-maps.mjs dist && cp ../../SKILL.md . && rm -rf docs && cp -R ../../docs ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.0",
@@ -64,7 +64,7 @@
     "cli"
   ],
   "reticle": {
-    "changelog": "Smart MCP proxy with auto-start daemon, auto-update, and rollback support. Agents can call reticle_version_info, reticle_apply_update, and reticle_rollback.",
+    "changelog": "Smart MCP proxy with auto-start daemon, auto-update, and rollback support. Update from the CLI with `reticle update` / `reticle rollback`.",
     "breakingChanges": []
   },
   "publishConfig": {

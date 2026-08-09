@@ -9,7 +9,7 @@
 // its own bridge so the leased tabs register with US, not with whatever external daemon is around).
 
 import { join } from 'node:path';
-import { Bridge } from '../../packages/server/dist/bridge.js';
+import { Bridge } from '../../packages/server/dist/bridge/bridge.js';
 import { FLOW_TOOLS } from '../../packages/server/dist/flows/flow-tools.js';
 import { FlowStore } from '../../packages/server/dist/flows/flows.js';
 import { ProjectStore } from '../../packages/server/dist/project/project-store.js';
