@@ -85,7 +85,17 @@ function proxyLog(event: string, fields: Record<string, unknown> = {}): void {
   try {
     const dir = join(homedir(), ReticleDir.ROOT);
     mkdirSync(dir, { recursive: true });
-    appendFileSync(proxyLogPath(), `${JSON.stringify({ event, ...fields })}\n`, 'utf8');
+    // WITH A TIMESTAMP. This file is the only record of an outage that survives the session, and
+    // without one it cannot answer the two questions anyone brings to it: when did this happen, and
+    // how often. A real 3,283-line log on a dev machine held a `gave_up` — the exact event that used
+    // to precede `process.exit(1)` and cost the human a manual /mcp reconnect — and it was
+    // impossible to tell whether it happened during that person's work or a test run hours earlier.
+    // Evidence you cannot place in time is an anecdote.
+    appendFileSync(
+      proxyLogPath(),
+      `${JSON.stringify({ t: new Date().toISOString(), event, ...fields })}\n`,
+      'utf8',
+    );
   } catch {
     // Logging must never be the thing that kills the proxy.
   }
