@@ -1,4 +1,5 @@
 import {
+  CHURN_TYPES,
   CommandMessageSchema,
   EventType,
   MessageKind,
@@ -79,13 +80,16 @@ const UNREACHABLE_WARN_AFTER = 3;
  */
 interface QueuedMessage {
   text: string;
-  event?: { seq: number | undefined; t: number } | undefined;
+  event?: { seq: number | undefined; t: number; type: string } | undefined;
+  order: number;
 }
 
 /** WebSocket client to the bridge. Reconnects across reloads; buffers events while down. */
 export class Transport {
   #ws: WebSocket | undefined;
-  #queue: QueuedMessage[] = [];
+  #churnQueue: QueuedMessage[] = [];
+  #signalQueue: QueuedMessage[] = [];
+  #insertOrder = 0;
   #closed = false;
   /** When the current continuous outage began (nativeNow), or undefined while connected. */
   #disconnectedSince: number | undefined;
@@ -162,11 +166,14 @@ export class Transport {
       const greeting = this.#deps.hello();
       this.#sessionId ??= greeting.sessionId;
       ws.send(JSON.stringify(greeting));
-      // Declare any gap BEFORE replaying the backlog. The queue evicts its OLDEST entries, so the
-      // hole always precedes everything that survived it.
+      // Declare any gap BEFORE replaying the backlog, stamped with the OLDEST event the queue
+      // dropped — see #sendRaw. The two queues are drained back into one stream in insertion order,
+      // so what the bridge receives is the order the page produced, minus the holes.
       this.#sendGapMarker(ws, greeting.sessionId);
-      for (const msg of this.#queue) ws.send(msg.text);
-      this.#queue = [];
+      const replay = [...this.#churnQueue, ...this.#signalQueue].sort((a, b) => a.order - b.order);
+      for (const msg of replay) ws.send(msg.text);
+      this.#churnQueue = [];
+      this.#signalQueue = [];
       this.#deps.onConnected?.();
     };
     ws.onmessage = (event: MessageEvent): void => {
@@ -306,6 +313,7 @@ export class Transport {
     this.#sendRaw(safeStringify({ kind: MessageKind.EVENT, event }), {
       seq: event.seq,
       t: event.t,
+      type: event.type,
     });
   }
 
@@ -328,19 +336,30 @@ export class Transport {
       this.#ws.send(text);
       return;
     }
-    if (this.#queue.length >= MAX_QUEUE) {
-      // Full offline queue: drop the OLDEST and keep the newest (ring), so after reconnect the agent
-      // replays RECENT activity instead of 500 stale events with the latest lost. Remember what went
-      // so the loss can be declared on reconnect — an unmarked hole reads as "the app did nothing".
-      // Only an evicted EVENT counts: a dropped COMMAND_RESULT is a reply the agent already gave up
-      // waiting for, not a hole in what the app was observed to do.
-      const evicted = this.#queue.shift();
+    if (this.#churnQueue.length + this.#signalQueue.length >= MAX_QUEUE) {
+      // Prefer sacrificing churn (high-volume, low-signal) over signal events. Falls back to signal
+      // FIFO only when the churn queue is empty — the buffer is bounded either way.
+      const evicted =
+        this.#churnQueue.length > 0 ? this.#churnQueue.shift() : this.#signalQueue.shift();
       if (evicted?.event !== undefined) {
         this.#dropped += 1;
-        this.#gap = evicted.event;
+        // Keep the EARLIEST drop, not the latest. Under plain FIFO the two were the same thing, so
+        // "latest evicted" was a precise boundary: everything before it was gone. Churn-first
+        // eviction breaks that — a churn event newer than a surviving signal event can be the one
+        // sacrificed, and stamping the marker with it would claim a hole that swallows events the
+        // agent is about to receive. The oldest drop is the honest floor: the hole starts no later
+        // than here. A truncation marker may over-state its reach; it must never under-state it.
+        const previous = this.#gap;
+        if (previous === undefined || evicted.event.t < previous.t) this.#gap = evicted.event;
       }
     }
-    this.#queue.push({ text, event });
+    const isChurn = event !== undefined && CHURN_TYPES.has(event.type);
+    const order = this.#insertOrder++;
+    if (isChurn) {
+      this.#churnQueue.push({ text, event, order });
+    } else {
+      this.#signalQueue.push({ text, event, order });
+    }
   }
 
   /**

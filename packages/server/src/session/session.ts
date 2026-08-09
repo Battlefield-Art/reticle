@@ -86,6 +86,7 @@ export class Session {
   readonly #buffer = new RingBuffer();
   readonly #pending = new PendingCommands();
   readonly #listeners = new Set<(event: ReticleEvent) => void>();
+  readonly #disconnectListeners = new Set<() => void>();
   #actionSeq = 0;
   #lastSeenAt: number;
   #hidden = false;
@@ -448,6 +449,11 @@ export class Session {
     return () => this.#listeners.delete(listener);
   }
 
+  onDisconnect(listener: () => void): () => void {
+    this.#disconnectListeners.add(listener);
+    return () => this.#disconnectListeners.delete(listener);
+  }
+
   /** Send a command to the browser and await its reply (or time out). */
   command(
     name: string,
@@ -501,6 +507,8 @@ export class Session {
   /** Reject everything still in flight — used on disconnect. */
   rejectAll(reason: string): void {
     this.#pending.rejectAll(reason);
+    for (const listener of this.#disconnectListeners) listener();
+    this.#disconnectListeners.clear();
   }
 
   /** End this transport without letting a stale socket remove its replacement session. */

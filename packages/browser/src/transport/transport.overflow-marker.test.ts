@@ -172,7 +172,7 @@ describe('transport overflow marker', () => {
     expect(eventsOn(ws)[0]?.type).toBe(EventType.TRANSPORT_OVERFLOW);
   });
 
-  it('tombstones the marker with the last dropped event so it sorts at the gap, not at the end', () => {
+  it('tombstones the marker with the first dropped event so it sorts at the gap, not at the end', () => {
     const t = makeTransport();
     t.connect();
     const ws = overflowThenOpen(t, MAX_QUEUE + OVERFLOW_BY);
@@ -181,10 +181,17 @@ describe('transport overflow marker', () => {
 
     // The server orders a session by `seq`. A marker minted at reconnect would carry the HIGHEST seq
     // and land in the last segment — attributing the gap to a window that never had one. Reusing the
-    // seq of the event it displaced (never delivered, so never a duplicate) puts it at the boundary.
-    const lastDropped = evt(OVERFLOW_BY - 1);
-    expect(marker?.seq).toBe(lastDropped.seq);
-    expect(marker?.t).toBe(lastDropped.t);
+    // seq of an event it displaced (never delivered, so never a duplicate) puts it at the boundary.
+    //
+    // It is the FIRST drop, not the last. Under the plain FIFO this test was written against the two
+    // were interchangeable and the last was tighter. Churn-aware eviction retired that: the queue can
+    // now sacrifice a churn event NEWER than a signal event that survives, and a marker carrying the
+    // last drop would sort AFTER a survivor — claiming a hole over events delivered in the same
+    // replay. The oldest drop is the honest floor. The assertion below is the invariant that matters;
+    // it held under FIFO and it still holds.
+    const firstDropped = evt(0);
+    expect(marker?.seq).toBe(firstDropped.seq);
+    expect(marker?.t).toBe(firstDropped.t);
     expect(marker?.seq).toBeLessThan(survivors[0]?.seq ?? 0);
   });
 

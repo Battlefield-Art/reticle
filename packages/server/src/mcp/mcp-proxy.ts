@@ -421,8 +421,20 @@ function postToSession(url: string, body: string): Promise<string | null> {
   });
 }
 
-export function buildSessionUrl(rawData: string, port: number): string {
-  return rawData.startsWith('/') ? `http://${LOOPBACK_HOST}:${port}${rawData}` : rawData;
+/**
+ * Turn an `endpoint` frame's data into a POST target, or null when there is nothing usable in it.
+ *
+ * An empty (or whitespace) data field is the shape a malformed daemon response takes, and it used to
+ * be accepted: `postUrl` became `''`, which is not `null`, so the proxy considered itself CONNECTED
+ * and posted every subsequent message to the empty string. Each one failed, the queue never armed
+ * its deadline because nothing was ever queued, and the agent held a session that could not carry a
+ * single call. Refusing the frame keeps the proxy in its disconnected path, which already knows how
+ * to reconnect and how to answer what it cannot send.
+ */
+export function buildSessionUrl(rawData: string, port: number): string | null {
+  const trimmed = rawData.trim();
+  if ('' === trimmed) return null;
+  return trimmed.startsWith('/') ? `http://${LOOPBACK_HOST}:${port}${trimmed}` : trimmed;
 }
 
 /**
@@ -516,6 +528,13 @@ export function startMcpProxy(
     function onSseEvent(event: string, data: string, p: number): void {
       if ('endpoint' === event) {
         const url = buildSessionUrl(data, p);
+        if (null === url) {
+          proxyLog('reticle_mcp_proxy_empty_endpoint', {
+            port,
+            note: 'endpoint frame carried no URL; staying disconnected rather than posting to nowhere',
+          });
+          return;
+        }
         postUrl = url;
         // A stream that reached `endpoint` is a USABLE session — that, not a set of response
         // headers, is what earns a fresh retry budget. Resetting on headers let a daemon that

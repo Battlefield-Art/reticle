@@ -3,6 +3,7 @@
  * Uses a fake launcher so no real Chromium is needed — the pool logic is what's under test.
  */
 
+import { getEventListeners } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import {
   BrowserPool,
@@ -335,6 +336,35 @@ describe('BrowserPool', () => {
     expect(pool.activeCount()).toBe(1);
   });
 
+  it('removes the abort handler from the signal after a successful acquire', async () => {
+    const { launch } = fakeLauncher();
+    const pool = new BrowserPool(launch, { maxContexts: 1, genSessionId: counterIds() });
+    const held = await pool.acquire('http://localhost:3000/held');
+
+    const controller = new AbortController();
+    const queued = pool.acquire('http://localhost:3000/queued', { signal: controller.signal });
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(1);
+
+    await held.release();
+    const lease = await queued;
+    expect(lease.sessionId).toBeDefined();
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+  });
+
+  it('removes the abort handler when the pool shuts down while waiting', async () => {
+    const { launch } = fakeLauncher();
+    const pool = new BrowserPool(launch, { maxContexts: 1, genSessionId: counterIds() });
+    await pool.acquire('http://localhost:3000/held');
+
+    const controller = new AbortController();
+    const queued = pool.acquire('http://localhost:3000/queued', { signal: controller.signal });
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(1);
+
+    await pool.shutdown();
+    await expect(queued).rejects.toThrow(/shut down/);
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+  });
+
   it('a single page crash reclaims ONLY that lease; the fleet survives', async () => {
     const { launch, browsers } = fakeLauncher();
     const pool = new BrowserPool(launch, { maxContexts: 4, genSessionId: counterIds() });
@@ -389,5 +419,31 @@ describe('BrowserPool', () => {
     // Slot was freed → a subsequent acquire still works.
     const ok = await pool.acquire('http://localhost:3000/ok');
     expect(ok.sessionId).toBeDefined();
+  });
+
+  it('shutdown closes a browser whose launch was in-flight (no orphaned Chromium)', async () => {
+    let resolveDelayed: ((b: FakeBrowser) => void) | undefined;
+    const browsers: FakeBrowser[] = [];
+    const launch: Launcher = () =>
+      new Promise<PooledBrowser>((resolve) => {
+        const b = new FakeBrowser();
+        browsers.push(b);
+        resolveDelayed = resolve;
+      });
+    const pool = new BrowserPool(launch, { maxContexts: 2, genSessionId: counterIds() });
+
+    const acquiring = pool.acquire('http://localhost:3000/slow');
+    await Promise.resolve(); // the launch is now in flight
+
+    const shutdownDone = pool.shutdown();
+    expect(resolveDelayed).toBeDefined();
+
+    // The launch completes AFTER shutdown was called.
+    resolveDelayed?.(browsers[0] as FakeBrowser);
+    await shutdownDone;
+
+    // The browser that resolved after shutdown must have been closed.
+    expect(browsers[0]?.isConnected()).toBe(false);
+    await expect(acquiring).rejects.toThrow();
   });
 });

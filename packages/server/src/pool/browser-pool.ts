@@ -202,6 +202,15 @@ export class BrowserPool {
     this.#active.clear();
     this.#occupied = 0;
     await Promise.all(contexts.map((c) => c.close().catch(() => undefined)));
+    // If a launch is in flight, await it so we can close the resulting browser — otherwise it
+    // resolves after shutdown returns and the Chromium process is orphaned (hundreds of MB leaked).
+    const inflight = this.#launching;
+    if (inflight !== undefined) {
+      const launched = await inflight.catch(() => undefined);
+      if (launched !== undefined && launched !== this.#browser) {
+        await launched.close().catch(() => undefined);
+      }
+    }
     const browser = this.#browser;
     this.#browser = undefined;
     if (browser !== undefined) await browser.close().catch(() => undefined);
@@ -231,28 +240,29 @@ export class BrowserPool {
       const onFree = (): void => {
         // The pool shut down while we waited → reject rather than relaunch a browser.
         if (this.#closed) {
+          if (signal !== undefined) signal.removeEventListener('abort', onAbort);
           reject(new Error('browser pool is shut down'));
           return;
         }
         // Claim the freed slot; if another woken waiter beat us to it, re-queue.
-        if (this.#tryClaim()) resolve();
-        else this.#waiters.push(onFree);
+        if (this.#tryClaim()) {
+          if (signal !== undefined) signal.removeEventListener('abort', onAbort);
+          resolve();
+        } else {
+          this.#waiters.push(onFree);
+        }
+      };
+      const onAbort = (): void => {
+        const i = this.#waiters.indexOf(onFree);
+        if (i >= 0) this.#waiters.splice(i, 1);
+        reject(new Error('acquire aborted'));
       };
       if (signal !== undefined) {
         if (signal.aborted) {
           reject(new Error('acquire aborted'));
           return;
         }
-        signal.addEventListener(
-          'abort',
-          () => {
-            // Remove ourselves from the queue so a later wake doesn't claim a slot we'll never use.
-            const i = this.#waiters.indexOf(onFree);
-            if (i >= 0) this.#waiters.splice(i, 1);
-            reject(new Error('acquire aborted'));
-          },
-          { once: true },
-        );
+        signal.addEventListener('abort', onAbort, { once: true });
       }
       this.#waiters.push(onFree);
     });
