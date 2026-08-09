@@ -31,6 +31,49 @@ function describe(value: unknown): string {
   return value instanceof Error ? value.message : String(value);
 }
 
+/**
+ * Node error codes that mean THE OTHER END WENT AWAY, not "we broke".
+ *
+ * One real session produced nine `runtime_crashed` events, all `write EPIPE`: the MCP client closed
+ * its half of the stdio pipe and the very next `process.stdout.write` failed, which is the ordinary
+ * way a client leaves. Counted as uncaught exceptions they poison the only metric that answers "is
+ * Reticle stable?" — and they recur every single time an editor is closed.
+ *
+ * Matched on `err.code`, never on the message: a message is prose, gets wrapped, localised and
+ * rewritten, and matching it would eventually swallow a real crash that merely mentioned a pipe.
+ *
+ * - `EPIPE` — wrote to a pipe whose reader is gone. The stdio case, and the nine.
+ * - `ECONNRESET` — the peer reset the socket; stdio is a socket when the parent piped it, and the
+ *   HTTP/SSE surface produces it when a client vanishes mid-response.
+ * - `ERR_STREAM_DESTROYED` — the same race one tick later: the stream was already torn down when
+ *   the write landed.
+ */
+const DISCONNECT_CODES: ReadonlySet<string> = new Set([
+  'EPIPE',
+  'ECONNRESET',
+  'ERR_STREAM_DESTROYED',
+]);
+
+/** The disconnect code this failure carries, if that is all it was. */
+function disconnectCode(value: unknown): string | undefined {
+  const code = (value as { code?: unknown } | null | undefined)?.code;
+  return 'string' === typeof code && DISCONNECT_CODES.has(code) ? code : undefined;
+}
+
+/**
+ * Log an expected disconnect and report `true`, so the caller skips the crash report.
+ *
+ * It is still WRITTEN DOWN. A client leaving is normal, but a daemon that suddenly logs a hundred of
+ * these is a finding — the difference between "not a crash" and "not worth knowing" is the whole
+ * reason this logs instead of returning early in silence.
+ */
+function absorbDisconnect(value: unknown, log: LogFn, event: string): boolean {
+  const code = disconnectCode(value);
+  if (code === undefined) return false;
+  log(event, { code, note: 'the client went away — expected, not a crash' });
+  return true;
+}
+
 /** The two ways a failure reaches the top of the process. Named so the analytics can tell them apart. */
 export const CrashKind = {
   UNHANDLED_REJECTION: 'unhandled_rejection',
@@ -117,11 +160,17 @@ export function installExitTrace(proc: ProcessLike, log: LogFn): void {
 
 export function installDaemonResilience(proc: ProcessLike, log: LogFn, onFatal: () => void): void {
   installExitTrace(proc, log);
+  const disconnected = 'reticle_daemon_client_disconnected';
   proc.on('unhandledRejection', (reason: unknown) => {
+    if (absorbDisconnect(reason, log, disconnected)) return;
     log('reticle_daemon_unhandled_rejection', { reason: describe(reason) });
     reportCrash(CrashKind.UNHANDLED_REJECTION, reason);
   });
   proc.on('uncaughtException', (err: unknown) => {
+    // Not fatal either: Node's "the process state is undefined" guidance is about a throw that
+    // escaped everything, not about a write to a socket somebody closed. Exiting here would let one
+    // departing client take down the daemon serving every other agent.
+    if (absorbDisconnect(err, log, disconnected)) return;
     log('reticle_daemon_uncaught_exception', { error: describe(err) });
     reportCrash(CrashKind.UNCAUGHT_EXCEPTION, err);
     onFatal();
@@ -145,11 +194,15 @@ export function installProxyResilience(
   log: LogFn,
   onCrash: (kind: CrashKind, cause: unknown) => void = reportCrash,
 ): void {
+  const disconnected = 'reticle_mcp_proxy_client_disconnected';
   proc.on('unhandledRejection', (reason: unknown) => {
+    if (absorbDisconnect(reason, log, disconnected)) return;
     log('reticle_mcp_proxy_unhandled_rejection', { reason: describe(reason) });
     onCrash(CrashKind.UNHANDLED_REJECTION, reason);
   });
   proc.on('uncaughtException', (err: unknown) => {
+    // The client closing its end of stdio is how this process is SUPPOSED to end its day.
+    if (absorbDisconnect(err, log, disconnected)) return;
     log('reticle_mcp_proxy_uncaught_exception', {
       error: describe(err),
       note: 'still serving — exiting here would disconnect the MCP client',

@@ -83,6 +83,99 @@ describe('installDaemonResilience', () => {
  * open /mcp and reconnect. Staying up with a logged error is strictly better than that, because the
  * proxy's own state is a socket and a queue — both of which it already knows how to rebuild.
  */
+/**
+ * A client going away is not a crash.
+ *
+ * One real session produced NINE `runtime_crashed` events, every one of them `write EPIPE`: the MCP
+ * client closed its end of the stdio pipe and the next `process.stdout.write` failed, exactly as it
+ * is supposed to. Reported as uncaught exceptions they poison the one metric that answers "is
+ * Reticle stable?", and they would have kept doing it every time an editor was closed.
+ *
+ * Recognised by ERROR CODE, never by message text — a message is localised, wrapped and rewritten;
+ * `err.code` is Node's contract.
+ */
+describe('an expected disconnect is logged, never counted as a crash', () => {
+  function epipe(code: string): NodeJS.ErrnoException {
+    const err: NodeJS.ErrnoException = new Error(`write ${code}`);
+    err.code = code;
+    return err;
+  }
+
+  it.each(['EPIPE', 'ECONNRESET', 'ERR_STREAM_DESTROYED'])(
+    '%s on the daemon is logged and does NOT kill the daemon',
+    (code) => {
+      const logs: { event: string; data: Record<string, unknown> }[] = [];
+      let fatal = 0;
+      const proc = fakeProc();
+      installDaemonResilience(
+        proc,
+        (event, data) => logs.push({ event, data }),
+        () => (fatal += 1),
+      );
+
+      proc.emit('uncaughtException', epipe(code));
+
+      expect(fatal, 'one client leaving must not take the fleet down').toBe(0);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]?.event).toBe('reticle_daemon_client_disconnected');
+      expect(logs[0]?.data['code']).toBe(code);
+    },
+  );
+
+  it('is still VISIBLE on the proxy, just not reported as a crash', () => {
+    const proc = fakeProc();
+    const lines: { event: string; data: Record<string, unknown> }[] = [];
+    const crashes: CrashKind[] = [];
+    installProxyResilience(proc, (event, data) => lines.push({ event, data }), (kind) =>
+      crashes.push(kind),
+    );
+
+    proc.emit('uncaughtException', epipe('EPIPE'));
+    proc.emit('unhandledRejection', epipe('EPIPE'));
+
+    expect(crashes).toEqual([]);
+    expect(lines.map((l) => l.event)).toEqual([
+      'reticle_mcp_proxy_client_disconnected',
+      'reticle_mcp_proxy_client_disconnected',
+    ]);
+  });
+
+  /** The over-filtering guard: a genuine crash must still be reported, and still be fatal. */
+  it('a real uncaught exception is still a crash', () => {
+    const proc = fakeProc();
+    const crashes: CrashKind[] = [];
+    installProxyResilience(proc, () => undefined, (kind) => crashes.push(kind));
+    proc.emit('uncaughtException', new Error('undefined is not a function'));
+    expect(crashes).toEqual([CrashKind.UNCAUGHT_EXCEPTION]);
+  });
+
+  it('an error whose MESSAGE says EPIPE but carries no code is still a crash', () => {
+    const proc = fakeProc();
+    let fatal = 0;
+    const logs: string[] = [];
+    installDaemonResilience(
+      proc,
+      (event) => logs.push(event),
+      () => (fatal += 1),
+    );
+    proc.emit('uncaughtException', new Error('write EPIPE'));
+    expect(fatal, 'text is not evidence — only err.code is').toBe(1);
+    expect(logs).toEqual(['reticle_daemon_uncaught_exception']);
+  });
+
+  it('an unrelated errno (ENOENT) is still a crash', () => {
+    const proc = fakeProc();
+    let fatal = 0;
+    installDaemonResilience(
+      proc,
+      () => undefined,
+      () => (fatal += 1),
+    );
+    proc.emit('uncaughtException', epipe('ENOENT'));
+    expect(fatal).toBe(1);
+  });
+});
+
 describe('installProxyResilience — the MCP server must outlive its own bugs', () => {
   it('logs an uncaught exception and KEEPS SERVING — exiting would disconnect the client', () => {
     const proc = fakeProc();

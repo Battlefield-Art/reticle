@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bugsInResult } from './bug-found.js';
-import { BugSource, ContradictionKind } from '@reticlehq/core';
+import { BugAttribution, BugSource, ContradictionKind } from '@reticlehq/core';
 
 /**
  * The outcome metric — the only number that can honestly be published or shown to an investor,
@@ -20,6 +20,7 @@ describe('bugsInResult', () => {
         kind: 'signal-contradicted',
         falseGreen: true,
         tool: 'reticle_assert',
+        attribution: BugAttribution.APP,
       },
     ]);
   });
@@ -249,4 +250,94 @@ describe('a flow that never ran is not a regression', () => {
       }),
     ).toHaveLength(1);
   });
+});
+
+/**
+ * WHOSE fault it was — the field that makes `bugsFound` publishable at all.
+ *
+ * Measured over one real session: 8 `bug_found` events, ONE of them a defect in the app. Seven were
+ * the agent's own bad predicates and an empty ref, every one published as a defect in the customer's
+ * product. A founder steering on that number is steering on noise, and no amount of care in the
+ * pitch fixes a number computed that way.
+ */
+describe('a defect says whose fault it was, or says nothing', () => {
+  it('blames the APP for a contradiction — two of its own channels disagreeing', () => {
+    const [bug] = bugsInResult('reticle_assert', {
+      pass: true,
+      contradictions: [{ kind: 'signal-contradicted' }],
+    });
+    expect(bug?.attribution).toBe(BugAttribution.APP);
+  });
+
+  it('blames the APP for a crawl anomaly — nobody wrote a predicate to get it wrong', () => {
+    const [bug] = bugsInResult('reticle_crawl', { anomalies: [{ kind: 'console-error' }] });
+    expect(bug?.attribution).toBe(BugAttribution.APP);
+  });
+
+  it('blames the APP for a replay regression — it used to pass', () => {
+    const [bug] = bugsInResult('reticle_flow_verify', { status: 'fail', failures: [{ f: 1 }] });
+    expect(bug?.attribution).toBe(BugAttribution.APP);
+  });
+
+  /**
+   * The one contradiction kind Reticle can manufacture on its own.
+   *
+   * `request-never-settled` is raised from the ABSENCE of a settle event, so anything the observer
+   * failed to see — a Next dev-overlay poll, HMR, a request that outlived the window — produces it
+   * without the app doing anything wrong. Driven for real against a Next app it fired twice, both
+   * from the dev overlay, and both were published as defects in the customer's app. Every other
+   * contradiction is two of the app's OWN channels disagreeing, which the app owns.
+   */
+  it('says nothing on request-never-settled — absence of evidence names no owner', () => {
+    const [bug] = bugsInResult('reticle_act_and_wait', {
+      verified: 'no',
+      verdict: { pass: false },
+      contradictions: [{ kind: ContradictionKind.REQUEST_NEVER_SETTLED }],
+    });
+    expect(bug?.source).toBe(BugSource.CONTRADICTION);
+    expect(bug !== undefined && 'attribution' in bug).toBe(false);
+  });
+
+  it('says nothing on request-never-settled from a CRAWL either — same kind, same evidence', () => {
+    const [bug] = bugsInResult('reticle_crawl', {
+      anomalies: [{ kind: ContradictionKind.REQUEST_NEVER_SETTLED }],
+    });
+    expect(bug?.source).toBe(BugSource.CRAWL);
+    expect(bug !== undefined && 'attribution' in bug).toBe(false);
+  });
+
+  it('still blames the APP for every other contradiction kind', () => {
+    for (const kind of Object.values(ContradictionKind)) {
+      if (ContradictionKind.REQUEST_NEVER_SETTLED === kind) continue;
+      const [bug] = bugsInResult('reticle_assert', { pass: false, contradictions: [{ kind }] });
+      expect(bug?.attribution, kind).toBe(BugAttribution.APP);
+    }
+  });
+
+  it('blames the REQUEST when the agent named a store path that does not exist', () => {
+    // Captured verbatim in the audit: `state.path-missing` from a store name that was never there,
+    // shipped as a defect found in the customer's app.
+    const [bug] = bugsInResult('reticle_assert', { pass: false, assertion: 'state.path-missing' });
+    expect(bug?.attribution).toBe(BugAttribution.REQUEST);
+  });
+
+  it('blames RETICLE when there was no readable store to read', () => {
+    const [bug] = bugsInResult('reticle_assert', { pass: false, assertion: 'state.unreadable' });
+    expect(bug?.attribution).toBe(BugAttribution.RETICLE);
+  });
+
+  /**
+   * The omission is the design. `element.present` covers "the button is missing", "the API is down"
+   * and "the agent mistyped a testid" identically, and `signal.absent` covers both a signal the app
+   * never fired and a ref Reticle drove into nothing. Guessing an owner would swap an inflated
+   * number for a confident wrong one; absent lets a dashboard exclude it instead.
+   */
+  it.each(['element.present', 'signal.absent', 'net.status', 'assertion-failed'])(
+    'says nothing rather than guessing on %s',
+    (assertion) => {
+      const [bug] = bugsInResult('reticle_assert', { pass: false, assertion });
+      expect(bug).toBeDefined();
+      expect(bug !== undefined && 'attribution' in bug).toBe(false);
+    },
+  );
 });
