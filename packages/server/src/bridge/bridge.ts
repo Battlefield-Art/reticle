@@ -21,12 +21,12 @@ import {
   type HelloMessage,
   CONTRACT_FINGERPRINT,
 } from '@reticlehq/core';
-import { Session, SessionManager } from './session/session.js';
+import { Session, SessionManager } from '../session/session.js';
 import { tokensMatch } from './token-auth.js';
-import { log } from './log.js';
-import { describeSkew, sdkFix, SkewPair } from './version-skew.js';
-import { noteVersionSkew } from './version-nudge.js';
-import { SERVER_VERSION } from './server-version.js';
+import { log } from '../log.js';
+import { describeSkew, sdkFix, SkewPair } from '../version/version-skew.js';
+import { noteVersionSkew } from '../version/version-nudge.js';
+import { SERVER_VERSION } from '../version/server-version.js';
 
 /**
  * Take the mutable half of a session's identity from a repeat HELLO.

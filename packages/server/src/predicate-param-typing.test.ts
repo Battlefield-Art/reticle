@@ -21,7 +21,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { advertisedTools, advertisedConfig } from './mcp.js';
+import { advertisedTools, advertisedConfig } from './mcp/mcp.js';
 import { TOOL_PROFILE } from './tools/profiles.js';
 
 const PREDICATE_MARKER = 'Predicate object';

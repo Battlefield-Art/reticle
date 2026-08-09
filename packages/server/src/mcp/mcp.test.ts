@@ -9,10 +9,10 @@ import {
   installFriendlyArgErrors,
   withSessionEnvelope,
 } from './mcp.js';
-import { TOOL_PROFILE } from './tools/profiles.js';
-import { TOOLS, type ToolDeps } from './tools/tools.js';
-import { SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
-import { ReticleTool } from './tools/tool-names.js';
+import { TOOL_PROFILE } from '../tools/profiles.js';
+import { TOOLS, type ToolDeps } from '../tools/tools.js';
+import { SESSION_BOUND_TOOLS } from '../tools/invoke-tool.js';
+import { ReticleTool } from '../tools/tool-names.js';
 
 describe('withSessionEnvelope — spliced fields survive structuredContent validation', () => {
   // `warning` rides with `session` from healthEnvelope on a throttled tab — it is spliced by runTool

@@ -1,11 +1,11 @@
 import { ReticleEnv } from '@reticlehq/core';
-import type { StartOptions } from './index.js';
+import type { StartOptions } from '../index.js';
 import {
   defaultPairingTokenDir,
   nodePairingTokenDeps,
   readOrCreatePairingToken,
 } from './pairing-token.js';
-import { log } from './log.js';
+import { log } from '../log.js';
 
 /** The security contract the bridge/daemon enforce: bind host, pairing token, and WS origin allow-list. */
 interface BridgeSecurity {

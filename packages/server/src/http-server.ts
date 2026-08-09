@@ -2,7 +2,7 @@ import * as http from 'node:http';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { MCP_SSE_PATH, MCP_MESSAGE_PATH, STATUS_PATH } from '@reticlehq/core';
-import { noteAgentPeer, PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './peer-announce.js';
+import { noteAgentPeer, PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './version/peer-announce.js';
 import { log } from './log.js';
 import { reportMcpConnected } from './telemetry/mcp-connection.js';
 import {
@@ -11,7 +11,7 @@ import {
   isLoopbackPeer,
   requestToken,
   tokensMatch,
-} from './token-auth.js';
+} from './bridge/token-auth.js';
 
 export interface SharedServer {
   readonly httpServer: http.Server;

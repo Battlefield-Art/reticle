@@ -25,20 +25,20 @@ import {
   VerdictStatus,
   type ReticleVerificationRun,
 } from '@reticlehq/core';
-import { start, type RunningServer } from './index.js';
-import { resolveCloudConfig, syncRunToCloud, SyncOutcome } from './cloud/cloud-sync.js';
-import { ReticleRunner } from './runs/reticle-runner.js';
-import { createRunnerPort } from './runs/runner-port.js';
-import { RunStore } from './runs/run-store.js';
-import { renderRunReport } from './runs/render-report.js';
-import { BaselineStore } from './project/baselines.js';
-import { RecordingStore } from './flows/recordings.js';
-import { FlowStore } from './flows/flows.js';
-import { ProjectStore } from './project/project-store.js';
-import { AnnotationStore } from './flows/annotation-store.js';
-import { createNodeFileSystem } from './project/fs-port.js';
-import type { SessionManager } from './session/session-manager.js';
-import type { ToolDeps } from './tools/tools.js';
+import { start, type RunningServer } from '../index.js';
+import { resolveCloudConfig, syncRunToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
+import { ReticleRunner } from '../runs/reticle-runner.js';
+import { createRunnerPort } from '../runs/runner-port.js';
+import { RunStore } from '../runs/run-store.js';
+import { renderRunReport } from '../runs/render-report.js';
+import { BaselineStore } from '../project/baselines.js';
+import { RecordingStore } from '../flows/recordings.js';
+import { FlowStore } from '../flows/flows.js';
+import { ProjectStore } from '../project/project-store.js';
+import { AnnotationStore } from '../flows/annotation-store.js';
+import { createNodeFileSystem } from '../project/fs-port.js';
+import type { SessionManager } from '../session/session-manager.js';
+import type { ToolDeps } from '../tools/tools.js';
 
 const EXIT_PASS = 0;
 const EXIT_FAIL = 1;

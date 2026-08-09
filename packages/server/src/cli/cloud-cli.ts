@@ -7,16 +7,16 @@
  * is `<repo>/.reticle/cloud.json`. Auth for a command = `RETICLE_CLOUD_KEY` env (agent) OR the login token.
  */
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { NodePlatform } from './platform.js';
+import { NodePlatform } from '../platform.js';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { createNodeFileSystem } from './project/fs-port.js';
-import { RunStore } from './runs/run-store.js';
-import { resolveProjectCloud } from './cloud/cloud-config.js';
-import { syncRunToCloud, SyncOutcome } from './cloud/cloud-sync.js';
+import { createNodeFileSystem } from '../project/fs-port.js';
+import { RunStore } from '../runs/run-store.js';
+import { resolveProjectCloud } from '../cloud/cloud-config.js';
+import { syncRunToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
 
 const DEFAULT_URL = 'http://localhost:8890';
 const RETICLE_DIR = '.reticle';

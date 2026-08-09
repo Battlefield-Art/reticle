@@ -12,7 +12,7 @@ import {
 } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { daemonRegistryFileName, ReticleEnv, type DaemonRegistryEntry } from '@reticlehq/core';
-import { log } from './log.js';
+import { log } from '../log.js';
 
 /** Env override for the whole state directory — see ReticleEnv.STATE_DIR. */
 export const STATE_DIR_ENV = ReticleEnv.STATE_DIR;

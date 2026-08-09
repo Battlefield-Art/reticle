@@ -16,10 +16,10 @@ import {
   fingerprintCrash,
   MAX_REPORTED_FRAMES,
   reticleFrames,
-} from './telemetry/error-fingerprint.js';
-import { getSessionMetrics } from './telemetry/session-metrics.js';
-import { machineSnapshot } from './telemetry/machine-snapshot.js';
-import { getTelemetry } from './telemetry/telemetry.js';
+} from '../telemetry/error-fingerprint.js';
+import { getSessionMetrics } from '../telemetry/session-metrics.js';
+import { machineSnapshot } from '../telemetry/machine-snapshot.js';
+import { getTelemetry } from '../telemetry/telemetry.js';
 
 export interface ProcessLike {
   on(event: string, listener: (arg: unknown) => void): unknown;

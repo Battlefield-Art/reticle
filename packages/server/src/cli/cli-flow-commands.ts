@@ -7,23 +7,23 @@
  */
 
 import { readProjectId } from './cli-port.js';
-import { changedFilesSince } from './flows/git-changed.js';
+import { changedFilesSince } from '../flows/git-changed.js';
 import { join } from 'node:path';
 import { ReticleDir, RunFlowStatus } from '@reticlehq/core';
-import { FlowStore } from './flows/flows.js';
-import { RunStore } from './runs/run-store.js';
-import { createNodeFileSystem, type FileSystemPort } from './project/fs-port.js';
-import { affectedSavedFlows, type NamedFlow } from './flows/flow-sources.js';
-import { gateDecision } from './flows/gate.js';
-import { FlakeStore } from './flows/flake-store.js';
-import { formatBuddyStatus } from './flows/buddy-status.js';
-import { CapsuleStore } from './capsule/capsule-store.js';
-import { AssertionTiersStore } from './flows/assertion-tiers-store.js';
-import { detectDowngrades } from './flows/assertion-integrity.js';
-import { computeCoverage } from './flows/coverage.js';
-import { createWatchBatcher } from './flows/watch-batcher.js';
+import { FlowStore } from '../flows/flows.js';
+import { RunStore } from '../runs/run-store.js';
+import { createNodeFileSystem, type FileSystemPort } from '../project/fs-port.js';
+import { affectedSavedFlows, type NamedFlow } from '../flows/flow-sources.js';
+import { gateDecision } from '../flows/gate.js';
+import { FlakeStore } from '../flows/flake-store.js';
+import { formatBuddyStatus } from '../flows/buddy-status.js';
+import { CapsuleStore } from '../capsule/capsule-store.js';
+import { AssertionTiersStore } from '../flows/assertion-tiers-store.js';
+import { detectDowngrades } from '../flows/assertion-integrity.js';
+import { computeCoverage } from '../flows/coverage.js';
+import { createWatchBatcher } from '../flows/watch-batcher.js';
 import { watch } from 'node:fs';
-import { log } from './log.js';
+import { log } from '../log.js';
 /** Load the {name, steps} of every saved flow for the active project. */
 /** Explicit files plus, when --since is given, the git-changed files since that ref. */
 export async function resolveChangedFiles(

@@ -33,7 +33,7 @@ import { platform } from 'node:os';
 import { getTelemetry } from './telemetry.js';
 import { noteFeedbackUndelivered } from './feedback-delivery.js';
 import { isReticleSourceCheckout } from './dev-repo.js';
-import { SERVER_VERSION } from '../server-version.js';
+import { SERVER_VERSION } from '../version/server-version.js';
 import { feedbackContext, type SessionFacts } from './feedback-context.js';
 
 /** Kills the feedback channel ONLY — adoption counters keep flowing. */

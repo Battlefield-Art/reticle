@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CLI_USAGE, parseCliArgs } from './cli.js';
-import { summarizeStatus } from './cli-launch.js';
+import { summarizeStatus } from './cli/cli-launch.js';
 
 const PORT = 7333;
 const URL = 'http://localhost:3000';

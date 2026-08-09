@@ -17,9 +17,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Bridge } from '../bridge.js';
+import { Bridge } from '../bridge/bridge.js';
 import type { ToolDeps } from './tools.js';
-import { FakeBrowser, callTool, makeDeps, waitUntil } from '../bridge.test-harness.js';
+import { FakeBrowser, callTool, makeDeps, waitUntil } from '../bridge/bridge.test-harness.js';
 
 describe('reticle_baseline save → diff round trip', () => {
   let bridge: Bridge;

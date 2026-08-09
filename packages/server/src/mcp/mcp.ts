@@ -1,30 +1,30 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { PredicateSchema } from './events/predicate.js';
+import { PredicateSchema } from '../events/predicate.js';
 import { isToonable, resultToToon } from '@reticlehq/core';
-import { TOOLS, type ToolDeps } from './tools/tools.js';
-import type { ToolDef } from './tools/tools.js';
+import { TOOLS, type ToolDeps } from '../tools/tools.js';
+import type { ToolDef } from '../tools/tools.js';
 import {
   filterTools,
   describeToolProfile,
   TOOL_PROFILE,
   type ToolProfile,
-} from './tools/profiles.js';
-import { buildDynamicTools } from './tools/dynamic-tools.js';
-import { runTool, SESSION_BOUND_TOOLS } from './tools/invoke-tool.js';
-import { sessionEnvelopeShape } from './tools/tool-kit.js';
-import { buildErrorPayload } from './tools/error-recovery.js';
+} from '../tools/profiles.js';
+import { buildDynamicTools } from '../tools/dynamic-tools.js';
+import { runTool, SESSION_BOUND_TOOLS } from '../tools/invoke-tool.js';
+import { sessionEnvelopeShape } from '../tools/tool-kit.js';
+import { buildErrorPayload } from '../tools/error-recovery.js';
 import { resultIsError } from './mcp-is-error.js';
-import { unadvertisedToolHelp } from './tools/unadvertised-help.js';
+import { unadvertisedToolHelp } from '../tools/unadvertised-help.js';
 
 /** The JSON-RPC method the SDK registers its tool dispatcher under. */
 const CALL_TOOL_METHOD = 'tools/call';
-import { log } from './log.js';
-import { SERVER_VERSION } from './server-version.js';
-import { MCP_SERVER_NAME } from './init/mcp.js';
-import { setMcpClientNameHook } from './telemetry/feedback-context.js';
-import { getSessionMetrics } from './telemetry/session-metrics.js';
+import { log } from '../log.js';
+import { SERVER_VERSION } from '../version/server-version.js';
+import { MCP_SERVER_NAME } from '../init/mcp.js';
+import { setMcpClientNameHook } from '../telemetry/feedback-context.js';
+import { getSessionMetrics } from '../telemetry/session-metrics.js';
 
 /**
  * Merge the runtime-spliced envelope (health/lease/age/control) into a session-bound tool's declared

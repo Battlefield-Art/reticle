@@ -6,7 +6,7 @@
  */
 
 import { NPX, MCP_SERVER_NAME, npxServerArgs } from './mcp.js';
-import { RETICLE_NPM_PACKAGE } from '../server-version.js';
+import { RETICLE_NPM_PACKAGE } from '../version/server-version.js';
 
 /** Path of Cursor's global MCP config, relative to the user's home directory. */
 export const CURSOR_MCP_RELPATH = '.cursor/mcp.json';

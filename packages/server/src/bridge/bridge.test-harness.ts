@@ -7,13 +7,13 @@ import {
   type ElementQuery,
 } from '@reticlehq/core';
 import type { Bridge } from './bridge.js';
-import { BaselineStore } from './project/baselines.js';
-import { createNodeFileSystem } from './project/fs-port.js';
-import { RecordingStore } from './flows/recordings.js';
-import { FlowStore } from './flows/flows.js';
-import { ProjectStore } from './project/project-store.js';
-import { AnnotationStore } from './flows/annotation-store.js';
-import { TOOLS, type ToolDeps } from './tools/tools.js';
+import { BaselineStore } from '../project/baselines.js';
+import { createNodeFileSystem } from '../project/fs-port.js';
+import { RecordingStore } from '../flows/recordings.js';
+import { FlowStore } from '../flows/flows.js';
+import { ProjectStore } from '../project/project-store.js';
+import { AnnotationStore } from '../flows/annotation-store.js';
+import { TOOLS, type ToolDeps } from '../tools/tools.js';
 
 /** The app-advertised testable surface a FakeBrowser reports for an reticle_capabilities round-trip. */
 const FAKE_CAPABILITIES = {

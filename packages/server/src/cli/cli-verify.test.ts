@@ -7,7 +7,7 @@ import {
   RunTrigger,
   type ReticleVerificationRun,
 } from '@reticlehq/core';
-import { buildVerificationRun, type VerificationRunInput } from './runs/build-verification-run.js';
+import { buildVerificationRun, type VerificationRunInput } from '../runs/build-verification-run.js';
 import { runVerify, urlParts, type VerifyConnection, type VerifyPorts } from './cli-verify.js';
 
 const NOW = 1_700_000_000_000;

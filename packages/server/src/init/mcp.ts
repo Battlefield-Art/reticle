@@ -12,7 +12,7 @@
  * global agent config.
  */
 
-import { RETICLE_NPM_PACKAGE } from '../server-version.js';
+import { RETICLE_NPM_PACKAGE } from '../version/server-version.js';
 
 export const MCP_SERVER_NAME = 'reticle';
 

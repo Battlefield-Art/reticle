@@ -12,8 +12,8 @@ import {
   ReticleEnv,
   CONTRACT_FINGERPRINT,
 } from '@reticlehq/core';
-import { SERVER_VERSION } from './server-version.js';
-import { PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './peer-announce.js';
+import { SERVER_VERSION } from '../version/server-version.js';
+import { PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from '../version/peer-announce.js';
 import {
   onStreamDrop,
   onClientRequest,
@@ -21,7 +21,7 @@ import {
   OnDrop,
   OnRequest,
 } from './proxy-lifecycle.js';
-import { log } from './log.js';
+import { log } from '../log.js';
 import { OutageStage, reportMcpOutage } from './mcp-outage.js';
 
 const DEFAULT_DAEMON_READY_TIMEOUT_MS = 10_000;

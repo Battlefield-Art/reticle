@@ -14,8 +14,8 @@
  * Safe because the proxy replays the client's own `initialize` to the daemon whenever a session is
  * finally established (see `replayLines`), so the daemon still gets its handshake in order.
  */
-import { MCP_SERVER_NAME } from './init/mcp.js';
-import { SERVER_VERSION } from './server-version.js';
+import { MCP_SERVER_NAME } from '../init/mcp.js';
+import { SERVER_VERSION } from '../version/server-version.js';
 
 /** The version we answer with if the client proposed none. */
 const FALLBACK_PROTOCOL_VERSION = '2024-11-05';

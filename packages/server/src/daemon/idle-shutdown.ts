@@ -1,6 +1,6 @@
 import { SESSION_LIFECYCLE } from '@reticlehq/core';
 import { idleGraceMs } from './idle-grace.js';
-import { log } from './log.js';
+import { log } from '../log.js';
 
 export interface IdleShutdownOptions {
   /** True when nothing is using the daemon: no agent connected, no browser session, no pool lease. */

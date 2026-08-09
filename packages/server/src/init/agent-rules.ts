@@ -12,7 +12,7 @@
  */
 
 import { NPX } from './mcp.js';
-import { RETICLE_NPM_PACKAGE } from '../server-version.js';
+import { RETICLE_NPM_PACKAGE } from '../version/server-version.js';
 
 /** Project-root instruction files the agent re-reads every session. */
 export const CLAUDE_MD_PATH = 'CLAUDE.md';

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ReticleTool } from '../tools/tool-names.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
-import { loadNamedFlows, resolveChangedFiles } from '../cli-flow-commands.js';
+import { loadNamedFlows, resolveChangedFiles } from '../cli/cli-flow-commands.js';
 import { affectedSavedFlows } from './flow-sources.js';
 
 /**

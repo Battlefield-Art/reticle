@@ -3,11 +3,11 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventType, type JournalAction, type ReticleEvent } from '@reticlehq/core';
-import { Bridge } from '../bridge.js';
+import { Bridge } from '../bridge/bridge.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import { createNodeFileSystem } from '../project/fs-port.js';
 import type { ToolDeps } from '../tools/tools.js';
-import { FakeBrowser, callTool, makeDeps, waitUntil } from '../bridge.test-harness.js';
+import { FakeBrowser, callTool, makeDeps, waitUntil } from '../bridge/bridge.test-harness.js';
 import { makeJournalAttach } from './attach-journal.js';
 
 /**

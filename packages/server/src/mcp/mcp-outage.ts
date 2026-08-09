@@ -14,7 +14,7 @@
  */
 
 import { TelemetryEventKind } from '@reticlehq/core';
-import { getTelemetry } from './telemetry/telemetry.js';
+import { getTelemetry } from '../telemetry/telemetry.js';
 
 /** Why the stream went away, as far as the proxy can tell. */
 export const OutageStage = {

@@ -17,8 +17,8 @@ import { setBrowserMode, BrowserMode } from './telemetry/browser-mode.js';
 import type { NetworkDetail } from './input/network-detail.js';
 import { replayNamedFlow } from './flows/flow-tools.js';
 import { createSharedServer } from './http-server.js';
-import { resolveBridgeSecurityWithAutoToken } from './bridge-security.js';
-import { Bridge } from './bridge.js';
+import { resolveBridgeSecurityWithAutoToken } from './bridge/bridge-security.js';
+import { Bridge } from './bridge/bridge.js';
 import { BaselineStore } from './project/baselines.js';
 import { RecordingStore } from './flows/recordings.js';
 import { FlowStore } from './flows/flows.js';
@@ -30,10 +30,10 @@ import { ReticleRunner } from './runs/reticle-runner.js';
 import { createRunnerPort } from './runs/runner-port.js';
 import { RunStore } from './runs/run-store.js';
 import { startVerifyServer } from './runs/verify-server.js';
-import { createMcpServer } from './mcp.js';
+import { createMcpServer } from './mcp/mcp.js';
 import { SessionReaper, endAllSessions, MCP_DISCONNECT_SUMMARY } from './session/session-reaper.js';
 import { wireSessionScope } from './session/no-session-watch.js';
-import { buildIdlePredicate } from './daemon-usefulness.js';
+import { buildIdlePredicate } from './daemon/daemon-usefulness.js';
 import { resolveToolProfile } from './tools/profiles.js';
 import { statusPayload } from './status-payload.js';
 import { CdpRealInputProvider, LaunchedRealInputProvider } from './input/real-input.js';
@@ -41,7 +41,7 @@ import { cpus } from 'node:os';
 import { BrowserPool } from './pool/browser-pool.js';
 import { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launcher.js';
 import { LeaseReaper } from './pool/lease-reaper.js';
-import { readJournalEnabled, readProjectId } from './cli-port.js';
+import { readJournalEnabled, readProjectId } from './cli/cli-port.js';
 import { makeJournalAttach } from './journal/attach-journal.js';
 import { makeSessionEnd } from './journal/session-end.js';
 import { AmbientStore } from './journal/ambient-store.js';
@@ -63,7 +63,7 @@ function replayVerdictLine(result: FlowReplayResult): string {
 
 export { ReticleTool } from './tools/tool-names.js';
 export { RingBuffer } from './events/ring-buffer.js';
-export { Bridge } from './bridge.js';
+export { Bridge } from './bridge/bridge.js';
 export { Session, SessionManager } from './session/session.js';
 export type { SessionInfo, SessionHealth } from './session/session.js';
 export { buildSessionRecommendation } from './session/session-recommendation.js';
@@ -99,7 +99,7 @@ export { BrowserPool, DEFAULT_LEASE_TTL_MS } from './pool/browser-pool.js';
 export type { Lease, Launcher, PooledBrowser } from './pool/browser-pool.js';
 export { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launcher.js';
 export { appendReticleParams } from './tools/lease-tools.js';
-export { writePid, removePid, isRunning, logPath, readPid, isAlive } from './daemon.js';
+export { writePid, removePid, isRunning, logPath, readPid, isAlive } from './daemon/daemon.js';
 export type { CrawlReport, CrawlAnomaly, CrawlOptions, CrawlSession } from './crawl/crawl.js';
 export { scrollToFind } from './input/scroll-find.js';
 export type { ScrollFindResult, ScrollFindQuery, ScrollFindSession } from './input/scroll-find.js';
@@ -223,7 +223,7 @@ export interface RunningServer {
   close: () => Promise<void>;
 }
 
-export { resolveBridgeSecurity } from './bridge-security.js';
+export { resolveBridgeSecurity } from './bridge/bridge-security.js';
 
 /**
  * Build the shared browser pool (one headless Chromium, N capped isolated leased contexts). Lazy —

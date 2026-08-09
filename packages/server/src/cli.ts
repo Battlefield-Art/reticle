@@ -8,18 +8,18 @@ import {
   handleGate,
   loadNamedFlows,
   resolveChangedFiles,
-} from './cli-flow-commands.js';
+} from './cli/cli-flow-commands.js';
 import { RETICLE_DEFAULT_PORT, ReticleDir, ReticleEnv } from '@reticlehq/core';
 import { loadDotEnv } from './telemetry/dev-repo.js';
 import { createNodeFileSystem } from './project/fs-port.js';
 import { affectedSavedFlows } from './flows/flow-sources.js';
 
 import { availableUpdate } from './update/update-nudge.js';
-import { handleUpdate, handleRollback } from './cli-update-commands.js';
+import { handleUpdate, handleRollback } from './cli/cli-update-commands.js';
 
 import { start, startDaemon } from './index.js';
-import { isCloudCommand, runCloudCommand } from './cloud-cli.js';
-import { SERVER_VERSION } from './server-version.js';
+import { isCloudCommand, runCloudCommand } from './cli/cloud-cli.js';
+import { SERVER_VERSION } from './version/server-version.js';
 import { log } from './log.js';
 import {
   readPid,
@@ -29,21 +29,21 @@ import {
   spawnDaemon,
   discoverDaemonPort,
   writeDaemonRegistry,
-} from './daemon.js';
-import { waitForDaemon, startMcpProxy, probeDaemon } from './mcp-proxy.js';
-import { installDaemonResilience, installProxyResilience } from './daemon-resilience.js';
-import { IdleShutdown, resolveIdleShutdownMs, resolveIdleCheckMs } from './idle-shutdown.js';
+} from './daemon/daemon.js';
+import { waitForDaemon, startMcpProxy, probeDaemon } from './mcp/mcp-proxy.js';
+import { installDaemonResilience, installProxyResilience } from './daemon/daemon-resilience.js';
+import { IdleShutdown, resolveIdleShutdownMs, resolveIdleCheckMs } from './daemon/idle-shutdown.js';
 import {
   fetchStatus,
   summarizeStatus,
   warnOnDaemonSkew,
   decideOpen,
   openInBrowser,
-} from './cli-launch.js';
-import { handleVerify } from './cli-verify.js';
+} from './cli/cli-launch.js';
+import { handleVerify } from './cli/cli-verify.js';
 import { summarizeHunt, type HuntAnomaly, type HuntRun } from './hunt/hunt-report.js';
 import { runInit } from './init/run.js';
-import { handleDoctor } from './cli-doctor.js';
+import { handleDoctor } from './cli/cli-doctor.js';
 import { buildNodeIo } from './init/node-io.js';
 import { describeLicense } from './license/license.js';
 import {
@@ -51,7 +51,7 @@ import {
   devServerPortWarning,
   readProjectPort,
   readProjectId,
-} from './cli-port.js';
+} from './cli/cli-port.js';
 import type { StartOptions } from './index.js';
 
 import {
@@ -64,14 +64,14 @@ import {
   HTTP_TOKEN_FLAG,
   parseCliArgs,
   CLI_USAGE,
-} from './cli-parse.js';
+} from './cli/cli-parse.js';
 import { handleFeedback, handleIdentify, handleTelemetry } from './telemetry/feedback-cli.js';
 import { installDaemonTelemetry } from './telemetry/daemon-telemetry.js';
 import { reportCliRun } from './telemetry/cli-telemetry.js';
 
 // Re-exported so existing imports (and the CLI tests) keep resolving from './cli.js'.
 export { parseCliArgs, CLI_USAGE };
-export type { CliResult } from './cli-parse.js';
+export type { CliResult } from './cli/cli-parse.js';
 
 function handleInit(parsed: {
   port: number | undefined;

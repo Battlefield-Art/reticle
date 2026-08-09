@@ -11,7 +11,7 @@
  */
 
 import { request } from 'node:http';
-import { DEV_SERVER_PORTS } from '../cli-port.js';
+import { DEV_SERVER_PORTS } from '../cli/cli-port.js';
 import { looksLikeDevServer } from './looks-like-dev-server.js';
 
 /** Give up fast: an HTTP answer from localhost either lands quickly or nothing is there. */

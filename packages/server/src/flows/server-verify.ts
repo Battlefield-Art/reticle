@@ -7,7 +7,7 @@
  */
 import type { SuiteVerdict, SuiteFlowResult } from '@reticlehq/core';
 import type { ToolDeps } from '../tools/tools.js';
-import { VerifyMode, type ProjectCloud } from './../cloud/cloud-config.js';
+import { VerifyMode, type ProjectCloud } from '../cloud/cloud-config.js';
 import { submitServerVerification, type ServerVerification } from '../cloud/cloud-sync.js';
 
 const PASS = 'pass';

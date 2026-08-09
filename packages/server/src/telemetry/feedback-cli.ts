@@ -1,8 +1,8 @@
 import { FeedbackKind, FeedbackSource } from '@reticlehq/core';
-import { BUG_FLAG, RATING_FLAG } from '../cli-parse.js';
+import { BUG_FLAG, RATING_FLAG } from '../cli/cli-parse.js';
 import { describeFeedbackPayload, submitFeedback } from './feedback.js';
 import { describeTelemetry, setTelemetryEnabled } from './telemetry.js';
-import { TelemetryAction } from '../cli-parse.js';
+import { TelemetryAction } from '../cli/cli-parse.js';
 import {
   clearIdentity,
   IDENTIFY_NOTICE,

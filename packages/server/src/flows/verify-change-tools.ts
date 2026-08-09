@@ -5,7 +5,7 @@ import { Verified } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 import { asNumber, asRecord, asString } from '../tools/tools-helpers.js';
-import { loadNamedFlows, resolveChangedFiles } from '../cli-flow-commands.js';
+import { loadNamedFlows, resolveChangedFiles } from '../cli/cli-flow-commands.js';
 import { affectedSavedFlows } from './flow-sources.js';
 import { FLOW_TOOLS } from './flow-tools.js';
 import { findContradictions } from '../events/contradictions.js';

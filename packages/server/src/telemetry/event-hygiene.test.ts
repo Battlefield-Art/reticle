@@ -24,7 +24,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { TelemetryEventKind, isSessionScoped } from '@reticlehq/core';
-import { knownCommand } from '../cli-parse.js';
+import { knownCommand } from '../cli/cli-parse.js';
 import { isHumanCliCommand } from './cli-telemetry.js';
 import { createTelemetry } from './telemetry.js';
 import { describeToolParams } from './argument-shape.js';

@@ -57,7 +57,7 @@ import { CURSOR_DIR_RELPATH, CURSOR_MCP_RELPATH } from './cursor.js';
 import { deriveProjectId, packageName } from './project-id.js';
 import { VITE_DEV_MODULE_PATH } from './snippets.js';
 import { CLAUDE_COMMAND_PATH, CURSOR_COMMAND_PATH } from './slash-command.js';
-import { SERVER_VERSION } from '../server-version.js';
+import { SERVER_VERSION } from '../version/server-version.js';
 import { InitFailure, reportInitOutcome } from '../telemetry/init-telemetry.js';
 
 /** Lockfile basenames, in package-manager preference order (mirrors detect.ts). */

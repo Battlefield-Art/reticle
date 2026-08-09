@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { DriveErrorCode, InputMode, SessionState } from '@reticlehq/core';
 import type { CommandResult } from '@reticlehq/core';
 import { start, type RunningServer } from './index.js';
-import { PAIRING_TOKEN_DIR_ENV } from './pairing-token.js';
+import { PAIRING_TOKEN_DIR_ENV } from './bridge/pairing-token.js';
 
 // start auto-provisions a pairing token; keep it out of the real ~/.reticle during tests.
 process.env[PAIRING_TOKEN_DIR_ENV] = join(tmpdir(), 'reticle-drive-token-test');

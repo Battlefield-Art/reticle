@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnDaemon, type SpawnDaemonDeps, type SpawnedChild } from './daemon.js';
+import { spawnDaemon, type SpawnDaemonDeps, type SpawnedChild } from './daemon/daemon.js';
 
 describe('spawnDaemon with injectable deps', () => {
   let home: string;

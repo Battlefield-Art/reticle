@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ReticleEnv } from '@reticlehq/core';
-import { readPid, isAlive, reticleStateHome } from './daemon.js';
-import { diagnoseDesktop, isDesktopProject } from './init/desktop-doctor.js';
+import { readPid, isAlive, reticleStateHome } from '../daemon/daemon.js';
+import { diagnoseDesktop, isDesktopProject } from '../init/desktop-doctor.js';
 
 /**
  * `reticle doctor` — collapse the ~6 independent first-run failure modes into one command. Checks the

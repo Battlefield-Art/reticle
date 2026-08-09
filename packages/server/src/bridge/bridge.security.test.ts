@@ -9,7 +9,7 @@ import {
 } from '@reticlehq/core';
 import { BlindSpotKind } from '@reticlehq/core';
 import { Bridge } from './bridge.js';
-import { SessionManager } from './session/session-manager.js';
+import { SessionManager } from '../session/session-manager.js';
 
 const bridges: Bridge[] = [];
 const sockets: WebSocket[] = [];

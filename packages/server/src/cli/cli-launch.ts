@@ -1,11 +1,11 @@
 import * as http from 'node:http';
-import { NodePlatform } from './platform.js';
+import { NodePlatform } from '../platform.js';
 import { spawn } from 'node:child_process';
 import { isOpaqueOrigin, LOOPBACK_HOST, STATUS_PATH } from '@reticlehq/core';
-import { describeSkew, DAEMON_FIX } from './version-skew.js';
+import { describeSkew, DAEMON_FIX } from '../version/version-skew.js';
 import { CONTRACT_FINGERPRINT } from '@reticlehq/core';
-import { SERVER_VERSION } from './server-version.js';
-import { log } from './log.js';
+import { SERVER_VERSION } from '../version/server-version.js';
+import { log } from '../log.js';
 
 /**
  * CLI launch + status helpers — the daemon-introspection (`reticle status`) and the one-command

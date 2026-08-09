@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { TOOL_PROFILE, type ToolProfile } from './profiles.js';
-import { advertisedTools } from '../mcp.js';
+import { advertisedTools } from '../mcp/mcp.js';
 import { TOOLS } from './tools.js';
 
 /** The advertised size of each profile. Update WITH the surface, never after it. */

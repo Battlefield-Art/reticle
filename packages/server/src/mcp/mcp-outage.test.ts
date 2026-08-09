@@ -9,7 +9,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { TelemetryEventKind } from '@reticlehq/core';
 import { OutageStage, reportMcpOutage, resetOutageReporting } from './mcp-outage.js';
-import { getTelemetry } from './telemetry/telemetry.js';
+import { getTelemetry } from '../telemetry/telemetry.js';
 
 describe('reportMcpOutage', () => {
   beforeEach(() => {

@@ -5,16 +5,16 @@
  * installed version, restart) and the file they came from is the CLI's dispatch table, which grows
  * for entirely different reasons.
  */
-import { checkForUpdate } from './update/update-checker.js';
-import { updateTarget } from './update/update-nudge.js';
-import { applyUpdate, rollback } from './update/updater.js';
-import { SERVER_VERSION } from './server-version.js';
-import { log } from './log.js';
+import { checkForUpdate } from '../update/update-checker.js';
+import { updateTarget } from '../update/update-nudge.js';
+import { applyUpdate, rollback } from '../update/updater.js';
+import { SERVER_VERSION } from '../version/server-version.js';
+import { log } from '../log.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { reticleDepsOf, sdkSyncCommand } from './update/sdk-sync.js';
-import { detectPackageManager } from './init/detect.js';
-import { buildNodeIo } from './init/node-io.js';
+import { reticleDepsOf, sdkSyncCommand } from '../update/sdk-sync.js';
+import { detectPackageManager } from '../init/detect.js';
+import { buildNodeIo } from '../init/node-io.js';
 
 /**
  * Bring the SDK in the CURRENT project to the version being installed.
