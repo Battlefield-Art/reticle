@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   BugSource,
@@ -80,6 +81,29 @@ describe('every telemetry event kind is real and reachable', () => {
  * The tool surface is the thing that grows. A new tool is added most weeks; a new telemetry hook is
  * added almost never — so the failure mode is always "the tool shipped and the metric did not".
  */
+/**
+ * The contract doc is the thing anyone reads before touching an emitter, and CLAUDE.md points at it
+ * as the reference. It described 7 of the 15 event kinds. The other 8 — including `mcp_client_connected`,
+ * `mcp_connection_lost` and `init_completed`, the ones that answer "does the transport stay up" and
+ * "does install work" — existed only in the enum, so nobody reading the contract knew they were being
+ * sent, and nobody adding a dashboard knew to look for them.
+ *
+ * Telemetry fails silently, which is exactly why the doc is load-bearing rather than decorative. A
+ * kind that nothing documents is a kind nobody queries.
+ */
+describe('every telemetry event kind is documented', () => {
+  it('appears by name in the contract doc', () => {
+    const doc = readFileSync(
+      new URL('../../../../docs/telemetry-contract.md', import.meta.url),
+      'utf8',
+    );
+    const undocumented = Object.values(TelemetryEventKind).filter((kind) => !doc.includes(kind));
+    expect(undocumented, `add these to docs/telemetry-contract.md: ${undocumented.join(', ')}`).toEqual(
+      [],
+    );
+  });
+});
+
 describe('every tool is classified for telemetry', () => {
   it('routes through runTool, which is the ONLY place tool usage is counted', () => {
     // A tool absent from TOOLS is unreachable; a tool present in TOOLS is dispatched through runTool

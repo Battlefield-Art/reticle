@@ -80,6 +80,32 @@ Every send is wrapped and best-effort. A telemetry failure must not fail a tool 
 
 The single exception is `daemon_stopped`, which is **awaited** — because the process exits immediately after and the send would otherwise be killed. Even then a failure resolves rather than throws.
 
+## The event kinds, all of them
+
+`TelemetryEventKind` in `@reticlehq/core` is the closed list. Seven of these went undocumented here
+for months — the doc described only the session-lifecycle half — so anyone building a dashboard from
+this page could not know that the transport and install events existed at all. A kind nobody
+documents is a kind nobody queries, and telemetry that nobody queries is telemetry nobody notices
+has stopped arriving. `telemetry-contract.test.ts` now fails when a kind is missing from this table.
+
+| Kind | When | What it answers |
+| --- | --- | --- |
+| `reticle_installed` | first-ever run on a machine | install count, and the new-user curve |
+| `cli_command_run` | a human ran a `reticle` subcommand | human intent — `verify`/`gate` mean something very different from `status`. Never emitted for the internal `_daemon` spawn |
+| `daemon_started` | the daemon came up | active sessions, DAU/WAU/MAU |
+| `daemon_stopped` | clean exit | the rich session roll-up. **Count sessions with this one** — see below |
+| `session_progress` | periodic flush from a LIVE daemon | same payload, `final: false`. Sum work across both |
+| `verification_completed` | a verdict was produced | the product's reason to exist: was an app actually verified |
+| `project_profiled` | once per daemon start | stack, size, and how deeply the feature surface is used — activation vs retention |
+| `version_changed` | the running version differs from last seen | upgrade adoption, and whether a nudge caused it |
+| `runtime_crashed` | an unhandled failure in the daemon | stability |
+| `feedback_submitted` | `reticle feedback`, or an agent's report | the qualitative channel |
+| `identified` | `reticle identify` | joins anonymous machine ids to a person who volunteered one |
+| `mcp_client_connected` | an MCP client attached | how many sessions are agent-driven at all |
+| `mcp_connection_lost` | the proxy lost its daemon | **the transport-stability metric.** The disconnect that makes a user reopen `/mcp` is invisible without it |
+| `init_completed` | `reticle init` finished | does install actually work, outside the fixtures gate |
+| `bug_found` | a defect was detected in the app under test | the value delivered, as opposed to the work done |
+
 ## Sessions: `daemon_stopped` vs `session_progress`
 
 Count sessions with **`daemon_stopped`** (`final: true`). It fires once, at a clean exit.

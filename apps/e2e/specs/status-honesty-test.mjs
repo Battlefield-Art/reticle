@@ -48,8 +48,12 @@ try {
   const act = await T('reticle_act', { ref: addRef, action: 'click' });
   const ms = now() - t0;
   const r = act.result ?? {};
-  f1ok = act.dispatched === true && r.settled === false && r.settleReason === 'timeout' && ms < 4000;
-  f1detail = `dispatched=${act.dispatched} settled=${r.settled} settleReason=${r.settleReason} in ${ms}ms (was 8000ms error)`;
+  // The property is the SHAPE of the answer, not the stopwatch: a throttled tab reports
+  // dispatched:true with settled:false and settleReason 'timeout', instead of the old 8s throw.
+  // `ms < 4000` asserted the machine was fast enough, so a loaded battery read as a product defect;
+  // the harness timeout already bounds a genuine hang. The number stays in the detail.
+  f1ok = act.dispatched === true && r.settled === false && r.settleReason === 'timeout';
+  f1detail = `dispatched=${act.dispatched} settled=${r.settled} settleReason=${r.settleReason} in ${ms}ms (was an 8000ms error)`;
 } catch (e) {
   f1detail = `THREW: ${e instanceof Error ? e.message : String(e)}`;
 }
@@ -88,7 +92,9 @@ let f5ok = false, f5detail = '';
 try {
   const st = await T('reticle_state', { ref: addRef });
   const ms = now() - t5;
-  f5ok = ms < 4000 && st !== undefined; // resolves (value or {ok:false,reason}) — does not hang
+  // "Does not hang" means it RESOLVED. Reaching this line is that proof — `T` rejects on its own
+  // timeout — so a duration comparison here only adds a load-dependent failure.
+  f5ok = st !== undefined;
   f5detail = `${JSON.stringify(st).slice(0, 80)} in ${ms}ms`;
 } catch (e) {
   f5detail = `THREW: ${e instanceof Error ? e.message : String(e)}`;

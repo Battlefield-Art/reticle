@@ -47,6 +47,9 @@ const ORDER = [
   // garbage on stdin, and a foreign process stealing the port. Survival is only half the bar — the
   // other half is that every request gets an ANSWER, because a hung call is a hung agent.
   'mcp-stress-test',
+  // The wire under both of those: SDK <-> daemon. Session cap, oversized frames, malformed frames,
+  // a message flood, and sockets killed mid-handshake. Owns its own daemon on its own port.
+  'bridge-stress-test',
   // The other channel: daemon <-> page. Tabs closed mid-command, two tabs at once, a backgrounded
   // page, and a reload under a live ref. Needs the bench-app the dashboard specs use.
   'browser-stress-test',
