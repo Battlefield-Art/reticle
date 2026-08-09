@@ -209,4 +209,11 @@ describe('buildSessionUrl', () => {
     );
     expect(buildSessionUrl('http://127.0.0.1:9/x', 4460)).toBe('http://127.0.0.1:9/x');
   });
+
+  it('refuses an endpoint frame with no URL in it, rather than answering with an empty one', () => {
+    // `''` is not `null`, so an empty URL used to read as CONNECTED: the proxy posted every later
+    // message to nowhere and nothing ever reconnected. null is the whole point of the return type.
+    expect(buildSessionUrl('', 4460)).toBeNull();
+    expect(buildSessionUrl('   \t ', 4460)).toBeNull();
+  });
 });
