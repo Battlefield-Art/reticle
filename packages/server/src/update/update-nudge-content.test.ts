@@ -23,7 +23,9 @@ describe('the update nudge carries the release, not just its number', () => {
   });
 
   it('includes the changelog line when the manifest has one', () => {
-    const nudge = buildNudge('2.5.0', '2.4.1', { changelog: 'Tools refuse instead of answering wrongly.' });
+    const nudge = buildNudge('2.5.0', '2.4.1', {
+      changelog: 'Tools refuse instead of answering wrongly.',
+    });
     expect(nudge.action).toContain('Tools refuse instead of answering wrongly.');
   });
 

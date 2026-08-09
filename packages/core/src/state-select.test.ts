@@ -45,7 +45,10 @@ describe('selectPath', () => {
   });
 
   it('resolves .length on an array — the form the wait_for/assert example itself ships', () => {
-    expect(selectPath({ items: ['First task'] }, 'items.length')).toEqual({ found: true, value: 1 });
+    expect(selectPath({ items: ['First task'] }, 'items.length')).toEqual({
+      found: true,
+      value: 1,
+    });
     expect(selectPath({ todos: [1, 2, 3] }, 'todos.length')).toEqual({ found: true, value: 3 });
     // and it keeps walking afterwards is impossible (number is a leaf), but a nested array works:
     expect(selectPath({ a: { b: [[], []] } }, 'a.b.0.length')).toEqual({ found: true, value: 0 });
@@ -215,7 +218,10 @@ const RAW_CART_STATE = {
       ['', CART_ROWS, false],
       effectHook([4249, FILTERS], effectHook([CART_ROWS, FILTERS, ''], null)),
     ),
-    effectHook([4249, FILTERS], effectHook([NULLED_ROWS, FILTERS, ''], effectHook(['', null, false], null))),
+    effectHook(
+      [4249, FILTERS],
+      effectHook([NULLED_ROWS, FILTERS, ''], effectHook(['', null, false], null)),
+    ),
     effectHook([CART_ROWS, FILTERS, ''], effectHook(['', NULLED_ROWS, false], null)),
   ],
 };

@@ -25,7 +25,7 @@ describe('gotoOptions', () => {
     expect(gotoOptions(5000).waitUntil).toBe('domcontentloaded');
   });
 
-  it('passes the pool\'s nav timeout through when there is one', () => {
+  it("passes the pool's nav timeout through when there is one", () => {
     expect(gotoOptions(5000).timeout).toBe(5000);
   });
 

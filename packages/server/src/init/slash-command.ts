@@ -25,8 +25,7 @@ export const CURSOR_COMMAND_PATH = '.cursor/commands/reticle.md';
  * own `/reticle`, and overwriting that would be destroying somebody's work. This line is how the two
  * are told apart.
  */
-export const SLASH_COMMAND_SIGNATURE =
-  'description: Verify this app in the browser with Reticle';
+export const SLASH_COMMAND_SIGNATURE = 'description: Verify this app in the browser with Reticle';
 
 export const SLASH_COMMAND_BODY = `---
 ${SLASH_COMMAND_SIGNATURE} — drive one real flow and report what happened.

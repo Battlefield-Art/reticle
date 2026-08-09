@@ -32,7 +32,9 @@ describe('reconcileStack — the app outranks the directory when they disagree',
 
   it('drops the major with the stack it belonged to', () => {
     // A version read off sveltekit's package.json says nothing about a React app.
-    expect(reconcileStack({ stack: 'sveltekit', stackMajor: 2 }, ['react']).stackMajor).toBeUndefined();
+    expect(
+      reconcileStack({ stack: 'sveltekit', stackMajor: 2 }, ['react']).stackMajor,
+    ).toBeUndefined();
   });
 
   it('falls back to the directory when the app reports nothing usable', () => {

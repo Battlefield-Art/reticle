@@ -24,12 +24,18 @@ function blastRadius(
 ): string[] {
   const declaredSignals = new Set(
     expected
-      .filter((l): l is Extract<ExpectedLink, { kind: typeof ConsequenceKind.SIGNAL }> => ConsequenceKind.SIGNAL === l.kind)
+      .filter(
+        (l): l is Extract<ExpectedLink, { kind: typeof ConsequenceKind.SIGNAL }> =>
+          ConsequenceKind.SIGNAL === l.kind,
+      )
       .map((l) => l.name),
   );
   const declaredStates = new Set(
     expected
-      .filter((l): l is Extract<ExpectedLink, { kind: typeof ConsequenceKind.STATE }> => ConsequenceKind.STATE === l.kind)
+      .filter(
+        (l): l is Extract<ExpectedLink, { kind: typeof ConsequenceKind.STATE }> =>
+          ConsequenceKind.STATE === l.kind,
+      )
       .map((l) => l.name),
   );
   const radius: string[] = [];

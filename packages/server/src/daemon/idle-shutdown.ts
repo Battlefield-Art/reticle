@@ -64,10 +64,17 @@ export class IdleShutdown {
     this.#idleSince ??= now;
     // Read per CHECK, not at construction: a client attaches and detaches during a daemon's life, and
     // the question "how long should this quiet be tolerated" is only answerable now. See idle-grace.
-    const grace = idleGraceMs(this.#graceMs, this.#agentAttached?.() ?? false, this.#attachedGraceMs);
+    const grace = idleGraceMs(
+      this.#graceMs,
+      this.#agentAttached?.() ?? false,
+      this.#attachedGraceMs,
+    );
     if (now - this.#idleSince >= grace) {
       this.#fired = true;
-      log('reticle_daemon_idle_shutdown', { idleMs: now - this.#idleSince, attached: this.#agentAttached?.() ?? false });
+      log('reticle_daemon_idle_shutdown', {
+        idleMs: now - this.#idleSince,
+        attached: this.#agentAttached?.() ?? false,
+      });
       this.#onShutdown();
     }
   }

@@ -61,7 +61,12 @@ export function proposeConsequences(events: readonly ReticleEvent[]): ProposedCo
         const method = 'string' === typeof data['method'] ? data['method'] : 'GET';
         if (path !== undefined) {
           add(`net:${method} ${path}`, {
-            predicate: { kind: PredicateKind.NET, method, urlContains: path, status: data['status'] },
+            predicate: {
+              kind: PredicateKind.NET,
+              method,
+              urlContains: path,
+              status: data['status'],
+            },
             tier: TIER.CONSEQUENCE,
             label: `${method} ${path} responds`,
             weak: false,

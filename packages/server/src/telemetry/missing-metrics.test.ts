@@ -33,7 +33,10 @@ describe('the funnel-killer is countable without unpacking an array', () => {
     const m = new SessionMetrics(() => 0);
     m.recordToolError(NO_SESSION, 'reticle_snapshot');
     m.recordToolError('no connected session with id s123', 'reticle_act');
-    m.recordToolError('multiple sessions connected — pass sessionId to target one: s1, s2', 'reticle_query');
+    m.recordToolError(
+      'multiple sessions connected — pass sessionId to target one: s1, s2',
+      'reticle_query',
+    );
     m.recordToolError('command timed out after 5000ms', 'reticle_act');
     const s = m.summarize(true);
     // The first three are all "the agent could not reach an app"; the timeout is a different failure.
@@ -51,7 +54,13 @@ describe('the funnel-killer is countable without unpacking an array', () => {
 describe('a retry loop does not look like engagement', () => {
   it('records the longest run of the SAME tool called back to back', () => {
     const m = new SessionMetrics(() => 0);
-    for (const t of ['reticle_query', 'reticle_act', 'reticle_act', 'reticle_act', 'reticle_snapshot']) {
+    for (const t of [
+      'reticle_query',
+      'reticle_act',
+      'reticle_act',
+      'reticle_act',
+      'reticle_snapshot',
+    ]) {
       m.recordToolCall(t);
     }
     expect(m.summarize(true).consecutiveRepeats).toEqual({ reticle_act: 3 });

@@ -16,11 +16,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  AgentRuleStatus,
-  markedBlock,
-  mergeMarkedInstruction,
-} from './agent-rules.js';
+import { AgentRuleStatus, markedBlock, mergeMarkedInstruction } from './agent-rules.js';
 
 const STALE = `<!-- reticle:begin (managed by \`reticle init\` — edit outside these markers) -->
 ## Verifying with Reticle
@@ -42,7 +38,7 @@ describe('the managed block refreshes', () => {
     expect(mergeMarkedInstruction(current).status).toBe(AgentRuleStatus.ALREADY);
   });
 
-  it("never touches what the human wrote outside the markers", () => {
+  it('never touches what the human wrote outside the markers', () => {
     const withUserContent = `# My project\n\nSome house rules.\n\n${STALE}\n## After\n\nMore of mine.\n`;
     const result = mergeMarkedInstruction(withUserContent);
     expect(result.content).toContain('# My project');

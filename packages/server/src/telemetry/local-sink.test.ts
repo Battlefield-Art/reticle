@@ -72,7 +72,12 @@ describe('the local telemetry sink', () => {
         env: { RETICLE_TELEMETRY_FILE: path, RETICLE_TELEMETRY_KEY: 'k' },
       });
       await t.emit(TelemetryEventKind.VERIFICATION_COMPLETED, {
-        verification: { via: 'reticle_assert', verified: 'yes', passed: true, falseGreenCaught: false },
+        verification: {
+          via: 'reticle_assert',
+          verified: 'yes',
+          passed: true,
+          falseGreenCaught: false,
+        },
       });
       const props = readLines(path)[0]?.['properties'] as Record<string, unknown>;
       // Flattened exactly as the wire flattens it, so a check reading the file checks the real thing.

@@ -182,10 +182,10 @@ export function buildSuiteVerdict(
     0 === total
       ? 'no flows to verify — nothing was checked. Record one with reticle_record { action: "start" }, then reticle_flow_save.'
       : 0 === failed
-      ? 0 === unverifiable.length
-        ? `all ${total} flow${1 === total ? '' : 's'} pass`
-        : `${String(passed)}/${String(total)} flows verified${cannotFail}`
-      : `${passed}/${total} flows pass — ${failed} need attention: ${failures.map((f) => f.flow).join(', ')}${cannotFail}`;
+        ? 0 === unverifiable.length
+          ? `all ${total} flow${1 === total ? '' : 's'} pass`
+          : `${String(passed)}/${String(total)} flows verified${cannotFail}`
+        : `${passed}/${total} flows pass — ${failed} need attention: ${failures.map((f) => f.flow).join(', ')}${cannotFail}`;
   return {
     status,
     total,

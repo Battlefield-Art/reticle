@@ -34,8 +34,10 @@ import { EventType, type ReticleEvent } from '@reticlehq/core';
 describe('a predicate key that is not real is refused, never dropped', () => {
   it('route { path } no longer degrades to "any route change"', () => {
     const parsed = PredicateSchema.parse({ kind: 'route', path: '/checkout' });
-    expect(parsed, 'path is the state predicate\'s spelling — accept it, do not silently drop it')
-      .toMatchObject({ kind: 'route', pathname: '/checkout' });
+    expect(
+      parsed,
+      "path is the state predicate's spelling — accept it, do not silently drop it",
+    ).toMatchObject({ kind: 'route', pathname: '/checkout' });
   });
 
   it('net { url } no longer degrades to "any network call"', () => {
@@ -51,7 +53,7 @@ describe('a predicate key that is not real is refused, never dropped', () => {
     ).toMatchObject({ kind: 'signal', name: 'order:placed', dataMatches: { id: 1 } });
   });
 
-  it('a key that is nobody\'s spelling is rejected, not stripped', () => {
+  it("a key that is nobody's spelling is rejected, not stripped", () => {
     // The agent gets a schema error naming the key. Before, it got a green.
     expect(() => PredicateSchema.parse({ kind: 'route', pathnmae: '/checkout' })).toThrow();
     expect(() => PredicateSchema.parse({ kind: 'signal', naem: 'x' })).toThrow();
@@ -115,6 +117,8 @@ describe('a predicate key that is not real is refused, never dropped', () => {
     }
     // element/text read the live DOM, not the event window — `since` there would mean nothing, so it
     // stays refused rather than accepted and ignored.
-    expect(() => PredicateSchema.parse({ kind: 'element', query: { testid: 'x' }, since: 5 })).toThrow();
+    expect(() =>
+      PredicateSchema.parse({ kind: 'element', query: { testid: 'x' }, since: 5 }),
+    ).toThrow();
   });
 });

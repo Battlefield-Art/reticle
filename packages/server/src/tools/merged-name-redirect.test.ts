@@ -51,7 +51,9 @@ describe('an old member name points at where the capability went', () => {
     // The two meta-tools are built at MCP registration time, so they are callable without being in TOOLS.
     const meta = new Set<string>([ReticleTool.TOOLS, ReticleTool.RUN]);
     const dead = Object.values(ReticleTool).filter((n) => !live.has(n) && !meta.has(n));
-    expect(dead.length, 'the fixture would be pointless if nothing were merged').toBeGreaterThan(10);
+    expect(dead.length, 'the fixture would be pointless if nothing were merged').toBeGreaterThan(
+      10,
+    );
     expect(dead.filter((n) => mergedNameRedirect(n) === undefined)).toEqual([]);
   });
 });

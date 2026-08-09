@@ -17,7 +17,23 @@
 export const CRA_DEV_MODULE_IMPORT = "import './reticle-dev';";
 export const CRA_DEV_MODULE_PATH = 'src/reticle-dev.ts';
 export const CRA_ENV_PATH = '.env.development.local';
-const TOKEN_VAR = 'REACT_APP_RETICLE_TOKEN';
+export const TOKEN_VAR = 'REACT_APP_RETICLE_TOKEN';
+
+/**
+ * What the app itself says when the token is not there.
+ *
+ * The token is a per-machine secret and CRA's own template gitignores the file it lives in, so it
+ * CANNOT travel with the repo — that part is correct and must stay. What was wrong is that it failed
+ * silently: a teammate clones, runs `npm start`, and the app connects with an empty token, so the
+ * only signal is the bridge's generic `authentication failed` in a console nobody had open. Naming
+ * the variable, the gitignored file and the one command that fixes it turns a dead app into a
+ * one-line repair. Every other stack reads the token in Node at dev-server start (the Vite plugin,
+ * withReticle); CRA has no such hook without ejecting, so this message is the fix.
+ */
+export const CRA_TOKEN_MISSING_NOTE =
+  `${TOKEN_VAR} is not set, so Reticle cannot pair with the daemon. ` +
+  `The pairing token is per-machine and ${CRA_ENV_PATH} is gitignored by CRA's template, ` +
+  'so it does not survive a clone. Run `npx reticle init` in this project to write it for this machine.';
 
 /** Add the import after the last existing one, or null when it is already present. */
 export function craImportPatch(source: string): string | null {
@@ -61,6 +77,9 @@ if (process.env.NODE_ENV === 'development') {
   void import('@reticlehq/react').then(({ reticle, install }) => {
     install();
     const token = process.env.${TOKEN_VAR} ?? '';
+    // Loud on purpose: without this the only symptom is the bridge's generic auth failure.
+    if (token.length === 0) console.error(${JSON.stringify(`[reticle] ${CRA_TOKEN_MISSING_NOTE}`)});
+    // Still attempt it — a bridge running without a token pairs fine.
     reticle.connect({ ${inline}...(token.length > 0 ? { token } : {}) });
   });
 }

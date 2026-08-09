@@ -72,7 +72,9 @@ export function successToPredicate(
   }
 
   if (success.console !== undefined) {
-    const con: Extract<Predicate, { kind: typeof PredicateKind.CONSOLE }> = { kind: PredicateKind.CONSOLE };
+    const con: Extract<Predicate, { kind: typeof PredicateKind.CONSOLE }> = {
+      kind: PredicateKind.CONSOLE,
+    };
     if (success.console.level !== undefined) con.level = success.console.level;
     if (success.console.absent !== undefined) {
       con.absent = success.console.absent;
@@ -86,7 +88,10 @@ export function successToPredicate(
 
   const state = success.state;
   if (state !== undefined) {
-    const part: Extract<Predicate, { kind: typeof PredicateKind.STATE }> = { kind: PredicateKind.STATE, path: state.path };
+    const part: Extract<Predicate, { kind: typeof PredicateKind.STATE }> = {
+      kind: PredicateKind.STATE,
+      path: state.path,
+    };
     if (state.store !== undefined) part.store = state.store;
     if (state.equals !== undefined) part.equals = state.equals;
     // `hold` = an INVARIANT ("this state must still hold after the action settles"), vs the default

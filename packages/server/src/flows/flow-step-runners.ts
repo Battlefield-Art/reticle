@@ -283,7 +283,11 @@ export async function runSequenceStep(
               },
       };
     }
-    live.push({ ref, action: sub.action ?? '', args: replayActionArgs(sub.args, confirmDangerous) });
+    live.push({
+      ref,
+      action: sub.action ?? '',
+      args: replayActionArgs(sub.args, confirmDangerous),
+    });
   }
   session.beginAction?.(ReticleTool.FLOW_REPLAY, { steps: live.length });
   let act;

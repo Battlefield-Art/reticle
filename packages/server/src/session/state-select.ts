@@ -4,9 +4,4 @@
  * without paying the truncation tax); the server re-exports it for its back-compat fallback path
  * (an older browser that returns the whole store) and for the predicate engine's `state` assertion.
  */
-export {
-  selectPath,
-  capDepth,
-  projectComponentState,
-  type PathSelection,
-} from '@reticlehq/core';
+export { selectPath, capDepth, projectComponentState, type PathSelection } from '@reticlehq/core';

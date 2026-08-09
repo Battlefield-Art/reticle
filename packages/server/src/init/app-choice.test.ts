@@ -21,7 +21,10 @@ describe('choosing which app to wire', () => {
   });
 
   it('accepts a nested path exactly as it was listed', () => {
-    expect(chooseWorkspaceApp('packages/editor', APPS)).toEqual({ ok: true, app: 'packages/editor' });
+    expect(chooseWorkspaceApp('packages/editor', APPS)).toEqual({
+      ok: true,
+      app: 'packages/editor',
+    });
   });
 
   it('tolerates a trailing slash, which is what tab-completion produces', () => {

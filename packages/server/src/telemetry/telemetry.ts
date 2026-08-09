@@ -16,7 +16,14 @@
  */
 import { spawn } from 'node:child_process';
 import { randomUUID, createHash } from 'node:crypto';
-import { appendFileSync, readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import {
+  appendFileSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  rmSync,
+} from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -30,6 +37,7 @@ import {
   isSessionScoped,
   type InitOutcome,
   type McpConnection,
+  type McpOutage,
   type ProjectProfile,
   type SessionSummary,
   type TelemetryActor,
@@ -272,20 +280,6 @@ export interface TelemetryExtra {
   outage?: McpOutage;
 }
 
-/**
- * One stage of an MCP outage. The counterpart to `connection`: that one says an agent attached, this
- * one says it lost the tools again — the question no dashboard could ask before, because the proxy's
- * account of an outage only ever reached a local file.
- */
-export interface McpOutage {
-  /** `first` (this session lost MCP at all) or `budget_spent` (it stopped retrying). */
-  stage: string;
-  /** Why the stream went away, from the proxy's own vocabulary — never a URL or a path. */
-  reason: string;
-  /** How many consecutive reconnects had been tried when this was reported. */
-  attempts: number;
-}
-
 export interface Telemetry {
   /**
    * Fire one event, non-blocking. `detach: true` hands the send to a disowned child so a short-lived
@@ -398,6 +392,7 @@ export const createTelemetry = (opts: {
       ...(extra?.connection !== undefined ? { connection: extra.connection } : {}),
       ...(extra?.init !== undefined ? { init: extra.init } : {}),
       ...(extra?.bug !== undefined ? { bug: extra.bug } : {}),
+      ...(extra?.outage !== undefined ? { outage: extra.outage } : {}),
     };
     // Map the core contract onto PostHog's capture shape: id/name/time move up, the rest are properties.
     // The feedback body is FLATTENED into `feedback_*` properties rather than sent as a nested object:
@@ -419,6 +414,7 @@ export const createTelemetry = (opts: {
       connection,
       init,
       bug,
+      outage,
       ...rest
     } = event;
     // `$session_id` is PostHog's OWN session property, so sending ours under that name lights up
@@ -428,9 +424,7 @@ export const createTelemetry = (opts: {
     // isSessionScoped for the measurement.
     const properties: Record<string, unknown> = {
       ...rest,
-      ...(isSessionScoped(name)
-        ? { sessionId: eventSessionId, $session_id: eventSessionId }
-        : {}),
+      ...(isSessionScoped(name) ? { sessionId: eventSessionId, $session_id: eventSessionId } : {}),
     };
     // Each block is flattened under its own prefix rather than nested. PostHog filters, breakdowns and
     // insight builders all operate on TOP-LEVEL properties, so a nested `project.stack` is invisible to
@@ -450,6 +444,7 @@ export const createTelemetry = (opts: {
       connection,
       init,
       bug,
+      outage,
     };
     for (const [prefix, block] of Object.entries(blocks)) {
       for (const [key, value] of Object.entries(block ?? {})) {

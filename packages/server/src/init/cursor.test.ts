@@ -79,7 +79,9 @@ describe('an existing reticle entry', () => {
   });
 
   it("leaves a user's OWN customised entry alone — that is a choice, not staleness", () => {
-    const custom = JSON.stringify({ mcpServers: { reticle: { command: 'node', args: ['./my-build.js'] } } });
+    const custom = JSON.stringify({
+      mcpServers: { reticle: { command: 'node', args: ['./my-build.js'] } },
+    });
     expect(mergeCursorConfig(custom).status).toBe(CursorMergeStatus.ALREADY);
   });
 

@@ -13,7 +13,12 @@ describe('toToon', () => {
    * cutting tokens. On a 500-element snapshot that is ~4KB of nothing, on every snapshot call.
    */
   it('omits the present state, which is true of every element it could encode', () => {
-    const out = toToon([el({ states: [ElementState.PRESENT, ElementState.VISIBLE, ElementState.ENABLED], visible: true })]);
+    const out = toToon([
+      el({
+        states: [ElementState.PRESENT, ElementState.VISIBLE, ElementState.ENABLED],
+        visible: true,
+      }),
+    ]);
     expect(out).not.toContain('present');
     expect(out).toContain('vis');
     expect(out).toContain('en');

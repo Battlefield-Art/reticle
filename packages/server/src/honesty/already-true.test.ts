@@ -70,9 +70,11 @@ describe('which predicates need the before-check at all', () => {
         predicates: [{ kind: 'settled' }, { kind: 'text', contains: 'Done' }],
       }),
     ).toBe(true);
-    expect(readsDomState({ kind: 'not', predicate: { kind: 'text', contains: 'Error' } })).toBe(true);
-    expect(
-      readsDomState({ kind: 'anyOf', predicates: [{ kind: 'signal', name: 'a' }] }),
-    ).toBe(false);
+    expect(readsDomState({ kind: 'not', predicate: { kind: 'text', contains: 'Error' } })).toBe(
+      true,
+    );
+    expect(readsDomState({ kind: 'anyOf', predicates: [{ kind: 'signal', name: 'a' }] })).toBe(
+      false,
+    );
   });
 });

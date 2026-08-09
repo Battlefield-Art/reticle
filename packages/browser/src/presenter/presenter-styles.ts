@@ -68,10 +68,6 @@ export const PRESENTER_CSS = `
 [data-reticle-overlay][data-reticle-min="1"] [data-reticle-hud][data-on="1"]{pointer-events:auto;}
 [data-reticle-hud] .reticle-hud-head{display:flex;align-items:center;gap:8px;flex:none;
   padding:12px 12px 12px 15px;border-bottom:1px solid var(--reticle-line2);}
-[data-reticle-hud] .reticle-dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--reticle-accent);
-  animation:reticle-breathe 2.6s ease-in-out infinite;}
-@keyframes reticle-breathe{0%,100%{box-shadow:0 0 0 0 var(--reticle-accent),0 0 7px 1px var(--reticle-accent);opacity:.85}
-  50%{box-shadow:0 0 0 4px var(--reticle-accent-soft),0 0 15px 3px var(--reticle-accent);opacity:1}}
 /* Brand block: both marks always in the DOM, CSS picks one off data-reticle-min (see below) so the
    collapsed/expanded swap needs no JS state. Artwork paints with currentColor, so it inherits
    --reticle-fg and reads correctly on any HUD surface instead of baking in the export's #FAFAFA. */
@@ -136,7 +132,6 @@ export const PRESENTER_CSS = `
    blinking regardless of the user's motion preference. Everything else the presenter animates is a
    one-shot (ripple, tally pop) or a transition, which reduce-motion tolerates. */
 @media (prefers-reduced-motion:reduce){
-  [data-reticle-hud] .reticle-dot,
   [data-reticle-glow][data-on="1"],
   [data-reticle-glow][data-on="1"][data-busy="1"]{animation:none;}}
 ${LOG_CSS}

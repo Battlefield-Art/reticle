@@ -312,6 +312,21 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
         log('reticle_open', { port, reusing: decision.url });
         return;
       }
+      // A tab on the right origin, on the WRONG page. Kept (that is what stops a tab piling up per
+      // run) but never reported as done: `reusing` here read as "your url is open" for a page nobody
+      // had opened.
+      if ('left-as-is' === decision.action) {
+        log('reticle_open', {
+          port,
+          reusing: decision.url,
+          requested: decision.requested,
+          note:
+            `a tab is connected on this origin but sitting on ${decision.url} — it was LEFT THERE, ` +
+            `not navigated to ${decision.requested}. Drive it with reticle_navigate, or open the url ` +
+            'in the browser yourself.',
+        });
+        return;
+      }
       const launchError = await openInBrowser(decision.url);
       if (launchError !== null) {
         log('reticle_open', {

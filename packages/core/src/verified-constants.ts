@@ -23,6 +23,44 @@ export const Verified = {
 export type Verified = (typeof Verified)[keyof typeof Verified];
 
 /**
+ * WHY a verdict came out the way it did — the deciding clause of the rule, named.
+ *
+ * `Verified` has three values and the rule has ten clauses, so the wire collapsed opposite facts
+ * into one string. Measured over a real session: `unknown` covered "the agent malformed the call",
+ * "the app answered 202 and has not finished", and "Reticle could not see the capture" — three
+ * owners needing three opposite responses, one bar on a dashboard. `no` was no better: "channels
+ * disagree" (Reticle earning its keep) and "the agent's predicate failed" read identically.
+ *
+ * This is the SINGLE list. `decideVerified` returns a member from each clause, and the telemetry
+ * schema narrows to `z.nativeEnum` of this — so a new clause cannot ship without a member here, and
+ * a member cannot exist without a clause producing it (`verified.test.ts` asserts the two sets are
+ * equal). Nothing anywhere re-lists these.
+ */
+export const VerifiedReason = {
+  /** The assertion was never EVALUATED — under-specified call, or nothing instrumented to read. */
+  INCONCLUSIVE: 'inconclusive',
+  /** The declared consequence did not hold. */
+  ASSERTION_FAILED: 'assertion_failed',
+  /** Channels disagreed about the action — the false green this product exists to catch. */
+  CONTRADICTED: 'contradicted',
+  /** The consequence was already true beforehand, so it proves nothing about the action. */
+  ALREADY_TRUE: 'already_true',
+  /** The capture was not clean, so a green would only describe what happened to be observed. */
+  UNCLEAN_CAPTURE: 'unclean_capture',
+  /** Nothing was asserted at a real grade — the assertion could not have failed. */
+  VACUOUS_GRADE: 'vacuous_grade',
+  /** A write answered 202 Accepted: the outcome does not exist yet. */
+  OUTCOME_PENDING: 'outcome_pending',
+  /** A 2xx whose body was never recorded, so the one channel that could disagree was closed. */
+  OUTCOME_UNREAD: 'outcome_unread',
+  /** The page never settled, so the reaction window may have closed early. */
+  UNSETTLED: 'unsettled',
+  /** Held at a real grade over a clean capture with no channel disagreeing. */
+  PROVED: 'proved',
+} as const;
+export type VerifiedReason = (typeof VerifiedReason)[keyof typeof VerifiedReason];
+
+/**
  * Actionable companion to NO_PROVIDER for the tools that genuinely intercept or capture through CDP
  * — network mocking and viewport control — which is NOT "visual capture".
  *

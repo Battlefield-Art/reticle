@@ -31,13 +31,11 @@ export const ATTACHED_GRACE_MULTIPLIER = 6;
  * has to reason about both is a test that breaks for the wrong reason. Configuring it directly is
  * what lets the e2e spec assert the BEHAVIOUR (an attached daemon exits) without racing a product.
  */
-export function idleGraceMs(
-  baseMs: number,
-  agentAttached: boolean,
-  overrideMs?: number,
-): number {
+export function idleGraceMs(baseMs: number, agentAttached: boolean, overrideMs?: number): number {
   // A non-positive base means the watcher is disabled; multiplying must not resurrect it.
   if (baseMs <= 0) return baseMs;
   if (!agentAttached) return baseMs;
-  return overrideMs !== undefined && overrideMs > 0 ? overrideMs : baseMs * ATTACHED_GRACE_MULTIPLIER;
+  return overrideMs !== undefined && overrideMs > 0
+    ? overrideMs
+    : baseMs * ATTACHED_GRACE_MULTIPLIER;
 }

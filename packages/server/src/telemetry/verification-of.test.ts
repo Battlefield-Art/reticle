@@ -17,7 +17,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BrowserBrand } from '@reticlehq/core';
+import { BrowserBrand, VerifiedReason } from '@reticlehq/core';
+import { decideVerified } from '../honesty/verified.js';
+import { HonestyGrade } from '../honesty/honesty.js';
 import { verificationOf } from './verification-of.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import { BrowserMode, setBrowserMode, resetBrowserMode } from './browser-mode.js';
@@ -107,5 +109,43 @@ describe('the browser brand rides alongside the mode', () => {
     const verification = verificationOf(VERIFY, { status: 'pass' }, 1);
     expect(verification).toBeDefined();
     expect(verification !== undefined && 'brand' in verification).toBe(false);
+  });
+});
+
+/**
+ * WHY a verdict came out that way, not just what it was.
+ *
+ * Seven clauses of `decideVerified` reached the wire as two payloads: `verified: 'unknown'` covered
+ * the agent malforming a call, the app answering 202, and Reticle failing to see — three owners,
+ * three opposite responses, one bar on a dashboard. The clause travels on the result the rule wrote,
+ * so nothing had to be re-plumbed; what had to change is that anybody read it.
+ */
+describe('the verdict carries the clause that decided it', () => {
+  it('forwards the reason `decideVerified` wrote onto the result', () => {
+    const decision = decideVerified({
+      pass: true,
+      honesty: {
+        grade: HonestyGrade.SIGNAL,
+        coverage: { partial: false },
+        integrity: { clean: true, issues: [] },
+      },
+      settled: true,
+      alreadyTrue: true,
+    });
+    const verification = verificationOf(VERIFY, { ...decision, pass: true }, 1);
+    expect(verification?.verified).toBe('unknown');
+    expect(verification?.reason).toBe(VerifiedReason.ALREADY_TRUE);
+  });
+
+  it('omits it for a verdict no clause produced — a suite reports pass/fail and no reason', () => {
+    const verification = verificationOf(VERIFY, { status: 'pass' }, 1);
+    expect(verification).toBeDefined();
+    expect(verification !== undefined && 'reason' in verification).toBe(false);
+  });
+
+  it('refuses a value core does not define rather than forwarding it', () => {
+    // The result is an untyped record here; a string nobody can group by is worse than a gap.
+    const verification = verificationOf(VERIFY, { pass: false, verifiedReason: 'made-up' }, 1);
+    expect(verification !== undefined && 'reason' in verification).toBe(false);
   });
 });

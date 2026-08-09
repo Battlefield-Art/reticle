@@ -17,7 +17,10 @@ import { noteEmptyRead } from './observed-nothing.js';
 
 describe('an empty read says it looked', () => {
   it('adds a note when the collection is empty', () => {
-    const out = noteEmptyRead({ entries: [] }, 'entries', { windowMs: 2000, noun: 'console lines' });
+    const out = noteEmptyRead({ entries: [] }, 'entries', {
+      windowMs: 2000,
+      noun: 'console lines',
+    });
     expect(out['observed']).toBe(true);
     expect(String(out['note'])).toContain('2000');
     expect(String(out['note'])).toContain('console lines');

@@ -92,7 +92,6 @@ describe('record -> compile -> replay', () => {
     browser.actHasTestid = true;
   });
 
-
   it('replay re-resolves by testid and re-runs each step', async () => {
     await callTool(deps, ReticleTool.RECORD, { action: 'start', name: 'rerun' });
     await callTool(deps, ReticleTool.ACT, { ref: 'e7', action: 'click' });

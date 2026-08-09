@@ -262,7 +262,11 @@ const unknownCommand = (command: string): ParseError => ({
   message: `unknown command '${command}'`,
 });
 
-function parseServeFlags(args: string[], defaultPort: number, _defaultHeadless: boolean): ServeFlags {
+function parseServeFlags(
+  args: string[],
+  defaultPort: number,
+  _defaultHeadless: boolean,
+): ServeFlags {
   let port = defaultPort;
   let driveUrl: string | undefined;
   let headless = true;

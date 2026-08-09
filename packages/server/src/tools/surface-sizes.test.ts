@@ -37,7 +37,7 @@ describe('advertised surface sizes', () => {
     for (const tool of TOOLS) expect(names.has(tool.name), tool.name).toBe(true);
   });
 
-  it('EVERY profile can look up a tool\'s parameters', () => {
+  it("EVERY profile can look up a tool's parameters", () => {
     // Recovery messages across the server say "Call reticle_tools { names: [...] }". A profile that
     // does not advertise it turns our own advice into a dead end — `full` used to be exactly that.
     for (const profile of Object.values(TOOL_SURFACE)) {
@@ -49,7 +49,12 @@ describe('advertised surface sizes', () => {
 
   it('every trimmed profile is smaller than full, or it is not a trim', () => {
     const full = advertisedTools(TOOL_SURFACE.ALL).length;
-    for (const profile of [TOOL_SURFACE.DEFAULT, TOOL_SURFACE.DEFAULT, TOOL_SURFACE.DEFAULT, TOOL_SURFACE.DEFAULT]) {
+    for (const profile of [
+      TOOL_SURFACE.DEFAULT,
+      TOOL_SURFACE.DEFAULT,
+      TOOL_SURFACE.DEFAULT,
+      TOOL_SURFACE.DEFAULT,
+    ]) {
       expect(advertisedTools(profile).length, profile).toBeLessThan(full);
     }
   });
@@ -73,18 +78,23 @@ describe('docs state a surface size exactly once, correctly', () => {
    * Deliberately blind to whether the number is right — a SECOND statement of it is the defect, because
    * the two drift apart and the reader cannot tell which one to believe.
    */
-  const COUNT_CLAIM = /\b\d{1,3}\s+(?:tools|advertised)\b|(?:hybrid|standard|full|core|dynamic)`?\s*\(\d{1,3}\)/gi;
+  const COUNT_CLAIM =
+    /\b\d{1,3}\s+(?:tools|advertised)\b|(?:hybrid|standard|full|core|dynamic)`?\s*\(\d{1,3}\)/gi;
   const read = (rel: string): string => readFileSync(join(ROOT, rel), 'utf8');
 
   it('SKILL.md carries the canonical table, with the CURRENT numbers', () => {
     const text = read('SKILL.md');
-    expect(text.split(CANONICAL).length - 1, `SKILL.md must state "${CANONICAL}" exactly once`).toBe(1);
+    expect(
+      text.split(CANONICAL).length - 1,
+      `SKILL.md must state "${CANONICAL}" exactly once`,
+    ).toBe(1);
   });
 
   it.each(['SKILL.md', 'docs/agent-cheatsheet.md'])('%s states no OTHER surface count', (rel) => {
     const text = read(rel).split(CANONICAL).join('');
-    expect(text.match(COUNT_CLAIM) ?? [], `${rel}: counts belong only in the canonical table`).toEqual(
-      [],
-    );
+    expect(
+      text.match(COUNT_CLAIM) ?? [],
+      `${rel}: counts belong only in the canonical table`,
+    ).toEqual([]);
   });
 });

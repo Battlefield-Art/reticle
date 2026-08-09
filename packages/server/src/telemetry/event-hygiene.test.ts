@@ -82,7 +82,10 @@ describe('sessionId means a daemon run, and nothing else', () => {
 describe('the wire reflects it', () => {
   it('a CLI event carries no sessionId; a daemon event does', async () => {
     const seen: { event: string; properties: Record<string, unknown> }[] = [];
-    const impl = (_url: string, init?: { body?: unknown }): Promise<{ ok: boolean; status: number }> => {
+    const impl = (
+      _url: string,
+      init?: { body?: unknown },
+    ): Promise<{ ok: boolean; status: number }> => {
       const parsed = JSON.parse(String(init?.body)) as {
         batch: { event: string; properties: Record<string, unknown> }[];
       };

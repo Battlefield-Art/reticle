@@ -12,7 +12,9 @@ import {
   type FlowStep,
   type FlowStepResult,
   type ReticleEvent,
-  type QueryEmptyHint, PredicateKind } from '@reticlehq/core';
+  type QueryEmptyHint,
+  PredicateKind,
+} from '@reticlehq/core';
 import type { EvalResult, Predicate } from '../events/predicate.js';
 import { asRecord, asString } from '../tools/tools-helpers.js';
 import { replayActionArgs, ambiguousTestidNote, queryRefs } from './replay.js';
@@ -420,7 +422,7 @@ async function assertStepExpect(
     // else is a consequence that did not hold, and the reason carries observed-vs-expected.
     reasonKind:
       expect.state !== undefined ? DriftReason.STATE_MISMATCH : DriftReason.SIGNAL_NOT_OBSERVED,
-    reason: verdict.failureReason ?? 'the step\'s declared consequence did not hold',
+    reason: verdict.failureReason ?? "the step's declared consequence did not hold",
     anchor: expectLabel(expect),
     nearest: null,
   };
@@ -454,7 +456,12 @@ async function runSignalStep(
   // satisfied a LATER flow's signal step even when that flow's own action never fired it — a
   // cross-flow false green on the exact suite-verify path the regression-cost claim rests on. The
   // replay-start floor excludes prior flows/runs while still seeing this run's adjacent-step signal.
-  const verdict = await waitForSignal(session, { kind: PredicateKind.SIGNAL, name }, signalTimeoutMs, since);
+  const verdict = await waitForSignal(
+    session,
+    { kind: PredicateKind.SIGNAL, name },
+    signalTimeoutMs,
+    since,
+  );
   if (verdict.pass) return { step: index, tool: step.tool, anchor: name, ok: true };
   return {
     step: index,

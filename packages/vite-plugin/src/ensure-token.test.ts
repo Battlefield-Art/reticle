@@ -45,7 +45,7 @@ describe('the pairing token, whoever gets there first', () => {
     });
   });
 
-  it('REUSES the daemon\'s token when there is one — never replaces it', () => {
+  it("REUSES the daemon's token when there is one — never replaces it", () => {
     // Overwriting would invalidate every page the daemon has already handed a token to.
     withDir((dir) => {
       mkdirSync(dir, { recursive: true });

@@ -31,15 +31,15 @@ describe('a control the agent drove stays exercised across a re-render', () => {
 
   it('matches on LABEL when the re-render gave it a new ref', () => {
     // The whole app-router case: nothing the agent drove is present by ref any more.
-    expect(
-      exercisedCount(CONTROLS, new Set(['e99']), new Set(['button "Deploy"'])).exercised,
-    ).toBe(1);
+    expect(exercisedCount(CONTROLS, new Set(['e99']), new Set(['button "Deploy"'])).exercised).toBe(
+      1,
+    );
   });
 
   it('does not double-count a control matched both ways', () => {
-    expect(
-      exercisedCount(CONTROLS, new Set(['e10']), new Set(['button "Deploy"'])).exercised,
-    ).toBe(1);
+    expect(exercisedCount(CONTROLS, new Set(['e10']), new Set(['button "Deploy"'])).exercised).toBe(
+      1,
+    );
   });
 
   it('reports what it could not account for, so 0 is never silently wrong', () => {

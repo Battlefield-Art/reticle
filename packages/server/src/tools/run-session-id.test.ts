@@ -37,7 +37,9 @@ describe('reticle_run can be aimed at a session', () => {
   it('forwards a top-level sessionId to the tool it invokes', async () => {
     seen.length = 0;
     await run?.handler(deps, { tool: ReticleTool.SNAPSHOT, args: {}, sessionId: 's-live' });
-    expect(seen[0]?.['sessionId'], 'the target must receive the session it was aimed at').toBe('s-live');
+    expect(seen[0]?.['sessionId'], 'the target must receive the session it was aimed at').toBe(
+      's-live',
+    );
   });
 
   it('does not need args at all', async () => {

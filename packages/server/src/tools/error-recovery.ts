@@ -145,7 +145,7 @@ export const RECOVERY = {
     'where it actually is. This is app/flow drift, which is exactly what the flow exists to catch.',
   NO_POOL:
     'Reticle cannot launch its own browser here: the daemon-managed pool is absent, or Playwright ' +
-    "has no Chromium installed (the message above says which). Run Reticle via `reticle mcp`, and " +
+    'has no Chromium installed (the message above says which). Run Reticle via `reticle mcp`, and ' +
     'ask the human for `npx playwright install chromium` if that is what is missing. Meanwhile drive ' +
     'a tab the human already has open — reticle_sessions lists them.',
 } as const;
@@ -170,7 +170,10 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   { match: /^command '[^']*' timed out after/i, hint: RECOVERY.COMMAND_TIMEOUT },
   // Flow replay: the recorded anchor is gone. Ordinary drift, and the tool that fixes it exists.
   { match: /did not resolve in current page/i, hint: RECOVERY.FLOW_STEP_MISSING },
-  { match: /browser pool (?:unavailable|is shut down)|Chromium is not installed/i, hint: RECOVERY.NO_POOL },
+  {
+    match: /browser pool (?:unavailable|is shut down)|Chromium is not installed/i,
+    hint: RECOVERY.NO_POOL,
+  },
   // The commonest post-action condition there is. Unmatched, it fell through to FEEDBACK_ASK and
   // told the agent a successful click's aftermath might be a bug in Reticle.
   { match: /no longer resolves to an element/i, hint: RECOVERY.STALE_REF },
@@ -184,7 +187,10 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   { match: /cannot \w+ a (disabled|readonly) </i, hint: RECOVERY.NOT_EDITABLE },
   // Three spellings ship — "action", "native action", "WebMCP tool" — and the rule matched one, so
   // two thirds of the same deliberate refusal still read as a possible defect.
-  { match: /potentially destructive (?:\w+ )*(?:action|tool) blocked/i, hint: RECOVERY.CONFIRM_DANGEROUS },
+  {
+    match: /potentially destructive (?:\w+ )*(?:action|tool) blocked/i,
+    hint: RECOVERY.CONFIRM_DANGEROUS,
+  },
   {
     match:
       /^cannot [\w()]+ (?:a|an|into a|on a) <|no form to submit|upload target must be|is not an HTMLElement/i,
@@ -233,7 +239,7 @@ const ARGUMENT_REJECTION =
  * this only says who can fix it and where to look.
  */
 const ARGUMENT_RECOVERY =
-  'That call did not match the tool\'s schema — the message above names the parameter. Nothing ran, ' +
+  "That call did not match the tool's schema — the message above names the parameter. Nothing ran, " +
   'so no result is affected. Call reticle_tools { names: ["<tool>"] } for its exact parameters and ' +
   'retry.';
 
@@ -284,7 +290,8 @@ export function buildErrorPayload(rawMessage: string): ErrorPayload {
   if (ARGUMENT_REJECTION.test(message)) return { error: message, recovery: ARGUMENT_RECOVERY };
   // Reticle's own name validators rejecting a caller's value: an argument rejection that the schema
   // cannot express (the shape is a runtime pattern, not a type), so it needs its own arm.
-  if (INVALID_NAME_REJECTION.test(message)) return { error: message, recovery: RECOVERY.INVALID_NAME };
+  if (INVALID_NAME_REJECTION.test(message))
+    return { error: message, recovery: RECOVERY.INVALID_NAME };
   const recovery = recoveryFor(message);
   return recovery !== undefined
     ? { error: message, recovery }

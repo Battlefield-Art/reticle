@@ -22,6 +22,7 @@ import {
   SessionSummarySchema,
 } from './telemetry-session.js';
 import { BrowserBrand, FeedbackSchema } from './telemetry-feedback.js';
+import { VerifiedReason } from './verified-constants.js';
 import { IdentitySchema } from './telemetry-feedback.js';
 
 /** Bump when the event shape changes so the analytics side can segment old senders. */
@@ -260,6 +261,18 @@ export const VerificationSchema = z.object({
    * measured one on a dashboard.
    */
   brand: z.nativeEnum(BrowserBrand).optional(),
+  /**
+   * WHICH clause of the honesty rule decided this — see `VerifiedReason`.
+   *
+   * `verified` alone cannot answer the question the product is judged on. `unknown` + `passed:false`
+   * was measured covering "Reticle caught a real bug", "the agent wrote a bad predicate" and
+   * "Reticle itself could not see", which need opposite responses and arrive as one value; `no`
+   * collapses "channels disagree" into "the agent's predicate failed" the same way.
+   *
+   * OPTIONAL because not every verdict comes from `decideVerified` — a suite reports pass/fail with
+   * no clause behind it, and an older SDK reports none. Absent means unclassified, never guessed.
+   */
+  reason: z.nativeEnum(VerifiedReason).optional(),
 });
 export type Verification = z.infer<typeof VerificationSchema>;
 
@@ -354,6 +367,30 @@ export const BugSource = {
 export type BugSource = (typeof BugSource)[keyof typeof BugSource];
 
 /**
+ * WHOSE fault the defect was.
+ *
+ * `bugsFound` is the number this product would most like to publish, and it is not publishable
+ * without this. Measured over one real session: 8 `bug_found` events, of which **one** was a defect
+ * in the app under test. The other seven were the agent's own bad predicates (a store path that
+ * never existed, an impossible selector) and one empty ref, all published as defects in the
+ * customer's product. A founder steering on that number is steering on noise.
+ *
+ * Deliberately OMITTED rather than guessed when the evidence does not say. A failed `element.present`
+ * covers "the button is missing", "the API is down" and "the agent mistyped a testid" identically,
+ * and inventing an owner for it would put a guess into the one number we intend to publish — the
+ * same mistake `brand` refuses to make by being absent rather than `"unknown"`.
+ */
+export const BugAttribution = {
+  /** A defect in the app under test — the only bucket that belongs in a published defect count. */
+  APP: 'app',
+  /** The agent's own call was wrong: a path, store or target that never existed. Teach the agent. */
+  REQUEST: 'request',
+  /** Reticle could not see or could not drive. Our bug, or our configuration. Ship a fix. */
+  RETICLE: 'reticle',
+} as const;
+export type BugAttribution = (typeof BugAttribution)[keyof typeof BugAttribution];
+
+/**
  * One defect Reticle found in the app under test.
  *
  * `kind` is the taxonomy value from `findings.ts` — `signal-contradicted`, `console-error`,
@@ -395,6 +432,11 @@ export const BugFoundSchema = z.object({
    * as one — and must not be, since that would need data this event refuses to collect.
    */
   repeat: z.boolean(),
+  /**
+   * Whose fault it was — `app` | `request` | `reticle`. ABSENT when the evidence cannot say; see
+   * `BugAttribution`. Count `attribution: 'app'` for defects found in anybody's product.
+   */
+  attribution: z.nativeEnum(BugAttribution).optional(),
 });
 export type BugFound = z.infer<typeof BugFoundSchema>;
 
@@ -412,6 +454,55 @@ export const McpConnectionSchema = z.object({
   client: z.string().min(1).max(64).optional(),
 });
 export type McpConnection = z.infer<typeof McpConnectionSchema>;
+
+/**
+ * WHICH stage of an MCP outage this is. Reported at most twice per proxy process, and the two are
+ * different facts: `first` says the session lost its tools at all, `budget_spent` says the proxy
+ * stopped retrying and never came back on its own.
+ */
+export const OutageStage = {
+  FIRST: 'first',
+  BUDGET_SPENT: 'budget_spent',
+} as const;
+export type OutageStage = (typeof OutageStage)[keyof typeof OutageStage];
+
+/**
+ * WHY the stream went away, as far as the proxy can tell. A closed vocabulary because the proxy's
+ * own reason strings are free text feeding a log — `OTHER` is the bucket that lets a new one arrive
+ * without a raw string reaching the wire, per the classifier rule.
+ */
+export const OutageReason = {
+  /** The SSE stream ended cleanly — usually the daemon exiting. */
+  SSE_ENDED: 'sse_ended',
+  /** The stream errored. */
+  SSE_ERROR: 'sse_error',
+  /** The socket died under us with neither `end` nor `error` — daemon killed, network reset. */
+  SSE_ABORTED: 'sse_aborted',
+  /** The response closed. */
+  SSE_CLOSED: 'sse_closed',
+  /** A reconnect attempt could not reach the daemon at all. */
+  CONNECT_ERROR: 'connect_error',
+  /** Anything the proxy reported that this list does not name. A classifier must be able to say so. */
+  OTHER: 'other',
+} as const;
+export type OutageReason = (typeof OutageReason)[keyof typeof OutageReason];
+
+/**
+ * The agent LOST its Reticle tools.
+ *
+ * This block existed on the emitter's input type and never on the wire: `emit()` builds its event
+ * from an explicit allow-list of keys and `outage` was not in it, so two deliberately different
+ * outages — `first`/`sse_ended`/3 and `budget_spent`/`connect_error`/12 — produced byte-identical
+ * events. Against a standing "MCP must never go down" mandate, the metric that measures it reported
+ * a bare count with no cause and no recovery signal. This is the schema half of the fix.
+ */
+export const McpOutageSchema = z.object({
+  stage: z.nativeEnum(OutageStage),
+  reason: z.nativeEnum(OutageReason),
+  /** Consecutive reconnects tried when this was reported. `first` is near 1; a spent budget is high. */
+  attempts: z.number().int().nonnegative(),
+});
+export type McpOutage = z.infer<typeof McpOutageSchema>;
 
 /** How `reticle init` went. The onboarding funnel, which had no instrumentation whatsoever. */
 export const InitOutcomeSchema = z.object({
@@ -503,5 +594,7 @@ export const TelemetryEventSchema = z.object({
   init: InitOutcomeSchema.optional(),
   /** Only on `bug_found`. */
   bug: BugFoundSchema.optional(),
+  /** Only on `mcp_connection_lost`: which stage of the outage, why, and after how many retries. */
+  outage: McpOutageSchema.optional(),
 });
 export type TelemetryEvent = z.infer<typeof TelemetryEventSchema>;

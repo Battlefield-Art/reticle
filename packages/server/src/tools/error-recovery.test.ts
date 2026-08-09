@@ -280,9 +280,12 @@ describe('a self-diagnosing message is left alone', () => {
  */
 describe('argument rejections are not Reticle defects', () => {
   it.each([
-    ['an unknown key', 'Unrecognized key(s) in object: \'value\''],
+    ['an unknown key', "Unrecognized key(s) in object: 'value'"],
     ['a zod code', 'invalid_type: expected string, received number at path ["by"]'],
-    ['the MCP wrapper', 'Invalid arguments for tool reticle_query: Expected string, received number'],
+    [
+      'the MCP wrapper',
+      'Invalid arguments for tool reticle_query: Expected string, received number',
+    ],
     ['a missing required arg', 'Required at path ["action"]'],
   ])('%s gets a recovery, never the defect ask', (_label, message) => {
     const payload = buildErrorPayload(message);
@@ -303,7 +306,7 @@ describe('argument rejections are not Reticle defects', () => {
   it.each([
     ['a baseline name', 'invalid visual baseline name: ../etc/passwd'],
     ['a diff name', 'invalid visual diff name: has spaces'],
-  ])('%s is the caller\'s to fix, not a Reticle defect', (_label, message) => {
+  ])("%s is the caller's to fix, not a Reticle defect", (_label, message) => {
     const payload = buildErrorPayload(message);
     expect(payload.feedback, message).toBeUndefined();
     expect(payload.recovery, message).toBe(RECOVERY.INVALID_NAME);
@@ -396,11 +399,7 @@ describe('no condition Reticle itself authored is reported as a possible Reticle
     // session-manager.ts — remove() rejects every in-flight command with this exact reason
     ['a session that disconnected mid-call', 'session disconnected', RECOVERY.SESSION_GONE],
     // command-timeout.ts — the bare form, and both forms that already carry advice
-    [
-      'a command timeout',
-      "command 'snapshot' timed out after 8000ms",
-      RECOVERY.COMMAND_TIMEOUT,
-    ],
+    ['a command timeout', "command 'snapshot' timed out after 8000ms", RECOVERY.COMMAND_TIMEOUT],
     [
       'an act timeout',
       "command 'act' timed out after 8000ms. The page is ALIVE — the SDK last reported to the " +
@@ -466,9 +465,11 @@ describe('no condition Reticle itself authored is reported as a possible Reticle
  * recovery has to warn that option VALUES are not the visible labels, which is the mistake that
  * produces this error most often.
  */
-describe('a select with no such option is the caller\'s to fix', () => {
+describe("a select with no such option is the caller's to fix", () => {
   it('gets the option recovery, never the defect ask', () => {
-    const payload = buildErrorPayload("no <option> with value 'English' — available: en (English), fr (French)");
+    const payload = buildErrorPayload(
+      "no <option> with value 'English' — available: en (English), fr (French)",
+    );
     expect(payload.feedback).toBeUndefined();
     expect(payload.recovery).toBe(RECOVERY.NO_SUCH_OPTION);
   });

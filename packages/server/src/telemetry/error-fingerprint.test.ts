@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { errorSkeleton, fingerprintError } from './error-fingerprint.js';
 
-
 /**
  * An error message is app-authored text. Anything in it that could identify a person or authorise an
  * action must never reach the wire.
@@ -23,12 +22,32 @@ import { errorSkeleton, fingerprintError } from './error-fingerprint.js';
 describe('errorSkeleton redacts what must never leave the machine', () => {
   it.each([
     ['a plain email', 'login failed for bob@acme.com', 'bob@acme.com'],
-    ['an email with plus-addressing and a multi-part TLD', 'user alice.smith+test@corp.co.uk not found', 'alice.smith+test@corp.co.uk'],
-    ['a stripe-style secret', 'token sk_live_ABCDEFGHIJKLMNOP rejected', 'sk_live_ABCDEFGHIJKLMNOP'],
-    ['a github token', 'auth ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123 failed', 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123'],
+    [
+      'an email with plus-addressing and a multi-part TLD',
+      'user alice.smith+test@corp.co.uk not found',
+      'alice.smith+test@corp.co.uk',
+    ],
+    [
+      'a stripe-style secret',
+      'token sk_live_ABCDEFGHIJKLMNOP rejected',
+      'sk_live_ABCDEFGHIJKLMNOP',
+    ],
+    [
+      'a github token',
+      'auth ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123 failed',
+      'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123',
+    ],
     ['an AWS key id', 'denied for AKIAIOSFODNN7EXAMPLE', 'AKIAIOSFODNN7EXAMPLE'],
-    ['a JWT', 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdefghijklmnop rejected', 'eyJhbGciOiJIUzI1NiJ9'],
-    ['an unrecognised long secret', 'key 9f8e7d6c5b4a39281706abcdEFGH failed', '9f8e7d6c5b4a39281706abcdEFGH'],
+    [
+      'a JWT',
+      'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdefghijklmnop rejected',
+      'eyJhbGciOiJIUzI1NiJ9',
+    ],
+    [
+      'an unrecognised long secret',
+      'key 9f8e7d6c5b4a39281706abcdEFGH failed',
+      '9f8e7d6c5b4a39281706abcdEFGH',
+    ],
   ])('removes %s', (_label, message, secret) => {
     expect(errorSkeleton(message)).not.toContain(secret);
   });

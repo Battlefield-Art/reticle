@@ -82,11 +82,7 @@ The single exception is `daemon_stopped`, which is **awaited** — because the p
 
 ## The event kinds, all of them
 
-`TelemetryEventKind` in `@reticlehq/core` is the closed list. Seven of these went undocumented here
-for months — the doc described only the session-lifecycle half — so anyone building a dashboard from
-this page could not know that the transport and install events existed at all. A kind nobody
-documents is a kind nobody queries, and telemetry that nobody queries is telemetry nobody notices
-has stopped arriving. `telemetry-contract.test.ts` now fails when a kind is missing from this table.
+`TelemetryEventKind` in `@reticlehq/core` is the closed list. Seven of these went undocumented here for months — the doc described only the session-lifecycle half — so anyone building a dashboard from this page could not know that the transport and install events existed at all. A kind nobody documents is a kind nobody queries, and telemetry that nobody queries is telemetry nobody notices has stopped arriving. `telemetry-contract.test.ts` now fails when a kind is missing from this table.
 
 | Kind | When | What it answers |
 | --- | --- | --- |
@@ -118,9 +114,7 @@ The flush interval is also the **bound on what is lost**: nothing calls shutdown
 
 ## The session summary's newer fields
 
-Four counters and one flag were added because the data could not answer questions we were already
-asking. All are properties on events that already exist — no new kinds — and all four counters are
-**omitted rather than sent as zero**, so a field's presence is itself the signal.
+Four counters and one flag were added because the data could not answer questions we were already asking. All are properties on events that already exist — no new kinds — and all four counters are **omitted rather than sent as zero**, so a field's presence is itself the signal.
 
 | Field | On | Means |
 | --- | --- | --- |
@@ -137,122 +131,64 @@ asking. All are properties on events that already exist — no new kinds — and
 
 ## Why a verdict came out that way — `verification.reason`
 
-`verified` has three values. The rule that produces it has **ten clauses**. Everything in between was
-thrown away at the moment it was known.
+`verified` has three values. The rule that produces it has **ten clauses**. Everything in between was thrown away at the moment it was known.
 
-Captured against the real classifier: `verified: 'unknown'` covered "the agent malformed the call",
-"the consequence was already true", "the app answered 202", "a 2xx body went unread", "the capture
-was not clean", "nothing was asserted at a real grade" and "the page never settled" — **seven causes,
-two wire payloads**. They belong to three different owners (the agent, the app, Reticle) and need
-opposite responses: teach the agent, wait and re-check, or ship a fix. On a dashboard they were one
-bar. `verified: 'no'` collapsed the same way — "channels disagree" (Reticle earning its keep) and
-"the agent's predicate failed" were the same string.
+Captured against the real classifier: `verified: 'unknown'` covered "the agent malformed the call", "the consequence was already true", "the app answered 202", "a 2xx body went unread", "the capture was not clean", "nothing was asserted at a real grade" and "the page never settled" — **seven causes, two wire payloads**. They belong to three different owners (the agent, the app, Reticle) and need opposite responses: teach the agent, wait and re-check, or ship a fix. On a dashboard they were one bar. `verified: 'no'` collapsed the same way — "channels disagree" (Reticle earning its keep) and "the agent's predicate failed" were the same string.
 
-`VerifiedReason` lives in `@reticlehq/core` and is the **single list**. `decideVerified` returns a
-member from every clause, so a new clause cannot compile without one; `verified.test.ts` drives all
-ten and fails if a member exists that no clause produces. `verification-of.ts` narrows the result
-field against `Object.values(VerifiedReason)` — anything else is dropped rather than forwarded,
-because a string nobody can group by is worse than a gap. **Nothing re-lists these**, including the
-battery spec, which imports the enum from core's build.
+`VerifiedReason` lives in `@reticlehq/core` and is the **single list**. `decideVerified` returns a member from every clause, so a new clause cannot compile without one; `verified.test.ts` drives all ten and fails if a member exists that no clause produces. `verification-of.ts` narrows the result field against `Object.values(VerifiedReason)` — anything else is dropped rather than forwarded, because a string nobody can group by is worse than a gap. **Nothing re-lists these**, including the battery spec, which imports the enum from core's build.
 
-Optional on purpose: a suite verdict (`flow_verify`) is a pass/fail with no clause behind it, and an
-older sender has none. Absent means unclassified.
+Optional on purpose: a suite verdict (`flow_verify`) is a pass/fail with no clause behind it, and an older sender has none. Absent means unclassified.
 
 ## Whose defect it was — `bug.attribution`
 
-`bugsFound` was **not publishable**. In one real captured session it scored **1 in 8**: seven of the
-eight events were the agent's own bad predicates (`state.path-missing` from a store that never
-existed) and one empty ref (`signal.absent`), every one of them published as a defect found in the
-customer's app.
+`bugsFound` was **not publishable**. In one real captured session it scored **1 in 8**: seven of the eight events were the agent's own bad predicates (`state.path-missing` from a store that never existed) and one empty ref (`signal.absent`), every one of them published as a defect found in the customer's app.
 
 | Value | Means | Set from |
 | --- | --- | --- |
 | `app` | a defect in the app under test — **the only bucket that belongs in a published count** | any contradiction **except `request-never-settled`**, any other crawl anomaly, any replay regression |
 | `request` | the agent's own call was wrong | `state.path-missing` — a store path that does not exist |
 | `reticle` | Reticle could not see or could not drive; our bug or our config | `state.unreadable` — nothing instrumented to read |
-| *absent* | the evidence does not say | everything else |
+| _absent_ | the evidence does not say | everything else |
 
-**The omissions are the design.** `element.present` covers "the button is missing", "the API is down"
-and "the agent mistyped a testid" identically; `signal.absent` covers both a signal the app never
-fired and a ref Reticle drove into nothing. Inventing an owner there would swap an inflated number
-for a confident wrong one — the same reason `brand` is absent rather than `"unknown"`. A dashboard
-counts `attribution: 'app'` and excludes the rest.
+**The omissions are the design.** `element.present` covers "the button is missing", "the API is down" and "the agent mistyped a testid" identically; `signal.absent` covers both a signal the app never fired and a ref Reticle drove into nothing. Inventing an owner there would swap an inflated number for a confident wrong one — the same reason `brand` is absent rather than `"unknown"`. A dashboard counts `attribution: 'app'` and excludes the rest.
 
-**One contradiction kind is an omission too: `request-never-settled`.** Every other contradiction is
-two of the app's OWN channels disagreeing, which the app owns. That one is raised from the ABSENCE of
-a settle event, so any gap in Reticle's own observation produces it without the app doing anything
-— driven against a Next app it fired twice, both on the framework's dev overlay, and a true count of
-0 defects would have been published as 2. Absence of evidence names no owner. The rule holds
-wherever the kind arrives, including inside a crawl's `anomalies`.
+**One contradiction kind is an omission too: `request-never-settled`.** Every other contradiction is two of the app's OWN channels disagreeing, which the app owns. That one is raised from the ABSENCE of a settle event, so any gap in Reticle's own observation produces it without the app doing anything — driven against a Next app it fired twice, both on the framework's dev overlay, and a true count of 0 defects would have been published as 2. Absence of evidence names no owner. The rule holds wherever the kind arrives, including inside a crawl's `anomalies`.
 
 ## What is NOT a crash — expected disconnects
 
-`runtime_crashed` answers exactly one question: is Reticle stable. One real session put **nine** events
-into it, all `write EPIPE` — the MCP client closed its half of the stdio pipe and the next
-`process.stdout.write` failed, which is how a client is supposed to leave.
+`runtime_crashed` answers exactly one question: is Reticle stable. One real session put **nine** events into it, all `write EPIPE` — the MCP client closed its half of the stdio pipe and the next `process.stdout.write` failed, which is how a client is supposed to leave.
 
-`daemon-resilience.ts` matches `err.code` against `EPIPE` / `ECONNRESET` / `ERR_STREAM_DESTROYED` and
-logs `reticle_daemon_client_disconnected` (or `reticle_mcp_proxy_client_disconnected`) instead of
-emitting. Two rules make this safe rather than a hole:
+`daemon-resilience.ts` matches `err.code` against `EPIPE` / `ECONNRESET` / `ERR_STREAM_DESTROYED` and logs `reticle_daemon_client_disconnected` (or `reticle_mcp_proxy_client_disconnected`) instead of emitting. Two rules make this safe rather than a hole:
 
-- **Code, never message.** Prose gets wrapped, localised and rewritten; matching it would eventually
-  swallow a real crash that merely mentioned a pipe. `daemon-resilience.test.ts` drives an error whose
-  message says `write EPIPE` and carries no `code`, and asserts it is still a crash.
-- **Visible, never swallowed.** It still logs a line with the code. A daemon emitting a hundred of
-  these is a finding, just not a crash.
+- **Code, never message.** Prose gets wrapped, localised and rewritten; matching it would eventually swallow a real crash that merely mentioned a pipe. `daemon-resilience.test.ts` drives an error whose message says `write EPIPE` and carries no `code`, and asserts it is still a crash.
+- **Visible, never swallowed.** It still logs a line with the code. A daemon emitting a hundred of these is a finding, just not a crash.
 
-A disconnect is also **no longer fatal for the daemon**: Node's "process state is undefined" guidance
-is about a throw that escaped everything, not about writing to a socket somebody closed, and exiting
-there let one departing client take down the daemon serving every other agent.
+A disconnect is also **no longer fatal for the daemon**: Node's "process state is undefined" guidance is about a throw that escaped everything, not about writing to a socket somebody closed, and exiting there let one departing client take down the daemon serving every other agent.
 
 ## Did MCP stay up — the `outage` block
 
-The transport-stability metric shipped with an **empty payload** for months, and it is the exact
-failure this page opens with. `reportMcpOutage` passed `{ outage: { stage, reason, attempts } }`,
-`TelemetryExtra` declared the field, and it typechecked — but `emit()` builds its event from an
-**explicit allow-list of keys** and `outage` was not on it, nor in the `blocks` flattening map, nor
-in core's `TelemetryEventSchema`. Two deliberately different outages produced byte-identical events.
-Nothing threw, no test went red, and the data for that whole period cannot be recovered.
+The transport-stability metric shipped with an **empty payload** for months, and it is the exact failure this page opens with. `reportMcpOutage` passed `{ outage: { stage, reason, attempts } }`, `TelemetryExtra` declared the field, and it typechecked — but `emit()` builds its event from an **explicit allow-list of keys** and `outage` was not on it, nor in the `blocks` flattening map, nor in core's `TelemetryEventSchema`. Two deliberately different outages produced byte-identical events. Nothing threw, no test went red, and the data for that whole period cannot be recovered.
 
-The lesson is not "wire the field". It is that **the battery asserted the event ARRIVED and never
-that it carried anything**, and a kind-only assertion cannot see an empty payload. When you add an
-event kind, the live check has to assert the FIELDS.
+The lesson is not "wire the field". It is that **the battery asserted the event ARRIVED and never that it carried anything**, and a kind-only assertion cannot see an empty payload. When you add an event kind, the live check has to assert the FIELDS.
 
-- `stage` — `first` (this session lost MCP at all) or `budget_spent` (it stopped retrying). These are
-  the two facts the event exists to separate: the share of sessions that lose MCP, and the share
-  where it never came back on its own.
-- `reason` — closed `OutageReason`: `sse_ended` | `sse_error` | `sse_aborted` | `sse_closed` |
-  `connect_error` | `other`. The proxy's own reason strings are free text that also feeds a log, so
-  `mcp-outage.ts` narrows them and reports **`other`** for anything unnamed. A classifier that cannot
-  say "I don't know" lies instead, and an unbounded string must never reach the wire.
+- `stage` — `first` (this session lost MCP at all) or `budget_spent` (it stopped retrying). These are the two facts the event exists to separate: the share of sessions that lose MCP, and the share where it never came back on its own.
+- `reason` — closed `OutageReason`: `sse_ended` | `sse_error` | `sse_aborted` | `sse_closed` | `connect_error` | `other`. The proxy's own reason strings are free text that also feeds a log, so `mcp-outage.ts` narrows them and reports **`other`** for anything unnamed. A classifier that cannot say "I don't know" lies instead, and an unbounded string must never reach the wire.
 - `attempts` — consecutive reconnects tried when this was reported.
 
-Still true and worth knowing when you query it: `mcp_connection_lost` carries **no `sessionId`** (it
-fires from the proxy process, not the daemon), and is capped at two per proxy process by design.
+Still true and worth knowing when you query it: `mcp_connection_lost` carries **no `sessionId`** (it fires from the proxy process, not the daemon), and is capped at two per proxy process by design.
 
 ## Recording locally instead of sending — `RETICLE_TELEMETRY_FILE`
 
-Set it to a path and every event is appended there as one JSON object per line, and **nothing is
-sent**. The payload is the one the wire would have carried, built by the same code and redacted by
-the same rules, so what a run records is what a user would have sent.
+Set it to a path and every event is appended there as one JSON object per line, and **nothing is sent**. The payload is the one the wire would have carried, built by the same code and redacted by the same rules, so what a run records is what a user would have sent.
 
 It exists for two reasons that pull the same way:
 
-- **A release sweep is not a user.** Driving dozens of sessions through a gate emits real
-  `daemon_started` / `verification_completed` / `bug_found` events, indistinguishable in PostHog from
-  people. Test runs polluting the numbers is the same class of error as counting
-  `cli_command_run { mcp }` as human intent: the metric stops describing what it claims to.
-- **Verifying telemetry should not need a hand-rolled HTTP server.** Ad-hoc harnesses are how a check
-  ends up measuring nothing.
+- **A release sweep is not a user.** Driving dozens of sessions through a gate emits real `daemon_started` / `verification_completed` / `bug_found` events, indistinguishable in PostHog from people. Test runs polluting the numbers is the same class of error as counting `cli_command_run { mcp }` as human intent: the metric stops describing what it claims to.
+- **Verifying telemetry should not need a hand-rolled HTTP server.** Ad-hoc harnesses are how a check ends up measuring nothing.
 
-One deliberate exception to the rules above: `RETICLE_TELEMETRY_FILE` keeps telemetry ENABLED inside a
-Reticle source checkout. The checkout guard exists to stop us phoning home, and writing a local file
-is not phoning home — while a release sweep is driven from exactly there, so a sink that inherited
-the guard would record nothing and look like it had worked.
+One deliberate exception to the rules above: `RETICLE_TELEMETRY_FILE` keeps telemetry ENABLED inside a Reticle source checkout. The checkout guard exists to stop us phoning home, and writing a local file is not phoning home — while a release sweep is driven from exactly there, so a sink that inherited the guard would record nothing and look like it had worked.
 
-`sent: true` from `reticle_feedback` means the record landed in the file, which is the honest reading
-of "captured" for a recorded run. An unwritable path degrades to a no-op and reports `false`; it
-never takes the daemon down.
+`sent: true` from `reticle_feedback` means the record landed in the file, which is the honest reading of "captured" for a recorded run. An unwritable path degrades to a no-op and reports `false`; it never takes the daemon down.
 
 ## Adding things: what to do
 

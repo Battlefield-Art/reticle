@@ -10,7 +10,9 @@ import type { ExpectedLink } from './divergence.js';
 export function predicateToExpectedLinks(predicate: Predicate): ExpectedLink[] {
   switch (predicate.kind) {
     case PredicateKind.SIGNAL:
-      return predicate.name === undefined ? [] : [{ kind: ConsequenceKind.SIGNAL, name: predicate.name }];
+      return predicate.name === undefined
+        ? []
+        : [{ kind: ConsequenceKind.SIGNAL, name: predicate.name }];
     case PredicateKind.NET:
       return predicate.urlContains === undefined
         ? []

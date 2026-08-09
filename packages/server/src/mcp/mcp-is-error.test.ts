@@ -17,9 +17,9 @@ import { resultIsError } from './mcp-is-error.js';
 
 describe('resultIsError', () => {
   it('is true for the refusal shape the tools actually return', () => {
-    expect(resultIsError({ error: 'no browser session connected', recovery: 'start your app' })).toBe(
-      true,
-    );
+    expect(
+      resultIsError({ error: 'no browser session connected', recovery: 'start your app' }),
+    ).toBe(true);
   });
 
   it('is false for a normal result', () => {

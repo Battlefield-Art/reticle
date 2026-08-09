@@ -31,7 +31,9 @@ describe('PendingRequests — what is still unanswered', () => {
 
   it('ignores notifications — no id means nothing is owed', () => {
     const pending = new PendingRequests();
-    pending.observeOutbound(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }));
+    pending.observeOutbound(
+      JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+    );
     expect(pending.unanswered).toEqual([]);
   });
 
@@ -183,8 +185,12 @@ describe('HandshakeReplay — surviving a dropped SSE stream', () => {
   it('keeps the FIRST initialize when the client sends another (the session identity is the first)', () => {
     const r = new HandshakeReplay();
     r.observeOutbound(INIT);
-    r.observeOutbound('{"jsonrpc":"2.0","id":9,"method":"initialize","params":{"protocolVersion":"y"}}');
-    expect(JSON.parse(r.replayLines()[0] ?? '')).toMatchObject({ params: { protocolVersion: 'x' } });
+    r.observeOutbound(
+      '{"jsonrpc":"2.0","id":9,"method":"initialize","params":{"protocolVersion":"y"}}',
+    );
+    expect(JSON.parse(r.replayLines()[0] ?? '')).toMatchObject({
+      params: { protocolVersion: 'x' },
+    });
   });
 });
 

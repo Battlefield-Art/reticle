@@ -467,7 +467,8 @@ describe('runInit — the /reticle command', () => {
    * which the test below pins.
    */
   it('refreshes a STALE Reticle command, recognised by its own frontmatter', () => {
-    const stale = '---\ndescription: Verify this app in the browser with Reticle\n---\n\nold body\n';
+    const stale =
+      '---\ndescription: Verify this app in the browser with Reticle\n---\n\nold body\n';
     const io = memoryIo(
       { ...VITE_FILES, '.claude/commands/reticle.md': stale },
       { claudeAvailable: true },

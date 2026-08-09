@@ -70,7 +70,12 @@ export interface Detection {
 const NEXT_CONFIGS = ['next.config.js', 'next.config.mjs', 'next.config.ts', 'next.config.cjs'];
 const VITE_CONFIGS = ['vite.config.js', 'vite.config.ts', 'vite.config.mjs', 'vite.config.mts'];
 const SVELTE_CONFIGS = ['svelte.config.js', 'svelte.config.ts', 'svelte.config.mjs'];
-const ASTRO_CONFIGS = ['astro.config.mjs', 'astro.config.js', 'astro.config.ts', 'astro.config.cjs'];
+const ASTRO_CONFIGS = [
+  'astro.config.mjs',
+  'astro.config.js',
+  'astro.config.ts',
+  'astro.config.cjs',
+];
 
 function depVersion(pkg: PackageJsonLike, name: string): string | undefined {
   return pkg.dependencies?.[name] ?? pkg.devDependencies?.[name] ?? pkg.peerDependencies?.[name];
@@ -105,9 +110,7 @@ const NODE_MODULES_MARKERS: readonly (readonly [string, PackageManager])[] = [
 ];
 
 /** Marker basenames present inside the project's `node_modules`, if it has one. */
-function packageManagerFromNodeModules(
-  markers: ReadonlySet<string>,
-): PackageManager | undefined {
+function packageManagerFromNodeModules(markers: ReadonlySet<string>): PackageManager | undefined {
   for (const [name, pm] of NODE_MODULES_MARKERS) if (markers.has(name)) return pm;
   return undefined;
 }

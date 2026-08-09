@@ -28,7 +28,9 @@ describe('the agent cheat-sheet describes the surface that actually ships', () =
     // Backtick-delimited, like the overclaim check below: a bare `includes` is satisfied by a LONGER
     // name that contains this one, so dropping `reticle_act` while keeping `reticle_act_and_wait`
     // passed a gate whose entire job was to notice a core tool going missing from the doc.
-    const missing = [...CORE_TOOL_NAMES].filter((name) => !new RegExp(`\`${name}\``).test(coreSection));
+    const missing = [...CORE_TOOL_NAMES].filter(
+      (name) => !new RegExp(`\`${name}\``).test(coreSection),
+    );
     expect(missing).toEqual([]);
   });
 

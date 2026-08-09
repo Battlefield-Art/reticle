@@ -348,7 +348,11 @@ function commandIsSettled(content: string | null | undefined): boolean {
  * release created it is a command that can never be improved for anyone who already ran init. The
  * whole file is Reticle's, so a stale one is rewritten.
  */
-function commandStepFor(path: string, present: boolean, content: string | null | undefined): Step | null {
+function commandStepFor(
+  path: string,
+  present: boolean,
+  content: string | null | undefined,
+): Step | null {
   if (!present) return null;
   return commandIsSettled(content)
     ? {
@@ -426,7 +430,6 @@ function cursorRuleStep(input: PlanInput): Step | null {
   };
 }
 
-
 /**
  * Every coding agent `reticle init` knows how to wire itself into, and the three surfaces it wires:
  * the global MCP registration, the project rule file that makes the agent USE Reticle, and the
@@ -484,7 +487,6 @@ function stepsForAgents(
 function slashCommandSteps(input: PlanInput): Step[] {
   return stepsForAgents(input, (a) => a.commandStep);
 }
-
 
 /**
  * The behavioral rule that makes the agent actually USE Reticle. Written into the detected agent's

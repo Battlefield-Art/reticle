@@ -179,7 +179,11 @@ const DevicePollSchema = z.object({
 /** Best-effort open the approval page in the default browser; the printed URL is the headless fallback. */
 const openBrowser = (target: string): void => {
   const cmd =
-    NodePlatform.MACOS === process.platform ? 'open' : NodePlatform.WINDOWS === process.platform ? 'cmd' : 'xdg-open';
+    NodePlatform.MACOS === process.platform
+      ? 'open'
+      : NodePlatform.WINDOWS === process.platform
+        ? 'cmd'
+        : 'xdg-open';
   const args = NodePlatform.WINDOWS === process.platform ? ['/c', 'start', '', target] : [target];
   try {
     const child = spawn(cmd, args, { stdio: 'ignore', detached: true });

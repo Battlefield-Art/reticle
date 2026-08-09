@@ -35,7 +35,12 @@ interface Options {
 function fakeSession(options: Options): Session {
   const command = (name: string): Promise<CommandResult> => {
     if (('act' === name || 'act_sequence' === name) && options.actError !== undefined) {
-      return Promise.resolve({ kind: 'command_result', id: 'c', ok: false, error: options.actError });
+      return Promise.resolve({
+        kind: 'command_result',
+        id: 'c',
+        ok: false,
+        error: options.actError,
+      });
     }
     return Promise.resolve({
       kind: 'command_result',

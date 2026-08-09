@@ -139,7 +139,6 @@ export const CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   ReticleTool.SESSION,
 ]);
 
-
 /** Is the truthy form of a boolean env var set? `1`, `true`, `yes` — anything else is off. */
 function envFlagOn(raw: string | undefined): boolean {
   if (raw === undefined) return false;
@@ -200,7 +199,10 @@ export function describeToolSurface(active: ToolSurface, requested?: string): To
   // Reporting the second as the first is how somebody spends an afternoon on a switch that IS being
   // read and is simply off.
   return flag === undefined || 0 === flag.length
-    ? { active, source: `the one tool surface (${ADVERTISE_ALL_ENV} unset when the daemon started)` }
+    ? {
+        active,
+        source: `the one tool surface (${ADVERTISE_ALL_ENV} unset when the daemon started)`,
+      }
     : { active, source: `the one tool surface (${ADVERTISE_ALL_ENV}='${flag}' is off)` };
 }
 

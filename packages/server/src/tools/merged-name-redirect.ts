@@ -63,5 +63,5 @@ export function mergedNameMessage(name: string, redirect: MergedNameRedirect): s
   return redirect.action === undefined
     ? `${name} no longer exists — ${redirect.note ?? `use ${redirect.tool}`}.`
     : `${name} was merged into ${redirect.tool}. Call ${redirect.tool} { action: "${redirect.action}", ... } — ` +
-      `through reticle_run if it is not advertised under this profile.`;
+        `through reticle_run if it is not advertised under this profile.`;
 }

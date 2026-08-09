@@ -364,8 +364,7 @@ function installUnadvertisedToolHelp(
   if (handlers === undefined || original === undefined) return;
   handlers.set(CALL_TOOL_METHOD, async (request: unknown, extra: unknown) => {
     const name = toolNameOf(request);
-    const help =
-      name === undefined ? undefined : unadvertisedToolHelp(name, advertised, known);
+    const help = name === undefined ? undefined : unadvertisedToolHelp(name, advertised, known);
     if (help !== undefined) throw new McpError(ErrorCode.InvalidParams, help);
     return original(request, extra);
   });

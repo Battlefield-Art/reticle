@@ -16,25 +16,45 @@ import { crawlEmptyNote } from './crawl-empty.js';
 
 describe('why a crawl clicked nothing', () => {
   it('says so when the page had no interactive controls at all', () => {
-    const note = crawlEmptyNote({ interactiveFound: 0, stepsRun: 0, maxSteps: 25, truncated: false });
+    const note = crawlEmptyNote({
+      interactiveFound: 0,
+      stepsRun: 0,
+      maxSteps: 25,
+      truncated: false,
+    });
     expect(note).toContain('no interactive controls');
   });
 
   it('distinguishes "found controls but clicked none" — the reported case', () => {
     // 34 found, 0 clicked. Whatever the cause, it is NOT an empty page, and saying so is the
     // difference between a diagnosis and a guess.
-    const note = crawlEmptyNote({ interactiveFound: 34, stepsRun: 0, maxSteps: 25, truncated: false });
+    const note = crawlEmptyNote({
+      interactiveFound: 34,
+      stepsRun: 0,
+      maxSteps: 25,
+      truncated: false,
+    });
     expect(note).toContain('34');
     expect(note).toContain('none of them');
   });
 
   it('names a maxSteps of zero, which is the one self-inflicted zero', () => {
-    const note = crawlEmptyNote({ interactiveFound: 34, stepsRun: 0, maxSteps: 0, truncated: false });
+    const note = crawlEmptyNote({
+      interactiveFound: 34,
+      stepsRun: 0,
+      maxSteps: 0,
+      truncated: false,
+    });
     expect(note).toContain('maxSteps');
   });
 
   it('mentions truncation, because a floor is not a total', () => {
-    const note = crawlEmptyNote({ interactiveFound: 0, stepsRun: 0, maxSteps: 25, truncated: true });
+    const note = crawlEmptyNote({
+      interactiveFound: 0,
+      stepsRun: 0,
+      maxSteps: 25,
+      truncated: true,
+    });
     expect(note).toContain('snapshot');
   });
 

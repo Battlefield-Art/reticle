@@ -14,7 +14,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { craImportPatch, craEnvPatch, CRA_DEV_MODULE_IMPORT } from './cra.js';
+import {
+  craImportPatch,
+  craEnvPatch,
+  craDevModuleFile,
+  CRA_DEV_MODULE_IMPORT,
+  CRA_TOKEN_MISSING_NOTE,
+} from './cra.js';
 
 describe('the import into src/index.tsx', () => {
   it('goes in after the existing imports, not before them', () => {
@@ -62,5 +68,23 @@ describe('the token, through the one channel CRA inlines', () => {
 
   it('writes nothing when there is no token to write', () => {
     expect(craEnvPatch(null, '')).toBeNull();
+  });
+});
+
+describe('the clone that has no token', () => {
+  // The token is per-machine and .env.development.local is gitignored by CRA's own template, so it
+  // never survives a clone. Before this, the app connected anyway and the ONLY signal was the
+  // bridge's generic "authentication failed" in a console nobody had open.
+  it('names the missing variable and the one command that fixes it', () => {
+    const file = craDevModuleFile(4400, 'proj');
+    expect(true).toBe(file.includes('console.error'));
+    expect(file).toContain(CRA_TOKEN_MISSING_NOTE);
+    expect(CRA_TOKEN_MISSING_NOTE).toContain('REACT_APP_RETICLE_TOKEN');
+    expect(CRA_TOKEN_MISSING_NOTE).toContain('.env.development.local');
+    expect(CRA_TOKEN_MISSING_NOTE).toContain('reticle init');
+  });
+
+  it('still attempts the connect, so a bridge running without a token keeps working', () => {
+    expect(craDevModuleFile(4400, 'proj')).toContain('reticle.connect(');
   });
 });

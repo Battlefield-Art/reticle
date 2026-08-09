@@ -176,8 +176,13 @@ export const ANNOTATE_TOOLS: ToolDef[] = [
         // Name what IS recording. `annotate_no_step` alone sent the agent off to record MORE steps —
         // into the same empty recording — when the steps it already has are in another one.
         const active = deps.recordings.active();
-        const elsewhere = active.filter((r) => r !== name && (deps.recordings.stepCount(r) ?? 0) > 0);
-        if (outcome.result.code === AnnotationErrorCode.NO_STEP_TO_ANNOTATE && elsewhere.length > 0) {
+        const elsewhere = active.filter(
+          (r) => r !== name && (deps.recordings.stepCount(r) ?? 0) > 0,
+        );
+        if (
+          outcome.result.code === AnnotationErrorCode.NO_STEP_TO_ANNOTATE &&
+          elsewhere.length > 0
+        ) {
           return Promise.resolve({
             ...outcome.result,
             recovery: `'${name}' has no steps yet, but ${elsewhere.map((r) => `'${r}'`).join(', ')} does. Pass \`flow\` to say which recording this belongs to, or drive an action first.`,

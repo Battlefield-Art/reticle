@@ -209,16 +209,13 @@ const RAW_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.QUERY,
     example: { by: 'testid', value: 'todo-list' },
-    description:
-      `Find elements by Testing-Library semantics, INCLUDING open shadow roots — \`count_only:true\` gives just the count (~30x smaller); \`limit\` caps descriptors. Pass \`by\` (${QUERY_BY_LIST}) and \`value\` (the query string). Returns matching refs + descriptors + visibility. Pass \`attrs:["href"]\` to project attributes (link/image URLs) onto each match. Pass \`limit\` to cap descriptors (broad role queries can be large) or \`count_only:true\` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.`,
+    description: `Find elements by Testing-Library semantics, INCLUDING open shadow roots — \`count_only:true\` gives just the count (~30x smaller); \`limit\` caps descriptors. Pass \`by\` (${QUERY_BY_LIST}) and \`value\` (the query string). Returns matching refs + descriptors + visibility. Pass \`attrs:["href"]\` to project attributes (link/image URLs) onto each match. Pass \`limit\` to cap descriptors (broad role queries can be large) or \`count_only:true\` for just the match count — both cut tokens. On zero matches, also returns hint:{ route, presentRegions[], knownEmptyState } so you can distinguish an empty state from a missing element WITHOUT taking a snapshot.`,
     inputSchema: {
       // Constrained to the enum, NOT z.string(). A free string let `by:'css'` through to the
       // browser's `default: return []`, so an unsupported strategy answered "0 matches" — which
       // reads as "the element is not on the page". Measured on a live page: by:'css' value:'body'
       // returned count 0. A false negative is the one answer this product must never invent.
-      by: queryByEnum
-        .optional()
-        .describe(`Query strategy: ${QUERY_BY_LIST}`),
+      by: queryByEnum.optional().describe(`Query strategy: ${QUERY_BY_LIST}`),
       value: z
         .string()
         .optional()

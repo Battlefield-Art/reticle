@@ -41,7 +41,10 @@ describe('assert-net', () => {
    */
   it('carries an exact count through, so the double-submit oracle is reachable', () => {
     const out = compileAnnotation(
-      { kind: AnnotationKind.ASSERT_NET, net: { method: 'POST', urlContains: '/refund', count: 1 } },
+      {
+        kind: AnnotationKind.ASSERT_NET,
+        net: { method: 'POST', urlContains: '/refund', count: 1 },
+      },
       ONE_STEP,
     );
     expect(out.patch?.stepExpect?.net?.count).toBe(1);

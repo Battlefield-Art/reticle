@@ -142,11 +142,14 @@ describe('action effect: valueChanged', () => {
     const sel = document.querySelector('select') as HTMLSelectElement;
     let changes = 0;
     sel.addEventListener('change', () => (changes += 1));
-    await expect(executeAction(refs.refFor(sel), 'select', { value: 'does-not-exist' })).rejects.toThrow(
-      /no <option>/i,
-    );
+    await expect(
+      executeAction(refs.refFor(sel), 'select', { value: 'does-not-exist' }),
+    ).rejects.toThrow(/no <option>/i);
     expect(sel.value, 'the existing selection must survive a refused select').toBe('a');
-    expect(changes, 'a refused select must not fire change — that is how the app got corrupted').toBe(0);
+    expect(
+      changes,
+      'a refused select must not fire change — that is how the app got corrupted',
+    ).toBe(0);
   });
 
   it('the refusal lists the options that DO exist, so the retry is one call away', async () => {

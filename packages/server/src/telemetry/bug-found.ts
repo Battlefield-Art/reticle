@@ -198,8 +198,7 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
   // saying nothing was proved either way, and a top-level `error` is a refusal — measured over one
   // sweep, every bug_found emitted was one of these two: "no session connected" from reticle_run and
   // an unverifiable suite from reticle_verify_change, counted as defects in the user's app.
-  const reticleFailure =
-    'unknown' === result['verified'] || 'string' === typeof result['error'];
+  const reticleFailure = 'unknown' === result['verified'] || 'string' === typeof result['error'];
   if (false === verdict && 0 === bugs.length && !isInconclusive(result) && !reticleFailure) {
     const reason = assertionOf(result);
     const kind =

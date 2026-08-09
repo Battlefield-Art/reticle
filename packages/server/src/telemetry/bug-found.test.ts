@@ -186,7 +186,10 @@ describe('Reticle failing is not the app failing', () => {
   it('still counts a genuine failed assertion', () => {
     // The fix must not silence the metric it is protecting.
     expect(
-      bugsInResult('reticle_act_and_wait', { verified: 'no', verdict: { pass: false, assertion: 'route.changed' } }),
+      bugsInResult('reticle_act_and_wait', {
+        verified: 'no',
+        verdict: { pass: false, assertion: 'route.changed' },
+      }),
     ).toHaveLength(1);
   });
 });
@@ -213,7 +216,10 @@ describe('the reticle_run wrapper never reports its own bugs', () => {
 
   it('does not re-count a failed assertion either', () => {
     expect(
-      bugsInResult('reticle_run', { verified: 'no', verdict: { pass: false, assertion: 'route.changed' } }),
+      bugsInResult('reticle_run', {
+        verified: 'no',
+        verdict: { pass: false, assertion: 'route.changed' },
+      }),
     ).toHaveLength(0);
   });
 

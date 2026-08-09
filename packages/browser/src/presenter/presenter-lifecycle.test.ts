@@ -108,7 +108,7 @@ describe('presenter v2 session border', () => {
     p.destroy();
   });
 
-  it('3c-brand collapsing swaps the wordmark for the mark alone, beside the dot', () => {
+  it('3c-brand collapsing swaps the wordmark for the mark alone', () => {
     document.body.innerHTML = '';
     const p = new Presenter({ border: 'session' });
     p.mount();
@@ -123,8 +123,9 @@ describe('presenter v2 session border', () => {
     (document.querySelector('[data-reticle-min-btn]') as HTMLElement).click();
     expect(shown(mark)).toBe(true); // collapsed → mark only
     expect(shown(wordmark)).toBe(false);
-    // the blinking dot stays with it, and nothing else was pushed out of the bar
-    expect(shown(document.querySelector('.reticle-dot') as HTMLElement)).toBe(true);
+    // The decorative blinking dot was removed — the mark identifies the panel on its own, and a dot
+    // that never changed carried no state to lose. Pinned so it does not creep back in.
+    expect(document.querySelector('.reticle-dot')).toBeNull();
     expect(shown(document.querySelector('.reticle-live') as HTMLElement)).toBe(true);
 
     head.click(); // restore

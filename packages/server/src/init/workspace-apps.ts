@@ -26,7 +26,10 @@ interface WorkspaceSources {
 
 /** `packages/*` -> `packages`; `web` -> `web`. The base directory a glob searches. */
 function globBase(pattern: string): string | undefined {
-  const base = pattern.split('/')[0]?.trim().replace(/^['"]|['"]$/g, '');
+  const base = pattern
+    .split('/')[0]
+    ?.trim()
+    .replace(/^['"]|['"]$/g, '');
   return base === undefined || '' === base || '.' === base || base.includes('*') ? undefined : base;
 }
 
@@ -72,8 +75,6 @@ export function workspaceParents(sources: WorkspaceSources): string[] {
   const candidates =
     declared.length > 0
       ? declared
-      : (sources.topLevelDirs ?? []).filter(
-          (d) => !d.startsWith('.') && !NEVER_A_PACKAGE.has(d),
-        );
+      : (sources.topLevelDirs ?? []).filter((d) => !d.startsWith('.') && !NEVER_A_PACKAGE.has(d));
   return [...new Set(candidates)];
 }

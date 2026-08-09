@@ -42,7 +42,7 @@ describe('a Reticle tool that is real but not advertised', () => {
     expect(help).toContain('RETICLE_TOOL_PROFILE');
   });
 
-  it('stays silent for an advertised tool — that call is the SDK\'s business, not ours', () => {
+  it("stays silent for an advertised tool — that call is the SDK's business, not ours", () => {
     expect(unadvertisedToolHelp(ReticleTool.SNAPSHOT, ADVERTISED, KNOWN)).toBeUndefined();
   });
 

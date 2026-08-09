@@ -30,7 +30,9 @@ describe('which failing flows can support a verdict about the change', () => {
   });
 
   it('keeps the attributed ones when a run mixes both', () => {
-    expect(attributedFailures(['checkout', 'legacy-smoke'], ['legacy-smoke'])).toEqual(['checkout']);
+    expect(attributedFailures(['checkout', 'legacy-smoke'], ['legacy-smoke'])).toEqual([
+      'checkout',
+    ]);
   });
 
   it('is empty for an empty failure list', () => {

@@ -47,6 +47,9 @@ function input(partial: Partial<PlanInput>): PlanInput {
     claudeMdContent: partial.claudeMdContent,
     agentsMdContent: partial.agentsMdContent,
     cursorRuleContent: partial.cursorRuleContent,
+    ...(partial.craEntry === undefined ? {} : { craEntry: partial.craEntry }),
+    ...(partial.craEnv === undefined ? {} : { craEnv: partial.craEnv }),
+    ...(partial.pairingToken === undefined ? {} : { pairingToken: partial.pairingToken }),
     options: partial.options ?? { port: undefined, mcp: true, install: false },
   };
 }
@@ -305,6 +308,37 @@ describe('buildPlan — install', () => {
         expect(s.write?.content ?? '').not.toContain('@reticlehq/core');
       }
     }
+  });
+});
+
+describe('buildPlan — CRA pairing token', () => {
+  const TOKEN_STEP = 'Pairing token';
+  const craPlan = (partial: Partial<PlanInput> = {}): ReturnType<typeof buildPlan> =>
+    buildPlan(
+      input({
+        detection: detection(Framework.CRA),
+        craEntry: { path: 'src/index.tsx', source: "import React from 'react';\n" },
+        ...partial,
+      }),
+    );
+
+  it('warns that the env file is gitignored, so a teammate cloning must run init too', () => {
+    const written = maybeStep(craPlan({ pairingToken: 'tok-1' }), TOKEN_STEP);
+    expect(StepStatus.APPLY).toBe(written?.status);
+    expect(written?.detail).toContain('gitignored');
+  });
+
+  it('says the token is missing rather than reporting a clean install with no token step at all', () => {
+    // No daemon has ever run, so ~/.reticle/pairing-token does not exist. The plan used to simply
+    // omit the step: init read all-green and the app could never pair.
+    const missing = maybeStep(craPlan({ pairingToken: '' }), TOKEN_STEP);
+    expect(StepStatus.MANUAL).toBe(missing?.status);
+    expect(missing?.detail).toContain('reticle start');
+  });
+
+  it('stays quiet when the correct token is already in the env file', () => {
+    const plan = craPlan({ pairingToken: 'tok-1', craEnv: 'REACT_APP_RETICLE_TOKEN=tok-1\n' });
+    expect(undefined).toBe(maybeStep(plan, TOKEN_STEP));
   });
 });
 

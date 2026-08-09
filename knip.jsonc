@@ -30,27 +30,27 @@
         "bench/**/*.mjs",
         "assets/benchmarks/render.mjs",
         "eslint.config.mjs",
-        "vitest.integration.config.ts"
+        "vitest.integration.config.ts",
       ],
-      "project": ["scripts/**", "bench/**", "assets/**"]
+      "project": ["scripts/**", "bench/**", "assets/**"],
     },
     // run.mjs globs specs/ at runtime and run-*.sh invoke the harnesses — no static import reaches them.
     "apps/e2e": {
-      "entry": ["run.mjs", "desktop-harness.mjs", "specs/*.mjs"]
+      "entry": ["run.mjs", "desktop-harness.mjs", "specs/*.mjs"],
     },
     // Multi-page app: knip does not evaluate the rollupOptions.input array, so name both pages.
     "apps/vibe-builder-demo": {
-      "entry": ["index.html", "builder.html", "qa/*.mjs", "vite.config.ts"]
+      "entry": ["index.html", "builder.html", "qa/*.mjs", "vite.config.ts"],
     },
     // Electron's main process names its preload by PATH STRING, so no import reaches preload.cjs.
     "apps/electron-smoke": {
-      "entry": ["electron/main.cjs", "electron/preload.cjs", "src/main.tsx"]
+      "entry": ["electron/main.cjs", "electron/preload.cjs", "src/main.tsx"],
     },
     "packages/*": {
       "entry": ["src/index.ts", "scripts/*.mts"],
       "project": ["src/**"],
-      "ignore": ["dist/**"]
-    }
+      "ignore": ["dist/**"],
+    },
   },
 
   // @reticlehq/react: probed at runtime from the USER's app, never imported here — see
@@ -64,5 +64,5 @@
   "ignoreBinaries": ["pgrep"],
 
   // Rust; outside every JS tool in this repo.
-  "ignoreWorkspaces": ["packages/tauri"]
+  "ignoreWorkspaces": ["packages/tauri"],
 }

@@ -69,9 +69,9 @@ describe('a session id that survives a reload', () => {
   });
 
   it('ignores a stored value that is empty', () => {
-    expect(rememberSessionLabel(undefined, fakeStore({ __reticle_session: '' }), () => 's-new')).toBe(
-      's-new',
-    );
+    expect(
+      rememberSessionLabel(undefined, fakeStore({ __reticle_session: '' }), () => 's-new'),
+    ).toBe('s-new');
   });
 
   it('treats an EMPTY explicit id as no id — the caller asserted nothing', () => {

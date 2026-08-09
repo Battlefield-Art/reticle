@@ -408,4 +408,3 @@ export class ControlPanel {
     }
   }
 }
-

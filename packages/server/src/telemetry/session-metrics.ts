@@ -387,7 +387,6 @@ export class SessionMetrics {
     // session-lifetime memory behind `repeat` on bug_found, and zeroing it made the same defect,
     // found again after a flush, report as a newly distinct one. Sessions run to 11.5 hours in the
     // data, so that was up to 23 chances to count one defect many times.
-    
   }
 }
 

@@ -442,7 +442,10 @@ describe('parseCliArgs', () => {
   });
 
   it('an unknown command names the command', () => {
-    expect(parseCliArgs(['nope'], PORT)).toEqual({ kind: 'error', message: "unknown command 'nope'" });
+    expect(parseCliArgs(['nope'], PORT)).toEqual({
+      kind: 'error',
+      message: "unknown command 'nope'",
+    });
   });
 });
 

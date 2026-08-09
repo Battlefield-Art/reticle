@@ -36,9 +36,7 @@ const flow = (stepExpect: FlowExpect): FlowFile =>
   ({
     version: 1,
     name: 'probe',
-    steps: [
-      { tool: 'reticle_act', anchor: { kind: 'testid', value: 'x' }, expect: stepExpect },
-    ],
+    steps: [{ tool: 'reticle_act', anchor: { kind: 'testid', value: 'x' }, expect: stepExpect }],
   }) as unknown as FlowFile;
 
 /** Every expect kind the recorder and reticle_annotate can produce. */
@@ -63,14 +61,21 @@ describe('what the grade counts is exactly what a replay enforces', () => {
       const c = classifyFlowAssertions(flow(e));
       expect(c.hasConsequenceAssertion, 'graded as a real consequence').toBe(true);
       expect(c.grade).toBe(FlowAssertionGrade.ASSERTED);
-      expect(successToPredicate(e, NO_DYNAMIC), 'and replay compiles it to a predicate').toBeDefined();
+      expect(
+        successToPredicate(e, NO_DYNAMIC),
+        'and replay compiles it to a predicate',
+      ).toBeDefined();
     },
   );
 
   it('console is enforced but not credited — the safe direction', () => {
     const c = classifyFlowAssertions(flow({ console: { level: 'error', absent: true } }));
-    expect(successToPredicate({ console: { level: 'error', absent: true } }, NO_DYNAMIC)).toBeDefined();
-    expect(c.hasConsequenceAssertion, 'a clean console does not prove the feature worked').toBe(false);
+    expect(
+      successToPredicate({ console: { level: 'error', absent: true } }, NO_DYNAMIC),
+    ).toBeDefined();
+    expect(c.hasConsequenceAssertion, 'a clean console does not prove the feature worked').toBe(
+      false,
+    );
   });
 
   it('element presence stays presence-only — a wrong element can fake it', () => {
@@ -81,6 +86,8 @@ describe('what the grade counts is exactly what a replay enforces', () => {
 
   it('a dynamic-marked element is not asserted, and is not graded as one either', () => {
     // The one place the two rules are allowed to differ, and it differs in the safe direction.
-    expect(successToPredicate({ element: { testid: 'clock' } }, new Set(['clock']))).toBeUndefined();
+    expect(
+      successToPredicate({ element: { testid: 'clock' } }, new Set(['clock'])),
+    ).toBeUndefined();
   });
 });

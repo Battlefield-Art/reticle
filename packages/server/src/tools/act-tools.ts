@@ -12,7 +12,9 @@ import {
   DEFAULT_ASSERT_TIMEOUT_MS,
   InputMode,
   ReticleCommand,
-  Verified, PredicateKind } from '@reticlehq/core';
+  Verified,
+  PredicateKind,
+} from '@reticlehq/core';
 import { assertNativeInputSupported } from './act-danger.js';
 import { leanActResult, mutatedWithin } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
@@ -261,7 +263,11 @@ export const ACT_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.ACT_AND_WAIT,
-    example: { ref: 'e42', action: 'click', until: { kind: PredicateKind.SIGNAL, name: 'todos:loaded' } },
+    example: {
+      ref: 'e42',
+      action: 'click',
+      until: { kind: PredicateKind.SIGNAL, name: 'todos:loaded' },
+    },
     description:
       'Act on a ref, then wait for a predicate to hold — one hop for the act->observe->assert loop. ' +
       'Omit `until` to wait for the page to settle (network + DOM idle) — use this instead of a fixed sleep. ' +

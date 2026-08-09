@@ -1,10 +1,7 @@
 import { z } from 'zod';
 import { navigateResult } from './navigate-result.js';
 import { reloadResult } from './reload-result.js';
-import {
-  waitForReconnect,
-  RELOAD_RECONNECT_TIMEOUT_MS,
-} from '../session/session-reconnect.js';
+import { waitForReconnect, RELOAD_RECONNECT_TIMEOUT_MS } from '../session/session-reconnect.js';
 import { ReticleCommand } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { asString } from './tools-helpers.js';

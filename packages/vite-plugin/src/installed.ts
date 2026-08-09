@@ -180,5 +180,7 @@ export type OptimizerOptionsKey =
  * than an option the installed Vite has never heard of.
  */
 export function optimizerOptionsKey(major: number | null): OptimizerOptionsKey {
-  return null !== major && 7 <= major ? OPTIMIZER_OPTIONS_KEY.ROLLDOWN : OPTIMIZER_OPTIONS_KEY.ESBUILD;
+  return null !== major && 7 <= major
+    ? OPTIMIZER_OPTIONS_KEY.ROLLDOWN
+    : OPTIMIZER_OPTIONS_KEY.ESBUILD;
 }

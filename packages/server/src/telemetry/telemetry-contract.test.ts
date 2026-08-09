@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BugSource,
   ConnectFailure,
+  OutageReason,
   ContradictionKind,
   ActionType,
   FeedbackKind,
@@ -98,9 +99,10 @@ describe('every telemetry event kind is documented', () => {
       'utf8',
     );
     const undocumented = Object.values(TelemetryEventKind).filter((kind) => !doc.includes(kind));
-    expect(undocumented, `add these to docs/telemetry-contract.md: ${undocumented.join(', ')}`).toEqual(
-      [],
-    );
+    expect(
+      undocumented,
+      `add these to docs/telemetry-contract.md: ${undocumented.join(', ')}`,
+    ).toEqual([]);
   });
 });
 
@@ -261,6 +263,16 @@ describe('failure vocabularies stay closed', () => {
   it('connection failures keep an explicit unknown bucket', () => {
     expect(Object.values(ConnectFailure)).toContain(ConnectFailure.OTHER);
     expect(new Set(Object.values(ConnectFailure)).size).toBe(Object.values(ConnectFailure).length);
+  });
+
+  /**
+   * The proxy's own drop reasons are free strings feeding a log, so the wire narrows them — and the
+   * narrowing needs somewhere to put a reason the list does not name, or the next drop path added to
+   * the proxy either leaks raw text or vanishes.
+   */
+  it('outage reasons keep an explicit unknown bucket', () => {
+    expect(Object.values(OutageReason)).toContain(OutageReason.OTHER);
+    expect(new Set(Object.values(OutageReason)).size).toBe(Object.values(OutageReason).length);
   });
 });
 

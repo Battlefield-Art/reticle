@@ -36,7 +36,6 @@ interface SuiteResult {
   failures?: unknown[];
 }
 
-
 export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.VERIFY_CHANGE,
@@ -160,7 +159,9 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
       // explanation admitted the evidence was not tied to the file. See attributed-failure.
       const failingNames = Array.isArray(suite.failures)
         ? suite.failures
-            .map((f) => ('object' === typeof f && f !== null ? asString(asRecord(f)['flow']) : undefined))
+            .map((f) =>
+              'object' === typeof f && f !== null ? asString(asRecord(f)['flow']) : undefined,
+            )
             .filter((n): n is string => n !== undefined)
         : // No per-failure detail: the failure is somewhere in the set that ran, so ask the question
           // of all of them rather than guessing which.

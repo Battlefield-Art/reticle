@@ -12,9 +12,22 @@
  * Extracted because a rule this easy to get wrong, feeding the one number shown to investors, should
  * be readable and testable on its own rather than inferred from a ternary inside a dispatcher.
  */
-import { type BrowserBrand, type Verification } from '@reticlehq/core';
+import { type BrowserBrand, type Verification, VerifiedReason } from '@reticlehq/core';
 import { VERIFICATION_TOOLS } from '../tools/feedback-tools.js';
 import { getBrowserMode } from './browser-mode.js';
+
+/**
+ * The deciding clause, read off the result `decideVerified` wrote it onto.
+ *
+ * Narrowed against core's own list rather than forwarded: a result is an untyped record here, and a
+ * value that is not a member is not a reason — absent beats a string nobody can group by. Derived
+ * from the enum, never re-listed, so a new clause is covered the day it exists.
+ */
+const REASONS: ReadonlySet<string> = new Set(Object.values(VerifiedReason));
+function reasonOf(result: Record<string, unknown>): VerifiedReason | undefined {
+  const raw = result['verifiedReason'];
+  return 'string' === typeof raw && REASONS.has(raw) ? (raw as VerifiedReason) : undefined;
+}
 
 /** Suite statuses. `unverifiable` is a suite that ran but proved nothing — including an empty one. */
 const SuiteStatus = {
@@ -54,6 +67,7 @@ export function verificationOf(
           ? false
           : undefined;
   if (verified === undefined && passed === undefined) return undefined;
+  const reason = reasonOf(result);
   return {
     via: toolName,
     verified: verified ?? (true === passed ? 'yes' : 'no'),
@@ -68,5 +82,9 @@ export function verificationOf(
     // was Edge. Omitted when unreported — a desktop webview and an older SDK both have no answer,
     // and "unknown" would be a value on a dashboard rather than a gap.
     ...(brand !== undefined ? { brand } : {}),
+    // WHY, not just what. `verified: unknown` covered seven different clauses of the honesty rule
+    // belonging to three different owners — the agent, the app, and Reticle's own blind spots — and
+    // they need opposite responses. A suite verdict has no clause behind it and reports none.
+    ...(reason === undefined ? {} : { reason }),
   };
 }

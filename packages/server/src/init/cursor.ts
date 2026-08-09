@@ -45,7 +45,8 @@ function parseConfig(existing: string | null): ParseResult {
     // empty config, and the file was then rewritten wholesale. Unparseable JSON was already handled
     // conservatively; this adjacent case destroyed the file instead. Whatever is in there is the
     // user's, and we do not understand it, so we do not touch it.
-    if (typeof parsed !== 'object' || null === parsed || Array.isArray(parsed)) return { ok: false };
+    if (typeof parsed !== 'object' || null === parsed || Array.isArray(parsed))
+      return { ok: false };
     return { ok: true, config: parsed as CursorConfigShape };
   } catch {
     return { ok: false };

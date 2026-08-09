@@ -126,8 +126,10 @@ describe('an expected disconnect is logged, never counted as a crash', () => {
     const proc = fakeProc();
     const lines: { event: string; data: Record<string, unknown> }[] = [];
     const crashes: CrashKind[] = [];
-    installProxyResilience(proc, (event, data) => lines.push({ event, data }), (kind) =>
-      crashes.push(kind),
+    installProxyResilience(
+      proc,
+      (event, data) => lines.push({ event, data }),
+      (kind) => crashes.push(kind),
     );
 
     proc.emit('uncaughtException', epipe('EPIPE'));
@@ -144,7 +146,11 @@ describe('an expected disconnect is logged, never counted as a crash', () => {
   it('a real uncaught exception is still a crash', () => {
     const proc = fakeProc();
     const crashes: CrashKind[] = [];
-    installProxyResilience(proc, () => undefined, (kind) => crashes.push(kind));
+    installProxyResilience(
+      proc,
+      () => undefined,
+      (kind) => crashes.push(kind),
+    );
     proc.emit('uncaughtException', new Error('undefined is not a function'));
     expect(crashes).toEqual([CrashKind.UNCAUGHT_EXCEPTION]);
   });
@@ -183,8 +189,10 @@ describe('installProxyResilience — the MCP server must outlive its own bugs', 
     const crashes: CrashKind[] = [];
     // There is no fatal hook to pass: the signature cannot express "and then exit", which is the
     // point. The daemon's equivalent takes one and uses it; the proxy has nobody to respawn it.
-    installProxyResilience(proc, (event, data) => lines.push({ event, data }), (kind) =>
-      crashes.push(kind),
+    installProxyResilience(
+      proc,
+      (event, data) => lines.push({ event, data }),
+      (kind) => crashes.push(kind),
     );
     proc.emit('uncaughtException', new Error('a bug in the proxy'));
     expect(lines.some((l) => l.event.includes('uncaught'))).toBe(true);
@@ -194,7 +202,11 @@ describe('installProxyResilience — the MCP server must outlive its own bugs', 
   it('logs an unhandled rejection and keeps serving', () => {
     const proc = fakeProc();
     const lines: { event: string; data: Record<string, unknown> }[] = [];
-    installProxyResilience(proc, (event, data) => lines.push({ event, data }), () => undefined);
+    installProxyResilience(
+      proc,
+      (event, data) => lines.push({ event, data }),
+      () => undefined,
+    );
     proc.emit('unhandledRejection', 'a stray promise');
     expect(lines).toHaveLength(1);
     expect(lines[0]?.event).toContain('proxy');

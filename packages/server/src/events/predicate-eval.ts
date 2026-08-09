@@ -12,7 +12,12 @@ import { z } from 'zod';
 import { describeObserved } from './observed-in-window.js';
 
 export type Predicate =
-  | { kind: typeof PredicateKind.ELEMENT; query: ElementQuery; state?: ElementState; absent?: boolean }
+  | {
+      kind: typeof PredicateKind.ELEMENT;
+      query: ElementQuery;
+      state?: ElementState;
+      absent?: boolean;
+    }
   | { kind: typeof PredicateKind.TEXT; contains: string; visible?: boolean; absent?: boolean }
   | {
       kind: typeof PredicateKind.NET;
@@ -26,8 +31,19 @@ export type Predicate =
     }
   | { kind: typeof PredicateKind.ROUTE; pathname?: string; contains?: string; since?: number }
   | { kind: typeof PredicateKind.CONSOLE; level?: string; absent?: boolean; since?: number }
-  | { kind: typeof PredicateKind.ANIMATION; name?: string; target?: string; completed?: boolean; since?: number }
-  | { kind: typeof PredicateKind.SIGNAL; name?: string; dataMatches?: Record<string, unknown>; since?: number }
+  | {
+      kind: typeof PredicateKind.ANIMATION;
+      name?: string;
+      target?: string;
+      completed?: boolean;
+      since?: number;
+    }
+  | {
+      kind: typeof PredicateKind.SIGNAL;
+      name?: string;
+      dataMatches?: Record<string, unknown>;
+      since?: number;
+    }
   | { kind: typeof PredicateKind.STATE; store?: string; path: string; equals?: unknown }
   | { kind: typeof PredicateKind.SETTLED; quietMs?: number }
   | { kind: typeof PredicateKind.ALL_OF; predicates: Predicate[] }
@@ -67,64 +83,92 @@ function applyPredicateAliases(input: unknown): unknown {
  * a stripped field and a green — see predicate-strict.test.ts for the MCP session that found this.
  */
 export const PredicateSchema = z.lazy(() =>
-  z.preprocess(applyPredicateAliases, z.discriminatedUnion('kind', [
-    z.object({
-      kind: z.literal(PredicateKind.ELEMENT),
-      query: ElementQuerySchema,
-      state: z.nativeEnum(ElementState).optional(),
-      absent: z.boolean().optional(),
-    }).strict(),
-    z.object({
-      kind: z.literal(PredicateKind.TEXT),
-      contains: z.string(),
-      visible: z.boolean().optional(),
-      absent: z.boolean().optional(),
-    }).strict(),
-    z.object({
-      kind: z.literal(PredicateKind.NET),
-      method: z.string().optional(),
-      urlContains: z.string().optional(),
-      status: z.number().optional(),
-      ok: z.boolean().optional(),
-      since: z.number().optional(),
-      count: z.number().int().nonnegative().optional(),
-    }).strict(),
-    z.object({
-      kind: z.literal(PredicateKind.ROUTE),
-      pathname: z.string().optional(),
-      contains: z.string().optional(),
-      since: z.number().optional(),
-    }).strict(),
-    z.object({
-      kind: z.literal(PredicateKind.CONSOLE),
-      level: z.string().optional(),
-      absent: z.boolean().optional(),
-      since: z.number().optional(),
-    }).strict(),
-    z.object({
-      kind: z.literal(PredicateKind.ANIMATION),
-      name: z.string().optional(),
-      target: z.string().optional(),
-      completed: z.boolean().optional(),
-      since: z.number().optional(),
-    }).strict(),
-    z.object({
-      kind: z.literal(PredicateKind.SIGNAL),
-      name: z.string().optional(),
-      dataMatches: z.record(z.unknown()).optional(),
-      since: z.number().optional(),
-    }).strict(),
-    z.object({
-      kind: z.literal(PredicateKind.STATE),
-      store: z.string().optional(),
-      path: z.string(),
-      equals: z.unknown().optional(),
-    }).strict(),
-    z.object({ kind: z.literal(PredicateKind.SETTLED), quietMs: z.number().positive().optional() }).strict(),
-    z.object({ kind: z.literal(PredicateKind.ALL_OF), predicates: z.array(PredicateSchema) }).strict(),
-    z.object({ kind: z.literal(PredicateKind.ANY_OF), predicates: z.array(PredicateSchema) }).strict(),
-    z.object({ kind: z.literal(PredicateKind.NOT), predicate: PredicateSchema }).strict(),
-  ])),
+  z.preprocess(
+    applyPredicateAliases,
+    z.discriminatedUnion('kind', [
+      z
+        .object({
+          kind: z.literal(PredicateKind.ELEMENT),
+          query: ElementQuerySchema,
+          state: z.nativeEnum(ElementState).optional(),
+          absent: z.boolean().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.TEXT),
+          contains: z.string(),
+          visible: z.boolean().optional(),
+          absent: z.boolean().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.NET),
+          method: z.string().optional(),
+          urlContains: z.string().optional(),
+          status: z.number().optional(),
+          ok: z.boolean().optional(),
+          since: z.number().optional(),
+          count: z.number().int().nonnegative().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.ROUTE),
+          pathname: z.string().optional(),
+          contains: z.string().optional(),
+          since: z.number().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.CONSOLE),
+          level: z.string().optional(),
+          absent: z.boolean().optional(),
+          since: z.number().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.ANIMATION),
+          name: z.string().optional(),
+          target: z.string().optional(),
+          completed: z.boolean().optional(),
+          since: z.number().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.SIGNAL),
+          name: z.string().optional(),
+          dataMatches: z.record(z.unknown()).optional(),
+          since: z.number().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.STATE),
+          store: z.string().optional(),
+          path: z.string(),
+          equals: z.unknown().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal(PredicateKind.SETTLED),
+          quietMs: z.number().positive().optional(),
+        })
+        .strict(),
+      z
+        .object({ kind: z.literal(PredicateKind.ALL_OF), predicates: z.array(PredicateSchema) })
+        .strict(),
+      z
+        .object({ kind: z.literal(PredicateKind.ANY_OF), predicates: z.array(PredicateSchema) })
+        .strict(),
+      z.object({ kind: z.literal(PredicateKind.NOT), predicate: PredicateSchema }).strict(),
+    ]),
+  ),
 ) as unknown as z.ZodType<Predicate>;
 
 export interface EvalResult {
@@ -592,7 +636,12 @@ export function evalSettled(
       observed: what,
       expected: 'no requests in flight and no response bodies still streaming',
       assertion: 'settled.in-flight',
-      evidence: { settled: false, inFlight, ...(streaming > 0 ? { streaming } : {}), ...disclosure },
+      evidence: {
+        settled: false,
+        inFlight,
+        ...(streaming > 0 ? { streaming } : {}),
+        ...disclosure,
+      },
     };
   }
 

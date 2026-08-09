@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Verified } from '@reticlehq/core';
+import { Verified, VerifiedReason } from '@reticlehq/core';
 import { decideVerified } from './verified.js';
+
+type VerifiedVerdictInput = Parameters<typeof decideVerified>[0];
 import { HonestyGrade, type HonestyBlock } from './honesty.js';
 
 const clean = (grade: HonestyGrade = HonestyGrade.SIGNAL): HonestyBlock => ({
@@ -219,5 +221,71 @@ describe('a stale eviction from earlier in the session must not condemn later ac
     });
     expect(v.verified).toBe(Verified.UNKNOWN);
     expect(v.because).toContain('capture truncated');
+  });
+});
+
+/**
+ * `verified` has three values and this rule has ten clauses, so the verdict alone throws away the
+ * only thing that says WHO has to act. Measured in a real capture: `unknown` + `passed: false` was
+ * indistinguishable between "Reticle caught a real bug", "the agent wrote a bad predicate" and
+ * "Reticle itself could not see", and `no` collapsed "channels disagree" into "the agent's predicate
+ * failed". Seven distinct causes reached the wire as two payloads.
+ *
+ * The pair of checks below is what keeps the enum honest in BOTH directions: a clause without a
+ * member cannot compile, and a member without a clause fails here. Neither list is hand-maintained
+ * against the other.
+ */
+describe('every verdict names the clause that decided it', () => {
+  const branches: Record<VerifiedReason, VerifiedVerdictInput> = {
+    [VerifiedReason.INCONCLUSIVE]: { pass: true, honesty: clean(), inconclusive: 'no store named' },
+    [VerifiedReason.ASSERTION_FAILED]: { pass: false, honesty: clean(), settled: true },
+    [VerifiedReason.CONTRADICTED]: {
+      pass: true,
+      honesty: clean(),
+      settled: true,
+      contradictions: [{ kind: 'signal-contradicted' }],
+    },
+    [VerifiedReason.ALREADY_TRUE]: {
+      pass: true,
+      honesty: clean(),
+      settled: true,
+      alreadyTrue: true,
+    },
+    [VerifiedReason.UNCLEAN_CAPTURE]: {
+      pass: true,
+      honesty: dirty('capture truncated'),
+      settled: true,
+    },
+    [VerifiedReason.VACUOUS_GRADE]: { honesty: clean(HonestyGrade.NONE), settled: true },
+    [VerifiedReason.OUTCOME_PENDING]: {
+      pass: true,
+      honesty: clean(),
+      settled: true,
+      outcomePending: true,
+    },
+    [VerifiedReason.OUTCOME_UNREAD]: {
+      pass: true,
+      honesty: clean(),
+      settled: true,
+      outcomeUnread: true,
+    },
+    [VerifiedReason.UNSETTLED]: { pass: true, honesty: clean(), settled: false },
+    [VerifiedReason.PROVED]: { pass: true, honesty: clean(), settled: true },
+  };
+
+  it.each(Object.entries(branches))('reports %s', (expected, inputs) => {
+    expect(decideVerified(inputs).verifiedReason).toBe(expected);
+  });
+
+  /**
+   * A member nobody produces is a value a dashboard will wait for forever. This is the half a typed
+   * record cannot catch: `Record<VerifiedReason, …>` forces a row per member, but only running the
+   * rule proves the row actually reaches that clause.
+   */
+  it('has no member that no clause produces', () => {
+    const produced = new Set(
+      Object.values(branches).map((inputs) => decideVerified(inputs).verifiedReason),
+    );
+    expect([...Object.values(VerifiedReason)].filter((r) => !produced.has(r))).toEqual([]);
   });
 });

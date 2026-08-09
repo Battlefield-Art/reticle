@@ -11,6 +11,7 @@ import {
   CRA_DEV_MODULE_IMPORT,
   CRA_DEV_MODULE_PATH,
   CRA_ENV_PATH,
+  TOKEN_VAR,
   craDevModuleFile,
   craEnvPatch,
   craImportPatch,
@@ -262,16 +263,28 @@ export function craSteps(input: PlanInput): Step[] {
       dependsOnInstall: true,
     },
   ];
-  const env = craEnvPatch(input.craEnv ?? null, input.pairingToken ?? '');
+  const token = input.pairingToken ?? '';
+  const env = craEnvPatch(input.craEnv ?? null, token);
   if (env !== null) {
     steps.push({
       title: 'Pairing token',
       target: CRA_ENV_PATH,
       status: StepStatus.APPLY,
       // REACT_APP_* is the only thing CRA inlines into browser code; without the token the bridge
-      // refuses the connection and no session appears.
-      detail: 'set REACT_APP_RETICLE_TOKEN (the only channel CRA inlines)',
+      // refuses the connection and no session appears. Say the file is gitignored HERE, at the one
+      // moment someone is looking: the token is per-machine and cannot travel, so every teammate
+      // has to run init once or their clone is dead with no explanation.
+      detail: `set ${TOKEN_VAR} (the only channel CRA inlines) — ${CRA_ENV_PATH} is gitignored, so each teammate must run \`reticle init\` on their own machine`,
       write: { path: CRA_ENV_PATH, content: env },
+    });
+  } else if ('' === token) {
+    // No daemon has ever run here, so there is no token to inline. Omitting the step entirely made
+    // init report all-green for an app that could never pair.
+    steps.push({
+      title: 'Pairing token',
+      target: CRA_ENV_PATH,
+      status: StepStatus.MANUAL,
+      detail: `no pairing token yet — run \`reticle start\`, then \`reticle init\` again to write ${TOKEN_VAR}`,
     });
   }
   if (null === entry) {
@@ -358,7 +371,8 @@ export function astroSteps(input: PlanInput): Step[] {
         title: 'Connect snippet (Astro)',
         // Name what is actually there. `astro.config + layout` pointed at a layout this project may
         // not have — reported on a fixture with only src/pages/index.astro.
-        target: null === layout ? 'astro.config + a page (no layout found)' : 'astro.config + layout',
+        target:
+          null === layout ? 'astro.config + a page (no layout found)' : 'astro.config + layout',
         status: StepStatus.MANUAL,
         detail: manual,
       },

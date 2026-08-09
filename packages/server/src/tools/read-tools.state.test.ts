@@ -50,7 +50,12 @@ describe('reticle_state component projection', () => {
       component?: { component?: string; hooks?: unknown[] };
     };
     expect(r.component?.component).toBe('Cart');
-    expect(r.component?.hooks).toEqual([[{ id: 'line-0', qty: 1 }], '', false, { current: '[Node]' }]);
+    expect(r.component?.hooks).toEqual([
+      [{ id: 'line-0', qty: 1 }],
+      '',
+      false,
+      { current: '[Node]' },
+    ]);
     expect(JSON.stringify(r.component?.hooks).length).toBeLessThan(
       JSON.stringify(BROWSER_RESULT.component.hooks).length / 2,
     );

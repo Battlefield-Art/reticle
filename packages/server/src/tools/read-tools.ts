@@ -177,10 +177,7 @@ export const READ_TOOLS: ToolDef[] = [
       // The recording actually RUNNING when there is exactly one, not the literal name `default` —
       // the same defaulting that made `annotate` report "no steps" against a recording full of them.
       // With several running, `default` stays the documented answer rather than a guess.
-      const name = resolveAnnotateTarget(
-        asString(args['recordingName']),
-        deps.recordings.active(),
-      );
+      const name = resolveAnnotateTarget(asString(args['recordingName']), deps.recordings.active());
       const rec = deps.recordings.stop(name);
       if (rec === undefined) {
         const active = deps.recordings.active();
@@ -265,7 +262,9 @@ export const READ_TOOLS: ToolDef[] = [
         ),
       // Derived, like every other advertised vocabulary here: a free string let a typo through to
       // a HUD that then rendered an unknown severity.
-      level: hudLevelEnum.optional().describe(`Display severity: ${HUD_LEVEL_LIST}. Default: info.`),
+      level: hudLevelEnum
+        .optional()
+        .describe(`Display severity: ${HUD_LEVEL_LIST}. Default: info.`),
       ...sessionIdShape,
     },
     outputSchema: { ok: z.boolean() },

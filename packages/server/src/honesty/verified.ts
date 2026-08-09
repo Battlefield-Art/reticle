@@ -1,4 +1,4 @@
-import { Verified } from '@reticlehq/core';
+import { Verified, VerifiedReason } from '@reticlehq/core';
 import { HonestyGrade, type HonestyBlock } from './honesty.js';
 
 /**
@@ -46,6 +46,13 @@ interface VerifiedInputs {
 
 interface VerifiedVerdict {
   verified: Verified;
+  /**
+   * WHICH clause below decided this, as a closed enum. `verified` has three values and this rule has
+   * ten clauses, so the verdict alone collapses opposite facts — "Reticle caught a real bug", "the
+   * agent wrote a bad predicate" and "Reticle could not see" all arrived as one string. Named here,
+   * beside the sentence, so the vocabulary cannot drift from the branches that produce it.
+   */
+  verifiedReason: VerifiedReason;
   /** One sentence naming the deciding evidence — never a restatement of the field. */
   because: string;
 }
@@ -59,6 +66,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (inputs.inconclusive !== undefined) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.INCONCLUSIVE,
       because: `the assertion could not be evaluated: ${inputs.inconclusive}`,
     };
   }
@@ -66,7 +74,11 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   // A failed assertion is the most actionable fact there is; it leads — including over
   // `alreadyTrue`, because a condition that held before AND fails now is a real regression.
   if (false === pass) {
-    return { verified: Verified.NO, because: 'the declared consequence did not hold' };
+    return {
+      verified: Verified.NO,
+      verifiedReason: VerifiedReason.ASSERTION_FAILED,
+      because: 'the declared consequence did not hold',
+    };
   }
 
   // A contradiction outranks a passing assertion, and that inversion is the whole point: the case
@@ -77,6 +89,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
     const kinds = contradictions.map((c) => c.kind).join(', ');
     return {
       verified: Verified.NO,
+      verifiedReason: VerifiedReason.CONTRADICTED,
       because: `channels disagree about this action (${kinds}) even though the assertion passed`,
     };
   }
@@ -95,6 +108,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (true === inputs.alreadyTrue) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.ALREADY_TRUE,
       because:
         'the declared consequence was already true before this action, so it proves nothing about it — assert something the action CHANGES (a signal, a request, a route, or store state)',
     };
@@ -106,6 +120,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (!honesty.integrity.clean) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.UNCLEAN_CAPTURE,
       because: `capture was not clean (${honesty.integrity.issues.join('; ')}), so a green here would only describe what was observed`,
     };
   }
@@ -116,6 +131,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (honesty.grade === HonestyGrade.NONE) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.VACUOUS_GRADE,
       because:
         'nothing was asserted at a real grade, so passing proves nothing — assert a signal, request, or state path',
     };
@@ -132,6 +148,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (true === outcomePending) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.OUTCOME_PENDING,
       because:
         'a write returned 202 Accepted, so the server has not finished processing it — this window cannot contain the outcome; re-check once it reconciles',
     };
@@ -147,6 +164,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (true === outcomeUnread) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.OUTCOME_UNREAD,
       because:
         'a write returned 2xx with a response body that was never recorded, so its outcome is unread — a 200 describes the transport, not the result (a batch reports per-item failures in the body, and every GraphQL error is a 200). Enable it where your app calls connect(): `reticle.connect({ captureNetworkBodies: true })`, then re-run',
     };
@@ -156,6 +174,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   if (false === settled) {
     return {
       verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.UNSETTLED,
       because:
         'the page never settled, so the reaction window may have closed before the app finished',
     };
@@ -171,6 +190,7 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   // own. Seen on a one-way IPC send: coverage said the outcome was unobservable, `because` said clean.
   return {
     verified: Verified.YES,
+    verifiedReason: VerifiedReason.PROVED,
     because:
       true === honesty.coverage?.partial
         ? `assertion held at ${honesty.grade} grade with no channel disagreeing, but coverage was PARTIAL — see \`coverage\` for what went unobserved`
