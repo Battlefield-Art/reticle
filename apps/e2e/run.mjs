@@ -144,6 +144,69 @@ async function freePort() {
   }
 }
 
+/**
+ * Warn when something that is NOT ours will join the bridge.
+ *
+ * The battery runs on 4400 — Reticle's default, and therefore the port every developer's own app
+ * dials. A single fixture tab left open in a normal browser joins every daemon the battery starts,
+ * and any spec that assumes it owns the session fails with "multiple sessions connected".
+ *
+ * That cost most of an afternoon: three different specs failed across three runs, each of them
+ * correct, all of them poisoned by two Chrome tabs on :4310 and :7699. Every hypothesis about the
+ * code was wrong, because the fault was not in the code.
+ *
+ * It has to BAIT them rather than just look: before the battery starts nothing is listening, so
+ * there is nothing for a stray tab to be connected TO. The tabs reconnect to whatever appears on
+ * 4400, so this stands a daemon up for a few seconds and sees who turns up. The first version of
+ * this check polled an empty port, found nothing, and would have reported all-clear every time.
+ *
+ * Moving the battery to a private port is the real fix and is a bigger job: bench-app, next-smoke
+ * and atlas each hardcode how they dial, and half of them silently stopped connecting when the port
+ * moved. Until that is done, this names the cause in one line at the top of the run instead of
+ * letting a different innocent spec fail each time.
+ */
+async function warnAboutForeignSessions() {
+  await freePort();
+  const daemon = spawn('node', ['packages/server/dist/cli.js', 'serve', '--port', String(BRIDGE_PORT)], {
+    stdio: 'ignore',
+    detached: true,
+  });
+  let sessions = [];
+  try {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await new Promise((r) => setTimeout(r, 500));
+      const raw = await sh(
+        `curl -s --max-time 2 http://localhost:${String(BRIDGE_PORT)}/status 2>/dev/null`,
+      );
+      if (raw === '') continue;
+      try {
+        sessions = JSON.parse(raw).sessions ?? [];
+      } catch {
+        /* daemon still coming up */
+      }
+      if (0 < sessions.length) break;
+    }
+  } finally {
+    try {
+      process.kill(-daemon.pid, 'SIGKILL');
+    } catch {
+      /* already gone */
+    }
+    await freePort();
+  }
+  if (0 === sessions.length) return;
+  process.stdout.write(
+    `\n[e2e] WARNING: ${String(sessions.length)} FOREIGN session(s) joined :${String(BRIDGE_PORT)} before the battery started:\n` +
+      sessions.map((session) => `        ${session.sessionId}  ${session.url}`).join('\n') +
+      `\n        These are not ours — most likely app tabs open in your normal browser. They will join\n` +
+      `        every daemon this battery starts, and any spec that assumes it owns the session will fail\n` +
+      `        with "multiple sessions connected". The spec will look broken and will not be.\n` +
+      `        Close those tabs before trusting a failure below.\n`,
+  );
+}
+
+await warnAboutForeignSessions();
+
 let failed = 0;
 /** Names of the specs that failed, so the SUMMARY can name them — see below. */
 const failures = [];
@@ -161,17 +224,23 @@ for (const name of specs) {
     stdio: 'inherit',
     detached: true,
   });
-  const code = await new Promise((res) => child.on('close', res));
+  // Capture the SIGNAL too. `close` reports (code, signal), and a spec killed by a signal arrives
+  // with code === null — which the failure line then printed as "exit null", a message that says
+  // only "something went wrong somewhere" and sent me to re-run the spec by hand to learn anything.
+  const { code, signal } = await new Promise((res) =>
+    child.on('close', (c, sig) => res({ code: c, signal: sig })),
+  );
   try {
     // Negative pid targets the group. ESRCH just means everything already exited, which is the norm.
     process.kill(-child.pid, 'SIGKILL');
   } catch {
     /* group already gone */
   }
-  if (code !== 0) {
+  if (0 !== code) {
+    const how = signal === null || signal === undefined ? `exit ${code}` : `killed by ${signal}`;
     failed += 1;
-    failures.push(`${name} (exit ${code})`);
-    process.stdout.write(`\n[e2e] ✗ ${name} FAILED (exit ${code})\n`);
+    failures.push(`${name} (${how})`);
+    process.stdout.write(`\n[e2e] ✗ ${name} FAILED (${how})\n`);
   }
 }
 

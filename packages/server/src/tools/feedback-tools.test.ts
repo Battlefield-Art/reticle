@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as telemetryModule from '../telemetry/telemetry.js';
 import { TOOLS } from './tools.js';
 import { ReticleTool } from './tool-names.js';
-import { TOOL_PROFILE, filterTools } from './profiles.js';
+import { TOOL_SURFACE, filterTools } from './tool-surface.js';
 import { buildErrorPayload, FEEDBACK_ASK, RECOVERY } from './error-recovery.js';
 import { resetFeedbackPrompt, takeFeedbackPrompt, VERIFICATION_TOOLS } from './feedback-tools.js';
 
@@ -19,7 +19,7 @@ describe('reticle_feedback', () => {
    * feedback channel, means it collects nothing and is indistinguishable from not existing.
    */
   it('is advertised under every profile, not left behind the meta-tool hatch', () => {
-    for (const profile of [TOOL_PROFILE.HYBRID, TOOL_PROFILE.FULL]) {
+    for (const profile of [TOOL_SURFACE.DEFAULT, TOOL_SURFACE.ALL]) {
       expect(
         filterTools(TOOLS, profile).map((t) => t.name),
         `profile '${profile}'`,

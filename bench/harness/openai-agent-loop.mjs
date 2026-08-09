@@ -40,7 +40,7 @@ const SERVERS = {
     args: ['packages/server/dist/cli.js', 'mcp', '--port', RETICLE_PORT, '--drive', URL],
     env: {
       RETICLE_PORT,
-      RETICLE_TOOL_PROFILE: process.env.BENCH_RETICLE_PROFILE ?? 'full',
+      RETICLE_ADVERTISE_ALL_TOOLS: process.env.BENCH_RETICLE_ADVERTISE_ALL ?? '1',
     },
   },
 };

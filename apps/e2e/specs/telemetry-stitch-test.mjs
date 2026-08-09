@@ -81,7 +81,7 @@ const client = new McpStdioClient(
   [CLI, 'mcp', '--port', PORT, '--drive', APP],
   {
     RETICLE_PORT: PORT,
-    RETICLE_TOOL_PROFILE: 'full',
+    RETICLE_ADVERTISE_ALL_TOOLS: '1',
     // Telemetry is force-ENABLED and pointed at the local capture server. The daemon disables itself
     // inside a Reticle checkout (isReticleSourceCheckout), which is exactly right for a contributor
     // and exactly wrong for this spec, so the override is explicit.

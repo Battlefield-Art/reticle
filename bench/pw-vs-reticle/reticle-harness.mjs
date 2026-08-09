@@ -78,7 +78,7 @@ export async function runReticle(bugs) {
   // Reticle can do — it just needs a driven page, because the always-on SDK ships no screenshotter.
   const client = new McpStdioClient('node', [CLI, 'mcp', '--port', PORT], {
     RETICLE_PORT: PORT,
-    RETICLE_TOOL_PROFILE: 'full',
+    RETICLE_ADVERTISE_ALL_TOOLS: '1',
     RETICLE_CDP_URL: `http://127.0.0.1:${CDP_PORT}`,
   });
   await client.start();

@@ -14,7 +14,7 @@
  * and the switch that makes it stop being necessary.
  */
 import { ReticleTool } from './tool-names.js';
-import { TOOL_PROFILE, TOOL_PROFILE_ENV } from './profiles.js';
+import { TOOL_SURFACE, TOOL_PROFILE_ENV } from './tool-surface.js';
 import { mergedNameRedirect, mergedNameMessage } from './merged-name-redirect.js';
 
 /**
@@ -37,7 +37,7 @@ export function unadvertisedToolHelp(
     `away. It is NOT missing: invoke it with ` +
     `${ReticleTool.RUN} { tool: "${name}", args: { ... } }. ` +
     `Call ${ReticleTool.TOOLS} { names: ["${name}"] } for its parameters. ` +
-    `If you need it repeatedly, set ${TOOL_PROFILE_ENV}=${TOOL_PROFILE.FULL} to advertise ` +
+    `If you need it repeatedly, set ${TOOL_PROFILE_ENV}=${TOOL_SURFACE.ALL} to advertise ` +
     `every tool directly.`
   );
 }

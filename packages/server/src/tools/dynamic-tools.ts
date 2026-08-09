@@ -4,7 +4,7 @@ import { runTool } from './invoke-tool.js';
 import { buildErrorPayload } from './error-recovery.js';
 import { mergedNameRedirect, mergedNameMessage } from './merged-name-redirect.js';
 import { ReticleTool } from './tool-names.js';
-import { TOOL_PROFILE_ENV, type ToolProfileOrigin } from './profiles.js';
+import { TOOL_PROFILE_ENV, type ToolSurfaceOrigin } from './tool-surface.js';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
 
 /**
@@ -54,7 +54,7 @@ function paramInfo(shape: z.ZodRawShape): ParamInfo[] {
  * Build the two dynamic meta-tools over the full tool table. `reticle_run` dispatches through the same
  * `runTool` chokepoint as a direct call, so session-health splicing and every other invariant hold.
  */
-export function buildDynamicTools(allTools: ToolDef[], profile?: ToolProfileOrigin): ToolDef[] {
+export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrigin): ToolDef[] {
   const byName = new Map(allTools.map((t) => [t.name, t]));
   // The profile is a DAEMON-startup decision, so an agent that exported RETICLE_TOOL_PROFILE into its
   // own environment sees no change and has, until now, no way to tell. Reported with the catalog.

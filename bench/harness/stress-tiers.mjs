@@ -65,7 +65,7 @@ for (const tier of TIERS) {
   const url = `${APP}${APP.includes('?') ? '&' : '?'}rows=${tier.rows}`;
   const client = new McpStdioClient('node', [CLI, 'mcp', '--port', port, '--drive', url], {
     RETICLE_PORT: port,
-    RETICLE_TOOL_PROFILE: 'full',
+    RETICLE_ADVERTISE_ALL_TOOLS: '1',
   });
   await client.start();
   await sleep(5000); // large DOM needs longer to render + connect than the small fixture

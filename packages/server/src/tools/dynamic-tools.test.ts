@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { buildDynamicTools } from './dynamic-tools.js';
 import { ReticleTool } from './tool-names.js';
+import { TOOL_SURFACE } from './tool-surface.js';
 import type { ToolDef, ToolDeps } from './tools.js';
 
 /**
- * The `dynamic` profile is the answer to the per-turn tool-definition tax — it advertises just two
+ * The two meta-tools are the answer to the per-turn tool-definition tax — they advertise just two
  * meta-tools and loads real tool detail on demand. A bug in the catalog (a tool missing, a summary that
  * isn't one line, params not surfaced on load) breaks discovery, and the model can't find or call the
  * tool. These pin the pure catalog logic; the actual invocation path (runTool) is covered elsewhere.
@@ -59,22 +60,22 @@ describe('buildDynamicTools — the dynamic profile meta-tools', () => {
   });
 
   /**
-   * RETICLE_TOOL_PROFILE is read by the DAEMON at startup, not by the client. Setting it in an
-   * agent's environment while a daemon is already running changes nothing — which is how "standard
-   * and full are the same 46 tools" got reported. The setting not taking effect must be OBSERVABLE,
-   * so the catalog says which profile is live and where it came from.
+   * The surface is read by the DAEMON at startup, not by the client. Setting it in an agent's
+   * environment while a daemon is already running changes nothing — which is how "standard and full
+   * are the same 46 tools" got reported. The setting not taking effect must be OBSERVABLE, so the
+   * catalog says which surface is live and where it came from.
    */
-  it('reports the ACTIVE profile and where it came from, so a setting that did not take is visible', async () => {
+  it('reports the ACTIVE surface and where it came from, so a setting that did not take is visible', async () => {
     const tools = buildDynamicTools(fakeTools, {
-      active: 'hybrid',
-      source: 'default (RETICLE_TOOL_PROFILE unset when the daemon started)',
+      active: TOOL_SURFACE.DEFAULT,
+      source: 'the one tool surface (RETICLE_ADVERTISE_ALL_TOOLS unset when the daemon started)',
     });
     const discover = tools.find((t) => t.name === ReticleTool.TOOLS);
     const out = (await discover?.handler(NO_DEPS, {})) as {
       profile: { active: string; source: string; note: string };
     };
-    expect(out.profile.active).toBe('hybrid');
-    expect(out.profile.source).toContain('RETICLE_TOOL_PROFILE');
+    expect(out.profile.active).toBe(TOOL_SURFACE.DEFAULT);
+    expect(out.profile.source).toContain('RETICLE_ADVERTISE_ALL_TOOLS');
     expect(out.profile.note).toContain('restart');
   });
 

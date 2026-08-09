@@ -8,7 +8,6 @@
 // Covered here: a tab closed mid-command, two tabs at once (does killing one strand the other),
 // a backgrounded/hidden page, and a reload underneath a live ref.
 import path from 'node:path';
-import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { McpStdioClient } from '../../../bench/harness/mcp-client.mjs';
 
@@ -145,19 +144,13 @@ try {
     }
   }
 } finally {
+  // Close the browser, and NOTHING else. This used to also SIGKILL whatever was listening on PORT,
+  // which was harmless while the spec owned a private port and destructive once it defaulted to the
+  // battery's shared one: it murdered the daemon the next spec was about to use. run.mjs already
+  // frees the port between specs; a spec reaching for the shared daemon's throat is exactly the
+  // cross-spec coupling the per-spec process-group kill exists to avoid.
   await browser.close();
   await client.stop();
-  try {
-    const pid = execSync(`lsof -nP -iTCP:${PORT} -sTCP:LISTEN -t`, {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .toString()
-      .trim()
-      .split('\n')[0];
-    if (pid) process.kill(Number(pid), 'SIGKILL');
-  } catch {
-    /* nothing listening */
-  }
 }
 
 console.log(`\n${0 === fail ? '✅' : '❌'} BROWSER STRESS (${pass} passed, ${fail} failed)`);

@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CORE_TOOL_NAMES } from './profiles.js';
+import { CORE_TOOL_NAMES } from './tool-surface.js';
 import { TOOLS } from './tools.js';
 
 const CHEATSHEET = join(import.meta.dirname, '../../../../docs/agent-cheatsheet.md');

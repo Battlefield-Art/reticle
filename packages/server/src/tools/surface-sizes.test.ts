@@ -14,33 +14,33 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { TOOL_PROFILE, type ToolProfile } from './profiles.js';
+import { TOOL_SURFACE, type ToolSurface } from './tool-surface.js';
 import { advertisedTools } from '../mcp/mcp.js';
 import { TOOLS } from './tools.js';
 
-/** The advertised size of each profile. Update WITH the surface, never after it. */
-const EXPECTED_SIZE: Record<ToolProfile, number> = {
-  [TOOL_PROFILE.DYNAMIC]: 2,
-  [TOOL_PROFILE.HYBRID]: 16,
-  // The whole surface PLUS the two meta-tools: every recovery message points at reticle_tools, so a
-  // profile without it makes our own advice a dead end.
-  [TOOL_PROFILE.FULL]: 48,
+/** The advertised size of each surface. Update WITH the surface, never after it. */
+const EXPECTED_SIZE: Record<ToolSurface, number> = {
+  // The verify loop plus the two meta-tools that reach everything else.
+  [TOOL_SURFACE.DEFAULT]: 16,
+  // Every tool PLUS the two meta-tools: every recovery message points at reticle_tools, so a
+  // surface without it makes our own advice a dead end.
+  [TOOL_SURFACE.ALL]: 48,
 };
 
 describe('advertised surface sizes', () => {
   it.each(Object.entries(EXPECTED_SIZE))('%s advertises %i tools', (profile, size) => {
-    expect(advertisedTools(profile as ToolProfile)).toHaveLength(size);
+    expect(advertisedTools(profile as ToolSurface)).toHaveLength(size);
   });
 
   it('full advertises the ENTIRE surface, which is what "full" has to mean', () => {
-    const names = new Set(advertisedTools(TOOL_PROFILE.FULL).map((t) => t.name));
+    const names = new Set(advertisedTools(TOOL_SURFACE.ALL).map((t) => t.name));
     for (const tool of TOOLS) expect(names.has(tool.name), tool.name).toBe(true);
   });
 
   it('EVERY profile can look up a tool\'s parameters', () => {
     // Recovery messages across the server say "Call reticle_tools { names: [...] }". A profile that
     // does not advertise it turns our own advice into a dead end — `full` used to be exactly that.
-    for (const profile of Object.values(TOOL_PROFILE)) {
+    for (const profile of Object.values(TOOL_SURFACE)) {
       const names = advertisedTools(profile).map((t) => t.name);
       expect(names, profile).toContain('reticle_tools');
       expect(names, profile).toContain('reticle_run');
@@ -48,8 +48,8 @@ describe('advertised surface sizes', () => {
   });
 
   it('every trimmed profile is smaller than full, or it is not a trim', () => {
-    const full = advertisedTools(TOOL_PROFILE.FULL).length;
-    for (const profile of [TOOL_PROFILE.DYNAMIC, TOOL_PROFILE.HYBRID, TOOL_PROFILE.HYBRID, TOOL_PROFILE.HYBRID]) {
+    const full = advertisedTools(TOOL_SURFACE.ALL).length;
+    for (const profile of [TOOL_SURFACE.DEFAULT, TOOL_SURFACE.DEFAULT, TOOL_SURFACE.DEFAULT, TOOL_SURFACE.DEFAULT]) {
       expect(advertisedTools(profile).length, profile).toBeLessThan(full);
     }
   });
@@ -67,7 +67,7 @@ describe('advertised surface sizes', () => {
 describe('docs state a surface size exactly once, correctly', () => {
   const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../..');
   /** The one sentence in the docs allowed to carry counts. Built from the numbers the gate proves. */
-  const CANONICAL = `\`dynamic\` ${String(EXPECTED_SIZE[TOOL_PROFILE.DYNAMIC])}, \`hybrid\` ${String(EXPECTED_SIZE[TOOL_PROFILE.HYBRID])}, \`full\` ${String(EXPECTED_SIZE[TOOL_PROFILE.FULL])}`;
+  const CANONICAL = `\`default\` ${String(EXPECTED_SIZE[TOOL_SURFACE.DEFAULT])}, \`all\` ${String(EXPECTED_SIZE[TOOL_SURFACE.ALL])}`;
   /**
    * Anything that reads like a count of the surface: "46 tools", "33 advertised", "`=full` (48)".
    * Deliberately blind to whether the number is right — a SECOND statement of it is the defect, because

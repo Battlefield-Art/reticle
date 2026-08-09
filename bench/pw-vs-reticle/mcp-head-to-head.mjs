@@ -70,7 +70,7 @@ function serverFor(toolKey, url) {
       '--drive',
       url,
     ],
-    env: { RETICLE_PORT, RETICLE_TOOL_PROFILE: process.env.BENCH_RETICLE_PROFILE ?? 'full' },
+    env: { RETICLE_PORT, RETICLE_ADVERTISE_ALL_TOOLS: process.env.BENCH_RETICLE_ADVERTISE_ALL ?? '1' },
   };
 }
 

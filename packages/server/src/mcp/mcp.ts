@@ -7,10 +7,10 @@ import { TOOLS, type ToolDeps } from '../tools/tools.js';
 import type { ToolDef } from '../tools/tools.js';
 import {
   filterTools,
-  describeToolProfile,
-  TOOL_PROFILE,
-  type ToolProfile,
-} from '../tools/profiles.js';
+  describeToolSurface,
+  TOOL_SURFACE,
+  type ToolSurface,
+} from '../tools/tool-surface.js';
 import { buildDynamicTools } from '../tools/dynamic-tools.js';
 import { runTool, SESSION_BOUND_TOOLS } from '../tools/invoke-tool.js';
 import { sessionEnvelopeShape } from '../tools/tool-kit.js';
@@ -225,24 +225,19 @@ type ReticleRegisterTool = (
  * therefore insensitive to it — every profile appeared to reach every tool, so reverting the fix here
  * left the suite green. Exercise the real function or the guard is theatre.
  *
- * Every TRIMMED profile keeps the meta-tools, so a tool that is not advertised is still reachable via
- * reticle_run. Without them a trim is not a trim but a hard removal: under `standard`, 11 tools were
- * uncallable — including reticle_annotate, which reticle_flow_save's own description tells the agent to
- * call. `full` advertises everything and needs no hatch.
+ * Both surfaces keep the meta-tools. On the default that is what makes a trim a trim rather than a
+ * hard removal — an unadvertised tool is still reachable through reticle_run; under the old
+ * `standard` profile 11 tools were uncallable, including reticle_annotate, which reticle_flow_save's
+ * own description tells the agent to call. On ALL they are kept too: `reticle_tools` is not an
+ * escape hatch there, it is parameter lookup, and every recovery message this server emits says
+ * "Call reticle_tools { names: [...] } for its parameters" — leaving it out made our own advice a
+ * dead end on the one surface that advertises everything.
  */
-export function advertisedTools(profile: ToolProfile): ToolDef[] {
-  // The catalog reports which profile is live and what chose it — the only way an agent can see that
-  // its own RETICLE_TOOL_PROFILE did not take (the daemon read the value it started with).
-  const origin = describeToolProfile(profile);
-  if (profile === TOOL_PROFILE.DYNAMIC) return buildDynamicTools(TOOLS, origin);
-  // `full` advertises every tool AND the two meta-tools. It needs no escape hatch — that is what
-  // "full" means — but `reticle_tools` is not a hatch, it is parameter lookup, and every recovery
-  // message this server emits says "Call reticle_tools { names: [...] } for its parameters". Leaving
-  // it out made our own advice a dead end on the one profile that advertises everything.
-  if (profile === TOOL_PROFILE.FULL) return [...TOOLS, ...buildDynamicTools(TOOLS, origin)];
-  // Hybrid is the only profile left that filters; the indirection through a second profile name is
-  // gone with the name.
-  return [...filterTools(TOOLS, profile), ...buildDynamicTools(TOOLS, origin)];
+export function advertisedTools(surface: ToolSurface): ToolDef[] {
+  // The catalog reports which surface is live and what chose it — the only way an agent can see that
+  // a setting did not take (the daemon read the value it started with).
+  const origin = describeToolSurface(surface);
+  return [...filterTools(TOOLS, surface), ...buildDynamicTools(TOOLS, origin)];
 }
 
 /**
@@ -256,7 +251,7 @@ export function advertisedTools(profile: ToolProfile): ToolDef[] {
 export function advertisedConfig(
   tool: ToolDef,
   advertised: readonly ToolDef[],
-  profile: ToolProfile,
+  profile: ToolSurface,
 ): { description: string; inputSchema: z.ZodRawShape; outputSchema?: z.ZodRawShape } {
   // Hybrid is the terse one. NOT `profile !== FULL`, which reads equivalent and is not: it also
   // trims `dynamic`, whose two meta-tools are the ONLY thing that profile advertises — so the
@@ -264,7 +259,7 @@ export function advertisedConfig(
   // sentence and the agent would have nothing left to learn the surface from. Measured when it
   // happened: dynamic's tools/list fell 1,543 -> 849 bytes, which looks like a saving and is a
   // capability loss.
-  const terse = profile === TOOL_PROFILE.HYBRID;
+  const terse = profile === TOOL_SURFACE.DEFAULT;
   // The first advertised tool carrying a predicate spells the grammar out; the rest point at it.
   const anchor = advertised.find((t) =>
     Object.values(t.inputSchema).some((schema) => isPredicateParam(schema)),
@@ -387,7 +382,7 @@ function toolNameOf(request: unknown): string | undefined {
 
 export function createMcpServer(
   deps: ToolDeps,
-  profile: ToolProfile = TOOL_PROFILE.HYBRID,
+  profile: ToolSurface = TOOL_SURFACE.DEFAULT,
 ): McpServer {
   const encoding = (process.env[ENCODING_ENV] ?? '').toLowerCase();
   const server = new McpServer(SERVER_INFO);

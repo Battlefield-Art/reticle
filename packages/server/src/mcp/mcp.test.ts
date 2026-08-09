@@ -9,7 +9,7 @@ import {
   installFriendlyArgErrors,
   withSessionEnvelope,
 } from './mcp.js';
-import { TOOL_PROFILE } from '../tools/profiles.js';
+import { TOOL_SURFACE } from '../tools/tool-surface.js';
 import { TOOLS, type ToolDeps } from '../tools/tools.js';
 import { SESSION_BOUND_TOOLS } from '../tools/invoke-tool.js';
 import { ReticleTool } from '../tools/tool-names.js';
@@ -159,7 +159,7 @@ describe('firstSentence does not cut inside an abbreviation', () => {
    * A description may legitimately END on an abbreviation ("GET | POST | … etc."). What must never
    * happen is TRIMMING creating one, so this only flags text the trim actually shortened.
    */
-  it.each(advertisedTools(TOOL_PROFILE.HYBRID).map((tool) => [tool.name, tool] as const))(
+  it.each(advertisedTools(TOOL_SURFACE.DEFAULT).map((tool) => [tool.name, tool] as const))(
     '%s: trimming never creates a dangling abbreviation',
     (_name, tool) => {
       const texts = [
@@ -185,12 +185,12 @@ describe('firstSentence does not cut inside an abbreviation', () => {
  * once loses nothing.
  */
 describe('every predicate parameter can be used without reading another tool', () => {
-  const advertised = advertisedTools(TOOL_PROFILE.HYBRID);
+  const advertised = advertisedTools(TOOL_SURFACE.DEFAULT);
 
   /** The REAL advertised text, via the same builder registration uses. */
   const predicateTexts = (): string[] =>
     advertised.flatMap((tool) =>
-      Object.entries(advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID).inputSchema)
+      Object.entries(advertisedConfig(tool, advertised, TOOL_SURFACE.DEFAULT).inputSchema)
         // Select by SHAPE, not by name. `until` is overloaded — reticle_observe/_network/_console
         // use it for a numeric cursor bound — and selecting by name here made this suite assert that
         // a NUMBER should carry predicate grammar, which is the bug it was meant to guard against.
@@ -258,7 +258,7 @@ describe('a wrong-shaped call is answered with a correct one', () => {
   }> => {
     const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-    const server = createMcpServer(toolDepsForTest(), TOOL_PROFILE.HYBRID);
+    const server = createMcpServer(toolDepsForTest(), TOOL_SURFACE.DEFAULT);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
     const client = new Client({ name: 'c', version: '0' });
@@ -302,7 +302,7 @@ describe('a wrong-shaped call is answered with a correct one', () => {
   });
 
   it('points at reticle_tools when the tool carries no example', () => {
-    const server = createMcpServer(toolDepsForTest(), TOOL_PROFILE.HYBRID);
+    const server = createMcpServer(toolDepsForTest(), TOOL_SURFACE.DEFAULT);
     // Installed with an empty example map: the fallback must still be actionable, never a bare dump.
     installFriendlyArgErrors(server, new Map());
     expect(typeof server).toBe('object');
@@ -328,7 +328,7 @@ describe('an unknown parameter is refused, never silently dropped', () => {
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
     const server = createMcpServer(
       { sessions: { resolve: () => ({ id: 'x' }) } } as unknown as ToolDeps,
-      TOOL_PROFILE.HYBRID,
+      TOOL_SURFACE.DEFAULT,
     );
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);

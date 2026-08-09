@@ -22,7 +22,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { advertisedTools, advertisedConfig } from './mcp/mcp.js';
-import { TOOL_PROFILE } from './tools/profiles.js';
+import { TOOL_SURFACE } from './tools/tool-surface.js';
 
 const PREDICATE_MARKER = 'Predicate object';
 
@@ -30,11 +30,11 @@ const PREDICATE_MARKER = 'Predicate object';
 const CURSOR_TOOLS = ['reticle_observe', 'reticle_network', 'reticle_console'];
 
 describe('the lean profile does not retype a numeric parameter as a predicate', () => {
-  const advertised = advertisedTools(TOOL_PROFILE.HYBRID);
+  const advertised = advertisedTools(TOOL_SURFACE.DEFAULT);
   const describedAs = (toolName: string, param: string): string => {
     const tool = advertised.find((t) => t.name === toolName);
     if (tool === undefined) return '';
-    const shape = advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID).inputSchema;
+    const shape = advertisedConfig(tool, advertised, TOOL_SURFACE.DEFAULT).inputSchema;
     return shape[param]?.description ?? '';
   };
 
@@ -70,14 +70,14 @@ describe('the lean profile retypes predicates and nothing else', () => {
     schema instanceof z.ZodOptional ? (schema.unwrap() as z.ZodTypeAny) : schema;
   const kindOf = (schema: z.ZodTypeAny): string => unwrap(schema).constructor.name;
 
-  const full = advertisedTools(TOOL_PROFILE.FULL);
-  const hybrid = advertisedTools(TOOL_PROFILE.HYBRID);
+  const full = advertisedTools(TOOL_SURFACE.ALL);
+  const hybrid = advertisedTools(TOOL_SURFACE.DEFAULT);
   const fullShapes = new Map(full.map((tool) => [tool.name, tool.inputSchema]));
 
   const retyped = (): string[] => {
     const out: string[] = [];
     for (const tool of hybrid) {
-      const lean = advertisedConfig(tool, hybrid, TOOL_PROFILE.HYBRID).inputSchema;
+      const lean = advertisedConfig(tool, hybrid, TOOL_SURFACE.DEFAULT).inputSchema;
       const original = fullShapes.get(tool.name);
       if (original === undefined) continue;
       for (const [key, schema] of Object.entries(lean)) {

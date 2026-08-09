@@ -34,7 +34,7 @@ import { createMcpServer } from './mcp/mcp.js';
 import { SessionReaper, endAllSessions, MCP_DISCONNECT_SUMMARY } from './session/session-reaper.js';
 import { wireSessionScope } from './session/no-session-watch.js';
 import { buildIdlePredicate } from './daemon/daemon-usefulness.js';
-import { resolveToolProfile } from './tools/profiles.js';
+import { resolveToolSurface } from './tools/tool-surface.js';
 import { statusPayload } from './status-payload.js';
 import { CdpRealInputProvider, LaunchedRealInputProvider } from './input/real-input.js';
 import { cpus } from 'node:os';
@@ -105,12 +105,12 @@ export { scrollToFind } from './input/scroll-find.js';
 export type { ScrollFindResult, ScrollFindQuery, ScrollFindSession } from './input/scroll-find.js';
 export {
   CORE_TOOL_NAMES,
-  TOOL_PROFILE,
+  TOOL_SURFACE,
   TOOL_PROFILE_ENV,
   filterTools,
-  resolveToolProfile,
-} from './tools/profiles.js';
-export type { ToolProfile } from './tools/profiles.js';
+  resolveToolSurface,
+} from './tools/tool-surface.js';
+export type { ToolSurface } from './tools/tool-surface.js';
 export { AnnotationStore } from './flows/annotation-store.js';
 export { replayFlow, nearestTestid } from './flows/flow-replay.js';
 export type { FlowReplaySession, WaitForSignal } from './flows/flow-replay.js';
@@ -419,7 +419,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
       now,
       bridgePort: port,
     };
-    const profile = resolveToolProfile(options.toolProfile);
+    const profile = resolveToolSurface(options.toolProfile);
     const server = createMcpServer(
       realInput !== undefined ? { ...deps, realInput } : deps,
       profile,
@@ -515,7 +515,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     now,
     bridgePort: port,
   };
-  const profile = resolveToolProfile(options.toolProfile);
+  const profile = resolveToolSurface(options.toolProfile);
   const effectiveDeps = realInput !== undefined ? { ...deps, realInput } : deps;
   shared.attachMcp(() => createMcpServer(effectiveDeps, profile));
 

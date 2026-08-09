@@ -40,7 +40,7 @@ const TARGETS = ['nav-deployments', 'nav-compose', 'nav-overview', 'brand', 'ses
 
 const client = new McpStdioClient('node', [CLI, 'mcp', '--port', PORT], {
   RETICLE_PORT: PORT,
-  RETICLE_TOOL_PROFILE: 'full',
+  RETICLE_ADVERTISE_ALL_TOOLS: '1',
 });
 await client.start();
 const profile = path.join(os.tmpdir(), `rrec-${String(process.pid)}`);

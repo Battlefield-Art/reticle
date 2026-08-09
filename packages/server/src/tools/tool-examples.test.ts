@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { TOOLS } from './tools.js';
-import { CORE_TOOL_NAMES, TOOL_PROFILE } from './profiles.js';
+import { CORE_TOOL_NAMES, TOOL_SURFACE } from './tool-surface.js';
 import { advertisedConfig, advertisedTools } from '../mcp/mcp.js';
 import { ReticleTool } from './tool-names.js';
 
@@ -76,11 +76,11 @@ describe('the core surface leaves nothing to guess', () => {
  * than the raw definition — the trim is exactly what used to hide them.
  */
 describe('cost-saving and bug-catching options are discoverable in the DEFAULT profile', () => {
-  const advertised = advertisedTools(TOOL_PROFILE.HYBRID);
+  const advertised = advertisedTools(TOOL_SURFACE.DEFAULT);
   const shown = (name: string): string => {
     const tool = advertised.find((t) => t.name === name);
     if (tool === undefined) return '';
-    const config = advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID);
+    const config = advertisedConfig(tool, advertised, TOOL_SURFACE.DEFAULT);
     return `${config.description} ${JSON.stringify(tool.example ?? {})}`;
   };
 
@@ -102,7 +102,7 @@ describe('cost-saving and bug-catching options are discoverable in the DEFAULT p
   ])('the predicate grammar advertises %s (%s)', (option, _why) => {
     const predicateText = advertised
       .flatMap((tool) =>
-        Object.entries(advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID).inputSchema)
+        Object.entries(advertisedConfig(tool, advertised, TOOL_SURFACE.DEFAULT).inputSchema)
           .filter(([key]) => 'predicate' === key || 'until' === key)
           .map(([, schema]) => schema.description ?? ''),
       )
@@ -122,11 +122,11 @@ describe('cost-saving and bug-catching options are discoverable in the DEFAULT p
  * sentence that makes a working default look unsafe costs more than a missing feature.
  */
 describe('session resolution is advertised as the default, not the exception', () => {
-  const advertised = advertisedTools(TOOL_PROFILE.HYBRID);
+  const advertised = advertisedTools(TOOL_SURFACE.DEFAULT);
   const sessionParam = (name: string): string => {
     const tool = advertised.find((t) => t.name === name);
     if (tool === undefined) return '';
-    const shape = advertisedConfig(tool, advertised, TOOL_PROFILE.HYBRID).inputSchema;
+    const shape = advertisedConfig(tool, advertised, TOOL_SURFACE.DEFAULT).inputSchema;
     return shape['sessionId']?.description ?? '';
   };
 
