@@ -1,4 +1,4 @@
-import { asRef, type Ref } from '@reticlehq/core';
+import { TRANSPORT_LIMITS, asRef, type Ref } from '@reticlehq/core';
 /**
  * Stable, human-meaningful element handles. Each element gets a ref like `e7`; the same
  * element keeps its ref across snapshots, and a ref re-resolves to its element as long as
@@ -17,6 +17,27 @@ import { asRef, type Ref } from '@reticlehq/core';
  * ref is one agent turn, and this is far more than any one turn produces.
  */
 export const MAX_TRACKED_REFS = 10000;
+
+/** Marks a ref that was too long to echo in full. */
+const REF_ELISION = '…';
+
+/**
+ * A ref, made safe to interpolate into an error message.
+ *
+ * A ref Reticle mints is `e7` — three characters. A ref a CALLER passes is whatever they typed, and
+ * an agent guessing at the schema can pass 100KB of it. Every stale-ref message interpolates that
+ * value directly, so the caller's own bad argument came back as a 100KB error.
+ *
+ * The server caps error messages centrally, but it cannot help here: the browser's transport
+ * serializer truncates from the TAIL first, which severs "… no longer resolves to an element" — the
+ * exact substring the server's recovery table matches on. A stale ref then arrives classified as a
+ * possible Reticle defect. So the echo is bounded at the source, where the untrusted value enters
+ * the message.
+ */
+export function echoRef(ref: string): string {
+  const max = TRANSPORT_LIMITS.MAX_REF_LENGTH;
+  return max >= ref.length ? ref : `${ref.slice(0, max)}${REF_ELISION}`;
+}
 
 /**
  * Full-sweep cadence. The deref-sweep is O(retained), and a page legitimately holding ≥ MAX_TRACKED_REFS

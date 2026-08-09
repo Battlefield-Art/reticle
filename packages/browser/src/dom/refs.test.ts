@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { RefRegistry, MAX_TRACKED_REFS } from './refs.js';
+import { TRANSPORT_LIMITS } from '@reticlehq/core';
+import { RefRegistry, MAX_TRACKED_REFS, echoRef } from './refs.js';
 
 beforeEach(() => {
   document.body.innerHTML = '';
@@ -85,5 +86,32 @@ describe('RefRegistry', () => {
       // Still resolves WITHOUT re-observing via refFor — protected purely by the resolve-time touch.
       expect(registry.resolve(ref)).toBe(kept);
     });
+  });
+});
+
+/**
+ * A caller-supplied ref is untrusted input, and every stale-ref message interpolates it.
+ *
+ * Found by fuzzing the tool surface: `reticle_inspect { ref: 'x'.repeat(100_000) }` produced an
+ * error carrying the whole argument. The server caps error messages centrally, but not in time for
+ * this one — the transport serializer truncates from the tail on the way out of the page, which
+ * removes "no longer resolves to an element" and with it the server's ability to recognize a stale
+ * ref at all. The agent was then told its own typo may be a defect in Reticle.
+ */
+describe('echoRef — a ref is bounded before it goes into a message', () => {
+  it('leaves a real ref exactly as it is', () => {
+    expect(echoRef('e7')).toBe('e7');
+  });
+
+  it('bounds a caller-supplied ref that is absurdly long', () => {
+    const echoed = echoRef('x'.repeat(100_000));
+    expect(echoed.length).toBeLessThanOrEqual(TRANSPORT_LIMITS.MAX_REF_LENGTH + 1);
+  });
+
+  it('keeps the message classifiable, which is the whole point', () => {
+    const message = `ref '${echoRef('x'.repeat(100_000))}' no longer resolves to an element`;
+    // Short enough that no downstream truncation can reach the suffix the recovery table matches.
+    expect(message.length).toBeLessThan(TRANSPORT_LIMITS.MAX_ERROR_LENGTH);
+    expect(message).toMatch(/no longer resolves to an element$/);
   });
 });

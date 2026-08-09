@@ -9,7 +9,31 @@
  * baseline stores). No clock, no IO — unit-testable in isolation.
  */
 
+import { TRANSPORT_LIMITS } from '@reticlehq/core';
 import { SELF_RECOVERING_MARKER } from '../session/no-session-diagnosis.js';
+
+/** Marks where an over-long message had its middle removed. Named so tests assert it by value. */
+const ELISION = '… [elided] …';
+
+/**
+ * Bound a message before the agent ever sees it, keeping BOTH ends.
+ *
+ * Error messages interpolate caller-supplied values — a ref, a baseline name, a selector — and
+ * nothing upstream bounds them, so a 100KB argument came back as a 100KB tool result. Capping here
+ * rather than at each throw site is deliberate: this is the single funnel every tool error passes
+ * through, so it also covers the tools nobody has written yet.
+ *
+ * The middle is what goes. Head-truncation would be simpler and wrong: the recovery table keys off
+ * substrings that sit at the END of the message ("… no longer resolves to an element"), so cutting
+ * the tail severs the part that makes an error recognizable and re-labels a known condition as a
+ * possible Reticle defect.
+ */
+function capMessage(message: string): string {
+  const max = TRANSPORT_LIMITS.MAX_ERROR_LENGTH;
+  if (max >= message.length) return message;
+  const keep = Math.floor((max - ELISION.length) / 2);
+  return `${message.slice(0, keep)}${ELISION}${message.slice(message.length - keep)}`;
+}
 
 /** A message that already carries its own concrete next action, so nothing should be appended. */
 function isSelfRecovering(message: string): boolean {
@@ -45,6 +69,12 @@ export const RECOVERY = {
     'before it. Reticle refuses here rather than clicking whatever now occupies that slot. Call ' +
     'reticle_query again for a fresh ref and retry the action — and prefer reticle_act_and_wait ' +
     '{ until } when an action changes the page, so the next ref is taken after it settles.',
+  INVALID_NAME:
+    'That name is not a usable one. A flow, baseline or recording name must be a single safe path ' +
+    'segment — letters, digits, dash and underscore only, starting with a letter or digit, at most ' +
+    '64 characters. No slashes, no "..", no leading dot: the name becomes a filename under ' +
+    '.reticle/, so anything that could escape that directory is refused. Retry with a slug like ' +
+    '"checkout-happy-path". This is an invalid call, not a Reticle defect: there is nothing to report.',
   BAD_ARGUMENTS:
     "That call did not match the tool's schema — the message above names the tool and the exact " +
     "argument it wanted. Re-read that tool's parameters and retry with the missing or corrected " +
@@ -147,6 +177,12 @@ const ARGUMENT_RECOVERY =
   'retry.';
 
 /**
+ * `invalid <thing> name: <value>` — the shape every name validator in the server throws. Matched on
+ * the phrasing rather than per-caller so a new store that validates a name is covered by default.
+ */
+const INVALID_NAME_REJECTION = /^invalid (?:[a-z]+ )*name: /i;
+
+/**
  * The ask attached to errors we do NOT recognize. An unrecognized error is, by definition, the case
  * where Reticle failed in a way nobody anticipated — the single highest-value moment to hear from the
  * agent, and until now the moment where the agent worked around us in silence and we learned nothing.
@@ -172,7 +208,11 @@ interface ErrorPayload {
  * known; the feedback ask is added when it is NOT — the two are mutually exclusive by design, so the
  * agent always gets exactly one next move.
  */
-export function buildErrorPayload(message: string): ErrorPayload {
+export function buildErrorPayload(rawMessage: string): ErrorPayload {
+  // Cap FIRST, then classify on the capped text — so what the classifier reads is exactly what the
+  // agent reads. Classifying the full message and emitting a shorter one would let a recovery hint
+  // reference a phrase that is no longer there.
+  const message = capMessage(rawMessage);
   // A self-diagnosing message gets NEITHER a generic recovery nor the feedback ask. It already
   // inspected the machine and named the cause; a second, contradictory hint is noise, and inviting a
   // bug report about a condition Reticle diagnosed itself is exactly backwards.
@@ -181,6 +221,9 @@ export function buildErrorPayload(message: string): ErrorPayload {
   // clean `unrecognized_keys: ["value"]` came back wrapped in "may be a defect in Reticle", which
   // spends the agent's turn and fills the feedback channel with reports about malformed calls.
   if (ARGUMENT_REJECTION.test(message)) return { error: message, recovery: ARGUMENT_RECOVERY };
+  // Reticle's own name validators rejecting a caller's value: an argument rejection that the schema
+  // cannot express (the shape is a runtime pattern, not a type), so it needs its own arm.
+  if (INVALID_NAME_REJECTION.test(message)) return { error: message, recovery: RECOVERY.INVALID_NAME };
   const recovery = recoveryFor(message);
   return recovery !== undefined
     ? { error: message, recovery }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TRANSPORT_LIMITS } from '@reticlehq/core';
 import { FEEDBACK_ASK, RECOVERY, buildErrorPayload, recoveryFor } from './error-recovery.js';
 import { TOOLS } from './tools.js';
 import { diagnoseNoSession } from '../session/no-session-diagnosis.js';
@@ -289,9 +290,81 @@ describe('argument rejections are not Reticle defects', () => {
     expect(payload.recovery, message).toBeDefined();
   });
 
+  /**
+   * Found by the tool fuzz: `reticle_screenshot { name: <100KB> }` was answered with "this error is
+   * not one Reticle recognizes, which means it may be a defect in Reticle". Reticle wrote that
+   * validator. The caller's name was invalid — a rejected ARGUMENT, and the one class of error we
+   * already decided never to blame on ourselves.
+   *
+   * These get their own recovery rather than the generic schema one: the parameter exists and the
+   * types are right, so "re-read the tool's parameters" is the wrong advice. What the caller needs
+   * is the shape a name must have.
+   */
+  it.each([
+    ['a baseline name', 'invalid visual baseline name: ../etc/passwd'],
+    ['a diff name', 'invalid visual diff name: has spaces'],
+  ])('%s is the caller\'s to fix, not a Reticle defect', (_label, message) => {
+    const payload = buildErrorPayload(message);
+    expect(payload.feedback, message).toBeUndefined();
+    expect(payload.recovery, message).toBe(RECOVERY.INVALID_NAME);
+  });
+
+  it('the invalid-name recovery states the shape a name must have', () => {
+    // A recovery that does not say what "valid" means costs the agent a guessing turn.
+    expect(RECOVERY.INVALID_NAME).toMatch(/letters|a-z/i);
+    expect(RECOVERY.INVALID_NAME).toMatch(/64/);
+  });
+
   it('a genuinely unrecognized failure still asks for feedback', () => {
     // The ask must keep working, or this fix trades one silence for another.
     const payload = buildErrorPayload('ECONNRESET while flushing the observer queue');
     expect(payload.feedback).toBeDefined();
+  });
+});
+
+/**
+ * A tool error must never hand the agent back its own argument at full size.
+ *
+ * Found by fuzzing all 48 tools with a 100KB string in their first string parameter.
+ * `reticle_screenshot { name: 'x'.repeat(100_000) }` answered with a **100,392-byte** tool result:
+ * the whole argument, echoed inside "invalid visual baseline name: …". In a library that sells
+ * token efficiency, a caller's typo should not be able to bill them for 25k tokens — and the same
+ * echo is how an unbounded value reaches a log, a terminal, or a transcript.
+ *
+ * Capping is not enough on its own: the classifier keys off substrings that usually sit at the END
+ * of the message ("… no longer resolves to an element"), so a plain head-truncation severs exactly
+ * the part that makes the error recognizable and turns a known condition into "may be a defect in
+ * Reticle". That is not hypothetical — it is the second half of what the fuzz reported. So the cap
+ * elides the MIDDLE and keeps both ends.
+ */
+describe('error messages are bounded before they reach the agent', () => {
+  const huge = 'x'.repeat(100_000);
+
+  it('caps a message that echoes a huge argument', () => {
+    const payload = buildErrorPayload(`invalid visual baseline name: ${huge}`);
+    expect(payload.error.length).toBeLessThanOrEqual(TRANSPORT_LIMITS.MAX_ERROR_LENGTH);
+  });
+
+  it('keeps the head, so the caller still learns what was wrong', () => {
+    const payload = buildErrorPayload(`invalid visual baseline name: ${huge}`);
+    expect(payload.error).toMatch(/^invalid visual baseline name: x+/);
+  });
+
+  it('keeps the TAIL, so a known error is still recognized after capping', () => {
+    // Head-only truncation loses "no longer resolves to an element" and the stale-ref recovery with
+    // it — the agent is then told its own stale ref may be a Reticle bug.
+    const payload = buildErrorPayload(`ref '${huge}' no longer resolves to an element`);
+    expect(payload.recovery).toBe(RECOVERY.STALE_REF);
+    expect(payload.feedback).toBeUndefined();
+  });
+
+  it('says that it elided, rather than silently presenting a partial value', () => {
+    const payload = buildErrorPayload(`invalid visual baseline name: ${huge}`);
+    expect(payload.error).toMatch(/elided/i);
+  });
+
+  it('leaves an ordinary message untouched', () => {
+    const message = 'no browser session connected — is your app running?';
+    expect(buildErrorPayload(message).error).toBe(message);
   });
 });

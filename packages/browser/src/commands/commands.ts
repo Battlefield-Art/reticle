@@ -23,7 +23,7 @@ import {
 import { describe } from '../dom/a11y.js';
 import { sourceFor, formatSource } from '../dom/source.js';
 import { themeReport } from '../dom/theme.js';
-import { refs } from '../dom/refs.js';
+import { echoRef, refs } from '../dom/refs.js';
 import { isButton, isInput } from '../dom/realm.js';
 import { hitTestOccluder } from '../dom/occlusion.js';
 import { readStorage } from '../observers/storage.js';
@@ -86,7 +86,7 @@ function inspect(ref: string): unknown {
   // visible all required) — so the MCP layer answered -32602 Output validation error for the most
   // ordinary thing that follows a click. The wording matches actions.ts because the server's
   // recovery table keys off /no longer resolves to an element/ to attach the stale-ref recovery.
-  if (null === el) throw new Error(`ref '${ref}' no longer resolves to an element`);
+  if (null === el) throw new Error(`ref '${echoRef(ref)}' no longer resolves to an element`);
   const rect = el.getBoundingClientRect();
   const component = identifyComponent(el);
   const view = el.ownerDocument.defaultView;

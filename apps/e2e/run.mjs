@@ -50,6 +50,10 @@ const ORDER = [
   // The other channel: daemon <-> page. Tabs closed mid-command, two tabs at once, a backgrounded
   // page, and a reload under a live ref. Needs the bench-app the dashboard specs use.
   'browser-stress-test',
+  // Every shipped tool, called WRONG: empty, nulls, wrong types, junk keys, a 100KB argument.
+  // The surface sweep proves the tools work; this proves they refuse safely — bounded, actionable,
+  // and never blaming the caller's typo on Reticle. Needs the same bench-app.
+  'tool-fuzz-test',
   'live-control-test',
   'real-world-tests',
   'multi-agent-lease-test',
