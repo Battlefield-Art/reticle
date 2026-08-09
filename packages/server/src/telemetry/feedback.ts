@@ -31,6 +31,7 @@ import {
 } from '@reticlehq/core';
 import { platform } from 'node:os';
 import { getTelemetry } from './telemetry.js';
+import { noteFeedbackUndelivered } from './feedback-delivery.js';
 import { isReticleSourceCheckout } from './dev-repo.js';
 import { SERVER_VERSION } from '../server-version.js';
 import { feedbackContext, type SessionFacts } from './feedback-context.js';
@@ -130,8 +131,21 @@ export type FeedbackInput = Pick<
 >;
 
 export interface FeedbackReceipt {
-  /** False when a kill switch is on — the report was DROPPED, and the caller is told so plainly. */
+  /**
+   * DELIVERY confirmed. Only ever true when the send was awaited and the endpoint accepted it —
+   * never as an optimistic stand-in for "we handed it to the emitter". That distinction is the whole
+   * value of this field: it was once unconditional, so a DNS miss and a 4xx both reported "filed".
+   *
+   * A backgrounded send (the agent tool) therefore returns `sent: false` with `accepted: true` —
+   * see below. It is not a failure, and the note says so.
+   */
   sent: boolean;
+  /**
+   * Validated, redacted and handed to the emitter. TRUE says the report is well-formed and on its
+   * way; it does NOT say it arrived. If a backgrounded send then fails, the reporter is told on its
+   * next tool result — see feedback-delivery.ts.
+   */
+  accepted: boolean;
   reason?: string;
   /** Which redaction rules fired. Empty when nothing needed removing. */
   redacted: string[];
@@ -146,7 +160,19 @@ export interface FeedbackReceipt {
  */
 export async function submitFeedback(
   input: FeedbackInput,
-  opts: { cwd?: string; session?: SessionFacts; env?: NodeJS.ProcessEnv } = {},
+  opts: {
+    cwd?: string;
+    session?: SessionFacts;
+    env?: NodeJS.ProcessEnv;
+    /**
+     * Return as soon as the report is validated and queued, instead of waiting out the POST.
+     *
+     * Used by the AGENT tool: ~340ms of network on a call made mid-task is the product blocking the
+     * user's work to talk about itself. NOT used by `reticle feedback`, where a human typed the
+     * command and is waiting for an answer — there, confirmed delivery is the answer.
+     */
+    background?: boolean;
+  } = {},
 ): Promise<FeedbackReceipt> {
   const env = opts.env ?? process.env;
   const context = feedbackContext(opts.cwd ?? process.cwd(), opts.session);
@@ -168,12 +194,19 @@ export async function submitFeedback(
   const redacted = [...new Set([...redactions.values()].flatMap((r) => r.removed))];
 
   if (feedbackDisabled(env)) {
-    return { sent: false, reason: `feedback is disabled by ${FEEDBACK_ENV}`, redacted, context };
+    return {
+      sent: false,
+      accepted: false,
+      reason: `feedback is disabled by ${FEEDBACK_ENV}`,
+      redacted,
+      context,
+    };
   }
   const telemetry = getTelemetry();
   if (!telemetry.enabled) {
     return {
       sent: false,
+      accepted: false,
       // Named precisely, because the commonest cause is not what the old wording suggested: a
       // Reticle SOURCE CHECKOUT disables telemetry by cwd, and that is exactly where release runs and
       // contributor sessions happen — so the reports most worth having were the ones silently lost.
@@ -200,11 +233,29 @@ export async function submitFeedback(
   if (!parsed.success) {
     return {
       sent: false,
+      accepted: false,
       reason: parsed.error.issues[0]?.message ?? 'invalid feedback',
       redacted,
       context,
     };
   }
+  // BACKGROUND: return now, deliver after. The agent calls this mid-task and a ~340ms POST is the
+  // product blocking the user's work to talk about itself. The honesty that the awaited version was
+  // written for is kept elsewhere: `sent` stays false (nothing is confirmed yet), `accepted` says
+  // the report is well-formed and queued, and a send that then fails reaches the reporter on its
+  // next tool result instead of vanishing.
+  if (true === opts.background) {
+    void telemetry
+      .emit(TelemetryEventKind.FEEDBACK_SUBMITTED, { feedback: parsed.data })
+      .then((ok) => {
+        if (!ok) noteFeedbackUndelivered('the telemetry endpoint did not accept it');
+      })
+      .catch((error: unknown) => {
+        noteFeedbackUndelivered(error instanceof Error ? error.message : String(error));
+      });
+    return { sent: false, accepted: true, redacted, context };
+  }
+
   // `sent` reflects DELIVERY, not handing the payload to the emitter. It was unconditional, so a DNS
   // miss or a 4xx both reported "filed" — and this is the only qualitative channel the product has,
   // so a silent failure here loses the report AND tells the reporter it worked.
@@ -212,9 +263,10 @@ export async function submitFeedback(
     feedback: parsed.data,
   });
   return delivered
-    ? { sent: true, redacted, context }
+    ? { sent: true, accepted: true, redacted, context }
     : {
         sent: false,
+        accepted: false,
         reason:
           'the report could not be delivered (the network call failed or was rejected) — it was NOT filed. Retry, or open an issue at https://github.com/reticlehq/reticle/issues with the same detail.',
         redacted,

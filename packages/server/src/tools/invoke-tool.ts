@@ -10,6 +10,7 @@ import { verificationOf } from '../telemetry/verification-of.js';
 import { asString } from './tools-helpers.js';
 import { ReticleTool } from './tool-names.js';
 import { takeFeedbackPrompt } from './feedback-tools.js';
+import { takeFeedbackUndelivered } from '../telemetry/feedback-delivery.js';
 import type { Session } from '../session/session.js';
 import { span } from '../trace.js';
 import type { ToolDef, ToolDeps } from './tools.js';
@@ -220,14 +221,24 @@ export async function runTool(
   // looks — so it could work a whole session against a mismatched pair and never learn the one fact
   // that explains the behaviour. It rides out here on whatever tool it happens to be calling.
   const skew = isPlainObject(raw) ? takeVersionSkew() : undefined;
+  // A feedback report that was accepted and then failed to send. Same one-shot channel, because the
+  // reporter is the only person who can act on it and they are not reading the daemon log — and a
+  // report announced as accepted and then silently lost is the failure the awaited send existed to
+  // prevent. See feedback-delivery.ts.
+  const undelivered = isPlainObject(raw) ? takeFeedbackUndelivered() : undefined;
   const result =
-    prompt === undefined && update === undefined && skew === undefined
+    prompt === undefined && update === undefined && skew === undefined && undelivered === undefined
       ? raw
       : {
           ...(raw as object),
           ...(prompt !== undefined ? { feedback_prompt: prompt } : {}),
           ...(update !== undefined ? { update_available: update } : {}),
           ...(skew !== undefined ? { version_skew: skew } : {}),
+          ...(undelivered !== undefined
+            ? {
+                feedback_undelivered: `your earlier report did NOT send: ${undelivered}. Tell the human what you found so it is not lost.`,
+              }
+            : {}),
         };
   if (!bound || !isPlainObject(result)) return result;
   // Reuse the session resolved above so the health envelope describes the SAME session the handler

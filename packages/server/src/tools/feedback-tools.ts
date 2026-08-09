@@ -110,7 +110,10 @@ export const FEEDBACK_TOOLS: ToolDef[] = [
         ),
     },
     outputSchema: {
+      /** Confirmed delivery. Always false here: the agent path queues and returns. */
       sent: z.boolean(),
+      /** Validated, redacted and queued. This is the one to read. */
+      accepted: z.boolean(),
       reason: z.string().optional(),
       redacted: z.array(z.string()),
       context: z.unknown(),
@@ -135,13 +138,18 @@ export const FEEDBACK_TOOLS: ToolDef[] = [
           ...optionalText(args, 'currentApproach'),
           ...optionalText(args, 'model'),
         },
-        { session: sessionFacts(deps, asString(args['sessionId'])) },
+        {
+          session: sessionFacts(deps, asString(args['sessionId'])),
+          // The AGENT does not wait for the network. `reticle feedback` (a human, at a terminal,
+          // watching for an answer) still does — see submitFeedback's `background`.
+          background: true,
+        },
       );
       return {
         ...receipt,
-        note: receipt.sent
-          ? 'Filed — thank you. Continue your task; do not retry a failing call just to re-report it.'
-          : 'NOT sent (see reason). Tell the human what you found so it is not lost.',
+        note: receipt.accepted
+          ? 'Accepted — thank you. It sends in the background so you are not kept waiting; if it fails you will be told on a later tool result. Continue your task; do not retry a failing call just to re-report it.'
+          : 'NOT accepted (see reason). Tell the human what you found so it is not lost.',
       };
     },
   },

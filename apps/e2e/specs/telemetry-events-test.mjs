@@ -340,7 +340,16 @@ await settle();
 {
   const f = find('feedback_submitted')[0];
   check('feedback_submitted fires from the agent tool', f !== undefined);
-  check('  receipt reports it was sent', receipt?.sent === true, JSON.stringify(receipt?.reason ?? ''));
+  // ACCEPTED, not sent. The agent path no longer waits for the POST — a ~340ms round-trip mid-task
+  // is the product blocking the user's work to talk about itself — so `sent` (confirmed delivery)
+  // is deliberately false here and `accepted` (validated, redacted, queued) is the field that
+  // carries the promise. `sent` still means delivery on the HUMAN path below, which does wait.
+  check('  receipt reports it was accepted', receipt?.accepted === true, JSON.stringify(receipt?.reason ?? ''));
+  check(
+    '  and does NOT claim delivery it has not confirmed',
+    receipt?.sent === false,
+    `sent=${String(receipt?.sent)}`,
+  );
   check('  carries the kind', f?.properties.feedback_kind === 'gap');
   check('  source is the agent', f?.properties.feedback_source === 'agent');
   check('  carries detected stack context', f?.properties.feedback_stack === 'next', f?.properties.feedback_stack);
