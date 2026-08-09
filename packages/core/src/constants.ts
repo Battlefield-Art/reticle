@@ -480,6 +480,20 @@ export const DRIVE_PLAYWRIGHT_MISSING_MSG =
   "reticle drive needs the optional 'playwright' package — install it: pnpm add -D playwright && npx playwright install chromium";
 
 /** Actions the executor can perform against a ref (plan/03 + plan/05). */
+/**
+ * The console levels an agent can filter by, DERIVED from the console EventTypes rather than
+ * retyped. `reticle_console { level }` matches by building `console.${level}`, so any list written
+ * out by hand is one rename away from filtering everything into an empty result — which reads as
+ * "no errors on this page".
+ */
+export const CONSOLE_LEVEL_PREFIX = 'console.';
+export const CONSOLE_LEVELS = [
+  EventType.CONSOLE_LOG,
+  EventType.CONSOLE_WARN,
+  EventType.CONSOLE_ERROR,
+  EventType.CONSOLE_INFO,
+].map((type) => type.slice(CONSOLE_LEVEL_PREFIX.length));
+
 export const ActionType = {
   CLICK: 'click',
   DBLCLICK: 'dblclick',

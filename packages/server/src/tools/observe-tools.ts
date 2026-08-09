@@ -5,7 +5,12 @@
 import { noteEmptyRead } from './observed-nothing.js';
 import { z } from 'zod';
 import { aliasParam } from './alias-args.js';
-import { ReticleCommand, DEFAULT_ASSERT_TIMEOUT_MS, PredicateKind } from '@reticlehq/core';
+import {
+  CONSOLE_LEVELS,
+  ReticleCommand,
+  DEFAULT_ASSERT_TIMEOUT_MS,
+  PredicateKind,
+} from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport } from '../events/reaction.js';
 import { findContradictions } from '../events/contradictions.js';
@@ -85,6 +90,17 @@ function withoutConstantSessionId(event: unknown): unknown {
   const { sessionId: _sessionId, ...rest } = event as Record<string, unknown>;
   return rest;
 }
+
+/**
+ * The console levels, derived from core's console EventTypes — see CONSOLE_LEVELS.
+ *
+ * A free string here filtered by building `console.${level}`, so `level:'ERROR'` or `level:'fatal'`
+ * matched nothing and returned an empty log list. On a page that HAS logs the zero-match hint saves
+ * it (it reports which levels are present), but on a quiet page the answer is identical to a genuine
+ * all-clear. Refusing the value outright is the only reading with no ambiguity.
+ */
+const CONSOLE_LEVEL_LIST = CONSOLE_LEVELS.join(' | ');
+const consoleLevelEnum = z.enum(CONSOLE_LEVELS as [string, ...string[]]);
 
 export const OBSERVE_TOOLS: ToolDef[] = [
   {
@@ -528,10 +544,9 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     description:
       'Console/error log. Fast path for "were there any errors during this flow?". When a level filter matches nothing, returns a `hint` { totalInWindow, byLevel } so 0 errors is distinguishable from a silent page.',
     inputSchema: {
-      level: z
-        .string()
+      level: consoleLevelEnum
         .optional()
-        .describe('Log level filter: error | warn | info | log. Omit to return all levels.'),
+        .describe(`Log level filter: ${CONSOLE_LEVEL_LIST}. Omit to return all levels.`),
       since: z
         .number()
         .optional()

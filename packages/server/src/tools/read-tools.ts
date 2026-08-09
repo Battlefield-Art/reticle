@@ -40,6 +40,11 @@ function unanchoredWarning(count: number): string {
   );
 }
 
+/** Severities the presenter HUD can render. */
+const HUD_LEVELS = ['info', 'warn', 'error'] as const;
+const HUD_LEVEL_LIST = HUD_LEVELS.join(' | ');
+const hudLevelEnum = z.enum(HUD_LEVELS);
+
 export const READ_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.BASELINE_SAVE,
@@ -258,10 +263,9 @@ export const READ_TOOLS: ToolDef[] = [
         .describe(
           'Short sentence describing your next action, shown on the presenter HUD for the developer watching.',
         ),
-      level: z
-        .string()
-        .optional()
-        .describe('Display severity: info | warn | error. Default: info.'),
+      // Derived, like every other advertised vocabulary here: a free string let a typo through to
+      // a HUD that then rendered an unknown severity.
+      level: hudLevelEnum.optional().describe(`Display severity: ${HUD_LEVEL_LIST}. Default: info.`),
       ...sessionIdShape,
     },
     outputSchema: { ok: z.boolean() },
