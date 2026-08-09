@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TelemetryEventKind } from '@reticlehq/core';
@@ -136,13 +136,25 @@ describe('the local telemetry sink', () => {
 
   it('an unwritable path degrades to no-op rather than breaking the daemon', async () => {
     await withDir(async (dir) => {
-      const t = createTelemetry({
-        version: '1',
-        cwd: dir,
-        now: () => 1,
-        env: { RETICLE_TELEMETRY_FILE: '/proc/nope/e.jsonl', RETICLE_TELEMETRY_KEY: 'k' },
-      });
-      await expect(t.emit(TelemetryEventKind.DAEMON_STARTED)).resolves.toBe(false);
+      // Made unwritable, not borrowed from `/proc` — that path does not exist on macOS, so the
+      // borrowed form silently tested nothing there. Its twin in the Vite plugin hung the Linux
+      // runner for 36 minutes, which is the same non-portability failing the other way.
+      const readOnly = join(dir, 'read-only');
+      mkdirSync(readOnly, { recursive: true, mode: 0o500 });
+      try {
+        const t = createTelemetry({
+          version: '1',
+          cwd: dir,
+          now: () => 1,
+          env: {
+            RETICLE_TELEMETRY_FILE: join(readOnly, 'e.jsonl'),
+            RETICLE_TELEMETRY_KEY: 'k',
+          },
+        });
+        await expect(t.emit(TelemetryEventKind.DAEMON_STARTED)).resolves.toBe(false);
+      } finally {
+        chmodSync(readOnly, 0o700);
+      }
     });
   });
 });

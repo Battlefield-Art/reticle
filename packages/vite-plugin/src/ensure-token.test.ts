@@ -22,7 +22,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  mkdirSync,
+  statSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensurePairingToken } from './ensure-token.js';
@@ -64,7 +72,22 @@ describe('the pairing token, whoever gets there first', () => {
 
   it('returns undefined rather than throwing when the directory cannot be written', () => {
     // A dev server must still start. Degrading to the old behaviour is correct; crashing is not.
-    expect(ensurePairingToken('/proc/nonexistent-reticle-dir')).toBeUndefined();
+    //
+    // The unwritable directory is MADE unwritable, rather than borrowed from `/proc`. `/proc` does
+    // not exist on macOS, so the borrowed version passed instantly here and hung the Linux runner —
+    // this was the single test file, out of nine, that never reported, and it parked `verify` for
+    // 36 minutes with every other test already green. A test whose subject only exists on one
+    // platform is not testing the same thing on the other one.
+    withDir((dir) => {
+      const readOnly = join(dir, 'read-only');
+      mkdirSync(readOnly, { recursive: true, mode: 0o500 });
+      try {
+        expect(ensurePairingToken(join(readOnly, 'child'))).toBeUndefined();
+      } finally {
+        // Restore write permission or the cleanup cannot remove it.
+        chmodSync(readOnly, 0o700);
+      }
+    });
   });
 
   it('treats a whitespace-only file as absent and replaces it', () => {
