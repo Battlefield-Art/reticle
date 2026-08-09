@@ -79,8 +79,19 @@ describe('record -> compile -> replay', () => {
     expect(rec.program.steps[0]?.stable).toBe(false);
     expect(rec.program.steps[0]?.args).toEqual({ ref: 'e7', action: 'click', args: {} });
     expect(rec.warning).toMatch(/not bound to a testid/);
+    // A step with `stable: false` has NO anchor — not a testid, not role+name, not a component. The
+    // replayer already knows what that means and says so plainly: it can never resolve on replay.
+    // Record-stop called the same condition "replay may be brittle", which reads as a quality note
+    // about a flow that works, so the agent saved it and found out much later as an unhealable
+    // anchor_degraded drift at flow_verify — several calls and one wrong mental model away from the
+    // element that actually needed a data-testid. The warning must carry the replayer's verdict and
+    // name the fix.
+    expect(rec.warning).toMatch(/never replay|can never resolve/i);
+    expect(rec.warning).not.toMatch(/may be brittle/i);
+    expect(rec.warning).toMatch(/data-testid/);
     browser.actHasTestid = true;
   });
+
 
   it('replay re-resolves by testid and re-runs each step', async () => {
     await callTool(deps, ReticleTool.RECORD, { action: 'start', name: 'rerun' });

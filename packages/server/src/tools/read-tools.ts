@@ -17,6 +17,29 @@ import { asString, asNumber, parseInteractive } from './tools-helpers.js';
 import { type ToolDef, sessionIdShape, commandOrThrow, snapshotTree } from './tool-kit.js';
 import { bufferEnvelope } from '../session/session-health.js';
 
+/**
+ * What record-stop says about a step that compiled to no anchor at all.
+ *
+ * `stable: false` does not mean "brittle". It means the compiler found no testid, no accessible
+ * role+name and no component/source, so the step is bound to a live `ref` — a handle that dies with
+ * the session. The replayer already states this outcome in full (see DEGRADED_STEP_REASON): the step
+ * can never resolve on replay.
+ *
+ * The old wording here — "replay may be brittle (in-session only)" — described a fatal condition as
+ * a quality note, so the agent saved the flow and learned the truth several calls later, as an
+ * unhealable `anchor_degraded` drift at flow_verify, by which point nothing on screen points back
+ * to the element that needed the attribute. Capture time is the only moment the fix is cheap: the
+ * element is still on the page and the human is still in the loop.
+ */
+function unanchoredWarning(count: number): string {
+  return (
+    `${String(count)} step(s) not bound to a testid, an accessible role+name, or a component — ` +
+    'they are pinned to a live ref, so they will replay in THIS session and can never resolve in ' +
+    'another one. Add a data-testid to those elements and record the flow again, or accept that ' +
+    'this recording is single-session only.'
+  );
+}
+
 export const READ_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.BASELINE_SAVE,
@@ -178,7 +201,7 @@ export const READ_TOOLS: ToolDef[] = [
         program,
         ...(unstable > 0
           ? {
-              warning: `${String(unstable)} step(s) not bound to a testid; replay may be brittle (in-session only)`,
+              warning: unanchoredWarning(unstable),
             }
           : {}),
         ...(proposedConsequences.length > 0 ? { proposedConsequences } : {}),
