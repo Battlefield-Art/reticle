@@ -1,9 +1,10 @@
 /**
- * reticle_state path selection + depth capping — pure, shared by the browser SDK (which applies them
+ * reticle_state output projection — pure, shared by the browser SDK (which applies them
  * BEFORE the transport so a scoped read of a huge store isn't truncated) and the server (back-compat
  * fallback when an older browser returns the whole store). `selectPath` walks a dot-path (with numeric
  * array indices) and, on a miss, returns the keys that WERE available at the last good level so a wrong
  * path is diagnosable rather than a bare null. `capDepth` prunes deeply-nested values to a budget.
+ * `projectComponentState` strips React fiber plumbing (effect chains) from a component hook read.
  */
 
 /** Result of walking a dot-path: the value, or a near-miss with the keys available where it stopped. */
@@ -138,4 +139,45 @@ export function capDepth(value: unknown, maxDepth: number): unknown {
     return out;
   }
   return value;
+}
+
+/**
+ * Keys a React effect hook's `memoizedState` can carry once sanitized: `create`/`destroy` are
+ * functions (already nulled), `deps` re-states values the value-hooks above it already carry, and
+ * `next` chains the WHOLE effect list into every effect entry — so N effects cost O(N^2) of nulls.
+ * React 18 uses `destroy`, React 19 wraps it in `inst`; both are listed so either version matches.
+ */
+const EFFECT_HOOK_KEYS = new Set(['tag', 'create', 'destroy', 'deps', 'inst', 'next']);
+
+/** Disclosure text for a projected hook list — a trim is never silent. */
+const HOOKS_PROJECTED_NOTE =
+  'projected — effect hook(s) dropped (create/destroy are functions, deps duplicate the state values, and each entry re-chains the whole effect list). Every state/memo/ref hook value is unchanged.';
+
+/** True for a sanitized React effect object — internals with no value an agent can act on. */
+function isEffectHook(value: unknown): boolean {
+  if ('object' !== typeof value || null === value || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  if (!keys.includes('tag') || !keys.includes('deps') || !keys.includes('next')) return false;
+  if ('number' !== typeof (value as { tag: unknown }).tag) return false;
+  return keys.every((k) => EFFECT_HOOK_KEYS.has(k));
+}
+
+/**
+ * Project a component-state read down to what an agent can act on: the hook VALUES. Effect entries
+ * are dropped (see `EFFECT_HOOK_KEYS`); everything else — useState values, useRef, and the
+ * `[value, deps]` tuple of useMemo/useCallback — is passed through untouched, because React exposes
+ * no hook KINDS here and a two-element state value is indistinguishable from a memo tuple.
+ * A non-conforming value (no `hooks` array) is returned unchanged.
+ */
+export function projectComponentState(result: unknown): unknown {
+  if ('object' !== typeof result || null === result) return result;
+  const hooks = (result as { hooks?: unknown }).hooks;
+  if (!Array.isArray(hooks)) return result;
+  const kept = hooks.filter((h) => !isEffectHook(h));
+  if (kept.length === hooks.length) return result;
+  return {
+    ...(result as Record<string, unknown>),
+    hooks: kept,
+    truncation: { droppedItems: hooks.length - kept.length, note: HOOKS_PROJECTED_NOTE },
+  };
 }

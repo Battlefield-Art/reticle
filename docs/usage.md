@@ -933,6 +933,9 @@ function CartProvider({ children }) {
 ```jsonc
 reticle_state({ store: "workspace" })   // → { stores: { workspace: {…} } }
 reticle_state({ ref: "e9" })            // → { component: { ok: true, component, hooks } } or { component: { ok: false, reason: "component-state-unavailable" } }
+// `hooks` carries the hook VALUES only (state / ref / memo). React effect entries — chained,
+// null-filled fiber internals with nothing to act on — are dropped, and when any were, the read
+// says so: component.truncation = { droppedItems, note }.
 
 // Scope a large store instead of paying for the whole thing:
 reticle_state({ store: "workspace", path: "captionCache.v3" })  // → { found: true, value: {…} }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectPath, capDepth } from './state-select.js';
+import { selectPath, capDepth, projectComponentState } from './state-select.js';
 
 describe('selectPath', () => {
   it('walks object keys and numeric array indices', () => {
@@ -147,5 +147,90 @@ describe('capDepth', () => {
   it('prunes only past the budget', () => {
     expect(capDepth({ a: { b: 1 } }, 1)).toEqual({ a: '{…1 keys}' });
     expect(capDepth({ a: { b: 1 } }, 2)).toEqual({ a: { b: 1 } });
+  });
+});
+
+/**
+ * Fixture mirroring a REAL React 19 fiber read (captured by rendering a cart component with five
+ * useState, one useRef, one useMemo, one useCallback and three useEffect through @reticlehq/react's
+ * readState under jsdom). Measured on that real payload: 2632 bytes of JSON in,
+ * 1333 bytes out (disclosure note included) — the three effect entries, each a
+ * `{tag, create:null, deps, inst:{destroy:null}, next:{…}}` chain, are half the read.
+ */
+const CART_ROWS = Array.from({ length: 6 }, (_, i) => ({
+  id: `line-${String(i)}`,
+  sku: `SKU-000${String(i)}`,
+  qty: i + 1,
+  price: 199 + i,
+}));
+
+function effectHook(deps: unknown[], next: unknown): unknown {
+  return { tag: 9, create: null, deps, inst: { destroy: null }, next };
+}
+
+const FILTERS = { status: 'open', sort: 'price', page: 1 };
+const NULLED_ROWS = CART_ROWS.map(() => null);
+
+const RAW_CART_STATE = {
+  ok: true,
+  component: 'Cart',
+  hooks: [
+    CART_ROWS, // useState(items)
+    '', // useState(coupon)
+    false, // useState(busy)
+    null, // useState(error)
+    FILTERS, // useState(filters)
+    { current: '[Node]' }, // useRef
+    [4249, [CART_ROWS]], // useMemo -> [value, deps]
+    [null, ['', CART_ROWS]], // useCallback -> [fn (nulled), deps]
+    effectHook(
+      ['', CART_ROWS, false],
+      effectHook([4249, FILTERS], effectHook([CART_ROWS, FILTERS, ''], null)),
+    ),
+    effectHook([4249, FILTERS], effectHook([NULLED_ROWS, FILTERS, ''], effectHook(['', null, false], null))),
+    effectHook([CART_ROWS, FILTERS, ''], effectHook(['', NULLED_ROWS, false], null)),
+  ],
+};
+
+describe('projectComponentState', () => {
+  it('drops React effect hooks and keeps every value hook, well under half the raw size', () => {
+    const rawBytes = JSON.stringify(RAW_CART_STATE).length;
+    const projected = projectComponentState(RAW_CART_STATE);
+    const projectedBytes = JSON.stringify(projected).length;
+
+    expect(rawBytes).toBeGreaterThan(2000); // the measured real payload is 2632 bytes
+    expect(projectedBytes).toBeLessThan(rawBytes * 0.6);
+    expect(projected).toMatchObject({
+      ok: true,
+      component: 'Cart',
+      hooks: [
+        CART_ROWS,
+        '',
+        false,
+        null,
+        FILTERS,
+        { current: '[Node]' },
+        [4249, [CART_ROWS]],
+        [null, ['', CART_ROWS]],
+      ],
+    });
+  });
+
+  it('adds no disclosure when there was nothing to drop', () => {
+    const clean = { ok: true, component: 'Toggle', hooks: [false, { current: null }] };
+    expect(projectComponentState(clean)).toEqual(clean);
+  });
+
+  it('leaves a non-conforming value untouched', () => {
+    expect(projectComponentState(undefined)).toBeUndefined();
+    expect(projectComponentState({ ok: false, reason: 'component-state-unavailable' })).toEqual({
+      ok: false,
+      reason: 'component-state-unavailable',
+    });
+  });
+
+  it('keeps a two-element state value that merely looks like a memo tuple', () => {
+    const pair = { ok: true, hooks: [['lat', ['a', 'b']]] };
+    expect(projectComponentState(pair)).toEqual(pair);
   });
 });

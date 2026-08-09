@@ -10,7 +10,7 @@ import { proposeConsequences } from '../oracles/propose-consequences.js';
 import type { CompiledProgram } from '../flows/recordings.js';
 import { replayProgram } from '../flows/replay.js';
 import { diffLines } from '../project/baselines.js';
-import { selectPath, capDepth } from '../session/state-select.js';
+import { selectPath, capDepth, projectComponentState } from '../session/state-select.js';
 import { costHint } from '../session/output-budget.js';
 import { buildReactionReport } from '../events/reaction.js';
 import { asString, asNumber, parseInteractive } from './tools-helpers.js';
@@ -358,7 +358,21 @@ export const READ_TOOLS: ToolDef[] = [
       // concludes the key it wants is absent when it is merely past the cap.
       totalKeys: z.number().optional(),
       component: z
-        .object({ ok: z.boolean(), reason: z.string().optional(), state: z.unknown().optional() })
+        .object({
+          ok: z.boolean(),
+          reason: z.string().optional(),
+          state: z.unknown().optional(),
+          // The component name and the projected hook VALUES — declared so a schema-strict client
+          // keeps them (they were the point of passing `ref` at all).
+          component: z.string().optional(),
+          hooks: z.array(z.unknown()).optional(),
+          // Present only when effect hooks were projected out. Declared for the same reason as the
+          // store truncation report below: a shortened list with no marker reads as a complete one.
+          truncation: z
+            .object({ droppedItems: z.number(), note: z.string() })
+            .optional()
+            .describe('Present only when effect hooks were dropped — `hooks` is a projection.'),
+        })
         .optional(),
       // Truncation report — present ONLY when a transport cap trimmed the value. Declared so a
       // schema-strict client on the `full` profile KEEPS it: this is a false-green GUARD, and dropping
@@ -381,7 +395,7 @@ export const READ_TOOLS: ToolDef[] = [
       // Forward path/depth so a CURRENT browser SDK scopes the read IN-PAGE, before the transport —
       // the value never gets size-truncated in transit. (An older SDK ignores them and returns the
       // whole store; we then scope server-side below as a back-compat fallback.)
-      const result = await commandOrThrow(
+      const raw = await commandOrThrow(
         deps,
         asString(args['sessionId']),
         ReticleCommand.STATE_READ,
@@ -392,6 +406,15 @@ export const READ_TOOLS: ToolDef[] = [
           depth,
         },
       );
+      // Project the component hook read BEFORE anything else touches it: React hands back the raw
+      // fiber hook list, whose effect entries are chained null-filled internals an agent cannot act
+      // on (measured: 2632 -> 1459 bytes on a five-state/three-effect component). Done here rather
+      // than in the SDK so an older browser build gets the same projection. The drop is disclosed
+      // on `component.truncation`.
+      const result =
+        'object' === typeof raw && null !== raw && 'component' in raw
+          ? { ...raw, component: projectComponentState(raw.component) }
+          : raw;
       // Normalize storeNames to a string[] regardless of how the wire delivered it — the
       // outputSchema requires an array, and a non-array here makes MCP reject the whole result
       // (so the agent gets nothing instead of the state). Defensive: a string becomes a 1-element array.

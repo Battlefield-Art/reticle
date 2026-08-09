@@ -173,7 +173,10 @@ async function warnAboutForeignSessions() {
   });
   let sessions = [];
   try {
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    // 12s, not 4: an SDK reconnects with backoff, so a stray tab whose last attempt just failed
+    // can take longer than a short probe to reappear. A run where the bait window closed too early
+    // reported all-clear and then lost a spec to the very tab it had missed.
+    for (let attempt = 0; attempt < 24; attempt += 1) {
       await new Promise((r) => setTimeout(r, 500));
       const raw = await sh(
         `curl -s --max-time 2 http://localhost:${String(BRIDGE_PORT)}/status 2>/dev/null`,

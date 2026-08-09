@@ -540,6 +540,11 @@ export interface ComponentStateResult {
   component?: string;
   /** Positional, JSON-safe hook states. */
   hooks?: unknown[];
+  /**
+   * Present ONLY when `hooks` is a PROJECTION — effect entries were removed. A trim is never silent:
+   * without this, a hook list short by three entries reads as the component's complete hook list.
+   */
+  truncation?: { droppedItems: number; note: string };
 }
 
 /** Element states the assertion engine can check (plan/06). */
