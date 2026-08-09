@@ -13,6 +13,12 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # The only job that was missing a cap, and the only one that has ever hung. On the v2.5.0 merge
+    # every test PASSED in 2m17s and then one vitest process never exited; the job sat there for 36
+    # more minutes and stopped only because a human cancelled it. Without this it would have run to
+    # the runner's 6-hour default — and the publish workflow, which shares these steps, would have
+    # sat behind it for the same 6 hours.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -31,6 +37,12 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test:unit
+        # Turbo buffers each task's output and prints it only when the task finishes, so a task that
+        # HANGS prints nothing at all — the v2.5.0 hang was invisible until the orphan-process list
+        # in the runner's cleanup named the survivor. Streaming interleaves the packages, which is
+        # uglier and worth it: whatever hangs next says so while it is hanging.
+        env:
+          TURBO_LOG_ORDER: stream
       # Non-blocking: a newly-published advisory on an untouched transitive dep must not red an
       # unrelated PR. It still runs and surfaces (warning) so the advisory is visible; act on it via
       # a dependency bump / pnpm override, not by blocking the build.

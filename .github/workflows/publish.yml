@@ -21,6 +21,10 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # This job re-runs the same build/lint/typecheck/test steps as CI's `verify`, so it inherits the
+    # same failure mode: a test process that never exits parks the release behind it for the
+    # runner's 6-hour default. It happened on v2.5.0.
+    timeout-minutes: 30
     environment: Production # NPM_TOKEN lives in this GitHub Environment
     permissions:
       contents: read
@@ -47,6 +51,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test:unit
+        env:
+          TURBO_LOG_ORDER: stream # a hung task must say so while it hangs (see ci.yml)
       - name: Publish public packages
         run: pnpm -r publish --access public --no-git-checks
         env:
