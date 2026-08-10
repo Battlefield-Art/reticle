@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { freePortSafely } from './gate-harness.mjs';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const specsDir = path.join(dir, 'specs');
@@ -133,17 +134,18 @@ const BRIDGE_PORT = 4400;
  * cannot be — a diagnosis is worth more than a cascade.
  */
 async function freePort() {
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    // No `-sTCP:LISTEN`: a socket being torn down still holds the port and still causes EADDRINUSE.
-    const held = await sh(`lsof -tiTCP:${String(BRIDGE_PORT)} 2>/dev/null`);
-    if (held === '') return;
-    const signal = attempt < 3 ? '' : '-9';
-    await sh(`kill ${signal} ${held.split('\n').join(' ')} 2>/dev/null; sleep 0.4`);
-  }
-  const stillHeld = await sh(`lsof -tiTCP:${String(BRIDGE_PORT)} 2>/dev/null`);
-  if (stillHeld !== '') {
+  // Listeners first, then — only if the port is still held — everything else, named before it is
+  // touched. The previous version killed every holder on the first pass, which on 4400 includes any
+  // `reticle mcp` proxy attached to the daemon: a developer running the battery with their own agent
+  // connected lost that agent's transport, silently, with no log (the process that writes the proxy
+  // log is the one that dies). See apps/e2e/harness-rules.md.
+  const { freed, survivors } = await freePortSafely(BRIDGE_PORT, {
+    onNote: (note) => process.stdout.write(`\n[e2e] ${note}\n`),
+  });
+  if (!freed) {
     process.stdout.write(
-      `\n[e2e] port ${String(BRIDGE_PORT)} is STILL held by pid(s) ${stillHeld.split('\n').join(', ')} — ` +
+      `\n[e2e] port ${String(BRIDGE_PORT)} is STILL held by ` +
+        `${survivors.map((h) => `pid ${h.pid} (${h.command})`).join(', ')} — ` +
         `every spec below will fail with EADDRINUSE for that reason and not their own.\n`,
     );
   }

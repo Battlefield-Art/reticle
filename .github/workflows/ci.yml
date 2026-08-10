@@ -192,7 +192,14 @@ jobs:
             # By name misses `next-server`, whose parent pnpm wrapper is the only pid the battery
             # held — it survived attempt 1 and made attempt 2 fail on EADDRINUSE. run-ci.sh's own
             # trap frees these ports; this repeats it for the case where the trap never ran.
-            for port in 8787 4310 3100 4400; do lsof -ti "tcp:$port" | xargs -r kill -9 || true; done
+            #
+            # `-sTCP:LISTEN` on 4400 is load-bearing, not tidiness: a `reticle mcp` proxy holds a
+            # CLIENT socket on the bridge port, so the unfiltered form kills the proxy too. Harmless
+            # here only because the pkill above already ended them — and a rule that is correct by
+            # accident is the one that breaks when the line above it changes.
+            # See apps/e2e/harness-rules.md.
+            for port in 8787 4310 3100; do lsof -ti "tcp:$port" | xargs -r kill -9 || true; done
+            lsof -ti "tcp:4400" -sTCP:LISTEN | xargs -r kill -9 || true
             sleep 3
           done
           echo "e2e battery failed after 2 attempts"; exit 1
