@@ -38,6 +38,11 @@ const ORDER = [
   // which SIGKILL never fires) while a tidy one logged code:0 — so the two were indistinguishable in
   // the one file users are told to open.
   'daemon-heartbeat-test',
+  // Serverless as well: a fault proxy sits between the MCP proxy and a real daemon and breaks the
+  // link in NAMED ways — reset, blackhole, truncate, latency — instead of SIGKILLing a process. It
+  // separates the two unanswered-call populations by their timing: a queued call is answered by the
+  // 20s queue timer, a call broken IN FLIGHT by the stream-loss path in well under a second.
+  'transport-faults-test',
   'next-smoke-test',
   'next-blur-clock-test',
   'status-honesty-test',
