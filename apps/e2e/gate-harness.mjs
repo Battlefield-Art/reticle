@@ -16,6 +16,15 @@ import { setTimeout as sleep } from 'node:timers/promises';
 /** Reticle's default bridge port — the one every doc, error message and config example names. */
 export const DEFAULT_BRIDGE_PORT = 4400;
 
+/**
+ * How often a gate-owned daemon says it is alive.
+ *
+ * Two seconds, against the product's 30. A connect window is measured in seconds, so a beat that
+ * lands once every thirty cannot tell you whether the bridge was up for it — and the cost of the
+ * finer cadence is a few extra lines in a log that already rotates.
+ */
+const GATE_HEARTBEAT_MS = '2000';
+
 /** Disables the daemon's idle self-shutdown. A gate owns its daemon; nothing else may end it. */
 export const IDLE_SHUTDOWN_DISABLED = '0';
 
@@ -237,6 +246,12 @@ export async function startOwnedDaemon(port, { cliPath, cwd, env = {}, stdio = '
     env: {
       ...process.env,
       RETICLE_IDLE_SHUTDOWN_MS: IDLE_SHUTDOWN_DISABLED,
+      // A cadence the gate can actually read. The product default is 30s, which is right for a real
+      // user's daemon (median life 28 minutes) and useless here: measured over one battery window,
+      // port 4400 saw 13 daemon starts and produced 2 heartbeats, because a spec's daemon rarely
+      // lives long enough to beat once. A liveness signal that does not fire inside the window you
+      // are judging cannot support rule 4.
+      RETICLE_HEARTBEAT_MS: GATE_HEARTBEAT_MS,
       RETICLE_TELEMETRY: '0',
       ...env,
     },
