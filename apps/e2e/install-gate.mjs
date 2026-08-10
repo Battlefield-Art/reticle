@@ -136,10 +136,19 @@ async function startLocalRegistry() {
   const token = (await res.json())?.token;
   if (typeof token !== 'string' || token === '') throw new Error('no token from verdaccio');
 
-  // The token goes in the ENVIRONMENT, never in ~/.npmrc. scripts/local-registry.sh appends to the
-  // developer's global npmrc and strips it again on exit; a gate has no business editing that file
-  // at all, and a killed run would leave the token behind.
-  const auth = { [`npm_config_//localhost:${String(REGISTRY_PORT)}/:_authToken`]: token };
+  // Auth through an ISOLATED npmrc, pointed at by npm_config_userconfig.
+  //
+  // The env-var form (`npm_config_//localhost:PORT/:_authToken`) worked on my machine and failed in
+  // CI, which is the whole reason this gate needed to run there: locally a developer's own ~/.npmrc
+  // can be carrying credentials that make the publish succeed for a reason the gate is not testing.
+  // A temp userconfig is unambiguous and still never touches the developer's global npmrc — which
+  // scripts/local-registry.sh does append to, and which a killed run would leave a token in.
+  const npmrc = join(mkdtempSync(join(tmpdir(), 'reticle-gate-npmrc-')), '.npmrc');
+  writeFileSync(
+    npmrc,
+    `registry=${REGISTRY}\n//localhost:${String(REGISTRY_PORT)}/:_authToken=${token}\n`,
+  );
+  const auth = { npm_config_userconfig: npmrc, NPM_CONFIG_USERCONFIG: npmrc };
   run('pnpm', ['-r', 'publish', '--registry', REGISTRY, '--no-git-checks'], ROOT, auth);
   return { proc, auth, stop: () => {
     try {
@@ -518,7 +527,14 @@ try {
     results.push(await driveScaffold(scaffold, index));
   }
 } catch (err) {
-  console.log(`   ❌ the gate could not start: ${String(err).slice(0, 300)}`);
+  // The reason, not the banner. execFileSync's message begins with the command and then its STDOUT,
+  // so a truncation of it shows npm's package listing and never the error — which is precisely how
+  // this failure arrived from CI unreadable.
+  const detail = [err?.stderr, err?.stdout, String(err)]
+    .filter((part) => 'string' === typeof part && part.trim() !== '')
+    .map((part) => part.trim().split('\n').slice(-12).join('\n'))
+    .join('\n---\n');
+  console.log(`   ❌ the gate could not start:\n${detail.slice(0, 2000)}`);
   results.push({ id: 'setup', pass: 0, fail: 1 });
 } finally {
   if (registry !== undefined) registry.stop();
