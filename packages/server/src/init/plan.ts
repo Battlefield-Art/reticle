@@ -15,6 +15,13 @@ import {
 import { claudeAddCommand, mcpManual } from './mcp.js';
 import { mergeCursorConfig, CursorMergeStatus, cursorServerEntry } from './cursor.js';
 import {
+  mergeClientConfig,
+  ClientMergeStatus,
+  clientSnippet,
+  clientSpec,
+  type McpClient,
+} from './mcp-clients.js';
+import {
   CLAUDE_COMMAND_PATH,
   CURSOR_COMMAND_PATH,
   SLASH_COMMAND_BODY,
@@ -177,6 +184,15 @@ export interface PlanInput {
   cursorConfig: string | null;
   /** Absolute path of ~/.cursor/mcp.json (the write target). */
   cursorConfigPath: string;
+  /**
+   * Every OTHER MCP client detected on this machine, with its config path and current content.
+   *
+   * Claude Code and Cursor keep their own steps — Claude registers through its CLI, and Cursor's
+   * predates this. Everything else is uniform: read the file, merge, write.
+   */
+  detectedClients?:
+    | readonly { id: McpClient; configPath: string; existing: string | null }[]
+    | undefined;
   /** Discovered Vite config: its path + source, or null if none found. */
   viteConfig: { path: string; source: string } | null;
   /** Discovered Astro config: its path + source, or null if none found. */
@@ -295,6 +311,50 @@ function cursorMcpStep(input: PlanInput): Step | null {
   };
 }
 
+/**
+ * One step per OTHER detected client.
+ *
+ * The shapes differ enough that a shared "write mcp.json" would be wrong for three of them — see
+ * mcp-clients.ts. What is shared is the DECISION: already-correct is left alone, a file we cannot
+ * parse is reported with a paste-able block rather than overwritten, and everything else is written.
+ */
+function otherClientSteps(input: PlanInput): Step[] {
+  const steps: Step[] = [];
+  for (const detected of input.detectedClients ?? []) {
+    const spec = clientSpec(detected.id);
+    const merged = mergeClientConfig(spec, detected.existing);
+    const title = `MCP server (${spec.label})`;
+    if (merged.status === ClientMergeStatus.ALREADY) {
+      steps.push({
+        title,
+        target: detected.configPath,
+        status: StepStatus.ALREADY,
+        detail: `reticle already registered with ${spec.label}`,
+      });
+      continue;
+    }
+    if (merged.status === ClientMergeStatus.MANUAL) {
+      // Either the file did not parse, or the format is one we refuse to edit blind (TOML). Both
+      // end the same way: say so, and hand over the exact block.
+      steps.push({
+        title,
+        target: detected.configPath,
+        status: StepStatus.MANUAL,
+        detail: `add this to ${detected.configPath} by hand:\n${clientSnippet(spec)}`,
+      });
+      continue;
+    }
+    steps.push({
+      title,
+      target: detected.configPath,
+      status: StepStatus.APPLY,
+      detail: `register reticle with ${spec.label}`,
+      write: { path: detected.configPath, content: merged.content },
+    });
+  }
+  return steps;
+}
+
 /** One global registration per detected agent (Claude + Cursor). Falls back to a manual note. */
 function mcpSteps(input: PlanInput): Step[] {
   if (!input.options.mcp) {
@@ -311,7 +371,10 @@ function mcpSteps(input: PlanInput): Step[] {
       },
     ];
   }
-  const steps = stepsForAgents(input, (a) => a.mcpStep);
+  // Claude and Cursor first (they have their own registration paths), then every other detected
+  // client. A machine with Cursor AND Windsurf gets both — registering only the first one found is
+  // how a user ends up with Reticle in the editor they were not using.
+  const steps = [...stepsForAgents(input, (a) => a.mcpStep), ...otherClientSteps(input)];
   if (steps.length > 0) return steps;
   // No supported agent detected — print the one-time global instructions. Reached when the `claude`
   // CLI is absent AND ~/.cursor does not exist, which includes Cursor installed with a fresh profile

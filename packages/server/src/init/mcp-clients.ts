@@ -264,3 +264,26 @@ export function clientSnippet(spec: ClientSpec): string {
   }
   return `${JSON.stringify({ [spec.serversKey]: { [MCP_SERVER_NAME]: spec.entry() } }, null, 2)}\n`;
 }
+
+/**
+ * The path whose existence means "this user has this client".
+ *
+ * Detection is deliberately conservative and one-directional: we write into a config a client
+ * ALREADY has, and never create `~/.gemini/` or `~/.codeium/` for somebody who does not use them.
+ * Littering a home directory to register a server nobody asked for is worse than printing a snippet.
+ *
+ * For a `home` client this is the directory above its config; for a `project` client it is the
+ * config file (or its directory) inside the repo, which is unambiguous evidence somebody uses it
+ * here. Same reasoning as Cursor's existing rule, which also accepts a project-level `.cursor/`
+ * because a fresh Cursor profile has not written `~/.cursor` yet.
+ */
+export function clientMarkerRelPath(spec: ClientSpec): string {
+  if (spec.scope === ConfigScope.CLI) return '';
+  const parts = spec.relPath.split('/');
+  return parts.length > 1 ? parts.slice(0, -1).join('/') : spec.relPath;
+}
+
+/** Clients `init` can wire by writing a file — everything but the CLI-registered one. */
+export function fileBackedClients(): readonly ClientSpec[] {
+  return MCP_CLIENTS.filter((spec) => spec.scope !== ConfigScope.CLI);
+}

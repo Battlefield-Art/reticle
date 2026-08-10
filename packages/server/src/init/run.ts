@@ -55,6 +55,12 @@ import { claudeAvailableProbe, claudeExistsProbe } from './mcp.js';
 import { reticleDevLocation } from './next-patch.js';
 import { scanTestids, storeHints } from './capabilities.js';
 import { CURSOR_DIR_RELPATH, CURSOR_MCP_RELPATH } from './cursor.js';
+import {
+  fileBackedClients,
+  clientMarkerRelPath,
+  ConfigScope,
+  McpClient,
+} from './mcp-clients.js';
 import { deriveProjectId, packageName } from './project-id.js';
 import { VITE_DEV_MODULE_PATH } from './snippets.js';
 import { CLAUDE_COMMAND_PATH, CURSOR_COMMAND_PATH } from './slash-command.js';
@@ -294,6 +300,28 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const cursorPresent = options.mcp && (io.exists(cursorDir) || io.exists(CURSOR_DIR_RELPATH));
   const cursorConfig = cursorPresent ? io.readFile(cursorConfigPath) : null;
 
+  // Every OTHER MCP client this machine shows evidence of. Conservative and one-directional: we
+  // write into a config a client ALREADY has, and never create ~/.gemini or ~/.codeium for somebody
+  // who does not use them. Cursor and Claude are handled above by their own steps.
+  const detectedClients = options.mcp
+    ? fileBackedClients()
+        .filter((spec) => spec.id !== McpClient.CURSOR)
+        .map((spec) => {
+          const marker = clientMarkerRelPath(spec);
+          const absolute =
+            spec.scope === ConfigScope.HOME ? join(io.homeDir(), spec.relPath) : spec.relPath;
+          const markerPath = spec.scope === ConfigScope.HOME ? join(io.homeDir(), marker) : marker;
+          if (!io.exists(markerPath)) return null;
+          return {
+            id: spec.id,
+            configPath: absolute,
+            // io.readFile passes absolute paths through unchanged, so one call covers both scopes.
+            existing: io.readFile(absolute),
+          };
+        })
+        .filter((entry) => entry !== null)
+    : [];
+
   const astroPath = firstPresent(rootFiles, ASTRO_CONFIG_CANDIDATES);
   const astroSource = null === astroPath ? null : io.readFile(astroPath);
   // Which file owns the DOCUMENT, not how many files sit in a directory. The old rule ("exactly one
@@ -327,6 +355,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     claudeCli,
     mcpExists,
     cursorPresent,
+    detectedClients,
     cursorProjectPresent: io.exists(CURSOR_DIR_RELPATH),
     cursorConfig,
     cursorConfigPath,
