@@ -489,6 +489,13 @@ export function waitForPredicate(
      * rejection reached it as an unhandledRejection. Either way the wait never resolved and the tool
      * handler never returned — the agent sees a call that simply never comes back.
      *
+     * This half covers the SYNCHRONOUS throw only. The rejection half is handled inside `check`, by
+     * the `.catch` on its own promise chain — `check` returns void and voids the promise it starts,
+     * so there is nothing to hand back here to await. Said explicitly because the obvious-looking
+     * `if (result instanceof Promise) result.catch(…)` that used to sit here was dead code that read
+     * like the rejection guard, and removing `check`'s own `.catch` as redundant would have restored
+     * the exact hang this exists to prevent.
+     *
      * That is the exact shape reported from a Plane (Next 14 + MobX) session, which tears the page
      * session down and rebuilds it on EVERY navigation, so a `{kind:"route"}` predicate always races
      * a teardown of the very session it is watching: `browser.command ok:true` for the click, and
@@ -498,8 +505,7 @@ export function waitForPredicate(
      */
     const guardedCheck = (): void => {
       try {
-        const pending = check() as unknown;
-        if (pending instanceof Promise) pending.catch(failWait);
+        check();
       } catch (error) {
         failWait(error);
       }
@@ -514,7 +520,12 @@ export function waitForPredicate(
       boundCheck();
     });
     const unsubDisconnect = session.onDisconnect?.(() => {
-      finish({ pass: false, failureReason: 'session disconnected' });
+      // `observationLost` is what stops this being graded as an app defect. `pass: false` is still
+      // correct — the consequence was not seen to hold — but on its own it reached the verdict rule
+      // as ASSERTION_FAILED, so a reload mid-wait reported "the declared consequence did not hold"
+      // against a healthy component, by file and line. The flag is structured rather than inferred
+      // from this string, because every other `failureReason` here is prose about the APP.
+      finish({ pass: false, failureReason: 'session disconnected', observationLost: true });
     });
     const interval = setInterval(boundCheck, POLL_INTERVAL_MS);
     const timer = setTimeout(() => {

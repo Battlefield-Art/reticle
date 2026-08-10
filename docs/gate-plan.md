@@ -49,7 +49,7 @@ Nothing below is trustworthy until a gate result can be distinguished from a gat
 - [x] **Trace-shape assertions** — `apps/e2e/trace-shape.mjs` + `trace-shape-test`. One root span per callId, no nested span without a completed parent (the hang signature), no undeclared parentless `browser.command`, no `ok:false` without an error. Calibrated against a real 494-span run: silent there, fires on all four fault shapes.
 - [x] **Daemon truthfulness (the port half)** — `daemon/port-presence.ts` gives a three-state answer (`daemon` / `foreign` / `free`) from two probes and no platform code. `serve` now refuses a foreign port and waits for a real bind before claiming success; `status` and `doctor` name the obstacle. Guarded by `daemon-port-honesty-test`, which squats the port and includes the free-port control. (#105, #112, #115)
 - [ ] **`daemon_alive` heartbeat** — so a gap in the log is itself evidence, and a killed daemon stops reading like a tidy exit. (#123)
-- [ ] **`observation_lost`** — a new `VerifiedReason`, so a lost connection stops being reported as a failed assertion. (#124)
+- [x] **`observation_lost`** — a new `VerifiedReason`, matched above the `pass === false` clause, so a lost connection grades UNKNOWN instead of being reported as a failed assertion. Signalled by a structured flag from `waitForPredicate`, never by matching on `failureReason` (which is free prose about the app everywhere else it is produced). Threaded through the assert and wait paths too, not just act. (#124)
 - [ ] **Telemetry chokepoint coverage** — a test that fails when a dispatch path has no reporter.
 - [ ] **Toxiproxy** in place of `kill -9`, so faults are specified rather than approximated.
 

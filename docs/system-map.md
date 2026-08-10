@@ -31,7 +31,7 @@ Each hop has its own failure vocabulary, its own recovery, and its own way of ly
 | 10 | Session registered, `everConnected = true` | daemon | — |
 | 11 | tool call → `runTool` → `session.send` → WS command → SDK → reply | all | any hop above, mid-flight |
 
-**Sequencing hazard:** steps 6 and 7 race. `reticle_wait_ready` exists to smooth it, and the fixtures gate has been burned by not using it.
+**Sequencing hazard:** steps 6 and 7 race. The product absorbs it internally — the first live tool call blocks briefly for a session to appear rather than failing — but a gate that boots an app and immediately asks whether a session exists is outside that protection and has been burned by it. Poll for the session; never sample once.
 
 ## 3. The tool graph — what produces what
 
@@ -111,7 +111,7 @@ Still fragile:
 | --- | --- | --- |
 | protocol mismatch → `1008` | no, but **terminal** | the SDK stops retrying by design; the app is dark until reload (#127) |
 | another project's daemon answers | no | `authFailureReason` — evidence-based, only claims it when the daemon has demonstrably served another project |
-| `rejectAll('session disconnected')` | **worse than silent** | becomes `verified:"no" / assertion_failed` — Reticle blames the app for its own lost connection (#124) |
+| `rejectAll('session disconnected')` | **fixed** | used to become `verified:"no" / assertion_failed` — Reticle blaming the app, by file and line, for its own lost connection. Now `verified:"unknown" / observation_lost` (#124) |
 | reaper ends a quiet session | no | revivable on the agent's next action |
 | opaque origins (`tauri://localhost`, `file://`) | no | kept verbatim in the allow-list rather than collapsed to `"null"` |
 

@@ -314,6 +314,12 @@ export const ACT_TOOLS: ToolDef[] = [
         pass: z.boolean(),
         evidence: z.unknown().optional(),
         failureReason: z.string().optional(),
+      observationLost: z
+        .boolean()
+        .optional()
+        .describe(
+          'The tab disconnected mid-wait, so this was never observed — the verdict is UNKNOWN, not a failure of the app.',
+        ),
         // The STRUCTURED cause — observed / expected / assertion — is what the repair literature ranks
         // above the prose failureReason (structured feedback beat narrative by 10.5pp) and above a bare
         // pointer. `verdict` is `await waitForPredicate(...)`, whose EvalResult carries these on a
@@ -515,6 +521,10 @@ export const ACT_TOOLS: ToolDef[] = [
           ...(alreadyTrue ? { alreadyTrue } : {}),
           // An assertion nobody could evaluate must not be reported as one the app failed.
           ...(verdict.inconclusive === undefined ? {} : { inconclusive: verdict.inconclusive }),
+          // Nor must one nobody could OBSERVE. This is the act path, so it is the one that produced
+          // the measured false red: a reload mid-wait, graded assertion_failed at the clicked
+          // component's own file and line.
+          ...(true === verdict.observationLost ? { observationLost: true } : {}),
           honesty,
           contradictions,
           ...(outcomePending ? { outcomePending } : {}),
