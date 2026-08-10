@@ -16,53 +16,60 @@ const fixedClock: Clock = { now: () => FIXED_MS };
 const ROOT = '/tmp/reticle-root/.reticle';
 const FLOWS_DIR = '/tmp/reticle-root/.reticle/flows';
 
+/** Separators normalised at the port — see the note in flow-spec.test.ts. Production joins paths
+ *  with the platform separator, and these fixtures are keyed POSIX-style, so on Windows every
+ *  lookup missed and the enumeration came back empty. */
+const norm = (p: string): string => p.replace(/\\/g, '/');
+
 function memoryFs(files: Record<string, string>): FileSystemPort {
   const store = new Map<string, string>(Object.entries(files));
   return {
     readFile: (path) => {
-      const v = store.get(path);
+      const v = store.get(norm(path));
       if (v === undefined)
         return Promise.reject(Object.assign(new Error('enoent'), { code: 'ENOENT' }));
       return Promise.resolve(v);
     },
     writeFile: (path, data) => {
-      store.set(path, data);
+      store.set(norm(path), data);
       return Promise.resolve();
     },
     appendFile: (path, data) => {
-      store.set(path, (store.get(path) ?? '') + data);
+      store.set(norm(path), (store.get(norm(path)) ?? '') + data);
       return Promise.resolve();
     },
     readFileBytes: (path) => {
-      const v = store.get(path);
+      const v = store.get(norm(path));
       if (v === undefined)
         return Promise.reject(Object.assign(new Error('enoent'), { code: 'ENOENT' }));
       return Promise.resolve(new TextEncoder().encode(v));
     },
     writeFileBytes: (path, data) => {
-      store.set(path, new TextDecoder().decode(data));
+      store.set(norm(path), new TextDecoder().decode(data));
       return Promise.resolve();
     },
     mkdir: () => Promise.resolve(),
     exists: (path) =>
-      Promise.resolve(store.has(path) || [...store.keys()].some((k) => k.startsWith(`${path}/`))),
+      Promise.resolve(
+        store.has(norm(path)) || [...store.keys()].some((k) => k.startsWith(`${norm(path)}/`)),
+      ),
     readdir: (path) =>
       Promise.resolve(
         [...store.keys()]
-          .filter((k) => k.startsWith(`${path}/`))
-          .map((k) => k.slice(path.length + 1))
+          .filter((k) => k.startsWith(`${norm(path)}/`))
+          .map((k) => k.slice(norm(path).length + 1))
           .filter((k) => !k.includes('/')),
       ),
     rename: (from, to) => {
-      const v = store.get(from);
+      const v = store.get(norm(from));
       if (v !== undefined) {
-        store.set(to, v);
-        store.delete(from);
+        store.set(norm(to), v);
+        store.delete(norm(from));
       }
       return Promise.resolve();
     },
     rm: (path) => {
-      store.delete(path);
+      store.delete(norm(path));
       return Promise.resolve();
     },
     stat: () => Promise.resolve({ mtimeMs: 0 }),
