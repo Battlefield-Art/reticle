@@ -183,7 +183,15 @@ export class FakeBrowser {
   }
 }
 
-export function waitUntil(cond: () => boolean, timeoutMs = 2000): Promise<void> {
+/**
+ * Poll until `cond` holds.
+ *
+ * The default was 2000ms and the fifty-browser test blew it on the Windows runner at 5155ms — a
+ * statement about the machine, not about the bridge. Raising it is safe in a way that raising a
+ * fixed sleep would not be: this POLLS every 10ms and resolves the instant the condition holds, so
+ * a passing test is not slowed by one millisecond and only a genuinely failing one waits longer.
+ */
+export function waitUntil(cond: () => boolean, timeoutMs = 15_000): Promise<void> {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const tick = (): void => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 /**
  * A module that nothing imports must be DECLARED unwired, not discovered by an auditor.
@@ -41,7 +41,10 @@ function sourceFiles(dir: string, acc: string[] = []): string[] {
     }
     if (!entry.endsWith('.ts')) continue;
     if (entry.endsWith('.test.ts') || entry.endsWith('.test-harness.ts')) continue;
-    acc.push(relative(SRC, full));
+    // `relative()` returns the PLATFORM separator, so every comparison below is against a POSIX
+    // literal that never matches on Windows: the scan then reports every file as a violation, or
+    // passes by matching nothing. Same fixture bug as four other packages on this branch.
+    acc.push(relative(SRC, full).split(sep).join('/'));
   }
   return acc;
 }
