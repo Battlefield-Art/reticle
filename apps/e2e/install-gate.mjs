@@ -259,9 +259,17 @@ function stepsOf(report) {
     .map((m) => ({ mark: m[1], title: m[2].trim(), target: m[3].trim() }));
 }
 
-/** One line per step, stable and diffable. The target is deliberately excluded: it carries absolute
- *  paths and a scaffold's own file names, neither of which is a fact about Reticle. */
-const fingerprint = (steps) => steps.map((s) => `${s.mark} ${s.title}`);
+/**
+ * One line per step, stable and diffable: mark, title, and TARGET.
+ *
+ * The first version left the target out, on the assumption it carried absolute paths. It does not —
+ * every target is a repo-relative path or a descriptive string — and leaving it out threw away the
+ * single most load-bearing fact in the file. `Mount ReticleDev → app/layout.tsx` versus
+ * `→ pages/_app.tsx` IS the difference between the two Next paths, so without the target the
+ * app-router and pages-router baselines were byte-identical and a regression that mounted the
+ * pages-router app into the wrong file would have diffed clean.
+ */
+const fingerprint = (steps) => steps.map((s) => `${s.mark} ${s.title} → ${s.target}`);
 
 /** Drive one scaffold end to end. Returns its own tally, so one bad scaffold cannot mask another. */
 async function driveScaffold(scaffold, index) {
