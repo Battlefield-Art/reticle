@@ -36,7 +36,18 @@ function memoryIo(
   const present = { ...files };
   if (cursor) present[`${HOME}/.cursor`] = '';
   // Absolute paths (home-dir config) bypass the scoping prefix, matching the real IO.
-  const key = (p: string): string => (p.startsWith('/') || '' === prefix ? p : `${prefix}/${p}`);
+  /**
+   * Normalise separators before keying.
+   *
+   * Production is right to use `join()` — a path that is checked and written on a user's machine
+   * must use that platform's separator, and this repo has already shipped a Windows path bug for
+   * exactly the opposite reason. But `join()` yields backslashes there, while these fixtures are
+   * written with forward slashes, so on Windows a lookup missed and the Cursor step silently never
+   * ran. The test was the thing that was not portable, on the platform that is 66% of users.
+   */
+  const norm = (p: string): string => p.replace(/\\/g, '/');
+  const key = (p: string): string =>
+    norm(p.startsWith('/') || '' === prefix ? p : `${prefix}/${p}`);
   return {
     written,
     lines,
