@@ -79,7 +79,11 @@ const REGISTRY = `http://localhost:${String(REGISTRY_PORT)}`;
 
 async function startLocalRegistry() {
   await freePortSafely(REGISTRY_PORT);
-  rmSync('/tmp/reticle-install-gate-verdaccio', { recursive: true, force: true });
+  // The paths scripts/verdaccio.yaml actually uses. Resetting BOTH matters: leave the htpasswd file
+  // behind and the second run's user-create returns no token (the user already exists), which
+  // presents as "no token from verdaccio" and looks like a registry fault rather than stale state.
+  rmSync('/tmp/reticle-verdaccio-storage', { recursive: true, force: true });
+  rmSync('/tmp/reticle-verdaccio-htpasswd', { recursive: true, force: true });
   const proc = spawn(
     'npx',
     ['--yes', 'verdaccio@latest', '--config', join(ROOT, 'scripts/verdaccio.yaml')],
