@@ -24,6 +24,15 @@ const ORDER = [
   // Also needs no browser and no servers: a fake MCP peer and a hand-rolled HELLO, both LYING about
   // their contract. Runs early for the same reason — it is a cheap check that the three pieces agree.
   'version-skew-test',
+  // Also serverless and browserless: it drives five tool calls and then reads the call tree the
+  // daemon emitted while doing it. The trace is produced on every RETICLE_TRACE=1 run and was
+  // discarded; it carries the hang signature (a completed child span with no completed parent),
+  // which nothing else here can see.
+  'trace-shape-test',
+  // Serverless too: it holds the bridge port with a plain socket and checks that serve, status and
+  // doctor all say so. They used to report a spawn, `running:false`, and "not running" — three
+  // surfaces disagreeing, none of them naming the port, and the truth only in the daemon's own log.
+  'daemon-port-honesty-test',
   'next-smoke-test',
   'next-blur-clock-test',
   'status-honesty-test',

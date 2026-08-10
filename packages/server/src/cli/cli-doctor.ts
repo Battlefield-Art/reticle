@@ -1,7 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ReticleEnv } from '@reticlehq/core';
-import { readPid, isAlive, reticleStateHome } from '../daemon/daemon.js';
+import { readPid, reticleStateHome } from '../daemon/daemon.js';
+import { PortPresence, probePresence, describePresence } from '../daemon/port-presence.js';
+import { probeDaemon } from '../mcp/mcp-proxy.js';
+import { fetchStatus } from './cli-launch.js';
 import { diagnoseDesktop, isDesktopProject } from '../init/desktop-doctor.js';
 
 /**
@@ -26,9 +29,15 @@ export async function handleDoctor(port: number): Promise<void> {
   } catch {
     line('  chromium     ✗ missing — run: npx playwright install chromium');
   }
+  // Ask the PORT, not just the pid file. "not running on :4400" has been printed about a port that
+  // was demonstrably occupied, which sends the reader to start a daemon that cannot bind. The three
+  // states are genuinely different problems with different fixes, so doctor names which one it is.
   const pid = readPid(port);
-  if (pid !== null && isAlive(pid)) {
-    line(`  daemon       ✓ running on :${port} (pid ${pid})`);
+  const presence = await probePresence(port, { tcpOpen: probeDaemon, status: fetchStatus });
+  if (presence === PortPresence.DAEMON) {
+    line(`  daemon       ✓ running on :${port}${null === pid ? '' : ` (pid ${pid})`}`);
+  } else if (presence === PortPresence.FOREIGN) {
+    line(`  daemon       ✗ ${describePresence(presence, port)}`);
   } else {
     line(
       `  daemon       ✗ not running on :${port} — your agent runs \`reticle mcp\` (or \`reticle serve\`)`,
