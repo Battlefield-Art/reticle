@@ -152,6 +152,48 @@ jobs:
         working-directory: packages/tauri
         run: cargo clippy --all-targets -- -D warnings
 
+  # Which tiers does this PR actually need?
+  #
+  # The install gate scaffolds and npm-installs three real apps. Running it on a docs-only PR costs
+  # fifteen minutes to learn nothing, and a gate people resent is a gate people route around.
+  #
+  # Plain git, no third-party action: the question is "what changed", and `git diff --name-only`
+  # answers it. A paths-filter action would be a supply-chain dependency for a one-line diff.
+  #
+  # Fails OPEN. If the base ref cannot be resolved — a shallow clone, a force-push, a fork — every
+  # flag comes back true and every tier runs. The failure mode of guessing wrong here is a skipped
+  # gate on a PR that needed it, so the safe direction is to run too much.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      install: ${{ steps.filter.outputs.install }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        run: |
+          BASE="origin/${{ github.base_ref || 'main' }}"
+          if ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then
+            echo "cannot resolve $BASE — running every tier"
+            echo "install=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          CHANGED="$(git diff --name-only "$BASE"...HEAD || true)"
+          if [ -z "$CHANGED" ]; then
+            echo "no diff against $BASE — running every tier"
+            echo "install=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "changed files:"; echo "$CHANGED" | sed 's/^/  /'
+          # Anything a user runs BEFORE their first session, plus the gate itself and the dependency
+          # graph it installs through. Deliberately broad — the cost of a false positive is CI time,
+          # the cost of a false negative is the 0%-connect class shipping again.
+          if echo "$CHANGED" | grep -qE '^(packages/(server/src/init|vite-plugin|next|babel-plugin|browser|react|core)/|apps/e2e/(install-gate|gate-harness|install-baseline)|package\.json|pnpm-lock\.yaml|\.github/workflows/ci\.yml)'; then
+            echo "install=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "install=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # The bot half of the client-matrix flow. A submitted record is EVIDENCE, and evidence that
   # cannot be placed — no version, no host, no error text on a failure — is decoration. Validating
   # it here means a malformed record fails before a human reads it, which is the only reason a
@@ -192,7 +234,8 @@ jobs:
   # docs/gate-plan.md; until then it runs everywhere, which is the safe direction to be wrong in.
   install-gate:
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [verify, changes]
+    if: needs.changes.outputs.install == 'true'
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -327,3 +370,31 @@ jobs:
         run: xvfb-run -a pnpm test:e2e:desktop
         env:
           ELECTRON_DISABLE_SANDBOX: '1'
+
+  # The single required status check.
+  #
+  # A job skipped by an `if:` reports "skipped", and a branch-protection rule that requires
+  # `install-gate` directly would block every docs-only PR forever waiting for a job that will never
+  # run. That is the trap that made path-routing not worth it until now.
+  #
+  # So nothing is required directly. This job is, and it passes when every dependency either
+  # succeeded or was deliberately skipped — and FAILS if any of them failed or was cancelled.
+  # `always()` is load-bearing: without it this job is itself skipped whenever a dependency is, which
+  # reproduces the problem one level up.
+  gate:
+    runs-on: ubuntu-latest
+    needs: [verify, e2e, install-gate, matrix-records]
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Every gate either passed or was not needed
+        run: |
+          RESULTS="${{ join(needs.*.result, ' ') }}"
+          echo "dependency results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "a required gate reported '$r'"; exit 1 ;;
+            esac
+          done
+          echo "all gates green (or legitimately skipped)"
