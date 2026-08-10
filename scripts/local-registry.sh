@@ -6,7 +6,7 @@
 #   bash scripts/local-registry.sh
 #
 # Then, in your app:
-#   echo '@reticle:registry=http://localhost:4873/' >> .npmrc
+#   echo '@reticlehq:registry=http://localhost:4873/' >> .npmrc
 #   npm i -D @reticlehq/browser @reticlehq/react @reticlehq/next
 #
 set -euo pipefail
@@ -41,6 +41,6 @@ echo ""
 echo "✅ Published @reticlehq/* to ${REG}"
 echo ""
 echo "In your external app:"
-echo "  echo '@reticle:registry=${REG}' >> .npmrc"
+echo "  echo '@reticlehq:registry=${REG}' >> .npmrc"
 echo "  npm i -D @reticlehq/browser @reticlehq/react @reticlehq/next   # + @reticlehq/babel-plugin for non-Next"
 echo "  npx --registry ${REG} @reticlehq/server              # run the bridge + MCP server"
