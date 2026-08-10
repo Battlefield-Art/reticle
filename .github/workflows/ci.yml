@@ -152,6 +152,29 @@ jobs:
         working-directory: packages/tauri
         run: cargo clippy --all-targets -- -D warnings
 
+  # The bot half of the client-matrix flow. A submitted record is EVIDENCE, and evidence that
+  # cannot be placed — no version, no host, no error text on a failure — is decoration. Validating
+  # it here means a malformed record fails before a human reads it, which is the only reason a
+  # submission flow scales past the maintainer.
+  #
+  # Seconds, no browser, no servers: it is a schema check plus the validator's own self-check, which
+  # runs first because a validator that has never refused anything is not a validator.
+  matrix-records:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Validate every submitted matrix record
+        run: |
+          node apps/e2e/matrix.mjs --self-check
+          for f in docs/matrix/*/*.json; do
+            [ -e "$f" ] || continue
+            node apps/e2e/matrix.mjs --validate "$f" || exit 1
+          done
+
   # The one class of failure every other job in this file is blind to: the INSTALL.
   #
   # apps/bench-app, apps/next-smoke and the rest are already instrumented, so re-running `init` over

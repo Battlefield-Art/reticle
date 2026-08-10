@@ -29,7 +29,9 @@
     "docs:api": "typedoc",
     "test:e2e:desktop": "bash apps/e2e/run-desktop.sh",
     "gate:install": "node apps/e2e/install-gate.mjs",
-    "gate:install:self-test": "node apps/e2e/install-gate.mjs --self-test"
+    "gate:install:self-test": "node apps/e2e/install-gate.mjs --self-test",
+    "matrix": "node apps/e2e/matrix.mjs",
+    "matrix:validate": "node apps/e2e/matrix.mjs --self-check && for f in docs/matrix/*/*.json; do node apps/e2e/matrix.mjs --validate \"$f\" || exit 1; done"
   },
   "pnpm": {
     "overrides": {
