@@ -1,0 +1,191 @@
+/**
+ * Registering Reticle with the agent the user actually runs.
+ *
+ * `init` knew two clients: Claude Code (a CLI shell-out) and Cursor (a JSON merge). Everything else
+ * got a printed snippet and a hope. That is the blocker under the whole release matrix — a
+ * `v2.5.0-<client>` artifact for a client `init` cannot wire measures whether somebody pasted JSON
+ * correctly, not whether the product works.
+ *
+ * Every path and shape here was READ FROM THE CLIENT'S DOCUMENTATION rather than recalled, because
+ * they differ in ways that look like they should not:
+ *
+ *   Cursor / Windsurf / Gemini   `mcpServers: { name: { command, args } }`  — same shape, three paths
+ *   VS Code                      `servers:` — a different key entirely
+ *   OpenCode                     `mcp: { name: { type, command: [cmd, ...args] } }` — command is an ARRAY
+ *   Codex                        TOML
+ *
+ * A single "write mcp.json" that assumed the Cursor shape would silently produce a file three of
+ * these clients ignore — an install that reports success and registers nothing.
+ */
+import { describe, it, expect } from 'vitest';
+import {
+  McpClient,
+  MCP_CLIENTS,
+  clientSpec,
+  mergeClientConfig,
+  ClientMergeStatus,
+  clientSnippet,
+} from './mcp-clients.js';
+import { MCP_SERVER_NAME } from './mcp.js';
+
+const parse = (content: string): Record<string, unknown> =>
+  JSON.parse(content) as Record<string, unknown>;
+
+describe('the client registry', () => {
+  it('every client declares where its config lives and how to write it', () => {
+    for (const spec of MCP_CLIENTS) {
+      expect(spec.id, 'a client needs an id').toBeTruthy();
+      expect(spec.label, `${spec.id} needs a human label`).toBeTruthy();
+      expect(['home', 'project', 'cli'], `${spec.id} scope`).toContain(spec.scope);
+      if (spec.scope !== 'cli') expect(spec.relPath, `${spec.id} needs a path`).toBeTruthy();
+    }
+  });
+
+  it('no two clients claim the same config path', () => {
+    // A collision here would mean writing one client's shape into another's file.
+    const paths = MCP_CLIENTS.filter((s) => s.scope !== 'cli').map((s) => `${s.scope}:${s.relPath}`);
+    expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  it('covers the clients the release matrix names', () => {
+    const ids = MCP_CLIENTS.map((s) => s.id);
+    for (const id of [
+      McpClient.CLAUDE_CODE,
+      McpClient.CURSOR,
+      McpClient.WINDSURF,
+      McpClient.OPENCODE,
+      McpClient.CODEX,
+      McpClient.GEMINI,
+      McpClient.VSCODE,
+    ]) {
+      expect(ids).toContain(id);
+    }
+  });
+});
+
+describe('the mcpServers-shaped clients', () => {
+  for (const id of [McpClient.CURSOR, McpClient.WINDSURF, McpClient.GEMINI] as const) {
+    it(`${id}: writes our entry into an empty config`, () => {
+      const result = mergeClientConfig(clientSpec(id), null);
+      expect(result.status).toBe(ClientMergeStatus.APPLY);
+      const servers = parse(result.content)['mcpServers'] as Record<string, unknown>;
+      expect(servers[MCP_SERVER_NAME]).toBeDefined();
+    });
+
+    it(`${id}: leaves every other server and top-level key untouched`, () => {
+      const existing = JSON.stringify({
+        mcpServers: { other: { command: 'node', args: ['x.js'] } },
+        somethingElse: { keep: true },
+      });
+      const merged = parse(mergeClientConfig(clientSpec(id), existing).content);
+      expect((merged['mcpServers'] as Record<string, unknown>)['other']).toEqual({
+        command: 'node',
+        args: ['x.js'],
+      });
+      expect(merged['somethingElse']).toEqual({ keep: true });
+    });
+  }
+
+  it('vscode uses `servers`, not `mcpServers` — the key is the whole difference', () => {
+    const result = mergeClientConfig(clientSpec(McpClient.VSCODE), null);
+    const parsed = parse(result.content);
+    expect(parsed['servers']).toBeDefined();
+    expect(parsed['mcpServers'], 'writing mcpServers here registers nothing').toBeUndefined();
+  });
+});
+
+describe('opencode', () => {
+  it('uses `mcp`, and its command is an ARRAY that includes the command itself', () => {
+    const result = mergeClientConfig(clientSpec(McpClient.OPENCODE), null);
+    const entry = (parse(result.content)['mcp'] as Record<string, Record<string, unknown>>)[
+      MCP_SERVER_NAME
+    ];
+    expect(entry['type']).toBe('local');
+    expect(Array.isArray(entry['command'])).toBe(true);
+    // The shape a `{command, args}` assumption would get wrong: the executable is element zero.
+    expect((entry['command'] as string[])[0]).toBeTruthy();
+    expect((entry['command'] as string[]).length).toBeGreaterThan(1);
+  });
+
+  it('is enabled explicitly — a registered-but-disabled server is the quietest possible failure', () => {
+    const entry = (
+      parse(mergeClientConfig(clientSpec(McpClient.OPENCODE), null).content)['mcp'] as Record<
+        string,
+        Record<string, unknown>
+      >
+    )[MCP_SERVER_NAME];
+    expect(entry['enabled']).toBe(true);
+  });
+});
+
+describe('refusing to damage a file we do not understand', () => {
+  for (const id of [McpClient.CURSOR, McpClient.VSCODE, McpClient.OPENCODE] as const) {
+    it(`${id}: unparseable JSON is left byte-for-byte alone`, () => {
+      const existing = '{ "mcpServers": { /* a comment */ } }';
+      const result = mergeClientConfig(clientSpec(id), existing);
+      expect(result.status).toBe(ClientMergeStatus.MANUAL);
+      expect(result.content).toBe(existing);
+    });
+
+    it(`${id}: valid JSON that is not an object is left alone too`, () => {
+      // The adjacent case that once destroyed a file: `[]` parses, is not a config, and the old code
+      // fell through to an empty object and rewrote the whole thing.
+      const result = mergeClientConfig(clientSpec(id), '[1,2,3]');
+      expect(result.status).toBe(ClientMergeStatus.MANUAL);
+      expect(result.content).toBe('[1,2,3]');
+    });
+  }
+});
+
+describe('idempotency, and the difference between "already right" and "not ours"', () => {
+  it('a config we already wrote is ALREADY, and the file is not rewritten', () => {
+    const first = mergeClientConfig(clientSpec(McpClient.CURSOR), null);
+    const second = mergeClientConfig(clientSpec(McpClient.CURSOR), first.content);
+    expect(second.status).toBe(ClientMergeStatus.ALREADY);
+    expect(second.content).toBe(first.content);
+  });
+
+  it("a user's own reticle entry is left alone — pointing at a local build is a choice", () => {
+    const existing = JSON.stringify({
+      mcpServers: { [MCP_SERVER_NAME]: { command: 'node', args: ['/my/local/cli.js', 'mcp'] } },
+    });
+    expect(mergeClientConfig(clientSpec(McpClient.CURSOR), existing).status).toBe(
+      ClientMergeStatus.ALREADY,
+    );
+  });
+
+  it('a STALE entry of our own shape is repaired, because that is what an upgrade is for', () => {
+    const existing = JSON.stringify({
+      mcpServers: { [MCP_SERVER_NAME]: { command: 'npx', args: ['@reticlehq/server@0.0.1', 'mcp'] } },
+    });
+    const result = mergeClientConfig(clientSpec(McpClient.CURSOR), existing);
+    expect(result.status).toBe(ClientMergeStatus.APPLY);
+  });
+});
+
+describe('codex', () => {
+  it('is TOML, so it is NOT auto-written', () => {
+    // Merging into TOML without a parser is how a config file gets corrupted. Printing the exact
+    // block is honest; writing a guess is not.
+    expect(clientSpec(McpClient.CODEX).format).toBe('toml');
+    expect(mergeClientConfig(clientSpec(McpClient.CODEX), null).status).toBe(
+      ClientMergeStatus.MANUAL,
+    );
+  });
+
+  it('and its snippet is a real TOML section the user can paste', () => {
+    const snippet = clientSnippet(clientSpec(McpClient.CODEX));
+    expect(snippet).toContain(`[mcp_servers.${MCP_SERVER_NAME}]`);
+    expect(snippet).toContain('command');
+  });
+});
+
+describe('every client can produce a paste-able snippet', () => {
+  it('so a client we cannot write is still actionable', () => {
+    for (const spec of MCP_CLIENTS) {
+      const snippet = clientSnippet(spec);
+      expect(snippet.length, `${spec.id} has no snippet`).toBeGreaterThan(10);
+      expect(snippet, `${spec.id} snippet does not mention the server`).toContain(MCP_SERVER_NAME);
+    }
+  });
+});
