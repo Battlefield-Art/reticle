@@ -44,6 +44,7 @@ function readPairingToken(): string {
 }
 import {
   DEPS_TARGET,
+  frameworkPackages,
   MCP_TARGET,
   buildPlan,
   StepStatus,
@@ -97,6 +98,7 @@ export function resolveLockfiles(
 }
 
 const PACKAGE_JSON = 'package.json';
+const NODE_MODULES_DIR = 'node_modules';
 /**
  * Root-layout candidates, App Router only. `--src-dir` apps keep theirs under `src/app`, and the
  * ReticleDev component has to land NEXT TO the layout or the relative import it generates is dead.
@@ -526,6 +528,28 @@ function report(
  * MODULE_NOT_FOUND, so the app stops booting *because* Reticle was installed. A skipped step is a
  * message; a half-wired app is a broken project.
  */
+/**
+ * Are the SDK packages actually on disk, whatever the install step reported?
+ *
+ * `dependsOnInstall` exists to stop init writing a `next.config.ts` that imports a package which is
+ * not there — that took a dev server down once, and installing Reticle must never be why an app
+ * stops booting. The invariant it protects is "the import RESOLVES", but it was gated on "our
+ * install subprocess exited 0", and those come apart in exactly the situation the failure creates:
+ * init tells the user to install by hand, they do, they re-run init, the install step fails again
+ * (wrong package manager, not on PATH) and every wiring step is skipped a second time. Reported from
+ * a Next 16 app where npm had already installed both packages successfully — leaving an init that
+ * could not be retried into working, which is the shape this guard was written to prevent.
+ *
+ * Reading node_modules answers the real question and costs one `exists` call per package.
+ */
+function sdkPackagesPresent(framework: Framework, io: Pick<InitIo, 'exists'>): boolean {
+  const packages = frameworkPackages(framework);
+  return (
+    packages.length > 0 &&
+    packages.every((p) => io.exists(`${NODE_MODULES_DIR}/${p}/${PACKAGE_JSON}`))
+  );
+}
+
 function applyEffects(
   plan: Plan,
   io: InitIo,
@@ -576,7 +600,9 @@ function applyEffects(
         continue;
       }
       failed.add(s.target);
-      if (s.target === DEPS_TARGET) installFailed = true;
+      // A failed install only blocks the wiring when the packages are genuinely ABSENT. See
+      // sdkPackagesPresent: the guard protects "the import resolves", not "our subprocess exited 0".
+      if (s.target === DEPS_TARGET && !sdkPackagesPresent(plan.framework, io)) installFailed = true;
     }
   }
   return { failed, skipped, degraded };

@@ -385,6 +385,46 @@ describe('runInit — a failed install must not leave the app half-wired', () =>
     expect(io.written['app/layout.tsx']).toContain('ReticleDev');
   });
 
+  /**
+   * The reported loop, from a Next 16 app: init's install fails (it chose pnpm, not on PATH), init
+   * tells the user to install by hand, they run `npm install --save-dev` successfully, they re-run
+   * init — and the install fails the same way, so every wiring step is skipped a SECOND time. They
+   * are left with an init that cannot be retried into working while holding the very packages it
+   * reports as missing.
+   *
+   * The guard above is right; its condition was not. It protects "the import RESOLVES", and it was
+   * asking "did our subprocess exit 0".
+   */
+  it('wires the app when the install fails but the packages are already on disk', () => {
+    const io = memoryIo(
+      {
+        ...NEXT_FILES,
+        // What a successful `npm install --save-dev @reticlehq/react @reticlehq/next` leaves.
+        'node_modules/@reticlehq/react/package.json': '{"name":"@reticlehq/react"}',
+        'node_modules/@reticlehq/next/package.json': '{"name":"@reticlehq/next"}',
+      },
+      { execOk: false, mcpExists: true },
+    );
+    runInit({ ...OPTS, install: true }, io);
+    // The wiring is precisely what a user cannot do by hand, and precisely what was being skipped.
+    expect(io.written['next.config.mjs']).toContain('withReticle');
+    expect(io.written['app/layout.tsx']).toContain('ReticleDev');
+  });
+
+  it('skips the wiring when only SOME of the packages are there', () => {
+    // Half an install is not an install: importing @reticlehq/next when only the kit landed is the
+    // same MODULE_NOT_FOUND the guard exists to prevent.
+    const io = memoryIo(
+      {
+        ...NEXT_FILES,
+        'node_modules/@reticlehq/react/package.json': '{"name":"@reticlehq/react"}',
+      },
+      { execOk: false, mcpExists: true },
+    );
+    runInit({ ...OPTS, install: true }, io);
+    expect(io.written['next.config.mjs']).toBeUndefined();
+  });
+
   it('config that does not import anything is still written — it has no dependency to miss', () => {
     const io = memoryIo(NEXT_FILES, { execOk: false, mcpExists: true });
     runInit({ ...OPTS, install: true }, io);

@@ -64,7 +64,7 @@ export function pinnedPackages(
 }
 
 /** The dev-dependencies `reticle init` installs for a given framework — kit first, build plugin next. */
-function frameworkPackages(framework: Framework): readonly string[] {
+export function frameworkPackages(framework: Framework): readonly string[] {
   switch (framework) {
     case Framework.NEXT:
       return [RETICLE_REACT_KIT, RETICLE_NEXT_PLUGIN];
