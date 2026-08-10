@@ -53,6 +53,23 @@ const KEEP = process.argv.includes('--keep');
  * most needs to be shown capable of going red.
  */
 const SELF_TEST = process.argv.includes('--self-test');
+/** Re-record the baseline instead of asserting against it. The diff is then reviewed in the PR. */
+const UPDATE_BASELINE = process.argv.includes('--update-baseline');
+/**
+ * What `init` planned, last time somebody looked and agreed with it.
+ *
+ * Committed, so a change to the shape of an install shows up as a reviewable diff rather than as
+ * nothing at all. Kept beside the gate rather than in a scratch directory for the same reason.
+ */
+const BASELINE_PATH = join(ROOT, 'apps/e2e/install-baseline.json');
+const BASELINE = (() => {
+  try {
+    return JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
+  } catch {
+    return {};
+  }
+})();
+const nextBaseline = {};
 const ONLY = process.argv.includes('--only')
   ? process.argv[process.argv.indexOf('--only') + 1]
   : undefined;
@@ -222,6 +239,30 @@ async function sessionsOn(port) {
   }
 }
 
+/**
+ * The steps `init` reported, as `mark → title`.
+ *
+ * "Zero ⚠" is an absolute and it is not enough on its own. A step that silently changes mark — ✓ to
+ * ℹ, or ✓ to · — still passes that assertion while meaning something different happened, and a step
+ * that DISAPPEARS from the plan entirely passes it most comfortably of all, because the thing that
+ * would have warned you is the thing that is gone.
+ *
+ * So the shape of the plan is recorded and diffed. That is the difference between a threshold and a
+ * baseline: a threshold answers "is this bad", a baseline answers "is this DIFFERENT", and silent
+ * regressions are almost always the second question.
+ */
+function stepsOf(report) {
+  return report
+    .split('\n')
+    .map((line) => /^\s*\[(.)\]\s+(.+?)\s+→\s+(.+)$/.exec(line))
+    .filter((m) => m !== null)
+    .map((m) => ({ mark: m[1], title: m[2].trim(), target: m[3].trim() }));
+}
+
+/** One line per step, stable and diffable. The target is deliberately excluded: it carries absolute
+ *  paths and a scaffold's own file names, neither of which is a fact about Reticle. */
+const fingerprint = (steps) => steps.map((s) => `${s.mark} ${s.title}`);
+
 /** Drive one scaffold end to end. Returns its own tally, so one bad scaffold cannot mask another. */
 async function driveScaffold(scaffold, index) {
   let pass = 0;
@@ -311,6 +352,29 @@ async function driveScaffold(scaffold, index) {
       manualLines.length === 0,
       manualLines.length === 0 ? 'no ⚠' : manualLines.join(' | ').trim(),
     );
+
+    // The baseline diff. See stepsOf() for why "zero ⚠" cannot carry this on its own.
+    const steps = fingerprint(stepsOf(report));
+    const expected = BASELINE[scaffold.id];
+    if (UPDATE_BASELINE) {
+      nextBaseline[scaffold.id] = steps;
+      note(`baseline recorded: ${String(steps.length)} step(s)`);
+    } else if (expected === undefined) {
+      chk(
+        'this scaffold has a recorded baseline',
+        false,
+        `no baseline for '${scaffold.id}' — run with --update-baseline and commit the diff`,
+      );
+    } else {
+      const same = expected.length === steps.length && expected.every((e, i) => e === steps[i]);
+      chk(
+        "init's plan matches the recorded baseline",
+        same,
+        same
+          ? `${String(steps.length)} step(s) unchanged`
+          : `expected:\n        ${expected.join('\n        ')}\n      got:\n        ${steps.join('\n        ')}`,
+      );
+    }
 
     // The SDK must have come from the registry we published to, not from public npm.
     const lock = (() => {
@@ -451,6 +515,11 @@ try {
 } finally {
   if (registry !== undefined) registry.stop();
   await freePortSafely(REGISTRY_PORT);
+}
+
+if (UPDATE_BASELINE) {
+  writeFileSync(BASELINE_PATH, `${JSON.stringify({ ...BASELINE, ...nextBaseline }, null, 2)}\n`);
+  console.log(`\n   · baseline written to ${BASELINE_PATH} — review the diff before committing`);
 }
 
 console.log('\n──────── summary ────────');
