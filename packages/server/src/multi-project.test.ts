@@ -374,7 +374,10 @@ describe('rapid connect/disconnect cycling', () => {
 
     // Connect all at once
     await Promise.all(browsers.map((b) => b.open()));
-    await waitUntil(() => bridge.sessions.count() >= 32, 5000); // MAX_SESSIONS = 32
+    // An explicit bound here OVERRIDES waitUntil's default, so raising that default did nothing for
+    // this call — it still blew at 5100ms on the Windows runner. The wait polls and resolves as soon
+    // as the sessions arrive, so a larger bound costs a passing run nothing.
+    await waitUntil(() => bridge.sessions.count() >= 32, 60_000); // MAX_SESSIONS = 32
 
     // Bridge is still responsive — sessions are capped by TRANSPORT_LIMITS.MAX_SESSIONS
     expect(bridge.sessions.count()).toBeGreaterThan(0);

@@ -89,6 +89,14 @@ describe('ProjectStore — temp-dir filesystem, never touches the repo', () => {
 
   // ---- TRUNCATION ----
 
+  // 30s, matching test 7 below, and the reason is worth stating: when this timed out at 5s on the
+  // Windows runner it did not merely fail itself — it failed test 7 too, with a baffling
+  // "expected 226 to have length 225".
+  //
+  // `store` is a shared mutable binding and `recordRun` resolves it at CALL time. A timed-out test
+  // keeps running its loop, so once beforeEach reassigns `store`, the stray writes land in the NEXT
+  // test's store. One surplus iteration, one surplus run, one failure that looks like an off-by-one
+  // in production pruning and is nothing of the kind.
   it('6: keeps at most PER_NAME most-recent runs of a single name', async () => {
     for (let i = 0; i < PROJECT_RUN_CAP.PER_NAME + 10; i += 1) {
       await store.recordRun({ ...RUN, name: 'checkout', summary: `r${i}` });
@@ -99,7 +107,7 @@ describe('ProjectStore — temp-dir filesystem, never touches the repo', () => {
     // The OLDEST were dropped: newest summary survives, oldest does not.
     expect(r.file.runs.at(-1)?.summary).toBe(`r${PROJECT_RUN_CAP.PER_NAME + 9}`);
     expect(r.file.runs.some((x) => 'r0' === x.summary)).toBe(false);
-  });
+  }, 30_000);
 
   it('7: keeps every distinct flow last-known-good even past TOTAL (durable local regression memory)', async () => {
     // One run each of many DISTINCT flows: each flow's latest (its only) run is its last-known-good and
