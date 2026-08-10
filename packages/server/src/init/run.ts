@@ -690,16 +690,30 @@ export function runInit(options: InitOptions, io: InitIo): InitResult {
 
 function runInitSteps(options: InitOptions, io: InitIo): InitResult {
   const pkgRaw = io.readFile(PACKAGE_JSON);
+  // Look for the app BEFORE concluding there isn't one.
+  //
+  // A root with no package.json is not a dead end — it is the ordinary shape of a repo whose app
+  // lives one directory down (`frontend/`, `web/`, `client/`) with no manifest at the top. Bailing
+  // first made that repo un-instrumentable: `reticle init` said "No package.json found", and
+  // `--app frontend`, the flag that exists for exactly this, was never read because the bail came
+  // first. Reported twice by the same user, who tried the documented workaround and hit the same
+  // wall. Discovery already handles the case (it scans top-level directories, not just declared
+  // workspaces); it was simply unreachable.
+  //
+  // `'{}'` because the redirect only needs the manifest to ask "is THIS directory the app", and a
+  // directory with no package.json is definitively not.
+  const redirectedEarly = redirectToWorkspaceApp(options, io, pkgRaw ?? '{}');
+  if (redirectedEarly !== null) return redirectedEarly;
   if (null === pkgRaw) {
-    io.print('No package.json found. Run `reticle init` from your project root.');
+    io.print(
+      'No package.json found here, and no app directory beneath it either. Run `reticle init` from ' +
+        "your app's directory, or from a repo root that contains it.",
+    );
     // The onboarding funnel had NO instrumentation, so a setup that died here was indistinguishable
     // from someone who never ran the command — the two failure modes with the most different fixes.
     reportInitOutcome({ ok: false, reason: InitFailure.NO_PACKAGE_JSON });
     return { ok: false, applied: 0, manual: 0 };
   }
-
-  const redirected = redirectToWorkspaceApp(options, io, pkgRaw);
-  if (redirected !== null) return redirected;
 
   // Init is the flow a user experiences the wait of personally, and the fixture gate measures it at
   // 1–6s per app with no explanation of the spread. These three spans split that number into detect

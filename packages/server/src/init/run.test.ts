@@ -55,7 +55,11 @@ function memoryIo(
         .filter((p) => p !== '' && !p.includes('/'));
     },
     listDirs: (rel) => {
-      const scope = `${key(rel)}/`;
+      // `.` means the root, and the real IO resolves it that way. Without this the harness could not
+      // express "an app one directory down from a root with no package.json" at all — every
+      // top-level scan came back empty, which is part of why that case shipped unnoticed.
+      const base = key(rel);
+      const scope = '.' === base ? '' : `${base}/`;
       const names = Object.keys(present)
         .filter((p) => p.startsWith(scope))
         .map((p) => p.slice(scope.length).split('/')[0] ?? '')
@@ -121,11 +125,44 @@ const VITE_FILES = {
 };
 
 describe('runInit', () => {
-  it('errors cleanly without a package.json', () => {
-    const io = memoryIo({});
+  it('errors cleanly when there is no package.json AND no app beneath it', () => {
+    const io = memoryIo({ 'docs/readme.md': 'hi' });
     const r = runInit(OPTS, io);
     expect(r.ok).toBe(false);
     expect(io.lines.join('\n')).toContain('No package.json');
+  });
+
+  /**
+   * A repo whose app is one directory down with nothing at the top — `frontend/`, `web/`, `client/`
+   * — is an ordinary shape, and it was un-instrumentable. init read the root package.json, found
+   * none, and bailed BEFORE discovery ever ran, so `--app frontend` (the flag that exists for
+   * exactly this) was never read either. Reported twice by the same user: once for the failure, once
+   * for the documented workaround failing the same way.
+   *
+   * Discovery already handled it — it scans top-level directories, not only declared workspaces. It
+   * was simply unreachable behind the bail.
+   */
+  it('finds an app one directory down even when the root has no package.json', () => {
+    const io = memoryIo({
+      'frontend/package.json': JSON.stringify({ dependencies: { next: '16', react: '^19' } }),
+      'frontend/app/layout.tsx': 'export default function L({ children }) { return children; }\n',
+    });
+    const r = runInit(OPTS, io);
+    expect(r.ok).toBe(true);
+    expect(io.lines.join('\n')).toContain('frontend');
+    expect(io.written['frontend/.reticle.json']).toBeDefined();
+  });
+
+  it('honours --app when the root has no package.json', () => {
+    const io = memoryIo({
+      'frontend/package.json': JSON.stringify({ dependencies: { next: '16', react: '^19' } }),
+      'frontend/app/layout.tsx': 'export default function L({ children }) { return children; }\n',
+      'backend/package.json': JSON.stringify({ dependencies: { express: '^4' } }),
+    });
+    const r = runInit({ ...OPTS, app: 'frontend' }, io);
+    expect(r.ok).toBe(true);
+    expect(io.written['frontend/.reticle.json']).toBeDefined();
+    expect(io.written['backend/.reticle.json']).toBeUndefined();
   });
 
   it('registers reticle globally via the claude CLI (not a project .mcp.json) and patches vite', () => {
