@@ -1,5 +1,5 @@
 import { afterAll, describe, it, expect } from 'vitest';
-import { optimizerOptionsKey, viteMajor } from './installed.js';
+import { OPTIMIZER_OPTIONS_KEY, optimizerOptionsKey, viteMajor } from './installed.js';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -393,9 +393,18 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
    */
   const optimizerDefine = (patch: Record<string, unknown>): Record<string, string> => {
     const opt = (patch['optimizeDeps'] ?? {}) as Record<string, unknown>;
-    const options = opt[optimizerOptionsKey(viteMajor())] as
-      | { define?: Record<string, string> }
+    const key = optimizerOptionsKey(viteMajor());
+    const options = opt[key] as
+      | { define?: Record<string, string>; transform?: { define?: Record<string, string> } }
       | undefined;
+    // Read it from where THIS bundler keeps it, and assert it is not in the other place. Reading
+    // "wherever it happens to be" is what let a top-level define under rolldownOptions pass here
+    // while Vite 8 refused it on every dev boot — the test agreed with the bug.
+    if (OPTIMIZER_OPTIONS_KEY.ROLLDOWN === key) {
+      expect(options?.define).toBeUndefined();
+      return options?.transform?.define ?? {};
+    }
+    expect(options?.transform).toBeUndefined();
     return options?.define ?? {};
   };
 

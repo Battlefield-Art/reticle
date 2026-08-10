@@ -184,3 +184,38 @@ export function optimizerOptionsKey(major: number | null): OptimizerOptionsKey {
     ? OPTIMIZER_OPTIONS_KEY.ROLLDOWN
     : OPTIMIZER_OPTIONS_KEY.ESBUILD;
 }
+
+/**
+ * The optimizer options object, with `define` where THIS bundler will accept it.
+ *
+ * esbuild reads `define` from the top level of its options. Rolldown does not — it rejects the key
+ * outright and reads defines from `transform.define` instead. Vite 8 surfaces that as a warning on
+ * every dev boot, attributed to whichever plugin set the option:
+ *
+ *   Warning: Invalid input options (1 issue found)
+ *   - For the "define". Invalid key: Expected never but received "define".
+ *
+ * The app still ran, which is why this survived: the option was dropped, `__RETICLE_SDK_BUILD__`
+ * stopped participating in the optimizer cache key, and the only visible symptom was a warning with
+ * Reticle's name on it. Reported by a user on vite@8.0.16.
+ *
+ * An inherited top-level `define` is MOVED rather than dropped on the rolldown path — it is the
+ * app's own, it meant something, and passing it through unchanged is what produced the warning.
+ */
+export function optimizerOptions(
+  key: OptimizerOptionsKey,
+  inherited: Record<string, unknown>,
+  add: Record<string, string>,
+): Record<string, unknown> {
+  const inheritedDefine = (inherited['define'] ?? {}) as Record<string, string>;
+  if (OPTIMIZER_OPTIONS_KEY.ROLLDOWN !== key) {
+    return { ...inherited, define: { ...inheritedDefine, ...add } };
+  }
+  const { define: _moved, ...rest } = inherited;
+  const transform = (inherited['transform'] ?? {}) as Record<string, unknown>;
+  const transformDefine = (transform['define'] ?? {}) as Record<string, string>;
+  return {
+    ...rest,
+    transform: { ...transform, define: { ...inheritedDefine, ...transformDefine, ...add } },
+  };
+}
