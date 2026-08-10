@@ -55,7 +55,8 @@ Nothing below is trustworthy until a gate result can be distinguished from a gat
 
 ### Phase 2 — the install gate
 
-- [ ] Tier 1: scaffold → `init` → boot → open → assert a session; **zero `⚠` marks**. Three scaffolds (Vite+React, Next app router, Next pages router) covering the three distinct `init` paths.
+- [x] **Tier 1, Vite+React** — `apps/e2e/install-gate.mjs` (`pnpm gate:install`). Scaffolds a fresh `npm create vite` app, wires the SDK to THIS checkout by `file:` alias (never tarballs — those pruned transitive deps and mixed a published core with a local plugin in the fixtures repo), runs `init`, boots it, opens it in a real browser and POLLS for a session. Asserts the resolved SDK really is the local one, so the `--no-install` exemption cannot hide a broken install. Standalone, not in the web battery, which is already ~8 minutes. Negative control: `pnpm gate:install:self-test` mis-wires the port and requires the gate to go RED — a guard that has never failed is not a guard.
+- [ ] Tier 1, the other two `init` paths: `create-next-app` (app router) and `--no-app` (pages router).
 - [ ] Tier 2: `reticle-fixtures` via `repository_dispatch`, `vite-ecosystem-ci` style.
 - [ ] Run-record schema + committed baseline, so "nothing broken" is a diff and not a threshold.
 - [ ] Risk routing: path filters → tiers, auto-labelled.

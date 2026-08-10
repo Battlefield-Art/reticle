@@ -38,6 +38,16 @@ const APP_PORT = Number(process.env.INSTALL_GATE_APP_PORT ?? '4789');
 const BOOT_TIMEOUT_MS = 120_000;
 const CONNECT_TIMEOUT_MS = 45_000;
 const KEEP = process.argv.includes('--keep');
+/**
+ * Negative control: wire the app to a port the daemon is NOT on, so no session can possibly appear,
+ * and require the gate to FAIL.
+ *
+ * `check-boundaries.mjs --self-test` and `check-lossy-transforms.mjs --self-test` already run this
+ * way in CI, for the reason this repo keeps rediscovering: a guard that has never failed is not a
+ * guard. The session check is the one assertion here that proves the install WORKS, so it is the one
+ * that most needs to be shown capable of going red.
+ */
+const SELF_TEST = process.argv.includes('--self-test');
 
 /**
  * The SDK packages the app must resolve to THIS checkout, not to npm.
@@ -137,7 +147,14 @@ try {
   try {
     report = run(
       'node',
-      [CLI, 'init', '--port', String(BRIDGE_PORT), '--no-mcp', '--no-install'],
+      [
+        CLI,
+        'init',
+        '--port',
+        String(SELF_TEST ? BRIDGE_PORT + 1 : BRIDGE_PORT),
+        '--no-mcp',
+        '--no-install',
+      ],
       app,
     );
   } catch (err) {
@@ -152,10 +169,43 @@ try {
   );
 
   chk('init exits 0', initExit === 0, `exit ${String(initExit)}`);
+
   // The load-bearing assertion. A ⚠ is a step nothing performed, so the app never dials the bridge
   // and every tool answers "no browser session connected" — a green-looking install that cannot work.
-  const manual = (report.match(/\[⚠\]/g) ?? []).length;
-  chk('init leaves ZERO manual steps', manual === 0, `${String(manual)} ⚠ mark(s)`);
+  //
+  // ONE ⚠ is expected here and only one: `--no-install` means init does not run the package
+  // manager, so it correctly reports the dependency step as something the caller must do. The gate
+  // already did it, with `file:` paths into this checkout. That exemption is narrow on purpose —
+  // excusing "the install step" in general would excuse the exact class of regression this gate
+  // exists to catch, so the exemption is verified twice: the ⚠ must BE that step, and the resolved
+  // packages must actually be the local ones.
+  const manualLines = report.split('\n').filter((l) => l.includes('[⚠]'));
+  const unexpected = manualLines.filter((l) => !/Install dependencies/i.test(l));
+  chk(
+    'init leaves no manual step the gate did not already perform',
+    unexpected.length === 0,
+    unexpected.length === 0
+      ? `${String(manualLines.length)} ⚠ (the expected --no-install one)`
+      : unexpected.join(' | ').trim(),
+  );
+
+  // The other half of that exemption. Without this, `--no-install` could be hiding a broken install
+  // and the gate would be measuring the published SDK, or nothing at all.
+  const { realpathSync } = await import('node:fs');
+  const wired = Object.entries(LOCAL_PACKAGES).filter(([name, rel]) => {
+    const installed = join(app, 'node_modules', name);
+    try {
+      // npm links a `file:` dependency, so the truth is where it actually points.
+      return realpathSync(installed).startsWith(realpathSync(join(ROOT, rel)));
+    } catch {
+      return false;
+    }
+  });
+  chk(
+    '  and the SDK the app resolves is THIS checkout, not npm',
+    wired.length === Object.keys(LOCAL_PACKAGES).length,
+    `${String(wired.length)}/${String(Object.keys(LOCAL_PACKAGES).length)} linked into the repo`,
+  );
   chk(
     '  and it did apply something — a run of all `·` would mean it found nothing to do',
     (report.match(/\[✓\]/g) ?? []).length > 0,
@@ -241,6 +291,18 @@ try {
   await freePortSafely(APP_PORT);
   if (KEEP) note(`kept: ${workdir}`);
   else rmSync(workdir, { recursive: true, force: true });
+}
+
+if (SELF_TEST) {
+  // Inverted. The app was pointed at the wrong port, so a session cannot appear and the gate MUST
+  // have failed. A green here would mean the session check passes regardless of reality, which is
+  // the only way this whole script could be worthless while looking fine.
+  const caught = fail > 0;
+  console.log(
+    `\n${caught ? '✅ SELF-TEST PASSED' : '❌ SELF-TEST FAILED'} — a mis-wired install ` +
+      `${caught ? 'was correctly reported as a failure' : 'went UNDETECTED, so this gate proves nothing'}`,
+  );
+  process.exit(caught ? 0 : 1);
 }
 
 console.log(
