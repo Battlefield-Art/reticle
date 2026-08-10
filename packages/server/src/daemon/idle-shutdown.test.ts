@@ -85,4 +85,44 @@ describe('resolveIdleShutdownMs', () => {
     expect(resolveIdleShutdownMs('0')).toBe(0);
     expect(resolveIdleShutdownMs('120000')).toBe(120000);
   });
+
+  /**
+   * The resolver returning 0 is NOT the property anyone cares about — "the daemon does not exit" is,
+   * and the disable lives one level up, in IdleShutdown. Asserting only the number is what let a
+   * reviewer read `Math.floor(0)` with no branch beside it, conclude the option was documented but
+   * unimplemented, and report the fixtures gate that depends on it as inverted. Wire the two ends
+   * together so the question is answered by running something rather than by reading.
+   */
+  it('0 from the environment really does stop the daemon from ever exiting', () => {
+    const onShutdown = vi.fn();
+    let now = 0;
+    const watcher = new IdleShutdown({
+      graceMs: resolveIdleShutdownMs('0'),
+      isIdle: () => true,
+      onShutdown,
+      clock: () => now,
+    });
+    watcher.start();
+    // Far past any grace, including the attached-client multiplier.
+    for (const step of [1_000, 60_000, 3_600_000, 86_400_000]) {
+      now += step;
+      watcher.check();
+    }
+    expect(onShutdown).not.toHaveBeenCalled();
+  });
+
+  it('the default, by contrast, does exit — so the test above is not vacuous', () => {
+    const onShutdown = vi.fn();
+    let now = 0;
+    const watcher = new IdleShutdown({
+      graceMs: resolveIdleShutdownMs(undefined),
+      isIdle: () => true,
+      onShutdown,
+      clock: () => now,
+    });
+    watcher.check();
+    now += D + 1;
+    watcher.check();
+    expect(onShutdown).toHaveBeenCalledTimes(1);
+  });
 });
