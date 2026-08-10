@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { freePortSafely } from './gate-harness.mjs';
+import { freePortSafely, sweepBatteryOrphans } from './gate-harness.mjs';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const specsDir = path.join(dir, 'specs');
@@ -187,6 +187,17 @@ async function freePort() {
  * letting a different innocent spec fail each time.
  */
 async function warnAboutForeignSessions() {
+  // Before anything: clear what a KILLED previous battery left running. Its trap never ran, so a
+  // driven browser and an MCP proxy may still be up, competing for this port and for memory. A run
+  // that inherits those reports interleaved failures and SIGKILLs that read exactly like a product
+  // regression — measured once at 17 of 31 specs, none of it real. See apps/e2e/harness-rules.md.
+  // Processes only — no ports. run-ci.sh boots api:8787, bench-app:4310 and next-smoke:3100 BEFORE
+  // this runs, so anything holding those is almost certainly this run's own fixture. Passing them
+  // here once killed all three and failed 19 specs. The bridge port is freed by freePort() below,
+  // which owns that decision.
+  await sweepBatteryOrphans([], {
+    onNote: (note) => process.stdout.write(`[e2e] ${note}\n`),
+  });
   await freePort();
   const daemon = spawn('node', ['packages/server/dist/cli.js', 'serve', '--port', String(BRIDGE_PORT)], {
     stdio: 'ignore',

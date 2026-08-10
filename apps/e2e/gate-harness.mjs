@@ -129,6 +129,77 @@ function kill(pids, hard) {
   }
 }
 
+/**
+ * Processes a KILLED battery leaves behind, which then poison the next one.
+ *
+ * A battery that exits normally runs its trap and cleans up. One that is killed — a CI timeout, a
+ * developer's Ctrl-C, an OOM — does not, and leaves a driven browser and an MCP proxy running. The
+ * next run then competes with them for the bridge port and for memory.
+ *
+ * Measured: two killed runs left an orphaned `cli.js mcp --drive` proxy driving a headless browser,
+ * and the following battery came back 17 of 31 with four specs SIGKILLed and failures interleaved
+ * with passes. Every one of those failures was read as a product regression first. It took a process
+ * listing to find out otherwise.
+ *
+ * `--drive` is the discriminator, and it is load-bearing: a bare `cli.js mcp` is somebody's AGENT,
+ * and killing that is rule 1's whole subject. Only the battery starts a proxy with `--drive`.
+ */
+const BATTERY_ORPHAN_PATTERNS = ['cli.js mcp --port 4400 --drive', 'cli.js mcp --drive'];
+
+/**
+ * Kill what a killed battery left behind. NAME port holders; never free them.
+ *
+ * The asymmetry is the whole design, and it was learned the hard way twice in one hour. The first
+ * version of this function also freed the ports it was given, and `run-ci.sh` starts api:8787,
+ * bench-app:4310 and next-smoke:3100 BEFORE it runs `run.mjs` — so the "orphans" it found were the
+ * fixtures the battery had just booted for itself. It killed all three and 19 specs failed.
+ *
+ * From inside the run there is no way to tell "an orphan from a killed run" from "the server this
+ * run started three seconds ago": same command, same port, same user. A process PATTERN can be
+ * decided (`--drive` is created only by the battery); a port cannot. So ports are reported and left
+ * alone, and the bridge port is freed a moment later by `freePort`, which owns that decision and
+ * applies rule 1 to it.
+ *
+ * See harness-rules.md rule 5 — including the part where writing the rule did not prevent breaking it.
+ */
+export async function sweepBatteryOrphans(ports = [], { onNote = () => {} } = {}) {
+  const killed = [];
+  for (const pattern of BATTERY_ORPHAN_PATTERNS) {
+    try {
+      const pids = execFileSync('pgrep', ['-f', pattern], { encoding: 'utf8' })
+        .split('\n')
+        .map((p) => p.trim())
+        .filter((p) => p !== '' && p !== String(process.pid));
+      for (const pid of pids) {
+        try {
+          process.kill(Number(pid), 'SIGKILL');
+          killed.push(`${pid} (${pattern})`);
+        } catch {
+          // Gone between the listing and the signal.
+        }
+      }
+    } catch {
+      // pgrep exits non-zero when nothing matches. That is the answer we wanted.
+    }
+  }
+  if (killed.length > 0) {
+    onNote(`swept ${String(killed.length)} orphan(s) from a previous run: ${killed.join(', ')}`);
+  }
+  // Reported, never freed — see the note above. A holder here is far more often this run's own
+  // fixture than a leftover, and the cost of guessing wrong is the whole battery.
+  const held = [];
+  for (const port of ports) {
+    const holders = portHolders(port).filter((h) => h.listener);
+    if (holders.length === 0) continue;
+    held.push({ port, holders });
+    onNote(
+      `port ${String(port)} is held by ${holders.map((h) => `pid ${h.pid} (${h.command})`).join(', ')} ` +
+        `— NOT touching it; if this run then fails to bind, that pid is the reason`,
+    );
+  }
+  return { killed, held };
+}
+
 /** True when something answers `/status` on this port — a real daemon, not merely an open socket. */
 export async function transportAlive(port, { timeoutMs = 1_000 } = {}) {
   try {

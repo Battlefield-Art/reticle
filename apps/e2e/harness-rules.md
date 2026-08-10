@@ -1,6 +1,6 @@
 # Harness rules
 
-> Four rules every gate, battery and benchmark in this repo must follow. They are enforced by
+> Five rules every gate, battery and benchmark in this repo must follow. They are enforced by
 > [`gate-harness.mjs`](./gate-harness.mjs); this page is why they exist.
 
 **The harness is a client of the system it measures.** It speaks the same MCP proxy, the same
@@ -84,6 +84,43 @@ This mirrors the rule the product itself follows — `decideVerified` returns `U
 `NO` whenever the evidence is absent rather than negative, because "reporting a failure we did not
 observe would be its own false claim". The harness does not get an exemption from its own product's
 standard of honesty.
+
+## Rule 5 — sweep what the last run left behind
+
+```js
+await sweepBatteryOrphans(); // processes, by pattern. NOT ports.
+```
+
+A battery that exits normally runs its trap and cleans up. One that is **killed** — a CI timeout, a
+Ctrl-C, an OOM — does not, and leaves a driven browser and an MCP proxy running. The next run
+competes with them for the bridge port and for memory.
+
+Measured, on this repo, by the person who wrote the four rules above: two killed runs left an
+orphaned `cli.js mcp --drive` proxy driving a headless browser, the machine went to ~85MB free, and
+the next battery came back **17 of 31** with four specs `killed by SIGKILL` and failures interleaved
+with passes. Every one of those was read as a product regression first. After sweeping: **31 of 31**,
+same commit, same code.
+
+**Kill by process pattern; never by port.** `--drive` is the discriminator and it is load-bearing: a
+bare `cli.js mcp` is somebody's **agent**, and killing that is rule 1's entire subject, while only the
+battery starts a proxy with `--drive`. Ports get **named and left alone**.
+
+That asymmetry is not fastidiousness. The first version of this rule also freed the ports it was
+given — and `run-ci.sh` boots api:8787, bench-app:4310 and next-smoke:3100 **before** it runs
+`run.mjs`, so the "orphans" the sweep found were the fixtures the battery had just started for
+itself. It killed all three. **19 specs failed.**
+
+From inside a run there is no way to tell "an orphan from a killed run" from "the server this run
+started three seconds ago" — same command, same port, same user. A process *pattern* can be decided;
+a port cannot. So the port half reports, and says plainly that a later bind failure will be that pid's
+doing.
+
+> Rules 1–4 were written by the same person who then broke rule 5 twice in one hour: once by leaving
+> orphans behind, and once by writing a sweep that killed the run it was protecting. That is the
+> argument for putting every rule in `gate-harness.mjs` rather than in prose — a rule you have to
+> remember is a rule that gets skipped at exactly the moment you are busy chasing a failure. It is
+> also the argument for the shape of this one: **a cleanup that cannot tell what it is deleting must
+> report instead of delete.**
 
 ---
 
