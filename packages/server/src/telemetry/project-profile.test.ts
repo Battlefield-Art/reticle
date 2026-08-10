@@ -166,7 +166,10 @@ describe('git facts — what makes "users per project" answerable, or honestly u
     const facts = gitFacts(
       '/p/packages/web',
       () => config('git@github.com:a/b.git'),
-      (path) => '/p/.git' === path,
+      // Normalised: gitFacts walks with join(), which is backslashes on Windows, so a literal
+      // POSIX compare never matched and the walk 'found' nothing. Same fixture bug as three other
+      // packages.
+      (path) => '/p/.git' === path.replace(/\\/g, '/'),
     );
     expect(facts.state).toBe('remote');
   });

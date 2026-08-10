@@ -134,27 +134,34 @@ describe('the local telemetry sink', () => {
     });
   });
 
-  it('an unwritable path degrades to no-op rather than breaking the daemon', async () => {
-    await withDir(async (dir) => {
-      // Made unwritable, not borrowed from `/proc` — that path does not exist on macOS, so the
-      // borrowed form silently tested nothing there. Its twin in the Vite plugin hung the Linux
-      // runner for 36 minutes, which is the same non-portability failing the other way.
-      const readOnly = join(dir, 'read-only');
-      mkdirSync(readOnly, { recursive: true, mode: 0o500 });
-      try {
-        const t = createTelemetry({
-          version: '1',
-          cwd: dir,
-          now: () => 1,
-          env: {
-            RETICLE_TELEMETRY_FILE: join(readOnly, 'e.jsonl'),
-            RETICLE_TELEMETRY_KEY: 'k',
-          },
-        });
-        await expect(t.emit(TelemetryEventKind.DAEMON_STARTED)).resolves.toBe(false);
-      } finally {
-        chmodSync(readOnly, 0o700);
-      }
-    });
-  });
+  // POSIX only. `mode: 0o500` does not make a directory unwritable on Windows, so the precondition
+  // never holds there and the test asserts nothing — the same reason its twin in ensure-token.test.ts
+  // is skipped. Whether the sink degrades safely on a genuinely unwritable Windows path is a real
+  // question and needs its own test against ACLs, not a loosened assertion here.
+  it.skipIf('win32' === process.platform)(
+    'an unwritable path degrades to no-op rather than breaking the daemon',
+    async () => {
+      await withDir(async (dir) => {
+        // Made unwritable, not borrowed from `/proc` — that path does not exist on macOS, so the
+        // borrowed form silently tested nothing there. Its twin in the Vite plugin hung the Linux
+        // runner for 36 minutes, which is the same non-portability failing the other way.
+        const readOnly = join(dir, 'read-only');
+        mkdirSync(readOnly, { recursive: true, mode: 0o500 });
+        try {
+          const t = createTelemetry({
+            version: '1',
+            cwd: dir,
+            now: () => 1,
+            env: {
+              RETICLE_TELEMETRY_FILE: join(readOnly, 'e.jsonl'),
+              RETICLE_TELEMETRY_KEY: 'k',
+            },
+          });
+          await expect(t.emit(TelemetryEventKind.DAEMON_STARTED)).resolves.toBe(false);
+        } finally {
+          chmodSync(readOnly, 0o700);
+        }
+      });
+    },
+  );
 });

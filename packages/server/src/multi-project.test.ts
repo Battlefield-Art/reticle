@@ -363,6 +363,9 @@ describe('rapid connect/disconnect cycling', () => {
     await bridge.close();
   });
 
+  // 120s, explicit. The assertion is "the bridge does not crash", not "fifty sockets open inside
+  // five seconds" — it took 5026ms on the Windows runner against vitest's 5s default, which is a
+  // statement about the machine. A larger bound cannot make a crashed bridge pass.
   it('50 browsers connect simultaneously — bridge does not crash', async () => {
     const bridge = new Bridge({ port: 0 });
     const port = await bridge.ready;
@@ -379,7 +382,7 @@ describe('rapid connect/disconnect cycling', () => {
 
     browsers.forEach((b) => b.close());
     await bridge.close();
-  });
+  }, 120_000);
 });
 
 // ─── 9. Mixed states (the messy human scenarios) ─────────────────────────────
