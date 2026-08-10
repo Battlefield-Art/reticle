@@ -26,3 +26,20 @@ The last step is the one that earns its keep. Every install bug found so far has
 `apps/` — bench-app, next-smoke, the Remix and Astro examples, the Electron and Tauri smoke apps, atlas, and the API. These are the CI gates (`pnpm test:e2e`, `pnpm test:e2e:desktop`), and `integration-coverage.test.ts` fails if one of them goes missing while `SKILL.md` still offers its framework.
 
 The split is: **`apps/` proves the tools work. `reticle-fixtures` proves the install works.**
+
+## Wiring Tier 2 (not yet live)
+
+CI can ask this repo to verify a Reticle commit automatically — the [`vite-ecosystem-ci`](https://github.com/vitejs/vite-ecosystem-ci) shape, where a separate repo holds the downstream apps and the main repo asks it to run. The sending half is built (`fixtures-dispatch` in `.github/workflows/ci.yml`); the receiving half is a template at [`docs/fixtures-dispatch-receiver.yml`](./fixtures-dispatch-receiver.yml).
+
+**It is inert until two things happen, and neither can be done from inside this repository:**
+
+1. A fine-grained PAT with **Actions: write** on `reticlehq/reticle-fixtures`, added to `reticlehq/reticle` as the secret `FIXTURES_DISPATCH_TOKEN`. Until it exists the job logs that Tier 2 is unwired and exits 0 — it never reddens CI, because a dispatch failure has nothing to do with the change being pushed.
+2. The template copied into `reticle-fixtures` as `.github/workflows/verify-on-dispatch.yml`.
+
+The template lives in the _sending_ repo deliberately: the two halves must agree on an event name and payload shape, and a contract whose ends live in different repositories drifts the first time somebody edits one of them.
+
+**Nothing here has ever run.** Treat every line as unverified until somebody has watched one green run. Tier 2 being present in the plan is not Tier 2 being live.
+
+### Why Tier 2 exists when Tier 1 already passes
+
+`pnpm gate:install` (Tier 1) scaffolds pristine apps and catches install **regressions**. It cannot catch install **complexity**: `rowy` is 70 dependencies of somebody else's product, `phanpy` has a 130-line vite config holding ten plugins inside a `defineConfig` callback. That is where install bugs actually hide, and a scaffold deliberately has none of it. The two tiers answer different questions and neither substitutes for the other.

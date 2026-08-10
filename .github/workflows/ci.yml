@@ -152,6 +152,52 @@ jobs:
         working-directory: packages/tauri
         run: cargo clippy --all-targets -- -D warnings
 
+  # Tier 2: ask reticle-fixtures to install this commit into real third-party apps.
+  #
+  # Tier 1 (install-gate) scaffolds pristine apps and catches install REGRESSIONS. It cannot catch
+  # install COMPLEXITY: rowy is 70 dependencies of somebody else's product, phanpy has a 130-line
+  # vite config holding ten plugins inside a defineConfig callback. Those are where install bugs
+  # actually hide, and scaffolds deliberately do not have them.
+  #
+  # The vite-ecosystem-ci shape: a separate repo holds the downstream apps, this one asks it to run.
+  # NOT on every PR — it installs nine real apps and is far too slow to block a merge. On main, and
+  # on demand.
+  #
+  # NEVER FAILS THIS WORKFLOW. It is a notification, not a gate: the verdict lands in the fixtures
+  # repo's own run. A dispatch that reddens CI here would make people stop pushing to main for a
+  # reason that has nothing to do with their change.
+  #
+  # SETUP REQUIRED — this is inert until somebody does it, and says so rather than failing quietly:
+  #   1. Create a fine-grained PAT with `contents: read` + `metadata: read` on reticlehq/reticle-
+  #      fixtures and Actions: write, then add it here as the secret FIXTURES_DISPATCH_TOKEN.
+  #   2. Copy docs/fixtures-dispatch-receiver.yml into reticle-fixtures as
+  #      .github/workflows/verify-on-dispatch.yml.
+  # Until step 1 exists the job logs that it is unconfigured and exits 0.
+  fixtures-dispatch:
+    runs-on: ubuntu-latest
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 10
+    steps:
+      - name: Ask reticle-fixtures to verify this commit
+        env:
+          TOKEN: ${{ secrets.FIXTURES_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "FIXTURES_DISPATCH_TOKEN is not set — Tier 2 is not wired up yet."
+            echo "See docs/fixtures.md, 'Wiring Tier 2'. Skipping (this is not a failure)."
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/dispatch.out -w '%{http_code}' \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $TOKEN" \
+            https://api.github.com/repos/reticlehq/reticle-fixtures/dispatches \
+            -d "{\"event_type\":\"reticle-commit\",\"client_payload\":{\"sha\":\"${{ github.sha }}\",\"ref\":\"${{ github.ref_name }}\"}}")
+          echo "dispatch HTTP $code"; cat /tmp/dispatch.out || true
+          # Reported, never fatal: the verdict lives in the other repo's run either way.
+          [ "$code" = "204" ] || echo "dispatch did not succeed — check the token's Actions:write scope"
+
   # Which tiers does this PR actually need?
   #
   # The install gate scaffolds and npm-installs three real apps. Running it on a docs-only PR costs
