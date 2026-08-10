@@ -2,7 +2,7 @@
  * Where each agent keeps its MCP config, and how to write ours into it.
  *
  * `init` knew two clients: Claude Code (a CLI shell-out) and Cursor (a JSON merge). Everything else
- * got a printed snippet. That is the blocker under the whole release matrix — a `v2.5.0-<client>`
+ * got a printed snippet. That is the blocker under the whole release matrix — a per-client release
  * artifact for a client `init` cannot wire measures whether somebody pasted JSON correctly, not
  * whether the product works.
  *
@@ -227,7 +227,7 @@ export function mergeClientConfig(spec: ClientSpec, existing: string | null): Cl
   const config = parsed.config;
   const current = config[spec.serversKey];
   const servers: Record<string, unknown> =
-    typeof current === 'object' && null !== current && !Array.isArray(current)
+    'object' === typeof current && null !== current && !Array.isArray(current)
       ? (current as Record<string, unknown>)
       : {};
 

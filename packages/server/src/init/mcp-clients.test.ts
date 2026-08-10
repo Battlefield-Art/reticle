@@ -3,7 +3,7 @@
  *
  * `init` knew two clients: Claude Code (a CLI shell-out) and Cursor (a JSON merge). Everything else
  * got a printed snippet and a hope. That is the blocker under the whole release matrix — a
- * `v2.5.0-<client>` artifact for a client `init` cannot wire measures whether somebody pasted JSON
+ * a per-client release artifact for a client `init` cannot wire measures whether somebody pasted JSON
  * correctly, not whether the product works.
  *
  * Every path and shape here was READ FROM THE CLIENT'S DOCUMENTATION rather than recalled, because
