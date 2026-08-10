@@ -433,7 +433,13 @@ jobs:
   # reproduces the problem one level up.
   gate:
     runs-on: ubuntu-latest
-    needs: [verify, e2e, install-gate, matrix-records, windows]
+    # Every job that can fail a PR is listed HERE. A job missing from this list runs, reports, and is
+    # structurally incapable of stopping a merge — which is what `windows`, `rust`, `rust-macos` and
+    # `desktop-e2e` all were until they were added. `rust` in particular is the only thing in CI that
+    # compiles packages/tauri at all: it sits outside every JS gate, so an absent entry here meant a
+    # red Rust build merged clean. Adding a job to the workflow is half the work; this line is the
+    # other half.
+    needs: [verify, e2e, install-gate, matrix-records, windows, rust, rust-macos, desktop-e2e]
     if: always()
     timeout-minutes: 5
     steps:
