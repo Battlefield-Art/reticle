@@ -35,6 +35,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensurePairingToken } from './ensure-token.js';
 
+/** POSIX file modes do not exist on Windows; the two tests below assert exactly that property. */
+const WINDOWS = 'win32' === process.platform;
+
 const withDir = (fn: (dir: string) => void): void => {
   const dir = mkdtempSync(join(tmpdir(), 'reticle-token-'));
   try {
@@ -62,33 +65,51 @@ describe('the pairing token, whoever gets there first', () => {
     });
   });
 
-  it('writes it 0600 — it is a secret, and the daemon writes it that way too', () => {
-    withDir((dir) => {
-      ensurePairingToken(dir);
-      const mode = statSync(join(dir, 'pairing-token')).mode & 0o777;
-      expect(mode).toBe(0o600);
-    });
-  });
+  /**
+   * POSIX only, and skipped rather than weakened.
+   *
+   * Windows has no 0600: `statSync().mode` reports something like 0o666 regardless of what was
+   * asked for, so this can only be made "pass" there by asserting something that is not the
+   * property. This file's own comment already states the rule — "a test whose subject only exists
+   * on one platform is not testing the same thing on the other one" — and the secret-permissions
+   * claim is exactly that. The token's confidentiality on Windows is a real question and needs its
+   * own test against ACLs, not a loosened assertion here.
+   */
+  it.skipIf(WINDOWS)(
+    'writes it 0600 — it is a secret, and the daemon writes it that way too',
+    () => {
+      withDir((dir) => {
+        ensurePairingToken(dir);
+        const mode = statSync(join(dir, 'pairing-token')).mode & 0o777;
+        expect(mode).toBe(0o600);
+      });
+    },
+  );
 
-  it('returns undefined rather than throwing when the directory cannot be written', () => {
-    // A dev server must still start. Degrading to the old behaviour is correct; crashing is not.
-    //
-    // The unwritable directory is MADE unwritable, rather than borrowed from `/proc`. `/proc` does
-    // not exist on macOS, so the borrowed version passed instantly here and hung the Linux runner —
-    // this was the single test file, out of nine, that never reported, and it parked `verify` for
-    // 36 minutes with every other test already green. A test whose subject only exists on one
-    // platform is not testing the same thing on the other one.
-    withDir((dir) => {
-      const readOnly = join(dir, 'read-only');
-      mkdirSync(readOnly, { recursive: true, mode: 0o500 });
-      try {
-        expect(ensurePairingToken(join(readOnly, 'child'))).toBeUndefined();
-      } finally {
-        // Restore write permission or the cleanup cannot remove it.
-        chmodSync(readOnly, 0o700);
-      }
-    });
-  });
+  // Also POSIX only: `mode: 0o500` does not make a directory unwritable on Windows, so the
+  // "cannot be written" precondition never holds and the test asserts nothing there.
+  it.skipIf(WINDOWS)(
+    'returns undefined rather than throwing when the directory cannot be written',
+    () => {
+      // A dev server must still start. Degrading to the old behaviour is correct; crashing is not.
+      //
+      // The unwritable directory is MADE unwritable, rather than borrowed from `/proc`. `/proc` does
+      // not exist on macOS, so the borrowed version passed instantly here and hung the Linux runner —
+      // this was the single test file, out of nine, that never reported, and it parked `verify` for
+      // 36 minutes with every other test already green. A test whose subject only exists on one
+      // platform is not testing the same thing on the other one.
+      withDir((dir) => {
+        const readOnly = join(dir, 'read-only');
+        mkdirSync(readOnly, { recursive: true, mode: 0o500 });
+        try {
+          expect(ensurePairingToken(join(readOnly, 'child'))).toBeUndefined();
+        } finally {
+          // Restore write permission or the cleanup cannot remove it.
+          chmodSync(readOnly, 0o700);
+        }
+      });
+    },
+  );
 
   it('treats a whitespace-only file as absent and replaces it', () => {
     withDir((dir) => {

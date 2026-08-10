@@ -96,7 +96,10 @@ function memoryIo(
 
 describe('resolveLockfiles — package-manager detection in a monorepo', () => {
   it('walks up to the workspace-root lockfile when the sub-package has none', () => {
-    const io = { exists: (p: string) => '/repo/pnpm-lock.yaml' === p };
+    // Normalised, for the reason the memory io above is: resolveLockfiles walks with `join`, which
+    // yields backslashes on Windows, and a literal POSIX comparison never matches there — so the
+    // walk "failed" on the platform that is 66% of users while passing everywhere else.
+    const io = { exists: (p: string) => '/repo/pnpm-lock.yaml' === p.replace(/\\/g, '/') };
     const set = resolveLockfiles(
       new Set(['package.json', 'vite.config.ts']),
       '/repo/apps/bench-app',
