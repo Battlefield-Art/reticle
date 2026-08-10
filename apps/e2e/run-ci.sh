@@ -78,3 +78,17 @@ done
 
 echo "==> running e2e battery"
 node apps/e2e/run.mjs
+BATTERY_STATUS=$?
+
+# The soak runs HERE because this is the only place a real app is already up and paired. It answers
+# the question the battery cannot: not "does a tool work" but "how often does it fail", which needs
+# repetition and idle time rather than one call. Modest numbers — this is the merge-gate sample, and
+# `pnpm gate:soak:record` is the longer run that re-records the baseline before a release.
+echo "==> soak + tool profile"
+node apps/e2e/soak.mjs --rounds "${SOAK_ROUNDS:-10}" --idle-ms "${SOAK_IDLE_MS:-1000}"
+SOAK_STATUS=$?
+
+# Report the battery's verdict first when both fail: it covers far more ground, so it is the more
+# useful thing to read. Neither is allowed to mask the other.
+if [ "$BATTERY_STATUS" -ne 0 ]; then exit "$BATTERY_STATUS"; fi
+exit "$SOAK_STATUS"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runInit, resolveLockfiles, type InitIo, type InitOptions } from './run.js';
+import { FEEDBACK_HINT, runInit, resolveLockfiles, type InitIo, type InitOptions } from './run.js';
 
 interface MemoryIo extends InitIo {
   written: Record<string, string>;
@@ -36,7 +36,18 @@ function memoryIo(
   const present = { ...files };
   if (cursor) present[`${HOME}/.cursor`] = '';
   // Absolute paths (home-dir config) bypass the scoping prefix, matching the real IO.
-  const key = (p: string): string => (p.startsWith('/') || '' === prefix ? p : `${prefix}/${p}`);
+  /**
+   * Normalise separators before keying.
+   *
+   * Production is right to use `join()` — a path that is checked and written on a user's machine
+   * must use that platform's separator, and this repo has already shipped a Windows path bug for
+   * exactly the opposite reason. But `join()` yields backslashes there, while these fixtures are
+   * written with forward slashes, so on Windows a lookup missed and the Cursor step silently never
+   * ran. The test was the thing that was not portable, on the platform that is 66% of users.
+   */
+  const norm = (p: string): string => p.replace(/\\/g, '/');
+  const key = (p: string): string =>
+    norm(p.startsWith('/') || '' === prefix ? p : `${prefix}/${p}`);
   return {
     written,
     lines,
@@ -55,7 +66,11 @@ function memoryIo(
         .filter((p) => p !== '' && !p.includes('/'));
     },
     listDirs: (rel) => {
-      const scope = `${key(rel)}/`;
+      // `.` means the root, and the real IO resolves it that way. Without this the harness could not
+      // express "an app one directory down from a root with no package.json" at all — every
+      // top-level scan came back empty, which is part of why that case shipped unnoticed.
+      const base = key(rel);
+      const scope = '.' === base ? '' : `${base}/`;
       const names = Object.keys(present)
         .filter((p) => p.startsWith(scope))
         .map((p) => p.slice(scope.length).split('/')[0] ?? '')
@@ -81,7 +96,10 @@ function memoryIo(
 
 describe('resolveLockfiles — package-manager detection in a monorepo', () => {
   it('walks up to the workspace-root lockfile when the sub-package has none', () => {
-    const io = { exists: (p: string) => '/repo/pnpm-lock.yaml' === p };
+    // Normalised, for the reason the memory io above is: resolveLockfiles walks with `join`, which
+    // yields backslashes on Windows, and a literal POSIX comparison never matches there — so the
+    // walk "failed" on the platform that is 66% of users while passing everywhere else.
+    const io = { exists: (p: string) => '/repo/pnpm-lock.yaml' === p.replace(/\\/g, '/') };
     const set = resolveLockfiles(
       new Set(['package.json', 'vite.config.ts']),
       '/repo/apps/bench-app',
@@ -121,11 +139,44 @@ const VITE_FILES = {
 };
 
 describe('runInit', () => {
-  it('errors cleanly without a package.json', () => {
-    const io = memoryIo({});
+  it('errors cleanly when there is no package.json AND no app beneath it', () => {
+    const io = memoryIo({ 'docs/readme.md': 'hi' });
     const r = runInit(OPTS, io);
     expect(r.ok).toBe(false);
     expect(io.lines.join('\n')).toContain('No package.json');
+  });
+
+  /**
+   * A repo whose app is one directory down with nothing at the top — `frontend/`, `web/`, `client/`
+   * — is an ordinary shape, and it was un-instrumentable. init read the root package.json, found
+   * none, and bailed BEFORE discovery ever ran, so `--app frontend` (the flag that exists for
+   * exactly this) was never read either. Reported twice by the same user: once for the failure, once
+   * for the documented workaround failing the same way.
+   *
+   * Discovery already handled it — it scans top-level directories, not only declared workspaces. It
+   * was simply unreachable behind the bail.
+   */
+  it('finds an app one directory down even when the root has no package.json', () => {
+    const io = memoryIo({
+      'frontend/package.json': JSON.stringify({ dependencies: { next: '16', react: '^19' } }),
+      'frontend/app/layout.tsx': 'export default function L({ children }) { return children; }\n',
+    });
+    const r = runInit(OPTS, io);
+    expect(r.ok).toBe(true);
+    expect(io.lines.join('\n')).toContain('frontend');
+    expect(io.written['frontend/.reticle.json']).toBeDefined();
+  });
+
+  it('honours --app when the root has no package.json', () => {
+    const io = memoryIo({
+      'frontend/package.json': JSON.stringify({ dependencies: { next: '16', react: '^19' } }),
+      'frontend/app/layout.tsx': 'export default function L({ children }) { return children; }\n',
+      'backend/package.json': JSON.stringify({ dependencies: { express: '^4' } }),
+    });
+    const r = runInit({ ...OPTS, app: 'frontend' }, io);
+    expect(r.ok).toBe(true);
+    expect(io.written['frontend/.reticle.json']).toBeDefined();
+    expect(io.written['backend/.reticle.json']).toBeUndefined();
   });
 
   it('registers reticle globally via the claude CLI (not a project .mcp.json) and patches vite', () => {
@@ -170,6 +221,24 @@ describe('runInit', () => {
     expect(io.execCalls).toHaveLength(0);
     expect(io.lines.join('\n')).toContain('dry run');
     expect(r.applied).toBeGreaterThan(0);
+  });
+
+  it('asks for feedback on EVERY exit, including the ones that never reach the report', () => {
+    // This shipped as dead code: the print sat after a `return` in report(), so the whole standing
+    // ask was unreachable and nothing failed — no test named it, and a missing line prints nothing.
+    // The exits below are the ones that matter most: setup died before anything ran, and the person
+    // holding the report has no MCP tools to file it with.
+    const ok = memoryIo(VITE_FILES);
+    runInit(OPTS, ok);
+    expect(ok.lines.join('\n')).toContain(FEEDBACK_HINT);
+
+    const dry = memoryIo(VITE_FILES);
+    runInit({ ...OPTS, dryRun: true }, dry);
+    expect(dry.lines.join('\n')).toContain(FEEDBACK_HINT);
+
+    const noPkg = memoryIo({});
+    runInit(OPTS, noPkg);
+    expect(noPkg.lines.join('\n')).toContain(FEEDBACK_HINT);
   });
 
   it('runs the install when enabled, pinned to the CLI version', () => {
@@ -278,6 +347,12 @@ describe('runInit — workspace roots', () => {
     expect(io.written['.reticle.json']).toBeUndefined();
   });
 
+  it('asks for feedback exactly once, even though the redirect re-enters init', () => {
+    const io = memoryIo({ 'package.json': WORKSPACE_ROOT, ...VITE_APP });
+    runInit(OPTS, io);
+    expect(io.lines.filter((l) => l.includes(FEEDBACK_HINT))).toHaveLength(1);
+  });
+
   it('lists the candidates instead of guessing when a workspace has several apps', () => {
     const io = memoryIo({
       'package.json': WORKSPACE_ROOT,
@@ -359,6 +434,46 @@ describe('runInit — a failed install must not leave the app half-wired', () =>
     runInit({ ...OPTS, install: true }, io);
     expect(io.written['next.config.mjs']).toContain('withReticle');
     expect(io.written['app/layout.tsx']).toContain('ReticleDev');
+  });
+
+  /**
+   * The reported loop, from a Next 16 app: init's install fails (it chose pnpm, not on PATH), init
+   * tells the user to install by hand, they run `npm install --save-dev` successfully, they re-run
+   * init — and the install fails the same way, so every wiring step is skipped a SECOND time. They
+   * are left with an init that cannot be retried into working while holding the very packages it
+   * reports as missing.
+   *
+   * The guard above is right; its condition was not. It protects "the import RESOLVES", and it was
+   * asking "did our subprocess exit 0".
+   */
+  it('wires the app when the install fails but the packages are already on disk', () => {
+    const io = memoryIo(
+      {
+        ...NEXT_FILES,
+        // What a successful `npm install --save-dev @reticlehq/react @reticlehq/next` leaves.
+        'node_modules/@reticlehq/react/package.json': '{"name":"@reticlehq/react"}',
+        'node_modules/@reticlehq/next/package.json': '{"name":"@reticlehq/next"}',
+      },
+      { execOk: false, mcpExists: true },
+    );
+    runInit({ ...OPTS, install: true }, io);
+    // The wiring is precisely what a user cannot do by hand, and precisely what was being skipped.
+    expect(io.written['next.config.mjs']).toContain('withReticle');
+    expect(io.written['app/layout.tsx']).toContain('ReticleDev');
+  });
+
+  it('skips the wiring when only SOME of the packages are there', () => {
+    // Half an install is not an install: importing @reticlehq/next when only the kit landed is the
+    // same MODULE_NOT_FOUND the guard exists to prevent.
+    const io = memoryIo(
+      {
+        ...NEXT_FILES,
+        'node_modules/@reticlehq/react/package.json': '{"name":"@reticlehq/react"}',
+      },
+      { execOk: false, mcpExists: true },
+    );
+    runInit({ ...OPTS, install: true }, io);
+    expect(io.written['next.config.mjs']).toBeUndefined();
   });
 
   it('config that does not import anything is still written — it has no dependency to miss', () => {

@@ -25,7 +25,7 @@ export type Verified = (typeof Verified)[keyof typeof Verified];
 /**
  * WHY a verdict came out the way it did — the deciding clause of the rule, named.
  *
- * `Verified` has three values and the rule has ten clauses, so the wire collapsed opposite facts
+ * `Verified` has three values and the rule has eleven clauses, so the wire collapsed opposite facts
  * into one string. Measured over a real session: `unknown` covered "the agent malformed the call",
  * "the app answered 202 and has not finished", and "Reticle could not see the capture" — three
  * owners needing three opposite responses, one bar on a dashboard. `no` was no better: "channels
@@ -39,6 +39,22 @@ export type Verified = (typeof Verified)[keyof typeof Verified];
 export const VerifiedReason = {
   /** The assertion was never EVALUATED — under-specified call, or nothing instrumented to read. */
   INCONCLUSIVE: 'inconclusive',
+  /**
+   * The tab went away mid-wait, so the action's outcome was never observed. NOT a failure.
+   *
+   * This existed as a fact and had nowhere to go. `waitForPredicate` finishes a disconnected wait
+   * with `{ pass: false, failureReason: 'session disconnected' }`, and the only clause that took a
+   * false `pass` said ASSERTION_FAILED — so a reload during a wait produced, verbatim:
+   *
+   *   verified: "no", verifiedReason: "assertion_failed",
+   *   because: "the declared consequence did not hold", source: "src/components/Counter.tsx:18"
+   *
+   * The app was fine; the observer left. An agent reading that goes and edits Counter.tsx. Every
+   * other clause in this rule is tuned to avoid claiming more than was observed, and the absence of
+   * this member made the nearest available answer a false claim in the opposite direction — a false
+   * RED, from the layer whose entire job is not to produce one.
+   */
+  OBSERVATION_LOST: 'observation_lost',
   /** The declared consequence did not hold. */
   ASSERTION_FAILED: 'assertion_failed',
   /** Channels disagreed about the action — the false green this product exists to catch. */

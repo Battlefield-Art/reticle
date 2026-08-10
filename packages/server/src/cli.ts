@@ -24,12 +24,18 @@ import { log } from './log.js';
 import {
   readPid,
   isAlive,
-  isRunning,
   removePid,
   spawnDaemon,
   discoverDaemonPort,
   writeDaemonRegistry,
+  logPath,
 } from './daemon/daemon.js';
+import {
+  PortPresence,
+  probePresence,
+  presenceIsUsable,
+  describePresence,
+} from './daemon/port-presence.js';
 import {
   waitForDaemon,
   startMcpProxy,
@@ -39,6 +45,8 @@ import {
 } from './mcp/mcp-proxy.js';
 import { installDaemonResilience, installProxyResilience } from './daemon/daemon-resilience.js';
 import { IdleShutdown, resolveIdleShutdownMs, resolveIdleCheckMs } from './daemon/idle-shutdown.js';
+import { DaemonHeartbeat, resolveHeartbeatMs } from './daemon/heartbeat.js';
+import { everServedToolCall } from './daemon/daemon-usefulness.js';
 import {
   fetchStatus,
   summarizeStatus,
@@ -109,8 +117,44 @@ function handleServe(parsed: {
   httpPort?: number;
   httpToken?: string;
 }): void {
-  if (isRunning(parsed.port)) {
+  void serveWithHonestExit(parsed);
+}
+
+/**
+ * Report the BIND, not the spawn.
+ *
+ * `serve` used to log `reticle_daemon_spawned` and exit 0 unconditionally, while the child died at
+ * `reticle_daemon_start_failed` with an EADDRINUSE nothing joined back to the parent. Three surfaces
+ * then disagreed about what was true and none of them named the port.
+ *
+ * Two changes, both about saying what is actually the case: refuse up front when the port is held by
+ * something that is not a Reticle daemon (a spawn there cannot succeed), and after spawning, wait
+ * for the daemon to actually answer before claiming it started.
+ */
+async function serveWithHonestExit(parsed: {
+  port: number;
+  driveUrl?: string;
+  headless: boolean;
+  http: boolean;
+  httpPort?: number;
+  httpToken?: string;
+}): Promise<void> {
+  const presence = await probePresence(parsed.port, {
+    tcpOpen: probeDaemon,
+    status: fetchStatus,
+  });
+  if (presence === PortPresence.DAEMON) {
     log('reticle_daemon_already_running', { port: parsed.port });
+    return;
+  }
+  if (presence === PortPresence.FOREIGN) {
+    log('reticle_daemon_start_refused', {
+      port: parsed.port,
+      presence,
+      reason: describePresence(presence, parsed.port),
+    });
+    process.stderr.write(`${describePresence(presence, parsed.port)}\n`);
+    process.exit(1);
     return;
   }
   const scriptPath = process.argv[1];
@@ -130,7 +174,44 @@ function handleServe(parsed: {
     if (parsed.httpToken !== undefined) daemonArgs.push(HTTP_TOKEN_FLAG, parsed.httpToken);
   }
   spawnDaemon(process.execPath, scriptPath, daemonArgs, parsed.port);
+  // The child binds asynchronously and, when it cannot, exits 1 long after this process would have
+  // reported success. Wait for it to ANSWER — `/status` responding is the only evidence a daemon
+  // exists that does not come from the pid file the child may never have earned.
+  const bound = await waitForPresence(parsed.port, PortPresence.DAEMON, SERVE_BIND_TIMEOUT_MS);
+  if (!bound) {
+    const settled = await probePresence(parsed.port, { tcpOpen: probeDaemon, status: fetchStatus });
+    log('reticle_daemon_start_failed_parent', {
+      port: parsed.port,
+      presence: settled,
+      reason: describePresence(settled, parsed.port),
+      log: logPath(parsed.port),
+    });
+    process.stderr.write(
+      `the daemon did not come up on :${String(parsed.port)} — ${describePresence(settled, parsed.port)}\n` +
+        `see ${logPath(parsed.port)}\n`,
+    );
+    process.exit(1);
+    return;
+  }
   log('reticle_daemon_spawned', { port: parsed.port, ...(parsed.http ? { http: true } : {}) });
+}
+
+/** How long `serve` waits for the child to bind. Generous: a cold daemon start is seconds. */
+const SERVE_BIND_TIMEOUT_MS = 15_000;
+const PRESENCE_POLL_MS = 150;
+
+async function waitForPresence(
+  port: number,
+  want: PortPresence,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const presence = await probePresence(port, { tcpOpen: probeDaemon, status: fetchStatus });
+    if (presence === want) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, PRESENCE_POLL_MS));
+  }
 }
 
 function handleStop(port: number, quiet: boolean): void {
@@ -160,7 +241,16 @@ function handleStop(port: number, quiet: boolean): void {
 function handleStatus(port: number): void {
   const pid = readPid(port);
   if (null === pid || !isAlive(pid)) {
-    log('reticle_status', { port, running: false });
+    // `running: false` on its own has been reported about a port that was demonstrably occupied,
+    // because the pid file is not the port. Ask the port before answering.
+    void probePresence(port, { tcpOpen: probeDaemon, status: fetchStatus }).then((presence) => {
+      log('reticle_status', {
+        port,
+        running: presenceIsUsable(presence),
+        presence,
+        ...(presence === PortPresence.FOREIGN ? { reason: describePresence(presence, port) } : {}),
+      });
+    });
     return;
   }
   // The daemon is up — ask it for live sessions + health so status is at-a-glance, not just a pid.
@@ -448,6 +538,19 @@ function handleDaemonInner(parsed: {
         },
       });
       idleShutdown.start();
+      // Say so, regularly, so a GAP in this log is itself evidence. `installExitTrace` hooks
+      // `'exit'`, which a SIGKILL never fires — so a killed daemon left nothing behind, and the one
+      // that exited tidily logged `code: 0`. A reader could not tell "shut down cleanly" from "the
+      // bridge every app on this machine needs is gone", and a correct SvelteKit install was written
+      // up as an install failure on exactly that ambiguity. See daemon/heartbeat.ts.
+      new DaemonHeartbeat({
+        log,
+        intervalMs: resolveHeartbeatMs(process.env[ReticleEnv.HEARTBEAT]),
+        facts: () => ({
+          sessions: server.bridge.sessions.count(),
+          served: everServedToolCall(),
+        }),
+      }).start();
     })
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -532,7 +635,23 @@ function handleMcp(opts: {
     })
     .finally(() => {
       // Also `void`: the proxy runs for the life of the process and is never awaited by anyone.
-      void startMcpProxy(port, ensure);
+      //
+      // The `.catch` is load-bearing despite that. `startMcpProxy` rejects when its FIRST connect
+      // fails — which is precisely the case this block exists to tolerate, a daemon that is not
+      // there yet — and with nothing attached that reject became an unhandledRejection. Reported
+      // from a win32 user as a crash reading `connect ECONNREFUSED` with an EMPTY frame list,
+      // because the stack of a refused socket is entirely node internals and the privacy filter
+      // keeps only Reticle frames. So the one path we most want diagnosable arrived as an anonymous
+      // crash. The proxy itself is unaffected — it has already installed its stdin reader and goes
+      // on serving from cache, waking a daemon on the next request — which is exactly why this
+      // must be logged as the expected condition it is rather than reported as a defect.
+      void startMcpProxy(port, ensure).catch((err: unknown) => {
+        log('reticle_mcp_proxy_first_connect_failed', {
+          port,
+          error: err instanceof Error ? err.message : String(err),
+          note: 'serving from cache; the next client request will try to start a daemon',
+        });
+      });
     });
 }
 

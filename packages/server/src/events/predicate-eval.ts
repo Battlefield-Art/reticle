@@ -192,6 +192,16 @@ export interface EvalResult {
   evidence?: unknown;
   failureReason?: string;
   /**
+   * The wait ended because the TAB went away, not because the app did anything observable.
+   *
+   * A sibling of `inconclusive` and for the same reason: `pass` is false because nothing was
+   * proven, but nobody could have made it true, so grading it as a defect in the user's app is a
+   * false claim. Without this the verdict rule saw only `pass: false` and answered
+   * `assertion_failed` — "the declared consequence did not hold" — naming the component the agent
+   * had just clicked. See VerifiedReason.OBSERVATION_LOST.
+   */
+  observationLost?: boolean;
+  /**
    * The failure, structured — what was seen, what was required, and which oracle judged it.
    *
    * `failureReason` says the same thing in prose, and prose is the WRONG shape for this: measured on

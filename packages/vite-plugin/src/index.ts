@@ -23,6 +23,7 @@ import {
   sdkBuildFingerprint,
   viteMajor,
   optimizerOptionsKey,
+  optimizerOptions,
 } from './installed.js';
 
 export const RETICLE_VITE_PLUGIN_NAME = 'reticle';
@@ -157,7 +158,9 @@ export interface ReticleVitePlugin {
   config?: (config: {
     optimizeDeps?: {
       include?: string[];
-      esbuildOptions?: { define?: Record<string, string> };
+      /** Whichever key the app used — the plugin reads both and writes the one this Vite wants. */
+      esbuildOptions?: Record<string, unknown>;
+      rolldownOptions?: Record<string, unknown>;
     };
     define?: Record<string, string>;
     root?: string;
@@ -526,7 +529,11 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
      * tree depends on @testing-library/dom.
      */
     config(config: {
-      optimizeDeps?: { include?: string[]; esbuildOptions?: { define?: Record<string, string> } };
+      optimizeDeps?: {
+        include?: string[];
+        esbuildOptions?: Record<string, unknown>;
+        rolldownOptions?: Record<string, unknown>;
+      };
       define?: Record<string, string>;
       /** Vite's UserConfig root; undefined means the cwd. `configResolved` runs too late for this. */
       root?: string;
@@ -534,6 +541,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       // Everything below asks what the APP has installed, so every lookup is rooted here and never
       // at the plugin's own location. Vite defaults an omitted root to the cwd; so do we.
       const appRoot = config.root ?? process.cwd();
+      const optimizerKey = optimizerOptionsKey(viteMajor(appRoot));
       return {
         // Expose the daemon's pairing token to hand-written connects in the same Vite app. The
         // plugin's own injected connect gets the token directly, but a connect the USER writes —
@@ -558,13 +566,16 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
           // Under the key THIS Vite wants. Vite 7 moved the optimizer to rolldown and deprecated
           // `esbuildOptions`, warning on every boot — a warning attributed to the plugin that set
           // it, which is us.
-          [optimizerOptionsKey(viteMajor(appRoot))]: {
-            ...(config.optimizeDeps?.esbuildOptions ?? {}),
-            define: {
-              ...(config.optimizeDeps?.esbuildOptions?.define ?? {}),
-              __RETICLE_SDK_BUILD__: JSON.stringify(sdkBuildFingerprint(appRoot)),
+          // Inherited from whichever key the app used, and `define` placed where this bundler will
+          // take it — rolldown refuses it at the top level. See optimizerOptions.
+          [optimizerKey]: optimizerOptions(
+            optimizerKey,
+            {
+              ...(config.optimizeDeps?.esbuildOptions ?? {}),
+              ...(config.optimizeDeps?.rolldownOptions ?? {}),
             },
-          },
+            { __RETICLE_SDK_BUILD__: JSON.stringify(sdkBuildFingerprint(appRoot)) },
+          ),
           include: [
             ...(config.optimizeDeps?.include ?? []),
             // The SDK ITSELF. Without this, Vite does not learn about @reticlehq/react until the

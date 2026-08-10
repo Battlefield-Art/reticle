@@ -44,6 +44,7 @@ function readPairingToken(): string {
 }
 import {
   DEPS_TARGET,
+  frameworkPackages,
   MCP_TARGET,
   buildPlan,
   StepStatus,
@@ -54,6 +55,7 @@ import { claudeAvailableProbe, claudeExistsProbe } from './mcp.js';
 import { reticleDevLocation } from './next-patch.js';
 import { scanTestids, storeHints } from './capabilities.js';
 import { CURSOR_DIR_RELPATH, CURSOR_MCP_RELPATH } from './cursor.js';
+import { fileBackedClients, clientMarkerRelPath, ConfigScope, McpClient } from './mcp-clients.js';
 import { deriveProjectId, packageName } from './project-id.js';
 import { VITE_DEV_MODULE_PATH } from './snippets.js';
 import { CLAUDE_COMMAND_PATH, CURSOR_COMMAND_PATH } from './slash-command.js';
@@ -97,6 +99,7 @@ export function resolveLockfiles(
 }
 
 const PACKAGE_JSON = 'package.json';
+const NODE_MODULES_DIR = 'node_modules';
 /**
  * Root-layout candidates, App Router only. `--src-dir` apps keep theirs under `src/app`, and the
  * ReticleDev component has to land NEXT TO the layout or the relative import it generates is dead.
@@ -292,6 +295,28 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const cursorPresent = options.mcp && (io.exists(cursorDir) || io.exists(CURSOR_DIR_RELPATH));
   const cursorConfig = cursorPresent ? io.readFile(cursorConfigPath) : null;
 
+  // Every OTHER MCP client this machine shows evidence of. Conservative and one-directional: we
+  // write into a config a client ALREADY has, and never create ~/.gemini or ~/.codeium for somebody
+  // who does not use them. Cursor and Claude are handled above by their own steps.
+  const detectedClients = options.mcp
+    ? fileBackedClients()
+        .filter((spec) => spec.id !== McpClient.CURSOR)
+        .map((spec) => {
+          const marker = clientMarkerRelPath(spec);
+          const absolute =
+            spec.scope === ConfigScope.HOME ? join(io.homeDir(), spec.relPath) : spec.relPath;
+          const markerPath = spec.scope === ConfigScope.HOME ? join(io.homeDir(), marker) : marker;
+          if (!io.exists(markerPath)) return null;
+          return {
+            id: spec.id,
+            configPath: absolute,
+            // io.readFile passes absolute paths through unchanged, so one call covers both scopes.
+            existing: io.readFile(absolute),
+          };
+        })
+        .filter((entry) => entry !== null)
+    : [];
+
   const astroPath = firstPresent(rootFiles, ASTRO_CONFIG_CANDIDATES);
   const astroSource = null === astroPath ? null : io.readFile(astroPath);
   // Which file owns the DOCUMENT, not how many files sit in a directory. The old rule ("exactly one
@@ -325,6 +350,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     claudeCli,
     mcpExists,
     cursorPresent,
+    detectedClients,
     cursorProjectPresent: io.exists(CURSOR_DIR_RELPATH),
     cursorConfig,
     cursorConfigPath,
@@ -433,6 +459,9 @@ export function findWorkspaceApps(io: Pick<InitIo, 'exists' | 'readFile' | 'list
  *
  * Addressed to the agent as much as the human: whichever of them just ran this command is the one
  * holding the experience, and neither has a Reticle tool surface to file through at this point.
+ *
+ * Printed by the `runInit` wrapper, NOT by `report()` — see the comment there for why, and for how
+ * the workspace redirect is kept from asking twice.
  */
 export const FEEDBACK_HINT =
   'Anything wrong, missing, or awkward — in this setup or in Reticle itself? Tell us; it is the ' +
@@ -512,13 +541,6 @@ function report(
   }
   io.print(restartHint(plan.framework));
   return { ok: !connectPending, applied, manual };
-
-  // Printed even on a dry run, and even when steps failed — ESPECIALLY then. Setup is where Reticle
-  // is most likely to break and least likely to be told about it: an agent reading this output has
-  // no MCP tools yet, and the report it could file right now is the one nobody ever sends.
-  io.print('');
-  io.print(FEEDBACK_HINT);
-  return { ok: true, applied, manual };
 }
 
 /**
@@ -530,6 +552,28 @@ function report(
  * MODULE_NOT_FOUND, so the app stops booting *because* Reticle was installed. A skipped step is a
  * message; a half-wired app is a broken project.
  */
+/**
+ * Are the SDK packages actually on disk, whatever the install step reported?
+ *
+ * `dependsOnInstall` exists to stop init writing a `next.config.ts` that imports a package which is
+ * not there — that took a dev server down once, and installing Reticle must never be why an app
+ * stops booting. The invariant it protects is "the import RESOLVES", but it was gated on "our
+ * install subprocess exited 0", and those come apart in exactly the situation the failure creates:
+ * init tells the user to install by hand, they do, they re-run init, the install step fails again
+ * (wrong package manager, not on PATH) and every wiring step is skipped a second time. Reported from
+ * a Next 16 app where npm had already installed both packages successfully — leaving an init that
+ * could not be retried into working, which is the shape this guard was written to prevent.
+ *
+ * Reading node_modules answers the real question and costs one `exists` call per package.
+ */
+function sdkPackagesPresent(framework: Framework, io: Pick<InitIo, 'exists'>): boolean {
+  const packages = frameworkPackages(framework);
+  return (
+    packages.length > 0 &&
+    packages.every((p) => io.exists(`${NODE_MODULES_DIR}/${p}/${PACKAGE_JSON}`))
+  );
+}
+
 function applyEffects(
   plan: Plan,
   io: InitIo,
@@ -580,7 +624,9 @@ function applyEffects(
         continue;
       }
       failed.add(s.target);
-      if (s.target === DEPS_TARGET) installFailed = true;
+      // A failed install only blocks the wiring when the packages are genuinely ABSENT. See
+      // sdkPackagesPresent: the guard protects "the import resolves", not "our subprocess exited 0".
+      if (s.target === DEPS_TARGET && !sdkPackagesPresent(plan.framework, io)) installFailed = true;
     }
   }
   return { failed, skipped, degraded };
@@ -651,17 +697,47 @@ function redirectToWorkspaceApp(
 }
 
 export function runInit(options: InitOptions, io: InitIo): InitResult {
+  const result = runInitSteps(options, io);
+  // The ask goes here, not in report(): report() is only the success-shaped path, and the exits that
+  // matter most are the ones that never reach it — no package.json, an ambiguous workspace — where
+  // setup died before anything ran and the person holding the report has the least to go on. This
+  // wrapper is the one point every exit passes through.
+  //
+  // `redirected` is what keeps it to ONE print: wiring an app in a monorepo re-enters runInit for the
+  // chosen directory, and the inner call must not ask again.
+  if (true !== options.redirected) {
+    io.print('');
+    io.print(FEEDBACK_HINT);
+  }
+  return result;
+}
+
+function runInitSteps(options: InitOptions, io: InitIo): InitResult {
   const pkgRaw = io.readFile(PACKAGE_JSON);
+  // Look for the app BEFORE concluding there isn't one.
+  //
+  // A root with no package.json is not a dead end — it is the ordinary shape of a repo whose app
+  // lives one directory down (`frontend/`, `web/`, `client/`) with no manifest at the top. Bailing
+  // first made that repo un-instrumentable: `reticle init` said "No package.json found", and
+  // `--app frontend`, the flag that exists for exactly this, was never read because the bail came
+  // first. Reported twice by the same user, who tried the documented workaround and hit the same
+  // wall. Discovery already handles the case (it scans top-level directories, not just declared
+  // workspaces); it was simply unreachable.
+  //
+  // `'{}'` because the redirect only needs the manifest to ask "is THIS directory the app", and a
+  // directory with no package.json is definitively not.
+  const redirectedEarly = redirectToWorkspaceApp(options, io, pkgRaw ?? '{}');
+  if (redirectedEarly !== null) return redirectedEarly;
   if (null === pkgRaw) {
-    io.print('No package.json found. Run `reticle init` from your project root.');
+    io.print(
+      'No package.json found here, and no app directory beneath it either. Run `reticle init` from ' +
+        "your app's directory, or from a repo root that contains it.",
+    );
     // The onboarding funnel had NO instrumentation, so a setup that died here was indistinguishable
     // from someone who never ran the command — the two failure modes with the most different fixes.
     reportInitOutcome({ ok: false, reason: InitFailure.NO_PACKAGE_JSON });
     return { ok: false, applied: 0, manual: 0 };
   }
-
-  const redirected = redirectToWorkspaceApp(options, io, pkgRaw);
-  if (redirected !== null) return redirected;
 
   // Init is the flow a user experiences the wait of personally, and the fixture gate measures it at
   // 1–6s per app with no explanation of the spread. These three spans split that number into detect

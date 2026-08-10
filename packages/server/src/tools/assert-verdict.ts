@@ -33,6 +33,12 @@ export async function assertVerdict(
   since: number,
   /** Set when the assertion was never evaluated — see honesty/verified.ts. */
   inconclusive?: string,
+  /**
+   * Set when the tab went away mid-wait, so the assertion was never OBSERVED. `reticle_assert` and
+   * `reticle_wait_for` reach the same disconnect path as the act tools, and a verdict that blames
+   * the app for a lost connection is no more honest on this route than on that one.
+   */
+  observationLost?: boolean,
 ): Promise<{
   decision: Record<string, unknown>;
   contradictions: Contradiction[];
@@ -70,6 +76,7 @@ export async function assertVerdict(
   const decision = decideVerified({
     pass,
     ...(inconclusive === undefined ? {} : { inconclusive }),
+    ...(true === observationLost ? { observationLost: true } : {}),
     honesty: buildHonestyBlock({
       grade: gradeOfPredicate(predicate),
       attribution: 'window',

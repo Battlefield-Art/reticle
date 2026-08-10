@@ -47,20 +47,40 @@ async function tagViolations(patterns: string[]): Promise<string[]> {
   );
 }
 
+/**
+ * Generous, because these tests run ESLint over repo-wide globs and that is legitimately slow —
+ * 6.5s on the Windows runner against vitest's 5s default, which is a statement about the machine
+ * rather than about the code. The assertions are `found.length > 10` and "no tags", neither of
+ * which a larger bound can weaken.
+ */
+const SCAN_TIMEOUT_MS = 120_000;
+
 describe('house rule 10 holds in the directories eslint does not lint', () => {
-  it('finds files to check (a passing scan over zero files proves nothing)', async () => {
-    const eslint = new ESLint({ cwd: REPO, overrideConfigFile: true, overrideConfig: [{}] });
-    const found = await eslint.lintFiles(['apps/e2e/**/*.mjs']);
-    expect(found.length).toBeGreaterThan(10);
-  });
+  it(
+    'finds files to check (a passing scan over zero files proves nothing)',
+    async () => {
+      const eslint = new ESLint({ cwd: REPO, overrideConfigFile: true, overrideConfig: [{}] });
+      const found = await eslint.lintFiles(['apps/e2e/**/*.mjs']);
+      expect(found.length).toBeGreaterThan(10);
+    },
+    SCAN_TIMEOUT_MS,
+  );
 
-  it('e2e specs carry no internal tracking tags', async () => {
-    const bad = await tagViolations(['apps/e2e/**/*.mjs']);
-    expect(bad, bad.join('\n')).toEqual([]);
-  });
+  it(
+    'e2e specs carry no internal tracking tags',
+    async () => {
+      const bad = await tagViolations(['apps/e2e/**/*.mjs']);
+      expect(bad, bad.join('\n')).toEqual([]);
+    },
+    SCAN_TIMEOUT_MS,
+  );
 
-  it('bench harnesses carry no internal tracking tags', async () => {
-    const bad = await tagViolations(['bench/**/*.mjs']);
-    expect(bad, bad.join('\n')).toEqual([]);
-  });
+  it(
+    'bench harnesses carry no internal tracking tags',
+    async () => {
+      const bad = await tagViolations(['bench/**/*.mjs']);
+      expect(bad, bad.join('\n')).toEqual([]);
+    },
+    SCAN_TIMEOUT_MS,
+  );
 });

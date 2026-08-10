@@ -137,6 +137,64 @@ describe('UNKNOWN is a distinct answer, never folded into NO', () => {
   });
 });
 
+/**
+ * The false RED. Every other clause in this rule is tuned against claiming more than was observed;
+ * this one was the hole in the other direction.
+ *
+ * Measured twice, on a healthy app: reload the page 300ms into a wait and the verdict came back
+ *
+ *   verified:"no", verifiedReason:"assertion_failed",
+ *   because:"the declared consequence did not hold", source:"src/components/Counter.tsx:18"
+ *
+ * The app was fine. The observer left. An agent reading that goes and edits Counter.tsx.
+ */
+describe('a lost connection is not a failed assertion', () => {
+  it('is UNKNOWN, not NO, when the tab went away mid-wait', () => {
+    const v = decideVerified({
+      pass: false,
+      observationLost: true,
+      honesty: clean(),
+      settled: true,
+    });
+    expect(v.verified).toBe(Verified.UNKNOWN);
+    expect(v.verified).not.toBe(Verified.NO);
+    expect(v.verifiedReason).toBe(VerifiedReason.OBSERVATION_LOST);
+  });
+
+  it('says the tab disconnected, and never that the consequence did not hold', () => {
+    const v = decideVerified({
+      pass: false,
+      observationLost: true,
+      honesty: clean(),
+      settled: true,
+    });
+    expect(v.because).toMatch(/disconnected/);
+    // The specific sentence that sent an agent to the wrong file.
+    expect(v.because).not.toMatch(/did not hold/);
+  });
+
+  it('leaves a GENUINE failure alone — the flag is the only difference', () => {
+    // Identical inputs but for `observationLost`. If this ever goes UNKNOWN, the fix has swallowed
+    // real failures, which is far worse than the bug it replaced.
+    const v = decideVerified({ pass: false, honesty: clean(), settled: true });
+    expect(v.verified).toBe(Verified.NO);
+    expect(v.verifiedReason).toBe(VerifiedReason.ASSERTION_FAILED);
+  });
+
+  it('an assertion nobody could EVALUATE still outranks one nobody could OBSERVE', () => {
+    // Both are "we cannot say", and `inconclusive` names the more specific cause (the agent's own
+    // call), so it must keep leading.
+    const v = decideVerified({
+      pass: false,
+      observationLost: true,
+      inconclusive: 'no store named cart',
+      honesty: clean(),
+      settled: true,
+    });
+    expect(v.verifiedReason).toBe(VerifiedReason.INCONCLUSIVE);
+  });
+});
+
 describe('precedence between competing faults', () => {
   it('reports the failed assertion first, as the most actionable fact', () => {
     const v = decideVerified({
@@ -225,7 +283,7 @@ describe('a stale eviction from earlier in the session must not condemn later ac
 });
 
 /**
- * `verified` has three values and this rule has ten clauses, so the verdict alone throws away the
+ * `verified` has three values and this rule has eleven clauses, so the verdict alone throws away the
  * only thing that says WHO has to act. Measured in a real capture: `unknown` + `passed: false` was
  * indistinguishable between "Reticle caught a real bug", "the agent wrote a bad predicate" and
  * "Reticle itself could not see", and `no` collapsed "channels disagree" into "the agent's predicate
@@ -239,6 +297,14 @@ describe('every verdict names the clause that decided it', () => {
   const branches: Record<VerifiedReason, VerifiedVerdictInput> = {
     [VerifiedReason.INCONCLUSIVE]: { pass: true, honesty: clean(), inconclusive: 'no store named' },
     [VerifiedReason.ASSERTION_FAILED]: { pass: false, honesty: clean(), settled: true },
+    // Same `pass: false` as the row above — the ONLY difference is that the observer left. Those two
+    // rows sitting next to each other is the point: for a long time they produced the same verdict.
+    [VerifiedReason.OBSERVATION_LOST]: {
+      pass: false,
+      honesty: clean(),
+      settled: true,
+      observationLost: true,
+    },
     [VerifiedReason.CONTRADICTED]: {
       pass: true,
       honesty: clean(),

@@ -16,6 +16,15 @@ import { HonestyGrade, type HonestyBlock } from './honesty.js';
 interface VerifiedInputs {
   /** Did the declared consequence hold? Undefined when the action declared none. */
   pass?: boolean;
+  /**
+   * The wait ended because the TAB went away, not because the app did anything.
+   *
+   * A structured flag rather than a match on `failureReason`, which is free prose everywhere else it
+   * is produced and describes what the APP did. A string test here would silently reclassify the
+   * next app-side reason that happened to mention a disconnect, which is the same
+   * confidently-wrong-by-accident this clause exists to remove.
+   */
+  observationLost?: boolean;
   honesty: HonestyBlock;
   /**
    * Set when the assertion could not be EVALUATED at all — an under-specified call, or nothing
@@ -48,7 +57,7 @@ interface VerifiedVerdict {
   verified: Verified;
   /**
    * WHICH clause below decided this, as a closed enum. `verified` has three values and this rule has
-   * ten clauses, so the verdict alone collapses opposite facts — "Reticle caught a real bug", "the
+   * eleven clauses, so the verdict alone collapses opposite facts — "Reticle caught a real bug", "the
    * agent wrote a bad predicate" and "Reticle could not see" all arrived as one string. Named here,
    * beside the sentence, so the vocabulary cannot drift from the branches that produce it.
    */
@@ -68,6 +77,24 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
       verified: Verified.UNKNOWN,
       verifiedReason: VerifiedReason.INCONCLUSIVE,
       because: `the assertion could not be evaluated: ${inputs.inconclusive}`,
+    };
+  }
+
+  // ABOVE the failure clause, because a wait that ended when the tab vanished did not fail — it was
+  // never finished. `waitForPredicate` reports that as `pass: false`, and taking it at face value
+  // made Reticle blame the app, by file and line, for its own lost connection. Measured twice: a
+  // reload 300ms into a wait returned `verified:"no" / assertion_failed` against a healthy Counter.
+  //
+  // UNKNOWN, for the same reason `unclean_capture` is: the evidence is ABSENT, not negative.
+  if (true === inputs.observationLost) {
+    return {
+      verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.OBSERVATION_LOST,
+      because:
+        'the tab disconnected while this action was being observed, so its outcome was never ' +
+        'seen — this says nothing about the app. Call reticle_sessions for the current session ' +
+        '(a reloaded tab keeps its id; a closed one is gone) and repeat the action if it is safe ' +
+        'to repeat',
     };
   }
 

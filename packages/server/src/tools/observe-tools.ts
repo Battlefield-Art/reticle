@@ -267,6 +267,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       pass: z.boolean(),
       evidence: z.unknown().optional(),
       failureReason: z.string().optional(),
+      observationLost: z
+        .boolean()
+        .optional()
+        .describe(
+          'The tab disconnected mid-wait, so this was never observed — the verdict is UNKNOWN, not a failure of the app.',
+        ),
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
@@ -348,6 +354,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       pass: z.boolean(),
       evidence: z.unknown().optional(),
       failureReason: z.string().optional(),
+      observationLost: z
+        .boolean()
+        .optional()
+        .describe(
+          'The tab disconnected mid-wait, so this was never observed — the verdict is UNKNOWN, not a failure of the app.',
+        ),
       advice: z
         .string()
         .optional()
@@ -422,6 +434,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         verdict.pass,
         since,
         verdict.inconclusive,
+        verdict.observationLost,
       );
       return withControl(session, {
         ...decision,

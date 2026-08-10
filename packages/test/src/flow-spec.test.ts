@@ -18,53 +18,68 @@ const FIXED_MS = 1_700_000_000_000;
 const fixedClock: Clock = { now: () => FIXED_MS };
 
 /** An in-memory FileSystemPort over .reticle/flows so a unit test never touches the repo. */
+/**
+ * Normalise separators at the boundary.
+ *
+ * These fixtures are keyed with POSIX paths, and the code under test builds its paths with `join()`
+ * — correctly, because those paths are real on a user's disk. On Windows that yields backslashes,
+ * every lookup here missed, and `list()` returned nothing: six tests failed by enumerating an empty
+ * store rather than by anything being wrong. The same fixture bug existed in two other packages.
+ *
+ * Normalising in the PORT, not in the assertions, keeps every test written in one style and means a
+ * new one cannot reintroduce it.
+ */
+const norm = (p: string): string => p.replace(/\\/g, '/');
+
 function memoryFs(files: Record<string, string>): FileSystemPort {
   const store = new Map<string, string>(Object.entries(files));
   return {
     readFile: (path) => {
-      const v = store.get(path);
+      const v = store.get(norm(path));
       if (v === undefined)
         return Promise.reject(Object.assign(new Error('enoent'), { code: 'ENOENT' }));
       return Promise.resolve(v);
     },
     writeFile: (path, data) => {
-      store.set(path, data);
+      store.set(norm(path), data);
       return Promise.resolve();
     },
     appendFile: (path, data) => {
-      store.set(path, (store.get(path) ?? '') + data);
+      store.set(norm(path), (store.get(norm(path)) ?? '') + data);
       return Promise.resolve();
     },
     readFileBytes: (path) => {
-      const v = store.get(path);
+      const v = store.get(norm(path));
       if (v === undefined)
         return Promise.reject(Object.assign(new Error('enoent'), { code: 'ENOENT' }));
       return Promise.resolve(new TextEncoder().encode(v));
     },
     writeFileBytes: (path, data) => {
-      store.set(path, new TextDecoder().decode(data));
+      store.set(norm(path), new TextDecoder().decode(data));
       return Promise.resolve();
     },
     mkdir: () => Promise.resolve(),
     exists: (path) =>
-      Promise.resolve(store.has(path) || [...store.keys()].some((k) => k.startsWith(`${path}/`))),
+      Promise.resolve(
+        store.has(norm(path)) || [...store.keys()].some((k) => k.startsWith(`${norm(path)}/`)),
+      ),
     readdir: (path) =>
       Promise.resolve(
         [...store.keys()]
-          .filter((k) => k.startsWith(`${path}/`))
-          .map((k) => k.slice(path.length + 1))
+          .filter((k) => k.startsWith(`${norm(path)}/`))
+          .map((k) => k.slice(norm(path).length + 1))
           .filter((k) => !k.includes('/')),
       ),
     rename: (from, to) => {
-      const v = store.get(from);
+      const v = store.get(norm(from));
       if (v !== undefined) {
-        store.set(to, v);
-        store.delete(from);
+        store.set(norm(to), v);
+        store.delete(norm(from));
       }
       return Promise.resolve();
     },
     rm: (path) => {
-      store.delete(path);
+      store.delete(norm(path));
       return Promise.resolve();
     },
     stat: () => Promise.resolve({ mtimeMs: 0 }),

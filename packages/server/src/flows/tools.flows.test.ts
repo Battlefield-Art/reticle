@@ -15,12 +15,16 @@ import type { CompiledProgram, RecordedStep } from './recordings.js';
 const ROOT = '/virtual/.reticle';
 
 /** In-memory FileSystemPort — proves the tool wiring without touching the real disk. */
+/** Separators normalised at the port — the code under test joins paths with the platform
+ *  separator, and these keys are POSIX. Sixth instance of this fixture bug on this branch. */
+const norm = (p: string): string => p.split('\\').join('/');
+
 function memoryFs(): FileSystemPort {
   const files = new Map<string, string>();
   const dirs = new Set<string>();
   return {
     readFile(path) {
-      const v = files.get(path);
+      const v = files.get(norm(path));
       if (v === undefined) {
         const err: NodeJS.ErrnoException = new Error('ENOENT');
         err.code = 'ENOENT';
@@ -29,15 +33,15 @@ function memoryFs(): FileSystemPort {
       return Promise.resolve(v);
     },
     writeFile(path, data) {
-      files.set(path, data);
+      files.set(norm(path), data);
       return Promise.resolve();
     },
     appendFile(path, data) {
-      files.set(path, (files.get(path) ?? '') + data);
+      files.set(norm(path), (files.get(norm(path)) ?? '') + data);
       return Promise.resolve();
     },
     readFileBytes(path) {
-      const v = files.get(path);
+      const v = files.get(norm(path));
       if (v === undefined) {
         const err: NodeJS.ErrnoException = new Error('ENOENT');
         err.code = 'ENOENT';
@@ -46,18 +50,18 @@ function memoryFs(): FileSystemPort {
       return Promise.resolve(new TextEncoder().encode(v));
     },
     writeFileBytes(path, data) {
-      files.set(path, new TextDecoder().decode(data));
+      files.set(norm(path), new TextDecoder().decode(data));
       return Promise.resolve();
     },
     mkdir(path) {
-      dirs.add(path);
+      dirs.add(norm(path));
       return Promise.resolve();
     },
     exists(path) {
-      return Promise.resolve(files.has(path) || dirs.has(path));
+      return Promise.resolve(files.has(norm(path)) || dirs.has(norm(path)));
     },
     readdir(path) {
-      const prefix = `${path}/`;
+      const prefix = `${norm(path)}/`;
       const names = new Set<string>();
       for (const f of files.keys()) {
         if (f.startsWith(prefix)) names.add(f.slice(prefix.length).split('/')[0] ?? '');
@@ -73,7 +77,7 @@ function memoryFs(): FileSystemPort {
       return Promise.resolve();
     },
     rm(path) {
-      files.delete(path);
+      files.delete(norm(path));
       return Promise.resolve();
     },
     stat() {

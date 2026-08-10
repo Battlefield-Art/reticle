@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { freePortSafely, sweepBatteryOrphans } from './gate-harness.mjs';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const specsDir = path.join(dir, 'specs');
@@ -23,6 +24,25 @@ const ORDER = [
   // Also needs no browser and no servers: a fake MCP peer and a hand-rolled HELLO, both LYING about
   // their contract. Runs early for the same reason — it is a cheap check that the three pieces agree.
   'version-skew-test',
+  // Also serverless and browserless: it drives five tool calls and then reads the call tree the
+  // daemon emitted while doing it. The trace is produced on every RETICLE_TRACE=1 run and was
+  // discarded; it carries the hang signature (a completed child span with no completed parent),
+  // which nothing else here can see.
+  'trace-shape-test',
+  // Serverless too: it holds the bridge port with a plain socket and checks that serve, status and
+  // doctor all say so. They used to report a spawn, `running:false`, and "not running" — three
+  // surfaces disagreeing, none of them naming the port, and the truth only in the daemon's own log.
+  'daemon-port-honesty-test',
+  // Serverless as well: it starts a real daemon with a fast heartbeat, SIGKILLs it, and reads the
+  // daemon's own log back. A killed daemon used to leave NOTHING (installExitTrace hooks 'exit',
+  // which SIGKILL never fires) while a tidy one logged code:0 — so the two were indistinguishable in
+  // the one file users are told to open.
+  'daemon-heartbeat-test',
+  // Serverless as well: a fault proxy sits between the MCP proxy and a real daemon and breaks the
+  // link in NAMED ways — reset, blackhole, truncate, latency — instead of SIGKILLing a process. It
+  // separates the two unanswered-call populations by their timing: a queued call is answered by the
+  // 20s queue timer, a call broken IN FLIGHT by the stream-loss path in well under a second.
+  'transport-faults-test',
   'next-smoke-test',
   'next-blur-clock-test',
   'status-honesty-test',
@@ -133,17 +153,18 @@ const BRIDGE_PORT = 4400;
  * cannot be — a diagnosis is worth more than a cascade.
  */
 async function freePort() {
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    // No `-sTCP:LISTEN`: a socket being torn down still holds the port and still causes EADDRINUSE.
-    const held = await sh(`lsof -tiTCP:${String(BRIDGE_PORT)} 2>/dev/null`);
-    if (held === '') return;
-    const signal = attempt < 3 ? '' : '-9';
-    await sh(`kill ${signal} ${held.split('\n').join(' ')} 2>/dev/null; sleep 0.4`);
-  }
-  const stillHeld = await sh(`lsof -tiTCP:${String(BRIDGE_PORT)} 2>/dev/null`);
-  if (stillHeld !== '') {
+  // Listeners first, then — only if the port is still held — everything else, named before it is
+  // touched. The previous version killed every holder on the first pass, which on 4400 includes any
+  // `reticle mcp` proxy attached to the daemon: a developer running the battery with their own agent
+  // connected lost that agent's transport, silently, with no log (the process that writes the proxy
+  // log is the one that dies). See apps/e2e/harness-rules.md.
+  const { freed, survivors } = await freePortSafely(BRIDGE_PORT, {
+    onNote: (note) => process.stdout.write(`\n[e2e] ${note}\n`),
+  });
+  if (!freed) {
     process.stdout.write(
-      `\n[e2e] port ${String(BRIDGE_PORT)} is STILL held by pid(s) ${stillHeld.split('\n').join(', ')} — ` +
+      `\n[e2e] port ${String(BRIDGE_PORT)} is STILL held by ` +
+        `${survivors.map((h) => `pid ${h.pid} (${h.command})`).join(', ')} — ` +
         `every spec below will fail with EADDRINUSE for that reason and not their own.\n`,
     );
   }
@@ -171,6 +192,17 @@ async function freePort() {
  * letting a different innocent spec fail each time.
  */
 async function warnAboutForeignSessions() {
+  // Before anything: clear what a KILLED previous battery left running. Its trap never ran, so a
+  // driven browser and an MCP proxy may still be up, competing for this port and for memory. A run
+  // that inherits those reports interleaved failures and SIGKILLs that read exactly like a product
+  // regression — measured once at 17 of 31 specs, none of it real. See apps/e2e/harness-rules.md.
+  // Processes only — no ports. run-ci.sh boots api:8787, bench-app:4310 and next-smoke:3100 BEFORE
+  // this runs, so anything holding those is almost certainly this run's own fixture. Passing them
+  // here once killed all three and failed 19 specs. The bridge port is freed by freePort() below,
+  // which owns that decision.
+  await sweepBatteryOrphans([], {
+    onNote: (note) => process.stdout.write(`[e2e] ${note}\n`),
+  });
   await freePort();
   const daemon = spawn('node', ['packages/server/dist/cli.js', 'serve', '--port', String(BRIDGE_PORT)], {
     stdio: 'ignore',

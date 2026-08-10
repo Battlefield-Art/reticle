@@ -34,7 +34,7 @@ For a browser app, install `@reticlehq/react` plus the build plugin for your fra
 In your app's project root, add an `.npmrc` (scopes only `@reticle` to the local registry; everything else still comes from npm):
 
 ```ini
-@reticle:registry=http://localhost:4873/
+@reticlehq:registry=http://localhost:4873/
 ```
 
 ## 3. Install + wire it up

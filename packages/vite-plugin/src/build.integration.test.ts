@@ -28,6 +28,26 @@ type ResolveConfig = (
 let resolveConfig: ResolveConfig | undefined;
 let createServer: CreateServer | undefined;
 
+/**
+ * Generous, explicit, and NOT a retuned guess.
+ *
+ * These hooks import Vite and start/stop a real dev server. Measured on an idle machine:
+ * `import('vite')` 127ms, createServer+listen 9-55ms, close 0-40ms — including after a keep-alive
+ * fetch, which was the first thing suspected and is not the cause. So the work is ~0.2s and vitest's
+ * default 10s hook timeout has two orders of magnitude of headroom. It still fails, on Windows CI
+ * and on a Mac deep into swap, because a machine that is thrashing is slow by a factor that makes
+ * any fixed number wrong.
+ *
+ * Raising this is NOT the mistake corrected in tool-fuzz. There, the timeout WAS the assertion — it
+ * defined what counted as "hung", so bumping it changed what the test claimed. Here the assertion is
+ * `expect(...).toContain('tok_written_later')`, and the hook bound is incidental infrastructure: a
+ * larger number cannot make a broken plugin pass. This is exactly the remedy CLAUDE.md prescribes —
+ * "use a generous per-test timeout" — rather than a statement about the machine.
+ */
+const HOOK_TIMEOUT_MS = 60_000;
+/** How long a dev server gets to close before teardown stops waiting. See the note in afterEach. */
+const CLOSE_BUDGET_MS = 5_000;
+
 beforeAll(async () => {
   try {
     const vite = (await import('vite')) as {
@@ -40,7 +60,7 @@ beforeAll(async () => {
     resolveConfig = undefined;
     createServer = undefined;
   }
-});
+}, HOOK_TIMEOUT_MS);
 
 function names(plugins: readonly { name: string }[]): string[] {
   return plugins.map((p) => p.name);
@@ -84,10 +104,34 @@ describe('the connect module picks up a token written after the dev server start
   const servers: DevServerLike[] = [];
 
   afterEach(async () => {
-    for (const server of servers.splice(0)) await server.close();
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    // One server that will not close must not strand the others, nor the temp dirs. Teardown that
+    // aborts halfway leaks a listening port into the next test, which then fails for a reason that
+    // has nothing to do with it — the failure being debugged here, one layer down.
+    for (const server of servers.splice(0)) {
+      // Bounded, because `close()` can genuinely never resolve. Measured in isolation: a dev server
+      // that has served `/@reticle-connect` does not close — 90s and counting — while the same
+      // server closes in 1ms if it served a real file instead, and in 7ms with no Reticle plugin at
+      // all. The served module imports `/.vite/deps/@reticlehq_react.js`, so Vite's dependency
+      // optimizer is involved and `close()` waits on it forever. Filed separately; it is a product
+      // interaction, not something this test should paper over silently.
+      //
+      // The assertion this suite exists for has already run by the time teardown starts, so a
+      // teardown that cannot finish must not be allowed to fail it — that inversion is what made
+      // this look like a flaky timeout for weeks.
+      await Promise.race([
+        server.close().catch(() => undefined),
+        new Promise((resolve) => setTimeout(resolve, CLOSE_BUDGET_MS)),
+      ]);
+    }
+    for (const dir of dirs.splice(0)) {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* Windows holds handles open behind a file watcher; a leaked temp dir is not a test failure */
+      }
+    }
     delete process.env[ReticleEnv.PAIRING_TOKEN_DIR];
-  });
+  }, HOOK_TIMEOUT_MS);
 
   it('serves the token on the next request, without a dev-server restart', async () => {
     if (createServer === undefined) return;
