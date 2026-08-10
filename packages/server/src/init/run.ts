@@ -55,12 +55,7 @@ import { claudeAvailableProbe, claudeExistsProbe } from './mcp.js';
 import { reticleDevLocation } from './next-patch.js';
 import { scanTestids, storeHints } from './capabilities.js';
 import { CURSOR_DIR_RELPATH, CURSOR_MCP_RELPATH } from './cursor.js';
-import {
-  fileBackedClients,
-  clientMarkerRelPath,
-  ConfigScope,
-  McpClient,
-} from './mcp-clients.js';
+import { fileBackedClients, clientMarkerRelPath, ConfigScope, McpClient } from './mcp-clients.js';
 import { deriveProjectId, packageName } from './project-id.js';
 import { VITE_DEV_MODULE_PATH } from './snippets.js';
 import { CLAUDE_COMMAND_PATH, CURSOR_COMMAND_PATH } from './slash-command.js';
