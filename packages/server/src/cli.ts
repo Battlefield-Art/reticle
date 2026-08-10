@@ -635,7 +635,23 @@ function handleMcp(opts: {
     })
     .finally(() => {
       // Also `void`: the proxy runs for the life of the process and is never awaited by anyone.
-      void startMcpProxy(port, ensure);
+      //
+      // The `.catch` is load-bearing despite that. `startMcpProxy` rejects when its FIRST connect
+      // fails — which is precisely the case this block exists to tolerate, a daemon that is not
+      // there yet — and with nothing attached that reject became an unhandledRejection. Reported
+      // from a win32 user as a crash reading `connect ECONNREFUSED` with an EMPTY frame list,
+      // because the stack of a refused socket is entirely node internals and the privacy filter
+      // keeps only Reticle frames. So the one path we most want diagnosable arrived as an anonymous
+      // crash. The proxy itself is unaffected — it has already installed its stdin reader and goes
+      // on serving from cache, waking a daemon on the next request — which is exactly why this
+      // must be logged as the expected condition it is rather than reported as a defect.
+      void startMcpProxy(port, ensure).catch((err: unknown) => {
+        log('reticle_mcp_proxy_first_connect_failed', {
+          port,
+          error: err instanceof Error ? err.message : String(err),
+          note: 'serving from cache; the next client request will try to start a daemon',
+        });
+      });
     });
 }
 
