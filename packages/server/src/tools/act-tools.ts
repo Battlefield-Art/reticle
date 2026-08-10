@@ -314,12 +314,12 @@ export const ACT_TOOLS: ToolDef[] = [
         pass: z.boolean(),
         evidence: z.unknown().optional(),
         failureReason: z.string().optional(),
-      observationLost: z
-        .boolean()
-        .optional()
-        .describe(
-          'The tab disconnected mid-wait, so this was never observed — the verdict is UNKNOWN, not a failure of the app.',
-        ),
+        observationLost: z
+          .boolean()
+          .optional()
+          .describe(
+            'The tab disconnected mid-wait, so this was never observed — the verdict is UNKNOWN, not a failure of the app.',
+          ),
         // The STRUCTURED cause — observed / expected / assertion — is what the repair literature ranks
         // above the prose failureReason (structured feedback beat narrative by 10.5pp) and above a bare
         // pointer. `verdict` is `await waitForPredicate(...)`, whose EvalResult carries these on a
