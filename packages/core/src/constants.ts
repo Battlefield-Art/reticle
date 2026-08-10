@@ -80,6 +80,14 @@ export const ReticleEnv = {
    * killing live runs mid-install. Derived from the base when unset.
    */
   IDLE_ATTACHED: 'RETICLE_IDLE_ATTACHED_MS',
+  /**
+   * How often the daemon writes `reticle_daemon_alive`, so a GAP in its log is evidence it died.
+   *
+   * Overridable for the same reason the idle windows are: a spec that has to prove "a killed daemon
+   * is distinguishable from a tidy one" cannot wait 30 seconds per beat, and a spec that instead
+   * re-implements the cadence is insensitive to the thing it claims to guard.
+   */
+  HEARTBEAT: 'RETICLE_HEARTBEAT_MS',
   /** Directory holding the auto-provisioned pairing token. Defaults to ~/.reticle; relocatable for CI. */
   PAIRING_TOKEN_DIR: 'RETICLE_PAIRING_TOKEN_DIR',
   /** Force the durable causal journal off (`0`/`false`/`off`) or on (`1`/`true`/`on`); default on. */

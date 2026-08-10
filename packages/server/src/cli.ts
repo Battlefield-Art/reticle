@@ -45,6 +45,8 @@ import {
 } from './mcp/mcp-proxy.js';
 import { installDaemonResilience, installProxyResilience } from './daemon/daemon-resilience.js';
 import { IdleShutdown, resolveIdleShutdownMs, resolveIdleCheckMs } from './daemon/idle-shutdown.js';
+import { DaemonHeartbeat, resolveHeartbeatMs } from './daemon/heartbeat.js';
+import { everServedToolCall } from './daemon/daemon-usefulness.js';
 import {
   fetchStatus,
   summarizeStatus,
@@ -536,6 +538,19 @@ function handleDaemonInner(parsed: {
         },
       });
       idleShutdown.start();
+      // Say so, regularly, so a GAP in this log is itself evidence. `installExitTrace` hooks
+      // `'exit'`, which a SIGKILL never fires — so a killed daemon left nothing behind, and the one
+      // that exited tidily logged `code: 0`. A reader could not tell "shut down cleanly" from "the
+      // bridge every app on this machine needs is gone", and a correct SvelteKit install was written
+      // up as an install failure on exactly that ambiguity. See daemon/heartbeat.ts.
+      new DaemonHeartbeat({
+        log,
+        intervalMs: resolveHeartbeatMs(process.env[ReticleEnv.HEARTBEAT]),
+        facts: () => ({
+          sessions: server.bridge.sessions.count(),
+          served: everServedToolCall(),
+        }),
+      }).start();
     })
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);

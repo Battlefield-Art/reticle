@@ -33,6 +33,11 @@ const ORDER = [
   // doctor all say so. They used to report a spawn, `running:false`, and "not running" — three
   // surfaces disagreeing, none of them naming the port, and the truth only in the daemon's own log.
   'daemon-port-honesty-test',
+  // Serverless as well: it starts a real daemon with a fast heartbeat, SIGKILLs it, and reads the
+  // daemon's own log back. A killed daemon used to leave NOTHING (installExitTrace hooks 'exit',
+  // which SIGKILL never fires) while a tidy one logged code:0 — so the two were indistinguishable in
+  // the one file users are told to open.
+  'daemon-heartbeat-test',
   'next-smoke-test',
   'next-blur-clock-test',
   'status-honesty-test',

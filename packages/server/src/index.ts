@@ -100,6 +100,16 @@ export type { Lease, Launcher, PooledBrowser } from './pool/browser-pool.js';
 export { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launcher.js';
 export { appendReticleParams } from './tools/lease-tools.js';
 export { writePid, removePid, isRunning, logPath, readPid, isAlive } from './daemon/daemon.js';
+// The daemon's own liveness vocabulary, exported so a GATE can read a daemon log back and say how
+// that daemon ended. Without this the battery would re-implement the rule, and a guard that
+// re-implements what it guards is insensitive to it.
+export {
+  classifyDaemonLife,
+  DaemonEnd,
+  DAEMON_HEARTBEAT_EVENT,
+  DAEMON_HEARTBEAT_MS,
+  type DaemonLife,
+} from './daemon/heartbeat.js';
 export type { CrawlReport, CrawlAnomaly, CrawlOptions, CrawlSession } from './crawl/crawl.js';
 export { scrollToFind } from './input/scroll-find.js';
 export type { ScrollFindResult, ScrollFindQuery, ScrollFindSession } from './input/scroll-find.js';

@@ -102,7 +102,7 @@ Still fragile:
 | idle shutdown fires mid-install | **yes** | 5min base / 30min attached — already scored three fixtures as install failures |
 | `isUselessDaemon` ends a daemon that served nothing | **yes** | lifetime facts, but a gate that installs for six minutes before its first call is that daemon |
 | a daemon spawned inside a tool call is reaped when the call ends | **yes** | `SIGTERM` within ~1s, `detached` or not |
-| no `daemon_alive` heartbeat | **yes** | a killed daemon and a tidy exit read identically (#123) |
+| no `daemon_alive` heartbeat | **fixed** | a killed daemon and a tidy exit used to read identically; the daemon now beats every 30s and `classifyDaemonLife` turns silence into `died_silently` (#123) |
 | no port arbitration | **yes** | a second daemon can bind a port a first one held |
 
 ### Hop 4 — bridge ↔ SDK
