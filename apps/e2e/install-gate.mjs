@@ -20,7 +20,7 @@
 //   node apps/e2e/install-gate.mjs --only next-pages-router [--keep]
 //   pnpm gate:install:self-test       # negative control: every scaffold must go RED
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,18 +58,76 @@ const ONLY = process.argv.includes('--only')
   : undefined;
 
 /**
- * The SDK packages an app must resolve to THIS checkout, not to npm.
+ * A LOCAL REGISTRY, not `file:` wiring.
  *
- * Wired by `file:` alias rather than by installing tarballs. That is the fixtures repo's rule and it
- * was learned expensively: repeated `npm install --no-save @reticlehq/*.tgz` pruned MUI's transitive
- * dependencies out of one app and pulled a PUBLISHED @reticlehq/core alongside a local plugin in
- * another. Both then failed in ways that looked like Reticle bugs and were not.
+ * Three approaches were tried and two are dead ends, which is worth writing down because both look
+ * reasonable:
+ *
+ *   - tarballs: the fixtures repo's rule against them stands — repeated `npm i --no-save *.tgz`
+ *     pruned transitive deps and mixed a published core with a local plugin.
+ *   - `file:` deps: npm SYMLINKS them, which Vite resolves and Next does not (`Can't resolve
+ *     '@reticlehq/react'` from pages/_app). `--install-links` copies instead, and then npm cannot
+ *     resolve `workspace:*` at all — EUNSUPPORTEDPROTOCOL.
+ *
+ * Verdaccio is the documented answer (docs/local-registry.md) and the only one that produces a REAL
+ * install: `pnpm publish` resolves `workspace:*` to concrete versions, and the app then runs the same
+ * `npm i @reticlehq/...` a user runs. It also lets `init` do its OWN dependency install, which is a
+ * step the gate previously had to skip and then excuse.
  */
-const SHARED_PACKAGES = {
-  '@reticlehq/core': 'packages/core',
-  '@reticlehq/browser': 'packages/browser',
-  '@reticlehq/react': 'packages/react',
-};
+const REGISTRY_PORT = Number(process.env.INSTALL_GATE_REGISTRY_PORT ?? '4873');
+const REGISTRY = `http://localhost:${String(REGISTRY_PORT)}`;
+
+async function startLocalRegistry() {
+  await freePortSafely(REGISTRY_PORT);
+  rmSync('/tmp/reticle-install-gate-verdaccio', { recursive: true, force: true });
+  const proc = spawn(
+    'npx',
+    ['--yes', 'verdaccio@latest', '--config', join(ROOT, 'scripts/verdaccio.yaml')],
+    { cwd: ROOT, detached: true, stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  const log = [];
+  proc.stdout.on('data', (d) => log.push(String(d)));
+  proc.stderr.on('data', (d) => log.push(String(d)));
+
+  const deadline = Date.now() + 90_000;
+  let up = false;
+  while (Date.now() < deadline) {
+    if (await reachable(`${REGISTRY}/-/ping`)) {
+      up = true;
+      break;
+    }
+    await sleep(500);
+  }
+  if (!up) throw new Error(`verdaccio did not start on ${REGISTRY}: ${log.join('').slice(-400)}`);
+
+  const res = await fetch(`${REGISTRY}/-/user/org.couchdb.user:reticle`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      _id: 'org.couchdb.user:reticle',
+      name: 'reticle',
+      password: 'reticle',
+      type: 'user',
+      roles: [],
+      date: '2026-01-01T00:00:00.000Z',
+    }),
+  });
+  const token = (await res.json())?.token;
+  if (typeof token !== 'string' || token === '') throw new Error('no token from verdaccio');
+
+  // The token goes in the ENVIRONMENT, never in ~/.npmrc. scripts/local-registry.sh appends to the
+  // developer's global npmrc and strips it again on exit; a gate has no business editing that file
+  // at all, and a killed run would leave the token behind.
+  const auth = { [`npm_config_//localhost:${String(REGISTRY_PORT)}/:_authToken`]: token };
+  run('pnpm', ['-r', 'publish', '--registry', REGISTRY, '--no-git-checks'], ROOT, auth);
+  return { proc, auth, stop: () => {
+    try {
+      process.kill(-proc.pid, 'SIGTERM');
+    } catch {
+      /* already gone */
+    }
+  } };
+}
 
 /**
  * One per DISTINCT init path. Not one per framework anyone can name — a scaffold that exercises a
@@ -81,7 +139,6 @@ const SCAFFOLDS = [
     what: 'Vite + React — the vite-plugin path (config patch + injected connect)',
     create: ['npm', ['create', 'vite@latest', 'app', '--yes', '--', '--template', 'react-ts']],
     dev: (port) => ['npm', ['run', 'dev', '--', '--port', String(port), '--strictPort']],
-    packages: { ...SHARED_PACKAGES, '@reticlehq/vite-plugin': 'packages/vite-plugin' },
   },
   {
     id: 'next-app-router',
@@ -103,7 +160,6 @@ const SCAFFOLDS = [
       ],
     ],
     dev: (port) => ['npm', ['run', 'dev', '--', '-p', String(port)]],
-    packages: { ...SHARED_PACKAGES, '@reticlehq/next': 'packages/next' },
   },
   {
     id: 'next-pages-router',
@@ -128,7 +184,6 @@ const SCAFFOLDS = [
       ],
     ],
     dev: (port) => ['npm', ['run', 'dev', '--', '-p', String(port)]],
-    packages: { ...SHARED_PACKAGES, '@reticlehq/next': 'packages/next' },
   },
 ];
 
@@ -204,35 +259,29 @@ async function driveScaffold(scaffold, index) {
       'no @reticlehq in the fresh package.json',
     );
 
-    // ── 2. point it at THIS checkout ───────────────────────────────────────────────────────────
-    pkg.dependencies = pkg.dependencies ?? {};
-    for (const [name, rel] of Object.entries(scaffold.packages)) {
-      pkg.dependencies[name] = `file:${join(ROOT, rel)}`;
-    }
-    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-    note('installing (local SDK by file: alias, never a tarball)…');
+    // ── 2. point the app's @reticlehq scope at the local registry ─────────────────────────────
+    // The scope must be spelled EXACTLY. `@reticle:registry=` — which this repo's own docs carried
+    // until a moment ago — matches nothing, so npm silently falls through to the public registry and
+    // the gate would measure the published SDK while reporting on local changes.
+    writeFileSync(join(app, '.npmrc'), `@reticlehq:registry=${REGISTRY}\n`);
     run('npm', ['install', '--no-audit', '--no-fund'], app);
 
     // ── 3. the thing under test ────────────────────────────────────────────────────────────────
     // `--no-mcp` for the reason the fixtures gate uses it: registering the MCP server edits global
     // machine state (~/.cursor/mcp.json, the developer's own CLAUDE.md). The gate measures the SDK
     // install, not what it does to whoever runs it.
-    // `--no-install` because the deps are already pinned to this checkout; letting init install would
-    // pull the PUBLISHED SDK over the local one and quietly measure the wrong code.
+    //
+    // init DOES its own dependency install here, from the local registry. That is the whole point of
+    // the registry: the previous `file:`-wired version had to pass `--no-install` and then excuse the
+    // ⚠ it produced, which meant the one step most likely to regress was the one step not tested.
     let report = '';
     let initExit = 0;
     try {
       report = run(
         'node',
-        [
-          CLI,
-          'init',
-          '--port',
-          String(SELF_TEST ? bridgePort + 1 : bridgePort),
-          '--no-mcp',
-          '--no-install',
-        ],
+        [CLI, 'init', '--port', String(SELF_TEST ? bridgePort + 1 : bridgePort), '--no-mcp'],
         app,
+        { npm_config_registry: REGISTRY },
       );
     } catch (err) {
       initExit = err.status ?? 1;
@@ -248,40 +297,33 @@ async function driveScaffold(scaffold, index) {
 
     chk('init exits 0', initExit === 0, `exit ${String(initExit)}`);
 
-    // The load-bearing assertion. A ⚠ is a step nothing performed, so the app never dials the bridge
-    // and every tool answers "no browser session connected" — a green-looking install that cannot
-    // work.
-    //
-    // Exactly ONE ⚠ is tolerated: `--no-install` means init does not run the package manager, so it
-    // correctly reports the dependency step as the caller's to do, and the gate already did it with
-    // `file:` paths into this checkout. The exemption is narrow on purpose — excusing "the install
-    // step" in general would excuse the class of regression this gate exists to catch — so it is
-    // verified twice: the ⚠ must BE that step, and the resolved packages must really be the local
-    // ones.
+    // The load-bearing assertion, and now an absolute one. A ⚠ is a step nothing performed, so the
+    // app never dials the bridge and every tool answers "no browser session connected" — a
+    // green-looking install that cannot work. The earlier version of this gate tolerated one ⚠ and
+    // had to argue for it; running against a real registry removes the argument.
     const manualLines = report.split('\n').filter((l) => l.includes('[⚠]'));
-    const unexpected = manualLines.filter((l) => !/Install dependencies/i.test(l));
     chk(
-      'init leaves no manual step the gate did not already perform',
-      unexpected.length === 0,
-      unexpected.length === 0
-        ? `${String(manualLines.length)} ⚠ (the expected --no-install one)`
-        : unexpected.join(' | ').trim(),
+      'init leaves ZERO manual steps',
+      manualLines.length === 0,
+      manualLines.length === 0 ? 'no ⚠' : manualLines.join(' | ').trim(),
     );
 
-    const wired = Object.entries(scaffold.packages).filter(([name, rel]) => {
+    // The SDK must have come from the registry we published to, not from public npm.
+    const lock = (() => {
       try {
-        return realpathSync(join(app, 'node_modules', name)).startsWith(
-          realpathSync(join(ROOT, rel)),
-        );
+        return readFileSync(join(app, 'package-lock.json'), 'utf8');
       } catch {
-        return false;
+        return '';
       }
-    });
+    })();
     chk(
-      '  and the SDK the app resolves is THIS checkout, not npm',
-      wired.length === Object.keys(scaffold.packages).length,
-      `${String(wired.length)}/${String(Object.keys(scaffold.packages).length)} linked into the repo`,
+      '  and it came from the LOCAL registry, not public npm',
+      lock.includes(`localhost:${String(REGISTRY_PORT)}`),
+      lock.includes(`localhost:${String(REGISTRY_PORT)}`)
+        ? 'resolved against the local registry'
+        : 'package-lock does not reference the local registry — this measured PUBLISHED code',
     );
+
     chk(
       '  and init applied something — a run of all `·` would mean it found nothing to do',
       (report.match(/\[✓\]/g) ?? []).length > 0,
@@ -391,9 +433,20 @@ if (chosen.length === 0) {
   process.exit(1);
 }
 
+let registry;
 const results = [];
-for (const [index, scaffold] of chosen.entries()) {
-  results.push(await driveScaffold(scaffold, index));
+try {
+  console.log('   · publishing @reticlehq/* to a local registry…');
+  registry = await startLocalRegistry();
+  for (const [index, scaffold] of chosen.entries()) {
+    results.push(await driveScaffold(scaffold, index));
+  }
+} catch (err) {
+  console.log(`   ❌ the gate could not start: ${String(err).slice(0, 300)}`);
+  results.push({ id: 'setup', pass: 0, fail: 1 });
+} finally {
+  if (registry !== undefined) registry.stop();
+  await freePortSafely(REGISTRY_PORT);
 }
 
 console.log('\n──────── summary ────────');
