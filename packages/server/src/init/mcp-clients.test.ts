@@ -43,7 +43,9 @@ describe('the client registry', () => {
 
   it('no two clients claim the same config path', () => {
     // A collision here would mean writing one client's shape into another's file.
-    const paths = MCP_CLIENTS.filter((s) => s.scope !== 'cli').map((s) => `${s.scope}:${s.relPath}`);
+    const paths = MCP_CLIENTS.filter((s) => s.scope !== 'cli').map(
+      (s) => `${s.scope}:${s.relPath}`,
+    );
     expect(new Set(paths).size).toBe(paths.length);
   });
 
@@ -95,11 +97,17 @@ describe('the mcpServers-shaped clients', () => {
 });
 
 describe('opencode', () => {
+  /** Narrow once: the map is `unknown` to the type system but is asserted present by the test itself. */
+  const openCodeEntry = (content: string): Record<string, unknown> => {
+    const mcp = parse(content)['mcp'] as Record<string, Record<string, unknown>> | undefined;
+    const found = mcp?.[MCP_SERVER_NAME];
+    expect(found, 'opencode entry missing').toBeDefined();
+    return found as Record<string, unknown>;
+  };
+
   it('uses `mcp`, and its command is an ARRAY that includes the command itself', () => {
     const result = mergeClientConfig(clientSpec(McpClient.OPENCODE), null);
-    const entry = (parse(result.content)['mcp'] as Record<string, Record<string, unknown>>)[
-      MCP_SERVER_NAME
-    ];
+    const entry = openCodeEntry(result.content);
     expect(entry['type']).toBe('local');
     expect(Array.isArray(entry['command'])).toBe(true);
     // The shape a `{command, args}` assumption would get wrong: the executable is element zero.
@@ -108,12 +116,7 @@ describe('opencode', () => {
   });
 
   it('is enabled explicitly — a registered-but-disabled server is the quietest possible failure', () => {
-    const entry = (
-      parse(mergeClientConfig(clientSpec(McpClient.OPENCODE), null).content)['mcp'] as Record<
-        string,
-        Record<string, unknown>
-      >
-    )[MCP_SERVER_NAME];
+    const entry = openCodeEntry(mergeClientConfig(clientSpec(McpClient.OPENCODE), null).content);
     expect(entry['enabled']).toBe(true);
   });
 });
@@ -156,7 +159,9 @@ describe('idempotency, and the difference between "already right" and "not ours"
 
   it('a STALE entry of our own shape is repaired, because that is what an upgrade is for', () => {
     const existing = JSON.stringify({
-      mcpServers: { [MCP_SERVER_NAME]: { command: 'npx', args: ['@reticlehq/server@0.0.1', 'mcp'] } },
+      mcpServers: {
+        [MCP_SERVER_NAME]: { command: 'npx', args: ['@reticlehq/server@0.0.1', 'mcp'] },
+      },
     });
     const result = mergeClientConfig(clientSpec(McpClient.CURSOR), existing);
     expect(result.status).toBe(ClientMergeStatus.APPLY);

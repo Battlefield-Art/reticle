@@ -179,7 +179,8 @@ function parseConfig(existing: string | null): ParseResult {
     // Valid JSON that is not a PLAIN OBJECT — `[]`, `3`, `"x"`, `null` — must not fall through to an
     // empty config, because the file then gets rewritten wholesale. Unparseable JSON was always
     // handled conservatively; this adjacent case destroyed the file instead.
-    if (typeof parsed !== 'object' || null === parsed || Array.isArray(parsed)) return { ok: false };
+    if (typeof parsed !== 'object' || null === parsed || Array.isArray(parsed))
+      return { ok: false };
     return { ok: true, config: parsed as ConfigShape };
   } catch {
     return { ok: false };
@@ -205,8 +206,7 @@ function leaveEntryAlone(existing: unknown, spec: ClientSpec): boolean {
   const record = existing as { command?: unknown; args?: unknown };
   // Both shapes carry the package name somewhere in a string; find it without assuming which field.
   const tokens = [record.command, record.args].flat().filter((v) => 'string' === typeof v);
-  const ours =
-    tokens.some((t) => t === NPX) && tokens.some((t) => t.includes(RETICLE_NPM_PACKAGE));
+  const ours = tokens.some((t) => t === NPX) && tokens.some((t) => t.includes(RETICLE_NPM_PACKAGE));
   return !ours;
 }
 
