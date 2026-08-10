@@ -84,8 +84,15 @@ Nothing below is trustworthy until a gate result can be distinguished from a gat
 
 ### Phase 4 — rates, not booleans
 
-- [ ] soak with a recorded stability rate (a held-open link; `mcpEvents` per N calls)
-- [ ] per-tool latency and failure budgets (`bench/TOOL-PROFILE.md`)
-- [ ] false-green scorecard as a standing gate against apps we did not write (#130)
-
 Connection stability is a rate. A pass/fail cannot express "breaks a lot", and a number that is not recorded cannot regress.
+
+- [x] **Soak with a recorded stability rate** — `apps/e2e/soak.mjs` (`pnpm gate:soak`), run inside the e2e battery where a paired app already exists, and appended to `bench/soak-history.jsonl` so the rate can regress against itself. One held-open MCP link for the whole run, never a reconnect per call (harness rule 3). First recorded row: **120/120 answered, 0 link drops over 39s**.
+  - **Idle time between rounds is the point**, not a pause for politeness. 150 back-to-back calls finish in seconds and measure throughput; the disconnect users actually report happens while nobody is calling — the agent is thinking and the next call finds the link gone. Keep-alives, idle shutdown and proxy timeouts all live in that gap, so a soak with no idle never enters it. `--idle-ms 30000 --rounds 60` is the half-hour release soak.
+  - Attribution is 3-valued: a transport that did not stay up reports INCONCLUSIVE and claims nothing about the product (harness rule 4).
+- [x] **Per-tool latency and failure budgets** — same run, `bench/TOOL-PROFILE.md`. Answers "which tool is breaking": `tool-surface-sweep` proves each tool is callable **once**, and one call cannot have a failure rate.
+  - **Latency is recorded, NOT gated, and that is a deliberate deviation from the wording of this plan.** CLAUDE.md: timing assertions are a bug. A p95 budget in wall-clock ms is a statement about the machine, goes red only under parallel CI load, and teaches everyone to re-run — a gate people re-run has stopped working. A >4x p95 jump prints a loud WARN instead. What IS gated: answer rate (absolute) and per-tool failure rate (vs the recorded baseline), both deterministic.
+  - The warn carries a 50ms floor, added because the first real run shouted `reticle_sessions p95 8ms vs 1ms (>4x)` — true, imperceptible, and exactly how a warning channel dies.
+  - It profiles the **6 repeatable read-only tools, not all 48 advertised**, and says so in the generated file. Repeating a mutating tool measures the fixture drifting rather than the tool degrading.
+  - Eleven-case self-check (`node apps/e2e/soak.mjs --self-check`), in CI's `matrix-records` job. It needs no build and no app — proven by running it in an empty directory, which is how a static import of the built CLI was caught.
+- [ ] false-green scorecard as a standing gate against apps we did not write (#130)
+  - **Genuinely blocked here, not deferred by choice.** "Apps we did not write" is the whole content of the check, and this repo contains only apps we wrote. It belongs to the fixtures repo (Tier 2) and needs `FIXTURES_DISPATCH_TOKEN`.

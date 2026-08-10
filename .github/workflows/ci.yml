@@ -266,6 +266,14 @@ jobs:
             [ -e "$f" ] || continue
             node apps/e2e/matrix.mjs --validate "$f" || exit 1
           done
+      # The soak's GATE logic, not the soak — no daemon, no app, milliseconds. The soak itself runs
+      # in the e2e job where a paired app already exists. This proves the thing that would otherwise
+      # rot silently: that the gate still goes red on an unanswered call and on a failure-rate
+      # regression. A gate nobody has watched fail is decoration.
+      # Bare `node`, not `pnpm`: this job deliberately has no workspace install, and the whole
+      # import chain (soak → mcp-client → gate-harness) is node builtins only.
+      - name: The soak gate can still fail
+        run: node apps/e2e/soak.mjs --self-check
 
   # The one class of failure every other job in this file is blind to: the INSTALL.
   #
