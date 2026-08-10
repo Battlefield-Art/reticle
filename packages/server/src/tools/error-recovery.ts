@@ -191,9 +191,13 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
     match: /potentially destructive (?:\w+ )*(?:action|tool) blocked/i,
     hint: RECOVERY.CONFIRM_DANGEROUS,
   },
+  // Split in two because `^` binds to the FIRST alternative only. As one pattern this read as though
+  // the anchor governed all four spellings; it never did, and the next person to add a fifth would
+  // have had a coin-flip's chance of getting the behaviour they intended. The anchored spelling is
+  // one Reticle authors at the start of its own message; the other three appear mid-message.
+  { match: /^cannot [\w()]+ (?:a|an|into a|on a) </i, hint: RECOVERY.WRONG_TARGET },
   {
-    match:
-      /^cannot [\w()]+ (?:a|an|into a|on a) <|no form to submit|upload target must be|is not an HTMLElement/i,
+    match: /no form to submit|upload target must be|is not an HTMLElement/i,
     hint: RECOVERY.WRONG_TARGET,
   },
   // Authored by Reticle, about the caller's arguments: the message already names the valid answers.

@@ -433,6 +433,9 @@ export function findWorkspaceApps(io: Pick<InitIo, 'exists' | 'readFile' | 'list
  *
  * Addressed to the agent as much as the human: whichever of them just ran this command is the one
  * holding the experience, and neither has a Reticle tool surface to file through at this point.
+ *
+ * Printed by the `runInit` wrapper, NOT by `report()` — see the comment there for why, and for how
+ * the workspace redirect is kept from asking twice.
  */
 export const FEEDBACK_HINT =
   'Anything wrong, missing, or awkward — in this setup or in Reticle itself? Tell us; it is the ' +
@@ -512,13 +515,6 @@ function report(
   }
   io.print(restartHint(plan.framework));
   return { ok: !connectPending, applied, manual };
-
-  // Printed even on a dry run, and even when steps failed — ESPECIALLY then. Setup is where Reticle
-  // is most likely to break and least likely to be told about it: an agent reading this output has
-  // no MCP tools yet, and the report it could file right now is the one nobody ever sends.
-  io.print('');
-  io.print(FEEDBACK_HINT);
-  return { ok: true, applied, manual };
 }
 
 /**
@@ -651,6 +647,22 @@ function redirectToWorkspaceApp(
 }
 
 export function runInit(options: InitOptions, io: InitIo): InitResult {
+  const result = runInitSteps(options, io);
+  // The ask goes here, not in report(): report() is only the success-shaped path, and the exits that
+  // matter most are the ones that never reach it — no package.json, an ambiguous workspace — where
+  // setup died before anything ran and the person holding the report has the least to go on. This
+  // wrapper is the one point every exit passes through.
+  //
+  // `redirected` is what keeps it to ONE print: wiring an app in a monorepo re-enters runInit for the
+  // chosen directory, and the inner call must not ask again.
+  if (true !== options.redirected) {
+    io.print('');
+    io.print(FEEDBACK_HINT);
+  }
+  return result;
+}
+
+function runInitSteps(options: InitOptions, io: InitIo): InitResult {
   const pkgRaw = io.readFile(PACKAGE_JSON);
   if (null === pkgRaw) {
     io.print('No package.json found. Run `reticle init` from your project root.');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runInit, resolveLockfiles, type InitIo, type InitOptions } from './run.js';
+import { FEEDBACK_HINT, runInit, resolveLockfiles, type InitIo, type InitOptions } from './run.js';
 
 interface MemoryIo extends InitIo {
   written: Record<string, string>;
@@ -172,6 +172,24 @@ describe('runInit', () => {
     expect(r.applied).toBeGreaterThan(0);
   });
 
+  it('asks for feedback on EVERY exit, including the ones that never reach the report', () => {
+    // This shipped as dead code: the print sat after a `return` in report(), so the whole standing
+    // ask was unreachable and nothing failed — no test named it, and a missing line prints nothing.
+    // The exits below are the ones that matter most: setup died before anything ran, and the person
+    // holding the report has no MCP tools to file it with.
+    const ok = memoryIo(VITE_FILES);
+    runInit(OPTS, ok);
+    expect(ok.lines.join('\n')).toContain(FEEDBACK_HINT);
+
+    const dry = memoryIo(VITE_FILES);
+    runInit({ ...OPTS, dryRun: true }, dry);
+    expect(dry.lines.join('\n')).toContain(FEEDBACK_HINT);
+
+    const noPkg = memoryIo({});
+    runInit(OPTS, noPkg);
+    expect(noPkg.lines.join('\n')).toContain(FEEDBACK_HINT);
+  });
+
   it('runs the install when enabled, pinned to the CLI version', () => {
     const io = memoryIo({ ...VITE_FILES, 'pnpm-lock.yaml': '' }, { mcpExists: true });
     runInit({ ...OPTS, install: true }, io);
@@ -276,6 +294,12 @@ describe('runInit — workspace roots', () => {
     // The root is not the app — nothing of the app's wiring belongs there.
     expect(io.written['vite.config.ts']).toBeUndefined();
     expect(io.written['.reticle.json']).toBeUndefined();
+  });
+
+  it('asks for feedback exactly once, even though the redirect re-enters init', () => {
+    const io = memoryIo({ 'package.json': WORKSPACE_ROOT, ...VITE_APP });
+    runInit(OPTS, io);
+    expect(io.lines.filter((l) => l.includes(FEEDBACK_HINT))).toHaveLength(1);
   });
 
   it('lists the candidates instead of guessing when a workspace has several apps', () => {
