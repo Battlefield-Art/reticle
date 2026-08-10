@@ -363,27 +363,43 @@ describe('rapid connect/disconnect cycling', () => {
     await bridge.close();
   });
 
-  // 120s, explicit. The assertion is "the bridge does not crash", not "fifty sockets open inside
-  // five seconds" — it took 5026ms on the Windows runner against vitest's 5s default, which is a
-  // statement about the machine. A larger bound cannot make a crashed bridge pass.
+  // This one was raised to 60s twice on the theory that the Windows runner was merely slow, and blew
+  // both times — the second at 60173ms. It was never a timeout: see the note on the wait below. Kept
+  // explicit at 120s because the storm itself is genuinely slower there, but the bound is now only a
+  // backstop, not the thing under test.
   it('50 browsers connect simultaneously — bridge does not crash', async () => {
     const bridge = new Bridge({ port: 0 });
     const port = await bridge.ready;
 
     const browsers = Array.from({ length: 50 }, (_, i) => new FakeBrowser(port, `stress-${i}`));
 
-    // Connect all at once
+    // Connect all at once. `open()` resolves on socket-open having only QUEUED the hello, so this
+    // awaits fifty sockets, not fifty sessions.
     await Promise.all(browsers.map((b) => b.open()));
-    // An explicit bound here OVERRIDES waitUntil's default, so raising that default did nothing for
-    // this call — it still blew at 5100ms on the Windows runner. The wait polls and resolves as soon
-    // as the sessions arrive, so a larger bound costs a passing run nothing.
-    await waitUntil(() => bridge.sessions.count() >= 32, 60_000); // MAX_SESSIONS = 32
 
-    // Bridge is still responsive — sessions are capped by TRANSPORT_LIMITS.MAX_SESSIONS
+    // NOT `waitUntil(count >= 32)`. A socket counts as pending from connect until its hello is
+    // processed, MAX_PENDING_CONNECTIONS is 16, and over that cap the bridge CLOSES the socket and
+    // it never retries. So how many of fifty become sessions is a race between hello-processing and
+    // connection arrival: it reaches 32 on a fast machine and stalled below it on the Windows runner
+    // for the full 60s. No bound can fix that — the rejected sockets are gone. Admission control
+    // behaved exactly as documented; the assertion was the bug.
+    await waitUntil(() => bridge.sessions.count() > 0, 30_000);
+
+    // The real invariants, both platform-independent: the cap held, and nothing was admitted past it.
     expect(bridge.sessions.count()).toBeGreaterThan(0);
     expect(bridge.sessions.count()).toBeLessThanOrEqual(32);
 
     browsers.forEach((b) => b.close());
+
+    // "Does not crash" deserves better than a count. A browser arriving after the storm DRAINS gets a
+    // session — the bridge is alive, still accepting, and released the slots it took. It has to come
+    // after the closes: the storm saturates MAX_SESSIONS, so at capacity a new browser is refused by
+    // design and this would be asserting the cap is broken. (Learned by writing it the other way.)
+    await waitUntil(() => 0 === bridge.sessions.count(), 30_000);
+    const late = new FakeBrowser(port, 'stress-late');
+    await late.open();
+    await waitUntil(() => bridge.sessions.get('stress-late') !== undefined, 30_000);
+    late.close();
     await bridge.close();
   }, 120_000);
 });
