@@ -21,6 +21,7 @@ Three defects meant the one number this product is judged by — installs that r
 - **`@reticlehq/server` — a capture that dropped events can no longer grade `proved`.** A window missing 34 events was graded green in a sentence reading "over a clean capture".
 - **`@reticlehq/browser` — `reticle_query` reports an identity Reticle can itself match.** Two accessible-name implementations disagreed, which is what made flows record clean and always drift.
 - **`@reticlehq/server` — `native:true` no longer downgrades to synthetic in silence**, `confirmed` on navigate reports actual arrival, `interactive` snapshots keep the error the app just rendered, and a failed net assertion names the status it saw.
+- **`@reticlehq/browser` — a `blur` action no longer fires React's `onBlur` twice.** `el.blur()` already dispatches a bubbling `focusout`; we dispatched a second one, so a single `onBlur={() => mutate(...)}` ran twice and Reticle reported the double write as a `duplicate-request` contradiction that did not exist in the app. A defect we invented and handed to a human as real — and it made `net.count`, the predicate we advertise for catching double-submits, untrustworthy around any blur-to-save form.
 - **`@reticlehq/server` — `init` confirms a file was written before printing its checkmark.** Reported from the field: `[✓] Reticle config → .reticle.json` for a file that was not there.
 
 ### It stayed up
