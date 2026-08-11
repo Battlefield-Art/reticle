@@ -486,22 +486,28 @@ Then pick a mode:
 
 ### Targeted
 
+> **Only two tools produce a verdict: `reticle_act_and_wait` and `reticle_assert`.** Everything else — `act`, `snapshot`, `query`, `navigate`, `observe`, `network`, `console` — moves or reads the app and proves nothing. A drive that ends without one of those two is a drive with no result, however many tools it used. Measured across two days of real sessions: `reticle_act` was called 3.6× more often than `reticle_act_and_wait`, and **20 of the 28 agents that drove an app produced no verdict at all.** Reach for `act_and_wait` first; drop to bare `act` only for a step whose consequence you are deliberately asserting later.
+
 1. Navigate if needed: `reticle_navigate({ sessionId, url })`
 2. Snapshot to confirm correct state
-3. Act on controls using testids:
+3. **Act and declare the consequence in the same hop** — this is the default:
    ```
-   reticle_act({ sessionId, ref, action: "click" })
-   ```
-4. Assert — always use `since` from the act result:
-   ```
-   reticle_assert({ sessionId, since, timeout_ms: 5000, predicate: { kind: "allOf", predicates: [
+   reticle_act_and_wait({ sessionId, ref, action: "click", until: { kind: "allOf", predicates: [
      { kind: "net",     method: "POST", urlContains: "/api/...", status: 200 },
      { kind: "element", query: { role: "...", name: "..." }, state: "visible" },
-     { kind: "signal",  name: "..." },
      { kind: "console", level: "error", absent: true }
    ]}})
    ```
-5. Record: ✅ pass / ❌ fail / ⚠️ partial
+   One call, one verdict, and the oracle is written *before* the result exists — see **Declare before you act** below.
+4. Only when an action's consequence lands somewhere you cannot name up front, act bare and assert after — always with `since` from the act result, or the assertion silently reads the wrong window:
+   ```
+   reticle_act({ sessionId, ref, action: "click" })
+   reticle_assert({ sessionId, since, timeout_ms: 5000, predicate: { kind: "allOf", predicates: [
+     { kind: "net",    method: "POST", urlContains: "/api/...", status: 200 },
+     { kind: "signal", name: "..." }
+   ]}})
+   ```
+5. Record: ✅ pass / ❌ fail / ⚠️ partial. A verdict of `verified: "unknown"` is **not** a pass — it means Reticle drove the app and could not tell what happened (`unclean_capture`, `outcome_unread`, `unsettled`). Report it as unknown and say why; do not round it up.
 
 ### Plan then batch — do NOT ping-pong act-by-act
 

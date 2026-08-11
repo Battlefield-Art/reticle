@@ -1,6 +1,6 @@
 {
   "name": "reticle-monorepo",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "private": true,
   "description": "Reticle — the proof layer for AI agents. Observe and verify a running web app over MCP, no screenshots.",
   "packageManager": "pnpm@10.33.2",
@@ -23,6 +23,7 @@
     "bench": "node bench/harness/bench-all.mjs",
     "bench:full": "node bench/harness/bench-all.mjs --full",
     "bench:gate": "node bench/harness/gate.mjs",
+    "bench:dashboard": "node bench/dashboard.mjs",
     "publish": "pnpm build && pnpm -r publish --access public --no-git-checks",
     "publish:dry-run": "pnpm build && pnpm -r publish --access public --no-git-checks --dry-run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
@@ -34,7 +35,10 @@
     "gate:soak:self-check": "node apps/e2e/soak.mjs --self-check",
     "gate:soak:record": "node apps/e2e/soak.mjs --rounds 20 --idle-ms 2000 --record",
     "matrix": "node apps/e2e/matrix.mjs",
-    "matrix:validate": "node apps/e2e/matrix.mjs --self-check && for f in docs/matrix/*/*.json; do node apps/e2e/matrix.mjs --validate \"$f\" || exit 1; done"
+    "matrix:validate": "node apps/e2e/matrix.mjs --self-check && for f in docs/matrix/*/*.json; do node apps/e2e/matrix.mjs --validate \"$f\" || exit 1; done",
+    "matrix:compat": "node apps/e2e/client-compat.mjs",
+    "knip": "npx --yes knip --no-progress",
+    "hooks:install": "ln -sf ../../pre-commit.sh .git/hooks/pre-commit && echo 'pre-commit hook installed'"
   },
   "pnpm": {
     "overrides": {

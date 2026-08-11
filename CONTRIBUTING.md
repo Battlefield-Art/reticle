@@ -19,15 +19,36 @@ By participating you agree to our [Code of Conduct](CODE_OF_CONDUCT.md).
   corepack enable
   ```
 
-This is a single git repo — a **pnpm + [turbo](https://turbo.build/) monorepo**. Install everything from the root:
+This is a single git repo — a **pnpm + [turbo](https://turbo.build/) monorepo**. Install everything from the root, and install the pre-commit hook while you are there:
 
 ```bash
 pnpm install
+pnpm hooks:install    # symlinks pre-commit.sh — runs format → lint → types → tests on staged files
 ```
+
+The hook is optional and mirrors the fast gate, so it catches locally what CI would catch in ten minutes. It is not installed automatically; a repo that silently writes to your `.git/hooks` on `install` is a repo you cannot trust with a `postinstall`.
+
+### Your first change: pick the smallest useful one
+
+- **Three minutes, highest value:** submit an MCP-client compatibility record. Most rows in [`docs/matrix/MATRIX.md`](docs/matrix/MATRIX.md) are `◐` — meaning `init` writes a runnable entry and _nobody has ever run that client_. See [`docs/matrix/README.md`](docs/matrix/README.md).
+- **An afternoon:** [`good first issue`](https://github.com/reticlehq/reticle/labels/good%20first%20issue) — scoped, reviewed, with a pointer to the file to start in.
+- **Found a bug in Reticle while using it?** `reticle feedback --agent --kind bug "what happened"` files it from the shell, no GitHub account needed.
 
 ---
 
 ## Repository layout
+
+Five top-level directories, each with one job. If you can name which of these your change belongs to, you can find everything else.
+
+| Directory | Job | Read first |
+| --- | --- | --- |
+| `packages/` | the shipped product — everything published to npm and crates.io | this section |
+| `apps/` | fixtures the gates drive, plus the test runner itself | [`apps/README.md`](apps/README.md) |
+| `bench/` | measurement and research. **Not a gate** — nothing here blocks a PR | [`bench/README.md`](bench/README.md) |
+| `docs/` | user docs (published to reticle.sh) **and** contributor docs | [`docs/README.md`](docs/README.md) |
+| `scripts/` | repo tooling: the boundary/lossy guards, the local registry | — |
+
+### `packages/` — the shipped product
 
 ```
 packages/core          @reticlehq/core         — wire contract, constants, zod schemas (deps: zod)
@@ -37,16 +58,17 @@ packages/react         @reticlehq/react        — React adapter: DOM ref -> com
 packages/vite-plugin   @reticlehq/vite-plugin  — Vite integration: stamps source + auto-injects connect()
 packages/babel-plugin  @reticlehq/babel-plugin — stamps data-reticle-source (source mapping, React 19)
 packages/next          @reticlehq/next         — Next.js source mapping (keeps SWC) via withReticle (CJS)
+packages/electron      @reticlehq/electron     — Electron main-process adapter (IPC observer, capture)
+packages/tauri         reticle-tauri           — Tauri capture backend (RUST — outside every JS gate)
 packages/test          @reticlehq/test         — spec runner + matchers for CI (peer vitest)
 packages/eslint-plugin @reticlehq/eslint-plugin — dev-only lint rule: state changed ⇒ signal fired
-apps/bench-app         @reticlehq/bench-app    — Vite/React dashboard used to dogfood Reticle
-apps/api               @reticlehq/api          — Express backend exercising real-world behaviors
-apps/next-smoke        @reticlehq/next-smoke   — Next.js 15 app verifying Reticle on Next
-docs/                  — user-facing docs (getting-started, usage, token-efficiency, local-registry)
-SKILL.md              — public skill for users integrating Reticle into their own project (the canonical paste-URL)
 ```
 
-The TypeScript library packages (`-core`, `-browser`, `-server`, `-react`) are **strict TypeScript** and are the focus of the build/lint/test gates. `@reticlehq/babel-plugin` / `@reticlehq/next` are plain CJS tooling, and `apps/api` / `apps/next-smoke` are local fixtures — these are excluded from the gates.
+The TypeScript library packages (`-core`, `-browser`, `-server`, `-react`) are **strict TypeScript** and are the focus of the build/lint/test gates. `@reticlehq/babel-plugin` / `@reticlehq/next` are plain CJS tooling, and `apps/*` are local fixtures — these are excluded from the JS gates. `packages/tauri` is Rust and is invisible to all of them; CI's `rust` / `rust-macos` jobs are the only thing that compiles it.
+
+### Root files worth knowing
+
+`SKILL.md` is the **public** skill users paste to integrate Reticle — it is a product surface, not a note to ourselves, and `integration-coverage.test.ts` fails if it offers a framework that has no app and no gate. `CLAUDE.md` is the same rules as this file, addressed to a coding agent.
 
 ### Service boundaries (who owns what)
 
@@ -57,24 +79,26 @@ The TypeScript library packages (`-core`, `-browser`, `-server`, `-react`) are *
 
 ---
 
-## Build, lint, typecheck, test
+## Which gate do I run?
 
-All gates run from the repo root and fan out across packages via turbo:
-
-```bash
-pnpm build       # turbo run build
-pnpm lint        # turbo run lint
-pnpm typecheck   # turbo run typecheck
-pnpm test:unit   # turbo run test:unit   (pnpm test is an alias)
-```
-
-Before you push, the full local gate is:
+Every change runs the fast gate. Some changes need one more:
 
 ```bash
-pnpm lint && pnpm typecheck && pnpm test:unit
+pnpm lint && pnpm typecheck && pnpm test:unit    # ~2 min — ALWAYS
 ```
 
-Other useful scripts: `pnpm format` / `pnpm format:check` (Prettier), and `pnpm bench` (the benchmark harness — see [`bench/SCORECARD.md`](bench/SCORECARD.md)).
+| If you also touched… | Also run | Cost |
+| --- | --- | --- |
+| the tool surface, the wire contract (`packages/core`), or an observer | `pnpm test:e2e` | ~8 min |
+| `reticle init`, `vite-plugin`, `next`, `babel-plugin` — anything before a user's first session | `pnpm gate:install` | ~15 min |
+| `packages/electron`, `packages/tauri`, the IPC observer, desktop capture | `pnpm test:e2e:desktop` | ~3 min |
+| telemetry, feedback, or anything that emits an event | read [`docs/telemetry-contract.md`](docs/telemetry-contract.md) **first**, then `pnpm test:e2e` | — |
+
+**This routing is the whole rule, and [`docs/gates.md`](docs/gates.md) is the full map** — every gate, what it proves, what it is blind to, and which CI job runs it. CI runs everything regardless, so skipping a tier costs you a slower red, never a missed one.
+
+Each of these exists because the ones above it are structurally blind to something. The unit gate cannot see cross-package drift; the e2e battery boots no desktop runtime; every app in `apps/` is already instrumented, so nothing but the install gate can see a broken `init`. That is why a green `pnpm test:unit` is not the same as "this works".
+
+Other useful scripts: `pnpm format` / `pnpm format:check` (Prettier), `pnpm knip` (unused files, exports, dependencies), and `pnpm bench` — the benchmark harness, which is **research, not a gate** (see [`bench/README.md`](bench/README.md)).
 
 ---
 

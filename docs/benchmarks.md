@@ -2,7 +2,7 @@
 
 > This page assumes **zero** testing background. By the end you'll understand what software testing is, why AI coding agents made it urgent, how to tell a good verification tool from a bad one, and exactly how Reticle measures up against the main alternatives — including the places Reticle loses. If a term looks like jargon, it's defined the first time it appears.
 >
-> _The headline charts below are rendered from the measured numbers (`assets/readme/`, rendered from the measured `history.jsonl` via `assets/benchmarks/render.mjs`); supporting diagrams live in `bench/artifacts/`._
+> _Where the pictures come from, stated accurately: the **SVG charts** (`bench/artifacts/`) are generated from measured raws by `bench/harness/charts.mjs`. The **headline PNG cards** (`assets/readme/`) are screenshots of hand-authored HTML in `assets/benchmarks/src/`, rendered by `assets/benchmarks/render.mjs` — their figures are typed in by a human and are **not** read from `history.jsonl`, which this line previously claimed. Treat a card as a design asset that has to be updated by hand when a number moves, and `bench/SCORECARD.md` (plus its freshness banner) as the source of truth._
 
 ---
 

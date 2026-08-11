@@ -4,6 +4,8 @@ A single "how confident are we" number would hide the only thing that matters: c
 
 Every row is generated from an artifact on disk or names the run that produced it. **HIGH** means repeated and controlled. **MEDIUM** means measured once, or measured without a control. **LOW** means argued but not measured. **NONE** means we tried and could not.
 
+> **Measured 2026-07-24 and not re-run since.** Confidence is a claim about evidence, and evidence has an age — a row that says "fresh" is only fresh relative to when somebody wrote it, which is the one thing an undated table cannot tell you. Anything here comparing Reticle to Playwright or DevTools was taken against `@playwright/mcp@0.0.76` / `chrome-devtools-mcp@1.3.0` and Reticle `0.8.0`; all three have moved. The deterministic replay rows are re-run often and are current — see the freshness banner in [`SCORECARD.md`](SCORECARD.md) for the values re-measured 2026-08-11.
+
 ## What Reticle claims
 
 | # | Claim | Evidence | Confidence |

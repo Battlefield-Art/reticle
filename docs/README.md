@@ -1,0 +1,55 @@
+# Docs index
+
+Two audiences share this directory, which is why it looked like twenty-five unsorted files. Every page states its own audience in the first blockquote; this index is the shortcut.
+
+**User docs are published** to [reticle.sh](https://reticle.sh) via `mint.json`. **Contributor docs are not** — they are for people working _on_ Reticle, and they live here because they belong next to what they describe.
+
+---
+
+## For people using Reticle
+
+**Start:** [getting-started.md](getting-started.md) → [usage.md](usage.md) (the full tool reference).
+
+| Page | What it answers |
+| --- | --- |
+| [getting-started.md](getting-started.md) | install it, connect an agent, verify something |
+| [usage.md](usage.md) | every tool, every argument — the reference |
+| [agent-cheatsheet.md](agent-cheatsheet.md) | the condensed version an agent keeps in context |
+| [architecture.md](architecture.md) | how it works, and why it is built this way |
+| [platform-integration.md](platform-integration.md) | Vite, Next, Remix, Astro, plain HTML |
+| [desktop-apps.md](desktop-apps.md) | Electron and Tauri |
+| [integration-patterns.md](integration-patterns.md) | wiring it into a real codebase |
+| [flows.md](flows.md) | record → save → replay → heal |
+| [testing.md](testing.md) | `@reticlehq/test` — turning a session into a CI suite |
+| [multi-agent-testing.md](multi-agent-testing.md) | more than one agent on one app |
+| [human-control.md](human-control.md) | taking the wheel back from the agent |
+| [deploy-checks.md](deploy-checks.md) | running Reticle against a deployed build |
+| [token-efficiency.md](token-efficiency.md) | why it costs less than a screenshot loop |
+| [benchmarks.md](benchmarks.md) | how the numbers were measured, including where Reticle loses |
+| [telemetry.md](telemetry.md) | what is collected, and how to turn it off |
+| [local-registry.md](local-registry.md) | installing an unpublished build |
+| [enterprise.md](enterprise.md) | the licensed surface |
+
+## For people working on Reticle
+
+**Start:** [`CONTRIBUTING.md`](../CONTRIBUTING.md) → [gates.md](gates.md).
+
+| Page | What it answers |
+| --- | --- |
+| [gates.md](gates.md) | **I changed some files — which gate do I run?** |
+| [gate-plan.md](gate-plan.md) | why the gates are shaped this way, and what is still unbuilt |
+| [system-map.md](system-map.md) | how a tool call reaches the app, and which failures are silent |
+| [telemetry-contract.md](telemetry-contract.md) | required reading before touching anything that emits |
+| [debugging.md](debugging.md) | debugging Reticle itself — the four signals and what each answers |
+| [fixtures.md](fixtures.md) | the sibling `reticle-fixtures` repo: install complexity, not regressions |
+| [matrix/README.md](matrix/README.md) | submitting an MCP-client compatibility record — the best first contribution |
+| [matrix/MATRIX.md](matrix/MATRIX.md) | which clients are known to work (generated; do not hand-edit) |
+| [`../apps/README.md`](../apps/README.md) | what belongs in `apps/`, and what does not |
+| [`../apps/e2e/harness-rules.md`](../apps/e2e/harness-rules.md) | the four rules every gate obeys, and the incident behind each |
+| [`../bench/README.md`](../bench/README.md) | what in `bench/` is live and what is a kept one-off study |
+
+`fixtures-dispatch-receiver.yml` is not a doc — it is the workflow template `reticle-fixtures` needs, kept in this repo so the two ends of the contract cannot drift apart.
+
+---
+
+**Adding a page?** Put it in the right table above. If it is user-facing, add it to `mint.json` too — a page that is published but unlisted is a page nobody finds, and a page listed here but absent from `mint.json` is one users cannot reach at all.

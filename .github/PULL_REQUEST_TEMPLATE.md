@@ -10,10 +10,20 @@ Closes #
 
 <!-- How do you know it works? Tests added, manual repro, benchmark run, etc. -->
 
+## Gates run
+
+<!-- Tick the fast gate, plus any tier your change needs. Full map: docs/gates.md.
+     CI runs everything regardless — this just tells the reviewer what you already know is green. -->
+
+- [ ] `pnpm lint && pnpm typecheck && pnpm test:unit` (~2 min — **always**)
+- [ ] `pnpm test:e2e` (~8 min) — _touched the tool surface, `packages/core`, an observer, or telemetry_
+- [ ] `pnpm gate:install` (~15 min) — _touched `reticle init`, `vite-plugin`, `next`, or `babel-plugin`_
+- [ ] `pnpm test:e2e:desktop` (~3 min) — _touched `packages/electron`, `packages/tauri`, or desktop capture_
+- [ ] None of the above tiers apply to this change
+
 ## Checklist
 
 - [ ] Tests added/updated (RED → GREEN); the change is covered by a test that would fail without it
-- [ ] `pnpm lint && pnpm typecheck && pnpm test:unit` all pass locally
 - [ ] No `any`, no free strings (wire strings live in `@reticlehq/core`), no non-null `!`
 - [ ] No `console.log` or internal tracking codes left in the diff
 - [ ] Each changed file is under the 1000-line cap

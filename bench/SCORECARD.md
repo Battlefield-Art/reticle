@@ -2,6 +2,24 @@
 
 > One synthesis of everything measured, across all layers. Wins, ties, and caveats stated plainly — no inflation. Every number is produced by a committed harness; detail + raw data linked per row. Tokens are the `o200k` proxy unless a row says "authoritative usage" (full agent loop).
 
+## ⚠ Freshness — check this before quoting any number below
+
+Numbers in this file are left **exactly as they were measured**, which is the right convention for a record and the wrong one for a quote. Two things have moved since.
+
+**1. The replay numbers were re-measured on 2026-08-11 and they went UP.**
+
+| Metric | In the tables below (2026-06/07) | Re-measured 2026-08-11 | Why |
+| --- | --- | --- | --- |
+| Replay, per run | ~175 tok (128–184×) | **239 tok (127×)** | verdict payload grew |
+| Suite verify, K=2 | 47 tok (1287×) | **68 tok (890×)** | each flow now carries a success oracle, and the verdict reports per-flow |
+| Suite verify, K=4 | 47 tok (2574×) | **68 tok (1779×)** | same; still **constant in K**, which is the actual claim |
+
+The shape of the claim survives — suite read-cost is flat in K, so the ratio still compounds with suite size — but **1779× is the current 4-flow figure, not 2574×**. `47` was never reproducible from the committed raw either: `raw/suite-rre.json` held `29` before this re-measurement, so three different numbers were in circulation for one metric. Quote the re-measured column.
+
+**2. Every Playwright / DevTools column is historical.** The cross-tool passes last ran **2026-06-22**, against `@playwright/mcp@0.0.76` and `chrome-devtools-mcp@1.3.0`. Both have shipped since (0.0.79 and **1.7.0**), and Reticle has moved 0.8.0 → 2.5.0. Nobody should quote a competitive delta from this file without re-running `pnpm bench:full` first. See [`README.md`](README.md#versions-the-competitive-numbers-were-measured-against--read-before-quoting).
+
+Rows below are unedited on purpose — a measurement record that gets quietly rewritten stops being a record. This banner is the correction.
+
 ## Read this first — what the terms mean
 
 Plain-language legend, so the numbers below make sense even if you've never written a test:

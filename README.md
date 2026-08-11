@@ -246,6 +246,42 @@ Not observed today: **IndexedDB**, **Web Workers**, and anything inside a closed
 | **Memory** | a bounded ring buffer (2,000 events / 60 s), plus a capped ref registry — both fixed ceilings, not growth with app lifetime |
 | **Network** | localhost WebSocket to a daemon on your machine. **No app data leaves the machine** |
 
+### What Reticle supports
+
+The SDK observes the **DOM, network, console, routing, storage and animations of anything that renders in a browser** — that part is framework-agnostic and needs no adapter. What varies is the layer above it: whether `reticle init` wires your project unattended, and whether a DOM node can be traced back to the component and source line that rendered it.
+
+**Verified** means a gate scaffolds that stack from scratch, installs Reticle into it, boots it, opens a real browser and waits for a session — every release. Not "it should work".
+
+| Framework | Install (`reticle init`) | Source → component mapping | Verified every release |
+| --- | --- | --- | --- |
+| **Next.js** (App Router) | auto | ✅ via `@reticlehq/next` (keeps SWC) | ✅ install gate + e2e |
+| **Next.js** (Pages Router) | auto | ✅ | ✅ install gate |
+| **Vite + React** | auto | ✅ via `@reticlehq/vite-plugin` | ✅ install gate + e2e |
+| **Monorepo sub-package** | auto | ✅ | ✅ install gate |
+| **Create React App** | auto (no build plugin — the kit alone) | ❌ | detection only |
+| **SvelteKit** | auto | ❌ | detection only |
+| **Astro** | auto | ❌ | detection only |
+| **Preact** | auto — `init` flags the stack UNVERIFIED | ❌ | ❌ — [#129](https://github.com/reticlehq/reticle/issues/129) |
+| **Vue 3** | auto — `init` flags the stack UNVERIFIED | ❌ | ❌ — [#76](https://github.com/reticlehq/reticle/issues/76) |
+| **Svelte** (standalone) | auto | ❌ | ❌ |
+| **Angular** | not detected | ❌ | ❌ — [#128](https://github.com/reticlehq/reticle/issues/128) |
+| **Plain HTML / anything else** | manual (`connect()`) | ❌ | — |
+
+**A ❌ in "source mapping" is not a broken install.** Vue, Preact, Svelte, Astro, SvelteKit and CRA apps are wired by `init`, connect normally, and every tool works — refs, roles, test-ids, network, console, storage, state, animations, assertions and verdicts. What you don't get is `reticle_query` answering *"which component rendered this, and in which file"*, because that needs a build plugin that stamps `data-reticle-source`. On the unverified stacks `init` says so on the spot rather than reporting an unqualified green.
+
+**Desktop**
+
+| Platform | Support | Verified |
+| --- | --- | --- |
+| **Electron** | `@reticlehq/electron` — renderer + **main-process IPC** observation, window capture | ✅ real Electron main process, headless, every release |
+| **Tauri** | `packages/tauri` (Rust) — webview + IPC, window capture | ✅ **packaged binary**, driven headless, every release |
+
+Both are driven by `pnpm test:e2e:desktop`; the Rust side is compiled by CI's `rust` / `rust-macos` jobs. See [Desktop apps](docs/desktop-apps.md).
+
+**Platforms:** macOS, Linux and Windows are all first-class — Windows is the largest platform in our telemetry, and CI runs a dedicated `windows` job.
+
+Missing yours? [#128](https://github.com/reticlehq/reticle/issues/128) (Angular) and [#76](https://github.com/reticlehq/reticle/issues/76) (Vue) are open and marked `help wanted`.
+
 ### Does it work with my state library?
 
 `registerStore` duck-types on `{ getState, subscribe }`, so **zustand and Redux work with no adapter at all**. Shipped adapters cover **TanStack Query, Jotai, XState, Valtio, MobX, Recoil, Svelte stores and Pinia**, and a generic `pushStore` handles Context or anything hand-rolled — you push, Reticle reads. None of the adapters import their library, so they add no dependency and no weight for an app that doesn't use them.

@@ -20,11 +20,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LLM_REDRIVE_PER_FLOW = 30249;
 
 // Self-contained golden-path flows (each includes login), recorded once and saved to .reticle/flows/.
+//
+// EVERY flow carries a success oracle, and that is not decoration. A flow that asserts no observable
+// consequence replays green whatever the app does, so `flow_verify` grades the whole suite
+// `unverifiable` and refuses to call it passed — correctly. This harness used to record four
+// assertion-free flows and then demand `status === 'pass'`, which made `pnpm bench` fail outright:
+// the product got more honest about false greens and the benchmark measuring it did not follow.
+// A suite-scale efficiency ratio over a suite that verified nothing is exactly the number this
+// harness already refuses to print.
 const FLOWS = [
-  { name: 'suite-500', steps: [{ view: 'diagnostics' }, { tap: 'fault-500' }] },
-  { name: 'suite-console', steps: [{ view: 'diagnostics' }, { tap: 'fault-buggy' }] },
-  { name: 'suite-route', steps: [{ view: 'compose' }] },
-  { name: 'suite-404', steps: [{ view: 'diagnostics' }, { tap: 'fault-404' }] },
+  {
+    name: 'suite-500',
+    steps: [{ view: 'diagnostics' }, { tap: 'fault-500' }],
+    oracle: { signal: 'fault:injected' },
+  },
+  {
+    name: 'suite-shape',
+    steps: [{ view: 'diagnostics' }, { tap: 'fault-wrong-data' }],
+    oracle: { signal: 'fault:injected' },
+  },
+  { name: 'suite-route', steps: [{ view: 'compose' }], oracle: { testid: 'compose-generate' } },
+  {
+    name: 'suite-404',
+    steps: [{ view: 'diagnostics' }, { tap: 'fault-404' }],
+    oracle: { signal: 'fault:injected' },
+  },
 ];
 
 // Record flows POST-LOGIN (login is NOT part of the flow): reticle_flow_verify replays the suite
@@ -41,6 +61,20 @@ async function recordFlow(flow) {
       if (s.view) await a.gotoView(s.view);
       else if (s.tap) await a.clickTestid(s.tap);
       await sleep(200);
+    }
+    // Compile the golden end-condition into the recording BEFORE stopping it — annotate targets the
+    // active recording, and flow_save folds it onto disk.
+    const ann = await a.c.callTool('reticle_annotate', {
+      flow: flow.name,
+      kind: 'success-state',
+      ...flow.oracle,
+    });
+    const compiled = JSON.parse(ann.text || '{}').compiled ?? null;
+    if (null === compiled) {
+      throw new Error(
+        `annotate did not compile a success oracle for ${flow.name} (${ann.text ?? 'no reply'}) — ` +
+          'the flow would be saved assertion-free and grade the whole suite unverifiable.',
+      );
     }
     await a.c.callTool('reticle_record', { action: 'stop', recordingName: flow.name });
     await a.c.callTool('reticle_flow_save', { flowName: flow.name });

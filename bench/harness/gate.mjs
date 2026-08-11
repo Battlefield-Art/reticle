@@ -38,6 +38,25 @@ function parseRate(rate) {
 const failures = [];
 const scorecard = [];
 const prev = lastRow();
+
+/**
+ * Which dimensions were actually COMPARED against a baseline, and which had none to compare against.
+ *
+ * This gate used to end with "✓ gate passed — no regression vs the last baseline" whether or not a
+ * single comparison had happened. It cannot happen today: every `layer_c` comparison reads
+ * `prev.layer_c`, and the most recent `history.jsonl` row does not have that key — the last nine rows
+ * do, the last row does not — so `lastC` is null, every `if (last !== null)` is skipped, and the gate
+ * reports a clean bill of health having checked nothing but the absolute floors.
+ *
+ * A regression gate that cannot see a regression, announcing that it found none, is precisely the
+ * false green this whole project exists to catch. So: count the comparisons, and say what was
+ * actually compared. The absolute floors (detection must be full) still gate on their own.
+ */
+const compared = [];
+const uncompared = [];
+const note = (dimension, baseline) => {
+  (baseline === null || baseline === undefined ? uncompared : compared).push(dimension);
+};
 // Only gate layers that ran THIS pass (a stale analysis.json must not be gated on a Layer-C pass).
 const manifest = readRaw('bench/raw/bench-run.json');
 const ranLayerA = manifest === null ? true : manifest.ranLayerA === true;
@@ -65,6 +84,7 @@ if (analysis !== null) {
   }
   scorecard.push(['Observe · catch-rate', prev?.per_tool?.reticle?.rcr ?? '—', rcr]);
   scorecard.push(['Observe · false-positives', '0', fp]);
+  note('Observe · efficiency', lastVe);
   scorecard.push(['Observe · efficiency', lastVe ?? '—', ve]);
 } else {
   scorecard.push(['Observation-cost', '—', 'not run this pass (advisory skip)']);
@@ -85,6 +105,7 @@ if (selector !== null) {
   if (lastR !== null && r !== null && r.total < lastR.total) {
     failures.push(`selector scenarios dropped: ${r.total} < ${lastR.total}`);
   }
+  note('Replay · selector', lastC?.selector_detection);
   scorecard.push(['Replay · selector', lastC?.selector_detection ?? '—', selector.detection_rate]);
 }
 if (consequence !== null) {
@@ -92,6 +113,7 @@ if (consequence !== null) {
   if (r === null || r.detected < r.total) {
     failures.push(`consequence detection not full: ${consequence.detection_rate}`);
   }
+  note('Replay · consequence', lastC?.consequence_detection);
   scorecard.push([
     'Replay · consequence',
     lastC?.consequence_detection ?? '—',
@@ -108,6 +130,7 @@ if (stateOracle !== null) {
   if (lastR !== null && r !== null && r.total < lastR.total) {
     failures.push(`state-oracle scenarios dropped: ${r.total} < ${lastR.total}`);
   }
+  note('Replay · state', lastC?.state_detection);
   scorecard.push(['Replay · state', lastC?.state_detection ?? '—', stateOracle.detection_rate]);
 }
 if (cost !== null) {
@@ -118,6 +141,7 @@ if (cost !== null) {
       `replay tokens rose: ${now} > ${last} (+${(((now - last) / last) * 100).toFixed(1)}%)`,
     );
   }
+  note('Replay · tokens/run', last);
   scorecard.push(['Replay · tokens/run', last ?? '—', now]);
 }
 
@@ -137,5 +161,20 @@ if (failures.length > 0) {
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log('\n✓ gate passed — no regression vs the last baseline.');
+
+// Say what was actually compared. "No regression" over zero comparisons is not a result.
+if (uncompared.length > 0) {
+  console.log(`\n⚠ ${uncompared.length} dimension(s) had NO baseline to compare against:`);
+  for (const d of uncompared) console.log(`  - ${d}`);
+  console.log(
+    `  The last bench/history.jsonl row (${prev?.version ?? 'none'}, ${prev?.date ?? 'no date'}) does not carry these keys,\n` +
+      '  so they were checked against absolute floors only — a regression WITHIN the floor is invisible.\n' +
+      '  Record a fresh baseline with `node bench/harness/record.mjs` after a full pass.',
+  );
+}
+console.log(
+  0 === compared.length
+    ? `\n✓ absolute floors hold — but NOTHING was compared against a baseline, so this run says nothing about regression.`
+    : `\n✓ gate passed — ${compared.length} dimension(s) compared against the last baseline, no regression.`,
+);
 process.exit(0);

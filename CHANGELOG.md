@@ -2,6 +2,55 @@
 
 All notable changes to the **`@reticlehq/*`** packages are documented here (each entry notes the package it affects). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] — 2026-08-12
+
+**Stop breaking, stop lying, and be able to prove it.** 130 commits, 56 of them fixes, driven by what the telemetry and the field reports actually said rather than what the backlog assumed. No breaking changes.
+
+### The instrument was wrong about itself
+
+Three defects meant the one number this product is judged by — installs that reach a verification report — could not be computed at all.
+
+- **`@reticlehq/server` — one project produced many project ids.** The fingerprint hashed the raw working directory when there was no git origin, so `reticle init` (run in the app) and the daemon (spawned from wherever the agent's client sat) minted different ids for the same app. Measured: 1131 ids for 243 users. Now falls back git origin → repo root → nearest `package.json` → cwd. ([#173](https://github.com/reticlehq/reticle/issues/173))
+- **`@reticlehq/server` — the end-of-session event reported nothing.** The periodic flush zeroed the counters while the duration kept running, so `daemon_stopped` described half-hour sessions containing zero tool calls — 496 of 499 of them. Every funnel drawn over it read zero.
+- **`@reticlehq/server` — the crash metric only ever reported a non-crash.** All 84 crash events were one thing: a refused connect to a daemon that had not booted yet, which the proxy is built to tolerate. A real crash would have been invisible underneath it.
+- **`@reticlehq/server` — a scheduled idle exit is no longer indistinguishable from an outage.** 299 of 321 "the agent lost its tools" events were the daemon retiring itself on purpose. ([#168](https://github.com/reticlehq/reticle/issues/168))
+
+### It said things that were not true
+
+- **`@reticlehq/server` — a lost connection is no longer reported as a failed assertion.** Reticle claimed the app was broken when it was Reticle that had stopped watching. ([#124](https://github.com/reticlehq/reticle/issues/124))
+- **`@reticlehq/server` — a capture that dropped events can no longer grade `proved`.** A window missing 34 events was graded green in a sentence reading "over a clean capture".
+- **`@reticlehq/browser` — `reticle_query` reports an identity Reticle can itself match.** Two accessible-name implementations disagreed, which is what made flows record clean and always drift.
+- **`@reticlehq/server` — `native:true` no longer downgrades to synthetic in silence**, `confirmed` on navigate reports actual arrival, `interactive` snapshots keep the error the app just rendered, and a failed net assertion names the status it saw.
+- **`@reticlehq/server` — `init` confirms a file was written before printing its checkmark.** Reported from the field: `[✓] Reticle config → .reticle.json` for a file that was not there.
+
+### It stayed up
+
+- **`@reticlehq/server` — the MCP link survives a daemon that is not there.** A first connect to a missing daemon was an unhandled rejection; browser launches, abort handlers, predicate timers and command timers are all released on shutdown. *(pool and timer leaks fixed by **Dev Chiniwala**)*
+- **`@reticlehq/browser` — the SDK backs off instead of retrying every second forever**, and the churn-aware offline queue keeps signal events when it overflows. *(**Dev Chiniwala**)*
+- **`@reticlehq/vite-plugin` — Vite 8 no longer rejects our config on every dev boot**, and a dev server started before the daemon stops serving a tokenless connect module forever. ([#165](https://github.com/reticlehq/reticle/issues/165))
+- **`@reticlehq/server` — `doctor` names the process holding the port** and flags version skew there; `status` and the daemon log distinguish a killed daemon from a tidy one.
+
+### Errors an agent can act on
+
+- **`@reticlehq/server` — a rejected predicate is a sentence, never a serialized zod array.** These landed on `act_and_wait`, `wait_for` and `assert` — the only three tools that produce a verdict. ([#108](https://github.com/reticlehq/reticle/issues/108))
+- **`@reticlehq/server` — `assert`'s `route` predicate accepts `urlContains`**, matching `net`, and every predicate kind is documented.
+- **`@reticlehq/server` — a dead `sessionId` names the live ones** instead of sending the agent away, and an unscoped call is refused when two projects are connected. ([#161](https://github.com/reticlehq/reticle/issues/161))
+
+### Added
+
+- **`@reticlehq/server` — `init` registers with every MCP client on the machine**, not just Claude Code and Cursor.
+- **`@reticlehq/server` — `args.holdMs`** keeps the pointer down, so hold-to-confirm controls work.
+- **`@reticlehq/server` — `reticle_act` reports the text it put on the page**, and `reticle_sessions` reports whether a session stayed attached.
+- **`@reticlehq/server` — `flow_verify` records flake outcomes on the parallel path too**, so an agent verifying in parallel finally builds flake evidence. *(**Dev Chiniwala**, [#240](https://github.com/reticlehq/reticle/pull/240))*
+
+### Security
+
+- **electron 34 → 43**, clearing 65 of 81 open advisories; pnpm overrides raised to current advisory floors; Windows argument quoting corrected in `init` (`js/incomplete-sanitization`).
+
+### Thanks
+
+**[Dev Chiniwala](https://github.com/DevChiniwala)** — five fixes, all in the resource-leak and shutdown paths that decide whether the daemon survives a long session. **[Vijay Misal](https://github.com/vjymisal0)** — the lossy-transform guard missed export lists, default and wildcard exports, and type-only exports; the guard's own self-test never tried them. **[BabuBahir](https://github.com/BabuBahir)** ([#236](https://github.com/reticlehq/reticle/pull/236)) — corrected a test-duration figure this repo had been quoting wrongly for months.
+
 ## [2.5.0] — 2026-08-09
 
 **One tool surface, an MCP server that stays up, and a long list of answers that were wrong.** Most of it was found by driving the shipped surface against live apps: a hostile-argument fuzz of all 48 tools, a nine-app fixture fleet under a new trace, and stress specs against every transport.
