@@ -46,11 +46,18 @@ export function resetOutageReporting(): void {
  */
 export function reportMcpOutage(
   stage: OutageStage,
-  facts: { reason: string; attempts: number },
+  facts: { reason: string; attempts: number; pendingLost?: number },
 ): void {
   if (reported.has(stage)) return;
   reported.add(stage);
   void getTelemetry().emit(TelemetryEventKind.MCP_CONNECTION_LOST, {
-    outage: { stage, reason: outageReason(facts.reason), attempts: facts.attempts },
+    outage: {
+      stage,
+      reason: outageReason(facts.reason),
+      attempts: facts.attempts,
+      // Always sent, including zero: zero is the finding — a drop no agent could feel. See
+      // McpOutageSchema.pendingLost.
+      pendingLost: facts.pendingLost ?? 0,
+    },
   });
 }

@@ -511,6 +511,18 @@ export const McpOutageSchema = z.object({
   reason: z.nativeEnum(OutageReason),
   /** Consecutive reconnects tried when this was reported. `first` is near 1; a spent budget is high. */
   attempts: z.number().int().nonnegative(),
+  /**
+   * In-flight tool calls this drop actually killed — the only part an agent can FEEL.
+   *
+   * Without it every drop looks equally bad. Measured 2026-08-10/11: **320 of 321 outages were
+   * `stage: first` with `attempts: 1`** — the stream ended once and the proxy reconnected, which for
+   * an agent with nothing in flight is invisible. Reading that 321 as "the agent lost its tools 321
+   * times" overstates the problem by roughly the whole number, and buries the one drop that mattered.
+   *
+   * Zero means nobody noticed. Non-zero is the number of calls that came back `-32001` and the count
+   * worth driving down.
+   */
+  pendingLost: z.number().int().nonnegative().optional(),
 });
 export type McpOutage = z.infer<typeof McpOutageSchema>;
 

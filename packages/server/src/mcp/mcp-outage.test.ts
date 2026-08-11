@@ -20,7 +20,12 @@ describe('reportMcpOutage', () => {
     const emit = vi.spyOn(getTelemetry(), 'emit').mockResolvedValue(true);
     reportMcpOutage(OutageStage.FIRST, { reason: OutageReason.SSE_ENDED, attempts: 1 });
     expect(emit).toHaveBeenCalledWith(TelemetryEventKind.MCP_CONNECTION_LOST, {
-      outage: { stage: OutageStage.FIRST, reason: OutageReason.SSE_ENDED, attempts: 1 },
+      outage: {
+        stage: OutageStage.FIRST,
+        reason: OutageReason.SSE_ENDED,
+        attempts: 1,
+        pendingLost: 0,
+      },
     });
     emit.mockRestore();
   });
@@ -77,6 +82,41 @@ describe('the reason stays a closed vocabulary', () => {
     const emit = vi.spyOn(getTelemetry(), 'emit').mockResolvedValue(true);
     reportMcpOutage(OutageStage.FIRST, { reason: 'socket hang up to 10.0.0.7', attempts: 2 });
     expect(emit.mock.calls[0]?.[1]?.outage?.reason).toBe(OutageReason.OTHER);
+    emit.mockRestore();
+  });
+});
+
+/**
+ * An outage nobody could feel is not the same as one that killed a call.
+ *
+ * Measured 2026-08-10/11: **320 of 321 `mcp_connection_lost` events were `stage: first` with
+ * `attempts: 1`** — the SSE stream ended once and the proxy reconnected. For an agent with nothing
+ * in flight that is invisible. Reading 321 as "the agent lost its tools 321 times" overstates the
+ * problem by nearly the whole number and buries the ONE drop that mattered (61 attempts, budget
+ * spent). `pendingLost` is the part an agent can actually feel: calls answered `-32001`.
+ */
+describe('an outage reports how many in-flight calls it actually killed', () => {
+  beforeEach(() => {
+    resetOutageReporting();
+  });
+
+  it('reports zero when nothing was in flight — a drop nobody noticed', () => {
+    const emit = vi.spyOn(getTelemetry(), 'emit').mockResolvedValue(true);
+    reportMcpOutage(OutageStage.FIRST, { reason: OutageReason.SSE_ENDED, attempts: 1 });
+    const payload = emit.mock.calls[0]?.[1] as { outage: Record<string, unknown> };
+    expect(payload.outage['pendingLost'], 'zero is the finding, not an absence').toBe(0);
+    emit.mockRestore();
+  });
+
+  it('reports the number of calls the drop killed', () => {
+    const emit = vi.spyOn(getTelemetry(), 'emit').mockResolvedValue(true);
+    reportMcpOutage(OutageStage.FIRST, {
+      reason: OutageReason.SSE_ABORTED,
+      attempts: 2,
+      pendingLost: 3,
+    });
+    const payload = emit.mock.calls[0]?.[1] as { outage: Record<string, unknown> };
+    expect(payload.outage['pendingLost']).toBe(3);
     emit.mockRestore();
   });
 });

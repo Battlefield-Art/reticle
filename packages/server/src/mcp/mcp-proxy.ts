@@ -556,17 +556,18 @@ export function startMcpProxy(
       }
     }
 
-    function scheduleReconnect(reason: string, detail?: string): void {
+    function scheduleReconnect(reason: string, detail?: string, pendingLost = 0): void {
       if (stopped) return;
       postUrl = null;
       attempts++;
       // Once per process: this session has now lost its tools at least once, which is the number
-      // that says whether the transport work actually landed for real users.
-      reportMcpOutage(OutageStage.FIRST, { reason, attempts });
+      // that says whether the transport work actually landed for real users. `pendingLost` is the
+      // part an agent can FEEL — 320 of 321 measured drops killed nothing in flight.
+      reportMcpOutage(OutageStage.FIRST, { reason, attempts, pendingLost });
       // The severe stage: we are about to stop retrying. Reported so the share of sessions where
       // MCP never came back on its own is a number rather than an anecdote.
       if (attempts > MAX_RECONNECT_ATTEMPTS) {
-        reportMcpOutage(OutageStage.BUDGET_SPENT, { reason, attempts });
+        reportMcpOutage(OutageStage.BUDGET_SPENT, { reason, attempts, pendingLost });
         // Stop RETRYING, never stop SERVING. See onReconnectBudgetSpent: exiting here made the
         // client mark the MCP server disconnected and left a human to reconnect it by hand.
         dormant = onReconnectBudgetSpent() === OnDrop.DORMANT;
@@ -620,8 +621,10 @@ export function startMcpProxy(
           settled = true;
           // Answer anything the dead session owed BEFORE reconnecting. The new session cannot know
           // about it, so silence here is permanent.
-          for (const reply of streamLossReplies(pending, reason)) emit(reply);
-          scheduleReconnect(reason, detail);
+          const lost = streamLossReplies(pending, reason);
+          for (const reply of lost) emit(reply);
+          // How many calls this drop actually killed. Zero means the agent could not feel it.
+          scheduleReconnect(reason, detail, lost.length);
         };
         const sse = new SseFrameParser();
         res.on('data', (chunk: string) => {
