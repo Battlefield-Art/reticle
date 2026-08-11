@@ -316,6 +316,28 @@ describe('a wrong-shaped call is answered with a correct one', () => {
     await close();
   });
 
+  /**
+   * The handshake is the only guidance EVERY agent receives — SKILL.md is opt-in, this is not.
+   *
+   * It used to advertise the act step as `reticle_act`, which produces no verdict, and never named
+   * `reticle_act_and_wait` at all. Measured over 2026-08-10/11: `reticle_act` was called 319 times
+   * against `act_and_wait`'s 88, and 20 of the 28 agents that drove an app produced no verdict.
+   * Every verification event this product records comes from exactly two tools, and the one line
+   * every agent reads named neither of them as the way to get one.
+   */
+  it('names the two tools that can actually produce a verdict', async () => {
+    const { client, close } = await openServer();
+    const instructions = client.getInstructions() ?? '';
+
+    expect(instructions).toContain(ReticleTool.ACT_AND_WAIT);
+    expect(instructions).toContain(ReticleTool.ASSERT);
+    expect(instructions, 'an agent must know that acting alone proves nothing').toMatch(
+      /produce a verdict/,
+    );
+    expect(instructions, 'unknown is not a pass').toMatch(/unknown/);
+    await close();
+  });
+
   it('points at reticle_tools when the tool carries no example', () => {
     const server = createMcpServer(toolDepsForTest(), TOOL_SURFACE.DEFAULT);
     // Installed with an empty example map: the fallback must still be actionable, never a bare dump.

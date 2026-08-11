@@ -53,7 +53,9 @@ const SERVER_INFO = { name: MCP_SERVER_NAME, version: SERVER_VERSION };
  * Kept to a handful of lines: it is prepended to every session's context, so each sentence is paid
  * for on every turn, forever.
  */
-const SERVER_INSTRUCTIONS = `Reticle verifies a running web app from the inside: look (reticle_snapshot / reticle_query), act (reticle_act), observe (reticle_state / reticle_network / reticle_console), assert (reticle_assert). Verify a user-facing change against the real app before you call it done, and never weaken a check to make it pass.
+const SERVER_INSTRUCTIONS = `Reticle verifies a running web app from the inside: look (reticle_snapshot / reticle_query), act and prove in one hop (reticle_act_and_wait), observe (reticle_state / reticle_network / reticle_console), assert (reticle_assert). Verify a user-facing change against the real app before you call it done, and never weaken a check to make it pass.
+
+Only reticle_act_and_wait and reticle_assert produce a verdict. reticle_act and everything else move or read the app and prove nothing, so a drive that ends without one of those two has no result however many tools it used. Prefer reticle_act_and_wait({ ref, action, until }) — it names the expected consequence BEFORE the action, which is the difference between a check and a rationalisation. A verdict of verified:"unknown" is not a pass: it means Reticle drove the app and could not tell what happened. Report it as unknown.
 
 Feedback is first-class here, not a courtesy. Reticle is built FOR agents, so your experience is the only signal that decides what gets built or fixed — and it disappears when your context does. Send it with \`reticle_feedback\` the moment you notice, then carry on with your task:
 - Reticle broke, lied, or could not see something you needed (\`bug\` / \`gap\` / \`ambiguity\`).
