@@ -187,6 +187,119 @@ describe('action effect: domMutatedWithin', () => {
   });
 });
 
+describe('action effect: appeared', () => {
+  it('reports the text the action put on the page, not just that something changed', async () => {
+    // The login shape. `domMutatedWithin: 7` is true and useless: it says the click did SOMETHING
+    // without saying the app rejected you. An agent reads ok/settled/mutated and moves on.
+    document.body.innerHTML = '<button>Sign in</button>';
+    const button = document.querySelector('button') as HTMLButtonElement;
+    button.addEventListener('click', () => {
+      const err = document.createElement('div');
+      err.textContent = 'Invalid email or password';
+      document.body.appendChild(err);
+    });
+    const r = await executeAction(refs.refFor(button), 'click');
+    expect(r.effect.appeared).toContain('Invalid email or password');
+  });
+
+  it('reports text swapped in by a character-data change, not only new nodes', async () => {
+    document.body.innerHTML = '<button>Save</button><div id="s">Ready</div>';
+    const button = document.querySelector('button') as HTMLButtonElement;
+    button.addEventListener('click', () => {
+      const status = document.getElementById('s');
+      if (null !== status) status.textContent = 'Could not save';
+    });
+    const r = await executeAction(refs.refFor(button), 'click');
+    expect(r.effect.appeared).toContain('Could not save');
+  });
+
+  it('is OMITTED when the action added no text — absence means "nothing was said"', async () => {
+    document.body.innerHTML = '<button>noop</button>';
+    const r = await executeAction(refOf('button'), 'click');
+    expect(r.effect.appeared).toBeUndefined();
+  });
+
+  it('is omitted when the DOM changed but silently — a class toggle says nothing to a reader', async () => {
+    document.body.innerHTML = '<button>toggle</button>';
+    const button = document.querySelector('button') as HTMLButtonElement;
+    button.addEventListener('click', () => button.classList.add('active'));
+    const r = await executeAction(refs.refFor(button), 'click');
+    expect(r.effect.domMutatedWithin).toBeGreaterThanOrEqual(1);
+    expect(r.effect.appeared).toBeUndefined();
+  });
+
+  it('truncates a large render rather than returning a whole page of text', async () => {
+    document.body.innerHTML = '<button>load</button>';
+    const button = document.querySelector('button') as HTMLButtonElement;
+    button.addEventListener('click', () => {
+      const big = document.createElement('div');
+      big.textContent = 'x'.repeat(5000);
+      document.body.appendChild(big);
+    });
+    const r = await executeAction(refs.refFor(button), 'click');
+    expect(r.effect.appeared).toBeDefined();
+    expect((r.effect.appeared ?? '').length).toBeLessThan(300);
+  });
+
+  it('does NOT echo the text the agent itself just typed', async () => {
+    // Found by driving: filling a textarea reported appeared:"<the value I passed in>". The field
+    // is meant to be what the APP said; handing the caller its own input back is noise wearing the
+    // name of evidence, and `valueChanged` already reports that the write landed.
+    // A textarea carries its value in a CHILD TEXT NODE, so a controlled one re-rendering after
+    // your keystroke mutates characterData with your own string. Filling the sibling <input> in
+    // the same live view produced no `appeared` at all, which is what identified the mechanism.
+    document.body.innerHTML = '<textarea>old</textarea>';
+    const ta = document.querySelector('textarea') as HTMLTextAreaElement;
+    ta.addEventListener('input', () => {
+      const child = ta.firstChild;
+      if (null !== child) child.textContent = ta.value;
+    });
+    const r = await executeAction(refs.refFor(ta), 'fill', { value: 'what shipped today' });
+    expect(r.effect.valueChanged).toBe(true);
+    expect(r.effect.appeared).toBeUndefined();
+  });
+
+  it('ignores a bare counter tick — an animated number is not the app saying something', async () => {
+    // Found by driving the Hostile fixture, which mutates a counter every 16ms. Clicking its
+    // "Fire failing request" button returned appeared:"409" — the ticker, not the fault. A
+    // fragment with no letters at all carries no message a reader can act on, and a bare number
+    // is exactly what a count-up animation emits into the settle window.
+    document.body.innerHTML = '<button>go</button><span id="tick">408</span>';
+    const button = document.querySelector('button') as HTMLButtonElement;
+    button.addEventListener('click', () => {
+      const tick = document.getElementById('tick');
+      if (null !== tick) tick.textContent = '409';
+    });
+    const r = await executeAction(refs.refFor(button), 'click');
+    expect(r.effect.domMutatedWithin).toBeGreaterThanOrEqual(1);
+    expect(r.effect.appeared).toBeUndefined();
+  });
+
+  it('keeps a number that comes WITH words — that one is a message', async () => {
+    document.body.innerHTML = '<button>go</button><span id="o"></span>';
+    const button = document.querySelector('button') as HTMLButtonElement;
+    button.addEventListener('click', () => {
+      const out = document.getElementById('o');
+      if (null !== out) out.textContent = 'status 500';
+    });
+    const r = await executeAction(refs.refFor(button), 'click');
+    expect(r.effect.appeared).toContain('status 500');
+  });
+
+  it('still reports what the app said ABOUT the input it received', async () => {
+    // The exclusion is exact-match only, so an app that quotes your input back inside its own
+    // sentence is still reported — that IS the app talking.
+    document.body.innerHTML = '<input /><div id="out"></div>';
+    const input = document.querySelector('input') as HTMLInputElement;
+    input.addEventListener('input', () => {
+      const out = document.getElementById('out');
+      if (null !== out) out.textContent = `No results for ${input.value}`;
+    });
+    const r = await executeAction(refs.refFor(input), 'fill', { value: 'zzz' });
+    expect(r.effect.appeared).toContain('No results for zzz');
+  });
+});
+
 describe('action effect: unresolvable ref', () => {
   it('rejects when the ref no longer resolves (tool did not dispatch)', async () => {
     document.body.innerHTML = '<button>gone</button>';
