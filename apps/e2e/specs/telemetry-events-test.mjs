@@ -559,7 +559,9 @@ await settle();
 // hide it, because a fire-and-forget send DOES land given ~700ms — it just never gets them. Asserting
 // the event has already ARRIVED the instant shutdown() resolves is the real contract: awaiting
 // shutdown must be sufficient, with no grace period, because in production there is none.
-await daemon.shutdown();
+// With a REASON, as cli.ts's shutdown path passes it. A designed idle exit and a real failure
+// must not be the same row: 299 of 321 measured 'outages' were the daemon retiring itself.
+await daemon.shutdown('idle');
 {
   const s = find('daemon_stopped')[0];
   const arrived = s !== undefined;
@@ -580,6 +582,11 @@ await daemon.shutdown();
   check('  error carries a READABLE skeleton, not just a hash', baselineError?.message === 'no baseline named *', String(baselineError?.message));
   check('  error names the tool that produced it', baselineError !== undefined);
   check('  error carries its count', baselineError?.count === 2, String(baselineError?.count));
+  // The 2.6.0 fields, asserted HERE because this is the only place that proves they reach the wire.
+  // Telemetry fails silently: a field dropped from the emit allow-list throws nothing and reddens no
+  // unit test, and the data is simply, permanently absent.
+  check('  reports whether an app ever connected (zero is the finding)', arrived && typeof p.session_appConnects === 'number', String(p.session_appConnects));
+  check('  reports WHY the daemon exited, so a designed idle exit is not an outage', arrived && p.session_exit === 'idle', String(p.session_exit));
   const params = p.session_toolParams ?? {};
   check('  recorded tool PARAM names', arrived && JSON.stringify(params).includes('ref'));
   check('  recorded a safe enum VALUE', arrived && JSON.stringify(params).includes('action:type'));
