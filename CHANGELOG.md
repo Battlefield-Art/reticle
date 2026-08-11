@@ -26,8 +26,8 @@ Three defects meant the one number this product is judged by — installs that r
 
 ### It stayed up
 
-- **`@reticlehq/server` — the MCP link survives a daemon that is not there.** A first connect to a missing daemon was an unhandled rejection; browser launches, abort handlers, predicate timers and command timers are all released on shutdown. *(pool and timer leaks fixed by **Dev Chiniwala**)*
-- **`@reticlehq/browser` — the SDK backs off instead of retrying every second forever**, and the churn-aware offline queue keeps signal events when it overflows. *(**Dev Chiniwala**)*
+- **`@reticlehq/server` — the MCP link survives a daemon that is not there.** A first connect to a missing daemon was an unhandled rejection; browser launches, abort handlers, predicate timers and command timers are all released on shutdown. _(pool and timer leaks fixed by **Dev Chiniwala**)_
+- **`@reticlehq/browser` — the SDK backs off instead of retrying every second forever**, and the churn-aware offline queue keeps signal events when it overflows. _(**Dev Chiniwala**)_
 - **`@reticlehq/vite-plugin` — Vite 8 no longer rejects our config on every dev boot**, and a dev server started before the daemon stops serving a tokenless connect module forever. ([#165](https://github.com/reticlehq/reticle/issues/165))
 - **`@reticlehq/server` — `doctor` names the process holding the port** and flags version skew there; `status` and the daemon log distinguish a killed daemon from a tidy one.
 
@@ -42,7 +42,7 @@ Three defects meant the one number this product is judged by — installs that r
 - **`@reticlehq/server` — `init` registers with every MCP client on the machine**, not just Claude Code and Cursor.
 - **`@reticlehq/server` — `args.holdMs`** keeps the pointer down, so hold-to-confirm controls work.
 - **`@reticlehq/server` — `reticle_act` reports the text it put on the page**, and `reticle_sessions` reports whether a session stayed attached.
-- **`@reticlehq/server` — `flow_verify` records flake outcomes on the parallel path too**, so an agent verifying in parallel finally builds flake evidence. *(**Dev Chiniwala**, [#240](https://github.com/reticlehq/reticle/pull/240))*
+- **`@reticlehq/server` — `flow_verify` records flake outcomes on the parallel path too**, so an agent verifying in parallel finally builds flake evidence. _(**Dev Chiniwala**, [#240](https://github.com/reticlehq/reticle/pull/240))_
 
 ### Security
 

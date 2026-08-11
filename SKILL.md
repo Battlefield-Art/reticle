@@ -498,7 +498,7 @@ Then pick a mode:
      { kind: "console", level: "error", absent: true }
    ]}})
    ```
-   One call, one verdict, and the oracle is written *before* the result exists — see **Declare before you act** below.
+   One call, one verdict, and the oracle is written _before_ the result exists — see **Declare before you act** below.
 4. Only when an action's consequence lands somewhere you cannot name up front, act bare and assert after — always with `since` from the act result, or the assertion silently reads the wrong window:
    ```
    reticle_act({ sessionId, ref, action: "click" })

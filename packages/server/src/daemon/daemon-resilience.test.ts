@@ -266,7 +266,11 @@ describe('a daemon that is not up yet is not a crash', () => {
   it('is still VISIBLE — absorbed means reclassified, never silenced', () => {
     const proc = fakeProc();
     const lines: { event: string; data: Record<string, unknown> }[] = [];
-    installProxyResilience(proc, (event, data) => lines.push({ event, data }), () => undefined);
+    installProxyResilience(
+      proc,
+      (event, data) => lines.push({ event, data }),
+      () => undefined,
+    );
 
     proc.emit('unhandledRejection', errno('ECONNREFUSED', 'connect ECONNREFUSED 127.0.0.1:4400'));
 
@@ -277,7 +281,11 @@ describe('a daemon that is not up yet is not a crash', () => {
   it('does not confuse the two classes: a disconnect keeps its own event name', () => {
     const proc = fakeProc();
     const lines: { event: string; data: Record<string, unknown> }[] = [];
-    installProxyResilience(proc, (event, data) => lines.push({ event, data }), () => undefined);
+    installProxyResilience(
+      proc,
+      (event, data) => lines.push({ event, data }),
+      () => undefined,
+    );
 
     proc.emit('unhandledRejection', errno('ECONNRESET', 'read ECONNRESET'));
 
@@ -287,7 +295,11 @@ describe('a daemon that is not up yet is not a crash', () => {
   it('an error whose MESSAGE says ECONNREFUSED but carries no code is still a crash', () => {
     const proc = fakeProc();
     const crashes: CrashKind[] = [];
-    installProxyResilience(proc, () => undefined, (kind) => crashes.push(kind));
+    installProxyResilience(
+      proc,
+      () => undefined,
+      (kind) => crashes.push(kind),
+    );
 
     proc.emit('unhandledRejection', new Error('connect ECONNREFUSED 127.0.0.1:4400'));
 

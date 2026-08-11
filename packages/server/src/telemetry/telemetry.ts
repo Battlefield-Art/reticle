@@ -174,9 +174,7 @@ const resolveIdentity = (): { anonymousId: string; firstRun: boolean } => {
  * credentials, `.git` suffix and case removed) so `git@github.com:acme/web.git` and
  * `https://github.com/Acme/web` are recognized as the same project rather than two.
  */
-export const projectFingerprint = (
-  cwd: string,
-): { projectId: string; source: ProjectIdSource } => {
+export const projectFingerprint = (cwd: string): { projectId: string; source: ProjectIdSource } => {
   const { origin, root } = gitFacts(cwd);
   // Ordered by stability, not by preference: an origin is comparable across machines, a repo root is
   // stable across every directory inside one machine's checkout, a package.json root is the same for

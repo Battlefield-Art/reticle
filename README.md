@@ -267,7 +267,7 @@ The SDK observes the **DOM, network, console, routing, storage and animations of
 | **Angular** | not detected | ❌ | ❌ — [#128](https://github.com/reticlehq/reticle/issues/128) |
 | **Plain HTML / anything else** | manual (`connect()`) | ❌ | — |
 
-**A ❌ in "source mapping" is not a broken install.** Vue, Preact, Svelte, Astro, SvelteKit and CRA apps are wired by `init`, connect normally, and every tool works — refs, roles, test-ids, network, console, storage, state, animations, assertions and verdicts. What you don't get is `reticle_query` answering *"which component rendered this, and in which file"*, because that needs a build plugin that stamps `data-reticle-source`. On the unverified stacks `init` says so on the spot rather than reporting an unqualified green.
+**A ❌ in "source mapping" is not a broken install.** Vue, Preact, Svelte, Astro, SvelteKit and CRA apps are wired by `init`, connect normally, and every tool works — refs, roles, test-ids, network, console, storage, state, animations, assertions and verdicts. What you don't get is `reticle_query` answering _"which component rendered this, and in which file"_, because that needs a build plugin that stamps `data-reticle-source`. On the unverified stacks `init` says so on the spot rather than reporting an unqualified green.
 
 **Desktop**
 

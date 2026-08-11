@@ -52,8 +52,18 @@ describe('recordSuiteFlakes', () => {
     // The parallel path records a whole round at once. A loop that broke early, or overwrote, would
     // still look right for a one-flow suite.
     let flaky: readonly string[] = [];
-    for (const s of [ReplayStatus.OK, ReplayStatus.ERROR, ReplayStatus.OK, ReplayStatus.OK, ReplayStatus.ERROR]) {
-      flaky = await recordSuiteFlakes(fs, root, round({ login: s, steady: ReplayStatus.OK, search: s }));
+    for (const s of [
+      ReplayStatus.OK,
+      ReplayStatus.ERROR,
+      ReplayStatus.OK,
+      ReplayStatus.OK,
+      ReplayStatus.ERROR,
+    ]) {
+      flaky = await recordSuiteFlakes(
+        fs,
+        root,
+        round({ login: s, steady: ReplayStatus.OK, search: s }),
+      );
     }
     expect(flaky).toContain('login');
     expect(flaky).toContain('search');
@@ -78,7 +88,13 @@ describe('recordSuiteFlakes', () => {
 
   it('counts DRIFT as a failure, like ERROR', async () => {
     let flaky: readonly string[] = [];
-    for (const s of [ReplayStatus.OK, ReplayStatus.DRIFT, ReplayStatus.OK, ReplayStatus.OK, ReplayStatus.DRIFT]) {
+    for (const s of [
+      ReplayStatus.OK,
+      ReplayStatus.DRIFT,
+      ReplayStatus.OK,
+      ReplayStatus.OK,
+      ReplayStatus.DRIFT,
+    ]) {
       flaky = await recordSuiteFlakes(fs, root, round({ wobbly: s }));
     }
     expect(flaky).toContain('wobbly');
