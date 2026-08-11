@@ -8,7 +8,7 @@ import {
   type FlowReplayResult,
 } from '@reticlehq/core';
 import type { FlowFile } from '@reticlehq/core';
-import { FlakeStore } from './flake-store.js';
+import { recordSuiteFlakes } from './suite-flakes.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import { asNumber, asString } from '../tools/tools-helpers.js';
 import { log } from '../log.js';
@@ -433,26 +433,15 @@ export const FLOW_TOOLS: ToolDef[] = [
             return flow === undefined ? { replay } : { replay, flow };
           }),
         );
-        const flakes = new FlakeStore(deps.fs, deps.reticleRoot);
-        for (const { replay } of parallelRuns) {
-          await flakes
-            .record(replay.name, replay.status === ReplayStatus.OK)
-            .catch(() => undefined);
-        }
-        const flaky = await flakes.flakyFlows().catch(() => [] as string[]);
+        const flaky = await recordSuiteFlakes(deps.fs, deps.reticleRoot, parallelRuns);
         const verdict = buildSuiteVerdict(parallelRuns);
-        return flaky.length > 0 ? { ...verdict, flaky } : verdict;
+        return flaky.length > 0 ? { ...verdict, flaky: [...flaky] } : verdict;
       }
       // The flow FILE travels with each replay so the verdict can tell a green that verified
       // something from a green that could never have gone red. Without it the suite reported "all 1
       // flow pass" for a flow with no steps at all.
       const runs: { replay: FlowReplayResult; flow?: FlowFile }[] = [];
       const timed: TimedReplay[] = [];
-      // The flake ledger the CLI gate already keeps — see FlakeStore. It was only ever written by
-      // `reticle flow` on the command line, so an AGENT running this tool a hundred times learned
-      // nothing about which flows are intermittent. Same product, same ledger, two surfaces, and the
-      // one an agent uses was the blind half.
-      const flakes = new FlakeStore(deps.fs, deps.reticleRoot);
       // Sequential default: every flow replays against the same live session, so they must not overlap.
       for (const flowName of requested) {
         const start = deps.now();
@@ -462,19 +451,18 @@ export const FLOW_TOOLS: ToolDef[] = [
         runs.push(flow === undefined ? { replay } : { replay, flow });
         timed.push({ replay, durationMs: deps.now() - start });
       }
-      // Accrue this run's outcomes, then report what the ledger knows. Best-effort on both halves: a
-      // flake ledger is memory, not a gate, and it must never turn a working verify into an error.
-      for (const { replay } of runs) {
-        await flakes.record(replay.name, replay.status === ReplayStatus.OK).catch(() => undefined);
-      }
-      const flaky = await flakes.flakyFlows().catch(() => [] as string[]);
+      // The flake ledger the CLI gate already keeps — see FlakeStore. It was only ever written by
+      // `reticle flow` on the command line, so an AGENT running this tool a hundred times learned
+      // nothing about which flows are intermittent. Same product, same ledger, two surfaces, and the
+      // one an agent uses was the blind half.
+      const flaky = await recordSuiteFlakes(deps.fs, deps.reticleRoot, runs);
       // Emit the consolidated run artifact (Runs tab) + best-effort cloud push. Never blocks the verdict.
       await persistAndSyncVerificationRun(deps, timed, projectId);
       const verdict = buildSuiteVerdict(runs);
       // A flow that has both passed and failed on UNCHANGED code is a different thing from a
       // regression, and an agent that cannot tell them apart either chases a ghost or ignores a real
       // break. Present only when the ledger has seen enough runs to say so.
-      return flaky.length > 0 ? { ...verdict, flaky } : verdict;
+      return flaky.length > 0 ? { ...verdict, flaky: [...flaky] } : verdict;
     },
   },
   {
