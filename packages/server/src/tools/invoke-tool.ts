@@ -308,5 +308,11 @@ export async function runTool(
   if (lease !== undefined) envelope['session_lease'] = lease;
   const warning = resolved.ageWarning();
   if (warning !== undefined) envelope['session_age_warning'] = warning;
+  // Ask for a verdict when the agent has driven the page and not asked for one. 137 of the 140
+  // verdict-less sessions measured over 2026-08-10/11 never called a verdict-producing tool ONCE;
+  // the counter behind this already existed and was reported only to us. One-shot per abandoned
+  // run, same discipline as the pool lease — a hint on every call is noise that gets tuned out.
+  const unverified = getSessionMetrics().takeUnverifiedNudge();
+  if (unverified !== undefined) envelope['verify_next'] = unverified;
   return Object.keys(envelope).length > 0 ? { ...result, ...envelope } : result;
 }

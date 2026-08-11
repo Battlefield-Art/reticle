@@ -56,6 +56,13 @@ const MAX_PARAMS_PER_TOOL = 24;
  * strings and costs nothing to hold.
  */
 const BREADCRUMB_LENGTH = 12;
+/**
+ * Actions driven with no verdict before Reticle asks for one.
+ *
+ * Three, because the median verdict-less session made FOUR tool calls (2026-08-10/11). A higher
+ * threshold never fires for the sessions that need it most.
+ */
+const UNVERIFIED_ACTION_NUDGE_AT = 3;
 
 /**
  * Mutable counters for one daemon lifetime. A plain class, not a store: it is process-local, it never
@@ -133,6 +140,8 @@ export class SessionMetrics {
    * run, which is exactly what the field claims to mean.
    */
   #unsettledActions = 0;
+  /** One-shot latch for the verdict nudge — see takeUnverifiedNudge. */
+  #nudgedUnverified = false;
   readonly #clients = new Set<string>();
   readonly #startedAt: number;
   readonly #now: () => number;
@@ -272,6 +281,32 @@ export class SessionMetrics {
     return { breadcrumb: [...this.#breadcrumb], inFlight: this.#inFlight };
   }
 
+  /**
+   * Ask the agent for a verdict, once, when it has driven the page without asking for one.
+   *
+   * Measured 2026-08-10/11: of 170 sessions that made a tool call, 140 produced no verdict — and
+   * **137 of those never called a verdict-producing tool even once.** They drove the app 269 times
+   * with `reticle_act` and never asked whether it worked. This counter already existed
+   * (`abandonedActions`, non-zero in 58 sessions); it was reported to US and never to the agent.
+   *
+   * Three is the threshold because the median verdict-less session made four tool calls: any higher
+   * and it never fires for the sessions that need it. Re-arms after a verdict, so a second
+   * abandoned run is caught — the loop can break more than once in a long session.
+   */
+  takeUnverifiedNudge(): string | undefined {
+    if (this.#unsettledActions < UNVERIFIED_ACTION_NUDGE_AT || this.#nudgedUnverified) {
+      return undefined;
+    }
+    this.#nudgedUnverified = true;
+    return (
+      `you have driven this page ${String(this.#unsettledActions)} times without asking for a ` +
+      'verdict. Only reticle_act_and_wait and reticle_assert produce one — everything else moves ' +
+      'or reads the app and proves nothing. Name the consequence you expect and check it: ' +
+      'reticle_assert({ sessionId, since, predicate }), or use reticle_act_and_wait({ ref, ' +
+      'action, until }) for the next step so the action and its check are one call.'
+    );
+  }
+
   /** One action driven at the page. Settled by the next verdict; see #unsettledActions. */
   recordAction(): void {
     this.#unsettledActions += 1;
@@ -282,6 +317,9 @@ export class SessionMetrics {
     this.#lifetimeVerifications += 1;
     // A verdict settles whatever was outstanding, however many actions it took to get there.
     this.#unsettledActions = 0;
+    // Re-arm the nudge: the loop can break more than once in an 11-hour session, and an agent that
+    // complied once and then drifted again is exactly the case worth catching.
+    this.#nudgedUnverified = false;
   }
 
   /**

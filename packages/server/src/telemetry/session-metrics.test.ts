@@ -371,3 +371,68 @@ describe('a final summary reports the whole session, not the last window', () =>
     expect(final.toolCalls, 'duration and counts must describe the same span').toBeGreaterThan(0);
   });
 });
+
+/**
+ * Ask for a verdict when the agent has driven the page and not asked for one.
+ *
+ * Measured 2026-08-10/11 (non-CI), over 170 sessions that made at least one tool call:
+ *
+ * | | sessions | act | act_and_wait | assert | ever called a verdict tool |
+ * |---|---|---|---|---|---|
+ * | no verdict | 140 | 269 | 1 | 2 | **3 of 140 (2%)** |
+ * | verdict    |  30 |  50 | 87 | 23 | 29 of 30 (97%) |
+ *
+ * **137 of the 140 verdict-less sessions never called a verdict-producing tool once.** They drove
+ * the app 269 times and never asked whether it worked. The product already counted this
+ * (`abandonedActions`, non-zero in 58 sessions) and never told the agent.
+ *
+ * One-shot per session, like the pool lease: a hint repeated every call is noise that gets tuned
+ * out, and every byte here is paid on a live tool result.
+ */
+describe('the agent is asked for a verdict once it has acted without one', () => {
+  const drive = (m: SessionMetrics, n: number) => {
+    for (let i = 0; i < n; i += 1) m.recordAction();
+  };
+
+  it('says nothing until enough actions have gone unverified', () => {
+    const m = new SessionMetrics(() => 0);
+    drive(m, 2);
+    expect(m.takeUnverifiedNudge()).toBeUndefined();
+  });
+
+  it('asks once the agent has driven three times with no verdict', () => {
+    const m = new SessionMetrics(() => 0);
+    drive(m, 3);
+    const nudge = m.takeUnverifiedNudge();
+    expect(nudge).toBeDefined();
+    expect(nudge).toContain('reticle_act_and_wait');
+    expect(nudge).toContain('reticle_assert');
+  });
+
+  it('is ONE-SHOT — a hint on every call is noise', () => {
+    const m = new SessionMetrics(() => 0);
+    drive(m, 5);
+    expect(m.takeUnverifiedNudge()).toBeDefined();
+    drive(m, 5);
+    expect(m.takeUnverifiedNudge(), 'already said once').toBeUndefined();
+  });
+
+  it('never fires for an agent that verifies as it goes', () => {
+    // act -> assert -> act -> assert is the loop working. It must not be nagged.
+    const m = new SessionMetrics(() => 0);
+    for (let i = 0; i < 10; i += 1) {
+      m.recordAction();
+      m.recordVerification();
+    }
+    expect(m.takeUnverifiedNudge()).toBeUndefined();
+  });
+
+  it('a verdict re-arms it, so a SECOND abandoned run is caught too', () => {
+    const m = new SessionMetrics(() => 0);
+    drive(m, 3);
+    expect(m.takeUnverifiedNudge()).toBeDefined();
+    m.recordVerification(); // the agent complied
+    drive(m, 3); // ...and then drifted again
+    expect(m.takeUnverifiedNudge(), 'the loop broke a second time').toBeDefined();
+  });
+});

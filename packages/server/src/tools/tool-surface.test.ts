@@ -9,6 +9,7 @@ import {
   filterTools,
   resolveToolSurface,
 } from './tool-surface.js';
+import { ReticleTool } from './tool-names.js';
 import { PAUSE_HINT } from '../session/control-envelope.js';
 import { buildSessionLease } from '../session/session-lease.js';
 
@@ -148,5 +149,39 @@ describe('one surface, plus a verification switch', () => {
     process.env[ADVERTISE_ALL_ENV] = '0';
     expect(resolveToolSurface()).toBe(TOOL_SURFACE.DEFAULT);
     delete process.env[ADVERTISE_ALL_ENV];
+  });
+});
+
+/**
+ * The advertised surface must contain the tool that prevents the biggest loop in the data.
+ *
+ * Measured 2026-08-10/11 (non-CI): `reticle_act` was called **319 times** and
+ * `reticle_act_sequence` **7 times**. `act` also leads the repeat table — **110 consecutive-repeat
+ * runs**, and inside those sessions the repeated calls are **98 clicks and 21 fills**, i.e. a login
+ * form driven one round trip at a time. 23 of the 30 looping sessions recorded abandoned actions.
+ *
+ * The repeats are not retries: looping sessions have a LOWER error rate (0.051) than non-looping
+ * ones (0.078). The calls succeed and are simply repeated, because the batching tool that
+ * `SKILL.md` already recommends was reachable only through `reticle_run` — so an agent had to
+ * already know it existed.
+ */
+describe('the surface advertises the tools that prevent looping and produce verdicts', () => {
+  it('advertises reticle_act_sequence, not just reticle_act', () => {
+    expect(
+      CORE_TOOL_NAMES.has(ReticleTool.ACT_SEQUENCE),
+      'act:319 vs act_sequence:7 — the batching tool was invisible',
+    ).toBe(true);
+  });
+
+  it('advertises both verdict-producing tools', () => {
+    // 137 of 140 verdict-less sessions never called either of these once.
+    expect(CORE_TOOL_NAMES.has(ReticleTool.ACT_AND_WAIT)).toBe(true);
+    expect(CORE_TOOL_NAMES.has(ReticleTool.ASSERT)).toBe(true);
+  });
+
+  it('stays under 20 advertised tools — the surface is a budget, not a dumping ground', () => {
+    // Every tool here is re-sent on every turn. The measured floor for accuracy was about cutting
+    // to 8 (5/5 -> 3/5); the ceiling is the per-turn schema cost. 20 is the agreed cap.
+    expect(CORE_TOOL_NAMES.size).toBeLessThanOrEqual(18);
   });
 });

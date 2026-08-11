@@ -20,8 +20,10 @@ import { TOOLS } from './tools.js';
 
 /** The advertised size of each surface. Update WITH the surface, never after it. */
 const EXPECTED_SIZE: Record<ToolSurface, number> = {
-  // The verify loop plus the two meta-tools that reach everything else.
-  [TOOL_SURFACE.DEFAULT]: 17,
+  // The verify loop plus the two meta-tools that reach everything else. 18 since 2.6.0, when
+  // `reticle_act_sequence` joined: its absence was measurably causing the biggest loop in the
+  // field data (act 319 calls / act_sequence 7, and 110 act repeat-runs). See tool-surface.ts.
+  [TOOL_SURFACE.DEFAULT]: 18,
   // Every tool PLUS the two meta-tools: every recovery message points at reticle_tools, so a
   // surface without it makes our own advice a dead end.
   [TOOL_SURFACE.ALL]: 48,

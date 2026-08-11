@@ -213,8 +213,19 @@ export const ACT_TOOLS: ToolDef[] = [
   },
   {
     name: ReticleTool.ACT_SEQUENCE,
+    // The example is required for a core tool, and this one carries weight: the measured loop it
+    // replaces is literally a login form driven as three separate reticle_act calls (98 clicks and
+    // 21 fills inside looping sessions, 2026-08-10/11). Showing fill -> fill -> click is showing the
+    // exact shape an agent otherwise spends three round trips on.
+    example: {
+      steps: [
+        { ref: 'e12', action: 'fill', args: { value: 'a@b.com' } },
+        { ref: 'e13', action: 'fill', args: { value: 'hunter2' } },
+        { ref: 'e14', action: 'click' },
+      ],
+    },
     description:
-      'Run multiple actions in order (fill -> fill -> submit) in one round-trip. Returns per-step effects[] (see reticle_act).',
+      'Run multiple actions in order (fill -> fill -> submit) in ONE round-trip. Prefer this over repeating reticle_act for a multi-step journey, then assert its consequence once. Returns per-step effects[] (see reticle_act).',
     inputSchema: {
       steps: z
         .array(z.record(z.unknown()))
