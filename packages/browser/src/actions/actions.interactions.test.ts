@@ -32,6 +32,76 @@ describe('blur → focusout (React commit-on-blur)', () => {
     expect(onFocusOut).toHaveBeenCalled();
     document.removeEventListener('focusout', onFocusOut);
   });
+
+  /**
+   * EXACTLY once. `el.blur()` on a focused element already emits a bubbling `focusout` natively —
+   * verified in this jsdom and true in every browser — so synthesizing a second one made React's
+   * delegated root listener run `onBlur` TWICE.
+   *
+   * Reported from the field on React 19 + Vite: one `onBlur={() => mutate(...)}`, one render site,
+   * no StrictMode, and Reticle reported a `duplicate-request` contradiction. The double submit was
+   * ours. That is the worst failure this product has — a defect we invent and hand to a human as
+   * real — and it also makes every `net.count` assertion around a blur-to-save form untrustworthy.
+   *
+   * The old assertion was `toHaveBeenCalled()`, which is true for one call and for two.
+   */
+  it('fires focusout ONCE on a focused element — not once natively and once synthetically', () => {
+    document.body.innerHTML = '<input />';
+    const input = document.querySelector('input') as HTMLInputElement;
+    const onFocusOut = vi.fn();
+    document.addEventListener('focusout', onFocusOut);
+    input.focus();
+
+    void executeAction(refs.refFor(input), 'blur');
+
+    expect(onFocusOut, 'a second focusout is a phantom duplicate-request').toHaveBeenCalledTimes(1);
+    document.removeEventListener('focusout', onFocusOut);
+  });
+
+  it('still reaches a delegated listener when the element was NOT focused', () => {
+    // The case the synthetic dispatch exists for: `el.blur()` is a no-op on an unfocused element,
+    // so nothing native fires and the commit-on-blur handler would never run.
+    document.body.innerHTML = '<input /><button>elsewhere</button>';
+    const input = document.querySelector('input') as HTMLInputElement;
+    const onFocusOut = vi.fn();
+    document.addEventListener('focusout', onFocusOut);
+
+    void executeAction(refs.refFor(input), 'blur');
+
+    expect(onFocusOut).toHaveBeenCalledTimes(1);
+    document.removeEventListener('focusout', onFocusOut);
+  });
+
+  it('does not double-fire inside a shadow root either', () => {
+    // `document.activeElement` reports the shadow HOST, so keying on it would read a genuinely
+    // focused element as unfocused and take the double-dispatch path. The check reads the element's
+    // own root instead.
+    document.body.innerHTML = '<div id="host"></div>';
+    const host = document.getElementById('host') as HTMLElement;
+    const shadow = host.attachShadow({ mode: 'open' });
+    const input = document.createElement('input');
+    shadow.appendChild(input);
+    const onFocusOut = vi.fn();
+    document.addEventListener('focusout', onFocusOut);
+    input.focus();
+
+    void executeAction(refs.refFor(input), 'blur');
+
+    expect(onFocusOut).toHaveBeenCalledTimes(1);
+    document.removeEventListener('focusout', onFocusOut);
+  });
+
+  it('fires the non-bubbling `blur` event once too', () => {
+    document.body.innerHTML = '<input />';
+    const input = document.querySelector('input') as HTMLInputElement;
+    const onBlur = vi.fn();
+    input.addEventListener('blur', onBlur);
+    input.focus();
+
+    void executeAction(refs.refFor(input), 'blur');
+
+    expect(onBlur, 'an inline onblur= handler must not run twice either').toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('hover holdMs', () => {

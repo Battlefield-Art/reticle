@@ -363,13 +363,31 @@ async function dispatchOther(
       el.focus();
       el.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
       return false; // FocusEvents are not cancelable.
-    case ActionType.BLUR:
-      // Fire a bubbling focusout so React 19's delegated root listener runs onBlur
-      // (commit-on-blur). el.blur alone only works if the element was truly focused.
+    case ActionType.BLUR: {
+      // React 19 listens for `focusout` at the ROOT, so a commit-on-blur handler needs a BUBBLING
+      // event to reach it — and `el.blur()` is a no-op on an element that was never focused, which
+      // is why the synthetic pair exists at all.
+      //
+      // But on a FOCUSED element `el.blur()` already dispatches `blur` and a bubbling `focusout`
+      // natively. Dispatching them again meant React ran `onBlur` TWICE, and Reticle reported the
+      // resulting double write as a `duplicate-request` contradiction — a defect we invented and
+      // handed to a human as real. Reported from the field on React 19 + Vite with a single
+      // `onBlur={() => mutate(...)}`, one render site and no StrictMode.
+      //
+      // So synthesize ONLY when nothing native will fire. Read before the call, because `blur()` is
+      // what changes it — and read off the element's own ROOT: `document.activeElement` reports the
+      // shadow HOST for an element inside a shadow root, so an element that genuinely was focused
+      // would read as unfocused and take the double-dispatch path this exists to prevent. Both
+      // Document and ShadowRoot expose `activeElement`, so one expression covers both.
+      const root = el.getRootNode() as Document | ShadowRoot;
+      const wasFocused = root.activeElement === el;
       el.blur();
-      el.dispatchEvent(new FocusEvent('blur'));
-      el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      if (!wasFocused) {
+        el.dispatchEvent(new FocusEvent('blur'));
+        el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      }
       return false;
+    }
     case ActionType.FILL:
       if (isInput(el) || isTextArea(el)) {
         // A MISSING value is a malformed call, not a request to empty the field. `asString` defaults
