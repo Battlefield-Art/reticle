@@ -54,23 +54,52 @@ const DISCONNECT_CODES: ReadonlySet<string> = new Set([
   'ERR_STREAM_DESTROYED',
 ]);
 
-/** The disconnect code this failure carries, if that is all it was. */
-function disconnectCode(value: unknown): string | undefined {
-  const code = (value as { code?: unknown } | null | undefined)?.code;
-  return 'string' === typeof code && DISCONNECT_CODES.has(code) ? code : undefined;
+/**
+ * Nobody went away — nobody was ever there. A refused connect is the daemon not being up YET.
+ *
+ * This is the difference that made `runtime_crashed` useless. Measured 2026-08-10/11: **84 of 84
+ * crash events were one fingerprint, `connect ECONNREFUSED`, and every affected user was in the
+ * never-verified set.** The proxy is BUILT to tolerate this — it answers the handshake from cache
+ * and wakes a daemon on the next request — so reporting it as a crash meant the one metric that is
+ * supposed to say "Reticle broke" said nothing but "the daemon had not booted yet", and a real crash
+ * would have been invisible underneath it.
+ *
+ * Absorbed, not silenced: it still logs, and the outage it belongs to is already counted as
+ * `connect_error` on `mcp_connection_lost`, which is the metric that can actually act on it.
+ */
+const UNREACHABLE_CODES: ReadonlySet<string> = new Set(['ECONNREFUSED']);
+
+/** The expected-failure code this value carries, and which class it belongs to. */
+function expectedCode(value: unknown): { code: string; unreachable: boolean } | undefined {
+  const raw = (value as { code?: unknown } | null | undefined)?.code;
+  if ('string' !== typeof raw) return undefined;
+  if (DISCONNECT_CODES.has(raw)) return { code: raw, unreachable: false };
+  if (UNREACHABLE_CODES.has(raw)) return { code: raw, unreachable: true };
+  return undefined;
+}
+
+/** The two event names a caller uses for the two expected-failure classes. */
+interface ExpectedEvents {
+  readonly disconnected: string;
+  readonly unreachable: string;
 }
 
 /**
- * Log an expected disconnect and report `true`, so the caller skips the crash report.
+ * Log an expected failure and report `true`, so the caller skips the crash report.
  *
  * It is still WRITTEN DOWN. A client leaving is normal, but a daemon that suddenly logs a hundred of
  * these is a finding — the difference between "not a crash" and "not worth knowing" is the whole
  * reason this logs instead of returning early in silence.
  */
-function absorbDisconnect(value: unknown, log: LogFn, event: string): boolean {
-  const code = disconnectCode(value);
-  if (code === undefined) return false;
-  log(event, { code, note: 'the client went away — expected, not a crash' });
+function absorbExpected(value: unknown, log: LogFn, events: ExpectedEvents): boolean {
+  const hit = expectedCode(value);
+  if (hit === undefined) return false;
+  log(hit.unreachable ? events.unreachable : events.disconnected, {
+    code: hit.code,
+    note: hit.unreachable
+      ? 'the daemon was not reachable — expected while it boots, not a crash'
+      : 'the client went away — expected, not a crash',
+  });
   return true;
 }
 
@@ -200,9 +229,12 @@ export function installExitTrace(proc: ProcessLike, log: LogFn): void {
 
 export function installDaemonResilience(proc: ProcessLike, log: LogFn, onFatal: () => void): void {
   installExitTrace(proc, log);
-  const disconnected = 'reticle_daemon_client_disconnected';
+  const expected: ExpectedEvents = {
+    disconnected: 'reticle_daemon_client_disconnected',
+    unreachable: 'reticle_daemon_peer_unreachable',
+  };
   proc.on('unhandledRejection', (reason: unknown) => {
-    if (absorbDisconnect(reason, log, disconnected)) return;
+    if (absorbExpected(reason, log, expected)) return;
     log('reticle_daemon_unhandled_rejection', { reason: describe(reason) });
     reportCrash(CrashKind.UNHANDLED_REJECTION, reason);
   });
@@ -210,7 +242,7 @@ export function installDaemonResilience(proc: ProcessLike, log: LogFn, onFatal: 
     // Not fatal either: Node's "the process state is undefined" guidance is about a throw that
     // escaped everything, not about a write to a socket somebody closed. Exiting here would let one
     // departing client take down the daemon serving every other agent.
-    if (absorbDisconnect(err, log, disconnected)) return;
+    if (absorbExpected(err, log, expected)) return;
     log('reticle_daemon_uncaught_exception', { error: describe(err) });
     reportCrash(CrashKind.UNCAUGHT_EXCEPTION, err);
     onFatal();
@@ -234,15 +266,18 @@ export function installProxyResilience(
   log: LogFn,
   onCrash: (kind: CrashKind, cause: unknown) => void = reportCrash,
 ): void {
-  const disconnected = 'reticle_mcp_proxy_client_disconnected';
+  const expected: ExpectedEvents = {
+    disconnected: 'reticle_mcp_proxy_client_disconnected',
+    unreachable: 'reticle_mcp_proxy_daemon_unreachable',
+  };
   proc.on('unhandledRejection', (reason: unknown) => {
-    if (absorbDisconnect(reason, log, disconnected)) return;
+    if (absorbExpected(reason, log, expected)) return;
     log('reticle_mcp_proxy_unhandled_rejection', { reason: describe(reason) });
     onCrash(CrashKind.UNHANDLED_REJECTION, reason);
   });
   proc.on('uncaughtException', (err: unknown) => {
     // The client closing its end of stdio is how this process is SUPPOSED to end its day.
-    if (absorbDisconnect(err, log, disconnected)) return;
+    if (absorbExpected(err, log, expected)) return;
     log('reticle_mcp_proxy_uncaught_exception', {
       error: describe(err),
       note: 'still serving — exiting here would disconnect the MCP client',

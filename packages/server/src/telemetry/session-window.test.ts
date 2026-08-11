@@ -50,7 +50,15 @@ describe('the flush must not forget which defects it has already reported', () =
     const m = new SessionMetrics(() => 0);
     m.recordBug('a');
     m.reset();
-    expect(m.summarize(true).bugsFound).toBe(0);
+    // `summarize(false)` IS the flush. This assertion used to pass `true` — the FINAL summary, which
+    // is not a flush and never was — so it read as pinning window semantics while actually pinning
+    // the defect in item 3 above: the end-of-session event describing only the residue after the
+    // last tick. Same intent, now asserted on the call the intent is about.
+    expect(m.summarize(false).bugsFound, 'a flush reports its own window').toBe(0);
+    expect(
+      m.summarize(true).bugsFound,
+      'the FINAL event reports the session — item 3 of this file, finally fixed',
+    ).toBe(1);
   });
 });
 

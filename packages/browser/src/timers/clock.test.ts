@@ -130,3 +130,107 @@ describe('resetClock hands back the work queued while frozen', () => {
     clearTimeout(nativeId);
   });
 });
+
+/**
+ * The timer natives must be invoked with `this === window`.
+ *
+ * jsdom does not care what `this` is, so every test above passes while the REAL browser throws
+ * `TypeError: Illegal invocation` — `window.setTimeout` captured into a plain object and called as
+ * `originals.setTimeout(...)` arrives with `this === originals`, which the DOM rejects. The whole
+ * re-arm path is guarded by an early return when nothing is pending, so it only fires when the app
+ * actually queued work during the freeze — the exact case resetClock exists to serve, and the one no
+ * jsdom test could see. Found by `bench/harness/clock-timetravel.mjs` against a real Chromium.
+ *
+ * These tests give jsdom the browser's opinion: a native that refuses a foreign `this`.
+ */
+describe('the timer natives are called with the right receiver (real-DOM contract)', () => {
+  /** Swap in natives that enforce `this === window`, the way a real browser does. */
+  function installStrictNatives(): () => void {
+    const raw = {
+      setTimeout: window.setTimeout,
+      clearTimeout: window.clearTimeout,
+      setInterval: window.setInterval,
+      clearInterval: window.clearInterval,
+    };
+    // Faithful to WebIDL, which is the point — an over-strict double would fail the bare
+    // `setTimeout(fn, ms)` call that every browser accepts. Only a FOREIGN receiver is illegal:
+    // `undefined`/`null` resolves to the global (a plain call in a module), `window` is the method
+    // call. `{...}.setTimeout(fn)` is the one that throws, and it is the one this pins.
+    const strict = <T extends (...args: never[]) => unknown>(fn: T) =>
+      function (this: unknown, ...args: never[]): unknown {
+        const receiverOk = this === undefined || null === this || this === window;
+        if (!receiverOk) throw new TypeError('Illegal invocation');
+        return (fn as (...a: never[]) => unknown).apply(window, args);
+      };
+    window.setTimeout = strict(raw.setTimeout) as unknown as typeof window.setTimeout;
+    window.clearTimeout = strict(raw.clearTimeout) as unknown as typeof window.clearTimeout;
+    window.setInterval = strict(raw.setInterval) as unknown as typeof window.setInterval;
+    window.clearInterval = strict(raw.clearInterval) as unknown as typeof window.clearInterval;
+    return () => {
+      window.setTimeout = raw.setTimeout;
+      window.clearTimeout = raw.clearTimeout;
+      window.setInterval = raw.setInterval;
+      window.clearInterval = raw.clearInterval;
+    };
+  }
+
+  it('re-arms a pending TIMEOUT without an Illegal invocation', async () => {
+    const restore = installStrictNatives();
+    try {
+      freezeClock();
+      let fired = false;
+      window.setTimeout(() => {
+        fired = true;
+      }, 5);
+      expect(() => {
+        resetClock();
+      }).not.toThrow();
+      await new Promise((r) => setTimeout(r, 40));
+      expect(fired).toBe(true);
+    } finally {
+      resetClock();
+      restore();
+    }
+  });
+
+  it('re-arms a pending INTERVAL without an Illegal invocation', async () => {
+    const restore = installStrictNatives();
+    try {
+      freezeClock();
+      let ticks = 0;
+      const id = window.setInterval(() => {
+        ticks += 1;
+      }, 5);
+      expect(() => {
+        resetClock();
+      }).not.toThrow();
+      await new Promise((r) => setTimeout(r, 30));
+      expect(ticks).toBeGreaterThan(0);
+      clearInterval(id);
+    } finally {
+      resetClock();
+      restore();
+    }
+  });
+
+  it('translates a clear() through the shim without an Illegal invocation', async () => {
+    // The shim calls the raw clear as a bare reference too, so it has the identical defect.
+    const restore = installStrictNatives();
+    try {
+      freezeClock();
+      let fired = false;
+      const id = window.setTimeout(() => {
+        fired = true;
+      }, 10);
+      resetClock();
+      expect(() => {
+        clearTimeout(id);
+      }).not.toThrow();
+      await new Promise((r) => setTimeout(r, 40));
+      expect(fired).toBe(false);
+    } finally {
+      resetClock();
+      restore();
+    }
+  });
+});

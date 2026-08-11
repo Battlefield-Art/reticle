@@ -50,6 +50,13 @@ export interface GitFacts {
   origin?: string;
   /** Which forge hosts it, bucketed. Absent unless state is `remote`. */
   forge?: RepoForge;
+  /**
+   * The directory holding `.git` — the repo boundary. Absent only when state is `none`.
+   *
+   * Never sent: it is a local path. It exists so an UNPUSHED repo can still key its projectId to
+   * something stable across every directory inside it, which a raw cwd is not.
+   */
+  root?: string;
 }
 
 /** `git@github.com:Acme/Web.git` / `https://u:p@github.com/Acme/Web` → `github.com/acme/web`. */
@@ -108,15 +115,15 @@ export function gitFacts(
         config = read(join(gitDir, 'config'));
       } catch {
         // A `.git` with no readable config is still a repo — report it as one rather than as absent.
-        return { state: GitState.LOCAL_ONLY };
+        return { state: GitState.LOCAL_ONLY, root: dir };
       }
       // The url line inside the [remote "origin"] section — the first url after that header wins.
       const section = config.split(/\[remote\s+"origin"\]/)[1];
       const url = section?.match(/^\s*url\s*=\s*(.+)$/m)?.[1];
-      if (url === undefined) return { state: GitState.LOCAL_ONLY };
+      if (url === undefined) return { state: GitState.LOCAL_ONLY, root: dir };
       const origin = normalizeGitOrigin(url);
-      if ('' === origin) return { state: GitState.LOCAL_ONLY };
-      return { state: GitState.REMOTE, origin, forge: forgeOf(origin) };
+      if ('' === origin) return { state: GitState.LOCAL_ONLY, root: dir };
+      return { state: GitState.REMOTE, origin, forge: forgeOf(origin), root: dir };
     }
     const parent = dirname(dir);
     if (parent === dir) break; // hit the filesystem root

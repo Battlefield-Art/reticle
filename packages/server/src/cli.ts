@@ -512,7 +512,11 @@ function handleDaemonInner(parsed: {
         // the one event carrying the whole session. A failed send resolves anyway (emit swallows its
         // own errors), so this can delay the exit by at most the send timeout, never prevent it.
         void daemonTelemetry
-          .shutdown()
+          // The reason rides out on the session summary, which is the only event that fires at this
+          // exact moment. The proxy emits the matching `mcp_connection_lost` and cannot know it —
+          // it sees a socket end and nothing more, which is how a scheduled idle exit came to make up
+          // 299 of 321 "outages". See SessionSummary.exit.
+          .shutdown(reason)
           .then(() => server.close())
           .then(() => {
             removePid(parsed.port);

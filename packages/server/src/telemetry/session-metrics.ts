@@ -65,6 +65,27 @@ export class SessionMetrics {
   #toolCalls = 0;
   #toolErrors = 0;
   #verifications = 0;
+  /**
+   * Session-LIFETIME totals for the four numbers the funnel is computed from.
+   *
+   * `reset()` zeroes every window counter on each periodic flush, but `durationMs` is measured from
+   * `#startedAt` and is never reset. So the FINAL summary — the one whose docstring promises "the
+   * whole session in a single event" — reported a 30-minute session containing zero tool calls,
+   * because it only ever carried the residue since the last flush.
+   *
+   * Measured 2026-08-10/11: **496 of 499 `daemon_stopped` rows had `toolCalls: 0`**, at a median
+   * duration of 30.5 minutes, while `session_progress` for the same daemons carried real tool
+   * histograms. Anyone computing "did this session use Reticle" off the event named for the end of
+   * the session got `no` essentially always. That is not a small skew — it is the funnel reading
+   * zero at the exact step this release exists to raise.
+   *
+   * Window semantics are unchanged: `session_progress` still reports its own window, so nothing that
+   * already sums those events double-counts. Only `final: true` swaps in the lifetime numbers.
+   */
+  #lifetimeToolCalls = 0;
+  #lifetimeToolErrors = 0;
+  #lifetimeVerifications = 0;
+  #lifetimeBugsFound = 0;
   readonly #toolCounts = new Map<string, number>();
   readonly #toolParams = new Map<string, Map<string, number>>();
   /** Ring of the most recent tool NAMES — the agent's approach run, for a crash report. */
@@ -177,6 +198,7 @@ export class SessionMetrics {
         this.#repeatRuns.set(tool, this.#currentRun);
     }
     this.#toolCalls += 1;
+    this.#lifetimeToolCalls += 1;
     bump(this.#toolCounts, tool);
     this.#inFlight = tool;
     this.#breadcrumb.push(tool);
@@ -203,6 +225,7 @@ export class SessionMetrics {
    */
   recordToolError(message: string, tool?: string): void {
     this.#toolErrors += 1;
+    this.#lifetimeToolErrors += 1;
     if (NO_SESSION_ERROR.test(message)) this.#noSessionErrors += 1;
     const fingerprint = fingerprintError(message);
     const existing = this.#errorKinds.get(fingerprint);
@@ -256,6 +279,7 @@ export class SessionMetrics {
 
   recordVerification(): void {
     this.#verifications += 1;
+    this.#lifetimeVerifications += 1;
     // A verdict settles whatever was outstanding, however many actions it took to get there.
     this.#unsettledActions = 0;
   }
@@ -269,6 +293,7 @@ export class SessionMetrics {
    */
   recordBug(kind: string): boolean {
     this.#bugsFound += 1;
+    this.#lifetimeBugsFound += 1;
     if (this.#bugKinds.size < MAX_ERROR_KINDS || this.#bugKinds.has(kind))
       bump(this.#bugKinds, kind);
     const first = !this.#seenBugKinds.has(kind);
@@ -309,18 +334,36 @@ export class SessionMetrics {
    * Roll the counters into the event payload. `final` marks a clean shutdown; a periodic flush passes
    * false so a session killed before it can exit is not lost entirely (see the flush note in cli.ts).
    */
-  summarize(final: boolean): SessionSummary {
+  summarize(final: boolean, exit?: SessionSummary['exit']): SessionSummary {
     const machine = machineSnapshot();
+    // A FINAL summary reports the session; a periodic flush reports its window. `durationMs` was
+    // always session-lifetime, so a windowed count next to it described a 30-minute session that
+    // made no calls. The histograms below stay windowed by design — summing them across a session's
+    // events is correct, and duplicating every map to make them lifetime would double the memory
+    // this class exists to keep small.
+    const scalars = final
+      ? {
+          toolCalls: this.#lifetimeToolCalls,
+          toolErrors: this.#lifetimeToolErrors,
+          verifications: this.#lifetimeVerifications,
+          bugsFound: this.#lifetimeBugsFound,
+        }
+      : {
+          toolCalls: this.#toolCalls,
+          toolErrors: this.#toolErrors,
+          verifications: this.#verifications,
+          bugsFound: this.#bugsFound,
+        };
     return {
       durationMs: Math.max(0, this.#now() - this.#startedAt),
-      toolCalls: this.#toolCalls,
+      toolCalls: scalars.toolCalls,
       toolCounts: Object.fromEntries(this.#toolCounts),
-      toolErrors: this.#toolErrors,
+      toolErrors: scalars.toolErrors,
       ...(this.#errorKinds.size > 0 ? { errors: [...this.#errorKinds.values()] } : {}),
       sdkFailures: this.#sdkFailures,
       ...(this.#sdkFailureKinds.size > 0 ? { sdkErrors: [...this.#sdkFailureKinds.values()] } : {}),
-      verifications: this.#verifications,
-      bugsFound: this.#bugsFound,
+      verifications: scalars.verifications,
+      bugsFound: scalars.bugsFound,
       ...(this.#bugKinds.size > 0 ? { bugKinds: Object.fromEntries(this.#bugKinds) } : {}),
       ...(this.#noSessionErrors > 0 ? { noSessionErrors: this.#noSessionErrors } : {}),
       ...(this.#repeatRuns.size > 0
@@ -345,6 +388,9 @@ export class SessionMetrics {
       ...(machine !== undefined ? { machine } : {}),
       ...(this.#clients.size > 0 ? { clients: [...this.#clients] } : {}),
       final,
+      // Only on a real exit. A periodic flush carrying `exit: "unknown"` would read as a daemon that
+      // died without a shutdown path, which is the one thing this field exists to make visible.
+      ...(final && exit !== undefined ? { exit } : {}),
     };
   }
 

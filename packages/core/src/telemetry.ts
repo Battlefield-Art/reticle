@@ -198,14 +198,24 @@ export type TelemetryActor = (typeof TelemetryActor)[keyof typeof TelemetryActor
  * What `projectId` was derived from — and therefore whether it is comparable ACROSS machines.
  *
  * This is the field that keeps "how many users share this project" from silently lying. A
- * cwd-derived id is unique per machine, so those rows always show exactly one user per project. Left
+ * path-derived id is unique per machine, so those rows always show exactly one user per project. Left
  * unlabelled they would drag the average toward 1 and hide real team adoption; labelled, the
  * analytics can restrict that question to `git_origin` rows, where it is a real measurement.
+ *
+ * The three non-origin sources are ordered by how stable they are WITHIN one machine, which is the
+ * property the funnel actually needs: `init` runs in the app directory and the daemon is spawned from
+ * wherever the agent's client happens to sit, so an id that changes with the working directory
+ * severs the two halves of the funnel. Only `cwd` has that defect, and it is now the last resort
+ * rather than the first fallback — measured 2026-08-11 at 1131 ids for 243 users.
  */
 export const ProjectIdSource = {
   /** Hash of the shared git origin — the same on every clone, so cross-machine counting is valid. */
   GIT_ORIGIN: 'git_origin',
-  /** Hash of the local directory path — unique per machine; NOT comparable across users. */
+  /** Hash of the repo ROOT path — machine-local, but the same for every directory inside the repo. */
+  GIT_ROOT: 'git_root',
+  /** Hash of the nearest package.json's directory — machine-local; used when there is no git at all. */
+  PACKAGE_ROOT: 'package_root',
+  /** Hash of the raw working directory — the last resort, and the only source that is NOT stable. */
   CWD: 'cwd',
 } as const;
 export type ProjectIdSource = (typeof ProjectIdSource)[keyof typeof ProjectIdSource];

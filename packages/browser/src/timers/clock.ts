@@ -128,6 +128,15 @@ export function resetClock(): void {
   //
   // So keep a translation map and a clear-shim for exactly as long as re-armed work is outstanding.
   // Nothing is dropped, and the app's handles keep working.
+  // Bound to `window`, not called off `natives`. A timer native invoked with any other receiver
+  // throws `TypeError: Illegal invocation` in a real browser — and `natives.setTimeout(...)` passes
+  // `natives`. jsdom does not enforce the receiver, so every unit test here passed while the browser
+  // threw on the one path that matters: re-arming work the app queued during the freeze. The early
+  // return above means it only fires when something IS pending, which is exactly when this function
+  // has a job to do. Caught by `bench/harness/clock-timetravel.mjs` driving real Chromium.
+  const nativeSetTimeout = natives.setTimeout.bind(window);
+  const nativeSetInterval = natives.setInterval.bind(window);
+
   const reArmed = new Map<number, number>();
   const done = (virtualId: number): void => {
     reArmed.delete(virtualId);
@@ -135,11 +144,11 @@ export function resetClock(): void {
   };
   for (const task of pending) {
     if (task.interval !== undefined) {
-      reArmed.set(task.id, natives.setInterval(task.cb, task.interval));
+      reArmed.set(task.id, nativeSetInterval(task.cb, task.interval));
     } else {
       reArmed.set(
         task.id,
-        natives.setTimeout(
+        nativeSetTimeout(
           () => {
             done(task.id);
             task.cb();
@@ -158,16 +167,20 @@ function installTranslatingClears(
   natives: Originals,
   done: (virtualId: number) => void,
 ): void {
-  const translate = (rawClear: (id?: number) => void) =>
-    ((id: number): void => {
+  // `.bind(window)` for the same reason as the re-arm above: a bare `rawClear(id)` reaches the DOM
+  // with the wrong receiver and throws `Illegal invocation` in a real browser.
+  const translate = (rawClear: (id?: number) => void) => {
+    const clear = rawClear.bind(window);
+    return ((id: number): void => {
       const nativeId = reArmed.get(id);
       if (nativeId === undefined) {
-        rawClear(id);
+        clear(id);
         return;
       }
-      rawClear(nativeId);
+      clear(nativeId);
       done(id);
     }) as unknown as typeof window.clearTimeout;
+  };
   window.clearTimeout = translate(natives.clearTimeout);
   window.clearInterval = translate(natives.clearInterval);
 }

@@ -6,7 +6,7 @@
  * (nothing here may ever be able to fail a daemon start), and because `cli.ts` is a dispatcher — the
  * more of this that lives there, the harder it is to see what a command actually does.
  */
-import { TelemetryEventKind } from '@reticlehq/core';
+import { TelemetryEventKind, type SessionSummary } from '@reticlehq/core';
 import { getTelemetry } from './telemetry.js';
 import { getSessionMetrics } from './session-metrics.js';
 import { profileProject } from './project-profile.js';
@@ -47,7 +47,7 @@ export interface DaemonTelemetry {
    * fails or hangs still cannot block the exit, because `emit` swallows its own errors and is bounded
    * by its own request timeout.
    */
-  shutdown(): Promise<void>;
+  shutdown(exit?: SessionSummary['exit']): Promise<void>;
 }
 
 /**
@@ -90,7 +90,7 @@ export function installDaemonTelemetry(
 
   let stopped: Promise<void> | undefined;
   return {
-    shutdown(): Promise<void> {
+    shutdown(exit?: SessionSummary['exit']): Promise<void> {
       // Both SIGTERM and the idle-shutdown path can call this; the second caller awaits the first
       // send rather than emitting a duplicate summary.
       stopped ??= (async () => {
@@ -98,7 +98,7 @@ export function installDaemonTelemetry(
         // The rich one: the whole session in a single event — duration, the tool histogram, error
         // shapes, verifications, browser launches. This is what replaced the per-tool-call event.
         await getTelemetry().emit(TelemetryEventKind.DAEMON_STOPPED, {
-          session: metrics.summarize(true),
+          session: metrics.summarize(true, exit),
         });
       })();
       return stopped;

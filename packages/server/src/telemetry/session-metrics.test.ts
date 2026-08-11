@@ -277,3 +277,97 @@ describe('recordBug reports whether this KIND is new to the session', () => {
     expect(m.recordBug('route-rendered-nothing')).toBe(false);
   });
 });
+
+/**
+ * A designed exit and a real failure must not be the same row.
+ *
+ * Measured 2026-08-10/11: 299 of 321 `mcp_connection_lost` events were `sse_ended` at stage `first`
+ * — overwhelmingly the daemon closing its own stream on its scheduled idle shutdown. The proxy that
+ * emits the outage only ever sees a socket end, so the metric meant to say "the agent lost its
+ * tools" was mostly counting the daemon going to sleep on purpose, and a genuine outage was
+ * invisible inside it. The daemon has always known the reason; it just never put it on an event.
+ */
+describe('the session summary says WHY the daemon exited', () => {
+  it('carries the exit reason on a final summary', () => {
+    const metrics = new SessionMetrics(() => 0);
+    expect(metrics.summarize(true, 'idle').exit).toBe('idle');
+    expect(metrics.summarize(true, 'signal').exit).toBe('signal');
+  });
+
+  it('omits `exit` on a periodic flush — nothing exited', () => {
+    // A flush carrying `exit: "unknown"` would read as a daemon that died without a shutdown path,
+    // which is the one thing this field exists to make visible.
+    const metrics = new SessionMetrics(() => 0);
+    expect(metrics.summarize(false, 'idle')).not.toHaveProperty('exit');
+  });
+
+  it('omits `exit` when no reason was given — absent beats a guess', () => {
+    const metrics = new SessionMetrics(() => 0);
+    expect(metrics.summarize(true)).not.toHaveProperty('exit');
+  });
+});
+
+/**
+ * The FINAL summary must describe the session, not the residue after the last flush.
+ *
+ * `reset()` zeroes every window counter on each periodic flush; `durationMs` is measured from
+ * `#startedAt` and never resets. So `daemon_stopped` — the event whose docstring promises "the whole
+ * session in a single event" — described a long session that made no calls.
+ *
+ * Measured 2026-08-10/11: **496 of 499 `daemon_stopped` rows carried `toolCalls: 0`** at a median
+ * duration of 30.5 minutes, while `session_progress` for the same daemons carried real histograms.
+ * Every funnel computed off the end-of-session event therefore read zero at the exact step this
+ * release exists to raise.
+ */
+describe('a final summary reports the whole session, not the last window', () => {
+  it('counts tool calls made BEFORE a flush', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordToolCall('reticle_act');
+    m.reset(); // the periodic flush
+
+    expect(m.summarize(true).toolCalls, 'this read 0 for two days').toBe(2);
+  });
+
+  it('still reports the WINDOW on a periodic flush, so summing those does not double-count', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.reset();
+    m.recordToolCall('reticle_query');
+
+    expect(m.summarize(false).toolCalls, 'window semantics must not change').toBe(1);
+    expect(m.summarize(true).toolCalls, 'lifetime on the final event').toBe(2);
+  });
+
+  it('does the same for verifications — the number this release is measured by', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordVerification();
+    m.reset();
+
+    expect(m.summarize(true).verifications).toBe(1);
+  });
+
+  it('does the same for tool errors and bugs found', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolError('boom', 'reticle_act');
+    m.recordBug('assertion-failed');
+    m.reset();
+
+    const final = m.summarize(true);
+    expect(final.toolErrors).toBe(1);
+    expect(final.bugsFound).toBe(1);
+  });
+
+  it('never reports a session that acted as having made no calls', () => {
+    // The internally inconsistent row: a non-zero duration next to a zero count.
+    let t = 0;
+    const m = new SessionMetrics(() => t);
+    m.recordToolCall('reticle_snapshot');
+    t = 30 * 60 * 1000;
+    m.reset();
+
+    const final = m.summarize(true);
+    expect(final.durationMs).toBeGreaterThan(0);
+    expect(final.toolCalls, 'duration and counts must describe the same span').toBeGreaterThan(0);
+  });
+});

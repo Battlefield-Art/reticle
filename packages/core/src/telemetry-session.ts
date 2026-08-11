@@ -227,6 +227,19 @@ export const SessionSummarySchema = z.object({
   clients: z.array(z.string().max(64)).max(8).optional(),
   /** Was this a clean shutdown, or a periodic flush of a still-running session? */
   final: z.boolean(),
+  /**
+   * WHY the daemon exited. Absent on a periodic flush (`final: false`) — nothing exited.
+   *
+   * Without this, a designed exit and a real failure are the same row. Measured 2026-08-10/11: 299
+   * of 321 `mcp_connection_lost` events were `sse_ended` — the stream the daemon closes on its own
+   * scheduled idle shutdown — so the metric meant to say "the agent lost its tools" was mostly
+   * counting the daemon going to sleep as designed, and a genuine outage was invisible inside it.
+   *
+   * The daemon has always known this (`recordExitReason`); it simply never put it on an event. The
+   * proxy that emits the outage cannot know it — it only sees a socket end — so the join is made
+   * here, on the one event that fires at the same moment and already carries the session.
+   */
+  exit: z.enum(['idle', 'signal', 'unknown']).optional(),
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 

@@ -212,3 +212,87 @@ describe('installProxyResilience — the MCP server must outlive its own bugs', 
     expect(lines[0]?.event).toContain('proxy');
   });
 });
+
+/**
+ * A refused connect is not a crash.
+ *
+ * Measured over 2026-08-10/11: **84 of 84 `runtime_crashed` events were one fingerprint** —
+ * `connect ECONNREFUSED`, `unhandled_rejection`, actor `agent`. The proxy is designed to tolerate a
+ * daemon that has not booted: it serves the catalog from cache and wakes one on the next request. So
+ * the crash metric spent two days reporting a designed, recovered-from condition, which is the same
+ * as having no crash metric at all.
+ */
+describe('a daemon that is not up yet is not a crash', () => {
+  function errno(code: string, message: string): NodeJS.ErrnoException {
+    const err: NodeJS.ErrnoException = new Error(message);
+    err.code = code;
+    return err;
+  }
+
+  it('ECONNREFUSED on the proxy is logged as unreachable and NOT reported as a crash', () => {
+    const proc = fakeProc();
+    const lines: { event: string; data: Record<string, unknown> }[] = [];
+    const crashes: CrashKind[] = [];
+    installProxyResilience(
+      proc,
+      (event, data) => lines.push({ event, data }),
+      (kind) => crashes.push(kind),
+    );
+
+    proc.emit('unhandledRejection', errno('ECONNREFUSED', 'connect ECONNREFUSED 127.0.0.1:4400'));
+
+    expect(crashes, 'the whole point: this must not inflate runtime_crashed').toEqual([]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.event).toBe('reticle_mcp_proxy_daemon_unreachable');
+    expect(lines[0]?.data['code']).toBe('ECONNREFUSED');
+  });
+
+  it('ECONNREFUSED on the daemon is absorbed too, and never fatal', () => {
+    const logs: { event: string; data: Record<string, unknown> }[] = [];
+    let fatal = 0;
+    const proc = fakeProc();
+    installDaemonResilience(
+      proc,
+      (event, data) => logs.push({ event, data }),
+      () => (fatal += 1),
+    );
+
+    proc.emit('uncaughtException', errno('ECONNREFUSED', 'connect ECONNREFUSED 127.0.0.1:4400'));
+
+    expect(fatal).toBe(0);
+    expect(logs[0]?.event).toBe('reticle_daemon_peer_unreachable');
+  });
+
+  it('is still VISIBLE — absorbed means reclassified, never silenced', () => {
+    const proc = fakeProc();
+    const lines: { event: string; data: Record<string, unknown> }[] = [];
+    installProxyResilience(proc, (event, data) => lines.push({ event, data }), () => undefined);
+
+    proc.emit('unhandledRejection', errno('ECONNREFUSED', 'connect ECONNREFUSED 127.0.0.1:4400'));
+
+    expect(lines, 'a hundred of these in a session is a finding, not noise').toHaveLength(1);
+    expect(String(lines[0]?.data['note'])).toContain('not a crash');
+  });
+
+  it('does not confuse the two classes: a disconnect keeps its own event name', () => {
+    const proc = fakeProc();
+    const lines: { event: string; data: Record<string, unknown> }[] = [];
+    installProxyResilience(proc, (event, data) => lines.push({ event, data }), () => undefined);
+
+    proc.emit('unhandledRejection', errno('ECONNRESET', 'read ECONNRESET'));
+
+    expect(lines[0]?.event).toBe('reticle_mcp_proxy_client_disconnected');
+  });
+
+  it('an error whose MESSAGE says ECONNREFUSED but carries no code is still a crash', () => {
+    const proc = fakeProc();
+    const crashes: CrashKind[] = [];
+    installProxyResilience(proc, () => undefined, (kind) => crashes.push(kind));
+
+    proc.emit('unhandledRejection', new Error('connect ECONNREFUSED 127.0.0.1:4400'));
+
+    expect(crashes, 'matching on prose would absorb real bugs that mention a port').toEqual([
+      CrashKind.UNHANDLED_REJECTION,
+    ]);
+  });
+});

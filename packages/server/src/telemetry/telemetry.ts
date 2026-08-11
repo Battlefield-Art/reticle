@@ -25,7 +25,7 @@ import {
   rmSync,
 } from 'node:fs';
 import { homedir, platform } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   TelemetryEventKind,
   TELEMETRY_EVENT_VERSION,
@@ -174,16 +174,41 @@ const resolveIdentity = (): { anonymousId: string; firstRun: boolean } => {
  * credentials, `.git` suffix and case removed) so `git@github.com:acme/web.git` and
  * `https://github.com/Acme/web` are recognized as the same project rather than two.
  */
-const projectFingerprint = (cwd: string): { projectId: string; source: ProjectIdSource } => {
-  const { origin } = gitFacts(cwd);
+export const projectFingerprint = (
+  cwd: string,
+): { projectId: string; source: ProjectIdSource } => {
+  const { origin, root } = gitFacts(cwd);
+  // Ordered by stability, not by preference: an origin is comparable across machines, a repo root is
+  // stable across every directory inside one machine's checkout, a package.json root is the same for
+  // a non-git project — and the raw cwd is stable across nothing, which is why it is last. See
+  // `project-identity.test.ts` for what a wrong order costs.
+  const { key, source } =
+    origin !== undefined
+      ? { key: origin, source: ProjectIdSource.GIT_ORIGIN }
+      : root !== undefined
+        ? { key: root, source: ProjectIdSource.GIT_ROOT }
+        : packageRoot(cwd) !== null
+          ? { key: packageRoot(cwd) ?? cwd, source: ProjectIdSource.PACKAGE_ROOT }
+          : { key: cwd, source: ProjectIdSource.CWD };
   return {
-    projectId: createHash('sha256')
-      .update(origin ?? cwd)
-      .digest('hex')
-      .slice(0, 32),
+    projectId: createHash('sha256').update(key).digest('hex').slice(0, 32),
     // Reported alongside so the analytics knows whether this id is comparable to another machine's.
-    source: origin !== undefined ? ProjectIdSource.GIT_ORIGIN : ProjectIdSource.CWD,
+    source,
   };
+};
+
+/** Nearest ancestor holding a package.json — the project boundary when there is no git. */
+const packageRoot = (cwd: string): string | null => {
+  let dir = cwd;
+  // Same bound as the git walk: deep monorepos are well inside 20, and an unbounded loop on a
+  // pathological path would hang the CLI's startup.
+  for (let depth = 0; depth < 20; depth += 1) {
+    if (existsSync(join(dir, 'package.json'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
 };
 
 /** Print the opt-out notice exactly once per machine (honest disclosure, the OSS-trust bar). */
