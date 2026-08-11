@@ -436,3 +436,54 @@ describe('the agent is asked for a verdict once it has acted without one', () =>
     expect(m.takeUnverifiedNudge(), 'the loop broke a second time').toBeDefined();
   });
 });
+
+/**
+ * Did an app ever connect to this daemon?
+ *
+ * This is the blind spot that stops us answering the release's central question. `session_progress`
+ * only fires when a tool was CALLED, so these two are currently the SAME ROW:
+ *
+ *   - daemon up, the user's dev server never dialled in  -> the INSTALL is broken
+ *   - daemon up, app connected fine, the agent never asked -> the agent didn't think to use it
+ *
+ * They have opposite fixes. Measured 2026-08-10/11: 88 of 116 users attached an agent and never
+ * drove, and we cannot say which of those two it was for a single one of them.
+ *
+ * A counter on the session summary rather than a new event: the SDK reconnects on every page
+ * reload, so an event per connect would be high-volume for a question that one number answers.
+ */
+describe('the session summary says whether an app ever connected', () => {
+  it('reports zero when no app ever dialled in — the broken-install signal', () => {
+    const m = new SessionMetrics(() => 0);
+    expect(m.summarize(true).appConnects).toBe(0);
+  });
+
+  it('counts app connections', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordAppConnected();
+    m.recordAppConnected();
+    expect(m.summarize(true).appConnects).toBe(2);
+  });
+
+  it('records how long the daemon waited for its first app', () => {
+    let t = 0;
+    const m = new SessionMetrics(() => t);
+    t = 4200;
+    m.recordAppConnected();
+    t = 9000;
+    m.recordAppConnected();
+    expect(m.summarize(true).msToFirstApp, 'the FIRST one, not the latest').toBe(4200);
+  });
+
+  it('survives a flush — "did an app ever connect" is a session-lifetime fact', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordAppConnected();
+    m.reset();
+    expect(m.summarize(true).appConnects, 'a reload after a flush must not erase this').toBe(1);
+  });
+
+  it('omits msToFirstApp entirely when nothing connected', () => {
+    const m = new SessionMetrics(() => 0);
+    expect(m.summarize(true)).not.toHaveProperty('msToFirstApp');
+  });
+});

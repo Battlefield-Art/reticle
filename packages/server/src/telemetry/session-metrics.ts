@@ -142,6 +142,12 @@ export class SessionMetrics {
   #unsettledActions = 0;
   /** One-shot latch for the verdict nudge — see takeUnverifiedNudge. */
   #nudgedUnverified = false;
+  /**
+   * App SDK connections, session-lifetime. NOT reset by a flush: "did an app ever connect" is a
+   * fact about the session, and a page reload after a flush must not erase it.
+   */
+  #appConnects = 0;
+  #firstAppAt: number | undefined;
   readonly #clients = new Set<string>();
   readonly #startedAt: number;
   readonly #now: () => number;
@@ -307,6 +313,17 @@ export class SessionMetrics {
     );
   }
 
+  /**
+   * An app's SDK dialled this daemon.
+   *
+   * Zero of these at shutdown means the daemon ran and no app ever connected — a broken install.
+   * Non-zero with no tool calls is the opposite problem. See SessionSummary.appConnects.
+   */
+  recordAppConnected(): void {
+    this.#appConnects += 1;
+    this.#firstAppAt ??= this.#now();
+  }
+
   /** One action driven at the page. Settled by the next verdict; see #unsettledActions. */
   recordAction(): void {
     this.#unsettledActions += 1;
@@ -425,6 +442,12 @@ export class SessionMetrics {
       unknownToolCalls: this.#unknownToolCalls,
       ...(machine !== undefined ? { machine } : {}),
       ...(this.#clients.size > 0 ? { clients: [...this.#clients] } : {}),
+      // Always present, including zero: absence and "no app ever connected" must not look alike,
+      // because zero IS the finding here.
+      appConnects: this.#appConnects,
+      ...(this.#firstAppAt === undefined
+        ? {}
+        : { msToFirstApp: Math.max(0, this.#firstAppAt - this.#startedAt) }),
       final,
       // Only on a real exit. A periodic flush carrying `exit: "unknown"` would read as a daemon that
       // died without a shutdown path, which is the one thing this field exists to make visible.

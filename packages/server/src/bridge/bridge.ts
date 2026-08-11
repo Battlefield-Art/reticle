@@ -24,6 +24,7 @@ import {
 import { Session, SessionManager } from '../session/session.js';
 import { tokensMatch } from './token-auth.js';
 import { log } from '../log.js';
+import { getSessionMetrics } from '../telemetry/session-metrics.js';
 import { describeSkew, sdkFix, SkewPair } from '../version/version-skew.js';
 import { noteVersionSkew } from '../version/version-nudge.js';
 import { SERVER_VERSION } from '../version/server-version.js';
@@ -441,6 +442,13 @@ export class Bridge {
           noteVersionSkew(SkewPair.SDK, skew);
         }
         log('session_connected', { sessionId: session.id, url: session.url });
+        // The one fact that separates a broken install from an unused one. Best-effort and wrapped:
+        // a metric must never affect whether an app can connect. See SessionSummary.appConnects.
+        try {
+          getSessionMetrics().recordAppConnected();
+        } catch {
+          /* never let a counter interfere with an app connecting */
+        }
         this.#onSessionReady?.(session); // daemon pushes the replayable-flow list to the panel
         return;
       }

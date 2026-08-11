@@ -225,6 +225,26 @@ export const SessionSummarySchema = z.object({
   machine: MachineSnapshotSchema.optional(),
   /** Distinct MCP clients seen (`claude-code`, `cursor`), so multi-agent use is visible. */
   clients: z.array(z.string().max(64)).max(8).optional(),
+  /**
+   * How many times an app's SDK dialled this daemon. **Session-lifetime, never windowed.**
+   *
+   * Zero here is the single most diagnostic number in the payload: the daemon ran and no app ever
+   * connected, which is a BROKEN INSTALL. Non-zero with no tool calls is the opposite problem — the
+   * install works and the agent never asked. Before this field those two were the same row, and
+   * they have opposite fixes. Measured 2026-08-10/11: 88 of 116 users attached an agent and never
+   * drove, and we could not say which case any of them was.
+   *
+   * A counter rather than an event because the SDK reconnects on every page reload — an event per
+   * connect would be high volume for a question one number answers.
+   */
+  appConnects: z.number().int().nonnegative().optional(),
+  /**
+   * Milliseconds from daemon start to the FIRST app connecting. Absent when none ever did.
+   *
+   * Separates "the app was already running" from "the human had to go start it", which is the
+   * difference between a smooth install and one that needed a second step nobody documented.
+   */
+  msToFirstApp: z.number().int().nonnegative().optional(),
   /** Was this a clean shutdown, or a periodic flush of a still-running session? */
   final: z.boolean(),
   /**
