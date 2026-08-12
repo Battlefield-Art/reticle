@@ -21,10 +21,11 @@ import { diagnoseDesktop, isDesktopProject } from '../init/desktop-doctor.js';
 /**
  * Run a lookup and return its stdout, or null if it could not run.
  *
- * Null on ANY failure — no lsof (Windows, a slim container), a non-zero exit, a throw. This is a
- * diagnostic nicety inside the command people run when things are already broken; it must never be
- * the reason `doctor` fails, and `describeForeignHolder(port, null)` prints the message doctor
- * printed before this existed.
+ * Null on ANY failure — no lsof (every Windows user, a slim container), a non-zero exit, a throw.
+ * This is a diagnostic nicety inside the command people run when things are already broken; it must
+ * never be the reason `doctor` fails. `describeForeignHolder` handles the null by saying it could
+ * not identify the holder and naming our recorded pid, rather than asserting the holder is not ours
+ * — a claim it has no evidence for, and one that was wrong for every Windows user.
  */
 function runCapture(command: string, args: readonly string[]): string | null {
   try {

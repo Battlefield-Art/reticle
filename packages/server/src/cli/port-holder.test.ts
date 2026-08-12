@@ -56,10 +56,14 @@ describe('describeForeignHolder', () => {
     expect(text).not.toMatch(/-ti\b/);
   });
 
-  it('falls back to the un-named message when the holder could not be identified', () => {
+  it('does not claim to know whose process it is when the lookup found nothing', () => {
     const text = describeForeignHolder(4400, null);
-    expect(text).toContain('another process');
+    expect(text).toContain('could not identify');
     expect(text).not.toContain('pid');
+    // The null case has no evidence for this, and it is the likeliest thing to be wrong.
+    expect(text, 'an unknown holder is not a known stranger').not.toContain(
+      'is not a Reticle daemon',
+    );
   });
 });
 
@@ -95,6 +99,23 @@ describe('a wedged daemon of our own', () => {
     expect(describeForeignHolder(4411, { pid: 999, command: 'python' }, null)).toContain(
       'is not a Reticle daemon',
     );
-    expect(describeForeignHolder(4411, null, 65704)).toContain('is not a Reticle daemon');
+  });
+
+  /**
+   * The Windows case, which is 35% of users by the 2026-08 telemetry and never runs in CI — the
+   * `windows` job builds and unit-tests, and no daemon ever starts on it.
+   *
+   * There is no `lsof` there, so the holder lookup ALWAYS returns null and the null branch is the
+   * only one a Windows user can ever reach. It asserted "is not a Reticle daemon" — with no
+   * evidence, on the command people run because something is already broken, in the one situation
+   * (FOREIGN: accepts TCP, never answers /status) whose commonest cause is our own wedged daemon.
+   */
+  it('names our recorded pid when the holder cannot be looked up at all', () => {
+    const msg = describeForeignHolder(4411, null, 65704);
+    expect(msg, 'do not assert what the null case cannot know').not.toContain(
+      'is not a Reticle daemon',
+    );
+    expect(msg, 'the pid we recorded is the one lead we have').toContain('65704');
+    expect(msg, 'name the fix that works').toContain('reticle stop');
   });
 });

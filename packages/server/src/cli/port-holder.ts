@@ -70,7 +70,25 @@ export function describeForeignHolder(
     'a daemon cannot bind it. Stop that process, or run Reticle on a different port ' +
     '(`--port`), then retry.';
   if (null === holder) {
-    return `port ${String(port)} is held by another process that is not a Reticle daemon — ${tail}`;
+    /**
+     * We could not identify the holder — no `lsof` (every Windows user, and 35% of them by the
+     * 2026-08 telemetry; also a slim container), or the lookup timed out.
+     *
+     * This used to assert the port was held by "another process that is not a Reticle daemon",
+     * which is a claim the null case has NO evidence for. It is also the likeliest thing to be
+     * wrong: reaching here at all means presence is FOREIGN — the port accepts TCP and never
+     * answers `/status` — and the commonest cause of that is OUR OWN daemon, wedged. So on the one
+     * platform where the lookup cannot run, `doctor` sent the reader hunting a stranger and never
+     * named `reticle stop`, the fix that actually works.
+     *
+     * Say what is known, and name the recorded pid when there is one.
+     */
+    const ours =
+      ourPid !== null && ourPid !== undefined
+        ? ` Reticle's own records show pid ${String(ourPid)} for this port — if that process is ` +
+          'still around it is a wedged Reticle daemon, and `reticle stop` clears it.'
+        : '';
+    return `port ${String(port)} is held by a process Reticle could not identify — ${tail}${ours}`;
   }
   if (ourPid !== null && ourPid !== undefined && ourPid === holder.pid) {
     return (
