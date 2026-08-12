@@ -16,15 +16,6 @@ import { markDaemonStart } from './mcp-connection.js';
 /** Let the daemon finish coming up before walking the source tree for a profile. */
 const PROJECT_PROFILE_DELAY_MS = 5_000;
 /**
- * How often a long-lived daemon flushes its counters.
- *
- * ponytail: coarse on purpose. A daemon that is SIGKILLed — OOM, a closed laptop, `kill -9` — never
- * reaches its shutdown handler, so without this the whole session's counters die with it. Thirty
- * minutes bounds that loss to one window while keeping the event volume near zero for the common case
- * (most daemons stop cleanly and send exactly one summary). If the lost windows ever show up as a
- * real gap, the upgrade is a small on-disk journal replayed at the next start, not a shorter timer.
- */
-/**
  * How often a running daemon rolls up its window.
  *
  * Exported because it is the BOUND ON WHAT IS LOST: a daemon that has served a tool never
@@ -34,6 +25,25 @@ const PROJECT_PROFILE_DELAY_MS = 5_000;
  * serve a tool.
  */
 export const SESSION_FLUSH_MS = 5 * 60 * 1000;
+
+/**
+ * When a session first rolls up, independent of the periodic interval.
+ *
+ * The interval alone leaves a hole exactly the width of itself: a daemon SIGKILLed before its first
+ * tick — a closed laptop, OOM, `kill -9`, a force-quit editor — reaches no shutdown handler and has
+ * emitted nothing, so the whole session is invisible.
+ *
+ * Measured 2026-08-10/11 (non-CI): **614 `daemon_started` against 499 `daemon_stopped` — 19% of
+ * sessions never reported a summary at all.** Every "did anyone use Reticle" number is computed on
+ * the 81% that did, and undercounts by an unknown amount, which is the one thing a funnel metric
+ * must not do.
+ *
+ * Ninety seconds is chosen against what it protects: a session that did real work usually does it
+ * early (snapshot -> act -> assert is seconds), so one early tick captures nearly all of it. It
+ * costs nothing on the daemons that dominate the population, because only a NON-EMPTY window emits
+ * and 74% of daemons never serve a tool at all.
+ */
+export const FIRST_FLUSH_MS = 90 * 1000;
 
 /** Stops the timers this installed. Called from the daemon's shutdown path. */
 export interface DaemonTelemetry {
@@ -78,14 +88,19 @@ export function installDaemonTelemetry(
     }
   }, PROJECT_PROFILE_DELAY_MS).unref();
 
-  const flush = setInterval(() => {
+  const flushWindow = (): void => {
     if (metrics.empty) return; // an idle window is not worth an event
     // NOT daemon_stopped: the daemon is still running. See SESSION_PROGRESS.
     void getTelemetry().emit(TelemetryEventKind.SESSION_PROGRESS, {
       session: metrics.summarize(false),
     });
     metrics.reset();
-  }, SESSION_FLUSH_MS);
+  };
+  // The early one closes the hole the interval cannot: a session killed before its first tick had
+  // emitted nothing at all. See FIRST_FLUSH_MS.
+  const firstFlush = setTimeout(flushWindow, FIRST_FLUSH_MS);
+  firstFlush.unref();
+  const flush = setInterval(flushWindow, SESSION_FLUSH_MS);
   flush.unref();
 
   let stopped: Promise<void> | undefined;
@@ -95,6 +110,7 @@ export function installDaemonTelemetry(
       // send rather than emitting a duplicate summary.
       stopped ??= (async () => {
         clearInterval(flush);
+        clearTimeout(firstFlush);
         // The rich one: the whole session in a single event — duration, the tool histogram, error
         // shapes, verifications, browser launches. This is what replaced the per-tool-call event.
         await getTelemetry().emit(TelemetryEventKind.DAEMON_STOPPED, {

@@ -26,7 +26,7 @@
 import { describe, expect, it } from 'vitest';
 import { TelemetryEventKind } from '@reticlehq/core';
 import { SessionMetrics } from './session-metrics.js';
-import { SESSION_FLUSH_MS } from './daemon-telemetry.js';
+import { FIRST_FLUSH_MS, SESSION_FLUSH_MS } from './daemon-telemetry.js';
 
 describe('a mid-session flush is not a session end', () => {
   it('has its own event kind', () => {
@@ -67,5 +67,32 @@ describe('the unreported tail is bounded by the flush interval', () => {
     // Median session in the export is 28 minutes. A 30-minute interval means the median session
     // reports nothing at all until it is nearly over, and loses whatever came after its last tick.
     expect(SESSION_FLUSH_MS).toBeLessThanOrEqual(5 * 60 * 1000);
+  });
+});
+
+/**
+ * A session killed before the first periodic tick must not vanish.
+ *
+ * The interval alone leaves a hole exactly its own width: a daemon SIGKILLed before it fires — a
+ * closed laptop, OOM, `kill -9`, a force-quit editor — reaches no shutdown handler and has emitted
+ * nothing, so the entire session is invisible.
+ *
+ * Measured 2026-08-10/11 (non-CI): **614 `daemon_started` against 499 `daemon_stopped` — 19% of
+ * sessions never reported a summary at all.** Every "did anyone use Reticle" figure is computed on
+ * the surviving 81% and undercounts by an unknown amount.
+ */
+describe('the first roll-up does not wait for the periodic interval', () => {
+  it('fires well before the periodic flush', () => {
+    expect(FIRST_FLUSH_MS).toBeLessThan(SESSION_FLUSH_MS);
+  });
+
+  it('is short enough to catch a session that does its work up front', () => {
+    // snapshot -> act -> assert is seconds. Anything above ~2 minutes stops protecting the sessions
+    // this exists for.
+    expect(FIRST_FLUSH_MS).toBeLessThanOrEqual(120_000);
+  });
+
+  it('is not so short that it splits a normal drive into noise', () => {
+    expect(FIRST_FLUSH_MS).toBeGreaterThanOrEqual(30_000);
   });
 });
