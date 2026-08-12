@@ -120,6 +120,9 @@ describe('feedback context detection', () => {
     expect(detectStack('/p', () => pkg({ next: '15.0.0', react: '19.0.0' }))).toEqual({
       stack: 'next',
       stackMajor: 15,
+      // `cwd` because the manifest was right here. `workspace` means discovery had to walk down to
+      // find the app — the split that says how often our inference needs help.
+      stackSource: 'cwd',
     });
     expect(detectStack('/p', () => pkg({ nuxt: '3.0.0', vue: '3.4.0' })).stack).toBe('nuxt');
   });
@@ -131,11 +134,14 @@ describe('feedback context detection', () => {
     [{ 'solid-js': '1.8.0' }, 'solid', 1],
     [{ '@sveltejs/kit': '2.0.0' }, 'sveltekit', 2],
   ])('detects %o with its major version', (deps, stack, stackMajor) => {
-    expect(detectStack('/p', () => pkg(deps))).toEqual({ stack, stackMajor });
+    expect(detectStack('/p', () => pkg(deps))).toEqual({ stack, stackMajor, stackSource: 'cwd' });
   });
 
   it('reports the stack without a major when the range has no readable number', () => {
-    expect(detectStack('/p', () => pkg({ react: 'workspace:*' }))).toEqual({ stack: 'react' });
+    expect(detectStack('/p', () => pkg({ react: 'workspace:*' }))).toEqual({
+      stack: 'react',
+      stackSource: 'cwd',
+    });
   });
 
   it('returns nothing rather than guessing when package.json is unreadable', () => {

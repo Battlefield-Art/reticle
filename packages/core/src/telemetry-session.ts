@@ -287,6 +287,19 @@ export type ProjectSize = (typeof ProjectSize)[keyof typeof ProjectSize];
 export const ProjectProfileSchema = z.object({
   /** Framework detected from package.json (`next`, `vite`, `vue`, `astro`, …). */
   stack: z.string().min(1).max(64).optional(),
+  /**
+   * WHERE the stack was found — and therefore how much to trust the absence of one.
+   *
+   * `cwd` means the daemon was sitting in the app. `workspace` means it was not, and discovery had
+   * to walk down to find it. The split is the diagnostic: it says how often our inference needs
+   * help, which is the question that decides whether an agent-correction surface is worth building
+   * at all.
+   *
+   * Measured 2026-08-10/11, before discovery existed here: stack was detected on **0 of the 77
+   * projects where Reticle was demonstrably set up**, and 0 of 166 `size: huge` ones. A detector
+   * that reads one directory reports nothing precisely where the real repos are.
+   */
+  stackSource: z.enum(['cwd', 'workspace']).optional(),
   /** Its MAJOR version only — "breaks on React 19" is a work item, a full semver is a fingerprint. */
   stackMajor: z.number().int().nonnegative().optional(),
   size: z.nativeEnum(ProjectSize).optional(),

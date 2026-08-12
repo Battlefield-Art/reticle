@@ -9,10 +9,11 @@
  * holds to. Detection is entirely best-effort: an unreadable package.json or an SDK too old to report
  * its runtime yields `undefined`, never a throw and never a guess.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { AppRuntime, McpScope, PageDriver, type Feedback } from '@reticlehq/core';
 import { parseMajor } from '../init/detect.js';
+import { findWorkspaceApps, type InitIo } from '../init/run.js';
 
 /** The context fields — the whole `Feedback` shape minus what the author supplies. */
 export type FeedbackContext = Pick<
@@ -58,13 +59,13 @@ interface PackageJsonLike {
  * uses to decide React 19 source mapping — so a range like `^15.0.0-canary.3` narrows the same way in
  * both places instead of via a second, subtly different reader.
  */
-export function detectStack(
-  cwd: string,
-  read: (path: string) => string = readFile,
+function stackOfManifest(
+  dir: string,
+  read: (path: string) => string,
 ): { stack?: string; stackMajor?: number } {
   let pkg: PackageJsonLike;
   try {
-    pkg = JSON.parse(read(join(cwd, PACKAGE_JSON))) as PackageJsonLike;
+    pkg = JSON.parse(read(join(dir, PACKAGE_JSON))) as PackageJsonLike;
   } catch {
     return {};
   }
@@ -76,6 +77,66 @@ export function detectStack(
     return { stack, ...(stackMajor !== undefined ? { stackMajor } : {}) };
   }
   return {};
+}
+
+export function detectStack(
+  cwd: string,
+  read: (path: string) => string = readFile,
+): { stack?: string; stackMajor?: number; stackSource?: 'cwd' | 'workspace' } {
+  // The cwd wins when it IS an app — never redirect away from the real answer.
+  const here = stackOfManifest(cwd, read);
+  if (here.stack !== undefined) return { ...here, stackSource: 'cwd' };
+
+  // Otherwise look for the app. The daemon's cwd is wherever the agent's client happened to launch,
+  // which for a real repo is the ROOT while the app sits in `frontend/`, `web/`, or a declared
+  // workspace. Reading one directory and giving up is why this returned nothing for every project
+  // that actually had Reticle set up: 0 of 77 instrumented projects, and 0 of 166 `size: huge` ones.
+  // The bigger the repo, the more certainly we failed.
+  //
+  // `findWorkspaceApps` is init's discovery, reused rather than reimplemented: it already reads
+  // declared workspaces (pnpm-workspace.yaml, package.json `workspaces`) AND scans top-level
+  // directories, and it was widened once already for a repo shape a user hit twice. A second
+  // detector here would drift from it the first time either changed.
+  try {
+    for (const app of findWorkspaceApps(profileIo(cwd))) {
+      const found = stackOfManifest(join(cwd, app), read);
+      // Reported as `workspace` so the share of projects needing discovery is measurable — that
+      // number is what says whether our inference needs an agent to correct it.
+      if (found.stack !== undefined) return { ...found, stackSource: 'workspace' };
+    }
+  } catch {
+    // Discovery touches the filesystem; a permission error must never cost us the profile event.
+  }
+  return {};
+}
+
+/**
+ * The three filesystem methods `findWorkspaceApps` needs, rooted at `cwd`.
+ *
+ * Deliberately not the whole `InitIo`: this path must not be able to write, exec or print. What it
+ * cannot do is a stronger guarantee than a rule saying it shouldn't.
+ */
+function profileIo(cwd: string): Pick<InitIo, 'exists' | 'readFile' | 'listDirs'> {
+  const abs = (rel: string): string => (isAbsolute(rel) ? rel : join(cwd, rel));
+  return {
+    readFile: (rel) => {
+      try {
+        return readFileSync(abs(rel), 'utf8');
+      } catch {
+        return null;
+      }
+    },
+    exists: (rel) => existsSync(abs(rel)),
+    listDirs: (rel) => {
+      try {
+        return readdirSync(abs(rel), { withFileTypes: true })
+          .filter((e) => e.isDirectory() && !e.name.startsWith('.') && 'node_modules' !== e.name)
+          .map((e) => e.name);
+      } catch {
+        return [];
+      }
+    },
+  };
 }
 
 /**

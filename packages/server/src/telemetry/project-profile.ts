@@ -187,13 +187,14 @@ export function profileProject(cwd: string, now: number): ProjectProfile {
   if (capsuleCount > 0) featuresUsed.push(FeatureFamily.BUG_CAPSULES);
   if (hasHistory) featuresUsed.push(FeatureFamily.CROSS_RUN_HISTORY);
 
-  const { stack, stackMajor } = detectStack(cwd);
+  const { stack, stackMajor, stackSource } = detectStack(cwd);
   const ageWeeks = projectAgeWeeks(cwd, now);
   const git = gitFacts(cwd);
   return {
     git: git.state,
     ...(git.forge !== undefined ? { forge: git.forge } : {}),
     ...(stack !== undefined ? { stack } : {}),
+    ...(stackSource !== undefined ? { stackSource } : {}),
     ...(stackMajor !== undefined ? { stackMajor } : {}),
     size: sizeBucket(countSourceFiles(cwd)),
     monorepo: isMonorepo(cwd),
