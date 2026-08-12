@@ -2,6 +2,12 @@
 
 All notable changes to the **`@reticlehq/*`** packages are documented here (each entry notes the package it affects). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **`@reticlehq/electron` / `reticle-tauri` — desktop captures are written into a private per-process directory (mode `0700`) instead of straight into the shared OS temp directory.** The old filename was guessable by construction — a public constant prefix, a readable pid, and a counter starting at 0 — so on a multi-user machine a screenshot of your app window (customer records, a token on screen, an authenticated session) was readable by any other local user until the sweep removed it, and a symlink pre-placed at that name would be followed by the write. Fixes the CodeQL `js/insecure-temporary-file` alert on `packages/electron/main.cjs`, and the same pattern in the Tauri crate, which CodeQL does not scan. Both writes now also use `O_CREAT|O_EXCL`, which refuses an existing path rather than writing through it. `@reticlehq/server` accepts the new layout **and** the old flat one, so an app on an older shell package keeps getting screenshots against a newer daemon, and removes consumed private capture directories during shutdown so they do not accumulate in the OS temp directory.
+
 ## [2.6.0] — 2026-08-12
 
 **Stop breaking, stop lying, and be able to prove it.** 140+ commits, driven by what the telemetry and the field reports actually said rather than what the backlog assumed. No breaking changes.

@@ -10,6 +10,7 @@ import { sessionIdShape } from '../tools/tool-kit.js';
 import { asNumber, asRecord, asString } from '../tools/tools-helpers.js';
 import { diffPng, type VisualRect } from './visual-diff.js';
 import { VisualStore } from './visual-store.js';
+import { trackCaptureDirectory } from './capture-cleanup.js';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname } from 'node:path';
@@ -106,6 +107,7 @@ async function desktopCapture(
   try {
     const bytes = await readFile(path);
     await unlink(path).catch(() => undefined);
+    trackCaptureDirectory(path);
     return isCompletePng(bytes) ? { png: new Uint8Array(bytes) } : {};
   } catch {
     return {};
@@ -113,12 +115,27 @@ async function desktopCapture(
 }
 
 /**
- * Only read a capture the shell wrote: inside the OS temp dir, with Reticle's own filename prefix.
- * The path arrives from the PAGE, and the daemon must not become a file-read oracle for whatever a
- * compromised renderer names.
+ * Only read a capture the shell wrote. The path arrives from the PAGE, and the daemon must not
+ * become a file-read oracle for whatever a compromised renderer names.
+ *
+ * Two layouts are accepted, and the pair is the whole subtlety:
+ *
+ * - `<tmp>/<prefix><dir>/<prefix><n>.png` — the shell's own PRIVATE capture directory, created 0700
+ *   so no other local user can read the screenshot or pre-place a symlink at the path we write.
+ * - `<tmp>/<prefix><pid>-<n>.png` — the legacy flat layout. Kept because the shell ships as a
+ *   SEPARATE package on the user's own upgrade schedule: an app still on the older
+ *   `@reticlehq/electron` talking to a newer daemon must keep getting screenshots, not silently
+ *   start returning no image. It grants the daemon nothing it did not already have.
+ *
+ * Every comparison is an exact match against an UNRESOLVED path, which is what refuses traversal:
+ * `<tmp>/<prefix>x/../../etc/<prefix>passwd.png` has a grandparent of `<tmp>/<prefix>x/..`, not
+ * `<tmp>`. Exactly one directory level is allowed, so a deeper nesting is refused too.
  */
-function isCapturePath(path: string): boolean {
-  return dirname(path) === tmpdir() && basename(path).startsWith(RETICLE_CAPTURE_FILE_PREFIX);
+export function isCapturePath(path: string): boolean {
+  if (!basename(path).startsWith(RETICLE_CAPTURE_FILE_PREFIX)) return false;
+  const parent = dirname(path);
+  if (parent === tmpdir()) return true;
+  return dirname(parent) === tmpdir() && basename(parent).startsWith(RETICLE_CAPTURE_FILE_PREFIX);
 }
 
 /**
