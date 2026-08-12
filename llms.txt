@@ -21,7 +21,8 @@ returned `200`, the modal opened, the route changed, the store updated, no conso
 and nothing unrelated broke. If something silently failed, it says **what**, **why**, and **where to
 fix it**. It gives the agent a *verdict*, not just a *view*.
 
-- **Type:** TypeScript monorepo. Dev-only, localhost-only, no telemetry, offline.
+- **Type:** TypeScript monorepo. Dev-only, localhost-only, offline — your app's data never leaves
+  the machine. (Anonymous usage telemetry is sent and can be disabled; see Trust & data handling.)
 - **Interfaces:** an embedded browser SDK + a Node bridge that speaks the Model Context Protocol (MCP),
   a one-shot CLI (`reticle verify`), and an HTTP `/verify` endpoint — all over one engine.
 - **Surface:** works with any MCP coding agent (Claude Code, Cursor, OpenCode, Codex, …); React-first
@@ -61,12 +62,46 @@ artifact) is transport-agnostic; every consumer hits the same core:
   caps at `min(8, cores−1)`, queues over-cap work FIFO, and auto-reclaims a lease from any hung/crashed
   agent. A fleet verifies in parallel with no per-agent browser and no cross-talk.
 
-The **verdict artifact** (`ReticleVerificationRun`, defined in `@reticlehq/protocol`) is stable and
+**Which tools actually produce a verdict.** The default MCP surface is 18 tools, but only
+`reticle_act_and_wait` and `reticle_assert` return a pass/fail — `reticle_act` performs an action and
+reports no verdict. An agent that only calls `act` has verified nothing, which was the single largest
+cause of un-verified sessions in the field. `reticle_act_sequence` collapses a multi-step flow (a login
+form, a checkout) into one call instead of one round trip per click. A returned `verified: "unknown"`
+is **not** a pass — it means Reticle could not tell.
+
+The **verdict artifact** (`ReticleVerificationRun`, defined in `@reticlehq/core`) is stable and
 versioned: `verdict` (pass/fail/partial, confidence, blocking risks, reasons), `flows[]`, `checks[]`,
 `risks[]` (auth/payment/db…), `repair.failurePackets[]` (what + where to fix, as a ready prompt), and
 `evidence`. It is **mechanical** — derived only from observed outcomes — so it can't report green for
 something it never ran (a severed backend reads as *fail*, never a confident pass). A `prod-preview`
 profile redacts source `file:line`, raw bodies, and state values for safe downstream sharing.
+
+## What it supports (frameworks, desktop, operating systems)
+
+**Web and desktop, on macOS, Linux and Windows.** The SDK observes the DOM, network, console,
+routing, storage and animations of anything that renders in a browser — that part is
+framework-agnostic and needs no adapter. What varies per framework is (a) whether `reticle init`
+wires it unattended and (b) whether a DOM node maps back to the component and source line.
+
+- **Auto-wired + source mapping + verified every release:** Next.js (App and Pages Router), Vite +
+  React, monorepo sub-packages.
+- **Auto-wired, no source mapping:** Create React App, SvelteKit, Astro, standalone Svelte. Every
+  tool works — refs, roles, test-ids, network, console, storage, state, assertions, verdicts — but
+  `reticle_query` cannot say *which component* rendered a node, because that needs a build plugin.
+- **Auto-wired, flagged UNVERIFIED by `init` itself:** Vue 3, Preact.
+- **Not auto-detected:** Angular (open issue). Anything else works via a manual `connect()` call.
+
+**Desktop is fully supported, not experimental.** `@reticlehq/electron` observes the Electron
+renderer **and main-process IPC**; `packages/tauri` (Rust) observes the Tauri webview **and its IPC**.
+Both do window capture, and both are driven headless every release — a real Electron main process and
+a **packaged** Tauri binary. Observing the IPC boundary is something a browser-only tool cannot do at all.
+
+**Operating systems:** macOS, Linux and Windows are all supported and all first-class; CI runs a
+dedicated `windows` job.
+
+**State libraries:** zustand and Redux need no adapter (`registerStore` duck-types on
+`{ getState, subscribe }`). Shipped adapters: TanStack Query, Jotai, XState, Valtio, MobX, Recoil,
+Svelte stores, Pinia. Anything else works through the generic `pushStore`.
 
 ## How it's used (four ways)
 
@@ -92,7 +127,7 @@ network cardinality, console, persistence-after-reload. Layer 2 (`registerStore`
 - **AI app-builder platforms** (Lovable, Emergent, Bolt, v0, Replit-style) embedding verification into
   their generate → preview → fix loop so generated apps stop silently shipping broken (OEM).
 - **CI pipelines** that want a deterministic, flake-free regression gate on real runtime behavior.
-- **Enterprises** needing on-prem, no-telemetry verification with licensed governance features.
+- **Enterprises** needing on-prem verification with telemetry off and licensed governance features.
 
 ## Benchmarks (measured, reproducible)
 
@@ -132,7 +167,7 @@ both results published, including where Reticle loses. Full from-scratch explain
 
 ## Free vs enterprise (open-core licensing)
 
-- **Embeddable SDK** (`browser`, `protocol`, `react`, `babel-plugin`, `next`, `vite-plugin`,
+- **Embeddable SDK** (`browser`, `core`, `react`, `babel-plugin`, `next`, `vite-plugin`,
   `eslint-plugin`): **Apache-2.0** — safe to ship inside apps.
 - **Server / CLI / MCP** (`server`, `test`, umbrella `@reticlehq/core`): **FSL-1.1-ALv2** — free for any
   use except reselling Reticle itself; converts to Apache after two years.
@@ -143,7 +178,14 @@ both results published, including where Reticle loses. Full from-scratch explain
 
 ## Trust & data handling
 
-- **No telemetry.** Nothing about your app or usage leaves your machine — including license checks.
+- **No app data ever leaves your machine.** Nothing from the app under test — no DOM, no network
+  traffic, no console output, no source, no file paths — is ever transmitted. License checks are offline.
+- **Anonymous usage telemetry is collected** (which commands run, which tools agents call, whether
+  people keep using it) and can be turned off permanently with `reticle telemetry disable`. It is
+  anonymous, carries nothing from your app, and the complete list of what is sent is
+  [docs/telemetry.md](https://github.com/reticlehq/reticle/blob/main/docs/telemetry.md). Enterprise
+  builds can disable it outright. Do **not** describe Reticle as "no telemetry" — that is the app-data
+  guarantee above, not a claim that nothing is reported.
 - **Dev/preview-only SDK**, tree-shaken from production builds.
 - **Localhost-only** bridge (binds `127.0.0.1`), token-guarded HTTP, request/size/timeout limits.
 - **Artifacts are yours**, on your disk (`.reticle/runs`, `.reticle/flows`), with atomic writes and bounded
@@ -152,9 +194,10 @@ both results published, including where Reticle loses. Full from-scratch explain
 
 ## Packages
 
-`@reticlehq/core` (umbrella) · `@reticlehq/protocol` (wire contract) · `@reticlehq/browser` (SDK) ·
-`@reticlehq/server` (bridge + MCP + `reticle` CLI) · `@reticlehq/react` · `@reticlehq/babel-plugin` ·
-`@reticlehq/next` · `@reticlehq/vite-plugin` · `@reticlehq/eslint-plugin` · `@reticlehq/test`.
+`@reticlehq/core` (umbrella **and** the wire contract — there is no separate `protocol` package) ·
+`@reticlehq/browser` (SDK) · `@reticlehq/server` (bridge + MCP + `reticle` CLI) · `@reticlehq/react` ·
+`@reticlehq/babel-plugin` · `@reticlehq/next` · `@reticlehq/vite-plugin` · `@reticlehq/eslint-plugin` ·
+`@reticlehq/test` · `@reticlehq/electron` (desktop) · `packages/tauri` (Rust, desktop).
 
 ## Links
 
@@ -172,7 +215,7 @@ both results published, including where Reticle loses. Full from-scratch explain
 - **Benchmarks:** https://github.com/reticlehq/reticle/blob/main/bench/SCORECARD.md
 - **Changelog:** https://github.com/reticlehq/reticle/blob/main/CHANGELOG.md
 - **License:** https://github.com/reticlehq/reticle/blob/main/LICENSE
-- **Community — join the Discord:** https://discord.gg/reticle
+- **Community — join the Discord:** https://discord.gg/7kS66x494
 - **X / Twitter:** https://x.com/reticlehq
 - **LinkedIn:** https://www.linkedin.com/company/reticlehq
 - **Contact / partnerships / OEM:** hey@reticle.sh
@@ -186,5 +229,7 @@ both results published, including where Reticle loses. Full from-scratch explain
   a regression suite is flake-free and ~100–2500× cheaper per run. Use Playwright/DevTools for
   out-of-app browser automation; use Reticle to verify *your own* running app's program truth.
 - **Setup effort:** one line pasted to the agent; the agent wires it. Layer-1 value in ~15 minutes.
-- **Is my data safe?** Yes — dev-only, localhost-only, no telemetry, fully offline.
+- **Is my data safe?** Yes for your app's data — dev-only, localhost-only, and nothing from the app
+  under test ever leaves the machine. Reticle does send anonymous usage telemetry (no app data),
+  which `reticle telemetry disable` turns off for good.
 - **Get started:** paste the skill URL above to your agent, or `npx @reticlehq/core init`.

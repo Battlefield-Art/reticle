@@ -44,10 +44,10 @@ Measured live, all servers in one run, same tokenizer (`bench/harness/schema-tax
 
 | MCP server                                | tools | schema tokens |
 | ----------------------------------------- | ----: | ------------: |
-| **Reticle — the tool surface**            |    17 |    **~4,500** |
+| **Reticle — the tool surface**            |    18 |    **~4,930** |
 | Playwright MCP                            |    23 |         3,725 |
 | Chrome DevTools MCP                       |    29 |         5,116 |
-| Reticle — `RETICLE_ADVERTISE_ALL_TOOLS=1` |    48 |       ~32,000 |
+| Reticle — `RETICLE_ADVERTISE_ALL_TOOLS=1` |    48 |       ~30,200 |
 
 There is one tool surface: the verify loop advertised directly, plus two meta-tools (`reticle_tools`, `reticle_run`) that reach every other tool on demand. Nothing is unreachable; the cold tail simply is not re-sent every turn.
 

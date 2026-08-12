@@ -23,9 +23,11 @@ Your agent writes code. Reticle checks it against the **real running app** — t
 
 Where the work happens in the open: what's being built this cycle, what's up for grabs, and design calls before they land.
 
-**[⚡ Install in 30 seconds](#install-in-30-seconds)** · [How it works](#how-it-works) · [vs Playwright / DevTools](#cant-playwright--devtools--a-browser-agent-already-do-this) · [The numbers](#the-numbers) · [Docs](docs/getting-started.md) · [Discord](https://discord.gg/7kS66x494)
+**[⚡ Install in 30 seconds](#install-in-30-seconds)** · [How it works](#how-it-works) · [**What we support**](#what-we-support--frameworks-desktop-platforms) · [vs Playwright / DevTools](#cant-playwright--devtools--a-browser-agent-already-do-this) · [The numbers](#the-numbers) · [Docs](docs/getting-started.md) · [Discord](https://discord.gg/7kS66x494)
 
 `dev-only` · `localhost-only` · `your app data stays local` · `Apache-2.0 SDK` · works with Claude Code, Cursor, and any MCP agent
+
+**Web and desktop** — React, Vue, Svelte, Preact, Astro, plain HTML · **Electron & Tauri** · macOS, Linux, Windows
 
 </div>
 
@@ -246,7 +248,9 @@ Not observed today: **IndexedDB**, **Web Workers**, and anything inside a closed
 | **Memory** | a bounded ring buffer (2,000 events / 60 s), plus a capped ref registry — both fixed ceilings, not growth with app lifetime |
 | **Network** | localhost WebSocket to a daemon on your machine. **No app data leaves the machine** |
 
-### What Reticle supports
+## What we support — frameworks, desktop, platforms
+
+**The short answer:** if it renders in a browser, Reticle observes it — **web and desktop, on macOS, Linux and Windows.** Web apps (React, Vue, Svelte, Preact, Astro, plain HTML) and desktop apps (**Electron and Tauri**) are all supported, and `reticle init` wires most of them unattended. The tables below say exactly how far that goes for each one.
 
 The SDK observes the **DOM, network, console, routing, storage and animations of anything that renders in a browser** — that part is framework-agnostic and needs no adapter. What varies is the layer above it: whether `reticle init` wires your project unattended, and whether a DOM node can be traced back to the component and source line that rendered it.
 
@@ -269,16 +273,20 @@ The SDK observes the **DOM, network, console, routing, storage and animations of
 
 **A ❌ in "source mapping" is not a broken install.** Vue, Preact, Svelte, Astro, SvelteKit and CRA apps are wired by `init`, connect normally, and every tool works — refs, roles, test-ids, network, console, storage, state, animations, assertions and verdicts. What you don't get is `reticle_query` answering _"which component rendered this, and in which file"_, because that needs a build plugin that stamps `data-reticle-source`. On the unverified stacks `init` says so on the spot rather than reporting an unqualified green.
 
-**Desktop**
+### Desktop apps — yes, Electron and Tauri
 
-| Platform | Support | Verified |
+Both are fully supported, not experimental: Reticle observes the renderer **and** the main-process/Rust IPC boundary that a browser-only tool cannot see at all.
+
+| Desktop runtime | What Reticle observes | Verified every release |
 | --- | --- | --- |
-| **Electron** | `@reticlehq/electron` — renderer + **main-process IPC** observation, window capture | ✅ real Electron main process, headless, every release |
-| **Tauri** | `packages/tauri` (Rust) — webview + IPC, window capture | ✅ **packaged binary**, driven headless, every release |
+| **Electron** | `@reticlehq/electron` — renderer + **main-process IPC**, window capture | ✅ a real Electron main process, driven headless |
+| **Tauri** | `packages/tauri` (Rust) — webview + **IPC**, window capture | ✅ a **packaged binary**, driven headless |
 
 Both are driven by `pnpm test:e2e:desktop`; the Rust side is compiled by CI's `rust` / `rust-macos` jobs. See [Desktop apps](docs/desktop-apps.md).
 
-**Platforms:** macOS, Linux and Windows are all first-class — Windows is the largest platform in our telemetry, and CI runs a dedicated `windows` job.
+### Operating systems
+
+**macOS, Linux and Windows are all supported and all first-class.** CI runs a dedicated `windows` job on every commit.
 
 Missing yours? [#128](https://github.com/reticlehq/reticle/issues/128) (Angular) and [#76](https://github.com/reticlehq/reticle/issues/76) (Vue) are open and marked `help wanted`.
 

@@ -228,6 +228,8 @@ npm install --save-dev @reticlehq/react @reticlehq/vite-plugin    # swap npm for
 
 > Only for the files `init` marked `⚠`. It auto-patches `vite.config.*` and all three Next.js files; it bails to `⚠` when a config's shape isn't one it recognises, and prints the snippet you need on that line.
 
+> **Desktop app (Electron or Tauri)?** Both are fully supported — Reticle observes the renderer **and** the main-process / Rust IPC boundary. The wiring differs from the web setup below: see [docs/desktop-apps.md](https://github.com/reticlehq/reticle/blob/main/docs/desktop-apps.md).
+
 **Vite + React**
 
 Add the Reticle plugin to `vite.config.ts` — it auto-injects `reticle.connect()` in dev builds:

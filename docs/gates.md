@@ -8,7 +8,7 @@
 
 ## 0. Last verified
 
-Every gate below was executed end to end against `main` on **2026-08-11** (macOS, M-series, `v2.5.0`). A green row means somebody watched it go green, not that it is supposed to be green.
+Every gate below was executed end to end against `main` on **2026-08-12** (macOS, M-series, `v2.6.0`). A green row means somebody watched it go green, not that it is supposed to be green.
 
 | Gate | Result | Wall clock |
 | --- | --- | --- |
