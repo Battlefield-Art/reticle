@@ -23,15 +23,29 @@ function fakeProc(): ProcessLike & { fire: (event: string, arg: unknown) => void
   };
 }
 
-/** A refused loopback connect: the shape that arrives with `frames: []` and nothing else. */
+/**
+ * A loopback connect that failed on a system error: the shape that arrives with `frames: []` and
+ * nothing else.
+ *
+ * `EHOSTUNREACH`, not `ECONNREFUSED`, and the difference is the point. This file originally used a
+ * refused connect, which was the right example when it was written — 65 such crashes in a day, one
+ * fingerprint, no location on any of them. In the same release, `ECONNREFUSED` stopped being a
+ * crash at all: it is a daemon that has not booted yet, the proxy is built to tolerate it, and all
+ * 84 crash events over two days were that one non-crash. It is now absorbed as
+ * `*_peer_unreachable` before it ever reaches `reportCrash`.
+ *
+ * So the enrichment this file tests still matters, for exactly the crashes that ARE crashes and
+ * still had no location. Same code path, same assertions, an example that still reaches it.
+ * `daemon-resilience.test.ts` covers the absorbed case.
+ */
 function refusedLoopback(port: number): Error {
-  const error = Object.assign(new Error(`connect ECONNREFUSED 127.0.0.1:${String(port)}`), {
+  const error = Object.assign(new Error(`connect EHOSTUNREACH 127.0.0.1:${String(port)}`), {
     syscall: 'connect',
-    code: 'ECONNREFUSED',
+    code: 'EHOSTUNREACH',
     address: '127.0.0.1',
     port,
   });
-  error.stack = `Error: connect ECONNREFUSED 127.0.0.1:${String(port)}\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)`;
+  error.stack = `Error: connect EHOSTUNREACH 127.0.0.1:${String(port)}\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)`;
   return error;
 }
 
@@ -61,7 +75,7 @@ describe('a crash with no Reticle frames still reports where it was', () => {
     expect(crash['frames']).toEqual([]);
 
     expect(crash['syscall']).toBe('connect');
-    expect(crash['errno']).toBe('ECONNREFUSED');
+    expect(crash['errno']).toBe('EHOSTUNREACH');
     expect(crash['loopback']).toBe(true);
     expect(crash['port']).toBe(CrashPort.RETICLE);
     expect(crash['internalFrame']).toBe('node:net:1637');
