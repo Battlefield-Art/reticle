@@ -198,6 +198,16 @@ export const SessionSummarySchema = z.object({
   /** Calls for a tool name that does not exist. A non-zero value means our surface is confusing. */
   unknownToolCalls: z.number().int().nonnegative().optional(),
   /**
+   * WHICH tools the agent reached for that do not exist, with counts.
+   *
+   * The count alone said "our surface confused someone" and could never say what they wanted. The
+   * name is a feature request in the agent's own vocabulary — and it is a NAME, from our own tool
+   * namespace, carrying no app data, so it is safe under the send-names-never-values rule.
+   *
+   * Bounded and truncated: a guess is a short identifier, and anything longer is not one.
+   */
+  unknownTools: z.record(z.string().max(64), z.number().int().nonnegative()).optional(),
+  /**
    * Tool calls that failed because there was no app to reach — no session connected, no session by
    * that id, or several with none named.
    *

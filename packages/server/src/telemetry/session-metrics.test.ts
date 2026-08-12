@@ -487,3 +487,63 @@ describe('the session summary says whether an app ever connected', () => {
     expect(m.summarize(true)).not.toHaveProperty('msToFirstApp');
   });
 });
+
+/**
+ * The NAME an agent reached for is a feature request in the agent's own vocabulary.
+ *
+ * `recordUnknownTool()` counted and threw the name away, so a non-zero `unknownToolCalls` said
+ * "the surface confused someone" and could never say what they wanted. The name is a NAME — our
+ * own vocabulary space, agent-guessed, carrying no app data — so it is safe under the contract
+ * rule that sends names and never values.
+ *
+ * Cheap to collect and it is the only place the product learns what capability an agent expected
+ * and could not find.
+ */
+describe('an unknown tool records WHAT the agent reached for', () => {
+  it('keeps the name, not just the count', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordUnknownTool('reticle_screenshot_diff');
+    const s = m.summarize(true);
+    expect(s.unknownToolCalls).toBe(1);
+    expect(s.unknownTools).toEqual({ reticle_screenshot_diff: 1 });
+  });
+
+  it('counts repeats of the same guess — twice is a stronger signal than once', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordUnknownTool('reticle_login');
+    m.recordUnknownTool('reticle_login');
+    m.recordUnknownTool('reticle_wait');
+    expect(m.summarize(true).unknownTools).toEqual({ reticle_login: 2, reticle_wait: 1 });
+  });
+
+  it('survives a flush — a guess made early must still be reported at the end', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordUnknownTool('reticle_login');
+    m.reset();
+    expect(m.summarize(true).unknownTools).toEqual({ reticle_login: 1 });
+  });
+
+  it('omits the field entirely when nothing was guessed', () => {
+    expect(new SessionMetrics(() => 0).summarize(true)).not.toHaveProperty('unknownTools');
+  });
+
+  it('still counts an unnamed call, so the old counter never regresses', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordUnknownTool();
+    expect(m.summarize(true).unknownToolCalls).toBe(1);
+    expect(m.summarize(true)).not.toHaveProperty('unknownTools');
+  });
+
+  it('is bounded and truncates a long name — a guess is short, a payload is not', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordUnknownTool('x'.repeat(500));
+    const names = Object.keys(m.summarize(true).unknownTools ?? {});
+    expect(names[0]?.length).toBeLessThanOrEqual(64);
+  });
+
+  it('stops growing at a cap, so a pathological loop cannot balloon the payload', () => {
+    const m = new SessionMetrics(() => 0);
+    for (let i = 0; i < 200; i += 1) m.recordUnknownTool(`guess_${String(i)}`);
+    expect(Object.keys(m.summarize(true).unknownTools ?? {}).length).toBeLessThanOrEqual(40);
+  });
+});

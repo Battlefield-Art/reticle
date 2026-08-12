@@ -582,6 +582,7 @@ await daemon.shutdown('idle');
   check('  error carries a READABLE skeleton, not just a hash', baselineError?.message === 'no baseline named *', String(baselineError?.message));
   check('  error names the tool that produced it', baselineError !== undefined);
   check('  error carries its count', baselineError?.count === 2, String(baselineError?.count));
+  check('  reports WHICH tools the agent guessed at, not just how many', arrived && (p.session_unknownTools === undefined || 'object' === typeof p.session_unknownTools), String(p.session_unknownTools));
   // The 2.6.0 fields, asserted HERE because this is the only place that proves they reach the wire.
   // Telemetry fails silently: a field dropped from the emit allow-list throws nothing and reddens no
   // unit test, and the data is simply, permanently absent.

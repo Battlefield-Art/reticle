@@ -162,7 +162,12 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
       if (target === undefined) {
         // A non-zero count here means our advertised surface is confusing the agent — it reached for
         // something it believed existed. That is a docs/naming defect, and it was invisible.
-        getSessionMetrics().recordUnknownTool();
+        //
+        // The NAME goes with it: the count says the surface confused someone, the name says which
+        // capability they expected. It was already in hand here and thrown away, so the one place
+        // the product could learn what agents want was discarding it. Safe — a name from our own
+        // tool namespace, never app data.
+        getSessionMetrics().recordUnknownTool(name);
         // ...and for 22 of those names the capability DOES exist, it just moved when tools merged.
         // Answering "unknown tool" there is simply wrong; see merged-name-redirect.
         const moved = mergedNameRedirect(name);

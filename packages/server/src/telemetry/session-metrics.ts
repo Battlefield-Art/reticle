@@ -108,6 +108,12 @@ export class SessionMetrics {
   #concurrent = 0;
   #peakConcurrent = 0;
   #unknownToolCalls = 0;
+  /**
+   * Names the agent guessed at, session-LIFETIME — a guess made early must still be reported at
+   * the end, so this is deliberately not cleared by a flush.
+   */
+  readonly #unknownTools = new Map<string, number>();
+  #lifetimeUnknownToolCalls = 0;
   #bugsFound = 0;
   #browserMs = 0;
   #browserCommands = 0;
@@ -195,8 +201,28 @@ export class SessionMetrics {
   }
 
   /** A call for a tool that does not exist. Non-zero means our surface is confusing the agent. */
-  recordUnknownTool(): void {
+  /**
+   * An agent reached for a tool that does not exist — and WHAT it reached for.
+   *
+   * The name is the point. A count says the surface confused someone; the name says which
+   * capability they expected us to have, in their own vocabulary. Safe to keep: it is a name from
+   * our own namespace, never app data. Bounded and truncated, because a guess is a short
+   * identifier and anything longer is not one.
+   */
+  recordUnknownTool(name?: string): void {
     this.#unknownToolCalls += 1;
+    this.#lifetimeUnknownToolCalls += 1;
+    if (name === undefined || 0 === name.length) return;
+    const key = name.slice(0, 64);
+    const seen = this.#unknownTools.get(key);
+    if (seen !== undefined) {
+      this.#unknownTools.set(key, seen + 1);
+      return;
+    }
+    // Stop growing once full: a pathological loop must not balloon the payload. The head is what
+    // gets built; the tail is noise.
+    if (this.#unknownTools.size >= MAX_ERROR_KINDS) return;
+    this.#unknownTools.set(key, 1);
   }
 
   recordToolCall(tool: string, args?: Record<string, unknown>): void {
@@ -439,7 +465,10 @@ export class SessionMetrics {
       browserMs: this.#browserMs,
       browserCommands: this.#browserCommands,
       peakConcurrentTools: this.#peakConcurrent,
-      unknownToolCalls: this.#unknownToolCalls,
+      unknownToolCalls: final ? this.#lifetimeUnknownToolCalls : this.#unknownToolCalls,
+      ...(this.#unknownTools.size > 0
+        ? { unknownTools: Object.fromEntries(this.#unknownTools) }
+        : {}),
       ...(machine !== undefined ? { machine } : {}),
       ...(this.#clients.size > 0 ? { clients: [...this.#clients] } : {}),
       // Always present, including zero: absence and "no app ever connected" must not look alike,
