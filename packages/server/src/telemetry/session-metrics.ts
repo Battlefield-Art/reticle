@@ -148,6 +148,8 @@ export class SessionMetrics {
   #unsettledActions = 0;
   /** One-shot latch for the verdict nudge — see takeUnverifiedNudge. */
   #nudgedUnverified = false;
+  /** The agent detached. The one part of `endReason` a query cannot derive. */
+  #clientLeft = false;
   /**
    * App SDK connections, session-lifetime. NOT reset by a flush: "did an app ever connect" is a
    * fact about the session, and a page reload after a flush must not erase it.
@@ -421,6 +423,17 @@ export class SessionMetrics {
     }
   }
 
+  /**
+   * The agent's client went away.
+   *
+   * This is the only part of `endReason` that a query cannot derive from the counters: "the client
+   * detached" and "the agent stopped asking" produce identical numbers and are different findings —
+   * one is the task ending, the other is us losing them.
+   */
+  recordClientLeft(): void {
+    this.#clientLeft = true;
+  }
+
   /** Which tool surface was advertised to agents this session. */
   recordSurface(surface: string): void {
     this.#surface = surface.slice(0, 32);
@@ -490,6 +503,7 @@ export class SessionMetrics {
         ? { clientVersions: Object.fromEntries(this.#clientVersions) }
         : {}),
       ...(this.#surface === undefined ? {} : { surface: this.#surface }),
+      ...(final ? { endReason: this.#endReason() } : {}),
       // Always present, including zero: absence and "no app ever connected" must not look alike,
       // because zero IS the finding here.
       appConnects: this.#appConnects,
@@ -501,6 +515,18 @@ export class SessionMetrics {
       // died without a shutdown path, which is the one thing this field exists to make visible.
       ...(final && exit !== undefined ? { exit } : {}),
     };
+  }
+
+  /**
+   * What state the agent's work was in at the end. Ordered by which fact outranks which: a client
+   * that left explains everything after it, and a verdict settles whatever preceded it.
+   */
+  #endReason(): NonNullable<SessionSummary['endReason']> {
+    if (0 === this.#lifetimeToolCalls) return 'never_used';
+    if (this.#clientLeft) return 'client_left';
+    if (this.#unsettledActions > 0) return 'abandoned';
+    if (this.#lifetimeVerifications > 0) return 'verified';
+    return 'explored';
   }
 
   /** True when nothing at all happened — a flush of an idle daemon is not worth an event. */

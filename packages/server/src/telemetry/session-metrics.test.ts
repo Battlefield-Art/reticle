@@ -605,3 +605,58 @@ describe('the session records WHICH agent drove it', () => {
     expect(s.surface).toBe('default');
   });
 });
+
+/**
+ * Why the agent's work ended — the question every other number raises and none answers.
+ *
+ * Measured 2026-08-10/11: 20 of the 28 agents that drove an app produced no verdict. Whether that
+ * is a product failure or a task that simply ended is the difference between a bug and a
+ * non-event, and nothing in the payload could tell them apart.
+ *
+ * Most of it IS derivable at query time from `verifications` / `abandonedActions` / `toolCalls`.
+ * The part that is NOT derivable is whether the CLIENT went away or the agent simply stopped
+ * asking — one is our problem, the other is the task ending — so that is the part recorded here.
+ */
+describe('the session says why the work ended', () => {
+  it('reports `never_used` when no tool was ever called', () => {
+    expect(new SessionMetrics(() => 0).summarize(true).endReason).toBe('never_used');
+  });
+
+  it('reports `verified` when the last thing the agent did was get a verdict', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordAction();
+    m.recordVerification();
+    expect(m.summarize(true).endReason).toBe('verified');
+  });
+
+  it('reports `abandoned` when the agent drove and never asked for a verdict', () => {
+    // The 137-of-140 case. An action with nothing settling it is the loop breaking mid-task.
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordAction();
+    expect(m.summarize(true).endReason).toBe('abandoned');
+  });
+
+  it('reports `client_left` when the agent detached — not our failure to hold its attention', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordAction();
+    m.recordClientLeft();
+    expect(m.summarize(true).endReason, 'the client going away outranks an unsettled run').toBe(
+      'client_left',
+    );
+  });
+
+  it('reports `explored` for a session that read but never drove', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_snapshot');
+    expect(m.summarize(true).endReason).toBe('explored');
+  });
+
+  it('is absent on a periodic flush — nothing has ended', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    expect(m.summarize(false)).not.toHaveProperty('endReason');
+  });
+});

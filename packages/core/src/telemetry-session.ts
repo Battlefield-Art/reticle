@@ -272,6 +272,21 @@ export const SessionSummarySchema = z.object({
    * difference between a smooth install and one that needed a second step nobody documented.
    */
   msToFirstApp: z.number().int().nonnegative().optional(),
+  /**
+   * What state the AGENT's work was in when the session ended. Absent on a periodic flush.
+   *
+   * Distinct from `exit`, which says why the PROCESS ended. A daemon can exit tidily on idle while
+   * the agent's work was abandoned mid-task, and those are different findings.
+   *
+   * Measured 2026-08-10/11: 20 of the 28 agents that drove an app produced no verdict, and nothing
+   * could say whether that was a product failure or a task that simply ended.
+   *
+   * Most of this is derivable at query time from `toolCalls` / `verifications` /
+   * `abandonedActions`. The part that is NOT derivable is `client_left` — whether the agent
+   * detached or simply stopped asking — which is why the daemon records it rather than leaving the
+   * whole thing to a query.
+   */
+  endReason: z.enum(['never_used', 'explored', 'abandoned', 'verified', 'client_left']).optional(),
   /** Was this a clean shutdown, or a periodic flush of a still-running session? */
   final: z.boolean(),
   /**

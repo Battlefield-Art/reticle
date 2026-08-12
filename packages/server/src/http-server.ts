@@ -2,6 +2,7 @@ import * as http from 'node:http';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { MCP_SSE_PATH, MCP_MESSAGE_PATH, STATUS_PATH } from '@reticlehq/core';
+import { getSessionMetrics } from './telemetry/session-metrics.js';
 import { noteAgentPeer, PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './version/peer-announce.js';
 import { log } from './log.js';
 import { reportMcpConnected } from './telemetry/mcp-connection.js';
@@ -121,6 +122,13 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
         transport.close().catch(() => undefined);
         mcpServer.close().catch(() => undefined);
         log('mcp_client_disconnected', { sessionId: sid });
+        // The one part of `endReason` a query cannot derive: "the client detached" and "the agent
+        // stopped asking" produce identical counters and are different findings.
+        try {
+          getSessionMetrics().recordClientLeft();
+        } catch {
+          /* a counter must never affect a disconnect path */
+        }
         if (0 === transports.size) agentPresence?.(false); // last agent detached → it's the human's turn
       });
       mcpServer
