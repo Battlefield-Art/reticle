@@ -2,6 +2,8 @@
 import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
+import { stateDirProblem } from './daemon/state-dir.js';
+import { reticleStateHome } from './daemon/daemon.js';
 import {
   handleWatch,
   handleCapsules,
@@ -190,10 +192,18 @@ async function serveWithHonestExit(parsed: {
       presence: settled,
       reason: describePresence(settled, parsed.port),
       log: logPath(parsed.port),
+      stateDir: stateDirProblem(reticleStateHome()) === undefined ? 'writable' : 'unwritable',
     });
+    // Name the CAUSE when we can see it. An unwritable state directory is a first-run failure mode
+    // (locked-down home, read-only container mount, managed profile) that produced only "nothing is
+    // listening" — the symptom restated — and then pointed at a log INSIDE that directory, which
+    // cannot exist. Found by stress-testing 2.6.0 with `chmod 555 ~/.reticle`.
+    const dirProblem = stateDirProblem(reticleStateHome());
     process.stderr.write(
-      `the daemon did not come up on :${String(parsed.port)} — ${describePresence(settled, parsed.port)}\n` +
-        `see ${logPath(parsed.port)}\n`,
+      dirProblem === undefined
+        ? `the daemon did not come up on :${String(parsed.port)} — ${describePresence(settled, parsed.port)}\n` +
+            `see ${logPath(parsed.port)}\n`
+        : `the daemon did not come up on :${String(parsed.port)}.\n${dirProblem}\n`,
     );
     process.exit(1);
     return;

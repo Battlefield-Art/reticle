@@ -86,12 +86,47 @@ export async function probePresence(
   return classifyPort({ tcpOpen, statusAnswered: status !== undefined });
 }
 
+/**
+ * Who is holding the port, when we can tell.
+ *
+ * `FOREIGN` covers two situations that need the same answer to "can I bind this?" and OPPOSITE
+ * answers to "what do I do?": a stranger's process, and one of our own daemons wedged. Passing
+ * these lets the sentence tell them apart when — and only when — the recorded pid for the port
+ * matches the process actually holding it.
+ */
+export interface PortHolder {
+  /** The pid we recorded for this port, from the daemon pid file. `null` when there is none. */
+  ourPid: number | null;
+  /** The pid actually holding the port, when the caller could determine it. */
+  holderPid: number | undefined;
+}
+
 /** One sentence a human can act on, for each state. Exhaustive by switch, so a new state must add one. */
-export function describePresence(presence: PortPresence, port: number): string {
+export function describePresence(
+  presence: PortPresence,
+  port: number,
+  holder?: PortHolder,
+): string {
   switch (presence) {
     case PortPresence.DAEMON:
       return `a Reticle daemon is serving :${String(port)}`;
     case PortPresence.FOREIGN:
+      // Our own daemon, wedged: it accepts TCP and never answers `/status`, so it classifies as
+      // FOREIGN — correct for binding, and a lie in prose. Found by SIGSTOPping a daemon: doctor
+      // said "which is not a Reticle daemon" about a pid its own pid file named, and sent the
+      // reader hunting a stranger while never mentioning the fix that works.
+      if (
+        holder?.ourPid !== null &&
+        holder?.ourPid !== undefined &&
+        holder.ourPid === holder.holderPid
+      ) {
+        return (
+          `port ${String(port)} is held by YOUR Reticle daemon (pid ${String(holder.ourPid)}), ` +
+          'and it is not responding — it is running but wedged, so nothing can use it and nothing ' +
+          'else can bind the port. Stop it (`reticle stop`) and the next tool call starts a fresh ' +
+          'one.'
+        );
+      }
       return (
         `port ${String(port)} is held by another process that is not a Reticle daemon — ` +
         'a daemon cannot bind it. Stop that process, or run Reticle on a different port ' +

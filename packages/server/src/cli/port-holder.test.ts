@@ -62,3 +62,39 @@ describe('describeForeignHolder', () => {
     expect(text).not.toContain('pid');
   });
 });
+
+/**
+ * Our own wedged daemon must not be reported as somebody else's process.
+ *
+ * Found by stress-testing: `SIGSTOP` a daemon and it keeps accepting TCP while never answering
+ * `/status`, so it classifies FOREIGN. Measured on :4411 with `~/.reticle/daemon-4411.pid` holding
+ * the frozen process's exact pid:
+ *
+ *   reticle doctor → 'port 4411 is held by pid 65704 ("node"), which is not a Reticle daemon'
+ *
+ * It was ours. The advice that follows sends the reader hunting a stranger that does not exist and
+ * never mentions the fix that works. Worse, `reticle status` reported `running: true` for the same
+ * daemon at the same instant — the two commands contradicting each other about one process.
+ */
+describe('a wedged daemon of our own', () => {
+  it('is named as ours when the holder pid is the pid we recorded', () => {
+    const msg = describeForeignHolder(4411, { pid: 65704, command: 'node' }, 65704);
+    expect(msg).toContain('YOUR Reticle daemon');
+    expect(msg).toContain('not responding');
+    expect(msg, 'do not call our own daemon a stranger').not.toContain('is not a Reticle daemon');
+    expect(msg, 'name the fix that works').toContain('reticle stop');
+  });
+
+  it('still calls a genuine stranger a stranger', () => {
+    const msg = describeForeignHolder(4411, { pid: 999, command: 'python' }, 65704);
+    expect(msg).toContain('is not a Reticle daemon');
+    expect(msg).toContain('999');
+  });
+
+  it('keeps the old wording when we have no recorded pid to compare', () => {
+    expect(describeForeignHolder(4411, { pid: 999, command: 'python' }, null)).toContain(
+      'is not a Reticle daemon',
+    );
+    expect(describeForeignHolder(4411, null, 65704)).toContain('is not a Reticle daemon');
+  });
+});

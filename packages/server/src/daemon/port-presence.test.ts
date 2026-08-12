@@ -62,3 +62,47 @@ describe('describePresence', () => {
     }
   });
 });
+
+/**
+ * Our OWN wedged daemon must not be described as somebody else's process.
+ *
+ * Found by stress: `SIGSTOP` the daemon and it still accepts TCP but never answers `/status`, so
+ * `classifyPort` calls it FOREIGN — which is the right call for *usability* (the port cannot be
+ * bound either way) and the wrong thing to SAY. Measured against a frozen daemon on :4411, with
+ * `~/.reticle/daemon-4411.pid` holding the exact pid of the frozen process:
+ *
+ *   reticle doctor → "port 4411 is held by pid 65704 ("node"), which is not a Reticle daemon"
+ *
+ * It was. The advice that follows — stop that process, or use a different port — sends someone
+ * hunting a stranger that does not exist, and the actual fix (`reticle stop`, it respawns) is never
+ * mentioned. `status` meanwhile reported `running: true` for the same daemon at the same moment, so
+ * the two commands contradicted each other.
+ *
+ * The classification stays FOREIGN. Only the sentence changes, and only when we can PROVE it is
+ * ours — the recorded pid for that port matches the process holding it.
+ */
+describe('a wedged daemon of our own is named as ours', () => {
+  it('says the daemon is not responding when the holder is our recorded pid', () => {
+    const msg = describePresence(PortPresence.FOREIGN, 4411, { ourPid: 65704, holderPid: 65704 });
+    expect(msg).toContain('not responding');
+    expect(msg, 'never call our own daemon a stranger').not.toContain('is not a Reticle daemon');
+    expect(msg, 'name the fix that actually works').toMatch(/reticle stop|restart/i);
+  });
+
+  it('still calls a genuine stranger a stranger', () => {
+    const msg = describePresence(PortPresence.FOREIGN, 4411, { ourPid: 65704, holderPid: 999 });
+    expect(msg).toContain('is not a Reticle daemon');
+  });
+
+  it('falls back to the stranger wording when we cannot prove ownership', () => {
+    expect(describePresence(PortPresence.FOREIGN, 4411)).toContain('is not a Reticle daemon');
+    expect(
+      describePresence(PortPresence.FOREIGN, 4411, { ourPid: null, holderPid: 999 }),
+    ).toContain('is not a Reticle daemon');
+  });
+
+  it('leaves the other two states alone', () => {
+    expect(describePresence(PortPresence.DAEMON, 4411)).toContain('serving');
+    expect(describePresence(PortPresence.FREE, 4411)).toContain('nothing is listening');
+  });
+});

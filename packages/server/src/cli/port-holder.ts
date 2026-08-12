@@ -53,12 +53,31 @@ export function parsePortHolder(stdout: string): PortHolder | null {
 }
 
 /** What `doctor` prints for a port held by something that is not a Reticle daemon. */
-export function describeForeignHolder(port: number, holder: PortHolder | null): string {
+export function describeForeignHolder(
+  port: number,
+  holder: PortHolder | null,
+  /**
+   * The pid we recorded for this port, from the daemon pid file.
+   *
+   * When it matches the process actually holding the port, the port is held by OUR daemon — one
+   * that accepts TCP and never answers `/status`, i.e. wedged. That classifies as FOREIGN, which is
+   * right for "can anything bind this?" and wrong to say out loud: the reader goes hunting a
+   * stranger, and the fix that works (`reticle stop`, it respawns on the next call) is never named.
+   */
+  ourPid?: number | null,
+): string {
   const tail =
     'a daemon cannot bind it. Stop that process, or run Reticle on a different port ' +
     '(`--port`), then retry.';
   if (null === holder) {
     return `port ${String(port)} is held by another process that is not a Reticle daemon — ${tail}`;
+  }
+  if (ourPid !== null && ourPid !== undefined && ourPid === holder.pid) {
+    return (
+      `port ${String(port)} is held by YOUR Reticle daemon (pid ${String(holder.pid)}), and it is ` +
+      'not responding — running but wedged, so nothing can use it and nothing else can bind the ' +
+      'port. Stop it with `reticle stop`; the next tool call starts a fresh one.'
+    );
   }
   return (
     `port ${String(port)} is held by pid ${String(holder.pid)} ("${holder.command}"), which is not ` +

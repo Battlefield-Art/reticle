@@ -93,7 +93,9 @@ export async function handleDoctor(port: number): Promise<void> {
     // Name the holder when we can. `doctor` exists for exactly this moment, and "another process"
     // leaves the reader to find a shell command themselves — the obvious one being the `lsof -ti`
     // pipeline that also kills the agent's own MCP proxy.
-    line(`  daemon       ✗ ${describeForeignHolder(port, findPortHolder(port, runCapture))}`);
+    // `pid` is what our pid file recorded for this port. When it matches the process actually
+    // holding it, this is our OWN daemon wedged, not a stranger — and the fix is different.
+    line(`  daemon       ✗ ${describeForeignHolder(port, findPortHolder(port, runCapture), pid)}`);
   } else {
     line(
       `  daemon       ✗ not running on :${port} — your agent runs \`reticle mcp\` (or \`reticle serve\`)`,
