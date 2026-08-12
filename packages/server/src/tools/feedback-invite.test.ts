@@ -8,7 +8,13 @@
 import { describe, expect, it } from 'vitest';
 import { FrictionKind, frictionOf, inviteFor } from './feedback-invite.js';
 
-const NONE = { unknownTool: false, verifiedUnknown: false, repeatRun: 0, errored: false };
+const NONE = {
+  unknownTool: false,
+  verifiedUnknown: false,
+  repeatRun: 0,
+  errored: false,
+  producedVerdict: false,
+};
 
 describe('frictionOf', () => {
   it('says nothing when nothing went wrong — the common case must stay silent', () => {
@@ -33,6 +39,25 @@ describe('frictionOf', () => {
 
   it('calls three in a row a loop, matching the verdict nudge threshold', () => {
     expect(frictionOf({ ...NONE, repeatRun: 3 })).toBe(FrictionKind.REPEATING);
+  });
+
+  /**
+   * Found by using it. Driving the Tauri smoke app, three consecutive successful
+   * `reticle_act_and_wait` calls — each one producing a verdict — were answered with "stuck on the
+   * same call?".
+   *
+   * That is the exact loop 2.6.0 exists to encourage, and nagging it is worse than saying nothing:
+   * an agent doing act -> verify -> act -> verify is not stuck, it is working. Repetition is only
+   * friction when it is repetition WITHOUT PROGRESS, and a verdict is progress.
+   */
+  it('does not call a repeated call stuck when it is producing verdicts', () => {
+    expect(frictionOf({ ...NONE, repeatRun: 5, producedVerdict: true })).toBeUndefined();
+  });
+
+  it('still calls it stuck when the repeats produce nothing', () => {
+    expect(frictionOf({ ...NONE, repeatRun: 5, producedVerdict: false })).toBe(
+      FrictionKind.REPEATING,
+    );
   });
 
   it('falls back to the refusal line for an ordinary error', () => {

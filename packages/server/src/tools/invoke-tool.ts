@@ -324,6 +324,9 @@ export async function runTool(
     verifiedUnknown: 'unknown' === (result as { verified?: unknown }).verified,
     repeatRun: getSessionMetrics().currentRun,
     errored: 'error' in result,
+    // A verdict is progress. Without this, three successful act_and_wait calls in a row — the exact
+    // loop this release exists to encourage — get told they are stuck.
+    producedVerdict: 'verified' in result,
   });
   if (friction !== undefined) {
     envelope['feedback_invite'] = inviteFor(friction);

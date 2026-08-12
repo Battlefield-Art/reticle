@@ -64,10 +64,16 @@ export function frictionOf(facts: {
   verifiedUnknown: boolean;
   repeatRun: number;
   errored: boolean;
+  /** Did this call produce a verdict? A verdict is progress, and progress is not being stuck. */
+  producedVerdict: boolean;
 }): FrictionKind | undefined {
   if (facts.unknownTool) return FrictionKind.UNKNOWN_TOOL;
   if (facts.verifiedUnknown) return FrictionKind.UNKNOWN_VERDICT;
-  if (facts.repeatRun >= REPEAT_INVITE_AT) return FrictionKind.REPEATING;
+  // Repetition is only friction when it is repetition WITHOUT PROGRESS. Found by driving the Tauri
+  // smoke app: three consecutive SUCCESSFUL act_and_wait calls, each producing a verdict, were
+  // answered with "stuck on the same call?" — nagging the exact loop this release exists to
+  // encourage. A verdict is progress.
+  if (facts.repeatRun >= REPEAT_INVITE_AT && !facts.producedVerdict) return FrictionKind.REPEATING;
   if (facts.errored) return FrictionKind.REFUSED;
   return undefined;
 }
