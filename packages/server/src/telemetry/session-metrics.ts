@@ -155,6 +155,10 @@ export class SessionMetrics {
   #appConnects = 0;
   #firstAppAt: number | undefined;
   readonly #clients = new Set<string>();
+  /** Client name -> version, session-lifetime. Never cleared: who drove is a fact about the session. */
+  readonly #clientVersions = new Map<string, string>();
+  /** Which tool surface the daemon advertised. */
+  #surface: string | undefined;
   readonly #startedAt: number;
   readonly #now: () => number;
 
@@ -407,8 +411,19 @@ export class SessionMetrics {
     };
   }
 
-  recordClient(name: string): void {
-    if (this.#clients.size < MAX_CLIENTS) this.#clients.add(name.slice(0, 64));
+  recordClient(name: string, version?: string): void {
+    const key = name.slice(0, 64);
+    if (this.#clients.size < MAX_CLIENTS) this.#clients.add(key);
+    // The version was already in the handshake and was being dropped. A regression in agent
+    // behaviour is usually a client version, and without this it is unattributable.
+    if (version !== undefined && '' !== version && this.#clientVersions.size < MAX_CLIENTS) {
+      this.#clientVersions.set(key, version.slice(0, 32));
+    }
+  }
+
+  /** Which tool surface was advertised to agents this session. */
+  recordSurface(surface: string): void {
+    this.#surface = surface.slice(0, 32);
   }
 
   /**
@@ -471,6 +486,10 @@ export class SessionMetrics {
         : {}),
       ...(machine !== undefined ? { machine } : {}),
       ...(this.#clients.size > 0 ? { clients: [...this.#clients] } : {}),
+      ...(this.#clientVersions.size > 0
+        ? { clientVersions: Object.fromEntries(this.#clientVersions) }
+        : {}),
+      ...(this.#surface === undefined ? {} : { surface: this.#surface }),
       // Always present, including zero: absence and "no app ever connected" must not look alike,
       // because zero IS the finding here.
       appConnects: this.#appConnects,

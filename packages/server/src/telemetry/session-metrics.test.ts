@@ -547,3 +547,61 @@ describe('an unknown tool records WHAT the agent reached for', () => {
     expect(Object.keys(m.summarize(true).unknownTools ?? {}).length).toBeLessThanOrEqual(40);
   });
 });
+
+/**
+ * Which agent drove, and on which build — the dimension that turns every rate into a matrix.
+ *
+ * For a product whose users are LLM agents, a single global "28% verified" hides the finding.
+ * `claude-code` and `cursor` are different users with different failure modes, and a regression is
+ * usually a client VERSION.
+ *
+ * MCP's `clientInfo` has no concept of a model, so the transport genuinely cannot report one — the
+ * agent self-reports it on feedback and nowhere else. But the client name AND its version are both
+ * in the handshake we already read, and only the name was being kept.
+ *
+ * `surface` rides along because it is the other thing that changes what an agent sees: the 18-tool
+ * default and the 48-tool full surface are different products from inside.
+ */
+describe('the session records WHICH agent drove it', () => {
+  it('keeps the client version, not just the name', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordClient('claude-code', '2.1.0');
+    const s = m.summarize(true);
+    expect(s.clients).toEqual(['claude-code']);
+    expect(s.clientVersions).toEqual({ 'claude-code': '2.1.0' });
+  });
+
+  it('records several agents on one daemon — the multi-agent story', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordClient('claude-code', '2.1.0');
+    m.recordClient('cursor', '0.44.1');
+    expect(m.summarize(true).clientVersions).toEqual({
+      'claude-code': '2.1.0',
+      cursor: '0.44.1',
+    });
+  });
+
+  it('still records a client that reports no version', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordClient('some-agent');
+    const s = m.summarize(true);
+    expect(s.clients).toEqual(['some-agent']);
+    expect(s).not.toHaveProperty('clientVersions');
+  });
+
+  it('records which tool surface was live', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordSurface('default');
+    expect(m.summarize(true).surface).toBe('default');
+  });
+
+  it('survives a flush — who drove is a session-lifetime fact', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordClient('claude-code', '2.1.0');
+    m.recordSurface('default');
+    m.reset();
+    const s = m.summarize(true);
+    expect(s.clientVersions).toEqual({ 'claude-code': '2.1.0' });
+    expect(s.surface).toBe('default');
+  });
+});

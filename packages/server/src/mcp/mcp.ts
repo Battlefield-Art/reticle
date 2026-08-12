@@ -406,6 +406,10 @@ export function createMcpServer(
   profile: ToolSurface = TOOL_SURFACE.DEFAULT,
 ): McpServer {
   const encoding = (process.env[ENCODING_ENV] ?? '').toLowerCase();
+  // Which surface this daemon advertises. The 18-tool default and the 48-tool full surface are
+  // different products from inside an agent's context, so outcomes are only comparable when the
+  // session says which one it saw.
+  getSessionMetrics().recordSurface(profile);
   const server = new McpServer(SERVER_INFO, { instructions: SERVER_INSTRUCTIONS });
   // Which agent is on the other end, taken from its own `initialize` handshake. Registered as a lazy
   // hook rather than read here: the handshake has not happened yet at construction time, and a
@@ -414,7 +418,9 @@ export function createMcpServer(
     const info = server.server.getClientVersion();
     // Record it as a side effect of the first read so the session summary can report WHICH agents
     // drove this daemon — the multi-agent story, visible without a second plumbing path.
-    if (info?.name !== undefined) getSessionMetrics().recordClient(info.name);
+    // Name AND version: the version was already in this handshake and was being dropped, so a
+    // regression in agent behaviour could never be attributed to a client build.
+    if (info?.name !== undefined) getSessionMetrics().recordClient(info.name, info.version);
     return info === undefined ? undefined : { name: info.name, version: info.version };
   });
   // Cast once to our bridge type so every per-tool call site is typed without `any`.

@@ -236,6 +236,23 @@ export const SessionSummarySchema = z.object({
   /** Distinct MCP clients seen (`claude-code`, `cursor`), so multi-agent use is visible. */
   clients: z.array(z.string().max(64)).max(8).optional(),
   /**
+   * Client name -> version. The other half of `clients`, and the half that explains regressions.
+   *
+   * MCP's `clientInfo` carries a name AND a version; we read both at the handshake and kept only
+   * the name. A product whose users are agents needs to slice every rate by which agent, on which
+   * build — a single global figure hides the finding entirely.
+   *
+   * NOT the model: `clientInfo` has no concept of one, so the transport genuinely cannot report it.
+   * Agents self-report it on feedback, which is the only mechanism there is.
+   */
+  clientVersions: z.record(z.string().max(64), z.string().max(32)).optional(),
+  /**
+   * Which tool surface was live. The 18-tool default and the 48-tool full surface are different
+   * products from inside an agent's context window, and comparing outcomes across them is how we
+   * learn whether the trim helps or hurts.
+   */
+  surface: z.string().max(32).optional(),
+  /**
    * How many times an app's SDK dialled this daemon. **Session-lifetime, never windowed.**
    *
    * Zero here is the single most diagnostic number in the payload: the daemon ran and no app ever
