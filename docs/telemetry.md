@@ -146,6 +146,8 @@ reticle identify --context company --company "Acme" --email you@acme.com
 
 Before it sends anything, it prints what it will send and one thing worth reading carefully: **the identity is linked to this machine's anonymous id, so identifying yourself also connects the anonymous usage already recorded from this machine to what you enter.** That is what makes it useful to us, and it is why you are told before choosing rather than after.
 
+**One place mentions it to you.** After you send feedback as a human — never as an agent, and never if you have already identified or already declined — the receipt prints one line offering this command, because a bug report we cannot reply to is a conversation that ends after one sentence. Your feedback has already been sent by then: the line is an offer, not a question, and nothing is gated on it. **No address is ever attached to the feedback itself** — it would put personal data on the anonymous stream, which is exactly what the rest of this page promises not to do.
+
 To undo it:
 
 ```bash

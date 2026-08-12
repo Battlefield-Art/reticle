@@ -68,6 +68,36 @@ export async function handleFeedback(
       ? 'thanks       your feedback is in. it genuinely changes what gets built next.'
       : `not sent     ${receipt.reason ?? 'unknown reason'}`,
   );
+  for (const extra of identifyInvite(agent)) line(extra);
+}
+
+/**
+ * Offer a HUMAN a way to be replied to — printed after the receipt, never as a prompt.
+ *
+ * Feedback is anonymous by design and stays that way: the report has already been sent by the time
+ * this prints, so nothing here gates or delays it. This is an offer, not a question.
+ *
+ * It routes through `reticle identify`, which already does consented identity properly — it prints
+ * what it will send, states that identifying links this machine's prior anonymous history to that
+ * identity, and has `--forget`. Capturing an address inline on `feedback_submitted` instead would
+ * put PII on the anonymous event stream and break what `docs/telemetry.md` promises in public:
+ * "no domain sniffing, no email inference" and "no personal data is collected".
+ *
+ * Only for humans (an agent has no email), and only when nobody has identified yet — so somebody
+ * who declined is never asked twice.
+ */
+function identifyInvite(agent: boolean): readonly string[] {
+  if (agent) return [];
+  try {
+    if (readIdentity() !== undefined) return [];
+  } catch {
+    return []; // unreadable identity file: say nothing rather than risk asking twice
+  }
+  return [
+    '',
+    'want a reply? `reticle identify --context <company|side_project|oss|learning> --email you@example.com`',
+    '             optional, and it tells you exactly what it sends before sending it.',
+  ];
 }
 
 /**

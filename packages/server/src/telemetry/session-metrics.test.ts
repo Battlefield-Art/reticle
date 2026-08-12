@@ -660,3 +660,32 @@ describe('the session says why the work ended', () => {
     expect(m.summarize(false)).not.toHaveProperty('endReason');
   });
 });
+
+/**
+ * Instrument the nudge, not just the product.
+ *
+ * A feedback invitation on every result is affordable (~12 tokens) but will be tuned out if it is
+ * the same string 40 times. `feedbackPrompted` against `feedback_submitted` is the only way to
+ * know whether it works — if the ratio is flat, the line is decoration and we delete it.
+ *
+ * Instrumenting our own nudge is what separates a designed system from a guess.
+ */
+describe('the feedback invitation is itself measured', () => {
+  it('counts how often the agent was invited', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordFeedbackPrompt();
+    m.recordFeedbackPrompt();
+    expect(m.summarize(true).feedbackPrompted).toBe(2);
+  });
+
+  it('is absent when nobody was ever invited', () => {
+    expect(new SessionMetrics(() => 0).summarize(true)).not.toHaveProperty('feedbackPrompted');
+  });
+
+  it('survives a flush — prompts and submissions must be comparable over the session', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordFeedbackPrompt();
+    m.reset();
+    expect(m.summarize(true).feedbackPrompted).toBe(1);
+  });
+});

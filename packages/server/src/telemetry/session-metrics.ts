@@ -150,6 +150,8 @@ export class SessionMetrics {
   #nudgedUnverified = false;
   /** The agent detached. The one part of `endReason` a query cannot derive. */
   #clientLeft = false;
+  /** Feedback invitations shown, session-lifetime — the denominator for feedback_submitted. */
+  #feedbackPrompted = 0;
   /**
    * App SDK connections, session-lifetime. NOT reset by a flush: "did an app ever connect" is a
    * fact about the session, and a page reload after a flush must not erase it.
@@ -434,6 +436,16 @@ export class SessionMetrics {
     this.#clientLeft = true;
   }
 
+  /** How many times in a row the current tool has been called. Read by the friction invite. */
+  get currentRun(): number {
+    return this.#currentRun;
+  }
+
+  /** Reticle invited the agent to send feedback. The denominator for feedback_submitted. */
+  recordFeedbackPrompt(): void {
+    this.#feedbackPrompted += 1;
+  }
+
   /** Which tool surface was advertised to agents this session. */
   recordSurface(surface: string): void {
     this.#surface = surface.slice(0, 32);
@@ -504,6 +516,7 @@ export class SessionMetrics {
         : {}),
       ...(this.#surface === undefined ? {} : { surface: this.#surface }),
       ...(final ? { endReason: this.#endReason() } : {}),
+      ...(this.#feedbackPrompted > 0 ? { feedbackPrompted: this.#feedbackPrompted } : {}),
       // Always present, including zero: absence and "no app ever connected" must not look alike,
       // because zero IS the finding here.
       appConnects: this.#appConnects,

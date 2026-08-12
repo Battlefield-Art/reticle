@@ -287,6 +287,15 @@ export const SessionSummarySchema = z.object({
    * whole thing to a query.
    */
   endReason: z.enum(['never_used', 'explored', 'abandoned', 'verified', 'client_left']).optional(),
+  /**
+   * How often Reticle invited the agent to send feedback.
+   *
+   * The denominator for `feedback_submitted`. A prompt nobody acts on is decoration, and without
+   * this we could never tell the difference between "agents have nothing to report" and "our
+   * invitation is invisible". Instrumenting our own nudge is what makes it a designed system
+   * rather than a hope.
+   */
+  feedbackPrompted: z.number().int().nonnegative().optional(),
   /** Was this a clean shutdown, or a periodic flush of a still-running session? */
   final: z.boolean(),
   /**

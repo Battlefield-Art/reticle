@@ -18,6 +18,7 @@ import { takeFeedbackPrompt } from './feedback-tools.js';
 import { takeFeedbackUndelivered } from '../telemetry/feedback-delivery.js';
 import type { Session } from '../session/session.js';
 import { span } from '../trace.js';
+import { frictionOf, inviteFor } from './feedback-invite.js';
 import type { ToolDef, ToolDeps } from './tools.js';
 
 /**
@@ -314,5 +315,19 @@ export async function runTool(
   // run, same discipline as the pool lease — a hint on every call is noise that gets tuned out.
   const unverified = getSessionMetrics().takeUnverifiedNudge();
   if (unverified !== undefined) envelope['verify_next'] = unverified;
+  // Invite feedback at the moment of friction, worded for what just happened. Feedback produced
+  // ~11 of this release's fixes from 14 reports; the handshake instruction is what got those 14,
+  // and this closes the gap it leaves — the agent mid-problem, not thinking about feedback tooling.
+  // Counted so `feedback_submitted / feedbackPrompted` can tell us whether it works at all.
+  const friction = frictionOf({
+    unknownTool: false,
+    verifiedUnknown: 'unknown' === (result as { verified?: unknown }).verified,
+    repeatRun: getSessionMetrics().currentRun,
+    errored: 'error' in result,
+  });
+  if (friction !== undefined) {
+    envelope['feedback_invite'] = inviteFor(friction);
+    getSessionMetrics().recordFeedbackPrompt();
+  }
   return Object.keys(envelope).length > 0 ? { ...result, ...envelope } : result;
 }
