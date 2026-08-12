@@ -92,7 +92,7 @@ wires it unattended and (b) whether a DOM node maps back to the component and so
 - **Not auto-detected:** Angular (open issue). Anything else works via a manual `connect()` call.
 
 **Desktop is fully supported, not experimental.** `@reticlehq/electron` observes the Electron
-renderer **and main-process IPC**; `packages/tauri` (Rust) observes the Tauri webview **and its IPC**.
+renderer **and main-process IPC**; the `reticle-tauri` crate (crates.io) observes the Tauri webview **and its IPC**.
 Both do window capture, and both are driven headless every release — a real Electron main process and
 a **packaged** Tauri binary. Observing the IPC boundary is something a browser-only tool cannot do at all.
 
@@ -197,7 +197,7 @@ both results published, including where Reticle loses. Full from-scratch explain
 `@reticlehq/core` (umbrella **and** the wire contract — there is no separate `protocol` package) ·
 `@reticlehq/browser` (SDK) · `@reticlehq/server` (bridge + MCP + `reticle` CLI) · `@reticlehq/react` ·
 `@reticlehq/babel-plugin` · `@reticlehq/next` · `@reticlehq/vite-plugin` · `@reticlehq/eslint-plugin` ·
-`@reticlehq/test` · `@reticlehq/electron` (desktop) · `packages/tauri` (Rust, desktop).
+`@reticlehq/test` · `@reticlehq/electron` (desktop) · `reticle-tauri` (Rust crate on crates.io, desktop — versioned independently of the npm packages).
 
 ## Links
 

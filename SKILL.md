@@ -228,7 +228,73 @@ npm install --save-dev @reticlehq/react @reticlehq/vite-plugin    # swap npm for
 
 > Only for the files `init` marked `⚠`. It auto-patches `vite.config.*` and all three Next.js files; it bails to `⚠` when a config's shape isn't one it recognises, and prints the snippet you need on that line.
 
-> **Desktop app (Electron or Tauri)?** Both are fully supported — Reticle observes the renderer **and** the main-process / Rust IPC boundary. The wiring differs from the web setup below: see [docs/desktop-apps.md](https://github.com/reticlehq/reticle/blob/main/docs/desktop-apps.md).
+> **Desktop app (Electron or Tauri)?** Both are fully supported — Reticle observes the renderer **and** the main-process / Rust IPC boundary. Use the desktop steps below instead of the web ones; full detail in [docs/desktop-apps.md](https://github.com/reticlehq/reticle/blob/main/docs/desktop-apps.md).
+
+**Tauri**
+
+Three steps. The frontend one is the same as any web app:
+
+```ts
+// src/main.tsx
+import { reticle } from '@reticlehq/browser';
+if (import.meta.env.DEV) reticle.connect();
+```
+
+**The CSP step is required and its failure is silent.** Tauri's default CSP blocks the bridge WebSocket before it opens, so the app runs perfectly and simply never connects. In `src-tauri/tauri.conf.json`:
+
+```json
+{
+  "app": {
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost ws://localhost:4400 ws://127.0.0.1:4400"
+    }
+  }
+}
+```
+
+Keep `ipc: http://ipc.localhost` in `connect-src` — Tauri v2 needs it for `invoke` itself. Add your dev-server origin if you use `devUrl`. This is dev-only; drop the `ws://` entries from your release config.
+
+**The Rust crate — only if you want screenshots or headless.** IPC observation needs nothing on the Rust side; an `invoke('load_todos')` already reaches Reticle as `ipc://load_todos`. Add [`reticle-tauri`](https://crates.io/crates/reticle-tauri) (crates.io, versioned **independently** of the npm packages — it is `0.1`, not `2.6`):
+
+```toml
+# src-tauri/Cargo.toml
+[dependencies]
+reticle-tauri = "0.1"
+```
+
+```rust
+tauri::Builder::default()
+    .invoke_handler(tauri::generate_handler![reticle_tauri::reticle_capture])
+    .on_page_load(reticle_tauri::on_page_load)   // also hides the window when RETICLE_HEADLESS=1
+```
+
+Nothing on the JavaScript side — Tauri has no preload stage, so the SDK invokes the command through Tauri's own internals. `reticle_screenshot` and `reticle_visual_diff` then work, including headless (`RETICLE_HEADLESS=1 pnpm tauri dev`). Working example: [`apps/tauri-smoke`](https://github.com/reticlehq/reticle/tree/main/apps/tauri-smoke).
+
+**Electron**
+
+Two steps, and nothing to add in your app code.
+
+```ts
+// vite.config.ts — desktop:true also runs the plugin for `vite build`, because a packaged
+// renderer is a production build with no dev server
+export default defineConfig({
+  base: './', // file:// needs relative asset paths
+  plugins: [react(), reticle({ desktop: true })],
+});
+```
+
+```bash
+npm i -D @reticlehq/electron
+```
+
+```js
+// electron/preload.cjs — this line is what makes main-process IPC visible
+require('@reticlehq/electron/preload');
+```
+
+It **must** be in the preload: `contextBridge.exposeInMainWorld` hands the renderer a deeply frozen object, so nothing in the page can instrument it afterwards — the preload is the last point where `ipcRenderer.invoke` is still writable. A sandboxed preload cannot resolve `node_modules`, so either bundle it (electron-vite and Forge do by default) or set `sandbox: false`. Working example: [`apps/electron-smoke`](https://github.com/reticlehq/reticle/tree/main/apps/electron-smoke).
+
+> **Why the IPC step matters:** a desktop app reaches its backend over IPC, not HTTP. Without the observer, `reticle_network` returns nothing, `act_and_wait` has no request to settle on, and `assert { net }` is vacuously true — a false green by construction.
 
 **Vite + React**
 
