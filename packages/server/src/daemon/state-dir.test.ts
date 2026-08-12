@@ -21,6 +21,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stateDirProblem } from './state-dir.js';
 
+/**
+ * `chmod 555` does not make a directory unwritable on Windows — Node's chmod there only toggles the
+ * read-only attribute, which does not stop files being created inside. The two cases below cannot be
+ * SET UP on Windows, so they are skipped there.
+ *
+ * This skips the test, not the behaviour: `stateDirProblem` probes by writing precisely because the
+ * permission bits lie, and a real Windows denial (an ACL, a read-only mount) fails that write and is
+ * reported the same as anywhere else. What is missing on Windows is a way to manufacture the denial
+ * in a unit test, not the coverage of what happens when it occurs.
+ */
+const unwritableDirs = it.skipIf('win32' === process.platform);
+
 let home = '';
 
 beforeEach(() => {
@@ -46,7 +58,7 @@ describe('stateDirProblem', () => {
     expect(stateDirProblem(join(home, '.reticle'))).toBeUndefined();
   });
 
-  it('names the directory and the cause when it cannot be written', () => {
+  unwritableDirs('names the directory and the cause when it cannot be written', () => {
     const dir = join(home, '.reticle');
     mkdirSync(dir, { recursive: true });
     chmodSync(dir, 0o555);
@@ -57,12 +69,15 @@ describe('stateDirProblem', () => {
     expect(problem, 'name the cause, not the symptom').toMatch(/writ/i);
   });
 
-  it('does not tell the reader to open a log inside a directory that cannot hold one', () => {
-    const dir = join(home, '.reticle');
-    mkdirSync(dir, { recursive: true });
-    chmodSync(dir, 0o555);
-    expect(stateDirProblem(dir)).not.toContain('.log');
-  });
+  unwritableDirs(
+    'does not tell the reader to open a log inside a directory that cannot hold one',
+    () => {
+      const dir = join(home, '.reticle');
+      mkdirSync(dir, { recursive: true });
+      chmodSync(dir, 0o555);
+      expect(stateDirProblem(dir)).not.toContain('.log');
+    },
+  );
 
   it('leaves no probe file behind when the directory IS writable', () => {
     const dir = join(home, '.reticle');
