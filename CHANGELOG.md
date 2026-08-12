@@ -4,7 +4,7 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [2.6.0] — 2026-08-12
 
-**Stop breaking, stop lying, and be able to prove it.** 130 commits, 56 of them fixes, driven by what the telemetry and the field reports actually said rather than what the backlog assumed. No breaking changes.
+**Stop breaking, stop lying, and be able to prove it.** 140+ commits, driven by what the telemetry and the field reports actually said rather than what the backlog assumed. No breaking changes.
 
 ### The instrument was wrong about itself
 
@@ -14,6 +14,15 @@ Three defects meant the one number this product is judged by — installs that r
 - **`@reticlehq/server` — the end-of-session event reported nothing.** The periodic flush zeroed the counters while the duration kept running, so `daemon_stopped` described half-hour sessions containing zero tool calls — 496 of 499 of them. Every funnel drawn over it read zero.
 - **`@reticlehq/server` — the crash metric only ever reported a non-crash.** All 84 crash events were one thing: a refused connect to a daemon that had not booted yet, which the proxy is built to tolerate. A real crash would have been invisible underneath it.
 - **`@reticlehq/server` — a scheduled idle exit is no longer indistinguishable from an outage.** 299 of 321 "the agent lost its tools" events were the daemon retiring itself on purpose. ([#168](https://github.com/reticlehq/reticle/issues/168))
+- **`@reticlehq/server` — 19% of sessions reported nothing at all.** 614 daemon starts against 499 summaries: a daemon killed before its first roll-up (closed laptop, OOM, force-quit editor) emitted no summary, so every usage figure was computed on the surviving 81%. Sessions now roll up once at 90 seconds, then on the normal interval — non-empty windows only, so idle daemons still cost nothing.
+- **`@reticlehq/server` — the stack was undetectable on every project that actually used Reticle.** Detection read exactly one directory, and the daemon's working directory is wherever the agent's client launched — usually the repo root, with the app in `frontend/`. Measured: **0 of 77 instrumented projects** and 0 of 166 large ones. It now reuses `init`'s own app discovery, and reports whether the answer came from the working directory or from a workspace.
+
+### New signals — what the instrument could not see before
+
+- **`appConnects`** — whether an app's SDK ever dialled the daemon. Zero is the finding: it separates a **broken install** from one that works and was never used, which have opposite fixes and were previously the same row.
+- **`pendingLost`** — in-flight tool calls a dropped connection actually killed. 320 of 321 "outages" killed nothing and were invisible to the agent; exactly one was real.
+- **`unknownTools`** — _which_ tool an agent reached for that does not exist. The count said our surface confused someone; the name says which capability they expected. A feature backlog in the users' own words.
+- **`clientVersions` and `surface`** — which agent drove the session, on which build, and which tool surface it saw. A single global rate hides everything that matters when your users are different agents.
 
 ### It said things that were not true
 
@@ -36,6 +45,14 @@ Three defects meant the one number this product is judged by — installs that r
 - **`@reticlehq/server` — a rejected predicate is a sentence, never a serialized zod array.** These landed on `act_and_wait`, `wait_for` and `assert` — the only three tools that produce a verdict. ([#108](https://github.com/reticlehq/reticle/issues/108))
 - **`@reticlehq/server` — `assert`'s `route` predicate accepts `urlContains`**, matching `net`, and every predicate kind is documented.
 - **`@reticlehq/server` — a dead `sessionId` names the live ones** instead of sending the agent away, and an unscoped call is refused when two projects are connected. ([#161](https://github.com/reticlehq/reticle/issues/161))
+
+### Verification is now the path of least resistance
+
+The measured problem: **137 of the 140 sessions that produced no verdict never called a verdict-producing tool once.** Verification was not failing — it was not being attempted.
+
+- **`@reticlehq/server` — `reticle_act_sequence` is advertised** (default surface 17 → 18). `reticle_act` was called 319 times to `act_sequence`'s 7, and led the repeat table at 110 consecutive runs — inside those sessions, 98 clicks and 21 fills, a login form driven one round trip at a time. The tool that collapses that was reachable only through `reticle_run`, so an agent had to already know it existed.
+- **`@reticlehq/server` — a `verify_next` hint** after three actions with no verdict, naming the two tools that produce one. One-shot per abandoned run, re-armed by a verdict.
+- **`@reticlehq/server` — the MCP handshake names the verdict-producing tools.** It advertised "act (`reticle_act`)" — which produces no verdict — and never named `reticle_act_and_wait` at all. It also now says that `verified: "unknown"` (27 of 89 verdicts) is not a pass.
 
 ### Added
 
