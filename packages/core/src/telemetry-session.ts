@@ -296,6 +296,24 @@ export const SessionSummarySchema = z.object({
    * rather than a hope.
    */
   feedbackPrompted: z.number().int().nonnegative().optional(),
+  /**
+   * Tool errors bucketed by WHOSE defect they are: `schema` (our grammar failed to explain itself),
+   * `state` (the world moved), `refusal` (we said no on purpose), `other` (a blind spot).
+   *
+   * `toolErrors` is one number over three failures with three different fixes. Only the `schema`
+   * bucket is fixable by writing better descriptions, and it was indistinguishable from the rest.
+   */
+  errorClasses: z.record(z.string().max(16), z.number().int().nonnegative()).optional(),
+  /**
+   * Errors after which the agent's NEXT call succeeded — the message worked.
+   *
+   * The best measure of an error message is what the agent does next, and we had the loop
+   * (`consecutiveRepeats`) and the shape (`errors[]`) but never the join. This is the most
+   * agent-specific metric in the payload: a human would sigh, a log would show nothing.
+   */
+  errorsRecovered: z.number().int().nonnegative().optional(),
+  /** Errors whose very next call failed again — the message did not land. */
+  errorsRepeated: z.number().int().nonnegative().optional(),
   /** Was this a clean shutdown, or a periodic flush of a still-running session? */
   final: z.boolean(),
   /**

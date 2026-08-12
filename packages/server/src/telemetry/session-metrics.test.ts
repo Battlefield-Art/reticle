@@ -689,3 +689,105 @@ describe('the feedback invitation is itself measured', () => {
     expect(m.summarize(true).feedbackPrompted).toBe(1);
   });
 });
+
+/**
+ * An agent's error is often OUR defect — but only some of them, and we could not tell which.
+ *
+ * `toolErrors` was one number covering three different failures with three different fixes:
+ *
+ *   schema  — missing/unknown param, bad type   -> OUR schema is unclear
+ *   state   — no session, stale ref              -> the world moved under the agent
+ *   refusal — destructive block, unsupported     -> we said no on purpose
+ *
+ * The 2-day corpus is 60 state, 22 refusal, 20 schema (the zod dumps) and 20 stale-ref. Reading
+ * that as "126 tool errors" hides that a sixth of them were our schema failing to explain itself.
+ */
+describe('tool errors are classified by whose defect they are', () => {
+  const classify = (msg: string) => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordToolError(msg, 'reticle_act');
+    return m.summarize(true).errorClasses;
+  };
+
+  it('a rejected predicate is a SCHEMA failure — our grammar did not explain itself', () => {
+    expect(
+      classify('that predicate did not parse (kind "net"): unknown field urlContains'),
+    ).toEqual({ schema: 1 });
+  });
+
+  it('a missing parameter is a SCHEMA failure', () => {
+    expect(classify('Missing required parameter for reticle_session: action')).toEqual({
+      schema: 1,
+    });
+  });
+
+  it('no connected session is a STATE failure — the world moved, not our schema', () => {
+    expect(classify('no browser session connected — but one WAS connected earlier')).toEqual({
+      state: 1,
+    });
+  });
+
+  it('a stale ref is a STATE failure', () => {
+    expect(classify('ref e42 no longer resolves to an element')).toEqual({ state: 1 });
+  });
+
+  it('a destructive block is a REFUSAL — we said no on purpose and that is working', () => {
+    expect(
+      classify('potentially destructive action blocked; retry with args.confirmDangerous=true'),
+    ).toEqual({ refusal: 1 });
+  });
+
+  it('anything unrecognised lands in `other`, so a blind spot is visible as one', () => {
+    expect(classify('something nobody has seen before')).toEqual({ other: 1 });
+  });
+
+  it('is absent when nothing failed', () => {
+    expect(new SessionMetrics(() => 0).summarize(true)).not.toHaveProperty('errorClasses');
+  });
+});
+
+/**
+ * The best measure of an error message is what the agent does NEXT.
+ *
+ * We had `consecutiveRepeats` (the loop) and `errors[]` (the shape) and never the join, so "we emit
+ * good errors" was a belief. Recovered vs repeated turns it into a number — and it is the most
+ * agent-specific metric available, because a human would just sigh and a log would show nothing.
+ */
+describe('recovery — did the agent get unstuck after an error', () => {
+  it('counts a recovery when the next call succeeds', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordToolError('ref e42 no longer resolves to an element', 'reticle_act');
+    m.recordToolCall('reticle_query'); // looked it up again — the message worked
+    const s = m.summarize(true);
+    expect(s.errorsRecovered).toBe(1);
+    expect(s).not.toHaveProperty('errorsRepeated');
+  });
+
+  it('counts a repeat when the very next call fails the same way', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordToolError('ref e42 no longer resolves to an element', 'reticle_act');
+    m.recordToolCall('reticle_act');
+    m.recordToolError('ref e42 no longer resolves to an element', 'reticle_act');
+    expect(m.summarize(true).errorsRepeated).toBe(1);
+  });
+
+  it('a clean session reports neither', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    const s = m.summarize(true);
+    expect(s).not.toHaveProperty('errorsRecovered');
+    expect(s).not.toHaveProperty('errorsRepeated');
+  });
+
+  it('survives a flush — an error and its recovery can straddle a window boundary', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordToolError('boom', 'reticle_act');
+    m.reset();
+    m.recordToolCall('reticle_query');
+    expect(m.summarize(true).errorsRecovered).toBe(1);
+  });
+});

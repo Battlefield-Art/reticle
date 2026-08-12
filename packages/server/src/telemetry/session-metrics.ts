@@ -26,6 +26,7 @@ import {
 import { errorSkeleton, fingerprintError } from './error-fingerprint.js';
 import { describeToolParams } from './argument-shape.js';
 import { machineSnapshot } from './machine-snapshot.js';
+import { classifyError } from './error-class.js';
 
 /** Cap the distinct error shapes held in memory — a pathological loop must not grow unbounded. */
 const MAX_ERROR_KINDS = 40;
@@ -152,6 +153,16 @@ export class SessionMetrics {
   #clientLeft = false;
   /** Feedback invitations shown, session-lifetime — the denominator for feedback_submitted. */
   #feedbackPrompted = 0;
+  /** Error buckets by whose defect. Session-lifetime: the mix is a fact about the session. */
+  readonly #errorClasses = new Map<string, number>();
+  /**
+   * The recovery hinge. A call's outcome is only known once the NEXT one starts, so the verdict for
+   * call N-1 is resolved at the start of call N (and for the last call, at summarize).
+   */
+  #currentCallErrored = false;
+  #priorCallErrored = false;
+  #errorsRecovered = 0;
+  #errorsRepeated = 0;
   /**
    * App SDK connections, session-lifetime. NOT reset by a flush: "did an app ever connect" is a
    * fact about the session, and a page reload after a flush must not erase it.
@@ -234,6 +245,10 @@ export class SessionMetrics {
   }
 
   recordToolCall(tool: string, args?: Record<string, unknown>): void {
+    // `recordToolCall` runs BEFORE a handler and `recordToolError` after it fails, so a call's
+    // outcome is only known once the NEXT call starts. Resolve the one before it here; the final
+    // call is resolved in summarize.
+    this.#resolveRecovery();
     // A run of the same tool back to back. Five calls to reticle_act is engagement; five in a row
     // after four failures is an agent stuck, and toolCounts reports both as "5".
     this.#currentRun = tool === this.#lastTool ? this.#currentRun + 1 : 1;
@@ -275,6 +290,10 @@ export class SessionMetrics {
   recordToolError(message: string, tool?: string): void {
     this.#toolErrors += 1;
     this.#lifetimeToolErrors += 1;
+    // Whose defect. Only the `schema` bucket is fixable by writing better descriptions, and it was
+    // indistinguishable from the rest inside one `toolErrors` count.
+    bump(this.#errorClasses, classifyError(message));
+    this.#currentCallErrored = true;
     if (NO_SESSION_ERROR.test(message)) this.#noSessionErrors += 1;
     const fingerprint = fingerprintError(message);
     const existing = this.#errorKinds.get(fingerprint);
@@ -456,6 +475,9 @@ export class SessionMetrics {
    * false so a session killed before it can exit is not lost entirely (see the flush note in cli.ts).
    */
   summarize(final: boolean, exit?: SessionSummary['exit']): SessionSummary {
+    // The last call has no successor to resolve it, so resolve it here. Only on a FINAL summary:
+    // a periodic flush is not the end of anything and would resolve a call still in flight.
+    if (final) this.#resolveRecovery();
     const machine = machineSnapshot();
     // A FINAL summary reports the session; a periodic flush reports its window. `durationMs` was
     // always session-lifetime, so a windowed count next to it described a 30-minute session that
@@ -517,6 +539,11 @@ export class SessionMetrics {
       ...(this.#surface === undefined ? {} : { surface: this.#surface }),
       ...(final ? { endReason: this.#endReason() } : {}),
       ...(this.#feedbackPrompted > 0 ? { feedbackPrompted: this.#feedbackPrompted } : {}),
+      ...(this.#errorClasses.size > 0
+        ? { errorClasses: Object.fromEntries(this.#errorClasses) }
+        : {}),
+      ...(this.#errorsRecovered > 0 ? { errorsRecovered: this.#errorsRecovered } : {}),
+      ...(this.#errorsRepeated > 0 ? { errorsRepeated: this.#errorsRepeated } : {}),
       // Always present, including zero: absence and "no app ever connected" must not look alike,
       // because zero IS the finding here.
       appConnects: this.#appConnects,
@@ -528,6 +555,24 @@ export class SessionMetrics {
       // died without a shutdown path, which is the one thing this field exists to make visible.
       ...(final && exit !== undefined ? { exit } : {}),
     };
+  }
+
+  /**
+   * Decide whether the error before the previous call was recovered from or repeated.
+   *
+   * Called at the start of each new call (resolving the one before it) and once at summarize (for
+   * the last call). Shifting rather than counting on the spot is what makes "the agent tried
+   * something else and it worked" distinguishable from "it failed the same way again" — an earlier
+   * version counted a recovery the moment a call STARTED, so a call that then failed was recorded
+   * as a success.
+   */
+  #resolveRecovery(): void {
+    if (this.#priorCallErrored) {
+      if (this.#currentCallErrored) this.#errorsRepeated += 1;
+      else this.#errorsRecovered += 1;
+    }
+    this.#priorCallErrored = this.#currentCallErrored;
+    this.#currentCallErrored = false;
   }
 
   /**

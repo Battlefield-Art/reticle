@@ -585,6 +585,7 @@ await daemon.shutdown('idle');
   check('  reports WHICH tools the agent guessed at, not just how many', arrived && (p.session_unknownTools === undefined || 'object' === typeof p.session_unknownTools), String(p.session_unknownTools));
   check('  reports which tool surface the agent saw', arrived && (p.session_surface === undefined || 'string' === typeof p.session_surface), String(p.session_surface));
   check('  says what state the agent work ended in', arrived && 'string' === typeof p.session_endReason, String(p.session_endReason));
+  check('  buckets tool errors by whose defect they are', arrived && 'object' === typeof p.session_errorClasses, JSON.stringify(p.session_errorClasses));
   // The 2.6.0 fields, asserted HERE because this is the only place that proves they reach the wire.
   // Telemetry fails silently: a field dropped from the emit allow-list throws nothing and reddens no
   // unit test, and the data is simply, permanently absent.
