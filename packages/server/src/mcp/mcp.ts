@@ -25,6 +25,7 @@ import { SERVER_VERSION } from '../version/server-version.js';
 import { MCP_SERVER_NAME } from '../init/mcp.js';
 import { setMcpClientNameHook } from '../telemetry/feedback-context.js';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
+import { parsePredicate } from '../events/predicate-parse.js';
 
 /**
  * Merge the runtime-spliced envelope (health/lease/age/control) into a session-bound tool's declared
@@ -356,6 +357,17 @@ export function installFriendlyArgErrors(
       // McpError.message already carries "MCP error -32602: "; re-wrapping would print it twice.
       const raw = error instanceof Error ? error.message : String(error);
       const detail = raw.replace(/^MCP error -?\d+:\s*/, '');
+      // A malformed PREDICATE gets the sentence, not the array. The SDK validates tool input against
+      // the same zod schema and throws a serialized issue list — so the readable message
+      // `parsePredicate` exists to produce was being generated only on paths that never run over
+      // MCP, which is every path a real agent uses. Found by driving a live app: `reticle_assert`
+      // answered a near-miss predicate with a raw zod array naming the unknown keys and not one
+      // field that would have worked. It already carries its own guidance, so the generic example is
+      // dropped rather than argued with.
+      const predicateHelp = predicateMessage(args);
+      if (predicateHelp !== undefined) {
+        throw new McpError(ErrorCode.InvalidParams, predicateHelp);
+      }
       const example = examples.get(toolName);
       const help =
         example === undefined
@@ -364,6 +376,27 @@ export function installFriendlyArgErrors(
       throw new McpError(ErrorCode.InvalidParams, `${detail}${help}`);
     }
   };
+}
+
+/**
+ * The readable reason a predicate argument did not parse, or undefined when the predicate is fine.
+ *
+ * Undefined matters as much as the message: a call can fail validation for a reason that has nothing
+ * to do with the predicate (a bad `timeout_ms`, a missing `ref`), and replacing that error with a
+ * predicate explanation would be confidently wrong. Re-parsing is the honest test — if it parses,
+ * the predicate is not what broke.
+ */
+function predicateMessage(args: unknown): string | undefined {
+  if (typeof args !== 'object' || null === args) return undefined;
+  const record = args as Record<string, unknown>;
+  const predicate = record['predicate'] ?? record['until'];
+  if (predicate === undefined) return undefined;
+  try {
+    parsePredicate(predicate);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : undefined;
+  }
 }
 
 /**
