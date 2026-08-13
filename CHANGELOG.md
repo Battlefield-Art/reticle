@@ -32,7 +32,9 @@ So this is a bug-fix release with one theme: an app that is installed should end
 
 - **`@reticlehq/server` — `reticle stop` gave up precisely when it was needed.** It sent SIGTERM, waited, then reported a timeout and exited, leaving the process alive, the port held and the pid file stale. A daemon that ignores SIGTERM is wedged — the one situation `stop` exists for. It now escalates to SIGKILL after the graceful window, and only reports failure if the process survives that too, naming the pid so a human can act on it.
 
-### It said things that were not true (part two)
+### It said things that were not true
+
+- **`@reticlehq/server` — the version-skew remedy names a command we actually ship.** _(`reticle doctor`)_
 
 - **`@reticlehq/server` — a Chromium hint you could not satisfy by following it.** `doctor` said Chromium was missing; the user ran the suggested command; it succeeded; `doctor` still said missing. `npx playwright install chromium` resolves the LATEST playwright, which pins a different browser revision than the one the daemon bundles — so the advice downloads a build the daemon will never look at. One report came from a machine that already had five chromium builds on disk, none of them the wanted one, with no way to learn which one was wanted. The command is now pinned to the playwright doing the asking, and the line names the path it probed, which is what turns "missing" from a verdict into evidence. A missing playwright is reported as its own case. One builder shared by `doctor`, the pool launcher and the recovery hint, so the three cannot disagree.
 
@@ -93,10 +95,6 @@ Three defects in the above, caught only by running a real agent against a real a
 ### The instrument can name its own blind spot
 
 - **`@reticlehq/core` / `@reticlehq/server` — `verification.uncleanLoss` says WHAT was lost.** `unclean_capture` covers three losses with three different owners — our server buffer, our browser transport, and a boundary in the page nobody can see through — and they arrived as one bar. Diagnosing the case above meant reading the eviction policy, because the data could not say which loss it was. Now a closed `CaptureLoss` (`buffer_loss` | `transport_gap` | `blind_spot` | `other`) rides every unclean verdict, and is absent whenever the capture was clean.
-
-### It said things that were not true
-
-- **`@reticlehq/server` — the version-skew remedy names a command we actually ship.** _(`reticle doctor`)_
 
 ### Our own CI was in the production numbers
 
