@@ -58,6 +58,11 @@ export type Predicate =
  * the only key supplied left a predicate that asserts nothing and passes on anything.
  */
 const PREDICATE_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  // `text`/`value` on a `text` predicate: the kind is called "text", so `text:` is the first thing
+  // anyone writes for it, and `value` follows from the element query's own `value` field. Both were
+  // hard rejections, and a rejected predicate produces NO verdict at all — the drive ends with
+  // nothing rather than with a failure, which is the worst outcome of the three.
+  [PredicateKind.TEXT]: { text: 'contains', value: 'contains' },
   // `urlContains`/`url` reported from the field: an agent that had just written
   // `net { urlContains }` applied the same word to `route`, which spells it `contains`, and got
   // `unrecognized_keys` with no list of what would have worked. The parallel it assumed is a fair
@@ -69,113 +74,175 @@ const PREDICATE_ALIASES: Readonly<Record<string, Readonly<Record<string, string>
   [PredicateKind.SIGNAL]: { data: 'dataMatches' },
 };
 
+/**
+ * Element-query fields an agent writes FLAT on an `element` predicate instead of nested under
+ * `query`. `reticle_query` takes exactly these at the top level, so an agent that has just located
+ * something writes the same words again when it asserts on it — and got `query: Required` plus an
+ * `unknown field` list for its trouble. Lifting them is unambiguous: they have no other meaning on
+ * this kind.
+ */
+const ELEMENT_QUERY_FIELDS = [
+  'by',
+  'value',
+  'role',
+  'name',
+  'text',
+  'label',
+  'placeholder',
+  'testid',
+  'alt',
+  'component',
+] as const;
+
 /** Rename known aliases before parse; an explicit canonical key always wins. */
 function applyPredicateAliases(input: unknown): unknown {
   if (typeof input !== 'object' || null === input || Array.isArray(input)) return input;
   const obj = input as Record<string, unknown>;
-  const aliases = PREDICATE_ALIASES['string' === typeof obj['kind'] ? obj['kind'] : ''];
-  if (aliases === undefined) return input;
-  const out = { ...obj };
-  for (const [from, to] of Object.entries(aliases)) {
-    if (out[from] === undefined) continue;
-    if (out[to] === undefined) out[to] = out[from];
-    delete out[from];
+  const kind = 'string' === typeof obj['kind'] ? obj['kind'] : '';
+  const aliases = PREDICATE_ALIASES[kind];
+  let out = obj;
+  if (aliases !== undefined) {
+    out = { ...obj };
+    for (const [from, to] of Object.entries(aliases)) {
+      if (out[from] === undefined) continue;
+      if (out[to] === undefined) out[to] = out[from];
+      delete out[from];
+    }
   }
+  return PredicateKind.ELEMENT === kind ? liftElementQuery(out) : out;
+}
+
+/**
+ * Fold flat query fields into `query`. An explicit `query` wins outright — a caller that supplied
+ * both told us which one it meant, and merging the two would invent a locator neither side wrote.
+ */
+function liftElementQuery(obj: Record<string, unknown>): Record<string, unknown> {
+  const loose = ELEMENT_QUERY_FIELDS.filter((field) => obj[field] !== undefined);
+  if (0 === loose.length) return obj;
+  const out = { ...obj };
+  const query: Record<string, unknown> = {};
+  for (const field of loose) {
+    query[field] = out[field];
+    delete out[field];
+  }
+  if (out['query'] === undefined) out['query'] = query;
   return out;
 }
 
 /**
  * Strict on every branch. A key that is nobody's spelling is now a schema error naming it, instead of
  * a stripped field and a green — see predicate-strict.test.ts for the MCP session that found this.
+ *
+ * Built on demand rather than at module scope: the `allOf`/`anyOf`/`not` branches reference
+ * `PredicateSchema` itself, which does not exist yet while this module is initialising. Calling it
+ * after init is what makes the union introspectable — see `predicateFieldsFor`.
  */
+function predicateUnion() {
+  return z.discriminatedUnion('kind', [
+    z
+      .object({
+        kind: z.literal(PredicateKind.ELEMENT),
+        query: ElementQuerySchema,
+        state: z.nativeEnum(ElementState).optional(),
+        absent: z.boolean().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal(PredicateKind.TEXT),
+        contains: z.string(),
+        visible: z.boolean().optional(),
+        absent: z.boolean().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal(PredicateKind.NET),
+        method: z.string().optional(),
+        urlContains: z.string().optional(),
+        status: z.number().optional(),
+        ok: z.boolean().optional(),
+        since: z.number().optional(),
+        count: z.number().int().nonnegative().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal(PredicateKind.ROUTE),
+        pathname: z.string().optional(),
+        contains: z.string().optional(),
+        since: z.number().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal(PredicateKind.CONSOLE),
+        level: z.string().optional(),
+        absent: z.boolean().optional(),
+        since: z.number().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal(PredicateKind.ANIMATION),
+        name: z.string().optional(),
+        target: z.string().optional(),
+        completed: z.boolean().optional(),
+        since: z.number().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal(PredicateKind.SIGNAL),
+        name: z.string().optional(),
+        dataMatches: z.record(z.unknown()).optional(),
+        since: z.number().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal(PredicateKind.STATE),
+        store: z.string().optional(),
+        path: z.string(),
+        equals: z.unknown().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal(PredicateKind.SETTLED),
+        quietMs: z.number().positive().optional(),
+      })
+      .strict(),
+    z
+      .object({ kind: z.literal(PredicateKind.ALL_OF), predicates: z.array(PredicateSchema) })
+      .strict(),
+    z
+      .object({ kind: z.literal(PredicateKind.ANY_OF), predicates: z.array(PredicateSchema) })
+      .strict(),
+    z.object({ kind: z.literal(PredicateKind.NOT), predicate: PredicateSchema }).strict(),
+  ]);
+}
+
 export const PredicateSchema = z.lazy(() =>
-  z.preprocess(
-    applyPredicateAliases,
-    z.discriminatedUnion('kind', [
-      z
-        .object({
-          kind: z.literal(PredicateKind.ELEMENT),
-          query: ElementQuerySchema,
-          state: z.nativeEnum(ElementState).optional(),
-          absent: z.boolean().optional(),
-        })
-        .strict(),
-      z
-        .object({
-          kind: z.literal(PredicateKind.TEXT),
-          contains: z.string(),
-          visible: z.boolean().optional(),
-          absent: z.boolean().optional(),
-        })
-        .strict(),
-      z
-        .object({
-          kind: z.literal(PredicateKind.NET),
-          method: z.string().optional(),
-          urlContains: z.string().optional(),
-          status: z.number().optional(),
-          ok: z.boolean().optional(),
-          since: z.number().optional(),
-          count: z.number().int().nonnegative().optional(),
-        })
-        .strict(),
-      z
-        .object({
-          kind: z.literal(PredicateKind.ROUTE),
-          pathname: z.string().optional(),
-          contains: z.string().optional(),
-          since: z.number().optional(),
-        })
-        .strict(),
-      z
-        .object({
-          kind: z.literal(PredicateKind.CONSOLE),
-          level: z.string().optional(),
-          absent: z.boolean().optional(),
-          since: z.number().optional(),
-        })
-        .strict(),
-      z
-        .object({
-          kind: z.literal(PredicateKind.ANIMATION),
-          name: z.string().optional(),
-          target: z.string().optional(),
-          completed: z.boolean().optional(),
-          since: z.number().optional(),
-        })
-        .strict(),
-      z
-        .object({
-          kind: z.literal(PredicateKind.SIGNAL),
-          name: z.string().optional(),
-          dataMatches: z.record(z.unknown()).optional(),
-          since: z.number().optional(),
-        })
-        .strict(),
-      z
-        .object({
-          kind: z.literal(PredicateKind.STATE),
-          store: z.string().optional(),
-          path: z.string(),
-          equals: z.unknown().optional(),
-        })
-        .strict(),
-      z
-        .object({
-          kind: z.literal(PredicateKind.SETTLED),
-          quietMs: z.number().positive().optional(),
-        })
-        .strict(),
-      z
-        .object({ kind: z.literal(PredicateKind.ALL_OF), predicates: z.array(PredicateSchema) })
-        .strict(),
-      z
-        .object({ kind: z.literal(PredicateKind.ANY_OF), predicates: z.array(PredicateSchema) })
-        .strict(),
-      z.object({ kind: z.literal(PredicateKind.NOT), predicate: PredicateSchema }).strict(),
-    ]),
-  ),
+  z.preprocess(applyPredicateAliases, predicateUnion()),
 ) as unknown as z.ZodType<Predicate>;
+
+/**
+ * The fields a given predicate kind accepts, read off the schema itself.
+ *
+ * Derived rather than listed so the two can never disagree: a rejection message that names a stale
+ * field set is worse than one that names none, because the agent trusts it and retries into the same
+ * wall. Empty for a kind that is not in the union.
+ */
+export function predicateFieldsFor(kind: string): readonly string[] {
+  for (const option of predicateUnion().options) {
+    const literal = option.shape['kind'];
+    if (literal instanceof z.ZodLiteral && literal.value === kind) {
+      return Object.keys(option.shape).filter((field) => 'kind' !== field);
+    }
+  }
+  return [];
+}
 
 export interface EvalResult {
   pass: boolean;

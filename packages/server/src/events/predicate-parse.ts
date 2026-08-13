@@ -14,7 +14,8 @@
  */
 
 import { z } from 'zod';
-import { PredicateSchema } from './predicate-eval.js';
+import { PredicateKind } from '@reticlehq/core';
+import { PredicateSchema, predicateFieldsFor } from './predicate-eval.js';
 
 /** A valid call, short enough to sit inside an error without becoming the error. */
 const EXAMPLE = '{ kind: "signal", name: "todos:loaded" }';
@@ -55,7 +56,20 @@ export function parsePredicate(input: unknown): z.infer<typeof PredicateSchema> 
   const issues = parsed.error.issues.slice(0, 3).map(describeIssue).join('; ');
   throw new Error(
     `that predicate did not parse (kind "${kind}"): ${issues}. Nothing ran — the predicate was ` +
-      `not evaluated, so no verdict was produced. Call reticle_tools for the fields this kind ` +
-      `accepts. A valid call looks like: ${EXAMPLE}`,
+      `not evaluated, so no verdict was produced. ${accepted(kind)} ` +
+      `A valid call looks like: ${EXAMPLE}`,
   );
+}
+
+/**
+ * What WOULD have worked, in the same breath as what did not.
+ *
+ * Telling an agent only which field is wrong leaves it guessing again, and each guess costs another
+ * round trip on the one call path that produces verdicts. Naming the accepted fields — or, when the
+ * kind itself is the mistake, the accepted kinds — makes the retry informed instead.
+ */
+function accepted(kind: string): string {
+  const fields = predicateFieldsFor(kind);
+  if (0 < fields.length) return `${kind} accepts: ${fields.join(', ')}.`;
+  return `"${kind}" is not a predicate kind — use one of: ${Object.values(PredicateKind).join(', ')}.`;
 }
