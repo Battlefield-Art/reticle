@@ -31,6 +31,8 @@ import {
   SVELTEKIT_HOOKS_PATH,
   UNVERIFIED_FRAMEWORK_NOTE,
   astroManual,
+  nuxtManual,
+  NUXT_PLUGIN_PATH,
 } from './snippets.js';
 import { StepStatus, type PlanInput, type Step } from './plan.js';
 
@@ -351,6 +353,25 @@ export function craSteps(input: PlanInput): Step[] {
         },
   );
   return steps;
+}
+
+/**
+ * Nuxt: one manual step carrying the whole recipe, and no pretence of more.
+ *
+ * There is no Nuxt app in `apps/` and no CI gate for one, so an auto-written plugin would be a
+ * support claim nothing backs — the same reasoning SvelteKit already carries. What this DOES fix is
+ * everything that made the previous fall-through actively wrong: Nuxt was classified as `html`, so
+ * it was handed the React kit and a localhost-guarded snippet that cannot run in a Vue app.
+ */
+export function nuxtSteps(input: PlanInput): Step[] {
+  return [
+    {
+      title: 'Connect snippet (Nuxt)',
+      target: NUXT_PLUGIN_PATH,
+      status: StepStatus.MANUAL,
+      detail: nuxtManual(input.options.port, input.options.projectId),
+    },
+  ];
 }
 
 export function svelteKitSteps(input: PlanInput): Step[] {

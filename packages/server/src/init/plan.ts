@@ -40,6 +40,7 @@ import {
   nextSteps,
   craSteps,
   svelteKitSteps,
+  nuxtSteps,
   astroSteps,
   VITE_PLUGIN_DETAIL,
 } from './plan-framework.js';
@@ -50,6 +51,8 @@ import { htmlManual, reticleConfigContent, unverifiedUiLibraryNote } from './sni
 // framework adapter (it re-exports the browser sensor), paired with that framework's dev-only build
 // plugin for source mapping + connect injection.
 const RETICLE_REACT_KIT = '@reticlehq/react';
+/** The framework-neutral sensor, for stacks the React adapter has nothing to attach to. */
+const RETICLE_BROWSER_SDK = '@reticlehq/browser';
 const RETICLE_VITE_PLUGIN = '@reticlehq/vite-plugin';
 const RETICLE_NEXT_PLUGIN = '@reticlehq/next';
 
@@ -79,6 +82,11 @@ export function frameworkPackages(framework: Framework): readonly string[] {
     case Framework.SVELTEKIT:
       // SvelteKit builds on Vite; until a dedicated Svelte kit exists it uses the Vite build plugin.
       return [RETICLE_REACT_KIT, RETICLE_VITE_PLUGIN];
+    case Framework.NUXT:
+      // The framework-neutral sensor, NOT the React kit. Nuxt renders Vue, and installing a package
+      // named @reticlehq/react — with `react` in its peer dependencies — into a Vue codebase is the
+      // single thing most likely to make someone abandon the setup, whether or not it works.
+      return [RETICLE_BROWSER_SDK];
     case Framework.ASTRO:
       // Astro owns its own Vite instance and renders its own HTML, so there is no config for the
       // plugin to attach to — the kit alone, connected from a page <script> (see astroManual).
@@ -108,6 +116,7 @@ const CONNECT_STEP_TITLES: ReadonlySet<string> = new Set([
   'Connect snippet',
   'Connect snippet (CRA)',
   'Connect snippet (Astro)',
+  'Connect snippet (Nuxt)',
   'Reticle client hook',
   'Reticle connect module',
   'ReticleDev component',
@@ -693,7 +702,16 @@ function reticleConfigStep(input: PlanInput): Step {
  */
 function uiLibraryStep(input: PlanInput): Step[] {
   const lib = input.detection.uiLibrary;
-  if (lib === UiLibrary.REACT || input.detection.framework === Framework.SVELTEKIT) return [];
+  // Nuxt and SvelteKit each carry their own unverified wording inside the recipe, so a second,
+  // more generic notice beside it would only argue with the specific one.
+  const framework = input.detection.framework;
+  if (
+    lib === UiLibrary.REACT ||
+    framework === Framework.SVELTEKIT ||
+    framework === Framework.NUXT
+  ) {
+    return [];
+  }
   if (lib === UiLibrary.UNKNOWN) return [];
   return [
     {
@@ -722,6 +740,8 @@ export function buildPlan(input: PlanInput): Plan {
     steps.push(...astroSteps(input));
   } else if (input.detection.framework === Framework.CRA) {
     steps.push(...craSteps(input));
+  } else if (input.detection.framework === Framework.NUXT) {
+    steps.push(...nuxtSteps(input));
   } else if (input.detection.framework === Framework.SVELTEKIT) {
     steps.push(...svelteKitSteps(input));
     // The Vite plugin as well as the client hook. `init` already INSTALLS @reticlehq/vite-plugin for
