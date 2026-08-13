@@ -10,6 +10,15 @@
  * Fixing this in the SDK's default URL would only help apps that reinstall. Aliasing the other
  * loopback address on the daemon side fixes the installs that already exist, on their next start,
  * with no app change — which is the point.
+ *
+ * NOT covered here, deliberately: that closing the alias ends its connections rather than draining
+ * them. Adding the alias made the daemon ignore SIGTERM — `server.close()` fires its callback only
+ * once every connection has gone, the daemon serves keep-alive and SSE, and the shutdown chain
+ * awaits that close — so `reticle stop` timed out and the process stayed alive with the port held.
+ * The guard for it is `apps/e2e/specs/daemon-heartbeat-test.mjs`, which is what caught it: it starts
+ * a real daemon and watches it actually die. A unit-level version of that assertion passed
+ * identically with and without the fix, and a test that cannot fail is worse than no test, so it is
+ * not here pretending to guard something.
  */
 
 import { describe, expect, it, afterEach } from 'vitest';

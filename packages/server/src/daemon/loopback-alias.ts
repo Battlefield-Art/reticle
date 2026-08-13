@@ -36,8 +36,16 @@ export interface LoopbackAlias {
  * trust holds — the alias does not widen who may connect, only which address they may name.
  */
 export function openLoopbackAlias(port: number): Promise<LoopbackAlias> {
+  /** Every socket this alias has open, so shutdown can end them instead of waiting them out. */
+  const live = new Set<net.Socket>();
   const server = net.createServer((inbound) => {
     const outbound = net.connect(port, LOOPBACK_HOST);
+    live.add(inbound).add(outbound);
+    const drop = (socket: net.Socket): void => {
+      live.delete(socket);
+    };
+    inbound.on('close', () => drop(inbound));
+    outbound.on('close', () => drop(outbound));
     // A dead peer on either side must tear down the pair, not surface as an unhandled 'error'
     // event — which in Node terminates the daemon this alias exists to make reachable.
     inbound.on('error', () => outbound.destroy());
@@ -47,9 +55,25 @@ export function openLoopbackAlias(port: number): Promise<LoopbackAlias> {
   });
 
   return new Promise<LoopbackAlias>((resolve) => {
+    /**
+     * Stop listening and END EVERYTHING, rather than draining.
+     *
+     * `server.close()` fires its callback only once every existing connection has gone, so a single
+     * held-open socket — a keep-alive, an SSE stream, exactly what this daemon serves — means the
+     * callback never fires. The daemon's shutdown chain awaits this, so an un-drained alias silently
+     * became a daemon that ignores SIGTERM: `reticle stop` timed out, the process stayed alive, and
+     * the port stayed held. Caught by the heartbeat spec, which is the one gate that watches a
+     * daemon actually die.
+     *
+     * A best-effort side listener must never be able to hold up the shutdown of the thing it exists
+     * to make reachable. We are exiting; ending these sockets is the correct outcome, not a
+     * compromise.
+     */
     const close = (): Promise<void> =>
       new Promise<void>((done) => {
         server.close(() => done());
+        for (const socket of live) socket.destroy();
+        live.clear();
       });
     server.once('error', () => {
       // Nothing was bound, so there is nothing to close — but the caller still gets a close it can
@@ -57,6 +81,9 @@ export function openLoopbackAlias(port: number): Promise<LoopbackAlias> {
       resolve({ opened: false, close: () => Promise.resolve() });
     });
     server.listen(port, IPV6_LOOPBACK, () => {
+      // Never the reason the process stays up: if the daemon is otherwise done, this must not be
+      // what keeps the event loop alive.
+      server.unref();
       resolve({ opened: true, close });
     });
   });
