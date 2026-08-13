@@ -481,7 +481,11 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   // mirror rejection so a port collision can't surface as an unhandled promise rejection.
   void bridge.ready.catch(() => undefined);
   // `reticle status` GETs this for a live, at-a-glance view of connected tabs + their health.
-  shared.attachStatus(() => statusPayload(bridge.sessions.count(), bridge.sessions.list()));
+  // The same diagnosis agents get on an empty `reticle_sessions`, so `reticle status` — the
+  // most-run command in the field — stops answering "sessionCount: 0" and nothing else.
+  shared.attachStatus(() =>
+    statusPayload(bridge.sessions.count(), bridge.sessions.list(), bridge.sessions.noSessionHint()),
+  );
   // Agent-independent presence: the daemon outlives any single agent, so when the LAST agent's MCP
   // connection drops (it stopped, or is waiting on the human), end every session and push a clear
   // "go to your terminal" notice to the panel — the human is on the browser and must not lose a typed
