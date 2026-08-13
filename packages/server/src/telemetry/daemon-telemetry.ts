@@ -12,6 +12,7 @@ import { getSessionMetrics } from './session-metrics.js';
 import { profileProject } from './project-profile.js';
 import { startUpdateCheck } from '../update/update-nudge.js';
 import { markDaemonStart } from './mcp-connection.js';
+import { markInstrumentationClock } from './app-instrumented.js';
 
 /** Let the daemon finish coming up before walking the source tree for a profile. */
 const PROJECT_PROFILE_DELAY_MS = 5_000;
@@ -33,10 +34,10 @@ export const SESSION_FLUSH_MS = 5 * 60 * 1000;
  * tick — a closed laptop, OOM, `kill -9`, a force-quit editor — reaches no shutdown handler and has
  * emitted nothing, so the whole session is invisible.
  *
- * Measured 2026-08-10/11 (non-CI): **614 `daemon_started` against 499 `daemon_stopped` — 19% of
- * sessions never reported a summary at all.** Every "did anyone use Reticle" number is computed on
- * the 81% that did, and undercounts by an unknown amount, which is the one thing a funnel metric
- * must not do.
+ * In the field `daemon_started` outran `daemon_stopped` by a wide margin: **a meaningful share of
+ * sessions never reported a summary at all.** Every "did anyone use Reticle" number is computed only
+ * on the sessions that did, and undercounts by an unknown amount, which is the one thing a funnel
+ * metric must not do.
  *
  * Ninety seconds is chosen against what it protects: a session that did real work usually does it
  * early (snapshot -> act -> assert is seconds), so one early tick captures nearly all of it. It
@@ -74,6 +75,9 @@ export function installDaemonTelemetry(
   // this, so a published fix was invisible until someone manually ran `reticle update`.
   startUpdateCheck(now);
   markDaemonStart(now());
+  // Same clock, different half of the install: one measures how long before an AGENT attached, this
+  // one how long before an APP did. The gap between them is the funnel.
+  markInstrumentationClock(now());
 
   // One profile per daemon start: what kind of project this is and how deeply Reticle is used in it.
   // Deferred off the boot path — it walks the source tree, and nothing about a daemon coming up

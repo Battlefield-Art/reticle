@@ -17,6 +17,8 @@ import { setBrowserMode, BrowserMode } from './telemetry/browser-mode.js';
 import type { NetworkDetail } from './input/network-detail.js';
 import { replayNamedFlow } from './flows/flow-tools.js';
 import { createSharedServer } from './http-server.js';
+import { openLoopbackAlias } from './daemon/loopback-alias.js';
+import { reportAppInstrumented } from './telemetry/app-instrumented.js';
 import { resolveBridgeSecurityWithAutoToken } from './bridge/bridge-security.js';
 import { Bridge } from './bridge/bridge.js';
 import { BaselineStore } from './project/baselines.js';
@@ -574,6 +576,17 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   // connecting session's project (a shared daemon serves many apps; each panel shows only its own
   // flows + legacy untagged ones). Each chip carries a `start` hint (the first step's testid anchor)
   // so the HUD shows a flow only on the page it can begin from — the panel re-scopes per route.
+  // The first instrumented app of this daemon run — the funnel step nothing could measure before.
+  // Inside the existing session-ready hook rather than beside it: this fires exactly when a page
+  // carrying the SDK has completed its handshake, which is the definition of "instrumented", and
+  // `reportAppInstrumented` is idempotent so later sessions cost a boolean check.
+  bridge.attachSessionReady(() => {
+    reportAppInstrumented({
+      initialized: readProjectId(process.cwd()) !== undefined,
+      agentAttached: agentConnected,
+    });
+  });
+
   bridge.attachSessionReady((session) => {
     flows
       .list(session.projectId)
@@ -604,7 +617,15 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     shared.httpServer.listen(port, security.host ?? LOOPBACK_HOST);
   });
 
-  log('mcp_daemon_started', { port });
+  // `localhost` is a name with two answers, and Windows/Chrome tries the IPv6 one first. Only alias
+  // when we are on the default loopback bind: an explicit RETICLE_HOST is a deliberate choice about
+  // reachability, and quietly adding a second listener to it would be the opposite of deliberate.
+  const loopbackAlias =
+    security.host === undefined
+      ? await openLoopbackAlias(port)
+      : { opened: false, close: undefined };
+
+  log('mcp_daemon_started', { port, loopbackAlias: loopbackAlias.opened });
 
   return {
     bridge,
@@ -623,6 +644,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
       const vh = verifyHttp;
       if (vh !== undefined) await new Promise<void>((resolve) => vh.server.close(() => resolve()));
       leaseReaper.stop();
+      await loopbackAlias.close?.();
       await pool.shutdown();
       await owned?.dispose();
       await bridge.close();

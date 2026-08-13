@@ -33,7 +33,7 @@ Do **not** add telemetry inside a tool handler. If you find yourself wanting to,
 
 `bug_found` fires once per OCCURRENCE. A defect hit five times in a session is five events, which is the right raw signal — frequency is what says which classes of defect actually cost anybody anything. But it means a naive count answers "how often were defects hit", not "how many defects were found", while looking like it answers the second.
 
-So every `bug_found` carries **`repeat`**: false the first time a KIND is seen in a session, true after. Count `repeat: false` for **distinct defects**; count everything for **instances**. Measured on a real app: 7 events, 3 defects, 4 repeats. Publishing the 7 as defects would have inflated the claim by more than double.
+So every `bug_found` carries **`repeat`**: false the first time a KIND is seen in a session, true after. Count `repeat: false` for **distinct defects**; count everything for **instances**. Measured on a real app, the instance count was more than double the defect count. Publishing instances as defects inflates the claim accordingly.
 
 The denominator is **`verification_completed`**, which fires per verdict with `via`, `verified`, `passed` and `falseGreenCaught`. Defects per verification is the honest rate; raw defect counts grow with usage and say nothing on their own.
 
@@ -98,9 +98,20 @@ The single exception is `daemon_stopped`, which is **awaited** — because the p
 | `feedback_submitted` | `reticle feedback`, or an agent's report | the qualitative channel |
 | `identified` | `reticle identify` | joins anonymous machine ids to a person who volunteered one |
 | `mcp_client_connected` | an MCP client attached | how many sessions are agent-driven at all |
+| `app_instrumented` | the first app carrying the SDK reached this daemon | **the funnel step everything turns on** — see below |
 | `mcp_connection_lost` | the proxy lost its daemon | **the transport-stability metric.** The disconnect that makes a user reopen `/mcp` is invisible without it |
 | `init_completed` | `reticle init` finished | does install actually work, outside the fixtures gate |
 | `bug_found` | a defect was detected in the app under test | the value delivered, as opposed to the work done |
+
+## The install has two halves — `app_instrumented`
+
+Reticle is only usable when both halves are done: the MCP server is registered so the agent has the tools, and the SDK is loaded by a running page so there is something for those tools to look at. They are done by different commands, at different times, often in different directories. Almost everyone completes the first. The second is where the users go.
+
+Nothing measured the second. `daemon_started` and `mcp_client_connected` describe the agent half. `session_appConnects` describes the app half but is a **window counter** — it resets on every flush, so a user whose app connected in one window reads zero in every other. The population it under-counts is precisely the population being measured, and a funnel built on it reported fewer instrumented users than there were users calling tools, which is impossible on its face.
+
+`app_instrumented` fires **once per daemon run**, on the first session-ready only, so `daemon_started` → `app_instrumented` is a rate rather than an inference and a reloading page cannot inflate it. It carries `initialized` (had `init` run here), `agentAttached` (was an agent already waiting), and `msToFirstApp` (how long the daemon sat with nothing wired). It deliberately carries no stack and no framework: `project_profiled` already reports both for the same run, and the two join on `sessionId`.
+
+What it still cannot see is **why** an app never connected — every cause for that is page-side (the non-localhost gate, a port mismatch, a stale build, a dev server never restarted), where the daemon has no visibility. That needs the SDK to report its own refusals, and it is the next thing to build.
 
 ## Sessions: `daemon_stopped` vs `session_progress`
 
@@ -124,6 +135,7 @@ Four counters and one flag were added because the data could not answer question
 | `verification.browser` | `verification_completed` | `headless` \| `headed` \| `attached` — who DROVE the browser. `attached` (Reticle launched nothing, the SDK connected from a browser somebody else opened) is the common case in production, so on its own this is mostly "somebody's own browser". |
 | `verification.brand` | `verification_completed` | WHICH browser it was: `chrome` \| `edge` \| `arc` \| `dia` \| `brave` \| `opera` \| `firefox` \| `safari` \| `other` — the closed `BrowserBrand` list in core. The axis `engine` cannot answer, since Chrome, Edge, Arc, Dia and Brave are all `blink`. The SDK reads `navigator.userAgentData.brands` (and the UA string on Firefox/Safari, which expose no `userAgentData`) and normalises IN THE PAGE: a raw brand or UA string is unbounded and fingerprintable and never leaves. Anything unrecognised is `other`. **Omitted rather than `"unknown"`** when the page did not say — a desktop webview has no brand and an older SDK does not report one, and a guess is indistinguishable from a measurement on a dashboard. |
 | `verification.reason` | `verification_completed` | WHICH clause of `decideVerified` produced the verdict, from core's closed `VerifiedReason`: `inconclusive` \| `observation_lost` \| `assertion_failed` \| `contradicted` \| `already_true` \| `unclean_capture` \| `vacuous_grade` \| `outcome_pending` \| `outcome_unread` \| `unsettled` \| `proved`. See below. |
+| `verification.uncleanLoss` | `verification_completed` | WHAT was lost when `reason` is `unclean_capture`, from core's closed `CaptureLoss`: `buffer_loss` (our server ring buffer evicted evidence from the window) \| `transport_gap` (our browser queue overflowed) \| `blind_spot` (a boundary in the page — a cross-origin frame, a closed shadow root) \| `other`. Three owners, three fixes, and one bar on a dashboard until this existed. ONE value, not a list — a multi-value property is not something a breakdown can group by, so the first is sent, ours before the page's. **Absent whenever the capture was clean**, so its presence is itself the signal. Reported as `other` rather than omitted when the block says dirty and names nothing: a gap there would read as "no unclean verdicts happened". |
 | `bug.attribution` | `bug_found` | `app` \| `request` \| `reticle` — whose fault the defect was. **Absent means unclassified**, never `app`. See below. |
 | `outage.stage` / `outage.reason` / `outage.attempts` | `mcp_connection_lost` | which stage of the outage, why the stream went away (closed `OutageReason`, `other` for anything unnamed), and how many reconnects had been tried. See below. |
 | `tzOffsetMin` | every event | minutes offset from UTC. One integer, no location. |

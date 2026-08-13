@@ -22,7 +22,7 @@ import {
   SessionSummarySchema,
 } from './telemetry-session.js';
 import { BrowserBrand, FeedbackSchema } from './telemetry-feedback.js';
-import { VerifiedReason } from './verified-constants.js';
+import { CaptureLoss, VerifiedReason } from './verified-constants.js';
 import { IdentitySchema } from './telemetry-feedback.js';
 
 /** Bump when the event shape changes so the analytics side can segment old senders. */
@@ -115,6 +115,26 @@ export const TelemetryEventKind = {
    */
   MCP_CLIENT_CONNECTED: 'mcp_client_connected',
   /**
+   * An app carrying the SDK connected to this daemon for the first time in its life.
+   *
+   * THE funnel step, and the one nothing could measure. Reticle's install has two halves — register
+   * the MCP server so the agent has the tools, and get the SDK into a running page so there is
+   * something for those tools to look at — and they are done at different times, by different
+   * commands, often in different directories. Almost everyone completes the first. The second is
+   * where the users go.
+   *
+   * Everything that existed before answered a different question. `daemon_started` and
+   * `mcp_client_connected` describe the agent half only. `session_appConnects` describes the app
+   * half but is a WINDOW counter: it resets on every flush, so a user whose app connected in one
+   * window reads zero in every other, and the population it under-counts is exactly the population
+   * being measured. A funnel built on it reported fewer instrumented users than there were users
+   * calling tools, which is impossible on its face and was the first sign the field was unusable.
+   *
+   * Fired ONCE per daemon run, on the first connect only — so `daemon_started` → `app_instrumented`
+   * is a real rate rather than an inference, and a reconnecting page cannot inflate it.
+   */
+  APP_INSTRUMENTED: 'app_instrumented',
+  /**
    * The agent LOST its Reticle tools — the worst thing this product does to anyone, and until now
    * completely invisible in the field.
    *
@@ -168,6 +188,7 @@ const SESSION_SCOPED: ReadonlySet<string> = new Set([
   TelemetryEventKind.DAEMON_STOPPED,
   TelemetryEventKind.SESSION_PROGRESS,
   TelemetryEventKind.MCP_CLIENT_CONNECTED,
+  TelemetryEventKind.APP_INSTRUMENTED,
   TelemetryEventKind.PROJECT_PROFILED,
   TelemetryEventKind.VERIFICATION_COMPLETED,
   TelemetryEventKind.BUG_FOUND,
@@ -206,7 +227,7 @@ export type TelemetryActor = (typeof TelemetryActor)[keyof typeof TelemetryActor
  * property the funnel actually needs: `init` runs in the app directory and the daemon is spawned from
  * wherever the agent's client happens to sit, so an id that changes with the working directory
  * severs the two halves of the funnel. Only `cwd` has that defect, and it is now the last resort
- * rather than the first fallback — measured 2026-08-11 at 1131 ids for 243 users.
+ * rather than the first fallback — the field showed many ids minted for a single project.
  */
 export const ProjectIdSource = {
   /** Hash of the shared git origin — the same on every clone, so cross-machine counting is valid. */
@@ -283,6 +304,18 @@ export const VerificationSchema = z.object({
    * no clause behind it, and an older SDK reports none. Absent means unclassified, never guessed.
    */
   reason: z.nativeEnum(VerifiedReason).optional(),
+  /**
+   * WHAT was lost, when `reason` is `unclean_capture` — see `CaptureLoss`.
+   *
+   * The three causes belong to three different owners and need three different fixes, and without
+   * this they are one bar. The one time we had to answer it the data could not, and the answer
+   * turned out to be that our own eviction counter was miscounting.
+   *
+   * ONE value, not a list: `losses` can hold several and a multi-value property is not something a
+   * dashboard can group by, so the FIRST is sent and the order in the producers is the order of
+   * ownership — ours before the page's. Absent on every verdict whose capture was clean.
+   */
+  uncleanLoss: z.nativeEnum(CaptureLoss).optional(),
 });
 export type Verification = z.infer<typeof VerificationSchema>;
 
@@ -507,6 +540,24 @@ export const McpConnectionSchema = z.object({
 export type McpConnection = z.infer<typeof McpConnectionSchema>;
 
 /**
+ * `app_instrumented`: an app carrying the SDK reached this daemon for the first time.
+ *
+ * The install has two halves — the MCP server registered so the agent has the tools, and the SDK
+ * loaded by a running page so there is something to look at — and this is the only signal for the
+ * second. Deliberately carries NO stack and no framework: `project_profiled` already reports both
+ * for the same daemon run, and the two join on `sessionId`.
+ */
+export const AppInstrumentationSchema = z.object({
+  /** Whether `reticle init` had been run in this directory (a projectId is stamped). */
+  initialized: z.boolean(),
+  /** Whether an MCP client was already attached when the app arrived. */
+  agentAttached: z.boolean(),
+  /** How long the daemon had been up. Large values mean Reticle sat there with nothing wired. */
+  msToFirstApp: z.number().int().nonnegative(),
+});
+export type AppInstrumentation = z.infer<typeof AppInstrumentationSchema>;
+
+/**
  * WHICH stage of an MCP outage this is. Reported at most twice per proxy process, and the two are
  * different facts: `first` says the session lost its tools at all, `budget_spent` says the proxy
  * stopped retrying and never came back on its own.
@@ -555,7 +606,7 @@ export const McpOutageSchema = z.object({
   /**
    * In-flight tool calls this drop actually killed — the only part an agent can FEEL.
    *
-   * Without it every drop looks equally bad. Measured 2026-08-10/11: **320 of 321 outages were
+   * Without it every drop looks equally bad. In the field almost every outage was
    * `stage: first` with `attempts: 1`** — the stream ended once and the proxy reconnected, which for
    * an agent with nothing in flight is invisible. Reading that 321 as "the agent lost its tools 321
    * times" overstates the problem by roughly the whole number, and buries the one drop that mattered.
@@ -659,5 +710,7 @@ export const TelemetryEventSchema = z.object({
   bug: BugFoundSchema.optional(),
   /** Only on `mcp_connection_lost`: which stage of the outage, why, and after how many retries. */
   outage: McpOutageSchema.optional(),
+  /** Only on `app_instrumented`: the install's second half finally happening. */
+  instrumentation: AppInstrumentationSchema.optional(),
 });
 export type TelemetryEvent = z.infer<typeof TelemetryEventSchema>;

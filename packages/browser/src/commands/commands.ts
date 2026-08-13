@@ -72,6 +72,11 @@ function queryFromArgs(args: Record<string, unknown>): ElementQuery {
     alt: str(args['alt']),
     component: str(args['component']),
     scope: str(args['scope']),
+    // The THIRD allowlist a query input has to appear in — tool schema, server forward, and here.
+    // `self` was in the first two and missing from this one, so a live call returned zero matches on
+    // an element that was plainly on the page, with no error to explain it. Same shape as the
+    // `attrs` drop below it.
+    self: true === args['self'] ? true : undefined,
     attrs: Array.isArray(args['attrs'])
       ? args['attrs'].filter((a): a is string => 'string' === typeof a)
       : undefined,

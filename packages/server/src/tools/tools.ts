@@ -90,6 +90,12 @@ const RAW_TOOLS: ToolDef[] = [
         .describe(
           'Connected browser sessions with health state. `projectId` groups sessions by app (stable across port changes); `leased` marks a pool-managed headless context vs a human tab.',
         ),
+      why: z
+        .string()
+        .optional()
+        .describe(
+          'Present ONLY when `sessions` is empty: why nothing is connected, and the next action that fixes it. An empty list is never the end of the road — read this before concluding the app cannot be driven.',
+        ),
     },
     handler: async (deps) => {
       const provider = deps.realInput;
@@ -101,6 +107,14 @@ const RAW_TOOLS: ToolDef[] = [
           leased: leasedIds.has(s.sessionId),
         })),
       );
+      // An empty list is the most common thing this tool ever returns, and on its own it is a dead
+      // end: the agent asked the one question it knows to ask, got a confident-looking answer with
+      // no next step, and stopped. The daemon already knows WHY nothing is connected — say it here
+      // rather than only when a later tool fails for want of a session.
+      if (0 === sessions.length) {
+        const why = deps.sessions.noSessionHint();
+        return { sessions, ...(why === undefined ? {} : { why }) };
+      }
       return { sessions };
     },
   },
@@ -232,6 +246,12 @@ const RAW_TOOLS: ToolDef[] = [
         .string()
         .optional()
         .describe('CSS selector or element ref to restrict the search to a subtree.'),
+      self: z
+        .boolean()
+        .optional()
+        .describe(
+          'Return the `scope` element ITSELF instead of searching inside it. Use when the target is a plain layout container with no role, name, testid or text of its own — which is routinely the element that carries the handler, and is otherwise unreachable because every query excludes its own scope root. Requires `scope`.',
+        ),
       attrs: z
         .array(z.string())
         .optional()
@@ -360,7 +380,13 @@ const RAW_TOOLS: ToolDef[] = [
         // The handler forwards an explicit allowlist, so a new input is silently dropped unless it is
         // added here — the browser saw no `attrs` and returned undefined while the unit tests, which
         // call matchQuery directly, passed. Schema plus implementation is not the whole wire.
+        //
+        // It happened again with `self`, in the same session that wrote this comment: declared on the
+        // tool, implemented in the browser, verified by unit tests that call `runQuery` directly, and
+        // dropped here — so the live call returned zero matches with no error. `query-forwarding.test.ts`
+        // now asserts the payload, because a comment is not a guard.
         attrs: args['attrs'],
+        self: args['self'],
       }).then((result) =>
         withSizeCost(
           paginateQueryResult(result, asNumber(args['limit']), true === args['count_only']),

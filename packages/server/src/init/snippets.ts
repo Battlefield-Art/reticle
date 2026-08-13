@@ -239,8 +239,28 @@ export const NEXT_LAYOUT_MANUAL = `Mount <ReticleDev /> in your root layout (app
  * where a bare `@reticlehq/react` import resolves. A bare import in a plain index.html does NOT resolve in
  * the browser, so we never tell a bundled app to do that (the old advice silently failed for CRA).
  */
-export function htmlManual(port: number | undefined, projectId?: string): string {
-  const arg = connectArg(port, projectId);
+export function htmlManual(
+  port: number | undefined,
+  projectId?: string,
+  pairingToken?: string,
+): string {
+  const base = connectArg(port, projectId);
+  // The token belongs INSIDE the call the user pastes. Every other stack has a build step to inline
+  // it (the Vite plugin's `define`, Next's NEXT_PUBLIC_*, Astro's config, CRA's .env); this path has
+  // none, so `init` inlines the literal it already read. Without it the bridge closes the socket
+  // with AUTH_FAILED and no session ever appears — see Bridge's hello handler.
+  const withToken =
+    pairingToken === undefined || 0 === pairingToken.length
+      ? base
+      : `{ ${[base.length > 0 ? base.slice(1, -1).trim() : '', `token: '${pairingToken}'`]
+          .filter((p) => p.length > 0)
+          .join(', ')} }`;
+  const tokenNote =
+    pairingToken === undefined || 0 === pairingToken.length
+      ? ''
+      : `\n\n  The \`token\` is this machine's pairing token, read from ~/.reticle/pairing-token. Keep it: the
+  bridge REJECTS a connect without it ("authentication failed") and no session appears. It is
+  per-machine and local-only, so do not commit it — a teammate's daemon mints their own.`;
   return `No Vite/Next plugin detected — wire the dev-only connect by hand. Pick the form for your setup:
 
   • Bundled app (Create React App, webpack, Parcel, Vue/Svelte CLI, etc.) — add to your ENTRY module
@@ -249,9 +269,9 @@ export function htmlManual(port: number | undefined, projectId?: string): string
       if (window.location.hostname === 'localhost') {
         void import('@reticlehq/react').then(({ reticle, install }) => {
           install();
-          reticle.connect(${arg});
+          reticle.connect(${withToken});
         });
-      }
+      }${tokenNote}
 
   • Plain static HTML with no build step — the browser can't resolve the bare '@reticlehq/react' import, so
     bundle the SDK once (e.g. \`npx esbuild\`) and point a dev-only <script type="module"> at the output,
@@ -309,6 +329,59 @@ declare const __RETICLE_TOKEN__: string | undefined;
 declare const __RETICLE_ROOT__: string | undefined;
 declare const __RETICLE_SDK_VERSION__: string | undefined;
 `;
+}
+
+/** Where a Nuxt dev-only client plugin belongs. `.client` keeps it out of SSR; Nuxt auto-registers it. */
+export const NUXT_PLUGIN_PATH = 'app/plugins/reticle.client.ts';
+
+/**
+ * The Nuxt recipe, written out in full because every trap in it is one somebody actually hit.
+ *
+ * Reported from the field, in the order they were hit: `init` classified a Nuxt 4 app as `html`, so
+ * it installed a package named `@reticlehq/react` (with `react` in its peer dependencies) into a Vue
+ * codebase — the reporter only continued after auditing our dist to confirm there are no React
+ * imports at runtime, which most people will not do. It then handed over a snippet guarded on
+ * `window.location.hostname === 'localhost'`, which fails twice over in Nuxt: `window` does not
+ * exist during SSR, and the dev host here was a hosts-file alias (required for the backend's
+ * white-label origin detection), so the guard was false and the connect never ran — no error, no log
+ * line, nothing to debug. And nothing said a running dev server does not pick up a new plugin.
+ *
+ * So: `import.meta.dev` (build-time, host-independent) instead of a hostname check, `.client.ts`
+ * instead of an SSR guard, the framework-neutral sensor instead of the React kit, the non-localhost
+ * flag named up front, and the restart said out loud.
+ */
+export function nuxtManual(port: number | undefined, projectId?: string): string {
+  const base = connectArg(port, projectId);
+  const fields = '' === base ? '' : base.slice(1, -1).trim();
+  const connect = '' === fields ? 'reticle.connect()' : `reticle.connect({ ${fields} })`;
+  return `Nuxt owns its own Vite instance and renders its own HTML, so there is no vite.config to patch
+and no index.html to inject into. Wire it with a dev-only CLIENT plugin, which is Nuxt's own idiom:
+
+1. Create ${NUXT_PLUGIN_PATH}:
+
+     export default defineNuxtPlugin(() => {
+       // import.meta.dev is the correct guard: it is resolved at build time, so it does not care
+       // what hostname you develop on. Do NOT guard on window.location.hostname === 'localhost' —
+       // that is false on any hosts-file alias or LAN address, and window does not exist in SSR.
+       if (!import.meta.dev) return
+       void import('@reticlehq/browser').then(({ reticle }) => {
+         ${connect}
+       })
+     })
+
+   The .client.ts suffix is load-bearing: it is what keeps this out of the server bundle.
+
+2. Restart the dev server. A dev server that is already running does not pick up a new plugin —
+   it will not appear in .nuxt/plugins/client.mjs, and the app will come up with no SDK at all.
+
+3. If your dev host is anything other than localhost (a hosts-file alias, a LAN IP, a tunnel), add
+   allowNonLocalhost: true to that connect call. Without it the SDK loads and then refuses, and the
+   only sign is one line in the browser console.
+
+The package is @reticlehq/browser — the framework-neutral sensor. DOM, network, console, routing and
+source file:line all work in Vue. What you do not get is React component identity, which is the only
+thing the React adapter adds. There is no Nuxt app in this project's CI, so this path is UNVERIFIED:
+if something does not work, please open an issue.`;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ReticleEnv } from '@reticlehq/core';
 import { readPid, reticleStateHome } from '../daemon/daemon.js';
@@ -7,6 +7,7 @@ import { probeDaemon } from '../mcp/mcp-proxy.js';
 import { fetchStatus } from './cli-launch.js';
 import { daemonLine, type DaemonIdentity } from './doctor-daemon-line.js';
 import { describeForeignHolder, findPortHolder } from './port-holder.js';
+import { chromiumHint, probeChromium } from './chromium-hint.js';
 import { spawnSync } from 'node:child_process';
 import { SERVER_VERSION } from '../version/server-version.js';
 import { CONTRACT_FINGERPRINT } from '@reticlehq/core';
@@ -63,17 +64,7 @@ export async function handleDoctor(port: number): Promise<void> {
   };
   line('reticle doctor');
   line(`  node         ${process.version}`);
-  try {
-    const { chromium } = await import('playwright');
-    const path = chromium.executablePath();
-    line(
-      existsSync(path)
-        ? '  chromium     ✓ installed'
-        : '  chromium     ✗ missing — run: npx playwright install chromium',
-    );
-  } catch {
-    line('  chromium     ✗ missing — run: npx playwright install chromium');
-  }
+  line(`  chromium     ${chromiumHint(await probeChromium())}`);
   // Ask the PORT, not just the pid file. "not running on :4400" has been printed about a port that
   // was demonstrably occupied, which sends the reader to start a daemon that cannot bind. The three
   // states are genuinely different problems with different fixes, so doctor names which one it is.

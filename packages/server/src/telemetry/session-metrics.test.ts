@@ -281,7 +281,7 @@ describe('recordBug reports whether this KIND is new to the session', () => {
 /**
  * A designed exit and a real failure must not be the same row.
  *
- * Measured 2026-08-10/11: 299 of 321 `mcp_connection_lost` events were `sse_ended` at stage `first`
+ * In the field the large majority of `mcp_connection_lost` events were `sse_ended` at stage `first`
  * — overwhelmingly the daemon closing its own stream on its scheduled idle shutdown. The proxy that
  * emits the outage only ever sees a socket end, so the metric meant to say "the agent lost its
  * tools" was mostly counting the daemon going to sleep on purpose, and a genuine outage was
@@ -314,7 +314,7 @@ describe('the session summary says WHY the daemon exited', () => {
  * `#startedAt` and never resets. So `daemon_stopped` — the event whose docstring promises "the whole
  * session in a single event" — described a long session that made no calls.
  *
- * Measured 2026-08-10/11: **496 of 499 `daemon_stopped` rows carried `toolCalls: 0`** at a median
+ * In the field almost every `daemon_stopped` row carried `toolCalls: 0`, at a median
  * duration of 30.5 minutes, while `session_progress` for the same daemons carried real histograms.
  * Every funnel computed off the end-of-session event therefore read zero at the exact step this
  * release exists to raise.
@@ -375,16 +375,10 @@ describe('a final summary reports the whole session, not the last window', () =>
 /**
  * Ask for a verdict when the agent has driven the page and not asked for one.
  *
- * Measured 2026-08-10/11 (non-CI), over 170 sessions that made at least one tool call:
- *
- * | | sessions | act | act_and_wait | assert | ever called a verdict tool |
- * |---|---|---|---|---|---|
- * | no verdict | 140 | 269 | 1 | 2 | **3 of 140 (2%)** |
- * | verdict    |  30 |  50 | 87 | 23 | 29 of 30 (97%) |
- *
- * **137 of the 140 verdict-less sessions never called a verdict-producing tool once.** They drove
- * the app 269 times and never asked whether it worked. The product already counted this
- * (`abandonedActions`, non-zero in 58 sessions) and never told the agent.
+ * In the field, sessions split cleanly in two: the ones that produced a verdict called
+ * `act_and_wait` and `assert` freely, and the ones that did not almost never called either tool
+ * even once. **Verdict-less sessions drove the app with `reticle_act` and never asked whether it
+ * worked.** The product already counted this (`abandonedActions`) and never told the agent.
  *
  * One-shot per session, like the pool lease: a hint repeated every call is noise that gets tuned
  * out, and every byte here is paid on a live tool result.
@@ -446,8 +440,8 @@ describe('the agent is asked for a verdict once it has acted without one', () =>
  *   - daemon up, the user's dev server never dialled in  -> the INSTALL is broken
  *   - daemon up, app connected fine, the agent never asked -> the agent didn't think to use it
  *
- * They have opposite fixes. Measured 2026-08-10/11: 88 of 116 users attached an agent and never
- * drove, and we cannot say which of those two it was for a single one of them.
+ * They have opposite fixes. In the field most users who attached an agent never drove, and we
+ * cannot say which of those two it was for a single one of them.
  *
  * A counter on the session summary rather than a new event: the SDK reconnects on every page
  * reload, so an event per connect would be high-volume for a question that one number answers.
@@ -609,7 +603,7 @@ describe('the session records WHICH agent drove it', () => {
 /**
  * Why the agent's work ended — the question every other number raises and none answers.
  *
- * Measured 2026-08-10/11: 20 of the 28 agents that drove an app produced no verdict. Whether that
+ * In the field most agents that drove an app produced no verdict. Whether that
  * is a product failure or a task that simply ended is the difference between a bug and a
  * non-event, and nothing in the payload could tell them apart.
  *

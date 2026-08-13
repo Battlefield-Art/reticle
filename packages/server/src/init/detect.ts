@@ -5,6 +5,14 @@
 
 export const Framework = {
   NEXT: 'next',
+  /**
+   * Nuxt owns its own Vite instance and has no `vite.config`, so it used to fall all the way through
+   * to HTML — and then be handed a React kit and a connect snippet guarded on
+   * `window.location.hostname === 'localhost'`, which cannot work in a Vue app (the guard throws
+   * during SSR, and never runs at all on a non-localhost dev host). Detected in its own right so it
+   * gets the package and the recipe that actually fit it.
+   */
+  NUXT: 'nuxt',
   VITE: 'vite',
   SVELTEKIT: 'sveltekit',
   ASTRO: 'astro',
@@ -70,6 +78,7 @@ export interface Detection {
 const NEXT_CONFIGS = ['next.config.js', 'next.config.mjs', 'next.config.ts', 'next.config.cjs'];
 const VITE_CONFIGS = ['vite.config.js', 'vite.config.ts', 'vite.config.mjs', 'vite.config.mts'];
 const SVELTE_CONFIGS = ['svelte.config.js', 'svelte.config.ts', 'svelte.config.mjs'];
+const NUXT_CONFIGS = ['nuxt.config.ts', 'nuxt.config.js', 'nuxt.config.mjs'];
 const ASTRO_CONFIGS = [
   'astro.config.mjs',
   'astro.config.js',
@@ -139,6 +148,12 @@ function detectFramework(input: DetectInput): Framework {
   const { pkg, configFiles } = input;
   if (depVersion(pkg, 'next') !== undefined || hasAnyConfig(configFiles, NEXT_CONFIGS)) {
     return Framework.NEXT;
+  }
+  // Nuxt before Vite: Nuxt apps can carry a `vite` dependency and even a vite.config, but the
+  // generic Vite path would wire a plugin into a config Nuxt does not read, and inject connect into
+  // an index.html Nuxt does not serve.
+  if (depVersion(pkg, 'nuxt') !== undefined || hasAnyConfig(configFiles, NUXT_CONFIGS)) {
+    return Framework.NUXT;
   }
   // SvelteKit is Vite-based but renders through app.html, so the Vite plugin's index.html injection
   // never fires (verified) — it needs a manual client connect. Check BEFORE the generic Vite branch.

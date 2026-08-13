@@ -215,6 +215,11 @@ async function serveWithHonestExit(parsed: {
 const SERVE_BIND_TIMEOUT_MS = 15_000;
 const PRESENCE_POLL_MS = 150;
 
+/** How long a daemon gets to shut down on its own before `stop` stops asking politely. */
+const GRACEFUL_STOP_MS = 5000;
+/** How long after SIGKILL before we accept the process is not ours to kill and say so. */
+const FORCED_STOP_MS = 2000;
+
 async function waitForPresence(
   port: number,
   want: PortPresence,
@@ -238,16 +243,32 @@ function handleStop(port: number, quiet: boolean): void {
   }
   process.kill(pid, 'SIGTERM');
   const started = Date.now();
+  let escalated = false;
   const poll = setInterval(() => {
     if (!isAlive(pid)) {
       clearInterval(poll);
       removePid(port);
-      if (!quiet) log('reticle_daemon_stopped', { port, pid });
+      if (!quiet) log('reticle_daemon_stopped', { port, pid, ...(escalated ? { escalated } : {}) });
       return;
     }
-    if (Date.now() - started > 5000) {
+    const waited = Date.now() - started;
+    // A daemon that ignores SIGTERM is WEDGED — which is the one situation `stop` exists for. Giving
+    // up here left the port held, the pid file stale, and a human running `kill -9` by hand at the
+    // first two minutes of setup. Escalate instead: graceful first, then unconditional.
+    if (!escalated && waited > GRACEFUL_STOP_MS) {
+      escalated = true;
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        // Already gone between the liveness check and here — the next tick reports it stopped.
+      }
+      return;
+    }
+    if (waited > GRACEFUL_STOP_MS + FORCED_STOP_MS) {
       clearInterval(poll);
-      if (!quiet) log('reticle_daemon_stop_timeout', { port, pid });
+      // Surviving SIGKILL means the pid is not ours to kill (permissions) or is an unkillable
+      // zombie. Neither is retryable, and both need the pid named so a human can act on it.
+      if (!quiet) log('reticle_daemon_stop_timeout', { port, pid, escalated });
       process.exit(1);
     }
   }, 100);
@@ -455,12 +476,22 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
         ...(connected
           ? {}
           : {
+              // Two claims used to live here that this command cannot support. It said the browser
+              // "was launched" — it asked the OS to open a URL and cannot see whether a window
+              // appeared — and it offered "the app may still be loading" as a cause with equal
+              // weight to the real one. It then pointed at `reticle doctor`, whose Chromium check is
+              // about a browser THIS command never uses, so a missing Chromium reads as the
+              // explanation for a session that is missing for an unrelated reason. Both misdirects
+              // were reported from the field, each costing several calls of app-side wiring hunt.
               note:
-                'the browser was launched but no Reticle session appeared. The app may still be ' +
-                'loading, or it is not wired to this bridge — run `reticle doctor`, and check the ' +
-                'app connects on port ' +
-                String(port) +
-                '.',
+                `the URL was handed to the system default browser (this command does not use ` +
+                `Reticle's own Chromium, so a chromium warning from \`reticle doctor\` is unrelated ` +
+                `to this). No Reticle session appeared. By far the likeliest cause is that the app ` +
+                `carries no Reticle SDK, or dials a port other than ${String(port)} — run ` +
+                `\`reticle init\` in the app's directory and restart its dev server. If the app IS ` +
+                `wired, give the page a moment and check the browser console: the SDK announces its ` +
+                `own connect failures there, including the one it refuses to make from a ` +
+                `non-localhost host without allowNonLocalhost.`,
             }),
       });
     })
@@ -525,7 +556,7 @@ function handleDaemonInner(parsed: {
           // The reason rides out on the session summary, which is the only event that fires at this
           // exact moment. The proxy emits the matching `mcp_connection_lost` and cannot know it —
           // it sees a socket end and nothing more, which is how a scheduled idle exit came to make up
-          // 299 of 321 "outages". See SessionSummary.exit.
+          // the large majority of "outages". See SessionSummary.exit.
           .shutdown(reason)
           .then(() => server.close())
           .then(() => {

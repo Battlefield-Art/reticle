@@ -9,6 +9,7 @@ import { captureAct, compileSequenceStep } from '../flows/replay.js';
 import {
   ActionType,
   ActionWarning,
+  CaptureLoss,
   DEFAULT_ASSERT_TIMEOUT_MS,
   InputMode,
   ReticleCommand,
@@ -95,7 +96,7 @@ export const ACT_TOOLS: ToolDef[] = [
         .record(z.unknown())
         .optional()
         .describe(
-          'Action-specific arguments: { value } for fill/select, { text } for type/press, { native: true } to force a trusted native click, { holdMs: N } to keep the pointer DOWN for N ms (hold-to-confirm controls; effect.heldMs reports what was achieved), { confirmDangerous: true } to allow a potentially destructive control — a permission gate, NOT a duration.',
+          'Action-specific arguments: { value } for fill/select, { text } for type/press (the key NAME, e.g. Escape or Tab), { toRef } for drag (the ref to drop ON — without it the drag lands nowhere), { native: true } to force a trusted native click, { holdMs: N } to keep the pointer DOWN for N ms (hold-to-confirm controls; effect.heldMs reports what was achieved), { confirmDangerous: true } to allow a potentially destructive control — a permission gate, NOT a duration.',
         ),
       refuseWhenThrottled: z
         .boolean()
@@ -299,7 +300,7 @@ export const ACT_TOOLS: ToolDef[] = [
         .record(z.unknown())
         .optional()
         .describe(
-          'Action-specific arguments: { value } for fill/select, { text } for type/press, { confirmDangerous: true } for a potentially destructive control.',
+          'Action-specific arguments: { value } for fill/select, { text } for type/press (the key NAME, e.g. Escape or Tab), { toRef } for drag (the ref to drop ON — without it the drag lands nowhere), { confirmDangerous: true } for a potentially destructive control.',
         ),
       predicate: PredicateSchema.optional().describe(
         'Alias for `until` (the name reticle_assert / reticle_wait_for use).',
@@ -427,11 +428,6 @@ export const ACT_TOOLS: ToolDef[] = [
       assertNativeInputSupported(asRecord(args['args']));
 
       const since = session.elapsed();
-      // `dropped` is cumulative for the SESSION, so comparing against a pre-action reading is what
-      // asks "did the buffer lose anything while THIS action was observed?" — the question the
-      // honesty block means. Reading the raw total pinned every later verdict to `unknown` after a
-      // single early eviction (measured on the Next.js demo at dropped:51, windows intact).
-      const droppedBefore = session.bufferHealth().dropped;
       // The cursor + effect are marked after the act dispatches (below) — a refused act leaves none.
       // The attribution window stays open across the settle wait below, so post-dispatch async events
       // (the whole point of act_and_wait) attribute to this action. finishAction fires after the wait.
@@ -511,12 +507,28 @@ export const ACT_TOOLS: ToolDef[] = [
         const impeachingNotes = [impeaching.note, gapNote].filter(
           (n): n is string => n !== undefined,
         );
+        const bufferLost = session.lostSince(since);
+        // Which loss, as an enum, beside the prose that describes it. Classified here because this is
+        // the only place that knows the three apart: our buffer, our transport, and the page's own
+        // boundaries. See `CaptureLoss`.
+        const losses = [
+          ...(bufferLost ? [CaptureLoss.BUFFER_LOSS] : []),
+          ...(gapNote === undefined ? [] : [CaptureLoss.TRANSPORT_GAP]),
+          ...(impeaching.note === undefined ? [] : [CaptureLoss.BLIND_SPOT]),
+        ];
         const honesty = buildHonestyBlock({
           grade: gradeOf(gradedLinks),
           attribution: 'window',
-          truncated: session.bufferHealth().dropped > droppedBefore,
+          // Did the buffer lose scarce evidence FROM THIS WINDOW — not "did it evict anything while
+          // the action ran", which was the previous rule and which is true on essentially every live
+          // page. Age eviction retires everything past 60s on every push, and the churn floor is
+          // sacrificed on purpose; neither costs this verdict a single event it needed. In the
+          // field this made `unclean_capture` the dominant cause of `unknown`, reported for
+          // evictions that happened outside the window they impeached.
+          truncated: bufferLost,
           coveragePartial: Coverage.PARTIAL === coverage.coverage,
           ...(0 === impeachingNotes.length ? {} : { blindSpots: impeachingNotes }),
+          losses,
         });
         const capsuleSaved = await saveFailedAssertCapsule({
           deps,

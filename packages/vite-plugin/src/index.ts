@@ -197,11 +197,17 @@ export interface ReticleVitePlugin {
  */
 export interface ViteDevServerLike {
   middlewares: {
-    use: (handler: (req: { url?: string }, res: unknown, next: () => void) => void) => void;
+    // METHOD syntax throughout, deliberately. A property-style `(mod: object) => void` is checked
+    // strictly (contravariantly) in its parameters, so widening a parameter to `object` makes the
+    // type HARDER to satisfy, not easier — and Vite's real server stops being assignable, which
+    // red-builds every project that typechecks its config. Methods are checked bivariantly, which is
+    // the latitude a structural stand-in is asking for in the first place. See
+    // vite-types-assignable.test.ts, which fails at `tsc` if this drifts back.
+    use(handler: (req: { url?: string | undefined }, res: unknown, next: () => void) => void): void;
   };
   moduleGraph: {
-    getModuleById: (id: string) => object | undefined;
-    invalidateModule: (mod: object) => void;
+    getModuleById(id: string): object | undefined;
+    invalidateModule(mod: object): void;
   };
 }
 

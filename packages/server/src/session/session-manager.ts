@@ -190,6 +190,18 @@ export class SessionManager {
     this.#noSessionHint = hint;
   }
 
+  /**
+   * The same diagnosis, for a caller that is ASKING about sessions rather than failing to get one.
+   *
+   * `reticle_sessions` is the first thing an agent reaches for and it returned a bare empty array —
+   * confidently, with nothing to act on. An agent cannot tell an empty list apart from a daemon that
+   * is down, an app with no SDK, or a tab that was closed, so it stops there. The diagnosis was
+   * already computed for the error path; this exposes it to the read path too.
+   */
+  noSessionHint(): string | undefined {
+    return this.#noSessionHint?.();
+  }
+
   /** Whether any session has connected since this daemon booted — half the diagnosis. */
   #everConnected = false;
 

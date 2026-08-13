@@ -40,6 +40,7 @@ type FakeSession = Session & SessionProbes;
 function fakeSession(opts: { state?: SessionState; inbox?: string[] }): FakeSession {
   let state = opts.state ?? SessionState.ACTIVE;
   const inbox: string[] = [...(opts.inbox ?? [])];
+  const history: InboxMessage[] = [];
   const sent: SentCommand[] = [];
   const pushed: PushedPresenter[] = [];
   const stub: Partial<Session> = {
@@ -50,6 +51,7 @@ function fakeSession(opts: { state?: SessionState; inbox?: string[] }): FakeSess
     beginAction: () => 'a1',
     finishAction: () => undefined,
     bufferHealth: () => ({ total: 0, dropped: 0 }),
+    lostSince: () => false,
     // Coverage is asked of the session now, not inferred from a window of events.
     blindSpots: () => ({}),
     // A failing verdict can now name the last acted control's file.
@@ -73,7 +75,14 @@ function fakeSession(opts: { state?: SessionState; inbox?: string[] }): FakeSess
       state = next;
       pushed.push(text === undefined ? { state: next } : { state: next, text });
     },
-    drainInbox: (): InboxMessage[] => inbox.splice(0, inbox.length).map((text) => ({ text, t: 0 })),
+    drainInbox: (): InboxMessage[] => {
+      const taken = inbox.splice(0, inbox.length).map((text) => ({ text, t: 0 }));
+      history.push(...taken);
+      return taken;
+    },
+    // Delivery is destructive but must not be forgetful: an empty poll has to be able to say what
+    // the human already said, or it reads as "they said nothing".
+    inboxHistory: (): readonly InboxMessage[] => history,
     inboxSize: () => inbox.length,
     pushPresenter: (next: SessionState, text?: string) => {
       pushed.push(text === undefined ? { state: next } : { state: next, text });

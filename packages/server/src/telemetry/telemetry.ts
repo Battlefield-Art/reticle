@@ -38,6 +38,7 @@ import {
   type InitOutcome,
   type McpConnection,
   type McpOutage,
+  type AppInstrumentation,
   type ProjectProfile,
   type SessionSummary,
   type TelemetryActor,
@@ -301,6 +302,8 @@ export interface TelemetryExtra {
   bug?: BugFound;
   /** `mcp_connection_lost`: the agent lost its tools — which stage, and why. */
   outage?: McpOutage;
+  /** `app_instrumented`: an app carrying the SDK reached this daemon for the first time. */
+  instrumentation?: AppInstrumentation;
 }
 
 export interface Telemetry {
@@ -416,6 +419,7 @@ export const createTelemetry = (opts: {
       ...(extra?.init !== undefined ? { init: extra.init } : {}),
       ...(extra?.bug !== undefined ? { bug: extra.bug } : {}),
       ...(extra?.outage !== undefined ? { outage: extra.outage } : {}),
+      ...(extra?.instrumentation !== undefined ? { instrumentation: extra.instrumentation } : {}),
     };
     // Map the core contract onto PostHog's capture shape: id/name/time move up, the rest are properties.
     // The feedback body is FLATTENED into `feedback_*` properties rather than sent as a nested object:
@@ -438,6 +442,7 @@ export const createTelemetry = (opts: {
       init,
       bug,
       outage,
+      instrumentation,
       ...rest
     } = event;
     // `$session_id` is PostHog's OWN session property, so sending ours under that name lights up
@@ -468,6 +473,7 @@ export const createTelemetry = (opts: {
       init,
       bug,
       outage,
+      instrumentation,
     };
     for (const [prefix, block] of Object.entries(blocks)) {
       for (const [key, value] of Object.entries(block ?? {})) {

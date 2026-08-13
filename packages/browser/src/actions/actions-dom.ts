@@ -129,9 +129,41 @@ function makeDataTransfer(data: unknown): DataTransfer | null {
   return dt;
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
+/** `buttons` bitmask for the primary button: 1 while held, 0 once released. */
+const BUTTON_HELD = 1;
+const BUTTON_RELEASED = 0;
+
+/**
+ * How many intermediate moves a drag emits.
+ *
+ * Enough to cross any realistic `activationConstraint: { distance: N }` while a sensor is watching,
+ * and few enough that a drag stays a handful of frames rather than an animation.
+ */
+const DRAG_STEPS = 5;
+
+/** The centre of an element in client coordinates — what a real pointer would be over. */
+function centreOf(el: HTMLElement): Point {
+  const box = el.getBoundingClientRect();
+  return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+}
+
+/** A point `t` of the way from `a` to `b`, rounded — pointer coordinates are integers in practice. */
+function lerp(a: Point, b: Point, t: number): Point {
+  return { x: Math.round(a.x + (b.x - a.x) * t), y: Math.round(a.y + (b.y - a.y) * t) };
+}
+
 /**
  * Pointer-based drag (dnd-kit / react-beautiful-dnd) + best-effort HTML5 DnD. Async: yields a
  * frame between phases so React commits state between steps (fixes stale-closure handlers).
+ *
+ * Dispatches along a PATH with real client coordinates and a held button. Without those a
+ * geometry-based library resolves the drop target as the source, so the action reports success over
+ * an app that did not change — a false green produced by the tool rather than caught by it.
  */
 export async function dragElement(
   source: HTMLElement,
@@ -139,21 +171,47 @@ export async function dragElement(
   data: unknown,
 ): Promise<boolean> {
   const dest = target ?? source;
-  const fire = (el: Element, type: string): void => {
+  const from = centreOf(source);
+  const to = centreOf(dest);
+  /**
+   * Dispatch ONE pointer/mouse pair with real coordinates and button state.
+   *
+   * Everything here was missing before, and each omission breaks a different, standard library
+   * pattern: without coordinates a geometry-based collision resolver sees a zero delta and reports
+   * the source as its own drop target; without `buttons: 1` the usual "was the mouse released?"
+   * guard (`event.buttons === 0`) bails out mid-drag.
+   */
+  const fire = (el: Element, type: string, at: Point, buttons: number): void => {
+    const init = {
+      bubbles: true,
+      cancelable: true,
+      clientX: at.x,
+      clientY: at.y,
+      screenX: at.x,
+      screenY: at.y,
+      buttons,
+      button: 0,
+    };
     if ('function' === typeof PointerEvent && type.startsWith('pointer')) {
-      el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new PointerEvent(type, { ...init, pointerId: 1, isPrimary: true }));
     } else {
-      el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new MouseEvent(type, init));
     }
   };
-  fire(source, 'pointerdown');
-  fire(source, 'mousedown');
+  fire(source, 'pointerdown', from, BUTTON_HELD);
+  fire(source, 'mousedown', from, BUTTON_HELD);
   await nativeFrame();
-  fire(dest, 'pointermove');
-  fire(dest, 'mousemove');
-  await nativeFrame();
-  fire(dest, 'pointerup');
-  fire(dest, 'mouseup');
+  // A path, not a jump. `activationConstraint: { distance: N }` is the standard way to keep a
+  // draggable card clickable, and a sensor only starts a drag once it has SEEN the pointer travel
+  // that far — which a single move from A to B never shows it.
+  for (let step = 1; step <= DRAG_STEPS; step += 1) {
+    const at = lerp(from, to, step / DRAG_STEPS);
+    fire(dest, 'pointermove', at, BUTTON_HELD);
+    fire(dest, 'mousemove', at, BUTTON_HELD);
+    await nativeFrame();
+  }
+  fire(dest, 'pointerup', to, BUTTON_RELEASED);
+  fire(dest, 'mouseup', to, BUTTON_RELEASED);
 
   let dropPrevented = false;
   if ('function' === typeof DragEvent) {

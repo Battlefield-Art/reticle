@@ -222,14 +222,112 @@ function requiresDangerousConfirmation(text: string): boolean {
   return isDangerousActionText(text);
 }
 
+/**
+ * Which key a `press` is asking for.
+ *
+ * `text` FIRST, because that is what the tool description documents ("{ text } for type/press") and
+ * therefore what agents send. The implementation read only `args['key']` and defaulted to `'Enter'`,
+ * so the documented call — `press` with `{ text: 'Escape' }` — silently dispatched **Enter** and
+ * reported success. Two field reports blamed "synthetic events not reaching the app"; the events
+ * arrived perfectly and said the wrong thing.
+ *
+ * Enter is the worst possible substitute to pick by accident: on a focused field inside a form it
+ * SUBMITS it, so a request to dismiss a dialog could file the form behind it. `key` still works —
+ * it is what anyone reading the source would have sent — and the default only applies when neither
+ * was named.
+ */
+function pressKey(args: Record<string, unknown>): string {
+  const text = args['text'];
+  if ('string' === typeof text && text.length > 0) return text;
+  return asString(args['key'], 'Enter');
+}
+
+/**
+ * The PHYSICAL key identity — `event.code` — derived from the logical key.
+ *
+ * A real browser always sends both, and a meaningful class of library reads only `code`, because it
+ * is the layout-independent one: dnd-kit's KeyboardSensor matches its activation and arrow keys on
+ * it, and so does react-aria. We sent `key` alone, so those handlers simply never matched — the
+ * event fired, the listener ran, the guard failed, and the action reported dispatched over an app
+ * that did nothing. Reported from the field as a keyboard drag that could be neither started nor
+ * steered.
+ *
+ * An explicit `code` always wins: a caller driving a non-US layout knows something this derivation
+ * cannot. And an unrecognised multi-character key yields `''` rather than a guess — a wrong `code`
+ * is worse than none, because a handler will act on it.
+ */
+function pressCode(args: Record<string, unknown>, key: string): string {
+  const explicit = args['code'];
+  if ('string' === typeof explicit && explicit.length > 0) return explicit;
+  if (' ' === key) return 'Space';
+  if (1 === key.length) {
+    if (/[a-z]/i.test(key)) return `Key${key.toUpperCase()}`;
+    if (/[0-9]/.test(key)) return `Digit${key}`;
+    return '';
+  }
+  // Named keys — 'Enter', 'Escape', 'Tab', 'ArrowDown' — already ARE their own code.
+  return /^[A-Z][A-Za-z0-9]*$/.test(key) && KNOWN_NAMED_KEYS.has(key) ? key : '';
+}
+
+/**
+ * Named keys whose `code` equals their `key`. An allow-list rather than a shape test: `Zzz` looks
+ * exactly like `Tab` to a regex, and inventing `code: "Zzz"` would be a confident fabrication.
+ */
+const KNOWN_NAMED_KEYS: ReadonlySet<string> = new Set([
+  'Enter',
+  'Escape',
+  'Tab',
+  'Backspace',
+  'Delete',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Insert',
+  'F1',
+  'F2',
+  'F3',
+  'F4',
+  'F5',
+  'F6',
+  'F7',
+  'F8',
+  'F9',
+  'F10',
+  'F11',
+  'F12',
+]);
+
+/**
+ * The drop target a `drag` names, under either spelling.
+ *
+ * `toRef` is what the source has always read and it appears NOWHERE in the tool description an
+ * agent sees — the `args` sentence names `value`, `text`, `native`, `holdMs` and `confirmDangerous`
+ * and omits the one argument without which this action cannot do its job. So agents guess, and
+ * `target` is the guess they make. Accepting it costs nothing and removes a whole class of
+ * silently-target-less drags; the description now documents `toRef` as well.
+ */
+function dragTargetRef(args: Record<string, unknown>): string {
+  const named = asString(args['toRef']);
+  return '' !== named ? named : asString(args['target']);
+}
+
 function assertActionAllowed(el: HTMLElement, action: string, args: Record<string, unknown>): void {
   const canTrigger =
     action === ActionType.CLICK ||
     action === ActionType.DBLCLICK ||
     action === ActionType.DRAG ||
     action === ActionType.SUBMIT ||
-    (action === ActionType.PRESS && 'Enter' === asString(args['key'], 'Enter'));
-  const dragTarget = action === ActionType.DRAG ? refs.resolve(asString(args['toRef'])) : null;
+    // Read through the SAME resolver as the dispatch below. Reading a different argument here meant
+    // the destructive-action guard classified the call by a key nobody had asked for.
+    (action === ActionType.PRESS && 'Enter' === pressKey(args));
+  // Same resolver as the dispatch below, so the destructive-action guard cannot classify a drag
+  // by a target the dispatch will not use.
+  const dragTarget = action === ActionType.DRAG ? refs.resolve(dragTargetRef(args)) : null;
   const context = isHtmlElement(dragTarget)
     ? `${dangerousActionContext(el)} ${dangerousActionContext(dragTarget)}`
     : dangerousActionContext(el);
@@ -465,13 +563,38 @@ async function dispatchOther(
       }
       throw new Error(`cannot select on a <${el.tagName.toLowerCase()}>`);
     case ActionType.CHECK:
-    case ActionType.UNCHECK:
-      if (isInput(el)) {
-        el.checked = action === ActionType.CHECK;
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        return false;
+    case ActionType.UNCHECK: {
+      if (!isInput(el)) throw new Error(`cannot (un)check a <${el.tagName.toLowerCase()}>`);
+      // Same rule as the readonly/disabled refusal on fill: if a real user could not do it, forcing
+      // it is not a test, it is damage — and a green over it is a false one.
+      if (!enabledOf(el)) {
+        throw new Error(
+          `cannot ${action} a disabled control — a real user could not, so neither will Reticle`,
+        );
       }
-      throw new Error(`cannot (un)check a <${el.tagName.toLowerCase()}>`);
+      const wanted = action === ActionType.CHECK;
+      // Already there: report success and touch nothing. `check` means "end up checked", not
+      // "toggle", so clicking here would flip it OFF and hand the app an event no user produced.
+      if (el.checked === wanted) return false;
+      // `click()`, never `el.checked = …`. Assigning the property flips the pixel and tells no
+      // framework: React binds a checkbox's onChange to the CLICK event, and its value tracker
+      // dedups the change it would otherwise synthesise from a direct assignment — so a controlled
+      // `checked={state}` box never heard from us while the action reported success. `click()` is
+      // the one DOM call that runs the element's ACTIVATION BEHAVIOUR (the native toggle) as well
+      // as firing the event; `dispatchEvent` does not.
+      let prevented = false;
+      // On window, so it runs after every listener on the element itself whenever they were added.
+      const probe = (e: Event): void => {
+        prevented = e.defaultPrevented;
+      };
+      window.addEventListener('click', probe, { once: true, capture: false });
+      try {
+        el.click();
+      } finally {
+        window.removeEventListener('click', probe, false);
+      }
+      return prevented;
+    }
     case ActionType.SUBMIT: {
       const form = isForm(el) ? el : el.closest('form');
       if (null === form) throw new Error('no form to submit');
@@ -479,11 +602,12 @@ async function dispatchOther(
       return false; // requestSubmit returns void; the internal submit event is unobservable.
     }
     case ActionType.PRESS: {
-      const key = asString(args['key'], 'Enter');
+      const key = pressKey(args);
+      const code = pressCode(args, key);
       const down = el.dispatchEvent(
-        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+        new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true }),
       );
-      el.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key, code, bubbles: true }));
       return !down;
     }
     case ActionType.SCROLL_INTO_VIEW:
@@ -508,11 +632,22 @@ async function dispatchOther(
       return !inputOk;
     }
     case ActionType.DRAG: {
-      const toRef = asString(args['toRef']);
+      const toRef = dragTargetRef(args);
       // asString falls back to '' (never undefined), so the old `!== undefined` was always true and
-      // handed '' to refs.resolve. A drag with no target ref is a free drag — resolve nothing.
-      const resolved = toRef !== '' ? refs.resolve(toRef) : null;
-      return await dragElement(el, isHtmlElement(resolved) ? resolved : null, args['data']);
+      // handed '' to refs.resolve. A drag with NO target named is a free drag — resolve nothing.
+      if ('' === toRef) return await dragElement(el, null, args['data']);
+      // A target WAS named and did not resolve. That is a malformed call, not a free drag: dragging
+      // nowhere and reporting `ok: true` is a false green, and it is the one this action produced
+      // in the field — the drop target argument is undocumented, the agent guessed a name, the guess
+      // read as "no target", and the drag landed nowhere while every effect field looked healthy.
+      const resolved = refs.resolve(toRef);
+      if (!isHtmlElement(resolved)) {
+        throw new Error(
+          `drag target '${echoRef(toRef)}' did not resolve to an element — pass a ref from ` +
+            'reticle_snapshot or reticle_query as args.toRef (alias: args.target)',
+        );
+      }
+      return await dragElement(el, resolved, args['data']);
     }
     default:
       throw new Error(`unknown action '${action}'`);

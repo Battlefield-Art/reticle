@@ -186,7 +186,17 @@ export class Bridge {
   readonly #helloTimeoutMs: number;
   #pendingConnections = 0;
   #onReplay: ReplayRequestHandler | undefined;
-  #onSessionReady: SessionReadyHandler | undefined;
+  /**
+   * EVERY session-ready handler, not the most recent one.
+   *
+   * This was a single slot, and a second `attachSessionReady` silently replaced the first. Nothing
+   * threw and nothing went red — the earlier handler simply never ran again. It cost the
+   * `app_instrumented` metric on its first day: the call was wired correctly, registered before the
+   * flow-chip handler, and overwritten by it, so the event that measures whether an app was ever
+   * instrumented was permanently absent. Found by connecting a real session to a real daemon, which
+   * is the only thing that could have found it.
+   */
+  readonly #onSessionReady: SessionReadyHandler[] = [];
   #onSessionCreate: ((session: Session) => void) | undefined;
   /** Fired when a session is removed — flushes its journal tail + persists what it learned. */
   #onSessionEnd: ((session: Session) => Promise<void>) | undefined;
@@ -449,7 +459,14 @@ export class Bridge {
         } catch {
           /* never let a counter interfere with an app connecting */
         }
-        this.#onSessionReady?.(session); // daemon pushes the replayable-flow list to the panel
+        // Each handler is independent, so one throwing must not cost the others their turn.
+        for (const onReady of this.#onSessionReady) {
+          try {
+            onReady(session);
+          } catch {
+            /* a session-ready observer must never break the session it observes */
+          }
+        }
         return;
       }
       if (session === undefined) return;
@@ -534,9 +551,14 @@ export class Bridge {
     this.#onReplay = handler;
   }
 
-  /** Register a callback fired when a browser session connects (to push it the replayable flows). */
+  /**
+   * Register a callback fired when a browser session connects.
+   *
+   * ADDITIVE: every registered handler runs. Assigning to one slot meant the last caller silently
+   * won and every earlier one stopped firing — see the field declaration.
+   */
   attachSessionReady(handler: SessionReadyHandler): void {
-    this.#onSessionReady = handler;
+    this.#onSessionReady.push(handler);
   }
 
   /** Register a callback fired the instant a session is created — used to attach the durable journal. */
