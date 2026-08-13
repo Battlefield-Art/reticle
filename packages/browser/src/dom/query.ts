@@ -290,6 +290,15 @@ function findCandidates(query: ElementQuery): { candidates: HTMLElement[]; scope
   // A given-but-missing scope searches NOTHING — never the whole page. The empty result plus the
   // scopeMissing flag is what keeps "gone scope" distinct from "absent element".
   if (null === container) return { candidates: [], scopeMissing: true };
+  // `self: true` asks for the container ITSELF, which every other path excludes by construction.
+  // A layout element with no role, name, testid or own text is unreachable by any semantic locator,
+  // and it is routinely the element carrying the handler — "click the empty space in this row" is a
+  // real user action that was simply not expressible. Requires a scope: without one there is no root
+  // to return, and answering `document.body` would be a wrong answer wearing the shape of one.
+  if (true === query.self) {
+    if (query.scope === undefined) return { candidates: [], scopeMissing };
+    return { candidates: isIgnored(container) ? [] : [container], scopeMissing };
+  }
   const seen = new Set<HTMLElement>();
   const out: HTMLElement[] = [];
   const collect = (els: HTMLElement[]): void => {

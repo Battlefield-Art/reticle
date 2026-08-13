@@ -246,6 +246,12 @@ const RAW_TOOLS: ToolDef[] = [
         .string()
         .optional()
         .describe('CSS selector or element ref to restrict the search to a subtree.'),
+      self: z
+        .boolean()
+        .optional()
+        .describe(
+          'Return the `scope` element ITSELF instead of searching inside it. Use when the target is a plain layout container with no role, name, testid or text of its own — which is routinely the element that carries the handler, and is otherwise unreachable because every query excludes its own scope root. Requires `scope`.',
+        ),
       attrs: z
         .array(z.string())
         .optional()
@@ -374,7 +380,13 @@ const RAW_TOOLS: ToolDef[] = [
         // The handler forwards an explicit allowlist, so a new input is silently dropped unless it is
         // added here — the browser saw no `attrs` and returned undefined while the unit tests, which
         // call matchQuery directly, passed. Schema plus implementation is not the whole wire.
+        //
+        // It happened again with `self`, in the same session that wrote this comment: declared on the
+        // tool, implemented in the browser, verified by unit tests that call `runQuery` directly, and
+        // dropped here — so the live call returned zero matches with no error. `query-forwarding.test.ts`
+        // now asserts the payload, because a comment is not a guard.
         attrs: args['attrs'],
+        self: args['self'],
       }).then((result) =>
         withSizeCost(
           paginateQueryResult(result, asNumber(args['limit']), true === args['count_only']),

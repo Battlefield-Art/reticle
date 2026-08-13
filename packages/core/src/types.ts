@@ -38,6 +38,16 @@ export const ElementQuerySchema = z.object({
     .optional(),
   /** CSS selector or ref to scope the search. */
   scope: z.string().optional(),
+  /**
+   * Return the `scope` element ITSELF rather than searching inside it.
+   *
+   * Every other path excludes the scope root by construction, so a layout container with no role,
+   * name, testid or text of its own was unreachable — and that is routinely the element carrying the
+   * handler. Reported from the field: "click the empty region of this row" is an ordinary user
+   * action (dismiss, deselect, close, marquee-select) that could not be expressed at all, and the
+   * verification was handed back to the human. Requires `scope`.
+   */
+  self: z.boolean().optional(),
 });
 export type ElementQuery = z.infer<typeof ElementQuerySchema>;
 

@@ -243,6 +243,66 @@ function pressKey(args: Record<string, unknown>): string {
 }
 
 /**
+ * The PHYSICAL key identity — `event.code` — derived from the logical key.
+ *
+ * A real browser always sends both, and a meaningful class of library reads only `code`, because it
+ * is the layout-independent one: dnd-kit's KeyboardSensor matches its activation and arrow keys on
+ * it, and so does react-aria. We sent `key` alone, so those handlers simply never matched — the
+ * event fired, the listener ran, the guard failed, and the action reported dispatched over an app
+ * that did nothing. Reported from the field as a keyboard drag that could be neither started nor
+ * steered.
+ *
+ * An explicit `code` always wins: a caller driving a non-US layout knows something this derivation
+ * cannot. And an unrecognised multi-character key yields `''` rather than a guess — a wrong `code`
+ * is worse than none, because a handler will act on it.
+ */
+function pressCode(args: Record<string, unknown>, key: string): string {
+  const explicit = args['code'];
+  if ('string' === typeof explicit && explicit.length > 0) return explicit;
+  if (' ' === key) return 'Space';
+  if (1 === key.length) {
+    if (/[a-z]/i.test(key)) return `Key${key.toUpperCase()}`;
+    if (/[0-9]/.test(key)) return `Digit${key}`;
+    return '';
+  }
+  // Named keys — 'Enter', 'Escape', 'Tab', 'ArrowDown' — already ARE their own code.
+  return /^[A-Z][A-Za-z0-9]*$/.test(key) && KNOWN_NAMED_KEYS.has(key) ? key : '';
+}
+
+/**
+ * Named keys whose `code` equals their `key`. An allow-list rather than a shape test: `Zzz` looks
+ * exactly like `Tab` to a regex, and inventing `code: "Zzz"` would be a confident fabrication.
+ */
+const KNOWN_NAMED_KEYS: ReadonlySet<string> = new Set([
+  'Enter',
+  'Escape',
+  'Tab',
+  'Backspace',
+  'Delete',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Insert',
+  'F1',
+  'F2',
+  'F3',
+  'F4',
+  'F5',
+  'F6',
+  'F7',
+  'F8',
+  'F9',
+  'F10',
+  'F11',
+  'F12',
+]);
+
+/**
  * The drop target a `drag` names, under either spelling.
  *
  * `toRef` is what the source has always read and it appears NOWHERE in the tool description an
@@ -543,10 +603,11 @@ async function dispatchOther(
     }
     case ActionType.PRESS: {
       const key = pressKey(args);
+      const code = pressCode(args, key);
       const down = el.dispatchEvent(
-        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+        new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true }),
       );
-      el.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key, code, bubbles: true }));
       return !down;
     }
     case ActionType.SCROLL_INTO_VIEW:
