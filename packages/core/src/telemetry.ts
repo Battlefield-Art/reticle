@@ -540,6 +540,24 @@ export const McpConnectionSchema = z.object({
 export type McpConnection = z.infer<typeof McpConnectionSchema>;
 
 /**
+ * `app_instrumented`: an app carrying the SDK reached this daemon for the first time.
+ *
+ * The install has two halves — the MCP server registered so the agent has the tools, and the SDK
+ * loaded by a running page so there is something to look at — and this is the only signal for the
+ * second. Deliberately carries NO stack and no framework: `project_profiled` already reports both
+ * for the same daemon run, and the two join on `sessionId`.
+ */
+export const AppInstrumentationSchema = z.object({
+  /** Whether `reticle init` had been run in this directory (a projectId is stamped). */
+  initialized: z.boolean(),
+  /** Whether an MCP client was already attached when the app arrived. */
+  agentAttached: z.boolean(),
+  /** How long the daemon had been up. Large values mean Reticle sat there with nothing wired. */
+  msToFirstApp: z.number().int().nonnegative(),
+});
+export type AppInstrumentation = z.infer<typeof AppInstrumentationSchema>;
+
+/**
  * WHICH stage of an MCP outage this is. Reported at most twice per proxy process, and the two are
  * different facts: `first` says the session lost its tools at all, `budget_spent` says the proxy
  * stopped retrying and never came back on its own.
@@ -692,5 +710,7 @@ export const TelemetryEventSchema = z.object({
   bug: BugFoundSchema.optional(),
   /** Only on `mcp_connection_lost`: which stage of the outage, why, and after how many retries. */
   outage: McpOutageSchema.optional(),
+  /** Only on `app_instrumented`: the install's second half finally happening. */
+  instrumentation: AppInstrumentationSchema.optional(),
 });
 export type TelemetryEvent = z.infer<typeof TelemetryEventSchema>;

@@ -23,13 +23,16 @@ import { fileURLToPath } from 'node:url';
 const DIST = join(fileURLToPath(new URL('../../../packages/server/dist', import.meta.url)));
 const PORT = 9960;
 
-// Events that happen inside a DAEMON RUN and therefore carry `sessionId`. Mirrors core's
-// isSessionScoped; a one-shot CLI command is not a session and must not invent one.
-const SESSION_SCOPED_EVENTS = new Set([
-  'daemon_started', 'daemon_stopped', 'session_progress', 'mcp_client_connected',
-  'project_profiled', 'verification_completed', 'bug_found', 'runtime_crashed',
-  'feedback_submitted',
-]);
+// Events that happen inside a DAEMON RUN and therefore carry `sessionId`. IMPORTED from core, not
+// re-listed: this used to be a hand-copied Set whose own comment said "mirrors core's
+// isSessionScoped", and the moment core gained a kind the copy was silently wrong — the new event
+// fell into the UNSCOPED bucket, where the assertions are the opposite ones. A vocabulary copied
+// out of core is the exact drift the telemetry contract forbids, and it is worst here, in the gate
+// that exists to catch telemetry going missing.
+const { isSessionScoped } = await import(
+  new URL('../../../packages/core/dist/index.js', import.meta.url).href
+);
+const SESSION_SCOPED_EVENTS = { has: (event) => isSessionScoped(event) };
 
 const captured = [];
 const server = createServer((req, res) => {

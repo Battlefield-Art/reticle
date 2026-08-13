@@ -38,6 +38,7 @@ import {
   type InitOutcome,
   type McpConnection,
   type McpOutage,
+  type AppInstrumentation,
   type ProjectProfile,
   type SessionSummary,
   type TelemetryActor,
@@ -305,21 +306,6 @@ export interface TelemetryExtra {
   instrumentation?: AppInstrumentation;
 }
 
-/**
- * `app_instrumented`: the app half of the install completed.
- *
- * No stack and no framework here on purpose — `project_profiled` already carries both for the same
- * daemon run, and a second copy is a second thing to keep in step.
- */
-export interface AppInstrumentation {
-  /** Whether `reticle init` had been run in this directory (a projectId is stamped). */
-  initialized: boolean;
-  /** Whether an MCP client was already attached when the app arrived. */
-  agentAttached: boolean;
-  /** How long the daemon had been up. Large values mean Reticle sat there with nothing wired. */
-  msToFirstApp: number;
-}
-
 export interface Telemetry {
   /**
    * Fire one event, non-blocking. `detach: true` hands the send to a disowned child so a short-lived
@@ -433,6 +419,7 @@ export const createTelemetry = (opts: {
       ...(extra?.init !== undefined ? { init: extra.init } : {}),
       ...(extra?.bug !== undefined ? { bug: extra.bug } : {}),
       ...(extra?.outage !== undefined ? { outage: extra.outage } : {}),
+      ...(extra?.instrumentation !== undefined ? { instrumentation: extra.instrumentation } : {}),
     };
     // Map the core contract onto PostHog's capture shape: id/name/time move up, the rest are properties.
     // The feedback body is FLATTENED into `feedback_*` properties rather than sent as a nested object:
@@ -455,6 +442,7 @@ export const createTelemetry = (opts: {
       init,
       bug,
       outage,
+      instrumentation,
       ...rest
     } = event;
     // `$session_id` is PostHog's OWN session property, so sending ours under that name lights up
@@ -485,6 +473,7 @@ export const createTelemetry = (opts: {
       init,
       bug,
       outage,
+      instrumentation,
     };
     for (const [prefix, block] of Object.entries(blocks)) {
       for (const [key, value] of Object.entries(block ?? {})) {
