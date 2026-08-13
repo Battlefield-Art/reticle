@@ -69,8 +69,20 @@ const fixtures = [];
 
 /** Spawn a fixture server; track it so teardown() can stop it. stdio ignored to keep bench output clean. */
 function spawnFixture(label, command, args, env) {
-  const child = spawn(command, args, { env: { ...process.env, ...env }, stdio: 'ignore' });
+  // `detached` so the child leads its own PROCESS GROUP. `pnpm --filter … exec vite` is a wrapper
+  // around a grandchild, and SIGTERM to the wrapper leaves vite running — the orphan then holds the
+  // port, the next run's own vite dies on --strictPort, and waitForHttp sees the ORPHAN answer 200
+  // and declares the fixtures ready. The battery then drives a process nobody owns, which later
+  // exits and takes every remaining pass with it. That is the whole reason bench-all has been
+  // unable to complete: the passes reported "measured NOTHING" and the numbers looked like a
+  // verifier regression when the fixture had simply gone away underneath them.
+  const child = spawn(command, args, {
+    env: { ...process.env, ...env },
+    stdio: 'ignore',
+    detached: true,
+  });
   child.on('error', (error) => console.error(`fixture ${label} failed to spawn: ${error.message}`));
+  child.label = label;
   fixtures.push(child);
   return child;
 }
@@ -95,9 +107,15 @@ function teardownFixtures() {
   while (fixtures.length > 0) {
     const child = fixtures.pop();
     try {
-      child.kill('SIGTERM');
+      // Kill the GROUP (negative pid), not just the direct child — see spawnFixture. Killing the
+      // wrapper alone is what orphaned a dev server that then outlived the run.
+      process.kill(-child.pid, 'SIGTERM');
     } catch {
-      /* already gone */
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        /* already gone */
+      }
     }
   }
 }
@@ -122,6 +140,18 @@ async function bootFixtures() {
     waitForHttp(`http://localhost:${API_PORT}/api/health`, FIXTURE_READY_MS),
     waitForHttp(`http://localhost:${DEMO_PORT}/`, FIXTURE_READY_MS),
   ]);
+  // An HTTP 200 is not proof OUR fixture is up: an orphan from a previous run answers identically,
+  // and `--strictPort` means our own vite exited rather than sharing the port. Assert the children we
+  // spawned are still alive, so "ready" means ready-and-ours.
+  const dead = fixtures.filter((c) => c.exitCode !== null || c.signalCode !== null);
+  if (dead.length > 0) {
+    teardownFixtures();
+    console.error(
+      `bench-all: fixture(s) exited during boot: ${dead.map((c) => c.label).join(', ')} — ` +
+        `something else is probably holding the port (try: pkill -f 'vite --port ${DEMO_PORT}')`,
+    );
+    process.exit(1);
+  }
   if (!apiUp || !demoUp) {
     teardownFixtures();
     console.error(

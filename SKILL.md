@@ -642,11 +642,11 @@ The repeat loop is cheap (~175 tok); the expensive part is the FIRST drive of a 
 **Do this** — state the whole journey, then assert its consequence once:
 
 ```
-reticle_run({ tool: "reticle_act_sequence", args: { sessionId, steps: [
+reticle_act_sequence({ sessionId, steps: [
   { ref: emailRef,    action: "fill",   args: { value: "a@b.com" } },
   { ref: passwordRef, action: "fill",   args: { value: "hunter2"  } },
   { ref: submitRef,   action: "click" }
-] }})   // act_sequence is not advertised directly — hence reticle_run
+]})   // advertised directly — one call, not three round trips
 → reticle_assert({ sessionId, since, predicate: { kind: "allOf", predicates: [
     { kind: "signal",  name: "auth:granted" },
     { kind: "net",     method: "POST", urlContains: "/api/login", status: 200 },
@@ -699,7 +699,7 @@ For flows worth re-checking forever — the actual test suite — record them, t
 
    On a failure the envelope tells you exactly what changed, the `file:line`, and the fix (e.g. "rebind to 'new-deploy'") — act on `nextAction` directly. A single flow: `reticle_flow_replay({ flowName })`.
 
-   > **Reaching the flow tools.** Record/replay/verify/heal, screenshots, network-mock and `act_sequence` are not advertised directly — call `reticle_run({ tool: "reticle_flow_verify", sessionId })`, or `reticle_tools` first to list a tool's params.
+   > **Reaching the flow tools.** Record/replay/verify/heal, screenshots and network-mock are not advertised directly — call `reticle_run({ tool: "reticle_flow_verify", sessionId })`, or `reticle_tools` first to list a tool's params. `act_sequence` IS advertised directly and needs no `reticle_run` hop: call it by name.
 
 ### Read program truth in one call — instead of reconstructing it from the DOM
 
