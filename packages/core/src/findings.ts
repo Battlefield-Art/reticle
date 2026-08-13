@@ -113,6 +113,47 @@ export const ContradictionKind = {
 export type ContradictionKind = (typeof ContradictionKind)[keyof typeof ContradictionKind];
 
 /**
+ * Contradictions inferred from the ABSENCE of evidence in a window whose end Reticle itself chose.
+ *
+ * The distinction is not cosmetic — it decides whether Reticle is entitled to say an action FAILED.
+ * The other kinds are things we positively observed: a request came back 500 while the UI advanced,
+ * a signal fired carrying data that disagrees with the DOM, a written field echoed a different
+ * value. Those are evidence AGAINST the action, and they must keep outranking a passing assertion,
+ * because a green assertion sitting on top of a failed write is the entire bug class this product
+ * exists to catch.
+ *
+ * These five are different. Each says "the thing I expected to see had not happened YET when I
+ * stopped looking" — and the window closes the moment the predicate first passes, which on an app
+ * that navigates optimistically is routinely before the network drains. Reproduced on the bench app:
+ * `auth:granted` fired WITH matching data, application state changed, the token was stored, capture
+ * integrity was clean and the honesty grade was `signal` — our strongest evidence class — and the
+ * verdict was still `no`, because one POST had not settled. A timing observation overruled a
+ * consequence observation, which inverts the grade hierarchy the verifier is built on.
+ *
+ * A false negative is not the mirror of a false positive here. A false positive stops an agent
+ * early; a false NEGATIVE makes it redo work that already succeeded, or stop trusting the verdict
+ * channel — and the verdict channel is the product. `bug.attribution` was deleted for exactly this
+ * reason: every `attribution: 'app'` on `request-never-settled` turned out to be a misattribution.
+ * We removed the field and left the verdict.
+ *
+ * So these downgrade a verdict to UNKNOWN rather than asserting NO. The finding is still reported in
+ * `contradictions` either way — nothing is hidden, and an agent that wants to wait and re-check has
+ * everything it needs to.
+ */
+export const ABSENCE_DERIVED_CONTRADICTIONS: ReadonlySet<ContradictionKind> = new Set([
+  ContradictionKind.REQUEST_NEVER_SETTLED,
+  ContradictionKind.RESPONSE_IGNORED,
+  ContradictionKind.ROUTE_RENDERED_NOTHING,
+  ContradictionKind.ACTION_HAD_NO_EFFECT,
+  ContradictionKind.DUPLICATE_REQUEST,
+]);
+
+/** True when this kind was inferred from absence rather than positively observed. */
+export function isAbsenceDerived(kind: string): boolean {
+  return ABSENCE_DERIVED_CONTRADICTIONS.has(kind as ContradictionKind);
+}
+
+/**
  * HTTP methods that CHANGE server state. Several contradiction rules are restricted to these on
  * purpose: a GET that fires without moving the UI is a prefetch, but a POST that does is a lost
  * write. Narrowing to writes is what keeps the rules from crying wolf on ordinary reads.
