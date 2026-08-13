@@ -219,6 +219,39 @@ export class ReticleAdapter {
     );
     await this.c.start();
     await sleep(RETICLE_READY_MS); // driven browser load + SDK connect (BENCH_RETICLE_READY_MS to tune)
+    await this._pinSession();
+  }
+
+  /**
+   * Pin the session this adapter drove, and inject it into EVERY tool call from here on.
+   *
+   * Without this the harness is not hermetic. Any second session on the daemon — a browser that
+   * outlived a previous flow, a stray tab, another bench process — makes every session-bound tool
+   * refuse with "multiple sessions connected". That refusal is CORRECT (Reticle will not guess which
+   * tab you meant) and fatal to a scripted run that never names one: measured here as flow 1 passing
+   * and every later flow erroring, so whole passes reported "measured NOTHING" and bench-all
+   * aborted. That is why there is no benchmark history for the entire 2.x line — the suite has been
+   * unable to complete, and a suite that cannot run is a regression signal nobody has.
+   *
+   * Wrapping the client once beats threading `sessionId` through ~40 call sites: the harnesses call
+   * tools by name from a dozen files, and one missed site puts the whole suite back to zero.
+   */
+  async _pinSession() {
+    let sessionId;
+    try {
+      const r = await this.c.callTool('reticle_sessions', {});
+      const list = JSON.parse(r.text || '{}').sessions ?? [];
+      const mine = list.find((s) => 'string' === typeof s.url && s.url.startsWith(this.url));
+      sessionId = (mine ?? list[list.length - 1])?.sessionId;
+    } catch {
+      /* no sessions yet — leave calls unscoped, exactly as before */
+    }
+    if (sessionId === undefined) return;
+    this.sessionId = sessionId;
+    const inner = this.c.callTool.bind(this.c);
+    // An explicit sessionId in the caller's args always wins — a harness that deliberately targets
+    // another tab must still be able to.
+    this.c.callTool = (tool, args = {}, ...rest) => inner(tool, { sessionId, ...args }, ...rest);
   }
   async navigate() {
     return rec('reticle_navigate', await this.c.callTool('reticle_navigate', { url: this.url }));

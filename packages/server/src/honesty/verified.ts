@@ -1,4 +1,4 @@
-import { Verified, VerifiedReason } from '@reticlehq/core';
+import { Verified, VerifiedReason, isAbsenceDerived } from '@reticlehq/core';
 import { HonestyGrade, type HonestyBlock } from './honesty.js';
 
 /**
@@ -112,12 +112,36 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   // this product exists to catch is a green assertion sitting on top of a failed write. Measured on
   // the bench app — `ui-advanced-request-failed` arrived with verdict.pass true and every other
   // channel agreeing. Letting `pass` win there would report exactly the false green being detected.
-  if (contradictions.length > 0) {
-    const kinds = contradictions.map((c) => c.kind).join(', ');
+  // ...but ONLY for contradictions we positively OBSERVED. A kind inferred from the absence of
+  // evidence — the request had not settled, the response had not been applied yet — is a statement
+  // about when we stopped looking, not about whether the action worked, and the window closes the
+  // moment the predicate first passes. Reproduced on the bench app: `auth:granted` fired with
+  // matching data, state changed, the token was stored, the capture was clean and the grade was
+  // `signal`, and the verdict was still NO because one POST was in flight. That inverts the grade
+  // hierarchy — a timing observation beat a consequence observation — and it is the shape of half of
+  // every `no` verdict in the field. See ABSENCE_DERIVED_CONTRADICTIONS for why a false negative
+  // costs more than it looks: it makes an agent redo work that succeeded, or stop believing the
+  // verdict channel, which is the product.
+  const observed = contradictions.filter((c) => !isAbsenceDerived(c.kind));
+  if (observed.length > 0) {
+    const kinds = observed.map((c) => c.kind).join(', ');
     return {
       verified: Verified.NO,
       verifiedReason: VerifiedReason.CONTRADICTED,
       because: `channels disagree about this action (${kinds}) even though the assertion passed`,
+    };
+  }
+  // Absence-derived only: report it, do not assert failure. UNKNOWN is the honest answer — Reticle
+  // drove the app and could not yet tell. The finding still rides out in `contradictions`, so an
+  // agent that wants to wait and re-check has everything it needs.
+  if (contradictions.length > 0) {
+    const kinds = contradictions.map((c) => c.kind).join(', ');
+    return {
+      verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.UNSETTLED,
+      because:
+        `the assertion held, but this window closed before the app finished (${kinds}) — ` +
+        `re-check, or assert a consequence that settles`,
     };
   }
 

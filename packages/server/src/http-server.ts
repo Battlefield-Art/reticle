@@ -190,8 +190,20 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
     transports.clear();
     await new Promise<void>((resolve, reject) => {
       httpServer.close((err) => {
-        if (err !== undefined && err !== null) reject(err);
-        else resolve();
+        // A server that never listened is already closed, and saying so is not an error worth
+        // propagating. It matters because this close() runs on the CLEANUP path of a failed
+        // `--drive`: when the app URL is unreachable, the daemon tears down before `listen()` has
+        // been called, Node rejects with ERR_SERVER_NOT_RUNNING, and that rejection REPLACES the
+        // real cause. The user's app is down and the message they read is "Server is not running",
+        // which blames Reticle for their dev server — traced live, where swallowing this turned the
+        // same failure back into "net::ERR_CONNECTION_REFUSED at http://localhost:4312/".
+        if (
+          err !== undefined &&
+          err !== null &&
+          'ERR_SERVER_NOT_RUNNING' !== (err as NodeJS.ErrnoException).code
+        ) {
+          reject(err);
+        } else resolve();
       });
     });
   }

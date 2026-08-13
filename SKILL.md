@@ -501,7 +501,9 @@ Tell the user: **"Run `npm run dev` (your normal dev server) and open the app in
 
 Once they confirm the app is open, poll `reticle_sessions()` until your tab appears (the first live call already blocks for the session). You should see a session whose URL matches the app's localhost address.
 
-### No session appeared? Work this checklist in order
+### No session? Work this checklist
+
+> Shared by both modes — Test Mode's "no sessions" branch links here rather than dead-ending. Work it in order.
 
 **Start by calling `reticle_sessions()` and reading the `why` field.** When the list is empty the daemon tells you which of these cases it is and what fixes it — it can see whether a session was ever here, whether a dev server is listening, and whether this project has been through `init`. Work the checklist below only if that leaves you unsure.
 
@@ -549,15 +551,38 @@ Then report what you drove and what it produced, with `file:line` for anything b
 
 > Runs automatically when `.reticle.json` exists. Connects to the running app, exercises flows, asserts outcomes, and reports what passed and what broke.
 
+> **Only two tools produce a verdict: `reticle_act_and_wait` and `reticle_assert`.** Everything else — `act`, `snapshot`, `query`, `navigate`, `observe`, `network`, `console` — moves or reads the app and proves nothing. A drive that ends without one of those two is a drive with no result, however many tools it used. In practice `reticle_act` is reached for far more often than `reticle_act_and_wait`, and **most agents that drive an app produce no verdict at all.** Reach for `act_and_wait` first; drop to bare `act` only for a step whose consequence you are deliberately asserting later.
+
+**If you do nothing else, do this.** Five calls, and the last one is the only one that counts:
+
+```
+reticle_sessions()                                   // connected? if empty, read `why` — it names the fix
+reticle_capabilities({ sessionId })                  // the app's whole testable surface, ~1 KB
+reticle_snapshot({ sessionId, mode: "interactive" }) // just the controls, with refs
+reticle_act_and_wait({ sessionId, ref, action: "click", until: { kind: "allOf", predicates: [
+  { kind: "net",     urlContains: "/api/...", status: 200 },
+  { kind: "element", query: { testid: "..." } },
+  { kind: "console", level: "error", absent: true },
+]}})                                                 // ← the verdict
+```
+
+Then report what `verified` said. `"unknown"` is not a pass — see **Reading a verdict** below.
+
 ## Phase 1 — Connect
 
 Just ran `reticle init` or started the dev server? Block until the app's SDK connects first, so your first real call doesn't lose the race with the WebSocket — just poll **`reticle_sessions()`** (readiness is server-internal now — the first live call blocks until the SDK connects) until your tab appears. Then, with `reticle_sessions()`, there are three possible states:
 
 **A. One session → proceed.**
 
-**B. No sessions:** Tell the user:
+**B. No sessions — do NOT stop here.** `reticle_sessions()` returns a **`why`** field when the list is empty, and it is the answer: the daemon can tell "no app is running" from "an app is running that never dialled this daemon" from "a tab was here and closed", and each has a different fix. Read it and act on it before saying anything to the user.
 
-> "No app connected. Run your dev server (`npm run dev`) and open the app in your browser, then try `/reticle` again. Reticle never starts the dev server for you — that's your job." Stop here.
+If `why` leaves you unsure, work [No session? Work this checklist](#no-session-work-this-checklist) — it is the same checklist Setup Mode uses, and it covers the causes that leave every other check healthy (a non-localhost dev host, a port mismatch, a dev server that was never restarted after wiring).
+
+Only once that is exhausted, tell the user:
+
+> "No app connected. Run your dev server (`npm run dev`) and open the app in your browser, then try `/reticle` again. Reticle never starts the dev server for you — that's your job."
+
+This branch is where most sessions end. It is worth one more call before it does.
 
 **C. Multiple sessions — ask:**
 
@@ -571,12 +596,21 @@ Pin `sessionId` for every subsequent call.
 
 Call these in parallel:
 
+**Start with `reticle_capabilities` — it is the cheapest orientation on the surface.** About 1 KB, and it returns the app's whole testable surface: every registered `testid`, every domain `signal`, the registered stores, and the **named flows with their steps**. That is the app telling you what it can do, in its own vocabulary, before you touch it.
+
 ```
-reticle_snapshot({ sessionId, mode: "interactive" })
-reticle_run({ tool: "reticle_capabilities", sessionId })   // not advertised directly — reach it via reticle_run
-reticle_network({ sessionId, limit: 10 })
-reticle_console({ sessionId, limit: 20 })
+reticle_run({ tool: "reticle_capabilities", sessionId })   // one hop — not advertised directly
+reticle_snapshot({ sessionId, mode: "interactive" })       // just the controls, with refs
 ```
+
+`reticle_capabilities({ fromDisk: true })` returns the same manifest from the project's checked-in `.reticle/contract.json` **with no browser attached at all** — use it to orient before the app is even running.
+
+Do NOT open with `reticle_network` / `reticle_console` on a first drive: they read a buffer that predates your action, so they answer a question you have not asked yet. Read them _after_ an act, scoped by `since`.
+
+Two more worth knowing, because nothing else answers these:
+
+- **`reticle_scroll_to`** — the only way to reach a row that a virtualised list has not mounted. A `query` that misses it is not evidence the row is absent.
+- **`reticle_storage`** — what the app persisted (auth tokens, session ids). The difference between "logged in" and "looks logged in".
 
 > **There is one tool surface, and nothing to pick.** The verify loop is advertised directly (navigate / snapshot / query / act / act_sequence / act_and_wait / observe / network / console / wait_for / assert / state / inspect / sessions / session / feedback). Everything else the skill names — `reticle_capabilities`, the flow and record tools — is one hop away through two meta-tools: `reticle_run({ tool, args })` invokes any tool by name, `reticle_tools` lists them (pass `names:[…]` for full params). `reticle_run` takes `sessionId` at the top level and forwards it, so you do not have to nest it in `args`. Advertised counts, checked by a gate (`surface-sizes.test.ts`): `default` 18, `all` 48.
 >
@@ -612,8 +646,6 @@ Then pick a mode:
 
 ### Targeted
 
-> **Only two tools produce a verdict: `reticle_act_and_wait` and `reticle_assert`.** Everything else — `act`, `snapshot`, `query`, `navigate`, `observe`, `network`, `console` — moves or reads the app and proves nothing. A drive that ends without one of those two is a drive with no result, however many tools it used. In practice `reticle_act` is reached for far more often than `reticle_act_and_wait`, and **most agents that drive an app produce no verdict at all.** Reach for `act_and_wait` first; drop to bare `act` only for a step whose consequence you are deliberately asserting later.
-
 1. Navigate if needed: `reticle_navigate({ sessionId, url })`
 2. Snapshot to confirm correct state
 3. **Act and declare the consequence in the same hop** — this is the default:
@@ -635,6 +667,21 @@ Then pick a mode:
    ```
 5. Record: ✅ pass / ❌ fail / ⚠️ partial. A verdict of `verified: "unknown"` is **not** a pass — it means Reticle drove the app and could not tell what happened (`unclean_capture`, `outcome_unread`, `unsettled`). Report it as unknown and say why; do not round it up.
 
+### Reading a verdict — what to do next
+
+Every verdict carries `verifiedReason` and `because`. Read them; they name the next move.
+
+| verdict | what it means | what to do |
+| --- | --- | --- |
+| `yes` / `proved` | the declared consequence held, nothing disagreed | report it and move on |
+| `no` / `assertion_failed` | the consequence did not hold | this is a real failure — report it with `because` |
+| `no` / `contradicted` | a channel **observed** something incompatible (a request failed while the UI advanced, a signal disagreed with the DOM, a field echoed a different value) | this is the false green Reticle exists to catch — report it, do not retry |
+| `unknown` / `unsettled` | your assertion held, but the window closed before the app finished | **re-assert**, do not re-drive: `reticle_assert({ predicate, since, timeout_ms: 8000 })` using the `since` from the act result. Re-driving repeats a side effect that already happened |
+| `unknown` / `unclean_capture` | evidence was lost from the window | re-run the single action; if it persists, say so — it is a Reticle limitation, not an app fault |
+| `unknown` / `outcome_unread` | a 2xx body was never read by the app | usually a real app bug worth reporting as unknown-with-reason |
+
+**Never weaken a check to turn a verdict green.** An assertion changed until it passes proves nothing, and it is the one failure mode this tool exists to prevent.
+
 ### Plan then batch — do NOT ping-pong act-by-act
 
 The repeat loop is cheap (~175 tok); the expensive part is the FIRST drive of a surface you have not seen. Every extra round-trip pays the advertised tool surface again, so the way to make a first drive cheap is fewer, bigger hops — not smaller ones.
@@ -642,11 +689,11 @@ The repeat loop is cheap (~175 tok); the expensive part is the FIRST drive of a 
 **Do this** — state the whole journey, then assert its consequence once:
 
 ```
-reticle_run({ tool: "reticle_act_sequence", args: { sessionId, steps: [
+reticle_act_sequence({ sessionId, steps: [
   { ref: emailRef,    action: "fill",   args: { value: "a@b.com" } },
   { ref: passwordRef, action: "fill",   args: { value: "hunter2"  } },
   { ref: submitRef,   action: "click" }
-] }})   // act_sequence is not advertised directly — hence reticle_run
+]})   // advertised directly — one call, not three round trips
 → reticle_assert({ sessionId, since, predicate: { kind: "allOf", predicates: [
     { kind: "signal",  name: "auth:granted" },
     { kind: "net",     method: "POST", urlContains: "/api/login", status: 200 },
@@ -668,15 +715,25 @@ Both verify the same thing. The second costs several times more and gives the mo
 
 ### Smoke
 
-Walk every testid in `capabilities.testids`. For each one that is visible and interactable:
+**Use `reticle_crawl`.** It does the click sweep for you and returns the anomalies, in one call:
 
 ```
-reticle_query({ sessionId, by: "testid", value: testid })
-→ reticle_act({ sessionId, ref, action: "click" })
-→ reticle_assert({ since, predicate: { kind: "console", level: "error", absent: true } })
+reticle_run({ tool: "reticle_crawl", sessionId })
 ```
+
+If you need a non-destructive pass first — list what is reachable without clicking anything — `reticle_run({ tool: "reticle_explore", sessionId })`.
+
+> **Why not hand-roll the sweep.** The obvious recipe — click each testid, assert `{ console, absent: true }` — **passes on a dead control**. A button wired to nothing throws no console error, fires no request, and changes nothing, so an absence-only assertion is green for exactly the bug you were sweeping for. That is a false green you manufactured, and it is the anomaly class `crawl` exists to catch.
 
 Flag anything that throws a console error or triggers a `status >= 400` network call.
+
+### You are not done until you have checked what you did NOT touch
+
+```
+reticle_run({ tool: "reticle_coverage", sessionId })   // { total, exercised, untouched }
+```
+
+If `untouched` still holds controls your change affects, the drive is unfinished — say so rather than reporting a pass over them. This is the cheapest guard against the most common failure: one call, one green, and a stop.
 
 ### Regression suite (record once, re-verify on every change)
 
@@ -699,7 +756,7 @@ For flows worth re-checking forever — the actual test suite — record them, t
 
    On a failure the envelope tells you exactly what changed, the `file:line`, and the fix (e.g. "rebind to 'new-deploy'") — act on `nextAction` directly. A single flow: `reticle_flow_replay({ flowName })`.
 
-   > **Reaching the flow tools.** Record/replay/verify/heal, screenshots, network-mock and `act_sequence` are not advertised directly — call `reticle_run({ tool: "reticle_flow_verify", sessionId })`, or `reticle_tools` first to list a tool's params.
+   > **Reaching the flow tools.** Record/replay/verify/heal, screenshots and network-mock are not advertised directly — call `reticle_run({ tool: "reticle_flow_verify", sessionId })`, or `reticle_tools` first to list a tool's params. `act_sequence` IS advertised directly and needs no `reticle_run` hop: call it by name.
 
 ### Read program truth in one call — instead of reconstructing it from the DOM
 

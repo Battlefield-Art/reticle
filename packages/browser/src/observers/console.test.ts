@@ -32,7 +32,7 @@ describe('installConsole', () => {
 
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe(EventType.CONSOLE_ERROR);
-    expect(events[0]?.data.message).toBe('boom 42');
+    expect(events[0]?.data['message']).toBe('boom 42');
   });
 
   it('captures the stack of an Error argument to console.error', () => {
@@ -66,10 +66,10 @@ describe('installConsole', () => {
 
     expect(events).toHaveLength(2);
     expect(events[0]?.type).toBe(EventType.CONSOLE_INFO);
-    expect(events[0]?.data.message).toBe('info line 1');
+    expect(events[0]?.data['message']).toBe('info line 1');
     expect(events[0]?.data['stack']).toBeUndefined();
     expect(events[1]?.type).toBe(EventType.CONSOLE_DEBUG);
-    expect(events[1]?.data.message).toBe('debug line');
+    expect(events[1]?.data['message']).toBe('debug line');
   });
 
   it('restores the original console methods (identity) on teardown', () => {

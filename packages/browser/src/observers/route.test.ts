@@ -33,7 +33,7 @@ describe('installRoute', () => {
 
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe(EventType.ROUTE_CHANGE);
-    expect(String(events[0]?.data.pathname)).toBe('/next');
+    expect(String(events[0]?.data['pathname'])).toBe('/next');
   });
 
   it('emits ROUTE_CHANGE on a Back navigation after a pushState (stale-lastHref regression)', async () => {
@@ -48,7 +48,7 @@ describe('installRoute', () => {
     });
 
     const backNav = events.find(
-      (e) => String(e.data.from).endsWith('/b') && String(e.data.to).endsWith('/a'),
+      (e) => String(e.data['from']).endsWith('/b') && String(e.data['to']).endsWith('/a'),
     );
     expect(backNav).toBeDefined();
   });

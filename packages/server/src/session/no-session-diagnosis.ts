@@ -125,21 +125,32 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
   }
 
   if (0 === listening.length) {
-    // Lead with the CERTAINTY, not the guess. When the project has never been through `init` we
-    // KNOW no app here can carry the SDK; that nothing is listening is a narrow port scan's
-    // inference, and it has been wrong in the field about servers that were plainly running. Stating
-    // the guess first cost a reporter a diagnostic round trip on the one thing already true — they
-    // went and checked their dev server, which was up, because we told them that was the likeliest
-    // cause.
+    // Lead with the stronger EVIDENCE, and do not overstate what it is.
+    //
+    // `initialized` is one thing only: whether a `.reticle.json` sits in the directory this daemon
+    // is running in. It is NOT "this project has never been through `reticle init`", and the two
+    // come apart constantly — a monorepo whose daemon runs at the root while the app lives in
+    // `apps/web`, or any app wired by the babel/vite plugin rather than by `init`. An earlier
+    // version of this branch asserted the strong claim and led with it, on the reasoning that it was
+    // a certainty while the port scan was a guess. It is not a certainty. Caught driving Reticle's
+    // OWN repo, where the message told an agent the project had never been through `init` about a
+    // fixture that is instrumented and working — "the one sentence I was most likely to act on was
+    // wrong", which is the exact failure this whole file exists to prevent.
+    //
+    // So: report what was actually checked, name the directory, and name the case where the absence
+    // is expected rather than diagnostic.
     if (!initialized) {
       return (
-        'no browser session connected, and this project has not been through `reticle init` — which ' +
-        'is what installs the SDK and wires it into the build. So no app served from here can carry ' +
-        'Reticle, and no session can appear until that is done, whatever else is running. Run ' +
-        "`reticle init` in the app's directory, then restart the dev server. " +
-        `(Nothing was listening on the ports Reticle scans either — ${SCANNED_PORTS} — but that scan ` +
-        'is narrow and is not proof: a server on any other port is invisible to it. If the app IS ' +
-        `running, that changes nothing about the step above.) ${RETRY}`
+        'no browser session connected. Two things to weigh, and neither of them is proof. ' +
+        `(1) Nothing is listening on the ports Reticle scans (${SCANNED_PORTS}), so the dev server ` +
+        'may not be running — ask the human to start it (`npm run dev`). That scan is narrow ' +
+        'though: a server on any other port is invisible to it, so if the app IS running, ask for ' +
+        'its URL rather than assuming it is down. ' +
+        '(2) There is no `.reticle.json` in the directory this daemon is running in. That is the ' +
+        "file `reticle init` writes, so the app may carry no Reticle SDK — but check the app's " +
+        'OWN directory before re-running `init`: in a monorepo the daemon often runs at the root ' +
+        'while the app lives in a subdirectory, and an app wired by the Vite or Babel plugin ' +
+        `carries the SDK without that file at all. ${RETRY}`
       );
     }
     return (

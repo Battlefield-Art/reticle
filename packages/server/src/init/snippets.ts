@@ -60,7 +60,7 @@ export function nextReticleDevFile(
   const ids = testids.map((t) => `'${t}'`).join(', ');
   const storeBlock =
     0 === stores.length
-      ? '      // No state library detected. If you add one, register it here — see docs/usage.md.'
+      ? '      // No state library detected. If you add one, register it here — see node_modules/@reticlehq/server/docs/usage.md.'
       : stores.map((h) => `      // import your store, then: ${h}`).join('\n');
   return `'use client';
 import { useEffect } from 'react';
@@ -193,7 +193,7 @@ export function viteDevModuleFile(testids: readonly string[], stores: readonly s
   const ids = testids.map((t) => `'${t}'`).join(', ');
   const storeBlock =
     0 === stores.length
-      ? '  // No state library detected. If you add one, register it here — see docs/usage.md.'
+      ? '  // No state library detected. If you add one, register it here — see node_modules/@reticlehq/server/docs/usage.md.'
       : stores.map((h) => `  // import your store, then: ${h}`).join('\n');
   return `// Dev-only. Imported automatically by @reticlehq/vite-plugin — you do not need to import it.
 // Self-guards on import.meta.env.DEV, so it is a no-op in a production build.
