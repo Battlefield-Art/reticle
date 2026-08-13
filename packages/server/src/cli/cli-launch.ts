@@ -30,9 +30,13 @@ interface StatusSession {
 export function summarizeStatus(payload: unknown): {
   sessionCount: number;
   sessions: StatusSession[];
+  why?: string;
 } {
   if (typeof payload !== 'object' || null === payload) return { sessionCount: 0, sessions: [] };
   const obj = payload as Record<string, unknown>;
+  // Carried through to the printed line: with no sessions this is the whole answer, and dropping it
+  // here would silently undo the reason it is on the wire.
+  const why = 'string' === typeof obj['why'] ? obj['why'] : undefined;
   const raw = Array.isArray(obj['sessions']) ? obj['sessions'] : [];
   const sessions = raw
     .map((s): StatusSession | null => {
@@ -51,7 +55,7 @@ export function summarizeStatus(payload: unknown): {
     .filter((s): s is StatusSession => s !== null);
   const sessionCount =
     'number' === typeof obj['sessionCount'] ? obj['sessionCount'] : sessions.length;
-  return { sessionCount, sessions };
+  return { sessionCount, sessions, ...(why === undefined ? {} : { why }) };
 }
 
 /** A string field off the /status body, or undefined on a daemon too old to report it. */
