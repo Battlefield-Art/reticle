@@ -23,6 +23,16 @@ One screen to get fluent. Reticle is the **proof layer for AI agents** — no sc
 - Need to wait without acting? `reticle_wait_for({ predicate: { kind: "settled", quietMs } })`.
 - Waiting for a specific outcome? Pass that consequence as the predicate (`{ signal }` / `{ net }`), or `allOf` it with `{ kind: "settled" }` to wait for both the event _and_ the page going quiet.
 
+**A predicate that does not parse produces NO verdict — not a failing one.** Nothing runs, so the drive ends with no result at all, which is strictly worse than a failure. The shapes below are the ones agents reach for most; the first column now works, but knowing the second saves you the round trip:
+
+| You may write | It means |
+| --- | --- |
+| `{ kind: "text", text: "Saved" }` | `{ kind: "text", contains: "Saved" }` |
+| `{ kind: "element", role: "button", text: "Save" }` | `{ kind: "element", query: { role, text } }` |
+| `{ kind: "route", url: "/checkout" }` | `{ kind: "route", contains: "/checkout" }` |
+
+If a predicate is still rejected, the error names the fields **that kind** accepts — read it rather than guessing again, and note `state` spells its selector `path` while `route` spells its `pathname`.
+
 **Assert a consequence, not just presence.** `{ signal }` / `{ net }` prove the feature actually did something; `{ element }` / `{ text }` only prove something is on screen — which a stale render or a locator healed to the wrong element can fake. A _passing_ presence-only `reticle_assert` returns `advice` nudging you to a consequence; heed it on anything that matters.
 
 ## The 4-layer cross-check — never trust a green the state contradicts
@@ -73,7 +83,7 @@ Frequently useful but NOT core, so reach them through `reticle_run({ tool, args 
 ## Start here
 
 0. Just ran `reticle init` / started the dev server? Poll `reticle_sessions()` until your tab appears — readiness is server-internal now, so the first live call already blocks until the SDK connects.
-1. `reticle_sessions` — find the connected tab (omit `sessionId` if there's only one).
+1. `reticle_sessions` — find the connected tab (omit `sessionId` if there's only one). **An empty list is not a dead end: read the `why` field.** It names which case this is — no app running, an app running that has never dialled this daemon, a project that never went through `init`, or a tab that closed — and the fix for each. Do not fall back to static reasoning until you have read it.
 2. `reticle_domain` — learn the app BEFORE testing: the saved flows, what each asserts, and the **gaps** (declared signals/testids that no flow verifies — untested intent). Tells you what to test and where the real risk is without crawling the whole app. Falls back to `reticle_capabilities` for the raw testable surface (`testids`, `signals`, `stores`, `flows`).
 3. Run the loop: **look → act → observe → assert**, cross-checking the 4 layers on anything that matters.
 

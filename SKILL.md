@@ -503,14 +503,18 @@ Once they confirm the app is open, poll `reticle_sessions()` until your tab appe
 
 ### No session appeared? Work this checklist in order
 
+**Start by calling `reticle_sessions()` and reading the `why` field.** When the list is empty the daemon tells you which of these cases it is and what fixes it — it can see whether a session was ever here, whether a dev server is listening, and whether this project has been through `init`. Work the checklist below only if that leaves you unsure.
+
 Most no-connect cases are one of these. Fastest signal first:
 
 1. **Read the browser console.** The SDK announces its own failures. If you see `[Reticle] could not reach the bridge at ws://localhost:<port> … Is the Reticle daemon running on that port?` — that's a **port mismatch or a dead daemon** (items 2–3), and the message tells you which port the app is dialing. No `[Reticle]` line at all → the SDK never loaded (item 4).
+   - **1b. Is the app served from something other than `localhost`?** A hosts-file alias, a LAN IP, a tunnel — common on white-label, multi-tenant and cookie-domain setups. The SDK refuses to connect from a non-localhost page unless it is told to: `reticle.connect({ allowNonLocalhost: true })`. This is the one failure that leaves **every** other check healthy — the daemon is up, the port is right, the SDK is wired, `doctor` is all green — because the refusal happens in the page. Its console line is `[Reticle] Reticle is disabled outside localhost unless allowNonLocalhost is explicitly enabled`, and it is a different message from the bridge-unreachable one in item 1.
 2. **Port match (the #1 manual-setup bug).** The app's bridge port MUST equal the daemon's. Check both:
    - App side: `reticle({ port: N })` in `vite.config.ts` (or `connect({ url: 'ws://localhost:N/reticle' })`) — omitted ⇒ `4400`.
    - Daemon side: `.reticle.json` `"port"` / `RETICLE_PORT` — omitted ⇒ `4400`. They must be the **same number**, and it must **not** be your dev-server port. Simplest fix: remove the port from both and let them default to `4400`.
 3. **Is the daemon up on that port?** `npx @reticlehq/server status` lists running daemons + connected sessions. Nothing there ⇒ the agent hasn't launched it yet (restart the agent / `/mcp`), or it's on a different port than the app (item 2).
-4. **Is the SDK actually wired + loaded in dev?** `reticle()` present in `vite.config.ts`; for the manual entry, `if (import.meta.env.DEV) import('./reticle-dev')` in `src/main.tsx`. After editing `vite.config.ts` you **must restart `vite`** (config changes need a fresh dev server), then **hard-reload the browser tab**. A production build won't connect — the SDK is dev-only by design.
+4. **Is the SDK actually wired + loaded in dev?** `reticle()` present in `vite.config.ts`; for the manual entry, `if (import.meta.env.DEV) import('./reticle-dev')` in `src/main.tsx`. After editing `vite.config.ts` you **must restart `vite`** (config changes need a fresh dev server), then **hard-reload the browser tab**. A production build won't connect — the SDK is dev-only by design. The same applies to any framework that auto-registers plugins from a directory (Nuxt, for one): a **dev server that was already running does not pick up a newly created plugin file**, so the app comes up carrying no SDK and says nothing about it.
+   - Do **not** guard the connect on `window.location.hostname === 'localhost'`. It is false on every non-localhost dev host (see 1b), and in any SSR framework `window` does not exist on the server. Use the framework's own build-time dev flag — `import.meta.env.DEV`, `import.meta.dev`, `process.env.NODE_ENV !== 'production'`.
 5. **Still nothing?** See the full [Troubleshooting](#troubleshooting) section (stale `npx` cache, Stop-hook killing the daemon, `-32000`).
 
 ---
