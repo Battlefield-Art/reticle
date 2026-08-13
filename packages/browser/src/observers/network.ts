@@ -503,7 +503,11 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
           });
         });
       }
-      send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
+      // `override` is required, not decorative: this shadows WebSocket.prototype.send, and without
+      // the keyword a rename or signature drift in the base class would silently turn this from an
+      // override into a NEW method — the observer would stop intercepting and report no WebSocket
+      // traffic at all, which reads as "the app sends none". Caught by noImplicitOverride.
+      override send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
         if (this.#isBridge) {
           super.send(data);
           return;

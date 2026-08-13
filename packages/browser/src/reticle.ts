@@ -228,7 +228,7 @@ export class Reticle {
     // Dev-only backstop: refuse to activate in a production build (SSR healthcheck, prod bundle opened
     // on localhost). `process` may not exist in a raw browser, so read NODE_ENV off globalThis.
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    const nodeEnv = proc?.env?.NODE_ENV;
+    const nodeEnv = proc?.env?.['NODE_ENV'];
     if (shouldBlockProduction(nodeEnv, true === options.allowInProduction)) {
       globalThis.console.warn(
         '[Reticle] disabled in production (NODE_ENV=production). Gate the import behind ' +

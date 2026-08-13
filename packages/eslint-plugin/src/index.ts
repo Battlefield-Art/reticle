@@ -16,7 +16,10 @@ const plugin = {
 };
 
 // recommended flat config: turns the rule on with empty (no-op) defaults.
-plugin.configs.recommended = {
+// Bracket access because `configs` is an index signature: under
+// `noPropertyAccessFromIndexSignature` a dotted read of a key the type does not declare is exactly
+// the typo class that flag exists to catch, and this file is the one place in the monorepo that did it.
+plugin.configs['recommended'] = {
   plugins: { [PLUGIN_NAME]: plugin },
   rules: {
     [`${PLUGIN_NAME}/${RULE_NAME}`]: 'warn',
