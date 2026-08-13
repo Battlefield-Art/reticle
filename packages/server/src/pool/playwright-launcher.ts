@@ -10,6 +10,7 @@ import type { Browser } from 'playwright';
 import { BrowserLaunchKind } from '@reticlehq/core';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
 import { classifyConnectFailure } from '../telemetry/connect-failure.js';
+import { chromiumInstallCommand, bundledPlaywrightVersion } from '../cli/chromium-hint.js';
 import type { Launcher, PooledBrowser, PooledContext, PooledPage } from './browser-pool.js';
 
 /**
@@ -57,9 +58,15 @@ function wrapBrowser(browser: Browser): PooledBrowser {
   };
 }
 
-/** The fix for the most common first-run failure: Chromium isn't installed for Playwright. */
-const CHROMIUM_MISSING_HINT =
-  'Chromium is not installed for Playwright. Run: npx playwright install chromium';
+/**
+ * The fix for the most common first-run failure: Chromium isn't installed for Playwright.
+ *
+ * Pinned to the playwright this process bundles. Unpinned, `npx` fetches the latest playwright and
+ * installs ITS browser revision — a build this launcher will never look at — so the user follows the
+ * advice, it succeeds, and the next launch fails identically. Shares one builder with `doctor` so the
+ * two cannot suggest different commands for the same missing browser.
+ */
+const CHROMIUM_MISSING_HINT = `Chromium is not installed for Playwright. Run: ${chromiumInstallCommand(bundledPlaywrightVersion())}`;
 
 /** A Launcher that boots a real headless Chromium and adapts it to the pool's interface. */
 export function playwrightLauncher(opts: { headless?: boolean } = {}): Launcher {

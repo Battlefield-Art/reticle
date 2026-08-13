@@ -11,6 +11,7 @@
 
 import { TRANSPORT_LIMITS } from '@reticlehq/core';
 import { SELF_RECOVERING_MARKER } from '../session/no-session-diagnosis.js';
+import { chromiumInstallCommand, bundledPlaywrightVersion } from '../cli/chromium-hint.js';
 
 /** Marks where an over-long message had its middle removed. Named so tests assert it by value. */
 const ELISION = '… [elided] …';
@@ -152,7 +153,11 @@ export const RECOVERY = {
   NO_POOL:
     'Reticle cannot launch its own browser here: the daemon-managed pool is absent, or Playwright ' +
     'has no Chromium installed (the message above says which). Run Reticle via `reticle mcp`, and ' +
-    'ask the human for `npx playwright install chromium` if that is what is missing. Meanwhile drive ' +
+    // Pinned to the bundled playwright: the unpinned command installs a revision this daemon never
+    // looks at, so the human runs it, it succeeds, and nothing changes.
+    'ask the human for `' +
+    chromiumInstallCommand(bundledPlaywrightVersion()) +
+    '` if that is what is missing. Meanwhile drive ' +
     'a tab the human already has open — reticle_sessions lists them.',
 } as const;
 
