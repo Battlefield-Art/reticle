@@ -98,9 +98,20 @@ The single exception is `daemon_stopped`, which is **awaited** — because the p
 | `feedback_submitted` | `reticle feedback`, or an agent's report | the qualitative channel |
 | `identified` | `reticle identify` | joins anonymous machine ids to a person who volunteered one |
 | `mcp_client_connected` | an MCP client attached | how many sessions are agent-driven at all |
+| `app_instrumented` | the first app carrying the SDK reached this daemon | **the funnel step everything turns on** — see below |
 | `mcp_connection_lost` | the proxy lost its daemon | **the transport-stability metric.** The disconnect that makes a user reopen `/mcp` is invisible without it |
 | `init_completed` | `reticle init` finished | does install actually work, outside the fixtures gate |
 | `bug_found` | a defect was detected in the app under test | the value delivered, as opposed to the work done |
+
+## The install has two halves — `app_instrumented`
+
+Reticle is only usable when both halves are done: the MCP server is registered so the agent has the tools, and the SDK is loaded by a running page so there is something for those tools to look at. They are done by different commands, at different times, often in different directories. Almost everyone completes the first. The second is where the users go.
+
+Nothing measured the second. `daemon_started` and `mcp_client_connected` describe the agent half. `session_appConnects` describes the app half but is a **window counter** — it resets on every flush, so a user whose app connected in one window reads zero in every other. The population it under-counts is precisely the population being measured, and a funnel built on it reported fewer instrumented users than there were users calling tools, which is impossible on its face.
+
+`app_instrumented` fires **once per daemon run**, on the first session-ready only, so `daemon_started` → `app_instrumented` is a rate rather than an inference and a reloading page cannot inflate it. It carries `initialized` (had `init` run here), `agentAttached` (was an agent already waiting), and `msToFirstApp` (how long the daemon sat with nothing wired). It deliberately carries no stack and no framework: `project_profiled` already reports both for the same run, and the two join on `sessionId`.
+
+What it still cannot see is **why** an app never connected — every cause for that is page-side (the non-localhost gate, a port mismatch, a stale build, a dev server never restarted), where the daemon has no visibility. That needs the SDK to report its own refusals, and it is the next thing to build.
 
 ## Sessions: `daemon_stopped` vs `session_progress`
 

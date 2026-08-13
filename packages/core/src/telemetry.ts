@@ -115,6 +115,26 @@ export const TelemetryEventKind = {
    */
   MCP_CLIENT_CONNECTED: 'mcp_client_connected',
   /**
+   * An app carrying the SDK connected to this daemon for the first time in its life.
+   *
+   * THE funnel step, and the one nothing could measure. Reticle's install has two halves — register
+   * the MCP server so the agent has the tools, and get the SDK into a running page so there is
+   * something for those tools to look at — and they are done at different times, by different
+   * commands, often in different directories. Almost everyone completes the first. The second is
+   * where the users go.
+   *
+   * Everything that existed before answered a different question. `daemon_started` and
+   * `mcp_client_connected` describe the agent half only. `session_appConnects` describes the app
+   * half but is a WINDOW counter: it resets on every flush, so a user whose app connected in one
+   * window reads zero in every other, and the population it under-counts is exactly the population
+   * being measured. A funnel built on it reported fewer instrumented users than there were users
+   * calling tools, which is impossible on its face and was the first sign the field was unusable.
+   *
+   * Fired ONCE per daemon run, on the first connect only — so `daemon_started` → `app_instrumented`
+   * is a real rate rather than an inference, and a reconnecting page cannot inflate it.
+   */
+  APP_INSTRUMENTED: 'app_instrumented',
+  /**
    * The agent LOST its Reticle tools — the worst thing this product does to anyone, and until now
    * completely invisible in the field.
    *
@@ -168,6 +188,7 @@ const SESSION_SCOPED: ReadonlySet<string> = new Set([
   TelemetryEventKind.DAEMON_STOPPED,
   TelemetryEventKind.SESSION_PROGRESS,
   TelemetryEventKind.MCP_CLIENT_CONNECTED,
+  TelemetryEventKind.APP_INSTRUMENTED,
   TelemetryEventKind.PROJECT_PROFILED,
   TelemetryEventKind.VERIFICATION_COMPLETED,
   TelemetryEventKind.BUG_FOUND,

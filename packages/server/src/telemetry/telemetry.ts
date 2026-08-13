@@ -301,6 +301,23 @@ export interface TelemetryExtra {
   bug?: BugFound;
   /** `mcp_connection_lost`: the agent lost its tools — which stage, and why. */
   outage?: McpOutage;
+  /** `app_instrumented`: an app carrying the SDK reached this daemon for the first time. */
+  instrumentation?: AppInstrumentation;
+}
+
+/**
+ * `app_instrumented`: the app half of the install completed.
+ *
+ * No stack and no framework here on purpose — `project_profiled` already carries both for the same
+ * daemon run, and a second copy is a second thing to keep in step.
+ */
+export interface AppInstrumentation {
+  /** Whether `reticle init` had been run in this directory (a projectId is stamped). */
+  initialized: boolean;
+  /** Whether an MCP client was already attached when the app arrived. */
+  agentAttached: boolean;
+  /** How long the daemon had been up. Large values mean Reticle sat there with nothing wired. */
+  msToFirstApp: number;
 }
 
 export interface Telemetry {
