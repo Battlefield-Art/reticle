@@ -52,6 +52,28 @@ export function onReconnectBudgetSpent(): OnDrop {
   return OnDrop.DORMANT;
 }
 
+/**
+ * What to do when queued requests expire with nothing connected. Always DORMANT.
+ *
+ * This is the hole that produced the worst report we have had: a first-run daemon came up wedged, the
+ * proxy spent its budget against it, and from then on every call returned −32001 — including after
+ * the human killed the wedged process and started a healthy daemon on the same port. The proxy never
+ * looked again.
+ *
+ * The cause is a state that lies. `WAKE` clears `dormant` and starts a reconnect; if that reconnect
+ * neither resolves nor rejects (exactly what a wedged port does — it accepts the socket and never
+ * serves SSE), `dormant` stays false forever. Every later request then reads as "a reconnect is
+ * already coming" and QUEUEs, the queue expires, and the request is answered with a failure. Nothing
+ * in that loop ever re-probes the port, so a daemon that appears afterwards is invisible.
+ *
+ * Expiring the queue is the proof that the in-flight reconnect is not coming. Going dormant makes the
+ * NEXT client request wake and re-probe — which is the only thing that can discover a daemon that
+ * arrived late, and it costs nothing when one has not.
+ */
+export function onQueueExpired(): OnDrop {
+  return OnDrop.DORMANT;
+}
+
 /** What to do with a client message. */
 export const OnRequest = {
   /** Connected — post it straight through. */
