@@ -542,8 +542,20 @@ export const ACT_TOOLS: ToolDef[] = [
         // Pass the action: an EMPTY window then reads as "the target does not react" rather than as a
         // clean run — `settled` is satisfied by a page that did nothing, i.e. by a click that missed.
         const acted = asString(args['action']);
+        // `prior` matters here for the same reason it matters on the assert path: a SCALE error
+        // disagrees with a value the API stated EARLIER in the session, which an action-scoped
+        // window can never contain. Without it `unit-mismatch` — the money false green, where a
+        // total renders 100x off — is structurally unreachable from `act_and_wait`, which is the
+        // tool the product tells agents to reach for first. Our best detector could not fire on our
+        // flagship path, and nothing said so: the finding was simply never produced.
+        //
+        // Learning material only. Attribution is unchanged — findings still come exclusively from
+        // `windowEvents`, exactly as on the assert path.
+        const prior =
+          since > 0 ? (await session.queryEvents({ since: 0 })).filter((e) => e.t < since) : [];
         const contradictions = findContradictions(windowEvents, {
           action: acted,
+          prior,
           ...session.lastAct.effect(),
         });
         // The single field an agent reads. Everything below it is the evidence it was derived from;
