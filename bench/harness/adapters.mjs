@@ -251,8 +251,7 @@ export class ReticleAdapter {
     const inner = this.c.callTool.bind(this.c);
     // An explicit sessionId in the caller's args always wins — a harness that deliberately targets
     // another tab must still be able to.
-    this.c.callTool = (tool, args = {}, ...rest) =>
-      inner(tool, { sessionId, ...args }, ...rest);
+    this.c.callTool = (tool, args = {}, ...rest) => inner(tool, { sessionId, ...args }, ...rest);
   }
   async navigate() {
     return rec('reticle_navigate', await this.c.callTool('reticle_navigate', { url: this.url }));
