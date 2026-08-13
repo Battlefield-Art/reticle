@@ -164,8 +164,21 @@ try {
 
   // ── screenshots through the main process ──────────────────────────────────────────────────────
   const shot = await tool('reticle_screenshot', { name: 'electron-home' });
-  chk('reticle_screenshot captured the window via capturePage', shot.saved === true, `${String(shot.bytes)} bytes`);
-  chk('the capture is a real PNG, not a truncated one', (shot.bytes ?? 0) > 10_000);
+  // Print the REASON, not only the byte count. This failed once in CI as "undefined bytes", which
+  // says nothing: an empty capture, a missing helper and a capture that never ran all render
+  // identically. The tool already reports a reason (`capture returned no image` and friends) and the
+  // spec was throwing it away, so diagnosing a red run meant re-running the whole battery locally.
+  // A gate is only as useful as what it says when it goes red.
+  chk(
+    'reticle_screenshot captured the window via capturePage',
+    shot.saved === true,
+    shot.saved === true ? `${String(shot.bytes)} bytes` : JSON.stringify(shot),
+  );
+  chk(
+    'the capture is a real PNG, not a truncated one',
+    (shot.bytes ?? 0) > 10_000,
+    `${String(shot.bytes)} bytes`,
+  );
 
   const full = await tool('reticle_screenshot', { name: 'electron-full', fullPage: true });
   chk(
