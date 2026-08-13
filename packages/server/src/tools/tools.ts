@@ -90,6 +90,12 @@ const RAW_TOOLS: ToolDef[] = [
         .describe(
           'Connected browser sessions with health state. `projectId` groups sessions by app (stable across port changes); `leased` marks a pool-managed headless context vs a human tab.',
         ),
+      why: z
+        .string()
+        .optional()
+        .describe(
+          'Present ONLY when `sessions` is empty: why nothing is connected, and the next action that fixes it. An empty list is never the end of the road — read this before concluding the app cannot be driven.',
+        ),
     },
     handler: async (deps) => {
       const provider = deps.realInput;
@@ -101,6 +107,14 @@ const RAW_TOOLS: ToolDef[] = [
           leased: leasedIds.has(s.sessionId),
         })),
       );
+      // An empty list is the most common thing this tool ever returns, and on its own it is a dead
+      // end: the agent asked the one question it knows to ask, got a confident-looking answer with
+      // no next step, and stopped. The daemon already knows WHY nothing is connected — say it here
+      // rather than only when a later tool fails for want of a session.
+      if (0 === sessions.length) {
+        const why = deps.sessions.noSessionHint();
+        return { sessions, ...(why === undefined ? {} : { why }) };
+      }
       return { sessions };
     },
   },

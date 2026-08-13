@@ -1,10 +1,10 @@
 /**
  * Turning "no browser session connected" from a dead end into a next action.
  *
- * This is the most consequential sentence in the product. Measured over a day of telemetry: 74% of
- * sessions never call a Reticle tool, and of the ones that do, half make exactly ONE call — usually
- * `reticle_sessions` — and stop. Ten of those thirteen never touched a browser, and every recorded
- * session error is this one. The agent asks whether anything is connected, is told no, and leaves.
+ * This is the most consequential sentence in the product. Most sessions never call a Reticle tool at
+ * all, and of the ones that do, a large share make exactly ONE call — usually `reticle_sessions` —
+ * and stop. Almost none of those ever touched a browser, and this is the session error they hit. The
+ * agent asks whether anything is connected, is told no, and leaves.
  *
  * The old message asked the agent to check two things it cannot see from where it stands ("is your
  * app running with the SDK enabled?", "does it point at this port?"). The daemon can actually tell
@@ -52,12 +52,12 @@ const RETRY = SELF_RECOVERING_MARKER;
  * The way out that needs no human at all.
  *
  * `reticle_lease` opens a browser Reticle drives itself, instead of waiting for somebody's tab to
- * dial in. Measured over a day of telemetry it is the single strongest predictor of a session that
- * works: the 5 sessions that used it had a MEDIAN of 30 tool calls and produced 46% of every bug
- * found, against a median of 1 call for the 20 active sessions that did not — and not one
- * single-call bounce used one. It is also advertised on no profile except `full`, so an agent only
- * ever finds it if it already knew it existed. Naming it HERE puts it in front of the agent at the
- * one moment it is the answer, and costs nothing on the turns when it is not.
+ * dial in. In the field it is the single strongest predictor of a session that works: sessions that
+ * use it drive an order of magnitude more tool calls than those that do not, they account for a
+ * disproportionate share of every bug found, and no single-call bounce has ever used one. It is also
+ * advertised on no profile except `full`, so an agent only ever finds it if it already knew it
+ * existed. Naming it HERE puts it in front of the agent at the one moment it is the answer, and
+ * costs nothing on the turns when it is not.
  *
  * Only offered when the app is known to carry the SDK: leasing an uninstrumented app just burns a
  * browser and comes back `ready:false`.
@@ -85,6 +85,26 @@ const UNINSTRUMENTED =
   'Separately: this project has not been through `reticle init`, which is what installs the SDK ' +
   'and wires it into the build — so even once the dev server is up, the app will carry no SDK and ' +
   "no session will appear. Run `reticle init` in the app's directory too.";
+
+/**
+ * The one cause that produces a PERFECTLY healthy everything and still never connects.
+ *
+ * The SDK refuses to dial from a page that is not on localhost unless `allowNonLocalhost` is set.
+ * That is deliberate — Reticle must not be reachable from a page it does not trust — but the refusal
+ * happens page-side, so the daemon sees only silence, `doctor` sees only a healthy daemon, and every
+ * checklist item passes. Reported from the field by an agent on a hosts-file alias (the normal setup
+ * for white-label and multi-tenant apps): the whole setup was lost to a flag named in no checklist,
+ * and `init`'s own fallback snippet guards on `hostname === 'localhost'`, so on such a host the
+ * connect never runs and there is not even a console line to find.
+ *
+ * Only offered on the wired-and-listening branch: that is where a correctly installed app that
+ * cannot connect actually lands.
+ */
+const NON_LOCALHOST_GATE =
+  'One more cause that leaves every other check healthy: if the app is served on anything other ' +
+  'than localhost (a hosts-file alias, a LAN IP, a tunnel), the SDK refuses to connect unless it ' +
+  'is given `allowNonLocalhost: true` — the refusal is page-side, so nothing here can see it. ' +
+  "Check the browser console for that message and pass the flag in the app's reticle.connect().";
 
 const SCANNED_PORTS = [...DEV_SERVER_PORTS].join(', ');
 
@@ -135,7 +155,7 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
       // `!initialized` one, so an uninstrumented project used to be told only "start your dev
       // server" — the reader starts it, calls again, and is told ONLY THEN that no app carries the
       // SDK. Two round trips to learn two things the daemon knew on the first call, and this is the
-      // largest cohort in the funnel (#171): 77 users attached an agent and never instrumented an
+      // largest cohort in the funnel (#171): users who attached an agent and never instrumented an
       // app. They have a daemon (they registered the MCP server) and no SDK anywhere.
       `${initialized ? '' : UNINSTRUMENTED} ${RETRY}`
     );
@@ -156,6 +176,6 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
     `wired for Reticle — so the app is either serving a build made before the wiring landed, or ` +
     `dialling a different daemon than this one (this daemon is on ${String(port)}). Ask the human ` +
     'to restart the dev server and hard-reload the page; if it still does not appear, check that ' +
-    `the app's reticle port matches ${String(port)}. ${SELF_SERVE} ${RETRY}`
+    `the app's reticle port matches ${String(port)}. ${NON_LOCALHOST_GATE} ${SELF_SERVE} ${RETRY}`
   );
 }
