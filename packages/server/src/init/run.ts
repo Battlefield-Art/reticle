@@ -5,6 +5,7 @@
  */
 
 import { dirname, join } from 'node:path';
+import { noPackageJsonMessage } from './non-js-project.js';
 import { spanSync } from '../trace.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -787,8 +788,12 @@ function runInitSteps(options: InitOptions, io: InitIo): InitResult {
   if (redirectedEarly !== null) return redirectedEarly;
   if (null === pkgRaw) {
     io.print(
-      'No package.json found here, and no app directory beneath it either. Run `reticle init` from ' +
-        "your app's directory, or from a repo root that contains it.",
+      // Two genuinely different situations used to share one sentence: a JS developer in the wrong
+      // directory, and a project that is not JavaScript at all. The second reads the old wording as
+      // a path problem and goes looking for a directory that cannot exist — reported from a
+      // Streamlit app, where the search continued into hunting for a browser bundle to inject by
+      // hand before the real answer surfaced.
+      noPackageJsonMessage((file) => io.exists(join(options.cwd, file))),
     );
     // The onboarding funnel had NO instrumentation, so a setup that died here was indistinguishable
     // from someone who never ran the command — the two failure modes with the most different fixes.

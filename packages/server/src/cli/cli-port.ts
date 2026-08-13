@@ -22,7 +22,26 @@ import { readFileSync } from 'node:fs';
  * the confusion got manufactured in the first place.
  */
 export const DEV_SERVER_PORTS: ReadonlySet<number> = new Set([
-  3000, 3001, 4200, 4321, 5000, 5173, 5174, 8000, 8080, 8100, 9000,
+  3000,
+  3001,
+  4200,
+  4321,
+  5000,
+  5173,
+  5174,
+  8000,
+  8080,
+  8100,
+  9000,
+  // Added after the scan reported "nothing is listening" at people whose app was plainly running.
+  // A narrow list is not just unhelpful, it is CONFIDENTLY wrong — the message states absence as a
+  // fact — so the defaults of the frameworks agents actually meet belong in it.
+  1420, // Tauri
+  3100, // Next, second instance
+  4173, // vite preview
+  5175, // Vite, third instance
+  7860, // Gradio
+  8501, // Streamlit
 ]);
 
 export function isLikelyDevServerPort(port: number): boolean {
