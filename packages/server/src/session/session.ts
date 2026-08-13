@@ -569,6 +569,11 @@ export class Session {
     return this.#live.size();
   }
 
+  /** Everything the human has said this session, delivered or not. Never clears. */
+  inboxHistory(): readonly InboxMessage[] {
+    return this.#live.history();
+  }
+
   // ── Human review marks: the "annotate the bug where you see it" inbox (server-owned) ──────────
 
   /** Human marks still awaiting a fix (oldest first). Reading does not consume — resolveMark does. */

@@ -33,15 +33,42 @@ export interface ReviewMark {
 /** Prefix on review-mark ids (m1, m2, …) — distinguishes them from command ids. */
 const MARK_ID_PREFIX = 'm';
 
+/**
+ * Shared by every store in the process, so an id is never reissued.
+ *
+ * The sequence used to live on the instance, which looked right and was not: a store is created per
+ * Session, and a Session is recreated on every page reload and socket reattach. Each new store began
+ * again at `m1`, so an id an agent was still holding silently came to denote a DIFFERENT mark — and
+ * `resolve` retired that one instead, reporting success. Reported from the field by an agent that
+ * closed a bug nobody had fixed while the two it had fixed vanished unrecorded.
+ *
+ * Process-wide is deliberately not "forever": a daemon restart resets it, but a restart also
+ * destroys every session, so any id from before it resolves to nothing and `resolve` correctly
+ * returns false. The identity echo below covers what remains.
+ */
+let nextMarkId = 0;
+
+/** Tests only — assertions on `m1` must not depend on which test ran first. */
+export function resetMarkIdsForTest(): void {
+  nextMarkId = 0;
+}
+
+/** What `resolve` actually did, including WHICH mark — so a caller can verify it hit the right one. */
+export interface ResolveOutcome {
+  resolved: boolean;
+  id: string;
+  /** The retired mark's note. Absent when nothing was resolved. */
+  note?: string;
+}
+
 export class ReviewStore {
   readonly #marks: ReviewMark[] = [];
-  #seq = 0;
 
   /** Store a new mark (status pending) stamped with the caller-supplied session-relative time. */
   add(data: HumanMarkData, at: number): ReviewMark {
-    this.#seq += 1;
+    nextMarkId += 1;
     const mark: ReviewMark = {
-      id: `${MARK_ID_PREFIX}${String(this.#seq)}`,
+      id: `${MARK_ID_PREFIX}${String(nextMarkId)}`,
       note: data.note,
       anchor: data.anchor,
       strategy: data.strategy,
@@ -75,9 +102,22 @@ export class ReviewStore {
    * false for an unknown id or an already-resolved mark (so resolve is idempotent).
    */
   resolve(id: string): boolean {
+    return this.resolveDetail(id).resolved;
+  }
+
+  /**
+   * Resolve, and say WHICH mark was retired.
+   *
+   * The bare boolean is what made the misattribution silent: `{"resolved":true}` is equally
+   * consistent with "I retired the bug you fixed" and "I retired somebody else's". Echoing the note
+   * lets a caller check the answer against what it believed it was resolving, which is exactly what
+   * the agent that hit this asked for — it had been re-reading the whole list after every resolve
+   * and hand-diffing the notes to get the same assurance.
+   */
+  resolveDetail(id: string): ResolveOutcome {
     const mark = this.#marks.find((m) => m.id === id);
-    if (mark === undefined || mark.status === MarkStatus.RESOLVED) return false;
+    if (mark === undefined || mark.status === MarkStatus.RESOLVED) return { resolved: false, id };
     mark.status = MarkStatus.RESOLVED;
-    return true;
+    return { resolved: true, id, note: mark.note };
   }
 }

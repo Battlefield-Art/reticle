@@ -106,13 +106,40 @@ export const LIVE_CONTROL_TOOLS: ToolDef[] = [
       'Drain and return any messages the human queued from the panel since the last poll. Use to ' +
       'explicitly check for human guidance without acting.',
     inputSchema: { ...sessionIdShape },
-    outputSchema: { messages: z.array(z.unknown()) },
+    outputSchema: {
+      messages: z.array(z.unknown()),
+      delivered: z
+        .array(z.unknown())
+        .optional()
+        .describe(
+          'Present ONLY when this poll found nothing new but the human HAS spoken this session: everything they said, including what was already handed to you inline on an earlier tool result. An empty `messages` never means silence.',
+        ),
+    },
     handler: (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
+      const messages = session.drainInbox();
+      if (messages.length > 0) return Promise.resolve({ messages });
+      // Nothing NEW is not the same as nothing said. The inbox has two consumers — this poll and the
+      // control envelope spliced onto every tool result — and delivery is destructive, so a message
+      // handed over inline moments ago left this call reporting an empty queue with a note that read
+      // as "the human has said nothing". Reported from the field, from both ends: the agent believed
+      // it, and the person who typed the message got silence with no sign it had been seen.
+      const history = session.inboxHistory();
+      if (history.length > 0) {
+        return Promise.resolve({
+          messages,
+          delivered: [...history],
+          note:
+            `nothing NEW since your last poll — but the human has sent ` +
+            `${String(history.length)} message(s) this session, listed in \`delivered\`. They were ` +
+            `handed to you inline on an earlier tool result, which is why this queue is empty. An ` +
+            `empty \`messages\` never means the human has said nothing.`,
+        });
+      }
       // An empty inbox and a panel that is not wired both return `[]`. The first means the human has
       // said nothing; the second means an agent is waiting on a channel that does not exist.
       return Promise.resolve(
-        noteEmptyRead({ messages: session.drainInbox() }, 'messages', {
+        noteEmptyRead({ messages }, 'messages', {
           noun: 'messages from the human since the last poll',
         }),
       );
@@ -142,27 +169,45 @@ export const LIVE_CONTROL_TOOLS: ToolDef[] = [
       marks: z.array(z.unknown()),
       pendingCount: z.number(),
       resolved: z.boolean().optional(),
+      resolvedNote: z
+        .string()
+        .optional()
+        .describe(
+          'The note on the mark that was actually retired. CHECK IT against the mark you meant to resolve: a bare `resolved:true` cannot tell you it closed the right one, and ids are only meaningful while the session that issued them lives.',
+        ),
     },
     handler: (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
       const resolveId = asString(args['resolve']);
       let resolved: boolean | undefined;
+      let resolvedNote: string | undefined;
       if (resolveId !== undefined) {
         // Grab the note BEFORE retiring it so we can close the loop visually for the human.
         const mark = session.allMarks().find((m) => m.id === resolveId);
         resolved = session.resolveMark(resolveId);
         if (resolved && mark !== undefined) {
+          // Echoed back to the CALLER too, not only to the panel. A bare `resolved:true` is equally
+          // consistent with "I retired the bug you fixed" and "I retired somebody else's", and an
+          // agent hit exactly that — it closed a mark the human had recorded minutes later while
+          // the two it had actually fixed vanished with no record.
+          resolvedNote = mark.note;
           // The human watching the panel sees their flagged bug get marked fixed (fire-and-forget).
           session.pushNarration(`✓ fixed: ${mark.note}`);
         }
       }
       const source = true === args['all'] ? session.allMarks() : session.pendingMarks();
       const marks = source.map((m) => ({ ...m, fix: buildFixHint(m) }));
-      const out: { marks: typeof marks; pendingCount: number; resolved?: boolean } = {
+      const out: {
+        marks: typeof marks;
+        pendingCount: number;
+        resolved?: boolean;
+        resolvedNote?: string;
+      } = {
         marks,
         pendingCount: session.pendingMarkCount(),
       };
       if (resolved !== undefined) out.resolved = resolved;
+      if (resolvedNote !== undefined) out.resolvedNote = resolvedNote;
       return Promise.resolve(out);
     },
   },
