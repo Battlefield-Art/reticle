@@ -126,9 +126,15 @@ export const TRANSPORT_LIMITS = {
    *
    * 20000 is the value that was measured to work on the page that reported it. The cap exists to stop
    * a PATHOLOGICAL page (an animation loop firing DOM mutations every frame), not to throttle a busy
-   * one, and the ceiling it has to defend is cheap: the daemon is on the same machine, a typical
-   * event is a few hundred bytes, so this is single-digit MB/s over loopback, and MAX_BUFFER_BYTES
-   * still bounds what a runaway page can make the bridge hold.
+   * one, and the ceiling it has to defend is cheap: the daemon is on the same machine and a typical
+   * event is a few hundred bytes, so this is single-digit MB/s over loopback.
+   *
+   * Raising it does not raise what a runaway page can make the bridge HOLD, and that separation is
+   * what makes the change safe. Memory is bounded independently by the ring buffer, which evicts on
+   * `RING_BUFFER_DEFAULTS.MAX_BYTES` (this same constant, reached through that alias) as well as on
+   * a count and an age. Grep for `MAX_BUFFER_BYTES` alone and it looks like a constant nobody reads,
+   * which is exactly the wrong conclusion to draw before touching this number: the rate cap defends
+   * parse cost, the ring buffer defends memory, and they are not substitutes.
    */
   MAX_MESSAGES_PER_SECOND: 20000,
   MAX_SESSIONS: 32,
