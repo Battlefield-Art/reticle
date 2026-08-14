@@ -670,8 +670,13 @@ function handleMcp(opts: {
       if (httpToken !== undefined) daemonArgs.push(HTTP_TOKEN_FLAG, httpToken);
     }
     spawnDaemon(process.execPath, scriptPath, daemonArgs, port);
-    log('reticle_mcp_daemon_started', { port, ...(driveUrl !== undefined ? { driveUrl } : {}) });
+    // Announce the daemon only once the PORT ACCEPTS. This line used to be written the instant the
+    // child was spawned, which on a Windows first bootstrap meant `reticle_mcp_daemon_started`
+    // followed about ten seconds later by `reticle_mcp_daemon_unavailable` and a first
+    // `reticle_sessions` that expired. A readiness signal that precedes readiness is worse than
+    // none: a client that believes it stops waiting for the thing that has not happened.
     await waitForDaemon(port);
+    log('reticle_mcp_daemon_started', { port, ...(driveUrl !== undefined ? { driveUrl } : {}) });
   };
   // Start the proxy WHATEVER happened to the daemon.
   //

@@ -289,8 +289,14 @@ export class PendingRequests {
  * daemon under a live client left 20 of 20 concurrent calls hanging until the client's own timeout,
  * with the MCP server still perfectly alive. An agent cannot tell that apart from "still working".
  */
-export function streamLossReplies(pending: PendingRequests, reason: string): string[] {
-  return pending.drain().map((id) => transportLossReply(JSON.parse(id) as unknown, reason));
+export function streamLossReplies(
+  pending: PendingRequests,
+  reason: string,
+  nextStep?: string,
+): string[] {
+  return pending
+    .drain()
+    .map((id) => transportLossReply(JSON.parse(id) as unknown, reason, nextStep));
 }
 
 /**
@@ -300,8 +306,13 @@ export function streamLossReplies(pending: PendingRequests, reason: string): str
  */
 const TRANSPORT_LOSS_CODE = -32001;
 
-/** The one shape every "the transport ate your call" answer takes, whichever leg died. */
-export function transportLossReply(id: unknown, reason: string): string {
+/**
+ * The one shape every "the transport ate your call" answer takes, whichever leg died.
+ *
+ * `nextStep` is appended when the caller knows one. Without it this reply describes a condition and
+ * stops there, which is all a first-run user got out of their first ever tool call.
+ */
+export function transportLossReply(id: unknown, reason: string, nextStep?: string): string {
   return JSON.stringify({
     jsonrpc: '2.0',
     id,
@@ -309,7 +320,8 @@ export function transportLossReply(id: unknown, reason: string): string {
       code: TRANSPORT_LOSS_CODE,
       message:
         `the daemon connection dropped (${reason}) before this call was answered — it did NOT ` +
-        'complete. Reticle is recovering the connection; retry if the action is safe to repeat.',
+        'complete. Reticle is recovering the connection; retry if the action is safe to repeat.' +
+        (nextStep === undefined ? '' : ` ${nextStep}`),
     },
   });
 }
@@ -334,8 +346,44 @@ const SHUTDOWN_DRAIN_MS = 5_000;
  * well under the 60s an MCP client typically allows, so the answer comes from us with a reason
  * rather than from their timer with none.
  */
-const QUEUE_WAIT_MS = 20_000;
+export const QUEUE_WAIT_MS = 20_000;
 const SHUTDOWN_DRAIN_POLL_MS = 25;
+
+/** A port that refuses is a port nothing is listening on YET — not a port that answered badly. */
+const CONNECTION_REFUSED = 'ECONNREFUSED';
+
+/**
+ * How long the FIRST connect keeps chasing a refused port before calling it a startup failure.
+ *
+ * It used to get exactly one attempt. Reported from a Windows first bootstrap: the daemon was still
+ * booting, the single connect was refused, and nothing tried again — only a fresh CLIENT request
+ * re-probes the port, and the client was already blocked on the call that then expired with -32001.
+ * The first tool call of somebody's first ever session is the worst place available to lose one.
+ *
+ * Deliberately longer than QUEUE_WAIT_MS: a retry that stops before the queue does cannot rescue the
+ * request it exists for, and a daemon found afterwards at least restores service for the next call.
+ */
+const FIRST_CONNECT_WINDOW_MS = QUEUE_WAIT_MS + 15_000;
+
+/** Retry a first connect, or report it? Pure, so the window can be held against the queue's. */
+export function shouldRetryFirstConnect(error: unknown, elapsedMs: number): boolean {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  return CONNECTION_REFUSED === code && FIRST_CONNECT_WINDOW_MS > elapsedMs;
+}
+
+/**
+ * What to do about it, carried on the reply the queue expiry sends.
+ *
+ * A bare -32001 on the first call after an install says nothing a user can act on: not whether to
+ * wait, not whether to retry, not whether the install itself is broken.
+ */
+export function queueExpiryNextStep(port: number): string {
+  return (
+    `No Reticle daemon answered on port ${String(port)}. Retry the call — the next request starts ` +
+    'one. If it keeps failing, run `reticle doctor` in a terminal: it reports what is holding the ' +
+    'port and whether the daemon can start at all.'
+  );
+}
 
 /**
  * Makes a reconnect invisible to the client.
@@ -573,7 +621,13 @@ export function startMcpProxy(
         if (stopped || 0 === stdinQueue.length) return;
         // Drop what we could never send, and answer it, so the caller is never left guessing.
         stdinQueue.splice(0);
-        for (const reply of streamLossReplies(pending, 'no daemon could be reached')) emit(reply);
+        for (const reply of streamLossReplies(
+          pending,
+          'no daemon could be reached',
+          queueExpiryNextStep(port),
+        )) {
+          emit(reply);
+        }
         // The expiry is the proof that the reconnect we believed was in flight is not coming — a
         // wedged port accepts the socket and never serves SSE, so `connect` neither resolves nor
         // rejects and `dormant` would otherwise stay false forever. Going dormant is what makes the
@@ -597,6 +651,15 @@ export function startMcpProxy(
     };
     let stopped = false;
     let attempts = 0;
+    /**
+     * When the proxy started, and how many times the first connect has been refused since.
+     *
+     * The clock is read at this boundary rather than injected, matching the shutdown drain below:
+     * it measures how long a real daemon has had to boot, which is a wall-clock fact about the
+     * machine and not a decision the caller could supply.
+     */
+    const startedAt = Date.now();
+    let firstConnectAttempts = 0;
 
     /**
      * The ONE way a line leaves for the daemon — so a POST that never lands still owes an answer.
@@ -749,6 +812,21 @@ export function startMcpProxy(
         if (settled) return;
         settled = true;
         if (first) {
+          // A refused port on the very first connect is a daemon still booting, not a failure. Keep
+          // chasing it: nothing else will, because only a fresh client request re-probes the port
+          // and the client is already blocked on the call this would rescue.
+          if (shouldRetryFirstConnect(err, Date.now() - startedAt)) {
+            firstConnectAttempts++;
+            const retryInMs = reconnectDelayMs(firstConnectAttempts);
+            proxyLog('reticle_mcp_proxy_first_connect_retry', {
+              port,
+              attempt: firstConnectAttempts,
+              retryInMs,
+              note: 'the daemon has not finished booting; still waiting for it to accept',
+            });
+            setTimeout(() => connect(true), retryInMs).unref();
+            return;
+          }
           reject(err);
           return;
         }
