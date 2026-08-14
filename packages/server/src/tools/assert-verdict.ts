@@ -69,7 +69,16 @@ export async function assertVerdict(
   // session reported none. Attribution is unchanged: findings still come only from windowEvents.
   const prior =
     since > 0 ? (await session.queryEvents({ since: 0 })).filter((e) => e.t < since) : [];
-  const contradictions = findContradictions(windowEvents, { prior });
+  // The last act, when it falls inside the window being judged. Without it `duplicate-request` counted
+  // `method + url` across whatever window the caller asked for, so two legitimate separate saves to one
+  // endpoint were reported as a double submit — the instrument accusing the app of something nobody
+  // could show it did. An assert taken over a window that predates the act attributes nothing, and the
+  // rule then stays quiet.
+  const actCursor = session.lastAct.cursor();
+  const contradictions = findContradictions(windowEvents, {
+    prior,
+    ...(actCursor !== undefined && actCursor >= since ? { actionSince: actCursor } : {}),
+  });
   // Only a spot that IMPEACHES the capture downgrades a verdict. A structural boundary (virtualized
   // rows, a cross-origin frame) is reported as coverage and must not impugn what WAS observed.
   const impeaching = buildCoverageStatement(spots.filter((sp) => impeachesCapture(sp.kind)));

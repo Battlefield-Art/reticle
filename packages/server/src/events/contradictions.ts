@@ -208,6 +208,20 @@ export interface ContradictionOptions {
    */
   prior?: readonly ReticleEvent[] | undefined;
   /**
+   * Event time at which the action that opened this window was dispatched — the attribution floor.
+   *
+   * `duplicate-request` claims "one user action was performed", and that claim is only sound over ONE
+   * action's window. `reticle_observe` takes a caller-supplied window that can be arbitrarily wide, so
+   * two legitimate separate saves to the same endpoint read as a double submit — and the finding then
+   * sat on every verdict for that tab. Undefined means nothing attributed the window to an action, and
+   * the rule stays silent rather than accusing an app of something nobody can show it did.
+   *
+   * ponytail: a NET_REQUEST is stamped when it COMPLETED, so a write dispatched before the action and
+   * landing after it counts as inside. Keying on the matching NET_PENDING would fix that; it has not
+   * been worth the second index.
+   */
+  actionSince?: number | undefined;
+  /**
    * DOM mutations observed INSIDE the target's own subtree, as the act tool measured them.
    *
    * The no-effect check used to require a completely empty window, which is a statement about the
@@ -398,21 +412,29 @@ export function findContradictions(
     }
   }
 
-  // ── The same write fired more than once ─────────────────────────────────────────────────────
-  const writeCounts = new Map<string, number>();
-  for (const call of settled) {
-    if (!isMutating(call)) continue;
-    const key = `${call.method} ${call.url}`;
-    writeCounts.set(key, (writeCounts.get(key) ?? 0) + 1);
-  }
-  for (const [key, count] of writeCounts) {
-    if (count < 2) continue;
-    found.push({
-      kind: ContradictionKind.DUPLICATE_REQUEST,
-      claim: 'one user action was performed',
-      counter: `the same write fired ${String(count)} times`,
-      detail: `${key} ×${String(count)}`,
-    });
+  // ── The same write fired more than once, inside ONE action's window ─────────────────────────
+  // Attribution is the whole rule here, not a refinement of it: counting `method + url` over whatever
+  // window the caller handed in turns two legitimate separate saves into a double submit. See
+  // ContradictionOptions.actionSince.
+  const actionSince = options.actionSince;
+  if (actionSince !== undefined) {
+    const writeCounts = new Map<string, number>();
+    for (const event of events) {
+      if (event.type !== EventType.NET_REQUEST || event.t < actionSince) continue;
+      const call = netCall(event);
+      if (!isMutating(call)) continue;
+      const key = `${call.method} ${call.url}`;
+      writeCounts.set(key, (writeCounts.get(key) ?? 0) + 1);
+    }
+    for (const [key, count] of writeCounts) {
+      if (count < 2) continue;
+      found.push({
+        kind: ContradictionKind.DUPLICATE_REQUEST,
+        claim: 'one user action was performed',
+        counter: `the same write fired ${String(count)} times`,
+        detail: `${key} ×${String(count)}`,
+      });
+    }
   }
 
   // ── The UI advanced over a request that never came back ─────────────────────────────────────

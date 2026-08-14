@@ -125,19 +125,41 @@ describe('findContradictions — cross-channel disagreement', () => {
   });
 
   it('catches the same write firing twice in one action', () => {
-    const found = findContradictions([
-      okCall('POST', '/api/order'),
-      okCall('POST', '/api/order'),
-      domChanged(),
-    ]);
+    const events = [okCall('POST', '/api/order'), okCall('POST', '/api/order'), domChanged()];
+    const found = findContradictions(events, { actionSince: events[0]?.t ?? 0 });
     expect(found.map((c) => c.kind)).toContain(ContradictionKind.DUPLICATE_REQUEST);
     expect(found.find((c) => c.kind === ContradictionKind.DUPLICATE_REQUEST)?.detail).toContain(
       '2',
     );
   });
 
+  /**
+   * The claim this finding makes is "ONE user action was performed" — so it needs to know which one.
+   * Reported from the field: `reticle_observe` takes a caller-supplied window that can be arbitrarily
+   * wide, two legitimate separate saves to the same endpoint read as a double submit, and the tab's
+   * verdicts went permanently unknown behind a repeat that was never a repeat. A false accusation
+   * from the instrument is worse than a miss.
+   */
+  it('does not call two separate actions a double submit', () => {
+    const first = okCall('POST', '/api/order');
+    const later = okCall('POST', '/api/order');
+    expect(
+      findContradictions([first, later, domChanged()], { actionSince: later.t }).map((c) => c.kind),
+    ).not.toContain(ContradictionKind.DUPLICATE_REQUEST);
+  });
+
+  it('says nothing about repeats in a window no action is attributed to', () => {
+    expect(
+      kinds([okCall('POST', '/api/order'), okCall('POST', '/api/order'), domChanged()]),
+    ).not.toContain(ContradictionKind.DUPLICATE_REQUEST);
+  });
+
   it('does not call two DIFFERENT writes a duplicate', () => {
-    expect(kinds([okCall('POST', '/api/a'), okCall('POST', '/api/b'), domChanged()])).toEqual([]);
+    expect(
+      findContradictions([okCall('POST', '/api/a'), okCall('POST', '/api/b'), domChanged()], {
+        actionSince: 0,
+      }).map((c) => c.kind),
+    ).toEqual([]);
   });
 
   it('catches the UI advancing over a request that never settled', () => {

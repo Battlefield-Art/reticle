@@ -586,9 +586,13 @@ export const ACT_TOOLS: ToolDef[] = [
         // `windowEvents`, exactly as on the assert path.
         const prior =
           since > 0 ? (await session.queryEvents({ since: 0 })).filter((e) => e.t < since) : [];
+        //
+        // `actionSince` is the window's own floor here, which is the tightest attribution there is —
+        // and it is what lets `duplicate-request` claim "one user action was performed" and mean it.
         const contradictions = findContradictions(windowEvents, {
           action: acted,
           prior,
+          actionSince: since,
           ...session.lastAct.effect(),
         });
         // The single field an agent reads. Everything below it is the evidence it was derived from;
