@@ -106,6 +106,7 @@ The single exception is `daemon_stopped`, which is **awaited**, because the proc
 | `mcp_connection_lost` | the proxy lost its daemon | **the transport-stability metric.** The disconnect that makes a user reopen `/mcp` is invisible without it |
 | `init_completed` | `reticle init` finished | does install actually work, outside the fixtures gate |
 | `bug_found` | a defect was detected in the app under test | the value delivered, as opposed to the work done |
+| `tool_refused` | a tool could not do what was asked | WHY the largest cohort in the funnel goes quiet. See below |
 
 ## The install has two halves: `app_instrumented`
 
@@ -145,6 +146,22 @@ Four counters and one flag were added because the data could not answer question
 | `installSource` | `reticle_installed`, `init_completed` | WHICH published route brought this install in, from core's closed `InstallSource`. Read from one self-declared marker (`RETICLE_INSTALL_SOURCE`) and NEVER inferred, so `unknown` is expected to dominate until every channel's own copy of the install command carries it. See below. |
 | `tzOffsetMin` | every event | minutes offset from UTC. One integer, no location. |
 | `versionChange.nudged` | `version_changed` | an agent had been told about exactly this version recently, so the nudge plausibly caused the update. The daemon that nudges and the `reticle update` that acts are different processes, so a marker file joins them. |
+
+## Why they stopped: `tool_refused`
+
+The refusal path computes a precise diagnosis, hands it to the agent as prose, and throws it away. So the biggest cohort in the funnel — the users who attach an agent and never drive — emitted nothing at all and was reachable only by subtracting two other numbers. Half of issue #172.
+
+- `refusal_tool` — which tool, from our own fixed namespace. Never app data.
+- `refusal_reason` — the closed `RefusalReason`: `no_session` | `no_match` | `unsupported` | `bad_args` | `not_ready` | `other`. Four different owners, and one undifferentiated "they stopped" number is actionable by none of them.
+- `refusal_retried` — the call immediately before this one was the same tool, also refused.
+
+Two things about it are deliberate and easy to get wrong later.
+
+**The reason is derived from the recovery table, not from a second list of patterns.** `error-recovery.ts` is the one place a thrown message becomes a next action; `REASON_OF` is a `Record` over its keys, so a recovery added without a reason does not compile. A parallel regex list would have been correct the day it was written and silently wrong at the next addition — rule 4, on the exact kind of value that cannot be recovered afterwards.
+
+**`retried` lands on the RETRY, not on the first refusal.** Reporting it the other way round means holding the first event back until the next call reveals whether one came, which loses it entirely for an agent that gives up — and that agent is the whole population this event exists to describe. So a refusal is sent the moment it happens, and the retry that follows carries the flag. Count `retried: true` for retries; the ratio against all refusals is whether our diagnosis gets anybody unstuck.
+
+Capped at 50 per daemon run. Volume is part of this taxonomy's design and a stuck agent is exactly the shape that produces hundreds; `consecutiveRepeats` on the session summary still reports how long the loop ran.
 
 ## Which route brought them in: `installSource`
 

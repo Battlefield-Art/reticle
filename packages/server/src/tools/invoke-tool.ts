@@ -11,6 +11,9 @@ import { takeUpdateNudge } from '../update/update-nudge.js';
 import { takeVersionSkew } from '../version/version-nudge.js';
 import { noteToolCall } from '../daemon/daemon-usefulness.js';
 import { bugsInResult } from '../telemetry/bug-found.js';
+import { noteToolServed, reportToolRefused } from '../telemetry/tool-refused.js';
+import { refusalReasonFor } from './error-recovery.js';
+import { resultIsError } from '../mcp/mcp-is-error.js';
 import { verificationOf } from '../telemetry/verification-of.js';
 import { asString } from './tools-helpers.js';
 import { EnvelopeKey } from './tool-kit.js';
@@ -152,6 +155,25 @@ function reportBugsFound(toolName: string, result: Record<string, unknown>): voi
 }
 
 /**
+ * Report a refused call, at the one place both dispatch paths cross.
+ *
+ * A refusal arrives two ways and they are the same event: the handler THROWS (the common case — no
+ * session, a stale ref, a schema rejection), or it RETURNS `{ error }`, which is this codebase's
+ * refusal convention and just as much a refusal. Both are classified by the same table the agent's
+ * recovery advice comes from, so the reason we record and the advice it got cannot describe
+ * different things.
+ *
+ * `reticle_run` is skipped for the same reason `bugsInResult` skips it: it is a WRAPPER whose
+ * handler calls `runTool` on the real tool, which already reported that refusal under the real
+ * tool's name, and then hands the same failure back out to be reported a second time as
+ * `reticle_run`. A count that doubles because of HOW a tool was reached is not a measurement.
+ */
+function reportRefusal(toolName: string, message: string): void {
+  if (toolName === ReticleTool.RUN) return;
+  reportToolRefused(toolName, refusalReasonFor(message));
+}
+
+/**
  * The single entry point both the MCP server and the programmatic invoker call instead of
  * `tool.handler` directly. Runs the handler, then — for a live-session tool returning a plain
  * object that did not already include `session` — splices the health envelope on. Idempotent
@@ -210,12 +232,14 @@ export async function runTool(
   // prevents: the agent learns its argument was too big, which is something it can fix.
   const oversized = firstOversizedArg(args);
   if (oversized !== undefined) {
-    return {
-      error:
-        `argument '${oversized}' is larger than ${String(TRANSPORT_LIMITS.MAX_STRING_LENGTH)} ` +
-        'characters, which is the most Reticle moves in one call. Nothing ran. Send a smaller ' +
-        'value — a selector or an id rather than a document, or a slice of the text you need.',
-    };
+    const error =
+      `argument '${oversized}' is larger than ${String(TRANSPORT_LIMITS.MAX_STRING_LENGTH)} ` +
+      'characters, which is the most Reticle moves in one call. Nothing ran. Send a smaller ' +
+      'value — a selector or an id rather than a document, or a slice of the text you need.';
+    // Refused before the handler was ever entered, and still a refusal the agent has to recover
+    // from. Reported here rather than at the return below, which this branch never reaches.
+    reportRefusal(tool.name, error);
+    return { error };
   }
   // An ACTION is what gets abandoned. Counted here, against verifications, so "the agent drove the
   // page and then wandered off" becomes a number instead of an impression.
@@ -250,6 +274,13 @@ export async function runTool(
     raw = await span('tool.handler', { tool: tool.name, session: session?.id }, () =>
       tool.handler(deps, args),
     );
+  } catch (error) {
+    // The commonest refusal shape by far, and the one nothing could see: the message is built, handed
+    // to the agent by the MCP boundary, and discarded. Reported here rather than at that boundary
+    // because there are two of them (mcp.ts and the reticle_run hatch) and this is the one place both
+    // go through — a third would otherwise be invisible from the day it was added.
+    reportRefusal(tool.name, error instanceof Error ? error.message : String(error));
+    throw error;
   } finally {
     // In a `finally` so a THROWN call still settles: otherwise every failing tool would leak a
     // concurrency slot and peakConcurrentTools would climb forever on an unhealthy session.
@@ -266,6 +297,13 @@ export async function runTool(
     recordVerification(tool.name, raw, Date.now() - startedAt, session?.brand);
     reportBugsFound(tool.name, raw);
   }
+  // The other half of the refusal surface. A top-level `error` string IS this codebase's refusal
+  // convention, so half the tools refuse by RETURNING one rather than throwing — and reading only the
+  // throw path would have measured half the wall and called it the whole of it, the same way `isError`
+  // once did. A call that was served clears the retry chain, so the next refusal after it is a first
+  // refusal rather than a retry of something unrelated.
+  if (resultIsError(raw)) reportRefusal(tool.name, (raw as { error: string }).error);
+  else noteToolServed();
   const prompt = isPlainObject(raw) ? takeFeedbackPrompt(tool.name) : undefined;
   // Same one-shot channel as the feedback ask: the agent is mid-task, so anything it would have to go
   // and ASK for is something it will never ask for. Spliced on ANY tool result, not just a

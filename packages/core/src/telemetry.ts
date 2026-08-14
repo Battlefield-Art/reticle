@@ -169,6 +169,19 @@ export const TelemetryEventKind = {
    * human watching the screen would have caught" is the argument.
    */
   BUG_FOUND: 'bug_found',
+  /**
+   * A tool could not do what was asked, and said so.
+   *
+   * The refusal path already computes a precise diagnosis, hands it to the agent as prose, and then
+   * throws it away. So the largest cohort in the funnel — the users who connect an agent and never
+   * drive — is visible only by subtraction, and the three genuinely different situations behind it
+   * (nothing was ever wired here, the app is not running, a session was lost) arrive as one silence.
+   *
+   * `noSessionErrors` on the session summary counts one of those causes and only at the end of a
+   * session, without the tool, without the discriminator, and without whether the agent tried again.
+   * This carries the fact at the moment it happens. See issue #172.
+   */
+  TOOL_REFUSED: 'tool_refused',
 } as const;
 export type TelemetryEventKind = (typeof TelemetryEventKind)[keyof typeof TelemetryEventKind];
 
@@ -194,6 +207,7 @@ const SESSION_SCOPED: ReadonlySet<string> = new Set([
   TelemetryEventKind.BUG_FOUND,
   TelemetryEventKind.RUNTIME_CRASHED,
   TelemetryEventKind.FEEDBACK_SUBMITTED,
+  TelemetryEventKind.TOOL_REFUSED,
 ]);
 
 /** True when this event happened inside a daemon run, so a `sessionId` on it means something. */
@@ -524,6 +538,53 @@ export const BugFoundSchema = z.object({
 });
 export type BugFound = z.infer<typeof BugFoundSchema>;
 
+/**
+ * WHY a tool could not do what was asked.
+ *
+ * Derived from the refusal paths that actually exist rather than invented: every member below is a
+ * bucket over `error-recovery.ts`'s recovery table, which is the single place a thrown message is
+ * turned into a next action. That table is the vocabulary; this is its coarse grouping, and a new
+ * entry there cannot compile without being classified here.
+ *
+ * The five that matter belong to four different owners, which is the whole reason for splitting
+ * them: `no_session` is the install's second half never happening, `bad_args` is the agent's own
+ * call, `not_ready` is the environment, and `no_match` / `unsupported` are the app and our own
+ * capability surface. One undifferentiated "the agent stopped" number cannot be acted on by anyone.
+ */
+export const RefusalReason = {
+  /** There was no app to reach: nothing connected, no session by that id, or several with none named. */
+  NO_SESSION: 'no_session',
+  /** The target did not exist: a stale ref, a missing baseline, an option value the select has not got. */
+  NO_MATCH: 'no_match',
+  /** Reticle refuses to pretend: a rich-text surface, a disabled field, a destructive control. */
+  UNSUPPORTED: 'unsupported',
+  /** The call did not match the schema, or named a value our own validators reject. */
+  BAD_ARGS: 'bad_args',
+  /** Nothing is wrong with the call; the world is not ready — a throttled tab, a timeout, no browser. */
+  NOT_READY: 'not_ready',
+  /** A refusal this list does not name. A classifier that cannot say "I don't know" lies instead. */
+  OTHER: 'other',
+} as const;
+export type RefusalReason = (typeof RefusalReason)[keyof typeof RefusalReason];
+
+/** One tool call that could not be served. */
+export const ToolRefusalSchema = z.object({
+  /** Which tool. A name from our own fixed namespace, never app data. */
+  tool: z.string().min(1).max(64),
+  reason: z.nativeEnum(RefusalReason),
+  /**
+   * TRUE when the call immediately before this one was the SAME tool, also refused.
+   *
+   * Reported on the RETRY rather than on the first refusal, because the first refusal has to be sent
+   * at the moment it happens: deferring it until the next call is known would lose it entirely for
+   * the agent that gives up, and that agent is the whole population this event exists to describe.
+   * So count `retried: true` for retries; the ratio against all refusals is whether our diagnosis
+   * gets anybody unstuck.
+   */
+  retried: z.boolean(),
+});
+export type ToolRefusal = z.infer<typeof ToolRefusalSchema>;
+
 /** An MCP client attaching. Separates "installed and running" from "someone is actually using it". */
 export const McpConnectionSchema = z.object({
   /** False the first time a client attaches to this daemon; true for every attach after. */
@@ -747,6 +808,8 @@ export const TelemetryEventSchema = z.object({
   init: InitOutcomeSchema.optional(),
   /** Only on `bug_found`. */
   bug: BugFoundSchema.optional(),
+  /** Only on `tool_refused`: which tool, why, and whether the agent tried the same thing again. */
+  refusal: ToolRefusalSchema.optional(),
   /** Only on `mcp_connection_lost`: which stage of the outage, why, and after how many retries. */
   outage: McpOutageSchema.optional(),
   /** Only on `app_instrumented`: the install's second half finally happening. */

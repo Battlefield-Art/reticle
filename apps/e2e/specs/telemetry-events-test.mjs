@@ -320,6 +320,37 @@ await settle();
   );
 }
 
+// ── 4a-bis. Refusals — why the biggest cohort in the funnel goes quiet ───────
+// The refusal path computed a precise diagnosis, handed it to the agent as prose and threw it away,
+// so a user who hit a wall on their first call emitted nothing at all. A kind-only assertion cannot
+// see an empty payload (see the outage note below), so these assert the FIELDS.
+const refusingTool = { name: 'reticle_query', description: '', inputSchema: {}, handler: async () => {
+  throw new Error('no browser session connected');
+} };
+for (const _ of [0, 1]) {
+  try { await runTool(refusingTool, deps, { by: 'testid', value: 'submit' }); } catch {}
+}
+// A tool that refuses by RETURNING `{ error }` — this codebase's other refusal convention, and half
+// the surface. Reading only the throw path would measure half the wall and call it the whole of it.
+const returningRefusal = { name: 'reticle_baseline', description: '', inputSchema: {}, handler: async () => ({
+  error: "no baseline named 'checkout-v3'",
+}) };
+await runTool(returningRefusal, deps, { action: 'diff', name: 'checkout-v3' });
+await settle();
+{
+  const rs = find('tool_refused');
+  check('tool_refused fires when a call cannot be served', rs.length === 3, `got ${rs.length}`);
+  check('  names the tool that refused', rs[0]?.properties.refusal_tool === 'reticle_query', String(rs[0]?.properties.refusal_tool));
+  check('  says WHY, from the closed list', rs[0]?.properties.refusal_reason === 'no_session', String(rs[0]?.properties.refusal_reason));
+  check('  the first refusal is not a retry', rs[0]?.properties.refusal_retried === false);
+  check('  the same tool called straight after IS flagged as a retry', rs[1]?.properties.refusal_retried === true);
+  check('  a refusal RETURNED rather than thrown is counted too', rs[2]?.properties.refusal_tool === 'reticle_baseline', String(rs[2]?.properties.refusal_tool));
+  check('  and classified by what was missing, not lumped in with no_session', rs[2]?.properties.refusal_reason === 'no_match', String(rs[2]?.properties.refusal_reason));
+  // The refusal message interpolates whatever the caller asked for — a baseline name, a selector, a
+  // testid. Only the tool NAME and the bucket may leave; the message itself never does.
+  check('  leaks no argument from the refused call', !JSON.stringify(rs).includes('checkout-v3') && !JSON.stringify(rs).includes('submit'));
+}
+
 // ── 4b. SDK failures from the in-page half, arriving over the bridge ──────────
 metrics.recordSdkFailure('network_observer', "cannot patch fetch on 'https://acme.internal/app'");
 metrics.recordSdkFailure('network_observer', "cannot patch fetch on 'https://other.internal/x'");

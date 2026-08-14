@@ -39,6 +39,7 @@ import {
   type InstallSource,
   type McpConnection,
   type McpOutage,
+  type ToolRefusal,
   type AppInstrumentation,
   type ProjectProfile,
   type SessionSummary,
@@ -301,6 +302,8 @@ export interface TelemetryExtra {
   init?: InitOutcome;
   /** `bug_found`: one defect Reticle found in the app under test. */
   bug?: BugFound;
+  /** `tool_refused`: a call Reticle could not serve, and why. */
+  refusal?: ToolRefusal;
   /** `mcp_connection_lost`: the agent lost its tools — which stage, and why. */
   outage?: McpOutage;
   /** `app_instrumented`: an app carrying the SDK reached this daemon for the first time. */
@@ -421,6 +424,7 @@ export const createTelemetry = (opts: {
       ...(extra?.connection !== undefined ? { connection: extra.connection } : {}),
       ...(extra?.init !== undefined ? { init: extra.init } : {}),
       ...(extra?.bug !== undefined ? { bug: extra.bug } : {}),
+      ...(extra?.refusal !== undefined ? { refusal: extra.refusal } : {}),
       ...(extra?.outage !== undefined ? { outage: extra.outage } : {}),
       ...(extra?.instrumentation !== undefined ? { instrumentation: extra.instrumentation } : {}),
       // A SCALAR, so it needs the event build and the wire schema but no entry in `blocks` below —
@@ -448,6 +452,7 @@ export const createTelemetry = (opts: {
       connection,
       init,
       bug,
+      refusal,
       outage,
       instrumentation,
       ...rest
@@ -479,6 +484,7 @@ export const createTelemetry = (opts: {
       connection,
       init,
       bug,
+      refusal,
       outage,
       instrumentation,
     };

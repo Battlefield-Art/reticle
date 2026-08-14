@@ -9,7 +9,7 @@
  * baseline stores). No clock, no IO — unit-testable in isolation.
  */
 
-import { TRANSPORT_LIMITS } from '@reticlehq/core';
+import { RefusalReason, TRANSPORT_LIMITS } from '@reticlehq/core';
 import { SELF_RECOVERING_MARKER } from '../session/no-session-diagnosis.js';
 import { chromiumInstallCommand, bundledPlaywrightVersion } from '../cli/chromium-hint.js';
 
@@ -44,18 +44,18 @@ function capMessage(message: string): string {
  * it was still collecting the defect ask, inviting a bug report about a refusal that had just told
  * the agent precisely what to do.
  */
-const SELF_RECOVERING: readonly RegExp[] = [
-  /cannot drive native input/i,
+const SELF_RECOVERING: readonly { readonly match: RegExp; readonly reason: RefusalReason }[] = [
+  { match: /cannot drive native input/i, reason: RefusalReason.UNSUPPORTED },
   // The unknown-session refusal now lists the live ids inline. Appending "call reticle_sessions for
   // the current ids" to a message that just named them contradicts the shorter path it offers, and
   // a contradicted instruction is how one agent came to retry a dead id twelve times.
-  /Connected right now:/i,
+  { match: /Connected right now:/i, reason: RefusalReason.NO_SESSION },
 ];
 
 /** A message that already carries its own concrete next action, so nothing should be appended. */
 function isSelfRecovering(message: string): boolean {
   if (message.includes(SELF_RECOVERING_MARKER)) return true;
-  return SELF_RECOVERING.some((pattern) => pattern.test(message));
+  return SELF_RECOVERING.some((rule) => rule.match.test(message));
 }
 
 /** The recovery hints, named so they are not free strings and can be asserted in tests. */
@@ -161,6 +161,43 @@ export const RECOVERY = {
     'a tab the human already has open — reticle_sessions lists them.',
 } as const;
 
+/**
+ * Which OWNER each recovery belongs to, for `tool_refused`.
+ *
+ * A `Record` over the recovery keys rather than a second table of patterns, and that is the point:
+ * adding a recovery without classifying it does not compile. A parallel regex list would have been
+ * correct on the day it was written and silently wrong at the next addition — the drift that has
+ * already cost this repo a published number twice, and telemetry drift is not recoverable after the
+ * fact.
+ */
+const REASON_OF: Record<keyof typeof RECOVERY, RefusalReason> = {
+  NO_SESSION: RefusalReason.NO_SESSION,
+  MULTIPLE_SESSIONS: RefusalReason.NO_SESSION,
+  UNKNOWN_SESSION: RefusalReason.NO_SESSION,
+  SCOPE_MISMATCH: RefusalReason.NO_SESSION,
+  SESSION_GONE: RefusalReason.NO_SESSION,
+  THROTTLED: RefusalReason.NOT_READY,
+  COMMAND_TIMEOUT: RefusalReason.NOT_READY,
+  NO_POOL: RefusalReason.NOT_READY,
+  TOKEN_REQUIRED: RefusalReason.NOT_READY,
+  MISSING_BASELINE: RefusalReason.NO_MATCH,
+  MISSING_RECORDING: RefusalReason.NO_MATCH,
+  STALE_REF: RefusalReason.NO_MATCH,
+  NO_SUCH_OPTION: RefusalReason.NO_MATCH,
+  FLOW_STEP_MISSING: RefusalReason.NO_MATCH,
+  UNSUPPORTED_SURFACE: RefusalReason.UNSUPPORTED,
+  NOT_EDITABLE: RefusalReason.UNSUPPORTED,
+  CONFIRM_DANGEROUS: RefusalReason.UNSUPPORTED,
+  WRONG_TARGET: RefusalReason.UNSUPPORTED,
+  BAD_ARGUMENTS: RefusalReason.BAD_ARGS,
+  INVALID_NAME: RefusalReason.BAD_ARGS,
+};
+
+/** Hint text back to its reason. The hints are distinct strings, so this inverts cleanly. */
+const REASON_BY_HINT: ReadonlyMap<string, RefusalReason> = new Map(
+  Object.entries(RECOVERY).map(([key, hint]) => [hint, REASON_OF[key as keyof typeof RECOVERY]]),
+);
+
 /** Ordered match rules; the first hit wins. Substrings track the thrown messages they recover. */
 const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   { match: /no browser session connected/i, hint: RECOVERY.NO_SESSION },
@@ -238,6 +275,30 @@ export function recoveryFor(message: string): string | undefined {
     if (rule.match.test(message)) return rule.hint;
   }
   return undefined;
+}
+
+/**
+ * WHY a tool refused, as one of the six buckets in core's `RefusalReason`.
+ *
+ * Reads the SAME rules `buildErrorPayload` reads, in the same order, so the reason we report and the
+ * advice the agent got can never describe different things. Anything unrecognised is `other`, which
+ * is the bucket that says the classifier has a blind spot — and a growing `other` is a finding about
+ * this table rather than about anybody's app.
+ */
+export function refusalReasonFor(rawMessage: string): RefusalReason {
+  const message = zodArrayAsSentence(rawMessage);
+  // The no-session diagnosis inspected the machine and named the cause itself, so it never reaches
+  // the recovery table. It is the single largest refusal there is; missing it would gut the metric.
+  if (message.includes(SELF_RECOVERING_MARKER)) return RefusalReason.NO_SESSION;
+  for (const rule of SELF_RECOVERING) {
+    if (rule.match.test(message)) return rule.reason;
+  }
+  // Same order as buildErrorPayload: a schema rejection is the agent's own call, whatever else in
+  // the message might also match.
+  if (ARGUMENT_REJECTION.test(message)) return RefusalReason.BAD_ARGS;
+  if (INVALID_NAME_REJECTION.test(message)) return RefusalReason.BAD_ARGS;
+  const hint = recoveryFor(message);
+  return (hint === undefined ? undefined : REASON_BY_HINT.get(hint)) ?? RefusalReason.OTHER;
 }
 
 /**
