@@ -61,6 +61,7 @@ import {
   decideOpen,
   drivePortConflict,
   openInBrowser,
+  openCommand,
 } from './cli/cli-launch.js';
 import { handleVerify } from './cli/cli-verify.js';
 import { summarizeHunt, type HuntAnomaly, type HuntRun } from './hunt/hunt-report.js';
@@ -459,9 +460,13 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
         log('reticle_open', {
           port,
           error: `could not launch a browser: ${launchError}`,
+          // Points at the OS handler, not at `reticle doctor`. Doctor's browser check is about
+          // Reticle's own Chromium, which this command never touches — the same misdirect the
+          // no-session note below spells out at length, left standing here for one more release.
           recovery:
-            'Open the url yourself, or run `reticle doctor` — it checks the pieces this command ' +
-            'depends on.',
+            'Nothing was opened. This command asks the OS to open a url in your default browser ' +
+            `(\`${openCommand(decision.url, process.platform).cmd}\` on this platform) and that ` +
+            'failed, so the fix is on the OS side: open the url yourself, or set a default browser.',
         });
         process.exit(1);
         return;

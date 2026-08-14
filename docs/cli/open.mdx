@@ -34,7 +34,19 @@ One `reticle_open` line, whose fields say which of four things happened.
 <Note>
   `connected` is measured, not assumed. This command polls for a **new** session rather than printing
   `{"opened": url}` unconditionally, so a run where nothing opened no longer looks like one where it did.
+  When the launcher itself cannot run, there is no `opened` field at all. Real capture:
+
+```
+{"event":"reticle_open","port":4499,"error":"could not launch a browser: spawn open ENOENT","recovery":"Nothing was opened. This command asks the OS to open a url in your default browser (`open` on this platform) and that failed, so the fix is on the OS side: open the url yourself, or set a default browser."}
+```
+
 </Note>
+
+<Warning>
+  This command does **not** use Reticle's own Chromium. It hands the URL to your system default
+  browser, so a `chromium` warning from `reticle doctor` has nothing to do with an `open` that came
+  back `connected: false`. That misread cost a reporter an afternoon in their bridge config.
+</Warning>
 
 <Warning>
   For an Electron or Tauri app there is no URL to open. Start the app the way you normally would; it
