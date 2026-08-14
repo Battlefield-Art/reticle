@@ -208,6 +208,78 @@ describe('the no-listener branch does not overclaim what an eleven-port scan pro
 });
 
 /**
+ * A machine-wide port scan is not evidence about THIS project.
+ *
+ * Reported from the field (#320): the message said "something IS listening on port 5173, 8000, 8080,
+ * so a server is up and has never dialled this daemon. This project has not been through `reticle
+ * init` … the app carries no Reticle SDK". `init` had run minutes earlier, the SDK was wired and
+ * serving, all three ports belonged to OTHER repositories on the same machine, and the app under
+ * test was on a port the scan does not cover. The real cause was that no browser had opened the app
+ * yet, and `reticle open` fixed it in one call — a command the message named nowhere.
+ *
+ * The scan finds listeners anywhere on localhost and cannot say whose they are, so a "so" that draws
+ * a conclusion from them is unsound on any machine running more than one instrumented repo, which is
+ * the normal case for the people using us. The reporter re-verified their init output, diffed their
+ * Vite config and curled their own page to disprove it, and now ignores the field entirely.
+ */
+describe('the scan is reported as unattributed, and the browser comes first', () => {
+  const wiredAndListening = diagnoseNoSession({
+    everConnected: false,
+    initialized: true,
+    listening: [5173, 8000, 8080],
+    port: 4400,
+  });
+
+  it('leads with the browser nobody opened, and names the command that fixes it', () => {
+    expect(wiredAndListening).toMatch(/reticle open/);
+    // Before the port sentence: this is the commonest first-run state by a distance.
+    const open = wiredAndListening.indexOf('reticle open');
+    expect(open).toBeGreaterThanOrEqual(0);
+    expect(open).toBeLessThan(wiredAndListening.indexOf('5173'));
+  });
+
+  it('never draws a conclusion from a port it cannot attribute', () => {
+    expect(wiredAndListening).not.toMatch(/so a server is up/i);
+    expect(wiredAndListening).toMatch(/attribute/i);
+  });
+
+  it('says the same thing when the project is not known to be wired', () => {
+    const unwired = diagnoseNoSession({
+      everConnected: false,
+      initialized: false,
+      listening: [5173, 8000, 8080],
+      port: 4400,
+    });
+    expect(unwired).not.toMatch(/so a server is up/i);
+    expect(unwired).toMatch(/attribute/i);
+    // and never the claim the file cannot support
+    expect(unwired).not.toMatch(/has not been through `reticle init`/);
+  });
+
+  it('names the directory it looked in, when it was given one', () => {
+    const unwired = diagnoseNoSession({
+      everConnected: false,
+      initialized: false,
+      listening: [5173],
+      port: 4400,
+      directory: '/repo/root',
+    });
+    expect(unwired).toContain('/repo/root');
+  });
+
+  it('names `reticle open` for a wired project with nothing listening either', () => {
+    // The app may be on a port the scan never covers, which is exactly the reported case.
+    const quiet = diagnoseNoSession({
+      everConnected: false,
+      initialized: true,
+      listening: [],
+      port: 4400,
+    });
+    expect(quiet).toMatch(/reticle open/);
+  });
+});
+
+/**
  * A lease that aged out must not be reported as a human closing a tab.
  *
  * Reported from the field (#157): when a pooled lease expires, the agent gets the `everConnected`

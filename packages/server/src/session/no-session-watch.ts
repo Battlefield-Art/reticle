@@ -22,6 +22,8 @@ interface NoSessionWatchOptions {
   port: number;
   /** Whether this project has been through `reticle init` (a projectId is stamped in .reticle.json). */
   initialized: boolean;
+  /** Where that was decided — this daemon's working directory unless a caller says otherwise. */
+  directory?: string;
   probe?: () => Promise<number[]>;
   /**
    * How many pooled leases have aged out, if a pool exists. Injected as a reader rather than the
@@ -63,6 +65,10 @@ function startNoSessionWatch(options: NoSessionWatchOptions): () => void {
       initialized: options.initialized,
       listening,
       port: options.port,
+      // The directory `initialized` was decided in. Named in the message because "there is no
+      // `.reticle.json`" is a claim about ONE directory, and a reader standing somewhere else
+      // cannot tell whether it is a claim about their app at all.
+      directory: options.directory ?? process.cwd(),
       leaseExpired: (options.reapedLeases?.() ?? 0) > 0,
     }),
   );

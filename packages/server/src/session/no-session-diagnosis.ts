@@ -31,6 +31,14 @@ interface NoSessionFacts {
   /** The port this daemon is on — half of the mismatch the old message asked about. */
   port: number;
   /**
+   * The directory `initialized` was decided in, named in the message when it is known.
+   *
+   * "There is no `.reticle.json`" is only ever true OF A DIRECTORY, and a reader who cannot see
+   * which one has to guess whether the claim is about their app at all — reported by someone whose
+   * app lives in `src/admin` while the daemon stands at the repo root.
+   */
+  directory?: string;
+  /**
    * This daemon has reaped at least one EXPIRED pooled lease.
    *
    * Deliberately not "the session that just vanished was that lease" — nothing knows that. It is
@@ -96,9 +104,50 @@ const NON_LOCALHOST_GATE =
 
 const SCANNED_PORTS = [...DEV_SERVER_PORTS].join(', ');
 
+/**
+ * The commonest first-run state there is, and until #320 the message named it nowhere.
+ *
+ * Reticle sees a page only once a browser has LOADED it. A wired app that nobody has opened produces
+ * exactly the same empty list as a broken install, and the reporter who hit it spent an afternoon
+ * re-verifying their init output, diffing their Vite config and curling their own page before
+ * discovering that one `reticle open` fixed it instantly.
+ */
+const OPEN_THE_APP =
+  'Reticle only ever sees a page that is LOADED, so the commonest cause by a distance is that no ' +
+  "browser has opened the app yet: run `reticle open <url>` with the app's own URL (or ask the " +
+  'human to open it).';
+
+/**
+ * What a machine-wide port scan can and cannot say.
+ *
+ * It finds listeners anywhere on localhost and knows nothing about who owns them. The old wording
+ * spent that as evidence — "something IS listening on port 5173, 8000, 8080, SO a server is up and
+ * has never dialled this daemon" — about three ports that belonged to three other repositories on
+ * the reporter's machine, while their own app sat on a port the scan does not cover. On any machine
+ * running more than one instrumented repo, which is the normal case here, that inference is unsound.
+ */
+function unattributedListeners(listening: readonly number[]): string {
+  if (0 === listening.length) {
+    return (
+      `No listener found that I can attribute to this project: the scan covers ${SCANNED_PORTS} ` +
+      'across the whole machine, so an app on any other port is invisible to it.'
+    );
+  }
+  return (
+    `Something is listening on port ${listening.join(', ')}, but I cannot attribute any of it to ` +
+    `this project: that is a machine-wide scan of ${SCANNED_PORTS}, so on a machine running more ` +
+    "than one repo those are as likely to be somebody else's dev server, and the app's own port " +
+    'may not be in the set at all. Treat them as unattributed rather than as evidence.'
+  );
+}
+
 export function diagnoseNoSession(facts: NoSessionFacts): string {
   const { everConnected, initialized, listening, port } = facts;
-  const ports = listening.join(', ');
+  // Named when known: a claim about a missing file is a claim about ONE directory.
+  const where =
+    facts.directory === undefined
+      ? 'the directory this daemon is running in'
+      : `the directory this daemon is running in (${facts.directory})`;
 
   if (everConnected) {
     // A reaped lease first, because it is the one cause we have POSITIVE evidence for. Reported
@@ -145,8 +194,8 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
         `(1) Nothing is listening on the ports Reticle scans (${SCANNED_PORTS}), so the dev server ` +
         'may not be running — ask the human to start it (`npm run dev`). That scan is narrow ' +
         'though: a server on any other port is invisible to it, so if the app IS running, ask for ' +
-        'its URL rather than assuming it is down. ' +
-        '(2) There is no `.reticle.json` in the directory this daemon is running in. That is the ' +
+        'its URL rather than assuming it is down, and open it with `reticle open <url>`. ' +
+        `(2) There is no \`.reticle.json\` in ${where}. That is the ` +
         "file `reticle init` writes, so the app may carry no Reticle SDK — but check the app's " +
         'OWN directory before re-running `init`: in a monorepo the daemon often runs at the root ' +
         'while the app lives in a subdirectory, and an app wired by the Vite or Babel plugin ' +
@@ -154,9 +203,10 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
       );
     }
     return (
-      'no browser session connected, and nothing is listening on the ports Reticle scans ' +
-      `(${SCANNED_PORTS}). The most common reason for that is a dev server that is not running: ask ` +
-      'the human to start it (`npm run dev`), then open the app in a browser. ' +
+      `no browser session connected, and this daemon has never seen one. ${OPEN_THE_APP} ` +
+      'Nothing is listening on the ports Reticle scans ' +
+      `(${SCANNED_PORTS}) either, and the most common reason for that is a dev server that is not ` +
+      'running: ask the human to start it (`npm run dev`), then open the app in a browser. ' +
       // The caveat is here rather than omitted because the scan is NARROW, and the old sentence
       // spent its confidence as though an empty result were proof of absence. Reported twice: a
       // scripted drive of 2.5.0 asserted the app was not running while it served 200 on :7699, and
@@ -176,19 +226,23 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
 
   if (!initialized) {
     return (
-      `no browser session connected, but something IS listening on port ${ports} — so a server is ` +
-      'up and has never dialled this daemon. This project has not been through `reticle init`, ' +
-      'which is what installs the SDK and wires it into the build, so the likeliest cause is that ' +
-      "the app carries no Reticle SDK. Ask the human to run `reticle init` in the app's directory " +
-      `and restart the dev server. ${RETRY}`
+      'no browser session connected, and this daemon has never seen one. ' +
+      `What was actually checked: there is no \`.reticle.json\` in ${where}. That is the file ` +
+      '`reticle init` writes, so the app may carry no Reticle SDK — but it is not proof, and the ' +
+      'same absence is expected in a monorepo whose daemon runs at the root while the app lives in ' +
+      "a subdirectory, or in an app wired by the Vite or Babel plugin. Check the app's OWN " +
+      'directory: if it has no config, run `reticle init` there and restart the dev server; if it ' +
+      'has one, the app is wired and simply has no page open — `reticle open <url>`. ' +
+      `${unattributedListeners(listening)} ${RETRY}`
     );
   }
 
   return (
-    `no browser session connected, but something IS listening on port ${ports} and this project is ` +
-    `wired for Reticle — so the app is either serving a build made before the wiring landed, or ` +
-    `dialling a different daemon than this one (this daemon is on ${String(port)}). Ask the human ` +
-    'to restart the dev server and hard-reload the page; if it still does not appear, check that ' +
-    `the app's reticle port matches ${String(port)}. ${NON_LOCALHOST_GATE} ${SELF_SERVE} ${RETRY}`
+    'no browser session connected, and this daemon has never seen one for this project, which is ' +
+    `wired for Reticle. ${OPEN_THE_APP} ${unattributedListeners(listening)} ` +
+    'If the page IS open and still does not appear, the app is either serving a build made before ' +
+    `the wiring landed or dialling a different daemon than this one (on ${String(port)}): restart ` +
+    "the dev server, hard-reload the page, and check that the app's reticle port matches " +
+    `${String(port)}. ${NON_LOCALHOST_GATE} ${SELF_SERVE} ${RETRY}`
   );
 }
