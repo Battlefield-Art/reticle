@@ -14,7 +14,8 @@
   "mcpServers": {
     "reticle": {
       "command": "npx",
-      "args": ["-y", "@reticlehq/server", "mcp"]
+      "args": ["-y", "@reticlehq/server", "mcp"],
+      "env": { "RETICLE_INSTALL_SOURCE": "plugin" }
     }
   }
 }

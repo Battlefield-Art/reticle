@@ -36,6 +36,7 @@ import {
   type BugFound,
   isSessionScoped,
   type InitOutcome,
+  type InstallSource,
   type McpConnection,
   type McpOutage,
   type AppInstrumentation,
@@ -304,6 +305,8 @@ export interface TelemetryExtra {
   outage?: McpOutage;
   /** `app_instrumented`: an app carrying the SDK reached this daemon for the first time. */
   instrumentation?: AppInstrumentation;
+  /** `reticle_installed` / `init_completed`: which published route brought this install in. */
+  installSource?: InstallSource;
 }
 
 export interface Telemetry {
@@ -420,6 +423,10 @@ export const createTelemetry = (opts: {
       ...(extra?.bug !== undefined ? { bug: extra.bug } : {}),
       ...(extra?.outage !== undefined ? { outage: extra.outage } : {}),
       ...(extra?.instrumentation !== undefined ? { instrumentation: extra.instrumentation } : {}),
+      // A SCALAR, so it needs the event build and the wire schema but no entry in `blocks` below —
+      // there is nothing to flatten. It still needs both of those, which is the trap `outage` fell
+      // into: a field declared on TelemetryExtra and missing from either one is dropped in silence.
+      ...(extra?.installSource !== undefined ? { installSource: extra.installSource } : {}),
     };
     // Map the core contract onto PostHog's capture shape: id/name/time move up, the rest are properties.
     // The feedback body is FLATTENED into `feedback_*` properties rather than sent as a nested object:

@@ -61,7 +61,7 @@ Everything is **dev-only** and **localhost-only**. It's tree-shaken out of produ
 From your project root:
 
 ```bash
-npx @reticlehq/server init
+RETICLE_INSTALL_SOURCE=docs_site npx @reticlehq/server init
 ```
 
 It detects your framework, package manager, and React version, then:

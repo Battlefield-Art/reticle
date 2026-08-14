@@ -12,6 +12,7 @@
  */
 import { TelemetryEventKind, type InitOutcome } from '@reticlehq/core';
 import { getTelemetry } from './telemetry.js';
+import { resolveInstallSource } from './install-source.js';
 
 /** Classified init failures — our own vocabulary, never a raw error or a path. */
 export const InitFailure = {
@@ -28,7 +29,14 @@ export type InitFailure = (typeof InitFailure)[keyof typeof InitFailure];
 /** Report one init outcome. Best-effort; setup must never fail because a metric did. */
 export function reportInitOutcome(init: InitOutcome): void {
   try {
-    void getTelemetry().emit(TelemetryEventKind.INIT_COMPLETED, { init, detach: true });
+    void getTelemetry().emit(TelemetryEventKind.INIT_COMPLETED, {
+      init,
+      detach: true,
+      // The other half of attribution: `reticle_installed` says a machine arrived, this says the
+      // setup on it finished, and only together do they say which route converts. Same self-declared
+      // marker, same refusal to infer — see install-source.ts.
+      installSource: resolveInstallSource(),
+    });
   } catch {
     /* a metric must never break `reticle init` */
   }

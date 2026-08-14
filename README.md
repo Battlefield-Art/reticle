@@ -107,7 +107,7 @@ npx skills add reticlehq/reticle
 **Or via CLI** — auto-detects your framework, installs the kit + build plugin, and registers the MCP server for every agent in one shot:
 
 ```bash
-npx @reticlehq/server init
+RETICLE_INSTALL_SOURCE=readme npx @reticlehq/server init
 ```
 
 **Or register the MCP server directly in Claude Code** (then restart it):

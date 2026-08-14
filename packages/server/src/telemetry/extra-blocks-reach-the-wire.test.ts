@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { TelemetryEventKind } from '@reticlehq/core';
+import { InstallSource, TelemetryEventKind } from '@reticlehq/core';
 import { createTelemetry, type TelemetryExtra } from './telemetry.js';
 
 const TEST_ENV = {
@@ -90,6 +90,16 @@ describe('every declared block survives to the wire', () => {
     // "an agent was NOT attached when the app arrived" is a fact this event exists to report.
     expect(properties['instrumentation_agentAttached']).toBe(false);
     expect(properties['instrumentation_msToFirstApp']).toBe(42);
+  });
+
+  /**
+   * A SCALAR extra skips the `blocks` map (there is nothing to flatten) and so skips the one wiring
+   * step this file was written about — which makes it look safer than it is. It still needs the
+   * event-building spread and the core wire schema, and missing either drops it exactly as silently.
+   */
+  it('carries a scalar extra, which has no block to be flattened out of', async () => {
+    const properties = await propertiesFor({ installSource: InstallSource.PLUGIN });
+    expect(properties['installSource']).toBe(InstallSource.PLUGIN);
   });
 
   it('never nests a block, which would make it invisible to a breakdown', async () => {

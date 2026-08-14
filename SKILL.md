@@ -57,7 +57,7 @@ The one thing you may not do is stop early and call it done.
 ## Step 1 — Run `init`. Ask the user nothing.
 
 ```bash
-npx @reticlehq/server init
+RETICLE_INSTALL_SOURCE=skill_file npx @reticlehq/server init
 ```
 
 That is the setup. It takes a few seconds and it does the whole job: detects the framework, package manager and UI library; registers the MCP server globally with whichever agents are installed; writes the agent verification rule **and the `/reticle` slash command**; installs the SDK pinned to the CLI's version; writes `.reticle.json`; wires the build config — the Vite plugin, or all three Next.js files (`next.config`, the root layout, and the `ReticleDev` component); and generates a **capabilities scaffold** pre-filled with the `data-testid` values it found and the state library it detected.

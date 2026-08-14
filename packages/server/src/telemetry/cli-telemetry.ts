@@ -8,6 +8,7 @@ import { TelemetryEventKind } from '@reticlehq/core';
 import { DAEMON_INNER_COMMAND, knownCommand } from '../cli/cli-parse.js';
 import { getTelemetry } from './telemetry.js';
 import { describeCliFlags } from './argument-shape.js';
+import { resolveInstallSource } from './install-source.js';
 
 /**
  * Report that a person ran a `reticle` subcommand.
@@ -47,7 +48,12 @@ export function reportCliRun(argv: readonly string[]): void {
   // installed the SDK into nine apps — the top of every funnel, missing.
   // `detach` so a quick command (`version`/`gate`) exits immediately instead of waiting out the POST.
   if (telemetry.firstRun)
-    void telemetry.emit(TelemetryEventKind.RETICLE_INSTALLED, { detach: true });
+    void telemetry.emit(TelemetryEventKind.RETICLE_INSTALLED, {
+      detach: true,
+      // WHICH published route brought this machine in. Self-declared by the channel, never inferred
+      // — see install-source.ts for which of the four routes can actually carry the marker.
+      installSource: resolveInstallSource(),
+    });
   if (!isHumanCliCommand(command)) return;
   void telemetry.emit(TelemetryEventKind.CLI_COMMAND_RUN, {
     detach: true,

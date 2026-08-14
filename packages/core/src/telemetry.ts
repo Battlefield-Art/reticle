@@ -618,6 +618,45 @@ export const McpOutageSchema = z.object({
 });
 export type McpOutage = z.infer<typeof McpOutageSchema>;
 
+/**
+ * WHICH published route brought this install in.
+ *
+ * Four routes ship at once — the SKILL.md paste URL, an `npx skills add` package, a Claude Code
+ * plugin, and docs.reticle.sh — and not one install can be attributed to any of them today. Every
+ * decision about where to spend effort on distribution is therefore made blind.
+ *
+ * The value is NEVER inferred. It is read from a single explicit marker (`RETICLE_INSTALL_SOURCE`)
+ * that a channel sets on itself, narrowed against this list, and anything else reports `UNKNOWN`.
+ * That is deliberate and it means `unknown` will stay large: a guessed attribution is worse than no
+ * attribution, because a distribution decision made on a guess is indistinguishable from one made on
+ * a measurement. Read a small `unknown` as a marker that spread, never as success.
+ *
+ * What the marker CANNOT be derived from, and why nothing here tries:
+ *  - `npm_config_user_agent` says npm/pnpm ran us. Every one of these routes runs through npx, so it
+ *    separates none of them.
+ *  - The presence of `.claude-plugin/` or an installed skill directory says a plugin or a skill is
+ *    present in the repo, not that it is the thing that ran `init` — and both are present at once on
+ *    any machine that has tried more than one route.
+ *  - A first-run heuristic on which command ran first says nothing about who told the user to run it.
+ */
+export const InstallSource = {
+  /** The canonical SKILL.md paste URL — the marker is in the command SKILL.md tells the agent to run. */
+  SKILL_FILE: 'skill_file',
+  /** The `npx skills add` package, which ships its own copy of the skill carrying its own marker. */
+  NPX_SKILL: 'npx_skill',
+  /** The Claude Code plugin, which sets the marker in the `env` of the MCP server it registers. */
+  PLUGIN: 'plugin',
+  /** docs.reticle.sh, whose install snippets carry the marker. */
+  DOCS_SITE: 'docs_site',
+  /** The repository README's install snippet. */
+  README: 'readme',
+  /** Somebody typed the command with no channel in front of it. Only ever self-declared. */
+  CLI_DIRECT: 'cli_direct',
+  /** No marker, or one this list does not name. The honest answer, and expected to dominate. */
+  UNKNOWN: 'unknown',
+} as const;
+export type InstallSource = (typeof InstallSource)[keyof typeof InstallSource];
+
 /** How `reticle init` went. The onboarding funnel, which had no instrumentation whatsoever. */
 export const InitOutcomeSchema = z.object({
   ok: z.boolean(),
@@ -712,5 +751,12 @@ export const TelemetryEventSchema = z.object({
   outage: McpOutageSchema.optional(),
   /** Only on `app_instrumented`: the install's second half finally happening. */
   instrumentation: AppInstrumentationSchema.optional(),
+  /**
+   * Only on `reticle_installed` / `init_completed`: which published route brought this install in.
+   *
+   * A scalar rather than a block because it belongs to two different events that have no payload in
+   * common, and because there is exactly one fact to carry. Absent on every other kind.
+   */
+  installSource: z.nativeEnum(InstallSource).optional(),
 });
 export type TelemetryEvent = z.infer<typeof TelemetryEventSchema>;

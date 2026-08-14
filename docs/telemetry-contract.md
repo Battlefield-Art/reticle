@@ -142,8 +142,21 @@ Four counters and one flag were added because the data could not answer question
 | `verification.uncleanLoss` | `verification_completed` | WHAT was lost when `reason` is `unclean_capture`, from core's closed `CaptureLoss`: `buffer_loss` (our server ring buffer evicted evidence from the window) \| `transport_gap` (our browser queue overflowed) \| `blind_spot` (a boundary in the page, such as a cross-origin frame or a closed shadow root) \| `other`. Three owners, three fixes, and one bar on a dashboard until this existed. ONE value, not a list: a multi-value property is not something a breakdown can group by, so the first is sent, ours before the page's. **Absent whenever the capture was clean**, so its presence is itself the signal. Reported as `other` rather than omitted when the block says dirty and names nothing: a gap there would read as "no unclean verdicts happened". |
 | `bug.attribution` | `bug_found` | `app` \| `request` \| `reticle`: whose fault the defect was. **Absent means unclassified**, never `app`. See below. |
 | `outage.stage` / `outage.reason` / `outage.attempts` | `mcp_connection_lost` | which stage of the outage, why the stream went away (closed `OutageReason`, `other` for anything unnamed), and how many reconnects had been tried. See below. |
+| `installSource` | `reticle_installed`, `init_completed` | WHICH published route brought this install in, from core's closed `InstallSource`. Read from one self-declared marker (`RETICLE_INSTALL_SOURCE`) and NEVER inferred, so `unknown` is expected to dominate until every channel's own copy of the install command carries it. See below. |
 | `tzOffsetMin` | every event | minutes offset from UTC. One integer, no location. |
 | `versionChange.nudged` | `version_changed` | an agent had been told about exactly this version recently, so the nudge plausibly caused the update. The daemon that nudges and the `reticle update` that acts are different processes, so a marker file joins them. |
+
+## Which route brought them in: `installSource`
+
+Four install routes ship at once — the SKILL.md paste URL, an `npx skills add` package, a Claude Code plugin, and docs.reticle.sh — and not one install could be attributed to any of them. Every decision about where to spend distribution effort was made blind.
+
+There is exactly ONE mechanism, and it is a declaration rather than a detection: the channel sets `RETICLE_INSTALL_SOURCE` on the process that runs the install, and `install-source.ts` narrows it against core's `InstallSource`. Anything unrecognised reports `unknown`; an echo would put whatever somebody exported onto the wire.
+
+Nothing infers. Three things look like signals and are not: `npm_config_user_agent` says npm ran us, and all four routes go through npx; a `.claude-plugin/` directory or an installed skill folder says a route is PRESENT, not that it ran `init`, and both are present on any machine that tried more than one; and which command ran first says nothing about who told the user to run it.
+
+So `plugin` is the only route detectable without anybody typing anything (the plugin registers the MCP server and sets the marker in its `env`). `skill_file`, `npx_skill`, `docs_site` and `readme` are detectable only where that channel's own published copy of the install command carries the marker, and each of those is a separately published artifact. `cli_direct` is not detectable at all.
+
+**`unknown` is therefore expected to be the largest bucket, and shrinking it is a distribution job rather than a classifier job.** Read a small `unknown` as a marker that spread. A guessed attribution would be worse than none: it is the number distribution decisions get steered on, and once a guess sits in the same column as a measurement the two cannot be told apart.
 
 ## Why a verdict came out that way: `verification.reason`
 
