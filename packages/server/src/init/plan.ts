@@ -45,6 +45,7 @@ import {
   astroSteps,
   VITE_PLUGIN_DETAIL,
 } from './plan-framework.js';
+import { join } from 'node:path';
 import { htmlManual, reticleConfigContent, unverifiedUiLibraryNote } from './snippets.js';
 import { devServerPortWarning, isLikelyDevServerPort } from '../cli/cli-port.js';
 
@@ -271,6 +272,14 @@ export interface PlanInput {
   claudeCommandContent?: string | null | undefined;
   /** Current .cursor/commands/reticle.md content, or null when absent. */
   cursorCommandContent?: string | null | undefined;
+  /**
+   * Absolute directory the AGENT runs in, when that is not the app's directory.
+   *
+   * The rule and command files are read by the agent, not by the app, so a monorepo whose app is a
+   * directory down must still get its `/reticle` where the human's session actually stands. Absent
+   * (the single-package case) leaves every path project-relative exactly as before.
+   */
+  agentFileRoot?: string | undefined;
   options: {
     port: number | undefined;
     mcp: boolean;
@@ -280,6 +289,20 @@ export interface PlanInput {
     /** The CLI's own version, pinned onto the SDK install so a stale registry cache cannot skew it. */
     sdkVersion?: string;
   };
+}
+
+/**
+ * Where the agent-facing files go, which is not always where the app is.
+ *
+ * Reported from the field (#318): a repo with its app at `src/admin` got `.claude/commands/reticle.md`
+ * written into the app directory, while the human's agent session runs at the repo root — so
+ * `/reticle` did not exist for them at all until they copied it up by hand. The rule and command
+ * files are read by the AGENT, so they belong where the agent stands; the app files stay with the
+ * app. The two are the same directory in a single-package repo, which is why this went unnoticed.
+ */
+function agentFile(input: PlanInput, relPath: string): string {
+  const root = input.agentFileRoot;
+  return root === undefined || 0 === root.length ? relPath : join(root, relPath);
 }
 
 const CLAUDE_MCP_TITLE = 'MCP server (Claude, global)';
@@ -456,12 +479,16 @@ function commandStepFor(
 }
 
 function claudeCommandStep(input: PlanInput): Step | null {
-  return commandStepFor(CLAUDE_COMMAND_PATH, input.claudeCli, input.claudeCommandContent);
+  return commandStepFor(
+    agentFile(input, CLAUDE_COMMAND_PATH),
+    input.claudeCli,
+    input.claudeCommandContent,
+  );
 }
 
 function cursorCommandStep(input: PlanInput): Step | null {
   const present = true === input.cursorProjectPresent || (input.cursorPresent && !input.claudeCli);
-  return commandStepFor(CURSOR_COMMAND_PATH, present, input.cursorCommandContent);
+  return commandStepFor(agentFile(input, CURSOR_COMMAND_PATH), present, input.cursorCommandContent);
 }
 
 const AGENT_RULE_TITLE = 'Agent verification rule';
@@ -469,21 +496,22 @@ const AGENT_RULE_DETAIL = 'teach the agent to verify features with Reticle after
 
 function claudeRuleStep(input: PlanInput): Step | null {
   if (!input.claudeCli) return null;
+  const path = agentFile(input, CLAUDE_MD_PATH);
   const r = mergeMarkedInstruction(input.claudeMdContent);
   if (r.status === AgentRuleStatus.ALREADY) {
     return {
       title: AGENT_RULE_TITLE,
-      target: CLAUDE_MD_PATH,
+      target: path,
       status: StepStatus.ALREADY,
       detail: 'Reticle rule already in CLAUDE.md',
     };
   }
   return {
     title: AGENT_RULE_TITLE,
-    target: CLAUDE_MD_PATH,
+    target: path,
     status: StepStatus.APPLY,
     detail: AGENT_RULE_DETAIL,
-    write: { path: CLAUDE_MD_PATH, content: r.content },
+    write: { path, content: r.content },
   };
 }
 
@@ -498,20 +526,21 @@ function cursorRuleStep(input: PlanInput): Step | null {
   if (input.cursorProjectPresent !== true && input.claudeCli) return null;
   // The whole file is Reticle's — init created it — so a stale one is REWRITTEN rather than merged.
   // Comparing content is what makes the rule updatable; comparing existence made it permanent.
+  const path = agentFile(input, CURSOR_RULE_PATH);
   if (input.cursorRuleContent === cursorRuleFile()) {
     return {
       title: AGENT_RULE_TITLE,
-      target: CURSOR_RULE_PATH,
+      target: path,
       status: StepStatus.ALREADY,
       detail: 'Reticle rule already in .cursor/rules',
     };
   }
   return {
     title: AGENT_RULE_TITLE,
-    target: CURSOR_RULE_PATH,
+    target: path,
     status: StepStatus.APPLY,
     detail: AGENT_RULE_DETAIL,
-    write: { path: CURSOR_RULE_PATH, content: cursorRuleFile() },
+    write: { path, content: cursorRuleFile() },
   };
 }
 
@@ -583,20 +612,21 @@ function agentRuleSteps(input: PlanInput): Step[] {
   const detected = stepsForAgents(input, (a) => a.ruleStep);
   if (detected.length > 0) return detected;
   const r = mergeMarkedInstruction(input.agentsMdContent);
+  const path = agentFile(input, AGENTS_MD_PATH);
   return [
     r.status === AgentRuleStatus.ALREADY
       ? {
           title: AGENT_RULE_TITLE,
-          target: AGENTS_MD_PATH,
+          target: path,
           status: StepStatus.ALREADY,
           detail: 'Reticle rule already in AGENTS.md',
         }
       : {
           title: AGENT_RULE_TITLE,
-          target: AGENTS_MD_PATH,
+          target: path,
           status: StepStatus.APPLY,
           detail: AGENT_RULE_DETAIL,
-          write: { path: AGENTS_MD_PATH, content: r.content },
+          write: { path, content: r.content },
         },
   ];
 }
@@ -700,7 +730,7 @@ function installStep(input: PlanInput): Step {
  * where the mistake is actually made.
  */
 function existingConfigProblem(source: string | null | undefined): string | undefined {
-  if (source === null || source === undefined) return undefined;
+  if (null === source || source === undefined) return undefined;
   let parsed: unknown;
   try {
     parsed = JSON.parse(source);

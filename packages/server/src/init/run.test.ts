@@ -47,7 +47,14 @@ function memoryIo(
    */
   const norm = (p: string): string => p.replace(/\\/g, '/');
   const key = (p: string): string =>
-    norm(p.startsWith('/') || '' === prefix ? p : `${prefix}/${p}`);
+    // `.` is the scope's own root — the real IO resolves it with `join(cwd, '.')`, which is `cwd`.
+    // Keying it as `<prefix>/.` instead made every top-level scan inside a redirected app come back
+    // empty, so the harness could not express a nested app's directory tree at all.
+    '.' === p
+      ? '' === prefix
+        ? '.'
+        : prefix
+      : norm(p.startsWith('/') || '' === prefix ? p : `${prefix}/${p}`);
   return {
     written,
     lines,
@@ -632,6 +639,63 @@ describe('runInit — the capabilities module', () => {
     const mod = io.written['src/reticle-dev.ts'] ?? '';
     expect(mod).toContain('registerCapabilities');
     expect(mod).toContain('add data-testid');
+  });
+});
+
+/**
+ * An app that is neither `apps/*` nor `packages/*` produced three failures at once (#318), and the
+ * repo that reported it keeps its app at `src/admin`.
+ *
+ * The testid scan walked a fixed list of directory names, so an app that keeps its screens anywhere
+ * else read as an app with no test hooks at all — and "no data-testid values yet" makes an agent go
+ * and write the ones that are already there. The command file went to the app directory while the
+ * human's agent session runs at the repo root, so `/reticle` did not exist for them until they
+ * copied it up by hand: the one durable entry point into Reticle, silently absent.
+ *
+ * `init` already grew `apps/*` and `packages/*` scanning after a report about `frontend/`. A third
+ * report of the same shape is what says the fix is not another name in a list.
+ */
+describe('runInit — an app outside the directory names anyone guessed', () => {
+  const NESTED = {
+    'src/admin/package.json': JSON.stringify({
+      devDependencies: { vite: '^5', react: '^19' },
+    }),
+    'src/admin/vite.config.ts': `export default { plugins: [] };\n`,
+    'src/admin/modules/users/UserList.tsx': '<tr data-testid="user-row" />',
+  };
+
+  it('scans the app for testids wherever it keeps its source', () => {
+    const io = memoryIo(NESTED, { mcpExists: true });
+    runInit(OPTS, io);
+    expect(io.written['src/admin/src/reticle-dev.ts'] ?? '').toContain("'user-row'");
+  });
+
+  it('writes /reticle where the human runs their agent, not into the app', () => {
+    const io = memoryIo(NESTED, { mcpExists: true });
+    runInit(OPTS, io);
+    const written = Object.keys(io.written).map((p) => p.replace(/\\/g, '/'));
+    expect(written).toContain('/app/.claude/commands/reticle.md');
+    expect(written).not.toContain('src/admin/.claude/commands/reticle.md');
+  });
+
+  it('and the agent rule with it — CLAUDE.md is read at the repo root, not in the app', () => {
+    const io = memoryIo(NESTED, { mcpExists: true });
+    runInit(OPTS, io);
+    const written = Object.keys(io.written).map((p) => p.replace(/\\/g, '/'));
+    expect(written).toContain('/app/CLAUDE.md');
+  });
+
+  it('says so in the report, because it changes where /reticle will exist', () => {
+    const io = memoryIo(NESTED, { mcpExists: true });
+    runInit(OPTS, io);
+    const printed = io.lines.join('\n').replace(/\\/g, '/');
+    expect(printed).toContain('/app/.claude/commands/reticle.md');
+  });
+
+  it('leaves a single-package repo exactly as it was — the two roots are the same there', () => {
+    const io = memoryIo(VITE_FILES, { mcpExists: true });
+    runInit(OPTS, io);
+    expect(Object.keys(io.written)).toContain('.claude/commands/reticle.md');
   });
 });
 

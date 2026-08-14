@@ -135,23 +135,63 @@ const NEXT_PAGES_APP_CANDIDATES = [
   'src/pages/_app.js',
 ];
 const SVELTEKIT_HOOKS = 'src/hooks.client.ts';
-/** Where an app's components live. Bounded on purpose — this is a hint, not an index of the repo. */
-const SOURCE_DIRS = ['src', 'src/components', 'src/pages', 'app', 'components'] as const;
 const SOURCE_FILE = /\.(tsx|jsx|ts|js|svelte|vue|astro)$/;
 /** Files read for the testid scan. A capabilities block is a hint; reading a whole repo for it is not. */
 const MAX_SCANNED_FILES = 200;
+/** Directories that never hold the app's own source, and are expensive or misleading to read. */
+const NOT_SOURCE_DIRS: ReadonlySet<string> = new Set([
+  'node_modules',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+  'target',
+  'public',
+  'static',
+  '.next',
+  '.svelte-kit',
+  '.nuxt',
+]);
+/** How far below the app root to look. Deep enough for `modules/users/UserList.tsx`, not a repo crawl. */
+const MAX_SCAN_DEPTH = 5;
 
-/** Read a bounded set of the app's source files, for the `data-testid` scan. */
+/**
+ * Read a bounded set of the app's source files, for the `data-testid` scan.
+ *
+ * This used to walk the fixed list `src, src/components, src/pages, app, components`. Reported from
+ * the field (#318) by a repo whose app is at `src/admin`: the scan read directories that were not
+ * the app's and correctly reported finding nothing in them, so `init` said "no data-testid values
+ * yet" about an app with several — which makes an agent go and write the ones already there. That
+ * list had already grown once for a `frontend/` app, and a third report of the same shape is what
+ * says the answer is not another name in a list. So: walk the app root, bounded by depth and by the
+ * same file cap as before.
+ */
 function readSourceFiles(io: InitIo): { path: string; source: string }[] {
   const out: { path: string; source: string }[] = [];
-  for (const dir of SOURCE_DIRS) {
+  const read = (path: string): void => {
+    const content = io.readFile(path);
+    if (content !== null) out.push({ path, source: content });
+  };
+  for (const name of io.rootFiles()) {
+    if (out.length >= MAX_SCANNED_FILES) return out;
+    if (SOURCE_FILE.test(name)) read(name);
+  }
+  const walk = (dir: string, depth: number): void => {
     for (const name of io.listFiles(dir)) {
-      if (!SOURCE_FILE.test(name)) continue;
-      const path = `${dir}/${name}`;
-      const content = io.readFile(path);
-      if (content !== null) out.push({ path, source: content });
-      if (out.length >= MAX_SCANNED_FILES) return out;
+      if (out.length >= MAX_SCANNED_FILES) return;
+      if (SOURCE_FILE.test(name)) read(`${dir}/${name}`);
     }
+    if (depth >= MAX_SCAN_DEPTH) return;
+    for (const sub of io.listDirs(dir)) {
+      if (out.length >= MAX_SCANNED_FILES) return;
+      if (sub.startsWith('.') || NOT_SOURCE_DIRS.has(sub)) continue;
+      walk(`${dir}/${sub}`, depth + 1);
+    }
+  };
+  for (const dir of io.listDirs('.')) {
+    if (out.length >= MAX_SCANNED_FILES) return out;
+    if (dir.startsWith('.') || NOT_SOURCE_DIRS.has(dir)) continue;
+    walk(dir, 1);
   }
   return out;
 }
@@ -200,6 +240,14 @@ export interface InitOptions {
   app?: string;
   /** Set on the recursive call after a workspace redirect, so the search happens at most once. */
   redirected?: boolean;
+  /**
+   * Where the human ran the command, carried across a workspace redirect.
+   *
+   * The agent rule and `/reticle` command files are read by the AGENT, whose session runs where the
+   * human started it — the repo root. Writing them beside the app instead is how a repo with its app
+   * at `src/admin` ended up with no `/reticle` at all (#318).
+   */
+  agentRoot?: string;
 }
 
 export interface InitIo {
@@ -266,6 +314,18 @@ const STATUS_SYMBOL: Record<StepStatus, string> = {
 function firstPresent(files: ReadonlySet<string>, candidates: readonly string[]): string | null {
   for (const c of candidates) if (files.has(c)) return c;
   return null;
+}
+
+/**
+ * The directory the human's agent runs in, when it is not the app's directory.
+ *
+ * `undefined` for a single-package repo, which keeps every agent-file path project-relative exactly
+ * as it was — the two roots are the same there, which is why writing them beside the app went
+ * unnoticed until a repo with its app at `src/admin` reported it.
+ */
+function agentRootOf(options: InitOptions): string | undefined {
+  const root = options.agentRoot;
+  return root === undefined || root === options.cwd ? undefined : root;
 }
 
 function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): PlanInput {
@@ -359,6 +419,9 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
   const devLocation = reticleDevLocation(layoutPath ?? 'app/layout.tsx', detection.typescript);
   // Read once: both the testid scan and the store scan want the same bounded set of files.
   const sourceFiles = readSourceFiles(io);
+  const agentRoot = agentRootOf(options);
+  const agentFile = (relPath: string): string =>
+    agentRoot === undefined ? relPath : join(agentRoot, relPath);
 
   return {
     detection,
@@ -399,12 +462,14 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     // The CONTENT, so a config that exists can be checked rather than trusted — a `"port"` set to
     // the app's own dev-server port used to survive every re-run of `init`.
     reticleConfigSource: io.readFile('.reticle.json'),
-    // Read the agent instruction files so the rule merge stays idempotent across re-runs.
-    claudeMdContent: io.readFile('CLAUDE.md'),
-    agentsMdContent: io.readFile('AGENTS.md'),
-    cursorRuleContent: io.readFile(CURSOR_RULE_PATH),
-    claudeCommandContent: io.readFile(CLAUDE_COMMAND_PATH),
-    cursorCommandContent: io.readFile(CURSOR_COMMAND_PATH),
+    // Read the agent instruction files so the rule merge stays idempotent across re-runs — from the
+    // agent's own root, or the merge would idempotently check a file it is not going to write.
+    claudeMdContent: io.readFile(agentFile('CLAUDE.md')),
+    agentsMdContent: io.readFile(agentFile('AGENTS.md')),
+    cursorRuleContent: io.readFile(agentFile(CURSOR_RULE_PATH)),
+    claudeCommandContent: io.readFile(agentFile(CLAUDE_COMMAND_PATH)),
+    cursorCommandContent: io.readFile(agentFile(CURSOR_COMMAND_PATH)),
+    ...(agentRoot === undefined ? {} : { agentFileRoot: agentRoot }),
     options: {
       port: options.port,
       mcp: options.mcp,
@@ -551,6 +616,7 @@ function report(
   degraded: ReadonlyMap<string, string>,
   io: InitIo,
   projectDir: string,
+  agentRoot: string | undefined,
 ): InitResult {
   io.print(dryRun ? 'reticle init (dry run, no files written)' : 'reticle init');
   // Every path below is printed RELATIVE, and until now nothing said what to. Reported from the
@@ -558,6 +624,11 @@ function report(
   // in `frontend/`, init redirected into it, and the report's `.reticle.json` was true about a
   // directory the reader was not standing in. One line makes every path in the report unambiguous.
   io.print(`  in ${projectDir}`);
+  // The agent files go where the AGENT is, which after a redirect is not where the app is. Said out
+  // loud because it changes where `/reticle` will exist, and a reader who assumes one directory for
+  // everything goes looking in the wrong one (#318).
+  if (agentRoot !== undefined)
+    io.print(`  agent files in ${agentRoot} (where /reticle will exist)`);
   io.print('');
   let applied = 0;
   let manual = 0;
@@ -774,7 +845,14 @@ function redirectToWorkspaceApp(
   io.print(`No app in this directory — wiring ${target} instead.`);
   io.print('');
   return runInit(
-    { ...options, cwd: join(options.cwd, target), redirected: true },
+    {
+      ...options,
+      cwd: join(options.cwd, target),
+      redirected: true,
+      // Where the human is STANDING, kept across the redirect: their agent session runs here, so
+      // this is the only place a `/reticle` command file can be found by it.
+      agentRoot: options.agentRoot ?? options.cwd,
+    },
     io.scoped(target),
   );
 }
@@ -838,7 +916,16 @@ function runInitSteps(options: InitOptions, io: InitIo): InitResult {
     ? { failed: new Set<string>(), skipped: new Set<string>(), degraded: new Map<string, string>() }
     : spanSync('init.apply', { steps: plan.steps.length }, () => applyEffects(plan, io));
   const { failed, skipped, degraded } = effects;
-  const result = report(plan, options.dryRun, failed, skipped, degraded, io, options.cwd);
+  const result = report(
+    plan,
+    options.dryRun,
+    failed,
+    skipped,
+    degraded,
+    io,
+    options.cwd,
+    agentRootOf(options),
+  );
   // A dry run is a preview, not an outcome — reporting it would inflate both success and failure.
   if (!options.dryRun) {
     reportInitOutcome({
