@@ -35,8 +35,9 @@ Thirteen kinds of events, each a single small JSON object:
 | `runtime_crashed` | The daemon hits an uncaught error | The error's type, **Reticle's own** stack frames, and the message with variables stripped; see below |
 | `mcp_client_connected` | An agent attaches to the daemon | Whether it is a reconnect, and how long the daemon had been idle |
 | `mcp_connection_lost` | The agent's MCP tools go away | Which stage (`first`, or `budget_spent` when it stopped retrying), the cause, and the attempt count. **At most twice per session**: one measured afternoon produced 547 reconnects, and an event each would bill for the pathology instead of measuring it |
-| `init_completed` | `reticle init` finishes | Whether it worked, and a classified reason when it did not |
+| `init_completed` | `reticle init` finishes | Whether it worked, a classified reason when it did not, and which published install route you came through — DECLARED by that route via `RETICLE_INSTALL_SOURCE`, never inferred, and `unknown` when nothing declared one |
 | `bug_found` | Reticle finds a defect in the app under test | The **kind** of defect (`signal-contradicted`, `console-error`, …) and how it was found, never what it was found in |
+| `tool_refused` | A tool cannot do what an agent asked | Which tool, why (one of six buckets: no session, no match, unsupported, bad arguments, not ready, other), and whether the same call was retried. **Never the message** — a refusal interpolates whatever you asked for, so only the tool name and the bucket are sent. Capped at 50 per daemon run |
 | `feedback_submitted` | **Only** when you or your agent explicitly send feedback | The report; see [Feedback](#feedback). The AGENT's call does not wait for the network: the receipt says `accepted` (validated, redacted, queued), never `sent`, and a delivery that then fails is reported back on the agent's next tool result. `reticle feedback` typed by a human still waits, because a person at a terminal is owed the real answer |
 | `identified` | **Only** when you run `reticle identify` | What you chose to tell us; see [Telling us who you are](#telling-us-who-you-are) |
 

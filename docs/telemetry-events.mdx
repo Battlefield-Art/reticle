@@ -43,9 +43,9 @@ Then exactly one payload block, keyed by event. The keys are `feedback`, `comman
 
 ## Session scope
 
-`isSessionScoped(kind)` decides whether `sessionId` is attached. Ten kinds are session-scoped:
+`isSessionScoped(kind)` decides whether `sessionId` is attached. Eleven kinds are session-scoped:
 
-`daemon_started`, `daemon_stopped`, `session_progress`, `mcp_client_connected`, `app_instrumented`, `project_profiled`, `verification_completed`, `bug_found`, `runtime_crashed`, `feedback_submitted`.
+`daemon_started`, `daemon_stopped`, `session_progress`, `mcp_client_connected`, `app_instrumented`, `project_profiled`, `verification_completed`, `bug_found`, `tool_refused`, `runtime_crashed`, `feedback_submitted`.
 
 The other six are one-shot. A per-process id on `reticle status` is not a session: it joins to nothing and inflates every session count that runs a distinct count over the field.
 
@@ -55,7 +55,13 @@ The other six are one-shot. A per-process id on `reticle status` is not a sessio
 
 **Wire name:** `reticle_installed`. **Emitted from:** `packages/server/src/telemetry/cli-telemetry.ts:50`. **Session-scoped:** no. **Payload block:** none.
 
-Fires on the first ever run on a machine.
+Fires on the first ever run on a machine. Carries `installSource`.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `installSource` | `InstallSource`, optional | Which published route brought this install in: `skill_file`, `npx_skill`, `plugin`, `docs_site`, `readme`, `cli_direct`, `unknown` |
+
+`installSource` is **declared, never detected**. A channel sets `RETICLE_INSTALL_SOURCE` on the process that runs the install and anything unrecognised reports `unknown`, so `unknown` is expected to be the largest bucket while the marker spreads across four separately published artifacts. Read a small `unknown` as a marker that spread, never as success. Nothing infers it: `npm_config_user_agent` only says npx ran us and every route goes through npx; the presence of a plugin directory or a skill folder says a route exists rather than that it ran the install. The same field rides on `init_completed`.
 
 **The question it answers:** how many machines have installed this, and what does the new-user curve look like? There is deliberately no uninstall event, because npm 7 and pnpm run no uninstall lifecycle script. Churn is inferred server-side from inactivity instead.
 
@@ -131,6 +137,7 @@ The rich one. One event carries the entire session rolled up, replacing the hund
 | `appConnects` | int, optional | How many times an app's SDK dialled this daemon. **Session lifetime, never windowed** |
 | `msToFirstApp` | int, optional | Ms from daemon start to the first app connecting |
 | `endReason` | `never_used` \| `explored` \| `abandoned` \| `verified` \| `client_left` | What state the agent's work was in |
+| `endedWithVerdict` | boolean, final only | Did this session ever produce a verdict. Sent as `false` rather than omitted: a session that drove an app and never asked whether it worked is the finding |
 | `feedbackPrompted` | int, optional | How often Reticle invited feedback. The denominator for `feedback_submitted` |
 | `errorClasses` | record of string to int | Errors bucketed as `schema`, `state`, `refusal` or `other`. Only `schema` is fixable by writing better descriptions |
 | `errorsRecovered` / `errorsRepeated` | int, optional | Whether the agent's next call succeeded. The best measure of an error message is what happens next |
@@ -365,7 +372,7 @@ Fired **once per daemon run**, on the first connect only, so `daemon_started` to
 | `falseGreen` | boolean | The defect **presented as success**: the screen advanced, the click looked fine, and another channel showed it had not |
 | `tool` | string, optional | Which tool surfaced it |
 | `repeat` | boolean | This kind was already reported in this session, so this is another instance of a defect already counted |
-| `attribution` | `BugAttribution`, optional | `app`, `request` or `reticle`. **Omitted rather than guessed** when the evidence cannot say |
+| `attribution` | `BugAttribution` | `app`, `request`, `reticle` or `unclassified`. **Always present**, because absence and "we looked and could not tell" are different facts |
 
 **The question it answers:** does Reticle work? Everything else here measures whether Reticle is used.
 
@@ -373,9 +380,29 @@ Three properties of this schema exist to stop the number being wrong in a way th
 
 - `falseGreen` is defined by the **presentation**, not by "an assertion passed", because the same defect arrives both ways: through `reticle_assert` there is a passing assertion to contradict, and through a crawl there is no assertion at all.
 - `repeat` separates distinct defects from instances. Count `repeat: false` for distinct, count everything for frequency. Scoped to the session, because the payload deliberately carries no selector or URL, so the same defect in two sessions cannot be recognised as one, and must not be.
-- `attribution` separates a defect in the app under test from the agent's own bad predicate and from Reticle's own blind spot. Only `attribution: 'app'` belongs in a published defect count.
+- `attribution` separates a defect in the app under test from the agent's own bad predicate and from Reticle's own blind spot. Only `attribution: 'app'` belongs in a published defect count, and `app` requires **positive evidence** — something the app itself did, taken from core's `ABSENCE_DERIVED_CONTRADICTIONS` line, never "nothing else explained it". Everything the evidence cannot settle is `unclassified`, which is a value rather than a gap.
 
 The payload never carries a selector, a URL, an element, or any description of the user's app. It reports **that** a class of defect was found, never what it was in.
+
+---
+
+## tool_refused
+
+**Wire name:** `tool_refused`. **Emitted from:** `packages/server/src/tools/invoke-tool.ts`, via `packages/server/src/telemetry/tool-refused.ts`. **Session-scoped:** yes. **Payload block:** `refusal`.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `tool` | string, 1 to 64 | Which tool refused. A name from Reticle's own namespace, never app data |
+| `reason` | `RefusalReason` | `no_session`, `no_match`, `unsupported`, `bad_args`, `not_ready`, `other` |
+| `retried` | boolean | The call immediately before this one was the same tool, also refused |
+
+**The question it answers:** why does the largest cohort in the funnel go quiet? The refusal path already computes a precise diagnosis and hands it to the agent as prose; until this event it then threw it away, so a user who hit a wall on their first call emitted nothing at all.
+
+- The reason is a bucket over the recovery table in `error-recovery.ts`, not a second list of patterns, so a recovery added without a reason does not compile.
+- `retried` lands on the **retry**, not the first refusal. Reporting it the other way round means holding the first event back until a next call reveals whether one came, which loses it entirely for the agent that gives up — the population the event exists to describe.
+- Capped at 50 per daemon run. A stuck agent is the shape that produces hundreds, and `consecutiveRepeats` on the session summary still reports how long the loop ran.
+
+The message itself never leaves. It interpolates whatever the caller asked for — a baseline name, a selector, a testid — so only the tool name and the bucket are sent.
 
 ---
 
