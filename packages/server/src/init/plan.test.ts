@@ -47,7 +47,9 @@ function input(partial: Partial<PlanInput>): PlanInput {
     claudeMdContent: partial.claudeMdContent,
     agentsMdContent: partial.agentsMdContent,
     cursorRuleContent: partial.cursorRuleContent,
-    reticleConfigExists: partial.reticleConfigExists,
+    ...(partial.reticleConfigExists === undefined
+      ? {}
+      : { reticleConfigExists: partial.reticleConfigExists }),
     reticleConfigSource: partial.reticleConfigSource,
     ...(partial.craEntry === undefined ? {} : { craEntry: partial.craEntry }),
     ...(partial.craEnv === undefined ? {} : { craEnv: partial.craEnv }),
