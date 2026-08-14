@@ -155,7 +155,7 @@ Each flow comes back graded, with the consequence that must hold and a risk leve
 {
   "name": "console-compose",
   "grade": "assertion-free",
-  "warning": "This flow performs actions but asserts no observable consequence — it will pass even if the feature is broken. Add a consequence assertion with reticle_annotate (assert-signal / assert-net) or a success-state."
+  "warning": "This flow performs actions but asserts no observable consequence, so it will pass even if the feature is broken. Add a consequence assertion with reticle_annotate (assert-signal / assert-net) or a success-state."
 }
 ```
 
@@ -273,7 +273,7 @@ The parts you actually want are tiny. Read these and ignore the rest:
   "stepCount": 1,
   "assertions": {
     "grade": "assertion-free",
-    "warning": "This flow performs actions but asserts no observable consequence — it will pass even if the feature is broken."
+    "warning": "This flow performs actions but asserts no observable consequence, so it will pass even if the feature is broken."
   }
 }
 ```
@@ -299,7 +299,7 @@ A replay against a drifted app names what moved and where:
 {
   "status": "unhealable",
   "applied": false,
-  "message": "drift found, but no nearest match cleared the confidence floor (HEAL_CONFIDENCE_MIN=0.5); file left untouched — add a data-testid or fix the flow by hand"
+  "message": "drift found, but no nearest match cleared the confidence floor (HEAL_CONFIDENCE_MIN=0.5); file left untouched; add a data-testid or fix the flow by hand"
 }
 ```
 

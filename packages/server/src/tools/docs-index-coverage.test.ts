@@ -31,10 +31,50 @@ const HOME = 'index.mdx';
 
 const docsIndex = () => readFileSync(join(DOCS, INDEX), 'utf8');
 
-const markdownPages = () =>
-  readdirSync(DOCS)
-    .filter((f) => f.endsWith('.md') || f.endsWith('.mdx'))
-    .filter((f) => f !== INDEX && f !== HOME);
+/**
+ * Directories under `docs/` that hold no site pages.
+ *
+ * `matrix/` is generated machine output plus its own README (`apps/e2e/matrix.mjs` writes it and the
+ * file says so); the rest are assets. Everything else under `docs/` is a published page, including
+ * the nested ones.
+ */
+const NON_PAGE_DIRS = new Set(['images', 'logo', 'favicon', 'matrix']);
+
+/**
+ * Every page, including the nested ones.
+ *
+ * This walked only the top level until the reference grew a page per CLI command and a page per
+ * package. Those live in `docs/cli/` and `docs/packages/`, and a flat scan reported the two
+ * DIRECTORIES as unpublished docs while every real page inside them went unchecked: the gate was
+ * loudly wrong about two things and silently blind to thirty-four.
+ */
+const markdownPages = (dir = DOCS, prefix = ''): string[] => {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = `${prefix}${entry.name}`;
+    if (entry.isDirectory()) {
+      if (!NON_PAGE_DIRS.has(entry.name))
+        out.push(...markdownPages(join(dir, entry.name), `${rel}/`));
+      continue;
+    }
+    if (!entry.name.endsWith('.md') && !entry.name.endsWith('.mdx')) continue;
+    if (rel === INDEX || rel === HOME) continue;
+    out.push(rel);
+  }
+  return out;
+};
+
+/** Just the top-level pages: what `docs/README.md` is expected to list one by one. */
+const topLevelPages = () => markdownPages().filter((f) => !f.includes('/'));
+
+/** The page directories, which `docs/README.md` names as a group rather than row by row. */
+const pageDirs = () => [
+  ...new Set(
+    markdownPages()
+      .filter((f) => f.includes('/'))
+      .map((f) => f.split('/')[0] ?? ''),
+  ),
+];
 
 /** The file behind a nav slug, which may be authored as either `.md` or `.mdx`. */
 const pageFile = (slug: string): string | null => {
@@ -69,15 +109,30 @@ const publishedSlugs = (): string[] => {
 };
 
 describe('docs/README.md indexes every doc', () => {
-  it('every markdown page under docs/ is linked from the index', () => {
+  it('every top-level page is linked from the index', () => {
     const index = docsIndex();
-    const unlisted = markdownPages().filter((page) => !index.includes(`(${page})`));
+    const unlisted = topLevelPages().filter((page) => !index.includes(`(${page})`));
 
     expect(
       unlisted,
       `These docs exist but are not in docs/README.md, so nobody will find them: ${unlisted.join(', ')}. ` +
         `Add each to the user table or the contributor table — the point of the index is that the ` +
         `two audiences are told apart.`,
+    ).toEqual([]);
+  });
+
+  it('every page directory is named in the index', () => {
+    // A row per page stops being useful once a directory holds one page per CLI command and one per
+    // package: the index would be mostly index. The guarantee that matters (no page is unreachable)
+    // belongs to the docs.json test below, which checks all of them individually. This one only has
+    // to stop a whole directory going unmentioned to a human reading the repo.
+    const index = docsIndex();
+    const unmentioned = pageDirs().filter((dir) => !index.includes(`${dir}/`));
+
+    expect(
+      unmentioned,
+      `These docs directories are not mentioned in docs/README.md: ${unmentioned.join(', ')}. ` +
+        `Name the directory and say what is in it; the pages inside do not each need a row.`,
     ).toEqual([]);
   });
 });

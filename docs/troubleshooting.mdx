@@ -1,5 +1,6 @@
 ---
-title: Troubleshooting
+title: Troubleshooting: it worked on my tab
+sidebarTitle: Troubleshooting
 description: Nothing connected, the click did nothing, the verdict says unknown. The failures people actually hit, and the diagnostic for each.
 icon: stethoscope
 ---
@@ -17,7 +18,7 @@ reticle doctor
   node         v22.14.0
   chromium     ✓ installed
   daemon       ✓ running on :4400 (pid 24735, v2.7.0)
-  bridge port  4400  (your app must dial THIS port — not your dev-server port)
+  bridge port  4400  (your app must dial THIS port, not your dev-server port)
   daemon log   /Users/you/.reticle/daemon-4400.log
   tracing      RETICLE_TRACE=1 on the daemon for per-stage timings in that log
 ```
@@ -31,7 +32,7 @@ By far the most common. Reticle's own diagnostic is unusually good here. It tell
 ```json
 {
   "sessionCount": 0,
-  "why": "no browser session connected — but one WAS connected to this daemon earlier, so the wiring is correct. The tab was closed, navigated away, or hard-reloaded. Ask the human to reopen the app (or run `reticle open`), or reload the tab. You do not have to wait for the human: reticle_lease {action:\"acquire\", url} opens a browser Reticle drives itself."
+  "why": "no browser session connected, but one WAS connected to this daemon earlier, so the wiring is correct. The tab was closed, navigated away, or hard-reloaded. Ask the human to reopen the app (or run `reticle open`), or reload the tab. You do not have to wait for the human: reticle_lease {action:\"acquire\", url} opens a browser Reticle drives itself."
 }
 ```
 
@@ -50,7 +51,7 @@ Your app dials a port; the daemon listens on one. When they disagree, the app ru
 ```
 [Reticle] could not reach the bridge at ws://localhost:4460/reticle after 3 attempts.
 Is the Reticle daemon running on that port? If your app runs in a container/devcontainer/WSL,
-the daemon is on a different host — set the WS URL explicitly
+the daemon is on a different host, so set the WS URL explicitly
 (Vite: VITE_RETICLE_WS_URL, or reticle.connect({ url })). Still retrying…
 ```
 
@@ -70,7 +71,7 @@ VITE_RETICLE_WS_URL=ws://localhost:4400/reticle pnpm dev
 Check whether the tab is throttled. Every response tells you:
 
 ```json
-"warning": "tab throttled; timer/rAF/pointer gestures may silently no-op — refocus before driving"
+"warning": "tab throttled; timer/rAF/pointer gestures may silently no-op; refocus before driving"
 ```
 
 A backgrounded browser tab has its timers suppressed. Synthetic pointer gestures and timers can silently no-op, so an action reports success and nothing happens.
@@ -120,7 +121,7 @@ The usual cause is a throttled tab: throttling suppresses the quiescence detecti
 If it persists on an unthrottled context, that is worth reporting. Reticle's own response says so:
 
 ```json
-"feedback_invite": "Reticle could not tell what happened here. If you expected otherwise, reticle_feedback — an unknown verdict is our defect, not yours"
+"feedback_invite": "Reticle could not tell what happened here. If you expected otherwise, reticle_feedback. An unknown verdict is our defect, not yours"
 ```
 
 ## A negative result you are not sure about
@@ -164,7 +165,7 @@ React 19 dropped `_debugSource`. Wire up `@reticlehq/babel-plugin`. Or just use 
 ## Restarting things
 
 ```bash
-npx reticle stop     # clean daemon shutdown — no pkill needed
+npx reticle stop     # clean daemon shutdown, no pkill needed
 npx reticle status   # confirm it came back
 ```
 

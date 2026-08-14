@@ -30,7 +30,7 @@ And each lease carries the rule in the payload itself:
 
 ```json
 "session_lease": {
-  "IMPORTANT": "When you stop driving, call reticle_session {action:\"yield\", mode:\"waiting\"|\"ask\"} — the panel reads \"live\" until you do."
+  "IMPORTANT": "When you stop driving, call reticle_session {action:\"yield\", mode:\"waiting\"|\"ask\"}. The panel reads \"live\" until you do."
 }
 ```
 
@@ -69,7 +69,7 @@ Feedback is not fire-and-forget, and it does not pretend to succeed:
 {
   "sent": false,
   "accepted": false,
-  "reason": "this is a Reticle source checkout, where telemetry is disabled by design — so feedback has nowhere to go. Open an issue at https://github.com/reticlehq/reticle/issues instead.",
+  "reason": "this is a Reticle source checkout, where telemetry is disabled by design, so feedback has nowhere to go. Open an issue at https://github.com/reticlehq/reticle/issues instead.",
   "note": "NOT accepted (see reason). Tell the human what you found so it is not lost."
 }
 ```

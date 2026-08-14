@@ -1,5 +1,6 @@
 ---
-title: Instrument your app
+title: Instrument your app so it can testify
+sidebarTitle: Instrument
 description: Register stores, emit signals, add testids. The three things that decide whether your verdicts say "the DOM changed" or "the app succeeded".
 icon: wrench
 ---
@@ -91,7 +92,7 @@ export const Sig = {
 
 const isDev = import.meta.env.DEV;
 
-/** Emit a Reticle signal (dev only — no-op in production). */
+/** Emit a Reticle signal (dev only, no-op in production). */
 export function emit(name: Sig, data: Record<string, unknown> = {}): void {
   if (isDev) reticle.signal(name, data);
 }
@@ -124,7 +125,7 @@ Here is a real failed login, from an app that emits both signals:
   "verdict": {
     "pass": false,
     "failureReason": "no signal matched {\"kind\":\"signal\",\"name\":\"auth:granted\"}",
-    "observed": "signal 'auth:granted' never fired — signals seen in this window: auth:denied",
+    "observed": "signal 'auth:granted' never fired; signals seen in this window: auth:denied",
     "expected": "signal 'auth:granted' to fire"
   },
   "summary": {
@@ -145,7 +146,7 @@ Here is a real failed login, from an app that emits both signals:
 
 Read `observed` again:
 
-> signal 'auth:granted' never fired — **signals seen in this window: auth:denied**
+> signal 'auth:granted' never fired; **signals seen in this window: auth:denied**
 
 Without the failure signal, that line would have stopped at "never fired", and the agent would be guessing between a network problem, a broken handler and a wrong password.
 
@@ -174,7 +175,7 @@ This is the one that surprises people, so here it is in full. A successful login
     "signals": ["auth:granted"]
   },
   "honesty": { "grade": "signal", "integrity": { "clean": true } },
-  "feedback_invite": "Reticle could not tell what happened here. If you expected otherwise, reticle_feedback — an unknown verdict is our defect, not yours"
+  "feedback_invite": "Reticle could not tell what happened here. If you expected otherwise, reticle_feedback. An unknown verdict is our defect, not yours"
 }
 ```
 

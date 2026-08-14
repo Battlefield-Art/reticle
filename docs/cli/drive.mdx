@@ -1,0 +1,55 @@
+---
+title: reticle drive
+description: Run Reticle in the foreground against a URL, with the browser visible, for debugging.
+icon: gauge-high
+---
+
+`reticle drive` runs the engine in the foreground and launches a browser at the URL you give it. It exists for debugging: you watch the run happen.
+
+```bash
+npx reticle drive <url> [--headless] [--headed]
+```
+
+## Arguments and flags
+
+| Argument     | Type                             | Default                  | What it does      |
+| ------------ | -------------------------------- | ------------------------ | ----------------- |
+| `url`        | string, positional, **required** | none                     | The page to drive |
+| `--headed`   | boolean                          | on by default outside CI | Show the browser  |
+| `--headless` | boolean                          | on when `CI` is set      | Hide it           |
+
+`drive` is the one interactive command in the family, so it is the one that shows the browser by default. `serve`, `mcp` and the internal daemon own the pooled browser behind leases, which is batch work, and hide theirs.
+
+## What it prints
+
+`reticle_started` with the port on success, `reticle_start_failed` with the error otherwise.
+
+Omitting the URL is a usage error. Real capture:
+
+```
+{"t":"2026-08-14T19:38:46.975Z","event":"reticle_usage_error","message":"drive needs a url"}
+drive needs a url
+
+usage:
+  reticle init  [--dry-run] [--port N] ...
+```
+
+## Exit codes
+
+| Code | Meaning                                                |
+| ---- | ------------------------------------------------------ |
+| `0`  | Running in the foreground                              |
+| `1`  | No URL, an unknown flag, or the engine failed to start |
+
+<Warning>
+  `drive` binds the bridge port itself. If a daemon is already listening, it fails with an
+  `EADDRINUSE` stack trace, which is the normal state once your agent has started one. [`reticle
+  mcp`](/cli/mcp) reuses a running daemon; `drive` does not.
+</Warning>
+
+## Worked example
+
+```bash
+npx reticle stop
+npx reticle drive http://localhost:5173
+```

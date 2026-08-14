@@ -8,21 +8,21 @@ Agent browser tools that feed the **whole accessibility tree** to the model ever
 
 ## Head-to-head (measured, same page, same moment)
 
-Measured against the bench dashboard (`apps/bench-app`) **with a 1,000-item list rendered**, after login. Token estimate = characters ÷ 4. Reproduce with the benchmark harness — see `bench/README.md`.
+Measured against the bench dashboard (`apps/bench-app`) **with a 1,000-item list rendered**, after login. Token estimate = characters ÷ 4. Reproduce with the benchmark harness; see `bench/README.md`.
 
-| Payload                                                                        |     Tokens |
-| ------------------------------------------------------------------------------ | ---------: |
-| **Playwright MCP** — with-refs snapshot (the real payload it sends every step) | **~7,300** |
-| Playwright MCP — bare accessibility tree (what we measured directly)           |     ~6,856 |
-| Reticle — `snapshot` `full` (whole page, incl. all 1,000 items)                |     ~4,144 |
-| Reticle — `snapshot` `interactive` (actionable elements only)                  |       ~110 |
-| Reticle — `snapshot` `status` (route / dialogs / counters)                     |        ~31 |
-| Reticle — `query` one element                                                  |        ~28 |
-| Reticle — `observe` (reaction after an action)                                 |        ~39 |
-| Reticle — `assert` verdict                                                     |        ~33 |
-| **Reticle — a full verify loop** (`query` + `observe` + `assert`)              |   **~100** |
+| Payload                                                                       |     Tokens |
+| ----------------------------------------------------------------------------- | ---------: |
+| **Playwright MCP**, with-refs snapshot (the real payload it sends every step) | **~7,300** |
+| Playwright MCP, bare accessibility tree (what we measured directly)           |     ~6,856 |
+| Reticle `snapshot` `full` (whole page, incl. all 1,000 items)                 |     ~4,144 |
+| Reticle `snapshot` `interactive` (actionable elements only)                   |       ~110 |
+| Reticle `snapshot` `status` (route / dialogs / counters)                      |        ~31 |
+| Reticle `query`, one element                                                  |        ~28 |
+| Reticle `observe` (reaction after an action)                                  |        ~39 |
+| Reticle `assert` verdict                                                      |        ~33 |
+| **Reticle, a full verify loop** (`query` + `observe` + `assert`)              |   **~100** |
 
-**Result on this page:** the common Reticle loop is **~73× leaner** than Playwright MCP's per-step snapshot (100 vs ~7,300 tokens). The bare a11y tree we measured directly is 6,856; Playwright MCP's actual payload adds a `[ref=…]` to every node, pushing it to ~7,300. On the complex pages Playwright's ecosystem cites (50k+), the gap widens to **~100–500×**.
+**Result on this page:** the common Reticle loop is **~73× leaner** than Playwright MCP's per-step snapshot (100 vs ~7,300 tokens). The bare a11y tree we measured directly is 6,856; Playwright MCP's actual payload adds a `[ref=…]` to every node, pushing it to ~7,300. On the complex pages Playwright's ecosystem cites (50k+), the gap widens to **~100× to 500×**.
 
 ## Diffed snapshots: pay once, then only for changes
 
@@ -36,26 +36,26 @@ Measured on a representative 150-row dashboard (the shipped regression benchmark
 | `diff:true` after a one-row change |    **60** |
 | `diff:true` when nothing changed   |    **17** |
 
-**~99% fewer tokens** to re-look after an action — and because a `delta` carries no stale full tree, it also removes the 60–80K-token stale-context buildup that makes long-running agents start hallucinating selectors that no longer exist.
+**~99% fewer tokens** to re-look after an action, and because a `delta` carries no stale full tree, it also removes the 60K to 80K-token stale-context buildup that makes long-running agents start hallucinating selectors that no longer exist.
 
 Every `reticle_snapshot`/`reticle_query` result also carries `cost:{ bytes, tokens }` (estimated) so you can **re-scope before reading** a large body (`mode:interactive`/`status`, a tighter `scope`, or a narrower `query`) instead of paying for it first.
 
 ## The other tax: tool schemas, paid on every request
 
-Per-payload leanness is only half the token story. Before an agent reads a single result, it pays for the tool SCHEMAS injected into its context on every request — and this is the metric the field now organises around. A filed issue measures Playwright MCP's default tool list at 14.4k tokens = 7.2% of a Claude Code context window, and Microsoft's own README steers coding agents to the CLI over its MCP on exactly these grounds.
+Per-payload leanness is only half the token story. Before an agent reads a single result, it pays for the tool SCHEMAS injected into its context on every request, and this is the metric the field now organises around. A filed issue measures Playwright MCP's default tool list at 14.4k tokens = 7.2% of a Claude Code context window, and Microsoft's own README steers coding agents to the CLI over its MCP on exactly these grounds.
 
 Measured live, all servers in one run, same tokenizer (`bench/harness/schema-tax.mjs`):
 
-| MCP server                                | tools | schema tokens |
-| ----------------------------------------- | ----: | ------------: |
-| **Reticle — the tool surface**            |    18 |    **~4,930** |
-| Playwright MCP                            |    23 |         3,725 |
-| Chrome DevTools MCP                       |    29 |         5,116 |
-| Reticle — `RETICLE_ADVERTISE_ALL_TOOLS=1` |    48 |       ~30,200 |
+| MCP server                               | tools | schema tokens |
+| ---------------------------------------- | ----: | ------------: |
+| **Reticle, the tool surface**            |    18 |    **~4,930** |
+| Playwright MCP                           |    23 |         3,725 |
+| Chrome DevTools MCP                      |    29 |         5,116 |
+| Reticle, `RETICLE_ADVERTISE_ALL_TOOLS=1` |    48 |       ~30,200 |
 
 There is one tool surface: the verify loop advertised directly, plus two meta-tools (`reticle_tools`, `reticle_run`) that reach every other tool on demand. Nothing is unreachable; the cold tail simply is not re-sent every turn.
 
-`RETICLE_ADVERTISE_ALL_TOOLS=1` advertises everything WITH output schemas — a verification switch for suites that call by name, not a mode to run agents in. It is roughly 7x the per-turn cost, which is why it is opt-in: measured, carrying output schemas on the default surface takes it from 18,183 to 41,117 bytes. (That 18,183 was taken when the surface was 16 tools; a fresh `tools/list` read on 2026-08-14 puts the current 18-tool surface at **21,468 bytes**, and all 48 with output schemas at **134,368**. The shape of the gap holds; the absolute numbers move every time a tool is added, which is why they are asserted in `surface-sizes.test.ts` rather than trusted from prose.)
+`RETICLE_ADVERTISE_ALL_TOOLS=1` advertises everything WITH output schemas. It is a verification switch for suites that call by name, not a mode to run agents in. It is roughly 7x the per-turn cost, which is why it is opt-in: measured, carrying output schemas on the default surface takes it from 18,183 to 41,117 bytes. (That 18,183 was taken when the surface was 16 tools; a fresh `tools/list` read on 2026-08-14 puts the current 18-tool surface at **21,468 bytes**, and all 48 with output schemas at **134,368**. The shape of the gap holds; the absolute numbers move every time a tool is added, which is why they are asserted in `surface-sizes.test.ts` rather than trusted from prose.)
 
 The typed result object still travels as `structuredContent` either way; the default surface simply does not advertise the output schema, which an agent reading the `text` block never consumed.
 
@@ -64,7 +64,7 @@ The typed result object still travels as `structuredContent` either way; the def
 - **Full-tree vs full-tree, the gap is modest (~1.8×):** Reticle `full` (4,144) vs Playwright's with-refs snapshot (~7,300). Reticle collapses generic wrapper nodes, but both include every list item. If you force Reticle to dump the whole page each step, you don't save much.
 - **The savings come from _not needing_ the full tree.** Playwright MCP's primary perception primitive is "return the accessibility tree"; Reticle's is "answer a specific question" (`query`/`assert`/`observe`/scoped or interactive `snapshot`). The win is architectural, not a cleverer serializer.
 - **Cost scales with interactive elements + what you look at, not total DOM.** The 1,000 list items cost ~0 in `interactive` mode because they aren't interactive.
-- **This is tool-output tokens only.** The agent's own reasoning tokens dominate either way — which is the point: keep observation cheap so the budget goes to thinking.
+- **This is tool-output tokens only.** The agent's own reasoning tokens dominate either way, which is the point: keep observation cheap so the budget goes to thinking.
 
 ## Why it matters in practice
 
@@ -77,8 +77,8 @@ At scale (long flows, large dashboards, frequent re-runs for regression) that di
 
 ## Method & caveats
 
-- One page, one tool, char/4 token proxy — directional, not a benchmark suite. Absolute numbers vary by page; the _ratio_ is the point.
-- `_snapshotForAI()` (Playwright MCP's exact with-refs payload) was unavailable in the installed Playwright build, so we measured `body.ariaSnapshot()` — the same accessibility tree it serializes; the real MCP payload is equal or slightly larger (it adds `[ref=…]`).
+- One page, one tool, char/4 token proxy: directional, not a benchmark suite. Absolute numbers vary by page; the _ratio_ is the point.
+- `_snapshotForAI()` (Playwright MCP's exact with-refs payload) was unavailable in the installed Playwright build, so we measured `body.ariaSnapshot()`, the same accessibility tree it serializes; the real MCP payload is equal or slightly larger (it adds `[ref=…]`).
 - Playwright MCP is excellent and Microsoft-backed; this is not a knock on it. It optimizes for cross-browser _driving_; Reticle optimizes for cheap, in-app _verification_. They can coexist (drive with one, assert with the other).
 
 Run it yourself: the benchmark harness in `bench/` (see `bench/README.md`), with the demo + api running.

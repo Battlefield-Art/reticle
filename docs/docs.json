@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Reticle",
-  "description": "Reticle is the proof layer for AI agents — it verifies a running web app from the inside, without screenshots, and returns a verdict with evidence.",
+  "description": "Reticle is the proof layer for AI agents: it verifies a running web app from the inside, without screenshots, and returns a verdict with evidence.",
   "colors": {
     "primary": "#ff9d86",
     "light": "#ffbcac",
@@ -94,12 +94,50 @@
                 "pages": ["capabilities"]
               },
               {
-                "group": "CLI",
-                "pages": ["cli"]
+                "group": "CLI commands",
+                "pages": [
+                  "cli",
+                  "cli/init",
+                  "cli/doctor",
+                  "cli/status",
+                  "cli/serve",
+                  "cli/stop",
+                  "cli/mcp",
+                  "cli/open",
+                  "cli/drive",
+                  "cli/verify",
+                  "cli/affected",
+                  "cli/gate",
+                  "cli/watch",
+                  "cli/capsules",
+                  "cli/hunt",
+                  "cli/update",
+                  "cli/rollback",
+                  "cli/license",
+                  "cli/version",
+                  "cli/telemetry",
+                  "cli/feedback",
+                  "cli/identify",
+                  "cli/help",
+                  "cli/cloud"
+                ]
               },
               {
-                "group": "Libraries",
-                "pages": ["packages"]
+                "group": "Packages",
+                "pages": [
+                  "packages",
+                  "packages/core",
+                  "packages/browser",
+                  "packages/server",
+                  "packages/react",
+                  "packages/vite-plugin",
+                  "packages/babel-plugin",
+                  "packages/next",
+                  "packages/test",
+                  "packages/eslint-plugin",
+                  "packages/electron",
+                  "packages/tauri"
+                ]
               },
               {
                 "group": "Grammar",
@@ -151,6 +189,7 @@
                   "gate-plan",
                   "system-map",
                   "telemetry-contract",
+                  "telemetry-events",
                   "fixtures",
                   "local-registry"
                 ]
@@ -231,10 +270,6 @@
         "header": "Project",
         "items": [
           {
-            "label": "GitHub",
-            "href": "https://github.com/reticlehq/reticle"
-          },
-          {
             "label": "Contributing",
             "href": "https://github.com/reticlehq/reticle/blob/main/CONTRIBUTING.md"
           },
@@ -245,27 +280,6 @@
           {
             "label": "License",
             "href": "https://github.com/reticlehq/reticle/blob/main/LICENSE"
-          }
-        ]
-      },
-      {
-        "header": "Community",
-        "items": [
-          {
-            "label": "Discord",
-            "href": "https://discord.gg/BwAbzv9ZRz"
-          },
-          {
-            "label": "Star on GitHub",
-            "href": "https://github.com/reticlehq/reticle"
-          },
-          {
-            "label": "X",
-            "href": "https://x.com/reticle_hq"
-          },
-          {
-            "label": "LinkedIn",
-            "href": "https://www.linkedin.com/company/reticlehq"
           }
         ]
       }
@@ -293,9 +307,14 @@
     "metatags": {
       "og:site_name": "Reticle Docs",
       "og:type": "website",
+      "og:title": "Reticle Docs: verification for AI coding agents",
+      "og:description": "Reticle verifies a running web app from the inside and returns a verdict with evidence, not a screenshot. Install it, instrument it, and read the full tool reference.",
+      "og:url": "https://docs.reticle.sh",
       "og:image": "https://docs.reticle.sh/images/og.png",
-      "og:image:alt": "Reticle — your agent says it works. Reticle checks.",
+      "og:image:alt": "Reticle: your agent says it works. Reticle checks.",
       "twitter:card": "summary_large_image",
+      "twitter:site": "@reticle_hq",
+      "twitter:creator": "@reticle_hq",
       "twitter:image": "https://docs.reticle.sh/images/og.png"
     },
     "organization": {

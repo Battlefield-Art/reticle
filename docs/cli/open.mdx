@@ -1,0 +1,56 @@
+---
+title: reticle open
+description: Show the app in a browser, reusing the already-connected tab when there is one.
+icon: window-maximize
+---
+
+`reticle open` is the one-command "show me the app". It resolves the port, makes sure a daemon is up, and then either reuses the tab that is already connected or opens a new one.
+
+```bash
+npx reticle open [url] [--port N]
+```
+
+## Arguments and flags
+
+| Argument | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `url` | string, positional, optional | unset | The URL to open. Omit it to reuse a connected tab |
+| `--port N` | number | `4400` (or `RETICLE_PORT`, or the port in `.reticle.json`) | Bridge port. If nothing is on it, `open` discovers a running daemon rather than making you hunt |
+
+It is idempotent. Re-running never piles up duplicate tabs.
+
+## What it prints
+
+One `reticle_open` line, whose fields say which of four things happened.
+
+| Fields | Meaning |
+| --- | --- |
+| `reusing` | A connected tab was already on the right page. Nothing was opened |
+| `reusing` + `requested` + `note` | A tab is connected on that origin but sitting on a different page. It was **left there**, not navigated. Drive it with `reticle_navigate` or open the URL yourself |
+| `opened` + `connected: true` | A browser was launched and a Reticle session appeared |
+| `opened` + `connected: false` + `note` | The URL went to the system default browser and no session showed up within 8 seconds. Almost always means the app carries no SDK, or dials a different port |
+| `error` | No app connected and no URL given, or the browser could not be launched |
+
+<Note>
+  `connected` is measured, not assumed. This command polls for a **new** session rather than printing
+  `{"opened": url}` unconditionally, so a run where nothing opened no longer looks like one where it did.
+</Note>
+
+<Warning>
+  For an Electron or Tauri app there is no URL to open. Start the app the way you normally would; it
+  dials the bridge itself.
+</Warning>
+
+## Exit codes
+
+| Code | Meaning                                                             |
+| ---- | ------------------------------------------------------------------- |
+| `0`  | Reused, opened, or reported that no app is connected                |
+| `1`  | A browser could not be launched, or the daemon could not be reached |
+
+## Worked example
+
+```bash
+npx reticle open http://localhost:5173
+npx reticle status    # confirm the session is really there
+```

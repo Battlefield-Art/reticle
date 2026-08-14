@@ -1,0 +1,57 @@
+---
+title: reticle doctor
+description: Diagnose the Reticle setup in one command: Chromium, daemon, bridge port, logs, and desktop wiring.
+icon: stethoscope
+---
+
+`reticle doctor` collapses the setup failure modes into one command. It is the first thing to run when something is wrong.
+
+```bash
+npx reticle doctor [--port N]
+```
+
+## Flags
+
+| Flag | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `--port N` | number | `4400` (or `RETICLE_PORT`, or the port in `.reticle.json`) | Which bridge port to diagnose |
+
+## What it prints
+
+Human-readable lines on stdout, not the JSON log. Real capture:
+
+```
+reticle doctor
+  node         v22.14.0
+  chromium     ✓ installed
+  daemon       ✓ running on :4400 (pid 4795, v2.7.0)
+  bridge port  4400  (your app must dial THIS port — not your dev-server port)
+  daemon log   /Users/you/.reticle/daemon-4400.log
+  tracing      RETICLE_TRACE=1 on the daemon for per-stage timings in that log
+```
+
+| Line | What it checks |
+| --- | --- |
+| `node` | The Node version running the CLI |
+| `chromium` | Whether Playwright's browser binary was ever downloaded. The most common silent failure |
+| `daemon` | Whether the port holds a Reticle daemon, a foreign process (named where possible), or nothing. Adds a `version` line when the daemon's version or contract fingerprint disagrees with the CLI's |
+| `bridge port` | The port your app must dial, spelled out because mixing it up with the dev server port is the most common setup failure |
+| `daemon log` | Where the structured daemon log lives |
+| `tracing` | How to turn that log into a per-stage trace |
+| `desktop` | Only on a desktop project. Every Electron and Tauri misconfiguration here fails silently, so it is diagnosed explicitly |
+
+## Exit codes
+
+Always `0`. `doctor` reports; it does not gate.
+
+## Worked example
+
+```bash
+npx reticle doctor
+# chromium missing? then:
+npx playwright install chromium
+```
+
+<Card title="Deeper debugging" icon="bug" href="/debugging">
+  Reading the daemon log, and what `RETICLE_TRACE=1` adds to it.
+</Card>

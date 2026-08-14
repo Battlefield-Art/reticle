@@ -1,5 +1,6 @@
 ---
-title: Tools overview
+title: Tools overview: 18 up front, 30 on call
+sidebarTitle: Tools overview
 description: The 18 tools your agent sees every turn, the 30 more it can reach on demand, and why the surface is deliberately small.
 icon: wrench
 ---
@@ -96,7 +97,7 @@ This is the part we're proudest of and the part that makes demos slightly less s
 When the browser tab is backgrounded, every response says so:
 
 ```json
-"warning": "tab throttled; timer/rAF/pointer gestures may silently no-op — refocus before driving"
+"warning": "tab throttled; timer/rAF/pointer gestures may silently no-op; refocus before driving"
 ```
 
 When the event buffer has evicted old events, a negative result might be a false negative, and it says that too:
@@ -105,7 +106,7 @@ When the event buffer has evicted old events, a negative result might be a false
 "buffer": {
   "held": 15,
   "dropped": 529,
-  "note": "event buffer evicted older events (age/size cap) — a negative result here may be a false negative; the evidence may have expired. Grade sooner or widen the buffer."
+  "note": "event buffer evicted older events (age/size cap): a negative result here may be a false negative; the evidence may have expired. Grade sooner or widen the buffer."
 }
 ```
 

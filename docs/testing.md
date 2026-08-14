@@ -1,10 +1,10 @@
 ---
 title: Specs for CI
-description: 'Turn an interactive drive into a repeatable suite with @reticlehq/test — declarative specs bound to signals, never DOM structure.'
+description: 'Turn an interactive drive into a repeatable suite with @reticlehq/test: declarative specs bound to signals, never DOM structure.'
 icon: vial
 ---
 
-Driving Reticle interactively is reconnaissance. To turn it into a **repeatable, CI-runnable** suite, write declarative specs with `@reticlehq/test`. Specs bind to **signals and testids — never DOM structure** — so they inherit Reticle's refactor-resistance.
+Driving Reticle interactively is reconnaissance. To turn it into a **repeatable, CI-runnable** suite, write declarative specs with `@reticlehq/test`. Specs bind to **signals and testids, never DOM structure**, so they inherit Reticle's refactor-resistance.
 
 ```ts
 import { reticleTest } from '@reticlehq/test';
@@ -24,7 +24,7 @@ reticleTest('ai chat edit', async (t) => {
 
 ## The test context `t`
 
-A thin, typed façade over Reticle's tools — it resolves testids → refs for you, so specs never touch refs or DOM:
+A thin, typed façade over Reticle's tools. It resolves testids → refs for you, so specs never touch refs or DOM:
 
 | Method | What it does |
 | --- | --- |
@@ -44,7 +44,7 @@ Any failed matcher throws with the structured evidence (near-miss, failure reaso
 ## Deterministic + honest
 
 - **`t.clock`** bakes `reticle_clock` into the spec, so time-gated UI (a 5s auto-dismiss, a 500ms hover dwell) is tested deterministically instead of racing real timers.
-- **`t.expectInputModeReal()`** — a hover/drag spec asserts native input is active; if it's running synthetic (no CDP), the spec is **skipped with a reason**, never silently passing on a no-op. Enable real input headless with `reticle drive` (see [usage §18](usage.md#18-real-input-mode--native-hover--drag)).
+- **`t.expectInputModeReal()`**: a hover/drag spec asserts native input is active; if it's running synthetic (no CDP), the spec is **skipped with a reason**, never silently passing on a no-op. Enable real input headless with `reticle drive` (see [usage §18](usage.md#18-real-input-mode-native-hover--drag)).
 
 ## Run a suite (headless, the same path CI uses)
 
@@ -74,7 +74,7 @@ import { toJUnitXml, writeJUnit } from '@reticlehq/test';
 
 ## Flows become specs
 
-`.reticle/` flows (see [Flows](flows.md)) can be executed directly as specs — replayed with their `expect`/`success` predicates and skipping `dynamic` (LLM-output) regions — so the recorded map and the suite can't drift apart:
+`.reticle/` flows (see [Flows](flows.md)) can be executed directly as specs, replayed with their `expect`/`success` predicates and skipping `dynamic` (LLM-output) regions, so the recorded map and the suite can't drift apart:
 
 ```ts
 import { flowsAsSpecs } from '@reticlehq/test';
@@ -83,4 +83,4 @@ import { flowsAsSpecs } from '@reticlehq/test';
 
 ## Authoring tip: record → prune → commit
 
-You don't have to hand-write steps. Drive the flow once (or record it via the panel), let Reticle emit the program, trim it, and commit it as a spec — the regression test is a byproduct of testing, not separate work.
+You don't have to hand-write steps. Drive the flow once (or record it via the panel), let Reticle emit the program, trim it, and commit it as a spec. The regression test is a byproduct of testing, not separate work.

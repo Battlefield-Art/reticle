@@ -1,5 +1,6 @@
 ---
-title: Reticle vs Playwright MCP
+title: Reticle vs Playwright MCP: outside in, inside out
+sidebarTitle: vs Playwright MCP
 description: Playwright MCP drives any website from the outside. Reticle verifies an app you own from the inside. They solve different problems, and they compose.
 icon: masks-theater
 ---
@@ -28,7 +29,7 @@ On a real production dashboard, observing once:
 | Reticle        | 678      | 345     | **1,023** |
 | Playwright MCP | 1,522    | 671     | 2,193     |
 
-Reticle is about 2.1x leaner on a large page. The gap comes from what each tool sends: Playwright MCP returns the accessibility tree, and on a complex app that tree is enormous. Reticle asks narrower questions — `mode: "interactive"` returns only controls, `count_only` returns a number.
+Reticle is about 2.1x leaner on a large page. The gap comes from what each tool sends: Playwright MCP returns the accessibility tree, and on a complex app that tree is enormous. Reticle asks narrower questions: `mode: "interactive"` returns only controls, `count_only` returns a number.
 
 <Card title="How these were measured" icon="chart-column" href="/benchmarks">
   The method, the scenarios, and the control where a false positive would count against us.

@@ -1,0 +1,51 @@
+---
+title: reticle stop
+description: Stop the Reticle daemon on a port, escalating from SIGTERM to SIGKILL if it will not go.
+icon: circle-stop
+---
+
+`reticle stop` reads the pid recorded for the port and stops that process.
+
+```bash
+npx reticle stop [--port N] [--quiet]
+```
+
+## Flags
+
+| Flag | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `--port N` | number | `4400` (or `RETICLE_PORT`, or the port in `.reticle.json`) | Which daemon to stop |
+| `--quiet` | boolean | `false` | Print nothing. For scripts that stop a daemon that may not be running |
+
+## How it stops
+
+1. `SIGTERM` first, then poll every 100ms.
+2. Still alive after 5 seconds: `SIGKILL`. A daemon that ignores `SIGTERM` is wedged, which is the one situation this command exists for, and giving up there left the port held and a human reaching for `kill -9`.
+3. Still alive 2 seconds after that: report `reticle_daemon_stop_timeout` with the pid and exit `1`. Surviving `SIGKILL` means the pid is not yours to kill, or it is an unkillable zombie. Neither is retryable.
+
+## What it prints
+
+| Event | When |
+| --- | --- |
+| `reticle_daemon_stopped` | It stopped. Carries `port`, `pid`, and `escalated: true` if it took a `SIGKILL` |
+| `reticle_daemon_not_running` | No live pid for that port. The stale pid file is removed |
+| `reticle_daemon_stop_timeout` | It survived everything. Exits `1` |
+
+## Exit codes
+
+| Code | Meaning                        |
+| ---- | ------------------------------ |
+| `0`  | Stopped, or was not running    |
+| `1`  | The process survived `SIGKILL` |
+
+<Warning>
+  Do not stop a daemon with `lsof -ti tcp:4400 | xargs kill -9`. That pattern matches the agent's
+  own `reticle mcp` proxy as well as the daemon and takes both down. Use this command, or scope the
+  lookup with `-sTCP:LISTEN`.
+</Warning>
+
+## Worked example
+
+```bash
+npx reticle stop --port 4400 --quiet && npx reticle serve --port 4400
+```

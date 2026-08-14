@@ -1,0 +1,57 @@
+---
+title: reticle verify
+description: Drive a URL once, replay every saved flow, and exit zero only on a real pass.
+icon: circle-check
+---
+
+`reticle verify` is the CI command: no model in the loop, no MCP. It boots the engine in drive mode, waits for the in-page SDK to dial back, replays every saved flow, renders the verdict, and exits.
+
+```bash
+npx reticle verify <url> [--headed] [--timeout N] [--storage-state <file>]
+```
+
+It uses the same runner and the same verdict as the MCP and HTTP paths, so a platform agent that can only run a shell command gets a byte-identical artifact.
+
+## Arguments and flags
+
+| Argument | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `url` | string, positional, **required** | none | The preview URL to drive |
+| `--headed` | boolean | `false` (headless) | Show the browser |
+| `--timeout N` | number, ms | `15000` | How long to wait for a browser session to dial back |
+| `--storage-state <file>` | string | unset | A Playwright storage state file. This is how you verify flows behind a login without scripting the login every time |
+
+## What it prints
+
+The rendered run report on stdout. On failure it names the cause on stderr instead, and there are two refusals worth knowing:
+
+```
+No app connected — Reticle drove the URL but no @reticlehq/browser session dialed back.
+  Make sure the SDK is in the build and reticle.connect() runs on the preview page
+```
+
+```
+No saved flows to verify (.reticle/flows is empty) — refusing to report a pass for verifying nothing.
+```
+
+<Warning>
+  Both of those are honesty guards, and both exit `1`. Verifying nothing is never a pass.
+</Warning>
+
+## Exit codes
+
+| Code | Meaning                                                           |
+| ---- | ----------------------------------------------------------------- |
+| `0`  | The verdict was a pass                                            |
+| `1`  | Failed, or no session, or no flows, or the engine could not start |
+
+## Worked example
+
+```bash
+npm run build && npm run preview &
+npx reticle verify http://localhost:4173 --timeout 60000
+```
+
+<Card title="Recording the flows this replays" icon="vial" href="/testing">
+  Flows are recorded interactively, then committed to `.reticle/flows/`.
+</Card>

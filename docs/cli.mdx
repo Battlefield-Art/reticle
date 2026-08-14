@@ -42,7 +42,7 @@ reticle doctor
   node         v22.14.0
   chromium     ✓ installed
   daemon       ✓ running on :4400 (pid 24735, v2.7.0)
-  bridge port  4400  (your app must dial THIS port — not your dev-server port)
+  bridge port  4400  (your app must dial THIS port, not your dev-server port)
   daemon log   /Users/you/.reticle/daemon-4400.log
   tracing      RETICLE_TRACE=1 on the daemon for per-stage timings in that log
 ```
@@ -80,7 +80,7 @@ npx reticle telemetry status
 ```
 
 ```
-telemetry    disabled  (this is a Reticle source checkout — developing it is not using it)
+telemetry    disabled  (this is a Reticle source checkout; developing it is not using it)
 policy       https://github.com/reticlehq/reticle/blob/main/docs/telemetry.md
 ```
 

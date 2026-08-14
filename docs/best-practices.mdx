@@ -1,5 +1,6 @@
 ---
-title: Best practices
+title: Best practices: how to earn a green
+sidebarTitle: Best practices
 description: The habits that make a verdict worth trusting, and the specific mistakes that produce a confident, wrong pass.
 icon: star
 ---
@@ -55,7 +56,7 @@ A backgrounded tab has its timers throttled, which suppresses the quiescence det
 Every response tells you when this is happening:
 
 ```json
-"warning": "tab throttled; timer/rAF/pointer gestures may silently no-op — refocus before driving"
+"warning": "tab throttled; timer/rAF/pointer gestures may silently no-op; refocus before driving"
 ```
 
 Believe it. Pass `refuseWhenThrottled: true` if you would rather fail loudly than act into a throttled tab.

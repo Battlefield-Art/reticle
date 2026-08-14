@@ -1,0 +1,62 @@
+---
+title: reticle serve
+description: Start the Reticle daemon on the bridge port and wait until it has actually bound.
+icon: play
+---
+
+`reticle serve` starts the daemon: the WebSocket bridge your app dials into, plus the tool engine behind it. It spawns a detached child and then waits for that child to answer `/status` before reporting success.
+
+```bash
+npx reticle serve [--port N] [--drive <url>] [--headless] [--headed] [--http] [--http-port N] [--http-token T]
+```
+
+Most people never type this. Your agent runs [`reticle mcp`](/cli/mcp), which starts a daemon itself if one is not already up.
+
+## Flags
+
+| Flag | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `--port N` | number | `4400` (or `RETICLE_PORT`, or the port in `.reticle.json`) | Bridge port to bind |
+| `--drive <url>` | string | unset | Launch Reticle's own browser at this URL instead of waiting for your tab |
+| `--headless` | boolean | `true` for `serve` | Hide the browser |
+| `--headed` | boolean | `false` | Show it. `serve` owns the pooled browser behind leases, which is batch work, so it hides by default |
+| `--http` | boolean | `false` | Also expose the HTTP verify endpoint |
+| `--http-port N` | number | unset | Port for that endpoint |
+| `--http-token T` | string | unset | Bearer token the endpoint requires |
+
+## What it prints
+
+One structured line. When a daemon already owns the port, it says so and does nothing:
+
+```json
+{ "t": "2026-08-14T19:39:13.230Z", "event": "reticle_daemon_already_running", "port": 4400 }
+```
+
+A successful spawn logs `reticle_daemon_spawned` with the port. A port held by something that is not a Reticle daemon is refused up front rather than spawned into:
+
+```
+reticle_daemon_start_refused
+```
+
+## Exit codes
+
+| Code | Meaning                                                                           |
+| ---- | --------------------------------------------------------------------------------- |
+| `0`  | A daemon is up on the port, whether this run started it or found it               |
+| `1`  | The port is held by a foreign process, or the child never bound within 15 seconds |
+
+<Note>
+  `serve` reports the **bind**, not the spawn. It used to exit `0` the moment it forked, while the
+  child died on an `EADDRINUSE` nobody joined back up. It now waits for the daemon to answer.
+</Note>
+
+## Worked example
+
+```bash
+npx reticle serve --port 4400
+npx reticle status
+```
+
+<Card title="What the daemon is" icon="sitemap" href="/architecture">
+  The bridge, the tool engine, and where `.reticle/` lives.
+</Card>

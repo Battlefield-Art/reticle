@@ -1,5 +1,6 @@
 ---
-title: Agentic install
+title: Agentic install: let the agent do it
+sidebarTitle: Agentic install
 description: Run npx reticle init and let your coding agent wire Reticle into the project. What it changes, what it asks, and how to read its report.
 icon: wand-magic-sparkles
 ---
@@ -26,7 +27,7 @@ npx reticle init --dry-run
 On a fresh Vite + React + TypeScript app, that produced:
 
 ```
-reticle init (dry run — no files written)
+reticle init (dry run, no files written)
   in /tmp/initdemo
 
   [·] MCP server (Claude, global) → global (claude user scope)
@@ -114,13 +115,13 @@ Four files in your project, none of them mysterious.
 
   <Accordion title="src/reticle-dev.ts (your capabilities)">
     ```ts
-    // Dev-only. Imported automatically by @reticlehq/vite-plugin — you do not need to import it.
+    // Dev-only. Imported automatically by @reticlehq/vite-plugin, so you do not need to import it.
     // Self-guards on import.meta.env.DEV, so it is a no-op in a production build.
     import { registerCapabilities } from '@reticlehq/react';
 
     if (import.meta.env.DEV) {
       registerCapabilities({
-        testids: [], // none found — add data-testid to your key elements
+        testids: [], // none found; add data-testid to your key elements
         signals: [], // names you pass to reticle.signal()
         stores: [],  // the keys you registered above
       });
