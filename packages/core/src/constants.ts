@@ -113,7 +113,24 @@ export const ReticleEnv = {
 /** Hard transport bounds shared by the browser and bridge. */
 export const TRANSPORT_LIMITS = {
   MAX_MESSAGE_BYTES: 1024 * 1024,
-  MAX_MESSAGES_PER_SECOND: 1000,
+  /**
+   * Inbound events per second before the bridge SAMPLES rather than records everything.
+   *
+   * This was 1000, and an ordinary React app with an active query cache blew through it: the
+   * reporter's FIRST `act_and_wait` of the session came back `unknown` with `unclean_capture` and a
+   * four-figure drop count, and setting the env override to twenty times the default fixed it (#316).
+   * Reticle was right to refuse the verdict — a sampled window cannot support one, and the guard that
+   * catches false greens is blindest exactly there — but landing that on the first drive after an
+   * install, recoverable only by knowing an environment variable exists and inventing a number for
+   * it, is the worst possible place to spend the honesty.
+   *
+   * 20000 is the value that was measured to work on the page that reported it. The cap exists to stop
+   * a PATHOLOGICAL page (an animation loop firing DOM mutations every frame), not to throttle a busy
+   * one, and the ceiling it has to defend is cheap: the daemon is on the same machine, a typical
+   * event is a few hundred bytes, so this is single-digit MB/s over loopback, and MAX_BUFFER_BYTES
+   * still bounds what a runaway page can make the bridge hold.
+   */
+  MAX_MESSAGES_PER_SECOND: 20000,
   MAX_SESSIONS: 32,
   MAX_PENDING_CONNECTIONS: 16,
   HELLO_TIMEOUT_MS: 5000,
