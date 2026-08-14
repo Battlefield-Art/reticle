@@ -53,7 +53,7 @@ export function navigateResult(
     ...base,
     confirmed: false,
     note:
-      'ok means the navigation was DISPATCHED, not that the page arrived — the SDK is torn down by ' +
+      'ok means the navigation was DISPATCHED, not that the page arrived. The SDK is torn down by ' +
       'the navigation itself, so nothing here can see the new document. Call reticle_sessions to ' +
       'confirm a session reconnected at the new URL before acting; if none appears, the page did ' +
       'not load or is not instrumented.',

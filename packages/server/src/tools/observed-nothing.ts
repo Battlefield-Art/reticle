@@ -38,6 +38,6 @@ export function noteEmptyRead(
     ...result,
     // The distinction the field sweep could not make: this is a RESULT, not a failure to look.
     observed: true,
-    note: `no ${context.noun}${window} — the observation ran and found none, which is a result, not a missing reading`,
+    note: `no ${context.noun}${window}; the observation ran and found none, which is a result, not a missing reading`,
   };
 }

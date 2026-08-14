@@ -27,7 +27,7 @@ const HEAL_MESSAGES = {
   HEALED:
     "rewrote drifted testid anchors to their nearest surviving match and re-verified the flow's success consequence still fires",
   DRIFT_DRY: 'confident rebind(s) proposed — re-run with apply:true to write them to disk',
-  UNHEALABLE: `drift found, but no nearest match cleared the confidence floor (HEAL_CONFIDENCE_MIN=${HEAL_CONFIDENCE_MIN}); file left untouched — add a data-testid or fix the flow by hand`,
+  UNHEALABLE: `drift found, but no nearest match cleared the confidence floor (HEAL_CONFIDENCE_MIN=${HEAL_CONFIDENCE_MIN}); file left untouched; add a data-testid or fix the flow by hand`,
   HEALED_UNVERIFIED:
     'rewrote drifted testid anchors — but this flow declares no success consequence, so the rebind resolves a locator without proving the intent still holds. Add a success-state assertion (reticle_annotate) so future heals can be verified.',
   CONSEQUENCE_BROKEN:

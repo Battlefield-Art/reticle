@@ -93,7 +93,7 @@ export async function handleDoctor(port: number): Promise<void> {
       `  daemon       ✗ not running on :${port} — your agent runs \`reticle mcp\` (or \`reticle serve\`)`,
     );
   }
-  line(`  bridge port  ${port}  (your app must dial THIS port — not your dev-server port)`);
+  line(`  bridge port  ${port}  (your app must dial THIS port, not your dev-server port)`);
   // Where to LOOK when something is wrong. The daemon has always written a structured log here and
   // nothing ever said so, so the first move in every investigation was reading source instead of
   // reading the log. `RETICLE_TRACE=1` turns the same stream into a per-stage trace — see

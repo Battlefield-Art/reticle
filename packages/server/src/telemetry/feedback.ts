@@ -212,7 +212,7 @@ export async function submitFeedback(
       // Reticle SOURCE CHECKOUT disables telemetry by cwd, and that is exactly where release runs and
       // contributor sessions happen — so the reports most worth having were the ones silently lost.
       reason: isReticleSourceCheckout(opts.cwd ?? process.cwd())
-        ? 'this is a Reticle source checkout, where telemetry is disabled by design — so feedback has nowhere to go. Open an issue at https://github.com/reticlehq/reticle/issues instead, or run from the app you are verifying.'
+        ? 'this is a Reticle source checkout, where telemetry is disabled by design, so feedback has nowhere to go. Open an issue at https://github.com/reticlehq/reticle/issues instead, or run from the app you are verifying.'
         : `telemetry is disabled on this machine, so feedback has nowhere to go. Re-enable with \`reticle telemetry enable\`, or open an issue at https://github.com/reticlehq/reticle/issues.`,
       redacted,
       context,

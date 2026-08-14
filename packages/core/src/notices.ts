@@ -36,7 +36,7 @@ export function isPresenterTone(value: unknown): value is PresenterTone {
  * sooner. Rides in a `buffer` block only when `dropped > 0` (silence ⇒ nothing lost).
  */
 export const BUFFER_EVICTION_WARNING =
-  'event buffer evicted older events (age/size cap) — a negative result here may be a false negative; the evidence may have expired. Grade sooner or widen the buffer.';
+  'event buffer evicted older events (age/size cap): a negative result here may be a false negative; the evidence may have expired. Grade sooner or widen the buffer.';
 
 /**
  * Thrown when a tool needs a live browser session and none is connected. Names the #1 real cause in a
@@ -48,7 +48,7 @@ export const NO_SESSION_CONNECTED_ERROR =
 
 /** Surfaced on act/assert results when the target tab is throttled. */
 export const THROTTLED_WARNING =
-  'tab throttled; timer/rAF/pointer gestures may silently no-op — refocus before driving';
+  'tab throttled; timer/rAF/pointer gestures may silently no-op; refocus before driving';
 
 /**
  * Pushed to the panel when the last agent's MCP connection drops — the agent (any of

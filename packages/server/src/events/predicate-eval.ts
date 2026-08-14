@@ -600,7 +600,7 @@ export function evalSignal(
         ? `signal '${p.name ?? '(any)'}' fired ${String(sameName.length)}x, payload: ${JSON.stringify(sameName[0])}`
         : // Name what DID fire: a typo'd signal name and a genuinely dead action produce the same
           // sentence otherwise, and the agent cannot tell them apart. See observed-in-window.ts.
-          `signal '${p.name ?? '(any)'}' never fired — ${describeObserved(
+          `signal '${p.name ?? '(any)'}' never fired; ${describeObserved(
             'signals',
             events.filter((e) => e.type === EventType.SIGNAL).map((e) => str(e.data['name']) ?? ''),
           )}`,

@@ -44,7 +44,7 @@ const LINES: Record<FrictionKind, string> = {
   [FrictionKind.UNKNOWN_TOOL]:
     'no such tool — reticle_feedback tells us what you expected it to do, which is how it gets built',
   [FrictionKind.UNKNOWN_VERDICT]:
-    'Reticle could not tell what happened here. If you expected otherwise, reticle_feedback — an ' +
+    'Reticle could not tell what happened here. If you expected otherwise, reticle_feedback. An ' +
     'unknown verdict is our defect, not yours',
   [FrictionKind.REPEATING]:
     'stuck on the same call? reticle_feedback — say what you were trying to do and it gets fixed',

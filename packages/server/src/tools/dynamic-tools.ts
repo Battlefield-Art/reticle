@@ -83,7 +83,7 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
             // `full` advertises all 46 tools DIRECTLY and carries no meta-tools at all, so
             // reticle_run does not exist there. Saying otherwise sends the agent to a tool the
             // profile does not have.
-            note: `The profile is read once at daemon startup — change ${TOOL_PROFILE_ENV} and restart the daemon, or it has no effect. Under this profile every unadvertised tool is reachable through reticle_run; under \`full\` there are no meta-tools because every tool is advertised directly.`,
+            note: `The profile is read once at daemon startup: change ${TOOL_PROFILE_ENV} and restart the daemon, or it has no effect. Under this profile every unadvertised tool is reachable through reticle_run; under \`full\` there are no meta-tools because every tool is advertised directly.`,
           },
         };
 

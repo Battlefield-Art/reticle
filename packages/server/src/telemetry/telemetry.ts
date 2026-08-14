@@ -237,7 +237,7 @@ export const describeTelemetry = (
   if (isReticleSourceCheckout(cwd)) {
     return {
       enabled: false,
-      reason: 'this is a Reticle source checkout — developing it is not using it',
+      reason: 'this is a Reticle source checkout; developing it is not using it',
       policyUrl: POLICY_URL,
     };
   }

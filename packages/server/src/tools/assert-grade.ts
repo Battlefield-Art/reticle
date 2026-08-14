@@ -16,7 +16,7 @@ import { HonestyGrade } from '../honesty/honesty.js';
 import type { Predicate } from '../events/predicate.js';
 
 export const PRESENCE_ONLY_ADVICE =
-  'This predicate only checks element/text presence, not an observable consequence. A locator healed to the wrong element (or a stale render) can satisfy it while the feature is broken. Prefer a { signal } or { net } assertion — or allOf it with one — so green means the feature actually worked.';
+  'This predicate only checks element/text presence, not an observable consequence. A locator healed to the wrong element (or a stale render) can satisfy it while the feature is broken. Prefer a { signal } or { net } assertion (or allOf it with one) so green means the feature actually worked.';
 
 interface PredicateKinds {
   /** A signal/net leaf is present — proves the app did something a wrong element cannot fake. */
