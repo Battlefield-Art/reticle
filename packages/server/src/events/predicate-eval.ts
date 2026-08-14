@@ -3,8 +3,10 @@ import {
   ElementState,
   EventType,
   PredicateKind,
+  QueryBy,
   StreamDirection,
   isDevToolingUrl,
+  type ElementDescriptor,
   type ElementQuery,
   type ReticleEvent,
 } from '@reticlehq/core';
@@ -93,6 +95,109 @@ const ELEMENT_QUERY_FIELDS = [
   'alt',
   'component',
 ] as const;
+
+/**
+ * The locator fields the browser actually CONSUMES for a given query — mirrors the precedence in
+ * `findIn` (packages/browser/src/dom/query.ts).
+ *
+ * An element query is not a conjunction. It is a first-match dispatch: `by`+`value` wins, then the
+ * component/source anchor, then `role` (which alone also consumes `name`), then the first of
+ * text/label/placeholder/testid/alt that is present. Every OTHER field the caller wrote is dropped on
+ * the floor, silently, and the match reported as if the whole query had been honoured.
+ *
+ * Duplicated here on purpose. The alternative is to send the question to the browser, and the browser
+ * cannot answer it: by the time a match comes back, the fields it ignored are indistinguishable from
+ * the fields it used.
+ */
+function usedQueryFields(query: ElementQuery): ReadonlySet<string> {
+  const used = new Set<string>();
+  if (query.by !== undefined && query.value !== undefined) {
+    used.add('by').add('value');
+    if (QueryBy.ROLE === query.by) used.add('name');
+    if (QueryBy.COMPONENT === query.by) used.add('component');
+    return used;
+  }
+  if (query.component !== undefined || query.source !== undefined) return used.add('component');
+  if (query.role !== undefined) return used.add('role').add('name');
+  for (const field of ['text', 'label', 'placeholder', 'testid', 'alt'] as const) {
+    if (query[field] !== undefined) return used.add(field);
+  }
+  return used;
+}
+
+/**
+ * How a dropped field is checked back on the server, against the descriptor the match returned.
+ *
+ * `value` is the field this exists for: `{ role: "textbox", name: "GST amount", value: "274.58" }`
+ * read as a locator has no `by`, so the value half was discarded and the predicate collapsed to "a
+ * textbox named GST amount exists" — trivially true against an EMPTY field. Comparison is TRIMMED and
+ * exact: an input's value is a value, not prose, and a trailing space in either the app or the
+ * predicate is not a finding anybody wants. `""` asserts the field is empty, which describe() reports
+ * by omitting the field entirely.
+ *
+ * `role`/`name`/`value` compare against exactly what `reticle_query` REPORTS, so the words an agent
+ * copies out of a query result are the words that match here. `text` is a substring match, matching
+ * Testing Library's `exact: false`, and falls back to the name because describe() omits `text` when it
+ * equals the accessible name.
+ */
+const RESIDUAL_CHECKS: Readonly<
+  Record<string, (element: ElementDescriptor, want: string) => boolean>
+> = {
+  value: (element, want) => (element.value ?? '').trim() === want.trim(),
+  role: (element, want) => element.role === want,
+  name: (element, want) => element.name.trim() === want.trim(),
+  text: (element, want) => (element.text ?? element.name).includes(want),
+};
+
+export interface ResidualQueryChecks {
+  /** Dropped fields this side CAN check, as [field, wanted value] pairs. */
+  checks: [string, string][];
+  /** Dropped fields with no descriptor to check them against — refuse rather than ignore. */
+  unusable: string[];
+}
+
+/**
+ * Split a query's dropped fields into the ones the server can still enforce and the ones it cannot.
+ *
+ * The alternative — refuse every dropped field — breaks calls that work today and that our own
+ * cheatsheet advertises (`{ role: "button", text: "Save" }`), and breaks them into no verdict at all.
+ * Enforcing what we can and refusing only the rest keeps those calls working AS WRITTEN, which is the
+ * outcome the caller was already assuming.
+ */
+export function residualQueryChecks(query: ElementQuery): ResidualQueryChecks {
+  const used = usedQueryFields(query);
+  const checks: [string, string][] = [];
+  const unusable: string[] = [];
+  for (const field of ELEMENT_QUERY_FIELDS) {
+    const want = query[field];
+    if (want === undefined || used.has(field)) continue;
+    if ('string' === typeof want && RESIDUAL_CHECKS[field] !== undefined)
+      checks.push([field, want]);
+    else unusable.push(field);
+  }
+  return { checks, unusable };
+}
+
+/** Does this element satisfy every field the locator dropped? */
+export function satisfiesResiduals(
+  element: ElementDescriptor,
+  checks: readonly [string, string][],
+): boolean {
+  return checks.every(([field, want]) => true === RESIDUAL_CHECKS[field]?.(element, want));
+}
+
+/** How the element's own reading of a dropped field should be REPORTED back on a failure. */
+export function describeResidual(element: ElementDescriptor, field: string): string {
+  const reading =
+    'value' === field
+      ? (element.value ?? '')
+      : 'text' === field
+        ? (element.text ?? element.name)
+        : 'role' === field
+          ? element.role
+          : element.name;
+  return `${element.role} "${element.name}" ${field}=${JSON.stringify(reading)}`;
+}
 
 /** Rename known aliases before parse; an explicit canonical key always wins. */
 function applyPredicateAliases(input: unknown): unknown {

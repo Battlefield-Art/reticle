@@ -23,6 +23,9 @@ import {
   evalAnimation,
   evalSignal,
   evalSettled,
+  residualQueryChecks,
+  satisfiesResiduals,
+  describeResidual,
   type Predicate,
   type EvalResult,
 } from './predicate-eval.js';
@@ -67,8 +70,45 @@ async function evalElement(
   absent: boolean,
   diagnose: boolean,
 ): Promise<EvalResult> {
-  const match = await matchOnce(session, query, state);
+  // Fields the browser's locator would have DROPPED, enforced back here — see residualQueryChecks.
+  // Checked before the round-trip when nothing can enforce them: a predicate that cannot be evaluated
+  // must say so rather than resolve to whatever the surviving half of it happened to match.
+  const residual = residualQueryChecks(query);
+  if (residual.unusable.length > 0) {
+    const reason =
+      `the element locator ignores ${residual.unusable.map((f) => `\`${f}\``).join(', ')} ` +
+      `in ${JSON.stringify(query)} — it resolves by the first of by+value, component/source, role, ` +
+      'text, label, placeholder, testid, alt that is present, and nothing here can check the rest. ' +
+      'Assert them one locator at a time, or move the extra field into the locator';
+    return { pass: false, failureReason: reason, inconclusive: reason };
+  }
+  let match = await matchOnce(session, query, state);
   const subject = JSON.stringify(query);
+  // A residual narrows the SET; `count` is every match while `elements` is only the described prefix,
+  // so a locator broad enough to be truncated cannot be narrowed honestly. Say so instead of guessing.
+  if (residual.checks.length > 0 && match.count > match.elements.length) {
+    const reason = `${String(match.count)} elements matched ${subject} and only ${String(match.elements.length)} were described, so ${residual.checks.map(([f]) => `\`${f}\``).join(', ')} could not be checked against all of them — narrow the locator`;
+    return { pass: false, failureReason: reason, inconclusive: reason };
+  }
+  const kept = match.elements.filter((element) => satisfiesResiduals(element, residual.checks));
+  // The locator found something and the dropped fields disagree with it. Reported separately from a
+  // plain miss because the fixes are opposite: the element IS there, its value is not what was claimed.
+  if (residual.checks.length > 0 && match.matched && 0 === kept.length && !absent) {
+    const wanted = residual.checks.map(([f, want]) => `${f}=${JSON.stringify(want)}`).join(', ');
+    return {
+      pass: false,
+      failureReason: `element matching ${subject} is present but ${wanted} does not hold`,
+      observed: match.elements
+        .map((element) => residual.checks.map(([f]) => describeResidual(element, f)).join(', '))
+        .join('; '),
+      expected: `an element matching ${subject} with ${wanted}`,
+      assertion: `element.${residual.checks[0]?.[0] ?? 'residual'}`,
+      evidence: match.elements,
+    };
+  }
+  if (residual.checks.length > 0) {
+    match = { ...match, matched: kept.length > 0, count: kept.length, elements: kept };
+  }
   // A given-but-missing scope is handled ASYMMETRICALLY, because "absent" and "present" ask different
   // questions of a scope that no longer exists:
   //  - ABSENT: an element is trivially absent from a container that isn't there. This is also the
