@@ -1,5 +1,6 @@
 import { Verified, VerifiedReason, isAbsenceDerived } from '@reticlehq/core';
 import { HonestyGrade, type HonestyBlock } from './honesty.js';
+import { unsettledBecause, type UnsettledWindow } from './unsettled.js';
 
 /**
  * The decision rule: eight trust dimensions in, one answer out.
@@ -51,6 +52,12 @@ interface VerifiedInputs {
    * never read. See `hasUnreadWriteOutcome` — the status line describes the transport, not the result.
    */
   outcomeUnread?: boolean;
+  /**
+   * What the wait was for and what the window held when it ended — read ONLY by the two clauses that
+   * answer UNSETTLED, which is the commonest reason a verdict comes back `unknown` and was also the
+   * least actionable. Optional: without it those clauses say exactly what they said before.
+   */
+  unsettled?: UnsettledWindow;
 }
 
 interface VerifiedVerdict {
@@ -139,9 +146,10 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
     return {
       verified: Verified.UNKNOWN,
       verifiedReason: VerifiedReason.UNSETTLED,
-      because:
-        `the assertion held, but this window closed before the app finished (${kinds}) — ` +
-        `re-check, or assert a consequence that settles`,
+      because: unsettledBecause(
+        `the assertion held, but this window closed before the app finished (${kinds})`,
+        inputs.unsettled,
+      ),
     };
   }
 
@@ -226,8 +234,10 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
     return {
       verified: Verified.UNKNOWN,
       verifiedReason: VerifiedReason.UNSETTLED,
-      because:
+      because: unsettledBecause(
         'the page never settled, so the reaction window may have closed before the app finished',
+        inputs.unsettled,
+      ),
     };
   }
 

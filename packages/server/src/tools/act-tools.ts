@@ -23,10 +23,11 @@ import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
 import { parsePredicate } from '../events/predicate-parse.js';
 import { causalSummary } from '../capsule/causal-summary.js';
 import { findContradictions } from '../events/contradictions.js';
-import { waitForInFlight } from './settle-in-flight.js';
+import { inFlightRequestLabels, waitForInFlight } from './settle-in-flight.js';
 import { waitForReaction } from './react-grace.js';
 import { decideVerified } from '../honesty/verified.js';
 import { readsDomState } from '../honesty/already-true.js';
+import { describeWaitTarget } from '../honesty/unsettled.js';
 import { saveFailedAssertCapsule } from './act-capsule.js';
 import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
@@ -615,6 +616,13 @@ export const ACT_TOOLS: ToolDef[] = [
           // `settled` is genuinely optional: a wait that declared no predicate never measured it, and
           // passing `false` there would report "never settled" about something never asked to settle.
           ...(settledOutcome === undefined ? {} : { settled: settledOutcome }),
+          // What the wait was for and what was still outstanding when it ended. Read only by the
+          // UNSETTLED clauses; supplied always because both of them are reachable from here and the
+          // window is already in hand.
+          unsettled: {
+            waitedFor: describeWaitTarget(until),
+            stillInFlight: inFlightRequestLabels(windowEvents),
+          },
         });
         return withControl(session, {
           ...decision,

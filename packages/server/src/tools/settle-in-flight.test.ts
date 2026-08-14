@@ -23,7 +23,7 @@
 import { describe, expect, it } from 'vitest';
 import { ContradictionKind, EventType, type ReticleEvent } from '@reticlehq/core';
 import { findContradictions } from '../events/contradictions.js';
-import { inFlightRequestIds, waitForInFlight } from './settle-in-flight.js';
+import { inFlightRequestIds, inFlightRequestLabels, waitForInFlight } from './settle-in-flight.js';
 
 type Ev = { type: string; t: number; data: Record<string, unknown> };
 
@@ -54,6 +54,12 @@ describe('which requests are still in flight', () => {
 
   it('says nothing when there was no traffic at all', () => {
     expect(inFlightRequestIds([])).toEqual([]);
+  });
+
+  it('names them as METHOD url, because a correlation id is not something an agent can act on', () => {
+    expect(inFlightRequestLabels([pending('a'), pending('b'), settled('a')])).toEqual([
+      'POST https://api.test/b',
+    ]);
   });
 
   it('ignores a settle for a request it never saw start', () => {

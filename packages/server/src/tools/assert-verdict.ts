@@ -13,6 +13,8 @@ import { buildHonestyBlock } from '../honesty/honesty.js';
 import { hasAcceptedWrite } from '../honesty/accepted-write.js';
 import { hasUnreadWriteOutcome } from '../honesty/unread-outcome.js';
 import { decideVerified } from '../honesty/verified.js';
+import { describeWaitTarget } from '../honesty/unsettled.js';
+import { inFlightRequestLabels } from './settle-in-flight.js';
 import { gradeOfPredicate } from './assert-grade.js';
 
 /**
@@ -108,6 +110,12 @@ export async function assertVerdict(
     contradictions,
     ...(outcomePending ? { outcomePending } : {}),
     ...(outcomeUnread ? { outcomeUnread } : {}),
+    // Same detail the act path supplies: this route reaches UNSETTLED through an absence-derived
+    // contradiction, and "the window closed before the app finished" is no more actionable here.
+    unsettled: {
+      waitedFor: describeWaitTarget(predicate),
+      stillInFlight: inFlightRequestLabels(windowEvents),
+    },
   });
   return { decision: decision as unknown as Record<string, unknown>, contradictions, coverage };
 }

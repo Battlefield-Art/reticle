@@ -72,6 +72,31 @@ export function inFlightRequestIds(
   return open;
 }
 
+/**
+ * The same outstanding requests, as "METHOD url" — what an unsettled verdict has to be able to name.
+ *
+ * A correlation id is the right key for the wait and useless in a sentence: an agent told that
+ * `r-17` is open cannot act on it, while `POST /api/login` is the thing to re-check or to assert
+ * directly. Read off the NET_PENDING the window already holds, so this costs one pass over events
+ * that are in hand.
+ */
+export function inFlightRequestLabels(
+  events: readonly { type: string; data: Record<string, unknown> }[],
+): string[] {
+  const open = new Set(inFlightRequestIds(events));
+  const labels: string[] = [];
+  for (const e of events) {
+    if (e.type !== EventType.NET_PENDING) continue;
+    const id = idOf(e.data);
+    if (id === undefined || !open.has(id)) continue;
+    open.delete(id); // one label per request, however many times its start was recorded
+    const method = 'string' === typeof e.data['method'] ? e.data['method'] : 'request';
+    const url = 'string' === typeof e.data['url'] ? e.data['url'] : 'an unreported url';
+    labels.push(`${method} ${url}`);
+  }
+  return labels;
+}
+
 export interface SettleResult {
   /** True when nothing this window started is still outstanding. */
   settled: boolean;
