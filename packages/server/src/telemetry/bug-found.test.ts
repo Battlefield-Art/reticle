@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bugsInResult } from './bug-found.js';
-import { BugSource, ContradictionKind } from '@reticlehq/core';
+import { BugAttribution, BugSource, ContradictionKind } from '@reticlehq/core';
 
 /**
  * The outcome metric — the only number that can honestly be published or shown to an investor,
@@ -20,6 +20,7 @@ describe('bugsInResult', () => {
         kind: 'signal-contradicted',
         falseGreen: true,
         tool: 'reticle_assert',
+        attribution: BugAttribution.APP,
       },
     ]);
   });
@@ -35,7 +36,13 @@ describe('bugsInResult', () => {
   it('counts a plain failed assertion, named by the oracle that judged it', () => {
     const bugs = bugsInResult('reticle_assert', { pass: false, assertion: 'element.state' });
     expect(bugs).toEqual([
-      { source: 'assertion', kind: 'element.state', falseGreen: false, tool: 'reticle_assert' },
+      {
+        source: 'assertion',
+        kind: 'element.state',
+        falseGreen: false,
+        tool: 'reticle_assert',
+        attribution: BugAttribution.UNCLASSIFIED,
+      },
     ]);
   });
 
@@ -260,34 +267,52 @@ describe('a flow that never ran is not a regression', () => {
 /**
  * WHOSE fault it was — the field that makes `bugsFound` publishable at all.
  *
- * Measured over one real session: 8 `bug_found` events, ONE of them a defect in the app. Seven were
- * the agent's own bad predicates and an empty ref, every one published as a defect in the customer's
- * product. A founder steering on that number is steering on noise, and no amount of care in the
- * pitch fixes a number computed that way.
+ * It shipped twice and was wrong both times: across two full real drives EVERY `attribution: 'app'`
+ * was a misattribution, so one session would have published "2 defects in the app" against a true
+ * count of 0. It was removed — and an absent field then made "nobody classified this" and "we looked
+ * and could not tell" the same fact, which is the other half of the same problem. Issue #122.
  */
-describe('a defect names NO owner — attribution was removed', () => {
+describe('every defect names an owner, and app is never a guess', () => {
   /**
-   * `bug.attribution` shipped twice and was wrong both times. A real drive found that across two
-   * full runs EVERY `attribution: 'app'` was a misattribution, while the defect that genuinely was a
-   * bad agent predicate carried none — one session would have published "2 defects in the app"
-   * against a true count of 0.
-   *
-   * A metric that is confidently wrong about whose fault a defect is, is worse than no metric: it is
-   * the number a founder steers on, and it points at the customer. These pin the removal so it is
-   * not casually re-added without evidence that separates the cases.
+   * The rule is core's own: `ABSENCE_DERIVED_CONTRADICTIONS` separates a fault inferred from
+   * something NOT happening inside a window Reticle chose the end of, from one the app positively
+   * did. Every historical misattribution was an absence-derived kind, so reusing that line rather
+   * than inventing a second judgement beside it produces zero of them on the same data.
    */
-  it('emits no attribution for a contradiction', () => {
-    const bugs = bugsInResult('reticle_assert', {
+  it('blames the app for a signal it fired that disagrees with its own screen', () => {
+    const [bug] = bugsInResult('reticle_assert', {
       pass: true,
       contradictions: [{ kind: ContradictionKind.SIGNAL_CONTRADICTED }],
     });
-    expect(bugs.length).toBeGreaterThan(0);
-    for (const bug of bugs) expect(bug).not.toHaveProperty('attribution');
+    expect(bug?.attribution).toBe(BugAttribution.APP);
   });
 
-  it('emits no attribution for a failed assertion', () => {
+  it('does NOT blame the app for a request that had merely not settled yet', () => {
+    // The exact kind that produced every misattribution the first two versions shipped: Reticle
+    // raises it from the ABSENCE of a settle event, so a dev-overlay poll manufactures it with the
+    // app doing nothing wrong.
+    const [bug] = bugsInResult('reticle_assert', {
+      pass: true,
+      contradictions: [{ kind: ContradictionKind.REQUEST_NEVER_SETTLED }],
+    });
+    expect(bug?.attribution).toBe(BugAttribution.UNCLASSIFIED);
+  });
+
+  it('declines to name an owner for a bare failed assertion', () => {
+    // `element.present` covers "the button is missing", "the API is down" and "the agent mistyped a
+    // testid" identically. An owner invented here is a guess in the one number we intend to publish.
     const bugs = bugsInResult('reticle_assert', { pass: false, assertion: 'element.present' });
-    for (const bug of bugs) expect(bug).not.toHaveProperty('attribution');
+    expect(bugs.length).toBeGreaterThan(0);
+    for (const bug of bugs) expect(bug.attribution).toBe(BugAttribution.UNCLASSIFIED);
+  });
+
+  it('never leaves the field absent — absence and "we could not tell" are different facts', () => {
+    const bugs = [
+      ...bugsInResult('reticle_crawl', { anomalies: [{ kind: 'console-error' }] }),
+      ...bugsInResult('reticle_flow_verify', { status: 'fail', failures: [{}] }),
+    ];
+    expect(bugs.length).toBeGreaterThan(0);
+    for (const bug of bugs) expect(bug).toHaveProperty('attribution');
   });
 
   it('still COUNTS the defect — only the blame is gone', () => {

@@ -11,6 +11,7 @@
  * how a replay works.
  */
 import {
+  BugAttribution,
   BugSource,
   RunFlowStatus,
   TelemetryActor,
@@ -63,6 +64,9 @@ export function reportRunTelemetry(run: ReticleVerificationRun): void {
           falseGreen: false,
           tool: VERIFY_SURFACE,
           repeat: !first,
+          // A regression SOMEWHERE, and the row does not say where — the app changed, or a selector
+          // strategy of ours did. `app` needs positive evidence; see bug-found.ts.
+          attribution: BugAttribution.UNCLASSIFIED,
         },
       });
     }

@@ -468,15 +468,23 @@ export type BugSource = (typeof BugSource)[keyof typeof BugSource];
  * WHOSE fault the defect was.
  *
  * `bugsFound` is the number this product would most like to publish, and it is not publishable
- * without this. Measured over one real session: 8 `bug_found` events, of which **one** was a defect
- * in the app under test. The other seven were the agent's own bad predicates (a store path that
- * never existed, an impossible selector) and one empty ref, all published as defects in the
- * customer's product. A founder steering on that number is steering on noise.
+ * without this. It shipped twice and was wrong both times: across two full real drives EVERY
+ * `attribution: 'app'` was a misattribution, so a single session would have published defects
+ * against a customer's product that did not exist. A metric confidently wrong about whose fault
+ * something is, is worse than no metric — it is the number a founder steers on, and it points at the
+ * customer. It was removed, and an ABSENT field then made "nobody classified this" and "we looked
+ * and could not tell" the same fact, which is the other half of the same problem.
  *
- * Deliberately OMITTED rather than guessed when the evidence does not say. A failed `element.present`
- * covers "the button is missing", "the API is down" and "the agent mistyped a testid" identically,
- * and inventing an owner for it would put a guess into the one number we intend to publish — the
- * same mistake `brand` refuses to make by being absent rather than `"unknown"`.
+ * So it is back with two rules, and both are what the earlier versions lacked:
+ *
+ * 1. **Always present.** `UNCLASSIFIED` is a value, not a gap. Absence would mean an old sender or a
+ *    path that forgot; a value means the classifier ran and declined.
+ * 2. **`APP` requires POSITIVE evidence** — something the app itself did: a request that came back
+ *    failed, a signal the app fired carrying data that disagrees with its own screen, a written
+ *    field echoed back changed. Never "nothing else explained it". Core already draws exactly this
+ *    line for the verdict, in `ABSENCE_DERIVED_CONTRADICTIONS`, and that is the line reused rather
+ *    than a second judgement invented next to it — every one of the historical misattributions was
+ *    an absence-derived kind, so this rule produces zero of them on the same data.
  */
 export const BugAttribution = {
   /** A defect in the app under test — the only bucket that belongs in a published defect count. */
@@ -485,6 +493,15 @@ export const BugAttribution = {
   REQUEST: 'request',
   /** Reticle could not see or could not drive. Our bug, or our configuration. Ship a fix. */
   RETICLE: 'reticle',
+  /**
+   * The classifier looked and the evidence could not say.
+   *
+   * The honest majority, and it must stay a value rather than becoming a gap: a failed
+   * `element.present` covers "the button is missing", "the API is down" and "the agent mistyped a
+   * testid" identically, and an owner invented for it would put a guess into the one number we
+   * intend to publish. Exclude it from a defect count; never fold it into `app`.
+   */
+  UNCLASSIFIED: 'unclassified',
 } as const;
 export type BugAttribution = (typeof BugAttribution)[keyof typeof BugAttribution];
 
@@ -531,10 +548,13 @@ export const BugFoundSchema = z.object({
    */
   repeat: z.boolean(),
   /**
-   * Whose fault it was — `app` | `request` | `reticle`. ABSENT when the evidence cannot say; see
-   * `BugAttribution`. Count `attribution: 'app'` for defects found in anybody's product.
+   * Whose fault it was, ALWAYS present — `unclassified` when the evidence cannot say, never absent.
+   *
+   * Absence and "we looked and could not tell" are different facts, and only one of them is a
+   * measurement. Count `attribution: 'app'` for defects found in anybody's product; see
+   * `BugAttribution` for why `app` needs positive evidence.
    */
-  attribution: z.nativeEnum(BugAttribution).optional(),
+  attribution: z.nativeEnum(BugAttribution),
 });
 export type BugFound = z.infer<typeof BugFoundSchema>;
 

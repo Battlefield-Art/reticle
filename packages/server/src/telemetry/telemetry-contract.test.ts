@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  BugAttribution,
   BugSource,
   ConnectFailure,
   OutageReason,
   ContradictionKind,
+  isAbsenceDerived,
   ActionType,
   FeedbackKind,
   QueryBy,
@@ -16,7 +18,7 @@ import {
 import { TOOLS } from '../tools/tools.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import { VERIFICATION_TOOLS } from '../tools/feedback-tools.js';
-import { bugsInResult } from './bug-found.js';
+import { bugsInResult, type BugCandidate } from './bug-found.js';
 import { describeParam } from './argument-shape.js';
 
 /**
@@ -204,6 +206,61 @@ describe('every finding kind counts as a bug', () => {
           'hand-listed there instead of derived from core.ContradictionKind.',
       ).toBe(true);
     }
+  });
+
+  /**
+   * `attribution` shipped twice and was wrong both times, then absent, and absence made "nobody
+   * classified this" and "we looked and could not tell" the same fact. Both halves are pinned here:
+   * every defect carries an owner, and `app` is only claimed where the app itself positively did
+   * something — never where Reticle inferred a fault from something NOT happening inside a window
+   * it chose the end of. Every historical misattribution was an absence-derived kind. Issue #122.
+   */
+  describe('every defect says whose fault it was, and app is never a guess', () => {
+    const everyBug = (): BugCandidate[] => [
+      ...Object.values(ContradictionKind).flatMap((kind) =>
+        bugsInResult('reticle_assert', { pass: true, contradictions: [{ kind }] }),
+      ),
+      ...Object.values(CrawlAnomalyKind).flatMap((kind) =>
+        bugsInResult('reticle_crawl', { anomalies: [{ kind }] }),
+      ),
+      ...bugsInResult('reticle_assert', { pass: false, assertion: 'element.present' }),
+      ...bugsInResult('reticle_flow_verify', { status: 'fail', failures: [{}] }),
+    ];
+
+    it('carries an attribution on every defect, never an absent field', () => {
+      const bugs = everyBug();
+      expect(bugs.length).toBeGreaterThan(0);
+      for (const bug of bugs) {
+        expect(Object.values(BugAttribution), `'${bug.kind}' has no owner`).toContain(
+          bug.attribution,
+        );
+      }
+    });
+
+    it.each(Object.values(ContradictionKind).filter((kind) => isAbsenceDerived(kind)))(
+      'never blames the app for %s, which is inferred from absence',
+      (kind) => {
+        const [bug] = bugsInResult('reticle_assert', { pass: true, contradictions: [{ kind }] });
+        expect(bug?.attribution).toBe(BugAttribution.UNCLASSIFIED);
+      },
+    );
+
+    it.each(Object.values(ContradictionKind).filter((kind) => !isAbsenceDerived(kind)))(
+      'blames the app for %s, which the app positively did',
+      (kind) => {
+        const [bug] = bugsInResult('reticle_assert', { pass: true, contradictions: [{ kind }] });
+        expect(bug?.attribution).toBe(BugAttribution.APP);
+      },
+    );
+
+    /**
+     * A failed assertion label covers "the button is missing", "the API is down" and "the agent
+     * mistyped a testid" identically. An owner invented there is a guess in a published number.
+     */
+    it('declines to name an owner for a bare failed assertion', () => {
+      const [bug] = bugsInResult('reticle_assert', { pass: false, assertion: 'element.present' });
+      expect(bug?.attribution).toBe(BugAttribution.UNCLASSIFIED);
+    });
   });
 
   it('every bug source is producible, so none is a dead enum member', () => {

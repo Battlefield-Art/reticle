@@ -295,23 +295,29 @@ await settle();
   // adding one is a deliberate act reviewed against "does this describe the user's app?". Failing
   // here on a new field is the guard doing its job. `bug_repeat` is a boolean about OUR counting —
   // whether this kind was already seen this session — and says nothing about the app it was found in.
-  // `bug_attribution` is optional BY DESIGN — absent means the evidence could not say whose fault it
-  // was, which is why the check is "every field is on the list" rather than "the list is exactly
-  // this". Guessing an owner would put a guess into the one number we intend to publish.
+  // `bug_attribution` is ALWAYS present and is an owner, never a description of the app: `app` |
+  // `request` | `reticle` | `unclassified`, from a closed list.
   const BUG_FIELDS = new Set(['bug_falseGreen', 'bug_kind', 'bug_repeat', 'bug_source', 'bug_tool', 'bug_attribution']);
   check('  carries only the classified kind, source, dedup flag and attribution', bugs.every((b) =>
     Object.keys(b.properties).filter((k) => k.startsWith('bug_')).every((k) => BUG_FIELDS.has(k))));
-  // Whose fault it was. In a real captured session SEVEN of eight bug_found events were the agent's
-  // own bad predicates and an empty ref, all published as defects in the customer's app — precision
-  // 1 in 8. Without this the headline defect number is not defensible to anyone who asks how it is
-  // computed, and `attribution: 'app'` is the only bucket that belongs in it.
-  // `bug_attribution` was REMOVED. It shipped twice and was wrong both times — across two real drives
-  // every `app` was a misattribution, so a session would have published defects against a customer's
-  // product that did not exist. A metric confidently wrong about whose fault something is, is worse
-  // than none. The defect is still COUNTED; only the blame is gone, and these pin that.
+  // Whose fault it was. It shipped twice and was wrong both times — across two real drives every
+  // `app` was a misattribution, so a session would have published defects against a customer's
+  // product that did not exist. It is back with two rules: always PRESENT (absence and "we looked
+  // and could not tell" are different facts), and `app` only where the app positively did something,
+  // reusing core's own absence-derived line. Every historical misattribution was an absence-derived
+  // kind, so these pin the rule that produces none of them.
   check(
-    '  no defect claims an owner — attribution was removed',
-    bugs.every((b) => b.properties.bug_attribution === undefined),
+    '  every defect names an owner, never an absent field',
+    bugs.every((b) => typeof b.properties.bug_attribution === 'string'),
+    bugs.map((b) => b.properties.bug_attribution).join(','),
+  );
+  check(
+    '  a positively-observed contradiction is attributed to the app',
+    bugs.some((b) => b.properties.bug_kind === 'signal-contradicted' && b.properties.bug_attribution === 'app'),
+  );
+  check(
+    '  a single-channel console error is NOT blamed on the app',
+    bugs.some((b) => b.properties.bug_kind === 'console-error' && b.properties.bug_attribution === 'unclassified'),
   );
   check(
     '  and the defects are still counted',
@@ -605,7 +611,7 @@ await daemon.shutdown('idle');
   // the thing that broke is exactly the failure this file was written to catch.
   const p = s?.properties ?? {};
   check('  marked final', arrived && p.session_final === true);
-  check('  counted tool calls', arrived && p.session_toolCalls === 9, String(p.session_toolCalls));
+  check('  counted tool calls', arrived && p.session_toolCalls === 12, String(p.session_toolCalls));
   check('  histogram by tool name', arrived && JSON.stringify(p.session_toolCounts ?? {}).includes('reticle_act'));
   check('  counted verifications', arrived && p.session_verifications === 4, String(p.session_verifications));
   check('  counted tool errors', arrived && p.session_toolErrors === 3, String(p.session_toolErrors));

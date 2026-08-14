@@ -186,13 +186,19 @@ Captured against the real classifier: `verified: 'unknown'` covered "the agent m
 
 Optional on purpose: a suite verdict (`flow_verify`) is a pass/fail with no clause behind it, and an older sender has none. Absent means unclassified.
 
-## Whose defect it was: removed, on purpose
+## Whose defect it was: `bug.attribution`
 
-`bug.attribution` shipped twice and was wrong both times. A real drive found that across two full runs EVERY `attribution: 'app'` was a misattribution, while the one defect that genuinely was a bad agent predicate carried none. A single session would have published "2 defects in the app" against a true count of 0.
+It shipped twice and was wrong both times. A real drive found that across two full runs EVERY `attribution: 'app'` was a misattribution, while the one defect that genuinely was a bad agent predicate carried none. A single session would have published "2 defects in the app" against a true count of 0. So it was removed — and then absence made "nobody classified this" and "we looked and could not tell" the same fact, which is the other half of the same problem.
 
-A metric that is confidently wrong about whose fault a defect is, is worse than no metric: it is the number a founder steers on, and it points at the customer. Counting nothing is recoverable; publishing a false accusation about somebody's product is not.
+It is back with two rules, and both are the thing the earlier versions lacked. Issue #122.
 
-It comes back when a verdict carries the reason it came out that way. Today the payload cannot separate the cases: `element.present` covers "the button is missing", "the API is down" and "the agent mistyped a testid" identically.
+**Always present.** `unclassified` is a value, not a gap. Absence would mean an old sender or a path that forgot; a value means the classifier ran and declined. Count `app` for defects in anybody's product; exclude `unclassified` rather than folding it in.
+
+**`app` requires positive evidence.** Something the app itself did: a request that came back failed, a signal the app fired carrying data that disagrees with its own screen, a written field echoed back changed. Never "nothing else explained it". That line already exists in core, as `ABSENCE_DERIVED_CONTRADICTIONS` — the kinds inferred from something NOT having happened inside a window Reticle chose the end of — and it is the same line that decides whether a verdict may say `no`. Reusing it rather than inventing a second judgement beside it is the point: every historical misattribution was an absence-derived kind, so this rule produces zero of them on the data that broke the last two versions.
+
+Everything else is `unclassified` on purpose. A failed `element.present` covers "the button is missing", "the API is down" and "the agent mistyped a testid" identically. A console error can be the app, a browser extension, or a framework's dev overlay — one of those was a real false positive here. A replay regression says a flow that used to pass no longer does, which is a regression somewhere, and the row does not say whether the app changed or a selector strategy of ours did.
+
+Driver-side causes need no bucket of their own: a stale ref, a malformed call and a lost session produce no `bug_found` at all, because those paths are excluded upstream in `bugsInResult` before anything is counted.
 
 ## What is NOT a crash: expected disconnects
 

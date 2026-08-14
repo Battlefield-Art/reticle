@@ -16,7 +16,13 @@
  * anyone's app: that a class of defect was found, never what it was found in.
  */
 import { ReticleTool } from '../tools/tool-names.js';
-import { BugSource, ContradictionKind, type BugFound } from '@reticlehq/core';
+import {
+  BugAttribution,
+  BugSource,
+  ContradictionKind,
+  isAbsenceDerived,
+  type BugFound,
+} from '@reticlehq/core';
 
 /**
  * A defect as the CLASSIFIER sees it — everything except `repeat`.
@@ -107,25 +113,35 @@ function couldNotRun(failure: unknown): boolean {
 }
 
 /**
- * `bug.attribution` was REMOVED, deliberately, and this note is here so it is not re-added casually.
+ * WHOSE fault a contradiction was.
  *
- * It shipped twice and was wrong both times. First it stamped `app` on every contradiction, including
- * `request-never-settled` — which Reticle raises from the ABSENCE of a settle event, so a dev-overlay
- * poll manufactured it with the app doing nothing wrong. That was fixed, and a real drive then found
- * it still inverted: across two full runs, EVERY `attribution: 'app'` was a misattribution, while the
- * one defect that genuinely was a bad agent predicate carried none. One session would have published
- * "2 defects in the app" against a true count of 0.
+ * `attribution` shipped twice and was wrong both times. It stamped `app` on every contradiction,
+ * including `request-never-settled` — which Reticle raises from the ABSENCE of a settle event, so a
+ * dev-overlay poll manufactured it with the app doing nothing wrong. Across two full real drives
+ * EVERY `attribution: 'app'` was a misattribution, while the one defect that genuinely was a bad
+ * agent predicate carried none. A metric confidently wrong about whose fault a defect is, is worse
+ * than no metric: it is the number a founder steers on, and it points at the customer.
  *
- * A metric that is confidently wrong about WHOSE fault a defect is, is worse than no metric: it is
- * the number a founder steers on, and it points at the customer. Counting nothing is recoverable;
- * publishing a false accusation about somebody's product is not.
+ * The evidence that was missing then exists now, and it is already drawn in core for the verdict:
+ * `ABSENCE_DERIVED_CONTRADICTIONS` separates the kinds inferred from something NOT having happened
+ * inside a window Reticle chose the end of, from the kinds positively OBSERVED — a request that came
+ * back failed, a signal the app fired that disagrees with its own screen, a written field echoed
+ * back changed. Only the second class is evidence against the app, and it is the same line that
+ * decides whether a verdict may say `no`. Reusing it rather than inventing a second judgement beside
+ * it is the whole point: every historical misattribution was an absence-derived kind, so this rule
+ * produces zero of them on the data that broke the last two versions.
  *
- * Bringing it back needs evidence that actually separates the cases. It does not exist in the payload
- * today: `element.present` covers "the button is missing", "the API is down" and "the agent mistyped
- * a testid" identically, and `signal.absent` covers both a signal the app never fired and a ref
- * Reticle drove into nothing. Until a verdict carries the reason it came out that way, the honest
- * output is no owner at all.
+ * Everything else — a failed assertion, a replay regression, a crawl anomaly that is not a
+ * contradiction — is `unclassified`, which is a VALUE and not a gap. A failed `element.present`
+ * covers "the button is missing", "the API is down" and "the agent mistyped a testid" identically,
+ * and a console error can be the app, a browser extension or a framework dev overlay. Guessing there
+ * puts a guess into the one number we intend to publish. See issue #122.
  */
+function attributionOf(kind: string): BugAttribution {
+  return CONTRADICTION_KINDS.has(kind) && !isAbsenceDerived(kind)
+    ? BugAttribution.APP
+    : BugAttribution.UNCLASSIFIED;
+}
 
 export function bugsInResult(toolName: string, result: Record<string, unknown>): BugCandidate[] {
   // `reticle_run` is a WRAPPER: its handler calls runTool on the real tool, which already reported
@@ -151,6 +167,7 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
       kind,
       falseGreen: passed,
       tool: toolName,
+      attribution: attributionOf(kind),
     });
   }
 
@@ -167,8 +184,9 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
       // — even though no assertion was made. See the definition on `falseGreen`.
       falseGreen: CONTRADICTION_KINDS.has(kind),
       tool: toolName,
-      // Nobody wrote a predicate here, so there is no bad request to blame: a crawl anomaly is a
-      // fault the app produced on its own.
+      // Same kind, same owner, wherever it arrives. A `request-never-settled` found by the crawler
+      // is no better evidence about whose fault it was than one found by an assertion.
+      attribution: attributionOf(kind),
     });
   }
 
@@ -188,7 +206,9 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
       kind,
       falseGreen: false,
       tool: toolName,
-      // Omitted when the label cannot say whose fault it was — see ASSERTION_ATTRIBUTION.
+      // The assertion label cannot say whose fault it was: `element.present` covers a missing
+      // button, a downed API and a mistyped testid identically.
+      attribution: BugAttribution.UNCLASSIFIED,
     });
   }
 
@@ -205,8 +225,11 @@ export function bugsInResult(toolName: string, result: Record<string, unknown>):
         kind: 'flow-regression',
         falseGreen: false,
         tool: toolName,
-        // A saved flow that used to pass and no longer does is a regression in the app. Rows that
-        // never RAN are skipped above precisely so Reticle's own failures do not land here.
+        // A flow that used to pass and no longer does is a regression SOMEWHERE, and the row does
+        // not say where: the app changed, or a selector strategy of ours did. Rows that never RAN
+        // are skipped above, which keeps Reticle's outright failures out of the count entirely, but
+        // that is a weaker fact than the positive evidence `app` requires.
+        attribution: BugAttribution.UNCLASSIFIED,
       });
     }
   }
