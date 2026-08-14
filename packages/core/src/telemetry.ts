@@ -738,6 +738,24 @@ export const InstallSource = {
 } as const;
 export type InstallSource = (typeof InstallSource)[keyof typeof InstallSource];
 
+/**
+ * What `init` SAW after it finished writing, when it stayed to look.
+ *
+ * The install has two halves — register the MCP server so the agent has the tools, and get the SDK
+ * into a running page so there is something to look at — and nothing joined "init finished" to "an
+ * app connected". `init` exited 0 having written files, and the second half was completed by far
+ * fewer people than the first with no event able to tell the two apart.
+ */
+export const InitConfirmation = {
+  /** An app carrying the SDK reached the daemon while `init` watched. This is what installed means. */
+  CONNECTED: 'connected',
+  /** Nothing was listening on the bridge port, so no session could arrive. Not a failed install. */
+  NO_DAEMON: 'no_daemon',
+  /** A daemon was up and no app connected inside the window — the dev server is the outstanding step. */
+  NO_SESSION: 'no_session',
+} as const;
+export type InitConfirmation = (typeof InitConfirmation)[keyof typeof InitConfirmation];
+
 /** How `reticle init` went. The onboarding funnel, which had no instrumentation whatsoever. */
 export const InitOutcomeSchema = z.object({
   ok: z.boolean(),
@@ -747,6 +765,14 @@ export const InitOutcomeSchema = z.object({
   stack: z.string().max(64).optional(),
   /** Whether the MCP registration step succeeded — the step most likely to fail silently. */
   mcpRegistered: z.boolean().optional(),
+  /**
+   * What `init` saw when it waited for an app to connect.
+   *
+   * ABSENT means it never looked, which is the honest answer for every scripted run: `init` only
+   * waits when a human is at the terminal. Read an absent value as "not measured", never as a
+   * failure to connect, or the funnel reads scripted installs as losses.
+   */
+  confirmation: z.nativeEnum(InitConfirmation).optional(),
 });
 export type InitOutcome = z.infer<typeof InitOutcomeSchema>;
 

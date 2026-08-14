@@ -62,6 +62,7 @@ import { VITE_DEV_MODULE_PATH, connectArgWithToken, staticPageSnippet } from './
 import { CLAUDE_COMMAND_PATH, CURSOR_COMMAND_PATH } from './slash-command.js';
 import { SERVER_VERSION } from '../version/server-version.js';
 import { InitFailure, reportInitOutcome } from '../telemetry/init-telemetry.js';
+import type { InitOutcome } from '@reticlehq/core';
 
 /** Lockfile basenames, in package-manager preference order (mirrors detect.ts). */
 const LOCKFILE_NAMES = [
@@ -248,6 +249,15 @@ export interface InitOptions {
    * at `src/admin` ended up with no `/reticle` at all (#318).
    */
   agentRoot?: string;
+  /**
+   * Hand the telemetry outcome back rather than emitting it here.
+   *
+   * `init` now stays to watch for an app to connect, and whether it saw one belongs on the SAME
+   * `init_completed` event — the funnel it exists to measure would be double-counted by a second
+   * emit and unjoinable as a second event kind. Only the CLI sets this; every other caller keeps
+   * today's fire-and-forget behaviour, so no path loses its event by forgetting to report.
+   */
+  deferOutcome?: boolean;
 }
 
 export interface InitIo {
@@ -273,10 +283,15 @@ export interface InitIo {
   print(line: string): void;
 }
 
-interface InitResult {
+export interface InitResult {
   ok: boolean;
   applied: number;
   manual: number;
+  /**
+   * The event body this run would report, handed to the caller instead of emitted, when
+   * `deferOutcome` is set. Absent on a dry run and on the exits that report for themselves.
+   */
+  outcome?: InitOutcome;
 }
 
 /**
@@ -927,14 +942,15 @@ function runInitSteps(options: InitOptions, io: InitIo): InitResult {
     agentRootOf(options),
   );
   // A dry run is a preview, not an outcome — reporting it would inflate both success and failure.
-  if (!options.dryRun) {
-    reportInitOutcome({
-      ok: result.ok,
-      ...(result.ok ? {} : { reason: classifyInitFailure(failed) }),
-      stack: plan.framework,
-      // The step's REAL final status, not the absence of a failure — see mcp-registered.
-      mcpRegistered: wasMcpRegistered(resolvedStatus(plan, MCP_TARGET, failed, skipped)),
-    });
-  }
+  if (options.dryRun) return result;
+  const outcome: InitOutcome = {
+    ok: result.ok,
+    ...(result.ok ? {} : { reason: classifyInitFailure(failed) }),
+    stack: plan.framework,
+    // The step's REAL final status, not the absence of a failure — see mcp-registered.
+    mcpRegistered: wasMcpRegistered(resolvedStatus(plan, MCP_TARGET, failed, skipped)),
+  };
+  if (true === options.deferOutcome) return { ...result, outcome };
+  reportInitOutcome(outcome);
   return result;
 }
