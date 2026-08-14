@@ -1,6 +1,6 @@
 # reticle-tauri
 
-Screenshots and headless mode for a Tauri app running under [Reticle](https://reticle.dev).
+Screenshots and headless mode for a Tauri app running under [Reticle](https://reticle.sh).
 
 Everything else Reticle does on Tauri — snapshot, act, assert, state, IPC, console, network — needs nothing from this crate. The SDK connects to the daemon from inside the webview on its own. This crate exists for the two things only the Rust side can do.
 

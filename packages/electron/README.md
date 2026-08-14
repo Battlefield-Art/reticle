@@ -6,6 +6,10 @@ Everything else Reticle does inside an Electron app is the ordinary browser SDK 
 
 Both are **dev-only**. Gate each `require` behind your own dev check so neither ships.
 
+```bash
+npm i -D @reticlehq/electron
+```
+
 ## IPC observation — one line at the top of your preload
 
 ```js

@@ -15,4 +15,4 @@ Requires [`@reticlehq/browser`](https://www.npmjs.com/package/@reticlehq/browser
 
 **Source-file mapping:** on React ≤18, uses dev `_debugSource` automatically. On **React 19** (`_debugSource` removed), add [`@reticlehq/babel-plugin`](https://www.npmjs.com/package/@reticlehq/babel-plugin) to your dev build — the adapter then reads its `data-reticle-source` stamp so `reticle_inspect` returns `component.source = { file, line, column }`.
 
-See the [main README](https://github.com/reticlehq/reticle). MIT.
+See the [main README](https://github.com/reticlehq/reticle). Apache-2.0.

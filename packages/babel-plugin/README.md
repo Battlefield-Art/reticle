@@ -23,4 +23,4 @@ export default defineConfig({
 module.exports = { plugins: [require('@reticlehq/babel-plugin').default] };
 ```
 
-After this, `reticle_inspect` returns `component.source = { file, line, column }`. Only host elements (`<div>`, `<button>`, …) are stamped; components are left untouched. MIT.
+After this, `reticle_inspect` returns `component.source = { file, line, column }`. Only host elements (`<div>`, `<button>`, …) are stamped; components are left untouched. Apache-2.0.

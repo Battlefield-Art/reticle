@@ -4,8 +4,8 @@ Keeps the Reticle **signal layer self-enforcing**. When your store mutates user-
 
 ## Install
 
-```sh
-pnpm add -D @reticlehq/eslint-plugin
+```bash
+npm i -D @reticlehq/eslint-plugin
 ```
 
 Peer dependency: `eslint >= 9` (flat config).
@@ -95,4 +95,6 @@ function commit() {
 
 ## How it fits the workflow
 
-The runtime side advertises signals via `registerCapabilities({ signals: [...] })` (G5) and fires them with `reticle.signal(name, data)`. P5b centralizes that in a Zustand `signalMap` / `commitAndSignal` pair. This lint rule is the **static** counterpart that guards those pairs so the signal map can't silently fall behind the store.
+The runtime side advertises signals via `registerCapabilities({ signals: [...] })` and fires them with `reticle.signal(name, data)`. A Zustand `signalMap` / `commitAndSignal` pair centralizes that in your store. This lint rule is the **static** counterpart that guards those pairs so the signal map can't silently fall behind the store.
+
+Apache-2.0.

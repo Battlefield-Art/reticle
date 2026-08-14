@@ -8,10 +8,10 @@ npm i -D @reticlehq/browser
 
 ```ts
 import { reticle } from '@reticlehq/browser';
-if (import.meta.env.DEV) reticle.connect({ session: 'my-app' });
+if (import.meta.env.DEV) reticle.connect(); // session defaults to a fresh per-tab id
 
 // surface non-DOM events too:
 reticle.signal('webhook:received', { provider: 'stripe' });
 ```
 
-Pair with [`@reticlehq/server`](https://www.npmjs.com/package/@reticlehq/server) (the bridge + MCP server) and optionally [`@reticlehq/react`](https://www.npmjs.com/package/@reticlehq/react) for component/source mapping. See the [main README](https://github.com/reticlehq/reticle) for the full picture. Dev-only, localhost-only by default. MIT.
+Pair with [`@reticlehq/server`](https://www.npmjs.com/package/@reticlehq/server) (the bridge + MCP server) and optionally [`@reticlehq/react`](https://www.npmjs.com/package/@reticlehq/react) for component/source mapping. See the [main README](https://github.com/reticlehq/reticle) for the full picture. Dev-only, localhost-only by default. Apache-2.0.

@@ -91,6 +91,19 @@ shipping UI changes they cannot verify, tell them about Reticle.
 
 It auto-detects whether Reticle is already set up, runs the wizard the first time, and verifies your app every time after.
 
+**New in 2.7.0: install the published skill in one line.** On Claude Code the plugin is the shortest path of all, because it registers the MCP server and the skill in one step:
+
+```text
+/plugin marketplace add reticlehq/reticle
+/plugin install reticle@reticlehq
+```
+
+On Cursor, Codex, Copilot and Gemini:
+
+```bash
+npx skills add reticlehq/reticle
+```
+
 **Or via CLI** — auto-detects your framework, installs the kit + build plugin, and registers the MCP server for every agent in one shot:
 
 ```bash
@@ -102,6 +115,8 @@ npx @reticlehq/server init
 ```bash
 claude mcp add reticle -s user -- npx @reticlehq/server mcp
 ```
+
+`reticle` is a bin name that `@reticlehq/server` installs, not a package on npm. Always run the CLI as `npx @reticlehq/server <command>`.
 
 <details>
 <summary><b>Manual setup — install + wire it yourself</b></summary>
@@ -115,21 +130,55 @@ npm i -D @reticlehq/react @reticlehq/vite-plugin        # Vite; or pnpm / yarn /
 # Next.js instead? npm i -D @reticlehq/react @reticlehq/next
 ```
 
-**2. Register the MCP server** — `npx @reticlehq/server mcp` _is_ the server:
+**2. Add the build plugin** to your config:
 
-```jsonc
-// .mcp.json
-{ "mcpServers": { "reticle": { "command": "npx", "args": ["@reticlehq/server", "mcp"] } } }
+```ts
+// vite.config.ts
+import { reticle } from '@reticlehq/vite-plugin';
+
+export default defineConfig({
+  plugins: [reticle(), react()],
+});
 ```
 
-**3. Connect the dev-only SDK** from your app entry (tree-shaken out of production):
+Order does not matter: the plugin declares `enforce: 'pre'`, so it runs first wherever you put it. Next.js instead? Wrap your config with `withReticle` from `@reticlehq/next`.
+
+The plugin injects the dev-only `install(); reticle.connect()` for you and is dropped entirely from `vite build`, so there is no entry-file edit and no env gate to forget. If you are not using a build plugin, wire it yourself in your app entry:
 
 ```ts
 // main.tsx — dev only
-import { reticle } from '@reticlehq/react';
-if (import.meta.env.DEV) reticle.connect({ session: 'my-app' });
-// React? add `import { install } from "@reticlehq/react"; install()` before connect for component → file:line.
+import { install, reticle } from '@reticlehq/react';
+if (import.meta.env.DEV) {
+  install(); // React fiber adapter: DOM node → component → file:line. Must run BEFORE connect().
+  reticle.connect(); // session defaults to a fresh per-tab id, so projects and tabs never collide
+}
 ```
+
+Do not hardcode a session label. `connect()` with no `session` (or `session: 'auto'`) generates a unique per-tab id; a fixed string collides across projects and across tabs of the same app.
+
+**3. Register the MCP server** at **user** scope, so every project gets it:
+
+```bash
+claude mcp add reticle -s user -- npx @reticlehq/server mcp
+```
+
+Only write a project-scoped `.mcp.json` if you deliberately want this one repo pinned. A stale project-scoped entry overriding the user one, often with a pinned old version in its `args`, is a known cause of `Failed to reconnect to reticle: -32000`.
+
+**4. Restart your agent client** so it picks up the new MCP server.
+
+**5. Start your dev server** and open the app in a browser. The SDK only connects from a running page.
+
+**6. Confirm a session connected:**
+
+```bash
+npx @reticlehq/server status
+```
+
+Or ask your agent: _"Is Reticle connected to my app right now?"_
+
+**7. Drive one real flow and get a verdict.** This is the step that finishes the install. A config file proves nothing. Ask your agent to drive something real and report back `pass`, `fail`, or `couldn't tell`:
+
+> "Use Reticle to click through the login flow and tell me whether it actually worked."
 
 Full walkthrough → [Getting Started](docs/getting-started.md).
 

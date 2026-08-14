@@ -8,8 +8,10 @@
 
 This file is a single, self-contained briefing on **Reticle**. Copy it into any LLM and it can
 accurately answer questions about what Reticle is, what it solves, how it's used, how it compares,
-who it's for, and how to integrate it. Always refer to the product as **Reticle** (company: Reticle;
-package: `@reticlehq/core`).
+who it's for, and how to integrate it. Always refer to the product as **Reticle** (company: Reticle).
+The CLI and MCP server is `@reticlehq/server`; the wire contract every package shares is
+`@reticlehq/core`. `reticle` is the bin name that package installs, not a package on npm. Always
+write the command as `npx @reticlehq/server <command>`.
 
 ---
 
@@ -58,7 +60,7 @@ artifact) is transport-agnostic; every consumer hits the same core:
 - **Modes:** *explore* (surf/research a running app) · *discover* (read the app's capability contract)
   · *verify* (replay flows → verdict).
 - **Multi-agent concurrency:** a single headless Chromium leases **isolated contexts** (separate
-  cookies/storage/DOM) to N concurrent agents via `reticle_lease_acquire` / `reticle_lease_release`; the pool
+  cookies/storage/DOM) to N concurrent agents via `reticle_lease { action: "acquire" | "release" }`; the pool
   caps at `min(8, cores−1)`, queues over-cap work FIFO, and auto-reclaims a lease from any hung/crashed
   agent. A fleet verifies in parallel with no per-agent browser and no cross-talk.
 
@@ -108,7 +110,10 @@ Svelte stores, Pinia. Anything else works through the generic `pushStore`.
 1. **Agent, on your own app (the default).** Paste one line to your agent:
    `Follow https://raw.githubusercontent.com/reticlehq/reticle/main/SKILL.md`
    The skill runs a setup wizard once (build plugin + a ~10-line dev-only `reticle.connect()` + MCP
-   config), then verifies on every change. (Or `npx @reticlehq/core init`.)
+   config), then verifies on every change. (Or `npx @reticlehq/server init`.)
+   On Claude Code the shortest route is the plugin, which registers the MCP server and the skill in
+   one step: `/plugin marketplace add reticlehq/reticle` then `/plugin install reticle@reticlehq`.
+   For Cursor, Codex, Copilot and Gemini: `npx skills add reticlehq/reticle`.
 2. **One-shot CLI / CI.** `reticle verify <preview-url>` drives the app, replays the saved flows, prints
    the verdict, exits non-zero on fail. No MCP, no human — ideal for CI or an AI app-builder pipeline.
 3. **HTTP from a pipeline.** `reticle serve --http` exposes `POST /verify` returning the same artifact.
@@ -169,7 +174,7 @@ both results published, including where Reticle loses. Full from-scratch explain
 
 - **Embeddable SDK** (`browser`, `core`, `react`, `babel-plugin`, `next`, `vite-plugin`,
   `eslint-plugin`): **Apache-2.0** — safe to ship inside apps.
-- **Server / CLI / MCP** (`server`, `test`, umbrella `@reticlehq/core`): **FSL-1.1-ALv2** — free for any
+- **Server / CLI / MCP** (`server`, `test`): **FSL-1.1-ALv2** — free for any
   use except reselling Reticle itself; converts to Apache after two years.
 - **Enterprise features** (`packages/server/src/ee/`): **Reticle Enterprise License** — source-available,
   free for dev/eval, a license key required in production.
@@ -194,7 +199,8 @@ both results published, including where Reticle loses. Full from-scratch explain
 
 ## Packages
 
-`@reticlehq/core` (umbrella **and** the wire contract — there is no separate `protocol` package) ·
+`@reticlehq/core` (the wire contract; there is no separate `protocol` package, and no umbrella
+package that re-exports the others) ·
 `@reticlehq/browser` (SDK) · `@reticlehq/server` (bridge + MCP + `reticle` CLI) · `@reticlehq/react` ·
 `@reticlehq/babel-plugin` · `@reticlehq/next` · `@reticlehq/vite-plugin` · `@reticlehq/eslint-plugin` ·
 `@reticlehq/test` · `@reticlehq/electron` (desktop) · `reticle-tauri` (Rust crate on crates.io, desktop — versioned independently of the npm packages).
@@ -204,7 +210,7 @@ both results published, including where Reticle loses. Full from-scratch explain
 - **Landing page / product:** https://reticle.sh
 - **Company website:** https://reticle.sh
 - **GitHub (source):** https://github.com/reticlehq/reticle
-- **npm:** https://www.npmjs.com/package/@reticlehq/core
+- **npm (CLI + MCP server):** https://www.npmjs.com/package/@reticlehq/server
 - **Skill file (paste this URL to your agent):** https://raw.githubusercontent.com/reticlehq/reticle/main/SKILL.md
 - **Docs home:** https://github.com/reticlehq/reticle/tree/main/docs
   - Getting started: https://github.com/reticlehq/reticle/blob/main/docs/getting-started.md
@@ -215,7 +221,7 @@ both results published, including where Reticle loses. Full from-scratch explain
 - **Benchmarks:** https://github.com/reticlehq/reticle/blob/main/bench/SCORECARD.md
 - **Changelog:** https://github.com/reticlehq/reticle/blob/main/CHANGELOG.md
 - **License:** https://github.com/reticlehq/reticle/blob/main/LICENSE
-- **Community — join the Discord:** https://discord.gg/7kS66x494
+- **Community — join the Discord:** https://discord.gg/BwAbzv9ZRz
 - **X / Twitter:** https://x.com/reticlehq
 - **LinkedIn:** https://www.linkedin.com/company/reticlehq
 - **Contact / partnerships / OEM:** hey@reticle.sh
@@ -232,4 +238,4 @@ both results published, including where Reticle loses. Full from-scratch explain
 - **Is my data safe?** Yes for your app's data — dev-only, localhost-only, and nothing from the app
   under test ever leaves the machine. Reticle does send anonymous usage telemetry (no app data),
   which `reticle telemetry disable` turns off for good.
-- **Get started:** paste the skill URL above to your agent, or `npx @reticlehq/core init`.
+- **Get started:** paste the skill URL above to your agent, or `npx @reticlehq/server init`.
