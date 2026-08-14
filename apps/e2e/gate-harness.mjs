@@ -253,6 +253,10 @@ export async function startOwnedDaemon(port, { cliPath, cwd, env = {}, stdio = '
       // are judging cannot support rule 4.
       RETICLE_HEARTBEAT_MS: GATE_HEARTBEAT_MS,
       RETICLE_TELEMETRY: '0',
+      // A gate daemon is never a user, and `CI` is the only thing an event has to say so. It is set
+      // by the runner and by nothing else, so a battery driven from a laptop or a cloud sandbox
+      // reported itself as a person at a machine.
+      CI: '1',
       ...env,
     },
   });

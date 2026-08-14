@@ -47,6 +47,16 @@ describe('the install gate never phones home', () => {
     expect(set, 'the guard must precede the first spawn').toBeLessThan(firstSpawn);
   });
 
+  it('declares itself a machine whoever runs it', () => {
+    // `CI` is the only thing an event carries that says "not a person", and it is set by the runner
+    // and by nothing else. A gate driven from a laptop or from a cloud agent sandbox therefore
+    // landed in the data as a human at a machine — which is the shape our own gate traffic had.
+    const src = readFileSync(GATE, 'utf8');
+    expect(src, 'install-gate.mjs must set CI on its own process').toMatch(
+      /process\.env\.CI\s*=\s*'1'/,
+    );
+  });
+
   it('and the reason the gate needs its own guard still holds', () => {
     // If this ever fails, the checkout rule has changed and the gate may be covered by it after all
     // — at which point the guard above is belt-and-braces rather than load-bearing. Either way, know.

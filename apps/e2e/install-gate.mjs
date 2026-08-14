@@ -44,6 +44,18 @@ import { execFileSync, spawn } from 'node:child_process';
 // `RETICLE_TELEMETRY=0` and not `RETICLE_TELEMETRY_FILE`: the gate asserts on `init`'s printed plan,
 // never on emitted events, so there is nothing here worth recording.
 process.env.RETICLE_TELEMETRY = '0';
+
+// ── And say what we are, whoever is running us ──────────────────────────────────────────────────
+//
+// `CI` is how every event decides whether it came from a pipeline, and it is only ever set by the
+// runner. A gate driven from a laptop or from a cloud agent sandbox therefore reports itself as a
+// human at a machine — which is how our own gate traffic became indistinguishable from a user's in
+// the one dataset that decides what gets built. Set here rather than relied on from the environment,
+// so the claim is true regardless of who invoked this.
+//
+// The telemetry line above already silences the events; this is belt and braces for anything that
+// re-enables them (a debug run recording to a local sink) and for the CLI's own CI-shaped defaults.
+process.env.CI = '1';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';

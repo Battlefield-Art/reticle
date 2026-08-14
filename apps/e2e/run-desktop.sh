@@ -15,6 +15,10 @@ cd "$ROOT"
 
 # The battery is not a user — keep its daemons/tool calls out of the adoption metrics.
 export RETICLE_TELEMETRY=0
+# And say so on every event that does get emitted. `CI` is the only signal an event has for
+# "this was a pipeline", it is set by the runner and by nothing else, so a battery driven from a
+# laptop or a cloud agent sandbox reported itself as a person at a machine.
+export CI=1
 
 TOKEN_DIR="${RETICLE_PAIRING_TOKEN_DIR:-$HOME/.reticle}"
 TOKEN_FILE="$TOKEN_DIR/pairing-token"

@@ -104,6 +104,7 @@ const DETACHED_SEND_SCRIPT =
 /** Env var names — mirror cloud-sync's `RETICLE_*` convention. */
 import { isReticleSourceCheckout } from './dev-repo.js';
 import { gitFacts } from './git-facts.js';
+import { currentAutomationHint } from './automation-hint.js';
 
 const Env = {
   DISABLE: 'RETICLE_TELEMETRY', // "0" / "false" / "off" → disabled
@@ -365,6 +366,9 @@ export const createTelemetry = (opts: {
   const doFetch = opts.fetchImpl ?? fetch;
   const url = `${(env[Env.URL] ?? DEFAULT_URL).replace(/\/+$/, '')}${TELEMETRY_PATH}`;
   const ci = env[Env.CI] !== undefined && env[Env.CI] !== '';
+  // Read once per process, next to `ci` and never instead of it: this is a second angle on the same
+  // question, and the rule that it can never filter a row lives in automation-hint.ts.
+  const automation = currentAutomationHint(env);
   const os = platform();
   // Negated so it reads the way people say it: UTC+2 is +120, not -120.
   const tzOffsetMin = -new Date().getTimezoneOffset();
@@ -408,6 +412,9 @@ export const createTelemetry = (opts: {
       ts: now(),
       version: opts.version,
       ci,
+      // A SCALAR, so it needs the event build and the wire schema and no `blocks` entry — the same
+      // three-place trap `outage` fell into, and `installSource` documents below.
+      ...(automation !== undefined ? { automation } : {}),
       os,
       tzOffsetMin,
       projectIdSource,

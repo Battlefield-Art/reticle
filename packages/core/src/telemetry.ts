@@ -739,6 +739,22 @@ export const InstallSource = {
 export type InstallSource = (typeof InstallSource)[keyof typeof InstallSource];
 
 /**
+ * Why a run LOOKS automated, when `CI` alone does not say so.
+ *
+ * Advisory only — see the `automation` field on the event and `automation-hint.ts` for what these
+ * are and, more importantly, what they are not allowed to be used for.
+ */
+export const AutomationHint = {
+  /** A container runtime marker is present at the filesystem root. */
+  CONTAINER: 'container',
+  /** A hosted dev environment declared itself (Codespaces, Gitpod, Cloud Shell, dev container). */
+  HOSTED_WORKSPACE: 'hosted_workspace',
+  /** Neither end of the process is attached to a terminal. The weakest of the three. */
+  NO_TTY: 'no_tty',
+} as const;
+export type AutomationHint = (typeof AutomationHint)[keyof typeof AutomationHint];
+
+/**
  * What `init` SAW after it finished writing, when it stayed to look.
  *
  * The install has two halves — register the MCP server so the agent has the tools, and get the SDK
@@ -808,6 +824,16 @@ export const TelemetryEventSchema = z.object({
   version: z.string().min(1).max(64),
   /** Runs inside CI? Separates real human DAU from pipeline traffic (both matter, differently). */
   ci: z.boolean(),
+  /**
+   * ADVISORY hint that this run looks automated, when something beyond `CI` suggests it.
+   *
+   * `ci` reads one environment variable, which is right for a GitHub Actions runner and blind to a
+   * cloud agent sandbox — our own gate has landed in the user data with `ci: false`. This is the
+   * second angle, and it is NEVER a filter: people work in containers, in Codespaces, and over ssh
+   * with no terminal. Never exclude a row because this is set; absent means nothing looked
+   * automated, not that a human was present. See automation-hint.ts for the rejected signals.
+   */
+  automation: z.nativeEnum(AutomationHint).optional(),
   /**
    * What `projectId` was derived from. On EVERY event, not just the profile, because the core
    * counting questions ("users per project", "projects per user") run over all events and need to
