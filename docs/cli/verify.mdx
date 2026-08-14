@@ -26,12 +26,12 @@ It uses the same runner and the same verdict as the MCP and HTTP paths, so a pla
 The rendered run report on stdout. On failure it names the cause on stderr instead, and there are two refusals worth knowing:
 
 ```
-No app connected — Reticle drove the URL but no @reticlehq/browser session dialed back.
+No app connected: Reticle drove the URL but no @reticlehq/browser session dialed back.
   Make sure the SDK is in the build and reticle.connect() runs on the preview page
 ```
 
 ```
-No saved flows to verify (.reticle/flows is empty) — refusing to report a pass for verifying nothing.
+No saved flows to verify (.reticle/flows is empty), so refusing to report a pass for verifying nothing.
 ```
 
 <Warning>

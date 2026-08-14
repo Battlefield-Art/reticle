@@ -211,7 +211,7 @@ export function describeLicense(
         }
       : {
           status: 'eval',
-          detail: 'evaluation mode — enterprise features run free (no issuer key configured)',
+          detail: 'evaluation mode: enterprise features run free (no issuer key configured)',
         };
   }
   const publicKey = loadPublicKey(pem);

@@ -100,7 +100,7 @@ function capabilitiesStep(input: PlanInput): Step[] {
         title: CAPABILITIES_TITLE,
         target: VITE_DEV_MODULE_PATH,
         status: StepStatus.ALREADY,
-        detail: 'file exists — left alone, it is yours to edit',
+        detail: 'file exists, left alone, it is yours to edit',
       },
     ];
   }

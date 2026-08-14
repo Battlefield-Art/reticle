@@ -21,7 +21,7 @@ Enterprise (`ee/`) features ship **inside the open package**; they're source-ava
 3. **Verify.** `reticle license` shows your status:
    ```
    active    licensed to Acme Corp (enterprise), expires 2027-06-20 · features: sso, audit
-   eval      evaluation mode — enterprise features run free (no issuer key configured)
+   eval      evaluation mode: enterprise features run free (no issuer key configured)
    missing   set RETICLE_LICENSE_KEY to activate enterprise features in production
    expired   renew to keep using enterprise features
    ```

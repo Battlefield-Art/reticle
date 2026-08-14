@@ -48,11 +48,11 @@ const DEFAULT_PROJECT_NAME = 'app';
 const VERIFY_AGENT_ID = 'reticle-cli';
 
 const MSG_NO_SESSION =
-  'No app connected — Reticle drove the URL but no @reticlehq/browser session dialed back.\n' +
+  'No app connected: Reticle drove the URL but no @reticlehq/browser session dialed back.\n' +
   '  Make sure the SDK is in the build and reticle.connect() runs on the preview page' +
   ' (for a non-localhost preview: allowNonLocalhost + a pairing token).';
 const MSG_NO_FLOWS =
-  'No saved flows to verify (.reticle/flows is empty) — refusing to report a pass for verifying nothing.\n' +
+  'No saved flows to verify (.reticle/flows is empty), so refusing to report a pass for verifying nothing.\n' +
   '  Flows are recorded interactively by an agent (reticle_record{action:"start"} → act → reticle_flow_save via the\n' +
   '  MCP tools), then committed to .reticle/flows/. In CI, check those files in and re-run `reticle verify`.';
 const MSG_VERIFY_PREFIX = 'verify failed: ';

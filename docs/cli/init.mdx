@@ -31,7 +31,7 @@ npx reticle init [--dry-run] [--port N] [--no-mcp] [--no-install] [--app <dir>] 
 A plan, one line per step, each with a status mark: `✓` written, `·` already in place or left alone, `⚠` needs a hand. Captured from a real run inside `apps/bench-app`:
 
 ```
-reticle init (dry run — no files written)
+reticle init (dry run, no files written)
   in /Users/you/reticle/apps/bench-app
 
   [·] MCP server (Claude, global) → global (claude user scope)
@@ -55,7 +55,7 @@ reticle init (dry run — no files written)
   [✓] Vite plugin → vite.config.ts
       add reticle() to plugins (also injects connect())
   [·] Capabilities + store → src/reticle-dev.ts
-      file exists — left alone, it is yours to edit
+      file exists, left alone, it is yours to edit
 
 Restart `vite`.
 ```

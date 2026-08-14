@@ -380,7 +380,7 @@ Three properties of this schema exist to stop the number being wrong in a way th
 
 - `falseGreen` is defined by the **presentation**, not by "an assertion passed", because the same defect arrives both ways: through `reticle_assert` there is a passing assertion to contradict, and through a crawl there is no assertion at all.
 - `repeat` separates distinct defects from instances. Count `repeat: false` for distinct, count everything for frequency. Scoped to the session, because the payload deliberately carries no selector or URL, so the same defect in two sessions cannot be recognised as one, and must not be.
-- `attribution` separates a defect in the app under test from the agent's own bad predicate and from Reticle's own blind spot. Only `attribution: 'app'` belongs in a published defect count, and `app` requires **positive evidence** — something the app itself did, taken from core's `ABSENCE_DERIVED_CONTRADICTIONS` line, never "nothing else explained it". Everything the evidence cannot settle is `unclassified`, which is a value rather than a gap.
+- `attribution` separates a defect in the app under test from the agent's own bad predicate and from Reticle's own blind spot. Only `attribution: 'app'` belongs in a published defect count, and `app` requires **positive evidence**: something the app itself did, taken from core's `ABSENCE_DERIVED_CONTRADICTIONS` line, never "nothing else explained it". Everything the evidence cannot settle is `unclassified`, which is a value rather than a gap.
 
 The payload never carries a selector, a URL, an element, or any description of the user's app. It reports **that** a class of defect was found, never what it was in.
 
@@ -399,10 +399,10 @@ The payload never carries a selector, a URL, an element, or any description of t
 **The question it answers:** why does the largest cohort in the funnel go quiet? The refusal path already computes a precise diagnosis and hands it to the agent as prose; until this event it then threw it away, so a user who hit a wall on their first call emitted nothing at all.
 
 - The reason is a bucket over the recovery table in `error-recovery.ts`, not a second list of patterns, so a recovery added without a reason does not compile.
-- `retried` lands on the **retry**, not the first refusal. Reporting it the other way round means holding the first event back until a next call reveals whether one came, which loses it entirely for the agent that gives up — the population the event exists to describe.
+- `retried` lands on the **retry**, not the first refusal. Reporting it the other way round means holding the first event back until a next call reveals whether one came, which loses it entirely for the agent that gives up, the population the event exists to describe.
 - Capped at 50 per daemon run. A stuck agent is the shape that produces hundreds, and `consecutiveRepeats` on the session summary still reports how long the loop ran.
 
-The message itself never leaves. It interpolates whatever the caller asked for — a baseline name, a selector, a testid — so only the tool name and the bucket are sent.
+The message itself never leaves. It interpolates whatever the caller asked for (a baseline name, a selector, a testid), so only the tool name and the bucket are sent.
 
 ---
 

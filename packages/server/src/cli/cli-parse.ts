@@ -24,25 +24,25 @@ export const CLI_USAGE = `usage:
   reticle serve [--port N] [--drive <url>] [--headless] [--http] [--http-port N] [--http-token T]
   reticle stop  [--port N] [--quiet]
   reticle status [--port N]
-  reticle doctor [--port N]                            (diagnose setup: Chromium, daemon, port — one command)
+  reticle doctor [--port N]                            (one command to diagnose setup: Chromium, daemon, port)
   reticle open  [url] [--port N]                        (show the app: reuse the connected tab, else open one)
   reticle verify <url> [--headed] [--timeout N] [--storage-state <file>]  (one-shot: drive the URL, verify saved flows, exit 0=pass)
   reticle affected [--since <ref>] [file...]           (which saved flows must re-verify for the changed files)
   reticle gate [--since <ref>] [file...]               (exit non-zero unless passing artifacts cover the affected flows)
   reticle watch [url]                                  (on save, report which saved flows must re-verify)
-  reticle drive <url> [--headless]                     (foreground mode — for debugging)
-  reticle mcp   [--port N] [--drive <url>] [--headless] (MCP stdio proxy — auto-starts daemon if needed)
+  reticle drive <url> [--headless]                     (foreground mode, for debugging)
+  reticle mcp   [--port N] [--drive <url>] [--headless] (MCP stdio proxy; auto-starts daemon if needed)
   reticle update                                       (install the latest server version and restart)
   reticle rollback                                     (restore the previous server version and restart)
   reticle license                                      (show enterprise license status: active | eval | missing)
-  reticle telemetry [status|enable|disable]            (anonymous usage metrics — status shows what's sent + the policy)
-  reticle feedback [--rating 1-5] [--bug] "message"    (tell us what worked and what didn't — prints exactly what it sends)
+  reticle telemetry [status|enable|disable]            (anonymous usage metrics; status shows what's sent + the policy)
+  reticle feedback [--rating 1-5] [--bug] "message"    (tell us what worked and what didn't; prints exactly what it sends)
   reticle feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "message"
                                                        (agents: file from anywhere, including a setup that never finished)
   reticle identify --context company|side_project|open_source|learning [--company N] [--email E] [--forget]
                                                        (OPT-IN: tell us who you are, e.g. for support or an enterprise trial)
 
-Cloud (link this project to Reticle Cloud — runs/flows recorded on the dashboard):
+Cloud (link this project to Reticle Cloud; runs/flows recorded on the dashboard):
   reticle login --email <e> [--code <c>] [--org <n>]   (sign in: mails a code, then exchanges it)
   reticle link  [--project <name|id>]                  (bind this repo: mints a scoped key, writes .reticle/cloud.json)
   reticle whoami                                        (who am I signed in as, and is this repo attached?)
@@ -52,7 +52,7 @@ Cloud (link this project to Reticle Cloud — runs/flows recorded on the dashboa
   reticle runs | regression | share <runId>            (read cloud state; regression exits 3 if any flow broke)
 
 'drive' shows the browser; everything else is hidden (serve/mcp own the pool behind leases, replay
-and the spec runner — batch work). --headed opts any of them in, --headless hides drive, CI hides it.`;
+and the spec runner: batch work). --headed opts any of them in, --headless hides drive, CI hides it.`;
 
 const INIT_COMMAND = 'init';
 const SERVE_COMMAND = 'serve';
