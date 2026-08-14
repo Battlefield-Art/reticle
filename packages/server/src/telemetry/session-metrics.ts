@@ -538,6 +538,11 @@ export class SessionMetrics {
         : {}),
       ...(this.#surface === undefined ? {} : { surface: this.#surface }),
       ...(final ? { endReason: this.#endReason() } : {}),
+      // The headline metric, as a FIELD. Read off the lifetime counter, because every other
+      // verification number in this payload is windowed and a reader who summed the wrong one got a
+      // different question's answer. `false` is sent, not omitted: a session that drove an app and
+      // never asked whether it worked is the whole finding.
+      ...(final ? { endedWithVerdict: this.#lifetimeVerifications > 0 } : {}),
       ...(this.#feedbackPrompted > 0 ? { feedbackPrompted: this.#feedbackPrompted } : {}),
       ...(this.#errorClasses.size > 0
         ? { errorClasses: Object.fromEntries(this.#errorClasses) }

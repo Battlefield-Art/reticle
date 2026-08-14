@@ -653,6 +653,45 @@ describe('the session says why the work ended', () => {
     m.recordToolCall('reticle_act');
     expect(m.summarize(false)).not.toHaveProperty('endReason');
   });
+
+  /**
+   * The headline metric, and the one that was only reachable by subtraction. Every other
+   * verification number in the payload is windowed, so the obvious query over `session_progress`
+   * answers a different question while looking like it answers this one.
+   */
+  it('says outright whether the session ever produced a verdict', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordVerification();
+    expect(m.summarize(true).endedWithVerdict).toBe(true);
+  });
+
+  it('sends `false` rather than omitting it — a session that never asked IS the finding', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    expect(m.summarize(true).endedWithVerdict).toBe(false);
+  });
+
+  /**
+   * A verdict earlier in the session still counts at the end of it. `verifications` is zeroed by
+   * every flush, so reading the window here would report `false` for a session that verified and
+   * then kept working — which is the shape of every long session in the data.
+   */
+  it('remembers a verdict that happened before a periodic flush', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordVerification();
+    m.reset();
+    m.recordToolCall('reticle_snapshot');
+    expect(m.summarize(true).endedWithVerdict).toBe(true);
+  });
+
+  it('is absent on a periodic flush, which is not the end of anything', () => {
+    const m = new SessionMetrics(() => 0);
+    m.recordToolCall('reticle_act');
+    m.recordVerification();
+    expect(m.summarize(false)).not.toHaveProperty('endedWithVerdict');
+  });
 });
 
 /**

@@ -314,6 +314,20 @@ export const SessionSummarySchema = z.object({
   errorsRecovered: z.number().int().nonnegative().optional(),
   /** Errors whose very next call failed again — the message did not land. */
   errorsRepeated: z.number().int().nonnegative().optional(),
+  /**
+   * Did this session ever produce a verdict? Absent on a periodic flush — nothing has ended yet.
+   *
+   * This is the release's headline metric and it was the one thing in the payload that had to be
+   * COMPUTED rather than read: `verifications > 0` over the lifetime counters, which are windowed on
+   * every other event in the stream, so the obvious query over `session_progress` answers a
+   * different question and looks like it answers this one. A metric that requires a correct
+   * subtraction to read is a metric that gets read wrong, and this one decides what the product is
+   * allowed to claim.
+   *
+   * ALWAYS present on a final summary, including `false`: a session that drove an app and never
+   * asked whether it worked is the finding, so absence and `false` must not look alike.
+   */
+  endedWithVerdict: z.boolean().optional(),
   /** Was this a clean shutdown, or a periodic flush of a still-running session? */
   final: z.boolean(),
   /**
