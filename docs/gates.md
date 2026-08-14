@@ -1,4 +1,8 @@
-# Gates — what to run before you push
+---
+title: Gates
+description: 'I changed some files. Which command do I run before I push?'
+icon: shield-check
+---
 
 > **One question this file answers:** _I changed some files. Which command do I run?_
 >
@@ -20,8 +24,8 @@ Every gate below was executed end to end against `main` on **2026-08-12** (macOS
 | `pnpm test:integration` | ✅ 12/12 | 17s |
 | `pnpm test:e2e` | ✅ 32/32 specs + soak 60/60 answered | **490s** |
 | `pnpm test:e2e:desktop` | ✅ 2/2 (Electron 20, Tauri 14) | 58s |
-| `node apps/e2e/soak.mjs --self-check` | ✅ | <1s |
-| `node apps/e2e/matrix.mjs --self-check` | ✅ | <1s |
+| `node apps/e2e/soak.mjs --self-check` | ✅ | `<1s` |
+| `node apps/e2e/matrix.mjs --self-check` | ✅ | `<1s` |
 | `pnpm matrix:compat --only cursor` | ✅ 4/4 | ~10s |
 | `pnpm bench` | ✅ 10/10 — **was failing before this sweep** (see below) | 279s |
 

@@ -1,4 +1,8 @@
-# Human-in-the-loop control — watch, steer, end the session
+---
+title: 'Human-in-the-loop control'
+description: 'Watch the agent’s live transcript, steer it mid-run, or end the session — from inside the page itself.'
+icon: hand
+---
 
 When you run with the presenter on (`reticle.connect({ present: true })`), the floating panel is a **two-way control surface**. You watch the agent's live transcript _and_ can steer it — pause it, send it a correction, or end the session — without leaving the page. There's also a clean, unmistakable "session ended" signal for both you and the agent.
 
@@ -33,7 +37,7 @@ You don't have to describe a bug in prose. **Point at it.** The flag captures th
 3. **The agent** opens the file, fixes it, and calls `reticle_session {action:"review"}({ resolve: "m1" })`.
 4. **You** see **"✓ fixed: \<your note\>"** land in the panel. Flag → fix → confirmation.
 
-See [`reticle_session {action:"review"}` in the usage guide](usage.md#reticle_session {action:"review"}--drain-the-bugs-the-human-flagged-on-the-page) for the tool shape. Suppress the button with `annotate: false` if you don't want it.
+See [`reticle_session {action:"review"}` in the usage guide](/usage) for the tool shape. Suppress the button with `annotate: false` if you don't want it.
 
 ## From the agent (the tools)
 

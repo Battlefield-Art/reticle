@@ -1,6 +1,28 @@
-# Reticle — Complete Usage Guide
+---
+title: Complete usage guide
+description: 'The full reference and cookbook — every tool, flag, and workflow, with worked examples.'
+icon: book
+---
 
 The full reference and cookbook. If you haven't set up Reticle yet, start with [Getting Started](getting-started.md).
+
+> **Start here instead, unless you want the long form.** This page predates the focused reference and still holds the fullest single narrative, but almost everything in it now has a page of its own that is shorter, searchable and verified against a running app:
+>
+> | Looking for                                | Go to                                   |
+> | ------------------------------------------ | --------------------------------------- |
+> | One tool, with a real request and response | [Tools reference](/tools-overview)      |
+> | The predicate grammar                      | [Predicates](/predicates)               |
+> | Every action and its arguments             | [Actions](/actions)                     |
+> | Worked examples for real situations        | [Recipes](/recipes)                     |
+> | Baselines, clock, crawl, mocking, flows    | [Beyond the verify loop](/capabilities) |
+> | Habits that make a verdict trustworthy     | [Best practices](/best-practices)       |
+> | Common questions                           | [FAQ](/faq)                             |
+>
+> What is still only here: turning existing test cases into agent checks (§11), the security and privacy detail (§15), and real input mode (§18).
+
+> **On the notation.** Examples here are written as `reticle_act({ ref, action })`, which is shorthand for "call that tool with these arguments". Over MCP you do not write JavaScript; your client sends the tool name and an arguments object. The shorthand is shorter to read, and the argument shapes are identical either way.
+>
+> If you want examples in the exact JSON your client sends, [Recipes](/recipes) has them, and every response on that page was captured from a running app.
 
 **Contents**
 
@@ -355,9 +377,9 @@ A `state` assertion is graded as a **consequence** (a wrong element or stale ren
 ### Combinators
 
 ```jsonc
-{ "allOf": [ <predicate>, <predicate>, … ] }   // every one must hold
-{ "anyOf": [ <predicate>, … ] }                // at least one
-{ "not": <predicate> }
+{ "kind": "allOf", "predicates": [ <predicate>, <predicate>, … ] }  // every one must hold
+{ "kind": "anyOf", "predicates": [ <predicate>, … ] }              // at least one
+{ "kind": "not", "predicate": <predicate> }
 ```
 
 ### Timing
@@ -412,7 +434,7 @@ Each is phrased as the situation you're in, then how the agent verifies it.
 
 ```jsonc
 const { since } = reticle_act({ ref: iconBtn, action: "click" })
-reticle_assert({ timeout_ms: 2000, predicate: { allOf: [
+reticle_assert({ timeout_ms: 2000, predicate: { kind: "allOf", predicates: [
   { kind: "element", query: { role: "dialog" }, state: "visible" },
   { kind: "console", level: "error", absent: true }
 ]}})
@@ -422,7 +444,7 @@ reticle_assert({ timeout_ms: 2000, predicate: { allOf: [
 
 ```jsonc
 const { since } = reticle_act({ ref: saveBtn, action: "click" })
-reticle_assert({ timeout_ms: 3000, predicate: { allOf: [
+reticle_assert({ timeout_ms: 3000, predicate: { kind: "allOf", predicates: [
   { kind: "net", method: "PUT", urlContains: "/api/profile", status: 200, since },
   { kind: "text", contains: "Saved", visible: true }
 ]}})
@@ -469,12 +491,12 @@ reticle_assert({ timeout_ms: 3000, predicate: { kind: "element",
 reticle_act({ ref: emailRef, action: "fill", args: { value: "admin@acme.com" } })
 reticle_act({ ref: pwRef, action: "fill", args: { value: "•••••••" } })
 const { since } = reticle_act({ ref: submitRef, action: "click" })
-reticle_assert({ timeout_ms: 3000, predicate: { allOf: [
+reticle_assert({ timeout_ms: 3000, predicate: { kind: "allOf", predicates: [
   { kind: "net", method: "POST", urlContains: "/api/login", status: 200, since },
   { kind: "element", query: { role: "heading", name: "Dashboard" }, state: "visible" }
 ]}})
 // And the failure path:
-reticle_assert({ predicate: { allOf: [
+reticle_assert({ predicate: { kind: "allOf", predicates: [
   { kind: "net", urlContains: "/api/login", status: 401 },
   { kind: "element", query: { role: "alert" }, state: "visible" }
 ]}})
@@ -490,7 +512,7 @@ reticle_assert({ predicate: { kind: "console", level: "error", absent: true } })
 
 ```jsonc
 const { since } = reticle_act({ ref: generateBtn, action: "click" })
-reticle_assert({ timeout_ms: 15000, predicate: { allOf: [
+reticle_assert({ timeout_ms: 15000, predicate: { kind: "allOf", predicates: [
   { kind: "net", method: "POST", urlContains: "/api/generate", status: 200, since },
   { kind: "element", query: { testid: "script-output" }, state: "visible" }
 ]}})
@@ -501,7 +523,7 @@ reticle_assert({ timeout_ms: 15000, predicate: { allOf: [
 ```jsonc
 reticle_act({ ref: fileInput, action: "upload", args: { name: "pitch.mp4", type: "video/mp4" } })
 const { since } = reticle_act({ ref: analyzeBtn, action: "click" })
-reticle_assert({ timeout_ms: 15000, predicate: { allOf: [
+reticle_assert({ timeout_ms: 15000, predicate: { kind: "allOf", predicates: [
   { kind: "net", method: "POST", urlContains: "/api/score", status: 200, since },
   { kind: "element", query: { role: "dialog", name: "Score result" }, state: "visible" },
   { kind: "text", contains: "/ 100", visible: true }

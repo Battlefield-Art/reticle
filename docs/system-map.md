@@ -1,4 +1,8 @@
-# System map
+---
+title: System map
+description: 'How a tool call travels from a coding agent to your app and back, and which of those failures are silent.'
+icon: map
+---
 
 > How a tool call gets from a coding agent to your app and back, what each hop can do wrong, and which of those failures are **silent**. Written for anyone touching the transport, the daemon, the bridge, or a gate — and for contributors trying to work out where their change lives.
 >
@@ -6,11 +10,22 @@
 
 ## 1. Topology — 5 processes, 4 hops
 
-```
-coding agent ──stdio──▶ reticle mcp ──HTTP POST──▶ daemon :4400 ──WebSocket──▶ browser SDK ──▶ your app
-  (client)     JSON-RPC   (proxy)   ◀───SSE─────  (bridge+tools)  ◀─────────  (@reticlehq/browser)
-                                                        │
-                                                        └─▶ .reticle/  flows · capsules · baselines · runs
+```mermaid
+flowchart LR
+    C["coding agent<br/>(client)"]
+    P["reticle mcp<br/>(proxy)"]
+    D["daemon :4400<br/>(bridge + tools)"]
+    S["browser SDK<br/>@reticlehq/browser"]
+    A["your app"]
+    F[(".reticle/<br/>flows · capsules<br/>baselines · runs")]
+
+    C -- "stdio / JSON-RPC" --> P
+    P -- "HTTP POST" --> D
+    D -- "SSE" --> P
+    D -- "WebSocket" --> S
+    S --> D
+    S --> A
+    D <--> F
 ```
 
 Each hop has its own failure vocabulary, its own recovery, and its own way of lying. Nothing stated this end to end until this page, which is why gate results have been contradictory.

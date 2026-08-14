@@ -1,14 +1,21 @@
-# Integrating Reticle
+---
+title: Integrating Reticle
+description: 'Adopt Reticle on your own codebase, or embed it inside an AI app-builder’s generation pipeline.'
+icon: plug
+---
 
 > The one guide for adopting Reticle — for a team using a coding agent on its own app, and for an AI app-builder platform (Lovable / Emergent / Bolt) embedding Reticle in its generation pipeline. Reticle reads the program from _inside_ a running app and returns a **verdict with evidence** ("did it actually work?"), not a screenshot. Enterprise/premium access lives in [`enterprise.md`](./enterprise.md).
 
 ## The loop
 
-```
-generate / edit  →  boot the preview  →  Reticle verifies the critical flows  →  verdict + evidence + repair
-                                                                                │
-                                         PASS → ship & attach "verified ✓"      │
-                                         FAIL → gate the deploy, feed repair packets to the fixer agent
+```mermaid
+flowchart TB
+    G["generate / edit"] --> B["boot the preview"]
+    B --> V["Reticle verifies<br/>the critical flows"]
+    V --> R{"verdict + evidence"}
+    R -- "PASS" --> S["ship, and attach<br/>the verified marker"]
+    R -- "FAIL" --> F["gate the deploy<br/>feed repair packets<br/>to the fixer agent"]
+    F --> G
 ```
 
 One call replays the app's key journeys and asserts **program truth** — network cardinality, store/state, emitted signals, console — then returns a deterministic, un-hallucinatable verdict.

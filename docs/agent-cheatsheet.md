@@ -1,4 +1,8 @@
-# Reticle — agent cheat-sheet
+---
+title: Agent cheat sheet
+description: 'One screen to get fluent: the look → act → observe → assert loop, with the exact calls to make.'
+icon: bolt
+---
 
 One screen to get fluent. Reticle is the **proof layer for AI agents** — no screenshots, no vision model, evidence not prose. Everything below returns structured data. Full guide: [usage.md](usage.md).
 
@@ -30,6 +34,33 @@ One screen to get fluent. Reticle is the **proof layer for AI agents** — no sc
 | `{ kind: "text", text: "Saved" }` | `{ kind: "text", contains: "Saved" }` |
 | `{ kind: "element", role: "button", text: "Save" }` | `{ kind: "element", query: { role, text } }` |
 | `{ kind: "route", url: "/checkout" }` | `{ kind: "route", contains: "/checkout" }` |
+
+**Combinators take `predicates`, not a bare array.** This is the shape most often got wrong, and it is the one that produces no verdict at all:
+
+```jsonc
+// WRONG — neither of these parses
+{ "allOf": [ … ] }
+{ "kind": "allOf", "allOf": [ … ] }
+
+// RIGHT
+{ "kind": "allOf", "predicates": [ … ] }
+{ "kind": "anyOf", "predicates": [ … ] }
+{ "kind": "not",   "predicate":  { … } }
+```
+
+Each child reports its own evidence, in order:
+
+```jsonc
+{
+  "kind": "allOf",
+  "predicates": [
+    { "kind": "signal", "name": "auth:granted" },
+    { "kind": "net", "method": "POST", "urlContains": "/api/login", "count": 1 },
+    { "kind": "console", "level": "error", "absent": true },
+  ],
+}
+// -> evidence: [ { name: "auth:granted", … }, { matched: 1 }, { absent: true } ]
+```
 
 If a predicate is still rejected, the error names the fields **that kind** accepts — read it rather than guessing again, and note `state` spells its selector `path` while `route` spells its `pathname`.
 

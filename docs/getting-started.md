@@ -1,4 +1,12 @@
-# Getting Started with Reticle
+---
+title: Getting started
+description: 'Zero to your agent verifying your real app — step by step, with working code for Vite, Next.js, React and plain HTML.'
+icon: rocket
+---
+
+> **Looking for the fast path?** [Quickstart](/quickstart) gets you to a real verdict in five minutes, and every response on it was captured live. [Agentic install](/install-agentic) and [Manual install](/install-manual) cover setup in detail, per agent and per framework.
+>
+> This page is the long-form walkthrough: the same ground, more slowly, plus per-framework wiring, multi-app setups and prerelease notes. Start here if you want the whole picture in one file rather than the fast route.
 
 This walks you from zero to your agent verifying your app — step by step, with real code for real frameworks. ~10 minutes.
 
@@ -22,11 +30,14 @@ This walks you from zero to your agent verifying your app — step by step, with
 
 Three pieces, each tiny:
 
-```text
-┌─────────────┐   MCP    ┌──────────────────────┐   WebSocket   ┌─────────────────────┐
-│ coding agent │◀───────▶│  reticle bridge + server │◀─────────────▶│ your app + the Reticle │
-│ (Claude Code)│  stdio  │  (npx @reticlehq/server)  │  localhost    │   SDK (dev only)    │
-└─────────────┘          └──────────────────────┘  :4400        └─────────────────────┘
+```mermaid
+flowchart LR
+    A["coding agent<br/>(Claude Code)"]
+    S["reticle bridge + server<br/>npx @reticlehq/server"]
+    B["your app<br/>+ the Reticle SDK<br/>(dev only)"]
+
+    A <-- "MCP over stdio" --> S
+    S <-- "WebSocket<br/>localhost:4400" --> B
 ```
 
 Three pieces, each from the package for its audience:
@@ -326,7 +337,7 @@ reticle_query({ by: "role", value: "button", name: "Refresh" })   // → ref e12
 reticle_act({ ref: "e12", action: "click" })                       // → { since: 920 }
 
 // verifies the reaction
-reticle_assert({ timeout_ms: 2000, predicate: { allOf: [
+reticle_assert({ timeout_ms: 2000, predicate: { kind: "allOf", predicates: [
   { kind: "net", method: "GET", urlContains: "/api/dashboard", status: 200, since: 920 },
   { kind: "console", level: "error", absent: true }
 ]}})

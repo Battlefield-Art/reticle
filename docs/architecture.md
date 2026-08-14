@@ -1,4 +1,8 @@
-# Reticle architecture — how it works and why it's built this way
+---
+title: Architecture
+description: 'The moving parts, the data flow between them, and the design decisions behind each one.'
+icon: sitemap
+---
 
 > For engineers evaluating Reticle, integrating it at scale, or contributing. It explains the moving parts, the data flow, and the design decisions behind them. If you just want to get running, start with [getting-started.md](getting-started.md); come back here when you want to know _why_.
 
@@ -6,16 +10,21 @@
 
 ## The one-paragraph model
 
-Your app, in dev, embeds a tiny **SDK** that instruments the page (DOM, network, console, routing, framework state) and opens a WebSocket to a local **bridge**. The bridge runs inside the Reticle **server**, which also exposes an **MCP server** — the standard protocol AI agents speak. Your coding agent calls MCP tools (`reticle_query`, `reticle_act`, `reticle_assert`, …); the server turns them into commands over the WebSocket; the SDK executes them in the page and streams back structured events. The agent thus **looks, acts, observes, and asserts** on the real running app — never on a screenshot.
+Your app, in dev, embeds a tiny **SDK** that instruments the page (DOM, network, console, routing, framework state) and opens a WebSocket to a local **bridge**. The bridge runs inside the Reticle **server**, which also exposes an **MCP server** — the standard protocol AI agents speak.
 
-```
-┌─────────────────┐     MCP (stdio/SSE)     ┌──────────────────────────┐     WebSocket      ┌────────────────────┐
-│   AI agent      │ ──────────────────────► │   @reticlehq/server     │ ◄────────────────► │  @reticlehq/browser│
-│ (Claude Code,   │   reticle_query/act/...    │   bridge + MCP + CLI      │   commands/events  │  (SDK in your app)  │
-│  Cursor, ...)   │ ◄────────────────────── │   (Node)                 │                    │   (the DOM)         │
-└─────────────────┘     tool results        └──────────────────────────┘                    └────────────────────┘
-                                                       │
-                                              reads/writes .reticle/  (flows, baselines, runs, contract)
+Your coding agent calls MCP tools (`reticle_query`, `reticle_act`, `reticle_assert`, …); the server turns them into commands over the WebSocket; the SDK executes them in the page and streams back structured events. The agent thus **looks, acts, observes, and asserts** on the real running app — never on a screenshot.
+
+```mermaid
+flowchart LR
+    A["AI agent<br/>Claude Code, Cursor, ..."]
+    S["@reticlehq/server<br/>bridge + MCP + CLI<br/>(Node)"]
+    B["@reticlehq/browser<br/>SDK in your app<br/>(the DOM)"]
+    D[(".reticle/<br/>flows · baselines<br/>runs · contract")]
+
+    A -- "MCP (stdio/SSE)<br/>reticle_query / act / assert" --> S
+    S -- "tool results" --> A
+    S <-- "WebSocket<br/>commands / events" --> B
+    S <--> D
 ```
 
 ---
@@ -34,7 +43,9 @@ Reticle is a pnpm + Turborepo monorepo. The split is not cosmetic — each bound
 
 > Note: pre-2.0, `@reticlehq/core` was a single umbrella package that re-exported all of the above under subpaths. In 2.0 the umbrella was retired and `@reticlehq/core` became the bottom-of-graph wire contract.
 
-**Why core-as-contract matters:** because the browser and the server are two different runtimes (a DOM and a Node process) that must agree exactly on every message, the temptation is to inline a string like `"net.request"` in both. That's how drift and silent breakage start. Instead, every such string and shape lives once in `@reticlehq/core` as a named constant + a zod schema. The browser and server both import it; neither can invent a message the other doesn't understand. The server zod-parses **every** inbound WebSocket message — malformed input closes the socket rather than flowing into logic.
+**Why core-as-contract matters:** because the browser and the server are two different runtimes (a DOM and a Node process) that must agree exactly on every message, the temptation is to inline a string like `"net.request"` in both. That's how drift and silent breakage start. Instead, every such string and shape lives once in `@reticlehq/core` as a named constant + a zod schema.
+
+The browser and server both import it; neither can invent a message the other doesn't understand. The server zod-parses **every** inbound WebSocket message — malformed input closes the socket rather than flowing into logic.
 
 ---
 
