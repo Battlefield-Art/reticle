@@ -25,21 +25,43 @@ interface PredicateKinds {
   presence: boolean;
 }
 
-function walk(predicate: Predicate): PredicateKinds {
+function walk(predicate: Predicate, negated = false): PredicateKinds {
   if (PredicateKind.ALL_OF === predicate.kind || PredicateKind.ANY_OF === predicate.kind) {
-    const subs = predicate.predicates.map(walk);
+    const subs = predicate.predicates.map((p) => walk(p, negated));
     return {
       consequence: subs.some((s) => s.consequence),
       presence: subs.some((s) => s.presence),
     };
   }
-  if (PredicateKind.NOT === predicate.kind) return walk(predicate.predicate);
+  // Under a NOT, checking content strengthens nothing, so the exemption below must not apply. The
+  // nudge warns that a healed or wrong locator can satisfy the predicate, and for an ABSENCE claim a
+  // wrong locator satisfies it trivially: "the error message is gone" is true of a selector that
+  // never matched anything in the first place. Negation makes a presence check weaker, not stronger.
+  if (PredicateKind.NOT === predicate.kind) return walk(predicate.predicate, true);
   // Leaf: classify against the single source of truth in core. Kinds that are neither consequence
   // nor presence (route/console/settled/animation) correctly return false for both.
   return {
     consequence: isConsequenceKind(predicate.kind),
-    presence: isPresenceKind(predicate.kind),
+    presence: isPresenceKind(predicate.kind) && (negated || !assertsElementContent(predicate)),
   };
+}
+
+/**
+ * An element predicate that checks the element's CONTENT, not merely that it is there.
+ *
+ * The presence nudge exists because "a locator healed to the wrong element, or a stale render, can
+ * satisfy this while the feature is broken". That is exactly true of `{ element, role, name }` and
+ * exactly false of `{ element, role, name, value: "274.58" }`: a wrong element now has to carry the
+ * same value to pass, which is the thing the nudge is warning cannot be relied on.
+ *
+ * Kept as a nudge-level distinction rather than a new honesty grade. The grade still reads
+ * `presence`, which UNDERSTATES what was proved, and understating is the safe direction for a field
+ * whose whole job is to qualify a green. Telling an agent that a value check "only checks presence"
+ * is the direction that costs something: it argues for replacing an assertion that is already sound.
+ */
+function assertsElementContent(predicate: Predicate): boolean {
+  if (predicate.kind !== PredicateKind.ELEMENT) return false;
+  return predicate.query?.value !== undefined || predicate.query?.text !== undefined;
 }
 
 /**
