@@ -780,7 +780,23 @@ export function startMcpProxy(
        * visible in the field logs as roughly two `reconnecting` lines per `reconnected` one.
        */
       let settled = false;
+      /**
+       * Whether this attempt ever got a response, as opposed to never reaching the daemon.
+       *
+       * `first` alone conflates two different situations, and the `req.on('error')` branch below
+       * treats both as a startup failure the caller handles. Before any stream exists that is right:
+       * there is no daemon, so rejecting is the honest answer. Once the FIRST stream has connected
+       * and is serving, a socket reset is a DROP, and rejecting it kills the proxy outright instead
+       * of reconnecting. The agent loses Reticle for the rest of the session, on its first stream,
+       * with nothing to retry it.
+       *
+       * It is also a race rather than a certainty, which is worse: a reset emits on both halves, so
+       * whether the proxy reconnects or dies depended on whether `res`'s `close` or `req`'s `error`
+       * won. Every later stream recovers correctly; you simply have to survive the first one.
+       */
+      let responded = false;
       const req = http.get({ host: LOOPBACK_HOST, port, path: announce }, (res) => {
+        responded = true;
         if (!first) proxyLog('reticle_mcp_proxy_reconnected', { port });
         res.setEncoding('utf8');
         const drop = (reason: string, detail?: string): void => {
@@ -811,7 +827,7 @@ export function startMcpProxy(
       req.on('error', (err) => {
         if (settled) return;
         settled = true;
-        if (first) {
+        if (first && !responded) {
           // A refused port on the very first connect is a daemon still booting, not a failure. Keep
           // chasing it: nothing else will, because only a fresh client request re-probes the port
           // and the client is already blocked on the call this would rescue.

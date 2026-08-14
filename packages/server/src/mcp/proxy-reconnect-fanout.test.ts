@@ -112,20 +112,28 @@ const RECONNECTING_EVENT = 'reticle_mcp_proxy_reconnecting';
 interface ProxyLogLine {
   event?: string;
   attempt?: number;
+  port?: number;
 }
 
 /**
- * The attempt number of every reconnect the proxy has SCHEDULED, from its own log.
+ * The attempt number of every reconnect the proxy has SCHEDULED for one daemon, from its own log.
  *
  * A second reading of the same invariant, one step earlier than the dial: a chain that schedules a
  * reconnect and has not got round to dialling it yet is still a chain.
+ *
+ * Scoped to a PORT, and it has to be. A proxy from an earlier test is still reconnecting while the
+ * next one runs, and the log path is recomputed from `HOME` on every write, so the directory this
+ * test just stubbed is a live target for it. Reading the whole file counted a stranger's reconnect
+ * as this test's, and the failure read as a fan-out regression rather than as bleed between tests.
+ * Filtering by the port each test's own fake daemon is on makes the reading independent of what
+ * else is still alive, and of the order the tests happen to run in.
  */
-function scheduledReconnectAttempts(): number[] {
+function scheduledReconnectAttempts(port: number): number[] {
   return readFileSync(proxyLogPath(), 'utf8')
     .split('\n')
     .filter((line) => '' !== line)
     .map((line) => JSON.parse(line) as ProxyLogLine)
-    .filter((entry) => RECONNECTING_EVENT === entry.event)
+    .filter((entry) => RECONNECTING_EVENT === entry.event && entry.port === port)
     .map((entry) => entry.attempt ?? 0);
 }
 
@@ -163,6 +171,50 @@ describe('reconnect fan-out', () => {
     return stdin;
   }
 
+  /**
+   * The proxy must survive the FIRST stream dying, and it did not.
+   *
+   * `connect(first)` treats every `req` error under `first` as a startup failure and rejects the
+   * whole proxy with it, which is right before any stream exists (there is no daemon, so saying so
+   * is the honest answer) and wrong the moment one has connected and is serving. A reset there is a
+   * DROP, and rejecting it kills the proxy instead of reconnecting: the agent loses Reticle for the
+   * rest of the session, on its first stream, with nothing left to retry it.
+   *
+   * It was a race rather than a certainty, which is why it could survive a battery: a reset emits on
+   * both halves, so whether the proxy reconnected or died came down to whether the response's
+   * `close` or the request's `error` won. Every later stream recovers correctly. You have to survive
+   * the first one to get there.
+   */
+  it('reconnects when the FIRST stream is reset after it has connected', async () => {
+    redirectProxyLog();
+    const daemon = await startFakeDaemon();
+    cleanups.push(() => daemon.close());
+
+    const stdin = driveProxy(daemon.port);
+    // The barrier: a post only lands once the proxy has processed this stream's `endpoint` frame, so
+    // reaching it proves the stream connected rather than merely opened.
+    stdin.write(clientCall(1));
+    await vi.waitFor(() => expect(daemon.posts.length).toBe(1));
+
+    const socket = daemon.streams[0]?.socket as Socket;
+    socket.resetAndDestroy();
+
+    // Before the fix this never arrived: `startMcpProxy` rejected and no second dial was made.
+    await vi.waitFor(() => expect(connectAttempts(daemon)).toBe(2));
+    await settle();
+    expect(connectAttempts(daemon)).toBe(2);
+
+    // Stop THIS proxy before the test ends rather than leaving it to `afterEach`.
+    //
+    // It is still reconnecting, and the log path is recomputed from `HOME` on every write, so the
+    // next test's freshly stubbed log directory is a live target for it. That is not hypothetical:
+    // leaving it running made the fan-out test below read a third `reconnecting` line that no drop
+    // in that test produced, and the failure looked like a fan-out regression rather than
+    // cross-test bleed. Ordering the tests around it would work until someone reordered them.
+    stdin.destroy();
+    await settle();
+  });
+
   it('schedules ONE reconnect for a socket that dies on both halves of the request', async () => {
     redirectProxyLog();
     const daemon = await startFakeDaemon();
@@ -197,6 +249,6 @@ describe('reconnect fan-out', () => {
     // half of why the runaway could not damp itself: any one chain coming back zeroed the counter for
     // all of them, pinning the loop at its minimum delay. It is correct on its own and stays, so it is
     // pinned here rather than changed — the fan-out above is the part that had to stop.
-    expect(scheduledReconnectAttempts()).toEqual([1, 1]);
+    expect(scheduledReconnectAttempts(daemon.port)).toEqual([1, 1]);
   });
 });
