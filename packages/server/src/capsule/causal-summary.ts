@@ -52,10 +52,43 @@ export interface CausalSummary {
   stateSettleMs?: number;
   /** Before→after for each changed storage key. Values capped. */
   storageDiffs: StorageDiff[];
+  /**
+   * How many entries each list dropped to stay within MAX_SUMMARY_ENTRIES. Present only when
+   * something was dropped, so a trim is never silent — the same rule `ignoredDevTooling` follows.
+   */
+  elided?: Partial<Record<CappedList, number>>;
   route?: string;
   signals: string[];
   layoutShift?: number;
   longTasks: number;
+}
+
+/**
+ * THE INVARIANT: every field of this summary has a bounded size that does not depend on how much the
+ * app did. A verdict travels in the same payload as its evidence, so an unbounded evidence field is
+ * an unbounded chance that the verdict is the part a client truncates — and an agent that cannot read
+ * the verdict has run the verification and got nothing, which is indistinguishable from not running
+ * it. Measured: one click on a page with a registered TanStack Query store returned ~363KB, because
+ * `capValue` bounded each diff and nothing bounded the COUNT of them.
+ *
+ * 20 keeps the signal that is actually read — the first paths to move, and the settle window over all
+ * of them — while the full names of everything that changed stay one `reticle_state` call away.
+ */
+export const MAX_SUMMARY_ENTRIES = 20;
+
+/** The lists that are capped, named so `elided` can say which one lost entries. */
+type CappedList =
+  | 'statePathsChanged'
+  | 'storageKeysChanged'
+  | 'stateDiffs'
+  | 'storageDiffs'
+  | 'signals';
+
+/** Trim one list to the cap and report the loss. Order is arrival order, so the head is the earliest. */
+function cap<T>(list: T[], name: CappedList, elided: Partial<Record<CappedList, number>>): T[] {
+  if (list.length <= MAX_SUMMARY_ENTRIES) return list;
+  elided[name] = list.length - MAX_SUMMARY_ENTRIES;
+  return list.slice(0, MAX_SUMMARY_ENTRIES);
 }
 
 function pushUnique(list: string[], value: unknown): void {
@@ -174,6 +207,11 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
     }
   }
 
+  const elided: Partial<Record<CappedList, number>> = {};
+  // `stateSettleMs` is computed over EVERY diff, before the cap: the interval is a fact about the
+  // store, and shrinking it because the evidence was trimmed would make the transient window read as
+  // narrower than it was — the one number here that must survive the trim intact.
+  const settle = stateSettle(stateDiffs);
   return {
     net: {
       total: netTotal,
@@ -182,13 +220,14 @@ export function causalSummary(events: readonly ReticleEvent[]): CausalSummary {
       ...(headline === undefined ? {} : { headline }),
     },
     consoleErrors,
-    statePathsChanged,
-    storageKeysChanged,
-    stateDiffs,
-    ...stateSettle(stateDiffs),
-    storageDiffs,
+    statePathsChanged: cap(statePathsChanged, 'statePathsChanged', elided),
+    storageKeysChanged: cap(storageKeysChanged, 'storageKeysChanged', elided),
+    stateDiffs: cap(stateDiffs, 'stateDiffs', elided),
+    ...settle,
+    storageDiffs: cap(storageDiffs, 'storageDiffs', elided),
     ...(route === undefined ? {} : { route }),
-    signals,
+    signals: cap(signals, 'signals', elided),
+    ...(0 === Object.keys(elided).length ? {} : { elided }),
     ...(layoutShift === undefined ? {} : { layoutShift }),
     longTasks,
   };

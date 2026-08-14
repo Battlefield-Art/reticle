@@ -354,7 +354,7 @@ export const ACT_TOOLS: ToolDef[] = [
       summary: z
         .unknown()
         .describe(
-          'Bounded causal summary: net {total,errors,headline}, consoleErrors, statePathsChanged, storageKeysChanged, stateDiffs [{path,from,to}], storageDiffs [{key,from,to}], route, signals, layoutShift, longTasks — real before→after diffs (capped), not just readings.',
+          'Bounded causal summary: net {total,errors,headline}, consoleErrors, statePathsChanged, storageKeysChanged, stateDiffs [{path,from,to}], storageDiffs [{key,from,to}], route, signals, layoutShift, longTasks — real before→after diffs (capped), not just readings. Every list is length-capped so the verdict can never be the field a client truncates; `elided` says which lists lost entries and how many.',
         ),
       // Promoted out of `effect` on RED only — the file:line the failure came from, the first thing a
       // repair wants. Undeclared, it was stripped on the validating profile exactly like the structured

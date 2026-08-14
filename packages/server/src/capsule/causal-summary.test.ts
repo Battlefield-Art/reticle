@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EventType, PerfMetric, type ReticleEvent } from '@reticlehq/core';
-import { causalSummary } from './causal-summary.js';
+import { causalSummary, MAX_SUMMARY_ENTRIES } from './causal-summary.js';
 
 let seq = 0;
 function e(type: EventType, data: Record<string, unknown>): ReticleEvent {
@@ -107,5 +107,68 @@ describe('causalSummary', () => {
     expect(summary.route).toBeUndefined();
     expect(summary.layoutShift).toBeUndefined();
     expect(summary.signals).toEqual([]);
+  });
+});
+
+/**
+ * The verdict must not be the field that gets truncated.
+ *
+ * Reported from an MCP session: one `reticle_act_and_wait` click returned ~363KB of single-line JSON
+ * and blew the client's per-result limit twice, so `verified` / `verifiedReason` / `because` — the
+ * only fields the call exists to produce — were unreachable and had to be dug out of a spill file.
+ * Each diff VALUE was capped; the NUMBER of diffs was not, and a registered TanStack Query store
+ * emits one state change per cache key. The better instrumented the app, the bigger the payload:
+ * registering a store is the thing we ask users to do, and it is what makes this fire.
+ */
+describe('summary size does not depend on how much the app did', () => {
+  const stateChanges = (count: number): ReticleEvent[] =>
+    Array.from({ length: count }, (_unused, i) =>
+      e(EventType.STATE_CHANGE, {
+        name: 'queryCache',
+        path: `queries.${String(i)}`,
+        old: 'x'.repeat(500),
+        value: 'y'.repeat(500),
+      }),
+    );
+
+  it('caps the number of state diffs and says how many it dropped', () => {
+    const summary = causalSummary(stateChanges(400));
+    expect(summary.stateDiffs.length).toBe(MAX_SUMMARY_ENTRIES);
+    expect(summary.elided?.stateDiffs).toBe(400 - MAX_SUMMARY_ENTRIES);
+  });
+
+  it('caps the name list too — a store per cache key is the same unbounded shape', () => {
+    const summary = causalSummary(
+      Array.from({ length: 400 }, (_unused, i) =>
+        e(EventType.STATE_CHANGE, { name: `cache-${String(i)}`, old: 1, value: 2 }),
+      ),
+    );
+    expect(summary.statePathsChanged.length).toBe(MAX_SUMMARY_ENTRIES);
+    expect(summary.elided?.statePathsChanged).toBe(400 - MAX_SUMMARY_ENTRIES);
+  });
+
+  it('caps storage diffs and signals on the same rule', () => {
+    const summary = causalSummary([
+      ...Array.from({ length: 60 }, (_unused, i) =>
+        e(EventType.STORAGE_CHANGE, { key: `k${String(i)}`, old: 'a', new: 'b' }),
+      ),
+      ...Array.from({ length: 60 }, (_unused, i) => e(EventType.SIGNAL, { name: `s${String(i)}` })),
+    ]);
+    expect(summary.storageDiffs.length).toBe(MAX_SUMMARY_ENTRIES);
+    expect(summary.storageKeysChanged.length).toBe(MAX_SUMMARY_ENTRIES);
+    expect(summary.signals.length).toBe(MAX_SUMMARY_ENTRIES);
+    expect(summary.elided?.storageDiffs).toBe(60 - MAX_SUMMARY_ENTRIES);
+  });
+
+  it('says nothing about elision when nothing was elided', () => {
+    const summary = causalSummary(stateChanges(2));
+    expect(summary.elided).toBeUndefined();
+  });
+
+  it('measures the settle window over EVERY diff, not just the ones it kept', () => {
+    // The interval is the whole point of the field: capping the evidence must not shrink the fact.
+    const diffs = stateChanges(400);
+    const summary = causalSummary(diffs);
+    expect(summary.stateSettleMs).toBe((diffs.at(-1)?.t ?? 0) - (diffs[0]?.t ?? 0));
   });
 });
