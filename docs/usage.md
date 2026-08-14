@@ -116,7 +116,7 @@ reticle_query({ by: "role", value: "button", name: "Save" })   // → ref + desc
 Deep detail on one element, including the signals a snapshot/a11y tree omits, so you can tell "present" from "actually usable / on-theme".
 
 - **args:** `ref`, `sessionId?`.
-- **returns:** descriptor + `tag` + `box` + `occluded` (another element covers its center: a z-index/overlay bug) + `styles { color, backgroundColor, opacity, cursor, display, visibility }` + `theme { colorToken, backgroundToken, offTheme, tokenCount }` (compliance vs the app's `:root` design tokens, where `offTheme:true` flags an off-palette color) + `component { componentStack, source?: { file, line, column } }` (with `@reticlehq/react`).
+- **returns:** descriptor + `tag` + `box` + `occluded` (another element covers its center: a z-index/overlay bug) + `styles { color, backgroundColor, opacity, cursor, display, visibility }` + `theme { colorToken, colorTokens, backgroundToken, backgroundTokens, offTheme, tokenCount, themeScope }` (compliance vs the app's design tokens, where `offTheme:true` flags an off-palette color; the plural fields list every token sharing that colour and the singular ones are `null` when several do, and `themeScope` names the theme active at capture) + `component { componentStack, source?: { file, line, column } }` (with `@reticlehq/react`).
 - Use it to catch present-but-broken UI: `opacity:0` / `box` 0×0 / `occluded:true` (invisible or unclickable), `cursor` not `pointer` (dead control), `offTheme:true` (off-design-token color).
 
 ### `reticle_act` / `reticle_act_sequence`

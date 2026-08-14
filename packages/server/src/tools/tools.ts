@@ -432,10 +432,14 @@ const RAW_TOOLS: ToolDef[] = [
         })
         .partial()
         .optional(),
-      // Theme compliance vs the app's design tokens: { colorToken, backgroundToken (null = off-palette),
-      // offTheme, tokenCount }. Kept as unknown — the structured-content serializer can truncate a
-      // large inspect payload's fields to strings, which a strict shape would reject; the full object
-      // is always present in the text content the agent reads.
+      // Theme compliance vs the app's design tokens: { colorToken, colorTokens, backgroundToken,
+      // backgroundTokens, offTheme, tokenCount, themeScope }. The plural fields carry EVERY token
+      // matching the resolved colour; the singular ones abstain (null) when several tokens share it,
+      // because returning an arbitrary winner was the defect (#313). `themeScope` names the theme
+      // that was active at capture, so two inspects minutes apart are comparable at all.
+      // Kept as unknown — the structured-content serializer can truncate a large inspect payload's
+      // fields to strings, which a strict shape would reject; the full object is always present in
+      // the text content the agent reads.
       theme: z.unknown().optional(),
       /**
        * Where this element is written, as `file:line`. Present when the app is built with the

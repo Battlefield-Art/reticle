@@ -35,9 +35,12 @@ Real response:
   },
   "theme": {
     "colorToken": "--muted",
+    "colorTokens": ["--muted"],
     "backgroundToken": null,
+    "backgroundTokens": [],
     "offTheme": false,
-    "tokenCount": 17
+    "tokenCount": 17,
+    "themeScope": ":root"
   },
   "component": {
     "componentStack": ["Sidebar", "App", "QueryClientProvider"],
@@ -51,6 +54,8 @@ Real response:
 **`component`** is the payoff. The stack `["Sidebar", "App", "QueryClientProvider"]` tells your agent where this element lives in the tree, and `source` tells it which file to open. This needs `@reticlehq/react`; without it you still get everything else.
 
 **`theme`** catches a bug class most tools cannot see. `colorToken: "--muted"` means this colour came from your design system. `offTheme: false` means nothing here is a hardcoded hex that slipped past review. An agent that pastes `color: #939AA8` instead of using the token produces a change that looks identical and quietly forks your design system. This field is how that gets caught.
+
+Read `colorTokens` rather than `colorToken` when it matters. Design systems routinely give several tokens the same value, and the singular field is `null` whenever more than one matches, because naming an arbitrary winner is worse than admitting the palette cannot tell them apart. `themeScope` says which theme the reading was taken under, so two inspects either side of a theme toggle are comparable instead of quietly contradictory.
 
 **`occluded`** is the difference between "visible" and "actually clickable". An element can be present, visible and enabled while sitting under a modal overlay. `states` will look perfect; `occluded: true` is the honest answer.
 

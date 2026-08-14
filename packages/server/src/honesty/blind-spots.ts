@@ -8,7 +8,13 @@
 // The kind enum lives in core (it crosses the wire in a BLIND_SPOT event); re-exported here so existing
 // honesty-side imports keep working.
 export { BlindSpotKind } from '@reticlehq/core';
-import { BlindSpotKind, EventType, type ReticleEvent } from '@reticlehq/core';
+import {
+  BlindSpotKind,
+  EventType,
+  ReticleEnv,
+  TRANSPORT_LIMITS,
+  type ReticleEvent,
+} from '@reticlehq/core';
 
 interface BlindSpot {
   kind: BlindSpotKind;
@@ -49,8 +55,12 @@ const LABEL: Record<BlindSpotKind, (n: number) => string> = {
     `${String(n)} virtualized unmounted row${1 === n ? '' : 's'} unobserved`,
   // Not "some rows we could not see" — the events never reached the observer, so this window is a
   // SAMPLE of what the app did. Phrased as a caveat on what the whole result MEANS.
+  // Names a NUMBER, not a variable. "Raise it for a busy app" leaves the reader to invent a value,
+  // and the one who reported this had to guess before finding one that worked. The default was
+  // raised in the same change, so a page still hitting the cap after that is genuinely unusual and
+  // deserves a concrete next value rather than an adjective.
   [BlindSpotKind.RATE_LIMITED]: (n) =>
-    `${String(n)} event${1 === n ? '' : 's'} dropped by the bridge rate cap, so this window is SAMPLED — raise RETICLE_MAX_MESSAGES_PER_SECOND for a busy app`,
+    `${String(n)} event${1 === n ? '' : 's'} dropped by the bridge rate cap, so this window is SAMPLED. Set ${ReticleEnv.MAX_MESSAGES_PER_SECOND}=${String(TRANSPORT_LIMITS.MAX_MESSAGES_PER_SECOND * 5)} and restart the daemon, then re-run this drive`,
   // Not a count of things — a single fact about the page. Phrased so the coverage line reads as a
   // caveat on what the network view MEANS, not as a tally.
   // A count of unverifiable ACTIONS, not of things we failed to look at. The distinction matters:
