@@ -46,6 +46,7 @@ import {
   VITE_PLUGIN_DETAIL,
 } from './plan-framework.js';
 import { htmlManual, reticleConfigContent, unverifiedUiLibraryNote } from './snippets.js';
+import { devServerPortWarning, isLikelyDevServerPort } from '../cli/cli-port.js';
 
 // An app dev installs exactly the audience-scoped browser-side dependencies — never the retired
 // `@reticlehq/core` umbrella (which dragged the Node MCP server + ws into every app). The kit is the
@@ -247,6 +248,13 @@ export interface PlanInput {
   pairingToken?: string;
   /** Whether .reticle.json already exists in the project root (idempotency). */
   reticleConfigExists?: boolean;
+  /**
+   * Its CONTENT, so an existing config can be checked instead of trusted.
+   *
+   * Existence alone said "a file is present" and was reported as "this is configured correctly" —
+   * see reticleConfigStep for the port that survived every re-run because of it.
+   */
+  reticleConfigSource?: string | null | undefined;
   /** Current project-root CLAUDE.md content (for the idempotent agent-rule merge), or null/undefined. */
   claudeMdContent?: string | null | undefined;
   /** Current project-root AGENTS.md content (cross-agent fallback rule), or null/undefined. */
@@ -678,8 +686,49 @@ function installStep(input: PlanInput): Step {
   };
 }
 
+/**
+ * What is wrong with the config that is already there, if anything.
+ *
+ * Reported from the field (#317): a project carried `"port": 3000` — its own dev-server port, which
+ * is the confusion SKILL.md names as the top setup failure — and `init` printed `.reticle.json
+ * already exists` on every re-run without reading a single field of it, so the file could never be
+ * repaired by the command that wrote it. It stayed invisible because a daemon on `127.0.0.1:3000`
+ * and Vite on `[::1]:3000` split the port by address family and neither reported a conflict.
+ *
+ * Narrower than the issue asked for on purpose: `init`'s IO surface is synchronous, so this cannot
+ * probe what is LISTENING right now. `isLikelyDevServerPort` covers the framework defaults, which is
+ * where the mistake is actually made.
+ */
+function existingConfigProblem(source: string | null | undefined): string | undefined {
+  if (source === null || source === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch {
+    return (
+      `${RETICLE_CONFIG_FILE} is present but is not valid JSON, so nothing reads it — neither the ` +
+      'daemon nor the SDK. Delete it and re-run `reticle init`.'
+    );
+  }
+  if ('object' !== typeof parsed || null === parsed) return undefined;
+  const port = (parsed as Record<string, unknown>)['port'];
+  if ('number' !== typeof port || !isLikelyDevServerPort(port)) return undefined;
+  return `${devServerPortWarning(port)} Fix it by removing the "port" field from ${RETICLE_CONFIG_FILE}.`;
+}
+
 function reticleConfigStep(input: PlanInput): Step {
   if (true === input.reticleConfigExists) {
+    const problem = existingConfigProblem(input.reticleConfigSource);
+    if (problem !== undefined) {
+      // `ℹ`, not `·`: the step is done and something about the result still stops things working,
+      // which is the one mark that says "there is something here to read".
+      return {
+        title: 'Reticle config',
+        target: RETICLE_CONFIG_FILE,
+        status: StepStatus.NOTICE,
+        detail: problem,
+      };
+    }
     return {
       title: 'Reticle config',
       target: RETICLE_CONFIG_FILE,

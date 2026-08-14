@@ -396,6 +396,9 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     craEnv: io.readFile(CRA_ENV_PATH),
     pairingToken: readPairingToken(),
     reticleConfigExists: io.exists('.reticle.json'),
+    // The CONTENT, so a config that exists can be checked rather than trusted — a `"port"` set to
+    // the app's own dev-server port used to survive every re-run of `init`.
+    reticleConfigSource: io.readFile('.reticle.json'),
     // Read the agent instruction files so the rule merge stays idempotent across re-runs.
     claudeMdContent: io.readFile('CLAUDE.md'),
     agentsMdContent: io.readFile('AGENTS.md'),

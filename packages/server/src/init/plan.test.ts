@@ -47,6 +47,8 @@ function input(partial: Partial<PlanInput>): PlanInput {
     claudeMdContent: partial.claudeMdContent,
     agentsMdContent: partial.agentsMdContent,
     cursorRuleContent: partial.cursorRuleContent,
+    reticleConfigExists: partial.reticleConfigExists,
+    reticleConfigSource: partial.reticleConfigSource,
     ...(partial.craEntry === undefined ? {} : { craEntry: partial.craEntry }),
     ...(partial.craEnv === undefined ? {} : { craEnv: partial.craEnv }),
     ...(partial.pairingToken === undefined ? {} : { pairingToken: partial.pairingToken }),
@@ -235,6 +237,60 @@ describe('buildPlan — MCP (global, per detected agent)', () => {
     expect(step(plan, CURSOR_STEP).write?.content).not.toContain('--port');
     // Instead the port is written to the per-project .reticle.json.
     expect(step(plan, CONFIG_STEP).write?.content).toContain('5000');
+  });
+});
+
+/**
+ * An existing `.reticle.json` was treated as a correct one.
+ *
+ * Reported from the field (#317): a project carried `"port": 3000`, its own Vite dev-server port,
+ * which is the confusion SKILL.md names as the top setup failure. The step branched on existence
+ * alone, printed `.reticle.json already exists`, and moved on — so `init` could never repair it, and
+ * a `·` told the reader there was nothing to look at.
+ *
+ * It hid because a daemon on `127.0.0.1:3000` and Vite on `[::1]:3000` split the port by address
+ * family, so nothing reported a conflict: the same address-family behaviour behind the loopback
+ * defect fixed in 2.7.0, arriving from the other direction.
+ */
+describe('an existing config is read, not assumed correct', () => {
+  it('reports a dev-server port as a NOTICE, not as already done', () => {
+    const plan = buildPlan(
+      input({
+        reticleConfigExists: true,
+        reticleConfigSource: '{\n  "framework": "vite",\n  "port": 3000\n}\n',
+      }),
+    );
+    expect(step(plan, CONFIG_STEP).status).toBe(StepStatus.NOTICE);
+    expect(step(plan, CONFIG_STEP).detail).toContain('3000');
+    // The thing to DO about it, not just a description of the world.
+    expect(step(plan, CONFIG_STEP).detail).toMatch(/remove/i);
+  });
+
+  it('leaves a config with a sane bridge port alone', () => {
+    const plan = buildPlan(
+      input({
+        reticleConfigExists: true,
+        reticleConfigSource: '{ "framework": "vite", "port": 4401 }',
+      }),
+    );
+    expect(step(plan, CONFIG_STEP).status).toBe(StepStatus.ALREADY);
+  });
+
+  it('leaves a config with no port at all alone — that is the normal shape', () => {
+    const plan = buildPlan(
+      input({ reticleConfigExists: true, reticleConfigSource: '{ "framework": "vite" }' }),
+    );
+    expect(step(plan, CONFIG_STEP).status).toBe(StepStatus.ALREADY);
+  });
+
+  it('says the file could not be read rather than calling it done', () => {
+    const plan = buildPlan(input({ reticleConfigExists: true, reticleConfigSource: 'not json {' }));
+    expect(step(plan, CONFIG_STEP).status).toBe(StepStatus.NOTICE);
+  });
+
+  it('still writes the file when there is none', () => {
+    const plan = buildPlan(input({ reticleConfigExists: false }));
+    expect(step(plan, CONFIG_STEP).status).toBe(StepStatus.APPLY);
   });
 });
 
