@@ -5,6 +5,7 @@
  * imports are unchanged.
  */
 import { parseFeedbackArgs, type ParsedFeedback } from './cli-parse-feedback.js';
+import { FORCE_FLAG } from './cli-kill.js';
 
 // Re-exported so every existing importer of these flags is unaffected by the file split.
 export {
@@ -22,7 +23,9 @@ export const CLI_USAGE = `usage:
                 (CLAUDE.md / AGENTS.md / .cursor) and the /reticle command, because all three
                 only make sense once the tools are reachable.
   reticle serve [--port N] [--drive <url>] [--headless] [--http] [--http-port N] [--http-token T]
-  reticle stop  [--port N] [--quiet]
+  reticle stop  [--port N] [--quiet]                    (stop the daemon we started, by its recorded pid)
+  reticle kill  [--port N] [--force]                   (free the port by its LISTENER, never the agent's mcp proxy)
+  reticle restart [--port N] [--force]                 (kill, then start a daemon and wait for a real bind)
   reticle status [--port N]
   reticle doctor [--port N]                            (one command to diagnose setup: Chromium, daemon, port)
   reticle open  [url] [--port N]                        (show the app: reuse the connected tab, else open one)
@@ -57,6 +60,8 @@ and the spec runner: batch work). --headed opts any of them in, --headless hides
 const INIT_COMMAND = 'init';
 const SERVE_COMMAND = 'serve';
 const STOP_COMMAND = 'stop';
+const KILL_COMMAND = 'kill';
+const RESTART_COMMAND = 'restart';
 const STATUS_COMMAND = 'status';
 const OPEN_COMMAND = 'open';
 const DRIVE_COMMAND = 'drive';
@@ -101,6 +106,8 @@ const KNOWN_COMMANDS: ReadonlySet<string> = new Set([
   INIT_COMMAND,
   SERVE_COMMAND,
   STOP_COMMAND,
+  KILL_COMMAND,
+  RESTART_COMMAND,
   STATUS_COMMAND,
   OPEN_COMMAND,
   DRIVE_COMMAND,
@@ -180,6 +187,8 @@ export type CliResult =
       httpToken?: string;
     }
   | { kind: 'stop'; port: number; quiet: boolean }
+  | { kind: 'kill'; port: number; force: boolean }
+  | { kind: 'restart'; port: number; force: boolean }
   | { kind: 'status'; port: number }
   | { kind: 'license' }
   | { kind: 'telemetry'; action: TelemetryAction }
@@ -557,6 +566,14 @@ export function parseCliArgs(
       const port = parsePortFlag(rest, defaultPort);
       const quiet = rest.includes(QUIET_FLAG);
       return { kind: 'stop', port, quiet };
+    }
+    case KILL_COMMAND: {
+      const port = parsePortFlag(rest, defaultPort);
+      return { kind: 'kill', port, force: rest.includes(FORCE_FLAG) };
+    }
+    case RESTART_COMMAND: {
+      const port = parsePortFlag(rest, defaultPort);
+      return { kind: 'restart', port, force: rest.includes(FORCE_FLAG) };
     }
     case STATUS_COMMAND: {
       const port = parsePortFlag(rest, defaultPort);

@@ -6,9 +6,8 @@ import { PortPresence, probePresence } from '../daemon/port-presence.js';
 import { probeDaemon } from '../mcp/mcp-proxy.js';
 import { fetchStatus } from './cli-launch.js';
 import { daemonLine, type DaemonIdentity } from './doctor-daemon-line.js';
-import { describeForeignHolder, findPortHolder } from './port-holder.js';
+import { captureLookup, describeForeignHolder, findPortHolder } from './port-holder.js';
 import { chromiumHint, probeChromium } from './chromium-hint.js';
-import { spawnSync } from 'node:child_process';
 import { SERVER_VERSION } from '../version/server-version.js';
 import { CONTRACT_FINGERPRINT } from '@reticlehq/core';
 import { diagnoseDesktop, isDesktopProject } from '../init/desktop-doctor.js';
@@ -19,27 +18,6 @@ import { diagnosePortMismatch, readProjectPort } from './cli-port.js';
  * Chromium install (the #1 silent failure), whether a daemon is up on the resolved bridge port, and
  * reminds the user which port the app must dial. Human-readable to stdout (not the JSON log).
  */
-
-/**
- * Run a lookup and return its stdout, or null if it could not run.
- *
- * Null on ANY failure — no lsof (every Windows user, a slim container), a non-zero exit, a throw.
- * This is a diagnostic nicety inside the command people run when things are already broken; it must
- * never be the reason `doctor` fails. `describeForeignHolder` handles the null by saying it could
- * not identify the holder and naming our recorded pid, rather than asserting the holder is not ours
- * — a claim it has no evidence for, and one that was wrong for every Windows user.
- */
-function runCapture(command: string, args: readonly string[]): string | null {
-  try {
-    const result = spawnSync(command, [...args], { encoding: 'utf8', timeout: LOOKUP_TIMEOUT_MS });
-    return 0 === result.status && 'string' === typeof result.stdout ? result.stdout : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Bound on the holder lookup. A hung `lsof` must not hang the command that diagnoses hangs. */
-const LOOKUP_TIMEOUT_MS = 2_000;
 
 /** Narrow the `/status` payload to the two fields the daemon line reads. */
 function asIdentity(payload: unknown): DaemonIdentity {
@@ -88,7 +66,9 @@ export async function handleDoctor(port: number): Promise<void> {
     // pipeline that also kills the agent's own MCP proxy.
     // `pid` is what our pid file recorded for this port. When it matches the process actually
     // holding it, this is our OWN daemon wedged, not a stranger — and the fix is different.
-    line(`  daemon       ✗ ${describeForeignHolder(port, findPortHolder(port, runCapture), pid)}`);
+    line(
+      `  daemon       ✗ ${describeForeignHolder(port, findPortHolder(port, captureLookup), pid)}`,
+    );
   } else {
     line(
       `  daemon       ✗ not running on :${port} — your agent runs \`reticle mcp\` (or \`reticle serve\`)`,

@@ -14,9 +14,32 @@
  * while the shelling out stays at the call site.
  */
 
+import { spawnSync } from 'node:child_process';
+
 export interface PortHolder {
   pid: number;
   command: string;
+}
+
+/** Bound on the holder lookup. A hung `lsof` must not hang the commands that diagnose hangs. */
+const LOOKUP_TIMEOUT_MS = 2_000;
+
+/**
+ * Run a lookup and return its stdout, or null if it could not run.
+ *
+ * Null on ANY failure — no lsof (every Windows user, a slim container), a non-zero exit, a throw.
+ * This is a diagnostic nicety inside the commands people run when things are already broken; it must
+ * never be the reason one of them fails. Every caller handles the null by saying it could not
+ * identify the holder, rather than asserting the holder is not ours — a claim it has no evidence
+ * for, and one that was wrong for every Windows user.
+ */
+export function captureLookup(command: string, args: readonly string[]): string | null {
+  try {
+    const result = spawnSync(command, [...args], { encoding: 'utf8', timeout: LOOKUP_TIMEOUT_MS });
+    return 0 === result.status && 'string' === typeof result.stdout ? result.stdout : null;
+  } catch {
+    return null;
+  }
 }
 
 /** `lsof -F pc` emits one field per line, prefixed by its selector: `p<pid>`, `c<command>`. */
@@ -66,9 +89,12 @@ export function describeForeignHolder(
    */
   ourPid?: number | null,
 ): string {
+  // Naming the command matters more than naming the process. "Stop that process" describes an
+  // outcome and leaves the reader to invent a route to it, and the route they invent is the `-ti`
+  // pipeline that takes their agent's proxy down with the holder.
   const tail =
-    'a daemon cannot bind it. Stop that process, or run Reticle on a different port ' +
-    '(`--port`), then retry.';
+    'a daemon cannot bind it. Free it with `reticle kill --force` (it signals the listener only, ' +
+    "never the agent's mcp proxy), or run Reticle on a different port (`--port`), then retry.";
   if (null === holder) {
     /**
      * We could not identify the holder — no `lsof` (every Windows user, and 35% of them by the

@@ -95,6 +95,17 @@ describe('a wedged daemon of our own', () => {
     expect(msg).toContain('999');
   });
 
+  /**
+   * "Stop that process" is a description of an outcome, not a way to reach it, and the reader
+   * supplying their own way to reach it is how the `-ti` pipeline gets typed. Now that a command
+   * exists for it (#114), name it.
+   */
+  it('names the command that frees the port instead of leaving the reader to invent one', () => {
+    const msg = describeForeignHolder(4411, { pid: 999, command: 'python' }, 65704);
+    expect(msg).toContain('reticle kill');
+    expect(msg).not.toMatch(/-ti\b/);
+  });
+
   it('keeps the old wording when we have no recorded pid to compare', () => {
     expect(describeForeignHolder(4411, { pid: 999, command: 'python' }, null)).toContain(
       'is not a Reticle daemon',

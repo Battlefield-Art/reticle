@@ -40,12 +40,17 @@ npx reticle stop [--port N] [--quiet]
 
 <Warning>
   Do not stop a daemon with `lsof -ti tcp:4400 | xargs kill -9`. That pattern matches the agent's
-  own `reticle mcp` proxy as well as the daemon and takes both down. Use this command, or scope the
-  lookup with `-sTCP:LISTEN`.
+  own `reticle mcp` proxy as well as the daemon and takes both down. Use this command, or [`reticle
+  kill`](/cli/kill).
 </Warning>
+
+## When this is not enough
+
+`stop` needs the pid Reticle recorded. If the pid file is stale, was never written, or the port is held by a daemon from another checkout, `stop` reports `reticle_daemon_not_running` about a port that is demonstrably occupied. [`reticle kill`](/cli/kill) asks the **port** instead and is the command for that case.
 
 ## Worked example
 
 ```bash
 npx reticle stop --port 4400 --quiet && npx reticle serve --port 4400
+npx reticle restart --port 4400   # the same thing, honest about each half
 ```

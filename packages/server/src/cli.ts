@@ -64,8 +64,10 @@ import {
   openCommand,
 } from './cli/cli-launch.js';
 import { handleVerify } from './cli/cli-verify.js';
+import { runKill } from './cli/cli-kill.js';
 import { summarizeHunt, type HuntAnomaly, type HuntRun } from './hunt/hunt-report.js';
 import { runInit } from './init/run.js';
+import { confirmInstall, nodeConfirmDeps } from './init/confirm.js';
 import { handleDoctor } from './cli/cli-doctor.js';
 import { buildNodeIo } from './init/node-io.js';
 import { describeLicense } from './license/license.js';
@@ -104,6 +106,7 @@ function handleInit(parsed: {
   app?: string | undefined;
 }): void {
   const cwd = process.cwd();
+  const io = buildNodeIo(cwd);
   const result = runInit(
     {
       cwd,
@@ -112,10 +115,15 @@ function handleInit(parsed: {
       dryRun: parsed.dryRun,
       install: parsed.install,
       ...(parsed.app === undefined ? {} : { app: parsed.app }),
+      // The outcome is reported by confirmInstall instead, once it knows whether an app connected —
+      // `init` writing files was never the same thing as `init` working (#269).
+      deferOutcome: true,
     },
-    buildNodeIo(cwd),
+    io,
   );
-  if (!result.ok) process.exit(1);
+  void confirmInstall(result, io, nodeConfirmDeps(parsed.port ?? RETICLE_DEFAULT_PORT)).then(() => {
+    if (!result.ok) process.exit(1);
+  });
 }
 
 function handleServe(parsed: {
@@ -274,6 +282,29 @@ function handleStop(port: number, quiet: boolean): void {
       process.exit(1);
     }
   }, 100);
+}
+
+/**
+ * `reticle restart` — free the port, then put a daemon back on it and prove it bound.
+ *
+ * The two halves are reported separately on purpose. A restart that killed the old daemon and then
+ * could not start a new one leaves the user in a different place from one that could not kill
+ * anything at all, and a single `ok: false` cannot tell them which happened.
+ */
+async function handleRestart(port: number, force: boolean): Promise<void> {
+  const freed = await runKill(port, force);
+  if (!freed) {
+    log('reticle_restart_aborted', {
+      port,
+      reason: 'the port was not freed, so nothing was started — the old holder is still there',
+    });
+    process.exit(1);
+    return;
+  }
+  // Reuses `serve`'s path, which waits for the daemon to ANSWER before claiming it started and exits
+  // non-zero when it does not. A restart that reports success for a daemon that never bound is the
+  // same lie `serve` already stopped telling.
+  await serveWithHonestExit({ port, headless: true, http: false });
 }
 
 function handleStatus(port: number): void {
@@ -833,6 +864,14 @@ function main(): void {
       break;
     case 'stop':
       handleStop(parsed.port, parsed.quiet);
+      break;
+    case 'kill':
+      void runKill(parsed.port, parsed.force).then((freed) => {
+        if (!freed) process.exit(1);
+      });
+      break;
+    case 'restart':
+      void handleRestart(parsed.port, parsed.force);
       break;
     case 'status':
       handleStatus(parsed.port);

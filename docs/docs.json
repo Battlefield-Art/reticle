@@ -102,6 +102,8 @@
                   "cli/status",
                   "cli/serve",
                   "cli/stop",
+                  "cli/kill",
+                  "cli/restart",
                   "cli/mcp",
                   "cli/open",
                   "cli/drive",
