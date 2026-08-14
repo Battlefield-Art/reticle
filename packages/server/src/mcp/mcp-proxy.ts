@@ -2,7 +2,7 @@ import * as http from 'node:http';
 import { localInitializeResponse, isHandshakeLine } from './proxy-handshake.js';
 import { ToolCatalogCache } from './tool-catalog-cache.js';
 import * as net from 'node:net';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, renameSync, statSync, truncateSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -23,6 +23,7 @@ import {
   OnRequest,
 } from './proxy-lifecycle.js';
 import { log } from '../log.js';
+import { MAX_DAEMON_LOG_BYTES, rotateDaemonLog } from '../daemon/daemon.js';
 import { OutageStage, reportMcpOutage } from './mcp-outage.js';
 
 const DEFAULT_DAEMON_READY_TIMEOUT_MS = 10_000;
@@ -80,9 +81,88 @@ export const RECONNECT_INITIALIZE_ID = '__reticle_proxy_reinit';
  */
 let logPort: number | undefined;
 
+/**
+ * How much the proxy may append between size checks.
+ *
+ * Statting the file on every line would be a syscall per log line on a process that logs from a
+ * reconnect loop. Counting what we wrote costs nothing and is exact enough, because this process is
+ * the only writer of its own log. Well under the cap, so the cap is a cap rather than a suggestion.
+ */
+export const PROXY_LOG_CHECK_BYTES = 256 * 1024;
+
+/** Appended since the last real size check. Reset by every check, whatever the check decides. */
+let bytesSinceProxyLogCheck = 0;
+
+/**
+ * Keep the proxy log under the same cap as the daemon log, without a stat per write.
+ *
+ * Returns the new "bytes since the last check" counter, so the accounting is testable without a
+ * filesystem. Rotation itself is `rotateDaemonLog` — the proxy log had no cap at all while the
+ * daemon log on the SAME machine stayed small, which is the whole of this defect.
+ */
+export function accountProxyLogWrite(
+  bytesSinceCheck: number,
+  written: number,
+  path: string,
+  deps: { fileSize(p: string): number; renameFile(from: string, to: string): void },
+): number {
+  const total = bytesSinceCheck + written;
+  if (PROXY_LOG_CHECK_BYTES > total) return total;
+  rotateDaemonLog(path, deps);
+  return 0;
+}
+
+/**
+ * Reclaim a proxy log that a previous process already let run away. Returns the bytes reclaimed.
+ *
+ * Reported from the field: one machine's `proxy-4400.log` reached a third of a 460GB disk and broke
+ * builds, Docker and ordinary shell commands with ENOSPC. Nothing in Reticle degraded first, so the
+ * failure surfaced as the operating system refusing to write files. Files like that exist on real
+ * machines now, and the cap alone does not help them: the user should not have to find one with `du`.
+ *
+ * TRUNCATED IN PLACE, never renamed or unlinked. A rename moves the bytes without reclaiming a byte,
+ * and a file that a running process still holds open keeps its blocks allocated after an unlink
+ * until that handle closes — which is why the reporter recovered with `: > ~/.reticle/proxy-4400.log`
+ * and why that is the operation to copy here.
+ *
+ * Best-effort, in the same spirit as `rotateDaemonLog`: refusing to start the MCP server over
+ * housekeeping is strictly worse than a large file.
+ */
+export function recoverOversizedProxyLog(
+  path: string,
+  deps: { fileSize(p: string): number; truncateFile(p: string): void },
+  max: number = MAX_DAEMON_LOG_BYTES,
+): number {
+  try {
+    const size = deps.fileSize(path);
+    if (max >= size) return 0;
+    deps.truncateFile(path);
+    return size;
+  } catch {
+    return 0;
+  }
+}
+
+/** The real filesystem behind the two rotation helpers. */
+const proxyLogFileOps = {
+  fileSize: (p: string): number => statSync(p).size,
+  renameFile: (from: string, to: string): void => renameSync(from, to),
+  truncateFile: (p: string): void => truncateSync(p, 0),
+};
+
 /** Name the proxy log after the port it serves. Called before anything can log. */
 export function setProxyLogPort(port: number): void {
   logPort = port;
+  // The one moment we know a size check is worth its syscall, and the only place a file inherited
+  // from an older build can be brought back under control.
+  const reclaimed = recoverOversizedProxyLog(proxyLogPath(port), proxyLogFileOps);
+  if (0 < reclaimed) {
+    proxyLog('reticle_mcp_proxy_log_truncated', {
+      port,
+      reclaimedBytes: reclaimed,
+      note: 'the proxy log had grown past its cap and was truncated in place to reclaim the space',
+    });
+  }
 }
 
 /** The proxy's own log file, so a silent drop leaves a readable trace the agent can go read. */
@@ -114,10 +194,16 @@ export function proxyLog(event: string, fields: Record<string, unknown> = {}): v
     // to precede `process.exit(1)` and cost the human a manual /mcp reconnect — and it was
     // impossible to tell whether it happened during that person's work or a test run hours earlier.
     // Evidence you cannot place in time is an anecdote.
-    appendFileSync(
-      proxyLogPath(),
-      `${JSON.stringify({ t: new Date().toISOString(), event, ...fields })}\n`,
-      'utf8',
+    const path = proxyLogPath();
+    const line = `${JSON.stringify({ t: new Date().toISOString(), event, ...fields })}\n`;
+    appendFileSync(path, line, 'utf8');
+    // A single proxy process is long-lived and logs from a reconnect loop, so rotating only at
+    // startup would leave the growth this file is capable of entirely unchecked while it runs.
+    bytesSinceProxyLogCheck = accountProxyLogWrite(
+      bytesSinceProxyLogCheck,
+      Buffer.byteLength(line, 'utf8'),
+      path,
+      proxyLogFileOps,
     );
   } catch {
     // Logging must never be the thing that kills the proxy.
@@ -619,11 +705,21 @@ export function startMcpProxy(
       // Announce this process to the daemon on the connect we already make — it is the single judge
       // of version skew, and this is the only moment it learns the agent's MCP server exists.
       const announce = `${MCP_SSE_PATH}?${PEER_VERSION_PARAM}=${encodeURIComponent(SERVER_VERSION)}&${PEER_CONTRACT_PARAM}=${encodeURIComponent(CONTRACT_FINGERPRINT)}`;
+      /**
+       * ONE reconnect per connect attempt, whoever notices the failure first.
+       *
+       * A dead socket emits on BOTH halves — `req`'s `error` and the response's `aborted`/`close`
+       * for the same TCP death — and this latch used to live inside the response callback, so
+       * `req.on('error')` scheduled a SECOND reconnect that the drop path could not see. Two chains
+       * came back, both died the same way, and both split again. The retry budget cannot stop that
+       * either: any one chain reaching an `endpoint` frame resets `attempts` to zero for all of
+       * them. It is the runaway behind a proxy log large enough to fill a disk, and the doubling is
+       * visible in the field logs as roughly two `reconnecting` lines per `reconnected` one.
+       */
+      let settled = false;
       const req = http.get({ host: LOOPBACK_HOST, port, path: announce }, (res) => {
         if (!first) proxyLog('reticle_mcp_proxy_reconnected', { port });
         res.setEncoding('utf8');
-        // `end` and `error` can both fire on one response; only the first should drive a reconnect.
-        let settled = false;
         const drop = (reason: string, detail?: string): void => {
           if (settled) return;
           settled = true;
@@ -649,9 +745,15 @@ export function startMcpProxy(
 
       // The very first connect failing means there is no daemon to talk to — that is a startup
       // failure the caller handles. Later ones are just the daemon bouncing: keep retrying.
-      req.on('error', (err) =>
-        first ? reject(err) : scheduleReconnect('connect_error', err.message),
-      );
+      req.on('error', (err) => {
+        if (settled) return;
+        settled = true;
+        if (first) {
+          reject(err);
+          return;
+        }
+        scheduleReconnect('connect_error', err.message);
+      });
     }
 
     connect(true);
