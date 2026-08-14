@@ -21,6 +21,7 @@ import { ReticleTool } from './tool-names.js';
 import { takeFeedbackPrompt } from './feedback-tools.js';
 import { takeFeedbackUndelivered } from '../telemetry/feedback-delivery.js';
 import type { Session } from '../session/session.js';
+import { noteRefsMinted, wrongTabRefusal } from '../session/ref-provenance.js';
 import { span } from '../trace.js';
 import { type FrictionKind, frictionOf, inviteFor } from './feedback-invite.js';
 import type { ToolDef, ToolDeps } from './tools.js';
@@ -40,6 +41,21 @@ const ACTION_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.ACT,
   ReticleTool.ACT_SEQUENCE,
   ReticleTool.ACT_AND_WAIT,
+]);
+
+/**
+ * Tools whose result hands the agent refs. The tab they were minted in is remembered, so the call
+ * that spends one cannot be routed to a different tab without saying so — see ref-provenance.ts.
+ *
+ * Over-inclusion is the safe direction here and under-inclusion is not dangerous either: both ends
+ * produce a REFUSAL naming the two tabs, never a silent drive against the wrong one.
+ */
+const REF_MINTING_TOOLS: ReadonlySet<string> = new Set([
+  ReticleTool.SNAPSHOT,
+  ReticleTool.QUERY,
+  ReticleTool.INSPECT,
+  ReticleTool.EXPLORE,
+  ReticleTool.CRAWL,
 ]);
 
 export const SESSION_BOUND_TOOLS: ReadonlySet<string> = new Set([
@@ -291,6 +307,25 @@ export async function runTool(
       session = undefined;
     }
   }
+  // A ref that was handed out by a DIFFERENT tab, on a call that named no session. Refused here, at
+  // the one point that knows both the ref and the tab resolution picked — the handler only learns
+  // that the ref missed, and answers that with "the DOM re-rendered", which is a confident diagnosis
+  // of the wrong thing. The other half is worse: the same ref can resolve to a different element in
+  // the guessed tab and return a green about a page nobody asked about.
+  if (session !== undefined) {
+    const wrongTab = wrongTabRefusal({
+      ref: asString(args['ref']),
+      explicitSessionId: rawSessionId,
+      chosenSessionId: session.id,
+      connected: () => deps.sessions.list(),
+    });
+    if (wrongTab !== undefined) {
+      // Refused before the handler was entered, so it is reported here — the same shape as the
+      // oversized-argument refusal above.
+      reportRefusal(tool.name, wrongTab);
+      return { error: wrongTab };
+    }
+  }
   const leaseId = session?.id ?? rawSessionId;
   if (leaseId !== undefined) deps.pool?.touch(leaseId);
 
@@ -339,7 +374,12 @@ export async function runTool(
   // once did. A call that was served clears the retry chain, so the next refusal after it is a first
   // refusal rather than a retry of something unrelated.
   if (resultIsError(raw)) reportRefusal(tool.name, (raw as { error: string }).error);
-  else noteToolServed();
+  else {
+    noteToolServed();
+    // Which tab these refs belong to. Recorded on the way OUT, so the next call that spends one is
+    // measured against the tab that actually produced it.
+    if (session !== undefined && REF_MINTING_TOOLS.has(tool.name)) noteRefsMinted(session.id);
+  }
   const prompt = isPlainObject(raw) ? takeFeedbackPrompt(tool.name) : undefined;
   // Same one-shot channel as the feedback ask: the agent is mid-task, so anything it would have to go
   // and ASK for is something it will never ask for. Spliced on ANY tool result, not just a
