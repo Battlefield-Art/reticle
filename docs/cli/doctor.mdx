@@ -23,7 +23,7 @@ Human-readable lines on stdout, not the JSON log. Real capture:
 ```
 reticle doctor
   node         v22.14.0
-  chromium     ✓ installed
+  chromium     ✓ installed (chromium-1223)
   daemon       ✓ running on :4400 (pid 4795, v2.7.0)
   bridge port  4400  (your app must dial THIS port, not your dev-server port)
   daemon log   /Users/you/.reticle/daemon-4400.log
@@ -33,12 +33,30 @@ reticle doctor
 | Line | What it checks |
 | --- | --- |
 | `node` | The Node version running the CLI |
-| `chromium` | Whether Playwright's browser binary was ever downloaded. The most common silent failure |
+| `chromium` | Whether the exact Chromium revision the bundled Playwright wants is on disk. The most common silent failure |
 | `daemon` | Whether the port holds a Reticle daemon, a foreign process (named where possible), or nothing. Adds a `version` line when the daemon's version or contract fingerprint disagrees with the CLI's |
 | `bridge port` | The port your app must dial, spelled out because mixing it up with the dev server port is the most common setup failure |
 | `daemon log` | Where the structured daemon log lives |
 | `tracing` | How to turn that log into a per-stage trace |
 | `desktop` | Only on a desktop project. Every Electron and Tauri misconfiguration here fails silently, so it is diagnosed explicitly |
+
+## The chromium line
+
+Playwright pins one Chromium revision per version, and the daemon launches that one and no other. So the check is not "is a Chromium there" but "is _this_ revision there", and the three answers have three different fixes.
+
+| Verdict | Real capture | What it means |
+| --- | --- | --- |
+| installed | `chromium     ✓ installed (chromium-1223)` | The wanted revision is on disk. Nothing to do |
+| wrong revision | `chromium     ✗ wrong revision — the bundled playwright wants chromium-1223; /tmp/pwroot holds chromium-1194, chromium-1208. run: npx playwright@1.60.0 install chromium` | Builds are installed, none of them the wanted one. One pinned download away |
+| missing | `chromium     ✗ missing — looked for /tmp/emptyroot/chromium-1223/chrome-mac-arm64/…; run: npx playwright@1.60.0 install chromium` | The browsers root holds no Chromium at all. If that root is not where your browsers live, `PLAYWRIGHT_BROWSERS_PATH` is what moves it |
+
+The wanted revision and the root are both read back off the path Playwright itself resolves, so `PLAYWRIGHT_BROWSERS_PATH` and every platform default (including `%LOCALAPPDATA%\ms-playwright` on Windows) are honoured without this command keeping its own table of roots.
+
+<Warning>
+  Run the command `doctor` prints, not `npx playwright install chromium`. The unpinned form resolves
+  the newest Playwright, downloads *its* revision, and leaves the check saying exactly what it said
+  before. That loop is why the line names the version to pin to.
+</Warning>
 
 ## Exit codes
 
@@ -48,8 +66,7 @@ Always `0`. `doctor` reports; it does not gate.
 
 ```bash
 npx reticle doctor
-# chromium missing? then:
-npx playwright install chromium
+# then run the chromium command doctor printed, verbatim
 ```
 
 <Card title="Deeper debugging" icon="bug" href="/debugging">
