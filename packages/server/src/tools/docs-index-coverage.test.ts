@@ -271,6 +271,61 @@ describe('docs/docs.json publishes every doc', () => {
     ).toEqual([]);
   });
 
+  it('the logo and favicon are readable against the theme they render on', () => {
+    // Mintlify renders `logo.light` in LIGHT mode — the served HTML puts it in `block dark:hidden`.
+    // Its own schema says the opposite ("the light version of the logo used in dark mode"), and
+    // trusting that description shipped a white wordmark onto a white background and a black one onto
+    // a dark background. Both were invisible, and nothing failed.
+    //
+    // So: the file behind `light` must be DARK ink, and the file behind `dark` must be LIGHT ink.
+    const config: unknown = JSON.parse(readFileSync(join(DOCS, 'docs.json'), 'utf8'));
+    const assets = config as { logo?: Record<string, string>; favicon?: Record<string, string> };
+
+    /** Mean brightness of the fills in an SVG, 0 (black) to 255 (white). */
+    const inkBrightness = (file: string): number | null => {
+      const fills = readFileSync(join(DOCS, file), 'utf8').match(/fill="#([0-9A-Fa-f]{6})"/g) ?? [];
+      const values = fills
+        .map((fill) => /#([0-9A-Fa-f]{6})/.exec(fill)?.[1] ?? '')
+        .filter((hex) => '' !== hex)
+        .map((hex) => {
+          const n = parseInt(hex, 16);
+          return ((n >> 16) + ((n >> 8) & 0xff) + (n & 0xff)) / 3;
+        });
+      return 0 === values.length ? null : values.reduce((a, b) => a + b, 0) / values.length;
+    };
+
+    const problems: string[] = [];
+    for (const [kind, pair] of [
+      ['logo', assets.logo],
+      ['favicon', assets.favicon],
+    ] as const) {
+      if (undefined === pair) continue;
+      for (const [mode, expectation] of [
+        ['light', 'dark ink for a light background'],
+        ['dark', 'light ink for a dark background'],
+      ] as const) {
+        const file = pair[mode];
+        if (undefined === file) continue;
+        const brightness = inkBrightness(file);
+        if (null === brightness) continue; // no explicit fills to judge
+        const tooLight = 'light' === mode && brightness > 128;
+        const tooDark = 'dark' === mode && brightness < 128;
+        if (tooLight || tooDark) {
+          problems.push(
+            `${kind}.${mode} is ${file} with ink brightness ${Math.round(brightness)} — ${mode} ` +
+              `mode needs ${expectation}, so this renders invisible`,
+          );
+        }
+      }
+    }
+
+    expect(
+      problems,
+      `A logo the same colour as the page behind it is not a rendering bug anyone notices in a diff: ` +
+        `${problems.join('; ')}`,
+    ).toEqual([]);
+  });
+
   it('no page contains markup MDX will refuse to build', () => {
     // Two pages 404'd on the deployed site while passing every check here: they existed, were in the
     // nav, had frontmatter, and their links resolved. Mintlify compiles markdown as MDX, so `<1s` in

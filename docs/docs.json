@@ -9,12 +9,12 @@
     "dark": "#6b5bdf"
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/logo/wordmark-black.svg",
+    "dark": "/logo/wordmark-white.svg"
   },
   "favicon": {
-    "light": "/favicon/light.svg",
-    "dark": "/favicon/dark.svg"
+    "light": "/favicon/mark-black.svg",
+    "dark": "/favicon/mark-white.svg"
   },
   "appearance": {
     "default": "system"
