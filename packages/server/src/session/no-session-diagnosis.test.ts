@@ -196,6 +196,15 @@ describe('the no-listener branch does not overclaim what an eleven-port scan pro
     // not become a hedge that says nothing.
     expect(scanned).toMatch(/dev server|npm run dev/i);
   });
+
+  it('does not claim the scan settles it', () => {
+    // Reported from the field: an agent was told "the likeliest cause BY FAR is that the dev server
+    // is not running" while a dev server answered on :5000, and spent six calls disproving it with
+    // `netstat` before it could get back to its job. Leading with the common case is right; ranking
+    // it "by far" off an eleven-port scan is a confidence the evidence does not carry, and it is the
+    // strength of the phrasing, not the ordering, that made the reader stop investigating.
+    expect(scanned).not.toMatch(/by far/i);
+  });
 });
 
 /**

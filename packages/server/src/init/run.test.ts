@@ -181,6 +181,22 @@ describe('runInit', () => {
     expect(io.lines.join('\n')).toContain('No package.json');
   });
 
+  it('hands a non-JS project the script-tag snippet, not just a diagnosis', () => {
+    // This exit is where every server-rendered app lands: FastAPI, Flask, Django, Rails, Streamlit.
+    // It used to end at an explanation, and readers acted on the explanation as a refusal. The
+    // message now says "add the snippet below", so the snippet has to actually be below it, and it
+    // has to be a URL import: a bare specifier is the one thing a plain page cannot resolve.
+    const io = memoryIo({ 'requirements.txt': 'fastapi\n', 'app.py': 'x' });
+    const out = (() => {
+      runInit(OPTS, io);
+      return io.lines.join('\n');
+    })();
+    expect(out).toContain('script type="module"');
+    expect(out).toMatch(/import \{ reticle \} from 'https:\/\//);
+    expect(out).toContain('reticle.connect(');
+    expect(out).not.toMatch(/from '@reticlehq\/\w+'/);
+  });
+
   /**
    * A repo whose app is one directory down with nothing at the top — `frontend/`, `web/`, `client/`
    * — is an ordinary shape, and it was un-instrumentable. init read the root package.json, found

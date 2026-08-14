@@ -46,6 +46,14 @@ describe('the manual connect snippet carries the pairing token', () => {
     expect(snippet).toMatch(/refus|reject|authentication/i);
   });
 
+  it('carries the token on the no-build-step path too, which needs it most', () => {
+    // The CDN path has no bundler, no `define`, and no `.env` — the literal in the snippet is the
+    // only way a token ever reaches that page.
+    const snippet = htmlManual(4400, 'demo', 'tok_abc123');
+    const cdn = snippet.slice(snippet.indexOf('script type="module"'));
+    expect(cdn).toContain('tok_abc123');
+  });
+
   it('degrades honestly when there is no token to inline', () => {
     // An unwritable $HOME means the daemon runs WITHOUT auth and trusts loopback, so a tokenless
     // snippet is correct there. It must not emit `token: ''`, which would fail the comparison

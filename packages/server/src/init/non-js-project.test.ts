@@ -43,20 +43,48 @@ describe('the message', () => {
     expect(message).toContain("Run `reticle init` from your app's directory");
   });
 
-  it('names the ecosystem and the real reason for a Python project', () => {
+  it('names the ecosystem and gives it a way in, rather than a reason it cannot come', () => {
+    // This used to explain, correctly and uselessly, that a server-rendered app has no JavaScript
+    // build to import the SDK from. Every reader acted on it as a refusal. The SDK loads from a URL
+    // in a plain page, so the honest answer is a snippet, not an explanation.
     const message = noPackageJsonMessage(withFiles('pyproject.toml'));
     expect(message).toContain('Python');
-    expect(message).toContain('JavaScript build');
+    expect(message).toMatch(/script-tag|no build step/i);
   });
 
   it('does not send a Python developer looking for a directory that cannot help', () => {
     const message = noPackageJsonMessage(withFiles('requirements.txt'));
-    expect(message).toContain('there is no directory you could run this from');
+    expect(message).not.toMatch(/Run `reticle init` from your app's directory/);
+  });
+
+  it('does not read as a refusal', () => {
+    const message = noPackageJsonMessage(withFiles('requirements.txt'));
+    expect(message).toMatch(/not a blocker/i);
   });
 
   it('still points at a JS front end, because plenty of Python apps have one', () => {
     const message = noPackageJsonMessage(withFiles('manage.py'));
     expect(message).toContain('--app');
     expect(message).toMatch(/frontend/);
+  });
+});
+
+describe('Flutter, which cannot be helped by any directory', () => {
+  it('is recognised by its pubspec', () => {
+    expect(detectNonJsEcosystem(withFiles('pubspec.yaml'))).toBe('Flutter');
+  });
+
+  it('names the reason Reticle can never instrument it, rather than blaming the manifest', () => {
+    const message = noPackageJsonMessage(withFiles('pubspec.yaml'));
+    expect(message).toContain('Flutter');
+    expect(message).toMatch(/canvas/);
+    expect(message).not.toContain('No package.json found here');
+  });
+
+  it('does not send a Flutter developer looking for a front end that would not help', () => {
+    // Every other ecosystem gets the `--app <dir>` hint, because a Django app with a `frontend/`
+    // is an ordinary Reticle install. A Flutter web build has no DOM at any path, so the hint is
+    // a wild goose chase rather than a lead.
+    expect(noPackageJsonMessage(withFiles('pubspec.yaml'))).not.toContain('--app');
   });
 });

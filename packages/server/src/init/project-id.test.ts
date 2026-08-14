@@ -58,10 +58,14 @@ describe('snippets bake the projectId', () => {
     expect(htmlManual(undefined, 'acme-web-1234abcd')).toContain("projectId: 'acme-web-1234abcd'");
   });
 
-  it('fallback guidance points bundled apps at their entry module, with an honest static-HTML note', () => {
+  it('fallback guidance covers both a bundled app and a page with no build step', () => {
     const out = htmlManual(undefined, 'acme-web-1234abcd');
     expect(out).toMatch(/entry module/i); // bundled-app path (CRA/webpack/etc.) — bare import resolves
-    expect(out).toMatch(/Plain static HTML/i); // honest note: needs a bundler/dev-server
+    // The static-HTML branch used to say a page with no build step needed a bundler first. It does
+    // not: a CDN URL resolves in any browser, which is what the branch now offers. See
+    // html-no-build.test.ts for why that sentence was the end of the road for every server-rendered
+    // app we hear from.
+    expect(out).toMatch(/NO build step/i);
     expect(out).toContain("reticle.connect({ projectId: 'acme-web-1234abcd' })");
     // It must NOT present an index.html bare import as the primary path (the old CRA silent-fail trap).
     expect(out).not.toMatch(/Add a dev-gated module script at app boot/);

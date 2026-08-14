@@ -21,8 +21,11 @@ import { htmlManual } from './snippets.js';
 describe('the pasteable CRA/webpack snippet compiles where it is pasted', () => {
   const snippet = htmlManual(4400, 'demo');
 
-  it('uses window.location, not the bare global CRA forbids', () => {
-    expect(snippet).toContain('window.location.hostname');
+  it('never reaches for the bare global CRA forbids', () => {
+    // The guard this originally policed (`window.location.hostname === 'localhost'`) is gone: it is
+    // false on any non-localhost dev host and undefined during SSR, and it cost a reporter their
+    // whole setup silently. See html-no-build.test.ts. The lint hazard it left behind is still worth
+    // pinning, because the obvious way to reintroduce a host check is the one CRA rejects.
     expect(snippet).not.toMatch(/(?<!window\.)\blocation\.hostname\b/);
   });
 

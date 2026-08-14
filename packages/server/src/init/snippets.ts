@@ -5,6 +5,28 @@
 
 import { RETICLE_DEFAULT_PORT, bridgeWsUrl } from '@reticlehq/core';
 import type { FoundStore } from './capabilities.js';
+import { SERVER_VERSION } from '../version/server-version.js';
+
+/**
+ * The SDK as one import a plain page can actually resolve.
+ *
+ * `init` used to tell static-HTML users that a page with no build step could not load the SDK, and
+ * to go and stand up a bundler. That is true of a BARE specifier and false of a URL, and the
+ * difference was the whole road for every server-rendered app we hear from: FastAPI, Flask, Django,
+ * Streamlit, Rails. Proven end to end before this shipped, on a page served by `python3 -m
+ * http.server`: a session connected, a snapshot returned, and two act_and_wait calls came back
+ * `verified: "yes"`.
+ *
+ * jsDelivr rather than esm.sh, measured: a third of the requests and a third of the bytes for the
+ * same result. `/+esm` is what makes it work, and the bare package URL does NOT: every file in
+ * `dist` carries bare specifiers for `@reticlehq/core` and `@testing-library/dom`, so an unbundled
+ * entry point dies on the first import. That is also why adding `unpkg`/`jsdelivr` fields to
+ * package.json would not help.
+ *
+ * PINNED to this server's version on purpose. A floating import upgrades the page SDK underneath a
+ * daemon that did not move, which is `version_skew` arriving by a route nothing checks.
+ */
+const CDN_SDK_URL = `https://cdn.jsdelivr.net/npm/@reticlehq/browser@${SERVER_VERSION}/+esm`;
 
 /**
  * The connect argument literal: a non-default port adds a `url`, and a projectId is always passed
@@ -17,6 +39,29 @@ function connectArg(port: number | undefined, projectId?: string): string {
   }
   if (projectId !== undefined && projectId.length > 0) parts.push(`projectId: '${projectId}'`);
   return parts.length > 0 ? `{ ${parts.join(', ')} }` : '';
+}
+
+/**
+ * The same literal, with the pairing token folded in.
+ *
+ * The token belongs INSIDE the call the user pastes. Every other stack has a build step to inline
+ * it (the Vite plugin's `define`, Next's NEXT_PUBLIC_*, Astro's config, CRA's .env); the hand-wired
+ * paths have none, so `init` inlines the literal it already read. Without it the bridge closes the
+ * socket with AUTH_FAILED and no session ever appears: see Bridge's hello handler.
+ *
+ * An empty token is omitted rather than emitted as `token: ''`. A daemon that could not write to
+ * $HOME runs without auth and trusts loopback, and an empty string would fail the comparison against
+ * one that does hold a token.
+ */
+export function connectArgWithToken(
+  port: number | undefined,
+  projectId: string | undefined,
+  pairingToken: string | undefined,
+): string {
+  const base = connectArg(port, projectId);
+  if (pairingToken === undefined || 0 === pairingToken.length) return base;
+  const inner = base.length > 0 ? base.slice(1, -1).trim() : '';
+  return `{ ${[inner, `token: '${pairingToken}'`].filter((p) => p.length > 0).join(', ')} }`;
 }
 
 /** The Vite-config snippet printed when we can't safely auto-patch the config. */
@@ -91,7 +136,7 @@ export function ReticleDev() {
       // form wires \`subscribe\` too, so every mutation emits a diff; the getter form is read-only.
 ${storeBlock}
       registerCapabilities({
-        testids: [${ids}],${0 === testids.length ? ' // none found — add data-testid to your key elements' : ''}
+        testids: [${ids}],${0 === testids.length ? ' // none found; add data-testid to your key elements' : ''}
         signals: [], // names you pass to reticle.signal()
         stores: [${found.map((s) => `'${s.key}'`).join(', ')}], // the keys you registered above
       });
@@ -214,7 +259,7 @@ export function viteDevModuleFile(
         : stores.map((h) => `  // import your store, then: ${h}`).join('\n');
   const registerImport =
     found.length > 0 ? 'registerCapabilities, registerStore' : 'registerCapabilities';
-  return `// Dev-only. Imported automatically by @reticlehq/vite-plugin — you do not need to import it.
+  return `// Dev-only. Imported automatically by @reticlehq/vite-plugin, so you do not need to import it.
 // Self-guards on import.meta.env.DEV, so it is a no-op in a production build.
 import { ${registerImport} } from '@reticlehq/react';
 ${storeImports.length > 0 ? `${storeImports}\n` : ''}
@@ -231,7 +276,7 @@ if (import.meta.env.DEV) {
 ${storeBlock}
 
   registerCapabilities({
-    testids: [${ids}],${0 === testids.length ? ' // none found — add data-testid to your key elements' : ''}
+    testids: [${ids}],${0 === testids.length ? ' // none found; add data-testid to your key elements' : ''}
     signals: [], // names you pass to reticle.signal()
     stores: [${found.map((s) => `'${s.key}'`).join(', ')}], // the keys you registered above
   });
@@ -258,22 +303,28 @@ export const NEXT_LAYOUT_MANUAL = `Mount <ReticleDev /> in your root layout (app
  * where a bare `@reticlehq/react` import resolves. A bare import in a plain index.html does NOT resolve in
  * the browser, so we never tell a bundled app to do that (the old advice silently failed for CRA).
  */
+/**
+ * The whole install, for a page with no build step, as one block a person can paste.
+ *
+ * Extracted so the `no package.json` exit can print the SAME snippet `htmlManual` offers. That exit
+ * is the one every server-rendered app reaches (FastAPI, Flask, Django, Rails, Streamlit), it is
+ * where `init` stops, and until now it stopped with an explanation instead of an answer. A message
+ * that says "add the snippet below" and then prints no snippet is the same defect wearing the
+ * opposite sign, so the two share a builder rather than a copy.
+ */
+export function staticPageSnippet(connectArgLiteral: string): string {
+  return `      <script type="module">
+        import { reticle } from '${CDN_SDK_URL}';
+        reticle.connect(${connectArgLiteral});
+      </script>`;
+}
+
 export function htmlManual(
   port: number | undefined,
   projectId?: string,
   pairingToken?: string,
 ): string {
-  const base = connectArg(port, projectId);
-  // The token belongs INSIDE the call the user pastes. Every other stack has a build step to inline
-  // it (the Vite plugin's `define`, Next's NEXT_PUBLIC_*, Astro's config, CRA's .env); this path has
-  // none, so `init` inlines the literal it already read. Without it the bridge closes the socket
-  // with AUTH_FAILED and no session ever appears — see Bridge's hello handler.
-  const withToken =
-    pairingToken === undefined || 0 === pairingToken.length
-      ? base
-      : `{ ${[base.length > 0 ? base.slice(1, -1).trim() : '', `token: '${pairingToken}'`]
-          .filter((p) => p.length > 0)
-          .join(', ')} }`;
+  const withToken = connectArgWithToken(port, projectId, pairingToken);
   const tokenNote =
     pairingToken === undefined || 0 === pairingToken.length
       ? ''
@@ -285,16 +336,22 @@ export function htmlManual(
   • Bundled app (Create React App, webpack, Parcel, Vue/Svelte CLI, etc.) — add to your ENTRY module
     (e.g. src/index.js or src/main.js), where '@reticlehq/react' resolves through your bundler:
 
-      if (window.location.hostname === 'localhost') {
+      if (process.env.NODE_ENV !== 'production') {
         void import('@reticlehq/react').then(({ reticle, install }) => {
           install();
           reticle.connect(${withToken});
         });
       }${tokenNote}
 
-  • Plain static HTML with no build step — the browser can't resolve the bare '@reticlehq/react' import, so
-    bundle the SDK once (e.g. \`npx esbuild\`) and point a dev-only <script type="module"> at the output,
-    or serve the page through a dev server (Vite) that resolves bare imports.`;
+  • Plain HTML with NO build step (FastAPI, Flask, Django, Rails, Streamlit, a hand-written page) —
+    paste this into the page, in a template you only serve in development. There is nothing to
+    install: no npm, no bundler, no package.json.
+
+${staticPageSnippet(withToken)}
+
+  Serving the app on something other than localhost (a hosts-file alias, a LAN IP, a container, a
+  tunnel)? Add \`allowNonLocalhost: true\` to the connect. Without it the SDK refuses to dial and says
+  so in the browser console only, so from here it looks exactly like nothing happened.`;
 }
 
 export const NEXT_RETICLE_DEV_PATH = 'app/reticle-dev.tsx';

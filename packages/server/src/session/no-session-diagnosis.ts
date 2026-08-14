@@ -109,7 +109,7 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
     // closed, and this does not know which session went.
     if (true === facts.leaseExpired) {
       return (
-        'no browser session connected — but one WAS connected to this daemon earlier, so the wiring ' +
+        'no browser session connected, but one WAS connected to this daemon earlier, so the wiring ' +
         'is correct. This daemon has expired at least one pooled lease, so the likeliest cause is ' +
         'that a lease you were using aged out; a lease is a headless context, not a human tab, and ' +
         'it takes its cookies with it (so an authenticated app needs signing in again). Re-acquire ' +
@@ -118,7 +118,7 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
       );
     }
     return (
-      'no browser session connected — but one WAS connected to this daemon earlier, so the wiring ' +
+      'no browser session connected, but one WAS connected to this daemon earlier, so the wiring ' +
       'is correct. The tab was closed, navigated away, or hard-reloaded. Ask the human to reopen ' +
       `the app (or run \`reticle open\`), or reload the tab. ${SELF_SERVE} ${RETRY}`
     );
@@ -155,7 +155,7 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
     }
     return (
       'no browser session connected, and nothing is listening on the ports Reticle scans ' +
-      `(${SCANNED_PORTS}). The likeliest cause by far is that the dev server is not running: ask ` +
+      `(${SCANNED_PORTS}). The most common reason for that is a dev server that is not running: ask ` +
       'the human to start it (`npm run dev`), then open the app in a browser. ' +
       // The caveat is here rather than omitted because the scan is NARROW, and the old sentence
       // spent its confidence as though an empty result were proof of absence. Reported twice: a

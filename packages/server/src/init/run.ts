@@ -58,7 +58,7 @@ import { scanTestids, storeHints, scanStores } from './capabilities.js';
 import { CURSOR_DIR_RELPATH, CURSOR_MCP_RELPATH } from './cursor.js';
 import { fileBackedClients, clientMarkerRelPath, ConfigScope, McpClient } from './mcp-clients.js';
 import { deriveProjectId, packageName } from './project-id.js';
-import { VITE_DEV_MODULE_PATH } from './snippets.js';
+import { VITE_DEV_MODULE_PATH, connectArgWithToken, staticPageSnippet } from './snippets.js';
 import { CLAUDE_COMMAND_PATH, CURSOR_COMMAND_PATH } from './slash-command.js';
 import { SERVER_VERSION } from '../version/server-version.js';
 import { InitFailure, reportInitOutcome } from '../telemetry/init-telemetry.js';
@@ -549,7 +549,7 @@ function report(
   io: InitIo,
   projectDir: string,
 ): InitResult {
-  io.print(dryRun ? 'reticle init (dry run — no files written)' : 'reticle init');
+  io.print(dryRun ? 'reticle init (dry run, no files written)' : 'reticle init');
   // Every path below is printed RELATIVE, and until now nothing said what to. Reported from the
   // field as "[✓] Reticle config → .reticle.json" followed by the file not being there: the app was
   // in `frontend/`, init redirected into it, and the report's `.reticle.json` was true about a
@@ -817,6 +817,10 @@ function runInitSteps(options: InitOptions, io: InitIo): InitResult {
       // hand before the real answer surfaced.
       noPackageJsonMessage((file) => io.exists(join(options.cwd, file))),
     );
+    // The message says "add the snippet below". Print the snippet, or the message is the same
+    // broken promise in the other direction. `connectArg` carries the port; there is no projectId
+    // to bake, because a projectId is derived from the package.json that does not exist here.
+    io.print(staticPageSnippet(connectArgWithToken(options.port, undefined, readPairingToken())));
     // The onboarding funnel had NO instrumentation, so a setup that died here was indistinguishable
     // from someone who never ran the command — the two failure modes with the most different fixes.
     reportInitOutcome({ ok: false, reason: InitFailure.NO_PACKAGE_JSON });

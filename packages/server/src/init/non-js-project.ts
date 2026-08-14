@@ -30,7 +30,14 @@ const ECOSYSTEM_MARKERS: readonly (readonly [string, string])[] = [
   ['pom.xml', 'Java'],
   ['build.gradle', 'Java'],
   ['mix.exs', 'Elixir'],
+  // Not like the others. Every ecosystem above can grow a JS front end that Reticle instruments
+  // perfectly well, so their message ends with a lead. Flutter web paints into a canvas, and there
+  // is no DOM behind it at any path, so the honest answer is a named refusal.
+  ['pubspec.yaml', 'Flutter'],
 ];
+
+/** The one ecosystem where no directory, front end or flag could ever help. */
+const FLUTTER = 'Flutter';
 
 /** The ecosystem this directory looks like, or undefined when nothing says. */
 export function detectNonJsEcosystem(exists: (file: string) => boolean): string | undefined {
@@ -55,12 +62,32 @@ export function noPackageJsonMessage(exists: (file: string) => boolean): string 
       "your app's directory, or from a repo root that contains it."
     );
   }
+  if (ecosystem === FLUTTER) {
+    // An agent on a Flutter workspace asked us to "support Flutter, or clearly identify it as
+    // unsupported during init". The second is the truthful one, and saying it by name in one line
+    // is the difference between an agent that stops and an agent that spends an hour looking for
+    // the package.json we told it was missing.
+    return (
+      'This is a Flutter project. Reticle cannot instrument it, and no directory or flag will ' +
+      'change that: Reticle reads the DOM of a running page, and Flutter web paints its entire UI ' +
+      'into a single canvas element with no DOM behind it. Nothing here is missing or misconfigured. ' +
+      'If this repo also contains an ordinary web app with its own package.json, run `reticle init` ' +
+      'inside that directory instead.'
+    );
+  }
   return (
     `This looks like a ${ecosystem} project, and there is no package.json here or in any app ` +
-    'directory beneath it. Reticle instruments a page by having its SDK imported into the app’s own ' +
-    'JavaScript build — so a server-rendered app with no JS build has nowhere to load it from, and ' +
-    'there is no directory you could run this from that would change that. ' +
-    'If this project does have a JS front end (a `frontend/`, `client/` or `assets/` directory with ' +
-    'its own package.json), run `reticle init` there, or point at it with `--app <dir>`.'
+    'directory beneath it. That is not a blocker: Reticle needs its SDK loaded by the page, not ' +
+    'built by npm, and a page with no build step can load it from a URL. ' +
+    // The old message ended at "there is no directory you could run this from that would change
+    // that", which read as a refusal and was acted on as one — agents went looking for a bundler,
+    // or for a standalone build to inject by hand, or gave up and used a different tool. The
+    // capability was there the whole time; only the sentence was missing. Proven end to end on a
+    // page served by `python3 -m http.server` before this line was written.
+    'Add the script-tag snippet below to a template you only serve in development, then reload the ' +
+    'page. ' +
+    'If this project ALSO has a JS front end (a `frontend/`, `client/` or `assets/` directory with ' +
+    'its own package.json), running `reticle init` there instead gives you source mapping and ' +
+    'framework state as well: point at it with `--app <dir>`.'
   );
 }
