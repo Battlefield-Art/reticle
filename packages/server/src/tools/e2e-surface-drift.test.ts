@@ -234,6 +234,9 @@ describe('user-facing guidance never names a tool an agent cannot call', () => {
 /**
  * The docs a USER pastes are guidance too, and the furthest-out audience.
  *
+ * `skills/reticle/SKILL.md` is the same guidance again, published to the agent-skill registry, where
+ * the reader arrived by search and has never seen this repo. It is in scope for the same reason.
+ *
  * `SKILL.md` is the canonical paste-URL for integrating Reticle and `docs/` ships with it, so a dead
  * tool name there reaches someone with no way at all to check it against the surface. Judged by the
  * same rule as shipped code — a name is drift only if it was DECLARED a tool and is not callable —
@@ -252,6 +255,27 @@ describe('shipped docs never name a tool a reader cannot call', () => {
       if ('node_modules' === entry || entry.startsWith('.')) continue;
       const full = join(dir, entry);
       if (statSync(full).isDirectory()) out.push(...docFiles(full));
+      // `.mdx` as well as `.md`. The reference pages are all `.mdx` and every one of them is a
+      // list of tool names, so scanning only `.md` meant the guard was blind to precisely the
+      // pages most likely to name a tool wrong.
+      else if (entry.endsWith('.md') || entry.endsWith('.mdx')) out.push(full);
+    }
+    return out;
+  }
+
+  /**
+   * The published skill, which is the same guidance again for a reader who has never seen this repo.
+   *
+   * They arrived from a skill registry, they have no checkout, and the body delegates its detail to
+   * `references/`, so a dead name in one of those files reaches someone with no way at all to check
+   * it. Same rule, wider net.
+   */
+  function skillFiles(dir: string = join(REPO, 'skills')): string[] {
+    if (!existsSync(dir)) return [];
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) out.push(...skillFiles(full));
       else if (entry.endsWith('.md')) out.push(full);
     }
     return out;
@@ -285,7 +309,12 @@ describe('shipped docs never name a tool a reader cannot call', () => {
 
   it('every declared tool name in the docs is one a reader can actually call', () => {
     const dead: string[] = [];
-    for (const file of [...docFiles(), ...shippedReadmes(), join(REPO, 'SKILL.md')]) {
+    for (const file of [
+      ...docFiles(),
+      ...shippedReadmes(),
+      join(REPO, 'SKILL.md'),
+      ...skillFiles(),
+    ]) {
       const text = readFileSync(file, 'utf8');
       for (const match of text.match(ANY_TOOL_MENTION) ?? []) {
         if (!DECLARED_TOOLS.has(match) || advertised.has(match)) continue;
