@@ -444,15 +444,30 @@ export function createMcpServer(
   // session says which one it saw.
   getSessionMetrics().recordSurface(profile);
   const server = new McpServer(SERVER_INFO, { instructions: SERVER_INSTRUCTIONS });
-  // Which agent is on the other end, taken from its own `initialize` handshake. Registered as a lazy
-  // hook rather than read here: the handshake has not happened yet at construction time, and a
-  // feedback report filed twenty tool calls later is exactly when we want the answer.
+  /**
+   * Record WHICH agent attached, at the handshake, for every session.
+   *
+   * `clients` and `clientVersions` were populated for almost nobody, and the reason was not that
+   * clients withhold `clientInfo` — they send it, and we read it. It was that the ONLY thing that
+   * ever called `recordClient` was the feedback hook below, which runs when a report is being built.
+   * So the field was really measuring "sessions that filed feedback", and a product whose users are
+   * agents could not say which agent, on which build, any of its numbers came from.
+   *
+   * `oninitialized` is the moment `clientInfo` first exists — reading it at construction time gets
+   * `undefined`, which is what made a lazy hook look like the only option.
+   */
+  server.server.oninitialized = () => {
+    const info = server.server.getClientVersion();
+    if (info?.name !== undefined) getSessionMetrics().recordClient(info.name, info.version);
+  };
+  // Which agent is on the other end, for a feedback report. Registered as a lazy hook rather than
+  // read here: the handshake has not happened yet at construction time, and a report filed twenty
+  // tool calls later is exactly when we want the answer.
   setMcpClientNameHook(() => {
     const info = server.server.getClientVersion();
-    // Record it as a side effect of the first read so the session summary can report WHICH agents
-    // drove this daemon — the multi-agent story, visible without a second plumbing path.
-    // Name AND version: the version was already in this handshake and was being dropped, so a
-    // regression in agent behaviour could never be attributed to a client build.
+    // Still records, because a client that skipped the handshake path above (a replayed initialize
+    // through the proxy, a transport that reconnects) is a client we would otherwise lose entirely.
+    // `recordClient` is idempotent per name.
     if (info?.name !== undefined) getSessionMetrics().recordClient(info.name, info.version);
     return info === undefined ? undefined : { name: info.name, version: info.version };
   });

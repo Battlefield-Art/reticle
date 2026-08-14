@@ -13,6 +13,7 @@ import { TOOL_SURFACE } from '../tools/tool-surface.js';
 import { TOOLS, type ToolDeps } from '../tools/tools.js';
 import { SESSION_BOUND_TOOLS } from '../tools/invoke-tool.js';
 import { ReticleTool } from '../tools/tool-names.js';
+import { getSessionMetrics, resetSessionMetrics } from '../telemetry/session-metrics.js';
 
 describe('withSessionEnvelope — spliced fields survive structuredContent validation', () => {
   // `warning` rides with `session` from healthEnvelope on a throttled tab — it is spliced by runTool
@@ -420,5 +421,34 @@ describe('an unknown parameter is refused, never silently dropped', () => {
     // It may fail for lack of a real session, but NOT for an unknown parameter.
     expect(text(result)).not.toMatch(/Unknown parameter/i);
     await close();
+  });
+});
+
+/**
+ * `clients` / `clientVersions` were populated for almost nobody, and the cause was ours: clients DO
+ * send `clientInfo` at the handshake and we DO read it, but the only thing that ever recorded it was
+ * the feedback hook, which runs when a report is being built. So the field measured "sessions that
+ * filed feedback", and a product whose users are agents could not slice a single rate by which agent
+ * on which build.
+ */
+describe('the MCP handshake records which agent attached', () => {
+  it('records the client name and version on connect, with no feedback report involved', async () => {
+    const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+    resetSessionMetrics();
+    // Nothing here reaches a handler; the point is that a real server is driven over a real
+    // transport, so the handshake is the SDK's own rather than an imitation of it.
+    const deps = { sessions: { resolve: () => ({ id: 'x' }) } } as unknown as ToolDeps;
+    const server = createMcpServer(deps, TOOL_SURFACE.DEFAULT);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'claude-code', version: '2.8.0' });
+    await client.connect(clientTransport);
+    const summary = getSessionMetrics().summarize(true);
+    expect(summary.clients).toEqual(['claude-code']);
+    // The version was in the same handshake and is what attributes a behaviour regression to a build.
+    expect(summary.clientVersions).toEqual({ 'claude-code': '2.8.0' });
+    await client.close();
+    await server.close();
   });
 });
