@@ -4,9 +4,9 @@
   "name": "Reticle",
   "description": "Reticle is the proof layer for AI agents — it verifies a running web app from the inside, without screenshots, and returns a verdict with evidence.",
   "colors": {
-    "primary": "#8b7bff",
-    "light": "#a99bff",
-    "dark": "#6b5bdf"
+    "primary": "#ff9d86",
+    "light": "#ffbcac",
+    "dark": "#d04425"
   },
   "logo": {
     "light": "/logo/wordmark-black.svg",
@@ -168,6 +168,11 @@
           "icon": "github"
         },
         {
+          "anchor": "Discord",
+          "href": "https://discord.gg/BwAbzv9ZRz",
+          "icon": "discord"
+        },
+        {
           "anchor": "npm",
           "href": "https://www.npmjs.com/org/reticlehq",
           "icon": "npm"
@@ -195,8 +200,10 @@
   },
   "footer": {
     "socials": {
+      "x": "https://x.com/reticle_hq",
       "github": "https://github.com/reticlehq/reticle",
-      "website": "https://www.npmjs.com/org/reticlehq"
+      "linkedin": "https://www.linkedin.com/company/reticlehq",
+      "discord": "https://discord.gg/BwAbzv9ZRz"
     },
     "links": [
       {
@@ -238,6 +245,27 @@
           {
             "label": "License",
             "href": "https://github.com/reticlehq/reticle/blob/main/LICENSE"
+          }
+        ]
+      },
+      {
+        "header": "Community",
+        "items": [
+          {
+            "label": "Discord",
+            "href": "https://discord.gg/BwAbzv9ZRz"
+          },
+          {
+            "label": "Star on GitHub",
+            "href": "https://github.com/reticlehq/reticle"
+          },
+          {
+            "label": "X",
+            "href": "https://x.com/reticle_hq"
+          },
+          {
+            "label": "LinkedIn",
+            "href": "https://www.linkedin.com/company/reticlehq"
           }
         ]
       }
