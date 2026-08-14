@@ -10,6 +10,19 @@
 > - Not set up yet, or the daemon will not start (which is most of setup): `reticle feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "what happened"` — it needs nothing running.
 > - Report defects in **Reticle**. A bug you find in the app under test is Reticle working; that one goes to the user. Never put app source, secrets, or user data in a report.
 
+> ## Do not re-read this file to look something up
+>
+> This document is large, and a fetch of it may well have been truncated or summarised before it reached you. Everything in it also exists at `https://docs.reticle.sh`, one page at a time, and **appending `.md` to any page URL returns its source with no site chrome**:
+>
+> ```bash
+> curl https://docs.reticle.sh/llms.txt               # every page title and URL; read this first
+> curl https://docs.reticle.sh/cli/doctor.md          # one command: flags, real output, exit codes
+> curl https://docs.reticle.sh/tools-act-and-wait.md  # one tool: arguments, and what its verdict means
+> curl https://docs.reticle.sh/troubleshooting.md     # the failures people actually hit
+> ```
+>
+> Pull the one page that answers the question rather than the whole document. Every page arrives with the rules that matter prepended, so a single fetch orients you without a second call.
+
 Start by detecting which mode to run:
 
 ```bash

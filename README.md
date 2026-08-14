@@ -23,7 +23,7 @@ Your agent writes code. Reticle checks it against the **real running app** — t
 
 Where the work happens in the open: what's being built this cycle, what's up for grabs, and design calls before they land.
 
-**[⚡ Install in 30 seconds](#install-in-30-seconds)** · [How it works](#how-it-works) · [**What we support**](#what-we-support) · [vs Playwright / DevTools](#cant-playwright--devtools--a-browser-agent-already-do-this) · [The numbers](#the-numbers) · [Docs](docs/getting-started.md) · [Discord](https://discord.gg/BwAbzv9ZRz)
+**[⚡ Install in 30 seconds](#install-in-30-seconds)** · [How it works](#how-it-works) · [**What we support**](#what-we-support) · [vs Playwright / DevTools](#cant-playwright--devtools--a-browser-agent-already-do-this) · [The numbers](#the-numbers) · [Docs](https://docs.reticle.sh) · [Discord](https://discord.gg/BwAbzv9ZRz)
 
 `dev-only` · `localhost-only` · `your app data stays local` · `Apache-2.0 SDK` · works with Claude Code, Cursor, and any MCP agent
 
@@ -371,7 +371,11 @@ The SDK runs inside your app and observes the DOM, network, console, routing, st
 
 ## Go deeper
 
-→ [Getting Started](docs/getting-started.md) · [Full guide: every tool, predicate & the flow DSL](docs/usage.md) · [One browser, a fleet of agents in parallel](docs/multi-agent-testing.md) · [Desktop apps (Electron & Tauri)](docs/desktop-apps.md)
+**Full documentation: [docs.reticle.sh](https://docs.reticle.sh)**. A page per tool, a page per CLI command, a page per package, and every command on them captured from a real run.
+
+→ [Quickstart](https://docs.reticle.sh/quickstart) · [Every tool](https://docs.reticle.sh/tools-overview) · [Every command](https://docs.reticle.sh/cli) · [Troubleshooting](https://docs.reticle.sh/troubleshooting) · [Desktop apps](https://docs.reticle.sh/desktop)
+
+**Reading this as an agent?** Append `.md` to any page URL for the source with no site chrome, and start from [`/llms.txt`](https://docs.reticle.sh/llms.txt) to pick the one page you need. Details: [Docs for agents](https://docs.reticle.sh/for-agents).
 
 ---
 
@@ -427,6 +431,6 @@ New here? See [CONTRIBUTING.md](CONTRIBUTING.md), [GOVERNANCE.md](GOVERNANCE.md)
 
 <div align="center">
 
-© 2026 Reticle HQ · **[Install](#install-in-30-seconds)** · [Docs](docs/getting-started.md) · [Benchmarks](bench/SCORECARD.md) · [reticle.sh](https://reticle.sh)
+© 2026 Reticle HQ · **[Install](#install-in-30-seconds)** · [Docs](https://docs.reticle.sh) · [Benchmarks](bench/SCORECARD.md) · [reticle.sh](https://reticle.sh)
 
 </div>

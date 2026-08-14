@@ -12,6 +12,21 @@ metadata:
 
 Reticle embeds a dev-only SDK in the user's running app and exposes it to you as `reticle_*` MCP tools. You look, act, observe, and assert against the real app. No screenshots, no Chromium download.
 
+## Where the rest of the documentation is
+
+Everything not in this file is at `https://docs.reticle.sh`, and it is built to be fetched rather than browsed. **Append `.md` to any page URL to get its source with no site chrome**, so you can pull one page instead of a whole document you mostly do not need:
+
+```bash
+curl https://docs.reticle.sh/llms.txt                  # every page title and URL, small enough to read whole
+curl https://docs.reticle.sh/cli/doctor.md             # one CLI command: flags, real output, exit codes
+curl https://docs.reticle.sh/tools-act-and-wait.md     # one tool: arguments and what a verdict means
+curl https://docs.reticle.sh/troubleshooting.md        # the failures people actually hit
+```
+
+Read `llms.txt` first and pick the one page that answers the question. That is almost always cheaper than pulling a large file and hoping the part you need survived. There is a `/llms-full.txt` with the entire site in one file; use it only to seed a context window deliberately.
+
+Every page arrives with the four rules that matter prepended, whether you asked for them or not, so a single fetch orients you without a second call.
+
 ## Which path am I on
 
 ```bash
