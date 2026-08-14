@@ -282,6 +282,27 @@
             "href": "https://github.com/reticlehq/reticle/blob/main/LICENSE"
           }
         ]
+      },
+      {
+        "header": "Community",
+        "items": [
+          {
+            "label": "Discord",
+            "href": "https://discord.gg/BwAbzv9ZRz"
+          },
+          {
+            "label": "Star on GitHub",
+            "href": "https://github.com/reticlehq/reticle"
+          },
+          {
+            "label": "X",
+            "href": "https://x.com/reticle_hq"
+          },
+          {
+            "label": "LinkedIn",
+            "href": "https://www.linkedin.com/company/reticlehq"
+          }
+        ]
       }
     ]
   },
