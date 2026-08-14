@@ -46,14 +46,48 @@ describe('verificationOf', () => {
     expect(verificationOf(VERIFY, { status: 'unverifiable', total: 0 }, 0)).toBeUndefined();
   });
 
-  it('the honesty block still leads when a tool carries one', () => {
-    // act_and_wait: a green assertion that Reticle refused to call verified IS the thesis.
+  /**
+   * This test used to pin the defect as correct behaviour, which is why nobody found it from the
+   * data. It asserted `falseGreenCaught: false` for act_and_wait's REAL shape (`verdict.pass`
+   * nested), directly beneath a comment calling that case "the thesis", and asserted `true` only for
+   * a flat `pass` that act_and_wait never emits. So the metric read zero in the field forever and
+   * the suite was green about it.
+   */
+  it('act_and_wait: a green Reticle refused to call verified IS the thesis, nested verdict and all', () => {
     expect(
       verificationOf(ReticleTool.ACT_AND_WAIT, { verified: 'no', verdict: { pass: true } }, 5),
-    ).toMatchObject({ verified: 'no', falseGreenCaught: false });
+    ).toMatchObject({ verified: 'no', passed: true, falseGreenCaught: true });
+  });
+
+  it('reads a flat pass too, since assert spreads its verdict at the top level', () => {
     expect(
       verificationOf(ReticleTool.ACT_AND_WAIT, { verified: 'no', pass: true }, 5),
     ).toMatchObject({ falseGreenCaught: true });
+  });
+
+  it('a nested verdict that FAILED is not a false green', () => {
+    expect(
+      verificationOf(ReticleTool.ACT_AND_WAIT, { verified: 'no', verdict: { pass: false } }, 5),
+    ).toMatchObject({ passed: false, falseGreenCaught: false });
+  });
+
+  it('a nested green that Reticle also called verified is just a pass', () => {
+    expect(
+      verificationOf(ReticleTool.ACT_AND_WAIT, { verified: 'yes', verdict: { pass: true } }, 5),
+    ).toMatchObject({ passed: true, falseGreenCaught: false });
+  });
+
+  it('an UNKNOWN verdict is not counted as a catch, however it was refused', () => {
+    // The seven refusals that answer `unknown` stay out by design; see verification-of.ts. Pinned so
+    // that moving one of them to `no` is a conscious decision rather than a metric quietly changing
+    // what it means.
+    expect(
+      verificationOf(
+        ReticleTool.ACT_AND_WAIT,
+        { verified: 'unknown', verifiedReason: 'already_true', verdict: { pass: true } },
+        5,
+      ),
+    ).toMatchObject({ falseGreenCaught: false, reason: 'already_true' });
   });
 
   it('a tool that is not a verification tool never counts', () => {

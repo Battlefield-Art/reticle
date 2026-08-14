@@ -61,6 +61,35 @@ const SuiteStatus = {
 } as const;
 
 /**
+ * Did the assertion itself pass, across three tool shapes that spell it three ways.
+ *
+ * `reticle_assert` spreads its verdict at the top level, so `pass` is right there. `flow_verify`
+ * reports a suite `status`. **`reticle_act_and_wait` nests it under `verdict`**, and that omission is
+ * why `falseGreenCaught` had never once been true in the field: `passed` came back `undefined` for
+ * every act_and_wait, so `true === passed` was false whatever the app did, on the one tool the
+ * product tells agents to reach for first.
+ *
+ * The metric it feeds is the product's central claim reduced to a boolean, and it was structurally
+ * unable to fire on the flagship path. Worse, the test file pinned that: one case used the real
+ * nested shape and asserted `falseGreenCaught: false`, directly beneath a comment calling this case
+ * "the thesis", while the case that asserted `true` used a flat shape act_and_wait never emits.
+ *
+ * A permanently-zero metric is indistinguishable from a working one that has nothing to report, so
+ * nobody could have noticed this from the data. It took reading the emit path.
+ */
+function passedOf(result: Record<string, unknown>, status: unknown): boolean | undefined {
+  if ('boolean' === typeof result['pass']) return result['pass'];
+  const verdict = result['verdict'];
+  if (null !== verdict && 'object' === typeof verdict) {
+    const nested = (verdict as Record<string, unknown>)['pass'];
+    if ('boolean' === typeof nested) return nested;
+  }
+  if (status === SuiteStatus.PASS) return true;
+  if (status === SuiteStatus.FAIL) return false;
+  return undefined;
+}
+
+/**
  * The verification payload for a result, or undefined when nothing was verified.
  *
  * `falseGreenCaught` is the one that matters: the assertion PASSED and Reticle still refused to call
@@ -83,14 +112,7 @@ export function verificationOf(
   // metric's convenience — but a status that is neither pass nor fail is NOT a verdict, and an empty
   // suite reports exactly that.
   const status = result['status'];
-  const passed =
-    'boolean' === typeof result['pass']
-      ? result['pass']
-      : status === SuiteStatus.PASS
-        ? true
-        : status === SuiteStatus.FAIL
-          ? false
-          : undefined;
+  const passed = passedOf(result, status);
   if (verified === undefined && passed === undefined) return undefined;
   const reason = reasonOf(result);
   const uncleanLoss = uncleanLossOf(result, reason);
@@ -98,6 +120,19 @@ export function verificationOf(
     via: toolName,
     verified: verified ?? (true === passed ? 'yes' : 'no'),
     passed: passed ?? 'yes' === verified,
+    // The assertion passed and Reticle answered `no` anyway: a green actively refuted.
+    //
+    // Deliberately NOT widened to every refusal of a passing assertion, though several of them are
+    // arguably false greens caught too. `decideVerified` refuses a green seven ways and only
+    // `contradicted` answers `no`; the rest answer `unknown` on purpose, because UNKNOWN must never
+    // collapse into NO. `already_true` is the tempting one: a green that proved nothing because the
+    // condition already held before the action, found by a check built for exactly that.
+    //
+    // It stays out because `reason` is on this same payload. Anyone who wants the wider number can
+    // count it without a definition change, and a definition that shifts underneath a metric is
+    // worse than one that is narrow, because the old and new series look comparable and are not.
+    // Widening it would also have landed in the same release as the fix above, making it impossible
+    // to tell how much of any rise was the bug and how much was the redefinition.
     falseGreenCaught: true === passed && 'no' === verified,
     durationMs,
     // Headless CI, a human watching, or somebody's own dev server — three different products behind
