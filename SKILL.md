@@ -79,14 +79,15 @@ Reticle **attaches** to whatever is already running; it never starts or manages 
 
 Then read the report. Each line is marked:
 
-| Mark | Meaning                  | What you do                                         |
-| ---- | ------------------------ | --------------------------------------------------- |
-| `✓`  | applied                  | nothing                                             |
-| `·`  | already wired            | nothing                                             |
-| `–`  | skipped by a flag        | nothing                                             |
-| `⚠`  | needs a human/agent edit | **only these** — the line carries the exact snippet |
+| Mark | Meaning | What you do |
+| --- | --- | --- |
+| `✓` | applied | nothing |
+| `·` | already wired | nothing |
+| `–` | skipped by a flag | nothing |
+| `ℹ` | done, but incomplete in a way that matters | **read it** — the step ran and something about the result still stops a session appearing |
+| `⚠` | needs a human/agent edit | **only these** — the line carries the exact snippet |
 
-**If every line is `✓`, `·` or `–`, go to Step 1c.** The manual sections below exist for the `⚠` lines only.
+**If every line is `✓`, `·` or `–`, go to Step 1c.** The manual sections below exist for the `⚠` and `ℹ` lines. `ℹ` is the one people skim past, because the step did not fail.
 
 **`init` exits non-zero when a `⚠` lands on a step that makes the app CONNECT** (the Vite plugin, the `ReticleDev` component, the connect snippet). Nothing else applies that step, so the app will never dial the daemon and every tool will answer "no browser session connected" until you paste it in. A non-zero exit is therefore a to-do list for you, not a failed install — apply the snippet on that line, then validate. Other `⚠` lines (MCP registration, the agent rule) exit 0.
 
@@ -465,7 +466,18 @@ export default withReticle(nextConfig);
 
 It configures **both** Turbopack and webpack, so it is correct on Next 16 (Turbopack by default) and on Next 15 and earlier. If `next dev` on Next 16 dies with _"This build is using Turbopack, with a webpack config and no turbopack config"_, you are on an old `@reticlehq/next` — upgrade it rather than dropping `withReticle`.
 
-**Other frameworks** — call `reticle.connect()` and `install()` inside a dev guard. Vanilla / HTML: use a dynamic `import('@reticlehq/react')` inside `if (location.hostname === 'localhost')`.
+**Other frameworks** — call `reticle.connect()` and `install()` inside the framework's own dev guard (`import.meta.env.DEV`, `import.meta.dev`, `process.env.NODE_ENV !== 'production'`). Do NOT guard on the hostname; see Step 4's checklist for why that one silently loses the whole setup.
+
+**A page with NO build step** (plain HTML, or a Python/Ruby/PHP app serving templates) — you do not need npm, a bundler, or a `package.json`. Import the SDK from a URL, in a template you only serve in development:
+
+```html
+<script type="module">
+  import { reticle } from 'https://cdn.jsdelivr.net/npm/@reticlehq/browser@2.7.0/+esm';
+  reticle.connect({ token: '<contents of ~/.reticle/pairing-token>' });
+</script>
+```
+
+The `token` is required: without it the bridge closes the socket with "authentication failed" and no session ever appears. Pin the version to the daemon's (`npx @reticlehq/server version`), because a floating import upgrades the page SDK underneath a daemon that did not move. Serving on something other than localhost? Add `allowNonLocalhost: true`.
 
 ---
 

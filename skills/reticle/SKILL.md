@@ -3,7 +3,7 @@ name: reticle
 description: Verify that a web app change actually works by driving the running app from the inside (DOM, network, routing, console, framework state) instead of screenshots or guessing. Use after any user-facing change, when a fix is claimed but unproven, when a test passes but the UI is broken, or when you need a real verdict rather than "looks right". Also use to install and wire up Reticle in a project that does not have it yet.
 license: Apache-2.0
 metadata:
-  version: 2.0.0
+  version: 2.7.0
   homepage: https://www.reticle.sh
   repository: https://github.com/reticlehq/reticle
 ---
@@ -53,7 +53,7 @@ Ask nothing: not the framework, package manager, port, editor, or MCP client. Ev
 
 **Never ask about the port.** There are two and conflating them is a top setup failure. The dev-server port (3000, 5173) belongs to the user's `npm run dev` and Reticle never touches it. The bridge port (**4400**) is the daemon-to-SDK channel and defaults correctly.
 
-Read the report: `✓` applied, `·` already wired, `–` skipped, `⚠` needs your edit. Only `⚠` lines need you, and each carries the exact snippet. A non-zero exit is a to-do list, not a failed install. Fix every `⚠` using [references/setup.md](references/setup.md) before moving on.
+Read the report: `✓` applied, `·` already wired, `–` skipped, `ℹ` done but incomplete in a way that matters, `⚠` needs your edit. **`⚠` and `ℹ` both need you.** `ℹ` is the one people skim past: the step ran, and something about the result still stops a session appearing. Each line carries the exact snippet. A non-zero exit is a to-do list, not a failed install. Fix every `⚠` using [references/setup.md](references/setup.md) before moving on.
 
 ## 2. Register the MCP server, then restart the client.
 
