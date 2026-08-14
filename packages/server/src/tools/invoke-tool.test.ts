@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { SessionState, UNSCRIPTABLE_TAB_RECOMMENDATION, TRANSPORT_LIMITS } from '@reticlehq/core';
 import { TOOLS, type ToolDef, type ToolDeps } from './tools.js';
 import { ReticleTool } from './tool-names.js';
+import { EnvelopeKey } from './tool-kit.js';
+import { getSessionMetrics, resetSessionMetrics } from '../telemetry/session-metrics.js';
 import { buildDynamicTools } from './dynamic-tools.js';
 import { runTool, SESSION_BOUND_TOOLS, SESSION_EXEMPT_TOOLS } from './invoke-tool.js';
 import { BaselineStore } from '../project/baselines.js';
@@ -300,5 +302,72 @@ describe('an argument larger than the transport allows is refused, not run', () 
     })) as Record<string, unknown>;
     expect(r['error']).toBeUndefined();
     expect(r['ok']).toBe(true);
+  });
+});
+
+/**
+ * `feedbackPrompted` is the denominator that says whether inviting mid-task works or is decoration,
+ * and it read as near-empty on almost every session. It was not unset and not unserialised: the
+ * count sat BELOW the session-bound early return, behind two conditions that between them exclude
+ * most friction there is. A session-EXEMPT tool never reached it, and a tool that THREW never got
+ * there either — and a throw is the commonest refusal shape by a wide margin, which is exactly the
+ * `refused` friction the invitation is written for.
+ */
+describe('the feedback invitation is counted wherever friction actually happens', () => {
+  beforeEach(() => {
+    resetSessionMetrics();
+  });
+
+  it('invites and counts on a session-EXEMPT tool, which never reached the count before', async () => {
+    const exempt: ToolDef = {
+      name: ReticleTool.FLOW_VERIFY,
+      description: '',
+      inputSchema: {},
+      handler: () => Promise.resolve({ error: 'no flows to verify' }),
+    };
+    const result = await runTool(exempt, fakeDeps(), {});
+    expect(result).toHaveProperty(EnvelopeKey.FEEDBACK_INVITE);
+    expect(getSessionMetrics().summarize(true).feedbackPrompted).toBe(1);
+  });
+
+  it('counts the ask an unrecognised THROW earns, which is the commonest refusal there is', async () => {
+    const throwing: ToolDef = {
+      name: ReticleTool.SNAPSHOT,
+      description: '',
+      inputSchema: {},
+      handler: () => Promise.reject(new Error('a completely novel failure nobody has seen')),
+    };
+    await expect(runTool(throwing, fakeDeps(), {})).rejects.toThrow();
+    expect(getSessionMetrics().summarize(true).feedbackPrompted).toBe(1);
+  });
+
+  /**
+   * A recognised error gets a concrete recovery INSTEAD of the ask, so counting it would inflate the
+   * denominator with invitations nobody was ever shown — the same error in the other direction.
+   */
+  it('does not count a throw the agent was given a recovery for instead of an ask', async () => {
+    const known: ToolDef = {
+      name: ReticleTool.SNAPSHOT,
+      description: '',
+      inputSchema: {},
+      handler: () => Promise.reject(new Error('no browser session connected')),
+    };
+    await expect(runTool(known, fakeDeps(), {})).rejects.toThrow();
+    expect(getSessionMetrics().summarize(true)).not.toHaveProperty('feedbackPrompted');
+  });
+
+  /**
+   * `reticle_run` is a WRAPPER: its handler calls runTool on the real tool, which already invited
+   * under the real tool's name. Counting the echo halves the feedback rate.
+   */
+  it('does not count the reticle_run wrapper twice for one refusal', async () => {
+    const wrapper: ToolDef = {
+      name: ReticleTool.RUN,
+      description: '',
+      inputSchema: {},
+      handler: () => Promise.resolve({ error: 'no browser session connected' }),
+    };
+    await runTool(wrapper, fakeDeps(), {});
+    expect(getSessionMetrics().summarize(true)).not.toHaveProperty('feedbackPrompted');
   });
 });

@@ -12,7 +12,7 @@ import { takeVersionSkew } from '../version/version-nudge.js';
 import { noteToolCall } from '../daemon/daemon-usefulness.js';
 import { bugsInResult } from '../telemetry/bug-found.js';
 import { noteToolServed, reportToolRefused } from '../telemetry/tool-refused.js';
-import { refusalReasonFor } from './error-recovery.js';
+import { buildErrorPayload, refusalReasonFor } from './error-recovery.js';
 import { resultIsError } from '../mcp/mcp-is-error.js';
 import { verificationOf } from '../telemetry/verification-of.js';
 import { asString } from './tools-helpers.js';
@@ -22,7 +22,7 @@ import { takeFeedbackPrompt } from './feedback-tools.js';
 import { takeFeedbackUndelivered } from '../telemetry/feedback-delivery.js';
 import type { Session } from '../session/session.js';
 import { span } from '../trace.js';
-import { frictionOf, inviteFor } from './feedback-invite.js';
+import { type FrictionKind, frictionOf, inviteFor } from './feedback-invite.js';
 import type { ToolDef, ToolDeps } from './tools.js';
 
 /**
@@ -174,6 +174,34 @@ function reportRefusal(toolName: string, message: string): void {
 }
 
 /**
+ * Which friction this result represents, counting the invitation if there is one.
+ *
+ * Feedback is the highest-yield channel this product has, and `feedbackPrompted` is the denominator
+ * that says whether inviting mid-task works or is decoration. It read as near-empty because the
+ * count sat behind the session-bound early return, so a session-EXEMPT tool never invited and a tool
+ * that THREW never got there — and a throw is the commonest refusal there is.
+ *
+ * `reticle_run` is skipped for the same reason it is skipped for refusals and defects: the wrapper's
+ * handler calls `runTool` on the real tool, which already invited under the real tool's name, and
+ * the failure is then handed back out to be counted a second time. A doubled denominator makes the
+ * feedback rate read half.
+ */
+function frictionInviteFor(toolName: string, raw: unknown): FrictionKind | undefined {
+  if (!isPlainObject(raw) || toolName === ReticleTool.RUN) return undefined;
+  const friction = frictionOf({
+    unknownTool: false,
+    verifiedUnknown: 'unknown' === raw['verified'],
+    repeatRun: getSessionMetrics().currentRun,
+    errored: resultIsError(raw),
+    // A verdict is progress. Without this, three successful act_and_wait calls in a row — the exact
+    // loop this release exists to encourage — get told they are stuck.
+    producedVerdict: 'verified' in raw,
+  });
+  if (friction !== undefined) getSessionMetrics().recordFeedbackPrompt();
+  return friction;
+}
+
+/**
  * The single entry point both the MCP server and the programmatic invoker call instead of
  * `tool.handler` directly. Runs the handler, then — for a live-session tool returning a plain
  * object that did not already include `session` — splices the health envelope on. Idempotent
@@ -279,7 +307,15 @@ export async function runTool(
     // to the agent by the MCP boundary, and discarded. Reported here rather than at that boundary
     // because there are two of them (mcp.ts and the reticle_run hatch) and this is the one place both
     // go through — a third would otherwise be invisible from the day it was added.
-    reportRefusal(tool.name, error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    reportRefusal(tool.name, message);
+    // The invitation on THIS path is the one `buildErrorPayload` attaches when it does not recognise
+    // the error, and it was never counted — so the denominator excluded the commonest friction there
+    // is. Gated on the payload actually carrying the ask, because a recognised error gets a recovery
+    // instead and counting an invitation nobody was shown breaks the ratio in the other direction.
+    if (tool.name !== ReticleTool.RUN && buildErrorPayload(message).feedback !== undefined) {
+      getSessionMetrics().recordFeedbackPrompt();
+    }
     throw error;
   } finally {
     // In a `finally` so a THROWN call still settles: otherwise every failing tool would leak a
@@ -319,11 +355,27 @@ export async function runTool(
   // report announced as accepted and then silently lost is the failure the awaited send existed to
   // prevent. See feedback-delivery.ts.
   const undelivered = isPlainObject(raw) ? takeFeedbackUndelivered() : undefined;
+  // Invite feedback at the moment of friction, worded for what just happened. Counted, because
+  // `feedback_submitted / feedbackPrompted` is the only thing that says whether the invitation works
+  // at all rather than being decoration.
+  //
+  // This used to sit below the session-bound early return, which put it behind two conditions that
+  // exclude most friction there is. A session-EXEMPT tool never reached it, and neither did a tool
+  // that THREW — and throwing is the commonest refusal shape by a wide margin, i.e. exactly the
+  // `refused` friction the line is written for. `errored` could only ever see the handlers that
+  // RETURN an error. So the denominator was counting a small, unrepresentative slice of the
+  // invitations and reading near-empty, which looks identical to a nudge that never fires.
+  const friction = frictionInviteFor(tool.name, raw);
   const result =
-    prompt === undefined && update === undefined && skew === undefined && undelivered === undefined
+    prompt === undefined &&
+    update === undefined &&
+    skew === undefined &&
+    undelivered === undefined &&
+    friction === undefined
       ? raw
       : {
           ...(raw as object),
+          ...(friction !== undefined ? { [EnvelopeKey.FEEDBACK_INVITE]: inviteFor(friction) } : {}),
           ...(prompt !== undefined ? { [EnvelopeKey.FEEDBACK_PROMPT]: prompt } : {}),
           ...(update !== undefined ? { [EnvelopeKey.UPDATE_AVAILABLE]: update } : {}),
           ...(skew !== undefined ? { [EnvelopeKey.VERSION_SKEW]: skew } : {}),
@@ -354,22 +406,5 @@ export async function runTool(
   // run, same discipline as the pool lease — a hint on every call is noise that gets tuned out.
   const unverified = getSessionMetrics().takeUnverifiedNudge();
   if (unverified !== undefined) envelope[EnvelopeKey.VERIFY_NEXT] = unverified;
-  // Invite feedback at the moment of friction, worded for what just happened. Feedback produced
-  // ~11 of this release's fixes from 14 reports; the handshake instruction is what got those 14,
-  // and this closes the gap it leaves — the agent mid-problem, not thinking about feedback tooling.
-  // Counted so `feedback_submitted / feedbackPrompted` can tell us whether it works at all.
-  const friction = frictionOf({
-    unknownTool: false,
-    verifiedUnknown: 'unknown' === (result as { verified?: unknown }).verified,
-    repeatRun: getSessionMetrics().currentRun,
-    errored: 'error' in result,
-    // A verdict is progress. Without this, three successful act_and_wait calls in a row — the exact
-    // loop this release exists to encourage — get told they are stuck.
-    producedVerdict: 'verified' in result,
-  });
-  if (friction !== undefined) {
-    envelope[EnvelopeKey.FEEDBACK_INVITE] = inviteFor(friction);
-    getSessionMetrics().recordFeedbackPrompt();
-  }
   return Object.keys(envelope).length > 0 ? { ...result, ...envelope } : result;
 }
