@@ -395,7 +395,16 @@ export const SVELTEKIT_HOOKS_PATH = 'src/hooks.client.ts';
  * here is the one thing this project exists not to do.
  */
 export function unverifiedUiLibraryNote(library: string): string {
-  return `Detected a ${library} app. Reticle's DOM, network, console and state tools work here, and source file:line does too — the build plugin stamps data-reticle-source regardless of UI library (measured on preact and svelte). What @reticlehq/react adds and you will NOT get is React component identity: component names and component stacks. No CI gate covers ${library}. Gated today: Vite + React, Next.js, Remix, Astro. If something doesn't work, please open an issue.`;
+  // Preact is not in the same position as Vue or Svelte and must not be told it is. The React
+  // adapter reaches Preact through `preact/compat`, which is what `docs/frameworks.mdx` has always
+  // said, so telling a Preact reader they get no component identity contradicts our own docs and
+  // talks them out of a package that is the right one for them. It is still ungated, which is the
+  // honest caveat, and #129 is the issue for closing that.
+  const identity =
+    'preact' === library
+      ? 'React component identity — component names and stacks — comes from `@reticlehq/react`, which reaches Preact through `preact/compat`. That path is not covered by a CI gate here, so treat it as expected-to-work rather than proven.'
+      : 'What `@reticlehq/react` adds and you will NOT get is React component identity: component names and component stacks.';
+  return `Detected a ${library} app. Reticle's DOM, network, console and state tools work here, and source file:line does too — the build plugin stamps data-reticle-source regardless of UI library (measured on preact and svelte). ${identity} No CI gate covers ${library}. Gated today: Vite + React, Next.js, Remix, Astro. If something doesn't work, please open an issue.`;
 }
 
 export const UNVERIFIED_FRAMEWORK_NOTE =

@@ -69,3 +69,29 @@ describe('the React kit is only installed into a React codebase', () => {
     expect(frameworkPackages(Framework.NUXT, UiLibrary.VUE)).not.toContain(REACT_KIT);
   });
 });
+
+/**
+ * The unverified-library note must not contradict our own docs about Preact.
+ *
+ * `docs/frameworks.mdx` has always said Preact gets the React adapter through `preact/compat`, and
+ * `frameworkPackages` installs it for exactly that reason. The note told a Preact reader the
+ * opposite — that React component identity is what they will NOT get — which both contradicts the
+ * docs and talks them out of the package that is right for them.
+ *
+ * Vue and Svelte genuinely do not get it, and must keep being told so plainly.
+ */
+describe('the unverified note tells each library the truth about component identity', () => {
+  it('does not tell a Preact app it loses component identity', async () => {
+    const { unverifiedUiLibraryNote } = await import('./snippets.js');
+    const note = unverifiedUiLibraryNote('preact');
+    expect(note).not.toContain('will NOT get');
+    expect(note).toContain('preact/compat');
+    // Still honest about the gap that remains: it works by design, not by proof.
+    expect(note.toLowerCase()).toContain('not covered by a ci gate');
+  });
+
+  it('still tells a Vue app plainly that it does not get component identity', async () => {
+    const { unverifiedUiLibraryNote } = await import('./snippets.js');
+    expect(unverifiedUiLibraryNote('vue')).toContain('will NOT get');
+  });
+});
