@@ -108,12 +108,17 @@ describe('the connect module picks up a token written after the dev server start
     // aborts halfway leaks a listening port into the next test, which then fails for a reason that
     // has nothing to do with it — the failure being debugged here, one layer down.
     for (const server of servers.splice(0)) {
-      // Bounded, because `close()` can genuinely never resolve. Measured in isolation: a dev server
-      // that has served `/@reticle-connect` does not close — 90s and counting — while the same
-      // server closes in 1ms if it served a real file instead, and in 7ms with no Reticle plugin at
-      // all. The served module imports `/.vite/deps/@reticlehq_react.js`, so Vite's dependency
-      // optimizer is involved and `close()` waits on it forever. Filed separately; it is a product
-      // interaction, not something this test should paper over silently.
+      // Bounded, because `close()` can genuinely never resolve. It is an UPSTREAM Vite bug and
+      // nothing to do with this plugin: once the dev server has served any PRE-BUNDLED dependency,
+      // `close()` never settles. Re-measured on Vite 8.2.0 with no Reticle plugin loaded at all and
+      // a plain crawlable entry importing `react`, which hangs identically.
+      //
+      // Worth stating precisely, because the first reading of this blamed `/@reticle-connect` and
+      // guessed the opposite mechanism — that a virtual module triggers dep discovery which never
+      // settles. It hangs exactly when discovery HAS settled and the dep is being served from
+      // `/.vite/deps/`. Serving the same module with the SDK unbundled closes in 2ms.
+      //
+      // So this bound is not papering over a defect of ours, and it cannot be removed by fixing one.
       //
       // The assertion this suite exists for has already run by the time teardown starts, so a
       // teardown that cannot finish must not be allowed to fail it — that inversion is what made
