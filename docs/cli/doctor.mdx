@@ -25,6 +25,7 @@ reticle doctor
   node         v22.14.0
   chromium     ✓ installed (chromium-1223)
   daemon       ✓ running on :4400 (pid 4795, v2.8.0)
+  sessions     ✓ 1 page connected
   bridge port  4400  (your app must dial THIS port, not your dev-server port)
   daemon log   /Users/you/.reticle/daemon-4400.log
   tracing      RETICLE_TRACE=1 on the daemon for per-stage timings in that log
@@ -35,6 +36,7 @@ reticle doctor
 | `node` | The Node version running the CLI |
 | `chromium` | Whether the exact Chromium revision the bundled Playwright wants is on disk. The most common silent failure |
 | `daemon` | Whether the port holds a Reticle daemon, a foreign process (named where possible), or nothing. Adds a `version` line when the daemon's version or contract fingerprint disagrees with the CLI's |
+| `sessions` | Whether any page has actually connected. Zero is a FAILING check rather than a neutral note, because it is the state the setup most often stalls in: wired correctly, daemon up, nothing dialled in. When it is zero the daemon's own no-session diagnosis prints below the checklist |
 | `bridge port` | The port your app must dial, spelled out because mixing it up with the dev server port is the most common setup failure |
 | `daemon log` | Where the structured daemon log lives |
 | `tracing` | How to turn that log into a per-stage trace |
