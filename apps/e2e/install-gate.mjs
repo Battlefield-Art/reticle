@@ -55,7 +55,7 @@ process.env.RETICLE_TELEMETRY = '0';
 //
 // The telemetry line above already silences the events; this is belt and braces for anything that
 // re-enables them (a debug run recording to a local sink) and for the CLI's own CI-shaped defaults.
-process.env.CI = '1';
+process.env.CI = process.env.CI ?? 'true';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';

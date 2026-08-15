@@ -12,7 +12,13 @@ export RETICLE_TELEMETRY=0
 # And say so on every event that does get emitted. `CI` is the only signal an event has for
 # "this was a pipeline", it is set by the runner and by nothing else, so a battery driven from a
 # laptop or a cloud agent sandbox reported itself as a person at a machine.
-export CI=1
+# `${CI:-true}`, not `CI=1`. GitHub Actions already sets `CI=true`, and overwriting it with
+# `1` broke `tauri build`, whose CLI reads CI as the value of its own `--ci` flag and rejects
+# a non-boolean: `error: invalid value '1' for '--ci'`. That turned the desktop gate red on
+# main for a reason whose own error message blamed missing webkit packages the log showed
+# being installed. Only set it when the runner has not, which was always the intent: the case
+# this exists for is a battery driven from a laptop or a cloud agent sandbox.
+export CI="${CI:-true}"
 
 # Provision the bridge pairing token BEFORE the dev servers boot. next-smoke's withReticle reads it at
 # `next dev` config load (before any per-spec bridge exists) to inline into its client connect; the

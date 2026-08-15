@@ -51,9 +51,16 @@ describe('the install gate never phones home', () => {
     // `CI` is the only thing an event carries that says "not a person", and it is set by the runner
     // and by nothing else. A gate driven from a laptop or from a cloud agent sandbox therefore
     // landed in the data as a human at a machine — which is the shape our own gate traffic had.
+    // Pinned as "CI ends up non-empty", NOT as one literal. The first version of this asserted
+    // `CI = '1'`, and `1` is a value some tooling rejects: setting it in the desktop harness broke
+    // `tauri build`, whose CLI reads CI as the value of its own `--ci` flag, and turned that gate red
+    // on main. A test that pins a specific string blesses whichever string was written first.
     const src = readFileSync(GATE, 'utf8');
     expect(src, 'install-gate.mjs must set CI on its own process').toMatch(
-      /process\.env\.CI\s*=\s*'1'/,
+      /process\.env\.CI\s*=\s*[^;]+;/,
+    );
+    expect(src, 'and must not clobber a value the runner already set').toMatch(
+      /process\.env\.CI\s*=\s*process\.env\.CI\s*\?\?/,
     );
   });
 
