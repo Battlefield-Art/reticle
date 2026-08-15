@@ -46,6 +46,17 @@ function memoryIo(
    * ran. The test was the thing that was not portable, on the platform that is 66% of users.
    */
   const norm = (p: string): string => p.replace(/\\/g, '/');
+  /**
+   * Absolute on EITHER platform, tested after normalising the separators.
+   *
+   * `p.startsWith('/')` is a POSIX-only question, and production reaches this through `join()`,
+   * which yields `\app\CLAUDE.md` on Windows. That is absolute and did not look it, so the harness
+   * prefixed it with the scoped app root and produced `src/admin//app/CLAUDE.md`: two tests failed on
+   * Windows only, about paths production gets right. Same shape as the `norm` fix above, on the
+   * platform that is most of our users, and the second time this harness has been the thing that was
+   * not portable.
+   */
+  const isAbsolute = (p: string): boolean => /^([A-Za-z]:)?\//.test(norm(p));
   const key = (p: string): string =>
     // `.` is the scope's own root — the real IO resolves it with `join(cwd, '.')`, which is `cwd`.
     // Keying it as `<prefix>/.` instead made every top-level scan inside a redirected app come back
@@ -54,7 +65,7 @@ function memoryIo(
       ? '' === prefix
         ? '.'
         : prefix
-      : norm(p.startsWith('/') || '' === prefix ? p : `${prefix}/${p}`);
+      : norm(isAbsolute(p) || '' === prefix ? p : `${prefix}/${p}`);
   return {
     written,
     lines,
