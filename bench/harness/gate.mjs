@@ -20,12 +20,39 @@ function readRaw(path) {
   return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
 }
 
+function historyRows() {
+  if (!existsSync('bench/history.jsonl')) return [];
+  return readFileSync('bench/history.jsonl', 'utf8')
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
+}
+
 /** The previous recorded row (the baseline we must not regress against), or null on first run. */
 function lastRow() {
-  if (!existsSync('bench/history.jsonl')) return null;
-  const lines = readFileSync('bench/history.jsonl', 'utf8').trim().split('\n').filter(Boolean);
-  const last = lines.at(-1);
-  return last !== undefined ? JSON.parse(last) : null;
+  return historyRows().at(-1) ?? null;
+}
+
+/**
+ * A row further back than the previous one, so a drift that lands once and then holds is visible.
+ *
+ * The last-row comparison cannot see its own accumulation. A change that costs 3% is recorded, and
+ * every run after it is measured against the recorded, worse number and passes forever. That is not
+ * hypothetical: it is exactly how #283 went unnoticed, and the tolerance was never exceeded once.
+ *
+ * Reported rather than enforced at the same tolerance, because a rise here is not automatically a
+ * defect. #283's own cost turned out to be bought: the snapshot delta started carrying the refs an
+ * agent needs to act, which is more tokens and a better answer. A gate that cannot tell "we paid for
+ * this" from "we regressed" will either block good changes or be muted, and both end the same way.
+ * So: always print the drift, and fail only when it has grown past the point where nobody has
+ * decided anything.
+ */
+const REFERENCE_VERSION = process.env.BENCH_REFERENCE_VERSION ?? '2.7.0';
+const REFERENCE_TOL = 0.1;
+
+function referenceRow() {
+  return historyRows().find((r) => String(r.version) === REFERENCE_VERSION) ?? null;
 }
 
 /** Parse a "3/3" detection-rate string into { detected, total }. */
@@ -86,6 +113,24 @@ if (analysis !== null) {
   scorecard.push(['Observe · false-positives', '0', fp]);
   note('Observe · efficiency', lastVe);
   scorecard.push(['Observe · efficiency', lastVe ?? '—', ve]);
+  // The same number against a fixed point, so accumulation cannot hide behind a moving baseline.
+  const refRow = referenceRow();
+  const refVe = refRow?.per_tool?.reticle?.ve ?? null;
+  if (refVe !== null && ve !== null) {
+    const drift = ((ve - refVe) / refVe) * 100;
+    scorecard.push([
+      `Observe · efficiency vs ${REFERENCE_VERSION}`,
+      refVe,
+      `${ve} (${drift >= 0 ? '+' : ''}${drift.toFixed(1)}%)`,
+    ]);
+    if (ve < refVe * (1 - REFERENCE_TOL)) {
+      failures.push(
+        `VE has drifted ${(((refVe - ve) / refVe) * 100).toFixed(1)}% below the ${REFERENCE_VERSION} reference ` +
+          `(${ve} vs ${refVe}). Each step passed the last-row check; together they did not. Either attribute ` +
+          `it, or move BENCH_REFERENCE_VERSION forward deliberately and say why.`,
+      );
+    }
+  }
 } else {
   scorecard.push(['Observation-cost', '—', 'not run this pass (advisory skip)']);
 }
