@@ -156,7 +156,7 @@ Every switch in [Your choices](#your-choices) disables feedback too. If telemetr
 Everything above is anonymous, and stays that way unless you decide otherwise. If you want us to know who you are (to get support, to ask about an enterprise licence, or to be a design partner), there is one command, and running it is the only way it ever happens:
 
 ```bash
-reticle identify --context company --company "Acme" --email you@acme.com
+npx @reticlehq/server identify --context company --company "Acme" --email you@acme.com
 ```
 
 `--context` is the only required part, and `company | side_project | open_source | learning` is the whole vocabulary. You can say "this is a company" without naming it, or name it without leaving an email.
@@ -168,7 +168,7 @@ Before it sends anything, it prints what it will send and one thing worth readin
 To undo it:
 
 ```bash
-reticle identify --forget
+npx @reticlehq/server identify --forget
 ```
 
 That deletes the local file and stops any further sends. To have what was already sent removed, email support@reticlehq.com.
@@ -182,7 +182,7 @@ Events are sent over HTTPS to [PostHog](https://posthog.com) (US cloud), a produ
 Telemetry is on by default and Reticle tells you so the first time it runs: once, in one line, with a pointer to this page. To see the current state at any time:
 
 ```bash
-reticle telemetry status
+npx @reticlehq/server telemetry status
 ```
 
 Three ways to opt out, in whatever form fits your setup:

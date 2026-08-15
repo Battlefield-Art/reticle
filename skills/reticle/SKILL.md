@@ -59,8 +59,10 @@ Five steps, in order. None is optional. Step 3 is the one that gets skipped and 
 ## 1. Run init. Ask the user nothing.
 
 ```bash
-npx @reticlehq/server init
+RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init
 ```
+
+`@latest` is deliberate: `npx` caches, and a stale cached CLI is the most common silent setup failure. Never pin a version here.
 
 It detects the framework, package manager and UI library, registers the MCP server with the agents on the machine, installs the SDK, writes `.reticle.json` and the `/reticle` command, wires the build config, and scaffolds a capabilities file from the `data-testid` values it found.
 

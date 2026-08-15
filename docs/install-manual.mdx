@@ -175,14 +175,14 @@ IPC observation needs nothing on the Rust side. An `invoke('load_todos')` alread
 ## Part 3. Prove it
 
 ```bash
-npx reticle status
+npx @reticlehq/server status
 ```
 
 A session in the output means the app connected. That. Not a tick in a checklist, is the install finished.
 
 If it says nothing connected, the usual cause is a port disagreement between your app and the daemon. The browser console will name the exact port it tried; set it explicitly with `VITE_RETICLE_WS_URL=ws://localhost:4400/reticle` or `reticle.connect({ url })`.
 
-Still stuck? `npx reticle doctor` checks Chromium, the daemon and the port in one command.
+Still stuck? `npx @reticlehq/server doctor` checks Chromium, the daemon and the port in one command.
 
 <CardGroup cols={2}>
   <Card title="Instrument your app" icon="wrench" href="/instrumentation">

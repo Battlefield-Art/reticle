@@ -7,7 +7,7 @@ icon: key
 `reticle license` reports whether an enterprise license is active. It resolves entirely from the environment. Nothing leaves the machine.
 
 ```bash
-npx reticle license
+npx @reticlehq/server license
 ```
 
 No flags.
@@ -40,7 +40,7 @@ Always `0`.
 ## Worked example
 
 ```bash
-npx reticle license | jq -r .status
+npx @reticlehq/server license | jq -r .status
 ```
 
 <Card title="What enterprise covers" icon="building" href="/enterprise">

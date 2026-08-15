@@ -7,7 +7,7 @@ icon: cloud
 Ten subcommands bind this repository to Reticle Cloud so runs and flows land on a dashboard. They dispatch before the local parser, so `reticle login` is one tool, not a second binary.
 
 ```bash
-npx reticle <login|logout|whoami|link|project|config|push|runs|regression|share>
+npx @reticlehq/server <login|logout|whoami|link|project|config|push|runs|regression|share>
 ```
 
 These are thin clients over the `/v1` API. The moat is the server, not the verbs.
@@ -27,10 +27,10 @@ Auth for any command is `RETICLE_CLOUD_KEY` from the environment (the agent path
 ### `reticle login`
 
 ```bash
-npx reticle login                                    # browser device flow (the default)
-npx reticle login --email you@acme.com               # headless: requests a code
-npx reticle login --email you@acme.com --code 123456 # headless: exchanges it
-npx reticle login --email you@acme.com --org "Acme"  # --org is consulted only for a brand new account
+npx @reticlehq/server login                                    # browser device flow (the default)
+npx @reticlehq/server login --email you@acme.com               # headless: requests a code
+npx @reticlehq/server login --email you@acme.com --code 123456 # headless: exchanges it
+npx @reticlehq/server login --email you@acme.com --org "Acme"  # --org is consulted only for a brand new account
 ```
 
 With no `--email`, it runs a browser device flow like `gh auth login`: fetch a device and user code, open the browser to approve, poll until confirmed. With `--email` it keeps the two-step code path for CI and servers, because it proves you own the inbox before handing out a session. A local cloud whose dev mailer cannot deliver echoes the code back and completes in one command.
@@ -61,7 +61,7 @@ An unattached repo also gets a next-step nudge on stderr, telling you to run `re
 ### `reticle link`
 
 ```bash
-npx reticle link [--project <name|id>]
+npx @reticlehq/server link [--project <name|id>]
 ```
 
 Binds this repository to a cloud project. With a login token it **mints** a project-scoped key, so there is nothing to paste. With `RETICLE_CLOUD_KEY` already set, it resolves that key's project instead. `--project` accepts a slug id or a display name; omitted, it uses the `default` project. Writes `cloud.json` and the key.
@@ -69,10 +69,10 @@ Binds this repository to a cloud project. With a login token it **mints** a proj
 ### `reticle project`
 
 ```bash
-npx reticle project ls
-npx reticle project create "My App"
-npx reticle project rename <projectId> "New name"
-npx reticle project rm <projectId>
+npx @reticlehq/server project ls
+npx @reticlehq/server project create "My App"
+npx @reticlehq/server project rename <projectId> "New name"
+npx @reticlehq/server project rm <projectId>
 ```
 
 `rename` and `rm` work but are not in the usage block. Missing or malformed arguments exit `2`.
@@ -80,7 +80,7 @@ npx reticle project rm <projectId>
 ### `reticle config`
 
 ```bash
-npx reticle config [--runs on|off] [--memory on|off] [--flows on|off] [--verify local|server]
+npx @reticlehq/server config [--runs on|off] [--memory on|off] [--flows on|off] [--verify local|server]
 ```
 
 Edits `.reticle/cloud.json` in place. Any value other than `on` or `off` (or `local` or `server` for `--verify`) exits `2`. Requires the repo to be linked.
@@ -100,7 +100,7 @@ The CI gate: which flows broke relative to before. **Exits `3`** when any flow r
 ### `reticle share`
 
 ```bash
-npx reticle share <runId>
+npx @reticlehq/server share <runId>
 ```
 
 Mints a public proof link for one run. A missing `runId` exits `2`.
@@ -119,9 +119,9 @@ Output is pretty-printed JSON on stdout. Errors and next-step nudges go to stder
 ## Worked example
 
 ```bash
-npx reticle login
-npx reticle project create "Checkout"
-npx reticle link --project "Checkout"
-npx reticle verify http://localhost:4173   # runs auto-push once linked
-npx reticle regression                      # exit 3 fails the pipeline
+npx @reticlehq/server login
+npx @reticlehq/server project create "Checkout"
+npx @reticlehq/server link --project "Checkout"
+npx @reticlehq/server verify http://localhost:4173   # runs auto-push once linked
+npx @reticlehq/server regression                      # exit 3 fails the pipeline
 ```

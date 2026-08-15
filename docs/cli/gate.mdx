@@ -7,7 +7,7 @@ icon: shield-halved
 `reticle gate` is what makes verification unavoidable. It computes the [affected](/cli/affected) flows, looks for a passing artifact for each, and fails the command if any is missing. An agent that edits a covered file cannot call itself finished without re-verifying.
 
 ```bash
-npx reticle gate [--since <ref>] [file...]
+npx @reticlehq/server gate [--since <ref>] [file...]
 ```
 
 ## Arguments and flags
@@ -50,13 +50,13 @@ One `reticle_gate` line. Real capture from this repository, with the flow lists 
 | `0` | Every affected, non-flaky flow has a passing artifact and nothing was weakened or deleted |
 | `1` | Something is uncovered, downgraded or deleted. Also `1` on any internal fault: the gate fails closed |
 
-Measured on this repository, `npx reticle gate --since HEAD~1` exited `1` with the output above.
+Measured on this repository, `npx @reticlehq/server gate --since HEAD~1` exited `1` with the output above.
 
 ## Worked example
 
 ```yaml
-- run: npx reticle verify http://localhost:4173
-- run: npx reticle gate --since ${{ github.event.pull_request.base.sha }}
+- run: npx @reticlehq/server verify http://localhost:4173
+- run: npx @reticlehq/server gate --since ${{ github.event.pull_request.base.sha }}
 ```
 
 <Card title="Wiring this into CI" icon="rocket" href="/deploy-checks">

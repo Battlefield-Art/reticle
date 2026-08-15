@@ -35,7 +35,7 @@ Paste to your agent (Claude Code / Cursor / any MCP agent): `Follow https://raw.
 ### B. A platform / CI, driven from your pipeline (no MCP, no human)
 
 ```bash
-reticle serve --http --http-token "$TOKEN" --drive "$PREVIEW_URL"   # localhost:7331
+npx @reticlehq/server serve --http --http-token "$TOKEN" --drive "$PREVIEW_URL"   # localhost:7331
 ```
 
 ```js

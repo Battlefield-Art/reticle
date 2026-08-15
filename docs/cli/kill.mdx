@@ -7,7 +7,7 @@ icon: skull
 `reticle kill` frees the bridge port. It asks **who is listening** on the port and signals that one process, which is the whole difference between this command and the shell pipeline everybody reaches for.
 
 ```bash
-npx reticle kill [--port N] [--force]
+npx @reticlehq/server kill [--port N] [--force]
 ```
 
 <Warning>
@@ -86,6 +86,6 @@ Nothing to free:
 ## Worked example
 
 ```bash
-npx reticle kill            # free 4400
-npx reticle status          # confirm
+npx @reticlehq/server kill            # free 4400
+npx @reticlehq/server status          # confirm
 ```

@@ -7,7 +7,7 @@ icon: heart-pulse
 `reticle status` is the command that tells you whether the install actually finished. Not a tick in a checklist: a connected app.
 
 ```bash
-npx reticle status [--port N]
+npx @reticlehq/server status [--port N]
 ```
 
 ## Flags
@@ -55,8 +55,8 @@ Always `0`. This command answers a question; it does not judge the answer.
 ## Worked example
 
 ```bash
-npx reticle init
-npx reticle status    # a session in the list means the app is genuinely wired
+npx @reticlehq/server init
+npx @reticlehq/server status    # a session in the list means the app is genuinely wired
 ```
 
 <Card title="Nothing connected?" icon="triangle-exclamation" href="/troubleshooting">

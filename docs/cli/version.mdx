@@ -7,9 +7,9 @@ icon: tag
 `reticle version` prints the running package version. It is the diagnostic to reach for when you need to know which build `npx` actually resolved, which is not always the one you expected.
 
 ```bash
-npx reticle version
-npx reticle --version
-npx reticle -v
+npx @reticlehq/server version
+npx @reticlehq/server --version
+npx @reticlehq/server -v
 ```
 
 All three are the same command. No flags.
@@ -29,7 +29,7 @@ Always `0`.
 ## Worked example
 
 ```bash
-npx reticle version | jq -r .version
+npx @reticlehq/server version | jq -r .version
 ```
 
 <Note>

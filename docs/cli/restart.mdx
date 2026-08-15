@@ -7,7 +7,7 @@ icon: rotate
 `reticle restart` is [`reticle kill`](/cli/kill) followed by a daemon start that waits for a real bind.
 
 ```bash
-npx reticle restart [--port N] [--force]
+npx @reticlehq/server restart [--port N] [--force]
 ```
 
 ## Flags
@@ -51,8 +51,8 @@ Real capture, when the port is held by something that is not ours:
 ## Worked example
 
 ```bash
-npx reticle restart         # after an upgrade, so the new version is the one serving
-npx reticle status
+npx @reticlehq/server restart         # after an upgrade, so the new version is the one serving
+npx @reticlehq/server status
 ```
 
 <Card title="Why not lsof" icon="skull" href="/cli/kill">

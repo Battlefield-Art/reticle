@@ -7,7 +7,7 @@ icon: eye
 `reticle watch` is the buddy loop. It watches the current directory and, on every save of a source file, reports which saved flows the change puts at risk. It runs in the environment, so it costs your agent nothing per turn.
 
 ```bash
-npx reticle watch [url]
+npx @reticlehq/server watch [url]
 ```
 
 Long-running. Stop it with `Ctrl+C`.
@@ -50,6 +50,6 @@ Runs until interrupted.
 ## Worked example
 
 ```bash
-npx reticle watch &
+npx @reticlehq/server watch &
 # edit src/components/Login.tsx, and the affected flows are named on save
 ```

@@ -7,7 +7,7 @@ icon: crosshairs
 `reticle hunt` is arithmetic, not driving. You point it at a directory of crawl reports (one JSON file per checkout, each produced by `reticle_crawl`) and it turns the pile into the one number the core claim needs: across N already-merged, already-green changes, how many carried a candidate false green?
 
 ```bash
-npx reticle hunt <dir-of-crawl-reports>
+npx @reticlehq/server hunt <dir-of-crawl-reports>
 ```
 
 No control arm is needed. Those changes shipped, so the counterfactual is already established.
@@ -53,5 +53,5 @@ for sha in $(git log --format=%H -n 30 main); do
   # drive reticle_crawl over the app, write the JSON:
   # .../reports/$sha.json
 done
-npx reticle hunt ./reports
+npx @reticlehq/server hunt ./reports
 ```

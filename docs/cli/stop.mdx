@@ -7,7 +7,7 @@ icon: circle-stop
 `reticle stop` reads the pid recorded for the port and stops that process.
 
 ```bash
-npx reticle stop [--port N] [--quiet]
+npx @reticlehq/server stop [--port N] [--quiet]
 ```
 
 ## Flags
@@ -51,6 +51,6 @@ npx reticle stop [--port N] [--quiet]
 ## Worked example
 
 ```bash
-npx reticle stop --port 4400 --quiet && npx reticle serve --port 4400
-npx reticle restart --port 4400   # the same thing, honest about each half
+npx @reticlehq/server stop --port 4400 --quiet && npx @reticlehq/server serve --port 4400
+npx @reticlehq/server restart --port 4400   # the same thing, honest about each half
 ```

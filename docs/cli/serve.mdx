@@ -7,7 +7,7 @@ icon: play
 `reticle serve` starts the daemon: the WebSocket bridge your app dials into, plus the tool engine behind it. It spawns a detached child and then waits for that child to answer `/status` before reporting success.
 
 ```bash
-npx reticle serve [--port N] [--drive <url>] [--headless] [--headed] [--http] [--http-port N] [--http-token T]
+npx @reticlehq/server serve [--port N] [--drive <url>] [--headless] [--headed] [--http] [--http-port N] [--http-token T]
 ```
 
 Most people never type this. Your agent runs [`reticle mcp`](/cli/mcp), which starts a daemon itself if one is not already up.
@@ -53,8 +53,8 @@ reticle_daemon_start_refused
 ## Worked example
 
 ```bash
-npx reticle serve --port 4400
-npx reticle status
+npx @reticlehq/server serve --port 4400
+npx @reticlehq/server status
 ```
 
 <Card title="What the daemon is" icon="sitemap" href="/architecture">

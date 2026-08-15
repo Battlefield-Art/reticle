@@ -14,10 +14,10 @@ https://raw.githubusercontent.com/reticlehq/reticle/main/SKILL.md
 That URL is live and returns the current version. Paste it into your agent and say "read this and set up Reticle".
 
 <Note>
-  You often do not need it. `npx reticle init` writes a `/reticle` slash command for Claude Code
-  automatically, and installs agent rule files for Claude and Cursor. The SKILL file is for agents
-  that `init` cannot configure, for a from-scratch install, or when you want the agent to have the
-  full protocol in context rather than a summary.
+  You often do not need it. `npx @reticlehq/server init` writes a `/reticle` slash command for
+  Claude Code automatically, and installs agent rule files for Claude and Cursor. The SKILL file is
+  for agents that `init` cannot configure, for a from-scratch install, or when you want the agent to
+  have the full protocol in context rather than a summary.
 </Note>
 
 ## It has two modes, and it picks one itself
@@ -62,7 +62,7 @@ Before setup, before anything, the document tells the agent that reporting probl
 It even covers the case where nothing is installed yet:
 
 ```bash
-npx reticle feedback --agent --kind gap "init finished but no session ever connected"
+npx @reticlehq/server feedback --agent --kind gap "init finished but no session ever connected"
 ```
 
 That works with no daemon running, which is the entire point. The install that failed halfway is the one worth hearing about, and in that state the MCP tools do not exist.

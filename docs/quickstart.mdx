@@ -23,10 +23,25 @@ By the end of this page your agent will click a button in your app and prove wha
 The fastest path is to hand the job to the agent that will use it. In your project directory:
 
 ```bash
-npx reticle init
+npx @reticlehq/server init
 ```
 
 This registers the MCP server, installs the SDK, wires it into your app's entry point, and writes the agent rule files. It is idempotent. Run it twice and the second run reports what was already done rather than doing it again.
+
+Prefer to install the skill and let the agent run setup itself? On Claude Code the plugin registers the MCP server and the skill in one step:
+
+```text
+/plugin marketplace add reticlehq/reticle
+/plugin install reticle@reticlehq
+```
+
+On Cursor, Codex, Copilot, Gemini and anything else the skills CLI supports:
+
+```bash
+npx skills add reticlehq/reticle
+```
+
+Then type `/reticle` and the agent runs the install from the skill.
 
 Useful flags, from `reticle init` itself:
 
@@ -50,7 +65,7 @@ Prefer to wire it yourself? See [Manual install](/install-manual). It is about t
 ## Step 2. Check the setup
 
 ```bash
-reticle doctor
+npx @reticlehq/server doctor
 ```
 
 `doctor` diagnoses the whole setup in one command: Chromium, the daemon, the port. If something is wrong this is the page you want before you start debugging your app instead.
@@ -60,7 +75,7 @@ reticle doctor
 Start your dev server as usual, then:
 
 ```bash
-reticle open
+npx @reticlehq/server open
 ```
 
 This reuses the tab you already have open, or opens one if you don't. The SDK connects to the local daemon over a WebSocket, and your agent can now see the app.

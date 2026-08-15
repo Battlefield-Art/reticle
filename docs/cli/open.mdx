@@ -7,7 +7,7 @@ icon: window-maximize
 `reticle open` is the one-command "show me the app". It resolves the port, makes sure a daemon is up, and then either reuses the tab that is already connected or opens a new one.
 
 ```bash
-npx reticle open [url] [--port N]
+npx @reticlehq/server open [url] [--port N]
 ```
 
 ## Arguments and flags
@@ -63,6 +63,6 @@ One `reticle_open` line, whose fields say which of four things happened.
 ## Worked example
 
 ```bash
-npx reticle open http://localhost:5173
-npx reticle status    # confirm the session is really there
+npx @reticlehq/server open http://localhost:5173
+npx @reticlehq/server status    # confirm the session is really there
 ```

@@ -38,7 +38,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: npx playwright install --with-deps chromium
       # Reticle drives the preview and owns its own browser + daemon.
-      - run: npx reticle verify "${{ github.event.deployment_status.target_url }}" --timeout 60000
+      - run: npx @reticlehq/server verify "${{ github.event.deployment_status.target_url }}" --timeout 60000
 ```
 
 The job's own pass/fail becomes the PR check. Nothing else is required.
@@ -61,7 +61,7 @@ The flow is: receive the deploy webhook → `reticle verify <target_url>` → po
 The deploy check catches what reaches a preview. `reticle gate` catches it earlier: an agent that edits a covered file cannot "finish" without re-verifying:
 
 ```bash
-reticle gate --since origin/main    # exit 1 unless passing artifacts cover the affected flows
+npx @reticlehq/server gate --since origin/main    # exit 1 unless passing artifacts cover the affected flows
 ```
 
 Use both: `gate` in the agent's Stop hook (see `agent-cheatsheet`), `verify` at the deploy. They read the same run artifacts, so a green gate locally and a green check on the PR mean the same thing.

@@ -7,7 +7,7 @@ icon: id-card
 `reticle identify` is opt-in and deliberately not interactive. A prompt in the middle of someone's work is pressure, and this is the one command where the choice has to be free. You type what you want to share, or you never run it at all.
 
 ```bash
-npx reticle identify --context <company|side_project|open_source|learning> [--company "Acme"] [--email you@acme.com] [--forget]
+npx @reticlehq/server identify --context <company|side_project|open_source|learning> [--company "Acme"] [--email you@acme.com] [--forget]
 ```
 
 ## Flags
@@ -57,6 +57,6 @@ Run with no valid `--context`, it prints the current identity (if any), the usag
 ## Worked example
 
 ```bash
-npx reticle identify --context open_source --email maintainer@example.com
-npx reticle identify --forget
+npx @reticlehq/server identify --context open_source --email maintainer@example.com
+npx @reticlehq/server identify --forget
 ```

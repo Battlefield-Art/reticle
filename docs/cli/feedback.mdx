@@ -7,8 +7,8 @@ icon: comment
 `reticle feedback` is the feedback channel as a command: no prompts, no editor, no account. It exists so the cost of telling the maintainers something is lower than the cost of shrugging and moving on.
 
 ```bash
-npx reticle feedback [--rating 1-5] [--bug] "what worked, what didn't"
-npx reticle feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "what happened"
+npx @reticlehq/server feedback [--rating 1-5] [--bug] "what worked, what didn't"
+npx @reticlehq/server feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "what happened"
 ```
 
 The `--agent` form is for an agent that cannot reach the `reticle_feedback` tool: during `init`, while instrumentation is half wired, or when the daemon will not start. Those are the reports that are hardest to hear and most needed, because every other path requires the tool surface to already work.
@@ -54,7 +54,7 @@ usage: reticle feedback [--rating 1-5] [--bug] "what worked, what didn't"
 ## Worked example
 
 ```bash
-npx reticle feedback --agent --kind gap \
+npx @reticlehq/server feedback --agent --kind gap \
   "no way to drive a contenteditable rich-text editor; had to skip the flow"
 ```
 

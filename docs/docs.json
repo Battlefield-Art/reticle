@@ -323,7 +323,7 @@
       "Reticle is a dev-only, localhost-only verification layer for AI coding agents. It reads program truth (network, state, console, routing, animations, framework state) from inside a running web app and returns a deterministic verdict with evidence. It is not a screenshot tool and not a browser automation library.",
       "Only `reticle_act_and_wait` and `reticle_assert` produce a verdict. Every other tool moves or reads the app and proves nothing. A drive that ends without one of those two has no result, however many tools it used.",
       "A verdict of `verified: \"unknown\"` is not a pass. It means Reticle drove the app and could not tell what happened. Report it as unknown; never weaken a check to make it pass.",
-      "Package names are scoped `@reticlehq/*` and the CLI is `reticle`. Install with `npx reticle init`. The complete tool surface is on the `/usage` page; `/agent-cheatsheet` is the one-screen version."
+      "Package names are scoped `@reticlehq/*` and the CLI is `reticle`. Install with `npx @reticlehq/server init`. The complete tool surface is on the `/usage` page; `/agent-cheatsheet` is the one-screen version."
     ]
   },
   "seo": {

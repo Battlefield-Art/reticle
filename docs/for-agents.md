@@ -54,7 +54,7 @@ Start with `llms.txt`. It is small enough to read in full and tells you which si
 
 Every page has a menu in its top-right corner: copy the page as Markdown, or open it directly in Claude, ChatGPT, Cursor or VS Code with the source already attached. That is the fastest route when a human is driving and wants the agent to have the page.
 
-> None of this is Reticle itself. These endpoints serve the **documentation**. Reticle runs on your machine and verifies your app; you get it with `npx reticle init`. See [Getting started](/getting-started).
+> None of this is Reticle itself. These endpoints serve the **documentation**. Reticle runs on your machine and verifies your app; you get it with `npx @reticlehq/server init`. See [Getting started](/getting-started).
 
 ## Which page to read
 

@@ -34,7 +34,7 @@ reticle init  [--dry-run] [--port N] [--no-mcp] [--no-install] [--app <dir>]
 The first thing to run when something is wrong. One command, the whole setup.
 
 ```bash
-npx reticle doctor
+npx @reticlehq/server doctor
 ```
 
 ```
@@ -76,7 +76,7 @@ Exits `0`. A session in the list is the install genuinely finished. Not a tick i
 ### `reticle telemetry [status|enable|disable]`
 
 ```bash
-npx reticle telemetry status
+npx @reticlehq/server telemetry status
 ```
 
 ```
@@ -111,7 +111,7 @@ policy       https://github.com/reticlehq/reticle/blob/main/docs/telemetry.md
 One-shot: drive the URL, replay the saved flows, exit `0` on pass. This is the command for CI when you do not want a model in the loop.
 
 ```bash
-npx reticle verify http://localhost:5173 --timeout 60000
+npx @reticlehq/server verify http://localhost:5173 --timeout 60000
 ```
 
 Options: `--headed`, `--timeout N`, `--storage-state <file>`. That last one is how you verify flows behind a login without scripting the login every time.
@@ -121,7 +121,7 @@ Options: `--headed`, `--timeout N`, `--storage-state <file>`. That last one is h
 Which saved flows must re-verify for a set of changed files.
 
 ```bash
-npx reticle affected --since HEAD~1
+npx @reticlehq/server affected --since HEAD~1
 ```
 
 ```json
@@ -145,7 +145,7 @@ npx reticle affected --since HEAD~1
 The CI gate. Exits non-zero unless passing artifacts cover the affected flows.
 
 ```bash
-npx reticle gate --since HEAD~1
+npx @reticlehq/server gate --since HEAD~1
 ```
 
 ```json
@@ -185,10 +185,10 @@ On save, report which saved flows must re-verify. The interactive companion to `
 
 ```bash
 # humans
-npx reticle feedback "what worked, what didn't"
+npx @reticlehq/server feedback "what worked, what didn't"
 
 # agents, including from a setup that never finished
-npx reticle feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "what happened"
+npx @reticlehq/server feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "what happened"
 ```
 
 The `--agent` form matters more than it looks: the setup that failed halfway is exactly the setup worth hearing about, and in that state the MCP tools do not exist yet.
@@ -202,7 +202,7 @@ The `--agent` form matters more than it looks: the setup that failed halfway is 
 Opt-in, and off by default:
 
 ```bash
-npx reticle identify --context company|side_project|open_source|learning [--email E] [--forget]
+npx @reticlehq/server identify --context company|side_project|open_source|learning [--email E] [--forget]
 ```
 
 Only useful if you want support or an enterprise trial. `--forget` removes it.

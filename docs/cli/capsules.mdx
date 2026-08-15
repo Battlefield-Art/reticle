@@ -7,7 +7,7 @@ icon: capsules
 `reticle capsules` lists what is in `.reticle/capsules`. A capsule is a minimal failing reproduction plus the consequence that should have held. Replay one with the `reticle_flow_replay` tool.
 
 ```bash
-npx reticle capsules
+npx @reticlehq/server capsules
 ```
 
 No flags.
@@ -65,5 +65,5 @@ One `reticle_capsules` line: a `count` and an array. Real capture from this repo
 ## Worked example
 
 ```bash
-npx reticle capsules | jq '.capsules[] | select(.origin == "failed-assert") | .observed'
+npx @reticlehq/server capsules | jq '.capsules[] | select(.origin == "failed-assert") | .observed'
 ```

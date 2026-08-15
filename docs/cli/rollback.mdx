@@ -7,7 +7,7 @@ icon: arrow-rotate-left
 `reticle rollback` is the undo for [`reticle update`](/cli/update). It restores the previous server version and restarts.
 
 ```bash
-npx reticle rollback
+npx @reticlehq/server rollback
 ```
 
 No flags.
@@ -28,8 +28,8 @@ Telemetry records the move as a `version_changed` event with `direction: "rollba
 ## Worked example
 
 ```bash
-npx reticle update
+npx @reticlehq/server update
 # the new build misbehaves:
-npx reticle rollback
-npx reticle version
+npx @reticlehq/server rollback
+npx @reticlehq/server version
 ```

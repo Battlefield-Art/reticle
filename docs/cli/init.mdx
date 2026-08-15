@@ -7,7 +7,7 @@ icon: wand-magic-sparkles
 `reticle init` is the one command a person runs before anything else. It inspects the directory it is standing in, works out the framework, and writes every piece of wiring Reticle needs: the MCP server registration, the agent rule files, the dev dependencies, `.reticle.json`, and the bundler plugin.
 
 ```bash
-npx reticle init [--dry-run] [--port N] [--no-mcp] [--no-install] [--app <dir>] [--yes]
+npx @reticlehq/server init [--dry-run] [--port N] [--no-mcp] [--no-install] [--app <dir>] [--yes]
 ```
 
 ## Flags
@@ -84,9 +84,9 @@ Or name one without changing directory:  reticle init --app packages/next
 
 ```bash
 cd apps/web
-npx reticle init --dry-run     # read the plan first
-npx reticle init               # then run it
-npx reticle status             # confirm the app actually connected
+npx @reticlehq/server init --dry-run     # read the plan first
+npx @reticlehq/server init               # then run it
+npx @reticlehq/server status             # confirm the app actually connected
 ```
 
 <Card title="The install, step by step" icon="wand-magic-sparkles" href="/install-agentic">
