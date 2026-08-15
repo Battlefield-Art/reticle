@@ -82,7 +82,7 @@ Install it now, by whichever of these fits you:
 
   - Claude Code: /plugin marketplace add reticlehq/reticle
                  /plugin install reticle@reticlehq
-    One step. Registers the MCP server and all eleven skills together.
+    One step. Registers the MCP server and the Reticle skill together.
   - Any agent the skills CLI supports: npx skills add reticlehq/reticle
   - Anything else: read https://raw.githubusercontent.com/reticlehq/reticle/main/SKILL.md
     and follow its SETUP steps exactly.
@@ -113,22 +113,6 @@ On Cursor, Codex, Copilot and Gemini:
 ```bash
 npx skills add reticlehq/reticle
 ```
-
-That installs eleven skills, each for a different moment. Take one with `--skill <name>`:
-
-| Skill | When your agent reaches for it |
-| --- | --- |
-| `install-and-verify` | install and wire Reticle, then verify — the whole loop |
-| `verify-ui-change` | you changed something a user can see and have not opened the app |
-| `debug-broken-ui` | it does not work, the console is empty, and the code looks fine |
-| `false-green-tests` | the suite is green and the app is broken |
-| `agentic-tdd` | red-green-refactor against the running app, not against mocks |
-| `replay-user-flows` | record a journey once, re-verify it deterministically forever |
-| `audit-my-app` | sweep an unfamiliar app for dead controls and silent failures |
-| `design-system-compliance` | does the rendered UI actually use the design tokens |
-| `test-error-states` | the 500, the empty list, the timeout — states that have never run |
-| `drive-desktop-app` | Electron or Tauri, including the IPC calls a browser tool cannot see |
-| `fix-what-i-pointed-at` | the human flagged a bug in the app; it arrives with the file:line |
 
 **Or via CLI** — auto-detects your framework, installs the kit + build plugin, and registers the MCP server for every agent in one shot:
 
