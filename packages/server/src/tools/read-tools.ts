@@ -199,9 +199,22 @@ export const READ_TOOLS: ToolDef[] = [
       // Self-generating oracles: propose ranked mustHold from what the recorded window actually did.
       const proposedConsequences = proposeConsequences(events);
       const digest = summarizeReaction(report);
+      // Say that the timeline was left out, and where it lives.
+      //
+      // Dropping the raw events is right: they were most of a response large enough to truncate the
+      // part that mattered. But a field that simply stops appearing is indistinguishable from one
+      // this version never had, and an agent cannot ask for something it does not know exists. The
+      // same rule the capped diff arrays follow: a trim is never silent.
+      const timeline =
+        events.length > 0
+          ? {
+              timeline_omitted: `${String(events.length)} event(s) were recorded and are not included here. Call reticle_observe { since: ${String(rec.cursor)} } for the raw timeline.`,
+            }
+          : {};
       const body = {
         recordingName: name,
         program,
+        ...timeline,
         ...(unstable > 0
           ? {
               warning: unanchoredWarning(unstable),

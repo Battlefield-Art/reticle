@@ -70,6 +70,26 @@ describe('reticle_record_stop output budget', () => {
     expect(size).toBeLessThan(4000);
   });
 
+  it('says the timeline was omitted and where to get it, rather than dropping it silently', async () => {
+    // The trim is right; a silent trim is not. A field that simply stops appearing reads the same as
+    // one this version never had, and an agent cannot ask for something it does not know exists.
+    const deps = buildDeps(440);
+    const result = (await recordStopTool().handler(deps, { recordingName: 'test-rec' })) as {
+      timeline_omitted?: string;
+    };
+    expect(result.timeline_omitted).toBeDefined();
+    expect(result.timeline_omitted).toContain('440');
+    expect(result.timeline_omitted).toContain('reticle_observe');
+  });
+
+  it('does not claim a timeline was omitted when nothing was recorded', async () => {
+    const deps = buildDeps(0);
+    const result = (await recordStopTool().handler(deps, { recordingName: 'test-rec' })) as {
+      timeline_omitted?: string;
+    };
+    expect(result.timeline_omitted).toBeUndefined();
+  });
+
   it('reports window_ms from the reaction without the heavy events payload', async () => {
     const deps = buildDeps(20);
     const result = (await recordStopTool().handler(deps, { recordingName: 'test-rec' })) as {
