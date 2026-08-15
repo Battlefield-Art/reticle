@@ -367,11 +367,11 @@ Not observed today: **IndexedDB**, **Web Workers**, and anything inside a closed
 
 The SDK runs inside your app and observes the DOM, network, console, routing, storage and animations through standard web APIs — so it is framework-agnostic by construction.
 
-**Web frameworks** — Next.js (App and Pages Router), Vite + React, Create React App, SvelteKit, Svelte, Astro, Vue 3, Preact, and plain HTML. `reticle init` wires most of them without being asked.
+**Web frameworks** — Next.js (App and Pages Router), Vite + React, Create React App, SvelteKit, Svelte, Astro, Vue 3, Preact, and plain HTML. `npx @reticlehq/server init` wires most of them without being asked.
 
 **Desktop** — Electron and Tauri, including the main-process and Rust IPC boundary a browser-only tool cannot see.
 
-**Agents** — anything that speaks MCP. `init` writes the config for Claude Code, Cursor, Windsurf, Gemini CLI, VS Code (Copilot), OpenCode and Codex CLI; any other MCP client works by pointing it at `reticle mcp`.
+**Agents** — anything that speaks MCP. `init` writes the config for Claude Code, Cursor, Windsurf, Gemini CLI, VS Code (Copilot), OpenCode and Codex CLI; any other MCP client works by pointing it at `npx @reticlehq/server mcp`.
 
 **Browsers** — Chrome, Edge, Arc, Dia, Brave, Opera, Firefox and Safari, plus the Electron and Tauri webviews. Reticle launches nothing by default, so it runs in whatever browser you already have open.
 
@@ -422,12 +422,15 @@ A pnpm + turbo monorepo — each audience installs only what it needs (apps embe
 | `@reticlehq/browser` | the dev-only instrumentation SDK (DOM / network / console / state observers) |
 | `@reticlehq/react` | the React kit: SDK + adapter, DOM ref → component → source `file:line` |
 | `@reticlehq/vite-plugin` · `-next` · `-babel-plugin` | dev-only source mapping + `connect()` injection (Vite / Next.js / React 19) |
+| `@reticlehq/electron` | the Electron adapter: makes main-process IPC observable and the window screenshottable, from the two places the renderer cannot reach |
 | `@reticlehq/server` | the bridge + MCP server + the `reticle` CLI |
 | `@reticlehq/test` · `-eslint-plugin` | declarative CI specs · the "state change must fire a signal" lint rule |
 
+**Tauri apps get a Rust crate too.** [`reticle-tauri`](https://crates.io/crates/reticle-tauri) on crates.io adds screenshots and headless runs to a Tauri app. IPC observation needs nothing on the Rust side, so the crate is optional: an `invoke('load_todos')` already reaches Reticle as `ipc://load_todos`. It is versioned **independently** of the npm packages, so its version number is its own.
+
 ## Status & safety
 
-**Dev-only** and **localhost-only** by design: the SDK is tree-shaken out of production builds, the bridge binds to localhost, and **no app data ever leaves your machine** — Reticle observes _your_ app on _your_ machine. The CLI reports anonymous, opt-out usage metrics only (a random id + event names; no code, no PII — [full policy](docs/telemetry.md)); opt out with `reticle telemetry disable`. The one exception is feedback you or your agent deliberately send us (`reticle feedback` / `reticle_feedback`) — never collected passively, redacted before it is sent, and separately disabled with `RETICLE_FEEDBACK=0`.
+**Dev-only** and **localhost-only** by design: the SDK is tree-shaken out of production builds, the bridge binds to localhost, and **no app data ever leaves your machine** — Reticle observes _your_ app on _your_ machine. The CLI reports anonymous, opt-out usage metrics only (a random id + event names; no code, no PII — [full policy](docs/telemetry.md)); opt out with `npx @reticlehq/server telemetry disable`. The one exception is feedback you or your agent deliberately send us (`npx @reticlehq/server feedback` / `reticle_feedback`) — never collected passively, redacted before it is sent, and separately disabled with `RETICLE_FEEDBACK=0`.
 
 ## License
 
