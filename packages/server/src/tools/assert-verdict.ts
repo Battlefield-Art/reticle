@@ -28,8 +28,8 @@ function absenceBlindSpotNote(
   const relevant = spots.filter(
     (spot) =>
       spot.count > 0 &&
-      (spot.kind === BlindSpotKind.VIRTUALIZED_UNMOUNTED ||
-        (spot.kind === BlindSpotKind.CROSS_ORIGIN_IFRAME && undefined !== predicate.query.scope)),
+      spot.kind === BlindSpotKind.CROSS_ORIGIN_IFRAME &&
+      undefined !== predicate.query.scope,
   );
   if (0 === relevant.length) return undefined;
 
