@@ -431,7 +431,7 @@ export function unverifiedUiLibraryNote(library: string): string {
     'preact' === library
       ? 'React component identity — component names and stacks — comes from `@reticlehq/react`, which reaches Preact through `preact/compat`. That path is not covered by a CI gate here, so treat it as expected-to-work rather than proven.'
       : 'What `@reticlehq/react` adds and you will NOT get is React component identity: component names and component stacks.';
-  return `Detected a ${library} app. Reticle's DOM, network, console and state tools work here, and source file:line does too — the build plugin stamps data-reticle-source regardless of UI library (measured on preact and svelte). ${identity} No CI gate covers ${library}. Gated today: Vite + React, Next.js, Remix, Astro. If something doesn't work, please open an issue.`;
+  return `Detected a ${library} app. Reticle's DOM, network, console and state tools work here. ${'vue' === library ? 'Source `file:line` does NOT come through: the build plugin stamps JSX and, separately, Svelte components, and a Vue single-file component is neither — measured, a Svelte counter reports `src/lib/Counter.svelte:5` and the same drive on Vue reports no source at all.' : 'Source `file:line` does too — the build plugin stamps it for this library (measured on preact and svelte).'} ${identity} ${'vue' === library ? 'The install gate scaffolds a Vue app from scratch on every change, so this SETUP is proven; no gate drives a Vue app to a verdict, so the drive is not.' : `No CI gate covers ${library}.`} Driven on every change: Vite + React, Next.js, Remix, Astro. If something doesn't work, please open an issue.`;
 }
 
 export const UNVERIFIED_FRAMEWORK_NOTE =

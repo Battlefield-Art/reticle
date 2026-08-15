@@ -137,3 +137,35 @@ describe('the generated import matches the installed package', () => {
     expect(svelteKitHooksFile(undefined, 'demo', UiLibrary.REACT)).toContain('install();');
   });
 });
+
+/**
+ * The note must not promise a Vue app a source pointer it will not get.
+ *
+ * It said source `file:line` works "regardless of UI library (measured on preact and svelte)". The
+ * parenthetical was doing a lot of work: the plugin stamps JSX and, separately, Svelte components,
+ * and a Vue single-file component is neither. Measured on pristine scaffolds the same day — a Svelte
+ * counter reports `src/lib/Counter.svelte:5`, and the identical drive on Vue reports no `source` at
+ * all — so the sentence promised a Vue reader the one signal they do not get.
+ */
+describe('the note tells the truth about source pointers', () => {
+  it('tells a Vue app it does NOT get file:line', async () => {
+    const { unverifiedUiLibraryNote } = await import('./snippets.js');
+    const note = unverifiedUiLibraryNote('vue');
+    expect(note).toContain('does NOT come through');
+    expect(note).toContain('single-file component');
+  });
+
+  it('still tells preact and svelte that it does', async () => {
+    const { unverifiedUiLibraryNote } = await import('./snippets.js');
+    for (const lib of ['preact', 'svelte']) {
+      expect(unverifiedUiLibraryNote(lib), lib).toContain('does too');
+    }
+  });
+
+  it('says Vue’s install is gated while its drive is not', async () => {
+    // Understating is as wrong as overstating: the install gate scaffolds Vue from scratch now.
+    const note = (await import('./snippets.js')).unverifiedUiLibraryNote('vue');
+    expect(note).toContain('SETUP is proven');
+    expect(note).not.toContain('No CI gate covers vue');
+  });
+});

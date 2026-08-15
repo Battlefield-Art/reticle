@@ -606,8 +606,15 @@ describe('buildPlan — non-React apps are marked unverified', () => {
       // Not MANUAL: the app is wired and working, it is just not covered by a gate. Counting this as
       // an outstanding step made "steps remaining" a number that could never reach zero.
       expect(s?.status).toBe(StepStatus.NOTICE);
-      expect(s?.detail).toContain('data-reticle-source');
     }
+    // The note has to be TRUE per library, and it was not. It used to promise every non-React app
+    // that source `file:line` works "regardless of UI library", which is right for Preact and wrong
+    // for Vue: the plugin stamps JSX and, separately, Svelte components, and a Vue single-file
+    // component is neither. Measured on pristine scaffolds — a Svelte counter reports
+    // `src/lib/Counter.svelte:5` and the identical drive on Vue reports no `source` at all — so this
+    // assertion was pinning a promise a Vue reader could not collect on.
+    expect(libStep(UiLibrary.PREACT)?.detail).toContain('does too');
+    expect(libStep(UiLibrary.VUE)?.detail).toContain('does NOT come through');
   });
 
   it('an UNVERIFIED stack still reports zero manual steps when everything applied', () => {
