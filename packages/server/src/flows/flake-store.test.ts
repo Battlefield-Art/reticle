@@ -1,17 +1,10 @@
 import { removeTempDir } from '../temp-dir.js';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createNodeFileSystem, type FileSystemPort } from '../project/fs-port.js';
 import { FlakeStore } from './flake-store.js';
-
-// Real filesystem work inside a loop: milliseconds here, much slower on a Windows runner. A sibling
-// test with this shape timed out at vitest's 5s default on Windows CI and nowhere else, which reads
-// as a product failure and is a statement about the machine. This is a generous BOUND, not a
-// duration assertion — it cannot make a broken test pass, it only stops the suite reporting the
-// runner. Pinned by heavy-browser-tests-declare-a-timeout.test.ts.
-vi.setConfig({ testTimeout: 30_000 });
 
 describe('FlakeStore', () => {
   let root: string;
