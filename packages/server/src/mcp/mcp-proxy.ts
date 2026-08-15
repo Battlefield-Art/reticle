@@ -714,10 +714,25 @@ export function startMcpProxy(
       }
     }
 
-    function scheduleReconnect(reason: string, detail?: string, pendingLost = 0): void {
+    function scheduleReconnect(reason: string, detail?: string): void {
       if (stopped) return;
       postUrl = null;
       attempts++;
+      // Everything the dead session owed is settled HERE, in the one place every drop funnels
+      // through, and not in the response callback that first noticed the socket die. A reset emits
+      // on BOTH halves of the request, so whichever handler wins decides what gets paid — the same
+      // shape as the reconnect fan-out, and it left the other half paying nothing.
+      //
+      // Order matters between the two. Drain the queue FIRST: a queued request is tracked in
+      // `pending` as well, so answering without draining leaves the next `endpoint` frame free to
+      // flush it into the fresh session, where the daemon answers the same id a second time and the
+      // client sees two responses for one request. Then answer, because the new session cannot know
+      // what the old one owed and silence here is permanent.
+      stdinQueue.splice(0);
+      const lost = streamLossReplies(pending, reason);
+      for (const reply of lost) emit(reply);
+      // How many calls this drop actually killed. Zero means the agent could not feel it.
+      const pendingLost = lost.length;
       // Once per process: this session has now lost its tools at least once, which is the number
       // that says whether the transport work actually landed for real users. `pendingLost` is the
       // part an agent can FEEL — almost every measured drop killed nothing in flight.
@@ -803,14 +818,9 @@ export function startMcpProxy(
         const drop = (reason: string, detail?: string): void => {
           if (settled) return;
           settled = true;
-          // Drain the queue BEFORE answering pending: a request can be in both (queued but tracked),
-          // and leaving it in the queue means the reconnect will forward it, the daemon will answer,
-          // and the client sees two responses for one id — a protocol violation.
-          stdinQueue.splice(0);
-          const lost = streamLossReplies(pending, reason);
-          for (const reply of lost) emit(reply);
-          // How many calls this drop actually killed. Zero means the agent could not feel it.
-          scheduleReconnect(reason, detail, lost.length);
+          // What the dead session owed is settled inside scheduleReconnect, so the other half of the
+          // socket's death pays exactly the same debt when it is the one that notices first.
+          scheduleReconnect(reason, detail);
         };
         const sse = new SseFrameParser();
         res.on('data', (chunk: string) => {
