@@ -34,7 +34,16 @@ function satisfies(link: ExpectedLink, events: readonly ReticleEvent[]): boolean
     case ConsequenceKind.SIGNAL:
       return events.some((e) => e.type === EventType.SIGNAL && e.data['name'] === link.name);
     case ConsequenceKind.STATE:
-      return events.some((e) => e.type === EventType.STATE_CHANGE && e.data['name'] === link.name);
+      // Matched against the store name OR the changed path, because the link carries whichever half
+      // the predicate gave: `store` when it named one, and `path` otherwise (predicateToExpectedLinks).
+      // The event carries both. Comparing only the store meant every assertion written by path
+      // reported "never changed" however the app behaved — a false claim printed beside a `stateDiffs`
+      // entry showing that exact path changing.
+      return events.some(
+        (e) =>
+          e.type === EventType.STATE_CHANGE &&
+          (e.data['name'] === link.name || e.data['path'] === link.name),
+      );
     case ConsequenceKind.NET:
       return net(events).some(
         (e) =>

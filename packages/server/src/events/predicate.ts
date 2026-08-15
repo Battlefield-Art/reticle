@@ -53,6 +53,19 @@ export interface PredicateSession {
   onDisconnect?(listener: () => void): () => void;
 }
 
+/**
+ * A composite result that carries a child's "nobody could evaluate this" up to the verdict rule.
+ *
+ * `decideVerified` already treats `inconclusive` correctly and does it ahead of the failure clause,
+ * so all a composite has to do is stop dropping the field on its way out. `pass` stays false because
+ * nothing was proven; what changes is that the verdict reads UNKNOWN rather than blaming the app for
+ * a clause the CALL under-specified.
+ */
+function unreadableComposite(child: EvalResult, evidence: unknown): EvalResult {
+  const reason = child.inconclusive ?? 'a sub-predicate could not be evaluated';
+  return { pass: false, failureReason: reason, inconclusive: reason, evidence };
+}
+
 async function matchOnce(
   session: PredicateSession,
   query: ElementQuery,
@@ -332,26 +345,41 @@ export async function evaluatePredicate(
       const results = await Promise.all(
         predicate.predicates.map((p) => evaluatePredicate(session, p, since, diagnose)),
       );
-      const failed = results.find((r) => !r.pass);
-      return failed === undefined
-        ? { pass: true, evidence: results.map((r) => r.evidence) }
-        : {
-            pass: false,
-            failureReason: failed.failureReason ?? 'a sub-predicate of allOf failed',
-            evidence: results,
-          };
+      // A clause that genuinely failed OUTRANKS one nobody could read. Softening a real failure to
+      // UNKNOWN would hide the defect the agent came for, which is the more expensive of the two
+      // mistakes; the reverse — grading an unreadable clause as a defect in the app — is the one
+      // that was happening.
+      const failed = results.find((r) => !r.pass && r.inconclusive === undefined);
+      if (failed !== undefined) {
+        return {
+          pass: false,
+          failureReason: failed.failureReason ?? 'a sub-predicate of allOf failed',
+          evidence: results,
+        };
+      }
+      const unreadable = results.find((r) => r.inconclusive !== undefined);
+      if (unreadable !== undefined) return unreadableComposite(unreadable, results);
+      return { pass: true, evidence: results.map((r) => r.evidence) };
     }
     case PredicateKind.ANY_OF: {
       const results = await Promise.all(
         predicate.predicates.map((p) => evaluatePredicate(session, p, since, diagnose)),
       );
       const passed = results.find((r) => r.pass);
-      return passed !== undefined
-        ? { pass: true, evidence: passed.evidence }
-        : { pass: false, failureReason: 'no sub-predicate of anyOf matched', evidence: results };
+      if (passed !== undefined) return { pass: true, evidence: passed.evidence };
+      // "No sub-predicate matched" is a claim anyOf is not entitled to make while one of them was
+      // never read: the unreadable clause might have been the one that would have matched.
+      const unreadable = results.find((r) => r.inconclusive !== undefined);
+      if (unreadable !== undefined) return unreadableComposite(unreadable, results);
+      return { pass: false, failureReason: 'no sub-predicate of anyOf matched', evidence: results };
     }
     case PredicateKind.NOT: {
       const inner = await evaluatePredicate(session, predicate.predicate, since, diagnose);
+      // The sharpest case of the three, and the only one that produced a GREEN. `not` read the
+      // child's `pass: false` as "the inner predicate did not hold" and passed — so an assertion
+      // nobody could evaluate became a verdict of verified, manufactured out of a missing reading.
+      // You cannot negate an answer nobody had.
+      if (inner.inconclusive !== undefined) return unreadableComposite(inner, inner);
       return inner.pass
         ? { pass: false, failureReason: 'negated predicate unexpectedly held', evidence: inner }
         : { pass: true };

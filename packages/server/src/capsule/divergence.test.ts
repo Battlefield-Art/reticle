@@ -47,4 +47,39 @@ describe('firstDivergence', () => {
     const divergence = firstDivergence(expected, []);
     expect(divergence?.expected).toEqual({ kind: 'signal', name: 'validated' });
   });
+
+  /**
+   * A state link is spelled with whichever half the predicate gave — `store` if it named one, and the
+   * `path` otherwise (see predicateToExpectedLinks). The event carries BOTH, and this only ever
+   * compared the store, so every assertion written by path answered "never changed" no matter what
+   * the app did.
+   *
+   * Seen on bench-app: `{ kind: "state", path: "view", equals: "compose" }` after clicking Compose
+   * produced `firstDivergence: state "view" never changed` in a response whose own `stateDiffs` read
+   * `{ path: "view", from: "deployments", to: "compose" }`. Two contradictory claims about one event,
+   * side by side, and the false one was the one an agent would act on.
+   *
+   * There was no state case in this file at all, which is how it survived.
+   */
+  it('matches a state link written by PATH, not only by store', () => {
+    const expected: ExpectedLink[] = [{ kind: 'state', name: 'view' }];
+    const observed = [e(EventType.STATE_CHANGE, { name: 'app', path: 'view', value: 'compose' })];
+    expect(
+      firstDivergence(expected, observed),
+      'the path changed, so there is no divergence to report',
+    ).toBeNull();
+  });
+
+  it('still matches a state link written by STORE', () => {
+    const expected: ExpectedLink[] = [{ kind: 'state', name: 'app' }];
+    const observed = [e(EventType.STATE_CHANGE, { name: 'app', path: 'view', value: 'compose' })];
+    expect(firstDivergence(expected, observed)).toBeNull();
+  });
+
+  it('still reports a state link that genuinely never changed', () => {
+    // The direction that must not soften: a path nothing touched is a real divergence.
+    const expected: ExpectedLink[] = [{ kind: 'state', name: 'cart' }];
+    const observed = [e(EventType.STATE_CHANGE, { name: 'app', path: 'view', value: 'compose' })];
+    expect(firstDivergence(expected, observed)?.observed).toContain('never changed');
+  });
 });
