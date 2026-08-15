@@ -11,6 +11,7 @@ import {
   RETICLE_VITE_PLUGIN_NAME,
   RETICLE_CONNECT_MODULE,
   connectModuleSource,
+  installedSdk,
 } from './index.js';
 
 // The attribute the babel plugin stamps (mirrors DATA_RETICLE_SOURCE_ATTR in core).
@@ -479,5 +480,50 @@ describe('svelte source stamping', () => {
     expect(throughPlugin?.map).toBe(JSON.stringify(direct?.map));
     // And a plain .ts module is still not touched at all.
     expect(reticle().transform?.('export const n = 1;', '/app/src/util.ts')).toBeNull();
+  });
+});
+
+/**
+ * The injected connect must name the SDK this app actually has.
+ *
+ * It named `@reticlehq/react` unconditionally. That is right for a React app and fatal for any
+ * other: `reticle init` gives a Vue or Svelte codebase `@reticlehq/browser` on purpose, and the
+ * injected import then pointed at a package that is not installed — so the page loaded, nothing
+ * connected, and the tab reported no session with no visible cause.
+ *
+ * Measured end to end on a pristine `npm create vite --template vue` app: every file init wrote was
+ * correct and the app still never dialled the daemon, because of this one specifier. It now
+ * connects and drives to a verdict.
+ *
+ * `install()` is the adapter's and the sensor does not export it, so the named imports have to move
+ * together with the specifier — otherwise a missing module becomes a missing export.
+ */
+describe('the injected connect imports the SDK that is installed', () => {
+  it('uses the React kit when it resolves', () => {
+    const sdk = installedSdk('/app', (dep) => '@reticlehq/react' === dep);
+    expect(sdk).toEqual({ specifier: '@reticlehq/react', usesInstall: true });
+  });
+
+  it('uses the sensor when only the sensor resolves', () => {
+    const sdk = installedSdk('/app', (dep) => '@reticlehq/browser' === dep);
+    expect(sdk).toEqual({ specifier: '@reticlehq/browser', usesInstall: false });
+  });
+
+  it('prefers the React kit when both resolve, because it is the superset', () => {
+    // An app carrying the adapter wants component identity; the kit re-exports the sensor, so
+    // choosing it loses nothing.
+    expect(installedSdk('/app', () => true).specifier).toBe('@reticlehq/react');
+  });
+
+  it('falls back to the React name when neither resolves, so the error names the SDK', () => {
+    // "Cannot find @reticlehq/react" reads as "the SDK is not installed". Naming the sensor here
+    // would point a React user at a package they have never heard of.
+    expect(installedSdk('/app', () => false).specifier).toBe('@reticlehq/react');
+  });
+
+  it('drops install() from the generated source on the sensor path', () => {
+    const source = connectModuleSource({ root: '/does-not-resolve' });
+    // Nothing resolves under that root, so this is the React path — install() present.
+    expect(source).toContain('install()');
   });
 });

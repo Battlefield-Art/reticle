@@ -125,7 +125,10 @@ function capabilitiesStep(input: PlanInput): Step[] {
             ? `store: uncomment the ${String(stores.length)} suggested line(s)`
             : 'no state library detected'
       }`,
-      write: { path: VITE_DEV_MODULE_PATH, content: viteDevModuleFile(testids, stores, wired) },
+      write: {
+        path: VITE_DEV_MODULE_PATH,
+        content: viteDevModuleFile(testids, stores, wired, input.detection.uiLibrary),
+      },
       dependsOnInstall: true,
     },
     // The write is real; what it registers is not. `registerCapabilities({ testids: [], signals: [],

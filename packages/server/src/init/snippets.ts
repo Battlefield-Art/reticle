@@ -291,7 +291,16 @@ export function viteDevModuleFile(
   testids: readonly string[],
   stores: readonly string[],
   found: readonly FoundStore[] = [],
+  uiLibrary: UiLibrary = UiLibrary.REACT,
 ): string {
+  // The specifier has to be the package `frameworkPackages` installed. This file is the Vite path —
+  // the commonest install there is — and it was hardcoded to `@reticlehq/react` while a Vue or
+  // Svelte app was being given `@reticlehq/browser`, so the generated file imported something that
+  // was not there. Caught by running `init` against a pristine Vue app, not by any gate.
+  //
+  // The sensor exports `registerCapabilities` and `registerStore` (and the store adapters) just as
+  // the React kit does; the only thing it lacks is `install()`, which this file never called.
+  const sdk = sdkImport(uiLibrary);
   const ids = testids.map((t) => `'${t}'`).join(', ');
   // A store we FOUND is imported and registered outright — the whole point of the file. The hints
   // stay only for the libraries we can name but not wire (they need an argument we cannot infer).
@@ -306,7 +315,7 @@ export function viteDevModuleFile(
     found.length > 0 ? 'registerCapabilities, registerStore' : 'registerCapabilities';
   return `// Dev-only. Imported automatically by @reticlehq/vite-plugin, so you do not need to import it.
 // Self-guards on import.meta.env.DEV, so it is a no-op in a production build.
-import { ${registerImport} } from '@reticlehq/react';
+import { ${registerImport} } from '${sdk.specifier}';
 ${storeImports.length > 0 ? `${storeImports}\n` : ''}
 if (import.meta.env.DEV) {
   // ── Start with ONE flow. ─────────────────────────────────────────────────────────────────────

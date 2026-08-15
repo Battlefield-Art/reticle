@@ -32,6 +32,8 @@ export const RETICLE_VITE_PLUGIN_NAME = 'reticle';
 // specifier yields both `reticle` (connect) and `install` (the React adapter). NOT `@reticlehq/core`
 // — that is the isomorphic foundation and exports neither.
 const RETICLE_PACKAGE = '@reticlehq/react';
+/** The framework-neutral sensor, which a Vue or Svelte app gets instead. See installedSdk. */
+const RETICLE_SENSOR = '@reticlehq/browser';
 /**
  * Compile-time global carrying the daemon's pairing token, for connects the plugin does not write
  * itself. The bridge requires the token even on localhost, and nothing in a browser can read the
@@ -408,12 +410,43 @@ export function findDevModule(root: string, exists: (p: string) => boolean): str
   return null;
 }
 
+/**
+ * Which SDK package this app actually has, and whether `install()` applies.
+ *
+ * The injected connect used to name `@reticlehq/react` unconditionally. That is right for a React
+ * app and fatal for any other: `reticle init` gives a Vue or Svelte codebase the framework-neutral
+ * `@reticlehq/browser` — deliberately, because a package named `@reticlehq/react` with `react` in
+ * its peers has no business in a Vue app — and the injected import then names a package that is not
+ * installed, so nothing connects and the page reports no session with no obvious cause.
+ *
+ * Measured end to end on a pristine `npm create vite --template vue` app: init wrote every file
+ * correctly and the tab never dialled the daemon, because of this one specifier.
+ *
+ * The React kit WINS when both resolve: it is a superset (it re-exports the sensor and adds the
+ * adapter), so an app that has it wants component identity. `install()` is the adapter's alone and
+ * the sensor does not export it — naming it against the sensor would trade a missing module for a
+ * missing export.
+ */
+export function installedSdk(
+  appRoot: string,
+  canResolve: (dep: string) => boolean = (dep) => null !== resolvableChain([dep], appRoot),
+): { specifier: string; usesInstall: boolean } {
+  if (canResolve(RETICLE_PACKAGE)) return { specifier: RETICLE_PACKAGE, usesInstall: true };
+  if (canResolve(RETICLE_SENSOR)) return { specifier: RETICLE_SENSOR, usesInstall: false };
+  // Neither resolves: keep the historical name so the failure reads as "the SDK is not installed"
+  // rather than as a package nobody recognises.
+  return { specifier: RETICLE_PACKAGE, usesInstall: true };
+}
+
 export function connectModuleSource(
   options: ReticleVitePluginOptions,
   devModule: string | null = null,
 ): string {
   const args = connectArgs(options);
-  const base = `import { reticle, install } from '${RETICLE_PACKAGE}';\ninstall();\nreticle.connect(${args});\n`;
+  const sdk = installedSdk(options.root ?? process.cwd());
+  const named = sdk.usesInstall ? 'reticle, install' : 'reticle';
+  const call = sdk.usesInstall ? 'install();\n' : '';
+  const base = `import { ${named} } from '${sdk.specifier}';\n${call}reticle.connect(${args});\n`;
   // AFTER connect: registerStore subscribes through the live SDK, and registering before there is a
   // session to report into drops the first diffs.
   return null === devModule ? base : `${base}import('${devModule}');\n`;
@@ -590,7 +623,11 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
             // no WebSocket, no session, no console message. The FIRST load after `reticle init` —
             // the one the whole product is judged on — silently did nothing, and it worked on the
             // next refresh, which is the worst possible shape for a bug like this.
-            RETICLE_PACKAGE,
+            //
+            // Whichever SDK this app actually has: naming `@reticlehq/react` in a Vue app that was
+            // given the sensor produces the exact boot warning the note below is about, for a
+            // package that is correctly absent.
+            installedSdk(appRoot).specifier,
             // Only in a form that resolves — see above; a name Vite cannot resolve produces a boot
             // warning that blames Reticle, and a forced re-optimization on every cold start.
             ...cjsDepIncludes(appRoot),
