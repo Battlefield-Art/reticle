@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,7 +29,12 @@ const SKILLS = join(REPO, 'skills');
 function frontmatter(
   file: string,
 ): { name: string | undefined; description: string | undefined } | null {
-  const text = readFileSync(file, 'utf8');
+  // Line endings normalised before anything looks at the bytes. Git on Windows checks text out as
+  // CRLF, so `---\r\n` failed the test below and EVERY shipped skill read as having no frontmatter:
+  // green on macOS and Linux, red on Windows only, and the message accused the skills rather than
+  // the parser. `.gitattributes` now pins LF in the working tree, which is the real fix; this is the
+  // second lock, because a file can still arrive with CRLF from an editor or a patch.
+  const text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   if (!text.startsWith('---\n')) return null;
   const end = text.indexOf('\n---', 4);
   if (-1 === end) return null;
@@ -102,4 +108,64 @@ describe('the Claude Code plugin ships the version everything else ships', () =>
       for (const version of versions) expect(version, `${file} is stale`).toBe(release);
     });
   }
+});
+
+/**
+ * The frontmatter reader must not depend on which platform checked the file out.
+ *
+ * Git on Windows checks text out as CRLF, so `---\r\n` failed a `startsWith('---\n')` test and every
+ * shipped skill read as having no frontmatter at all. The suite was green on macOS and Linux and red
+ * on Windows only, and it accused the skills — "the CLI will skip it" — rather than the parser, so
+ * the message pointed at ten innocent files.
+ *
+ * `.gitattributes` now pins LF in the working tree and is the real fix. This is the second lock: a
+ * file can still arrive with CRLF from an editor, a patch, or a copy off a Windows share, and when
+ * it does the guard must still read it rather than silently reporting the skill as unpublishable.
+ *
+ * Written against a temp file rather than the real skills, because the real ones are LF on this
+ * machine by construction — a test over them could never have caught this, which is exactly why it
+ * was not caught.
+ */
+describe('frontmatter is read whatever the line endings', () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function skillWith(newline: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'reticle-skill-eol-'));
+    dirs.push(dir);
+    const file = join(dir, 'SKILL.md');
+    writeFileSync(
+      file,
+      ['---', 'name: drive-desktop-app', 'description: does a thing', '---', '', '# Body'].join(
+        newline,
+      ),
+    );
+    return file;
+  }
+
+  it('reads CRLF frontmatter, the shape Windows checks out', () => {
+    expect(frontmatter(skillWith('\r\n'))).toEqual({
+      name: 'drive-desktop-app',
+      description: 'does a thing',
+    });
+  });
+
+  it('still reads LF frontmatter', () => {
+    expect(frontmatter(skillWith('\n'))).toEqual({
+      name: 'drive-desktop-app',
+      description: 'does a thing',
+    });
+  });
+
+  it('still returns null for a file with no frontmatter at all', () => {
+    // The direction that must not soften: a skill genuinely missing its frontmatter is a real
+    // finding, and normalising line endings must not turn it into a pass.
+    const dir = mkdtempSync(join(tmpdir(), 'reticle-skill-eol-'));
+    dirs.push(dir);
+    const file = join(dir, 'SKILL.md');
+    writeFileSync(file, '# Just a heading\r\n\r\nno frontmatter here\r\n');
+    expect(frontmatter(file)).toBeNull();
+  });
 });
