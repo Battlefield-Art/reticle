@@ -9,6 +9,13 @@ import { FlakeStore } from './flake-store.js';
 import { FLOW_TOOLS } from './flow-tools.js';
 import { ReticleTool } from '../tools/tool-names.js';
 
+// Real filesystem work inside a loop: milliseconds here, much slower on a Windows runner. A sibling
+// test with this shape timed out at vitest's 5s default on Windows CI and nowhere else, which reads
+// as a product failure and is a statement about the machine. This is a generous BOUND, not a
+// duration assertion — it cannot make a broken test pass, it only stops the suite reporting the
+// runner. Pinned by heavy-browser-tests-declare-a-timeout.test.ts.
+vi.setConfig({ testTimeout: 30_000 });
+
 /**
  * `flow_verify` accrues outcomes into the SAME flake ledger `reticle flow` keeps on the CLI, and
  * reports `flaky` back to the agent.

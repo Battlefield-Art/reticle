@@ -56,6 +56,63 @@ const PACKAGES = join(REPO, 'packages');
 
 /** A loop big enough that the default timeout is a coin flip on a loaded runner. */
 const HEAVY_LOOP = /for \([^)]*<\s*(?:\d{4,}|[A-Z_]+ \* \d)/;
+
+/**
+ * The second shape, which no count-based rule can see: real IO inside a loop.
+ *
+ * `project-tools.test.ts` timed out at the 5s default on Windows CI and nowhere else. It loops
+ * **40** times — nothing like the thousands the pattern above looks for — and writes a run record
+ * through the real filesystem port on each pass. That is milliseconds on macOS and Linux and much
+ * slower on a Windows runner, so the file is heavy because of what is INSIDE the loop, not because
+ * of how many times it goes round.
+ *
+ * Deliberately narrow rather than "every loop containing await": it has to be a file that also
+ * creates a real temp directory, which is what makes the awaited work touch a disk. Measured across
+ * `packages/**` when this was written, that combination matched six files. A blanket rule over
+ * awaited loops would have matched a large share of the suite and taught everyone to ignore it.
+ *
+ * It cannot see indirection any better than the rule above — a helper that does the IO one call away
+ * is invisible here. Same honesty caveat, same remedy: read the file.
+ */
+const MAKES_TEMP_DIR = /\bmkdtemp(Sync)?\b|\btmpdir\(\)/;
+
+/** True when some `for`/`while` body in the source awaits something. */
+function awaitsInsideALoop(text: string): boolean {
+  const loop = /\b(?:for|while)\s*\(/g;
+  for (let m = loop.exec(text); m !== null; m = loop.exec(text)) {
+    const body = loopBody(text, m.index);
+    if (body !== null && /\bawait\b/.test(body)) return true;
+  }
+  return false;
+}
+
+/**
+ * The braced body following a loop header, by brace matching.
+ *
+ * Substring windows were the obvious cheap version and are wrong in both directions: too short and a
+ * long body hides its await, too long and the NEXT function's await counts as this loop's. Returns
+ * null for a brace-less single-statement loop, which cannot contain enough to matter here.
+ */
+function loopBody(text: string, from: number): string | null {
+  const open = text.indexOf('{', from);
+  if (-1 === open) return null;
+  // A `{` further away than the end of the header line is a different construct, not this body.
+  if (text.slice(from, open).includes('\n')) return null;
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    const ch = text[i];
+    if ('{' === ch) depth++;
+    else if ('}' === ch) {
+      depth--;
+      if (0 === depth) return text.slice(open, i);
+    }
+  }
+  return null;
+}
+
+function doesRealIoInALoop(text: string): boolean {
+  return MAKES_TEMP_DIR.test(text) && awaitsInsideALoop(text);
+}
 /**
  * `}, 60_000);` or `}, HEAVY_DOM_TIMEOUT_MS);` — an explicit per-test timeout.
  *
@@ -74,6 +131,21 @@ const HEAVY_LOOP = /for \([^)]*<\s*(?:\d{4,}|[A-Z_]+ \* \d)/;
  */
 const EXPLICIT_TIMEOUT = /\},\s*(?:\d[\d_]{3,}|[A-Z][A-Z0-9_]*_MS)\s*,?\s*\)/;
 
+/**
+ * A file-level bound, which is the right unit for the real-IO rule.
+ *
+ * The loop rule above is about ONE outlier test in a file, so a per-`it()` timeout fits it. Real IO
+ * in a loop is a property of the whole file — the six that matched have the same fixture writing
+ * through the same filesystem port in three or four tests each, and annotating every one of them is
+ * twenty edits that a reader then has to keep in sync. `vi.setConfig({ testTimeout })` states it once
+ * and covers every test in the file, including the next one somebody adds.
+ */
+const FILE_LEVEL_TIMEOUT = /vi\.setConfig\(\{[^}]*testTimeout/;
+
+function declaresATimeout(text: string): boolean {
+  return EXPLICIT_TIMEOUT.test(text) || FILE_LEVEL_TIMEOUT.test(text);
+}
+
 function testFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -85,13 +157,17 @@ function testFiles(dir: string): string[] {
 }
 
 describe('heavy tests do not rely on the default timeout', () => {
-  const heavy = testFiles(PACKAGES)
-    .map((file) => ({ file, text: readFileSync(file, 'utf8') }))
-    .filter(({ text }) => HEAVY_LOOP.test(text));
+  const all = testFiles(PACKAGES).map((file) => ({ file, text: readFileSync(file, 'utf8') }));
+  const heavy = all.filter(({ text }) => HEAVY_LOOP.test(text));
+  const io = all.filter(({ text }) => doesRealIoInALoop(text));
 
   it('finds the heavy files at all — a vacuous rule is not a rule', () => {
     // Guards the guard: if the pattern stops matching, everything below passes for free.
     expect(heavy.length).toBeGreaterThan(0);
+  });
+
+  it('finds the real-IO-in-a-loop files at all', () => {
+    expect(io.length).toBeGreaterThan(0);
   });
 
   it('every file that builds thousands of nodes declares an explicit timeout', () => {
@@ -99,5 +175,19 @@ describe('heavy tests do not rely on the default timeout', () => {
       .filter(({ text }) => !EXPLICIT_TIMEOUT.test(text))
       .map(({ file }) => relative(PACKAGES, file));
     expect(missing).toEqual([]);
+  });
+
+  it('every file doing real filesystem work in a loop declares an explicit timeout', () => {
+    // The message is the point: a reader who hits this needs to know it is about what the loop DOES,
+    // not how many times it runs, or they will go looking for an iteration count that is not there.
+    const missing = io
+      .filter(({ text }) => !declaresATimeout(text))
+      .map(({ file }) => relative(PACKAGES, file));
+    expect(
+      missing,
+      'these tests await real filesystem work inside a loop, which is milliseconds here and much ' +
+        'slower on a Windows runner. Give the `it()` an explicit timeout — a generous BOUND, never a ' +
+        'duration assertion.',
+    ).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import { removeTempDir } from '../temp-dir.js';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,13 @@ import { AmbientStore } from './ambient-store.js';
 import { makeSessionEnd, type SessionEndTarget } from './session-end.js';
 import { DEFAULT_SESSION_RETENTION } from './retention.js';
 import { reticleDirPaths, sessionDirPath } from '../project/reticle-dir.js';
+
+// Real filesystem work inside a loop: milliseconds here, much slower on a Windows runner. A sibling
+// test with this shape timed out at vitest's 5s default on Windows CI and nowhere else, which reads
+// as a product failure and is a statement about the machine. This is a generous BOUND, not a
+// duration assertion — it cannot make a broken test pass, it only stops the suite reporting the
+// runner. Pinned by heavy-browser-tests-declare-a-timeout.test.ts.
+vi.setConfig({ testTimeout: 30_000 });
 
 function fakeSession(
   id: string,
