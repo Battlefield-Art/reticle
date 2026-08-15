@@ -88,10 +88,17 @@ Install it now, by whichever of these fits you:
     and follow its SETUP steps exactly.
 
 Do not stop until you have driven one real flow in my app and produced a verdict —
-that, not a config file, is what "installed" means. If you get stuck, the docs are
-built for you to fetch rather than browse: https://docs.reticle.sh/llms.txt lists
-every page, and appending .md to any page URL returns its source with no site
-chrome, so pull the one page you need instead of a whole document.
+that, not a config file, is what "installed" means.
+
+The docs are https://docs.reticle.sh and they are built for you to read, two ways:
+
+  - Fetch them. https://docs.reticle.sh/llms.txt lists every page, and appending
+    .md to any page URL returns its source with no site chrome, so you pull the
+    one page you need instead of a whole document.
+  - Or connect to them. https://docs.reticle.sh/mcp is an MCP server over the same
+    docs, with search_reticle to search and query_docs_filesystem_reticle to read.
+    Add it the same way you would any MCP server if you would rather search than
+    fetch.
 
 Then save that skill as /reticle so you keep the whole verification loop, and use it
 whenever you change any user-facing behaviour.
