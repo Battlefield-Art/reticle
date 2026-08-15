@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 import type { Connect } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 // @ts-expect-error — plain .mjs sibling, no types; runs in the Vite (Node) process.
 import { createBuilderApi } from './qa/builder-api.mjs';
 
@@ -29,6 +32,25 @@ interface Expense {
 /** The bridge port the page's SDK should dial. Injected so the QA harness can pick a free port. */
 const BRIDGE_PORT = process.env['RETICLE_PREVIEW_BRIDGE_PORT'] ?? '4400';
 
+/**
+ * The bridge REQUIRES the daemon's auto-provisioned pairing token on the websocket hello, even on
+ * loopback — that is what closes the "any local origin is trusted" gap. This demo wires its SDK by
+ * hand, so nothing was supplying it and every connect failed `authentication_failed` in a silent
+ * reconnect loop: no session, and each QA step then reported the app as unverifiable. Served through
+ * the config endpoint the page already fetches, rather than inlined at build time, because the
+ * harness starts its own bridge after this config is read.
+ */
+function pairingToken(): string {
+  const fromEnv = process.env['RETICLE_TOKEN'];
+  if (fromEnv !== undefined && fromEnv.length > 0) return fromEnv;
+  const dir = process.env['RETICLE_PAIRING_TOKEN_DIR'] ?? join(homedir(), '.reticle');
+  try {
+    return readFileSync(join(dir, 'pairing-token'), 'utf8').trim();
+  } catch {
+    return ''; // a tokenless bridge accepts the empty case
+  }
+}
+
 function readBug(req: IncomingMessage): string {
   const header = req.headers['x-bug'];
   const value = Array.isArray(header) ? header[0] : header;
@@ -53,7 +75,7 @@ function apiMiddleware(): Connect.NextHandleFunction {
 
     if (req.method === 'GET' && url.pathname === '/api/reticle-config') {
       // The page asks where its local bridge lives — avoids build-time port injection.
-      return send(res, 200, { bridgePort: Number(BRIDGE_PORT) });
+      return send(res, 200, { bridgePort: Number(BRIDGE_PORT), token: pairingToken() });
     }
     if (req.method === 'DELETE' && url.pathname === '/api/reset') {
       expenses = [];

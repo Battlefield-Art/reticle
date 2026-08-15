@@ -40,6 +40,21 @@ const SPEC_DIR = join(REPO, 'apps', 'e2e', 'specs');
  */
 const BENCH_DIR = join(REPO, 'bench');
 
+/**
+ * And the demo harnesses under `apps/`, because it happened a THIRD time exactly as predicted.
+ *
+ * The note above ends "guarding one directory against a repo-wide failure mode is what let it happen
+ * twice", and then the guard was extended to a second directory rather than to the failure. So
+ * `apps/vibe-builder-demo/qa` kept calling `reticle_wait_ready` after it was retired from the
+ * surface, and every one of that demo's five steps died on `TOOLS.find(...).handler` — the identical
+ * crash, in a demo whose whole point is showing Reticle catching what other gates miss.
+ *
+ * Scanned as a tree rather than a list of known directories: the next harness will be written
+ * somewhere none of us predicted, and a guard that has to be told about it is a guard that will miss
+ * it again.
+ */
+const APPS_DIR = join(REPO, 'apps');
+
 /** Tool names referenced as string literals in a spec, e.g. T('reticle_query', …). */
 const TOOL_REF = /'(reticle_[a-z0-9_]+)'/g;
 
@@ -83,17 +98,27 @@ function specFiles(): string[] {
   return readdirSync(SPEC_DIR).filter((f) => f.endsWith('.mjs'));
 }
 
-/** Every .mjs under bench/, recursively — harnesses live several directories deep. */
-function benchFiles(dir: string = BENCH_DIR): string[] {
+/** Every .mjs under a directory, recursively — harnesses live several directories deep. */
+function harnessFiles(dir: string): string[] {
   const out: string[] = [];
+  if (!existsSync(dir)) return out;
   for (const entry of readdirSync(dir)) {
-    if ('node_modules' === entry) continue;
+    if ('node_modules' === entry || 'dist' === entry || '.next' === entry) continue;
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) out.push(...benchFiles(full));
+    if (statSync(full).isDirectory()) out.push(...harnessFiles(full));
     else if (entry.endsWith('.mjs')) out.push(full);
   }
   return out;
 }
+
+const benchFiles = (): string[] => harnessFiles(BENCH_DIR);
+/**
+ * Everything under `apps/` that drives the tool surface, minus the e2e specs the first guard already
+ * covers by name. Deduped rather than excluded by path, so a spec moving does not silently drop it
+ * from both guards at once.
+ */
+const appHarnessFiles = (): string[] =>
+  harnessFiles(APPS_DIR).filter((f) => !f.startsWith(SPEC_DIR));
 
 describe('e2e specs do not reference tools that no longer exist', () => {
   const advertised = new Set(TOOLS.map((t) => t.name));
@@ -162,6 +187,43 @@ describe('bench harnesses do not reference tools that no longer exist', () => {
       'These bench harnesses call tools that are not on the surface. They will fail at runtime and ' +
         'produce a number anyway unless the harness checks isError. Fix the call, or add the name to ' +
         'KNOWN_REMOVED with the reason.',
+    ).toEqual([]);
+  });
+});
+
+describe('demo harnesses under apps/ do not reference tools that no longer exist', () => {
+  const advertised = new Set(TOOLS.map((t) => t.name));
+
+  it('finds app harnesses to check', () => {
+    expect(appHarnessFiles().length).toBeGreaterThan(0);
+  });
+
+  it('every reticle_* name an app harness calls is on the surface', () => {
+    // Matched by quoted name rather than by `callTool(`, because these harnesses dispatch their own
+    // way — vibe-builder-demo does `TOOLS.find((t) => t.name === name).handler(...)`, which is the
+    // line that actually threw. Narrowed by DECLARED_TOOLS for the same reason as the spec guard: a
+    // quoted `reticle_installed` is a telemetry code, not a dead tool, and demanding a fix for a
+    // name that was never a tool is worse than silence.
+    const broken: string[] = [];
+    for (const file of appHarnessFiles()) {
+      const text = readFileSync(file, 'utf8');
+      for (const match of new Set([...text.matchAll(TOOL_REF)].map((m) => m[1]))) {
+        if (
+          match !== undefined &&
+          DECLARED_TOOLS.has(match) &&
+          !advertised.has(match) &&
+          !PROFILE_GATED.has(match) &&
+          !KNOWN_REMOVED.has(match)
+        ) {
+          broken.push(`${file.slice(REPO.length + 1)} -> ${match}`);
+        }
+      }
+    }
+    expect(
+      broken,
+      'These demo harnesses call tools that are not on the surface. They die on ' +
+        '`TOOLS.find(...).handler` at runtime, which reads as the demo being broken rather than as ' +
+        'the tool having been renamed. Fix the call, or add the name to KNOWN_REMOVED with the reason.',
     ).toEqual([]);
   });
 });
@@ -323,6 +385,39 @@ describe('shipped docs never name a tool a reader cannot call', () => {
       }
     }
     expect(dead, `docs name tools that are not callable:\n${dead.join('\n')}`).toEqual([]);
+  });
+
+  /**
+   * `npx reticle` runs SOMEBODY ELSE'S PACKAGE.
+   *
+   * `reticle` is a bin name `@reticlehq/server` installs, not a package on npm — the name belongs to
+   * an unrelated project. `npx <name>` resolves the PACKAGE, so `npx reticle init` fetches a
+   * stranger's code from the registry unless a local bin already shadows it, which on a first install
+   * it cannot. This shipped on 110 lines across 36 doc pages, including the first command on the
+   * quickstart, where by definition nothing of ours is installed yet.
+   *
+   * The README already states the rule in prose and the docs violated it anyway, which is the usual
+   * result of a rule a machine does not enforce. Matched on `npx reticle` only: a BARE `reticle
+   * doctor` in captured CLI output is quoting the bin correctly and is not this bug.
+   */
+  it('no shipped doc tells a reader to npx a package we do not own', () => {
+    const wrong: string[] = [];
+    for (const file of [
+      ...docFiles(),
+      ...shippedReadmes(),
+      join(REPO, 'SKILL.md'),
+      ...skillFiles(),
+    ]) {
+      const text = readFileSync(file, 'utf8');
+      text.split('\n').forEach((line, i) => {
+        if (/npx\s+(--[a-z-]+\s+)*reticle(?![a-z@/-])/.test(line))
+          wrong.push(`${file.replace(REPO, '')}:${i + 1}: ${line.trim()}`);
+      });
+    }
+    expect(
+      wrong,
+      `these tell a reader to run an npm package we do not own — use \`npx @reticlehq/server\`:\n${wrong.join('\n')}`,
+    ).toEqual([]);
   });
 });
 

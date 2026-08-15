@@ -29,7 +29,18 @@ if (params.get('reticle') === '1') {
     testids: ['prompt', 'generate', 'bug', 'engine', 'verify', 'result', 'preview-frame'],
     stores: ['builder'],
   });
-  reticle.connect({ url: `ws://localhost:${bridge}/reticle`, session: 'builder-ui' });
+  // Same pairing-token requirement as the preview page — see /api/reticle-config. This connect is
+  // fire-and-forget by design, so a missing token showed up only as "sessions=0" much later.
+  void fetch('/api/reticle-config')
+    .then((r) => r.json() as Promise<{ token?: string }>)
+    .catch(() => ({ token: undefined }) as { token?: string })
+    .then((cfg) => {
+      reticle.connect({
+        url: `ws://localhost:${bridge}/reticle`,
+        session: 'builder-ui',
+        ...(cfg.token !== undefined && cfg.token.length > 0 ? { token: cfg.token } : {}),
+      });
+    });
 }
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;

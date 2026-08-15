@@ -144,7 +144,7 @@ export async function verifyPreview({
     // Wait for the sandbox browser's SDK to connect.
     for (let i = 0; i < 100 && server.bridge.sessions.count() === 0; i++) await sleep(50);
     if (server.bridge.sessions.count() === 0) throw new Error('sandbox SDK never connected to bridge');
-    await T('reticle_wait_ready', { timeoutMs: 10000 });
+    // Retired tool: the first live call already blocks for the session, and the loop above waited.
 
     // ── Step A — add a valid expense (amount=42) ──────────────────────────────
     await fillAndAdd('42');

@@ -33,8 +33,18 @@ async function connectReticle(): Promise<void> {
     stores: ['app'],
   });
   // Ask the preview where its local bridge lives, then connect (dev-only).
-  const cfg = (await (await fetch('/api/reticle-config')).json()) as { bridgePort: number };
-  reticle.connect({ url: `ws://localhost:${String(cfg.bridgePort)}/reticle`, session: 'preview' });
+  // The bridge requires the daemon's pairing token on the hello even on loopback, so the same
+  // endpoint hands it over. Without it every connect failed `authentication_failed` in a silent
+  // reconnect loop and no QA step could see the app at all.
+  const cfg = (await (await fetch('/api/reticle-config')).json()) as {
+    bridgePort: number;
+    token?: string;
+  };
+  reticle.connect({
+    url: `ws://localhost:${String(cfg.bridgePort)}/reticle`,
+    session: 'preview',
+    ...(cfg.token !== undefined && cfg.token.length > 0 ? { token: cfg.token } : {}),
+  });
 }
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;

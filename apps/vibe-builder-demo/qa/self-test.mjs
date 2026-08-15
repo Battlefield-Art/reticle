@@ -87,7 +87,9 @@ console.log(`\n=== SELF-TEST: outer Reticle drives the Builder UI; Builder's QA 
 try {
   for (let i = 0; i < 100 && server.bridge.sessions.count() === 0; i++) await sleep(50);
   check('outer Reticle connected to the Builder UI (the builder is itself instrumented)', server.bridge.sessions.count() > 0, `sessions=${server.bridge.sessions.count()}`);
-  await T('reticle_wait_ready', { timeoutMs: 10000 });
+  // reticle_wait_ready is retired: the first live call blocks for the session by itself, and the
+  // loop above has already waited for it. Calling it crashed every step of this demo on
+  // `TOOLS.find(...).handler` being undefined.
 
   // 1. Generate the app
   const gen = await refOf('generate');

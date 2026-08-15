@@ -234,7 +234,7 @@ export async function runLiveAgent({ bug = 'none', previewUrl = 'http://localhos
   try {
     for (let i = 0; i < 100 && server.bridge.sessions.count() === 0; i++) await sleep(50);
     if (server.bridge.sessions.count() === 0) throw new Error('sandbox SDK never connected');
-    await callReticle('reticle_wait_ready', { timeoutMs: 10000 });
+    // Retired tool: the first live call already blocks for the session, and the loop above waited.
 
     const messages = [
       { role: 'system', content: SYSTEM_PROMPT },
