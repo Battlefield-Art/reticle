@@ -37,10 +37,37 @@ const ruleShape = z.object({
     .describe('Simulate a network failure (offline) instead of a response.'),
 });
 
-/** Narrow the validated tool args into MockRule[], omitting undefined keys (exactOptionalPropertyTypes). */
-function toRules(value: unknown): MockRule[] {
+/**
+ * Narrow the validated tool args into MockRule[], omitting undefined keys (exactOptionalPropertyTypes).
+ *
+ * THROWS on a malformed rule rather than falling back to `[]`, because `[]` is not a neutral value
+ * here — it is the documented way to clear every active mock. A rule with a wrong field name used to
+ * produce exactly the call that turns mocking OFF, and the handler then reported `applied: true`
+ * with `count: 0`. For a tool whose entire job is forcing an error state, that means the agent
+ * checks the app's failure handling against the real backend, sees the happy path, and reports that
+ * the error state works.
+ *
+ * Same rule as the action arguments: an argument that could not be understood is refused by name,
+ * never reinterpreted into a destructive default. A valueless `fill` used to wipe the field and
+ * report ok; it throws now, for this reason.
+ *
+ * `undefined` and `[]` still mean "clear" — those are deliberate, documented requests, not failures
+ * to parse.
+ */
+export function toRules(value: unknown): MockRule[] {
+  if (value === undefined) return [];
   const parsed = z.array(ruleShape).safeParse(value);
-  if (!parsed.success) return [];
+  if (!parsed.success) {
+    const problem = parsed.error.issues
+      .map((i) => `${0 === i.path.length ? 'mocks' : `mocks.${i.path.join('.')}`}: ${i.message}`)
+      .join('; ');
+    throw new Error(
+      `reticle_network_mock could not read \`mocks\` (${problem}). Nothing was applied and mocking ` +
+        'was left unchanged — an unreadable rule is NOT treated as a request to clear. A rule is ' +
+        '{ urlContains, method?, status?, body?, contentType?, delayMs?, abort? }; pass `clear: true` ' +
+        'or an empty array if you meant to turn mocking off.',
+    );
+  }
   return parsed.data.map((r) => {
     const rule: MockRule = { urlContains: r.urlContains };
     if (r.method !== undefined) rule.method = r.method;
