@@ -4,9 +4,11 @@ description: Two lint rules that keep Reticle's signal layer and its comment hyg
 icon: shield-check
 ---
 
-`@reticlehq/eslint-plugin` exists because conventions rot. Someone adds a mutation, forgets the signal, and every verdict for that flow quietly drops a grade. Nothing breaks, the tests still pass, the evidence just gets weaker. A lint rule is the only way a convention survives contact with a deadline.
+`@reticlehq/eslint-plugin` is two ESLint rules that keep Reticle's signal layer self-enforcing. It is entirely optional: nothing in Reticle needs it, and you want it only once your app emits signals and you would like the compiler to notice when a new mutation forgets one.
 
-**Version 2.8.0. Apache 2.0. Depends on `@typescript-eslint/utils`. Peer dependency: `eslint >= 9`.**
+It exists because conventions rot. Someone adds a mutation, forgets the signal, and every verdict for that flow quietly drops a grade. Nothing breaks, the tests still pass, the evidence just gets weaker. A lint rule is the only way a convention survives contact with a deadline.
+
+**Apache 2.0. Depends on `@typescript-eslint/utils`. Peer dependency: `eslint >= 9`.**
 
 ```bash
 npm i -D @reticlehq/eslint-plugin
@@ -33,7 +35,7 @@ Warns when a store mutation happens without a mapped Reticle signal.
 
 | Option | Type | Default |
 | --- | --- | --- |
-| `mutators` | `string[]` | `[]`. With the default the rule is a no-op, which is deliberate: name your own mutators |
+| `mutators` | `string[]` | `[]`. With the default the rule is a no-op, which is deliberate: name your own mutators. Matched by BARE NAME, so `set` also matches `map.set()` and `headers.set()`; prefer an unambiguous name |
 | `signalCallee` | `string \| string[]` | `['reticleSignal', 'signal']` |
 
 ```js

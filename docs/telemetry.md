@@ -4,7 +4,7 @@ description: 'The complete description of the anonymous usage data Reticle colle
 icon: chart-line
 ---
 
-Reticle collects a small amount of anonymous usage data to help us understand whether the tool is useful: which commands people run, which tools agents actually use, and whether people keep using Reticle after they try it. That's what this data is for, and all it is for: making the product better.
+Reticle sends anonymous usage counters (which commands ran, which tools an agent called, whether a verification produced a verdict) and nothing from the app under test. To turn it off permanently, run `npx @reticlehq/server telemetry disable`.
 
 This page is the complete description of what is collected. If something is not listed here, it is not sent.
 
@@ -21,7 +21,7 @@ This page is the complete description of what is collected. If something is not 
 
 ## What is sent
 
-Thirteen kinds of events, each a single small JSON object:
+Seventeen kinds of events, each a single small JSON object. This is the whole list, and it is the same list the code enumerates:
 
 | Event | When | Extra data |
 | --- | --- | --- |
@@ -29,12 +29,14 @@ Thirteen kinds of events, each a single small JSON object:
 | `cli_command_run` | You run a `reticle` command | Which subcommand (`verify`, `status`, …) and which flags were present, by name |
 | `daemon_started` | The local daemon starts | n/a |
 | `daemon_stopped` | The local daemon stops | A summary of the session; see below |
+| `session_progress` | Periodically, from a daemon that is still running | The same summary as `daemon_stopped`, marked `final: false`. It exists so a long session is not invisible until it exits |
+| `app_instrumented` | The first time your app's SDK connects in a given daemon run | Nothing beyond the common fields. It is the second half of the install funnel: registering the MCP server is one thing, getting the SDK into a running page is another |
 | `verification_completed` | A verification produces a verdict | Whether it passed, whether Reticle refused to call a passing check verified, and **why** the verdict came out that way; see below |
 | `project_profiled` | Once per daemon start | The shape of the project; see below |
 | `version_changed` | You update or roll back | The two version numbers, and which direction |
 | `runtime_crashed` | The daemon hits an uncaught error | The error's type, **Reticle's own** stack frames, and the message with variables stripped; see below |
 | `mcp_client_connected` | An agent attaches to the daemon | Whether it is a reconnect, and how long the daemon had been idle |
-| `mcp_connection_lost` | The agent's MCP tools go away | Which stage (`first`, or `budget_spent` when it stopped retrying), the cause, and the attempt count. **At most twice per session**: one measured afternoon produced 547 reconnects, and an event each would bill for the pathology instead of measuring it |
+| `mcp_connection_lost` | The agent's MCP tools go away | Which stage (`first`, or `budget_spent` when it stopped retrying), the cause, and the attempt count. **At most twice per session**, because a reconnect loop can fire many times in a row and an event each would bill for the pathology instead of measuring it |
 | `init_completed` | `reticle init` finishes | Whether it worked, a classified reason when it did not, and which published install route you came through, DECLARED by that route via `RETICLE_INSTALL_SOURCE` and never inferred, and `unknown` when nothing declared one |
 | `bug_found` | Reticle finds a defect in the app under test | The **kind** of defect (`signal-contradicted`, `console-error`, …) and how it was found, never what it was found in |
 | `tool_refused` | A tool cannot do what an agent asked | Which tool, why (one of six buckets: no session, no match, unsupported, bad arguments, not ready, other), and whether the same call was retried. **Never the message**, because a refusal interpolates whatever you asked for, so only the tool name and the bucket are sent. Capped at 50 per daemon run |
@@ -139,7 +141,7 @@ Alongside the report, a feedback event carries context about the environment it 
 | `driver` | `cdp`, `sdk` | Whether Reticle drove the page or observed your own browser |
 | `client` | `claude-code`, `cursor` | The MCP client's own name from its handshake |
 | `mcpScope` | `user`, `project` | How Reticle is registered |
-| `kind` | `bug`, `gap`, `ambiguity`, `experience` | A defect, a blind spot, an undecidable verdict, or an overall take |
+| `kind` | `bug`, `gap`, `ambiguity`, `feature_request`, `improvement`, `experience` | A defect, a blind spot, an undecidable verdict, a thing that does not exist, a thing that exists but is awkward, or a human's overall take |
 
 Plus the `version`, `os`, and `ci` fields every event carries. No paths, no project name, no dependency list, no user-agent string.
 

@@ -1,9 +1,13 @@
 ---
-title: Troubleshooting: it worked on my tab
+title: 'Troubleshooting: it worked on my tab'
 sidebarTitle: Troubleshooting
 description: Nothing connected, the click did nothing, the verdict says unknown. The failures people actually hit, and the diagnostic for each.
 icon: stethoscope
 ---
+
+**Run `npx @reticlehq/server doctor` first.** It checks Chromium, the daemon, the port and the connected sessions in one command, and it names the problem in most cases. If `sessions` reads zero, your app is not reaching the bridge, and a port mismatch is the usual reason.
+
+Reticle is a verification layer that runs a dev-only SDK inside your running web app. Two halves have to be working: your agent needs the MCP server registered, and your app needs the SDK connected to the local daemon. Almost every failure below is one of those two halves being absent.
 
 Most of these were hit while writing these docs. The diagnostics quoted are real output.
 
@@ -17,7 +21,7 @@ npx @reticlehq/server doctor
 reticle doctor
   node         v22.14.0
   chromium     ✓ installed
-  daemon       ✓ running on :4400 (pid 24735, v2.8.0)
+  daemon       ✓ running on :4400 (pid 24735, v<the version you have>)
   sessions     ✓ 1 page connected
   bridge port  4400  (your app must dial THIS port, not your dev-server port)
   daemon log   /Users/you/.reticle/daemon-4400.log
@@ -35,11 +39,11 @@ By far the most common. Reticle's own diagnostic is unusually good here. It tell
 ```json
 {
   "sessionCount": 0,
-  "why": "no browser session connected, but one WAS connected to this daemon earlier, so the wiring is correct. The tab was closed, navigated away, or hard-reloaded. Ask the human to reopen the app (or run `reticle open`), or reload the tab. You do not have to wait for the human: reticle_lease {action:\"acquire\", url} opens a browser Reticle drives itself."
+  "why": "no browser session connected, but one WAS connected to this daemon earlier, so the wiring is correct. The tab was closed, navigated away, or hard-reloaded. Ask the human to reopen the app (or run `reticle open`), or reload the tab. You do not have to wait for the human: reticle_lease {action:\"acquire\", url} opens a browser Reticle drives itself, and returns a sessionId you can use immediately (reach it with reticle_run {tool:\"reticle_lease\"} if it is not advertised directly; release it when you finish). Then call reticle_sessions again."
 }
 ```
 
-Read the `why`. "One WAS connected earlier" means stop debugging your config, just reopen the tab.
+Read the `why`. If it says one **was** connected earlier, stop debugging your config and just reopen the tab. If it says nothing ever connected, the wiring itself is wrong, so work through the list below.
 
 If nothing ever connected:
 
@@ -52,13 +56,16 @@ If nothing ever connected:
 Your app dials a port; the daemon listens on one. When they disagree, the app runs perfectly and silently never connects. The browser console says so:
 
 ```
-[Reticle] could not reach the bridge at ws://localhost:4460/reticle after 3 attempts.
-Is the Reticle daemon running on that port? If your app runs in a container/devcontainer/WSL,
-the daemon is on a different host, so set the WS URL explicitly
-(Vite: VITE_RETICLE_WS_URL, or reticle.connect({ url })). Still retrying…
+[Reticle] this page could not open a websocket to ws://localhost:4460/reticle. 3 attempts, all
+failed. That is everything the page can see: from inside the browser it cannot tell a daemon that
+is not there from one it is not allowed to reach, so this is not evidence about the daemon. What
+answers it: run `npx @reticlehq/server status` to see whether one is listening and on which port.
+If your app runs in a container, devcontainer or WSL, the daemon is on a different host, so set
+the URL explicitly (Vite: VITE_RETICLE_WS_URL, or reticle.connect({ url })). An https page cannot
+open a ws:// socket at all. Still retrying…
 ```
 
-That message names the exact port it tried. Compare it with `bridge port` from `doctor` and set the one that is wrong:
+That message names the exact address it tried. Compare its port with `bridge port` from `doctor` and set whichever is wrong:
 
 ```bash
 VITE_RETICLE_WS_URL=ws://localhost:4400/reticle pnpm dev
@@ -187,6 +194,51 @@ Stale sessions pointing at dev servers you restarted an hour ago look completely
 ```
 
 `reticle_session { action: "end" }` when you are done, `{ action: "yield" }` when pausing. Both revive on your next action.
+
+## Frequently asked questions
+
+<AccordionGroup>
+  <Accordion title="Why does reticle_sessions return nothing when my app is clearly running?">
+    Your app running is not the same as your app being connected. The SDK has to dial the daemon's
+    bridge port over a WebSocket. If `npx @reticlehq/server doctor` shows the daemon up and
+    `sessions` at zero, either `reticle.connect()` never executed (check the dev guard is actually
+    true) or the app dialled the wrong port. The browser console names the exact address it tried.
+  </Accordion>
+
+<Accordion title="Which port should my app dial?">
+  The bridge port, which defaults to `4400`. It is **not** your dev-server port. A dev server on
+  4312 and a daemon on 4400 is the normal, correct arrangement. `doctor` prints the bridge port
+  under `bridge port`.
+</Accordion>
+
+<Accordion title="I restarted my agent and the reticle tools still are not there.">
+  If you registered the MCP server while the agent was running, restart the agent process itself:
+  quit and reopen Claude Code, reload the window in Cursor, or press Start in `.vscode/mcp.json` in
+  VS Code. `/mcp` only manages servers that were already loaded, so it cannot discover a new one. If
+  the tools are still missing, run `claude mcp list` and check `reticle` is present.
+</Accordion>
+
+<Accordion title="Does a verdict of unknown mean the test failed?">
+  No, and it does not mean it passed either. `verified: "unknown"` means Reticle drove the app and
+  could not tell what happened, usually because the page never settled inside the observation
+  window. Report it as unknown. If you hit one on an unthrottled context and believe it is wrong,
+  that is a Reticle defect worth sending with `reticle_feedback`.
+</Accordion>
+
+<Accordion title="Is it safe to kill port 4400 to restart things?">
+  No. `lsof -ti tcp:4400 | xargs kill -9` matches your agent's MCP proxy as well as the daemon and
+  takes the connection down with it. Use `npx @reticlehq/server stop`, or at minimum add
+  `-sTCP:LISTEN` so only the listener matches.
+</Accordion>
+
+  <Accordion title="Why does my agent click a button and nothing happens?">
+    Check the response for a `warning` about a throttled tab. A backgrounded browser tab has its
+    timers suppressed, so synthetic pointer gestures can silently no-op while the action still
+    reports success. Drive a lease instead, which is a context Reticle owns and never backgrounds.
+    If the tab is fine, check `occluded` on the element: a click landing on a modal overlay looks
+    identical from the outside.
+  </Accordion>
+</AccordionGroup>
 
 <Card title="Still stuck?" icon="comments" href="/tools-session-and-feedback">
   `reticle feedback --agent` works even when nothing is installed and the daemon will not start.

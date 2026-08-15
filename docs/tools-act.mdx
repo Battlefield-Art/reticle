@@ -15,36 +15,47 @@ icon: hand-pointer
 ## Example
 
 ```json
-{ "ref": "e102", "action": "fill", "args": { "value": "reticle" } }
+{ "ref": "e104", "action": "fill", "args": { "value": "reticle" } }
 ```
 
 Real response:
 
 ```json
 {
-  "since": 28123,
+  "since": 27544,
   "inputMode": "synthetic",
+  "inputModeReason": "not-a-pointer-action",
   "dispatched": true,
-  "settled": false,
-  "settleReason": "timeout",
+  "settled": true,
+  "settleReason": null,
   "result": {
     "ok": true,
-    "ref": "e102",
+    "ref": "e104",
     "action": "fill",
+    "dispatched": true,
+    "settled": true,
+    "settleReason": null,
     "testid": "login-password",
     "component": "Login",
     "role": "textbox",
     "name": "Password",
     "effect": {
-      "visible": false,
-      "focusMoved": "null->e102",
+      "focusMoved": "null->e104",
       "valueChanged": true,
-      "domMutatedWithin": 15
+      "domMutatedWithin": 9
     },
     "source": { "file": "src/components/Login.tsx", "line": 59, "column": 8 }
   }
 }
 ```
+
+<Note>
+  The `effect` block only lists what is worth knowing. Fields sitting at their uninformative default
+  are **omitted**, so a clean action collapses to its consequence. An absent `dispatched`,
+  `targetMatched`, `visible` or `enabled` means `true`; an absent `occluded`, `scrolledIntoView`,
+  `valueChanged` or `defaultPrevented` means `false`; an absent `focusMoved` or `occludedBy` means
+  `null`. Do not read a missing field as a failure.
+</Note>
 
 ## Actions
 
@@ -62,18 +73,20 @@ Real response:
 This is where `act` earns its place even though it proves nothing.
 
 - **`valueChanged: true`**. The field actually took the value. `false` on a `fill` usually means the input is controlled and rejected it, or it's readonly.
-- **`focusMoved: "null->e102"`**, focus went where you expected.
-- **`domMutatedWithin: 15`**, something re-rendered within 15ms. A `fill` that mutates nothing often means no handler is attached.
+- **`focusMoved: "null->e104"`**, focus went where you expected.
+- **`domMutatedWithin: 9`**, something re-rendered within 9ms. A `fill` that mutates nothing often means no handler is attached.
 - **`defaultPrevented`**. A handler called `preventDefault()`, which is why your form didn't submit.
 - **`occluded` / `occludedBy`**. The click landed on something else. This is the answer to at least half of all "the button doesn't work" reports.
 
 ## `settled: false` is not a failure
 
-`settleReason: "timeout"` means the page was still busy when Reticle stopped watching. On a `fill` that's normal and uninteresting. On a click you expected to complete something, it's a hint that you wanted `act_and_wait` with an explicit `until`.
+`settled: true` with `settleReason: null`, as above, means a real frame flushed before Reticle stopped watching. `settled: false` with `settleReason: "timeout"` means the page was still busy. On a `fill` that's normal and uninteresting. On a click you expected to complete something, it's a hint that you wanted `act_and_wait` with an explicit `until`. A settle timeout never fails the tool.
 
 ## `inputMode` tells you how real the input was
 
 `synthetic` means Reticle dispatched events programmatically. `real` means native CDP input, available under `reticle drive`. Synthetic input is fine for the overwhelming majority of apps; a few drag-and-drop and pointer-gesture libraries only respond to the real thing.
+
+`inputModeReason` explains any choice Reticle made on your behalf, so it is never silent. `not-a-pointer-action` above means a `fill` has no pointer path to take, not that real input was unavailable. Clicks default to the occlusion-honest synthetic path even when CDP is configured; pass `args.native: true` to force a trusted native click for file pickers and clipboard access.
 
 <Warning>
   When the tab is backgrounded, synthetic timers and pointer gestures can silently no-op. Every

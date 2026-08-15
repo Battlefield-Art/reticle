@@ -1,33 +1,35 @@
 ---
-title: Tools overview: 18 up front, 30 on call
+title: Reticle tools overview
 sidebarTitle: Tools overview
-description: The 18 tools your agent sees every turn, the 30 more it can reach on demand, and why the surface is deliberately small.
+description: The tools your agent sees every turn, the many more it can reach on demand, and why the advertised surface is deliberately small.
 icon: wrench
 ---
 
-Reticle ships 48 tools. Your agent is shown **18** of them.
+Reticle ships 46 tools plus two meta-tools. On the default profile your agent is shown **19** of them: 17 that do the work, plus `reticle_tools` and `reticle_run`, which reach the other 29 on demand. Only `reticle_act_and_wait` and `reticle_assert` produce a verdict.
 
 That is not a limitation, it's the design. MCP re-sends every advertised tool definition to the model on **every single turn**, so the tool list is not a menu you pay for once. It's rent.
 
-A wider surface costs tokens on every message. Less obviously, it makes the model wander: give it forty ways to look at a page and it will try several before doing anything useful.
+A wider surface costs tokens on every message. Less obviously, it makes the model wander: give it fifty ways to look at a page and it will try several before doing anything useful.
 
-The other 30 tools are one call away, never unreachable. `reticle_tools` lists them and `reticle_run` invokes them.
+The other 29 are one call away, never unreachable. `reticle_tools` lists them and `reticle_run` invokes them.
 
 <Note>
-  Measured off the real wire on 2026-08-14, by reading `tools/list` from a fresh daemon: the default
-  surface is **18 tools at 21,468 bytes**, against **48 tools at 134,368 bytes**. That is 6.3x more,
-  charged on every message. In real tokenizer terms that is roughly **4,930** and **30,200** tokens
-  per turn ([measured by `bench/harness/schema-tax.mjs`](/token-efficiency), which puts every server
-  through one tokenizer in a single pass). Re-measure before quoting these; the surface grows.
+  Measured off the real wire on 2026-08-16, by reading `tools/list` from a fresh daemon: the default
+  surface is **19 tools at 22,023 bytes**, against **48 tools at 134,992 bytes** when
+  `RETICLE_ADVERTISE_ALL_TOOLS` is set. That is 6.1x more, charged on every message.
+  [`bench/harness/schema-tax.mjs`](/token-efficiency) converts those bytes to tokens by putting
+  every server through one tokenizer in a single pass. Re-measure before quoting any of it; the
+  surface grows.
 </Note>
 
-## The default 18
+## The default 19
 
 Grouped by the job they do in the verify loop.
 
 <CardGroup cols={2}>
   <Card title="Look" icon="magnifying-glass">
-    `reticle_snapshot` · `reticle_query` · `reticle_inspect` · `reticle_sessions`
+    `reticle_snapshot` · `reticle_query` · `reticle_inspect` · `reticle_sessions` ·
+    `reticle_capabilities`
   </Card>
   <Card title="Act" icon="hand-pointer">
     `reticle_act` · `reticle_act_and_wait` · `reticle_act_sequence` · `reticle_navigate`
@@ -49,7 +51,7 @@ Grouped by the job they do in the verify loop.
   however many tools it used and however confident the summary sounds.
 </Warning>
 
-## Why these 18 and not others
+## Why these and not others
 
 Each one earned its slot, and a couple are there because of measured mistakes.
 
@@ -64,16 +66,16 @@ Those repeats were not retries. The calls succeeded and got repeated, because th
 Direct `reticle_network` and `reticle_console` stay advertised even though `reticle_observe` can filter for both, because two obvious tools beat one clever tool with a filter grammar.
 
 <Tip>
-  Trimming further has a floor. An 8-tool cut measurably dropped real-agent accuracy, because the
-  model loses scaffolding and wanders on harder flows. That reading is old enough to be dated
+  Trimming further has a floor. An eight-tool cut measurably dropped real-agent accuracy, because
+  the model loses scaffolding and wanders on harder flows. That reading is old enough to be dated
   evidence rather than proof, and a fresh A/B against a leaner surface is still unrun. Small is
   good; empty is not.
 </Tip>
 
-## Reaching the other 30
+## Reaching the other 29
 
 ```json
-{ "name": "reticle_flow_verify", "args": {} }
+{ "tool": "reticle_flow_verify", "args": {} }
 ```
 
 `reticle_run` takes a tool name and its arguments. `reticle_tools` lists what's available and returns the full argument grammar for any of them, so your agent can discover a tool mid-task without you having pre-loaded its schema.
@@ -85,10 +87,10 @@ Notable residents of the cold tail: flow recording and replay, visual diffing an
 Reticle tells you what each answer cost, because a verification tool that quietly eats your context window is not saving you anything:
 
 ```json
-"cost": { "bytes": 938, "tokens": 235 }
+"cost": { "bytes": 944, "tokens": 236 }
 ```
 
-That is a real `reticle_query` response: seven buttons found, with source pointers, for 235 tokens.
+That is a real `reticle_query` response: seven buttons found, with source pointers, for 236 tokens.
 
 ## Every response tells you when not to trust it
 
@@ -104,8 +106,8 @@ When the event buffer has evicted old events, a negative result might be a false
 
 ```json
 "buffer": {
-  "held": 15,
-  "dropped": 529,
+  "held": 535,
+  "dropped": 10,
   "note": "event buffer evicted older events (age/size cap): a negative result here may be a false negative; the evidence may have expired. Grade sooner or widen the buffer."
 }
 ```
@@ -122,6 +124,7 @@ A tool that says "no requests found" when it actually means "I lost the ones you
 | [`reticle_query`](/tools-query) | Where is the thing I mean? |
 | [`reticle_inspect`](/tools-inspect) | Everything about one element, down to source and design tokens |
 | [`reticle_sessions`](/tools-sessions) | Which tabs are connected, and can they actually be driven? |
+| [`reticle_capabilities`](/tools-tools-and-run) | What does this app say is testable? Testids, signals, stores, flows |
 
 ### Act
 
@@ -148,10 +151,10 @@ A tool that says "no requests found" when it actually means "I lost the ones you
 | --- | --- |
 | [`reticle_assert`](/tools-assert) | Did the named consequence hold? **Produces a verdict** |
 | [`reticle_tools`](/tools-tools-and-run) | What else is available, and what are its arguments? |
-| [`reticle_run`](/tools-tools-and-run) | Invoke any of the other 30 |
+| [`reticle_run`](/tools-tools-and-run) | Invoke any of the other 29 |
 | [`reticle_session`](/tools-session-and-feedback) | Hand control back to the human |
 | [`reticle_feedback`](/tools-session-and-feedback) | Tell the maintainers Reticle got something wrong |
 
 <Card title="The complete reference" icon="book" href="/usage">
-  Every tool, every argument, including the 30 in the cold tail.
+  Every tool, every argument, including the 29 in the cold tail.
 </Card>

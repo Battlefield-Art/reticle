@@ -4,6 +4,8 @@ description: 'Watch the agent’s live transcript, steer it mid-run, or end the 
 icon: hand
 ---
 
+With the presenter on (`reticle.connect({ present: true })`), the floating panel in your page lets you watch the agent's live transcript and steer it: **pause** it (its next action tool refuses and returns your guidance), **send** it a correction that rides back on its next tool result, or **end** the session. You can also point at a broken element with **Flag a bug** and hand the agent the element plus its source `file:line`.
+
 When you run with the presenter on (`reticle.connect({ present: true })`), the floating panel is a **two-way control surface**. You watch the agent's live transcript _and_ can steer it (pause it, send it a correction, or end the session) without leaving the page. There's also a clean, unmistakable "session ended" signal for both you and the agent.
 
 ## Watch the testing score climb (the live verdict tally)

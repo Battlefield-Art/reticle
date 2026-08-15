@@ -1,9 +1,11 @@
 ---
-title: Best practices: how to earn a green
+title: 'Best practices: how to earn a green'
 sidebarTitle: Best practices
 description: The habits that make a verdict worth trusting, and the specific mistakes that produce a confident, wrong pass.
 icon: star
 ---
+
+A green is worth trusting when you named the consequence **before** you acted, ended the run on `reticle_act_and_wait` or `reticle_assert` (nothing else produces a verdict), scoped the assertion with `since`, and read `verified` rather than `pass`. Everything below is one of those habits, or the specific mistake that breaks it.
 
 Everything here comes from driving Reticle against real apps and getting it wrong first. None of it is theoretical, and several entries exist because they bit us while writing these docs.
 
@@ -87,11 +89,14 @@ Every `act` response returns a `since`. Use it.
 
 Every verdict reports `honesty.grade`. Aim for `signal`.
 
-| Grade      | What it means                | How much it proves       |
-| ---------- | ---------------------------- | ------------------------ |
-| `presence` | Something appeared           | A mock does this too     |
-| `state`    | A registered store changed   | The app accepted it      |
-| `signal`   | The app fired a named signal | The app declared success |
+| Grade      | What it means                 | How much it proves          |
+| ---------- | ----------------------------- | --------------------------- |
+| `presence` | Something appeared            | A mock does this too        |
+| `state`    | A registered store changed    | The app accepted it         |
+| `net`      | A request fired and came back | The app talked to the world |
+| `signal`   | The app fired a named signal  | The app declared success    |
+
+Ranked weakest to strongest, that is `presence` < `state` < `net` < `signal`. A predicate with no consequence at all grades `none`.
 
 Getting from `presence` to `signal` is roughly ten minutes of [instrumentation](/instrumentation) per flow, and it is the highest-leverage work available.
 

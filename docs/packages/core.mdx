@@ -4,9 +4,9 @@ description: 'The shared wire contract for Reticle: constants, zod schemas, and 
 icon: cube
 ---
 
-`@reticlehq/core` is the bottom of the dependency graph. Every message that crosses a boundary, browser to bridge, bridge to agent, is defined here as a named constant plus a zod schema.
+`@reticlehq/core` is the shared wire contract at the bottom of Reticle's dependency graph. Every message that crosses a boundary, browser to bridge, bridge to agent, is defined here as a named constant plus a zod schema. **You almost certainly do not need to install it**: it arrives with whatever Reticle package you did install, and you only reach for it directly if you are building your own integration against the wire format.
 
-**Version 2.8.0. Apache 2.0. Depends on `zod` and nothing else.**
+**Apache 2.0. Depends on `zod` and nothing else.**
 
 ## Why it exists
 
@@ -27,7 +27,7 @@ npm i @reticlehq/core
 | Subpath | What it is |
 | --- | --- |
 | `.` | The ESM barrel. Types at `dist/index.d.ts` |
-| `./desktop-contract` | A CommonJS shim, generated at build, for the five strings the desktop adapters share |
+| `./desktop-contract` | A CommonJS shim, generated at build, for the strings the desktop adapters share |
 | `./schema/*.json` | Generated JSON Schema for the wire types |
 | `./package.json` | The manifest |
 
@@ -38,7 +38,7 @@ npm i @reticlehq/core
 
 ## What the barrel exports
 
-`src/index.ts` is a pure barrel: 26 `export *` re-exports plus one named export. Grouped by what they are for:
+`src/index.ts` is a pure barrel: a stack of `export *` re-exports plus one named export. Grouped by what they are for, and not exhaustive:
 
 ### Wire constants
 
@@ -50,7 +50,9 @@ npm i @reticlehq/core
 
 ### Enum-like frozen objects
 
-`EventType`, `ActionType`, `ElementState`, `QueryBy`, `MessageKind`, `ReticleCommand`, `PhenomenonType`, `SettleReason`, `ComponentStateReason`, `ComponentStateResult`, `InputMode`, `InputModeReason`, `ActionWarning`, `DriveErrorCode`, `TruncationChannel`, `EventAttribution`, `PerfMetric`, `PresenterMode`, `SnapshotMode`, `VisualReason`, `CONSOLE_LEVELS`, `Verified`.
+`EventType`, `ActionType`, `ElementState`, `QueryBy`, `MessageKind`, `ReticleCommand`, `PhenomenonType`, `SettleReason`, `ComponentStateReason`, `InputMode`, `InputModeReason`, `ActionWarning`, `DriveErrorCode`, `TruncationChannel`, `EventAttribution`, `PerfMetric`, `PresenterMode`, `SnapshotMode`, `VisualReason`, `CONSOLE_LEVELS`, `Verified`.
+
+`ComponentStateResult` is an interface, not one of these: it is a type-only export, so importing it as a value fails with `'ComponentStateResult' only refers to a type, but is being used as a value here`.
 
 ### Zod schemas
 
@@ -78,18 +80,26 @@ Pure, isomorphic, and safe on both sides of the wire:
 ## The desktop contract
 
 ```ts
-import { DESKTOP_CONTRACT, RETICLE_IPC_GLOBAL } from '@reticlehq/core/desktop-contract';
+import { RETICLE_IPC_GLOBAL, RETICLE_CAPTURE_CHANNEL } from '@reticlehq/core/desktop-contract';
 ```
 
-Five strings shared by the Electron preload and the Tauri crate, in CommonJS because a preload script is required before any ESM transform:
+Six strings shared by the Electron preload and the Tauri crate, in CommonJS because a preload script is required before any ESM transform:
 
-| Constant                        | Value                                                    |
-| ------------------------------- | -------------------------------------------------------- |
-| `RETICLE_IPC_GLOBAL`            | `__reticleIpc`                                           |
-| `RETICLE_CAPTURE_CHANNEL`       | `__reticle:capture`                                      |
-| `RETICLE_CAPTURE_FILE_PREFIX`   | `reticle-capture-`                                       |
-| `RETICLE_TAURI_CAPTURE_COMMAND` | `reticle_capture`                                        |
-| `RETICLE_FULL_PAGE_UNSUPPORTED` | The `VisualReason` value for a refused full-page capture |
+| Constant                        | Value                                                      |
+| ------------------------------- | ---------------------------------------------------------- |
+| `RETICLE_IPC_GLOBAL`            | `__reticleIpc`                                             |
+| `RETICLE_CAPTURE_CHANNEL`       | `__reticle:capture`                                        |
+| `RETICLE_CAPTURE_FILE_PREFIX`   | `reticle-capture-`                                         |
+| `RETICLE_TAURI_CAPTURE_COMMAND` | `reticle_capture`                                          |
+| `RETICLE_FULL_PAGE_UNSUPPORTED` | `full-page-unsupported`, for a refused full-page capture   |
+| `RETICLE_NOT_COMPOSITED`        | `window-not-composited`, for a window that had not painted |
+
+<Warning>
+  The subpath exports those six constants individually and nothing else. The `DESKTOP_CONTRACT`
+  record they are collected into exists on the ESM side only, so importing it here fails with
+  `Module '"@reticlehq/core/desktop-contract"' has no exported member 'DESKTOP_CONTRACT'`. Import
+  `DESKTOP_CONTRACT` from `@reticlehq/core` instead.
+</Warning>
 
 ## The JSON schemas
 

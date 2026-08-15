@@ -16,8 +16,8 @@ All three are the same command.
 
 <Warning>
   There is no per-command help. `reticle init --help` is not a help request, it is an unknown
-  argument: the parser rejects it, prints `unknown argument '--help'`, and exits `1`. This page and
-  the rest of this section are the per-command reference.
+  argument: the parser rejects it, prints `unknown argument '--help'` followed by this same block,
+  and exits `1`. This page and the rest of this section are the per-command reference.
 </Warning>
 
 ## What it prints
@@ -33,7 +33,9 @@ usage:  npx @reticlehq/server <command>   (or `reticle <command>` once the bin i
                 (CLAUDE.md / AGENTS.md / .cursor) and the /reticle command, because all three
                 only make sense once the tools are reachable.
   reticle serve [--port N] [--drive <url>] [--headless] [--http] [--http-port N] [--http-token T]
-  reticle stop  [--port N] [--quiet]
+  reticle stop  [--port N] [--quiet]                    (stop the daemon we started, by its recorded pid)
+  reticle kill  [--port N] [--force]                   (free the port by its LISTENER, never the agent's mcp proxy)
+  reticle restart [--port N] [--force]                 (kill, then start a daemon and wait for a real bind)
   reticle status [--port N]
   reticle doctor [--port N]                            (one command to diagnose setup: Chromium, daemon, port)
   reticle open  [url] [--port N]                        (show the app: reuse the connected tab, else open one)
@@ -71,11 +73,11 @@ and the spec runner: batch work). --headed opts any of them in, --headless hides
 Any usage error prints the offending thing first, then this same block on stderr, and exits `1`:
 
 ```
-{"t":"2026-08-14T19:38:47.402Z","event":"reticle_usage_error","message":"unknown command 'nonsense-cmd'"}
+{"t":"2026-08-15T18:42:48.476Z","event":"reticle_usage_error","message":"unknown command 'nonsense-cmd'"}
 unknown command 'nonsense-cmd'
 
-usage:
-  ...
+usage:  npx @reticlehq/server <command>   (or `reticle <command>` once the bin is on your PATH)
+  ... the whole block above ...
 ```
 
 Two audiences, two channels: the structured line for logs and scripts, the plain text for the person who just typed the command.

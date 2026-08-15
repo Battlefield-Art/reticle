@@ -12,14 +12,14 @@ icon: magnifying-glass
 { "by": "role", "value": "button", "limit": 6 }
 ```
 
-Real response from a running app:
+Real response from a running app, with four of the six elements trimmed out for length:
 
 ```json
 {
   "count": 7,
   "elements": [
     {
-      "ref": "e18",
+      "ref": "e118",
       "role": "button",
       "name": "Overview",
       "visible": true,
@@ -27,7 +27,7 @@ Real response from a running app:
       "states": ["present", "visible", "enabled"]
     },
     {
-      "ref": "e20",
+      "ref": "e120",
       "role": "button",
       "name": "Compose",
       "visible": true,
@@ -37,11 +37,11 @@ Real response from a running app:
   ],
   "total": 7,
   "truncated": true,
-  "cost": { "bytes": 938, "tokens": 235 }
+  "cost": { "bytes": 944, "tokens": 236 }
 }
 ```
 
-Seven buttons, each with a `ref` to act on and a source file to open, for 235 tokens.
+Seven buttons, each with a `ref` to act on and a source file to open, for 236 tokens.
 
 ## Arguments
 
@@ -63,16 +63,60 @@ Every argument also has a predicate spelling, so `{ "role": "button" }` works as
 "Are there still three rows?" does not require three row descriptors:
 
 ```json
-{ "by": "testid", "value": "todo-row", "count_only": true }
+{ "by": "testid", "value": "login-submit", "count_only": true }
 ```
+
+```json
+{ "count": 1, "cost": { "bytes": 11, "tokens": 3 } }
+```
+
+Three tokens. Note that `total` is not emitted on this path, because `count` already is the total.
+
+## A zero-match result tells you what _is_ there
+
+```json
+{ "by": "testid", "value": "compose-prompt" }
+```
+
+```json
+{
+  "count": 0,
+  "elements": [],
+  "hint": {
+    "route": "/hostile",
+    "knownEmptyState": true,
+    "presentTestids": [
+      "brand",
+      "nav-overview",
+      "nav-deployments",
+      "nav-compose",
+      "nav-diagnostics",
+      "nav-hostile",
+      "session-pill",
+      "cmdk-open",
+      "sign-out",
+      "hostile-view",
+      "hostile-ticker",
+      "hostile-feed-count"
+    ],
+    "presentRegions": [
+      { "role": "list", "childCount": 0, "name": "hostile-feed", "sample": [] },
+      { "role": "banner", "childCount": 0, "sample": [] }
+    ]
+  },
+  "cost": { "bytes": 402, "tokens": 101 }
+}
+```
+
+The testid existed, on another route. `hint.route` says where you actually are, `presentTestids` says what is on this page instead, and `presentRegions` distinguishes an empty list from a missing one. All of it without paying for a snapshot.
 
 ## Reading the response
 
 `ref` is the handle for every other tool: `act`, `inspect`, `state`. It stays valid until the element leaves the DOM, so you do not need to re-snapshot between actions on the same element.
 
-`source` appears when `@reticlehq/react` is installed. Note that all five sidebar buttons above report `Sidebar.tsx:41`. That is the line where the component renders them in a loop, which is exactly the line you want to edit.
+`source` appears when `@reticlehq/react` is installed. Note that both sidebar buttons above report `Sidebar.tsx:41`, and so do the three trimmed out of the example. That is the line where the component renders all five in a loop, which is exactly the line you want to edit.
 
-`truncated: true` with `total: 7` means `limit` cut the list, not that Reticle ran out of room.
+`truncated: true` with `total: 7` means `limit` cut the list, not that Reticle ran out of room. Neither field is emitted when nothing was cut, so their absence is itself the signal that you are looking at every match.
 
 `states` distinguishes `present` from `visible` from `enabled`. An element can be all three and still be covered by a modal. [`reticle_inspect`](/tools-inspect) reports `occluded` for that.
 

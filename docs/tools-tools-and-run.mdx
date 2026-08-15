@@ -1,12 +1,14 @@
 ---
 title: reticle_tools and reticle_run
-description: Discover the 30 tools that are not advertised, load their argument grammar on demand, and invoke any of them by name.
+description: Discover the tools that are not advertised, load their argument grammar on demand, and invoke any of them by name.
 icon: boxes-stacked
 ---
 
-Reticle advertises 18 tools and ships 48. These two meta-tools are how your agent reaches the other 30 without paying for their schemas on every turn.
+`reticle_tools` lists every Reticle tool and, on request, returns the full argument grammar for the ones you name. `reticle_run` then invokes any of them. Reach for the pair whenever you need a capability that is not in the default advertised surface, which is most of what Reticle can do.
 
-`reticle_tools` discovers. `reticle_run` invokes. Together they cost two tool definitions instead of thirty.
+Reticle ships 46 tools plus these two meta-tools. On the default profile your agent is shown 17 of them plus the meta pair, so 29 sit in the cold tail. These two are how it reaches those 29 without paying for their schemas on every turn.
+
+`reticle_tools` discovers. `reticle_run` invokes. Together they cost two tool definitions instead of twenty-nine.
 
 ## Discovering what exists
 
@@ -37,13 +39,15 @@ The response also tells you which surface is active:
 ```json
 {
   "profile": {
-    "active": "default",
-    "source": "the one tool surface (RETICLE_ADVERTISE_ALL_TOOLS unset when the daemon started)",
-    "note": "The profile is read once at daemon startup: change it and restart the daemon, or it has no effect."
+    "active": "all",
+    "source": "RETICLE_ADVERTISE_ALL_TOOLS set in the DAEMON's environment at startup",
+    "note": "The profile is read once at daemon startup: change RETICLE_TOOL_PROFILE and restart the daemon, or it has no effect. Under this profile every unadvertised tool is reachable through reticle_run; under `full` there are no meta-tools because every tool is advertised directly."
   },
   "next": "Load params with reticle_tools { names:[…] }, then call reticle_run { tool, args }."
 }
 ```
+
+That capture is from a daemon started with `RETICLE_ADVERTISE_ALL_TOOLS=1`. On a default daemon, `active` reads `default` and names the environment variable as unset.
 
 <Warning>
   "Read once at daemon startup" is doing real work in that sentence. Setting the environment
@@ -59,7 +63,27 @@ Summaries are enough to choose a tool, not to call one. Load the full parameters
 { "names": ["reticle_network_mock", "reticle_clock"] }
 ```
 
-This is the point of the design. Schemas arrive when they are needed, rather than on every turn forever.
+Each named tool comes back with its full description and a `params` array of `{ name, required, description }`. This is the point of the design. Schemas arrive when they are needed, rather than on every turn forever.
+
+<Warning>
+  Do this rather than guessing. `reticle_run` refuses an unknown parameter instead of running the
+  call, and hands you the real parameter list so the retry is one turn rather than three:
+
+```json
+{
+  "error": "unknown parameter for reticle_flow_save: name",
+  "tool": "reticle_flow_save",
+  "params": [
+    { "name": "flow", "required": false, "description": "Alias for `flowName`." },
+    { "name": "flowName", "required": true, "description": "Name for the flow file." }
+  ],
+  "hint": "fix the arguments and call reticle_run again"
+}
+```
+
+The full `error` string continues: _"NOT applied, so any result would be an answer to a different question."_
+
+</Warning>
 
 ## Invoking
 
@@ -98,11 +122,14 @@ Real response from an instrumented app, trimmed:
       "name": "ship-a-deploy",
       "steps": ["nav-deployments", "new-deploy", "deploy-name", "deploy-submit"]
     },
-    { "name": "generate-a-script", "steps": ["nav-compose", "compose-prompt", "compose-generate"] }
+    { "name": "generate-a-script", "steps": ["nav-compose", "compose-prompt", "compose-generate"] },
+    { "name": "find-old-deploy", "steps": ["nav-deployments", "scroll-to row-3600"] }
   ],
   "source": "live"
 }
 ```
+
+The full response on this fixture carries 49 testids and 16 signals. `source: "live"` means it was read from the running app; pass `{ "fromDisk": true }` to read the git-checked `.reticle/contract.json` instead, which works with no browser attached at all.
 
 ## Start here, not with a snapshot
 
@@ -117,7 +144,11 @@ Compared with snapshotting the page and guessing from element names, it is both 
 }
 ```
 
-Then drive the flow and see whether your error state actually works. Most do not, which is the point.
+```json
+{ "applied": true, "count": 1 }
+```
+
+Then drive the flow and see whether your error state actually works. Most do not, which is the point. `{ "clear": true }` turns it off and answers `{ "applied": true, "count": 0 }`.
 
 <Note>
   `reticle_run` returns whatever the invoked tool returns, unchanged. It is a transport, not a

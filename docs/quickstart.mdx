@@ -1,9 +1,11 @@
 ---
-title: Quickstart: proof in five minutes
+title: 'Quickstart: proof in five minutes'
 sidebarTitle: Quickstart
 description: Install Reticle, connect your coding agent, and get a real verdict with evidence in about five minutes.
 icon: rocket
 ---
+
+**Run `npx @reticlehq/server init` in your project, restart your dev server and your agent, then ask your agent to drive a flow.** That is the whole install. Reticle is a verification layer for AI coding agents: it embeds a dev-only SDK in your running web app so an agent can prove a change works instead of guessing.
 
 By the end of this page your agent will click a button in your app and prove what happened: the request that fired, the state that changed, and the file to open if it didn't.
 
@@ -81,10 +83,10 @@ npx @reticlehq/server open
 This reuses the tab you already have open, or opens one if you don't. The SDK connects to the local daemon over a WebSocket, and your agent can now see the app.
 
 <Warning>
-  If the browser console says it "could not reach the bridge", your app and the daemon disagree
-  about the port. Set it explicitly: `VITE_RETICLE_WS_URL=ws://localhost:4400/reticle` for Vite, or
-  `reticle.connect({url})`. This is the single most common setup problem, and the console message
-  tells you the exact port it tried.
+  If the browser console says `[Reticle] this page could not open a websocket to …`, your app and
+  the daemon disagree about the port. Set it explicitly:
+  `VITE_RETICLE_WS_URL=ws://localhost:4400/reticle` for Vite, or `reticle.connect({url})`. This is
+  the single most common setup problem, and the console message names the exact address it tried.
 </Warning>
 
 ## Step 4. Look at the page
@@ -192,6 +194,50 @@ Read what that actually proves:
 </CardGroup>
 
 That third state is the one that matters. Most tools have two outcomes and quietly file "I couldn't tell" under "fine". A verification layer that cannot admit uncertainty is just a very confident random number generator.
+
+## Frequently asked questions
+
+<AccordionGroup>
+  <Accordion title="How long does it actually take to install Reticle?">
+    One command and two restarts. `npx @reticlehq/server init` registers the MCP server, installs
+    the SDK, wires your build config and writes the agent rules. Then restart your dev server, so it
+    picks up the new build plugin, and restart your agent, so it re-reads its MCP server list. The
+    MCP registration is global, so every later project starts with the tools already there.
+  </Accordion>
+
+<Accordion title="Do I need to write tests or learn a query syntax?">
+  No. You talk to your agent in plain language and it calls the tools. There is no spec file, no
+  selector language and no test runner involved in the loop on this page. If you later want the same
+  flow to block a bad merge, you can save it and run it in CI, but that is a separate step.
+</Accordion>
+
+<Accordion title="Will any of this end up in my production build?">
+  No. The SDK is dev-only. The Vite plugin declares `apply: 'serve'`, so it is dropped from `vite
+  build` entirely, and `connect()` self-disables when the build reports `NODE_ENV=production`. The
+  recommended wiring also guards the call behind `import.meta.env.DEV`, so there are two independent
+  locks.
+</Accordion>
+
+<Accordion title="Does my code or my app's data leave my machine?">
+  No. The daemon runs on your machine and the SDK runs in your browser. No application code, DOM,
+  network traffic or console output leaves it. Anonymous product analytics are sent unless you opt
+  out with `npx @reticlehq/server telemetry disable`, and they never include your code or your app's
+  data.
+</Accordion>
+
+<Accordion title="What if my framework is not React or Next.js?">
+  The core is framework-neutral, so DOM, network, console, routing and source mapping work anywhere
+  JavaScript runs. What varies is how `connect()` gets into your app and whether you get component
+  identity on top. See [Frameworks](/frameworks) for the exact wiring per stack and an honest table
+  of what is gated in CI versus wired but unverified.
+</Accordion>
+
+  <Accordion title="Nothing connected. What is the first thing to check?">
+    Run `npx @reticlehq/server doctor`. If it shows the daemon running but `sessions` at zero, your
+    app is not reaching the bridge, and the usual cause is a port mismatch. The bridge port is not
+    your dev-server port. See [Troubleshooting](/troubleshooting).
+  </Accordion>
+</AccordionGroup>
 
 ## Where to go next
 

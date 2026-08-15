@@ -1,10 +1,13 @@
 ---
-title: Frameworks
-description: Which frameworks Reticle supports, which are wired but unverified, and the exact wiring for each one.
+title: 'Frameworks: proven, wired, and the difference'
+sidebarTitle: Frameworks
+description: Which frameworks Reticle supports, which are wired but unverified, and the exact wiring for each one. React, Next.js, Remix, Astro, SvelteKit, Nuxt, Vue and plain HTML.
 icon: layer-group
 ---
 
-The core of Reticle is framework-neutral. DOM, network, console, routing, animations and source mapping work anywhere JavaScript runs.
+**React + Vite, Next.js, Remix and Astro are fully supported, each with an example app driven to a verdict in CI. SvelteKit, Nuxt, Vue, Preact, Create React App and plain HTML are wired and documented but not gated, so treat them as plausible rather than proven.** The exact wiring for each is below.
+
+Reticle is a verification layer that embeds a dev-only SDK in your running web app so an AI coding agent can prove a change works. Its core is framework-neutral: DOM, network, console, routing, animations and source mapping work anywhere JavaScript runs.
 
 What varies is two things: how `connect()` gets into your app, and whether you get component identity on top.
 
@@ -14,7 +17,7 @@ What varies is two things: how `connect()` gets into your app, and whether you g
 
 We separate "we tested this" from "this should work". Four frameworks have an example app and a CI gate. The rest are wired and documented but nothing proves they still work.
 
-Two columns say different things and it is worth keeping them apart. **CI gate** `yes` means an example app is driven to a verdict on every change. **install only** means the install gate scaffolds that stack from scratch, runs `init`, boots it and waits for a session, so the setup is proven and the drive is not. Vue is there because 2.8.0 nearly shipped an installer that left a Vue app connecting 0% of the time, and the gate that exists for exactly that had only React scaffolds.
+Two columns say different things and it is worth keeping them apart. **CI gate** `yes` means an example app is driven to a verdict on every change. **install only** means the install gate scaffolds that stack from scratch, runs `init`, boots it and waits for a session, so the setup is proven and the drive is not. Vue is there because a release once nearly shipped an installer that left a Vue app connecting 0% of the time, and the gate that exists for exactly that had only React scaffolds.
 
 **Source pointer** is the `file:line` on a verdict. It needs the build plugin to stamp the source, which it does for JSX and, separately, for Svelte components. Vue single-file components are neither, so a Vue app gets every other signal and no `source` field. Measured, not assumed: a Svelte counter returns `src/lib/Counter.svelte:5` and the same drive on Vue returns none.
 
@@ -191,6 +194,44 @@ Electron and Tauri invert the direction: your app dials the daemon, and there is
 ## Not supported
 
 Angular and Solid appear in dependency detection but have no wiring, no adapter and no gate. The sensor may work if you call `connect()` yourself. Nothing proves it, so we are not going to list them as supported.
+
+## Frequently asked questions
+
+<AccordionGroup>
+  <Accordion title="Does Reticle work with Next.js?">
+    Yes, and it keeps SWC. Install `@reticlehq/react` and `@reticlehq/next`, then wrap your config
+    with `withReticle`. There is no Babel migration. Next.js has an example app and a CI gate, so it
+    is supported rather than merely wired, and you get component identity and `file:line` source
+    pointers.
+  </Accordion>
+
+<Accordion title="Does Reticle work with Vue?">
+  Partly, and the limit is specific. Install `@reticlehq/browser` rather than the React kit, and you
+  get DOM, network, console, routing, actions and Pinia state. What you do not get is a `source`
+  field: source stamping covers JSX and Svelte components, and a Vue single-file component is
+  neither. The install path is covered by a gate; the drive is not.
+</Accordion>
+
+<Accordion title="Which framework should I pick if I want the strongest verdicts?">
+  React on Vite. It is the shortest install, and it is the only combination that gives you all three
+  of component identity, `file:line` source pointers and a CI-gated example app. If you are already
+  on Next.js, Remix or Astro, you get the same guarantees.
+</Accordion>
+
+<Accordion title="My framework is not listed at all. Will it work?">
+  Probably, with one line. `@reticlehq/browser` is the framework-neutral sensor: call
+  `reticle.connect()` behind a dev guard anywhere your app boots, and you get DOM, network, console
+  and routing. What you lose is component identity and, unless a build plugin stamps your source,
+  the `file:line` pointer. If it does not register a session, that is a bug worth reporting.
+</Accordion>
+
+  <Accordion title="What does 'wired, unverified' actually mean for me?">
+    The recipe on this page was written from a real integration and is expected to work, but no app
+    in CI exercises it, so nothing will tell us when it breaks. If you depend on one of these, the
+    useful thing you can do is report it when it stops working, since that is the only signal there
+    is.
+  </Accordion>
+</AccordionGroup>
 
 <Card title="Something missing?" icon="comments" href="/tools-session-and-feedback">
   A framework you need is a `gap` report. It is the signal that decides what gets built.

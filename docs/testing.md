@@ -4,7 +4,9 @@ description: 'Turn an interactive drive into a repeatable suite with @reticlehq/
 icon: vial
 ---
 
-Driving Reticle interactively is reconnaissance. To turn it into a **repeatable, CI-runnable** suite, write declarative specs with `@reticlehq/test`. Specs bind to **signals and testids, never DOM structure**, so they inherit Reticle's refactor-resistance.
+To run Reticle checks in CI, install `@reticlehq/test`, write specs with `reticleTest(name, async (t) => …)`, then boot a headless session with `bootSession({ driveUrl, headless: true })` and run them with `runSpecs`. Exit non-zero when `summary.failed` is not `0`. Specs bind to **signals and testids, never DOM structure**, so they survive the refactors that break selector-based suites.
+
+Driving Reticle interactively is reconnaissance. This page is how you make it repeatable.
 
 ```ts
 import { reticleTest } from '@reticlehq/test';
@@ -84,3 +86,35 @@ import { flowsAsSpecs } from '@reticlehq/test';
 ## Authoring tip: record → prune → commit
 
 You don't have to hand-write steps. Drive the flow once (or record it via the panel), let Reticle emit the program, trim it, and commit it as a spec. The regression test is a byproduct of testing, not separate work.
+
+## FAQ
+
+### Do I need vitest or jest to run these?
+
+No. `runSpecs` is its own runner: it takes the specs registered by `reticleTest`, an `invoke` function, and a `print` callback, and returns `{ results, summary }`. You can call it from a plain `node script.mjs`. If you already have vitest, nothing stops you calling `runSpecs` from inside a test, but the runner does not depend on one.
+
+### How do I fail the CI job?
+
+`runSpecs` never throws on a failing spec, so you have to read the summary and exit yourself:
+
+```ts
+process.exit(summary.failed === 0 ? 0 : 1);
+```
+
+`summary` carries `{ total, passed, failed, skipped, ok }`. Note that **skipped is not failed**: a spec that skipped with a reason (see `t.expectInputModeReal()`) leaves `failed` at `0`.
+
+### Why did my hover or drag spec skip instead of running?
+
+Because native input was not active. `t.expectInputModeReal()` deliberately skips with a reason rather than passing on a synthetic no-op, since a synthetic hover cannot trigger a CSS `:hover` or a pointer-library drag. If you want those specs to actually run, drive the app with real input: `npx @reticlehq/server drive http://localhost:4310`, or point the server at a CDP endpoint with `RETICLE_CDP_URL`.
+
+### Does the app need to be running already?
+
+Yes. Reticle is attach-only and never starts your dev server. Boot your app first, then pass its URL as `driveUrl`. If nothing is listening there, `bootSession` opens a headless tab against a URL that serves nothing and no session ever connects.
+
+### Can I emit JUnit for my CI's test reporter?
+
+Yes, `toJUnitXml` and `writeJUnit` are both exported from `@reticlehq/test`. Pass them the results array from `runSpecs`.
+
+### Do I have to write specs by hand if I already have flows?
+
+No. `flowsAsSpecs` registers one `reticleTest` per flow under `.reticle/flows/`, replayed with that flow's own `expect` and `success` predicates and skipping its `dynamic` regions. That keeps the recorded map and the CI suite from drifting apart, because they are the same artifact.

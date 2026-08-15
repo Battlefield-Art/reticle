@@ -4,6 +4,8 @@ description: 'How we measure Reticle, what each number actually means, and the p
 icon: chart-column
 ---
 
+On ten injected regressions in the same app, Reticle caught **10 of 10** with zero false alarms, Playwright MCP 9, Chrome DevTools MCP 8. Reticle averaged 815 tokens per look against DevTools' 758 and Playwright's 1,292, which puts it first on Verification Efficiency (regressions caught per 1,000 tokens, gated on catching all of them) at 12.27 against 10.55 and 6.97. Where Reticle loses is stated in Part 5.
+
 > This page assumes **zero** testing background. By the end you'll understand what software testing is, why AI coding agents made it urgent, how to tell a good verification tool from a bad one, and exactly how Reticle measures up against the main alternatives, including the places Reticle loses. If a term looks like jargon, it's defined the first time it appears.
 >
 > _Where the pictures come from, stated accurately: the **SVG charts** (`bench/artifacts/`) are generated from measured raws by `bench/harness/charts.mjs`. The **headline PNG cards** (`assets/readme/`) are screenshots of hand-authored HTML in `assets/benchmarks/src/`, rendered by `assets/benchmarks/render.mjs`; their figures are typed in by a human and are **not** read from `history.jsonl`, which this line previously claimed. Treat a card as a design asset that has to be updated by hand when a number moves, and `bench/SCORECARD.md` (plus its freshness banner) as the source of truth._
@@ -153,10 +155,10 @@ Honesty is the point of this page, so here are the places Reticle does **not** w
 
 The numbers above are for **one** verification. But a test suite's real job is the **same** check, over and over, every commit, every CI run. Here the picture changes shape:
 
-- Reticle records a flow once, then **replays it with no AI model at all** (re-resolving each element and re-asserting the outcome) for **~175-210 tokens per run**.
+- Reticle records a flow once, then **replays it with no AI model at all** (re-resolving each element and re-asserting the outcome) for **~239 tokens per run** (re-measured 2026-08-11; it was ~175 before each flow started carrying a success oracle).
 - Playwright MCP and DevTools MCP have no replay: re-checking means an agent **re-drives the whole flow with the model every time**, costing tens of thousands of tokens per run.
 
-That's a **~128-184× cost difference per re-run**, and it grows with how often you run. This is where the "much cheaper than screenshots" claim becomes dramatic rather than incremental.
+That's a **~127× cost difference per re-run**, and it grows with how often you run. This is where the "much cheaper than screenshots" claim becomes dramatic rather than incremental.
 
 ![Re-run cost: Reticle replays with no model; competitors re-drive every time](/images/chart-avg-tokens.svg)
 
@@ -188,7 +190,7 @@ A fleet of agents (or a parallel suite) verifying the same app doesn't need a br
 ## Part 7: What this means for you
 
 - **If you're a developer using an AI agent:** Reticle lets the agent confirm its own change actually worked (across the network call, the console, the route, the state) for a few hundred tokens, not a screenshot's thousands. "Done" starts meaning done.
-- **If you run CI / a platform team:** the replay pass is the headline: deterministic re-verification with no model, so a known flow re-checks for ~200 tokens at ~0% flake, every commit.
+- **If you run CI / a platform team:** the replay pass is the headline: deterministic re-verification with no model, so a known flow re-checks for a couple of hundred tokens at ~0% flake, every commit.
 - **If you're evaluating tools:** the axis that matters is _bugs caught per token, gated on catching them all_. Cheapness that misses regressions is a false economy.
 
 You are now equipped to read any verification benchmark critically: ask "what's the catch rate, what's the false-positive rate, and what's the cost _per re-run_?" Then be suspicious of any vendor that won't show you where they lose.
@@ -204,15 +206,15 @@ A fair question from a large engineering org (think a Datadog- or Salesforce-siz
 The win is **regression re-runs**, because that cost is paid over and over. Take a mid-size surface:
 
 - **50 golden flows**, re-verified on **every PR**, at **200 PRs/day**.
-- Reticle replays each flow **deterministically, with no model**: ~**200 tokens/flow/run** (measured).
+- Reticle replays each flow **deterministically, with no model**: ~**240 tokens/flow/run** (measured).
 - The agent-driven alternative re-drives each flow with an LLM: ~**30,000 tokens/flow/run** (measured Layer-C comparison).
 
 |  | Per flow / run | 50 flows × 200 PRs/day | Per year (~250 working days) |
 | --- | --- | --- | --- |
-| Reticle replay (no model) | ~200 tok | ~2.0 M tok/day | ~0.5 B tok/yr |
+| Reticle replay (no model) | ~240 tok | ~2.4 M tok/day | ~0.6 B tok/yr |
 | Agent re-drive (LLM) | ~30,000 tok | ~300 M tok/day | ~75 B tok/yr |
 
-That's a **~150× difference on the recurring axis**, and it scales linearly with flows × runs, the two numbers an enterprise has _a lot_ of. The deterministic replay also means **~0% verdict flake** (measured over repeated identical runs), which at this scale is the difference between a trusted gate and one engineers learn to ignore (recall: flaky suites get abandoned; that's the documented failure mode Reticle is built to avoid). And because replay needs no model, it has **no per-run API spend and no rate-limit ceiling**. It runs in CI like any other deterministic check.
+That's a **~125× difference on the recurring axis**, and it scales linearly with flows × runs, the two numbers an enterprise has _a lot_ of. The deterministic replay also means **~0% verdict flake** (measured over repeated identical runs), which at this scale is the difference between a trusted gate and one engineers learn to ignore (recall: flaky suites get abandoned; that's the documented failure mode Reticle is built to avoid). And because replay needs no model, it has **no per-run API spend and no rate-limit ceiling**. It runs in CI like any other deterministic check.
 
 ### Where it does NOT help (stated plainly)
 
@@ -256,4 +258,4 @@ The same page is loaded in one browser under three conditions (full SDK, observe
 
 **Result: instrumentation overhead is smaller than the method can resolve. Report it as `< 1.2 percentage points`, inside the 3% budget.** The HUD is measured and reported separately, because it is a developer-visible affordance you can turn off, not a cost of observing.
 
-Getting here required correcting the method and then fixing a real bug. The two-condition version of this bench compared the full SDK against Reticle being absent, so it charged instrumentation for the HUD too, and reported **+5.85 pp (FAIL)**. Decomposing it showed almost none of that was instrumentation: a single `backdrop-filter: blur(24px)` on the HUD panel was costing **+4.03 pp** on its own, more than every observer combined, because a backdrop blur re-samples everything behind it whenever that content changes, and this fixture repaints at 60fps. Removing it took total main-thread time down 22%. Full history, including a fix that measured nothing and was reverted rather than kept, is in `bench/overhead/README.md`. Reproduce it yourself with `node bench/overhead/measure.mjs` (see `bench/overhead/README.md`, which records the ruled-out causes). causes).
+Getting here required correcting the method and then fixing a real bug. The two-condition version of this bench compared the full SDK against Reticle being absent, so it charged instrumentation for the HUD too, and reported **+5.85 pp (FAIL)**. Decomposing it showed almost none of that was instrumentation: a single `backdrop-filter: blur(24px)` on the HUD panel was costing **+4.03 pp** on its own, more than every observer combined, because a backdrop blur re-samples everything behind it whenever that content changes, and this fixture repaints at 60fps. Removing it took total main-thread time down 22%. Full history, including a fix that measured nothing and was reverted rather than kept, is in `bench/overhead/README.md`. Reproduce it yourself with `node bench/overhead/measure.mjs` (see `bench/overhead/README.md`, which records the ruled-out causes).

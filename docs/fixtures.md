@@ -4,6 +4,8 @@ description: 'Why the apps in apps/ cannot answer the one question that matters 
 icon: cubes
 ---
 
+The apps in `apps/` cannot tell you whether the install still works, because every one of them is already wired to Reticle. That question is answered in a separate repo, **[`reticle-fixtures`](https://github.com/reticlehq/reticle-fixtures)**, which keeps a pristine `clean` branch of real third-party apps and runs `node scripts/verify.mjs` to install into each one and assert a session actually connects.
+
 The apps in `apps/` are ours. We chose their defects, so passing against them says less than it looks like, and they are all wired to Reticle already, which makes them useless for the one question that matters before a release: **does the install still work on an app that has never seen Reticle?**
 
 That question is answered in a separate repo: **[`reticle-fixtures`](https://github.com/reticlehq/reticle-fixtures)**.

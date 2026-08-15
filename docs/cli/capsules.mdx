@@ -14,25 +14,26 @@ No flags.
 
 ## What it prints
 
-One `reticle_capsules` line: a `count` and an array. Real capture from this repository, trimmed to three of the sixty-three entries:
+One `reticle_capsules` line: a `count` and an array. Real capture from this repository, trimmed to three of the seventy-nine entries and pretty-printed (the CLI prints it as a single line):
 
 ```json
 {
+  "t": "2026-08-15T18:42:48.790Z",
   "event": "reticle_capsules",
-  "count": 63,
+  "count": 79,
   "capsules": [
     {
-      "id": "1786713193695-e23",
-      "origin": "failed-assert",
-      "expected": "declared consequence",
-      "observed": "no element matched {\"role\":\"dialog\"} in state 'visible'",
-      "steps": 1
-    },
-    {
-      "id": "1786696531874-e103",
+      "id": "1786793143459-e5",
       "origin": "failed-assert",
       "expected": "signal auth:granted",
       "observed": "signal \"auth:granted\" never fired",
+      "steps": 1
+    },
+    {
+      "id": "1786791565180-e12",
+      "origin": "failed-assert",
+      "expected": "declared consequence",
+      "observed": "route is '/actions', expected '/server-actions'",
       "steps": 1
     },
     {

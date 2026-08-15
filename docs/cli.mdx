@@ -4,6 +4,8 @@ description: Every reticle command. What it does, what it prints, and what it ex
 icon: terminal
 ---
 
+The `reticle` CLI wires Reticle into a project (`init`), runs and diagnoses the daemon your app connects to (`serve`, `status`, `doctor`, `kill`, `restart`), and gates a build on verification in CI (`verify`, `affected`, `gate`). This page is the index; each command has its own page with real captured output and measured exit codes.
+
 The CLI is mostly for you, not your agent. Your agent talks MCP; you use these to set things up, work out why nothing connected, and wire verification into CI.
 
 ```bash
@@ -22,7 +24,8 @@ npx @reticlehq/server <command>
 
 <Note>
   Every output block on this page was captured by running the command. Where an exit code is quoted,
-  it was measured, not assumed.
+  it was measured, not assumed. The CLI emits each structured line as one line of JSON; the blocks
+  below are pretty-printed so you can read them, and long lists are trimmed where the label says so.
 </Note>
 
 ## Setup and diagnosis
@@ -50,8 +53,8 @@ npx @reticlehq/server doctor
 ```
 reticle doctor
   node         v22.14.0
-  chromium     ✓ installed
-  daemon       ✓ running on :4400 (pid 24735, v2.8.0)
+  chromium     ✓ installed (chromium-1234)
+  daemon       ✓ running on :4400 (pid 72698, v2.8.0)
   sessions     ✓ 1 page connected
   bridge port  4400  (your app must dial THIS port, not your dev-server port)
   daemon log   /Users/you/.reticle/daemon-4400.log
@@ -66,17 +69,19 @@ Whether the daemon is up and which apps have connected.
 
 ```json
 {
+  "t": "2026-08-15T18:45:58.190Z",
   "event": "reticle_status",
   "port": 4400,
   "running": true,
-  "pid": 24735,
+  "pid": 72698,
   "sessionCount": 1,
   "sessions": [
     {
-      "sessionId": "sece96901…",
-      "url": "http://localhost:4312/",
-      "throttled": true,
-      "stale": false
+      "sessionId": "s223e0fad-e012-43f9-a23d-6d585470c90d",
+      "url": "http://localhost:4310/",
+      "throttled": false,
+      "stale": false,
+      "pendingMarks": 0
     }
   ]
 }
@@ -103,16 +108,22 @@ policy       https://github.com/reticlehq/reticle/blob/main/docs/telemetry.md
 
 | Command | What it does |
 | --- | --- |
-| `reticle serve` | Start the daemon in the foreground. `--drive <url>`, `--headless`, `--http` |
-| `reticle stop` | Stop it |
+| `reticle serve` | Start the daemon and wait for it to bind. `--drive <url>`, `--headless`, `--headed`, `--http`, `--http-port N`, `--http-token T` |
+| `reticle stop` | Stop the daemon we started, by its recorded pid. `--quiet` |
+| `reticle kill` | Free the port by asking who is **listening** on it. `--force` |
+| `reticle restart` | Kill, then start a daemon and wait for a real bind. `--force` |
 | `reticle open [url]` | Show the app. Reuse the connected tab, or open one |
 | `reticle drive <url>` | Foreground mode, for debugging |
 | `reticle mcp` | The MCP stdio proxy. Auto-starts the daemon if needed. This is what your agent runs |
 
+A bare `reticle` with no arguments is not help. It is `reticle serve`.
+
 <Warning>
-  `reticle drive` will fail with an `EADDRINUSE` stack trace if a daemon is already listening on the
-  port. Which is the normal state once your agent has started one. `reticle mcp` reuses a running
-  daemon; `drive` currently does not.
+  `reticle drive` and `reticle verify` both bind the bridge port themselves, so either will die with
+  a raw `Error: listen EADDRINUSE: address already in use 127.0.0.1:4400` stack trace if a daemon is
+  already listening. Which is the normal state once your agent has started one. `reticle mcp` reuses
+  a running daemon; those two do not. Stop the daemon first, or point them elsewhere with
+  `RETICLE_PORT`.
 </Warning>
 
 ## Verification
@@ -137,12 +148,15 @@ npx @reticlehq/server affected --since HEAD~1
 
 ```json
 {
+  "t": "2026-08-15T18:42:57.431Z",
   "event": "reticle_affected",
-  "changedFiles": ["docs/README.md", "packages/server/src/tools/docs-index-coverage.test.ts"],
-  "affected": ["deploy-journey", "verify-modal", "verify-route", "…"],
-  "unknownProvenance": ["deploy-journey", "verify-modal", "…"]
+  "changedFiles": ["SKILL.md", "docs/cli/doctor.mdx", "packages/server/src/init/agent-rules.ts"],
+  "affected": ["WEB-flow", "deploy-journey", "verify-modal", "verify-route"],
+  "unknownProvenance": ["WEB-flow", "deploy-journey", "verify-modal", "verify-route"]
 }
 ```
+
+Both lists are trimmed here; the real run named 47 flows.
 
 <Note>
   `unknownProvenance` lists flows Reticle could not map to source files, so it includes them to be
@@ -161,21 +175,30 @@ npx @reticlehq/server gate --since HEAD~1
 
 ```json
 {
+  "t": "2026-08-15T18:42:58.434Z",
   "event": "reticle_gate",
   "pass": false,
-  "uncovered": ["deploy-journey", "verify-modal", "…"],
-  "quarantined": ["drift-demo", "qa2-flow"],
-  "coverage": { "pct": 9, "covered": 4, "total": 47 }
+  "uncovered": ["WEB-flow", "deploy-journey", "verify-modal", "verify-route"],
+  "quarantined": ["asserted-demo", "blast-radius-compose", "drift-demo", "qa2-flow"],
+  "coverage": { "pct": 0, "covered": 0, "total": 47 }
 }
 ```
 
-Measured exit code: **`1`**. That run genuinely failed, with 4 of 47 flows covered, which is what a gate is supposed to do when you have not verified anything yet.
+Measured exit code: **`1`**, with the flow lists trimmed above. That run genuinely failed, with 0 of 47 flows covered, which is what a gate is supposed to do when you have not verified anything yet.
 
 `quarantined` flows are excluded from the pass/fail decision. Quarantine is for a flow that is known flaky and being fixed; it is not a place to hide failures, because the list is printed on every run.
 
 ### `reticle watch [url]`
 
-On save, report which saved flows must re-verify. The interactive companion to `affected`.
+On save, report which saved flows must re-verify. The interactive companion to `affected`. Long-running; stop it with `Ctrl+C`.
+
+### `reticle capsules`
+
+List the saved fail-to-pass bug capsules in `.reticle/capsules`. No flags. See [capsules](/cli/capsules).
+
+### `reticle hunt <dir>`
+
+Aggregate a directory of crawl reports into one false-green rate. See [hunt](/cli/hunt).
 
 ## Maintenance
 
@@ -213,7 +236,7 @@ The `--agent` form matters more than it looks: the setup that failed halfway is 
 Opt-in, and off by default:
 
 ```bash
-npx @reticlehq/server identify --context company|side_project|open_source|learning [--email E] [--forget]
+npx @reticlehq/server identify --context company|side_project|open_source|learning [--company N] [--email E] [--forget]
 ```
 
 Only useful if you want support or an enterprise trial. `--forget` removes it.

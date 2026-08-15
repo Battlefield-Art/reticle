@@ -4,7 +4,15 @@ description: Every Reticle telemetry event, its payload schema, where it is emit
 icon: database
 ---
 
-This is a contributor reference. If you just want to know what Reticle collects and how to turn it off, read [Telemetry](/telemetry) instead; that page is written for people who use Reticle, and this one is written for people who change it.
+<Warning>
+  **This page is for contributors, not users.** It documents the internal event *schema* so that
+  somebody changing Reticle's code emits the right shape. It contains no data and no measurements.
+
+If you want to know what Reticle collects about you and how to turn it off, read [Telemetry](/telemetry) instead. That is the user-facing page, and it is the one with the opt-out.
+
+</Warning>
+
+Every event Reticle emits is listed below with the same three things: **when it fires**, **what it carries**, and **why it exists**. The authoritative list is `TelemetryEventKind` in `packages/core/src/telemetry.ts`; if this page and that file disagree, the file wins and this page is a bug.
 
 Source of truth for everything below:
 
@@ -16,7 +24,7 @@ Source of truth for everything below:
 
 ## The shared envelope
 
-`TelemetryEventSchema` wraps every event. These fields are on all sixteen kinds.
+`TelemetryEventSchema` wraps every event. These fields are on every event kind, whatever it is.
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
@@ -24,7 +32,7 @@ Source of truth for everything below:
 | `anonymousId` | string, 1 to 128 | yes | Random UUID persisted at `~/.reticle/telemetry-id`. Distinct count of this is users |
 | `projectId` | string, 1 to 128 | no | One-way hash of the git remote, repo root, package root, or cwd. Counts distinct projects without revealing one |
 | `sessionId` | string, 1 to 64 | no | One daemon run. Present only on session-scoped events |
-| `event` | `TelemetryEventKind` | yes | Which of the sixteen |
+| `event` | `TelemetryEventKind` | yes | Which kind this is. The full list is `TelemetryEventKind` in `packages/core/src/telemetry.ts` |
 | `ts` | int, epoch ms | yes | Client time. The server stamps its own receive time too |
 | `version` | string, 1 to 64 | yes | The Reticle version emitting |
 | `ci` | boolean | yes | Running inside CI. Separates human activity from pipeline traffic |

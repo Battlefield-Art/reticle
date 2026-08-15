@@ -1,11 +1,11 @@
 ---
-title: Recipes: copy, paste, verify
+title: 'Recipes: copy, paste, verify'
 sidebarTitle: Recipes
 description: Worked examples for the situations you are actually in, with the real response each one returned.
 icon: book-open
 ---
 
-Each recipe is a situation, the call that verifies it, and what came back. Every response on this page was captured from a running app.
+Each recipe is a situation, the call that verifies it, and what came back. Every response on this page was captured from a running app on 2026-08-16. Refs like `e605` are session-specific: take your own from [`reticle_query`](/tools-query) before copying a call.
 
 ## "Did the login actually work?"
 
@@ -13,7 +13,7 @@ One call, three conditions. The signal fired, exactly one request went out, and 
 
 ```json
 {
-  "ref": "e5",
+  "ref": "e605",
   "action": "click",
   "until": {
     "kind": "allOf",
@@ -51,7 +51,7 @@ Each child predicate reports its own evidence, in order. `count: 1` is the part 
 ## "Did navigating actually change the view?"
 
 ```json
-{ "ref": "e17", "action": "click", "until": { "kind": "signal", "name": "nav:changed" } }
+{ "ref": "e618", "action": "click", "until": { "kind": "signal", "name": "nav:changed" } }
 ```
 
 ```json
@@ -62,9 +62,11 @@ Each child predicate reports its own evidence, in order. `count: 1` is the part 
     "evidence": { "name": "nav:changed", "data": { "view": "deployments" } }
   },
   "summary": {
-    "stateDiffs": [{ "path": "view", "from": "overview", "to": "deployments" }],
-    "route": "/deployments"
-  }
+    "statePathsChanged": ["app"],
+    "stateDiffs": [{ "path": "view", "from": "overview", "to": "deployments", "atMs": 49084 }],
+    "signals": ["nav:changed"]
+  },
+  "honesty": { "grade": "signal", "coverage": { "pct": 100, "partial": false } }
 }
 ```
 
@@ -76,8 +78,9 @@ Here is a real failure, kept because it teaches more than another pass.
 
 ```json
 {
-  "ref": "e23",
+  "ref": "e623",
   "action": "click",
+  "args": { "confirmDangerous": true },
   "until": {
     "kind": "allOf",
     "predicates": [
@@ -98,19 +101,23 @@ Here is a real failure, kept because it teaches more than another pass.
         "pass": false,
         "expected": "an element matching {\"role\":\"dialog\"} in state 'visible'",
         "observed": "no matching element on the page",
-        "evidence": { "presentTestids": ["deploy-table", "filter-search", "env-filter", "…"] }
+        "assertion": "element.present",
+        "evidence": {
+          "presentTestids": ["deploy-table", "filter-search", "env-filter", "sign-out", "…"]
+        }
       },
       { "pass": true, "evidence": { "absent": true } }
     ]
   },
   "summary": {
-    "stateDiffs": [{ "path": "newDeployOpen", "from": false, "to": true }],
+    "stateDiffs": [{ "path": "newDeployOpen", "from": false, "to": true, "atMs": 60862 }],
     "signals": ["modal:opened"]
-  }
+  },
+  "capsule": { "blastRadius": ["state app", "signal modal:opened"], "firstDivergence": null }
 }
 ```
 
-Read the `summary`. The modal **did** open. `newDeployOpen` went `false → true` and the app fired `modal:opened`.
+Read the `summary`. The modal **did** open. `newDeployOpen` went `false` to `true` and the app fired `modal:opened`. `capsule.blastRadius` says the same thing as a list: the click moved the `app` store and fired `modal:opened`, and nothing else.
 
 The assertion was wrong, not the app. That modal is a `div` with no `role="dialog"`, so a role query could never match it. (Which is also an accessibility bug worth fixing, found for free.)
 
@@ -135,14 +142,16 @@ An empty `reticle_query` result tells you what _is_ there:
   "count": 0,
   "elements": [],
   "hint": {
-    "route": "/",
+    "route": "/hostile",
     "knownEmptyState": true,
-    "presentTestids": ["nav-overview", "nav-deployments", "kpi-deploys", "…"]
-  }
+    "presentTestids": ["nav-overview", "nav-deployments", "hostile-view", "hostile-ticker", "…"],
+    "presentRegions": [{ "role": "list", "childCount": 0, "name": "hostile-feed", "sample": [] }]
+  },
+  "cost": { "bytes": 402, "tokens": 101 }
 }
 ```
 
-In this case the testid existed, on another route. The hint saved a snapshot and a guess.
+The testid existed, on another route. `hint.route` says where you actually are and `presentTestids` says what is here instead, for 101 tokens and no snapshot. `presentRegions` is the other half: a list with `childCount: 0` is an empty state, which is a different bug from a list that failed to render at all.
 
 ## "Is this button destructive?"
 
@@ -158,7 +167,7 @@ Reticle refuses controls that look destructive, before acting:
 Confirm it explicitly when you mean it:
 
 ```json
-{ "ref": "e23", "action": "click", "args": { "confirmDangerous": true }, "until": { … } }
+{ "ref": "e623", "action": "click", "args": { "confirmDangerous": true }, "until": { … } }
 ```
 
 <Note>
@@ -215,10 +224,20 @@ Then drive the flow and assert the error UI appears. Pass `clear: true` to turn 
 
 <Warning>
 This one needs a **Reticle-driven browser**, because mocks are applied through CDP and the always-on
-SDK cannot do that. A pooled lease is **not** enough. Verified: `reticle_lease` still returns
-`{ "ok": false, "reason": "no-cdp-provider" }`.
+SDK cannot do that. A pooled lease is **not** enough. Re-verified on 2026-08-16: calling it against a
+tab from `reticle_lease` returns
 
-Your route is `RETICLE_CDP_URL` pointed at a Chrome started with `--remote-debugging-port`. The same applies to `reticle_screenshot`, `reticle_visual_diff` and `reticle_viewport`.
+```json
+{
+  "applied": false,
+  "count": 0,
+  "ok": false,
+  "reason": "no-cdp-provider",
+  "recommendation": "this needs a Reticle-driven browser (it is applied through CDP, which the always-on SDK cannot do), start with `reticle drive <url>` or set RETICLE_CDP_URL"
+}
+```
+
+Under a driven browser the same call answers `{ "applied": true, "count": 1 }`. The same rule applies to `reticle_screenshot`, `reticle_visual_diff` and `reticle_viewport`, which report `no-visual-provider` instead.
 
 </Warning>
 
@@ -227,10 +246,31 @@ Your route is `RETICLE_CDP_URL` pointed at a Chrome started with `--remote-debug
 Record it once, replay it forever:
 
 ```json
-{ "tool": "reticle_flow_verify" }
+{ "tool": "reticle_flow_verify", "args": { "names": ["docs-check"] } }
 ```
 
-Replays every saved flow and returns one consolidated verdict.
+Omit `names` to replay every saved flow. Either way you get one consolidated verdict, and only the failures carry detail:
+
+```json
+{
+  "status": "fail",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "summary": "0/1 flows pass, 1 need attention: docs-check",
+  "failures": [
+    {
+      "flow": "docs-check",
+      "verdict": "drift",
+      "whatChanged": "testid \"login-submit\" not found",
+      "whereInSource": "src/components/Login.tsx:81",
+      "nextAction": "rebind the anchor to \"sign-out\" (closest survivor), or update the flow if the change was intended."
+    }
+  ]
+}
+```
+
+It also returns `flaky`, the flows it has seen both pass and fail on unchanged code. Treat that list as a bug in the flow, not in the app.
 
 <CardGroup cols={2}>
   <Card title="The predicate grammar" icon="filter" href="/predicates">

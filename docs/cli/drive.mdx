@@ -24,15 +24,21 @@ npx @reticlehq/server drive <url> [--headless] [--headed]
 
 `reticle_started` with the port on success, `reticle_start_failed` with the error otherwise.
 
-Omitting the URL is a usage error. Real capture:
+Omitting the URL is a usage error. Real capture, with the usage block that follows it trimmed:
 
 ```
-{"t":"2026-08-14T19:38:46.975Z","event":"reticle_usage_error","message":"drive needs a url"}
+{"t":"2026-08-15T18:43:06.977Z","event":"reticle_usage_error","message":"drive needs a url"}
 drive needs a url
 
-usage:
-  reticle init  [--dry-run] [--port N] ...
+usage:  npx @reticlehq/server <command>   (or `reticle <command>` once the bin is on your PATH)
+  ...
 ```
+
+<Note>
+  `drive` takes **no `--port` flag**. Any flag other than `--headed` or `--headless` is rejected as
+  `unknown argument '--port'`. To drive on a different port, set `RETICLE_PORT` or put the port in
+  `.reticle.json`.
+</Note>
 
 ## Exit codes
 
@@ -42,9 +48,10 @@ usage:
 | `1`  | No URL, an unknown flag, or the engine failed to start |
 
 <Warning>
-  `drive` binds the bridge port itself. If a daemon is already listening, it fails with an
-  `EADDRINUSE` stack trace, which is the normal state once your agent has started one. [`reticle
-  mcp`](/cli/mcp) reuses a running daemon; `drive` does not.
+  `drive` binds the bridge port itself. If a daemon is already listening, it fails with a raw
+  `Error: listen EADDRINUSE: address already in use 127.0.0.1:4400` stack trace, which is the normal
+  state once your agent has started one. [`reticle mcp`](/cli/mcp) reuses a running daemon; `drive`
+  does not. [`reticle verify`](/cli/verify) behaves the same way.
 </Warning>
 
 ## Worked example
