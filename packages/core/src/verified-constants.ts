@@ -73,6 +73,8 @@ export const VerifiedReason = {
   UNSETTLED: 'unsettled',
   /** Held at a real grade over a clean capture with no channel disagreeing. */
   PROVED: 'proved',
+  /** A passing absence assertion targeted a region Reticle could not observe. */
+  ABSENCE_BLIND_SPOT: 'absence_blind_spot',
 } as const;
 export type VerifiedReason = (typeof VerifiedReason)[keyof typeof VerifiedReason];
 

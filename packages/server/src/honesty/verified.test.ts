@@ -283,7 +283,7 @@ describe('a stale eviction from earlier in the session must not condemn later ac
 });
 
 /**
- * `verified` has three values and this rule has eleven clauses, so the verdict alone throws away the
+ * `verified` has three values and this rule has twelve clauses, so the verdict alone throws away the
  * only thing that says WHO has to act. Measured in a real capture: `unknown` + `passed: false` was
  * indistinguishable between "Reticle caught a real bug", "the agent wrote a bad predicate" and
  * "Reticle itself could not see", and `no` collapsed "channels disagree" into "the agent's predicate
@@ -337,6 +337,12 @@ describe('every verdict names the clause that decided it', () => {
     },
     [VerifiedReason.UNSETTLED]: { pass: true, honesty: clean(), settled: false },
     [VerifiedReason.PROVED]: { pass: true, honesty: clean(), settled: true },
+    [VerifiedReason.ABSENCE_BLIND_SPOT]: {
+      pass: true,
+      honesty: clean(),
+      settled: true,
+      absenceBlindSpot: 'the absence target was in an unobserved region',
+    },
   };
 
   it.each(Object.entries(branches))('reports %s', (expected, inputs) => {

@@ -58,6 +58,8 @@ interface VerifiedInputs {
    * least actionable. Optional: without it those clauses say exactly what they said before.
    */
   unsettled?: UnsettledWindow;
+  /** A passing absence assertion targeted a region that the current capture could not observe. */
+  absenceBlindSpot?: string;
 }
 
 interface VerifiedVerdict {
@@ -150,6 +152,17 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
         `the assertion held, but this window closed before the app finished (${kinds})`,
         inputs.unsettled,
       ),
+    };
+  }
+
+  // An absence assertion over a region Reticle cannot observe is not disproved, but it is not proved
+  // either. This is narrower than general partial coverage: the target itself is scoped to the blind
+  // region, so the DOM result cannot answer the question the caller asked.
+  if (inputs.absenceBlindSpot !== undefined) {
+    return {
+      verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.ABSENCE_BLIND_SPOT,
+      because: inputs.absenceBlindSpot,
     };
   }
 
