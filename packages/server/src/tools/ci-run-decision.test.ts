@@ -30,6 +30,7 @@ const load = async (): Promise<{
   runnerLevelFailure: (code: number | null) => string | null;
   explain: (code: number, detail: string, willRetry: boolean) => string;
   RUNNER_LEVEL_EXIT_CODES: Map<number, string>;
+  runnerLevelInOutput: (output: string) => string | null;
 }> => (await import(SCRIPT)) as never;
 
 describe('only a failure to START the process is retried', () => {
@@ -84,5 +85,42 @@ describe('the log says which kind of failure this was', () => {
     const text = explain(-1073741502, 'detail', false);
     expect(text).toContain('retry hit it as well');
     expect(text).not.toContain('Retrying once');
+  });
+});
+
+/**
+ * The exit code is not the only place a runner-level failure shows up.
+ *
+ * Every step this wrapper wraps runs through turbo, and turbo CATCHES a child's exit code and exits
+ * 1 itself, printing the real one:
+ *
+ *   ERROR  @reticlehq/vite-plugin#build: command (...) pnpm.CMD run build exited (-1073741502)
+ *   ERROR  run failed: command  exited (-1073741502)
+ *   Process completed with exit code 1
+ *
+ * So the wrapper's own child exits 1 — correctly not retryable — and the STATUS_DLL_INIT_FAILED
+ * underneath it was invisible. Watching only the exit code made this useless for exactly the
+ * commands it wraps, which is not a hypothetical: it turned main red on a changelog-only commit
+ * while this wrapper was live and did nothing.
+ */
+describe('a runner-level failure swallowed by an inner wrapper is still recognised', () => {
+  it('finds the NT status in turbo’s own error line', async () => {
+    const { runnerLevelInOutput } = await load();
+    const turbo =
+      'ERROR  @reticlehq/vite-plugin#build: command (D:\\a\\reticle) pnpm.CMD run build exited (-1073741502)\n' +
+      'ERROR  run failed: command  exited (-1073741502)\n';
+    expect(runnerLevelInOutput(turbo)).toContain('0xC0000142');
+  });
+
+  it('says nothing about ordinary output', async () => {
+    const { runnerLevelInOutput } = await load();
+    expect(runnerLevelInOutput('3776 tests passed\nDone in 12s\n')).toBeNull();
+    expect(runnerLevelInOutput('')).toBeNull();
+  });
+
+  it('does not fire on an exit code that merely resembles one', async () => {
+    // The scan is over a closed list of full codes, not a pattern for "large negative number".
+    const { runnerLevelInOutput } = await load();
+    expect(runnerLevelInOutput('exited (-1073741) and (-107374150)')).toBeNull();
   });
 });

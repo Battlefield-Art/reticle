@@ -59,14 +59,53 @@ export function explain(code, detail, willRetry) {
   );
 }
 
+/**
+ * Did a runner-level code appear in the OUTPUT, even though the process exited with something else?
+ *
+ * This is not belt-and-braces, it is the main path on Windows. Every step this wraps runs through
+ * turbo, and turbo CATCHES a child's exit code and exits 1 itself, printing the real one:
+ *
+ *   ERROR  @reticlehq/vite-plugin#build: command (...) pnpm.CMD run build exited (-1073741502)
+ *   ERROR  run failed: command  exited (-1073741502)
+ *   Process completed with exit code 1
+ *
+ * So the wrapper's own child exits 1, which is correctly NOT retryable, and the STATUS_DLL_INIT_FAILED
+ * underneath it was invisible. Watching only the exit code made this wrapper useless for exactly the
+ * commands it wraps — observed on main, turning it red on a changelog-only commit.
+ *
+ * Scoped to the same closed list, and it still requires a FAILING run: a build that passes while the
+ * string happens to appear in a log line is not a runner failure.
+ */
+export function runnerLevelInOutput(output) {
+  for (const [code, detail] of RUNNER_LEVEL_EXIT_CODES) {
+    if (output.includes(String(code))) return detail;
+  }
+  return null;
+}
+
 function runOnce(command, args) {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: 'inherit', shell: process.platform === 'win32' });
+    const child = spawn(command, args, {
+      // Piped rather than inherited, so the output can be SCANNED as well as shown. Both streams are
+      // forwarded unchanged as they arrive, so the log a human reads is identical to before.
+      stdio: ['inherit', 'pipe', 'pipe'],
+      shell: process.platform === 'win32',
+    });
+    let seen = '';
+    const tee = (stream, sink) => {
+      stream?.setEncoding('utf8');
+      stream?.on('data', (chunk) => {
+        seen += chunk;
+        sink.write(chunk);
+      });
+    };
+    tee(child.stdout, process.stdout);
+    tee(child.stderr, process.stderr);
     child.on('error', (error) => {
       process.stderr.write(`[ci-run] could not spawn ${command}: ${error.message}\n`);
-      resolve(1);
+      resolve({ code: 1, output: seen });
     });
-    child.on('close', (code) => resolve(code));
+    child.on('close', (code) => resolve({ code, output: seen }));
   });
 }
 
@@ -78,14 +117,18 @@ async function main() {
   }
 
   const first = await runOnce(command, args);
-  const detail = runnerLevelFailure(first);
-  if (detail === null) process.exit(first ?? 1);
+  // Either signal counts: the code we were handed, or the code a wrapper underneath us swallowed.
+  const detail =
+    runnerLevelFailure(first.code) ?? (0 !== first.code ? runnerLevelInOutput(first.output) : null);
+  if (detail === null) process.exit(first.code ?? 1);
 
-  process.stderr.write(`${explain(first, detail, true)}\n`);
+  process.stderr.write(`${explain(first.code, detail, true)}\n`);
   const second = await runOnce(command, args);
-  const again = runnerLevelFailure(second);
-  if (again !== null) process.stderr.write(`${explain(second, again, false)}\n`);
-  process.exit(second ?? 1);
+  const again =
+    runnerLevelFailure(second.code) ??
+    (0 !== second.code ? runnerLevelInOutput(second.output) : null);
+  if (again !== null) process.stderr.write(`${explain(second.code, again, false)}\n`);
+  process.exit(second.code ?? 1);
 }
 
 // Only when run as a script; importing this for its pure helpers must not execute anything.
