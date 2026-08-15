@@ -63,7 +63,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const outDts = join(dist, 'desktop-contract.d.cts');
   writeFileSync(outCjs, renderDesktopContract(DESKTOP_CONTRACT), 'utf8');
   writeFileSync(outDts, renderDesktopContractDts(DESKTOP_CONTRACT), 'utf8');
-  process.stdout.write(
+  // stderr for the same reason as gen-schema: this runs in `prepack`, and stdout there corrupts the
+  // machine-readable output of the command that triggered the pack.
+  process.stderr.write(
     `wrote desktop contract (${String(Object.keys(DESKTOP_CONTRACT).length)} constants) to dist/desktop-contract.{cjs,d.cts}\n`,
   );
 }

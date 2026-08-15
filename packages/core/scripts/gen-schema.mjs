@@ -58,5 +58,11 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   for (const [name, schema] of Object.entries(schemas)) {
     await writeFile(join(outDir, `${name}.json`), JSON.stringify(schema, null, 2) + '\n');
   }
-  console.log('wrote %d wire schemas to dist/schema/', Object.keys(schemas).length);
+  // stderr, not stdout. This runs inside `prepack`, so anything it prints on stdout is prepended to
+  // the output of whatever invoked the pack — `npm pack --json` becomes unparseable, which is how
+  // you would script a tarball size check or a supply-chain audit. Progress is diagnostics; the
+  // artifact is the product.
+  process.stderr.write(
+    `wrote ${String(Object.keys(schemas).length)} wire schemas to dist/schema/\n`,
+  );
 }
