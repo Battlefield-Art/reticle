@@ -23,6 +23,26 @@
     },
     "test:coverage": {
       "dependsOn": ["^build"]
+    },
+    "@reticlehq/server#test:unit": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/apps/**",
+        "$TURBO_ROOT$/bench/**",
+        "$TURBO_ROOT$/docs/**",
+        "$TURBO_ROOT$/skills/**",
+        "$TURBO_ROOT$/.claude-plugin/**",
+        "$TURBO_ROOT$/.github/**",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/test/**",
+        "$TURBO_ROOT$/README.md",
+        "$TURBO_ROOT$/SKILL.md",
+        "$TURBO_ROOT$/CHANGELOG.md",
+        "$TURBO_ROOT$/CONTRIBUTING.md",
+        "$TURBO_ROOT$/turbo.json"
+      ]
     }
   }
 }
