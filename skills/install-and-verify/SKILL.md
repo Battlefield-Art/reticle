@@ -10,7 +10,7 @@ metadata:
 
 # Reticle: prove the change, do not guess
 
-Reticle embeds a dev-only SDK in the user's running app and exposes it to you as `reticle_*` MCP tools. You look, act, observe, and assert against the real app. No screenshots, no Chromium download.
+Reticle embeds a dev-only SDK in the user's running app and exposes it to you as `reticle_*` MCP tools. You look, act, observe, and assert against the real app. No screenshots, and no browser download for the verify loop — it drives the tab the user already has open. (A driven browser, which `reticle_lease` and `--drive` use, does need Chromium; Reticle says so when it needs one.)
 
 ## Where the rest of the documentation is
 

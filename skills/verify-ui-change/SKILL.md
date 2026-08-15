@@ -12,7 +12,7 @@ metadata:
 
 You edited something a user can see. Nothing is proven until the real app has done it and something other than the DOM agrees.
 
-This uses **Reticle**, which embeds a dev-only SDK in the user's running app and exposes it as `reticle_*` MCP tools. No screenshots, no Chromium download, no dev server of its own.
+This uses **Reticle**, which embeds a dev-only SDK in the user's running app and exposes it as `reticle_*` MCP tools. No screenshots, no browser download for the verify loop, no dev server of its own.
 
 ## 1. Are the tools here?
 
