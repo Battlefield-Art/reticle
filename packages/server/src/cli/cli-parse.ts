@@ -16,7 +16,15 @@ export {
   RATING_FLAG,
 } from './cli-parse-feedback.js';
 
-export const CLI_USAGE = `usage:
+/**
+ * The lines below say `reticle <command>`, which is the bin this package installs and is correct
+ * once it is on PATH. Copied into `npx`, it is not: `npx reticle` resolves the PACKAGE named
+ * `reticle`, which belongs to somebody else, and npx will happily fetch and run it. The docs were
+ * telling readers to do exactly that on 110 lines before it was caught, so the invocation now leads
+ * the usage block rather than being a footnote somewhere else.
+ */
+export const CLI_USAGE = `usage:  npx @reticlehq/server <command>   (or \`reticle <command>\` once the bin is on your PATH)
+
   reticle init  [--dry-run] [--port N] [--no-mcp] [--no-install] [--app <dir>]  (wire Reticle into the project in this directory)
                 --app picks WHICH app in a monorepo, when several are found
                 --no-mcp skips MORE than the server registration: also the agent rule files
