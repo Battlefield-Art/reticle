@@ -67,6 +67,8 @@ _Nothing yet._
 
 ### The install commands we published did not work
 
+- **`@reticlehq/server` — `init` printed the same broken command the docs did.** The Create React App path told the reader to run `npx reticle init`, in the product's own output rather than in a doc, so it reached someone who had already installed correctly and was following the tool. Same defect as the docs entry below and a different surface: the CLI name is now interpolated from one constant, and a guard runs every command the docs and the CLI name through the real parser, so a command that stops existing fails a gate instead of a user.
+
 - **Docs — two of the three install commands in circulation fail.** `npx reticle init` names a bin, not a package, so on a clean machine it resolves to an unrelated public `reticle` on npm. `npx @reticlehq/core init` has not existed since 2.0. That second one was the only install command in `llms.txt`, which is the file LLM crawlers read. `packages/vite-plugin`'s README was entirely pre-2.0 and live on npm, instructing readers to import from a subpath that is not in the exports map. Four package READMEs claimed a licence their own `package.json` contradicts.
 
 - **Docs — a page per package, a page per CLI command, and a reference for every telemetry event.** Twelve commands were undocumented entirely and nine more had a single table row. Every command in the new pages was run and its real output pasted in; the ones that were not run say so, on the page, with the reason. Two things that surfaced only by running them: there is no per-command `--help`, and `gate` exits non-zero on a coverage miss.
