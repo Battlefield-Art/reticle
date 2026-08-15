@@ -29,6 +29,7 @@ import {
   type CommandHandler,
 } from './commands/commands.js';
 import { Transport, type CommandOutcome } from './transport/transport.js';
+import { unreachableMessage } from './transport/unreachable-message.js';
 import { adapterNames } from './registry/adapters.js';
 import {
   registerCapabilities,
@@ -315,15 +316,10 @@ export class Reticle {
           this.#presenter.setState(SessionState.ENDED, BRIDGE_LOST_SUMMARY);
         }
       },
-      // First-connect never succeeded ⇒ the bridge is unreachable at this URL. Tell the developer
-      // exactly what went wrong and how to fix it, instead of retrying silently forever.
+      // First-connect never succeeded ⇒ this page's socket is not opening at this URL. Say what the
+      // page observed rather than guessing at the daemon, which it cannot see from in here.
       onUnreachable: ({ url: tried, attempts }) => {
-        nativeWarn(
-          `[Reticle] could not reach the bridge at ${tried} after ${String(attempts)} attempts. ` +
-            `Is the Reticle daemon running on that port? If your app runs in a container/devcontainer/WSL, ` +
-            `the daemon is on a different host — set the WS URL explicitly (Vite: VITE_RETICLE_WS_URL, ` +
-            `or reticle.connect({ url })). Still retrying…`,
-        );
+        nativeWarn(unreachableMessage(tried, attempts));
       },
     });
 
