@@ -230,6 +230,29 @@ function oneOf(names: readonly string[]): string | undefined {
   return 1 === names.length ? names[0] : undefined;
 }
 
+/**
+ * `readState`'s truncation report, when the caps actually fired.
+ *
+ * Its PRESENCE is the warning — the field is omitted entirely on an intact read, which is what lets
+ * "the list is short" stay distinguishable from "I shortened the list".
+ */
+function truncationOf(result: unknown): Record<string, unknown> | undefined {
+  if ('object' !== typeof result || null === result) return undefined;
+  const report = (result as { truncation?: unknown }).truncation;
+  return 'object' === typeof report && null !== report
+    ? (report as Record<string, unknown>)
+    : undefined;
+}
+
+/** A scoped `readState` reply, narrowed to the shape `selectPath` would have produced. */
+function asSelection(result: unknown): { found: boolean; value: unknown } | undefined {
+  if ('object' !== typeof result || null === result) return undefined;
+  const record = result as { found?: unknown; value?: unknown };
+  return 'boolean' === typeof record.found
+    ? { found: record.found, value: record.value }
+    : undefined;
+}
+
 async function evalState(
   session: PredicateSession,
   p: Extract<Predicate, { kind: typeof PredicateKind.STATE }>,
@@ -288,7 +311,37 @@ async function evalState(
       evidence: { searchedStores: names },
     };
   }
-  const selection = selectPath(stores[storeName], p.path);
+  let selection = selectPath(stores[storeName], p.path);
+  // The whole-store read walks into a value the transport caps may already have mangled.
+  //
+  // `readState` has a SCOPED mode that selects the path out of the RAW store before sanitising, added
+  // precisely so a large or deep path still resolves. This path was not using it, so a store with one
+  // big collection in it truncated the small value sitting beside it, and the comparison then ran
+  // against the literal string "[TRUNCATED]" and returned a confident `no`. Measured on the Atlas
+  // fixture: a one-element array reported as a failed assertion while the same payload's state diffs
+  // showed the assertion holding.
+  //
+  // Re-read only when a cap actually fired, so an intact read costs exactly what it did before.
+  if (truncationOf(res.result) !== undefined) {
+    const scoped = await session.command(ReticleCommand.STATE_READ, {
+      store: storeName,
+      path: p.path,
+    });
+    const result = scoped.ok ? scoped.result : undefined;
+    const scopedTruncation = truncationOf(result);
+    if (scopedTruncation !== undefined) {
+      // Even the raw sub-tree was too big. Nothing here knows what the value IS, so nothing here can
+      // say the assertion failed — that would be an accusation the evidence does not support.
+      const reason =
+        `state '${p.path}' could not be read intact — the transport caps truncated it, so the ` +
+        'value was never compared. Assert a narrower path, or a smaller field inside it';
+      return { pass: false, failureReason: reason, inconclusive: reason };
+    }
+    if (result !== undefined) {
+      const scopedSelection = asSelection(result);
+      if (scopedSelection !== undefined) selection = scopedSelection;
+    }
+  }
   if (!selection.found) {
     return {
       pass: false,
