@@ -71,6 +71,36 @@ function newLeaseId(): string {
   return `lease-${uuid}`;
 }
 
+/**
+ * The session a lease's tab actually registered as, or undefined while nothing has.
+ *
+ * Normally that is the lease id: `appendReticleParams` stamps `__reticle_session` on the URL and the
+ * SDK adopts it. An app that passes an explicit `session` to `connect()` keeps its own name instead,
+ * which is legitimate — a single-app fixture does it deliberately so a battery can address it by a
+ * known id. Matching on the lease id alone could never see those tabs, so the lease reported
+ * `ready: false` and a hint blaming a port mismatch while the session was connected and driveable.
+ *
+ * The URL marker is the evidence, and it is what makes this safe: two concurrent leases on one origin
+ * carry different markers, so neither can adopt the other's tab. Parsed rather than substring-matched,
+ * so `lease-abc` cannot claim `lease-abcdef`.
+ */
+export function resolveLeasedSessionId(
+  sessions: { get: (id: string) => unknown; all: () => { id: string; url?: string }[] },
+  leaseId: string,
+): string | undefined {
+  if (sessions.get(leaseId) !== undefined) return leaseId;
+  return sessions.all().find((s) => sessionParamOf(s.url) === leaseId)?.id;
+}
+
+function sessionParamOf(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  try {
+    return new URL(url).searchParams.get(RETICLE_URL_PARAM.SESSION) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const LEASE_READY_ATTEMPTS = 100;
 const LEASE_READY_POLL_MS = 100;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -93,14 +123,21 @@ export async function acquireLeasedSession(
       opts: { sessionId: string },
     ) => Promise<{ sessionId: string; release: () => Promise<void> }>;
   },
-  hasSession: (id: string) => boolean,
+  sessions: { get: (id: string) => unknown; all: () => { id: string; url?: string }[] },
   url: string,
   projectId?: string,
 ): Promise<{ sessionId: string; release: () => Promise<void> }> {
   const sessionId = newLeaseId();
   const lease = await pool.acquire(appendReticleParams(url, sessionId, projectId), { sessionId });
-  await waitForLeasedSession(() => hasSession(lease.sessionId));
-  return { sessionId: lease.sessionId, release: () => lease.release() };
+  // Resolved, not assumed — see resolveLeasedSessionId. The parallel suite replays against whatever
+  // id comes back, so handing it the lease id for an app that named its own session sent every flow
+  // in the run at a session that does not exist.
+  let registeredId: string | undefined;
+  await waitForLeasedSession(() => {
+    registeredId = resolveLeasedSessionId(sessions, lease.sessionId);
+    return registeredId !== undefined;
+  });
+  return { sessionId: registeredId ?? lease.sessionId, release: () => lease.release() };
 }
 
 export async function waitForLeasedSession(
@@ -169,11 +206,15 @@ export const LEASE_TOOLS: ToolDef[] = [
         );
       }
       // Wait for the leased tab's SDK to connect so the returned sessionId is usable right away.
-      const ready = await waitForLeasedSession(
-        () => deps.sessions.get(lease.sessionId) !== undefined,
-      );
+      // Resolved rather than assumed: an app that names its own session registers under that name,
+      // and the id we hand back has to be the one the agent can actually drive.
+      let registeredId: string | undefined;
+      const ready = await waitForLeasedSession(() => {
+        registeredId = resolveLeasedSessionId(deps.sessions, lease.sessionId);
+        return registeredId !== undefined;
+      });
       return {
-        sessionId: lease.sessionId,
+        sessionId: registeredId ?? lease.sessionId,
         url,
         ready,
         expiresInMs: pool.leaseTtlMs(),

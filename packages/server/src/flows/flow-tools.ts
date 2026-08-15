@@ -412,12 +412,7 @@ export const FLOW_TOOLS: ToolDef[] = [
         const concurrency = resolveConcurrency(requested.length, pool.capacity(), parallelArg);
         const outcomes = await mapWithConcurrency(requested, concurrency, async (flowName) => {
           const start = deps.now();
-          const lease = await acquireLeasedSession(
-            pool,
-            (id) => deps.sessions.get(id) !== undefined,
-            appUrl,
-            projectId,
-          );
+          const lease = await acquireLeasedSession(pool, deps.sessions, appUrl, projectId);
           try {
             const replay = await replayNamedFlow(deps, { flowName, sessionId: lease.sessionId });
             return { replay, durationMs: deps.now() - start };

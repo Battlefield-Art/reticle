@@ -454,7 +454,33 @@ export function matchValue(got: unknown, want: unknown): boolean {
     }
     return true;
   }
-  return got === want;
+  return structurallyEqual(got, want);
+}
+
+/**
+ * Value equality for the leaf comparison, because `===` could never match a literal.
+ *
+ * The expected side of a predicate is parsed out of the agent's JSON, so it is a fresh object every
+ * time — reference equality made `equals: ["a", "b"]` false against a store holding exactly
+ * `["a", "b"]`, and there was no value of the app's state that could have made it true. The mirror of
+ * a false green: an assertion nobody could satisfy, on the commonest thing there is to assert about.
+ *
+ * Deliberately strict about shape. An array is not an object, an extra key is a difference, and order
+ * is part of a list's value — `equals` means equals; `dataMatches` is the field-by-field one.
+ */
+function structurallyEqual(got: unknown, want: unknown): boolean {
+  if (got === want) return true;
+  if (null === got || null === want) return false;
+  if ('object' !== typeof got || 'object' !== typeof want) return false;
+  if (Array.isArray(got) !== Array.isArray(want)) return false;
+  if (Array.isArray(got) && Array.isArray(want)) {
+    return got.length === want.length && got.every((v, i) => structurallyEqual(v, want[i]));
+  }
+  const a = got as Record<string, unknown>;
+  const b = want as Record<string, unknown>;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((k) => k in b && structurallyEqual(a[k], b[k]));
 }
 
 /** Shallow JSON pattern match: each key in `pattern` must match (see matchValue). */

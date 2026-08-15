@@ -69,7 +69,14 @@ describe('matchValue — an operator-less object does not vacuously match everyt
     expect(matchValue(5, { $gte: 3 })).toBe(true);
     expect(matchValue(2, { $gte: 3 })).toBe(false);
     // A non-operator object (no `$` key) is a literal — not a container that vacuously passes.
-    expect(matchValue({ id: 1 }, { id: 1 })).toBe(false); // strict eq, no deep-equal (unchanged behavior)
+    //
+    // Compared by VALUE. This line used to pin `false` with the note "strict eq, no deep-equal
+    // (unchanged behavior)", which was recording what the code did while a different false green was
+    // being fixed, not a claim that reference equality is right. It is not: the expected side is
+    // parsed from the agent's JSON and is a fresh object every time, so `equals` against any array or
+    // object was an assertion no state could ever satisfy. See match-value-structural.
+    expect(matchValue({ id: 1 }, { id: 1 })).toBe(true);
+    expect(matchValue({ id: 1 }, { id: 2 })).toBe(false);
     expect(matchValue('*', '*') || matchValue('anything', '*')).toBe(true); // `*` presence unaffected
   });
 });
