@@ -72,6 +72,22 @@ Every verdict carries `verifiedReason` and `because`. They name the next move.
 
 **Never weaken a check to turn a verdict green.** An assertion edited until it passes proves nothing, and it is the exact failure this tool exists to prevent.
 
+## 4b. Assert what a field CONTAINS, not just that it exists
+
+An element predicate checks `value` and `text`, so a form field's contents are directly assertable:
+
+```jsonc
+{ "kind": "element", "role": "textbox", "name": "GST amount", "value": "274.58" }
+```
+
+A failure names the assertion (`element.value`), what it observed, and what you claimed, so you can act on it without a second call.
+
+Two things follow.
+
+**Prefer this over reading a value and comparing it yourself.** Fetching the value with `reticle_query` and eyeballing it in your reply produces no verdict, so it does not count as verification however careful the comparison was.
+
+**A locator is not a conjunction.** An element query dispatches on the first field it recognises, so a field it does not use is not a silent extra condition. `value` and `text` are checked; `label`, `placeholder`, `testid`, `alt`, `component`, and a `by` without a `value` are refused rather than ignored when something else already selected the element. A refusal costs you a turn. A silent pass would cost you the bug.
+
 ## 5. Batch, do not ping-pong
 
 The repeat loop is cheap; the expensive part is the first drive of a surface you have not seen. Every extra round trip pays the advertised tool surface again, so a cheap first drive means fewer and bigger hops, not smaller ones.

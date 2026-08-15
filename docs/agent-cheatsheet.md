@@ -35,6 +35,22 @@ One screen to get fluent. Reticle is the **proof layer for AI agents**: no scree
 | `{ kind: "element", role: "button", text: "Save" }` | `{ kind: "element", query: { role, text } }` |
 | `{ kind: "route", url: "/checkout" }` | `{ kind: "route", contains: "/checkout" }` |
 
+**New in 2.8.0, and it changes what some existing assertions mean.** An element predicate now CHECKS `value` and `text` instead of quietly folding them into the locator and ignoring them.
+
+```jsonc
+// Now a real assertion about the field's contents. Before 2.8.0 this passed
+// whatever the input held, because `value` was read as a locator operand and,
+// with no `by`, silently did nothing.
+{ "kind": "element", "role": "textbox", "name": "GST amount", "value": "274.58" }
+```
+
+Two consequences worth knowing before you write your next predicate:
+
+- **You can now assert what a field contains.** That was not possible before; agents worked around it by reading the value out of band with `reticle_query` and comparing in prose, which produces no verdict and therefore does not count as verification.
+- **`{ role, text }` now checks the text.** It used to match on role alone, so it matched every button on the page. If an assertion you have used for months starts failing, that is the likely reason, and the failure is the truth arriving late.
+
+Fields that nothing can check are refused rather than ignored: `by` without a `value`, and `label`, `placeholder`, `testid`, `alt` or `component` when a higher-precedence field already selected the element. An element query is a first-match dispatch, not a conjunction.
+
 **Combinators take `predicates`, not a bare array.** This is the shape most often got wrong, and it is the one that produces no verdict at all:
 
 ```jsonc
@@ -110,6 +126,23 @@ Frequently useful but NOT core, so reach them through `reticle_run({ tool, args 
 > `reticle_project` / `project.json` are the **run-history layer**. flows answer "does the journey still work?"; baselines answer "did the structure change?"; project.json answers "is this run consistent with prior runs?".
 
 **Visual layer (opt-in).** `reticle_screenshot` saves a PNG baseline to `.reticle/visual/<name>.png`; `reticle_visual_diff` perceptually compares the live page to it (`{ masks }` to ignore volatile regions, `{ maxRatio }` tolerance) → `{ matched, changedPixels, ratio, region, diffPath }`. It answers "does it **look** right", complementary to the behavioral layers, never a replacement. Both need a **driven browser** (`reticle drive <url>` / `RETICLE_CDP_URL`); without one they return `{ ok:false, reason:"no-visual-provider" }` (the always-on SDK ships no screenshotter).
+
+## Fields worth reading that you may not know are there
+
+Recent additions, each of which answers a question agents were previously asking a second call to resolve:
+
+| Field | On | What it tells you |
+| --- | --- | --- |
+| `expiresInMs` | `reticle_lease { action: "acquire" }` | How long the lease lives if untouched, reset by every call that targets it. Plan a pass to finish inside it, or re-acquire deliberately, rather than losing a measurement to a silent expiry. |
+| `scroll` | `reticle_inspect` | `scrollTop`, `scrollHeight`, `clientHeight`, `overflowY`. Whether the element scrolls, which you cannot infer from geometry alone. |
+| `timeline_omitted` | `reticle_record { action: "stop" }` | The raw event timeline is not in the response. It says how many events there were and names the call that returns them, with the cursor filled in. |
+| `elided` | `reticle_act_and_wait` | Some diff arrays were capped. The count is real even when the list is trimmed, so a small array does not mean a quiet app. |
+| `colorTokens`, `themeScope` | `reticle_inspect` | Every design token matching a colour, not one arbitrary winner, and which theme the reading was taken under. The singular `colorToken` is `null` when several tokens share a colour, because naming one of them was the defect. |
+| `why` | `reticle_sessions`, when the list is empty | Why nothing is connected, and the next action. An empty list is never the end of the road. |
+
+**When a verdict comes back `unsettled`,** it now names what it was waiting for and what the window actually held. Read those before retrying: an `unknown` that explains itself is a retry with a better `until`, and one that does not is a dead end.
+
+**If the port is taken,** `reticle kill` frees it and leaves your own MCP proxy alone. Do not reach for `lsof -i :4400` and kill what it lists; that matches every process on the port, including the proxy you are talking through.
 
 ## Start here
 
