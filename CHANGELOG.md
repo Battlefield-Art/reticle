@@ -4,7 +4,7 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
-_Nothing yet._
+- **`@reticlehq/server` — `reticle_scroll_to` said a row was not there when it had not looked.** Its default scrolls the DOCUMENT, and a virtualized list usually scrolls inside its own element, which is normally the reason it is virtualized. So the common call returned `found: false, exhausted: true` after a single scroll that moved nothing, and that reads as "the row does not exist" rather than "I scrolled the wrong thing". It now says which it is, and names `container` as the fix. Scoped so the note stays worth reading: a genuine exhaustion against a real scroll container, or a miss with a container already given, says nothing extra. Thanks to [@abidiahmedcom](https://github.com/abidiahmedcom).
 
 ## [2.8.0] — 2026-08-15
 
