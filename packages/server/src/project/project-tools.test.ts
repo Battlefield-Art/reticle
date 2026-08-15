@@ -49,6 +49,17 @@ function tool(name: string): (typeof TOOLS)[number] {
   return t;
 }
 
+/**
+ * How long a test that writes tens of run records to a real temp directory may take.
+ *
+ * Generous on purpose, and a BOUND rather than a measurement: nothing here claims the code is fast.
+ * The two tests below write 30 and 40 records sequentially through the real filesystem port, which
+ * is milliseconds on macOS and Linux and much slower on a Windows runner. The 40-record one timed
+ * out at vitest's 5s default on Windows CI only, which reads as a product failure and is a statement
+ * about the machine — the exact shape CLAUDE.md forbids asserting on.
+ */
+const HISTORY_WRITE_TIMEOUT_MS = 30_000;
+
 describe('project tools — temp dir, never touches the repo', () => {
   let dir: string;
   let root: string;
@@ -161,7 +172,11 @@ describe('project tools — temp dir, never touches the repo', () => {
         'run-28',
         'run-29',
       ]);
-    });
+      // Thirty sequential writes to a REAL temp directory. A bound, not a duration assertion: this
+      // says nothing about how fast the machine is, only that the test is allowed to finish on a
+      // slow one. Windows CI file IO is much slower than macOS or Linux, and its sibling below
+      // timed out there at the 5s default while passing everywhere else.
+    }, HISTORY_WRITE_TIMEOUT_MS);
 
     it('caps by default, so a huge history cannot arrive unasked', async () => {
       for (let i = 0; i < 40; i += 1) {
@@ -176,6 +191,7 @@ describe('project tools — temp dir, never touches the repo', () => {
         totalRuns: number;
       };
       expect(res.runs.length).toBeLessThan(res.totalRuns);
-    });
+      // Forty of them, so the same bound and more of it. This is the one that actually went red.
+    }, HISTORY_WRITE_TIMEOUT_MS);
   });
 });

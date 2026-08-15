@@ -41,7 +41,18 @@ const REPO = join(HERE, '..', '..', '..', '..');
  * boundary rather than a nuisance. Every other source-scanning guard in this repo lives here for
  * the same reason (see e2e-surface-drift.test.ts).
  */
-const SRC = join(REPO, 'packages', 'browser', 'src');
+/**
+ * EVERY package's sources, not only the browser's.
+ *
+ * Scoped to `packages/browser/src` originally because that is where the incident happened. The
+ * identical failure then arrived in `packages/server/src`: a test timed out at vitest's 5s default
+ * on Windows CI and nowhere else, which reads as a product failure and is a statement about the
+ * machine. Guarding one directory against a repo-wide failure mode is a mistake this repo has now
+ * made three times in one day, in three different guards.
+ *
+ * Widening cost exactly one annotation, which is the argument for having done it at the start.
+ */
+const PACKAGES = join(REPO, 'packages');
 
 /** A loop big enough that the default timeout is a coin flip on a loaded runner. */
 const HEAVY_LOOP = /for \([^)]*<\s*(?:\d{4,}|[A-Z_]+ \* \d)/;
@@ -73,8 +84,8 @@ function testFiles(dir: string): string[] {
   return out;
 }
 
-describe('heavy DOM tests do not rely on the default timeout', () => {
-  const heavy = testFiles(SRC)
+describe('heavy tests do not rely on the default timeout', () => {
+  const heavy = testFiles(PACKAGES)
     .map((file) => ({ file, text: readFileSync(file, 'utf8') }))
     .filter(({ text }) => HEAVY_LOOP.test(text));
 
@@ -86,7 +97,7 @@ describe('heavy DOM tests do not rely on the default timeout', () => {
   it('every file that builds thousands of nodes declares an explicit timeout', () => {
     const missing = heavy
       .filter(({ text }) => !EXPLICIT_TIMEOUT.test(text))
-      .map(({ file }) => relative(SRC, file));
+      .map(({ file }) => relative(PACKAGES, file));
     expect(missing).toEqual([]);
   });
 });
