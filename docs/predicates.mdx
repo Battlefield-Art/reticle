@@ -117,6 +117,8 @@ Walks a dot-path, with numeric array indices. `equals` takes a literal, or an op
 
 Omit `equals` entirely to assert presence.
 
+`store` is optional. Leave it out and the path picks the store: if exactly one registered store exposes it, that one is read. Registering several is normal, so this is the common case rather than a shortcut. Name a store when two of them genuinely expose the same path, which is the only situation Reticle cannot resolve on its own. If no store exposes it, that is a failure rather than a question, and the miss names the stores it searched.
+
 This is the predicate that catches a UI-versus-store desync. A deploy that only _looks_ shipped. Deterministically, in one call, with no model involved. On a miss it names the real store value and the keys that were available, so a failure is legible rather than a blind "no".
 
 ### animation
