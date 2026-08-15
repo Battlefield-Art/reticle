@@ -555,6 +555,19 @@ export const BugFoundSchema = z.object({
    * `BugAttribution` for why `app` needs positive evidence.
    */
   attribution: z.nativeEnum(BugAttribution),
+  /**
+   * A stable hash identifying THIS defect across sessions — same kind at the same route = same
+   * fingerprint, regardless of when or where it was found.
+   *
+   * The inputs (route, selector) never travel raw — only the 8-char hex hash does, following the
+   * same privacy pattern as `projectId`. The analytics side groups on it to answer "was this bug
+   * fixed?" (the fingerprint stops appearing) and to deduplicate the same defect found by parallel
+   * agents in one run.
+   *
+   * OPTIONAL because old senders and the `reticle verify` CLI path do not yet compute it. Absent
+   * means "not fingerprinted", never "a different defect from one that has a fingerprint".
+   */
+  fingerprint: z.string().max(16).optional(),
 });
 export type BugFound = z.infer<typeof BugFoundSchema>;
 
