@@ -6,6 +6,17 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 **It tells the truth about what it saw.** 2.7.0 was about getting connected. This one is about the two ways a verdict can lie once you are — by claiming something it did not observe, and by refusing to claim something it did. Every item below was found by driving Reticle against a running app rather than by a failing test, which is the honest description of how much a green gate is worth here.
 
+> ### Read this first: some assertions that passed before will now fail
+>
+> No API changed and nothing was removed, so this is a minor release. But several fixes here are false-green fixes, and a false green looks exactly like a pass until you fix it. If a check goes red after upgrading, the most likely explanation is that it was never actually checking:
+>
+> - **An `element` predicate's `value` is now checked.** It used to be folded into the locator, where it did nothing unless `by` was also present, so `{ element, role, name, value }` returned a pass without ever reading the value. Any such assertion is now a real one, and will fail if the value is wrong. The same is true of `text` on an element predicate.
+> - **Fields that cannot be checked are now refused rather than ignored.** An element query is a first-match dispatch, not a conjunction, so `label`, `placeholder`, `testid`, `alt`, `component` and a `by` without a `value` were silently dropped when something higher precedence matched first. They now say so instead of passing.
+> - **`duplicate-request` accuses less.** It requires the repeats to fall inside one action's window, so two separate legitimate writes to the same endpoint are no longer reported as a double submit. If you were seeing that contradiction on a correct app, it should stop.
+> - **A verdict is refused where the tab is ambiguous.** An action carrying a ref that resolves to a different connected tab is refused by name rather than driven there. If you drive several tabs at once, pass an explicit `sessionId`.
+>
+> Nothing here makes Reticle stricter for the sake of it. Each one is a case where a green meant less than you thought it did, and the honest move is to say so on the release rather than let you discover it as a mystery failure.
+
 ### A verdict must not be decided by where we stopped looking
 
 - **`@reticlehq/server` — a correct app was told it had ignored a write.** `response-ignored` reports that a write succeeded on the server and nothing on the client moved. It is a real finding — a lost write, a response parsed into the void, a render that never happened — and it is also an accusation. But the app's re-render runs a task or two _after_ the response resolves, so a window that ends in that gap sees a successful write and no movement, and reports `verified: "no"` about an application that did everything right. For a verification tool this is the more damaging direction of error: a false green is a missed catch, but a false accusation sends someone to fix code that is not broken, and it is how the instrument stops being believed. The response is no longer the end of the window — the app's reaction to it is. Scoped so nothing else pays for it: a read that changed nothing is a prefetch, a failed write is a different finding, and an action that already moved the UI waits for nothing at all. Deliberately brief, so an app that genuinely drops a response is still reported.
