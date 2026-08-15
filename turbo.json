@@ -31,6 +31,7 @@
         "$TURBO_ROOT$/packages/*/src/**",
         "$TURBO_ROOT$/apps/**",
         "$TURBO_ROOT$/bench/**",
+        "$TURBO_ROOT$/scripts/**",
         "$TURBO_ROOT$/docs/**",
         "$TURBO_ROOT$/skills/**",
         "$TURBO_ROOT$/.claude-plugin/**",

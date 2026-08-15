@@ -79,9 +79,15 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm typecheck
-      - run: pnpm test:unit
+      # Through ci-run.mjs on this platform only. Windows runners intermittently refuse to START a
+      # process — exit -1073741502 (0xC0000142, STATUS_DLL_INIT_FAILED), no output, sometimes 0.02s
+      # in — and that red is indistinguishable from a real failure until somebody recognises an NT
+      # status code. The wrapper names it in words and retries ONLY that, which is safe precisely
+      # because the process never started, so no user code ran. Every other exit code, including an
+      # ordinary test failure, fails immediately and is never retried. See #273.
+      - run: node scripts/ci-run.mjs pnpm build
+      - run: node scripts/ci-run.mjs pnpm typecheck
+      - run: node scripts/ci-run.mjs pnpm test:unit
       # A DAEMON, on Windows, under test. The unit gate cannot see the class of bug that shipped
       # through a release here: an unhandled ECONNREFUSED from the proxy's first connect, and a
       # doctor line that called the port holder "not a Reticle daemon" on every Windows run because
