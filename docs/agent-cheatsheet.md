@@ -109,7 +109,7 @@ A claim is real only when the layers agree. Check more than the UI:
 
 The tools advertised DIRECTLY, i.e. what you'll use 90% of the time. Everything else is one `reticle_run` away (see Token note below).
 
-`reticle_sessions` · `reticle_navigate` · `reticle_snapshot` · `reticle_query` · `reticle_act` · `reticle_act_sequence` · `reticle_act_and_wait` · `reticle_observe` · `reticle_network` · `reticle_console` · `reticle_wait_for` · `reticle_assert` · `reticle_state` · `reticle_inspect` (DOM node → `src/App.tsx:104`) · `reticle_feedback` (tell the maintainers what is missing) · `reticle_session` (hand back: `{action:"yield"}` the moment you stop driving, `{action:"resume"}` after a human pause).
+`reticle_sessions` · `reticle_navigate` · `reticle_snapshot` · `reticle_query` · `reticle_act` · `reticle_act_sequence` · `reticle_act_and_wait` · `reticle_observe` · `reticle_network` · `reticle_console` · `reticle_wait_for` · `reticle_assert` · `reticle_state` · `reticle_inspect` (DOM node → `src/App.tsx:104`) · `reticle_capabilities` (the app's whole testable surface in one call; `{fromDisk:true}` needs no browser) · `reticle_feedback` (tell the maintainers what is missing) · `reticle_session` (hand back: `{action:"yield"}` the moment you stop driving, `{action:"resume"}` after a human pause).
 
 Frequently useful but NOT core, so reach them through `reticle_run({ tool, args })`: `reticle_domain` (learn the app + gaps), `reticle_capabilities` (the app's declared testable surface), `reticle_baseline {action:"diff"}`, `reticle_project` (run history).
 

@@ -49,6 +49,10 @@ export const CONTRACT_TOOLS: ToolDef[] = [
     name: ReticleTool.CAPABILITIES,
     description:
       'The app-advertised testable surface (reticle.describe): testids, signals, stores, and named flows. Call this first to learn what to assert on without reading source. Pass { fromDisk:true } to read the git-checked .reticle/contract.json instead of the live session (a fresh agent can learn the surface with no browser attached).',
+    // Every core tool carries one, so an agent reading the surface never has to guess the shape.
+    // `fromDisk` is the example deliberately: it is the call that works with nothing attached, which
+    // is the state a fresh agent is actually in when it first reads this list.
+    example: { [FROM_DISK_ARG]: true },
     inputSchema: { [FROM_DISK_ARG]: z.boolean().optional(), ...sessionIdShape },
     outputSchema: {
       testids: z.array(z.string()),

@@ -150,6 +150,25 @@ export const CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   // deleting the instruction from the lease and the pause hint — deletes the handback protocol,
   // because there is nowhere else those two calls are ever named.
   ReticleTool.SESSION,
+  // CAPABILITIES is the highest orientation-per-token tool on the surface: one call returns the app's
+  // whole testable surface — its testids, signals, stores and named flows — and `{fromDisk:true}`
+  // returns the same from a checked-in contract with NO browser attached, so an agent with zero
+  // context starts oriented instead of exploring.
+  //
+  // Same argument as the four above, and it is the fifth time this file has made it: a tool an agent
+  // must already know about, and reach through reticle_run, is a tool that never gets called.
+  //
+  // The cost is real and is NOT the bargain #262 claimed. That issue argued the marginal cost sits
+  // "well below the 274-token average" because the input schema is small; measured, its description
+  // plus schema is closer to 325 tokens, which is above the average rather than below it. This is
+  // also a straight +1 rather than a swap: the tools that write-up proposed demoting (`project`,
+  // `domain`) were never in the default set to begin with.
+  //
+  // So it is a deliberate bet, taken with that correction on the table: that orientation replaces
+  // exploratory snapshots, which are among the most expensive calls an agent makes. The measurement
+  // that settles it is whether sessions calling this early take fewer and cheaper snapshots than
+  // those that do not. If that does not show up, this is the entry to revert.
+  ReticleTool.CAPABILITIES,
 ]);
 
 /** Is the truthy form of a boolean env var set? `1`, `true`, `yes` — anything else is off. */
