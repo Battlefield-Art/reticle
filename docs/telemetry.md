@@ -16,7 +16,7 @@ This page is the complete description of what is collected. If something is not 
 - **Opt out any time**, permanently, with one command:
 
   ```bash
-  reticle telemetry disable
+  npx @reticlehq/server telemetry disable
   ```
 
 ## What is sent

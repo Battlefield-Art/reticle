@@ -10,6 +10,16 @@ The CLI is mostly for you, not your agent. Your agent talks MCP; you use these t
 npx @reticlehq/server <command>
 ```
 
+<Warning>
+  **Always invoke it as `npx @reticlehq/server <command>`.** The tables below name the commands as
+  `reticle <command>`, because `reticle` is the bin this package installs and that is what the CLI
+  prints about itself. It is **not** a package on npm: the bare name `reticle` belongs to an
+  unrelated author, so putting `npx` in front of it downloads and runs their code instead of ours.
+  Once
+  `@reticlehq/server` is a dependency of your project, `reticle <command>` works from an npm script
+  or with the bin on your PATH.
+</Warning>
+
 <Note>
   Every output block on this page was captured by running the command. Where an exit code is quoted,
   it was measured, not assumed.

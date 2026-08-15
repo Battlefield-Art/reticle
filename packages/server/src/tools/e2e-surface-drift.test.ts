@@ -421,6 +421,52 @@ describe('shipped docs never name a tool a reader cannot call', () => {
   });
 
   /**
+   * A runnable shell block must never assume the `reticle` bin is on the reader's PATH.
+   *
+   * The reader of these pages installed nothing: they arrived from a paste-URL or a registry and
+   * reach for `npx`. A bare `reticle telemetry disable` in a bash fence is a command that either
+   * fails with "command not found" or, worse, gets prefixed with `npx` by an agent trying to be
+   * helpful, which fetches the unrelated package named `reticle`.
+   *
+   * Scoped to fences the reader would COPY (bash/sh/shell/console) rather than to every mention.
+   * Captured CLI output legitimately prints `reticle doctor` as its own header, and the usage block
+   * legitimately lists commands by their bin name; neither is an instruction, and rewriting the 180
+   * inline prose references would make the prose worse without helping anybody.
+   *
+   * The earlier sweep of this repo matched `^reticle ` and therefore missed the one real offender,
+   * which was indented two spaces inside a list item. Hence a fence-aware check rather than a
+   * line-prefix one.
+   */
+  it('no runnable shell block assumes the reticle bin is on PATH', () => {
+    const RUNNABLE = new Set(['bash', 'sh', 'shell', 'console']);
+    const bare: string[] = [];
+    for (const file of [
+      ...docFiles(),
+      ...shippedReadmes(),
+      join(REPO, 'SKILL.md'),
+      ...skillFiles(),
+    ]) {
+      let fence: string | null = null;
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          const open = /^\s*```(\w*)/.exec(line);
+          if (open) {
+            fence = null === fence ? (open[1] ?? '') : null;
+            return;
+          }
+          if (null === fence || !RUNNABLE.has(fence)) return;
+          if (/^\s*(\$ )?reticle\s+[a-z]/.test(line))
+            bare.push(`${file.replace(REPO, '')}:${i + 1}: ${line.trim()}`);
+        });
+    }
+    expect(
+      bare,
+      `these shell blocks assume the \`reticle\` bin is installed. The reader used npx to get here, so write \`npx @reticlehq/server <command>\`:\n${bare.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  /**
    * The docs site does not use em dashes. Anywhere: not in a heading, not in body text.
    *
    * A house style rule rather than a correctness one, which is exactly why it needs a machine. The
