@@ -38,14 +38,15 @@ Reticle's whole mechanism is a dev-only SDK **inside** the running app reading t
 | **Electron, Tauri** | a webview plus an IPC boundary | shipped |
 | **React Native** | JS runtime and a React reconciler, so state, network, console and component identity plausibly transfer; no DOM, so query and actions need the native view tree | the most tractable, and where any first increment should start |
 | **Flutter** | no DOM, no JS, renders to a canvas; a semantics tree and a VM Service protocol exist | a separate SDK in Dart. Nothing in `@reticlehq/browser` transfers. `init` refuses it by name today, and that refusal is correct until such an SDK exists |
-| **Native iOS, Android** | neither JS nor Dart; an accessibility hierarchy, driven mostly out of process | the largest effort and the least shared. Out-of-process driving is a different product shape from everything Reticle does |
+| **Native Android** | own-process logcat, a process-wide Compose state observer, and an accessibility tree including the Compose virtual nodes, all public and needing no opt-in. Compose already stamps `file:line` into the composition | more reachable than expected. `adb reverse` solves the transport outright |
+| **Native iOS** | a private view-debug tree with no source coordinates, no generic way to read `@State`, and no reverse tunnel to a physical device | hardest of the four. Simulator-only is the honest first increment; `file:line` needs annotation |
 
 Two things have to be settled before any of it is scheduled, and they are the actual work:
 
 1. **The wire contract is DOM-shaped.** `@reticlehq/core` speaks `dom.added`, `dom.removed`, `dom.attr`. A Dart or Swift SDK cannot speak that as written, so the reusable asset is the contract only if it grows a platform-neutral node-tree abstraction first. That may be a breaking change rather than an addition.
 2. **In-process action dispatch.** Reticle acts from inside the app. If a platform can only be driven by an external runner, then "support" there means something different from what it means on web, and saying so up front is cheaper than discovering it after an SDK exists.
 
-Until both are answered, treat this section as a direction rather than a commitment. Progress and the platform research live on the tracking issue.
+Until both are answered, treat this section as a direction rather than a commitment. The platform research, including the parts that contradict the first draft of this table, is on [#325](https://github.com/reticlehq/reticle/issues/325).
 
 ## Not planned
 
