@@ -4,6 +4,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2.8.0] — 2026-08-15
+
 **It tells the truth about what it saw.** 2.7.0 was about getting connected. This one is about the two ways a verdict can lie once you are — by claiming something it did not observe, and by refusing to claim something it did. Every item below was found by driving Reticle against a running app rather than by a failing test, which is the honest description of how much a green gate is worth here.
 
 > ### Read this first: some assertions that passed before will now fail
