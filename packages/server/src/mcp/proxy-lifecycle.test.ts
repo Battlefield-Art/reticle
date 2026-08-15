@@ -4,7 +4,7 @@
  * Widening the idle rule so an attached-but-unused daemon can exit, while the proxy respawned on
  * every stream drop, meant the replacement daemon was just as idle — so it exited too. Measured
  * against the running system with a 4s grace: FOUR daemon processes in 200 seconds. At the shipped
- * 300s grace that is a fresh process every five minutes, for the 74% of installs that never call a
+ * 300s grace that is a fresh process every five minutes, for the many installs that never call a
  * tool, for as long as the editor stays open.
  *
  * Nothing in the gates could see it. Unit tests never start a daemon; the e2e battery starts one and

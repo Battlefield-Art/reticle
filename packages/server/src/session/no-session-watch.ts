@@ -12,6 +12,7 @@
 
 import { probeDevServers } from './dev-server-probe.js';
 import { diagnoseNoSession } from './no-session-diagnosis.js';
+import { readProjectPort } from '../cli/cli-port.js';
 import type { SessionManager } from './session-manager.js';
 
 /** Slow enough to be free, fast enough that a dev server started 15s ago is already reflected. */
@@ -70,6 +71,13 @@ function startNoSessionWatch(options: NoSessionWatchOptions): () => void {
       // cannot tell whether it is a claim about their app at all.
       directory: options.directory ?? process.cwd(),
       leaseExpired: (options.reapedLeases?.() ?? 0) > 0,
+      // Read here rather than at boot: `.reticle.json` can be written by `init` after this daemon
+      // started, which is the ordinary first-install order, and a port cached from before it existed
+      // would make the daemon confidently report no mismatch on the one run where there is one.
+      ...(() => {
+        const configured = readProjectPort(options.directory ?? process.cwd());
+        return configured === undefined ? {} : { projectPort: configured };
+      })(),
     }),
   );
 

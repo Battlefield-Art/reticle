@@ -1,16 +1,19 @@
 /**
  * The message that ends most sessions.
  *
- * Measured over yesterday's telemetry: of the 25 sessions that called any tool, 13 made exactly ONE
- * call and stopped — 8 of them `reticle_sessions` — and 10 of those 13 never touched a browser.
- * Every recorded session error is the same one:
+ * The field data behind this is unambiguous in shape: most sessions that call any tool make exactly
+ * one call and stop, the single commonest of those calls is `reticle_sessions`, and most of them
+ * never touch a browser afterwards. Nearly every recorded session error was the same message:
  *
  *   "no browser session connected. Two things to check: (1) your app is running with
  *    @reticlehq/browser enabled, and (2) it points at THIS daemon's port"
  *
  * It is accurate and it is fatal. It names two things the agent cannot check from where it stands
- * and gives it nothing to DO, so the agent abandons the tool for the rest of the session. 74% of
- * sessions never call a tool at all, and this is what greets most of the ones that try.
+ * and gives it nothing to DO, so the agent abandons the tool for the rest of the session, and this
+ * is what greets most of the ones that try.
+ *
+ * (The counts themselves are deliberately not written here. Field and user numbers live only in the
+ * gitignored analysis directory, never in code, docs, changelog or commit messages.)
  *
  * The daemon can tell these three cases apart, and they have completely different next actions:
  *   - nothing is listening anywhere       -> the dev server is not running; start it
@@ -379,5 +382,50 @@ describe('an uninstrumented project with no server is told BOTH things at once',
     });
     expect(wired).not.toContain('reticle init');
     expect(wired).toMatch(/dev server|npm run dev/i);
+  });
+});
+
+/**
+ * When the two halves disagree about where to meet, say the number.
+ *
+ * The wired-and-listening branch ended with "check that the app's reticle port matches N", which is
+ * the right suspicion and leaves the reader to go and compare two numbers by hand. The daemon can do
+ * that comparison itself: it knows the port it bound, and `.reticle.json` is the same file `doctor`
+ * already reads to produce a precise line about exactly this.
+ *
+ * This is the `why` field an AGENT reads, and doctor's version is one a human runs. The agent was
+ * getting the vaguer of the two.
+ *
+ * Deliberately NOT a scan of other Reticle ports, which is the other half of #261. A listener on a
+ * neighbouring port is not evidence that it is the daemon this app wants, and asserting that it is
+ * would be the same confident-but-unobserved claim #310 exists to stamp out. A configured port that
+ * disagrees with the bound port IS observed, exactly, from a file we read.
+ */
+describe('a configured port that disagrees with the bound port is named, not hinted at', () => {
+  const wiredAndListening = {
+    everConnected: false,
+    initialized: true,
+    listening: [5173],
+    port: 4400,
+  };
+
+  it('names both numbers when .reticle.json disagrees with the daemon', () => {
+    const why = diagnoseNoSession({ ...wiredAndListening, projectPort: 4460 });
+    expect(why).toContain('4460');
+    expect(why).toContain('4400');
+    // The actionable half: a reader who knows the numbers still has to be told which to change.
+    expect(why.toLowerCase()).toMatch(/--port|update|\.reticle\.json/);
+  });
+
+  it('says nothing when they agree, so the message does not gain a paragraph about a non-problem', () => {
+    const why = diagnoseNoSession({ ...wiredAndListening, projectPort: 4400 });
+    expect(why).not.toContain('disagree');
+  });
+
+  it('says nothing when there is no configured port to compare against', () => {
+    // No `.reticle.json`, or one without a port. Absence is not a mismatch, and inventing one here
+    // would fire on every plugin-wired app in existence.
+    const why = diagnoseNoSession(wiredAndListening);
+    expect(why).not.toContain('disagree');
   });
 });

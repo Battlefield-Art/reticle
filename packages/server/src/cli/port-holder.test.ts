@@ -113,7 +113,7 @@ describe('a wedged daemon of our own', () => {
   });
 
   /**
-   * The Windows case, which is 35% of users by the 2026-08 telemetry and never runs in CI — the
+   * The Windows case, which is a large share of users and never runs in CI — the
    * `windows` job builds and unit-tests, and no daemon ever starts on it.
    *
    * There is no `lsof` there, so the holder lookup ALWAYS returns null and the null branch is the

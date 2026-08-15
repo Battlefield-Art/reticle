@@ -43,7 +43,7 @@ function memoryIo(
    * must use that platform's separator, and this repo has already shipped a Windows path bug for
    * exactly the opposite reason. But `join()` yields backslashes there, while these fixtures are
    * written with forward slashes, so on Windows a lookup missed and the Cursor step silently never
-   * ran. The test was the thing that was not portable, on the platform that is 66% of users.
+   * ran. The test was the thing that was not portable, on a platform a large share of users are on.
    */
   const norm = (p: string): string => p.replace(/\\/g, '/');
   /**
@@ -116,7 +116,7 @@ describe('resolveLockfiles — package-manager detection in a monorepo', () => {
   it('walks up to the workspace-root lockfile when the sub-package has none', () => {
     // Normalised, for the reason the memory io above is: resolveLockfiles walks with `join`, which
     // yields backslashes on Windows, and a literal POSIX comparison never matches there — so the
-    // walk "failed" on the platform that is 66% of users while passing everywhere else.
+    // walk "failed" on a platform a large share of users are on, while passing everywhere else.
     const io = { exists: (p: string) => '/repo/pnpm-lock.yaml' === p.replace(/\\/g, '/') };
     const set = resolveLockfiles(
       new Set(['package.json', 'vite.config.ts']),

@@ -7,7 +7,7 @@
  * that crashed or was stopped used to take the agent's whole Reticle surface with it. Together they
  * loop: the daemon exits as useless, the proxy immediately brings back a daemon that is equally
  * useless, which exits, forever. Measured with a 4s grace: four processes in 200 seconds. At the
- * real 300s grace that is a new process every five minutes for the 74% of installs that never call a
+ * real 300s grace that is a new process every five minutes for the many installs that never call a
  * tool, for as long as the editor is open.
  *
  * The rule that resolves it: a dropped stream is not demand. Reattach to a daemon that is already

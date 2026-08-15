@@ -45,6 +45,17 @@ interface NoSessionFacts {
    * evidence, not proof, and the message below is worded accordingly.
    */
   leaseExpired?: boolean;
+  /**
+   * The port `.reticle.json` configures for this project, when there is one.
+   *
+   * Half of a mismatch the daemon can settle rather than hint at: it knows the port it bound, and
+   * this is the number the app's SDK was built to dial. `doctor` already compares them and prints a
+   * precise line; the agent reading `why` was getting "check that the port matches" instead.
+   *
+   * Absent means no config, or one without a port, which is NOT a mismatch: a plugin-wired app has
+   * no `.reticle.json` at all and is working perfectly.
+   */
+  projectPort?: number;
 }
 
 /**
@@ -138,6 +149,23 @@ function unattributedListeners(listening: readonly number[]): string {
     `this project: that is a machine-wide scan of ${SCANNED_PORTS}, so on a machine running more ` +
     "than one repo those are as likely to be somebody else's dev server, and the app's own port " +
     'may not be in the set at all. Treat them as unattributed rather than as evidence.'
+  );
+}
+
+/**
+ * The mismatch, stated with both numbers, when we can actually see one. Empty otherwise.
+ *
+ * Leading space so the caller can concatenate it unconditionally without producing a double space
+ * in the common case where there is nothing to say.
+ */
+function portMismatchClause(facts: NoSessionFacts): string {
+  const configured = facts.projectPort;
+  if (configured === undefined || configured === facts.port) return '';
+  return (
+    ` They already disagree: \`.reticle.json\` says port ${String(configured)} and this daemon is` +
+    ` on ${String(facts.port)}, so the SDK is dialling ${String(configured)} and nothing is there.` +
+    ` Either restart the daemon on ${String(configured)}, or update \`.reticle.json\` to` +
+    ` ${String(facts.port)} and restart the dev server so the app picks it up.`
   );
 }
 
@@ -243,6 +271,6 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
     'If the page IS open and still does not appear, the app is either serving a build made before ' +
     `the wiring landed or dialling a different daemon than this one (on ${String(port)}): restart ` +
     "the dev server, hard-reload the page, and check that the app's reticle port matches " +
-    `${String(port)}. ${NON_LOCALHOST_GATE} ${SELF_SERVE} ${RETRY}`
+    `${String(port)}.${portMismatchClause(facts)} ${NON_LOCALHOST_GATE} ${SELF_SERVE} ${RETRY}`
   );
 }
