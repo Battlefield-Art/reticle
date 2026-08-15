@@ -4,9 +4,7 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
-### Learned app knowledge survives
-
-- **`@reticlehq/server` — learned routes now accumulate during crawls and normal navigation.** Runtime route discoveries are persisted in `.reticle/project.json` as a deterministic union, so later sessions can reuse the app map without re-exploring previously visited routes.
+_Nothing yet._
 
 ## [2.8.0] — 2026-08-15
 
@@ -100,6 +98,8 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 - **`@reticlehq/server` — the verdict was the field a client truncated.** One click on an app with a registered query cache could produce a result large enough to exceed a client's per-result limit, because each diff value was capped and the number of diffs was not. The arrays are bounded now and say how many entries were elided, and the transient window is still computed over all of them so trimming the evidence cannot change the reading.
 
 ### Answers that were there and could not be reached
+
+- **`@reticlehq/server` — `learned.routes` was declared, serialized and read, and nothing ever wrote it.** Every session rediscovered the same app map from scratch, and whatever a crawl learned died with the daemon that produced it. Routes are now recorded during crawls and ordinary navigation and persisted as a deterministic union. Searches and hashes are stripped, so `/search?q=a` and `/search?q=b` are one route rather than two, which is the difference between a stable file and one that grows a route per query forever; a cap bounds what is retained regardless. The distinction the issue asked for is pinned by a test: a crawl's `visited` list holds the controls it clicked, and what gets persisted is the real paths those clicks produced. Labels are not routes. _(**XonkelX**, [#278](https://github.com/reticlehq/reticle/pull/278))_
 
 - **`@reticlehq/browser` — `reticle_inspect` could not say whether an element scrolls.** It returned geometry, styles, accessibility properties, the component stack and the source line, and nothing about scrolling, so an agent verifying a scroll-dependent behaviour could not tell a short list from a long one that was clipped. It now returns `scrollTop`, `scrollHeight`, `clientHeight` and `overflowY`. Reported unconditionally on purpose: the question is "does this element scroll", and a field that disappears when the answer is no cannot be told apart from a version that never reported it. _(**Dev Chiniwala**, [#298](https://github.com/reticlehq/reticle/pull/298))_
 
