@@ -81,8 +81,35 @@ const prev = lastRow();
  */
 const compared = [];
 const uncompared = [];
-const note = (dimension, baseline) => {
-  (baseline === null || baseline === undefined ? uncompared : compared).push(dimension);
+/**
+ * A dimension counts as COMPARED only when both sides of the comparison exist.
+ *
+ * The paragraph above is about a missing BASELINE. The same hole exists on the fresh side and was
+ * open until a run proved it: `replay-bench` errored every row, wrote no number, and the gate printed
+ *
+ *   Replay · tokens/run    237            → null
+ *   ✓ gate passed — 5 dimension(s) compared against the last baseline, no regression
+ *
+ * because the guard read the baseline (237, present) and never looked at what this pass measured.
+ * `null > 237 * 1.05` is false, so the comparison silently passed. The one dimension whose whole job
+ * is catching a token regression reported no regression having measured nothing.
+ *
+ * A baseline with no fresh number beside it is also a FAILURE, not merely an unmeasured dimension:
+ * the outer `if (cost !== null)` already established that this pass was supposed to produce one.
+ */
+const note = (dimension, baseline, fresh) => {
+  const missing = (v) => v === null || v === undefined;
+  if (missing(baseline) || missing(fresh)) {
+    uncompared.push(dimension);
+    if (!missing(baseline) && missing(fresh)) {
+      failures.push(
+        `${dimension}: this pass measured nothing (baseline ${String(baseline)}), so the comparison ` +
+          'did not happen — re-run the benchmark rather than reading this as no regression',
+      );
+    }
+    return;
+  }
+  compared.push(dimension);
 };
 // Only gate layers that ran THIS pass (a stale analysis.json must not be gated on a Layer-C pass).
 const manifest = readRaw('bench/raw/bench-run.json');
@@ -111,7 +138,7 @@ if (analysis !== null) {
   }
   scorecard.push(['Observe · catch-rate', prev?.per_tool?.reticle?.rcr ?? '—', rcr]);
   scorecard.push(['Observe · false-positives', '0', fp]);
-  note('Observe · efficiency', lastVe);
+  note('Observe · efficiency', lastVe, ve);
   scorecard.push(['Observe · efficiency', lastVe ?? '—', ve]);
   // The same number against a fixed point, so accumulation cannot hide behind a moving baseline.
   const refRow = referenceRow();
@@ -150,7 +177,7 @@ if (selector !== null) {
   if (lastR !== null && r !== null && r.total < lastR.total) {
     failures.push(`selector scenarios dropped: ${r.total} < ${lastR.total}`);
   }
-  note('Replay · selector', lastC?.selector_detection);
+  note('Replay · selector', lastC?.selector_detection, selector);
   scorecard.push(['Replay · selector', lastC?.selector_detection ?? '—', selector.detection_rate]);
 }
 if (consequence !== null) {
@@ -158,7 +185,7 @@ if (consequence !== null) {
   if (r === null || r.detected < r.total) {
     failures.push(`consequence detection not full: ${consequence.detection_rate}`);
   }
-  note('Replay · consequence', lastC?.consequence_detection);
+  note('Replay · consequence', lastC?.consequence_detection, consequence);
   scorecard.push([
     'Replay · consequence',
     lastC?.consequence_detection ?? '—',
@@ -175,7 +202,7 @@ if (stateOracle !== null) {
   if (lastR !== null && r !== null && r.total < lastR.total) {
     failures.push(`state-oracle scenarios dropped: ${r.total} < ${lastR.total}`);
   }
-  note('Replay · state', lastC?.state_detection);
+  note('Replay · state', lastC?.state_detection, stateOracle);
   scorecard.push(['Replay · state', lastC?.state_detection ?? '—', stateOracle.detection_rate]);
 }
 if (cost !== null) {
@@ -186,7 +213,7 @@ if (cost !== null) {
       `replay tokens rose: ${now} > ${last} (+${(((now - last) / last) * 100).toFixed(1)}%)`,
     );
   }
-  note('Replay · tokens/run', last);
+  note('Replay · tokens/run', last, now);
   scorecard.push(['Replay · tokens/run', last ?? '—', now]);
 }
 
