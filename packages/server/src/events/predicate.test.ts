@@ -788,7 +788,10 @@ describe('state predicate — assert store truth', () => {
       equals: 1,
     });
     expect(single.pass).toBe(true);
-    const ambiguous = await evaluatePredicate(new StateSession({ app: {}, cart: {} }), {
+    // Both stores have to EXPOSE `v` for this to be ambiguous. It used to read `{app:{}, cart:{}}`,
+    // where neither did — which is not an ambiguity at all but a path that exists nowhere, and it
+    // now reports as the missing path it is. See predicate-store-narrowing.test.ts.
+    const ambiguous = await evaluatePredicate(new StateSession({ app: { v: 1 }, cart: { v: 2 } }), {
       kind: 'state',
       path: 'v',
     });

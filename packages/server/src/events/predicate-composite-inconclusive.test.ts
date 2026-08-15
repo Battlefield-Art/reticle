@@ -28,18 +28,23 @@ import { evaluatePredicate, type PredicateSession } from './predicate.js';
 import type { Predicate } from './predicate.js';
 
 /** The one shape under test: a clause nobody could evaluate, beside one that plainly holds. */
-const INCONCLUSIVE_REASON = 'multiple stores (a, b); name one with `store`';
+const INCONCLUSIVE_REASON = "multiple stores (a, b) expose 'view'; name one with `store`";
 
 /**
  * A session whose STATE read is under-specified and whose SETTLED read is trivially true.
  *
- * `state` with several stores and no `store` named is the real inconclusive path (see evalState), so
- * the test drives the defect through the code that produces it rather than through a stub verdict.
+ * `state` with several stores that ALL carry the asserted path, and no `store` named, is the real
+ * inconclusive path (see evalState), so the test drives the defect through the code that produces it
+ * rather than through a stub verdict. Both stores must expose `view`: a path only one of them has is
+ * no longer ambiguous, it is simply read from the one that has it.
  */
 class TwoStoreSession {
   command(name: string): Promise<{ ok: boolean; result?: unknown }> {
     if (ReticleCommand.STATE_READ === name) {
-      return Promise.resolve({ ok: true, result: { stores: { a: { view: 'x' }, b: {} } } });
+      return Promise.resolve({
+        ok: true,
+        result: { stores: { a: { view: 'x' }, b: { view: 'y' } } },
+      });
     }
     return Promise.resolve({ ok: true, result: {} });
   }
@@ -56,7 +61,7 @@ class TwoStoreSession {
 
 const session = (): PredicateSession => new TwoStoreSession() as unknown as PredicateSession;
 
-/** Under-specified on purpose: two stores are registered and this names neither. */
+/** Under-specified on purpose: two stores both expose `view` and this names neither. */
 const unevaluableState: Predicate = { kind: PredicateKind.STATE, path: 'view', equals: 'compose' };
 /** Holds with no events at all, so the composite's other clause is never the reason for anything. */
 const alwaysTrue: Predicate = { kind: PredicateKind.SETTLED };

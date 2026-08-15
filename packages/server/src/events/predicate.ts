@@ -225,6 +225,11 @@ async function evalElement(
   };
 }
 
+/** The single element of a list, or undefined when there is not exactly one. */
+function oneOf(names: readonly string[]): string | undefined {
+  return 1 === names.length ? names[0] : undefined;
+}
+
 async function evalState(
   session: PredicateSession,
   p: Extract<Predicate, { kind: typeof PredicateKind.STATE }>,
@@ -244,16 +249,44 @@ async function evalState(
   }
   const stores = ((res.result ?? {}) as { stores?: Record<string, unknown> }).stores ?? {};
   const names = Object.keys(stores);
-  const storeName = p.store ?? (1 === names.length ? names[0] : undefined);
+  // Ambiguity is about the PATH, not the store count.
+  //
+  // Registering more than one store is normal — an app store, a query cache, and the render meter
+  // Reticle registers itself — and asking "which of these three?" when only one of them HAS the
+  // path is a question with one possible answer. It was costing a real verdict: a bench-app drive
+  // asserting `{path:'view'}` returned `unknown` while the same response body carried the matching
+  // `view` state diff. `unknown` is not a pass, so that is a verification that did not happen.
+  //
+  // So narrow to the stores that actually carry the path, and refuse only when THOSE collide.
+  const candidates =
+    p.store === undefined ? names.filter((n) => selectPath(stores[n], p.path).found) : [];
+  const storeName = p.store ?? (1 === names.length ? names[0] : oneOf(candidates));
   if (storeName === undefined) {
-    // Neither of these is a finding about the app. With several stores registered the call simply did
-    // not say which one to read; with none, there is nothing to read at all. No assertion was
-    // evaluated either way, so this is inconclusive rather than failed — see honesty/inconclusive.
-    const reason =
-      0 === names.length
-        ? 'no registered store to read state from'
-        : `multiple stores (${names.join(', ')}); name one with \`store\``;
-    return { pass: false, failureReason: reason, inconclusive: reason };
+    // With no store registered there is nothing to read, and with two stores that both carry the
+    // path there is no way to pick — neither is a finding about the app, no assertion was evaluated,
+    // so both are inconclusive rather than failed. See honesty/inconclusive.
+    //
+    // Zero candidates is the one case that is NOT a question: every registered store was searched
+    // and none exposes the path, so the assertion cannot hold anywhere. That is the same verdict a
+    // named store has always produced for a missing path, and it falls through to it below.
+    if (0 === names.length) {
+      const reason = 'no registered store to read state from';
+      return { pass: false, failureReason: reason, inconclusive: reason };
+    }
+    if (candidates.length > 1) {
+      // Names the stores that actually collide. Listing all of them made the reader weigh
+      // candidates that could never have matched.
+      const reason = `multiple stores (${candidates.join(', ')}) expose '${p.path}'; name one with \`store\``;
+      return { pass: false, failureReason: reason, inconclusive: reason };
+    }
+    return {
+      pass: false,
+      failureReason: `state path '${p.path}' not found in any registered store (${names.join(', ')})`,
+      observed: `no path '${p.path}' in ${names.join(', ')}`,
+      expected: `some registered store to expose '${p.path}'`,
+      assertion: 'state.path-missing',
+      evidence: { searchedStores: names },
+    };
   }
   const selection = selectPath(stores[storeName], p.path);
   if (!selection.found) {
