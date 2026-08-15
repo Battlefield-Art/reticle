@@ -24,6 +24,20 @@ import { RETICLE_NPM_PACKAGE } from '../version/server-version.js';
 /** Project-root instruction files the agent re-reads every session. */
 export const CLAUDE_MD_PATH = 'CLAUDE.md';
 export const AGENTS_MD_PATH = 'AGENTS.md';
+/**
+ * The full rules, written once and pointed at from every always-loaded file.
+ *
+ * Two problems it solves at the same time. The rule text is dense and most of it is REFERENCE (what
+ * to do when the tools are missing, what a `version_skew` field means, how to file feedback), which
+ * an agent needs on the turn it hits that situation and never before — so carrying all of it in
+ * `CLAUDE.md` taxed every session for text almost every session did not read. And `AGENTS.md` was
+ * only written when NO agent was detected, so a repo set up on a Claude Code machine told Codex,
+ * Copilot, Amp and every other agent nothing at all.
+ *
+ * So: the operative rules (when to verify, WHEN NOT TO, how, and the honesty guards) go in the files
+ * that load every turn, and this file holds the rest, one hop away and named in that block.
+ */
+export const RETICLE_MD_PATH = 'RETICLE.md';
 /** Cursor project rule; the frontmatter `alwaysApply` keeps it in context on every turn. */
 export const CURSOR_RULE_PATH = '.cursor/rules/reticle.mdc';
 
@@ -44,37 +58,98 @@ const RULE_END = '<!-- reticle:end -->';
  */
 export const CLI = `${NPX} ${RETICLE_NPM_PACKAGE}`;
 
-/** The rule body (markdown). States WHEN to verify, HOW, and never-weaken-a-check. */
+/**
+ * The operative rules, carried by every file that loads on every turn.
+ *
+ * Short on purpose. This is the text that has to CHANGE BEHAVIOUR, so it states when to verify, when
+ * NOT to, how, and the guards against calling something proven when it is not. Everything an agent
+ * needs only at the moment it hits a specific situation lives in RETICLE.md, named at the end.
+ */
 const RULE_BODY = `## Verifying with Reticle
 
-This app is instrumented by **Reticle** — an in-app verification layer exposed as \`reticle_*\` MCP tools and the \`${CLI}\` CLI (run it through npx — Reticle's server is not installed into this project). Verifying is part of "done", not an optional extra.
+This app is instrumented by **Reticle**, an in-app verification layer exposed as \`reticle_*\` MCP tools and the \`${CLI}\` CLI (always through npx: Reticle's server is not installed into this project). Verifying is part of "done", not an optional extra.
 
-- **When:** after you build or change any user-facing feature, flow, or UI, verify it with Reticle **before** telling the user it is complete. Reading the code or passing unit tests is not enough — drive the real running app.
-- **How:** drive the flow with \`reticle_act_and_wait({ ref, action, until })\` — it names the consequence you expect BEFORE the action, which is the difference between a check and a rationalisation. Batch a multi-step flow (a login, a form) into one \`reticle_act_sequence\` rather than one round trip per field. Read the surrounding evidence with \`reticle_snapshot\`, \`reticle_state\`, \`reticle_network\`, \`reticle_console\`.
-- **Only \`reticle_act_and_wait\` and \`reticle_assert\` produce a verdict.** \`reticle_act\` and everything else move or read the app and prove nothing, so a session that ends without one of those two has no result however many tools it used. In practice \`reticle_act\` is reached for far more often and proves nothing; \`act_and_wait\` is where the defects actually get caught.
-- **\`verified: "unknown"\` is not a pass.** It means Reticle drove the app and could not tell what happened; \`verifiedReason\` says which of eleven clauses decided that and what to do about it. Report it as unknown — never as working.
-- **If a tool result carries \`verify_next\`, do what it says next.** It means you have driven this page several times without asking for a verdict, so nothing you have done so far is proven.
-- **Covered flows:** run \`${CLI} gate\` — it reports which recorded flows the changed files affect and whether they still pass.
-- **Never weaken a check to make it green.** Downgrading, skipping, or deleting an assertion is a finding, not a fix.
-- **If Reticle can't run** (no daemon, or this is not a running web app), say so — do not skip verification silently.
-- **If the \`reticle_*\` tools are missing entirely, they have not been loaded yet — not broken.** \`init\` registers the MCP server, but a client reads its server list at startup and does not re-read it, and no slash command reloads it — \`/mcp\` only manages servers already loaded. Ask the human to RESTART their client (restart Claude Code, reload the window in Cursor, or hit Start in \`.vscode/mcp.json\` in VS Code), wait, then carry on. This is once per machine: Reticle is registered globally, so later projects already have the tools. \`npx ${RETICLE_NPM_PACKAGE} status\` works meanwhile and says whether the daemon is up and whether the app has connected.
-- **An empty \`reticle_state\` means the generated \`reticle-dev\` file registers nothing — say so.** \`init\` registers every store it could prove from your source; the ones needing an argument only reading the code supplies (Jotai atoms, an XState actor, a TanStack \`queryClient\`) are left commented, and a file that registers nothing is indistinguishable from a working one until you read the state back. Finish that file when you see it — it is what lets you check what the app BELIEVES, not only what it rendered. Never report a clean setup over an empty state read. It does not block anything else: DOM, network, console and source pointers all work without it.
-- **Setup is not finished until one real flow has been driven and produced a verdict.** \`init\` exiting 0 means files were written; the tools appearing means your client can reach a daemon; a listed session means the app dialled in. None of those is evidence that anything works. If you are blocked before a verdict, say which step and what you tried — never report a clean install you did not verify.
-- **If a tool result carries \`version_skew\`, act on it before trusting anything else.** Two pieces of Reticle are on different wire contracts, so tools can misbehave in ways neither side reports — a green here is not evidence. The field says which pair disagrees and names the exact fix: run \`${CLI} stop\` and retry when the DAEMON is stale, or tell the human to install the matching SDK and restart their dev server when the PAGE is. Do that first, then redo whatever you were verifying.
-- **If a tool result carries \`update_available\`, say so.** Reticle checked npm and a newer version exists. Tell the human the version numbers and offer to run \`${CLI} update\` — between tasks, never mid-verification, because it restarts the daemon and drops the session. Finish what you are doing first.
+**Verify when you have changed something a user can see or do.** A component, a form, a route, a request, a piece of state that reaches the screen. Do it BEFORE telling the user it is complete. Reading the diff proves nothing and unit tests do not run the app.
 
-## Sending feedback to the Reticle team (first-class)
+**Do not reach for Reticle when the change cannot show up in the running app.** It costs tool calls and the user's patience, and a verdict over an unrelated flow proves nothing about what you changed. Skip it for: documentation, comments, tests, build config, CI, dependency bumps with no user-facing effect, backend or CLI work with no UI surface, and any change to a project that is not a running web app. Say in one line that you skipped verification and why, rather than silently not doing it.
 
-**Reporting your experience with Reticle is part of using Reticle, from the moment you start wiring it in — not something to do at the end if anything went wrong.** Reticle is built FOR agents, which makes you its actual user and the only one who can see what it costs you. That knowledge is gone when your context is, so it has to leave the turn it happened in.
+**How to verify:**
 
-- **Send it with \`reticle_feedback\`, the moment you notice.** One call, then carry straight on with your task. Do not batch reports, do not wait until the task is done, and do not decide something is too minor — the small awkward things are what nobody ever reports, so they never get fixed.
-- **Everything counts, in both directions.** A tool that returned something wrong (\`bug\`), something Reticle could not observe at all (\`gap\`), a verdict you could not act on (\`ambiguity\`), something you wished existed (\`feature_request\`), something that works but costs too many calls or has an awkward shape (\`improvement\`).
-- **Setup and installation count too, and are the easiest to lose.** Anything that went wrong while installing, wiring, or starting Reticle — a step in the docs that did not match reality, a plugin that had to be added by hand, a daemon that would not start, an OS-specific detour. You hit these before any verification runs, which is exactly why they usually go unreported.
+- Drive the flow with \`reticle_act_and_wait({ ref, action, until })\`. It names the consequence you expect BEFORE the action, which is the difference between a check and a rationalisation.
+- Batch a multi-step journey (a login, a form) into one \`reticle_act_sequence\` rather than one round trip per field.
+- Read the surrounding evidence with \`reticle_snapshot\`, \`reticle_state\`, \`reticle_network\`, \`reticle_console\`.
+- **Only \`reticle_act_and_wait\` and \`reticle_assert\` produce a verdict.** \`reticle_act\` and everything else move or read the app and prove nothing, so a session ending without one of those two has no result however many tools it used.
+- Covered flows: \`${CLI} gate\` reports which recorded flows the changed files affect and whether they still pass.
+
+**Honesty, which is the whole point:**
+
+- **\`verified: "unknown"\` is not a pass.** It means Reticle drove the app and could not tell what happened; \`verifiedReason\` says which clause decided that. Report it as unknown, never as working.
+- **Never weaken a check to make it green.** Downgrading, skipping or deleting an assertion is a finding, not a fix.
+- **If Reticle cannot run** (no daemon, or this is not a running web app), say so. Do not skip verification silently.
+- **Setup is not finished until one real flow has been driven and produced a verdict.** \`init\` exiting 0, the tools appearing, and a session being listed are all things that happen before anything has been verified.
+
+**Report Reticle's own defects with \`reticle_feedback\` the moment you notice**, then carry on with your task. You are the user Reticle is built for and the only one who can say what it cost you, and that knowledge is gone when your context is.
+
+📄 **The rest is in [RETICLE.md](./${RETICLE_MD_PATH}): what to do when the tools are missing, when a result carries \`version_skew\` or \`update_available\`, when \`reticle_state\` comes back empty, and how to write a feedback report that can be acted on. Read it when you hit one of those, not before.**`;
+
+/**
+ * The reference half. Fetched when a situation calls for it rather than carried every turn.
+ *
+ * Every section here answers a question an agent only has once it is already stuck, and each one was
+ * written because the absence of it cost somebody a session: tools that were never loaded read as a
+ * broken install, a `version_skew` field went unread while its green verdicts were trusted, an empty
+ * `reticle_state` was reported as a clean setup, and a defect in Reticle was worked around in silence.
+ */
+const RETICLE_MD_BODY = `# Reticle: the full rules
+
+The short version lives in your agent instruction file (\`CLAUDE.md\` / \`AGENTS.md\` / \`.cursor/rules/reticle.mdc\`) and loads every turn. This file is the reference: read the section that matches the situation you are in.
+
+## The tools are missing entirely
+
+They have not been loaded yet, which is not the same as broken. \`init\` registers the MCP server, but a client reads its server list at startup and does not re-read it, and no slash command reloads it (\`/mcp\` only manages servers already loaded).
+
+Ask the human to RESTART their client: restart Claude Code, reload the window in Cursor, or hit Start in \`.vscode/mcp.json\` in VS Code. Then wait and carry on. This is once per machine, because Reticle is registered globally and later projects already have the tools. \`${CLI} status\` works meanwhile and says whether the daemon is up and whether the app has connected.
+
+## A result carries \`verify_next\`
+
+You have driven this page several times without asking for a verdict, so nothing you have done so far is proven. Do what the field says next.
+
+## A result carries \`version_skew\`
+
+Act on it before trusting anything else. Two pieces of Reticle are on different wire contracts, so tools can misbehave in ways neither side reports, and a green is not evidence. The field names the pair that disagrees and the exact fix: run \`${CLI} stop\` and retry when the DAEMON is stale, or tell the human to install the matching SDK and restart their dev server when the PAGE is. Then redo whatever you were verifying.
+
+## A result carries \`update_available\`
+
+Reticle checked npm and a newer version exists. Tell the human the version numbers and offer to run \`${CLI} update\`, between tasks and never mid-verification, because it restarts the daemon and drops the session. Finish what you are doing first.
+
+## \`reticle_state\` comes back empty
+
+The generated \`reticle-dev\` file registers nothing. Say so. \`init\` registers every store it could prove from your source; the ones needing an argument only reading the code supplies (Jotai atoms, an XState actor, a TanStack \`queryClient\`) are left commented, and a file that registers nothing is indistinguishable from a working one until you read the state back.
+
+Finish that file when you see it. It is what lets you check what the app BELIEVES, not only what it rendered, which is the class of bug a screenshot cannot show. Never report a clean setup over an empty state read. It blocks nothing else: DOM, network, console and source pointers all work without it.
+
+## Sending feedback to the Reticle team
+
+**Reporting your experience is part of using Reticle, from the moment you start wiring it in.** Reticle is built FOR agents, which makes you its actual user and the only one who can see what it costs you.
+
+- **Send it with \`reticle_feedback\` the moment you notice.** One call, then carry straight on. Do not batch reports, do not wait until the task is done, and do not decide something is too minor. The small awkward things are what nobody ever reports, so they never get fixed.
+- **Everything counts, in both directions.** A tool that returned something wrong (\`bug\`), something Reticle could not observe at all (\`gap\`), a verdict you could not act on (\`ambiguity\`), something you wished existed (\`feature_request\`), something that works but costs too many calls (\`improvement\`).
+- **Setup and installation count too, and are the easiest to lose.** Anything that went wrong while installing, wiring, or starting Reticle: a step in the docs that did not match reality, a plugin that had to be added by hand, a daemon that would not start, an OS-specific detour. You hit these before any verification runs, which is exactly why they go unreported.
 - **When the tools are not reachable yet**, file the same report from the shell: \`${CLI} feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "what happened"\`. It needs no daemon and no working install, so a Reticle that broke before it started can still be reported.
-- **Write it so it can be acted on.** For a failure: what you called, what you expected, what you got, and the call trail in \`trace\`. For a request: the GOAL in \`need\` (not your guess at the solution), what improves in \`impact\`, and how you work around it today in \`currentApproach\` — that workaround is usually the most useful line in the report. Set \`model\` to the model you are running.
+- **Write it so it can be acted on.** For a failure: what you called, what you expected, what you got, and the call trail in \`trace\`. For a request: the GOAL in \`need\` (not your guess at the solution), what improves in \`impact\`, and how you work around it today in \`currentApproach\`. That workaround is usually the most useful line in the report. Set \`model\` to the model you are running.
 - **Working around a Reticle defect in silence is the one thing not to do.** A silent workaround is how the same defect survives to the next user.
-- **Report defects in *Reticle*, not in the app under test.** A bug you find in this app is Reticle working as intended; that belongs in your report to the user.
-- **Never include app source, secrets, user data, or customer records** in a report.`;
+- **Report defects in *Reticle*, not in the app under test.** A bug you find in this app is Reticle working as intended; that one belongs in your report to the user.
+- **Never include app source, secrets, user data, or customer records** in a report.
+
+## More
+
+The docs are built to be fetched rather than browsed: \`https://docs.reticle.sh/llms.txt\` lists every page, and appending \`.md\` to any page URL returns its source with no site chrome.
+`;
+
+/** The full-rules file, written verbatim (no markers: `init` owns this file entirely). */
+export function reticleMdFile(): string {
+  return RETICLE_MD_BODY;
+}
 
 export const AgentRuleStatus = {
   APPLY: 'apply',

@@ -30,10 +30,12 @@ import {
 } from './slash-command.js';
 import {
   mergeMarkedInstruction,
+  reticleMdFile,
   cursorRuleFile,
   AgentRuleStatus,
   CLAUDE_MD_PATH,
   AGENTS_MD_PATH,
+  RETICLE_MD_PATH,
   CURSOR_RULE_PATH,
 } from './agent-rules.js';
 import {
@@ -258,8 +260,10 @@ export interface PlanInput {
   reticleConfigSource?: string | null | undefined;
   /** Current project-root CLAUDE.md content (for the idempotent agent-rule merge), or null/undefined. */
   claudeMdContent?: string | null | undefined;
-  /** Current project-root AGENTS.md content (cross-agent fallback rule), or null/undefined. */
+  /** Current project-root AGENTS.md content (the cross-agent rule), or null/undefined. */
   agentsMdContent?: string | null | undefined;
+  /** Current project-root RETICLE.md content (the full rules), or null when absent. */
+  reticleMdContent?: string | null | undefined;
   /**
    * Current .cursor/rules/reticle.mdc content, or null when absent.
    *
@@ -493,6 +497,9 @@ function cursorCommandStep(input: PlanInput): Step | null {
 
 const AGENT_RULE_TITLE = 'Agent verification rule';
 const AGENT_RULE_DETAIL = 'teach the agent to verify features with Reticle after building them';
+const RETICLE_MD_TITLE = 'Full agent rules';
+const RETICLE_MD_DETAIL =
+  'the reference the always-loaded rule points at (when NOT to verify, recovery, feedback)';
 
 function claudeRuleStep(input: PlanInput): Step | null {
   if (!input.claudeCli) return null;
@@ -603,32 +610,71 @@ function slashCommandSteps(input: PlanInput): Step[] {
 }
 
 /**
- * The behavioral rule that makes the agent actually USE Reticle. Written into the detected agent's
- * instruction file (Claude / Cursor, or both), falling back to the cross-agent AGENTS.md when neither
- * is detected. Rides with the MCP wiring — `--no-mcp` opts out of registering the tools AND the rule.
+ * `AGENTS.md`, always. It is the file every agent that is not Claude or Cursor reads.
+ *
+ * This used to be a FALLBACK, written only when no agent was detected. So a repo set up on a machine
+ * with Claude Code got `CLAUDE.md` and nothing else, and the next person to open it with Codex,
+ * Copilot, Amp, Gemini or any other agent found a fully instrumented app whose rules were addressed
+ * to somebody else's tool. The detection tells you which agent is running the install; it says
+ * nothing about which agents will open the repository afterwards.
+ */
+function agentsMdStep(input: PlanInput): Step {
+  const r = mergeMarkedInstruction(input.agentsMdContent);
+  const path = agentFile(input, AGENTS_MD_PATH);
+  if (r.status === AgentRuleStatus.ALREADY) {
+    return {
+      title: AGENT_RULE_TITLE,
+      target: path,
+      status: StepStatus.ALREADY,
+      detail: 'Reticle rule already in AGENTS.md',
+    };
+  }
+  return {
+    title: AGENT_RULE_TITLE,
+    target: path,
+    status: StepStatus.APPLY,
+    detail: AGENT_RULE_DETAIL,
+    write: { path, content: r.content },
+  };
+}
+
+/**
+ * `RETICLE.md`, the reference the always-loaded blocks point at.
+ *
+ * Written whole rather than merged, because `init` owns the entire file: there is no user content to
+ * preserve, and the marker dance exists only for files somebody else already writes in.
+ */
+function reticleMdStep(input: PlanInput): Step {
+  const path = agentFile(input, RETICLE_MD_PATH);
+  const content = reticleMdFile();
+  if (input.reticleMdContent === content) {
+    return {
+      title: RETICLE_MD_TITLE,
+      target: path,
+      status: StepStatus.ALREADY,
+      detail: 'full rules already current',
+    };
+  }
+  return {
+    title: RETICLE_MD_TITLE,
+    target: path,
+    status: StepStatus.APPLY,
+    detail: RETICLE_MD_DETAIL,
+    write: { path, content },
+  };
+}
+
+/**
+ * The behavioral rules that make the agent actually USE Reticle, and know when not to.
+ *
+ * Every detected agent's own file, plus `AGENTS.md` for the ones that will open this repo later, plus
+ * `RETICLE.md` holding the reference half. Rides with the MCP wiring: `--no-mcp` opts out of
+ * registering the tools AND of every rule file, because rules for tools the agent cannot reach are
+ * noise.
  */
 function agentRuleSteps(input: PlanInput): Step[] {
   if (!input.options.mcp) return [];
-  const detected = stepsForAgents(input, (a) => a.ruleStep);
-  if (detected.length > 0) return detected;
-  const r = mergeMarkedInstruction(input.agentsMdContent);
-  const path = agentFile(input, AGENTS_MD_PATH);
-  return [
-    r.status === AgentRuleStatus.ALREADY
-      ? {
-          title: AGENT_RULE_TITLE,
-          target: path,
-          status: StepStatus.ALREADY,
-          detail: 'Reticle rule already in AGENTS.md',
-        }
-      : {
-          title: AGENT_RULE_TITLE,
-          target: path,
-          status: StepStatus.APPLY,
-          detail: AGENT_RULE_DETAIL,
-          write: { path, content: r.content },
-        },
-  ];
+  return [...stepsForAgents(input, (a) => a.ruleStep), agentsMdStep(input), reticleMdStep(input)];
 }
 
 /**

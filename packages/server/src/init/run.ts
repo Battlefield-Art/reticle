@@ -15,7 +15,7 @@ import { pickAstroHost } from './astro-host.js';
 import { workspaceParents } from './workspace-apps.js';
 import { chooseWorkspaceApp } from './app-choice.js';
 import { isConnectStep } from './plan.js';
-import { CLI, CURSOR_RULE_PATH } from './agent-rules.js';
+import { CLI, CURSOR_RULE_PATH, RETICLE_MD_PATH } from './agent-rules.js';
 import { CRA_ENV_PATH } from './cra.js';
 
 /** CRA's bundled entry, in the order create-react-app itself generates them. */
@@ -481,6 +481,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     // agent's own root, or the merge would idempotently check a file it is not going to write.
     claudeMdContent: io.readFile(agentFile('CLAUDE.md')),
     agentsMdContent: io.readFile(agentFile('AGENTS.md')),
+    reticleMdContent: io.readFile(agentFile(RETICLE_MD_PATH)),
     cursorRuleContent: io.readFile(agentFile(CURSOR_RULE_PATH)),
     claudeCommandContent: io.readFile(agentFile(CLAUDE_COMMAND_PATH)),
     cursorCommandContent: io.readFile(agentFile(CURSOR_COMMAND_PATH)),

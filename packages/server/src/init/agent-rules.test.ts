@@ -3,6 +3,8 @@ import {
   mergeMarkedInstruction,
   cursorRuleFile,
   markedBlock,
+  reticleMdFile,
+  RETICLE_MD_PATH,
   AgentRuleStatus,
 } from './agent-rules.js';
 
@@ -10,8 +12,8 @@ describe('agent verification rule — content', () => {
   it('states WHEN to verify, HOW, and the never-weaken guard', () => {
     const block = markedBlock();
     // The rule must make the trigger unambiguous and the anti-reward-hacking guard explicit.
-    expect(block).toContain('after you build or change any user-facing feature');
-    expect(block).toContain('before');
+    expect(block).toContain('changed something a user can see or do');
+    expect(block).toContain('BEFORE telling the user it is complete');
     expect(block).toMatch(/reticle_act/);
     expect(block).toMatch(/reticle_assert/);
     // Every command the rule names must be one the agent can actually RUN: `reticle` is not on its
@@ -29,16 +31,52 @@ describe('agent verification rule — content', () => {
   // nothing about the phase that most often breaks.
   it('asks for feedback as a standing instruction, not only when a verification fails', () => {
     const block = markedBlock();
+    // The instruction itself stays in the always-loaded block: an agent that never opens the
+    // reference must still know that reporting is part of the job.
     expect(block).toContain('reticle_feedback');
-    expect(block).toMatch(/feature_request/);
-    expect(block).toMatch(/improvement/);
+    const full = reticleMdFile();
+    expect(full).toMatch(/feature_request/);
+    expect(full).toMatch(/improvement/);
     // Setup and install problems, named — they happen before any tool surface exists.
-    expect(block).toMatch(/installing, wiring, or starting Reticle/);
+    expect(full).toMatch(/installing, wiring, or starting Reticle/);
     // The escape hatch for when there is no daemon and no tools to call. Through npx, like every
     // other command in this block: `reticle init` installs the SDK, never the server, so a bare
     // `reticle` is an instruction the agent cannot follow — see the CLI docblock in agent-rules.ts.
-    expect(block).toContain('feedback --agent --kind');
+    expect(full).toContain('feedback --agent --kind');
+    expect(full).not.toMatch(/[^/]\breticle feedback\b/);
     expect(block).not.toMatch(/[^/]\breticle feedback\b/);
+  });
+
+  /**
+   * The half of the rule that decides whether an agent is USEFUL or merely obedient.
+   *
+   * A rule that only says "verify after every change" gets obeyed literally: a README edit, a
+   * dependency bump and a backend refactor each buy a browser drive that proves nothing about what
+   * changed, burning tool calls and the user's patience until somebody deletes the rule outright.
+   * Naming the cases where verification cannot say anything is what keeps the rest of it credible.
+   */
+  it('says when NOT to reach for Reticle, and to say so out loud', () => {
+    const block = markedBlock();
+    expect(block).toContain('Do not reach for Reticle');
+    for (const skip of [
+      'documentation',
+      'build config',
+      'dependency bumps',
+      'not a running web app',
+    ])
+      expect(block, `the skip list should name ${skip}`).toContain(skip);
+    // Silence is the failure mode this replaces: an agent that quietly skips looks identical to one
+    // that verified and found nothing.
+    expect(block).toMatch(/skipped verification and why/);
+  });
+
+  /**
+   * Splitting the rule is only safe while the pointer survives. Without this line the reference half
+   * is a file nothing references, which is indistinguishable from having deleted it.
+   */
+  it('points at the full rules, so the reference half is reachable', () => {
+    expect(markedBlock()).toContain(RETICLE_MD_PATH);
+    expect(reticleMdFile()).toContain('# Reticle: the full rules');
   });
 
   it('cursor .mdc carries alwaysApply so it stays in every turn context', () => {

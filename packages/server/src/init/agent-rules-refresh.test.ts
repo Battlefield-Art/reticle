@@ -16,7 +16,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { AgentRuleStatus, markedBlock, mergeMarkedInstruction } from './agent-rules.js';
+import {
+  AgentRuleStatus,
+  markedBlock,
+  mergeMarkedInstruction,
+  reticleMdFile,
+  RETICLE_MD_PATH,
+} from './agent-rules.js';
 
 const STALE = `<!-- reticle:begin (managed by \`reticle init\` — edit outside these markers) -->
 ## Verifying with Reticle
@@ -29,7 +35,7 @@ describe('the managed block refreshes', () => {
   it('replaces a stale block with the current one', () => {
     const result = mergeMarkedInstruction(STALE);
     expect(result.status).toBe(AgentRuleStatus.APPLY);
-    expect(result.content).toContain('version_skew');
+    expect(result.content).toContain('Never weaken a check');
     expect(result.content).not.toContain('an old rule from a previous release');
   });
 
@@ -55,12 +61,24 @@ describe('the managed block refreshes', () => {
   });
 });
 
-describe('the rule tells the agent what to do with a skew envelope', () => {
+/**
+ * The recovery envelopes moved to RETICLE.md when the rule was split, and they must still be findable.
+ *
+ * They are the definition of reference material: an agent needs them on the turn a result carries the
+ * field and never before. Carrying them in the always-loaded block taxed every session for text
+ * almost no session read. Dropping them instead would have been silent, because nothing else in the
+ * suite mentions them, so the assertion moves with the text rather than disappearing with it.
+ */
+describe('the full rules tell the agent what to do with a skew envelope', () => {
   it('names version_skew and what to do about it', () => {
-    const block = markedBlock();
-    expect(block).toContain('version_skew');
+    const full = reticleMdFile();
+    expect(full).toContain('version_skew');
     // The two fixes differ by which piece is stale, so the rule must not collapse them into one.
-    expect(block).toContain('npx @reticlehq/server update');
-    expect(block).toContain('npx @reticlehq/server stop');
+    expect(full).toContain('npx @reticlehq/server update');
+    expect(full).toContain('npx @reticlehq/server stop');
+  });
+
+  it('is reachable: the always-loaded block names the file that holds it', () => {
+    expect(markedBlock()).toContain(RETICLE_MD_PATH);
   });
 });
