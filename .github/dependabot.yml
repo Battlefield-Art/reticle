@@ -46,6 +46,23 @@ updates:
         update-types:
           - minor
           - patch
+    # These four are NOT ours to move. Each one also reaches us through `tauri` itself — the Windows
+    # pair via `webview2-com`, the GTK pair via `wry` -> `gdk` — and Cargo keeps both versions when a
+    # direct dependency runs ahead of a transitive one. Two copies of the same crate do not share
+    # types, so the build fails with "expected COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT, found a
+    # different COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT", which reads like our bug and is not.
+    #
+    # Verified rather than assumed: bumping `windows` and `webview2-com` TOGETHER still fails, because
+    # tauri 2.11.5 holds webview2-com 0.38.2 underneath. There is no combination of these PRs that
+    # compiles until the tauri/wry tree moves first.
+    #
+    # So they are ignored until then, rather than reopened weekly as PRs that cannot merge and cost a
+    # full CI run each. Drop the entry for a crate once tauri ships a release that has moved it.
+    ignore:
+      - dependency-name: windows
+      - dependency-name: webview2-com
+      - dependency-name: cairo-rs
+      - dependency-name: gdk
 
   # The Tauri smoke app. Not published, but it is compiled and RUN by the desktop battery, so a
   # vulnerable dependency here still executes on a runner. Its Cargo.lock is gitignored, so
