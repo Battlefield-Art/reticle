@@ -39,6 +39,11 @@ jobs:
         run: node scripts/check-lossy-transforms.mjs --self-test
       - run: pnpm build
       - run: pnpm lint
+      # The shipped guidance is a release artifact like any other: README, SKILL.md, every docs page,
+      # every published skill and its references, and the Claude Code plugin manifests. Runs here as
+      # well as inside test:unit so a docs break is named as one instead of arriving as a unit
+      # failure in a package nobody was editing.
+      - run: pnpm lint:docs
       - run: pnpm typecheck
       - run: pnpm test:unit
         # Turbo buffers each task's output and prints it only when the task finishes, so a task that

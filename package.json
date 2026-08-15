@@ -13,6 +13,7 @@
     "lint": "node scripts/check-boundaries.mjs && node scripts/check-lossy-transforms.mjs && turbo run lint",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:lossy": "node scripts/check-lossy-transforms.mjs",
+    "lint:docs": "pnpm --filter @reticlehq/server exec vitest run src/tools/docs-commands-run.test.ts src/tools/docs-index-coverage.test.ts src/tools/e2e-surface-drift.test.ts src/tools/published-skill-artifacts.test.ts",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test:unit",
     "test:unit": "turbo run test:unit",

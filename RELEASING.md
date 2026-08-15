@@ -31,12 +31,36 @@ Any user-facing change adds its entry to the `[Unreleased]` section of [CHANGELO
 ```bash
 git switch main && git pull                     # 1. green main, nothing local
 
-pnpm lint && pnpm typecheck && pnpm test:unit   # 2. the gates
+pnpm format:check                               # 2. the gates. FIRST: it is the one CI enforces
+pnpm lint && pnpm typecheck && pnpm test:unit   #    that `pnpm lint` does not run
 pnpm test:e2e                                   #    required for every release, not just tool changes
+pnpm lint:docs                                  #    every documented command still parses; see below
+claude plugin validate .                        #    the published Claude Code plugin still resolves
+npx skills add reticlehq/reticle -l             #    the published skills are all still discoverable
 
 pnpm version 2.3.0 --no-git-tag-version         # 3. bump root…
 pnpm -r exec npm version 2.3.0 --no-git-tag-version   #    …and every workspace package, in lockstep
 ```
+
+### What the gates already prove about the docs, and what they do not
+
+`pnpm test:unit` carries the shipped-guidance guards, so a release cannot go out with docs that contradict the code. They cover **README.md, SKILL.md, every page under `docs/`, every published skill, and every package README**:
+
+| Guard | What it would catch |
+| --- | --- |
+| every declared tool name is callable | a renamed `reticle_*` tool leaving dead prose |
+| documented commands are run through the real CLI parser | a retired subcommand, or a flag that no longer exists |
+| nobody is told to `npx` a package we do not own | `npx reticle`, which fetches somebody else's package |
+| no runnable shell block assumes the `reticle` bin | a command that fails for a reader who installed nothing |
+| every published skill has valid frontmatter and a matching name | a skill the registry silently refuses to install |
+| the plugin version matches the release | a `/plugin` UI pinning everybody to a stale version |
+| docs index and navigation cover every page | a page nobody can reach |
+
+Two limits worth knowing before trusting a green run.
+
+**Flag validation is per-command.** `init` and `serve` reject an unknown flag; `doctor`, `status`, `gate` and `open` accept one silently, so a documented flag that quietly stopped existing on those commands still passes. Making the parser uniform would close it, and would be a behaviour change to argument handling rather than a docs fix.
+
+**None of it checks the deployed site.** The guards read this repository. `docs.reticle.sh` is a separate Mintlify deployment, and it has served pages several commits behind before, so a page being correct here is not evidence that it is correct in front of a user. Check the live page after a release, not only the source.
 
 4. Move `[Unreleased]` in `CHANGELOG.md` under a `## [2.3.0] — YYYY-MM-DD` heading; leave a fresh empty `[Unreleased]`.
 5. `git commit -m "chore(release): v2.3.0"` → PR → merge.

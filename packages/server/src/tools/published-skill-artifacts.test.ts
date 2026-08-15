@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,6 +100,107 @@ function releaseVersion(): string | null {
   if ('object' !== typeof parsed || null === parsed || !('version' in parsed)) return null;
   return 'string' === typeof parsed.version ? parsed.version : null;
 }
+
+/**
+ * A skill's reference files are shipped guidance too, and a link into them is load-bearing.
+ *
+ * `install-and-verify` delegates its detail to `references/*.md` and names each one, which is the
+ * whole progressive-disclosure design: the always-loaded body stays short because the depth is one
+ * hop away. A link that does not resolve turns that hop into a dead end, and it fails silently:
+ * the skill still installs, still reads sensibly, and simply cannot answer the question it promised
+ * to. The same shape as the RETICLE.md pointer, and checked for the same reason.
+ */
+describe('every reference a skill links to actually ships with it', () => {
+  const LINK = /\]\((references\/[^)]+)\)/g;
+
+  for (const skill of publishedSkills()) {
+    const body = readFileSync(join(SKILLS, skill, 'SKILL.md'), 'utf8');
+    const links = [...new Set([...body.matchAll(LINK)].map((m) => m[1]))];
+    if (0 === links.length) continue;
+    it(`${skill} links only to reference files that exist`, () => {
+      const missing = links.filter((rel) => !existsSync(join(SKILLS, skill, rel ?? '')));
+      expect(missing, `${skill} links to files that are not there: ${missing.join(', ')}`).toEqual(
+        [],
+      );
+    });
+  }
+
+  /**
+   * And the other direction: a reference nothing links to is one no agent will ever open. Cheaper to
+   * catch here than to discover as a file that has been silently dead since a rewrite.
+   */
+  it('ships no orphaned reference file', () => {
+    const orphans: string[] = [];
+    for (const skill of publishedSkills()) {
+      const dir = join(SKILLS, skill, 'references');
+      if (!existsSync(dir)) continue;
+      const body = readFileSync(join(SKILLS, skill, 'SKILL.md'), 'utf8');
+      for (const file of readdirSync(dir))
+        if (!body.includes(`references/${file}`)) orphans.push(`${skill}/references/${file}`);
+    }
+    expect(orphans, `nothing links to these:\n${orphans.join('\n')}`).toEqual([]);
+  });
+});
+
+/**
+ * The plugin manifests, beyond the version.
+ *
+ * `claude plugin validate` is the authority and it is not available in CI, so the checks here are the
+ * ones that would make a submission bounce or an install resolve to nothing: the identity fields a
+ * reviewer reads, the two manifests agreeing on the immutable slug, a marketplace `source` that
+ * exists, and the documented common mistake of putting component directories inside `.claude-plugin/`
+ * where the loader will never look for them.
+ */
+describe('the Claude Code plugin manifests are ones the loader can resolve', () => {
+  const DIR = join(REPO, '.claude-plugin');
+  const readJson = (file: string): Record<string, unknown> => {
+    const parsed: unknown = JSON.parse(readFileSync(join(DIR, file), 'utf8'));
+    if ('object' !== typeof parsed || null === parsed) throw new Error(`${file} is not an object`);
+    return parsed as Record<string, unknown>;
+  };
+
+  it('plugin.json carries the identity a directory listing shows', () => {
+    const manifest = readJson('plugin.json');
+    for (const field of ['name', 'description', 'version', 'author'])
+      expect(manifest[field], `plugin.json is missing ${field}`).toBeTruthy();
+  });
+
+  it('both manifests agree on the plugin slug, which is immutable once published', () => {
+    const plugin = readJson('plugin.json');
+    const entries = readJson('marketplace.json')['plugins'];
+    expect(Array.isArray(entries), 'marketplace.json lists no plugins').toBe(true);
+    const first = Array.isArray(entries) ? (entries[0] as Record<string, unknown>) : {};
+    expect(first['name'], 'the marketplace entry and plugin.json disagree on the name').toBe(
+      plugin['name'],
+    );
+  });
+
+  it('every marketplace entry points at a source that exists', () => {
+    const entries = readJson('marketplace.json')['plugins'];
+    const missing: string[] = [];
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const source = (entry as Record<string, unknown>)['source'];
+      if ('string' !== typeof source) continue;
+      if (!existsSync(join(REPO, source))) missing.push(source);
+    }
+    expect(
+      missing,
+      `marketplace.json points at paths that are not there: ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * The documented common mistake: only `plugin.json` belongs inside `.claude-plugin/`. Component
+   * directories placed there are never loaded, and nothing reports it — the plugin simply ships with
+   * no skills, agents or hooks and installs perfectly.
+   */
+  it('keeps component directories out of .claude-plugin/', () => {
+    const stray = readdirSync(DIR).filter((e) => statSync(join(DIR, e)).isDirectory());
+    expect(stray, `.claude-plugin/ must hold manifests only, found: ${stray.join(', ')}`).toEqual(
+      [],
+    );
+  });
+});
 
 describe('the Claude Code plugin ships the version everything else ships', () => {
   const release = releaseVersion();
