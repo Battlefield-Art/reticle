@@ -21,7 +21,7 @@ reticle_sessions()
 ```
 
 - **A session comes back** → go to step 2.
-- **Tools do not exist** → Reticle is not installed. Run `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then tell the user to restart their client so it picks up the MCP server. Full setup is in the [`reticle`](https://github.com/reticlehq/reticle/blob/main/skills/reticle/SKILL.md) skill.
+- **Tools do not exist** → Reticle is not installed. Run `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then tell the user to restart their client so it picks up the MCP server. Full setup is in the [`install-and-verify`](https://github.com/reticlehq/reticle/blob/main/skills/install-and-verify/SKILL.md) skill.
 - **Tools exist, list is empty** → read the `why` field on the response. It distinguishes "no app running" from "an app is running that never dialled this daemon" from "a tab was here and closed", and each has a different fix. Ask the user to start their dev server before assuming anything is broken.
 
 ## 2. Name the consequence BEFORE you act

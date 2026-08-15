@@ -12,7 +12,7 @@ metadata:
 
 "The spacing on that card is wrong" is unactionable in chat and precise in the app. **Reticle**'s running app has a **Flag a bug** control: the human clicks it, points at an element, and types what is wrong. Each flag becomes a mark carrying the element, the note, and the `file:line` — so the round trip that usually costs a screenshot, a description, and two clarifying questions costs one call.
 
-Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`reticle`](https://github.com/reticlehq/reticle/blob/main/skills/reticle/SKILL.md) skill.
+Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`install-and-verify`](https://github.com/reticlehq/reticle/blob/main/skills/install-and-verify/SKILL.md) skill.
 
 ## Drain the marks
 

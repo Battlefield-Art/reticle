@@ -12,7 +12,7 @@ metadata:
 
 Reading the source again will not tell you why. The evidence is in the running app, and most of it never reaches the screen: the request that failed, the store that never moved, the handler that was never bound, the element covered by something invisible.
 
-**Reticle** reads all of it from inside the page. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`reticle`](https://github.com/reticlehq/reticle/blob/main/skills/reticle/SKILL.md) skill.
+**Reticle** reads all of it from inside the page. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`install-and-verify`](https://github.com/reticlehq/reticle/blob/main/skills/install-and-verify/SKILL.md) skill.
 
 ## Do not start by guessing. Start by reproducing.
 

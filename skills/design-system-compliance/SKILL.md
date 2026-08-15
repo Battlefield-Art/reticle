@@ -12,7 +12,7 @@ metadata:
 
 Reading the source tells you what the component _asks_ for. It cannot tell you what the browser resolved: a token overridden three layers up, a hardcoded `#3b82f6` that happens to look close, a dark-theme scope that never applied. That answer only exists in the running page.
 
-**Reticle** reads computed styles in the live app and compares them against the project's tokens. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`reticle`](https://github.com/reticlehq/reticle/blob/main/skills/reticle/SKILL.md) skill.
+**Reticle** reads computed styles in the live app and compares them against the project's tokens. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`install-and-verify`](https://github.com/reticlehq/reticle/blob/main/skills/install-and-verify/SKILL.md) skill.
 
 ## The check
 

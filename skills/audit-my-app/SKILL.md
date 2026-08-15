@@ -10,7 +10,7 @@ metadata:
 
 # Sweep the whole app and report what is broken
 
-You do not need to understand the codebase to check it. **Reticle** drives every reachable control in the running app and reports the anomalies. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`reticle`](https://github.com/reticlehq/reticle/blob/main/skills/reticle/SKILL.md) skill.
+You do not need to understand the codebase to check it. **Reticle** drives every reachable control in the running app and reports the anomalies. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`install-and-verify`](https://github.com/reticlehq/reticle/blob/main/skills/install-and-verify/SKILL.md) skill.
 
 ## 1. Ask the app what it can do
 

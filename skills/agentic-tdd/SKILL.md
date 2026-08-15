@@ -12,7 +12,7 @@ metadata:
 
 Unit tests drive the units. They cannot say "clicking Deploy posts to `/api/deploy`, moves the store to `deploying`, and shows the banner" — that outcome only exists when the whole app runs. So the loop stalls exactly where the interesting bugs are, and the agent falls back to writing code and hoping.
 
-This runs the same discipline one level up, using **Reticle** to drive the real app. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`reticle`](https://github.com/reticlehq/reticle/blob/main/skills/reticle/SKILL.md) skill.
+This runs the same discipline one level up, using **Reticle** to drive the real app. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`install-and-verify`](https://github.com/reticlehq/reticle/blob/main/skills/install-and-verify/SKILL.md) skill.
 
 ## Why this is TDD and not just testing afterwards
 

@@ -108,7 +108,7 @@ That installs eleven skills, each for a different moment. Take one with `--skill
 
 | Skill | When your agent reaches for it |
 | --- | --- |
-| `reticle` | install and wire Reticle, then verify — the whole loop |
+| `install-and-verify` | install and wire Reticle, then verify — the whole loop |
 | `verify-ui-change` | you changed something a user can see and have not opened the app |
 | `debug-broken-ui` | it does not work, the console is empty, and the code looks fine |
 | `false-green-tests` | the suite is green and the app is broken |

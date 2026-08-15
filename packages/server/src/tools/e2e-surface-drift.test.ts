@@ -296,7 +296,7 @@ describe('user-facing guidance never names a tool an agent cannot call', () => {
 /**
  * The docs a USER pastes are guidance too, and the furthest-out audience.
  *
- * `skills/reticle/SKILL.md` is the same guidance again, published to the agent-skill registry, where
+ * `skills/install-and-verify/SKILL.md` is the same guidance again, published to the agent-skill registry, where
  * the reader arrived by search and has never seen this repo. It is in scope for the same reason.
  *
  * `SKILL.md` is the canonical paste-URL for integrating Reticle and `docs/` ships with it, so a dead

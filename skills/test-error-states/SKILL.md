@@ -12,7 +12,7 @@ metadata:
 
 Every app has a `catch` block nobody has executed and an empty state nobody has seen. They are written from imagination, shipped untested, and discovered by a user on a bad day.
 
-**Reticle** can force those conditions in the running app. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`reticle`](https://github.com/reticlehq/reticle/blob/main/skills/reticle/SKILL.md) skill.
+**Reticle** can force those conditions in the running app. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`install-and-verify`](https://github.com/reticlehq/reticle/blob/main/skills/install-and-verify/SKILL.md) skill.
 
 ## Read this before you start: network mocking needs a driven browser
 

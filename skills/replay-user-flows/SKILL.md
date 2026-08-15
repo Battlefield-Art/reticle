@@ -12,7 +12,7 @@ metadata:
 
 Exploring an app to find a journey is the expensive part, and re-driving it with a model pays that cost again on every change. **Reticle flows** pay it once: the journey is saved with semantic anchors and replayed deterministically afterwards.
 
-Needs Reticle wired in the project. Not there? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`reticle`](https://github.com/reticlehq/reticle/blob/main/skills/reticle/SKILL.md) skill.
+Needs Reticle wired in the project. Not there? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`install-and-verify`](https://github.com/reticlehq/reticle/blob/main/skills/install-and-verify/SKILL.md) skill.
 
 ## Record
 

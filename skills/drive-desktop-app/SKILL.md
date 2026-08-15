@@ -12,7 +12,7 @@ metadata:
 
 A desktop app reaches its backend over **IPC, not HTTP**. Patching `fetch`/`XHR` cannot see that, so a browser-shaped tool is blind to every backend call the app makes: the network log reads empty, an action has no in-flight request to settle on, and asserting on the network is vacuously true. That is a false green by construction.
 
-**Reticle** observes the renderer _and_ the IPC boundary, so a desktop verdict means what a web one does. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`reticle`](https://github.com/reticlehq/reticle/blob/main/skills/reticle/SKILL.md) skill.
+**Reticle** observes the renderer _and_ the IPC boundary, so a desktop verdict means what a web one does. Not installed? `RETICLE_INSTALL_SOURCE=npx_skill npx @reticlehq/server@latest init`, then the [`install-and-verify`](https://github.com/reticlehq/reticle/blob/main/skills/install-and-verify/SKILL.md) skill.
 
 ## Electron: two lines, none in your app code
 
