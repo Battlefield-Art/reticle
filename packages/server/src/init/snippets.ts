@@ -66,6 +66,24 @@ export function connectArgWithToken(
 }
 
 /**
+ * Which SDK package the GENERATED code should import, and whether `install()` applies.
+ *
+ * This has to agree with `frameworkPackages`, and it did not. That function was changed so a Vue or
+ * Svelte app installs `@reticlehq/browser` instead of the React adapter — correctly — while every
+ * generated connect snippet still said `import('@reticlehq/react')`. A SvelteKit app would have
+ * installed the sensor and then run a hook importing a package that is not there.
+ *
+ * `install()` is the React adapter's, not the sensor's: `@reticlehq/browser` exports `reticle` and no
+ * `install`, so swapping the specifier alone would trade a missing module for a missing export.
+ */
+export function sdkImport(uiLibrary: UiLibrary): { specifier: string; usesInstall: boolean } {
+  const react = uiLibrary !== UiLibrary.VUE && uiLibrary !== UiLibrary.SVELTE;
+  return react
+    ? { specifier: '@reticlehq/react', usesInstall: true }
+    : { specifier: '@reticlehq/browser', usesInstall: false };
+}
+
+/**
  * The framework plugin to show ALONGSIDE reticle() in the example, so the ordering is clear.
  *
  * It used to be `react()` unconditionally, which is what a Vue app was shown — a plugin it does not
@@ -415,14 +433,22 @@ export const UNVERIFIED_FRAMEWORK_NOTE =
  * never triggers Vite's index.html injection (verified), so the standard plugin can't auto-connect —
  * a client hook is the reliable path. SvelteKit runs src/hooks.client.ts on the client at startup.
  */
-export function svelteKitHooksFile(port: number | undefined, projectId?: string): string {
+export function svelteKitHooksFile(
+  port: number | undefined,
+  projectId?: string,
+  uiLibrary: UiLibrary = UiLibrary.SVELTE,
+): string {
+  // SvelteKit is Svelte, so this defaults to the sensor rather than the React adapter — and the
+  // import here MUST match what `frameworkPackages` installed, or the hook loads a package that is
+  // not in node_modules. See sdkImport.
+  const sdk = sdkImport(uiLibrary);
   const base = connectArg(port, projectId);
   const fields = '' === base ? '' : `${base.slice(1, -1).trim()}, `;
   return `// Dev-only: connect Reticle on the client. SvelteKit renders via app.html, so the Vite-plugin
 // index.html injection doesn't fire — connect from this client hook instead.
 if (import.meta.env.DEV) {
-  void import('@reticlehq/react').then(({ reticle, install }) => {
-    install();
+  void import('${sdk.specifier}').then(({ reticle${sdk.usesInstall ? ', install' : ''} }) => {
+    ${sdk.usesInstall ? 'install();' : '// No React adapter here: the sensor has no install() to call.'}
     // The bridge requires the pairing token even on localhost. Nothing in a browser can read the
     // file it lives in, so @reticlehq/vite-plugin inlines it here at build time. Without it the
     // console reads "bridge refused the connection: authentication failed" and no session appears.

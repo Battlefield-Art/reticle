@@ -444,7 +444,11 @@ export function svelteKitSteps(input: PlanInput): Step[] {
       detail: 'create dev-only client connect (SvelteKit renders via app.html)',
       write: {
         path: SVELTEKIT_HOOKS_PATH,
-        content: svelteKitHooksFile(input.options.port, input.options.projectId),
+        content: svelteKitHooksFile(
+          input.options.port,
+          input.options.projectId,
+          input.detection.uiLibrary,
+        ),
       },
       dependsOnInstall: true,
     },
@@ -483,7 +487,12 @@ export function astroSteps(input: PlanInput): Step[] {
   // single recipe that does the whole job.
   const manualWithLayout = astroManual(input.options.port, input.options.projectId, layout.path);
   const configPatch = patchAstroConfig(config.source);
-  const layoutPatch = patchAstroLayout(layout.source, input.options.port, input.options.projectId);
+  const layoutPatch = patchAstroLayout(
+    layout.source,
+    input.options.port,
+    input.options.projectId,
+    input.detection.uiLibrary,
+  );
   if (configPatch.kind === PatchKind.MANUAL || layoutPatch.kind === PatchKind.MANUAL) {
     return [
       {

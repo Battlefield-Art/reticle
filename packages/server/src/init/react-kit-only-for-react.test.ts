@@ -95,3 +95,45 @@ describe('the unverified note tells each library the truth about component ident
     expect(unverifiedUiLibraryNote('vue')).toContain('will NOT get');
   });
 });
+
+/**
+ * What init INSTALLS and what init GENERATES must name the same package.
+ *
+ * This is the half I got wrong first time. Changing `frameworkPackages` so a Vue or Svelte app gets
+ * `@reticlehq/browser` was right, and every generated connect snippet still said
+ * `import('@reticlehq/react')` — so a SvelteKit install would have written a client hook importing a
+ * package that is not in `node_modules`. The dry-run plan looked correct and the install was broken.
+ *
+ * `install()` is the second half of the same trap: it is the React adapter's, and `@reticlehq/browser`
+ * exports `reticle` with no `install`. Swapping only the specifier would trade a missing module for a
+ * missing export.
+ *
+ * Caught by reading a real fixture's generated hook rather than by any gate.
+ */
+describe('the generated import matches the installed package', () => {
+  const cases: [string, Framework, UiLibrary][] = [
+    ['SvelteKit + Svelte', Framework.SVELTEKIT, UiLibrary.SVELTE],
+    ['Vite + Vue', Framework.VITE, UiLibrary.VUE],
+    ['Vite + React', Framework.VITE, UiLibrary.REACT],
+    ['Vite + Preact', Framework.VITE, UiLibrary.PREACT],
+  ];
+
+  it.each(cases)('%s imports a package it also installs', async (_label, framework, ui) => {
+    const { sdkImport } = await import('./snippets.js');
+    expect(frameworkPackages(framework, ui)).toContain(sdkImport(ui).specifier);
+  });
+
+  it('the sensor path does not call install(), which it does not export', async () => {
+    const { sdkImport, svelteKitHooksFile } = await import('./snippets.js');
+    expect(sdkImport(UiLibrary.SVELTE).usesInstall).toBe(false);
+    const hook = svelteKitHooksFile(undefined, 'demo', UiLibrary.SVELTE);
+    expect(hook).toContain("import('@reticlehq/browser')");
+    expect(hook).not.toContain('install();');
+  });
+
+  it('the React path still calls install(), which is what adds component identity', async () => {
+    const { sdkImport, svelteKitHooksFile } = await import('./snippets.js');
+    expect(sdkImport(UiLibrary.REACT).usesInstall).toBe(true);
+    expect(svelteKitHooksFile(undefined, 'demo', UiLibrary.REACT)).toContain('install();');
+  });
+});

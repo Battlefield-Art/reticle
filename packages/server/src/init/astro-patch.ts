@@ -14,6 +14,8 @@
 
 import { RETICLE_DEFAULT_PORT, bridgeWsUrl } from '@reticlehq/core';
 import { PatchKind, type SourcePatch } from './patch-kind.js';
+import { UiLibrary } from './detect.js';
+import { sdkImport } from './snippets.js';
 
 /** Present in a patched config AND in a hand-followed recipe — so both count as already wired. */
 const CONFIG_MARKER = '__RETICLE_TOKEN__';
@@ -217,7 +219,15 @@ export function patchAstroConfig(source: string): SourcePatch {
 }
 
 /** The dev-only connect that goes inside the layout's `<body>`. */
-function astroConnectScript(port: number | undefined, projectId: string | undefined): string {
+function astroConnectScript(
+  port: number | undefined,
+  projectId: string | undefined,
+  uiLibrary: UiLibrary,
+): string {
+  // Must match what `frameworkPackages` installed. Astro hosts islands from any framework, so an
+  // Astro app whose islands are Vue or Svelte gets the sensor, and a script importing the React
+  // adapter would load a package that is not in node_modules. See sdkImport.
+  const sdk = sdkImport(uiLibrary);
   const url =
     port !== undefined && port !== RETICLE_DEFAULT_PORT
       ? `\n          url: '${bridgeWsUrl(port)}',`
@@ -228,8 +238,8 @@ function astroConnectScript(port: number | undefined, projectId: string | undefi
       if (import.meta.env.DEV) {
         const token = typeof __RETICLE_TOKEN__ !== 'undefined' ? __RETICLE_TOKEN__ : '';
         const root = typeof __RETICLE_ROOT__ !== 'undefined' ? __RETICLE_ROOT__ : '';
-        const { reticle, install } = await import('@reticlehq/react');
-        install();
+        const { reticle${sdk.usesInstall ? ', install' : ''} } = await import('${sdk.specifier}');
+        ${sdk.usesInstall ? 'install();' : '// The sensor has no install(); that is the React adapter.'}
         reticle.connect({${id}${url}
           ...(token.length > 0 ? { token } : {}),
           ...(root.length > 0 ? { root } : {}),
@@ -243,6 +253,7 @@ export function patchAstroLayout(
   source: string,
   port: number | undefined,
   projectId: string | undefined,
+  uiLibrary: UiLibrary = UiLibrary.REACT,
 ): SourcePatch {
   if (source.includes(LAYOUT_MARKER)) return { kind: PatchKind.ALREADY };
   const at = source.lastIndexOf(BODY_CLOSE);
@@ -254,6 +265,6 @@ export function patchAstroLayout(
   }
   return {
     kind: PatchKind.APPLY,
-    code: `${source.slice(0, at)}${astroConnectScript(port, projectId)}${source.slice(at)}`,
+    code: `${source.slice(0, at)}${astroConnectScript(port, projectId, uiLibrary)}${source.slice(at)}`,
   };
 }
