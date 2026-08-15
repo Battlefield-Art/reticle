@@ -169,11 +169,26 @@ async function runPolarity(label, url, sessionId) {
   await sleep(100);
 
   await p.close();
-  const result = { 
+
+  // postLanded: did a POST /api/saved-items with status 200 actually appear in the event buffer?
+  // reticle_wait_for resolved without timeout → the net event is in the buffer → true.
+  // If the API is down or the endpoint is broken, reticle_wait_for throws → runPolarity returns null
+  // and the caller's null-guard fires, failing the spec correctly as a fixture failure not a detector
+  // failure. This is the check the reviewer asked for: the write really left the browser.
+  const postLanded = (observed.events ?? []).some(
+    (e) =>
+      e.type === 'net.request' &&
+      e.data?.method === 'POST' &&
+      String(e.data?.url ?? '').includes('/api/saved-items') &&
+      e.data?.status === 200,
+  );
+
+  const result = {
     verified: observed.contradictions && observed.contradictions.length > 0 ? 'flagged' : 'clean',
     contradictions: observed.contradictions ?? [],
     because: observed.summary ? JSON.stringify(observed.summary) : '',
     since: clicked.since,
+    postLanded,
   };
   return { result, since: clicked.since };
 }
@@ -190,10 +205,14 @@ const correctRun = await runPolarity(
 const correctResult = correctRun?.result ?? null;
 
 if (correctResult !== null) {
+  // Real assertion: did a POST /api/saved-items with status 200 actually appear in the event
+  // buffer? This is the check that guards the fixture's own premise — if the API is down,
+  // the endpoint is renamed, or the button never fires, this fails as a fixture failure and
+  // the spec correctly goes red pointing at the fixture, not the detector.
   chk(
     '[correct] POST /api/saved-items returned 200 (the write really left the browser)',
-    correctResult.verified === 'clean' || correctResult.verified === 'flagged',
-    `verified=${String(correctResult.verified)}`,
+    correctResult.postLanded === true,
+    `postLanded=${String(correctResult.postLanded)}`,
   );
   const correctKinds = (correctResult.contradictions ?? []).map((c) => c.kind);
   chk(
@@ -212,30 +231,18 @@ const brokenRun = await runPolarity(
   'resp-ignored-broken',
 );
 const brokenResult = brokenRun?.result ?? null;
-const brokenSince = brokenRun?.since ?? 0;
-const brokenSessionId = 'resp-ignored-broken';
+
 
 if (brokenResult !== null) {
+  // Same real assertion for the broken variant: the POST must have actually fired.
+  // Without this, a dead API lets polarity B catch response-ignored vacuously — the write
+  // never happened, there is nothing to ignore, but the finding still fires.
   chk(
     '[broken] POST /api/saved-items returned 200 even in the broken variant',
-    brokenResult.verified === 'clean' || brokenResult.verified === 'flagged',
-    `verified=${String(brokenResult.verified)}`,
+    brokenResult.postLanded === true,
+    `postLanded=${String(brokenResult.postLanded)}`,
   );
   const contradictionKinds = (brokenResult.contradictions ?? []).map((c) => c.kind);
-  // Debug: print full result + raw window events
-  console.log('   [broken] full result:', JSON.stringify({
-    verified: brokenResult.verified,
-    because: brokenResult.because,
-    contradictions: brokenResult.contradictions ?? [],
-    trace: brokenResult.trace,
-    honesty: brokenResult.honesty,
-  }, null, 2).slice(0, 3000));
-  // Also dump raw events in the window to see what STATE_CHANGEs are present
-  const rawEvents = await T(brokenSessionId, 'reticle_observe', { since: brokenSince });
-  console.log('   [broken] window events:', JSON.stringify(
-    (rawEvents.events ?? []).map(e => ({ type: e.type, t: e.t, data: e.data })),
-    null, 2
-  ).slice(0, 3000));
   chk(
     '[broken] an app that renders 800ms after the response IS flagged as response-ignored',
     contradictionKinds.includes('response-ignored'),

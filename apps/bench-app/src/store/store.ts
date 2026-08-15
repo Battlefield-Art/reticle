@@ -14,13 +14,7 @@ import {
 } from '../data/seed.js';
 
 export type ViewId =
-  | 'overview'
-  | 'deployments'
-  | 'compose'
-  | 'diagnostics'
-  | 'hostile'
-  | 'enterprise'
-  | 'saved-items';
+  'overview' | 'deployments' | 'compose' | 'diagnostics' | 'hostile' | 'enterprise' | 'saved-items';
 export type EnvFilter = Env | 'all';
 
 export interface Toast {
@@ -110,9 +104,9 @@ export const useApp = create<AppState>((set, get) => ({
         body: JSON.stringify({ label }),
       });
       const data = (await res.json()) as { id?: number; label?: string; savedAt?: string };
-      if (typeof data.id === 'number' && typeof data.label === 'string') {
+      if ('number' === typeof data.id && 'string' === typeof data.label) {
         const item = { id: data.id, label: data.label, savedAt: data.savedAt ?? '' };
-        if (renderDelayMs <= 0) {
+        if (0 >= renderDelayMs) {
           // Correct: state update is synchronous with the response — same microtask.
           set({ savedItems: [...get().savedItems, item] });
           emit(Sig.ITEM_SAVED, { id: item.id, label: item.label });

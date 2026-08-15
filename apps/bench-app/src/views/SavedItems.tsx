@@ -29,7 +29,7 @@ export function SavedItems(): React.ReactElement {
   const renderDelay = Number(params.get('renderDelay') ?? '0');
 
   const submit = async (): Promise<void> => {
-    if (label.trim().length === 0) return;
+    if (0 === label.trim().length) return;
     const current = label.trim();
     // Do NOT clear the label before the response — that DOM change would make uiAdvanced()=true
     // before the POST settles, suppressing response-ignored in the broken variant.
@@ -45,10 +45,7 @@ export function SavedItems(): React.ReactElement {
     <div className="view">
       <div className="panel panel-pad" style={{ maxWidth: 560 }}>
         <div className="eyebrow">Fixture</div>
-        <h3
-          style={{ fontSize: 16, margin: '6px 0 6px' }}
-          data-testid="saved-items-heading"
-        >
+        <h3 style={{ fontSize: 16, margin: '6px 0 6px' }} data-testid="saved-items-heading">
           Saved items
         </h3>
         <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 20px' }}>
@@ -57,7 +54,7 @@ export function SavedItems(): React.ReactElement {
             POST /api/saved-items
           </span>
           . The list updates only after the response arrives — no optimistic update.
-          {renderDelay > 0 ? (
+          {0 < renderDelay ? (
             <span style={{ color: 'var(--danger)' }}>
               {' '}
               Render is intentionally delayed {renderDelay}ms after response (broken variant).
@@ -82,10 +79,10 @@ export function SavedItems(): React.ReactElement {
             type="button"
             className="btn btn-primary"
             data-testid="saved-item-submit"
-            disabled={'saving' === status || label.trim().length === 0}
+            disabled={'saving' === status || 0 === label.trim().length}
             onClick={() => void submit()}
           >
-            {status === 'saving' ? 'Saving…' : 'Save'}
+            {'saving' === status ? 'Saving…' : 'Save'}
           </button>
         </div>
 
@@ -101,7 +98,11 @@ export function SavedItems(): React.ReactElement {
       </div>
 
       {items.length > 0 ? (
-        <div className="panel" style={{ maxWidth: 560, marginTop: 12 }} data-testid="saved-item-list">
+        <div
+          className="panel"
+          style={{ maxWidth: 560, marginTop: 12 }}
+          data-testid="saved-item-list"
+        >
           {items.map((item) => (
             <div
               key={item.id}
@@ -113,10 +114,7 @@ export function SavedItems(): React.ReactElement {
                 gap: 12,
               }}
             >
-              <span
-                className="mono"
-                style={{ fontSize: 11, color: 'var(--faint)', minWidth: 28 }}
-              >
+              <span className="mono" style={{ fontSize: 11, color: 'var(--faint)', minWidth: 28 }}>
                 #{item.id}
               </span>
               <span style={{ flex: 1, fontSize: 14 }}>{item.label}</span>

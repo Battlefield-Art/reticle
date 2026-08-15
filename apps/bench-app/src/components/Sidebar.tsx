@@ -14,6 +14,8 @@ const NAV: NavDef[] = [
   { id: 'compose', label: 'Compose', icon: IconSparkles },
   { id: 'diagnostics', label: 'Diagnostics', icon: IconBug },
   // The hostile fixture: reachable by click so the overhead A/B works with the SDK disabled too.
+  { id: 'hostile', label: 'Hostile', icon: IconBug },
+  // Response-ignored fixture: server-backed write whose render trails the response.
   { id: 'saved-items', label: 'Saved Items', icon: IconSave },
 ];
 
