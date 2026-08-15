@@ -39,6 +39,19 @@ interface CaptureChannel {
  */
 const FULL_PAGE_UNSUPPORTED_MARKER = VisualReason.FULL_PAGE_UNSUPPORTED;
 
+/**
+ * Reasons a shell can name, in the order they are matched.
+ *
+ * The shell throws one of these rather than answering a bare null, because "nothing came back" was
+ * covering three different problems at once: a window with no composited frame yet, a webContents
+ * that had gone away, and any error at all. They need different responses from the reader, and the
+ * tool reported them identically.
+ */
+const RECOGNISED_MARKERS: readonly string[] = [
+  FULL_PAGE_UNSUPPORTED_MARKER,
+  VisualReason.NOT_COMPOSITED,
+];
+
 /** Tauri's own bridge object. The SDK reads `invoke` off it; it never patches it (it is read-only). */
 interface TauriInternals {
   invoke?: (command: string, args?: unknown) => Promise<unknown>;
@@ -135,8 +148,12 @@ export async function captureDesktopWindow(fullPage = false): Promise<CaptureRes
       : { ok: false, reason: 'capture returned no image' };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    return reason.includes(FULL_PAGE_UNSUPPORTED_MARKER)
-      ? { ok: false, reason: FULL_PAGE_UNSUPPORTED_MARKER }
-      : { ok: false, reason };
+    // Recognised markers are reported as the reason ITSELF, so the tool can branch on a closed
+    // vocabulary rather than on prose. Everything else keeps its own message: dressing an unknown
+    // failure up as a known one would send the reader to the wrong place entirely.
+    for (const marker of RECOGNISED_MARKERS) {
+      if (reason.includes(marker)) return { ok: false, reason: marker };
+    }
+    return { ok: false, reason };
   }
 }

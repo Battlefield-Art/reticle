@@ -231,6 +231,12 @@ export const VisualReason = {
   // quietly downgraded: a caller who asked for the whole scroll height and silently got the visible
   // part would bank a baseline that says nothing about the content below the fold.
   FULL_PAGE_UNSUPPORTED: 'full-page-unsupported',
+  // The shell answered, and the window had no composited frame to photograph yet. Distinct from
+  // CAPTURE_FAILED on purpose: the capture ran and the window was empty, which is a timing fact
+  // about the window rather than a failure of the capture path. Electron's `capturePage()` returns
+  // an empty image rather than an error in that state, so without a name of its own it arrived as
+  // an unexplained no-image and read identically to a dead window and to a thrown error.
+  NOT_COMPOSITED: 'window-not-composited',
 } as const;
 export type VisualReason = (typeof VisualReason)[keyof typeof VisualReason];
 

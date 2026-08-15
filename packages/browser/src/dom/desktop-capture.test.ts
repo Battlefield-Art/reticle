@@ -178,3 +178,54 @@ describe('desktop capture — a plain web page', () => {
     });
   });
 });
+
+/**
+ * "Nothing came back" is three different problems, and they were one string.
+ *
+ * Electron's main-process handler answered a bare `null` for all of: the window had no composited
+ * frame yet, the requesting webContents was gone, and anything at all threw. The SDK turned every
+ * one of those into `capture returned no image`, so the tool reported `saved: false` with no bytes
+ * and no reason.
+ *
+ * It cost a CI investigation. `desktop-e2e` went red on a commit that changed no production code,
+ * with `shot.saved` false and `shot.bytes` undefined and nothing to say which of the three had
+ * happened — and a gate whose red result cannot be read is a gate people learn to re-run. The
+ * likeliest cause is the first case: under Xvfb there is no compositor guarantee, and a window that
+ * has not painted yet returns an EMPTY image rather than an error.
+ *
+ * A user hitting the same thing gets the same silence, which is why this is worth separating even
+ * with the flake set aside. See https://github.com/reticlehq/reticle/issues/257.
+ */
+describe('an empty capture and a failed capture are different answers', () => {
+  it('names a window that had no frame to photograph', async () => {
+    Reflect.set(window, RETICLE_IPC_GLOBAL, {
+      capture: () => Promise.reject(new Error(VisualReason.NOT_COMPOSITED)),
+    });
+    await expect(captureDesktopWindow()).resolves.toEqual({
+      ok: false,
+      reason: VisualReason.NOT_COMPOSITED,
+    });
+  });
+
+  it('does not dress a genuine failure up as an uncomposited window', async () => {
+    // The direction that matters more. If a real error were mapped to NOT_COMPOSITED, the reader
+    // would be sent to look at window timing for a problem that is not about timing at all.
+    Reflect.set(window, RETICLE_IPC_GLOBAL, {
+      capture: () => Promise.reject(new Error('EACCES writing the capture file')),
+    });
+    await expect(captureDesktopWindow()).resolves.toMatchObject({
+      ok: false,
+      reason: 'EACCES writing the capture file',
+    });
+  });
+
+  it('still reports a plain no-image when the shell answers null', async () => {
+    // A shell too old to send a reason, or one that genuinely has nothing to say. The vaguer message
+    // stays for that case rather than being upgraded into a claim about compositing.
+    Reflect.set(window, RETICLE_IPC_GLOBAL, { capture: () => Promise.resolve(null) });
+    await expect(captureDesktopWindow()).resolves.toMatchObject({
+      ok: false,
+      reason: 'capture returned no image',
+    });
+  });
+});

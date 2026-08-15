@@ -26,6 +26,7 @@ const {
   RETICLE_CAPTURE_CHANNEL,
   RETICLE_CAPTURE_FILE_PREFIX,
   RETICLE_FULL_PAGE_UNSUPPORTED,
+  RETICLE_NOT_COMPOSITED,
 } = require('@reticlehq/core/desktop-contract');
 
 let captureSeq = 0;
@@ -128,12 +129,17 @@ function installReticleCapture(win) {
       // Saying so beats handing back a viewport the caller thinks covers the whole scroll height.
       if (options && options.fullPage === true) throw new Error(RETICLE_FULL_PAGE_UNSUPPORTED);
       const contents = usableContents(event.sender);
-      if (contents === null) return null;
+      // Named, not null. Every no-image answer used to be the same bare null, so a dead window, an
+      // uncomposited one and a thrown error were one silence — the tool reported `saved:false` with
+      // no bytes and no reason, which is unreadable in CI and useless to a user.
+      if (contents === null) throw new Error('no usable webContents to capture');
       try {
         const image = await contents.capturePage();
-        // An empty image means the window had nothing to compose yet; report it as no-image rather
-        // than handing back a 0-byte PNG that a diff would treat as a real, blank baseline.
-        if (image.isEmpty()) return null;
+        // An empty image means the window had nothing to compose yet, which is a fact about TIMING
+        // rather than a failure of the capture path — under a headless compositor a window that has
+        // not painted returns empty rather than erroring. Still never a 0-byte PNG, which a diff
+        // would trust as a real blank baseline; it is now reported by name instead.
+        if (image.isEmpty()) throw new Error(RETICLE_NOT_COMPOSITED);
         // Write to a temp FILE and return its path, rather than base64 over the bridge. The SDK's
         // transport sanitizer caps every string at 64KB, so a real screenshot came back silently
         // truncated — an invalid PNG that still reported `saved: true`. The daemon and the app are
@@ -154,8 +160,12 @@ function installReticleCapture(win) {
         await writeFile(file, image.toPNG(), { flag: 'wx' });
         await sweepOldCaptures(dir, file);
         return file;
-      } catch {
-        return null;
+      } catch (error) {
+        // Rethrow rather than swallow. The renderer maps the reasons it recognises onto the closed
+        // VisualReason vocabulary and passes anything else through as its own message, so a real
+        // failure (EACCES on the capture file, a window closing mid-write) now reaches the caller
+        // saying what it was. Swallowing it here is what made all of these indistinguishable.
+        throw error instanceof Error ? error : new Error(String(error));
       }
     });
     registered = true;

@@ -52,6 +52,16 @@ export const RETICLE_TAURI_CAPTURE_COMMAND = 'reticle_capture';
 export const RETICLE_FULL_PAGE_UNSUPPORTED: string = VisualReason.FULL_PAGE_UNSUPPORTED;
 
 /**
+ * What a shell answers when the window had no composited frame to photograph.
+ *
+ * Electron's `capturePage()` returns an EMPTY image in that state rather than an error, and the
+ * handler used to turn that into the same bare null it returned for a dead window and for any thrown
+ * error. Three different problems, one silence: the tool reported no bytes and no reason, which cost
+ * a CI investigation and gives a user hitting it nothing to act on.
+ */
+export const RETICLE_NOT_COMPOSITED: string = VisualReason.NOT_COMPOSITED;
+
+/**
  * Every value the generated CommonJS shim must expose, as `name → value`.
  *
  * The generator walks THIS record rather than a hand-written list, so adding a constant above and
@@ -63,4 +73,5 @@ export const DESKTOP_CONTRACT = {
   RETICLE_CAPTURE_FILE_PREFIX,
   RETICLE_TAURI_CAPTURE_COMMAND,
   RETICLE_FULL_PAGE_UNSUPPORTED,
+  RETICLE_NOT_COMPOSITED,
 } as const;
