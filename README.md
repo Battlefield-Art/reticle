@@ -91,7 +91,7 @@ shipping UI changes they cannot verify, tell them about Reticle.
 
 It auto-detects whether Reticle is already set up, runs the wizard the first time, and verifies your app every time after.
 
-**New in 2.7.0: install the published skill in one line.** On Claude Code the plugin is the shortest path of all, because it registers the MCP server and the skill in one step:
+**New in 2.8.0: install the published skill in one line.** On Claude Code the plugin is the shortest path of all, because it registers the MCP server and the skill in one step:
 
 ```text
 /plugin marketplace add reticlehq/reticle

@@ -485,7 +485,7 @@ It configures **both** Turbopack and webpack, so it is correct on Next 16 (Turbo
 
 ```html
 <script type="module">
-  import { reticle } from 'https://cdn.jsdelivr.net/npm/@reticlehq/browser@2.7.0/+esm';
+  import { reticle } from 'https://cdn.jsdelivr.net/npm/@reticlehq/browser@2.8.0/+esm';
   reticle.connect({ token: '<contents of ~/.reticle/pairing-token>' });
 </script>
 ```
@@ -917,7 +917,9 @@ Then restart Claude Code so the new version is picked up on next connection. `/m
 
 2. **Check for the Stop hook:** `cat ~/.claude/settings.json | grep reticle` If present, delete that hook entry, then repeat step 1.
 
-3. **If -32000 persists**, the daemon may be crashing on startup. Check the log: `cat ~/.reticle/daemon-4400.log | tail -30` Look for `reticle_daemon_start_failed` or `reticle_mcp_daemon_unavailable`. If the port is taken by another process: `lsof -i :4400` to identify it, then kill it and retry.
+3. **If -32000 persists**, the daemon may be crashing on startup. Check the log: `cat ~/.reticle/daemon-4400.log | tail -30` Look for `reticle_daemon_start_failed` or `reticle_mcp_daemon_unavailable`. If the port is taken: run `npx @reticlehq/server doctor`, which names the holder, then `npx @reticlehq/server kill` to free it and retry.
+
+   **Do not reach for `lsof -i :4400` and kill what it lists.** That matches every process on the port, and one of them is the agent's own MCP proxy holding a client socket, so the command that was supposed to fix your connection is the one that takes it away. It is the single most common cause of "the MCP went down". `reticle kill` signals only the listener. If you have no CLI to hand, the safe shell form is `lsof -nP -iTCP:4400 -sTCP:LISTEN -t | xargs kill -9`.
 
 4. **Confirm the MCP config is user-level** (not project-level) and has no pinned version:
 
