@@ -1,5 +1,6 @@
 import {
   PROJECT_FILE_VERSION,
+  PROJECT_ROUTE_CAP,
   PROJECT_RUN_CAP,
   ProjectFileSchema,
   ProjectReadError,
@@ -94,6 +95,33 @@ export class ProjectStore {
       const stamped: RunRecord = { ...record, at: this.#clock.now() };
       const runs = truncate([...base.runs, stamped]);
       const next: ProjectFile = { ...base, runs };
+      await this.#fs.mkdir(reticleDirPaths(this.#root).root);
+      await this.#fs.writeFile(path, this.#serialize(next));
+    });
+  }
+
+  /**
+   * Add discovered routes to the learned app map. Empty input is a no-op so "nothing observed"
+   * does not materialize as `learned.routes: []`; non-empty updates are serialized per file so
+   * concurrent browser sessions accumulate rather than overwriting one another.
+   */
+  async recordRoutes(routes: readonly string[]): Promise<void> {
+    const additions = routes.filter((route) => route.length > 0);
+    if (0 === additions.length) return;
+
+    const path = reticleDirPaths(this.#root).project;
+    await withFileLock(path, async () => {
+      const existing = await this.read();
+      const base: ProjectFile = existing.ok ? existing.file : EMPTY_PROJECT;
+      const current = base.learned?.routes ?? [];
+      const merged = [...new Set([...current, ...additions])].slice(0, PROJECT_ROUTE_CAP);
+      if (
+        merged.length === current.length &&
+        merged.every((route, index) => route === current[index])
+      )
+        return;
+      const learned: ProjectLearned = { ...base.learned, routes: merged };
+      const next: ProjectFile = { ...base, learned };
       await this.#fs.mkdir(reticleDirPaths(this.#root).root);
       await this.#fs.writeFile(path, this.#serialize(next));
     });
