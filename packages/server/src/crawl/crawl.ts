@@ -66,6 +66,26 @@ export interface CrawlAnomaly {
 export const CAPPED_SNAPSHOT_NOTE =
   'the page exceeded one snapshot, so controls past the cap were never seen — interactiveFound is a floor, not a total; re-run with a narrower `scope` to cover the rest';
 
+/**
+ * Said out loud when the crawl's OWN clicks put controls on the page that it then never visited.
+ *
+ * The enumeration happens once, before the first click, so a control that only exists after a login,
+ * a modal or a tab switch is invisible to this run. Measured on the bench app: a crawl of the login
+ * screen visited three controls, its click on "Sign in" produced seven more, and it returned
+ * `truncated: false` with an empty anomaly list and nine of twelve steps unused. Read as a sweep,
+ * that is a clean bill of health for an app the crawl never entered.
+ *
+ * The same words as the capped-snapshot case on purpose — it is the same idea (interactiveFound is a
+ * floor) reached by a different route, and a second vocabulary for it would just be more to learn.
+ */
+export function revealedControlsNote(count: number): string {
+  return (
+    `the page changed as you clicked: ${String(count)} control(s) that did not exist when this crawl ` +
+    'started were never visited — interactiveFound is a floor, not a total; re-run the crawl from ' +
+    'the state you are now in to cover them'
+  );
+}
+
 export interface CrawlReport {
   interactiveFound: number;
   stepsRun: number;
@@ -137,6 +157,29 @@ export function legitimatelyInert(desc: string): boolean {
   if (desc.includes('[disabled]')) return true;
   if (desc.includes('[checked]')) return true;
   return /\b(textbox|searchbox|combobox|spinbutton)\b/.test(desc);
+}
+
+/**
+ * How many interactive controls exist now that did not exist when the crawl enumerated.
+ *
+ * Keyed on ref, which is the element's identity: a control that re-rendered keeps its ref and is not
+ * new, and one that vanished simply does not appear. Returns 0 rather than throwing if the snapshot
+ * fails — this is a disclosure, and failing the whole crawl to report on coverage would be worse
+ * than the silence it is fixing.
+ */
+async function countRevealed(
+  session: CrawlSession,
+  opts: CrawlOptions,
+  before: ReadonlyArray<{ ref: string; desc: string }>,
+): Promise<number> {
+  const snap = await session.command(ReticleCommand.SNAPSHOT, {
+    mode: 'interactive',
+    ...(opts.scope !== undefined ? { scope: opts.scope } : {}),
+  });
+  if (!snap.ok) return 0;
+  const tree = ((snap.result ?? {}) as { tree?: string }).tree ?? '';
+  const known = new Set(before.map((i) => (i.ref !== '' ? i.ref : i.desc)));
+  return parseInteractive(tree).filter((i) => !known.has(i.ref !== '' ? i.ref : i.desc)).length;
 }
 
 export async function crawl(
@@ -269,6 +312,15 @@ export async function crawl(
     }
   }
 
+  // One more look, AFTER the clicks. The enumeration above happened before any of them, so anything
+  // the crawl itself unlocked — a dashboard behind a login, a modal's contents, a tab's panel — was
+  // never in `items` and never had a chance to be visited. Counted by ref against what was
+  // enumerated, so a control that merely moved or re-rendered under the same ref is not miscounted
+  // as new, and a surface that SHRANK (a modal closed) reports nothing, because nothing went
+  // unvisited. Skipped when the snapshot was already capped: that case has its own note and a second
+  // one would only muddy it.
+  const revealed = coverageCapped ? 0 : await countRevealed(session, opts, items);
+
   return {
     interactiveFound: items.length,
     stepsRun,
@@ -278,8 +330,12 @@ export async function crawl(
     // True when coverage was bounded for EITHER reason: the step budget ran out, or the page was
     // bigger than one snapshot. Conflating "I stopped early" with "I saw everything" is what turns a
     // partial sweep into "all controls healthy".
-    truncated: items.length > stepsRun || coverageCapped,
-    ...(coverageCapped ? { coverageNote: CAPPED_SNAPSHOT_NOTE } : {}),
+    truncated: items.length > stepsRun || coverageCapped || revealed > 0,
+    ...(coverageCapped
+      ? { coverageNote: CAPPED_SNAPSHOT_NOTE }
+      : revealed > 0
+        ? { coverageNote: revealedControlsNote(revealed) }
+        : {}),
     // A bare `stepsRun: 0` made "the page had no controls" and "it had 34 and none were clicked" the
     // same answer. See crawl-empty.
     ...(() => {
