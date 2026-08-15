@@ -9,8 +9,12 @@ import { reticle } from '../index.js';
 
 /** Structural emitter the host app's components depend on. */
 export interface ReticleEmitter {
-  signal(name: string, data?: Record<string, unknown>): void;
-  state(name: string, value: unknown): void;
+  // Function-typed PROPERTIES rather than method shorthand, deliberately. Every implementation is a
+  // closure or a test double; none of them reads `this`, and method syntax claims a receiver they do
+  // not have. Saying so in the type is both more accurate and what lets a caller hold one of these
+  // (`expect(emitter.signal)`) without it reading as a method torn off its object.
+  signal: (name: string, data?: Record<string, unknown>) => void;
+  state: (name: string, value: unknown) => void;
 }
 
 /** The subset of the reticle singleton an emitter proxies to (lets tests inject a fake). */

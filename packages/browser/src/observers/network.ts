@@ -10,6 +10,7 @@ import type { Emit, Teardown } from './types.js';
 import { isCapturableType, projectBody, withBodyDeadline } from './network-body.js';
 import { redactUrl } from './network-redact.js';
 import { watchStreamedBody } from './network-stream.js';
+import { requireCapturedMethod } from '../util/captured-method.js';
 
 // Redaction moved to its own cohesive module (network.ts is at its line cap); re-exported so callers
 // and the existing test suite keep importing it from here.
@@ -237,7 +238,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
   const reinterpret = opts.reinterpret;
   // Keep the true original for teardown identity, plus a window-bound copy to invoke
   // (fetch throws "Illegal invocation" if called with the wrong `this`).
-  const origFetch = window.fetch;
+  const origFetch = requireCapturedMethod<typeof window.fetch>(window, 'fetch');
   const callFetch = origFetch.bind(window);
 
   // Declare it if we are not the first to wrap fetch.
@@ -360,8 +361,9 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
     }
   };
   // Remember it, so a later install recognises our own wrapper instead of reporting the app.
-  OURS.add(window.fetch);
-  const patchedFetch = window.fetch;
+  // Our own wrapper, read the same way — it is a value we stored a line ago, not a method call.
+  const patchedFetch = requireCapturedMethod<typeof window.fetch>(window, 'fetch');
+  OURS.add(patchedFetch);
 
   const meta = new WeakMap<XMLHttpRequest, XhrMeta>();
   const proto = XMLHttpRequest.prototype;

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { freezeClock, advanceClock, resetClock, isClockFrozen } from './clock.js';
+import { requireCapturedMethod } from '../util/captured-method.js';
 
 afterEach(() => {
   resetClock();
@@ -146,11 +147,12 @@ describe('resetClock hands back the work queued while frozen', () => {
 describe('the timer natives are called with the right receiver (real-DOM contract)', () => {
   /** Swap in natives that enforce `this === window`, the way a real browser does. */
   function installStrictNatives(): () => void {
+    // Stored values, so this double restores the same function objects the environment had.
     const raw = {
-      setTimeout: window.setTimeout,
-      clearTimeout: window.clearTimeout,
-      setInterval: window.setInterval,
-      clearInterval: window.clearInterval,
+      setTimeout: requireCapturedMethod<typeof window.setTimeout>(window, 'setTimeout'),
+      clearTimeout: requireCapturedMethod<typeof window.clearTimeout>(window, 'clearTimeout'),
+      setInterval: requireCapturedMethod<typeof window.setInterval>(window, 'setInterval'),
+      clearInterval: requireCapturedMethod<typeof window.clearInterval>(window, 'clearInterval'),
     };
     // Faithful to WebIDL, which is the point — an over-strict double would fail the bare
     // `setTimeout(fn, ms)` call that every browser accepts. Only a FOREIGN receiver is illegal:

@@ -3,6 +3,8 @@
 // We do NOT patch requestAnimationFrame/microtasks/MessageChannel — React's scheduler relies
 // on those, and freezing them would stall the page. Opt-in + reversible.
 
+import { requireCapturedMethod } from '../util/captured-method.js';
+
 interface Task {
   id: number;
   time: number;
@@ -34,12 +36,14 @@ export function freezeClock(): void {
   installed = true;
   virtualNow = 0;
   realBase = Date.now();
+  // Captured as stored VALUES, so teardown restores the same function objects the page had. See
+  // capturedMethod: these are deliberate unbound captures and the descriptor read says so.
   originals = {
-    setTimeout: window.setTimeout,
-    clearTimeout: window.clearTimeout,
-    setInterval: window.setInterval,
-    clearInterval: window.clearInterval,
-    dateNow: Date.now,
+    setTimeout: requireCapturedMethod<typeof window.setTimeout>(window, 'setTimeout'),
+    clearTimeout: requireCapturedMethod<typeof window.clearTimeout>(window, 'clearTimeout'),
+    setInterval: requireCapturedMethod<typeof window.setInterval>(window, 'setInterval'),
+    clearInterval: requireCapturedMethod<typeof window.clearInterval>(window, 'clearInterval'),
+    dateNow: requireCapturedMethod<typeof Date.now>(Date, 'now'),
   };
 
   const schedule = (cb: () => void, delay: number, interval?: number): number => {

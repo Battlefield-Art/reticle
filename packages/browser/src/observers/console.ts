@@ -1,6 +1,7 @@
 import { EventType, TRANSPORT_LIMITS } from '@reticlehq/core';
 import type { Emit, Teardown } from './types.js';
 import { safeStringify } from '../security/serialization.js';
+import { requireCapturedMethod } from '../util/captured-method.js';
 
 type ConsoleMethod = 'log' | 'warn' | 'error' | 'info' | 'debug';
 
@@ -47,8 +48,10 @@ export function installConsole(emit: Emit): Teardown {
   const patched = new Map<ConsoleMethod, (...args: unknown[]) => void>();
 
   for (const method of methods) {
-    // Store the true original for teardown identity; call through a bound copy.
-    const original = console[method] as (...args: unknown[]) => void;
+    // Store the true original for teardown identity; call through a bound copy. Read as a stored
+    // VALUE rather than a method reference — see capturedMethod for why that distinction is the
+    // honest way to say "I am detaching this deliberately and putting it back".
+    const original = requireCapturedMethod<(...args: unknown[]) => void>(console, method);
     originals.set(method, original);
     const callOriginal = original.bind(console);
     const wrapper = (...args: unknown[]): void => {

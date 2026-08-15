@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventType, RETICLE_WS_PATH } from '@reticlehq/core';
 import { extractTiming, firstAppFrame, installNetwork, redactUrl } from './network.js';
 import type { Emit, Teardown } from './types.js';
+import { requireCapturedMethod } from '../util/captured-method.js';
 
 interface Emitted {
   type: EventType;
@@ -220,7 +221,7 @@ describe('installNetwork (sendBeacon)', () => {
 
 describe('installNetwork (fetch)', () => {
   let teardown: Teardown | undefined;
-  const origFetch = window.fetch;
+  const origFetch = requireCapturedMethod<typeof window.fetch>(window, 'fetch');
 
   beforeEach(() => {
     // Ensure there is a fetch for the observer to wrap; each test overrides the behavior.
@@ -499,11 +500,14 @@ describe('installNetwork (fetch)', () => {
   });
 
   it('restores the original fetch on teardown', () => {
-    const before = window.fetch;
+    // Read as stored values on both sides: the assertion is about WHICH FUNCTION OBJECT sits in the
+    // slot before and after, which is exactly what a descriptor read returns and what teardown has
+    // to put back. See capturedMethod.
+    const before = requireCapturedMethod<typeof window.fetch>(window, 'fetch');
     const t = installNetwork(collect().emit);
-    expect(window.fetch).not.toBe(before);
+    expect(requireCapturedMethod(window, 'fetch')).not.toBe(before);
     t();
-    expect(window.fetch).toBe(before);
+    expect(requireCapturedMethod(window, 'fetch')).toBe(before);
   });
 });
 
