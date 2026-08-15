@@ -6,6 +6,7 @@ import { PortPresence, probePresence } from '../daemon/port-presence.js';
 import { probeDaemon } from '../mcp/mcp-proxy.js';
 import { fetchStatus } from './cli-launch.js';
 import { daemonLine, type DaemonIdentity } from './doctor-daemon-line.js';
+import { sessionsLine, type SessionsLine } from './doctor-sessions-line.js';
 import { captureLookup, describeForeignHolder, findPortHolder } from './port-holder.js';
 import { chromiumHint, probeChromium } from './chromium-hint.js';
 import { SERVER_VERSION } from '../version/server-version.js';
@@ -43,6 +44,9 @@ export async function handleDoctor(port: number): Promise<void> {
   };
   line('reticle doctor');
   line(`  node         ${process.version}`);
+  // Filled in only on the daemon branch — there is nothing to ask when no daemon is answering, and
+  // the branches below already say so in their own terms.
+  let sessions: SessionsLine | undefined;
   line(`  chromium     ${chromiumHint(await probeChromium())}`);
   // Ask the PORT, not just the pid file. "not running on :4400" has been printed about a port that
   // was demonstrably occupied, which sends the reader to start a daemon that cannot bind. The three
@@ -53,13 +57,18 @@ export async function handleDoctor(port: number): Promise<void> {
     // Name WHICH daemon. The /status payload already carries version + contract, and doctor was
     // throwing both away — while skew is invisible everywhere else, reaching the agent as a bare
     // -32000 naming no version. This is the command a human runs at exactly that moment.
-    const status = asIdentity(await fetchStatus(port));
+    const payload = await fetchStatus(port);
+    const status = asIdentity(payload);
     const built = daemonLine(port, pid, status, {
       version: SERVER_VERSION,
       contract: CONTRACT_FINGERPRINT,
     });
     line(built.text);
     if (built.skew !== undefined) line(`  version      ✗ ${built.skew}`);
+    // The same payload already carries whether anything has CONNECTED, and doctor was reading
+    // `version` off it and dropping the rest. Without this the command is silent on the one step the
+    // funnel stalls on: wired correctly, daemon up, and no page has ever dialled in.
+    sessions = sessionsLine('object' === typeof payload && null !== payload ? payload : {});
   } else if (presence === PortPresence.FOREIGN) {
     // Name the holder when we can. `doctor` exists for exactly this moment, and "another process"
     // leaves the reader to find a shell command themselves — the obvious one being the `lsof -ti`
@@ -74,6 +83,7 @@ export async function handleDoctor(port: number): Promise<void> {
       `  daemon       ✗ not running on :${port} — your agent runs \`reticle mcp\` (or \`reticle serve\`)`,
     );
   }
+  if (sessions !== undefined) line(sessions.text);
   line(`  bridge port  ${port}  (your app must dial THIS port, not your dev-server port)`);
   const projectPort = readProjectPort(process.cwd());
   const mismatch = diagnosePortMismatch(port, projectPort);
@@ -84,6 +94,15 @@ export async function handleDoctor(port: number): Promise<void> {
   // docs/debugging.md.
   line(`  daemon log   ${join(reticleStateHome(), `daemon-${String(port)}.log`)}`);
   line(`  tracing      ${ReticleEnv.TRACE}=1 on the daemon for per-stage timings in that log`);
+
+  // Below the checklist rather than inline: it is a paragraph, and a paragraph in the middle of a
+  // column of one-line checks buries the checks under it. This is the daemon's own no-session
+  // diagnosis, the same one an agent gets from an empty reticle_sessions.
+  if (sessions?.why !== undefined) {
+    line('');
+    line('  nothing has connected. What the daemon can tell from here:');
+    line(`    ${sessions.why}`);
+  }
 
   // Desktop setup RCA. Every one of these fails SILENTLY — a Tauri app with the default CSP runs
   // perfectly and never connects; an Electron app without the preload line reports zero network
