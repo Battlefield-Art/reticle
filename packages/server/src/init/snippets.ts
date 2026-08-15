@@ -4,6 +4,7 @@
  */
 
 import { RETICLE_DEFAULT_PORT, bridgeWsUrl } from '@reticlehq/core';
+import { UiLibrary } from './detect.js';
 import type { FoundStore } from './capabilities.js';
 import { SERVER_VERSION } from '../version/server-version.js';
 
@@ -64,18 +65,44 @@ export function connectArgWithToken(
   return `{ ${[inner, `token: '${pairingToken}'`].filter((p) => p.length > 0).join(', ')} }`;
 }
 
+/**
+ * The framework plugin to show ALONGSIDE reticle() in the example, so the ordering is clear.
+ *
+ * It used to be `react()` unconditionally, which is what a Vue app was shown — a plugin it does not
+ * have, four lines after `init` had correctly detected Vue and said so. The example exists to show
+ * that `reticle()` goes last, not to tell anyone which UI framework they are using.
+ */
+function frameworkPluginExample(uiLibrary: UiLibrary): string {
+  switch (uiLibrary) {
+    case UiLibrary.VUE:
+      return 'vue()';
+    case UiLibrary.SVELTE:
+      return 'svelte()';
+    case UiLibrary.REACT:
+    case UiLibrary.PREACT:
+      return 'react()';
+    default:
+      // Nothing detected: name no plugin rather than invent one. The reader keeps whatever they have.
+      return '/* your existing plugins */';
+  }
+}
+
 /** The Vite-config snippet printed when we can't safely auto-patch the config. */
-export function viteManual(port: number | undefined): string {
+export function viteManual(
+  port: number | undefined,
+  uiLibrary: UiLibrary = UiLibrary.UNKNOWN,
+): string {
   const call = port === undefined ? 'reticle()' : `reticle({ port: ${String(port)} })`;
   return `Add the Reticle plugin to your Vite config:
 
   import { reticle } from '@reticlehq/vite-plugin';
 
   export default defineConfig({
-    plugins: [react(), ${call}],
+    plugins: [${frameworkPluginExample(uiLibrary)}, ${call}],
   });
 
-The plugin only applies during \`vite\` (dev) — it is dropped from \`vite build\`.`;
+Keep \`reticle()\` LAST so it sees the output of your other plugins. It only applies during \`vite\`
+(dev) — it is dropped from \`vite build\`.`;
 }
 
 /** Next.js config wrap — always printed (we never auto-rewrite next.config). */

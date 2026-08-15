@@ -78,15 +78,44 @@ export function pinnedPackages(
   return packages.map((p) => `${p}@${version}`);
 }
 
-/** The dev-dependencies `reticle init` installs for a given framework — kit first, build plugin next. */
-export function frameworkPackages(framework: Framework): readonly string[] {
+/**
+ * Does this codebase want the React kit, or the framework-neutral sensor?
+ *
+ * The kit is what adds component identity — component names and stacks — and it is worth having
+ * wherever React or Preact is rendering (the adapter reaches Preact through `preact/compat`).
+ * Everywhere else it is a package named `@reticlehq/react`, carrying `react` in its peer
+ * dependencies, being installed into a codebase that has no React in it.
+ *
+ * UNKNOWN keeps the kit deliberately. Absence of evidence is not evidence of Vue, and guessing
+ * "sensor" on no information silently drops component identity from apps that should have it.
+ */
+function wantsReactKit(ui: UiLibrary): boolean {
+  return ui !== UiLibrary.VUE && ui !== UiLibrary.SVELTE;
+}
+
+/**
+ * The dev-dependencies `reticle init` installs — kit (or sensor) first, build plugin next.
+ *
+ * `uiLibrary` matters because the framework does not always name the renderer. The rule below was
+ * already written for Nuxt, correctly, and applied only there: a Vue app on plain Vite is
+ * `Framework.VITE` and a SvelteKit app renders Svelte, and both were being handed the React kit
+ * right after `init` had detected the real UI library and said so on screen.
+ */
+export function frameworkPackages(
+  framework: Framework,
+  uiLibrary: UiLibrary = UiLibrary.UNKNOWN,
+): readonly string[] {
+  const kit = wantsReactKit(uiLibrary) ? RETICLE_REACT_KIT : RETICLE_BROWSER_SDK;
   switch (framework) {
     case Framework.NEXT:
+      // Next is React by construction, so the detection cannot disagree in a way worth honouring.
       return [RETICLE_REACT_KIT, RETICLE_NEXT_PLUGIN];
     case Framework.VITE:
     case Framework.SVELTEKIT:
       // SvelteKit builds on Vite; until a dedicated Svelte kit exists it uses the Vite build plugin.
-      return [RETICLE_REACT_KIT, RETICLE_VITE_PLUGIN];
+      // The build plugin stamps `data-reticle-source` regardless of UI library, so a Vue or Svelte
+      // app still gets source pointers — it is only component identity that needs the React kit.
+      return [kit, RETICLE_VITE_PLUGIN];
     case Framework.NUXT:
       // The framework-neutral sensor, NOT the React kit. Nuxt renders Vue, and installing a package
       // named @reticlehq/react — with `react` in its peer dependencies — into a Vue codebase is the
@@ -95,14 +124,14 @@ export function frameworkPackages(framework: Framework): readonly string[] {
     case Framework.ASTRO:
       // Astro owns its own Vite instance and renders its own HTML, so there is no config for the
       // plugin to attach to — the kit alone, connected from a page <script> (see astroManual).
-      return [RETICLE_REACT_KIT];
+      return [kit];
     case Framework.CRA:
       // react-scripts owns its webpack config and cannot be extended without ejecting, so there is
       // no build plugin — the kit alone, imported from src/index.tsx (see cra.ts).
       return [RETICLE_REACT_KIT];
     case Framework.HTML:
       // No bundler plugin to install — just the kit; connect is wired by hand (see htmlManual).
-      return [RETICLE_REACT_KIT];
+      return [kit];
   }
 }
 
@@ -181,6 +210,13 @@ export interface Step {
 
 export interface Plan {
   framework: Framework;
+  /**
+   * The renderer this app actually uses, carried so every consumer agrees on WHICH packages the
+   * plan installed. The retry guard checks node_modules for exactly those names; without this it
+   * looked for `@reticlehq/react` in a Vue app that had correctly been given the sensor, decided the
+   * install had failed, and skipped every wiring step on the retry.
+   */
+  uiLibrary: UiLibrary;
   steps: Step[];
 }
 
@@ -730,7 +766,7 @@ function installFailureHint(pm: PackageManager): string {
 function installStep(input: PlanInput): Step {
   const pm = input.detection.packageManager;
   const packages = pinnedPackages(
-    frameworkPackages(input.detection.framework),
+    frameworkPackages(input.detection.framework, input.detection.uiLibrary),
     input.options.sdkVersion,
   );
   const command = installCommand(pm, packages);
@@ -756,7 +792,10 @@ function installStep(input: PlanInput): Step {
     // Unpinned. pnpm resolves the newest MATURE version there, which is how a project with a
     // release-age hold gets a working install instead of no install.
     retry: {
-      ...installCommandParts(pm, frameworkPackages(input.detection.framework)),
+      ...installCommandParts(
+        pm,
+        frameworkPackages(input.detection.framework, input.detection.uiLibrary),
+      ),
       note: unpinnedRetryNote(input.options.sdkVersion, pm),
     },
   };
@@ -886,5 +925,5 @@ export function buildPlan(input: PlanInput): Plan {
       detail: htmlManual(input.options.port, input.options.projectId, input.pairingToken),
     });
   }
-  return { framework: input.detection.framework, steps };
+  return { framework: input.detection.framework, uiLibrary: input.detection.uiLibrary, steps };
 }

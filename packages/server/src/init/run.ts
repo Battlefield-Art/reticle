@@ -9,7 +9,7 @@ import { noPackageJsonMessage } from './non-js-project.js';
 import { spanSync } from '../trace.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { detect, Framework, namesAPackageManager, type DetectInput } from './detect.js';
+import { detect, Framework, namesAPackageManager, type DetectInput, UiLibrary } from './detect.js';
 import { wasMcpRegistered } from './mcp-registered.js';
 import { pickAstroHost } from './astro-host.js';
 import { workspaceParents } from './workspace-apps.js';
@@ -722,8 +722,12 @@ function report(
  *
  * Reading node_modules answers the real question and costs one `exists` call per package.
  */
-function sdkPackagesPresent(framework: Framework, io: Pick<InitIo, 'exists'>): boolean {
-  const packages = frameworkPackages(framework);
+function sdkPackagesPresent(
+  framework: Framework,
+  uiLibrary: UiLibrary,
+  io: Pick<InitIo, 'exists'>,
+): boolean {
+  const packages = frameworkPackages(framework, uiLibrary);
   return (
     packages.length > 0 &&
     packages.every((p) => io.exists(`${NODE_MODULES_DIR}/${p}/${PACKAGE_JSON}`))
@@ -796,7 +800,8 @@ function applyEffects(
       failed.add(s.target);
       // A failed install only blocks the wiring when the packages are genuinely ABSENT. See
       // sdkPackagesPresent: the guard protects "the import resolves", not "our subprocess exited 0".
-      if (s.target === DEPS_TARGET && !sdkPackagesPresent(plan.framework, io)) installFailed = true;
+      if (s.target === DEPS_TARGET && !sdkPackagesPresent(plan.framework, plan.uiLibrary, io))
+        installFailed = true;
     }
   }
   return { failed, skipped, degraded };

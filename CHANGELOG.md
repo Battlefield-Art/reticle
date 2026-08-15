@@ -65,6 +65,16 @@ _Nothing yet._
 
 - **`@reticlehq/server` — `/reticle` had no setup path and blamed the user for the wrong thing.** When no session was connected it told the user to run a dev server, then stopped. If the real cause was that the SDK never got wired in, that advice was unanswerable: the user runs the server they were already running, nothing connects, and the one durable instruction they have left says to do it again. It now checks whether the SDK is in the app entry, whether the connect is guarded on a hostname, whether the dev server is serving that entry, and whether both sides agree on the port, in that order.
 
+### A Vue app was told to install the React adapter
+
+- **`@reticlehq/server` — `init` detected Vue, said React identity would not work, and then told you to install `@reticlehq/react`.** Four lines apart, in the same report. The rule against this was already written in the code, for Nuxt: a package named `@reticlehq/react`, carrying `react` in its peer dependencies, installed into a codebase with no React in it is "the single thing most likely to make someone abandon the setup". It was applied to the one framework whose NAME implies Vue and to nothing else, so a Vue app on plain Vite (`Framework.VITE`) and any SvelteKit app got the React kit anyway. Both now get the framework-neutral sensor; source pointers are unaffected, because the build plugin stamps them regardless of UI library, and it is only component identity that needs the adapter. Preact keeps the kit, which reaches it through `preact/compat`, and an undetectable UI library keeps it too, since absence of evidence is not evidence of Vue.
+
+- **`@reticlehq/server` — the Vite snippet showed `plugins: [react(), reticle()]` to everyone.** Including the Vue app above, which does not have a `react()` plugin to add. The example exists to show that `reticle()` goes last, not to tell a reader which framework they are using, so it now names the plugin they actually have, or names none at all when nothing was detected.
+
+- **`@reticlehq/server` — a retry after a failed install could skip every wiring step.** The guard that checks whether the SDK is already in `node_modules` looked up the packages by framework alone, so once the two fixes above give a Vue app the sensor, it would have gone looking for `@reticlehq/react`, not found it, concluded the install had failed and skipped the wiring on the retry. The plan now carries the detected UI library so both halves agree on which packages were installed.
+
+Found by running `init --dry-run` against a real Electron + Vue + Pinia app ([#121](https://github.com/reticlehq/reticle/issues/121)) that nobody had ever pointed the installer at.
+
 ### The install commands we published did not work
 
 - **`@reticlehq/server` — `init` printed the same broken command the docs did.** The Create React App path told the reader to run `npx reticle init`, in the product's own output rather than in a doc, so it reached someone who had already installed correctly and was following the tool. Same defect as the docs entry below and a different surface: the CLI name is now interpolated from one constant, and a guard runs every command the docs and the CLI name through the real parser, so a command that stops existing fails a gate instead of a user.

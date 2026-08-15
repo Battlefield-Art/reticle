@@ -164,7 +164,7 @@ function viteConfigSteps(input: PlanInput, detail: string): Step[] {
         title: 'Vite plugin',
         target: 'vite.config',
         status: StepStatus.MANUAL,
-        detail: viteManual(port),
+        detail: viteManual(port, input.detection.uiLibrary),
       },
     ];
   }
@@ -185,7 +185,7 @@ function viteConfigSteps(input: PlanInput, detail: string): Step[] {
         title: 'Vite plugin',
         target: cfg.path,
         status: StepStatus.MANUAL,
-        detail: `${patch.reason}\n\n${viteManual(port)}`,
+        detail: `${patch.reason}\n\n${viteManual(port, input.detection.uiLibrary)}`,
       },
     ];
   }
