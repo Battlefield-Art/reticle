@@ -13,6 +13,7 @@ Everything here is published to [docs.reticle.sh](https://docs.reticle.sh) by `d
 | Page | What it answers |
 | --- | --- |
 | [quickstart.mdx](quickstart.mdx) | five minutes to a real verdict; every response on it was captured live |
+| [what-is-reticle.mdx](what-is-reticle.mdx) | the definition, what Reticle is NOT, and what it needs to run |
 | [why-reticle.mdx](why-reticle.mdx) | the false-green problem, the measured case, and where we lose |
 | [install-agentic.mdx](install-agentic.mdx) | what `npx @reticlehq/server init` writes, and how to read its marks |
 | [install-manual.mdx](install-manual.mdx) | wiring the MCP server and SDK by hand, per agent and framework |

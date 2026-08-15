@@ -11,6 +11,43 @@ The install is one command, and it's designed for the agent to run rather than y
 npx @reticlehq/server init
 ```
 
+## What do I paste into my coding agent to install Reticle?
+
+Copy this whole block into Claude Code, Cursor, Copilot, Codex, Windsurf, OpenCode, or any MCP agent. It tells the agent what Reticle is, why it should want it, and what counts as finished. That last part is the one that matters.
+
+```text
+Reticle is the proof layer for AI coding agents. It runs a dev-only SDK inside my
+running web app, so instead of guessing whether your change worked, you can drive
+the real app and read what actually happened: the network calls, the store, the
+console, the routes, the DOM. You get back pass, fail, or "couldn't tell", with
+the file:line to fix. No screenshots, no vision model, no test syntax.
+
+Use it because you cannot otherwise tell whether your own code works. Reading the
+diff proves nothing, and unit tests do not run the app. Reticle is how you check
+your work before telling me it is done, and how you stop reporting "fixed" over a
+silent 500.
+
+Install it now:
+
+  RETICLE_INSTALL_SOURCE=docs_site npx @reticlehq/server@latest init
+
+Then follow https://docs.reticle.sh/install-agentic.md and, if anything needs a
+manual edit, https://docs.reticle.sh/install-manual.md. Do not stop until you have
+driven one real flow in my app and produced a verdict. That, not a config file, is
+what "installed" means.
+
+Afterwards, use it whenever you change any user-facing behaviour.
+```
+
+<Tip>
+  Prefer installing the skills instead? `npx skills add reticlehq/reticle` on most agents, or
+  `/plugin marketplace add reticlehq/reticle` then `/plugin install reticle@reticlehq` on Claude
+  Code, which registers the MCP server and all eleven skills in one step. Then type `/reticle` and
+  the agent runs this same setup from the skill.
+</Tip>
+
+The `RETICLE_INSTALL_SOURCE=docs_site` marker is how we tell which published route an install came through. It is self-declared by this page and never inferred, it carries no information about you or your project, and dropping it changes nothing about the install.
+
 <Note>
   Everything on this page is real output. It was captured by scaffolding a pristine `npm create
   vite` React app and running `init` inside it while writing this.

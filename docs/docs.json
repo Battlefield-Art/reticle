@@ -40,7 +40,13 @@
             "groups": [
               {
                 "group": "Get started",
-                "pages": ["quickstart", "why-reticle", "getting-started", "for-agents"]
+                "pages": [
+                  "quickstart",
+                  "what-is-reticle",
+                  "why-reticle",
+                  "getting-started",
+                  "for-agents"
+                ]
               },
               {
                 "group": "Install",
