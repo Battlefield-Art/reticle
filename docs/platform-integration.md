@@ -105,7 +105,7 @@ The shape is identical (in-app SDK in the template → verify in the sandbox →
 ### Lovable (Vite/React generated apps, hosted preview)
 
 1. Add the Reticle Vite plugin + dev-only `reticle.connect` to the project template (Lovable already templates Vite/React, so it's one plugin line + the connect file).
-2. Run `reticle serve --http --drive <preview-url>` against the preview build in the generation worker.
+2. Run `npx @reticlehq/server serve --http --drive <preview-url>` against the preview build in the generation worker.
 3. Call `/verify` after each generate/edit; gate the "your app is ready" signal on `verdict.status === 'pass'`; feed repair packets back into the edit agent.
 
 ### Bolt.new / StackBlitz (WebContainer, in-browser runtime)

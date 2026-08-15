@@ -110,7 +110,7 @@ Killing a daemon by port from the shell needs care: `lsof -ti tcp:4400 | xargs k
 
 ## No Chromium or Playwright is needed
 
-Reticle does not download Chromium for normal agent workflows. The SDK runs inside the user's own browser and you see the DOM, network, console and state through the WebSocket bridge. Playwright is only installed if you explicitly call `reticle serve --drive <url>` or `reticle verify`, which launch an autonomous browser for unattended automation.
+Reticle does not download Chromium for normal agent workflows. The SDK runs inside the user's own browser and you see the DOM, network, console and state through the WebSocket bridge. Playwright is only installed if you explicitly call `npx @reticlehq/server serve --drive <url>` or `npx @reticlehq/server verify`, which launch an autonomous browser for unattended automation.
 
 To attach to a browser the user already has open:
 

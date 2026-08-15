@@ -7,7 +7,7 @@
 > **The moment something is wrong, missing, awkward, or slower than it should be, file it — one call, then carry on with the task.** A step in this document that did not match reality, an install that needed a manual fix, a tool that returned nonsense, something you wished existed, something that works but takes five calls where it should take one. Nothing is too minor; the minor things are exactly what never gets reported and therefore never gets fixed.
 >
 > - Tools available: `reticle_feedback { kind, text, need?, impact?, currentApproach?, model?, trace? }` where `kind` is `bug` | `gap` | `ambiguity` | `feature_request` | `improvement`.
-> - Not set up yet, or the daemon will not start (which is most of setup): `reticle feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "what happened"` — it needs nothing running.
+> - Not set up yet, or the daemon will not start (which is most of setup): `npx @reticlehq/server feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "what happened"` — it needs nothing running.
 > - Report defects in **Reticle**. A bug you find in the app under test is Reticle working; that one goes to the user. Never put app source, secrets, or user data in a report.
 
 > ## Do not re-read this file to look something up
@@ -876,7 +876,7 @@ Use `npx @reticlehq/server status` to see which daemons are running and which se
 
 ### No Chromium / Playwright needed for standard use
 
-Reticle does NOT download Chromium for normal agent workflows. The browser SDK runs inside the user's own browser — the agent sees the DOM, network, console, and state through the WebSocket bridge. Playwright is only installed if you explicitly call `reticle serve --drive <url>` or `reticle verify`, which launch an autonomous browser for unattended automation.
+Reticle does NOT download Chromium for normal agent workflows. The browser SDK runs inside the user's own browser — the agent sees the DOM, network, console, and state through the WebSocket bridge. Playwright is only installed if you explicitly call `npx @reticlehq/server serve --drive <url>` or `npx @reticlehq/server verify`, which launch an autonomous browser for unattended automation.
 
 To attach to a browser the user already has open (zero download, zero extra process):
 

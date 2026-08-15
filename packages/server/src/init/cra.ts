@@ -13,6 +13,8 @@
  * mechanism and is gitignored by CRA's own template.
  */
 
+import { CLI } from './agent-rules.js';
+
 /** The line added to `src/index.tsx`. Side-effect import: the module guards itself on NODE_ENV. */
 export const CRA_DEV_MODULE_IMPORT = "import './reticle-dev';";
 export const CRA_DEV_MODULE_PATH = 'src/reticle-dev.ts';
@@ -33,7 +35,7 @@ export const TOKEN_VAR = 'REACT_APP_RETICLE_TOKEN';
 export const CRA_TOKEN_MISSING_NOTE =
   `${TOKEN_VAR} is not set, so Reticle cannot pair with the daemon. ` +
   `The pairing token is per-machine and ${CRA_ENV_PATH} is gitignored by CRA's template, ` +
-  'so it does not survive a clone. Run `npx reticle init` in this project to write it for this machine.';
+  `so it does not survive a clone. Run \`${CLI} init\` in this project to write it for this machine.`;
 
 /**
  * Said as its own NOTICE line, beside the write — not inside it.
@@ -51,7 +53,7 @@ export const CRA_TOKEN_PER_MACHINE_NOTICE =
   `${CRA_ENV_PATH} is in CRA's own .gitignore, so the token just written does not travel. ` +
   'It works on THIS machine and nowhere else: a teammate cloning the repo, CI, or a container ' +
   'gets an app that boots, never pairs, and reports it only in the browser console. ' +
-  'Each developer runs `npx reticle init` once locally.';
+  `Each developer runs \`${CLI} init\` once locally.`;
 
 /** Add the import after the last existing one, or null when it is already present. */
 export function craImportPatch(source: string): string | null {

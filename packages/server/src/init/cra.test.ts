@@ -81,7 +81,11 @@ describe('the clone that has no token', () => {
     expect(file).toContain(CRA_TOKEN_MISSING_NOTE);
     expect(CRA_TOKEN_MISSING_NOTE).toContain('REACT_APP_RETICLE_TOKEN');
     expect(CRA_TOKEN_MISSING_NOTE).toContain('.env.development.local');
-    expect(CRA_TOKEN_MISSING_NOTE).toContain('reticle init');
+    // The RUNNABLE invocation, not the bin name. This note is printed into a CRA app where nothing
+    // of ours is installed, and it used to read `npx reticle init` — which resolves the npm package
+    // named `reticle`, published by somebody else. Asserting the bare name would pass on exactly
+    // that string.
+    expect(CRA_TOKEN_MISSING_NOTE).toContain('npx @reticlehq/server init');
   });
 
   it('still attempts the connect, so a bridge running without a token keeps working', () => {

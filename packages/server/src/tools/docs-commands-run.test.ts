@@ -153,3 +153,52 @@ describe('every command the docs tell a reader to run is one the CLI still accep
     ).toEqual([]);
   });
 });
+
+/**
+ * The same rule, applied to strings the PRODUCT prints.
+ *
+ * `lint:docs` reads markdown, and the worst instance of this defect was never in markdown: two
+ * strings in `init/cra.ts` told a CRA user to run `npx reticle init`, printed into a project where
+ * nothing of ours is installed. `npx reticle` resolves the npm package named `reticle`, which
+ * belongs to an unrelated author, so the product's own repair instruction fetched and ran a
+ * stranger's code. It shipped, and no guard could see it, because every guard pointed at docs.
+ *
+ * Scoped to `npx reticle` rather than to every mention of the bin: runtime messages legitimately
+ * name `reticle mcp` and `reticle init` as processes and steps, and the CLI knows its own bin name.
+ * The unrunnable, wrong-package form is the part that is never correct.
+ */
+describe('no shipped string tells a user to npx a package we do not own', () => {
+  const SRC = join(REPO, 'packages');
+
+  function sourceFiles(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+      if ('node_modules' === entry || 'dist' === entry) continue;
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) sourceFiles(full, out);
+      else if (entry.endsWith('.ts') && !entry.endsWith('.test.ts')) out.push(full);
+    }
+    return out;
+  }
+
+  it('finds source files to check', () => {
+    expect(sourceFiles(SRC).length).toBeGreaterThan(50);
+  });
+
+  it('never emits `npx reticle`', () => {
+    const bad: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          // The docblock in cli-parse.ts explains this exact hazard and has to quote it to do so.
+          if (line.trimStart().startsWith('*')) return;
+          if (/npx\s+reticle(?![a-z@/-])/.test(line))
+            bad.push(`${file.replace(REPO, '')}:${i + 1}: ${line.trim()}`);
+        });
+    }
+    expect(
+      bad,
+      `these ship an instruction that runs somebody else's package:\n${bad.join('\n')}`,
+    ).toEqual([]);
+  });
+});
