@@ -4,6 +4,8 @@ description: 'The moving parts, the data flow between them, and the design decis
 icon: sitemap
 ---
 
+Reticle has three moving parts: a dev-only **SDK** inside your page that instruments the DOM, network, console, routing and framework state; a local **server** that runs a WebSocket bridge to that SDK and an MCP server for your agent; and a git-checked **`.reticle/` workspace** holding flows, baselines and run artifacts. Your agent calls an MCP tool, the server turns it into a command over the WebSocket, the SDK runs it in the real page and streams structured events back.
+
 > For engineers evaluating Reticle, integrating it at scale, or contributing. It explains the moving parts, the data flow, and the design decisions behind them. If you just want to get running, start with [getting-started.md](getting-started.md); come back here when you want to know _why_.
 
 ---

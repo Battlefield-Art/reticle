@@ -4,6 +4,8 @@ description: Read live framework state directly from the running app. What it be
 icon: database
 ---
 
+`reticle_state` reads live framework state straight out of the running app, without the app broadcasting anything. Reach for it when the DOM looks right and you want to know whether the application actually accepted the change, which is where false greens live.
+
 The DOM tells you what the app _drew_. `reticle_state` tells you what it _believes_. The gap between those two is where false greens live: a row appears in the table, the store never changed, and a reload makes the row vanish.
 
 ## Example
@@ -46,6 +48,25 @@ Drill in once you know what you want:
 { "store": "app", "path": "auth" }
 ```
 
+```json
+{
+  "store": "app",
+  "path": "auth",
+  "found": true,
+  "value": { "email": "admin@reticle.dev" },
+  "storeNames": ["__reticle_renders", "app", "queries"]
+}
+```
+
+A wrong `path` comes back `{ "found": false, "availableKeys": [...] }` rather than an empty value, so a typo is diagnosable instead of looking like an empty store.
+
+<Warning>
+  `reticle_state` asks the page and waits. On a backgrounded tab the page may never answer, and you
+  get `"command 'state_read' timed out after 8000ms"` with a recovery note pointing at
+  [`reticle_sessions`](/tools-sessions). That is a fact about the tab, not a Reticle failure. Bring
+  it to the front, or drive your own browser.
+</Warning>
+
 ## You have to register stores first
 
 `reticle_state` reads what your app registered in `src/reticle-dev.ts`. With nothing registered, `storeNames` comes back empty and this tool has nothing to say.
@@ -71,7 +92,9 @@ A `POST` returning `200` proves the server was reachable. A row in the DOM prove
 State does. When [`reticle_act_and_wait`](/quickstart) reports
 
 ```json
-"stateDiffs": [{ "path": "auth", "from": null, "to": "{\"email\":\"admin@reticle.dev\"}" }]
+"stateDiffs": [
+  { "path": "auth", "from": null, "to": "{\"email\":\"admin@reticle.dev\"}", "atMs": 44403 }
+]
 ```
 
 that is the app itself saying the login took. A mock that returns `200` without touching state gets caught right there, and nowhere else.

@@ -161,8 +161,8 @@
             "tab": "Desktop",
             "groups": [
               {
-                "group": "Desktop apps",
-                "pages": ["desktop", "desktop-apps"]
+                "group": "Electron and Tauri",
+                "pages": ["desktop"]
               }
             ]
           },
@@ -192,15 +192,11 @@
             "groups": [
               {
                 "group": "Working on Reticle",
-                "pages": [
-                  "gates",
-                  "gate-plan",
-                  "system-map",
-                  "telemetry-contract",
-                  "telemetry-events",
-                  "fixtures",
-                  "local-registry"
-                ]
+                "pages": ["gates", "gate-plan", "fixtures", "local-registry"]
+              },
+              {
+                "group": "Internals",
+                "pages": ["system-map", "telemetry-contract", "telemetry-events"]
               }
             ]
           }
@@ -318,6 +314,11 @@
     {
       "source": "/README",
       "destination": "/getting-started",
+      "permanent": true
+    },
+    {
+      "source": "/desktop-apps",
+      "destination": "/desktop",
       "permanent": true
     }
   ],

@@ -4,9 +4,9 @@ description: The React kit for Reticle, mapping a DOM node to its component stac
 icon: react
 ---
 
-`@reticlehq/react` is the package most React users install, and usually the only SDK package they need. It re-exports the whole browser SDK and adds the fiber-tree work on top.
+`@reticlehq/react` is the Reticle kit for React apps, and usually the only SDK package a React user needs: it re-exports the whole browser SDK and adds fiber-tree work that maps a DOM node to its component stack, its hook state, and its source file. If your app is React, install this one and not `@reticlehq/browser`.
 
-**Version 2.8.0. Apache 2.0. Depends on `@reticlehq/browser` and `@reticlehq/core`. Peer dependency: `react >= 18`.**
+**Apache 2.0. Depends on `@reticlehq/browser` and `@reticlehq/core`. Peer dependency: `react >= 18`.**
 
 ## Why it exists
 
@@ -34,7 +34,7 @@ reticle.connect();
 | --- | --- | --- |
 | `install` | `(): void` | Idempotent. Registers the `react` adapter and installs the render meter. Call it once, before `connect()` |
 
-The [Vite plugin](/packages/vite-plugin) injects exactly these two lines for you, so a Vite user never writes them.
+The [Vite plugin](/packages/vite-plugin) injects `install()` and `reticle.connect()` for you, so a Vite user never writes either line.
 
 ### Mapping a node to its component
 

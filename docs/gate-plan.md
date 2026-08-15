@@ -4,6 +4,8 @@ description: 'What has to be true before a PR merges and before a release ships,
 icon: list-check
 ---
 
+Two gates, not one: a **merge gate** that answers "does this PR break anything" and runs on every PR in minutes, and a **release gate** that answers "does this version work in the clients people use" and runs on a release candidate over hours. Phases 0, 1, 2 and 4 are built; Phase 3 (the client matrix) is blocked on `init` learning each client, and Tier 2 is blocked on a token that cannot be created from inside this repo.
+
 > What has to be true before a PR merges and before a release ships, why each piece exists, and what is built so far. Derived from [`system-map.md`](./system-map.md); the harness rules every tier obeys are in [`harness-rules.md`](../apps/e2e/harness-rules.md).
 
 ## Two gates, not one
@@ -76,12 +78,12 @@ Nothing below is trustworthy until a gate result can be distinguished from a gat
 
 ### Phase 3: the client matrix
 
-**Blocked on `init` learning each client.** Today only Claude Code (`claude mcp add`) and Cursor (`~/.cursor/mcp.json`) are first-class; everything else gets a printed JSON snippet, so a `v2.5.0-<client>` artifact would measure the contributor's copy-paste rather than the product.
+**Blocked on `init` learning each client.** Today only Claude Code (`claude mcp add`) and Cursor (`~/.cursor/mcp.json`) are first-class; everything else gets a printed JSON snippet, so a per-client release artifact would measure the contributor's copy-paste rather than the product.
 
 - [x] **`init` support per client**: `init/mcp-clients.ts` registers Reticle with **seven** clients, not two. Every path and shape was read from that client's own documentation rather than recalled: Cursor/Windsurf/Gemini share `mcpServers`, VS Code uses `servers`, OpenCode uses `mcp` with the command as an **array**, Codex is TOML. A single "write mcp.json" assuming the Cursor shape produces a file three of them ignore: an install that reports success and registers nothing.
   - Detection is conservative and one-directional: we write into a config a client **already has**, never creating `~/.gemini` or `~/.codeium` for somebody who does not use them.
   - Codex is deliberately not auto-written. Editing TOML without a parser risks every _other_ server in the user's file; it returns MANUAL with an exact block.
-- [x] **Per-client compat script**: `apps/e2e/client-compat.mjs`. Extracts the command from the config **exactly the way that client would**, runs it, and speaks MCP to it. 7/7 clients, 23 assertions, each advertising 18 tools.
+- [x] **Per-client compat script**: `apps/e2e/client-compat.mjs`. Extracts the command from the config **exactly the way that client would**, runs it, and speaks MCP to it. 7/7 clients, 23 assertions, each advertising the default surface (the count is asserted in `surface-sizes.test.ts`, never restated here).
   - It proves only the half a machine can prove, and the verdict is named `runnable-unverified` so the distinction survives into the matrix. Whether the client _reads_ that path needs the real client, which is the submitted half.
 - [x] **Submission flow**: `apps/e2e/matrix.mjs --validate`, run by CI's `matrix-records` job on every PR. The validator refuses what cannot be acted on: `works` without `checks.toolsVisible` (the self-report the flow exists to replace), `broken` without the client's verbatim error, or any record with no host or version. Its self-check runs first, because a validator that has never refused anything is not a validator. Contributor guide in [`docs/matrix/README.md`](./matrix/README.md).
 - [x] **Generated `MATRIX.md`**: built from submitted records, prettier-ignored because a generated file that fails `format:check` teaches people to skip the gate. **The current honest state is seven clients and ZERO ticks**: `◐` means a runnable entry was written where the client documents it and _nobody has run that client_, and the generated legend says so rather than rounding `◐` up to `✅`.

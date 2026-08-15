@@ -4,6 +4,8 @@ description: For people working on Reticle itself. How to work out why a flow be
 icon: bug
 ---
 
+**To debug Reticle itself, start with the daemon log at `~/.reticle/daemon-<port>.log`, and turn on `RETICLE_TRACE=1` for the daemon when you need per-stage timings.** `reticle doctor` prints the exact log path for your port. Reticle produces four distinct signals and they answer four different questions, so the first step is picking the right one.
+
 > For people working **on** Reticle, and for an agent asked to explain why a flow behaved the way it did. If you are debugging **your app** with Reticle, you want [usage.md](usage.md) instead.
 
 Reticle produces four different signals and they answer four different questions. Reaching for the wrong one is why investigations here have historically started by reading source.

@@ -1,11 +1,13 @@
 ---
-title: Manual install: by hand, on purpose
+title: 'Manual install: by hand, on purpose'
 sidebarTitle: Manual install
 description: Wire Reticle by hand. Register the MCP server for your agent, add the SDK, and connect it. Every step init automates, written out.
 icon: screwdriver-wrench
 ---
 
-Two halves, and they are independent. **Your agent** needs the MCP server registered so the `reticle_*` tools exist. **Your app** needs the SDK so there is something for those tools to talk to. Do one and the tools appear but every call reports no session. Do the other and your app connects to a daemon nobody is asking questions.
+**Installing Reticle by hand is two independent halves: register the MCP server so your agent gets the `reticle_*` tools, then add the SDK to your app so there is something for those tools to talk to.** You need both. `npx @reticlehq/server init` automates all of it, so use this page for the steps it marked `⚠`, or for an agent it does not know how to register.
+
+Do only the first half and the tools appear but every call reports no session. Do only the second and your app connects to a daemon nobody is asking questions.
 
 You want both. Take them in that order.
 
@@ -168,7 +170,7 @@ tauri::Builder::default()
 
 IPC observation needs nothing on the Rust side. An `invoke('load_todos')` already reaches Reticle as `ipc://load_todos`.
 
-<Card title="Electron, and the rest of desktop" icon="display" href="/desktop-apps">
+<Card title="Electron, and the rest of desktop" icon="display" href="/desktop">
   Main-process and renderer wiring, IPC observation, and what differs from the web install.
 </Card>
 
@@ -180,7 +182,7 @@ npx @reticlehq/server status
 
 A session in the output means the app connected. That. Not a tick in a checklist, is the install finished.
 
-If it says nothing connected, the usual cause is a port disagreement between your app and the daemon. The browser console will name the exact port it tried; set it explicitly with `VITE_RETICLE_WS_URL=ws://localhost:4400/reticle` or `reticle.connect({ url })`.
+If it says nothing connected, the usual cause is a port disagreement between your app and the daemon. The browser console will carry `[Reticle] this page could not open a websocket to …` naming the exact address it tried; set it explicitly with `VITE_RETICLE_WS_URL=ws://localhost:4400/reticle` or `reticle.connect({ url })`.
 
 Still stuck? `npx @reticlehq/server doctor` checks Chromium, the daemon and the port in one command.
 

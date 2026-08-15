@@ -48,6 +48,6 @@ Safe to call for several windows; the handler registers once and answers for whi
 - Electron >= 22 (peer dependency)
 - A renderer running `@reticlehq/browser` — see [Desktop apps: Electron & Tauri][docs].
 
-[docs]: https://github.com/reticlehq/reticle/blob/main/docs/desktop-apps.md
+[docs]: https://github.com/reticlehq/reticle/blob/main/docs/desktop.mdx
 
 Apache-2.0

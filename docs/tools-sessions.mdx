@@ -4,33 +4,62 @@ description: List every connected browser tab, with the health fields that tell 
 icon: list-check
 ---
 
+`reticle_sessions` lists every browser tab currently connected to the Reticle daemon, with the health fields that decide whether it can actually be driven. Reach for it first when a tool says no session is connected, and after every [`reticle_navigate`](/tools-navigate) that came back `confirmed: false`.
+
 ```json
 {}
 ```
 
-Real response, one session shown:
+Real response from a healthy session:
 
 ```json
 {
   "sessions": [
     {
-      "sessionId": "s7fe3a790-ab02-4ebb-82b2-24d08a76fd59",
-      "url": "http://localhost:4312/",
+      "sessionId": "sba6117a6-24ec-494d-8c2c-e2958cff2e7f",
+      "url": "http://localhost:4310/",
       "title": "Reticle · Mission Control",
       "adapters": ["react"],
       "hasCapabilities": true,
-      "hidden": true,
-      "throttled": true,
-      "focused": false,
-      "lastSeenMs": 21944,
+      "hidden": false,
+      "lastSeenMs": 155,
+      "throttled": false,
+      "focused": true,
+      "attachment": { "connectedSinceMs": 18654, "outages": 0 },
       "realInputAvailable": false,
-      "leased": false,
-      "attachment": { "connectedSinceMs": 827874, "outages": 0 },
-      "recommendation": "tab hidden/throttled and may be un-focusable from here; refocus it, or run `reticle drive <url>` for a guaranteed scriptable context"
+      "leased": false
     }
   ]
 }
 ```
+
+A backgrounded tab adds a `recommendation` telling you what to do about it, and `attachment` grows a `lastOutage` once the connection has dropped at least once:
+
+```json
+{
+  "hidden": false,
+  "throttled": true,
+  "attachment": {
+    "connectedSinceMs": 1217047,
+    "outages": 3,
+    "lastOutage": { "startedMs": 1786818483776, "durationMs": 967 }
+  },
+  "recommendation": "tab hidden/throttled and may be un-focusable from here; refocus it, or run `reticle drive <url>` for a guaranteed scriptable context"
+}
+```
+
+## When nothing is connected
+
+An empty list is not silent. It comes back with a `why` that separates the two causes, and refuses to guess between them:
+
+```json
+{
+  "sessions": [],
+  "why": "no browser session connected. Two things to weigh, and neither of them is proof. (1) Nothing is listening on the ports Reticle scans, so the dev server may not be running. That scan is narrow though: a server on any other port is invisible to it, so if the app IS running, ask for its URL rather than assuming it is down, and open it with `reticle open <url>`. (2) There is no `.reticle.json` in the directory this daemon is running in. That is the file `reticle init` writes, so the app may carry no Reticle SDK."
+}
+```
+
+That string is trimmed. The full text also lists the exact ports it scanned and warns that in a monorepo the daemon often runs at the root while the app lives in a subdirectory, so you should check the app's own directory before re-running `init`.
 
 ## The fields that decide whether driving will work
 

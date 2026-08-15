@@ -4,6 +4,8 @@ description: 'I changed some files. Which command do I run before I push?'
 icon: shield-check
 ---
 
+If you changed anything at all, run `pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:unit` (about two minutes). If you also touched the tool surface, install, desktop or Rust, section 1 below names the one extra command your change needs. CI runs everything regardless, so routing costs you a slower red, never a missed one.
+
 > **One question this file answers:** _I changed some files. Which command do I run?_
 >
 > The _why_ behind the gate design (tiers, the merge-gate/release-gate split, what is still unbuilt) lives in [`gate-plan.md`](./gate-plan.md). This file is the routing table.
@@ -41,7 +43,7 @@ Find the row that matches what you changed. Run its commands. That is the whole 
 
 | You changed | Run | Cost |
 | --- | --- | --- |
-| **Anything at all** | `pnpm lint && pnpm typecheck && pnpm test:unit` | ~2 min |
+| **Anything at all** | `pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:unit` | ~2 min |
 | The tool surface, the wire contract (`packages/core`), or an observer | ↑ **and** `pnpm test:e2e` | +~8 min |
 | `reticle init`, `@reticlehq/vite-plugin`, `@reticlehq/next`, `@reticlehq/babel-plugin`, anything a user runs before their first session | ↑ **and** `pnpm gate:install` | +~15 min |
 | `@reticlehq/electron`, `packages/tauri`, the IPC observer, desktop capture | ↑ **and** `pnpm test:e2e:desktop` | +~3 min |
@@ -65,7 +67,7 @@ Each gate exists because the ones above it are blind to something. That blindnes
 | **Unit** | `pnpm test:unit` | 4,315 tests, per-package, no browser | anything crossing a package boundary at runtime | `verify` |
 | **Format** | `pnpm format:check` | Prettier | n/a | `verify` |
 | **Integration** | `pnpm test:integration` | real headless Chromium: browser pool, crash isolation, framework adapters, `withReticle` | the MCP surface, the daemon | `e2e` |
-| **Web e2e battery** | `pnpm test:e2e` | 30 specs against 3 booted servers and a real browser (the tool surface, the daemon lifecycle, transport faults, telemetry, trace shape), plus the soak | desktop runtimes; the install | `e2e` |
+| **Web e2e battery** | `pnpm test:e2e` | 32 specs against 3 booted servers and a real browser (the tool surface, the daemon lifecycle, transport faults, telemetry, trace shape), plus the soak | desktop runtimes; the install | `e2e` |
 | **Desktop battery** | `pnpm test:e2e:desktop` | a real Electron main process and a **packaged** Tauri binary, driven headless | web-only paths | `desktop-e2e` |
 | **Install gate** | `pnpm gate:install` | scaffolds 3 pristine apps, publishes this checkout to a local Verdaccio, lets `init` install itself, boots each app in a real browser, polls for a session | install _complexity_; see [`fixtures.md`](./fixtures.md) | `install-gate` |
 | **Matrix records** | `pnpm matrix:validate` | every submitted client-compat record is well-formed | whether the client actually works | `matrix-records` |

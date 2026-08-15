@@ -4,9 +4,9 @@ description: The Reticle adapter for Electron, making main-process IPC observabl
 icon: display
 ---
 
-`@reticlehq/electron` reaches the two places the renderer cannot: the IPC boundary, and `capturePage()`.
+`@reticlehq/electron` reaches the two places the renderer-side SDK cannot: the IPC boundary, and `capturePage()`. Install it if your app is Electron and you want main-process IPC observable or the window screenshottable. A web app never needs it.
 
-**Version 2.8.0. Apache 2.0. Depends on `@reticlehq/core`. Peer dependency: `electron >= 22`. No build step.**
+**Apache 2.0. Depends on `@reticlehq/core`. Peer dependency: `electron >= 22`. No build step.**
 
 ## Why it exists
 
@@ -68,7 +68,7 @@ installReticleCapture(win);
 
 `installReticleCapture(win): void` is a no-op on `null` or `undefined`, tracks the window until it closes, and registers the capture handler once for the whole app.
 
-The handler calls `webContents.capturePage()`, writes the PNG into a per-process `0700` captures directory as `reticle-capture-<n>.png`, and **returns the file path rather than the bytes**, because the transport has a 64KB cap. It returns `null` on an empty image or any error, and it refuses `fullPage: true` explicitly rather than silently returning a viewport shot.
+The handler calls `webContents.capturePage()`, writes the PNG into a per-process `0700` captures directory as `reticle-capture-<n>.png`, and **returns the file path rather than the bytes**, because the transport has a 64KB cap. It refuses `fullPage: true` explicitly rather than silently returning a viewport shot, and it throws named reasons rather than one blanket silence: `full-page-unsupported` for that refusal, `window-not-composited` when the window had nothing painted yet, `no usable webContents to capture` when the window is gone. The preload re-throws the full-page refusal and turns everything else into `null`.
 
 ## Renderer wiring
 
@@ -80,6 +80,6 @@ reticle.connect({ allowInProduction: true });
 
 Or, with the Vite plugin, `reticle({ desktop: true })`.
 
-<Card title="Desktop setup in full" icon="display" href="/desktop-apps">
+<Card title="Desktop setup in full" icon="display" href="/desktop">
   Electron and Tauri wiring, and what `reticle doctor` checks for each.
 </Card>

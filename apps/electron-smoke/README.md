@@ -29,7 +29,7 @@ reticle_network {status:500} → ipc://todos:archive  status 500
                                "archive is not implemented in the backend"
 ```
 
-That gap is the reason the IPC observer exists. See [docs/desktop-apps.md](../../docs/desktop-apps.md).
+That gap is the reason the IPC observer exists. See [docs/desktop.mdx](../../docs/desktop.mdx).
 
 ## The Reticle wiring
 

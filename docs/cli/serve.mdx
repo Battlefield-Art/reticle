@@ -29,13 +29,20 @@ Most people never type this. Your agent runs [`reticle mcp`](/cli/mcp), which st
 One structured line. When a daemon already owns the port, it says so and does nothing:
 
 ```json
-{ "t": "2026-08-14T19:39:13.230Z", "event": "reticle_daemon_already_running", "port": 4400 }
+{ "t": "2026-08-15T18:43:33.065Z", "event": "reticle_daemon_already_running", "port": 4499 }
 ```
 
-A successful spawn logs `reticle_daemon_spawned` with the port. A port held by something that is not a Reticle daemon is refused up front rather than spawned into:
+A successful spawn logs `reticle_daemon_spawned` with the port:
+
+```json
+{ "t": "2026-08-15T18:43:32.604Z", "event": "reticle_daemon_spawned", "port": 4499 }
+```
+
+A port held by something that is not a Reticle daemon is refused up front rather than spawned into. The reason is repeated as plain text on stderr for the person who typed the command. Real capture, with `python3 -m http.server 4498` holding the port and the punctuation between the two halves of the reason shown as `...`:
 
 ```
-reticle_daemon_start_refused
+{"t":"2026-08-15T18:43:57.478Z","event":"reticle_daemon_start_refused","port":4498,"presence":"foreign","reason":"port 4498 is held by another process that is not a Reticle daemon ... a daemon cannot bind it. Stop that process, or run Reticle on a different port (`--port`), then retry."}
+port 4498 is held by another process that is not a Reticle daemon ... a daemon cannot bind it. Stop that process, or run Reticle on a different port (`--port`), then retry.
 ```
 
 ## Exit codes

@@ -47,24 +47,24 @@ Reach for `stop` in a script that shuts down a daemon it started. Reach for `kil
 
 ## What it prints
 
-Real captures.
+Real captures, taken against a daemon started on a scratch port. The long `note` and `reason` strings are trimmed at the ellipsis. Measured exit codes: `0` for killed and nothing-to-do, `1` for refused.
 
 Killed:
 
 ```
-{"event":"reticle_killed","port":4499,"pid":84420,"escalated":true,"listenerIdentified":true,"note":"only the listener was signalled. Any `reticle mcp` proxy on this port holds a client connection, not the port, and was left alone — it goes dormant and starts a fresh daemon on the next tool call."}
+{"t":"2026-08-15T18:43:43.590Z","event":"reticle_killed","port":4499,"pid":78621,"escalated":false,"listenerIdentified":true,"note":"only the listener was signalled. Any `reticle mcp` proxy on this port holds a client connection, not the port, and was left alone ..."}
 ```
 
-Refused, because the listener is not ours:
+Refused, because the listener is not ours. This one was captured with `python3 -m http.server 4498` holding the port:
 
 ```
-{"event":"reticle_kill_refused","port":4498,"reason":"pid 84346 (\"Python\") is listening, and it is not a Reticle daemon — it never answered /status and it is not the pid Reticle recorded. Killing it would be killing someone else's process. Run it again with --force if that is what you meant, or start Reticle on another port.","holder":"Python"}
+{"t":"2026-08-15T18:43:57.128Z","event":"reticle_kill_refused","port":4498,"reason":"pid 78795 (\"Python\") is listening, and it is not a Reticle daemon ... it never answered /status and it is not the pid Reticle recorded. Killing it would be killing someone else's process. Run it again with --force if that is what you meant, or start Reticle on another port.","holder":"Python"}
 ```
 
 Nothing to free:
 
 ```
-{"event":"reticle_kill_nothing_to_do","port":4499,"presence":"free"}
+{"t":"2026-08-15T18:43:43.784Z","event":"reticle_kill_nothing_to_do","port":4499,"presence":"free"}
 ```
 
 | Event | When |

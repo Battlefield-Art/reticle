@@ -4,6 +4,8 @@ description: The console log, filtered by level, and an empty result that tells 
 icon: terminal
 ---
 
+`reticle_console` returns the app's console log, filtered by level, and tells you whether an empty result is a real reading or a missing one. Reach for it as the fast triage read after something goes wrong, and assert `{ "kind": "console", "absent": true }` when you want a clean console to be part of the pass.
+
 ```json
 { "limit": 3 }
 ```
@@ -14,13 +16,13 @@ Real response from a page with a clean console:
 {
   "logs": [],
   "buffer": {
-    "held": 15,
-    "dropped": 571,
+    "held": 535,
+    "dropped": 10,
     "note": "event buffer evicted older events (age/size cap): a negative result here may be a false negative; the evidence may have expired. Grade sooner or widen the buffer."
   },
   "observed": true,
   "note": "no console lines; the observation ran and found none, which is a result, not a missing reading",
-  "cost": { "bytes": 340, "tokens": 85 }
+  "cost": { "bytes": 338, "tokens": 85 }
 }
 ```
 
@@ -29,9 +31,9 @@ Real response from a page with a clean console:
 An empty array is ambiguous in almost every tool that returns one. Did nothing happen, or did the observation not run? Reticle answers both:
 
 - **`observed: true`** with that `note`. The observation ran and genuinely found nothing. You may treat a clean console as a fact.
-- **`buffer.dropped: 571`**, older events were evicted. If you are asking about something from a while ago, the honest answer is "not in what I still have", not "it didn't happen".
+- **`buffer.dropped: 10`**, older events were evicted. If you are asking about something from a while ago, the honest answer is "not in what I still have", not "it didn't happen".
 
-Read both fields together. `observed: true` with a large `dropped` count means _recently_ clean, which is usually what you wanted but is not the same as _always_ clean.
+Read both fields together. `observed: true` with a non-zero `dropped` count means _recently_ clean, which is usually what you wanted but is not the same as _always_ clean.
 
 ## Arguments
 
@@ -47,7 +49,7 @@ Read both fields together. `observed: true` with a large `dropped` count means _
 Plenty of features "work" while quietly throwing. Assert the clean console as part of the action rather than checking afterwards:
 
 ```json
-{ "ref": "e103", "action": "click", "until": { "kind": "console", "absent": true } }
+{ "ref": "e605", "action": "click", "until": { "kind": "console", "absent": true } }
 ```
 
 That fails if the click succeeds _and_ logs an error, which is exactly the case a human reviewer tends to wave through.
@@ -55,5 +57,7 @@ That fails if the click succeeds _and_ logs an error, which is exactly the case 
 <Tip>
   `level: "error"` is the fast triage read. If it comes back empty with `observed: true`, stop
   looking at the console and go look at [`reticle_network`](/tools-network) or
-  [`reticle_state`](/tools-state) instead.
+  [`reticle_state`](/tools-state) instead. That is a real capture from this fixture:
+  `{"logs":[],"observed":true,"cost":{"bytes":337,"tokens":85}}`, eighty-five tokens to rule out a
+  whole class of bug.
 </Tip>

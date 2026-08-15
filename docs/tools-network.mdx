@@ -4,7 +4,7 @@ description: A filtered log of every request the app made, with bodies, status, 
 icon: satellite-dish
 ---
 
-`reticle_network` is how an agent checks the thing a screenshot fundamentally cannot show: whether the request actually happened, what it sent, and what came back.
+`reticle_network` returns a filtered log of every request the app made, with request and response bodies, status, timing, and automatic credential redaction. Reach for it to answer "did that call actually fire, and what came back?", which is the thing a screenshot fundamentally cannot show.
 
 ## Example
 
@@ -12,11 +12,22 @@ icon: satellite-dish
 { "limit": 3 }
 ```
 
-Real response:
+Real response, with the second call's `headers` block trimmed off:
 
 ```json
 {
   "calls": [
+    {
+      "method": "POST",
+      "url": "http://localhost:8787/api/login",
+      "status": 401,
+      "statusText": "Unauthorized",
+      "contentType": "application/json; charset=utf-8",
+      "responseSize": 37,
+      "requestBody": "{\"email\":\"admin@reticle.dev\",\"password\":\"[REDACTED]\"}",
+      "responseBody": "{\"error\":\"invalid email or password\"}",
+      "ms": 23
+    },
     {
       "method": "POST",
       "url": "http://localhost:8787/api/login",
@@ -26,28 +37,30 @@ Real response:
       "responseSize": 67,
       "requestBody": "{\"email\":\"admin@reticle.dev\",\"password\":\"[REDACTED]\"}",
       "responseBody": "{\"token\":\"[REDACTED]\",\"user\":{\"email\":\"admin@reticle.dev\"}}",
-      "ms": 67
+      "ms": 4
     }
   ],
   "buffer": {
-    "held": 15,
-    "dropped": 529,
+    "held": 535,
+    "dropped": 10,
     "note": "event buffer evicted older events (age/size cap): a negative result here may be a false negative; the evidence may have expired. Grade sooner or widen the buffer."
   },
-  "cost": { "bytes": 547, "tokens": 137 }
+  "cost": { "bytes": 1133, "tokens": 284 }
 }
 ```
 
+Two attempts at the same login, the first rejected and the second accepted, with the server's own error text attached to the failure. That is the whole diagnosis in one read.
+
 ## Redaction is automatic
 
-Look at `requestBody`. The password is `[REDACTED]` and so is the returned token, without anyone configuring anything. Reticle strips credential-shaped values before they leave the page, so your agent's context. And any transcript of it, never holds them.
+Look at `requestBody`. The password is `[REDACTED]` and so is the returned token, without anyone configuring anything. Reticle strips credential-shaped values before they leave the page, so neither your agent's context nor any transcript of it ever holds them.
 
 The email is not redacted, because an email is not a credential. The line is drawn at secrets.
 
 ## The buffer note is the important bit
 
 ```json
-"buffer": { "held": 15, "dropped": 529, "note": "…the evidence may have expired…" }
+"buffer": { "held": 535, "dropped": 10, "note": "…the evidence may have expired…" }
 ```
 
 Reticle keeps a bounded event buffer. When it overflows, older events are evicted. And if you then ask "did a POST to `/api/orders` happen?", the honest answer is not "no". It is "not in what I still have."
@@ -76,9 +89,29 @@ The bug where one click fires two POSTs is invisible on screen and obvious here:
 
 If `calls` has two entries with near-identical timestamps, you have found it. Better still, assert it up front so the agent cannot rationalise it afterwards. `reticle_act_and_wait` accepts an exact count predicate, which turns "roughly one request" into a check that fails at two.
 
+## A zero-match filter says what did fire
+
+That exact call, on a fixture that never touches `/api/orders`, comes back diagnosable rather than blank:
+
+```json
+{
+  "calls": [],
+  "hint": {
+    "totalInWindow": 1,
+    "present": [{ "method": "POST", "url": "http://localhost:8787/api/login", "status": 200 }]
+  },
+  "buffer": { "held": 1, "dropped": 281, "note": "…the evidence may have expired…" },
+  "cost": { "bytes": 328, "tokens": 82 }
+}
+```
+
+`hint.present` is the difference between "your endpoint never fired" and "you filtered on the wrong URL". Read it before you go looking in the app.
+
 ## Checking that nothing fired
 
-`ok: false` on an empty result is a genuinely useful answer. Provided the buffer note says nothing was dropped. Read both.
+`{ "ok": false }` keeps only the calls that failed, so an empty result there is a genuinely useful answer: nothing broke. Provided the buffer note says nothing was dropped. Read both.
+
+Desktop IPC (`ipc://`) has no status code, so its 200 and 500 are derived. Filter those on `ok` rather than `status`.
 
 <Card title="Prove it, don't just look at it" icon="circle-check" href="/quickstart">
   `reticle_network` reads. It does not produce a verdict. Name the expected request in

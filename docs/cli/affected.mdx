@@ -25,13 +25,15 @@ One `reticle_affected` line. Real capture from this repository, with the file an
 
 ```json
 {
-  "t": "2026-08-14T19:38:46.407Z",
+  "t": "2026-08-15T18:42:58.072Z",
   "event": "reticle_affected",
-  "changedFiles": ["docs/cli.mdx", "packages/server/src/tools/e2e-surface-drift.test.ts"],
-  "affected": ["deploy-journey", "verify-route", "console-compose"],
-  "unknownProvenance": ["deploy-journey", "verify-route", "console-compose"]
+  "changedFiles": ["docs/cli.mdx"],
+  "affected": ["WEB-flow", "console-compose", "deploy-journey", "verify-route"],
+  "unknownProvenance": ["WEB-flow", "console-compose", "deploy-journey", "verify-route"]
 }
 ```
+
+The real run named 47 flows in each list. The CLI prints this as a single line of JSON; it is pretty-printed here to be readable.
 
 | Field | Meaning |
 | --- | --- |

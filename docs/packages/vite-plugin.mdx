@@ -4,9 +4,9 @@ description: One line in vite.config.ts that stamps source locations on your JSX
 icon: bolt
 ---
 
-`@reticlehq/vite-plugin` does the two things everyone forgets: wiring the SDK, and enabling source mapping.
+`@reticlehq/vite-plugin` is one line in `vite.config.ts` that does the two things everyone forgets: injecting `reticle.connect()` and enabling source mapping. Install it if your app builds with Vite. On Next.js use [`@reticlehq/next`](/packages/next) instead; on any other bundler, wire [`@reticlehq/browser`](/packages/browser) by hand.
 
-**Version 2.8.0. Apache 2.0. Depends on `@babel/core`, `@reticlehq/babel-plugin` and `@reticlehq/core`. Optional peer dependency: `vite >= 4`.**
+**Apache 2.0. Depends on `@babel/core`, `@reticlehq/babel-plugin` and `@reticlehq/core`. Optional peer dependency: `vite >= 4`.**
 
 ## Install and use
 
@@ -89,6 +89,6 @@ reticle({ desktop: true });
 
 A packaged Electron or Tauri renderer is a production build loaded from a custom protocol, so the default guards would refuse. This one flag drops `apply: 'serve'` and opts the connect call into production.
 
-<Card title="Desktop wiring in full" icon="display" href="/desktop-apps">
+<Card title="Desktop wiring in full" icon="display" href="/desktop">
   Including the Tauri CSP whose failure is completely silent.
 </Card>

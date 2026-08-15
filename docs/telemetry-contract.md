@@ -124,9 +124,9 @@ Count sessions with **`daemon_stopped`** (`final: true`). It fires once, at a cl
 
 A running daemon rolls its window up every 5 minutes as **`session_progress`** (`final: false`), same payload shape. Sum work across both; count sessions with neither summed nor doubled.
 
-This split exists because the flush used to be emitted AS `daemon_stopped`, an event named for an exit, fired while the process was alive. One day's export: 98 `daemon_stopped` events were 73 exits + 25 flushes, so a session count was 34% high. Worse, the two populations are opposites: every one of the 25 flushes had tool calls and **not one of the 73 exits did**, because a daemon that has served a tool never idle-exits and so never reaches a clean shutdown. A funnel over the raw event describes active sessions at one end and abandoned ones at the other.
+This split exists because the flush used to be emitted AS `daemon_stopped`, an event named for an exit, fired while the process was alive. Anything counting sessions over the raw event therefore over-stated, and the two populations it merged are opposites: a flush comes from a daemon that has served tool calls, while a clean exit comes from one that has not, because a daemon that has served a tool never idle-exits and so never reaches a clean shutdown. A funnel over the raw event describes active sessions at one end and abandoned ones at the other.
 
-The flush interval is also the **bound on what is lost**: nothing calls shutdown when a working daemon is finally killed, so its last partial window dies with it. At 30 minutes against a median 28-minute session that was most of the session. Only non-empty windows emit, so a short interval costs nothing on the daemons that never serve a tool.
+The flush interval is also the **bound on what is lost**: nothing calls shutdown when a working daemon is finally killed, so its last partial window dies with it. The old 30-minute interval was long enough to lose most of a typical session that way. Only non-empty windows emit, so a short interval costs nothing on the daemons that never serve a tool.
 
 ## The session summary's newer fields
 
@@ -184,7 +184,7 @@ So `plugin` is the only route detectable without anybody typing anything (the pl
 
 Captured against the real classifier: `verified: 'unknown'` covered "the agent malformed the call", "the consequence was already true", "the app answered 202", "a 2xx body went unread", "the capture was not clean", "nothing was asserted at a real grade" and "the page never settled": **seven causes, two wire payloads**. They belong to three different owners (the agent, the app, Reticle) and need opposite responses: teach the agent, wait and re-check, or ship a fix. On a dashboard they were one bar. `verified: 'no'` collapsed the same way: "channels disagree" (Reticle earning its keep) and "the agent's predicate failed" were the same string.
 
-`VerifiedReason` lives in `@reticlehq/core` and is the **single list**. `decideVerified` returns a member from every clause, so a new clause cannot compile without one; `verified.test.ts` drives all ten and fails if a member exists that no clause produces. `verification-of.ts` narrows the result field against `Object.values(VerifiedReason)`, and anything else is dropped rather than forwarded, because a string nobody can group by is worse than a gap. **Nothing re-lists these**, including the battery spec, which imports the enum from core's build.
+`VerifiedReason` lives in `@reticlehq/core` and is the **single list**. `decideVerified` returns a member from every clause, so a new clause cannot compile without one; `verified.test.ts` drives every member and fails if a member exists that no clause produces. `verification-of.ts` narrows the result field against `Object.values(VerifiedReason)`, and anything else is dropped rather than forwarded, because a string nobody can group by is worse than a gap. **Nothing re-lists these**, including the battery spec, which imports the enum from core's build.
 
 Optional on purpose: a suite verdict (`flow_verify`) is a pass/fail with no clause behind it, and an older sender has none. Absent means unclassified.
 

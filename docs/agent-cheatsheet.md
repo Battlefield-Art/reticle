@@ -4,6 +4,8 @@ description: 'One screen to get fluent: the look → act → observe → assert 
 icon: bolt
 ---
 
+The loop is **look → act → observe → assert**, and only `reticle_act_and_wait` and `reticle_assert` produce a verdict. Reach for `reticle_act_and_wait({ ref, action, until })` first: it names the expected consequence before the action, which is the difference between a check and a rationalisation. `verified: "unknown"` is not a pass.
+
 One screen to get fluent. Reticle is the **proof layer for AI agents**: no screenshots, no vision model, evidence not prose. Everything below returns structured data. Full guide: [usage.md](usage.md).
 
 ## The core loop: look → act → observe → assert

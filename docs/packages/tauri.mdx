@@ -4,17 +4,17 @@ description: The Rust crate that gives a Tauri app Reticle screenshots and headl
 icon: rust
 ---
 
-`reticle-tauri` is a Rust crate on crates.io, not an npm package. It is versioned **independently** of the ten npm packages, and is currently **0.1.0**.
+`reticle-tauri` is a Rust crate on crates.io, not an npm package. You need it only if your Tauri app should answer `reticle_screenshot`, or run headless in CI. Everything else about a Tauri app, including IPC observation, works without it.
 
-**MIT licensed, unlike the Apache 2.0 npm packages. Edition 2021.**
+It is versioned **independently** of the ten npm packages. **MIT licensed, unlike the Apache 2.0 npm packages. Edition 2021.**
 
 ## Why it exists, and why it is small
 
 Tauri IPC observation needs nothing on the Rust side. An `invoke('load_todos')` already reaches Reticle as `ipc://load_todos` through the SDK in the webview. You only need this crate for two things: screenshots, and headless mode.
 
 <Warning>
-  Do not expect this to be version `2.7`. Matching the npm version would imply a release cadence the
-  crate does not have, and it would make every npm release a crates.io release for no reason.
+  Do not expect this to match the npm version. Doing so would imply a release cadence the crate does
+  not have, and it would make every npm release a crates.io release for no reason.
 </Warning>
 
 ## Install
@@ -48,7 +48,7 @@ There are no public traits and no macros.
 
 ### `reticle_capture`
 
-Runs on a blocking thread, writes a PNG into a temporary directory as `reticle-capture-<nanos>.png`, and returns the **path**, not the bytes. Full-page capture is supported on Linux only; elsewhere it returns `FULL_PAGE_UNSUPPORTED`, which is pinned to core's `VisualReason` value so the refusal is the same string everywhere.
+Runs on a blocking thread, writes a PNG into a per-process `0700` directory under the OS temp dir as `reticle-capture-<nanos>.png`, and returns the **path**, not the bytes. Full-page capture is supported on Linux only; elsewhere it returns `FULL_PAGE_UNSUPPORTED`, which is pinned to core's `VisualReason` value so the refusal is the same string everywhere.
 
 ### `on_page_load`
 
@@ -58,6 +58,6 @@ Hides the window on `PageLoadEvent::Finished` when the environment variable `RET
 
 A Tauri app with the default CSP runs perfectly and never connects to Reticle, with nothing said anywhere. [`reticle doctor`](/cli/doctor) diagnoses this explicitly on a desktop project, because it is invisible otherwise.
 
-<Card title="Desktop setup in full" icon="display" href="/desktop-apps">
+<Card title="Desktop setup in full" icon="display" href="/desktop">
   The CSP entry, the headless flag, and how capture differs from a browser screenshot.
 </Card>

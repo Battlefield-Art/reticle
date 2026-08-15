@@ -1,15 +1,24 @@
 ---
-title: Agentic install: let the agent do it
+title: 'Agentic install: let the agent do it'
 sidebarTitle: Agentic install
 description: Run npx @reticlehq/server init and let your coding agent wire Reticle into the project. What it changes, what it asks, and how to read its report.
 icon: wand-magic-sparkles
 ---
 
-The install is one command, and it's designed for the agent to run rather than you. The agent is about to be the primary user of this tool, so it may as well set up its own workspace.
+**Run `npx @reticlehq/server init` in your project root.** It registers the MCP server for every agent it finds, installs the SDK, wires your build config, writes the agent rule files, and prints a plan you can read. It is idempotent, so running it twice is safe.
 
 ```bash
 npx @reticlehq/server init
 ```
+
+The install is designed for the agent to run rather than you. The agent is about to be the primary user of this tool, so it may as well set up its own workspace.
+
+<Warning>
+  Always write the package scope: `npx @reticlehq/server <command>` is the CLI. Dropping the scope
+  and npx-ing the bare, unscoped `reticle` name fetches a different package published by somebody
+  else, which will not give you Reticle. Once `@reticlehq/server` is installed, `reticle` works as a
+  bin name on your PATH, which is the only context where the unscoped name is ours.
+</Warning>
 
 ## What do I paste into my coding agent to install Reticle?
 
@@ -82,7 +91,7 @@ reticle init (dry run, no files written)
   [✓] The /reticle command → .claude/commands/reticle.md
       type /reticle to verify one flow in the browser
   [✓] Install dependencies → package.json
-      npm i -D @reticlehq/react@2.8.0 @reticlehq/vite-plugin@2.8.0
+      npm i -D @reticlehq/react@<version> @reticlehq/vite-plugin@<version>
   [✓] Reticle config → .reticle.json
       write project config (framework + port)
   [✓] Vite plugin → vite.config.ts
@@ -93,7 +102,7 @@ reticle init (dry run, no files written)
 
 ## Reading the marks
 
-There are four, and they mean different things. This is the part worth understanding, because a run full of green ticks can still leave you with a broken install.
+There are five, and they mean different things. This is the part worth understanding, because a run full of green ticks can still leave you with a broken install. Two of the five ask something of you.
 
 | Mark | Meaning                                                     | Do you need to act? |
 | ---- | ----------------------------------------------------------- | ------------------- |

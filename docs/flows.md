@@ -4,6 +4,8 @@ description: 'Record an interactive run once and replay it forever as a git-chec
 icon: repeat
 ---
 
+A **flow** is a recorded interactive run that Reticle stores as JSON under `.reticle/flows/` and replays forever with no AI model in the loop. Steps are anchored on **meaning** (a testid, a signal, or an auto-derived component + source location), never on a `eXX` ref or a coordinate, so they survive refactors; when an anchor does drift, `reticle_flow_replay` names what changed and `reticle_flow_heal` can rebind it.
+
 Reticle turns an interactive run into a **git-checked, replayable program** stored under `.reticle/`. Flows are anchored on **meaning** (testid + signal), not volatile element refs or coordinates, so they survive refactors, and when an anchor does drift, Reticle tells you _why_ and can repair it. This is what makes Reticle "the project's living test suite a human seeds and an agent maintains."
 
 > All of this is on-disk and human-readable, so flows are reviewed in PRs and diffed like code.
@@ -118,7 +120,7 @@ This is the feedback a human reviewer used to give, made machine-actionable, so 
 ```jsonc
 reticle_flow_verify()
 // → { status: "fail", total: 4, passed: 3, failed: 1,
-//     summary: "3/4 flows pass — 1 needs attention: ship-deploy",
+//     summary: "3/4 flows pass, 1 needs attention: ship-deploy",
 //     failures: [{ flow: "ship-deploy", verdict: "drift",
 //                  whatChanged: "...", whereInSource: "src/...:NN", nextAction: "..." }] }
 ```

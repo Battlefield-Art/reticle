@@ -1,12 +1,14 @@
 ---
-title: Action reference: lights, camera, click
+title: 'Action reference: lights, camera, click'
 sidebarTitle: Actions
 description: Every action reticle_act and reticle_act_and_wait can perform, with its arguments and the one that has a history.
 icon: hand-pointer
 ---
 
+Every action Reticle can perform takes the same shape: a `ref` from [`reticle_snapshot`](/tools-snapshot) or [`reticle_query`](/tools-query), an `action` name, and an optional `args` object. The same seventeen actions are available on [`reticle_act`](/tools-act), which proves nothing, and on [`reticle_act_and_wait`](/tools-act-and-wait), which returns a verdict.
+
 ```json
-{ "ref": "e42", "action": "fill", "args": { "value": "hello" } }
+{ "ref": "e104", "action": "fill", "args": { "value": "reticle" } }
 ```
 
 | Action | Arguments | Notes |
@@ -22,9 +24,38 @@ icon: hand-pointer
 | `submit` | none | Submits the element's `<form>` |
 | `press` | `{ text }` | The key **name**: `Escape`, `Tab`, `Enter` |
 | `scrollIntoView` | none |  |
-| `upload` | `{ name, content?, type? }` | Sets a file on `<input type="file">` |
-| `drag` | `{ toRef }` | Pointer-based drag (dnd-kit, react-beautiful-dnd) plus HTML5 DnD |
+| `upload` | `{ content?, name?, type? }` | Sets a file on `<input type="file">`. All three default, to `"reticle test file"`, `"file.txt"` and `"text/plain"` |
+| `drag` | `{ toRef }` | Pointer-based drag (dnd-kit, react-beautiful-dnd) plus HTML5 DnD. `target` is an alias |
 | `webmcp` | `{ tool, params }` | Calls a `navigator.modelContext` tool, if the site exposes one |
+
+### Arguments that are not actions
+
+Three `args` keys apply across actions rather than belonging to one:
+
+| Key | What it does |
+| --- | --- |
+| `native` | Forces a trusted native click instead of the occlusion-honest synthetic path. For file pickers and clipboard access |
+| `holdMs` | Keeps the pointer **down** for that long between mousedown and mouseup. The only way to drive a hold-to-confirm control. `effect.heldMs` reports the hold actually achieved |
+| `confirmDangerous` | A permission gate for a control Reticle judged destructive. It is **not** a duration |
+
+<Warning>
+  `confirmDangerous` and `holdMs` are routinely confused because both show up around delete buttons.
+  `holdMs` is how long the button is held; `confirmDangerous` is permission to press it at all.
+  Passing the wrong one gets you either a refusal or a press that was never held.
+</Warning>
+
+### The refusal you will meet first
+
+Reticle blocks a control that looks destructive before acting on it:
+
+```json
+{
+  "error": "potentially destructive action blocked; retry with args.confirmDangerous=true",
+  "recovery": "Reticle blocked a potentially destructive control (delete, remove, revoke…) on purpose. If you mean it, retry the same action with args.confirmDangerous set to true. This is a deliberate refusal, not a defect: there is nothing to report."
+}
+```
+
+A stale ref is refused the same way, with `"ref 'e303' no longer resolves to an element"` and a recovery note telling you to re-query. Both refusals cost a turn and prevent a false green, which is the trade.
 
 ## `fill` versus `type`
 
@@ -54,9 +85,9 @@ Several actions in one round trip:
 ```json
 {
   "steps": [
-    { "ref": "e101", "action": "fill", "args": { "value": "admin@reticle.dev" } },
-    { "ref": "e102", "action": "fill", "args": { "value": "hunter2" } },
-    { "ref": "e103", "action": "click" }
+    { "ref": "e603", "action": "fill", "args": { "value": "admin@reticle.dev" } },
+    { "ref": "e604", "action": "fill", "args": { "value": "hunter2" } },
+    { "ref": "e605", "action": "click" }
   ]
 }
 ```
@@ -78,7 +109,9 @@ Several actions in one round trip:
 
 ## What every action reports
 
-`valueChanged`, `focusMoved`, `domMutatedWithin`, `defaultPrevented`, `occluded` and `occludedBy`. Plus the element's `testid`, `component` and `source` file and line.
+`dispatched`, `targetMatched`, `visible`, `enabled`, `valueChanged`, `focusMoved`, `domMutatedWithin`, `defaultPrevented`, `occluded`, `occludedBy` and `scrolledIntoView`. Plus the element's `testid`, `component`, `role`, `name` and `source` file and line.
+
+Fields sitting at their uninformative default are **omitted**, so a clean action collapses to its consequence. A missing `visible` means `true`, not `false`. Read an absence as "nothing to report" rather than as a failure.
 
 `occluded` is the answer to a large share of "the button doesn't work" reports: the click landed on the modal overlay sitting on top of it.
 

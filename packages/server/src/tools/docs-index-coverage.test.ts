@@ -502,6 +502,57 @@ describe('docs/docs.json publishes every doc', () => {
     ).toEqual([]);
   });
 
+  it('no frontmatter value contains an unquoted colon', () => {
+    // This one took two pages off the live site while every check in this repo stayed green.
+    // A plain (unquoted, unbracketed) YAML scalar cannot contain `: `, so a description reading
+    //   description: Diagnose the setup in one command: Chromium, daemon, ...
+    // is a parse error. Mintlify does not build the page and serves a 404, while the file is
+    // present, listed in docs.json, and indexed in README.md. Nothing above can see it, because
+    // in the repository everything is consistent; the damage is only on the deployed site.
+    const offenders: string[] = [];
+    for (const file of markdownPages()) {
+      const text = readFileSync(join(DOCS, file), 'utf8');
+      if (!text.startsWith('---\n')) continue;
+      const end = text.indexOf('\n---', 4);
+      if (-1 === end) continue;
+      for (const line of text.slice(4, end).split('\n')) {
+        const match = /^([A-Za-z][\w-]*):\s+(.*)$/.exec(line);
+        if (null === match) continue;
+        const key = match[1];
+        const value = match[2];
+        if (undefined === value || '' === value) continue;
+        // Already a quoted, flow or block scalar: YAML handles the colon fine.
+        if ('\'"[{|>'.includes(value.slice(0, 1))) continue;
+        if (value.includes(': ')) offenders.push(`${file}: ${key}`);
+      }
+    }
+
+    expect(
+      offenders,
+      `These frontmatter values contain an unquoted colon, which is invalid YAML and 404s the page ` +
+        `on the published site while everything in the repo still looks correct. Wrap the value in ` +
+        `single quotes: ${offenders.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('no page uses an em dash', () => {
+    // House style for the published docs. Nothing else enforces it, and a rule enforced by review
+    // is a rule that is wrong within a month. Use a comma, a colon, a full stop, or a rewrite.
+    const offenders = markdownPages()
+      .map((file) => ({
+        file,
+        count: (readFileSync(join(DOCS, file), 'utf8').match(/—/g) ?? []).length,
+      }))
+      .filter((row) => row.count > 0)
+      .map((row) => `${row.file} (${row.count})`);
+
+    expect(
+      offenders,
+      `These pages use em dashes. Replace each with a comma, a colon, a full stop, or a rewrite: ` +
+        `${offenders.join(', ')}`,
+    ).toEqual([]);
+  });
+
   it('no page draws a diagram out of box-drawing characters', () => {
     // Box-drawing and arrow glyphs. ASCII diagrams were ruled out for the published docs: they
     // wrap badly on narrow screens, are unreadable to a screen reader, and read as unfinished.

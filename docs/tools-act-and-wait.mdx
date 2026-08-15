@@ -4,6 +4,8 @@ description: Act on an element and wait for a named consequence in one call. Thi
 icon: circle-check
 ---
 
+`reticle_act_and_wait` performs one action on an element and waits for a named consequence, returning a verdict in the same call. Reach for it whenever an action is supposed to cause something: it is one of only two Reticle tools that produce a verdict, the other being [`reticle_assert`](/tools-assert).
+
 This is the tool Reticle exists for. It does the act, observe and assert steps in one round trip, and it makes you name the expected consequence **before** the action runs.
 
 That ordering is not a convenience. An agent that acts first and then decides what counts as success will always find something that counts. Naming the consequence up front is the difference between a check and a rationalisation.
@@ -12,13 +14,13 @@ That ordering is not a convenience. An agent that acts first and then decides wh
 
 ```json
 {
-  "ref": "e5",
+  "ref": "e105",
   "action": "click",
   "until": { "kind": "net", "method": "POST" }
 }
 ```
 
-Real response, trimmed:
+Real response. The `initiatorStack`, `storageDiffs` and per-event trace detail are trimmed out for length; nothing else is changed:
 
 ```json
 {
@@ -27,34 +29,72 @@ Real response, trimmed:
   "because": "assertion held at presence grade over a clean capture with no channel disagreeing",
   "effect": {
     "ok": true,
+    "ref": "e105",
+    "action": "click",
+    "dispatched": true,
+    "settled": true,
+    "settleReason": null,
     "testid": "login-submit",
     "component": "Login",
-    "effect": { "domMutatedWithin": 7, "appeared": "Signing in…" },
+    "role": "button",
+    "name": "Sign in",
+    "effect": { "focusMoved": "e104->null", "domMutatedWithin": 8, "appeared": "Signing in…" },
     "source": { "file": "src/components/Login.tsx", "line": 81, "column": 8 }
   },
   "verdict": {
     "pass": true,
     "evidence": {
+      "id": "n2",
       "method": "POST",
       "url": "http://localhost:8787/api/login",
       "status": 200,
-      "durationMs": 67,
-      "requestBody": "{\"email\":\"admin@reticle.dev\",\"password\":\"[REDACTED]\"}"
+      "ok": true,
+      "durationMs": 4,
+      "initiator": "fetch",
+      "statusText": "OK",
+      "contentType": "application/json; charset=utf-8",
+      "responseSize": 67,
+      "requestBody": "{\"email\":\"admin@reticle.dev\",\"password\":\"[REDACTED]\"}",
+      "responseBody": "{\"token\":\"[REDACTED]\",\"user\":{\"email\":\"admin@reticle.dev\"}}"
+    }
+  },
+  "trace": {
+    "window_ms": 31,
+    "summary": {
+      "total": 21,
+      "network": 1,
+      "domAdded": 0,
+      "domRemoved": 1,
+      "domChanged": 6,
+      "routeChanges": 0,
+      "consoleErrors": 0,
+      "animations": 0,
+      "signals": 1
     }
   },
   "summary": {
     "net": { "total": 1, "errors": 0 },
     "consoleErrors": 0,
-    "stateDiffs": [{ "path": "auth", "from": null, "to": "{\"email\":\"admin@reticle.dev\"}" }],
-    "signals": ["auth:granted"]
+    "statePathsChanged": ["app"],
+    "storageKeysChanged": ["reticle.bench.authToken", "reticle.bench.sessionId"],
+    "stateDiffs": [
+      { "path": "auth", "from": null, "to": "{\"email\":\"admin@reticle.dev\"}", "atMs": 44403 }
+    ],
+    "signals": ["auth:granted"],
+    "layoutShift": 0.016486682891845704,
+    "longTasks": 0
   },
   "honesty": {
     "grade": "presence",
+    "attribution": "window",
     "coverage": { "pct": 100, "partial": false },
     "integrity": { "clean": true, "issues": [] }
-  }
+  },
+  "since": 44395
 }
 ```
+
+`trace` is a digest of what the app did in the window. When the counts are not enough, pass the top-level `since` cursor to [`reticle_observe`](/tools-observe) for the per-event timeline.
 
 ## The predicate grammar
 
@@ -115,9 +155,19 @@ A verification tool that cannot describe the quality of its own evidence is aski
 
 ## Arguments
 
-| Argument                | What it does                             |
-| ----------------------- | ---------------------------------------- |
-| `ref`, `action`, `args` | As [`reticle_act`](/tools-act)           |
-| `until`                 | The predicate to wait for                |
-| `timeout_ms`            | Maximum wait                             |
-| `refuseWhenThrottled`   | Throw rather than act on a throttled tab |
+| Argument | What it does |
+| --- | --- |
+| `ref`, `action`, `args` | As [`reticle_act`](/tools-act) |
+| `until` | The predicate to wait for. Omit it to wait for the page to settle |
+| `predicate` | Alias for `until`, the name `assert` and `wait_for` use |
+| `timeout_ms` | Maximum wait, defaulting to 4000. `0` evaluates the predicate once, no wait |
+| `refuseWhenThrottled` | Throw rather than act on a throttled tab |
+
+Omitting `until` waits for network and DOM idle, which is the deterministic replacement for a fixed sleep. To assert a consequence **and** settle, combine them:
+
+```json
+{
+  "kind": "allOf",
+  "predicates": [{ "kind": "signal", "name": "deploy:created" }, { "kind": "settled" }]
+}
+```
