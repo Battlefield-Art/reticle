@@ -221,6 +221,21 @@ const SCAFFOLDS = [
     dev: (port) => ['npm', ['run', 'dev', '--', '--port', String(port), '--strictPort']],
   },
   {
+    // The NON-REACT path, and the reason it is here is not hypothetical. 2.8.0 nearly shipped an
+    // installer that left a Vue app connecting 0% of the time: `init` correctly gives a Vue codebase
+    // the framework-neutral `@reticlehq/browser`, and three separate generators still emitted
+    // `import('@reticlehq/react')` — the vite-plugin's injected connect among them. Every file init
+    // wrote was correct, every gate was green, and nothing dialled the daemon.
+    //
+    // That is the same shape as the Next.js install this gate was built for, on a different stack:
+    // the failure is silent, and only opening a browser can see it. Vue rather than Svelte because
+    // it is the larger population; both take the identical code path through the plugin.
+    id: 'vite-vue',
+    what: 'Vite + Vue — the non-React path (sensor instead of the React kit)',
+    create: ['npm', ['create', 'vite@latest', 'app', '--yes', '--', '--template', 'vue']],
+    dev: (port) => ['npm', ['run', 'dev', '--', '--port', String(port), '--strictPort']],
+  },
+  {
     id: 'next-app-router',
     what: 'Next App Router — withReticle plus the app/ root layout',
     create: [

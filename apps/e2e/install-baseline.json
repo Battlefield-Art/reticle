@@ -30,5 +30,14 @@
     "✓ ReticleDev component → app/reticle-dev.tsx",
     "✓ Next config (withReticle) → next.config.ts",
     "✓ Mount ReticleDev → app/layout.tsx"
+  ],
+  "vite-vue": [
+    "– MCP server (global) → global (claude user scope)",
+    "ℹ vue is UNVERIFIED → package.json",
+    "✓ Install dependencies → package.json",
+    "✓ Reticle config → .reticle.json",
+    "✓ Vite plugin → vite.config.js",
+    "✓ Capabilities + store → src/reticle-dev.ts",
+    "ℹ AGENT: finish the capabilities file → src/reticle-dev.ts"
   ]
 }
