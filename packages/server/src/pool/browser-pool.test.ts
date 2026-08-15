@@ -274,6 +274,60 @@ describe('BrowserPool', () => {
     expect(pool.leasedSessionIds()).toEqual([fresh.sessionId]);
   });
 
+  /**
+   * An app that names its own session must not have its lease reaped out from under it.
+   *
+   * The pool keys leases by the id it navigated with. The SDK usually adopts that id off the URL, so
+   * the two agree — but an app passing an explicit `session` to `connect()` keeps its own name, which
+   * is legitimate and what a single-app fixture does deliberately. The lease tool resolves to the
+   * name the app actually registered, because that is the one the agent has to drive with, and from
+   * then on every tool call touches THAT name.
+   *
+   * Without an alias those touches hit nothing. The lease then ages out at the TTL despite continuous
+   * activity and the reaper closes the context mid-flow, which is exactly the failure reported in
+   * https://github.com/reticlehq/reticle/issues/157: a session dying on the very next call that would
+   * have read a computed value, with the measurement lost.
+   */
+  it('touching a lease by the name the APP registered keeps it alive', async () => {
+    const { launch } = fakeLauncher();
+    let clock = 1000;
+    const pool = new BrowserPool(launch, {
+      maxContexts: 4,
+      genSessionId: counterIds(),
+      now: () => clock,
+      leaseTtlMs: 500,
+    });
+
+    const lease = await pool.acquire('http://localhost:3100/', { sessionId: 'lease-abc' });
+    // The app kept its own name; the lease tool reports that one to the agent.
+    pool.alias('next-smoke', lease.sessionId);
+
+    clock += 600;
+    pool.touch('next-smoke');
+
+    expect(
+      await pool.sweepExpired(),
+      'activity under the registered name is still activity',
+    ).toEqual([]);
+    expect(pool.activeCount()).toBe(1);
+  });
+
+  it('an alias releases the lease it points at', async () => {
+    const { launch } = fakeLauncher();
+    const pool = new BrowserPool(launch, { maxContexts: 4, genSessionId: counterIds() });
+    const lease = await pool.acquire('http://localhost:3100/', { sessionId: 'lease-xyz' });
+    pool.alias('next-smoke', lease.sessionId);
+
+    await pool.release('next-smoke');
+    expect(pool.activeCount(), 'releasing by the name the agent was given must work').toBe(0);
+  });
+
+  it('an unknown alias touches nothing rather than throwing', () => {
+    const { launch } = fakeLauncher();
+    const pool = new BrowserPool(launch, { maxContexts: 4, genSessionId: counterIds() });
+    expect(() => pool.touch('never-seen')).not.toThrow();
+  });
+
   it('sweepExpired reclaiming a lease frees the slot for a queued acquire', async () => {
     const { launch } = fakeLauncher();
     let clock = 0;

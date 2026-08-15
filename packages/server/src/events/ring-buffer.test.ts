@@ -52,19 +52,23 @@ describe('RingBuffer', () => {
     expect(buf.bufferHealth()).toEqual({ total: 1, dropped: 50 });
   });
 
-  it('stays correct across thousands of pushes with continuous eviction (head-index + compaction)', () => {
-    const buf = new RingBuffer({ maxEvents: 100, maxAgeMs: 1_000_000 });
-    for (let t = 0; t < 5000; t += 1) buf.push(ev(t), t);
-    const live = buf.since(0);
-    expect(live).toHaveLength(100); // capped
-    expect(live[0]?.t).toBe(4900); // oldest kept
-    expect(live.at(-1)?.t).toBe(4999); // newest
-    expect(buf.bufferHealth()).toEqual({ total: 100, dropped: 4900 });
-    // Five thousand pushes. In memory and fast everywhere, so this is not expected to be needed —
-    // it is a BOUND rather than a claim about speed, and it lets the heavy-loop guard cover every
-    // package instead of only the browser. A default timeout on a loop this size is the shape that
-    // fails on a loaded Windows runner and nowhere else.
-  }, HEAVY_LOOP_TIMEOUT_MS);
+  it(
+    'stays correct across thousands of pushes with continuous eviction (head-index + compaction)',
+    () => {
+      const buf = new RingBuffer({ maxEvents: 100, maxAgeMs: 1_000_000 });
+      for (let t = 0; t < 5000; t += 1) buf.push(ev(t), t);
+      const live = buf.since(0);
+      expect(live).toHaveLength(100); // capped
+      expect(live[0]?.t).toBe(4900); // oldest kept
+      expect(live.at(-1)?.t).toBe(4999); // newest
+      expect(buf.bufferHealth()).toEqual({ total: 100, dropped: 4900 });
+      // Five thousand pushes. In memory and fast everywhere, so this is not expected to be needed —
+      // it is a BOUND rather than a claim about speed, and it lets the heavy-loop guard cover every
+      // package instead of only the browser. A default timeout on a loop this size is the shape that
+      // fails on a loaded Windows runner and nowhere else.
+    },
+    HEAVY_LOOP_TIMEOUT_MS,
+  );
 
   it('respects a caller-provided byte size instead of re-serializing', () => {
     const buf = new RingBuffer({ maxAgeMs: 1_000_000, maxEvents: 100, maxBytes: 250 });

@@ -25,10 +25,13 @@ function tool(name: string): (deps: ToolDeps, args: Record<string, unknown>) => 
 function fakePool(): {
   pool: BrowserPool;
   acquired: { url: string; sessionId: string | undefined }[];
+  /** Every (registeredId, leaseId) pair the lease told the pool about. */
+  aliased: [string, string][];
 } {
   const acquired: { url: string; sessionId: string | undefined }[] = [];
   let active = 0;
   const released: string[] = [];
+  const aliased: [string, string][] = [];
   const pool = {
     acquire(url: string, opts: { sessionId?: string } = {}): Promise<Lease> {
       acquired.push({ url, sessionId: opts.sessionId });
@@ -45,8 +48,13 @@ function fakePool(): {
     queuedCount: () => 0,
     leasedSessionIds: () => [],
     leaseTtlMs: () => 300_000,
+    // Recorded, not stubbed away: the lease tells the pool the other name the lease answers to, and
+    // a double that silently lacked it would let that call be dropped without any test noticing.
+    alias: (registeredId: string, leaseId: string) => {
+      aliased.push([registeredId, leaseId]);
+    },
   } as unknown as BrowserPool;
-  return { pool, acquired };
+  return { pool, acquired, aliased };
 }
 
 // A sessions stub where the leased tab is already "connected", so acquire's wait-for-ready resolves

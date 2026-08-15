@@ -88,6 +88,8 @@ export class BrowserPool {
   /** Leases reclaimed for going stale — see reapedLeaseCount(). */
   #reapedLeases = 0;
   readonly #active = new Map<string, ActiveLease>();
+  /** Registered-session-id → lease id, for apps that keep their own session name. See `alias`. */
+  readonly #aliases = new Map<string, string>();
   /**
    * Slots claimed-or-active — the real concurrency gate. Incremented SYNCHRONOUSLY the instant an
    * acquire passes the cap check, BEFORE the async context creation, so a burst of concurrent
@@ -133,14 +135,43 @@ export class BrowserPool {
     return [...this.#active.keys()];
   }
 
-  /** Release a lease by its sessionId (closes the context, frees the slot). No-op if unknown. */
+  /**
+   * Release a lease by its sessionId (closes the context, frees the slot). No-op if unknown.
+   *
+   * Resolves an alias first, because the agent releases with the id it was GIVEN, which for an app
+   * that named its own session is not the id the pool navigated with. Releasing by that name used to
+   * be a silent no-op that left the slot held until the reaper took it.
+   */
   release(sessionId: string): Promise<void> {
-    return this.#release(sessionId);
+    return this.#release(this.#leaseIdOf(sessionId));
+  }
+
+  /**
+   * Record that a lease is also known by the name the APP registered.
+   *
+   * Leases are keyed by the id the pool navigated with, and the SDK normally adopts that id off the
+   * URL so the two agree. An app that passes an explicit `session` to `connect()` keeps its own name
+   * instead, which is legitimate, and the lease tool then hands the agent THAT name because it is the
+   * one it has to drive with. Every later touch and release arrives under it.
+   *
+   * Without this the touches hit nothing, the lease ages out despite continuous activity, and the
+   * reaper closes the context mid-flow — the failure in #157, where a session died on the very call
+   * that would have read a computed value.
+   */
+  alias(registeredId: string, leaseId: string): void {
+    if (registeredId === leaseId) return;
+    if (!this.#active.has(leaseId)) return;
+    this.#aliases.set(registeredId, leaseId);
+  }
+
+  /** The lease this id refers to: itself, or whatever it is an alias for. */
+  #leaseIdOf(sessionId: string): string {
+    return this.#active.has(sessionId) ? sessionId : (this.#aliases.get(sessionId) ?? sessionId);
   }
 
   /** Mark a lease as still in use (called on agent activity) so the reaper doesn't reclaim it. */
   touch(sessionId: string): void {
-    const lease = this.#active.get(sessionId);
+    const lease = this.#active.get(this.#leaseIdOf(sessionId));
     if (lease !== undefined) lease.touchedAt = this.#now();
   }
 
@@ -240,6 +271,11 @@ export class BrowserPool {
     const lease = this.#active.get(sessionId);
     if (lease === undefined) return; // already released or lost to a crash
     this.#active.delete(sessionId);
+    // Drop any alias pointing here, or the map grows for the life of the daemon and a later lease
+    // reusing that registered name would resolve to a context that is already closed.
+    for (const [registered, leaseId] of this.#aliases) {
+      if (leaseId === sessionId) this.#aliases.delete(registered);
+    }
     await lease.context.close().catch(() => undefined);
     this.#releaseSlot();
   }

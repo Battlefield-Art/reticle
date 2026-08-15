@@ -122,6 +122,8 @@ export async function acquireLeasedSession(
       url: string,
       opts: { sessionId: string },
     ) => Promise<{ sessionId: string; release: () => Promise<void> }>;
+    /** Optional so a test double need not implement it; the real pool always does. */
+    alias?: (registeredId: string, leaseId: string) => void;
   },
   sessions: { get: (id: string) => unknown; all: () => { id: string; url?: string }[] },
   url: string,
@@ -137,6 +139,7 @@ export async function acquireLeasedSession(
     registeredId = resolveLeasedSessionId(sessions, lease.sessionId);
     return registeredId !== undefined;
   });
+  if (registeredId !== undefined) pool.alias?.(registeredId, lease.sessionId);
   return { sessionId: registeredId ?? lease.sessionId, release: () => lease.release() };
 }
 
@@ -213,6 +216,11 @@ export const LEASE_TOOLS: ToolDef[] = [
         registeredId = resolveLeasedSessionId(deps.sessions, lease.sessionId);
         return registeredId !== undefined;
       });
+      // Tell the pool the other name this lease answers to. Every later touch and release arrives
+      // under the id we are about to hand back, and the pool is keyed by the id it navigated with;
+      // without this the touches miss, the lease ages out despite continuous activity, and the
+      // reaper closes the context mid-flow. See BrowserPool.alias and #157.
+      if (registeredId !== undefined) pool.alias(registeredId, lease.sessionId);
       return {
         sessionId: registeredId ?? lease.sessionId,
         url,
