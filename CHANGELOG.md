@@ -97,6 +97,14 @@ _Nothing yet._
 
 - **`@reticlehq/server` — the verdict was the field a client truncated.** One click on an app with a registered query cache could produce a result large enough to exceed a client's per-result limit, because each diff value was capped and the number of diffs was not. The arrays are bounded now and say how many entries were elided, and the transient window is still computed over all of them so trimming the evidence cannot change the reading.
 
+### Answers that were there and could not be reached
+
+- **`@reticlehq/browser` — `reticle_inspect` could not say whether an element scrolls.** It returned geometry, styles, accessibility properties, the component stack and the source line, and nothing about scrolling, so an agent verifying a scroll-dependent behaviour could not tell a short list from a long one that was clipped. It now returns `scrollTop`, `scrollHeight`, `clientHeight` and `overflowY`. Reported unconditionally on purpose: the question is "does this element scroll", and a field that disappears when the answer is no cannot be told apart from a version that never reported it. _(**Dev Chiniwala**, [#298](https://github.com/reticlehq/reticle/pull/298))_
+
+- **`@reticlehq/server` — `reticle_record { action: "stop" }` returned a timeline large enough to truncate the verdict.** A single click could produce hundreds of events, and the response carried every one of them, so the part an agent actually needed (the compiled program, the proposed consequences, the summary) was the part a client dropped when it hit its limit. It now returns the digest, and `cost` measures the body really sent while still reporting the full event count, so the size of the window is not hidden by the trim. The response also names the call that returns the raw timeline, with the cursor filled in, because a field that silently stops appearing is one an agent cannot ask for. _(**Dev Chiniwala**, [#322](https://github.com/reticlehq/reticle/pull/322))_
+
+- **`@reticlehq/server` — a pooled lease expired without ever saying when.** An agent driving a long verification pass had no way to know how much time it had, so a lease could die mid-assertion and take the measurement with it, and the first sign was a session that no longer existed. `reticle_lease { action: "acquire" }` now returns `expiresInMs`, the TTL the reaper actually enforces, reset on every tool call that touches the session. A lease that does expire still returns a fresh context with no cookies, so an authenticated pass still pays to sign in again; that half remains open. _(**Dev Chiniwala**, [#323](https://github.com/reticlehq/reticle/pull/323))_
+
 ### We could not see the things we most needed to see
 
 Four measurements, three of which turned out to be broken rather than missing.
