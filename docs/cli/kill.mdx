@@ -13,8 +13,8 @@ npx @reticlehq/server kill [--port N] [--force]
 <Warning>
   Never free the port with `lsof -ti tcp:4400 | xargs kill -9`. `reticle mcp` holds a **client**
   socket on that port, so `-ti` lists the proxy right beside the daemon and the pipeline kills both.
-  When the proxy dies, the agent's next tool calls get no reply at all — not an error, not a timeout
-  — and nothing is written to the proxy log, because the process that writes it is the one that
+  When the proxy dies, the agent's next tool calls get no reply at all: not an error, not a timeout.
+  Nothing is written to the proxy log either, because the process that writes it is the one that
   died. That is the mechanism behind most "my MCP disconnected" reports.
 </Warning>
 

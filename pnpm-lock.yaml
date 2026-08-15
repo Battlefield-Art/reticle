@@ -245,6 +245,9 @@ importers:
       '@reticlehq/react':
         specifier: workspace:*
         version: link:../../../packages/react
+      '@reticlehq/vite-plugin':
+        specifier: workspace:*
+        version: link:../../../packages/vite-plugin
       astro:
         specifier: 7.0.3
         version: 7.0.3(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.2.0)(rollup@4.61.1)(yaml@2.9.0)
@@ -332,6 +335,9 @@ importers:
       '@react-router/dev':
         specifier: ^8.3.0
         version: 8.3.0(@react-router/serve@8.3.0(react-router@8.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(typescript@5.9.3))(react-router@8.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(typescript@5.9.3)(vite@8.2.0(@types/node@26.2.0)(esbuild@0.28.1)(yaml@2.9.0))
+      '@reticlehq/vite-plugin':
+        specifier: workspace:*
+        version: link:../../../packages/vite-plugin
       '@types/node':
         specifier: ^26
         version: 26.2.0

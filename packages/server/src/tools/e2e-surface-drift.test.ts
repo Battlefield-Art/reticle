@@ -419,6 +419,52 @@ describe('shipped docs never name a tool a reader cannot call', () => {
       `these tell a reader to run an npm package we do not own — use \`npx @reticlehq/server\`:\n${wrong.join('\n')}`,
     ).toEqual([]);
   });
+
+  /**
+   * The docs site does not use em dashes. Anywhere: not in a heading, not in body text.
+   *
+   * A house style rule rather than a correctness one, which is exactly why it needs a machine. The
+   * docs were swept clean of them once and the very next edit to `frameworks.mdx` put two back, by
+   * someone who had been told the rule an hour earlier. That is the pattern this file already names:
+   * every rule enforced by a check has held, and every rule left to prose has been violated.
+   *
+   * Scoped to `docs/`, the docs site, which is the surface the rule was given for. `SKILL.md` and
+   * `skills/` are NOT covered yet and that is a deliberate, temporary line rather than a judgement
+   * that they are exempt: they carry 146 prose dashes between them, and they are agent instructions
+   * whose wording has been tuned against real sessions, so a bulk rewrite is a job to do carefully
+   * and prove, not to sweep in behind a fix to something else. Tracked, so it is not silently
+   * dropped. `CHANGELOG.md` and the source comments are out of scope for good: a changelog is a
+   * written record in a different voice.
+   *
+   * PROSE only. Fenced blocks and inline code spans are skipped, because a good share of the dashes
+   * in these pages sit inside CAPTURED CLI OUTPUT — `doctor`'s diagnosis lines, `kill`'s refusal JSON
+   * — and those are quotations of what the program actually prints. "Fixing" them would make the docs
+   * disagree with the binary, which is a worse defect than the one this rule is about.
+   */
+  it('no docs page uses an em dash in prose', () => {
+    const wrong: string[] = [];
+    for (const file of docFiles()) {
+      let inFence = false;
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (line.trimStart().startsWith('```')) {
+            inFence = !inFence;
+            return;
+          }
+          if (inFence) return;
+          if (line.replace(/`[^`]*`/g, '').includes('—')) {
+            wrong.push(`${file.replace(REPO, '')}:${i + 1}: ${line.trim()}`);
+          }
+        });
+    }
+    expect(
+      wrong,
+      `these use an em dash in prose. The docs style is to rewrite the sentence (a comma, a colon, ` +
+        `a full stop, or two sentences) rather than to reach for the dash. Captured CLI output is ` +
+        `already exempt, so a hit here is prose:\n${wrong.join('\n')}`,
+    ).toEqual([]);
+  });
 });
 
 /**

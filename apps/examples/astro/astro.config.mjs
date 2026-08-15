@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
+import { reticle } from '@reticlehq/vite-plugin';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -20,6 +21,12 @@ function readPairingToken() {
 
 // `vite.build.target` is bumped to es2022 so Astro doesn't try to down-level the modern @reticlehq/react
 // bundle to its conservative default browser target (which fails on a destructuring transform).
+//
+// The plugin is still wired into Astro's vite, with `inject: false`. Only the injection half is
+// inapplicable here; the STAMPING half is what puts data-reticle-source on the JSX, and without it a
+// verdict comes back with a component name and no file:line — the pointer an agent uses to go straight
+// to the code. Dropping the plugin wholesale because one of its two jobs did not apply cost this
+// example the other one.
 export default defineConfig({
   integrations: [react()],
   server: { port: 5304 },
@@ -27,5 +34,6 @@ export default defineConfig({
     build: { target: 'es2022' },
     optimizeDeps: { esbuildOptions: { target: 'es2022' } },
     define: { __RETICLE_TOKEN__: JSON.stringify(readPairingToken()) },
+    plugins: [reticle({ inject: false })],
   },
 });

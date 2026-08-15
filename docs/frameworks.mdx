@@ -8,20 +8,22 @@ The core of Reticle is framework-neutral. DOM, network, console, routing, animat
 
 What varies is two things: how `connect()` gets into your app, and whether you get component identity on top.
 
+**Source pointer** is the `file:line` on a verdict, the thing an agent follows straight to the code after a red. It comes from the build plugin stamping your JSX, not from the SDK, so it is a property of how the framework is wired rather than of the framework. Remix and Astro render their own HTML, so the plugin's connect-injection cannot fire there, and both examples used to drop the plugin entirely, which quietly cost them the stamping too. Both now wire it with `inject: false`, which keeps the half that applies. A row marked `unproven` has no example app, so nobody has checked.
+
 ## Where each framework stands
 
 We separate "we tested this" from "this should work". Four frameworks have an example app and a CI gate. The rest are wired and documented but nothing proves they still work.
 
-| Framework | `init` detects | Example app | CI gate | Status |
-| --- | :-: | :-: | :-: | --- |
-| **React + Vite** | yes | yes | yes | Supported |
-| **Next.js** | yes | yes | yes | Supported |
-| **Remix** | yes | yes | yes | Supported |
-| **Astro** | yes | yes | yes | Supported |
-| **SvelteKit** | yes | no | no | Wired, unverified |
-| **Nuxt** | yes | no | no | Wired, unverified |
-| **Create React App** | yes | no | no | Wired, unverified |
-| **Plain HTML** | yes | no | no | Wired, unverified |
+| Framework | `init` detects | Example app | CI gate | Source pointer | Status |
+| --- | :-: | :-: | :-: | :-: | --- |
+| **React + Vite** | yes | yes | yes | yes | Supported |
+| **Next.js** | yes | yes | yes | yes | Supported |
+| **Remix** | yes | yes | yes | yes | Supported |
+| **Astro** | yes | yes | yes | yes | Supported |
+| **SvelteKit** | yes | no | no | unproven | Wired, unverified |
+| **Nuxt** | yes | no | no | unproven | Wired, unverified |
+| **Create React App** | yes | no | no | unproven | Wired, unverified |
+| **Plain HTML** | yes | no | no | no | Wired, unverified |
 | **Vue (non-Nuxt)** | as Vite | no | no | Sensor plus a Pinia adapter |
 | **Preact** | as Vite | no | no | Sensor, React adapter via `preact/compat` |
 
