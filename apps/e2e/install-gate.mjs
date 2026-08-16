@@ -526,8 +526,14 @@ async function driveScaffold(scaffold, index) {
     // Both spellings of it: `mkdtemp` hands back `/var/folders/…` on macOS while the `init` process
     // reports its cwd as the resolved `/private/var/folders/…`, and only one of those two ever
     // appears in a given line.
+    //
+    // LONGEST FIRST, and that is the whole subtlety. One spelling is a suffix of the other, so
+    // folding the short one first eats the tail of the long one and leaves `/private<root>` behind
+    // — a baseline diff that fails while reporting a path that never existed.
     const foldRoot = (text) =>
-      [workdir, realpathSync(workdir)].reduce((acc, dir) => acc.split(dir).join('<root>'), text);
+      [workdir, realpathSync(workdir)]
+        .sort((a, b) => b.length - a.length)
+        .reduce((acc, dir) => acc.split(dir).join('<root>'), text);
     const steps = fingerprint(stepsOf(foldRoot(report)));
     const expected = BASELINE[scaffold.id];
     if (UPDATE_BASELINE) {
