@@ -163,7 +163,7 @@ export function isConnectStep(title: string): boolean {
 }
 /** The step that runs the package manager — the other thing that commonly fails on a user's machine. */
 export const DEPS_TARGET = 'package.json';
-const RETICLE_CONFIG_FILE = '.reticle.json';
+export const RETICLE_CONFIG_FILE = '.reticle.json';
 
 export const StepStatus = {
   APPLY: 'apply',
@@ -319,6 +319,12 @@ export interface PlanInput {
    * (the single-package case) leaves every path project-relative exactly as before.
    */
   agentFileRoot?: string | undefined;
+  /**
+   * Content of the `.reticle.json` already sitting at that agent root, or null/undefined when there
+   * is none. Content rather than existence, for the reason `reticleConfigSource` is: a root config
+   * that disagrees with the app's is worse than no root config, and only reading it can tell.
+   */
+  agentRootConfigSource?: string | null | undefined;
   options: {
     port: number | undefined;
     mcp: boolean;
@@ -830,38 +836,95 @@ function existingConfigProblem(source: string | null | undefined): string | unde
   return `${devServerPortWarning(port)} Fix it by removing the "port" field from ${RETICLE_CONFIG_FILE}.`;
 }
 
-function reticleConfigStep(input: PlanInput): Step {
+const RETICLE_CONFIG_TITLE = 'Reticle config';
+const AGENT_ROOT_CONFIG_TITLE = 'Reticle config (agent root)';
+
+/**
+ * The SECOND `.reticle.json`, in the directory the agent runs from.
+ *
+ * `.reticle.json` is not app wiring — nothing in the app reads it. The CLI and `reticle mcp` read it
+ * from their own CWD (see cli-port), and that CWD is the repo root, not the app directory a redirect
+ * wired. Reported from the field: an app in `frontend/` on a non-default bridge port left the root
+ * with no config at all, so `reticle mcp` fell back to 4400 — which on that machine was ANOTHER
+ * project's daemon, and `reticle_sessions` would have listed a different app's tabs while the wired
+ * app sat unseen. Nothing in the report said so; every step was green.
+ *
+ * Written in BOTH places rather than moved: a human standing in the app runs `reticle status` there,
+ * and the two files are byte-identical, so neither can disagree with the other about the port or the
+ * project identity.
+ */
+function agentRootConfigStep(input: PlanInput, content: string): Step[] {
+  const root = input.agentFileRoot;
+  if (root === undefined || 0 === root.length) return [];
+  const path = agentFile(input, RETICLE_CONFIG_FILE);
+  if (input.agentRootConfigSource === content) {
+    return [
+      {
+        title: AGENT_ROOT_CONFIG_TITLE,
+        target: path,
+        status: StepStatus.ALREADY,
+        detail: 'the agent already reads the same project config',
+      },
+    ];
+  }
+  return [
+    {
+      title: AGENT_ROOT_CONFIG_TITLE,
+      target: path,
+      status: StepStatus.APPLY,
+      detail:
+        'the same config where the agent runs — `reticle mcp` reads it from ITS cwd, and without ' +
+        'it the agent talks to whatever daemon is on the default port',
+      write: { path, content },
+    },
+  ];
+}
+
+function reticleConfigStep(input: PlanInput, content: string): Step {
   if (true === input.reticleConfigExists) {
     const problem = existingConfigProblem(input.reticleConfigSource);
     if (problem !== undefined) {
       // `ℹ`, not `·`: the step is done and something about the result still stops things working,
       // which is the one mark that says "there is something here to read".
       return {
-        title: 'Reticle config',
+        title: RETICLE_CONFIG_TITLE,
         target: RETICLE_CONFIG_FILE,
         status: StepStatus.NOTICE,
         detail: problem,
       };
     }
     return {
-      title: 'Reticle config',
+      title: RETICLE_CONFIG_TITLE,
       target: RETICLE_CONFIG_FILE,
       status: StepStatus.ALREADY,
       detail: '.reticle.json already exists',
     };
   }
-  const content = reticleConfigContent(
-    input.detection.framework,
-    input.options.port,
-    input.options.projectId,
-  );
   return {
-    title: 'Reticle config',
+    title: RETICLE_CONFIG_TITLE,
     target: RETICLE_CONFIG_FILE,
     status: StepStatus.APPLY,
     detail: 'write project config (framework + port)',
     write: { path: RETICLE_CONFIG_FILE, content },
   };
+}
+
+/**
+ * The project config, in every directory that has to read it: the app's, and — after a redirect —
+ * the one the agent runs from. One content string for both, so they cannot disagree; an existing
+ * app-side config wins over a freshly derived one, or a re-run would copy a DIFFERENT identity up.
+ */
+function reticleConfigSteps(input: PlanInput): Step[] {
+  const existing = input.reticleConfigSource;
+  const content =
+    true === input.reticleConfigExists && null !== existing && existing !== undefined
+      ? existing
+      : reticleConfigContent(
+          input.detection.framework,
+          input.options.port,
+          input.options.projectId,
+        );
+  return [reticleConfigStep(input, content), ...agentRootConfigStep(input, content)];
 }
 
 /**
@@ -898,7 +961,7 @@ export function buildPlan(input: PlanInput): Plan {
     ...slashCommandSteps(input),
     ...uiLibraryStep(input),
     installStep(input),
-    reticleConfigStep(input),
+    ...reticleConfigSteps(input),
   ];
   if (input.detection.framework === Framework.VITE) {
     steps.push(...viteSteps(input));

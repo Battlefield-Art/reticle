@@ -28,6 +28,9 @@ export * from './consequence.js';
 export * from './project-id.js';
 export * from './notices.js';
 export * from './journal.js';
+// Not an API — three names that exist so importing the BROWSER SDK from here fails with a sentence
+// naming @reticlehq/browser, instead of a bare SyntaxError that blanks the app. See the module.
+export * from './browser-misdirect.js';
 
 // ── INTERNAL cross-package plumbing (shared impl; not a stable outside API — may change in a minor) ─
 export * from './daemon-registry.js'; // daemon discovery, used by the vite plugin + server
