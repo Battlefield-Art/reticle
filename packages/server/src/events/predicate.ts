@@ -466,9 +466,14 @@ export async function evaluatePredicate(
       // nobody could evaluate became a verdict of verified, manufactured out of a missing reading.
       // You cannot negate an answer nobody had.
       if (inner.inconclusive !== undefined) return unreadableComposite(inner, inner);
+      // A green negation used to return a bare `{ pass: true }`, so the payload fell back to
+      // whatever the caller had — every element matching the OUTER locator. Three clauses negating
+      // three different names then produced byte-identical responses, which reads as a checker that
+      // dropped the name rather than one that correctly found all three absent. The evidence is the
+      // whole answer here: what was looked for, and that it was not there.
       return inner.pass
         ? { pass: false, failureReason: 'negated predicate unexpectedly held', evidence: inner }
-        : { pass: true };
+        : { pass: true, evidence: { negated: predicate.predicate, held: false, saw: inner } };
     }
     default:
       return { pass: false, failureReason: 'unknown predicate' };
