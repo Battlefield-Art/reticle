@@ -49,6 +49,7 @@ import {
 } from './plan-framework.js';
 import { join } from 'node:path';
 import { htmlManual, reticleConfigContent, unverifiedUiLibraryNote } from './snippets.js';
+import { declaredInstallSource } from '../telemetry/install-source.js';
 import { devServerPortWarning, isLikelyDevServerPort } from '../cli/cli-port.js';
 
 // An app dev installs exactly the audience-scoped browser-side dependencies — never the retired
@@ -923,6 +924,9 @@ function reticleConfigSteps(input: PlanInput): Step[] {
           input.detection.framework,
           input.options.port,
           input.options.projectId,
+          // Only when it is actually known. Writing `unknown` would be indistinguishable from a
+          // config written before this field existed, and the two mean different things.
+          declaredInstallSource(),
         );
   return [reticleConfigStep(input, content), ...agentRootConfigStep(input, content)];
 }

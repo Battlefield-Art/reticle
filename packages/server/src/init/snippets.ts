@@ -539,9 +539,20 @@ export function reticleConfigContent(
   framework: string,
   port: number | undefined,
   projectId?: string,
+  installSource?: string,
 ): string {
   const fields: Record<string, unknown> = { framework };
   if (projectId !== undefined && projectId.length > 0) fields['projectId'] = projectId;
   if (port !== undefined && port !== RETICLE_DEFAULT_PORT) fields['port'] = port;
+  // How this install arrived, recorded HERE because it is a property of the install and the only
+  // moment anything knows it is the moment it happens. It reaches us as an environment variable set
+  // by whichever channel ran the install, and an environment variable is gone by the next command,
+  // so every event after this one reported `unknown` and the question "which channel actually
+  // converts" could not be asked at all. Written once, read for the life of the project.
+  //
+  // A closed vocabulary, narrowed before it gets here, so this can never carry a path or a URL.
+  if (installSource !== undefined && installSource.length > 0) {
+    fields['installSource'] = installSource;
+  }
   return `${JSON.stringify(fields, null, 2)}\n`;
 }
