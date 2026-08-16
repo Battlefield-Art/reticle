@@ -12,7 +12,7 @@ It exists because an agent that writes code cannot otherwise tell whether that c
 ## How it works, in three parts
 
 1. **An SDK inside the app.** Dev-only, stripped from production builds, added by a build plugin. It instruments the DOM, network, routing, console, animations, and your state library.
-2. **A local bridge.** The SDK connects over a WebSocket to a daemon on your machine. Reticle never starts or manages your dev server; it attaches to the app you are already running.
+2. **A local bridge.** The SDK connects over a WebSocket to a daemon on your machine. The daemon never starts or manages your dev server. It attaches to the app that is running. If none is, the agent is the one told to start it, using your project's own dev script, in the background, and saying so.
 3. **An MCP server.** The daemon exposes the app to your agent as tools. `reticle_snapshot` to look, `reticle_act_and_wait` to act and prove in one call, `reticle_state` and `reticle_network` to observe, `reticle_assert` to check.
 
 Everything stays on your machine. No application code, DOM, network traffic, or console output leaves it.

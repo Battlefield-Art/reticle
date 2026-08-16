@@ -68,7 +68,7 @@ It detects the framework, package manager and UI library, registers the MCP serv
 
 Ask nothing: not the framework, package manager, port, editor, or MCP client. Every one is answerable from the repo you are sitting in. In a monorepo run it at the root anyway; it finds the app under `apps/*` or `packages/*`.
 
-**Never ask about the port.** There are two and conflating them is a top setup failure. The dev-server port (3000, 5173) belongs to the user's `npm run dev` and Reticle never touches it. The bridge port (**4400**) is the daemon-to-SDK channel and defaults correctly.
+**Never ask about the port.** There are two and conflating them is a top setup failure. The dev-server port (3000, 5173) belongs to the project's own dev script and the daemon never binds it. The bridge port (**4400**) is the daemon-to-SDK channel and defaults correctly.
 
 Read the report: `✓` applied, `·` already wired, `–` skipped, `ℹ` done but incomplete in a way that matters, `⚠` needs your edit. **`⚠` and `ℹ` both need you.** `ℹ` is the one people skim past: the step ran, and something about the result still stops a session appearing. Each line carries the exact snippet. A non-zero exit is a to-do list, not a failed install. Fix every `⚠` using [references/setup.md](references/setup.md) before moving on.
 
@@ -103,7 +103,21 @@ Two rules that cause silent failures if broken:
 - **Never guard the connect on `window.location.hostname === 'localhost'`.** It is false on every non-localhost dev host and `window` does not exist during SSR. Use the framework's dev flag plus a client-only boundary.
 - **A config change needs a dev server restart.** A dev server that was already running does not pick up an edited `vite.config.ts` or a newly created plugin file. Restart it, then hard-reload the tab.
 
-Then tell the user: **"Run your dev server and open the app in your browser."**
+Then make sure something is serving the app.
+
+**If a dev server is already listening, use it. If none is, start one yourself** — read the project's own dev script out of `package.json` (`dev`, `start`, whatever this project calls it), run it in the BACKGROUND, and tell the user in one line that it is running and how to stop it. Stopping here to ask is how a setup turn ends with nothing verified.
+
+The daemon deliberately will not do this for you. A build process started by a long-lived background daemon is invisible to the person whose machine it runs on and orphans when the daemon exits; a dev server YOU start is in the transcript, attributable, and stoppable.
+
+Five guards, none optional:
+
+1. **Never start a second one.** If something is already listening on the app's port, use it.
+2. **Never guess the command.** It comes from `package.json` scripts. No recognisable dev script means say so and stop, not invent one.
+3. **Never kill anything.** Not a dev server, not a daemon, not a port holder — including one you started.
+4. **Background it, and say so.** A dev server the human does not know about is the same failure one step later.
+5. **The permission prompt belongs to your host.** Never bypass, suppress or auto-approve it, and take a refusal as the answer.
+
+Then ask the user to open the app in their browser.
 
 ## 4. Prove a page is connected.
 
@@ -113,7 +127,7 @@ reticle_sessions()
 
 You need a session whose URL matches the app's localhost address. Nothing below this line is meaningful until you have one.
 
-**Empty list?** Read the `why` field first; the daemon can see whether a session was ever here and whether a dev server is listening. Then work [references/troubleshooting.md](references/troubleshooting.md) in order. **Do not tell the user to start a dev server they are already running.** The checklist is, in order: is the SDK imported and called in the app entry, is the dev server actually serving that entry, is the connect guarded on `hostname === 'localhost'`, and is the bridge port the same number on both sides.
+**Empty list?** Read the `why` field first; the daemon can see whether a session was ever here and whether a dev server is listening. **Nothing listening at all? That is yours to fix — start it, per step 3.** Otherwise work [references/troubleshooting.md](references/troubleshooting.md) in order, and **do not tell the user to start a dev server they are already running.** The checklist is, in order: is the SDK imported and called in the app entry, is the dev server actually serving that entry, is the connect guarded on `hostname === 'localhost'`, and is the bridge port the same number on both sides.
 
 ## 5. Drive one real flow and produce a verdict.
 

@@ -4,9 +4,11 @@
 
 This is the most common failure by a wide margin, and it almost always means **the SDK is not in the page**.
 
-**Do not tell the user to start a dev server.** They are running one. That answer ends the conversation with nothing fixed.
-
 Start by reading the `why` field on the empty result. The daemon can see whether a session was ever here, whether a dev server is listening, and whether this project has been through `init`. Work the checklist only if `why` leaves you unsure.
+
+**If nothing is listening, start the dev server yourself** — the project's own script from `package.json`, in the background, with one line to the user saying it is running and how to stop it. Never start a second one, never guess the command, never kill anything, and leave the permission prompt to your host.
+
+**If something IS listening, do not tell the user to start a dev server.** They are running one. That answer ends the conversation with nothing fixed; the cause is below.
 
 ### 1. Is the SDK imported and called in the app entry?
 

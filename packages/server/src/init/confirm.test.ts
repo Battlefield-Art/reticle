@@ -82,8 +82,8 @@ describe('confirmationMessage', () => {
     const msg = confirmationMessage(InitConfirmation.NO_SESSION, PORT);
     expect(msg).toContain('⚠');
     expect(msg.toLowerCase()).toContain('dev server');
-    // Reticle attaches to what is running and never manages a dev server, so the message hands the
-    // command over rather than promising to run it.
+    // The daemon never manages a dev server, so the message hands the command over rather than
+    // promising to run it — the agent is the party told to start one.
     expect(msg).toContain('status');
   });
 });

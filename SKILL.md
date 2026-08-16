@@ -83,10 +83,28 @@ If you genuinely cannot determine something, pick the sensible default, say whic
 
 |  | What it is | Who owns it |
 | --- | --- | --- |
-| Dev-server port (3000, 5173, 4321, …) | where the app is served | the user's `npm run dev` — Reticle never touches it |
+| Dev-server port (3000, 5173, 4321, …) | where the app is served | the project's own dev script — the daemon never binds it |
 | Bridge port (**4400**) | the daemon ↔ SDK channel | Reticle, and it defaults correctly |
 
-Reticle **attaches** to whatever is already running; it never starts or manages a dev server, so it does not need to know that port. Putting a dev-server port in `.reticle.json`'s `port` field makes the daemon fight the app for it. Leave `port` out unless you are running several apps at once.
+Reticle **attaches** to a running app rather than serving it, so the daemon does not need to know that port. Putting a dev-server port in `.reticle.json`'s `port` field makes the daemon fight the app for it. Leave `port` out unless you are running several apps at once.
+
+<a id="who-starts-the-dev-server"></a>
+
+### Who starts the dev server: you do
+
+**If no dev server is listening, start one yourself.** Read the project's own dev script out of `package.json` (`dev`, `start`, whatever this project calls it), run it in the BACKGROUND, tell the user in one line that it is running and how to stop it, then carry on. Stopping to ask is how a setup turn ends with nothing verified.
+
+The daemon deliberately does not do this. A build process started by a long-lived background daemon is invisible to the person whose machine it runs on, was never consented to, and orphans when the daemon exits. You already have shell access in this repo, you already run install and build commands, and your host asks the human before you run one — so a dev server you start is visible in the transcript, attributable, and stoppable.
+
+Five guards, none optional:
+
+1. **Never start a second one.** If something is already listening on the app's port, use it.
+2. **Never guess the command.** It comes from `package.json` scripts. If there is no recognisable dev script, say so and stop rather than inventing one.
+3. **Never kill anything.** Not a dev server, not a daemon, not a port holder — including one you started.
+4. **Background it, and say so.** The user must know a server is running and how to stop it. A dev server the human does not know about is the same failure one step later.
+5. **The permission prompt belongs to your host.** Never try to bypass, suppress or auto-approve it, and take a refusal as the answer.
+
+And the corollary, which is the other half of the same mistake: if a server IS already listening and nothing connects, the cause is the SDK not loading in the page. Do not tell the user to start a dev server they are already running.
 
 **In a monorepo, run it at the repo root anyway.** If the root isn't the app, `init` finds the app under `apps/*` or `packages/*` and wires that instead. If it finds several, it lists them — pick the one the user has been working in (the one their recent edits touch) and say which you picked. Do not put the list to them as a question.
 
@@ -286,7 +304,7 @@ Then **wait for them, and continue where you left off.** Do not declare setup fi
 
 > Only if `init` printed `⚠` for the install step (offline, a locked registry, an unusual package manager).
 
-> **Mental model:** The user keeps running their dev server (`npm run dev`) themselves. Reticle embeds a tiny SDK in the app that connects to a local bridge daemon. The agent talks to the daemon over MCP — no Chromium is downloaded or needed for standard agent workflows. Playwright is only required if you explicitly use `--drive` mode.
+> **Mental model:** Something has to be serving the app — the user's own dev server, or the one [you started](#who-starts-the-dev-server). Reticle embeds a tiny SDK in the app that connects to a local bridge daemon. The agent talks to the daemon over MCP — no Chromium is downloaded or needed for standard agent workflows. Playwright is only required if you explicitly use `--drive` mode.
 
 ```bash
 npm install --save-dev @reticlehq/react @reticlehq/vite-plugin    # swap npm for the project's package manager
@@ -525,7 +543,7 @@ If setting up manually, write `.reticle.json` to the project root (commit this �
 >
 > Pick any free port that is **not** your dev-server port (4460, 4461, …).
 
-Tell the user: **"Run `npm run dev` (your normal dev server) and open the app in your browser."**
+Now make sure the app is being served. If a dev server is already listening, use it. If none is, **start the project's dev script in the background yourself** and say so in one line — see [Who starts the dev server](#who-starts-the-dev-server) for the guards. Then ask the user to open the app in their browser.
 
 Once they confirm the app is open, poll `reticle_sessions()` until your tab appears (the first live call already blocks for the session). You should see a session whose URL matches the app's localhost address.
 
@@ -611,9 +629,11 @@ Just ran `reticle init` or started the dev server? Block until the app's SDK con
 
 If `why` leaves you unsure, work [No session? Work this checklist](#no-session-work-this-checklist) — it is the same checklist Setup Mode uses, and it covers the causes that leave every other check healthy (a non-localhost dev host, a port mismatch, a dev server that was never restarted after wiring).
 
-Only once that is exhausted, tell the user:
+If the reason is that **nothing is serving the app at all**, that is yours to fix, not the user's: start the project's dev script in the background under the guards in [Who starts the dev server](#who-starts-the-dev-server), tell the user in one line, then poll `reticle_sessions()` again.
 
-> "No app connected. Run your dev server (`npm run dev`) and open the app in your browser, then try `/reticle` again. Reticle never starts the dev server for you — that's your job."
+Only once that is exhausted — a server is up, the SDK is wired, and still nothing dials in — tell the user:
+
+> "A dev server is running and the SDK is wired, but no page has connected. Open the app in your browser and try `/reticle` again."
 
 This branch is where most sessions end. It is worth one more call before it does.
 

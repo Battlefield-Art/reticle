@@ -47,9 +47,25 @@ Read the `why`. If it says one **was** connected earlier, stop debugging your co
 
 If nothing ever connected:
 
-- Is the app running, and open in a browser?
+- Is the app running, and open in a browser? If nothing is serving it, see [Who starts the dev server](#who-starts-the-dev-server): this is the agent's job, not a question to put to you.
 - Is `reticle.connect()` actually executing? Check the dev guard is true.
 - **Port mismatch.** This is the big one.
+
+### Who starts the dev server
+
+**The agent does.** If no dev server is listening, the agent reads your project's own dev script out of `package.json`, runs it in the background, tells you in one line that it is running and how to stop it, and carries on. It used to be told the opposite, "Reticle never starts the dev server for you, that's your job", and agents obeyed it exactly: they read the rule, declined to start anything, and ended the turn with nothing verified.
+
+The daemon still does not do it, on purpose. A build process started by a long-lived background daemon is invisible to whoever's machine it is running on, was never consented to, cannot easily be stopped, and orphans when the daemon exits. It would also mean a piece of standing infrastructure runs arbitrary `package.json` scripts. An agent already has shell access in your repo, already runs install and build commands, and runs inside a host that asks you before it does. A dev server the agent starts is in the transcript, attributable to a step you approved, and stoppable.
+
+The guards, which apply wherever this instruction appears:
+
+1. **Never start a second one.** If something is already listening on the app's port, it is adopted.
+2. **Never guess the command.** It comes from `package.json` scripts. If there is no recognisable dev script, the agent says so and stops rather than inventing one.
+3. **Never kill anything**: not a dev server, not a daemon, not a port holder, including one it started.
+4. **Background it, and say so.** You must know a server is running and how to stop it. A dev server you do not know about is the same failure one step later.
+5. **The permission prompt is your agent host's.** Nothing in Reticle bypasses or auto-approves it, and you can always decline.
+
+The corollary matters as much: if a dev server IS already running and nothing connects, the cause is the SDK not loading in the page. An agent that answers this state by asking you to start a server you are already running has ended the conversation with nothing fixed. Work the checklist above instead.
 
 ### The port mismatch
 

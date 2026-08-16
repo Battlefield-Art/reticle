@@ -59,6 +59,35 @@ const RULE_END = '<!-- reticle:end -->';
 export const CLI = `${NPX} ${RETICLE_NPM_PACKAGE}`;
 
 /**
+ * Who starts the dev server, stated once and rendered everywhere it is needed.
+ *
+ * The old rule was "Reticle never starts the dev server for you — that's your job", and agents obeyed
+ * it exactly: they read it, declined to start anything, and ended the turn with nothing verified. An
+ * instruction that reliably produces no verification is a defect in the instruction.
+ *
+ * The AGENT starts it, not the daemon. A daemon that spawns a build process is invisible to the
+ * person whose machine it is running on, was never consented to, and orphans when the daemon exits.
+ * The agent already has shell access in this repo, already runs install and build commands, and runs
+ * inside a host that asks the human for permission — so a dev server it starts is visible in the
+ * transcript, attributable, and stoppable.
+ *
+ * The guards are the whole reason this is safe, so no renderer may drop them: adopt what is already
+ * listening, read the command rather than invent one, never kill, background it and SAY so, and leave
+ * the permission prompt to the host.
+ *
+ * Exported because slash-command.ts renders the same rule; there must not be two versions of it.
+ */
+export const DEV_SERVER_POLICY = `**If no dev server is listening, start one yourself.** Read the project's own dev script out of \`package.json\` (\`dev\`, \`start\`, whatever this project calls it), run it in the BACKGROUND, tell the user in one line that it is running and how to stop it, then carry on. Stopping to ask is how a verification turn ends with nothing verified.
+
+Five guards, none optional:
+
+1. **Never start a second one.** If something is already listening on the app's port, use it.
+2. **Never guess the command.** It comes from \`package.json\` scripts. If there is no recognisable dev script, say so and stop rather than inventing one.
+3. **Never kill anything.** Not a dev server, not a daemon, not a port holder — including one you started.
+4. **Background it, and say so.** The user must know a server is running and how to stop it. A dev server the human does not know about is the same failure one step later.
+5. **The permission prompt belongs to your host.** Never try to bypass, suppress or auto-approve it, and take a refusal as the answer.`;
+
+/**
  * The operative rules, carried by every file that loads on every turn.
  *
  * Short on purpose. This is the text that has to CHANGE BEHAVIOUR, so it states when to verify, when
@@ -80,6 +109,12 @@ This app is instrumented by **Reticle**, an in-app verification layer exposed as
 - Read the surrounding evidence with \`reticle_snapshot\`, \`reticle_state\`, \`reticle_network\`, \`reticle_console\`.
 - **Only \`reticle_act_and_wait\` and \`reticle_assert\` produce a verdict.** \`reticle_act\` and everything else move or read the app and prove nothing, so a session ending without one of those two has no result however many tools it used.
 - Covered flows: \`${CLI} gate\` reports which recorded flows the changed files affect and whether they still pass.
+
+**Nothing connected? Get the app running.**
+
+${DEV_SERVER_POLICY}
+
+A dev server that is already running does not pick up an edited build config or a newly created plugin file — restart it and hard-reload the tab. And if a server IS listening and still nothing connects, the cause is the SDK not loading in the page, not a missing dev server; do not tell the user to start one they are already running.
 
 **Honesty, which is the whole point:**
 

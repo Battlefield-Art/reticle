@@ -12,6 +12,8 @@
  * two-minute first impression and an afternoon.
  */
 
+import { DEV_SERVER_POLICY } from './agent-rules.js';
+
 /** Claude Code reads project commands from `.claude/commands/<name>.md`. */
 export const CLAUDE_COMMAND_PATH = '.claude/commands/reticle.md';
 /** Cursor reads them from `.cursor/commands/<name>.md`. */
@@ -39,9 +41,16 @@ Call \`reticle_sessions\` first.
 
 **A session is listed?** Go to "Pick ONE flow".
 
-**No session?** Setup is not finished. Do NOT tell the user to run a dev server and stop: they are
-usually already running one, and the real cause is almost always that the SDK never loaded in the
-page. Work these in order, and say which one you are on:
+**No session?** Setup is not finished, and stopping to ask the user to run something is not an
+answer. Work these in order, and say which one you are on:
+
+0. **Is anything serving the app at all?** If a dev server is already listening, use it and go to
+   step 1 — the cause is then almost always that the SDK never loaded in the page, not a missing
+   server, so do not tell the user to start one they are already running. If nothing is listening:
+
+${DEV_SERVER_POLICY}
+
+Then, once something is serving the app:
 
 1. **Is the SDK actually in the app?** Read the app's entry file (\`src/main.tsx\`, \`app/layout.tsx\`,
    \`src/app.vue\`, whatever this project uses). You are looking for an \`import\` from
@@ -55,7 +64,7 @@ page. Work these in order, and say which one you are on:
    \`process.env.NODE_ENV !== 'production'\`, \`import.meta.dev\`).
 3. **Is the dev server serving that entry?** Ask the user to open the app in a browser and check its
    console for a line starting \`[Reticle]\`. That line, or its absence, tells you which side is at
-   fault. Reticle never starts a dev server.
+   fault. Reticle itself never starts a dev server — starting it is your job, under the guards above.
 4. **Do both sides agree on the port?** Run \`npx @reticlehq/server doctor\` and compare the daemon
    port against the port the page dials.
 
