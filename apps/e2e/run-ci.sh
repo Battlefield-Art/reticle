@@ -48,14 +48,18 @@ NEXT=$!
 # failed for a reason that had nothing to do with the first. The runner's own orphan sweep named the
 # survivor — `next-server (v15.5.22)` — after the job had already gone red.
 #
-# `lsof -ti tcp:PORT` is on both the ubuntu runner and macOS, and asks the only question that
-# matters: is anything still holding the port the next attempt needs.
+# `-sTCP:LISTEN` is not optional. Without it `lsof -ti tcp:PORT` returns CLIENTS as well as the
+# listener, so the recipe everyone reaches for kills whatever is connected to the port along with
+# whatever is serving it. On a bridge port that takes the developer's own `reticle mcp` proxy with
+# it, silently, and the process that would have logged the death is the one that died. This file
+# had the unsafe form while `gate-harness.mjs` documented it as the trap to avoid, which is how a
+# rule written down in one place gets broken in another.
 E2E_PORTS='8787 4310 3100'
 cleanup() {
   kill "$API" "$DEMO" "$NEXT" 2>/dev/null || true
   sleep 1
   for port in $E2E_PORTS; do
-    lsof -ti "tcp:$port" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | xargs -r kill -9 2>/dev/null || true
   done
 }
 trap cleanup EXIT
