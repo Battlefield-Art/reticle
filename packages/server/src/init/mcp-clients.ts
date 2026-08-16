@@ -18,8 +18,7 @@
  * an install that reports success and registers nothing, which is the exact failure class this
  * repo's install gate exists to catch.
  */
-import { NPX, MCP_SERVER_NAME, npxServerArgs } from './mcp.js';
-import { RETICLE_NPM_PACKAGE } from '../version/server-version.js';
+import { NPX, MCP_SERVER_NAME, npxServerArgs, isReticleRegistration } from './mcp.js';
 
 export const McpClient = {
   CLAUDE_CODE: 'claude-code',
@@ -198,7 +197,8 @@ function parseConfig(existing: string | null): ParseResult {
  *
  * What IS repaired is a stale entry of our own shape — an old pin, a moved command — which
  * presence-only idempotency reported as "already registered" and never fixed, so an upgrade could
- * not repair the thing an upgrade exists to repair.
+ * not repair the thing an upgrade exists to repair — and a WRONG one, naming a Reticle package that
+ * has no MCP server in it (see isReticleRegistration).
  */
 function leaveEntryAlone(existing: unknown, spec: ClientSpec): boolean {
   if (JSON.stringify(existing) === JSON.stringify(spec.entry())) return true;
@@ -206,8 +206,7 @@ function leaveEntryAlone(existing: unknown, spec: ClientSpec): boolean {
   const record = existing as { command?: unknown; args?: unknown };
   // Both shapes carry the package name somewhere in a string; find it without assuming which field.
   const tokens = [record.command, record.args].flat().filter((v) => 'string' === typeof v);
-  const ours = tokens.some((t) => t === NPX) && tokens.some((t) => t.includes(RETICLE_NPM_PACKAGE));
-  return !ours;
+  return !isReticleRegistration(tokens);
 }
 
 /**

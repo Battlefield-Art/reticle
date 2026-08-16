@@ -450,9 +450,11 @@ describe('runInit — workspace roots', () => {
     expect(io.lines.join('\n')).toContain('apps/web');
     expect(io.written['apps/web/vite.config.ts']).toContain('reticle()');
     expect(io.written['apps/web/.reticle.json']).toBeDefined();
-    // The root is not the app — nothing of the app's wiring belongs there.
+    // The root is not the app — nothing of the app's WIRING belongs there. `.reticle.json` is not
+    // wiring: it is runtime config the CLI and `reticle mcp` read from their own CWD, which is the
+    // root, so it is written in both places (see the agent-root test below).
     expect(io.written['vite.config.ts']).toBeUndefined();
-    expect(io.written['.reticle.json']).toBeUndefined();
+    expect(io.written['/app/.reticle.json']).toBeDefined();
   });
 
   it('asks for feedback exactly once, even though the redirect re-enters init', () => {
@@ -687,6 +689,23 @@ describe('runInit — an app outside the directory names anyone guessed', () => 
     const written = Object.keys(io.written).map((p) => p.replace(/\\/g, '/'));
     expect(written).toContain('/app/.claude/commands/reticle.md');
     expect(written).not.toContain('src/admin/.claude/commands/reticle.md');
+  });
+
+  /**
+   * `.reticle.json` is read from the CWD by the CLI and by `reticle mcp` — the agent's CWD, which
+   * after a redirect is the repo root and not the app. Reported from the field: the app was wired on
+   * a non-default port, the root had no config, so `reticle mcp` fell back to 4400 and would have
+   * listed ANOTHER project's tabs while the wired app sat unseen. Written in both places: the app
+   * dir is where a human standing in the app runs `reticle status`, the root is where the agent is.
+   */
+  it('writes .reticle.json at the agent root as well — that is where `reticle mcp` reads it', () => {
+    const io = memoryIo(NESTED, { mcpExists: true });
+    runInit(OPTS, io);
+    const written = Object.keys(io.written).map((p) => p.replace(/\\/g, '/'));
+    expect(written).toContain('/app/.reticle.json');
+    expect(written).toContain('src/admin/.reticle.json');
+    // The same identity in both, or the daemon scopes sessions to a project the app never claims.
+    expect(io.written['/app/.reticle.json']).toBe(io.written['src/admin/.reticle.json']);
   });
 
   it('and the agent rule with it — CLAUDE.md is read at the repo root, not in the app', () => {

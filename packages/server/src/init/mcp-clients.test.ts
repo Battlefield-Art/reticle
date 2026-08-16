@@ -166,6 +166,42 @@ describe('idempotency, and the difference between "already right" and "not ours"
     const result = mergeClientConfig(clientSpec(McpClient.CURSOR), existing);
     expect(result.status).toBe(ClientMergeStatus.APPLY);
   });
+
+  /**
+   * The wrong @reticlehq package is a WRONG registration, not a user's choice — every JSON client,
+   * not just the one it was reported on. `@reticlehq/core` has no `mcp` bin, so the client shows the
+   * server errored with zero tools while `init` reports it already wired.
+   */
+  for (const id of [McpClient.CURSOR, McpClient.WINDSURF, McpClient.GEMINI, McpClient.VSCODE]) {
+    it(`${id}: an entry naming the wrong @reticlehq package is rewritten, not reported wired`, () => {
+      const spec = clientSpec(id);
+      const existing = JSON.stringify({
+        [spec.serversKey]: {
+          [MCP_SERVER_NAME]: { command: 'npx', args: ['@reticlehq/core', 'mcp'] },
+        },
+      });
+      const result = mergeClientConfig(spec, existing);
+      expect(result.status).toBe(ClientMergeStatus.APPLY);
+      expect(result.content).not.toContain('@reticlehq/core');
+      expect(result.content).toContain('@reticlehq/server');
+    });
+  }
+
+  it('opencode: the same wrong package inside its command ARRAY is rewritten too', () => {
+    const spec = clientSpec(McpClient.OPENCODE);
+    const existing = JSON.stringify({
+      [spec.serversKey]: {
+        [MCP_SERVER_NAME]: {
+          type: 'local',
+          command: ['npx', '@reticlehq/core', 'mcp'],
+          enabled: true,
+        },
+      },
+    });
+    const result = mergeClientConfig(spec, existing);
+    expect(result.status).toBe(ClientMergeStatus.APPLY);
+    expect(result.content).not.toContain('@reticlehq/core');
+  });
 });
 
 describe('codex', () => {
