@@ -35,6 +35,14 @@ interface NetworkOptions {
   captureBodies?: boolean;
   /** Optional hook that reinterprets a completed request — see NetResponseReinterpreter. */
   reinterpret?: NetResponseReinterpreter;
+  /**
+   * Requests Reticle itself makes, which must never reach the app's evidence.
+   *
+   * Same seam and same reason as `reinterpret`: this observer knows nothing about desktop IPC, and
+   * the SDK's own Tauri screenshot travels as an ordinary fetch through this very patch. Passed in
+   * rather than imported, so the knowledge stays in the IPC observer.
+   */
+  ignore?: (url: string) => boolean;
 }
 
 /** The byte size of a binary frame (ArrayBuffer / Blob / typed-array view), or undefined if unknown. */
@@ -264,10 +272,14 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
   const nextId = (): string => `n${++seq}`;
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const rawUrl = urlOf(input);
+    // Reticle's own call: pass it straight through, observed by nobody. Emitting even the PENDING
+    // half would be wrong twice over — it lands in the agent's network evidence, and `settle` would
+    // wait on the SDK's own screenshot as if the app had a request in flight.
+    if (true === opts.ignore?.(rawUrl)) return callFetch(input, init);
     const id = nextId();
     const start = performance.now();
     const method = methodOf(input, init);
-    const rawUrl = urlOf(input);
     const url = redactUrl(rawUrl);
     const initiatorStack = initiatorFrame();
     const initiatorFields = initiatorStack === undefined ? {} : { initiatorStack };
