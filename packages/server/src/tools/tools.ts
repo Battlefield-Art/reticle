@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { QueryBy, ReticleCommand, SnapshotMode } from '@reticlehq/core';
+import { NoSessionAction, QueryBy, ReticleCommand, SnapshotMode } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { withSizeCost } from '../session/output-budget.js';
 import { applySnapshotDelta, SnapshotCache } from './snapshot-delta.js';
@@ -96,6 +96,17 @@ const RAW_TOOLS: ToolDef[] = [
         .describe(
           'Present ONLY when `sessions` is empty: why nothing is connected, and the next action that fixes it. An empty list is never the end of the road — read this before concluding the app cannot be driven.',
         ),
+      next_action: z
+        .object({
+          action: z.nativeEnum(NoSessionAction),
+          command: z.string().optional(),
+          port: z.number().optional(),
+          reason: z.string(),
+        })
+        .optional()
+        .describe(
+          "Present ONLY when `sessions` is empty: the same answer as `why`, executable. `command` is the LITERAL command to run, sourced from this project's own package.json scripts and lockfile — it is absent, never guessed, when the project declares no dev script. `action` is one of start_dev_server | run_init | open_app | reopen_app.",
+        ),
     },
     handler: async (deps) => {
       const provider = deps.realInput;
@@ -113,7 +124,14 @@ const RAW_TOOLS: ToolDef[] = [
       // rather than only when a later tool fails for want of a session.
       if (0 === sessions.length) {
         const why = deps.sessions.noSessionHint();
-        return { sessions, ...(why === undefined ? {} : { why }) };
+        // The executable half. `why` is for the human reading the transcript; this is the one the
+        // agent acts on, so it never has to parse a paragraph to find a command inside it.
+        const next = deps.sessions.noSessionNextAction();
+        return {
+          sessions,
+          ...(why === undefined ? {} : { why }),
+          ...(next === undefined ? {} : { next_action: next }),
+        };
       }
       return { sessions };
     },

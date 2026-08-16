@@ -5,6 +5,7 @@ import {
 } from '../input/driven-redaction.js';
 import { Session, type SessionInfo } from './session.js';
 import { AttachmentHistory } from './attachment-history.js';
+import type { NoSessionNextAction } from './no-session-next-action.js';
 
 /**
  * The agent's active project, used to scope auto-selection. `projectId` is the stable build-stamped
@@ -200,6 +201,23 @@ export class SessionManager {
    */
   noSessionHint(): string | undefined {
     return this.#noSessionHint?.();
+  }
+
+  /**
+   * The same diagnosis with the prose taken out — one action kind and one literal command.
+   *
+   * Separate from the hint rather than folded into it because the two have different consumers and
+   * different lifetimes: `resolve` throws an Error, which can only ever carry a string, while
+   * `reticle_sessions` returns a structured payload an agent can branch on without parsing English.
+   */
+  #noSessionNextAction: (() => NoSessionNextAction | undefined) | undefined;
+
+  setNoSessionNextAction(next: (() => NoSessionNextAction | undefined) | undefined): void {
+    this.#noSessionNextAction = next;
+  }
+
+  noSessionNextAction(): NoSessionNextAction | undefined {
+    return this.#noSessionNextAction?.();
   }
 
   /** Whether any session has connected since this daemon booted — half the diagnosis. */
