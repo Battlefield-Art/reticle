@@ -115,6 +115,20 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
         res.end('not found');
         return;
       }
+      // A state-changing route must require a content type that a browser cannot send without a
+      // preflight. `text/plain`, `application/x-www-form-urlencoded` and `multipart/form-data` make
+      // a POST a CORS SIMPLE request: the browser sends it cross-origin with no preflight, and
+      // blocking the response afterwards does not un-drive the browser. Since loopback origins are
+      // authorized here by design, any page on any localhost port could otherwise reach this route
+      // by guessing ours, and drive a browser to a URL it chose.
+      //
+      // Requiring `application/json` forces a preflight, which the browser will not complete without
+      // our opt-in, and we do not opt in. One header check closes the whole class.
+      if (!isJsonRequest(req)) {
+        res.writeHead(415, { 'Content-Type': 'text/plain' });
+        res.end('expected content-type: application/json');
+        return;
+      }
       const provider = driveProvider;
       readBody(req)
         .then(async (body) => {
@@ -266,6 +280,23 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
 const MAX_DRIVE_BODY_BYTES = 8 * 1024;
 
 /** Collect a request body, refusing one too large to be what this route accepts. */
+/**
+ * Is this a request a cross-origin page could NOT have sent without a preflight?
+ *
+ * The three CORS "simple" content types are the whole attack surface here, so anything that is not
+ * JSON is refused rather than sniffed. Parameters are allowed (`application/json; charset=utf-8`)
+ * because real clients send them.
+ */
+const JSON_MEDIA_TYPE = 'application/json';
+
+function isJsonRequest(req: http.IncomingMessage): boolean {
+  // Read through the typed accessor rather than indexing the header bag: the index signature is
+  // `any`-shaped, and narrowing after an unsafe read is narrowing a lie.
+  const value = req.headersDistinct['content-type']?.[0];
+  if (undefined === value) return false;
+  return JSON_MEDIA_TYPE === value.split(';')[0]?.trim().toLowerCase();
+}
+
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = '';

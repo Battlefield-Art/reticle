@@ -208,6 +208,43 @@ describe('POST /drive', () => {
     expect(seen).toEqual(['http://localhost:5173']);
   });
 
+  /**
+   * `text/plain`, `application/x-www-form-urlencoded` and `multipart/form-data` are the three CORS
+   * SIMPLE content types: a browser sends them cross-origin with NO preflight. Loopback origins are
+   * authorized here by design, so without a content-type check any page on any localhost port could
+   * guess our port and drive the browser to a URL it chose. Blocking the response afterwards does
+   * not un-drive the browser, which is why this is refused before the body is read.
+   */
+  it.each([
+    'text/plain',
+    'text/plain;charset=UTF-8',
+    'application/x-www-form-urlencoded',
+    'multipart/form-data; boundary=x',
+  ])('refuses a %s POST and never drives', async (contentType) => {
+    shared = createSharedServer();
+    const seen: string[] = [];
+    shared.attachDrive((url) => {
+      seen.push(url);
+      return Promise.resolve({ sessionId: 'lease-1', ready: true });
+    });
+    const port = await listen(shared);
+    const res = await post(port, DRIVE_PATH, JSON.stringify({ url: 'http://evil.example/' }), {
+      'Content-Type': contentType,
+    });
+    expect(res.status).toBe(415);
+    expect(seen, 'the browser must not have been driven').toEqual([]);
+  });
+
+  it('accepts application/json carrying a charset, which real clients send', async () => {
+    shared = createSharedServer();
+    shared.attachDrive(() => Promise.resolve({ sessionId: 'lease-1', ready: true }));
+    const port = await listen(shared);
+    const res = await post(port, DRIVE_PATH, JSON.stringify({ url: 'http://localhost:5173' }), {
+      'Content-Type': 'application/json; charset=utf-8',
+    });
+    expect(res.status).toBe(200);
+  });
+
   it('answers a provider failure as an error field, not a dead socket', async () => {
     // The CLI reads `error` and prints it. A thrown handler that killed the response would leave
     // `drive` hanging on a request that can never answer — the failure mode this whole path exists

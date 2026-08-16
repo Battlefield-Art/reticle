@@ -1,6 +1,7 @@
 import * as http from 'node:http';
 import { localInitializeResponse, isHandshakeLine } from './proxy-handshake.js';
 import { ToolCatalogCache } from './tool-catalog-cache.js';
+import { toolsChangedNotification } from './proxy-handshake.js';
 import * as net from 'node:net';
 import { appendFileSync, mkdirSync, renameSync, statSync, truncateSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -703,6 +704,13 @@ export function startMcpProxy(
         for (const line of replay.replayLines()) forward(url, line);
         clearQueueTimer();
         for (const queued of stdinQueue.splice(0)) forward(url, queued);
+        // The client may be holding a tool list we invented. See toolsChangedNotification.
+        const relist = toolsChangedNotification(toolsAnnouncedLocally);
+        if (relist !== null) {
+          toolsAnnouncedLocally = false;
+          emit(relist);
+          proxyLog('reticle_mcp_proxy_tools_relisted', { port });
+        }
         handshakeAnswered = true;
         return;
       }
@@ -869,6 +877,14 @@ export function startMcpProxy(
     process.stdin.setEncoding('utf8');
     let handshakeAnswered = false;
     /**
+     * True while the client is holding a tool list WE made up rather than one the daemon sent.
+     *
+     * Set when we answer `initialize` locally, cleared the moment we tell the client to re-list. It
+     * is not the same question as `handshakeAnswered`, which is also true after a real daemon
+     * handshake — and a client that already has the daemon's catalog must not be sent chasing it.
+     */
+    let toolsAnnouncedLocally = false;
+    /**
      * Answer a queued `initialize` locally if the daemon has not produced an endpoint in time.
      *
      * Bounded because a hang is the worst outcome available here: no tools, no diagnosis, nothing to
@@ -882,6 +898,9 @@ export function startMcpProxy(
       setTimeout(() => {
         if (handshakeAnswered || postUrl !== null) return;
         handshakeAnswered = true;
+        // The catalog we are about to serve is ours, not the daemon's, so it has to be corrected
+        // the moment a real one exists. See the endpoint handler.
+        toolsAnnouncedLocally = true;
         // Drop the handshake from the queue. Otherwise the daemon, whenever it finally arrives,
         // answers the SAME id a second time and the client sees two responses to one request — a
         // corrupted stream, which is worse than the hang this replaces. The daemon still gets its own
