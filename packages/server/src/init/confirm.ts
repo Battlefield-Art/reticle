@@ -19,9 +19,11 @@
  *    keeps today's cost and today's exit behaviour, and blocking never happens where blocking is
  *    wrong. The signal is the standard "am I being piped" one and needs no argument parsing, which
  *    also keeps `init`'s documented flag surface where it is.
- *  - It never starts anything. Reticle attaches to what is already running and does not manage a
- *    dev server; that rule holds here too. So the honest shape is: confirm the app if it connects,
- *    otherwise name the ONE command that is outstanding and the one that proves it worked.
+ *  - It never starts anything. A dev server started by a long-lived daemon is invisible to the
+ *    person whose machine it runs on and orphans when the daemon exits, so the daemon stays out of
+ *    it — the AGENT starts one, under the guards in agent-rules.ts, because it is attributable and
+ *    stoppable there. So the honest shape here is: confirm the app if it connects, otherwise name
+ *    the ONE command that is outstanding and the one that proves it worked.
  */
 import { InitConfirmation, RETICLE_DEFAULT_PORT } from '@reticlehq/core';
 import type { InitOutcome } from '@reticlehq/core';
@@ -117,8 +119,8 @@ export function confirmationMessage(confirmation: InitConfirmation, port: number
   return (
     '  [⚠] no app has connected yet — the files are written, the page half of the install is not ' +
     'done.\n' +
-    '      Restart your dev server (Reticle attaches to it, it never starts it for you) and load ' +
-    'the app in a browser.\n' +
+    '      Restart your dev server and load the app in a browser — or ask your agent to, which it is ' +
+    'now told to do for you, in the background and with the command from your own scripts.\n' +
     `      ${PROVE_COMMAND} then confirms it, or says exactly why it has not connected.`
   );
 }

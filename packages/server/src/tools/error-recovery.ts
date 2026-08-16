@@ -61,10 +61,12 @@ function isSelfRecovering(message: string): boolean {
 /** The recovery hints, named so they are not free strings and can be asserted in tests. */
 export const RECOVERY = {
   NO_SESSION:
-    'No app is connected to Reticle. Ask the human to start their app in dev with @reticlehq/browser ' +
-    'enabled, then run `reticle status` to confirm a session appears. If the app is running but no ' +
-    'session shows, the SDK is not reaching the bridge — check the dev server is up and using the ' +
-    'configured Reticle port.',
+    "No app is connected to Reticle. If nothing is serving the app, start the project's own dev " +
+    'script (from its package.json) in the BACKGROUND yourself and tell the human in one line that ' +
+    'it is running and how to stop it — never a second server, never a guessed command, never kill ' +
+    'anything. Then run `reticle status` to confirm a session appears. If the app IS running and no ' +
+    'session shows, the SDK is not reaching the bridge — check @reticlehq/browser is loaded in the ' +
+    'page and that both sides use the configured Reticle port.',
   MULTIPLE_SESSIONS:
     'Several tabs are connected. Call reticle_sessions to list them, then pass an explicit sessionId to ' +
     'target the one you mean.',

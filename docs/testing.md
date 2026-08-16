@@ -109,7 +109,7 @@ Because native input was not active. `t.expectInputModeReal()` deliberately skip
 
 ### Does the app need to be running already?
 
-Yes. Reticle is attach-only and never starts your dev server. Boot your app first, then pass its URL as `driveUrl`. If nothing is listening there, `bootSession` opens a headless tab against a URL that serves nothing and no session ever connects.
+Yes. The spec runner is attach-only and never starts your dev server (that is the interactive agent's job, not CI's). Boot your app first, then pass its URL as `driveUrl`. If nothing is listening there, `bootSession` opens a headless tab against a URL that serves nothing and no session ever connects.
 
 ### Can I emit JUnit for my CI's test reporter?
 
