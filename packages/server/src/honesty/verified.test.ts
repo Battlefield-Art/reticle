@@ -333,7 +333,7 @@ describe('every verdict names the clause that decided it', () => {
       pass: true,
       honesty: clean(),
       settled: true,
-      outcomeUnread: true,
+      outcomeUnread: ['POST /api/bulk-hold'],
     },
     [VerifiedReason.UNSETTLED]: { pass: true, honesty: clean(), settled: false },
     [VerifiedReason.PROVED]: { pass: true, honesty: clean(), settled: true },
@@ -353,5 +353,31 @@ describe('every verdict names the clause that decided it', () => {
       Object.values(branches).map((inputs) => decideVerified(inputs).verifiedReason),
     );
     expect([...Object.values(VerifiedReason)].filter((r) => !produced.has(r))).toEqual([]);
+  });
+});
+
+/**
+ * A caveat an agent cannot locate is one it learns to skip. Every other clause in the rule names the
+ * evidence that decided it; this one described a shape ("a write returned 2xx…") and named no write,
+ * so on any page making more than one call the next move was a guess.
+ */
+describe('an unread outcome names the write that decided the verdict', () => {
+  it('puts the method and url in the sentence', () => {
+    const decision = decideVerified({
+      pass: true,
+      honesty: clean(),
+      settled: true,
+      outcomeUnread: ['POST /api/bulk-hold', 'PUT /api/shipments/9'],
+    });
+    expect(decision.verifiedReason).toBe(VerifiedReason.OUTCOME_UNREAD);
+    expect(decision.because).toContain('POST /api/bulk-hold');
+    expect(decision.because).toContain('PUT /api/shipments/9');
+  });
+
+  // Negative control: an empty list is not a caveat. Nothing went unread, so nothing is withheld.
+  it('does not downgrade when no write went unread', () => {
+    expect(
+      decideVerified({ pass: true, honesty: clean(), settled: true, outcomeUnread: [] }).verified,
+    ).toBe(Verified.YES);
   });
 });

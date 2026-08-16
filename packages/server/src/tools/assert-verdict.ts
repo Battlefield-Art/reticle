@@ -2,6 +2,7 @@ import { CaptureLoss } from '@reticlehq/core';
 import type { Predicate } from '../events/predicate.js';
 import type { Session } from '../session/session.js';
 import { findContradictions, type Contradiction } from '../events/contradictions.js';
+import { declaredExpectations } from '../events/declared.js';
 import {
   blindSpotsFromState,
   buildCoverageStatement,
@@ -11,10 +12,10 @@ import {
 } from '../honesty/blind-spots.js';
 import { buildHonestyBlock } from '../honesty/honesty.js';
 import { hasAcceptedWrite } from '../honesty/accepted-write.js';
-import { hasUnreadWriteOutcome } from '../honesty/unread-outcome.js';
+import { unreadWriteLabels } from '../honesty/unread-outcome.js';
 import { decideVerified } from '../honesty/verified.js';
 import { describeWaitTarget } from '../honesty/unsettled.js';
-import { inFlightRequestLabels } from './settle-in-flight.js';
+import { inFlightRequestLabels, repeatedRequestLabels } from './settle-in-flight.js';
 import { gradeOfPredicate } from './assert-grade.js';
 
 /**
@@ -77,8 +78,14 @@ export async function assertVerdict(
   // could show it did. An assert taken over a window that predates the act attributes nothing, and the
   // rule then stays quiet.
   const actCursor = session.lastAct.cursor();
+  // The same declaration the act path reads. `reticle_assert` is the other half of the verdict
+  // surface, and an error path declared here deserves the same answer it gets there — a fix that
+  // lived only on the act path would leave the sibling caller broken.
+  const declared = declaredExpectations(predicate);
   const contradictions = findContradictions(windowEvents, {
     prior,
+    expectedFailures: declared.netFailures,
+    renderProved: pass && declared.rendersContent,
     ...(actCursor !== undefined && actCursor >= since ? { actionSince: actCursor } : {}),
   });
   // Only a spot that IMPEACHES the capture downgrades a verdict. A structural boundary (virtualized
@@ -90,7 +97,7 @@ export async function assertVerdict(
   const gap = transportGapNote(windowEvents);
   const impeachingNotes = [impeaching.note, gap].filter((n): n is string => n !== undefined);
   const outcomePending = hasAcceptedWrite(windowEvents);
-  const outcomeUnread = hasUnreadWriteOutcome(windowEvents);
+  const outcomeUnread = unreadWriteLabels(windowEvents);
   const decision = decideVerified({
     pass,
     ...(inconclusive === undefined ? {} : { inconclusive }),
@@ -109,12 +116,13 @@ export async function assertVerdict(
     }),
     contradictions,
     ...(outcomePending ? { outcomePending } : {}),
-    ...(outcomeUnread ? { outcomeUnread } : {}),
+    ...(outcomeUnread.length > 0 ? { outcomeUnread } : {}),
     // Same detail the act path supplies: this route reaches UNSETTLED through an absence-derived
     // contradiction, and "the window closed before the app finished" is no more actionable here.
     unsettled: {
       waitedFor: describeWaitTarget(predicate),
       stillInFlight: inFlightRequestLabels(windowEvents),
+      repeated: repeatedRequestLabels(windowEvents),
     },
   });
   return { decision: decision as unknown as Record<string, unknown>, contradictions, coverage };

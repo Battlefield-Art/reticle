@@ -48,10 +48,15 @@ interface VerifiedInputs {
    */
   outcomePending?: boolean;
   /**
-   * A write in this window returned 2xx with a payload that was never recorded, so its outcome was
-   * never read. See `hasUnreadWriteOutcome` — the status line describes the transport, not the result.
+   * Writes in this window that returned 2xx with a payload that was never recorded, as "METHOD url",
+   * so their outcome was never read. See `unreadWriteLabels` — the status line describes the
+   * transport, not the result.
+   *
+   * The LABELS rather than a flag: every other clause names the evidence that decided it, and this
+   * one named nothing, so an agent holding the caveat could not tell which call it was about.
+   * Empty means nothing went unread.
    */
-  outcomeUnread?: boolean;
+  outcomeUnread?: readonly string[];
   /**
    * What the wait was for and what the window held when it ended — read ONLY by the two clauses that
    * answer UNSETTLED, which is the commonest reason a verdict comes back `unknown` and was also the
@@ -220,12 +225,13 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   //
   // UNKNOWN, not NO: nothing is known to have failed. The remedy is in the sentence, because an
   // agent that cannot act on a caveat will learn to skip it.
-  if (true === outcomeUnread) {
+  if (outcomeUnread !== undefined && outcomeUnread.length > 0) {
     return {
       verified: Verified.UNKNOWN,
       verifiedReason: VerifiedReason.OUTCOME_UNREAD,
       because:
-        'a write returned 2xx with a response body that was never recorded, so its outcome is unread — a 200 describes the transport, not the result (a batch reports per-item failures in the body, and every GraphQL error is a 200). Enable it where your app calls connect(): `reticle.connect({ captureNetworkBodies: true })`, then re-run',
+        `a write returned 2xx with a response body that was never recorded (${outcomeUnread.join('; ')}), so its outcome is unread` +
+        ' — a 200 describes the transport, not the result (a batch reports per-item failures in the body, and every GraphQL error is a 200). Enable it where your app calls connect(): `reticle.connect({ captureNetworkBodies: true })`, then re-run',
     };
   }
 

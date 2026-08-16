@@ -23,9 +23,14 @@ import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
 import { parsePredicate } from '../events/predicate-parse.js';
 import { causalSummary } from '../capsule/causal-summary.js';
 import { findContradictions } from '../events/contradictions.js';
-import { inFlightRequestLabels, waitForInFlight } from './settle-in-flight.js';
+import {
+  inFlightRequestLabels,
+  repeatedRequestLabels,
+  waitForInFlight,
+} from './settle-in-flight.js';
 import { waitForReaction } from './react-grace.js';
 import { decideVerified } from '../honesty/verified.js';
+import { declaredExpectations } from '../events/declared.js';
 import { readsDomState } from '../honesty/already-true.js';
 import { describeWaitTarget } from '../honesty/unsettled.js';
 import { saveFailedAssertCapsule } from './act-capsule.js';
@@ -40,7 +45,7 @@ import {
   impeachesCapture,
 } from '../honesty/blind-spots.js';
 import { hasAcceptedWrite } from '../honesty/accepted-write.js';
-import { hasUnreadWriteOutcome } from '../honesty/unread-outcome.js';
+import { unreadWriteLabels } from '../honesty/unread-outcome.js';
 import {
   evaluatePredicate,
   waitForPredicate,
@@ -590,16 +595,23 @@ export const ACT_TOOLS: ToolDef[] = [
         //
         // `actionSince` is the window's own floor here, which is the tightest attribution there is —
         // and it is what lets `duplicate-request` claim "one user action was performed" and mean it.
+        // What the caller DECLARED before acting, handed to the detector that would otherwise judge
+        // the window as if nobody had said what they expected. See events/declared.ts.
+        const declared = declaredExpectations(until);
         const contradictions = findContradictions(windowEvents, {
           action: acted,
           prior,
           actionSince: since,
+          expectedFailures: declared.netFailures,
+          // A consequence that was already true before the action proves nothing about it, so it is
+          // not evidence the destination rendered either — `alreadyTrue` decides that, once.
+          renderProved: verdict.pass && !alreadyTrue && declared.rendersContent,
           ...session.lastAct.effect(),
         });
         // The single field an agent reads. Everything below it is the evidence it was derived from;
         // this is the only one that has to be interpreted, and now it interprets itself.
         const outcomePending = hasAcceptedWrite(windowEvents);
-        const outcomeUnread = hasUnreadWriteOutcome(windowEvents);
+        const outcomeUnread = unreadWriteLabels(windowEvents);
         const decision = decideVerified({
           pass: verdict.pass,
           ...(alreadyTrue ? { alreadyTrue } : {}),
@@ -612,7 +624,7 @@ export const ACT_TOOLS: ToolDef[] = [
           honesty,
           contradictions,
           ...(outcomePending ? { outcomePending } : {}),
-          ...(outcomeUnread ? { outcomeUnread } : {}),
+          ...(outcomeUnread.length > 0 ? { outcomeUnread } : {}),
           // `settled` is genuinely optional: a wait that declared no predicate never measured it, and
           // passing `false` there would report "never settled" about something never asked to settle.
           ...(settledOutcome === undefined ? {} : { settled: settledOutcome }),
@@ -622,6 +634,8 @@ export const ACT_TOOLS: ToolDef[] = [
           unsettled: {
             waitedFor: describeWaitTarget(until),
             stillInFlight: inFlightRequestLabels(windowEvents),
+            // The retry loop that leaves nothing outstanding — see repeatedRequestLabels.
+            repeated: repeatedRequestLabels(windowEvents),
           },
         });
         return withControl(session, {

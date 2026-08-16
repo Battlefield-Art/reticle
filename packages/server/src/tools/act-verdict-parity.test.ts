@@ -45,8 +45,25 @@ describe('act_and_wait and assert see the same evidence', () => {
   });
 
   it('act_and_wait still passes the action and its effect — prior is added, not swapped', () => {
-    expect(act).toMatch(/findContradictions\([\s\S]{0,260}action: acted/);
-    expect(act).toMatch(/findContradictions\([\s\S]{0,260}session\.lastAct\.effect\(\)/);
+    expect(act).toMatch(/findContradictions\([\s\S]{0,450}action: acted/);
+    expect(act).toMatch(/findContradictions\([\s\S]{0,450}session\.lastAct\.effect\(\)/);
+  });
+
+  /**
+   * The declaration the caller wrote before acting has to reach the detector on BOTH paths. A fix
+   * that lived only on `act_and_wait` would leave `reticle_assert` — the other half of the verdict
+   * surface — still reporting an expected failure as a contradiction.
+   */
+  it('both paths hand the caller-declared expectations to the contradiction engine', () => {
+    for (const file of [act, assert]) {
+      expect(file).toMatch(/declaredExpectations\(/);
+      expect(file).toMatch(/expectedFailures:/);
+      expect(file).toMatch(/renderProved:/);
+    }
+  });
+
+  it('both paths name what kept the page busy when nothing was left in flight', () => {
+    for (const file of [act, assert]) expect(file).toMatch(/repeated: repeatedRequestLabels\(/);
   });
 
   it('prior is documented as learning material, so nobody later attributes findings to it', () => {

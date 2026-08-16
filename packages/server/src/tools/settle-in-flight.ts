@@ -97,6 +97,40 @@ export function inFlightRequestLabels(
   return labels;
 }
 
+/** Enough to recognise the loop; a busy dashboard must not spend the verdict on a URL list. */
+const MAX_REPEATED = 3;
+/** One call is traffic. Two to the same endpoint inside one window is a repeat. */
+const MIN_REPEATS = 2;
+
+/**
+ * Endpoints called MORE THAN ONCE in this window, busiest first, as "METHOD url ×N".
+ *
+ * The other half of an honest `unsettled`. A retrying query against a dead backend leaves nothing in
+ * flight — every attempt comes back, then the next one fires — so the verdict fell through to "what
+ * kept the page busy was its own churn (a poll, a timer, an animation)", which names three things
+ * and points at none of them. Measured in the field: on an app with a background retry loop
+ * `act_and_wait` could never return a pass, and nothing in the verdict said which endpoint to look
+ * at. This does not judge the repetition — a poll is legitimate — it reports it, which is all an
+ * agent needs to tell "my assertion was wrong" from "this app never quiets".
+ */
+export function repeatedRequestLabels(
+  events: readonly { type: string; data: Record<string, unknown> }[],
+): string[] {
+  const counts = new Map<string, number>();
+  for (const e of events) {
+    if (e.type !== EventType.NET_REQUEST) continue;
+    const method = 'string' === typeof e.data['method'] ? e.data['method'] : 'request';
+    const url = 'string' === typeof e.data['url'] ? e.data['url'] : 'an unreported url';
+    const key = `${method} ${url}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= MIN_REPEATS)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, MAX_REPEATED)
+    .map(([key, count]) => `${key} ×${String(count)}`);
+}
+
 export interface SettleResult {
   /** True when nothing this window started is still outstanding. */
   settled: boolean;
