@@ -18,6 +18,7 @@ import {
   DriveMode,
   decideDriveMode,
   describeAttached,
+  driveForeignHolder,
   driveRaceLost,
   requestDriveSession,
 } from './drive-attach.js';
@@ -46,10 +47,12 @@ async function driveWithHonestConflict(parsed: {
   const presence = await probePresence(parsed.port, { tcpOpen: probeDaemon, status: fetchStatus });
   const mode = decideDriveMode(presence);
   if (DriveMode.REFUSE === mode) {
-    const reason = describePresence(presence, parsed.port, {
-      ourPid: readPid(parsed.port),
-      holderPid: findPortHolder(parsed.port, captureLookup)?.pid,
-    });
+    const reason = driveForeignHolder(
+      describePresence(presence, parsed.port, {
+        ourPid: readPid(parsed.port),
+        holderPid: findPortHolder(parsed.port, captureLookup)?.pid,
+      }),
+    );
     log('reticle_drive_port_conflict', { port: parsed.port, presence, reason });
     process.stderr.write(`${reason}\n`);
     process.exit(1);

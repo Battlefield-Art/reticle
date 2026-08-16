@@ -4,6 +4,7 @@ import {
   DriveMode,
   decideDriveMode,
   describeAttached,
+  driveForeignHolder,
   driveRaceLost,
   readAttachResponse,
   requestDriveSession,
@@ -140,7 +141,12 @@ describe('what the user reads when drive cannot bind', () => {
     expect(message).not.toContain('EADDRINUSE');
   });
 
-  it('a foreign holder keeps the sentence that already explains one', () => {
-    expect(describePresence(PortPresence.FOREIGN, 4400)).toContain('4400');
+  it('a foreign holder keeps the sentence that already explains one, minus a flag drive rejects', () => {
+    const message = driveForeignHolder(describePresence(PortPresence.FOREIGN, 4400));
+    expect(message).toContain('4400');
+    // `--port` is real for serve/status/doctor and rejected outright by drive, so offering it here
+    // is a second dead end at the moment the reader has already hit one.
+    expect(message).toContain('RETICLE_PORT');
+    expect(message).not.toContain('EADDRINUSE');
   });
 });

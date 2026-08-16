@@ -193,6 +193,19 @@ export function describeAttached(port: number, url: string, session: DriveSessio
 }
 
 /**
+ * A stranger holds the port, in words `drive` can honour.
+ *
+ * The shared sentence for a foreign holder offers `--port`, which is true of `serve`, `status` and
+ * `doctor` and false here: `drive` rejects that flag outright and reads the port from the
+ * environment. Sending someone to a flag that does not exist is a second dead end at the moment they
+ * have already hit one, so the route that works is named instead. The shared sentence is passed in
+ * rather than rebuilt, so the description of the holder stays in one place.
+ */
+export function driveForeignHolder(description: string): string {
+  return `${description} \`drive\` takes the port from RETICLE_PORT or .reticle.json, not a flag.`;
+}
+
+/**
  * The port went from free to taken between the probe and the bind.
  *
  * The probe cannot close that window, and the loser of the race learns about it as an EADDRINUSE on
