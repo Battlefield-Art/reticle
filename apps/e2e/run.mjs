@@ -47,6 +47,10 @@ const ORDER = [
   'next-blur-clock-test',
   'status-honesty-test',
   'drive-launch-test',
+  // The other half of drive: what it does when it CANNOT have the port. A daemon on :4400 is the
+  // normal state once an agent has connected, and drive used to die there on a raw EADDRINUSE —
+  // reported twice from the field, both times against the command Reticle itself recommends.
+  'drive-attach-test',
   'spa-nav-realinput-test',
   'visual-test',
   'crawl-test',

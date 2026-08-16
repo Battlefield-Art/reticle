@@ -1,7 +1,7 @@
 import * as http from 'node:http';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { MCP_SSE_PATH, MCP_MESSAGE_PATH, STATUS_PATH } from '@reticlehq/core';
+import { MCP_SSE_PATH, MCP_MESSAGE_PATH, STATUS_PATH, DRIVE_PATH } from '@reticlehq/core';
 import { getSessionMetrics } from './telemetry/session-metrics.js';
 import { noteAgentPeer, PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './version/peer-announce.js';
 import { log } from './log.js';
@@ -26,6 +26,15 @@ export interface SharedServer {
   /** Register the JSON the daemon returns from GET /status (live sessions + health for `reticle status`). */
   attachStatus(provider: () => unknown): void;
   /**
+   * Register the handler behind POST /drive: open a driveable browser at `url` and answer with the
+   * session it registered.
+   *
+   * This is how `reticle drive` stops fighting the daemon for the bridge port. The daemon already
+   * owns the browser plane, so driving is a request to it — see cli/drive-attach.ts. Left
+   * unattached, the route 404s, which is exactly what a newer CLI needs to hear from an older daemon.
+   */
+  attachDrive(provider: (url: string) => Promise<unknown>): void;
+  /**
    * Register a callback fired when the AGENT presence changes — true when the first MCP client (any
    * agent: Codex/OpenCode/Claude/Hermes) connects, false when the last one disconnects. Agent-
    * independent: the MCP connection lives exactly as long as the agent session, so its presence IS
@@ -48,6 +57,7 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
   type McpFactory = () => McpServer;
   let mcpFactory: McpFactory | undefined;
   let statusProvider: (() => unknown) | undefined;
+  let driveProvider: ((url: string) => Promise<unknown>) | undefined;
   let agentPresence: ((connected: boolean) => void) | undefined;
   const transports = new Map<string, SSEServerTransport>();
   const token = options.token;
@@ -79,7 +89,12 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
     const url = new URL(rawUrl, 'http://localhost');
     const path = url.pathname;
 
-    if (path === STATUS_PATH || path === MCP_SSE_PATH || path === MCP_MESSAGE_PATH) {
+    if (
+      path === STATUS_PATH ||
+      path === DRIVE_PATH ||
+      path === MCP_SSE_PATH ||
+      path === MCP_MESSAGE_PATH
+    ) {
       if (!authorized(req, url)) {
         res.writeHead(401, { 'Content-Type': 'text/plain' });
         res.end('unauthorized');
@@ -91,6 +106,38 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
       const body = JSON.stringify(statusProvider?.() ?? { running: true });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(body);
+      return;
+    }
+
+    if ('POST' === req.method && path === DRIVE_PATH) {
+      if (driveProvider === undefined) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('not found');
+        return;
+      }
+      const provider = driveProvider;
+      readBody(req)
+        .then(async (body) => {
+          const url = urlFromDriveRequest(body);
+          if (url === undefined) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            res.end('drive requires a url');
+            return;
+          }
+          // A refusal is an ANSWER. The caller is a foreground CLI waiting on this socket: a thrown
+          // handler that took the response down with it would hang `reticle drive` on a request
+          // that can never complete — the same shape of silence the raw EADDRINUSE bind had.
+          const payload = await provider(url).catch((err: unknown) => ({
+            error: err instanceof Error ? err.message : String(err),
+          }));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(payload));
+        })
+        .catch((err: unknown) => {
+          log('drive_request_error', { error: err instanceof Error ? err.message : String(err) });
+          res.writeHead(500, { 'Content-Type': 'text/plain' });
+          res.end('drive failed');
+        });
       return;
     }
 
@@ -175,6 +222,10 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
     statusProvider = provider;
   }
 
+  function attachDrive(provider: (url: string) => Promise<unknown>): void {
+    driveProvider = provider;
+  }
+
   function attachAgentPresence(cb: (connected: boolean) => void): void {
     agentPresence = cb;
   }
@@ -208,5 +259,38 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
     });
   }
 
-  return { httpServer, attachMcp, attachStatus, attachAgentPresence, close };
+  return { httpServer, attachMcp, attachStatus, attachDrive, attachAgentPresence, close };
+}
+
+/** Cap on a drive request body. A url is short; anything larger is not one. */
+const MAX_DRIVE_BODY_BYTES = 8 * 1024;
+
+/** Collect a request body, refusing one too large to be what this route accepts. */
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk: string) => {
+      body += chunk;
+      if (body.length > MAX_DRIVE_BODY_BYTES) {
+        req.destroy();
+        reject(new Error('body too large'));
+      }
+    });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+/** The `url` out of a drive request body, or undefined when there isn't a usable one. Pure. */
+function urlFromDriveRequest(body: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || null === parsed) return undefined;
+  const url = (parsed as Record<string, unknown>)['url'];
+  return 'string' === typeof url && url.length > 0 ? url : undefined;
 }

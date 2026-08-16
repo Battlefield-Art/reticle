@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { MCP_SSE_PATH, STATUS_PATH } from '@reticlehq/core';
+import { DRIVE_PATH, MCP_SSE_PATH, STATUS_PATH } from '@reticlehq/core';
 import { createSharedServer, type SharedServer } from './http-server.js';
 
 let shared: SharedServer | undefined;
@@ -159,5 +159,89 @@ describe('attachAgentPresence — agent-independent MCP connection presence', ()
     await tick();
     await tick();
     expect(events).toEqual([true, false]); // last agent gone → human's turn
+  });
+});
+
+/**
+ * `reticle drive` asks the daemon that already owns the port for a driveable session instead of
+ * competing with it for the bind — see cli/drive-attach.ts. This is the daemon's half of that.
+ */
+describe('POST /drive', () => {
+  function post(
+    port: number,
+    path: string,
+    body: string,
+    headers: http.OutgoingHttpHeaders = {},
+  ): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port,
+          path,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+        },
+        (res) => {
+          let received = '';
+          res.setEncoding('utf8');
+          res.on('data', (c: string) => (received += c));
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body: received }));
+        },
+      );
+      req.on('error', reject);
+      req.end(body);
+    });
+  }
+
+  it('hands the url to the attached provider and returns its session as JSON', async () => {
+    shared = createSharedServer();
+    const seen: string[] = [];
+    shared.attachDrive((url) => {
+      seen.push(url);
+      return Promise.resolve({ sessionId: 'lease-1', ready: true });
+    });
+    const port = await listen(shared);
+    const res = await post(port, DRIVE_PATH, JSON.stringify({ url: 'http://localhost:5173' }));
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ sessionId: 'lease-1', ready: true });
+    expect(seen).toEqual(['http://localhost:5173']);
+  });
+
+  it('answers a provider failure as an error field, not a dead socket', async () => {
+    // The CLI reads `error` and prints it. A thrown handler that killed the response would leave
+    // `drive` hanging on a request that can never answer — the failure mode this whole path exists
+    // to remove, in a new place.
+    shared = createSharedServer();
+    shared.attachDrive(() => Promise.reject(new Error('could not open http://localhost:5173')));
+    const port = await listen(shared);
+    const res = await post(port, DRIVE_PATH, JSON.stringify({ url: 'http://localhost:5173' }));
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ error: 'could not open http://localhost:5173' });
+  });
+
+  it('rejects a request with no url', async () => {
+    shared = createSharedServer();
+    shared.attachDrive(() => Promise.resolve({ sessionId: 'never', ready: true }));
+    const port = await listen(shared);
+    const res = await post(port, DRIVE_PATH, JSON.stringify({}));
+    expect(res.status).toBe(400);
+  });
+
+  it('is 404 when no drive provider is attached, so an old CLI learns nothing is there', async () => {
+    shared = createSharedServer();
+    const port = await listen(shared);
+    const res = await post(port, DRIVE_PATH, JSON.stringify({ url: 'http://localhost:5173' }));
+    expect(res.status).toBe(404);
+  });
+
+  it('carries the same trust tier as /status — a rebound Host is refused', async () => {
+    shared = createSharedServer();
+    shared.attachDrive(() => Promise.resolve({ sessionId: 'lease-1', ready: true }));
+    const port = await listen(shared);
+    const res = await post(port, DRIVE_PATH, JSON.stringify({ url: 'http://localhost:5173' }), {
+      host: 'evil.com',
+    });
+    expect(res.status).toBe(401);
   });
 });
