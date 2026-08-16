@@ -502,19 +502,6 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
 
   const reaper = new SessionReaper(bridge.sessions);
   reaper.start();
-  // Scope auto-selection to the active project (from .reticle.json) so a stray tab from another app is
-  // never picked when the agent omits a sessionId. Explicit per-call scope/sessionId still overrides.
-  // Scope + the no-session diagnosis: "no browser session connected" is the error that ends most
-  // sessions, and the agent is told to check two things it cannot see. See no-session-diagnosis.ts.
-  // The pool reader is passed lazily: `pool` is assigned above but may be undefined when this
-  // daemon runs without one, and the diagnosis must degrade to the tab message rather than lie.
-  wireSessionScope(
-    bridge.sessions,
-    readProjectId(process.cwd()),
-    port,
-    () => pool?.reapedLeaseCount() ?? 0,
-  );
-
   const { realInput, owned } = await resolveRealInput(
     options,
     () => shared.close(),
@@ -533,6 +520,20 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   const pool = createBrowserPool(options.headless ?? true);
   const leaseReaper = new LeaseReaper(pool);
   leaseReaper.start();
+  // Scope auto-selection to the active project (from .reticle.json) so a stray tab from another app is
+  // never picked when the agent omits a sessionId. Explicit per-call scope/sessionId still overrides.
+  // Scope + the no-session diagnosis: "no browser session connected" is the error that ends most
+  // sessions, and the agent is told to check two things it cannot see. See no-session-diagnosis.ts.
+  // Ordered AFTER the pool: the watch may open a browser itself the moment it finds a listening dev
+  // server for a wired project (see no-session-watch.ts), and it opens it through the pool — the same
+  // path reticle_lease takes, in this process, binding nothing.
+  wireSessionScope(
+    bridge.sessions,
+    readProjectId(process.cwd()),
+    port,
+    () => pool.reapedLeaseCount(),
+    (url) => pool.acquire(url),
+  );
   const deps = {
     sessions: bridge.sessions,
     pool,

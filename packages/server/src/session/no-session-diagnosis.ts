@@ -220,7 +220,10 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
       return (
         'no browser session connected. Two things to weigh, and neither of them is proof. ' +
         `(1) Nothing is listening on the ports Reticle scans (${SCANNED_PORTS}), so the dev server ` +
-        'may not be running — ask the human to start it (`npm run dev`). That scan is narrow ' +
+        'may not be running — START IT YOURSELF, in the background, using the command in ' +
+        "`next_action` (it is read from this project's own scripts; if there is none, that field " +
+        'says so and you should ask rather than guess). Tell the human in one line that it is ' +
+        'running. That scan is narrow ' +
         'though: a server on any other port is invisible to it, so if the app IS running, ask for ' +
         'its URL rather than assuming it is down, and open it with `reticle open <url>`. ' +
         `(2) There is no \`.reticle.json\` in ${where}. That is the ` +
@@ -234,7 +237,9 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
       `no browser session connected, and this daemon has never seen one. ${OPEN_THE_APP} ` +
       'Nothing is listening on the ports Reticle scans ' +
       `(${SCANNED_PORTS}) either, and the most common reason for that is a dev server that is not ` +
-      'running: ask the human to start it (`npm run dev`), then open the app in a browser. ' +
+      'running: start it yourself in the background with the command in `next_action` — it is read ' +
+      "from this project's own scripts, and says so rather than guessing when there is none — tell " +
+      'the human in one line that it is running, then open the app in a browser. ' +
       // The caveat is here rather than omitted because the scan is NARROW, and the old sentence
       // spent its confidence as though an empty result were proof of absence. Reported twice: a
       // scripted drive of 2.5.0 asserted the app was not running while it served 200 on :7699, and

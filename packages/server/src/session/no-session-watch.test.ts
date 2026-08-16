@@ -38,6 +38,7 @@ function stubSessions(): { manager: SessionManager; hint: () => string } {
     setNoSessionHint: (hint: (() => string | undefined) | undefined) => {
       installed = hint;
     },
+    setNoSessionNextAction: () => undefined,
   } as unknown as SessionManager;
   return { manager, hint: () => installed?.() ?? '' };
 }
