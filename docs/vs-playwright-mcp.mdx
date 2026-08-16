@@ -1,5 +1,5 @@
 ---
-title: Reticle vs Playwright MCP: outside in, inside out
+title: 'Reticle vs Playwright MCP: outside in, inside out'
 sidebarTitle: vs Playwright MCP
 description: Playwright MCP drives any website from the outside. Reticle verifies an app you own from the inside. They solve different problems, and they compose.
 icon: masks-theater
@@ -49,7 +49,7 @@ This is not a courtesy section. There are real cases where Playwright is the cor
 - **Assert on the app's own success signal.** When your app emits `auth:granted`, Reticle can require that exact signal. Playwright can check that a DOM element appeared, which a mock also does.
 - **Read application state.** `stateDiffs` shows `auth` moving from `null` to a real user. A POST that returns `200` without touching state is caught here and nowhere else.
 - **Map a DOM node to source.** `src/components/Login.tsx:81`, via the React fiber tree. Playwright can tell you the selector; it cannot tell you the file.
-- **Grade its own evidence.** Every verdict reports `honesty.grade`: `presence`, `state` or `signal`. Plus whether the capture was clean and complete.
+- **Grade its own evidence.** Every verdict reports `honesty.grade`: `presence`, `state`, `net` or `signal`, weakest to strongest. Plus whether the capture was clean and complete.
 - **Say "unknown".** Reticle distinguishes "did not happen" from "I could not tell". That third state is the difference between a check and a coin flip.
 
 ## The false-green case
@@ -83,3 +83,43 @@ Reticle also has a driven mode (`reticle drive`) that provides real CDP input an
     that looks fine.
   </Card>
 </CardGroup>
+
+## FAQ
+
+<AccordionGroup>
+
+<Accordion title="Can I use Reticle and Playwright MCP at the same time?">
+  Yes, and it is a common setup. They are separate MCP servers with separate tool namespaces, so
+  nothing collides. Drive with Playwright where it is stronger (a third-party OAuth hop, a
+  cross-browser pass, a genuine pixel diff) and assert with Reticle where the question is "did my
+  app actually do the thing".
+</Accordion>
+
+<Accordion title="Does Reticle work on a site I do not own?">
+  No. Reticle reads the program from inside the page, which requires a dev-only SDK in the app. No
+  SDK, no Reticle. That is the single hardest boundary between these two tools, and it is why
+  Playwright MCP is the right answer for anything you cannot instrument.
+</Accordion>
+
+<Accordion title="Is Reticle actually cheaper, or only on the pages you chose?">
+  On a full-tree-vs-full-tree comparison the gap is modest, roughly 1.8x. The large gap comes from
+  not needing the full tree: Playwright MCP's primary perception primitive returns the accessibility
+  tree, Reticle's answers a specific question. On a small page both are cheap. On the real
+  production dashboard measured here Reticle was about 2.1x leaner. Force Reticle to dump the whole
+  page every step and you save very little.
+</Accordion>
+
+<Accordion title="Does Reticle support Firefox or WebKit?">
+  Not meaningfully. The always-on in-page SDK is browser-agnostic, but the driven paths that provide
+  real pointer input and screenshots go through CDP and are Chromium-oriented. If cross-browser is a
+  requirement, that is a Playwright job.
+</Accordion>
+
+<Accordion title="Do I have to give up my existing Playwright suite?">
+  No, and you should not. A scripted Playwright or Cypress suite is what gates your releases.
+  Reticle is the in-loop check while an agent is coding and the safety net for the flows nobody ever
+  got round to automating. Your existing `data-testid` attributes work in Reticle unchanged, so the
+  two share the same anchors.
+</Accordion>
+
+</AccordionGroup>

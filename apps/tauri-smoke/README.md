@@ -25,7 +25,7 @@ reticle_network {status:500} → ipc://archive_todo  status 500
                                 "archive is not implemented in the backend"
 ```
 
-See [docs/desktop-apps.md](../../docs/desktop-apps.md).
+See [docs/desktop.mdx](../../docs/desktop.mdx).
 
 ## The Reticle wiring
 

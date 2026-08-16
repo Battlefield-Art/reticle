@@ -1,11 +1,13 @@
 ---
-title: Predicate reference: the grammar of green
+title: 'Predicate reference: the grammar of green'
 sidebarTitle: Predicates
 description: The grammar for declaring what should be true. Every kind, every field, and which ones actually prove something.
 icon: filter
 ---
 
-A predicate declares what should be true. It is the argument to `until` on [`reticle_act_and_wait`](/tools-act-and-wait), and to `predicate` on [`reticle_assert`](/tools-assert) and [`reticle_wait_for`](/tools-wait-for).
+A predicate declares what should be true, as `{ kind, ...fields }`. Reticle has twelve kinds: `signal`, `state`, `net`, `route`, `element`, `text`, `console`, `animation`, `settled`, and the combinators `allOf`, `anyOf` and `not`. Which one you pick decides whether a green means anything.
+
+It is the argument to `until` on [`reticle_act_and_wait`](/tools-act-and-wait), and to `predicate` on [`reticle_assert`](/tools-assert) and [`reticle_wait_for`](/tools-wait-for).
 
 Every predicate is `{ kind, ...fields }`.
 
@@ -31,6 +33,8 @@ Take the advice. `element` and `text` are convenient and weak; `signal`, `state`
 | `route`            | medium    | Navigation happened                                    |
 | `console`          | medium    | Something logged, or nothing did                       |
 | `element` / `text` | weak      | Something rendered. A mock renders too                 |
+| `animation`        | weak      | An animation ran or finished                           |
+| `settled`          | timing    | The page went quiet. A precondition, not a proof       |
 
 ## The leaves
 
@@ -54,7 +58,7 @@ Add `"absent": true` to assert something is **gone**. The predicate for a remova
 { "kind": "text", "contains": "Saved successfully", "visible": true }
 ```
 
-Both `contains` and `value` are accepted. `absent: true` asserts the text is not present.
+`contains` is the field the published schema declares. `value` and `text` are accepted as aliases and rewritten to it. `absent: true` asserts the text is not present, and `visible: true` requires it to be on screen rather than merely in the DOM.
 
 ### net
 
@@ -76,7 +80,19 @@ The one that catches the expensive bug:
 { "kind": "route", "pathname": "/success" }
 ```
 
-`contains` also works.
+`pathname` matches the path exactly. `contains` matches anywhere in the whole route, path, query and fragment together. `path` is accepted as an alias for `pathname`, and `url` and `urlContains` as aliases for `contains`, but the canonical spellings are the ones above.
+
+A passing route verdict quotes the transition itself:
+
+```json
+"evidence": {
+  "from": "http://localhost:4310/",
+  "to": "http://localhost:4310/deployments",
+  "pathname": "/deployments",
+  "search": "",
+  "hash": ""
+}
+```
 
 <Warning>
   `route` asserts the route **changed**. Asserting the route you are already on always fails, and
@@ -115,7 +131,35 @@ Walks a dot-path, with numeric array indices. `equals` takes a literal, or an op
 | `$contains`               | substring or array membership |
 | `$length`                 | collection size               |
 
-Omit `equals` entirely to assert presence.
+Omit `equals` entirely to assert presence. A real `$length` check against this fixture:
+
+```json
+{ "kind": "state", "store": "app", "path": "deployments", "equals": { "$length": 40 } }
+```
+
+```json
+{
+  "verified": "yes",
+  "because": "assertion held at state grade over a clean capture with no channel disagreeing",
+  "pass": true,
+  "evidence": { "store": "app", "path": "deployments", "value": ["{…11 keys}", "…"] }
+}
+```
+
+Note `grade: state` in the `because` line, and that the evidence collapses each row to a size marker rather than returning forty objects.
+
+A miss quotes the real value back at you:
+
+```json
+{
+  "pass": false,
+  "failureReason": "state 'deployments.0.status' is \"queued\", expected \"live\"",
+  "observed": "deployments.0.status = \"queued\"",
+  "expected": "deployments.0.status = \"live\"",
+  "assertion": "state.equals",
+  "evidence": { "store": "app", "path": "deployments.0.status", "value": "queued" }
+}
+```
 
 `store` is optional. Leave it out and the path picks the store: if exactly one registered store exposes it, that one is read. Registering several is normal, so this is the common case rather than a shortcut. Name a store when two of them genuinely expose the same path, which is the only situation Reticle cannot resolve on its own. If no store exposes it, that is a failure rather than a question, and the miss names the stores it searched.
 
@@ -126,6 +170,16 @@ This is the predicate that catches a UI-versus-store desync. A deploy that only 
 ```json
 { "kind": "animation", "name": "dialog-in", "completed": true }
 ```
+
+`target` narrows it to one element. `completed: false` matches an animation that is still running.
+
+### settled
+
+```json
+{ "kind": "settled", "quietMs": 500 }
+```
+
+Network and DOM idle. This is the deterministic replacement for a fixed sleep, not a proof of anything: combine it with a real consequence rather than asserting it alone. Omitting `until` on [`reticle_act_and_wait`](/tools-act-and-wait) waits for exactly this.
 
 ## Combinators
 
@@ -149,19 +203,34 @@ This is the predicate that catches a UI-versus-store desync. A deploy that only 
 A combinator needs its own `kind`, and the children go in `predicates`. A bare
 `{ "allOf": [ … ] }` does not parse, and neither does `{ "kind": "allOf", "allOf": [ … ] }`.
 
-Reticle refuses the call rather than running half of it: _"Nothing ran, the predicate was not evaluated, so no verdict was produced."_ Better to be told than to get a green from an assertion that never executed.
+Reticle refuses the call rather than running half of it. The real refusal names the field, the fix and the consequence: _"predicates: Required; unknown field allOf. Nothing ran, the predicate was not evaluated, so no verdict was produced. allOf accepts: predicates."_ Better to be told than to get a green from an assertion that never executed.
 
 </Warning>
 
 `allOf` is the workhorse. "The signal fired **and** exactly one request went out **and** the console stayed clean" is a genuinely strong check, and it is one call.
 
-Each child reports its own evidence:
+Each child reports its own evidence, in order. That is a real verdict for exactly the `allOf` above:
 
 ```json
 "evidence": [
   { "name": "auth:granted", "data": { "email": "admin@reticle.dev" } },
   { "matched": 1 },
   { "absent": true }
+]
+```
+
+On a failure each child reports separately too, so you can see which one broke:
+
+```json
+"evidence": [
+  {
+    "pass": false,
+    "expected": "an element matching {\"role\":\"dialog\"} in state 'visible'",
+    "observed": "no matching element on the page",
+    "assertion": "element.present",
+    "evidence": { "presentTestids": ["deploy-table", "filter-search", "env-filter"] }
+  },
+  { "pass": true, "evidence": { "absent": true } }
 ]
 ```
 

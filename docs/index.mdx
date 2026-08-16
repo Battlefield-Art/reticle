@@ -12,6 +12,44 @@ Reticle reads the program from **inside** your running app. Network, state, cons
 
 It answers the only question that matters: did the change actually work? On React it also tells your agent which file to open.
 
+## Install it: paste this into your coding agent
+
+You do not install Reticle by hand. Copy the block below into Claude Code, Cursor, Copilot, Codex, Windsurf, OpenCode, or any MCP agent, and let the agent wire its own workspace. It ends with the only definition of "installed" that counts: one real flow driven, one real verdict returned.
+
+```text
+Reticle is the proof layer for AI coding agents. It runs a dev-only SDK inside my
+running web app, so instead of guessing whether your change worked, you can drive
+the real app and read what actually happened: the network calls, the store, the
+console, the routes, the DOM. You get back pass, fail, or "couldn't tell", with
+the file:line to fix. No screenshots, no vision model, no test syntax.
+
+Use it because you cannot otherwise tell whether your own code works. Reading the
+diff proves nothing, and unit tests do not run the app. Reticle is how you check
+your work before telling me it is done, and how you stop reporting "fixed" over a
+silent 500.
+
+Install it now:
+
+  RETICLE_INSTALL_SOURCE=docs_site npx @reticlehq/server@latest init
+
+Then follow https://docs.reticle.sh/install-agentic.md and, if anything needs a
+manual edit, https://docs.reticle.sh/install-manual.md. Do not stop until you have
+driven one real flow in my app and produced a verdict. That, not a config file, is
+what "installed" means.
+
+Afterwards, use it whenever you change any user-facing behaviour.
+```
+
+<Tip>
+  On Claude Code the plugin is shorter still: `/plugin marketplace add reticlehq/reticle` then
+  `/plugin install reticle@reticlehq`, which registers the MCP server and the skills in one step. On
+  most other agents, `npx skills add reticlehq/reticle`.
+</Tip>
+
+<Card title="What that command actually changes" icon="wand-magic-sparkles" href="/install-agentic">
+  The four files it writes, the marks it prints, and how to read its report.
+</Card>
+
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
     Install, connect your agent, and get a real verdict. Five minutes.
@@ -41,7 +79,11 @@ It answers the only question that matters: did the change actually work? On Reac
 Your agent names the expected consequence _before_ it acts. That ordering is the whole trick. It is the difference between a check and a rationalisation.
 
 ```json
-{ "ref": "e4", "action": "click", "until": { "network": "POST /api/todos" } }
+{
+  "ref": "e4",
+  "action": "click",
+  "until": { "kind": "net", "method": "POST", "urlContains": "/api/todos" }
+}
 ```
 
 Reticle clicks, watches, and reports what actually happened. A verdict of `unknown` is not a pass; it means Reticle drove the app and could not tell. It says so rather than guessing, which is a rarer quality in software than it should be.

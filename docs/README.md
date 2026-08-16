@@ -49,8 +49,7 @@ Everything here is published to [docs.reticle.sh](https://docs.reticle.sh) by `d
 | [for-agents.md](for-agents.md) | how to fetch these docs as Markdown or `llms.txt` |
 | [architecture.md](architecture.md) | how it works, and why it is built this way |
 | [platform-integration.md](platform-integration.md) | Vite, Next, Remix, Astro, plain HTML |
-| [desktop.mdx](desktop.mdx) | why desktop is different, and what only Reticle does there |
-| [desktop-apps.md](desktop-apps.md) | Electron and Tauri, in full |
+| [desktop.mdx](desktop.mdx) | Electron and Tauri in full: setup, IPC, screenshots, headless, troubleshooting |
 | [frameworks.mdx](frameworks.mdx) | what is supported, what is wired-but-unverified, and the wiring |
 | [state-management.mdx](state-management.mdx) | zustand, Redux, and eight adapters |
 | [instrumentation.mdx](instrumentation.mdx) | stores, signals, testids, and how verdicts get stronger |

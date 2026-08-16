@@ -80,3 +80,44 @@ Neither tool forbids the other. A reasonable setup:
     handlers, double submits, silent validation.
   </Card>
 </CardGroup>
+
+## FAQ
+
+<AccordionGroup>
+
+<Accordion title="Which two bugs did Chrome DevTools MCP miss?">
+  The ones where the page is fine and the program is not: a mutation that never reached the store,
+  and a success handler that fired for the wrong reason. DevTools MCP is DOM-and-network only, so it
+  can describe what the page looks like and what it requested, but it cannot ask the application
+  what it believes. There is nothing in the DOM or the network log that separates those cases from
+  working code.
+</Accordion>
+
+<Accordion title="If DevTools MCP is cheaper, why not just use it?">
+  Because it is cheaper partly by looking at less. Cost per look is half a metric; the other half is
+  whether the look catches the bug. Verification Efficiency combines them and gates on catching
+  every bug with zero false alarms, and on that measure Reticle leads 12.27 to 10.55. The 7%
+  per-look advantage also inverts on a real app: on the production dashboard measured here DevTools'
+  snapshot was 1,105 tokens against Reticle's 678.
+</Accordion>
+
+<Accordion title="Can I run both MCP servers at once?">
+  Yes. They are independent servers with distinct tool names. A reasonable split is DevTools MCP for
+  performance traces, deep Chrome internals and real screenshots, and Reticle for the verify loop
+  and the source pointer.
+</Accordion>
+
+<Accordion title="Do I have to instrument my app to use Reticle?">
+  You have to add the dev-only SDK, which is what `npx @reticlehq/server init` does. Beyond that,
+  look, act and observe work with zero component changes. Signals and registered stores are
+  optional, and they are what buys the assertions DevTools MCP structurally cannot make. If
+  instrumenting is off the table entirely, DevTools MCP is the correct choice.
+</Accordion>
+
+<Accordion title="Does Reticle give me performance traces?">
+  Not in the way Chrome's own tooling does, and it does not pretend to. It can tell you a React
+  render storm is happening (commit rate climbing with no DOM mutation), which DevTools MCP does not
+  surface. For flame charts and deep tracing, use Chrome's.
+</Accordion>
+
+</AccordionGroup>

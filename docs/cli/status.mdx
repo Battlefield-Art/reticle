@@ -22,23 +22,47 @@ One JSON line on stdout. Real capture, daemon up and no app connected:
 
 ```json
 {
-  "t": "2026-08-14T19:38:37.737Z",
+  "t": "2026-08-15T18:43:33.724Z",
+  "event": "reticle_status",
+  "port": 4499,
+  "running": true,
+  "pid": 78137,
+  "sessionCount": 0,
+  "sessions": [],
+  "why": "no browser session connected. Two things to weigh, and neither of them is proof. (1) Nothing is listening on the ports Reticle scans (3000, 3001, 4200, 4321, 5000, 5173, 5174, 8000, 8080, 8100, 9000, 1420, 3100, 4173, 5175, 7860, 8501), so the dev server may not be running ... (2) There is no `.reticle.json` in the directory this daemon is running in ..."
+}
+```
+
+With an app connected, `why` is absent and each session carries its own fields:
+
+```json
+{
+  "t": "2026-08-15T18:45:58.190Z",
   "event": "reticle_status",
   "port": 4400,
   "running": true,
-  "pid": 4795,
-  "sessionCount": 0,
-  "sessions": [],
-  "why": "no browser session connected. Two things to weigh, and neither of them is proof. (1) Nothing is listening on the ports Reticle scans ... (2) There is no `.reticle.json` in the directory this daemon is running in ..."
+  "pid": 72698,
+  "sessionCount": 1,
+  "sessions": [
+    {
+      "sessionId": "s223e0fad-e012-43f9-a23d-6d585470c90d",
+      "url": "http://localhost:4310/",
+      "throttled": false,
+      "stale": false,
+      "pendingMarks": 0
+    }
+  ]
 }
 ```
+
+Both are one line of JSON in the terminal, pretty-printed here, with `why` trimmed at the ellipses.
 
 | Field | Meaning |
 | --- | --- |
 | `running` | Whether a usable daemon owns the port |
 | `presence` | Present when the pid file is dead: `daemon`, `foreign`, or `absent`. The port is asked, not just the pid file |
 | `pid` | The daemon process |
-| `sessionCount` / `sessions` | Connected app sessions, each with `sessionId`, `url`, `throttled`, `stale` |
+| `sessionCount` / `sessions` | Connected app sessions, each with `sessionId`, `url`, `throttled`, `stale`, `pendingMarks` |
 | `why` | Present when zero sessions connected. Names the two likely causes and refuses to assert either |
 | `updateAvailable` | Present when a newer server version is on the registry |
 

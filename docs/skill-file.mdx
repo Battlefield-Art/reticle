@@ -1,9 +1,11 @@
 ---
-title: The SKILL file: paste and go
+title: 'The SKILL file: paste and go'
 sidebarTitle: SKILL file
 description: One URL you paste into any coding agent to teach it Reticle. How it works, what it contains, and when you need it at all.
 icon: graduation-cap
 ---
+
+Paste `https://raw.githubusercontent.com/reticlehq/reticle/main/SKILL.md` into any coding agent and say "read this and set up Reticle". The document installs Reticle, wires it into your app, and then drives a proper verification loop, choosing setup mode or test mode itself based on whether `.reticle.json` already exists. You often do not need it: `npx @reticlehq/server init` configures Claude Code and Cursor directly.
 
 `SKILL.md` is a single document you hand to a coding agent. It teaches the agent to install Reticle, wire it into your app, and then drive a verification loop properly. Without you explaining any of it.
 

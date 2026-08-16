@@ -1,5 +1,5 @@
 ---
-title: Packages: what is in the box
+title: 'Packages: what is in the box'
 sidebarTitle: Packages
 description: Every Reticle package. What it does, why it exists, when you actually need it, and what it depends on.
 icon: cubes
@@ -8,9 +8,9 @@ icon: cubes
 Reticle is eleven packages, and most people install two. This page exists so you can tell which two, and so that the ones you skip stop looking mysterious.
 
 <Note>
-  Ten npm packages ship together at the same version, all at **2.8.0**, verified against the
-  registry. The Rust crate is versioned **independently** and is currently **0.1.0**. That is
-  deliberate, not drift.
+  The ten npm packages ship together at one version: whatever `npm view @reticlehq/core version`
+  says, every other `@reticlehq/*` package says too. The Rust crate `reticle-tauri` is versioned
+  **independently**. That is deliberate, not drift.
 </Note>
 
 ## Which ones do I need?
@@ -99,7 +99,7 @@ npx @reticlehq/server mcp
 
 ## @reticlehq/react
 
-**The kit most React users install.** It re-exports the browser sensor. So one install gives you both `reticle` and `registerCapabilities`. And maps a DOM node to its React component and source file through the fiber tree.
+**The kit most React users install.** It re-exports the browser sensor, so one install gives you `reticle`, `registerCapabilities` and everything else, and it maps a DOM node to its React component and source file through the fiber tree.
 
 **Why it exists:** this is the package that turns "the button is broken" into `src/components/Login.tsx:81`. Finding a bug is half the job. Reticle's answer to the other half lives here.
 
@@ -120,7 +120,10 @@ npm i -D @reticlehq/react
 **Depends on:** `@babel/core`, `@reticlehq/babel-plugin`, `@reticlehq/core`. **Peer:** `vite`.
 
 ```ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 import { reticle } from '@reticlehq/vite-plugin';
+
 export default defineConfig({ plugins: [reticle(), react()] });
 ```
 
@@ -174,7 +177,7 @@ module.exports = withReticle({/* your config */});
 
 ## @reticlehq/eslint-plugin
 
-**One rule: state changed, so a signal must fire.**
+**Two rules, the main one being: state changed, so a signal must fire.**
 
 **Why it exists:** signals are the strongest evidence Reticle can use, and they rot the way all conventions rot. Someone adds a mutation, forgets the signal, and every verdict for that flow quietly drops a grade. Nothing breaks. The tests still pass. The evidence just gets weaker.
 
@@ -196,7 +199,7 @@ A lint rule makes the signal layer self-enforcing, which is the only way a conve
 
 ## reticle-tauri
 
-**The Rust crate**, on crates.io, currently **0.1.0**. Versioned independently of the npm packages.
+**The Rust crate**, on crates.io. Versioned independently of the npm packages.
 
 **Why it exists:** Tauri IPC observation needs nothing on the Rust side; an `invoke('load_todos')` already reaches Reticle as `ipc://load_todos`. You only need this crate for screenshots and headless mode.
 
@@ -206,10 +209,10 @@ reticle-tauri = "0.1"
 ```
 
 <Warning>
-  Do not expect this to be `2.7`. Matching the npm version would imply a release cadence the crate
-  does not have, and it would make every npm release a crates.io release for no reason.
+  Do not expect this to match the npm version. Doing so would imply a release cadence the crate does
+  not have, and it would make every npm release a crates.io release for no reason.
 </Warning>
 
-<Card title="Desktop setup in full" icon="display" href="/desktop-apps">
+<Card title="Desktop setup in full" icon="display" href="/desktop">
   Electron and Tauri wiring, including the Tauri CSP whose failure is silent.
 </Card>

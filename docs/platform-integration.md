@@ -4,6 +4,8 @@ description: 'Adopt Reticle on your own codebase, or embed it inside an AI app-b
 icon: plug
 ---
 
+Two ways in. **A team** runs `npx @reticlehq/server init` once and points its coding agent at the MCP server. **A platform** adds the dev-only SDK to its generated-app template, runs `npx @reticlehq/server serve --http --drive <preview-url>` beside each preview, and `POST`s to `/verify` after every generate or edit, gating the ship on `run.verdict.status === 'pass'` and feeding `run.repair.failurePackets[]` back to a fixer agent.
+
 > The one guide for adopting Reticle, both for a team using a coding agent on its own app and for an AI app-builder platform (Lovable / Emergent / Bolt) embedding Reticle in its generation pipeline. Reticle reads the program from _inside_ a running app and returns a **verdict with evidence** ("did it actually work?"), not a screenshot. Enterprise/premium access lives in [`enterprise.md`](./enterprise.md).
 
 ## The loop

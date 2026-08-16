@@ -4,6 +4,8 @@ description: Register any store so Reticle can read what your app believes. Zust
 icon: database
 ---
 
+**Reticle reads any store that has `getState()` and `subscribe()`, which covers Zustand and Redux with no adapter at all. TanStack Query, Pinia, Svelte stores, Jotai, Valtio, MobX, XState and Recoil each have a one-line adapter, and `pushStore` covers anything else.** Register one with `registerStore('app', myStore)` in your dev-only `src/reticle-dev.ts`.
+
 Reading application state is what separates a verdict from a screenshot. A `200` proves the server was reachable. A rendered row proves React ran. Only state proves your app accepted the change.
 
 Reticle needs one thing from your store: a way to read it, and a way to know when it changed.

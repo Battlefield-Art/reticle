@@ -5,6 +5,8 @@ description: Register stores, emit signals, add testids. The three things that d
 icon: wrench
 ---
 
+**Three things raise a Reticle verdict from "something appeared" to "the app declared success": register your store, emit named signals, and add testids.** All three live in one dev-only file, `src/reticle-dev.ts`, which `npx @reticlehq/server init` creates for you.
+
 Reticle works with zero instrumentation. You get DOM, network, console and routing out of the box, and that is already more than a screenshot can tell you.
 
 But there is a ceiling, and this page is about raising it. Instrumentation is the difference between a verdict that says _something appeared_ and one that says _the application declared success_.
@@ -90,13 +92,17 @@ export const Sig = {
   TOAST_SHOWN: 'toast:shown',
 } as const;
 
+export type SigName = (typeof Sig)[keyof typeof Sig];
+
 const isDev = import.meta.env.DEV;
 
 /** Emit a Reticle signal (dev only, no-op in production). */
-export function emit(name: Sig, data: Record<string, unknown> = {}): void {
+export function emit(name: SigName, data: Record<string, unknown> = {}): void {
   if (isDev) reticle.signal(name, data);
 }
 ```
+
+`Sig` is a value, so it cannot be used as a type directly. `SigName` is the union of its values, which is what makes `emit(Sig.AUTH_GRANTED)` check and `emit('auth:granded')` fail at compile time rather than at 2am.
 
 Then call `emit(Sig.AUTH_GRANTED, { email })` where the thing actually succeeds. Not where you _think_ it succeeds. In the success branch, after the state update, not in the click handler.
 

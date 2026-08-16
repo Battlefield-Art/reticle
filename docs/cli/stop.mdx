@@ -31,6 +31,14 @@ npx @reticlehq/server stop [--port N] [--quiet]
 | `reticle_daemon_not_running` | No live pid for that port. The stale pid file is removed |
 | `reticle_daemon_stop_timeout` | It survived everything. Exits `1` |
 
+Real capture, stopping a port with no live pid recorded for it. It exits `0`, because "already not running" is the state you asked for:
+
+```
+{"t":"2026-08-15T18:43:43.943Z","event":"reticle_daemon_not_running","port":4499}
+```
+
+With `--quiet` that same run prints nothing at all and still exits `0`.
+
 ## Exit codes
 
 | Code | Meaning                        |

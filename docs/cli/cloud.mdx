@@ -56,7 +56,13 @@ The one call to make when you do not know your state. Real capture:
 }
 ```
 
-An unattached repo also gets a next-step nudge on stderr, telling you to run `reticle link`.
+An unattached repo also gets a next-step nudge on stderr, telling you to run `reticle link`:
+
+```
+→ this repo is not attached ... run `reticle link`
+```
+
+`whoami` exits `0` either way. Throughout this page, the punctuation joining the two halves of a message is shown as `...`.
 
 ### `reticle link`
 
@@ -75,7 +81,11 @@ npx @reticlehq/server project rename <projectId> "New name"
 npx @reticlehq/server project rm <projectId>
 ```
 
-`rename` and `rm` work but are not in the usage block. Missing or malformed arguments exit `2`.
+`rename` and `rm` work but are missing from the top-level `reticle help` block, which lists only `<ls|create <name>>`. The command's own usage error names all four. Missing or malformed arguments exit `2`:
+
+```
+reticle: usage: reticle project <ls|create <name>|rename <id> <name>|rm <id>>
+```
 
 ### `reticle config`
 
@@ -83,7 +93,11 @@ npx @reticlehq/server project rm <projectId>
 npx @reticlehq/server config [--runs on|off] [--memory on|off] [--flows on|off] [--verify local|server]
 ```
 
-Edits `.reticle/cloud.json` in place. Any value other than `on` or `off` (or `local` or `server` for `--verify`) exits `2`. Requires the repo to be linked.
+Edits `.reticle/cloud.json` in place. Any value other than `on` or `off` (or `local` or `server` for `--verify`) exits `2`. Requires the repo to be linked; run in an unlinked repo it exits `2` before it looks at the flags at all:
+
+```
+reticle: no .reticle/cloud.json here ... run `reticle link` first
+```
 
 ### `reticle push`
 
@@ -103,7 +117,19 @@ The CI gate: which flows broke relative to before. **Exits `3`** when any flow r
 npx @reticlehq/server share <runId>
 ```
 
-Mints a public proof link for one run. A missing `runId` exits `2`.
+Mints a public proof link for one run. A missing `runId` exits `2`:
+
+```
+reticle: usage: reticle share <runId>
+```
+
+## When the repo is not attached
+
+`push`, `runs` and `regression` all need a project to talk to. Without one they exit `1` with the same line on stderr, measured:
+
+```
+reticle: cloud not attached here ... run `reticle link` (or set RETICLE_CLOUD_URL/KEY)
+```
 
 ## Exit codes
 

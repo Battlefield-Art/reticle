@@ -4,6 +4,8 @@ description: 'How a tool call travels from a coding agent to your app and back, 
 icon: map
 ---
 
+A tool call crosses five processes and four hops: coding agent → `reticle mcp` proxy (stdio) → daemon on `:4400` (HTTP POST out, SSE back) → browser SDK (WebSocket) → your app. Each hop has its own failure vocabulary and its own way of lying, and the ones marked **silent** below fail with no error reaching either the agent or you.
+
 > How a tool call gets from a coding agent to your app and back, what each hop can do wrong, and which of those failures are **silent**. Written for anyone touching the transport, the daemon, the bridge, or a gate, and for contributors trying to work out where their change lives.
 >
 > Companion pages: [`harness-rules.md`](../apps/e2e/harness-rules.md) (what a gate must do about all this) and [`telemetry-contract.md`](./telemetry-contract.md) (the rules for anything that emits).
@@ -56,7 +58,7 @@ Three different counts, all measured, and the difference between them matters:
 | --- | --- |
 | **68** | name constants in `ReticleTool` |
 | **48** | tools advertised under `RETICLE_ADVERTISE_ALL_TOOLS=1`, i.e. what `tool-surface-sweep-test` drives (51 calls) |
-| **17** | advertised by default; the rest are reached through `reticle_run` |
+| **19** | advertised by default; the rest are reached through `reticle_run` |
 
 68 → 48 is **family folding**: `reticle_baseline`, `reticle_session`, `reticle_record`, `reticle_flow` and `reticle_lease` each absorb their members behind an `action` parameter. So "every tool is callable" is asserted over 48 surfaces, not 68 behaviours; a family member reachable only through an `action` value the sweep never passes is not covered by it. Worth closing when the per-tool budget lands (see [`gate-plan.md`](./gate-plan.md), Phase 4).
 

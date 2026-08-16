@@ -4,22 +4,31 @@ description: A Babel plugin that stamps data-reticle-source on JSX host elements
 icon: file-code
 ---
 
-`@reticlehq/babel-plugin` puts the source location back. React 19 dropped `_debugSource`, which is what source mapping used to rely on, so without this the tools can tell you the component name but not the file.
+`@reticlehq/babel-plugin` stamps `data-reticle-source="file:line:col"` onto your JSX at build time, in dev only, so Reticle can name the file a DOM node came from. **You probably do not install this one directly**: [`@reticlehq/vite-plugin`](/packages/vite-plugin) and [`@reticlehq/next`](/packages/next) both pull it in. Reach for it only if you drive Babel yourself.
 
-**Version 2.8.0. Apache 2.0. CommonJS. No runtime dependencies. Peer dependency: `@babel/core ^7`.**
+React 19 dropped `_debugSource`, which is what source mapping used to rely on, so without this the tools can tell you the component name but not the file.
+
+**Apache 2.0. CommonJS. No runtime dependencies. Peer dependency: `@babel/core ^7`.**
 
 ## What it stamps
 
 ```jsx
-<button onClick={submit}>Sign in</button>
+// src/components/Login.jsx
+export function Login({ submit }) {
+  return <button onClick={submit}>Sign in</button>;
+}
 ```
 
 becomes, in dev only:
 
 ```jsx
-<button onClick={submit} data-reticle-source="src/components/Login.tsx:81:6">
-  Sign in
-</button>
+export function Login({ submit }) {
+  return (
+    <button onClick={submit} data-reticle-source="src/components/Login.jsx:2:9">
+      Sign in
+    </button>
+  );
+}
 ```
 
 The path is relative to `process.cwd()`, with backslashes normalized to forward slashes. A file with no name stamps `unknown`.

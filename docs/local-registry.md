@@ -4,6 +4,8 @@ description: 'Exercise local, unpublished Reticle changes in a real external app
 icon: box
 ---
 
+To test unpublished `@reticlehq/*` changes in a real external app, publish the workspace to a local Verdaccio with `bash scripts/local-registry.sh`, then point that app's `.npmrc` at `http://localhost:4873/` for the `@reticlehq` scope. That is the whole procedure; the rest of this page is the detail.
+
 > **For normal use, Reticle is on public npm.** Just `npm i -D @reticlehq/react @reticlehq/vite-plugin` (see [Getting Started](getting-started.md)). You only need this guide to test **local, unpublished changes** to the Reticle packages in a real external app before they ship.
 
 Because the `@reticlehq/*` packages depend on each other via the workspace protocol, plain `npm pack` tarballs don't resolve cleanly. The reliable way to exercise your in-progress changes in a real app is a tiny **local registry** (Verdaccio), the same path CI uses to validate a publish.
@@ -35,7 +37,7 @@ For a browser app, install `@reticlehq/react` plus the build plugin for your fra
 
 ## 2. Point your app at the local registry
 
-In your app's project root, add an `.npmrc` (scopes only `@reticle` to the local registry; everything else still comes from npm):
+In your app's project root, add an `.npmrc`. The scope is **`@reticlehq`**, not `@reticle`: a scope typo here does not error, it silently resolves the PUBLISHED packages from npm, so you measure shipped code and think you tested your branch. Everything outside that scope still comes from npm:
 
 ```ini
 @reticlehq:registry=http://localhost:4873/
@@ -53,7 +55,7 @@ npm i -D @reticlehq/react @reticlehq/vite-plugin
 
 Then follow [Getting Started](getting-started.md): embed `reticle.connect()` (dev only) from `@reticlehq/react`, add the MCP server to your agent, and (React) `install()` the adapter from `@reticlehq/react`. For the fastest agent loop, also do [Step 6: make your app agent-legible](getting-started.md) (testids, `reticle.signal`, `registerStore`, `registerCapabilities`) and the [integration patterns](integration-patterns.md) (`createReticleEmitter` for zero prod-bundle cost).
 
-> **Upgrading.** The packages are currently **1.2.0**; new tools land as minor bumps. `scripts/local-registry.sh` resets Verdaccio and republishes the current version, so pull the latest in your app explicitly with `npm install @reticlehq/react@latest`:
+> **Upgrading.** `scripts/local-registry.sh` resets Verdaccio and republishes at whatever version the workspace is on right now, so your app will not pick up a rebuild on its own. Pull it explicitly with `@latest`:
 >
 > ```bash
 > npm i -D @reticlehq/react@latest @reticlehq/vite-plugin@latest @reticlehq/eslint-plugin@latest

@@ -4,9 +4,9 @@ description: Fetch any page as plain Markdown, pull the whole site as one file, 
 icon: robot
 ---
 
-These docs are built to be read by a program, not just a person. Nothing here needs an API key, a scraper, or an HTML parser. Every page has a plain-text form at a predictable URL.
+Append `.md` to any Reticle docs URL to get that page as plain Markdown, or fetch [`https://docs.reticle.sh/llms.txt`](https://docs.reticle.sh/llms.txt) for the index of every page. No API key, no scraper, no HTML parser.
 
-The site lives at **`https://docs.reticle.sh`**.
+The site lives at **`https://docs.reticle.sh`**. Everything below is a plain HTTP GET.
 
 ## Fetch one page
 
@@ -66,6 +66,6 @@ You rarely need more than one.
 | Get fluent in one screen | [Agent cheat sheet](/agent-cheatsheet) |
 | Look up a specific tool, flag, or workflow | [Complete usage guide](/usage) |
 | Understand what Reticle is doing under the hood | [Architecture](/architecture) |
-| Wire it into a desktop app | [Desktop apps](/desktop-apps) |
+| Wire it into a desktop app | [Desktop apps](/desktop) |
 | Make the checks repeatable in CI | [Specs for CI](/testing) |
 | Work on Reticle itself | [Gates](/gates), then [System map](/system-map) |

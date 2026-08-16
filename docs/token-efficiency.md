@@ -4,6 +4,8 @@ description: Why asking narrow questions costs a fraction of feeding the whole a
 icon: coins
 ---
 
+A full Reticle verify loop costs about **100 tokens**, against roughly **7,300** for a full-tree accessibility snapshot on the same page: about 73x leaner, because Reticle asks a narrow question instead of returning the page. If you re-look after an action with `reticle_snapshot({ diff: true })`, the re-read costs about 99% less again.
+
 Agent browser tools that feed the **whole accessibility tree** to the model every step get expensive fast. Playwright MCP's own ecosystem notes its snapshots _"can exceed 50,000 tokens on complex pages,"_ with a _typical task ~114,000 tokens through MCP._ Reticle is built to ask **narrow questions** instead, so the per-interaction cost stays tiny.
 
 ## Head-to-head (measured, same page, same moment)
@@ -33,7 +35,7 @@ Measured on a representative 150-row dashboard (the shipped regression benchmark
 | Payload                            |    Tokens |
 | ---------------------------------- | --------: |
 | Full re-snapshot (150-row table)   | **4,246** |
-| `diff:true` after a one-row change |    **60** |
+| `diff:true` after a one-row change |    **65** |
 | `diff:true` when nothing changed   |    **17** |
 
 **~99% fewer tokens** to re-look after an action, and because a `delta` carries no stale full tree, it also removes the 60K to 80K-token stale-context buildup that makes long-running agents start hallucinating selectors that no longer exist.
@@ -53,9 +55,13 @@ Measured live, all servers in one run, same tokenizer (`bench/harness/schema-tax
 | Chrome DevTools MCP                      |    29 |         5,116 |
 | Reticle, `RETICLE_ADVERTISE_ALL_TOOLS=1` |    48 |       ~30,200 |
 
+_Measured 2026-08-12 (`bench/raw/schema-tax.json`). Reticle's default surface has gained a tool since, so treat the first row as a floor._
+
 There is one tool surface: the verify loop advertised directly, plus two meta-tools (`reticle_tools`, `reticle_run`) that reach every other tool on demand. Nothing is unreachable; the cold tail simply is not re-sent every turn.
 
-`RETICLE_ADVERTISE_ALL_TOOLS=1` advertises everything WITH output schemas. It is a verification switch for suites that call by name, not a mode to run agents in. It is roughly 7x the per-turn cost, which is why it is opt-in: measured, carrying output schemas on the default surface takes it from 18,183 to 41,117 bytes. (That 18,183 was taken when the surface was 16 tools; a fresh `tools/list` read on 2026-08-14 puts the current 18-tool surface at **21,468 bytes**, and all 48 with output schemas at **134,368**. The shape of the gap holds; the absolute numbers move every time a tool is added, which is why they are asserted in `surface-sizes.test.ts` rather than trusted from prose.)
+`RETICLE_ADVERTISE_ALL_TOOLS=1` advertises everything WITH output schemas. It is a verification switch for suites that call by name, not a mode to run agents in. It is roughly 7x the per-turn cost, which is why it is opt-in.
+
+**Every absolute number in this section is a dated reading, not a current value.** The table above was measured on 2026-08-12; a later `tools/list` read on 2026-08-14 put the default surface at 21,468 bytes and the full one at 134,368. The surface has grown a tool since, so both readings are already low. The _shape_ of the gap is the durable claim; the counts themselves are asserted by `surface-sizes.test.ts`, which reads them off the live surface, and that is the only place to trust them.
 
 The typed result object still travels as `structuredContent` either way; the default surface simply does not advertise the output schema, which an agent reading the `text` block never consumed.
 

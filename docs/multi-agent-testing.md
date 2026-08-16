@@ -4,6 +4,8 @@ description: 'Several apps at once, ports that shift between runs, and many agen
 icon: users
 ---
 
+Many agents can drive the same app at once without a browser each: `reticle_lease {action:"acquire"}` hands each one an **isolated context** (its own cookies, storage and DOM) from a single shared headless Chromium. One daemon per machine, and identity is the **app** (a stable `projectId` stamped by the build plugin), not the port, so an app that boots on `:3001` today is still the same app.
+
 Reticle is built for the messy real world: several apps running at once, ports that shift between runs, and many agents driving different flows of the same app in parallel, without each one spinning up its own Chromium. This page explains how that works and how to use it.
 
 ## The mental model

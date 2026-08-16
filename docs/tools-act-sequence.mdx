@@ -4,6 +4,8 @@ description: Run several actions in order in one round trip. Fill, fill, submit.
 icon: layer-group
 ---
 
+`reticle_act_sequence` runs several actions in order in a single round trip. Reach for it whenever a journey needs more than one step, such as fill, fill, submit, and then prove the outcome once with [`reticle_act_and_wait`](/tools-act-and-wait), because a sequence itself produces no verdict.
+
 A login is three actions. Driving it one call at a time costs three round trips and three turns of context. `reticle_act_sequence` does it in one.
 
 This tool exists because of a measured problem: agents were driving forms one call at a time, over and over. Those repeats were not retries. The calls succeeded and got repeated, because the batching tool was not advertised and so nobody knew it was there.
@@ -13,18 +15,18 @@ This tool exists because of a measured problem: agents were driving forms one ca
 ```json
 {
   "steps": [
-    { "ref": "e101", "action": "fill", "args": { "value": "admin@reticle.dev" } },
-    { "ref": "e102", "action": "fill", "args": { "value": "correct-horse-battery-staple" } },
-    { "ref": "e103", "action": "click" }
+    { "ref": "e603", "action": "fill", "args": { "value": "admin@reticle.dev" } },
+    { "ref": "e604", "action": "fill", "args": { "value": "correct-horse-battery-staple" } },
+    { "ref": "e605", "action": "click" }
   ]
 }
 ```
 
-Real response, trimmed:
+Real response. Each `effects[]` entry also carries `targetMatched`, `visible`, `enabled`, `defaultPrevented`, `occluded`, `occludedBy` and `scrolledIntoView`, and each `steps[]` entry also carries `dispatched`, `settled`, `settleReason`, `component`, `role` and `name`. Those are trimmed here for length:
 
 ```json
 {
-  "since": 13776,
+  "since": 3915,
   "dispatched": true,
   "result": {
     "ok": true,
@@ -32,38 +34,38 @@ Real response, trimmed:
     "effects": [
       {
         "dispatched": true,
-        "focusMoved": "null->e101",
+        "focusMoved": "null->e603",
         "valueChanged": false,
-        "domMutatedWithin": 6
+        "domMutatedWithin": 0
       },
       {
         "dispatched": true,
-        "focusMoved": "e101->e102",
+        "focusMoved": "e603->e604",
         "valueChanged": true,
-        "domMutatedWithin": 10
+        "domMutatedWithin": 9
       },
       {
         "dispatched": true,
-        "focusMoved": "e102->null",
+        "focusMoved": "e604->null",
         "domMutatedWithin": 15,
         "appeared": "Signing in… | Invalid email or password | Sign in"
       }
     ],
     "steps": [
       {
-        "ref": "e101",
+        "ref": "e603",
         "action": "fill",
         "testid": "login-email",
         "source": { "file": "src/components/Login.tsx", "line": 48 }
       },
       {
-        "ref": "e102",
+        "ref": "e604",
         "action": "fill",
         "testid": "login-password",
         "source": { "file": "src/components/Login.tsx", "line": 59 }
       },
       {
-        "ref": "e103",
+        "ref": "e605",
         "action": "click",
         "testid": "login-submit",
         "source": { "file": "src/components/Login.tsx", "line": 81 }
@@ -95,8 +97,8 @@ The honest pattern is: batch the setup, prove the outcome.
 ```json
 {
   "steps": [
-    { "ref": "e101", "action": "fill", "args": { "value": "admin@reticle.dev" } },
-    { "ref": "e102", "action": "fill", "args": { "value": "reticle" } }
+    { "ref": "e603", "action": "fill", "args": { "value": "admin@reticle.dev" } },
+    { "ref": "e604", "action": "fill", "args": { "value": "correct-password" } }
   ]
 }
 ```
@@ -104,10 +106,25 @@ The honest pattern is: batch the setup, prove the outcome.
 then
 
 ```json
-{ "ref": "e103", "action": "click", "until": { "kind": "signal", "name": "auth:granted" } }
+{ "ref": "e605", "action": "click", "until": { "kind": "signal", "name": "auth:granted" } }
 ```
 
-Two calls instead of four, and the last one returns a verdict.
+which returns the verdict the sequence could not:
+
+```json
+{
+  "verified": "yes",
+  "verifiedReason": "proved",
+  "because": "assertion held at signal grade over a clean capture with no channel disagreeing",
+  "verdict": {
+    "pass": true,
+    "evidence": { "name": "auth:granted", "data": { "email": "admin@reticle.dev" } }
+  },
+  "honesty": { "grade": "signal", "coverage": { "pct": 100, "partial": false } }
+}
+```
+
+Two calls instead of four, and the last one returns a verdict. Note `grade: "signal"`, the strongest Reticle awards, because the app said so itself.
 
 ## What each step reports
 

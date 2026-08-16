@@ -9,14 +9,14 @@ icon: crosshairs
 ## Example
 
 ```json
-{ "ref": "e20" }
+{ "ref": "e120" }
 ```
 
 Real response:
 
 ```json
 {
-  "ref": "e20",
+  "ref": "e120",
   "role": "button",
   "name": "Compose",
   "visible": true,
@@ -24,7 +24,7 @@ Real response:
   "tag": "button",
   "occluded": false,
   "states": ["present", "visible", "enabled"],
-  "box": { "x": 14, "y": 211.75, "width": 219, "height": 37.5 },
+  "box": { "x": 14, "y": 212.75, "width": 219, "height": 38 },
   "styles": {
     "color": "rgb(147, 152, 168)",
     "backgroundColor": "rgba(0, 0, 0, 0)",
@@ -33,14 +33,15 @@ Real response:
     "display": "flex",
     "visibility": "visible"
   },
+  "scroll": { "scrollTop": 0, "scrollHeight": 36, "clientHeight": 36, "overflowY": "visible" },
   "theme": {
     "colorToken": "--muted",
-    "colorTokens": ["--muted"],
     "backgroundToken": null,
-    "backgroundTokens": [],
     "offTheme": false,
-    "tokenCount": 17,
-    "themeScope": ":root"
+    "tokenCount": 18,
+    "themeScope": null,
+    "colorTokens": ["--muted"],
+    "backgroundTokens": []
   },
   "component": {
     "componentStack": ["Sidebar", "App", "QueryClientProvider"],
@@ -55,7 +56,9 @@ Real response:
 
 **`theme`** catches a bug class most tools cannot see. `colorToken: "--muted"` means this colour came from your design system. `offTheme: false` means nothing here is a hardcoded hex that slipped past review. An agent that pastes `color: #939AA8` instead of using the token produces a change that looks identical and quietly forks your design system. This field is how that gets caught.
 
-Read `colorTokens` rather than `colorToken` when it matters. Design systems routinely give several tokens the same value, and the singular field is `null` whenever more than one matches, because naming an arbitrary winner is worse than admitting the palette cannot tell them apart. `themeScope` says which theme the reading was taken under, so two inspects either side of a theme toggle are comparable instead of quietly contradictory.
+Read `colorTokens` rather than `colorToken` when it matters. Design systems routinely give several tokens the same value, and the singular field is `null` whenever more than one matches, because naming an arbitrary winner is worse than admitting the palette cannot tell them apart. `themeScope` says which theme the reading was taken under, so two inspects either side of a theme toggle are comparable instead of quietly contradictory. It is `null`, as above, when the element sits under no scoped theme at all.
+
+**`scroll`** reports the element's own scroll box. `scrollHeight` above `clientHeight` means there is content below the fold inside this element, which is a different problem from the page being scrolled wrong.
 
 **`occluded`** is the difference between "visible" and "actually clickable". An element can be present, visible and enabled while sitting under a modal overlay. `states` will look perfect; `occluded: true` is the honest answer.
 

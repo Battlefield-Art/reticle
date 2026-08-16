@@ -4,7 +4,9 @@ description: 'The full reference and cookbook: every tool, flag, and workflow, w
 icon: book
 ---
 
-The full reference and cookbook. If you haven't set up Reticle yet, start with [Getting Started](getting-started.md).
+Every Reticle drive is the same four steps: **look** (`reticle_snapshot` / `reticle_query`), **act** (`reticle_act` / `reticle_act_sequence`), **observe** (`reticle_observe` / `reticle_network` / `reticle_state`), **assert** (`reticle_assert`). Only `reticle_act_and_wait` and `reticle_assert` produce a verdict, so a run that ends anywhere else proved nothing. This page is the full reference for every tool, predicate, action and flag in that loop.
+
+If you haven't set up Reticle yet, start with [Getting Started](getting-started.md).
 
 > **Start here instead, unless you want the long form.** This page predates the focused reference and still holds the fullest single narrative, but almost everything in it now has a page of its own that is shorter, searchable and verified against a running app:
 >
@@ -41,6 +43,9 @@ The full reference and cookbook. If you haven't set up Reticle yet, start with [
 13. [Best practices & gotchas](#13-best-practices--gotchas)
 14. [FAQ](#14-faq)
 15. [Security & privacy](#15-security--privacy)
+16. [Presenter mode, narration & fake clock](#16-presenter-mode-narration--fake-clock-watch--control)
+17. [Evidence-of-effect, act+await, state, capabilities, replay](#17-evidence-of-effect-actawait-state-capabilities-replay)
+18. [Real input mode: native hover & drag](#18-real-input-mode-native-hover--drag)
 
 ---
 
@@ -123,11 +128,11 @@ Deep detail on one element, including the signals a snapshot/a11y tree omits, so
 
 Perform one action / several in order.
 
-- **`reticle_act` args:** `ref`, `action`, `args?`, `refuseWhenThrottled?`, `sessionId?`. → `{ since, dispatched, settled, settleReason, result, session, warning? }` where `result = { ok, ref, action, dispatched, settled, settleReason, effect }`. The `session` block `{ lastSeenMs, throttled, focused }` (F2) reports tab health on every act; when `throttled` is true a `warning` string is also attached. Pass `refuseWhenThrottled: true` to hard-fail instead of warning (opt-in; default is warn-only so background testing never breaks).
+- **`reticle_act` args:** `ref`, `action`, `args?`, `refuseWhenThrottled?`, `sessionId?`. → `{ since, dispatched, settled, settleReason, result, session, warning? }` where `result = { ok, ref, action, dispatched, settled, settleReason, effect }`. The `session` block `{ lastSeenMs, throttled, focused }` reports tab health on every act; when `throttled` is true a `warning` string is also attached. Pass `refuseWhenThrottled: true` to hard-fail instead of warning (opt-in; default is warn-only so background testing never breaks).
 - **`reticle_act_sequence` args:** `steps: [{ ref, action, args? }]`. → `{ since, dispatched, result }` where `result = { ok, count, effects: [...], steps: [...] }` (one `effect` per step; each step carries its own `dispatched`/`settled`/`settleReason`).
 - See [§5](#5-actions-full-list) for the action list.
 
-**Dispatch vs settle (F1).** The action is two phases: the **dispatch** (the synchronous click/fill, which is what can fail) and the **settle** (waiting one animation frame so React's commit lands before we return). The settle is **bounded** (~200ms): in a throttled/background tab `requestAnimationFrame` never fires, so Reticle falls back to a timer and resolves anyway. A settle timeout is therefore **never an error**: `reticle_act` resolves with `settled:false, settleReason:"timeout"` and the dispatch (the click) has still landed. Only a real dispatch failure (stale ref, wrong element type) throws.
+**Dispatch vs settle.** The action is two phases: the **dispatch** (the synchronous click/fill, which is what can fail) and the **settle** (waiting one animation frame so React's commit lands before we return). The settle is **bounded** (~200ms): in a throttled/background tab `requestAnimationFrame` never fires, so Reticle falls back to a timer and resolves anyway. A settle timeout is therefore **never an error**: `reticle_act` resolves with `settled:false, settleReason:"timeout"` and the dispatch (the click) has still landed. Only a real dispatch failure (stale ref, wrong element type) throws.
 
 | top-level field | meaning |
 | --- | --- |
@@ -179,7 +184,7 @@ The timeline + summary of what happened.
 Act, then wait for a predicate: the whole act→observe→assert loop in one hop.
 
 - **args:** `ref`, `action`, `args?`, `until: <predicate>`, `timeout_ms?` (default 4000; 0 = evaluate once), `refuseWhenThrottled?`, `sessionId?`.
-- **returns:** `{ effect, verdict, trace, session, warning? }`. `effect` is the action result (`{ ok, ref, action }`), `verdict` is `{ pass, evidence?, failureReason? }`, `trace` is the reaction report of everything the app did after the action, and `session` (F2) is the tab-health block `{ lastSeenMs, throttled, focused }` (with a `warning` when throttled). A failing `verdict` still returns `effect` + `trace` so you can see what _did_ happen. The predicate is automatically floored at this act's cursor, so it only matches events the action actually caused.
+- **returns:** `{ effect, verdict, trace, session, warning? }`. `effect` is the action result (`{ ok, ref, action }`), `verdict` is `{ pass, evidence?, failureReason? }`, `trace` is the reaction report of everything the app did after the action, and `session` is the tab-health block `{ lastSeenMs, throttled, focused }` (with a `warning` when throttled). A failing `verdict` still returns `effect` + `trace` so you can see what _did_ happen. The predicate is automatically floored at this act's cursor, so it only matches events the action actually caused.
 
 ### `reticle_wait_for`
 
@@ -483,7 +488,7 @@ reticle_assert({ timeout_ms: 3000, predicate: { kind: "element",
   query: { text: "Invoice #4821", scope: "[data-testid=item-list]" }, state: "visible" } })
 ```
 
-> Note: if your list is **virtualized** (react-window/virtuoso), off-screen rows aren't in the DOM yet. Scroll-to-find support is on the roadmap; for now scroll the container or assert against the data via an `reticle.signal`.
+> Note: if your list is **virtualized** (react-window/virtuoso), an off-screen row is not in the DOM at all, so `reticle_query` correctly finds nothing. Use **`reticle_scroll_to`** to scroll the windowed container until the row renders, then query it: `reticle_scroll_to({ by: "text", value: "Invoice #4821", container: "[data-testid=item-list]" })`. Asserting against the data with `reticle.signal` or `reticle_state` also works and is cheaper.
 
 ### "Login form: does it actually authorize?"
 
@@ -560,7 +565,7 @@ reticle.describe({
 });
 ```
 
-The agent reads this back with `reticle_capabilities()`; see [§3](#3-tool-reference).
+The agent reads this back with `reticle_capabilities()`; see [§3](#3-the-tools-full-reference).
 
 ```jsonc
 reticle_assert({ timeout_ms: 30000, predicate: {
@@ -569,7 +574,7 @@ reticle_assert({ timeout_ms: 30000, predicate: {
 
 #### Keeping signals from drifting (lint)
 
-Signals only help if you actually emit one whenever user-visible state changes. The `@reticlehq/eslint-plugin` package ships one rule, `reticle/require-signal-on-mutation`, that flags any function which calls a configured store **mutator** but never fires the **signal callee** in the same body, so the signal map can't silently fall behind the store.
+Signals only help if you actually emit one whenever user-visible state changes. The `@reticlehq/eslint-plugin` package ships `reticle/require-signal-on-mutation`, which flags any function that calls a configured store **mutator** but never fires the **signal callee** in the same body, so the signal map can't silently fall behind the store. (The package also ships `reticle/no-internal-tags`; both are on in its `recommended` config.)
 
 ```js
 // eslint.config.mjs
@@ -705,7 +710,7 @@ Reticle is cheap by design ([benchmark](token-efficiency.md)), but keep it that 
 - **Stable handles for controls.** Prefer `data-testid` over names that include dynamic counts (e.g. "Notifications (3)"); the count changes the accessible name.
 - **Always thread `since`.** Pass the cursor from `reticle_act` into `observe`/`assert` so you only consider what happened _after_ the action.
 - **Use `timeout_ms` for async.** Don't assert instantly on something that arrives over the network or after a re-render.
-- **Watch `session.throttled` (F2).** Background tabs throttle timers/rAF/pointer gestures, so an act can silently no-op. Every `reticle_act` / `reticle_assert` / `reticle_act_and_wait` result carries `session: { lastSeenMs, throttled, focused }` and, when throttled, a `warning`. Refocus the tab (or run it foregrounded) before driving; pass `refuseWhenThrottled: true` to hard-fail instead.
+- **Watch `session.throttled`.** Background tabs throttle timers/rAF/pointer gestures, so an act can silently no-op. Every `reticle_act` / `reticle_assert` / `reticle_act_and_wait` result carries `session: { lastSeenMs, throttled, focused }` and, when throttled, a `warning`. Refocus the tab (or run it foregrounded) before driving; pass `refuseWhenThrottled: true` to hard-fail instead.
 - **Scope big pages.** On dashboards with hundreds of elements, scope queries to the panel you care about.
 - **Never breaks your app.** Observers are additive and reversible (`reticle.disconnect()` restores patched globals). It won't interfere with your app's behavior.
 
@@ -713,19 +718,33 @@ Reticle is cheap by design ([benchmark](token-efficiency.md)), but keep it that 
 
 ## 14. FAQ
 
-**Does this run in production?** No. Keep `reticle.connect()` behind a dev guard. The SDK is side-effect-free and tree-shakes out of prod builds.
+### Does this run in production?
 
-**Do I have to change my components?** No, for basic look/act/observe. You'll get better results by adding `data-testid`s and labels where the agent needs precision.
+No. Keep `reticle.connect()` behind a dev guard. The SDK is side-effect-free and tree-shakes out of prod builds.
 
-**Does it work without React?** The core (DOM/network/route/console/animation/snapshot/actions) is framework-agnostic and is gated against a vanilla-TS app. React, Next.js, Remix and Astro each have an app and a CI gate. SvelteKit is wired end-to-end. `reticle init` writes the client hook and the Vite plugin, and the plugin stamps `data-reticle-source` into `.svelte` components so verdicts carry `file:line`. But there is still no SvelteKit app in CI, so it is unverified rather than supported. Vue has a Pinia store adapter and nothing else: no detection, no `.vue` stamping, no gate. See [what Svelte support is and is not](getting-started.md#what-svelte-support-is-and-what-it-is-not).
+### Do I have to change my components?
 
-**Can it judge whether my UI _looks_ good?** No. Reticle verifies behavior, not aesthetics. Visual/pixel correctness and "does it feel right" remain human (or a visual-diff tool).
+No, for basic look/act/observe. You'll get better results by adding `data-testid`s and labels where the agent needs precision.
 
-**Does it replace Playwright/Cypress?** No. Those are your scripted CI suite. Reticle is for in-loop verification while the agent codes, and for the cases you never automated. They compose.
+### Does it work without React?
 
-**How does it compare to Playwright MCP / Chrome DevTools MCP?** Those let an agent drive/ inspect a _separate_ browser; Reticle verifies your _own running app_ (real session/auth) with assertions + regression as first-class, far more cheaply. See the README comparison.
+The core (DOM/network/route/console/animation/snapshot/actions) is framework-agnostic and is gated against a vanilla-TS app. React, Next.js, Remix and Astro each have an app and a CI gate. SvelteKit is wired end-to-end. `reticle init` writes the client hook and the Vite plugin, and the plugin stamps `data-reticle-source` into `.svelte` components so verdicts carry `file:line`. But there is still no SvelteKit app in CI, so it is unverified rather than supported. Vue has a Pinia store adapter and nothing else: no detection, no `.vue` stamping, no gate. See [what Svelte support is and is not](getting-started.md#what-svelte-support-is-and-what-it-is-not).
 
-**Multiple tabs/apps?** Each is a session; pass `sessionId` to any tool when more than one is connected (`reticle_sessions` lists them).
+### Can it judge whether my UI looks good?
+
+No. Reticle verifies behavior, not aesthetics. Visual/pixel correctness and "does it feel right" remain human (or a visual-diff tool).
+
+### Does it replace Playwright/Cypress?
+
+No. Those are your scripted CI suite. Reticle is for in-loop verification while the agent codes, and for the cases you never automated. They compose.
+
+### How does it compare to Playwright MCP / Chrome DevTools MCP?
+
+Those let an agent drive/ inspect a _separate_ browser; Reticle verifies your _own running app_ (real session/auth) with assertions + regression as first-class, far more cheaply. See [Reticle vs Playwright MCP](vs-playwright-mcp.mdx) and [Reticle vs Chrome DevTools MCP](vs-chrome-devtools-mcp.mdx).
+
+### Multiple tabs/apps?
+
+Each is a session; pass `sessionId` to any tool when more than one is connected (`reticle_sessions` lists them).
 
 ---
 
@@ -794,7 +813,7 @@ A session starts on the agent's first activity and must reliably end even when t
 - **Agent kills the Reticle server process** (so no push can arrive) → the SDK self-ends the session after it can't reach the bridge for `BRIDGE_LOST_MS` (~15s), showing "lost connection to Reticle."
 - **Slow-but-alive agent** → if it goes quiet long enough to auto-end and then acts again, the session **revives** automatically (an explicit `reticle_session {action:"end"}` stays terminal).
 
-Tune the idle window with `reticle_session({ idleEndMs })`; it updates both the browser timer and the server reaper. The human keeps the panel (with Copy/Export of the run) after any end.
+Tune the idle window with `reticle_session({ action: "tune", idleEndMs })`; it updates both the browser timer and the server reaper. The human keeps the panel (with Copy/Export of the run) after any end.
 
 ### `reticle_session {action:"narrate"}`: show the agent's intent
 

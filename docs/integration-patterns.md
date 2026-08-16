@@ -4,6 +4,8 @@ description: 'The recommended shape for a real codebase: a minimal production fo
 icon: shapes
 ---
 
+The recommended shape for a real codebase is three decisions: put `createReticleEmitter()` in one `app/emit.ts` so components depend on an interface and `@reticlehq/browser` never reaches your production bundle; emit signals from the **store layer** rather than from N call sites; and let each feature self-register its testids and signals with `registerReticleDomain`. Then turn on `reticle/require-signal-on-mutation` so the signal layer cannot silently rot.
+
 The basics in [Getting Started](getting-started.md) work with **zero app changes**. This doc is the _recommended_ shape for a real codebase: a minimal production footprint, a signal layer that can't silently drift, and an adoption path that starts paying off on day one, with no rewrite required.
 
 - [1. Start here: reuse what you already have](#1-start-here-reuse-what-you-already-have)
@@ -156,7 +158,7 @@ export default [
 ];
 ```
 
-Or turn it on with the shipped preset (warns, with empty no-op defaults you then configure): `plugin.configs.recommended`. A function that calls a mutator and a signal together passes; a mutator with no signal reports `store mutation without a mapped Reticle signal`. The documented view-level exceptions from §3 simply don't list those view callees as `mutators`, so they never fire.
+Or turn it on with the shipped preset: `plugin.configs.recommended`, which sets `reticle/require-signal-on-mutation` to `warn` (with empty no-op defaults you then configure) and the plugin's other rule, `reticle/no-internal-tags`, to `error`. A function that calls a mutator and a signal together passes; a mutator with no signal reports `store mutation without a mapped Reticle signal`. The documented view-level exceptions from §3 simply don't list those view callees as `mutators`, so they never fire.
 
 ## 6. Limitation: un-scriptable tabs, use `reticle drive`
 

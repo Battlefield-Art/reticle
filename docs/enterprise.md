@@ -4,6 +4,8 @@ description: 'Premium access and activation, what is gated, the security and dat
 icon: building
 ---
 
+Enterprise features ship inside the open package and are unlocked by a signed license key you set as `RETICLE_LICENSE_KEY`. Activation is verified locally with Ed25519 and makes **no network call**, so nothing about your usage leaves your machine. Run `npx @reticlehq/server license` to see whether you are `active`, `eval`, `missing` or `expired`.
+
 > Premium access (how you get + activate it), what's gated, the security/data-handling posture, and the licensing model. Integration mechanics live in [`platform-integration.md`](./platform-integration.md).
 
 ## How premium access works (offline, no phone-home)
