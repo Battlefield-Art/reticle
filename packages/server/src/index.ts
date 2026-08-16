@@ -35,6 +35,8 @@ import { createRunnerPort } from './runs/runner-port.js';
 import { RunStore } from './runs/run-store.js';
 import { startVerifyServer } from './runs/verify-server.js';
 import { createMcpServer } from './mcp/mcp.js';
+import { LEASE_ACQUIRE_TOOL } from './tools/lease-tools.js';
+import { runTool } from './tools/invoke-tool.js';
 import { SessionReaper, endAllSessions, MCP_DISCONNECT_SUMMARY } from './session/session-reaper.js';
 import { wireSessionScope } from './session/no-session-watch.js';
 import { buildIdlePredicate } from './daemon/daemon-usefulness.js';
@@ -549,6 +551,11 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   const profile = resolveToolSurface(options.toolProfile);
   const effectiveDeps = realInput !== undefined ? { ...deps, realInput } : deps;
   shared.attachMcp(() => createMcpServer(effectiveDeps, profile));
+  // `reticle drive <url>` when this daemon already owns the port: it asks HERE instead of trying to
+  // bind a port we are holding, and gets the same pooled context an agent's reticle_lease returns —
+  // through runTool, so it is counted and reported like any other call rather than being a second,
+  // invisible dispatch path. See cli/drive-attach.ts for why attaching beats refereeing the race.
+  shared.attachDrive((url) => runTool(LEASE_ACQUIRE_TOOL, effectiveDeps, { url }));
 
   // Optional OEM/CI verify endpoint: a host platform POSTs to /verify and gets an ReticleVerificationRun,
   // driving the same flow-replay machinery the agent uses — no MCP stdio, no human. Each verdict is

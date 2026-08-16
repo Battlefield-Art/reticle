@@ -10,6 +10,12 @@ export const MCP_SSE_PATH = '/mcp/sse';
 export const MCP_MESSAGE_PATH = '/mcp/message';
 /** Local-only daemon introspection — `reticle status` GETs this for sessions + health at a glance. */
 export const STATUS_PATH = '/status';
+/**
+ * Local-only drive request — `reticle drive <url>` POSTs `{url}` here when a daemon already owns the
+ * bridge port, and gets back the pooled session that daemon opened. The CLI asks instead of binding,
+ * so the two never fight over the port. Same trust tier as STATUS_PATH.
+ */
+export const DRIVE_PATH = '/drive';
 export const RETICLE_PROTOCOL_VERSION = 1;
 
 /**

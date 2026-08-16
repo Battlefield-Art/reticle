@@ -19,7 +19,7 @@ import { affectedSavedFlows } from './flows/flow-sources.js';
 import { availableUpdate } from './update/update-nudge.js';
 import { handleUpdate, handleRollback } from './cli/cli-update-commands.js';
 
-import { start, startDaemon } from './index.js';
+import { startDaemon } from './index.js';
 import { isCloudCommand, runCloudCommand } from './cli/cloud-cli.js';
 import { SERVER_VERSION } from './version/server-version.js';
 import { log } from './log.js';
@@ -59,10 +59,10 @@ import {
   summarizeStatus,
   warnOnDaemonSkew,
   decideOpen,
-  drivePortConflict,
   openInBrowser,
   openCommand,
 } from './cli/cli-launch.js';
+import { handleDrive } from './cli/drive-command.js';
 import { handleVerify } from './cli/cli-verify.js';
 import { runKill } from './cli/cli-kill.js';
 import { summarizeHunt, type HuntAnomaly, type HuntRun } from './hunt/hunt-report.js';
@@ -753,63 +753,6 @@ function handleMcp(opts: {
     });
 }
 
-function handleLegacyDrive(parsed: { port: number; driveUrl: string; headless: boolean }): void {
-  void driveWithHonestConflict(parsed);
-}
-
-/**
- * Refuse the port BEFORE binding it, and name what is holding it.
- *
- * `drive` went straight to `start`, which binds. The listen error surfaces asynchronously on the
- * server object long after `start` has resolved, so the `.catch` on that promise could never see it
- * and the process died with the raw `node:net` EADDRINUSE stack — in the one situation this command
- * is most often run in, since `reticle_sessions` recommends `reticle drive` for a throttled tab and
- * a throttled tab nearly always coexists with the daemon holding the port.
- */
-async function driveWithHonestConflict(parsed: {
-  port: number;
-  driveUrl: string;
-  headless: boolean;
-}): Promise<void> {
-  const presence = await probePresence(parsed.port, { tcpOpen: probeDaemon, status: fetchStatus });
-  const conflict = drivePortConflict(presence, parsed.port, { ourPid: readPid(parsed.port) });
-  if (conflict !== undefined) {
-    log('reticle_drive_port_conflict', { port: parsed.port, presence, reason: conflict });
-    process.stderr.write(`${conflict}\n`);
-    process.exit(1);
-    return;
-  }
-  // The probe cannot close the race: something can take the port between here and the bind, and the
-  // bind reports it on the server, outside every promise this function holds. Catching it at the
-  // process is the only place that sees it at all — and only EADDRINUSE, so a genuine crash still
-  // crashes rather than being dressed up as a port conflict. Who won the race is not knowable from
-  // in here, so the sentence used is the one that is true of any holder.
-  process.on('uncaughtException', (error: unknown) => {
-    const code = (error as { code?: unknown } | null)?.code;
-    if ('EADDRINUSE' !== code) throw error;
-    const reason = drivePortConflict(PortPresence.FOREIGN, parsed.port);
-    log('reticle_drive_port_conflict', {
-      port: parsed.port,
-      presence: PortPresence.FOREIGN,
-      reason,
-    });
-    process.stderr.write(`${String(reason)}\n`);
-    process.exit(1);
-  });
-  const options: StartOptions = {
-    port: parsed.port,
-    driveUrl: parsed.driveUrl,
-    headless: parsed.headless,
-  };
-  try {
-    await start(options);
-    log('reticle_started', { port: parsed.port });
-  } catch (error: unknown) {
-    log('reticle_start_failed', { error: error instanceof Error ? error.message : String(error) });
-    process.exit(1);
-  }
-}
-
 function main(): void {
   // Before anything reads process.env — notably the telemetry gate and the bridge's security
   // options — fold in a project-local `.env`. Values already in the environment always win.
@@ -907,7 +850,7 @@ function main(): void {
       handleOpen(parsed.port, parsed.url);
       break;
     case 'drive':
-      handleLegacyDrive(parsed);
+      handleDrive(parsed);
       break;
     case 'verify':
       handleVerify(parsed);
