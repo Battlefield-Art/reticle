@@ -360,8 +360,11 @@ describe('fingerprintFinding integrates with bugsInResult to produce cross-sessi
       status: { route: '/checkout' },
     };
     const bugs = bugsInResult('reticle_assert', result);
-    const route = routeOf(result)!;
-    const fp = fingerprintFinding({ kind: bugs[0]!.kind, source: bugs[0]!.source, route });
+    const route = routeOf(result);
+    if (route === undefined) throw new Error('expected route');
+    const firstBug = bugs[0];
+    if (firstBug === undefined) throw new Error('expected at least one bug');
+    const fp = fingerprintFinding({ kind: firstBug.kind, source: firstBug.source, route });
     const fp2 = fingerprintFinding({
       kind: 'signal-contradicted',
       source: BugSource.CONTRADICTION,
@@ -375,8 +378,10 @@ describe('fingerprintFinding integrates with bugsInResult to produce cross-sessi
       pass: true,
       contradictions: [{ kind: 'signal-contradicted' }],
     });
-    const fpA = fingerprintFinding({ kind: bugs[0]!.kind, source: bugs[0]!.source, route: '/a' });
-    const fpB = fingerprintFinding({ kind: bugs[0]!.kind, source: bugs[0]!.source, route: '/b' });
+    const firstBug = bugs[0];
+    if (firstBug === undefined) throw new Error('expected at least one bug');
+    const fpA = fingerprintFinding({ kind: firstBug.kind, source: firstBug.source, route: '/a' });
+    const fpB = fingerprintFinding({ kind: firstBug.kind, source: firstBug.source, route: '/b' });
     expect(fpA).not.toBe(fpB);
   });
 });
