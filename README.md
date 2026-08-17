@@ -35,6 +35,8 @@ Where the work happens in the open: what's being built this cycle, what's up for
 
 ## Install in 30 seconds
 
+**One paste, and the skill drives the rest.** The skill is the install path. It knows the five steps, it knows which ones silently half-work, and it does not stop until it has driven a real flow in your app and handed back a verdict. A config file is not an install.
+
 **Paste this into your coding agent — Claude Code, Cursor, Copilot, Codex, Windsurf, OpenCode, or any MCP agent:**
 
 ```text

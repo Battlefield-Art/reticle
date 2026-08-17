@@ -293,7 +293,7 @@ Nuxt has one extra trap: a dev server that was already running does not pick up 
 
 ```jsonc
 {
-  "framework": "vite", // one of: vite, next, sveltekit, astro, cra, html
+  "framework": "vite", // one of: vite, next, nuxt, sveltekit, astro, cra, html
 }
 ```
 

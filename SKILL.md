@@ -14,7 +14,15 @@ This file is the whole critical path and nothing else. Everything it leaves out 
 
 **Do not tell the user Reticle is set up until step 5 has produced a verdict.** The most common failure in the field is an agent that finishes step 1, reports success, and leaves a user with config files and no instrumented page.
 
-Setup requires a client restart, which ends your turn. **After the restart, resume at the step you were on.** Do not start over, and do not skip forward.
+Setup requires a client restart, which ends your turn. This file was fetched into the context that just ended, so nothing carries it across unless you make it. **Before you trigger the restart, write the remaining steps into `RETICLE-SETUP.md` at the repo root**, one line each, with the step you stopped at marked. That file is what you re-read afterwards. Delete it once step 5 has produced a verdict.
+
+Better still, install the on-disk copy first. It survives the restart on its own, and it is the same content:
+
+```bash
+npx skills add reticlehq/reticle --skill install-and-verify -y
+```
+
+**After the restart, resume at the step you were on.** Do not start over, and do not skip forward.
 
 ## Feedback is first-class
 
@@ -86,7 +94,7 @@ If it does not: your client read its server list at startup and has not re-read 
 
 Say this once and then stop:
 
-> "Reticle is installed. Restart your client so it picks up the new MCP server, then tell me when the tools are back."
+> "Reticle is installed. Restart your client so it picks up the new MCP server, then say **'continue Reticle setup'**. Three steps are left, and your app is not instrumented until they are done."
 
 Claude Code: restart (`/mcp` does not re-read the config). VS Code: press Start in `.vscode/mcp.json`. Cursor, Windsurf, Zed: reload the window.
 

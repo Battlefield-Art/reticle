@@ -80,7 +80,7 @@ If it does not: your client read its server list at startup and has not re-read 
 
 Say this once and then stop:
 
-> "Reticle is installed. Restart your client so it picks up the new MCP server, then tell me when the tools are back."
+> "Reticle is installed. Restart your client so it picks up the new MCP server, then say **'continue Reticle setup'**. Three steps are left, and your app is not instrumented until they are done."
 
 Claude Code: restart (`/mcp` does not re-read the config). VS Code: press Start in `.vscode/mcp.json`. Cursor, Windsurf, Zed: reload the window.
 
