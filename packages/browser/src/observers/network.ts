@@ -105,6 +105,23 @@ interface XhrMeta {
 }
 
 /**
+ * Did this response succeed? A REDIRECT DID.
+ *
+ * The one rule both transports must share. `Response.ok` is true only for 200-299, so reading it
+ * straight through stamped every 3xx as a failed request, while the XHR path computed the same field
+ * itself and called the identical status a success. Downstream, `ok` is authoritative when present —
+ * so a POST-redirect-GET login, the first flow anyone verifies in an app with auth, produced a
+ * `ui-advanced-request-failed` contradiction citing its own success path, and the agent had to
+ * overrule the verdict by hand. A verdict that gets manually overruled is not deciding anything.
+ *
+ * 3xx is normal successful navigation. An opaque (no-cors) response reports status 0 and is correctly
+ * excluded here, exactly as `Response.ok` excluded it.
+ */
+function statusIsOk(status: number): boolean {
+  return status >= 200 && status < 400;
+}
+
+/**
  * Response metadata that needs no body capture: HTTP status text, content-type, and byte size (from
  * content-length when the server sent it). Lets an agent tell an HTML error page served as 200 from
  * real JSON, and spot empty/oversized responses. Fields are omitted when absent so a clean call stays
@@ -298,7 +315,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
           method,
           url,
           status: res.status,
-          ok: res.ok,
+          ok: statusIsOk(res.status),
           durationMs: Math.round(headersAt - start),
           initiator: 'fetch',
           ...initiatorFields,
@@ -446,7 +463,7 @@ export function installNetwork(emit: Emit, opts: NetworkOptions = {}): Teardown 
             method: cur.method,
             url: cur.url,
             status: this.status,
-            ok: this.status >= 200 && this.status < 400,
+            ok: statusIsOk(this.status),
             durationMs: Math.round(performance.now() - cur.start),
             initiator: 'xhr',
             ...(cur.initiatorStack === undefined ? {} : { initiatorStack: cur.initiatorStack }),
