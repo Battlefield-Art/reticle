@@ -25,6 +25,7 @@ export const McpClient = {
   CURSOR: 'cursor',
   WINDSURF: 'windsurf',
   OPENCODE: 'opencode',
+  ANTIGRAVITY: 'antigravity',
   CODEX: 'codex',
   GEMINI: 'gemini',
   VSCODE: 'vscode',
@@ -151,6 +152,35 @@ export const MCP_CLIENTS: readonly ClientSpec[] = [
     serversKey: 'mcp',
     entry: openCodeEntry,
     docs: 'https://opencode.ai/docs/config — `mcp` key, type:"local", command is an array',
+  },
+  {
+    id: McpClient.ANTIGRAVITY,
+    label: 'Antigravity',
+    /**
+     * Nine users connected an MCP client through Antigravity and drove nothing at all.
+     *
+     * `init` did not know this client, so they hand-wired a registration - the connections are in the
+     * field data, so they got that far - and then never ran `init`, never instrumented an app, and
+     * never called a tool. Nothing in that state tells anyone there is a second half.
+     *
+     * Path and shape from Google's documentation rather than recall: `mcpServers`, at
+     * `~/.gemini/config/mcp_config.json`, and one file serves the 2.0 IDE, the CLI and the SDK. Same
+     * `command`/`args` object Cursor, Windsurf and Gemini CLI already use.
+     *
+     * It shares the `~/.gemini` tree with Gemini CLI, which is why the marker matters: registration is
+     * gated on the marker DIRECTORY, and these resolve to `.gemini/config` and `.gemini` respectively,
+     * so having one installed cannot make `init` write a config for the other.
+     *
+     * NOT verified against a running install. The path is documented, the merge is the shared JSON
+     * path that every other client here uses, and an unparseable config still degrades to a printed
+     * block rather than a rewrite.
+     */
+    scope: ConfigScope.HOME,
+    relPath: '.gemini/config/mcp_config.json',
+    format: ConfigFormat.JSON,
+    serversKey: 'mcpServers',
+    entry: commandArgsEntry,
+    docs: 'https://antigravity.google/docs/mcp — ~/.gemini/config/mcp_config.json, `mcpServers` key',
   },
   {
     id: McpClient.CODEX,

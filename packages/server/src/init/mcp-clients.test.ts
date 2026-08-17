@@ -26,6 +26,7 @@ import {
   ClientMergeStatus,
   ConfigScope,
   type ClientSpec,
+  clientMarkerRelPath,
   clientSnippet,
 } from './mcp-clients.js';
 import { MCP_SERVER_NAME } from './mcp.js';
@@ -276,5 +277,58 @@ describe('opencode is wired where it actually lives', () => {
     // A failed parse must degrade to MANUAL, never to a rewrite.
     const commented = '{\n  // my settings\n  "plugin": []\n}';
     expect(mergeClientConfig(spec as ClientSpec, commented).status).toBe(ClientMergeStatus.MANUAL);
+  });
+});
+
+/**
+ * Antigravity, which connected nine users and drove nothing.
+ *
+ * `init` did not know this client at all, so those users hand-wired an MCP registration (they reached
+ * the daemon - the connections are in the field data) and then never ran `init`, never instrumented an
+ * app, and never called a tool. Nothing told them there was a second half.
+ *
+ * Path and shape taken from Google's own documentation, not recalled: the config is
+ * `~/.gemini/config/mcp_config.json` under a top-level `mcpServers` key, and one file serves the 2.0
+ * IDE, the CLI and the SDK alike. The shape is the same `command`/`args` object Cursor, Windsurf and
+ * Gemini CLI already use, so this is a registry entry rather than a new mechanism.
+ *
+ * NOT verified against a running install - Antigravity is not on the machine this was written on. The
+ * path is documented, the merge is the shared JSON path with its own tests, and a config that fails to
+ * parse still degrades to a printed block.
+ */
+describe('antigravity', () => {
+  const spec = MCP_CLIENTS.find((c) => c.id === McpClient.ANTIGRAVITY);
+
+  it('is a client init knows about', () => {
+    expect(spec, 'antigravity entry missing').toBeDefined();
+  });
+
+  it('writes the documented global config path', () => {
+    expect(spec?.scope).toBe(ConfigScope.HOME);
+    expect(spec?.relPath).toBe('.gemini/config/mcp_config.json');
+  });
+
+  it('uses the mcpServers key, like the other Gemini-family clients', () => {
+    expect(spec?.serversKey).toBe('mcpServers');
+  });
+
+  it('does not collide with the Gemini CLI entry that shares the ~/.gemini tree', () => {
+    // Both live under ~/.gemini, and registration is gated on the marker DIRECTORY existing. If the
+    // markers matched, having one client installed would make init write a config for the other.
+    const gemini = MCP_CLIENTS.find((c) => c.id === McpClient.GEMINI);
+    expect(spec?.relPath).not.toBe(gemini?.relPath);
+    expect(clientMarkerRelPath(spec as ClientSpec)).not.toBe(
+      clientMarkerRelPath(gemini as ClientSpec),
+    );
+  });
+
+  it('merges into an existing config without touching the servers already there', () => {
+    const existing = JSON.stringify({ mcpServers: { other: { command: 'node', args: ['x.js'] } } });
+    const merged = mergeClientConfig(spec as ClientSpec, existing);
+    expect(merged.status).toBe(ClientMergeStatus.APPLY);
+    const servers = (JSON.parse(merged.content) as { mcpServers: Record<string, unknown> })
+      .mcpServers;
+    expect(servers['other']).toBeDefined();
+    expect(servers[MCP_SERVER_NAME]).toBeDefined();
   });
 });
