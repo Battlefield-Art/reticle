@@ -182,7 +182,6 @@ interface SnapshotDelta {
   changed: string[];
   addedCount: number;
   removedCount: number;
-  changedCount: number;
 }
 
 /** Where focus moved, when it moved. Absent fields mean nothing held focus on that side. */
@@ -224,7 +223,6 @@ export function snapshotDelta(prevTree: string | undefined, nextTree: string): D
       changed,
       addedCount: added.length,
       removedCount: removed.length,
-      changedCount: changed.length,
     },
     ...moved,
   };

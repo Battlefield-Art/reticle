@@ -185,7 +185,7 @@ describe('value changes surface as `changed`, not as remove+add of the same elem
     const d = snapshotDelta(before, after);
     if (d.mode !== SnapshotDeltaMode.DELTA) throw new Error('expected delta');
     expect(d.delta.changed).toEqual(['- textbox "Filter" (ref=e29) [value="billing"]']);
-    expect(d.delta.changedCount).toBe(1);
+    expect(d.delta.changed).toHaveLength(1);
     expect(d.delta.added).toEqual([]);
     expect(d.delta.removed).toEqual([]);
   });
@@ -209,7 +209,7 @@ describe('value changes surface as `changed`, not as remove+add of the same elem
     ].join('\n');
     const d = snapshotDelta(before, after);
     if (d.mode !== SnapshotDeltaMode.DELTA) throw new Error('expected delta');
-    expect(d.delta.changedCount).toBe(2);
+    expect(d.delta.changed).toHaveLength(2);
     expect(d.delta.changed).toContain('- textbox "Name" (ref=e1) [value="Alice"]');
     expect(d.delta.changed).toContain('- textbox "Email" (ref=e2) [value="a@b.c"]');
     expect(d.delta.added).toEqual([]);

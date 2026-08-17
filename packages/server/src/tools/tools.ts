@@ -153,7 +153,7 @@ const RAW_TOOLS: ToolDef[] = [
       mode: z
         .string()
         .optional()
-        .describe('delta | unchanged when diff:true returned a change set.'),
+        .describe('full | delta | unchanged — which kind of diff response this is.'),
       delta: z
         .object({
           added: z.array(z.string()),
@@ -163,6 +163,20 @@ const RAW_TOOLS: ToolDef[] = [
         })
         .optional()
         .describe('Only present on a diff:true call that found changes.'),
+      changed: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Elements whose value changed in place (same ref, different content) — not a structural add/remove.',
+        ),
+      changedCount: z
+        .number()
+        .optional()
+        .describe('Number of elements in `changed`.'),
+      reason: z
+        .string()
+        .optional()
+        .describe('Why mode is "full": first snapshot for this route, or route changed.'),
       cost: z
         .object({ bytes: z.number(), tokens: z.number() })
         .optional()
