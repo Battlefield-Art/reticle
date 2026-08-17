@@ -3,6 +3,8 @@ import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { stateDirProblem } from './daemon/state-dir.js';
+import { statusNextAction } from './cli/status-next-action.js';
+import { hasConnectedBefore } from './session/connection-memory.js';
 import { reticleStateHome } from './daemon/daemon.js';
 import {
   handleWatch,
@@ -307,17 +309,38 @@ async function handleRestart(port: number, force: boolean): Promise<void> {
   await serveWithHonestExit({ port, headless: true, http: false });
 }
 
+/** `{ nextAction }` when there is one, `{}` when a session is connected — so the success case is silent. */
+function withNextAction(facts: {
+  running: boolean;
+  sessionCount: number;
+  previouslyConnected: boolean;
+}): { nextAction?: string } {
+  const next = statusNextAction(facts);
+  return next === undefined ? {} : { nextAction: next };
+}
+
 function handleStatus(port: number): void {
   const pid = readPid(port);
+  // Durable, so it survives the daemon idling out — which is the state `status` is most often run in.
+  const previouslyConnected = hasConnectedBefore(
+    reticleStateHome(),
+    port,
+    readProjectId(process.cwd()),
+  );
   if (null === pid || !isAlive(pid)) {
     // `running: false` on its own has been reported about a port that was demonstrably occupied,
     // because the pid file is not the port. Ask the port before answering.
     void probePresence(port, { tcpOpen: probeDaemon, status: fetchStatus }).then((presence) => {
+      const running = presenceIsUsable(presence);
       log('reticle_status', {
         port,
-        running: presenceIsUsable(presence),
+        running,
         presence,
         ...(presence === PortPresence.FOREIGN ? { reason: describePresence(presence, port) } : {}),
+        // `init` promises this command says why the app has not connected. Without it the answer was
+        // `running: false` and nothing else, which reads as "Reticle is broken" for what is usually
+        // just a daemon that has not been asked to do anything yet.
+        ...withNextAction({ running, sessionCount: 0, previouslyConnected }),
       });
     });
     return;
@@ -330,10 +353,24 @@ function handleStatus(port: number): void {
     const update = availableUpdate();
     const nudge = update === undefined ? {} : { updateAvailable: update };
     if (payload === undefined) {
-      log('reticle_status', { port, running: true, pid, ...nudge });
+      log('reticle_status', {
+        port,
+        running: true,
+        pid,
+        ...nudge,
+        ...withNextAction({ running: true, sessionCount: 0, previouslyConnected }),
+      });
       return;
     }
-    log('reticle_status', { port, running: true, pid, ...summarizeStatus(payload), ...nudge });
+    const summary = summarizeStatus(payload);
+    // Only when the daemon did NOT already explain itself. It has the whole diagnosis in-process and
+    // puts it on the wire as `why`; printing a second, thinner opinion beside it risks two confident
+    // answers pointing different ways, which is worse than one.
+    const next =
+      summary.why === undefined
+        ? withNextAction({ running: true, ...summary, previouslyConnected })
+        : {};
+    log('reticle_status', { port, running: true, pid, ...summary, ...next, ...nudge });
   });
 }
 
