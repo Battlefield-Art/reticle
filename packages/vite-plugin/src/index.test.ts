@@ -175,6 +175,33 @@ describe('desktop mode', () => {
   });
 });
 
+/**
+ * The plugin is the only `connect()` most apps ever have — a second, hand-written one is a no-op —
+ * so an option it cannot forward is an option the app cannot use AT ALL. `captureNetworkBodies` was
+ * the first case of this; `allowNonLocalhost` is the same shape and worse, because without it an app
+ * that cannot be served on localhost (host-based multi-tenant, cookie-scoped auth on a custom dev
+ * hostname) cannot use Reticle at all rather than merely losing a feature.
+ */
+describe('connect options the SDK supports are reachable from the plugin', () => {
+  const ALLOW_ENV = 'VITE_RETICLE_ALLOW_NON_LOCALHOST';
+
+  it('forwards allowNonLocalhost, and omits it when unset', () => {
+    expect(connectModuleSource({ allowNonLocalhost: true })).toContain('allowNonLocalhost');
+    expect(connectModuleSource({})).not.toContain('allowNonLocalhost');
+  });
+
+  it('can be turned on for one session through the env, without editing vite.config', () => {
+    const prev = process.env[ALLOW_ENV];
+    process.env[ALLOW_ENV] = '1';
+    try {
+      expect(connectModuleSource({})).toContain('allowNonLocalhost');
+    } finally {
+      if (prev === undefined) delete process.env[ALLOW_ENV];
+      else process.env[ALLOW_ENV] = prev;
+    }
+  });
+});
+
 describe('desktop injection site', () => {
   /**
    * In a build Vite routes the HTML entry through an html-proxy id rather than the plain file path.

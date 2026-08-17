@@ -168,6 +168,27 @@ export interface ReticleVitePluginOptions {
    */
   captureNetworkBodies?: boolean;
   /**
+   * Let Reticle run when the page or the bridge is not on localhost.
+   *
+   * Off by default: the SDK refuses outside localhost so a page on the open internet cannot be
+   * instrumented by a bridge it happened to reach. Turn it on for a dev server that CANNOT be served
+   * on localhost — a host-based multi-tenant frontend, a white-label app resolving the tenant from
+   * the `Host` header, anything with cookie-scoped auth on a custom dev hostname. Without it those
+   * apps cannot use Reticle at all, because the plugin is the only `connect()` they have and a
+   * second, hand-written one is a no-op.
+   *
+   * NOT SUFFICIENT ON ITS OWN — a pairing token is also required. `connectionPolicy` in
+   * `@reticlehq/browser` refuses a non-localhost connect with "a pairing token is required outside
+   * localhost" whenever the token is missing or empty, whatever this flag says. The plugin supplies
+   * one automatically from the daemon's `~/.reticle/pairing-token` (see readPairingToken), so a
+   * started daemon is normally all it takes; pass `token` yourself only when the daemon's file is
+   * unreachable. A non-loopback BRIDGE additionally has to be `wss://`.
+   *
+   * Also settable as `VITE_RETICLE_ALLOW_NON_LOCALHOST=1`, so it can be turned on for one session
+   * without editing vite.config.
+   */
+  allowNonLocalhost?: boolean;
+  /**
    * Where a diagnostic goes. Defaults to the console; injected so the dev-mode injection check is
    * testable without capturing global console output.
    */
@@ -406,6 +427,14 @@ function connectArgs(options: ReticleVitePluginOptions): string {
   // model with it.
   if (true === options.captureNetworkBodies || '1' === process.env['VITE_RETICLE_CAPTURE_BODIES']) {
     args['captureNetworkBodies'] = true;
+  }
+  // Same shape, same reason: without it an app that cannot be served on localhost has no way to
+  // reach the SDK option at all. The pairing token still applies — see the option's docstring.
+  if (
+    true === options.allowNonLocalhost ||
+    '1' === process.env['VITE_RETICLE_ALLOW_NON_LOCALHOST']
+  ) {
+    args['allowNonLocalhost'] = true;
   }
   return Object.keys(args).length > 0 ? JSON.stringify(args) : '';
 }

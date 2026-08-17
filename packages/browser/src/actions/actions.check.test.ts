@@ -68,6 +68,32 @@ describe('check/uncheck drive the control instead of assigning it', () => {
     expect(clicks, 'and must not fire a pointless click the app has to absorb').toHaveLength(0);
   });
 
+  /**
+   * Not clicking is right. What was wrong is what the no-op CONCLUDED: it read the DOM property and
+   * reported an unqualified success, having dispatched nothing and having no evidence about what the
+   * APPLICATION holds. Those come apart exactly when it matters — a default-checked input the app
+   * never committed, a property written earlier by something else — and then every later read agrees
+   * because every later read is also reading the DOM.
+   */
+  it('says so when it dispatched nothing, instead of reporting a plain success', async () => {
+    const el = box({ checked: true });
+    const out = (await executeAction(refs.refFor(el), ActionType.CHECK, {})) as {
+      effect?: { alreadyAtValue?: boolean };
+    };
+    expect(
+      out.effect?.alreadyAtValue,
+      'the app was never told, so the caller must be able to see that',
+    ).toBe(true);
+  });
+
+  it('claims nothing of the sort when it actually drove the control', async () => {
+    const el = box();
+    const out = (await executeAction(refs.refFor(el), ActionType.CHECK, {})) as {
+      effect?: { alreadyAtValue?: boolean };
+    };
+    expect(out.effect?.alreadyAtValue, 'omitted at its uninformative default').toBeUndefined();
+  });
+
   it('reports prevention when the app cancels the click', async () => {
     const el = box();
     el.addEventListener('click', (e) => e.preventDefault());

@@ -66,6 +66,23 @@ interface ActionEffect {
    * the achieved hold can legitimately be much longer than the one requested.
    */
   heldMs?: number;
+  /**
+   * check/uncheck only: the control ALREADY read as the requested state, so NOTHING was dispatched.
+   * OMITTED otherwise (the uninformative default).
+   *
+   * Not clicking is right — clicking an already-checked box would uncheck it. But the branch that
+   * skips the click reads the DOM PROPERTY, and that is not evidence about what the APPLICATION
+   * holds. They come apart exactly when it matters: a default-checked input the app has not
+   * committed, a property written earlier by something else, a control read mid-render. Then `check`
+   * no-ops, the framework never hears, and every later read agrees because every later read is also
+   * reading the DOM — reported from the field as a form whose flag was unset in the database while
+   * Reticle confirmed it checked.
+   *
+   * So this is a caveat, not a failure: the requested state is what the DOM shows, and Reticle did
+   * not put it there. Assert the app's own state (a signal, a request, a derived control) rather than
+   * the box.
+   */
+  alreadyAtValue?: true;
 }
 
 interface ActionResult {
@@ -203,6 +220,18 @@ const isFillLike = (action: string): boolean => FILL_LIKE.has(action);
 
 /** Actions that resolve to a point and so benefit from off-viewport scroll + occlusion hit-test. */
 const CLICK_LIKE = new Set<string>([ActionType.CLICK, ActionType.DBLCLICK]);
+
+/**
+ * A check/uncheck whose requested state the element already reads as, so nothing will be dispatched.
+ *
+ * ONE predicate, read twice — the dispatch branch decides not to click, the effect reports that it
+ * did not. Two copies of this rule could disagree, and a disagreement here is precisely the false
+ * green: an act that reports it drove a control it never touched.
+ */
+function alreadyAtCheckedState(el: HTMLElement, action: string): boolean {
+  if (action !== ActionType.CHECK && action !== ActionType.UNCHECK) return false;
+  return isInput(el) && el.checked === (action === ActionType.CHECK);
+}
 
 function dangerousActionContext(el: HTMLElement): string {
   const form = el.closest('form');
@@ -572,10 +601,11 @@ async function dispatchOther(
           `cannot ${action} a disabled control — a real user could not, so neither will Reticle`,
         );
       }
-      const wanted = action === ActionType.CHECK;
-      // Already there: report success and touch nothing. `check` means "end up checked", not
-      // "toggle", so clicking here would flip it OFF and hand the app an event no user produced.
-      if (el.checked === wanted) return false;
+      // Already there: touch nothing. `check` means "end up checked", not "toggle", so clicking here
+      // would flip it OFF and hand the app an event no user produced. Reported as
+      // `effect.alreadyAtValue` — the same predicate, read again by executeAction — because "nothing
+      // was dispatched" is not the same claim as "the app holds this value". See ActionEffect.
+      if (alreadyAtCheckedState(el, action)) return false;
       // `click()`, never `el.checked = …`. Assigning the property flips the pixel and tells no
       // framework: React binds a checkbox's onChange to the CLICK event, and its value tracker
       // dedups the change it would otherwise synthesise from a direct assignment — so a controlled
@@ -674,6 +704,8 @@ export async function executeAction(
   // Click-like: scroll an off-viewport target in + hit-test the click point BEFORE installing the
   // mutation observer (scroll/hit-test never mutate the DOM, but keep the probe window clean).
   const geometry = CLICK_LIKE.has(action) ? clickGeometry(el) : NO_GEOMETRY;
+  // Read BEFORE dispatch, from the same predicate the dispatch branch uses.
+  const alreadyAtValue = alreadyAtCheckedState(el, action);
 
   let mutated = 0;
   const said = new AppearedText();
@@ -728,6 +760,9 @@ export async function executeAction(
     // Omitted when there was no hold: an absent key says "this action does not hold", where a 0
     // would read as "it held for no time", which is a different and misleading claim.
     ...(heldMs > 0 ? { heldMs } : {}),
+    // Omitted unless it applies: an absent key means the action actually drove the control (or is
+    // not a check at all), which is the only reading that must not be ambiguous.
+    ...(alreadyAtValue ? { alreadyAtValue: true as const } : {}),
   };
   // Honesty caveats: a visually-occluded click is reported even though synthetic dispatch landed;
   // else synthetic hover may not fire framework enter/leave handlers (no native hit-test).
