@@ -146,8 +146,10 @@ const PREDICATE_KINDS =
  */
 const PREDICATE_FIELD_GRAMMAR_HINT =
   ' Bug-catching options: net.count (exact request count — catches double-submit), ' +
-  'console.absent:true (action completed with a CLEAN console), absent:true on element/text ' +
-  '(it should be gone). Call reticle_tools for the full field grammar of a kind.';
+  'net.bodyContains (a substring of what the SERVER answered — catches a UI that echoes the input ' +
+  'it sent instead of the result it got back), console.absent:true (action completed with a CLEAN ' +
+  'console), absent:true on element/text (it should be gone). Call reticle_tools for the full field ' +
+  'grammar of a kind.';
 
 const COMPACT_PREDICATE_DESCRIPTION = `${PREDICATE_KINDS}${PREDICATE_FIELD_GRAMMAR_HINT}`;
 

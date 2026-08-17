@@ -30,6 +30,8 @@ export type Predicate =
       ok?: boolean;
       since?: number;
       count?: number;
+      /** A substring the RESPONSE body must contain — what the server answered, not what was sent. */
+      bodyContains?: string;
     }
   | { kind: typeof PredicateKind.ROUTE; pathname?: string; contains?: string; since?: number }
   | { kind: typeof PredicateKind.CONSOLE; level?: string; absent?: boolean; since?: number }
@@ -74,6 +76,12 @@ const PREDICATE_ALIASES: Readonly<Record<string, Readonly<Record<string, string>
   [PredicateKind.ROUTE]: { path: 'pathname', urlContains: 'contains', url: 'contains' },
   [PredicateKind.NET]: { url: 'urlContains' },
   [PredicateKind.SIGNAL]: { data: 'dataMatches' },
+  // `of` on a composite: it reads naturally, several assertion libraries spell it that way, and it has
+  // no other meaning here. Observed twice in one drive on a real app, and each rejection cost a round
+  // trip AND produced no verdict — a composite is what an agent reaches for precisely when it has two
+  // things to prove at once, so failing it is expensive at the worst moment.
+  [PredicateKind.ALL_OF]: { of: 'predicates' },
+  [PredicateKind.ANY_OF]: { of: 'predicates' },
 };
 
 /**
@@ -269,6 +277,24 @@ function predicateUnion() {
         ok: z.boolean().optional(),
         since: z.number().optional(),
         count: z.number().int().nonnegative().optional(),
+        /**
+         * A substring the call's RESPONSE body must contain - what the server answered.
+         *
+         * The only channel that can catch a UI echoing its own input instead of the server's answer.
+         * Reported from a real payments UI: a refund posted `{"amount":"1187.01"}`, the server read it
+         * as paise and answered 200 with `{"refunded":11.87}`, and the page displayed the number the
+         * user had typed. Request fired, exactly once, status 200, console clean, page settled — every
+         * assertable channel green on a hundred-fold wrong refund, so the verdict was `yes`.
+         *
+         * A substring rather than a JSON path, deliberately: `"refunded":11.87` is the whole assertion
+         * for the money case, it needs no schema for the body, and it works the same on JSON, form
+         * encoding and plain text. A path-and-equals form can be added later if a real case needs one;
+         * this is the shape that turns "a blob I read" into a verdict.
+         *
+         * Requires body capture (`reticle({ captureNetworkBodies: true })`), and says so when the body
+         * was never recorded rather than reporting an ordinary mismatch.
+         */
+        bodyContains: z.string().min(1).optional(),
       })
       .strict(),
     z
@@ -528,6 +554,15 @@ export function evalNet(
   p: Extract<Predicate, { kind: typeof PredicateKind.NET }>,
 ): EvalResult {
   const since = p.since ?? 0;
+  /**
+   * Did any call match everything EXCEPT the body assertion, while carrying no recorded body?
+   *
+   * Bodies are opt-in, so without them a body predicate can never hold — and "no call matched" would
+   * send the caller to check the url and the method, which are both fine, instead of to the one
+   * setting that makes the assertion possible. Tracked while filtering rather than recomputed after,
+   * because it is the same pass over the same events.
+   */
+  let matchedButUnrecorded = false;
   const matches = events.filter((e) => {
     if (e.type !== EventType.NET_REQUEST || e.t < since) return false;
     const d = e.data;
@@ -539,8 +574,29 @@ export function evalNet(
     }
     if (p.status !== undefined && num(d['status']) !== p.status) return false;
     if (p.ok !== undefined && callSucceeded(d) !== p.ok) return false;
+    if (p.bodyContains !== undefined) {
+      // The RESPONSE body only, and this is the whole point of the field. Searching the request too
+      // would let `bodyContains: "1187.01"` pass on the very defect it exists to catch: the app SENT
+      // that number, so it is in the request whatever the server then did with it. The server's answer
+      // is the one channel a UI cannot fake.
+      const response = str(d['responseBody']);
+      if (response === undefined) {
+        matchedButUnrecorded = true;
+        return false;
+      }
+      if (!response.includes(p.bodyContains)) return false;
+    }
     return true;
   });
+  if (matchedButUnrecorded && 0 === matches.length) {
+    return {
+      pass: false,
+      failureReason: `a call matched but its body was not recorded, so \`bodyContains\` could not be checked — enable it where the app calls connect(): reticle({ captureNetworkBodies: true })`,
+      observed: 'a matching call with no recorded body',
+      expected: `a body containing ${JSON.stringify(p.bodyContains)}`,
+      assertion: 'net.bodyContains',
+    };
+  }
   // `count` (exact) turns presence into a cardinality assertion — catches the double-submit /
   // useEffect-double-fire / retry-storm regression class, where the request DID fire (presence passes)
   // but fired the WRONG number of times. Without `count`, the matcher is presence-only (≥1).
