@@ -66,6 +66,28 @@ export const WS_CLOSE_REASON = {
   AUTH_FAILED: 'authentication failed — reload the page to pick up the current pairing token',
 } as const;
 
+/**
+ * A dial turned away at the ORIGIN gate, in words the reader can act on.
+ *
+ * This is the refusal that used to leave no trace anywhere. It happens before any HELLO, so it
+ * produced no `noteClosure`, no `session_disconnected`, nothing but an `origin_rejected` log line —
+ * and the daemon log is the file nobody opens until they have already lost the afternoon. Reported
+ * from a multi-tenant app resolving its tenant from the `Host` header: on a hosts-file alias every
+ * dial was refused here, `doctor` reported every check green, and the lease hint blamed the port.
+ *
+ * The origin is IN the message because it is the fix: it is either the alias to allow-list, or the
+ * proof that the page is not being served from where the developer thinks it is.
+ */
+export function originRejectedReason(origin: string | undefined): string {
+  const named = origin === undefined || 0 === origin.length ? 'a page sending no Origin' : origin;
+  return (
+    `a browser dialled this daemon and was REFUSED at the origin gate: ${named} is not allowed. ` +
+    'Off localhost the SDK needs BOTH `allowNonLocalhost: true` AND a pairing token, and the ' +
+    'daemon needs that origin allow-listed (RETICLE_ALLOWED_ORIGINS). The app is running and ' +
+    'instrumented — it was turned away, so do not go looking for a stopped dev server.'
+  );
+}
+
 /** WS close codes + reasons the bridge sends to the SDK (1008 = policy violation, 1013 = try again later). */
 const WS_CLOSE = {
   TOO_MANY_HANDSHAKES: [1013, 'too many pending handshakes'],
@@ -249,7 +271,7 @@ export class Bridge {
         maxPayload: TRANSPORT_LIMITS.MAX_MESSAGE_BYTES,
         verifyClient: ({ origin }, done) => {
           const allowed = this.#originAllowed(origin);
-          if (!allowed) log('origin_rejected', { origin: origin ?? 'missing' });
+          if (!allowed) this.#noteOriginRejected(origin);
           done(allowed, 403, 'Forbidden');
         },
       });
@@ -277,7 +299,7 @@ export class Bridge {
         maxPayload: TRANSPORT_LIMITS.MAX_MESSAGE_BYTES,
         verifyClient: ({ origin }, done) => {
           const allowed = this.#originAllowed(origin);
-          if (!allowed) log('origin_rejected', { origin: origin ?? 'missing' });
+          if (!allowed) this.#noteOriginRejected(origin);
           done(allowed, 403, 'Forbidden');
         },
       });
@@ -512,6 +534,21 @@ export class Bridge {
     socket.on('error', (err) => {
       log('socket_error', { error: err.message });
     });
+  }
+
+  /**
+   * Record a refused dial where something OTHER than the daemon log can read it.
+   *
+   * The log line stays — it is the forensic record — but a line in `~/.reticle/daemon-<port>.log` is
+   * invisible to the agent that is, at that exact moment, being told "no browser session connected"
+   * with no reason attached. `noteClosure` is the channel the no-session diagnosis already reads, so
+   * the refusal now travels the same route as an auth failure and a protocol mismatch, and the loop
+   * (the reason is only in the page console; the console needs a session; the refusal prevents one)
+   * is broken from the daemon side.
+   */
+  #noteOriginRejected(origin: string | undefined): void {
+    log('origin_rejected', { origin: origin ?? 'missing' });
+    this.sessions.noteClosure(originRejectedReason(origin), this.#clock());
   }
 
   #originAllowed(origin: string | undefined): boolean {

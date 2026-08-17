@@ -12,6 +12,7 @@ import { chromiumHint, probeChromium } from './chromium-hint.js';
 import { SERVER_VERSION } from '../version/server-version.js';
 import { CONTRACT_FINGERPRINT } from '@reticlehq/core';
 import { diagnoseDesktop, isDesktopProject } from '../init/desktop-doctor.js';
+import { diagnoseWebCsp } from '../init/csp-doctor.js';
 import { diagnosePortMismatch, readProjectPort } from './cli-port.js';
 
 /**
@@ -114,6 +115,20 @@ export async function handleDoctor(port: number): Promise<void> {
       return undefined;
     }
   };
+  // The web sibling of the desktop findings below: a `connect-src` that excludes the bridge makes
+  // the browser refuse the WebSocket and report it in ITS console only, so every check above passes
+  // at an app that can never connect. Named, with the exact text to paste.
+  const csp = diagnoseWebCsp(readProjectFile, port);
+  if (csp.length > 0) {
+    line('');
+    line(`  csp          ✗ a Content-Security-Policy is blocking the Reticle bridge:`);
+    for (const finding of csp) {
+      line(`                 ${finding.file}`);
+      line(`                   ${finding.problem}`);
+      line(`                   fix: ${finding.fix}`);
+    }
+  }
+
   const desktop = diagnoseDesktop(readProjectFile, port);
   if (desktop.length > 0) {
     line('');

@@ -32,6 +32,16 @@ interface NextActionFacts {
   initialized: boolean;
   listening: readonly number[];
   dev: DevCommand | undefined;
+  /**
+   * An app for this project has connected on this port before, from durable state.
+   *
+   * Outranks `initialized`, which is only ever "is there a `.reticle.json` in the ONE directory this
+   * daemon stands in". In a monorepo, or under an editor that starts the MCP server from the user's
+   * home, that answer is no for projects that are wired and have connected — and the action handed
+   * back was `reticle init`, which is the one action that cannot help and can overwrite the config
+   * that works.
+   */
+  previouslyConnected?: boolean;
 }
 
 /** `reticle init`, the only command here that is Reticle's own and so cannot be wrong. */
@@ -78,7 +88,7 @@ export function nextActionFor(facts: NextActionFacts): NoSessionNextAction {
   const ports = facts.listening.join(', ');
   const only = 1 === facts.listening.length ? facts.listening[0] : undefined;
 
-  if (!facts.initialized) {
+  if (!facts.initialized && true !== facts.previouslyConnected) {
     return {
       action: NoSessionAction.RUN_INIT,
       command: INIT_COMMAND,

@@ -45,6 +45,7 @@ import {
   svelteKitSteps,
   nuxtSteps,
   astroSteps,
+  cspStep,
   VITE_PLUGIN_DETAIL,
 } from './plan-framework.js';
 import { join } from 'node:path';
@@ -960,6 +961,7 @@ function uiLibraryStep(input: PlanInput): Step[] {
 
 export function buildPlan(input: PlanInput): Plan {
   const steps: Step[] = [
+    ...cspStep(input),
     ...mcpSteps(input),
     ...agentRuleSteps(input),
     ...slashCommandSteps(input),

@@ -120,6 +120,20 @@ export function readProjectId(cwd: string): string | undefined {
 }
 
 /**
+ * The framework `reticle init` stamped into `.reticle.json`, when there is one.
+ *
+ * Read so the no-session diagnosis can RANK its causes instead of printing one static differential.
+ * Nuxt is the case that pays for this: it does not register a newly added plugin on HMR, so a dev
+ * server older than the wiring is its single most likely cause — `init` warns about it at install
+ * time and the hint the agent reads hours later never mentioned it.
+ */
+export function readProjectFramework(cwd: string): string | undefined {
+  const framework = findProjectConfig(cwd)?.['framework'];
+  if ('string' === typeof framework && framework.length > 0) return framework;
+  return undefined;
+}
+
+/**
  * Whether the durable causal journal is enabled. On by default (the journal IS the loop); off only via
  * explicit opt-out — `.reticle.json` `"journal": false`, or `RETICLE_JOURNAL` set to `0`/`false`. The env
  * wins so CI/tests can force it off without editing the project file.

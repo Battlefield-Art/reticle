@@ -528,7 +528,8 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
                 `\`reticle init\` in the app's directory and restart its dev server. If the app IS ` +
                 `wired, give the page a moment and check the browser console: the SDK announces its ` +
                 `own connect failures there, including the one it refuses to make from a ` +
-                `non-localhost host without allowNonLocalhost.`,
+                `non-localhost host, which needs BOTH allowNonLocalhost: true AND a pairing token ` +
+                `(~/.reticle/pairing-token) — the flag alone is not sufficient.`,
             }),
       });
     })

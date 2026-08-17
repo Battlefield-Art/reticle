@@ -404,8 +404,12 @@ export function htmlManual(
 ${staticPageSnippet(withToken)}
 
   Serving the app on something other than localhost (a hosts-file alias, a LAN IP, a container, a
-  tunnel)? Add \`allowNonLocalhost: true\` to the connect. Without it the SDK refuses to dial and says
-  so in the browser console only, so from here it looks exactly like nothing happened.`;
+  tunnel)? You need TWO things, not one: \`allowNonLocalhost: true\` AND a pairing token, passed as
+  \`token\` on the same connect. The flag alone is NOT sufficient — off localhost the SDK refuses
+  without a token as well, and that refusal is page-side, so the daemon sees only silence and every
+  \`reticle doctor\` check still passes. The token is the one in \`~/.reticle/pairing-token\` (the
+  build plugins read the same file). Without both, the SDK says so in the browser console only, so
+  from here it looks exactly like nothing happened.`;
 }
 
 export const NEXT_RETICLE_DEV_PATH = 'app/reticle-dev.tsx';
@@ -521,9 +525,11 @@ and no index.html to inject into. Wire it with a dev-only CLIENT plugin, which i
 2. Restart the dev server. A dev server that is already running does not pick up a new plugin —
    it will not appear in .nuxt/plugins/client.mjs, and the app will come up with no SDK at all.
 
-3. If your dev host is anything other than localhost (a hosts-file alias, a LAN IP, a tunnel), add
-   allowNonLocalhost: true to that connect call. Without it the SDK loads and then refuses, and the
-   only sign is one line in the browser console.
+3. If your dev host is anything other than localhost (a hosts-file alias, a LAN IP, a tunnel), that
+   connect call needs TWO additions, not one: allowNonLocalhost: true AND a pairing token passed as
+   token. The flag alone is NOT sufficient off localhost. The token is the one in
+   ~/.reticle/pairing-token. Without both, the SDK loads and then refuses, and the only sign is one
+   line in the browser console.
 
 The package is @reticlehq/browser — the framework-neutral sensor. DOM, network, console, routing and
 source file:line all work in Vue. What you do not get is React component identity, which is the only

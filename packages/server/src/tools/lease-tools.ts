@@ -10,11 +10,34 @@
  */
 
 import { z } from 'zod';
-import { leaseNotConnectedHint } from './lease-hint.js';
+import { leaseNotConnectedHint, type LeaseEvidence } from './lease-hint.js';
+import { readProjectFramework, readProjectId } from '../cli/cli-port.js';
+import { hasConnectedBefore } from '../session/connection-memory.js';
+import { reticleStateHome } from '../daemon/daemon.js';
 import { RETICLE_URL_PARAM, RETICLE_DEFAULT_PORT } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import type { ToolDef, ToolDeps } from './tool-kit.js';
 import { asString } from './tools-helpers.js';
+
+/**
+ * Everything the daemon already knows about why a leased tab might not have dialled in.
+ *
+ * Gathered here rather than guessed in the hint, because the daemon HAD this evidence all along and
+ * printed a static differential over the top of it — telling one agent in `reticle_sessions` that
+ * the wiring was proven correct and telling it seconds later that the port was probably wrong.
+ */
+function leaseEvidence(deps: ToolDeps, port: number): LeaseEvidence {
+  const cwd = process.cwd();
+  const projectId = readProjectId(cwd);
+  const refusal = deps.sessions.lastClosure()?.reason;
+  const framework = readProjectFramework(cwd);
+  return {
+    ...(refusal === undefined ? {} : { refusal }),
+    ...(framework === undefined ? {} : { framework }),
+    previouslyConnected: hasConnectedBefore(reticleStateHome(), port, projectId),
+    initialized: projectId !== undefined,
+  };
+}
 
 const POOL_UNAVAILABLE =
   'browser pool unavailable — the lease tools need the daemon-managed pool (start Reticle via `reticle mcp`).';
@@ -234,9 +257,12 @@ export const LEASE_ACQUIRE_TOOL: ToolDef = {
       queued: pool.queuedCount(),
       ...(ready
         ? {}
-        : {
-            hint: leaseNotConnectedHint(url, deps.bridgePort ?? RETICLE_DEFAULT_PORT),
-          }),
+        : (() => {
+            const bridgePort = deps.bridgePort ?? RETICLE_DEFAULT_PORT;
+            return {
+              hint: leaseNotConnectedHint(url, bridgePort, leaseEvidence(deps, bridgePort)),
+            };
+          })()),
     };
   },
 };

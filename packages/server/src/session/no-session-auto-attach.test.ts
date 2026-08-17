@@ -70,6 +70,7 @@ function stubSessions(count = 0): Stub {
     setNoSessionNextAction: (fn: (() => NoSessionNextAction | undefined) | undefined) => {
       next = fn;
     },
+    setConnectionRecorder: () => undefined,
   } as unknown as SessionManager;
   return { manager, hint: () => hint?.() ?? '', next: () => next?.() };
 }

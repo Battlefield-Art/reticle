@@ -15,7 +15,10 @@ import { diagnoseNoSession } from './no-session-diagnosis.js';
 import { detectDevCommand } from './dev-command.js';
 import { nextActionFor, renderNextAction } from './no-session-next-action.js';
 import type { NoSessionNextAction } from './no-session-next-action.js';
-import { readProjectId, readProjectPort } from '../cli/cli-port.js';
+import { readProjectFramework, readProjectId, readProjectPort } from '../cli/cli-port.js';
+import { discoverProjectConfigs } from '../cli/config-discovery.js';
+import { hasConnectedBefore, rememberConnected } from './connection-memory.js';
+import { reticleStateHome } from '../daemon/daemon.js';
 import type { SessionManager } from './session-manager.js';
 
 /** Slow enough to be free, fast enough that a dev server started 15s ago is already reflected. */
@@ -66,6 +69,11 @@ interface NoSessionWatchOptions {
    * Omitted on a daemon with no pool, and auto-attach is then simply off.
    */
   attach?: (url: string) => Promise<unknown>;
+  /**
+   * Where the durable "an app has connected here before" bit lives. The daemon's state home unless
+   * a test says otherwise.
+   */
+  stateDir?: string;
 }
 
 /**
@@ -88,6 +96,30 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
   // is routinely written by `init` AFTER this daemon started, so re-read rather than cache. See the
   // `initialized` comment below, which this shares.
   const isWired = (): boolean => options.initialized || readProjectId(directory) !== undefined;
+
+  // Read at boot: the daemon's own identity does not change under it, and this is the key the
+  // durable bit is stored under.
+  const stateDir = options.stateDir ?? reticleStateHome();
+  /**
+   * Only ever asked ABOUT A NAMED PROJECT.
+   *
+   * With no projectId the memory can still answer the weaker "has anything connected on this port",
+   * and that answer must not be spent here: a shared 4400 on a machine with several repos would
+   * then soften a genuinely-unwired directory's diagnosis on the strength of an unrelated app. That
+   * is the same over-confident claim this whole file exists to remove, pointing the other way.
+   */
+  const connectedBefore = (): boolean => {
+    const projectId = readProjectId(directory);
+    if (projectId === undefined) return false;
+    return hasConnectedBefore(stateDir, options.port, projectId);
+  };
+
+  // Every path that registers a session goes through SessionManager.add, so this is the one hook
+  // that makes the bit durable. Recorded per port + projectId so a shared 4400 cannot make one
+  // project's success into evidence about another's.
+  options.sessions.setConnectionRecorder((projectId) => {
+    rememberConnected(stateDir, options.port, projectId);
+  });
 
   /**
    * Open the app ourselves when there is exactly one unambiguous candidate.
@@ -145,6 +177,7 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
     nextActionFor({
       everConnected: options.sessions.everConnected(),
       initialized: isWired(),
+      previouslyConnected: connectedBefore(),
       listening,
       // Read when asked, like everything else here: a `package.json` can gain a dev script, and a
       // daemon that cached "there is none" at boot would keep saying so for the rest of the day.
@@ -170,6 +203,32 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
         // `.reticle.json`" is a claim about ONE directory, and a reader standing somewhere else
         // cannot tell whether it is a claim about their app at all.
         directory,
+        // Where the config actually is, when it is not here — and where we looked, when it is
+        // nowhere. Computed only on the branch that needs it: a wired daemon has its answer already,
+        // and a workspace scan on every hint would be a directory walk per tool refusal.
+        ...(isWired()
+          ? {}
+          : (() => {
+              const discovery = discoverProjectConfigs(directory);
+              const elsewhere = discovery.found.filter((c) => c.directory !== directory);
+              return 0 === elsewhere.length
+                ? { searchedDirectories: discovery.searched }
+                : {
+                    configsElsewhere: elsewhere.map((c) => ({
+                      directory: c.directory,
+                      ...(c.projectId === undefined ? {} : { projectId: c.projectId }),
+                    })),
+                  };
+            })()),
+        // The one fact that outranks every absence below it, and the reason a fresh daemon stopped
+        // claiming that an install which has demonstrably worked has never worked.
+        previouslyConnected: connectedBefore(),
+        // Ranks the causes. Read when asked, like the rest: `init` writes this file after the daemon
+        // starts on an ordinary first install.
+        ...(() => {
+          const framework = readProjectFramework(directory);
+          return framework === undefined ? {} : { framework };
+        })(),
         leaseExpired: (options.reapedLeases?.() ?? 0) > 0,
         // Read here rather than at boot: `.reticle.json` can be written by `init` after this daemon
         // started, which is the ordinary first-install order, and a port cached from before it existed
@@ -187,6 +246,7 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
 
   return () => {
     clearInterval(timer);
+    options.sessions.setConnectionRecorder(undefined);
     options.sessions.setNoSessionHint(undefined);
     options.sessions.setNoSessionNextAction(undefined);
   };

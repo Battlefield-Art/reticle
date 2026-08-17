@@ -29,7 +29,7 @@ function projectDir(config: string | undefined): string {
   return dir;
 }
 
-/** The three things the watch asks of a SessionManager, and nothing else. */
+/** The few things the watch asks of a SessionManager, and nothing else. */
 function stubSessions(): { manager: SessionManager; hint: () => string } {
   let installed: (() => string | undefined) | undefined;
   const manager = {
@@ -39,6 +39,7 @@ function stubSessions(): { manager: SessionManager; hint: () => string } {
       installed = hint;
     },
     setNoSessionNextAction: () => undefined,
+    setConnectionRecorder: () => undefined,
   } as unknown as SessionManager;
   return { manager, hint: () => installed?.() ?? '' };
 }
