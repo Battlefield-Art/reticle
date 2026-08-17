@@ -130,8 +130,23 @@ export const MCP_CLIENTS: readonly ClientSpec[] = [
   {
     id: McpClient.OPENCODE,
     label: 'OpenCode',
-    scope: ConfigScope.PROJECT,
-    relPath: 'opencode.json',
+    /**
+     * HOME, not PROJECT — OpenCode is installed globally and configured globally, like Cursor.
+     *
+     * It was project-scoped as `opencode.json`, and registration is gated on the marker already
+     * existing, so a project that had never written one was skipped in SILENCE: the user has OpenCode
+     * installed, `init` says nothing about it, and the tools never appear. In the field every OpenCode
+     * user connected a client and produced zero tool calls and zero app connections, which is what
+     * "you were never wired" looks like from outside.
+     *
+     * Path verified against a real install (OpenCode 1.3.17), not recalled. The extension is `.jsonc`,
+     * which the old project marker could not have matched even where a project config existed. JSONC
+     * permits comments, and a config that genuinely has them fails to parse — which `mergeClientConfig`
+     * already answers with MANUAL and a printed block, rather than rewriting somebody's file and
+     * dropping their comments.
+     */
+    scope: ConfigScope.HOME,
+    relPath: '.config/opencode/opencode.jsonc',
     format: ConfigFormat.JSON,
     serversKey: 'mcp',
     entry: openCodeEntry,

@@ -24,6 +24,8 @@ import {
   clientSpec,
   mergeClientConfig,
   ClientMergeStatus,
+  ConfigScope,
+  type ClientSpec,
   clientSnippet,
 } from './mcp-clients.js';
 import { MCP_SERVER_NAME } from './mcp.js';
@@ -228,5 +230,51 @@ describe('every client can produce a paste-able snippet', () => {
       expect(snippet.length, `${spec.id} has no snippet`).toBeGreaterThan(10);
       expect(snippet, `${spec.id} snippet does not mention the server`).toContain(MCP_SERVER_NAME);
     }
+  });
+});
+
+/**
+ * OpenCode installs GLOBALLY and is registered globally, like Cursor — not per project.
+ *
+ * It was listed with a project-scoped `opencode.json`, and registration is gated on that file already
+ * existing, so a project that had never written one was skipped in silence: the user has OpenCode
+ * installed, `init` says nothing about it, and the tools never appear. In the field every OpenCode
+ * user connected an MCP client and produced zero tool calls and zero app connections, which is what
+ * "you were never wired" looks like from the outside.
+ *
+ * Verified against a real install (OpenCode 1.3.17): the config lives at
+ * `~/.config/opencode/opencode.jsonc`. The extension is `.jsonc`, which the project-scoped marker
+ * would never have matched even if a project config existed.
+ */
+describe('opencode is wired where it actually lives', () => {
+  const spec = MCP_CLIENTS.find((c) => c.id === McpClient.OPENCODE);
+
+  it('is registered in the user home, not per project', () => {
+    expect(spec?.scope).toBe(ConfigScope.HOME);
+  });
+
+  it('targets the real config path, extension included', () => {
+    expect(spec?.relPath).toBe('.config/opencode/opencode.jsonc');
+  });
+
+  it('merges into an existing config without disturbing what is there', () => {
+    // The shape a real install has: a schema pointer and a plugin list, both of which must survive.
+    const existing = JSON.stringify({
+      $schema: 'https://opencode.ai/config.json',
+      plugin: ['opencode-supermemory@latest'],
+    });
+    const merged = mergeClientConfig(spec as ClientSpec, existing);
+    expect(merged.status).toBe(ClientMergeStatus.APPLY);
+    const parsed = JSON.parse(merged.content) as Record<string, unknown>;
+    expect(parsed['$schema']).toBe('https://opencode.ai/config.json');
+    expect(parsed['plugin']).toEqual(['opencode-supermemory@latest']);
+    expect((parsed['mcp'] as Record<string, unknown>)['reticle']).toBeDefined();
+  });
+
+  it('falls back to a printed block when the JSONC genuinely has comments', () => {
+    // `.jsonc` permits comments, and a parser that guessed would strip them from the user's own file.
+    // A failed parse must degrade to MANUAL, never to a rewrite.
+    const commented = '{\n  // my settings\n  "plugin": []\n}';
+    expect(mergeClientConfig(spec as ClientSpec, commented).status).toBe(ClientMergeStatus.MANUAL);
   });
 });
