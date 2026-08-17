@@ -28,7 +28,18 @@
  *     limit instead of an early exit.
  */
 
-import { EventType } from '@reticlehq/core';
+import { EventType, isDevToolingUrl } from '@reticlehq/core';
+
+/**
+ * The dev toolchain talking about ITSELF is not the app finishing its work.
+ *
+ * `evalSettled` and `findContradictions` both drop it already; this file read the raw window, so the
+ * exclusion was cosmetic exactly where it decides a verdict. Reported from a real drive: a
+ * deliberately disabled control — no state change, no storage change, zero application requests —
+ * was graded on the strength of a Next webpack hot-update the same payload printed as ignored.
+ */
+const isDevTooling = (data: Record<string, unknown>): boolean =>
+  isDevToolingUrl('string' === typeof data['url'] ? data['url'] : undefined);
 
 /** Just the shape this needs — a real Session satisfies it, and a test can supply it. */
 export interface SettleSource {
@@ -65,7 +76,7 @@ export function inFlightRequestIds(
   }
   const open: string[] = [];
   for (const e of events) {
-    if (e.type !== EventType.NET_PENDING) continue;
+    if (e.type !== EventType.NET_PENDING || isDevTooling(e.data)) continue;
     const id = idOf(e.data);
     if (id !== undefined && !settled.has(id) && !open.includes(id)) open.push(id);
   }
@@ -118,7 +129,7 @@ export function repeatedRequestLabels(
 ): string[] {
   const counts = new Map<string, number>();
   for (const e of events) {
-    if (e.type !== EventType.NET_REQUEST) continue;
+    if (e.type !== EventType.NET_REQUEST || isDevTooling(e.data)) continue;
     const method = 'string' === typeof e.data['method'] ? e.data['method'] : 'request';
     const url = 'string' === typeof e.data['url'] ? e.data['url'] : 'an unreported url';
     const key = `${method} ${url}`;

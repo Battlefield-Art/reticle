@@ -71,6 +71,17 @@ export const VerifiedReason = {
   OUTCOME_UNREAD: 'outcome_unread',
   /** The page never settled, so the reaction window may have closed early. */
   UNSETTLED: 'unsettled',
+  /**
+   * The assertion held, but a channel's outcome had not been observed when the window closed — an
+   * ABSENCE-derived finding (see ABSENCE_DERIVED_CONTRADICTIONS), not evidence against the action.
+   *
+   * Split out of UNSETTLED because that word is a claim about idle, and this clause fires
+   * independently of whether the page went idle. One field report was, verbatim, "internally
+   * contradictory": `verifiedReason: "unsettled"` beside `settled: true`, a passing nested verdict,
+   * the requested POST at 200 and a clean console. Both halves came from this rule, and a verdict
+   * whose own evidence block denies its stated reason is a verdict nobody can act on.
+   */
+  EVIDENCE_INCOMPLETE: 'evidence_incomplete',
   /** Held at a real grade over a clean capture with no channel disagreeing. */
   PROVED: 'proved',
 } as const;

@@ -62,6 +62,20 @@ describe('act_and_wait and assert see the same evidence', () => {
     }
   });
 
+  /**
+   * The caller's declaration has to reach the RULE, not only the detector.
+   *
+   * A satisfied `until` decides the verdict and settlement only corroborates it — but the rule
+   * cannot tell a declared consequence from the implicit "wait for idle" unless the caller says so,
+   * and a fix that reached only one of these two tools would leave half the verdict surface still
+   * answering `unknown` to a consequence its caller named and Reticle watched hold.
+   */
+  it('both paths tell the rule whether the caller DECLARED the consequence', () => {
+    for (const file of [act, assert]) {
+      expect(file).toMatch(/declaredConsequence:[\s\S]{0,60}!== PredicateKind\.SETTLED/);
+    }
+  });
+
   it('both paths name what kept the page busy when nothing was left in flight', () => {
     for (const file of [act, assert]) expect(file).toMatch(/repeated: repeatedRequestLabels\(/);
   });

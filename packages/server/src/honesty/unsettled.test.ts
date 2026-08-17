@@ -136,7 +136,7 @@ describe('the verdict carries it, in the field an agent already reads', () => {
       contradictions: [{ kind: ContradictionKind.REQUEST_NEVER_SETTLED }],
       unsettled: { waitedFor: 'the page to go idle', stillInFlight: ['POST /api/pay'] },
     });
-    expect(v.verifiedReason).toBe(VerifiedReason.UNSETTLED);
+    expect(v.verifiedReason).toBe(VerifiedReason.EVIDENCE_INCOMPLETE);
     expect(v.because).toContain('POST /api/pay');
     // and still names the finding it was derived from
     expect(v.because).toContain(ContradictionKind.REQUEST_NEVER_SETTLED);

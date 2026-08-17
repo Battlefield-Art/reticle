@@ -1,4 +1,4 @@
-import { CaptureLoss } from '@reticlehq/core';
+import { CaptureLoss, PredicateKind } from '@reticlehq/core';
 import type { Predicate } from '../events/predicate.js';
 import type { Session } from '../session/session.js';
 import { findContradictions, type Contradiction } from '../events/contradictions.js';
@@ -100,6 +100,10 @@ export async function assertVerdict(
   const outcomeUnread = unreadWriteLabels(windowEvents);
   const decision = decideVerified({
     pass,
+    // Same rule as the act path: the caller named a consequence, so a settlement-only finding must
+    // not override it. A fix that lived on one half of the verdict surface would leave the other
+    // half broken, and this is the tool agents call most.
+    declaredConsequence: predicate.kind !== PredicateKind.SETTLED,
     ...(inconclusive === undefined ? {} : { inconclusive }),
     ...(true === observationLost ? { observationLost: true } : {}),
     honesty: buildHonestyBlock({

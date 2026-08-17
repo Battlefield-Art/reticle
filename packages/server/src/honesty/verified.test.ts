@@ -336,6 +336,12 @@ describe('every verdict names the clause that decided it', () => {
       outcomeUnread: ['POST /api/bulk-hold'],
     },
     [VerifiedReason.UNSETTLED]: { pass: true, honesty: clean(), settled: false },
+    [VerifiedReason.EVIDENCE_INCOMPLETE]: {
+      pass: true,
+      honesty: clean(),
+      settled: true,
+      contradictions: [{ kind: 'duplicate-request' }],
+    },
     [VerifiedReason.PROVED]: { pass: true, honesty: clean(), settled: true },
   };
 
