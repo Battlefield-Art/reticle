@@ -8,6 +8,16 @@ export const RETICLE_WS_PATH = '/reticle';
 /** Agent↔server MCP wire paths — served by the daemon HTTP plane, forwarded by the stdio proxy. */
 export const MCP_SSE_PATH = '/mcp/sse';
 export const MCP_MESSAGE_PATH = '/mcp/message';
+/**
+ * SSE event name the daemon writes to every open MCP stream immediately before it shuts itself down.
+ *
+ * A stream that simply ends looks identical from the proxy whether the daemon retired on schedule or
+ * died under it, so every planned shutdown was counted as an outage the agent suffered. The proxy
+ * cannot infer the difference — the daemon is the only thing that knows, and this is it saying so.
+ * A custom event name rather than a `message`: the proxy forwards `message` frames to the client
+ * verbatim, and this is addressed to the proxy, not to the agent.
+ */
+export const MCP_SHUTDOWN_EVENT = 'reticle-shutdown';
 /** Local-only daemon introspection — `reticle status` GETs this for sessions + health at a glance. */
 export const STATUS_PATH = '/status';
 /**

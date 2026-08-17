@@ -293,6 +293,17 @@ export class Bridge {
       });
     }
 
+    // A PERMANENT 'error' listener, on top of the one `ready` installs and then removes.
+    //
+    // `ws` re-emits every 'error' from the server it is attached to, and both `ready` branches above
+    // drop their listener the moment the port is bound. From then on the emitter is bare, and an
+    // EventEmitter that emits 'error' with no listener THROWS — which in the daemon is an
+    // uncaughtException, which is an exit, which takes every agent and every session on this port
+    // with it. Logging one is all it takes; the transport itself needs no other reaction.
+    this.#wss.on('error', (err: Error) => {
+      log('bridge_ws_error', { error: err.message });
+    });
+
     this.#wss.on('connection', (socket) => {
       this.#onConnection(socket);
     });

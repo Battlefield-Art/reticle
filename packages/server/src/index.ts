@@ -236,6 +236,13 @@ export interface RunningServer {
   agentAttached?: () => boolean;
   /** The pairing token the bridge is enforcing (explicit, env, or auto-provisioned); undefined if none. */
   token?: string;
+  /**
+   * Tell every attached MCP proxy this daemon is retiring, before anything closes.
+   *
+   * Optional because only the daemon entry point serves MCP over SSE — `start()` speaks stdio, where
+   * the client owns the process and there is no stream to warn. See SharedServer.announceShutdown.
+   */
+  announceShutdown?: () => void;
   close: () => Promise<void>;
 }
 
@@ -653,6 +660,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     // Exposed so the shutdown watcher can give an ATTACHED daemon a longer grace. The predicate above
     // says WHETHER it is idle; this says how long that quiet should be tolerated — see idle-grace.
     agentAttached: () => agentConnected,
+    announceShutdown: () => shared.announceShutdown(),
     close: async () => {
       reaper.stop();
       await cleanupCaptureDirectories();

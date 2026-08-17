@@ -1,7 +1,13 @@
 import * as http from 'node:http';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { MCP_SSE_PATH, MCP_MESSAGE_PATH, STATUS_PATH, DRIVE_PATH } from '@reticlehq/core';
+import {
+  MCP_SSE_PATH,
+  MCP_MESSAGE_PATH,
+  MCP_SHUTDOWN_EVENT,
+  STATUS_PATH,
+  DRIVE_PATH,
+} from '@reticlehq/core';
 import { getSessionMetrics } from './telemetry/session-metrics.js';
 import { noteAgentPeer, PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from './version/peer-announce.js';
 import { log } from './log.js';
@@ -41,6 +47,15 @@ export interface SharedServer {
    * "is an agent attached?". The daemon uses this to tell the panel "agent live" vs "agent stopped".
    */
   attachAgentPresence(cb: (connected: boolean) => void): void;
+  /**
+   * Tell every attached MCP proxy that this daemon is retiring, BEFORE the sockets go.
+   *
+   * The proxy sees a clean stream end whether the daemon shut down on schedule or died under it, so
+   * without this the two are one row and the transport-stability metric is dominated by the designed
+   * case. Separate from `close()` because it must run before the shutdown work rather than during it:
+   * `close()` is also the cleanup path of a start that failed, where there is nobody to tell.
+   */
+  announceShutdown(): void;
   close(): Promise<void>;
 }
 
@@ -60,6 +75,12 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
   let driveProvider: ((url: string) => Promise<unknown>) | undefined;
   let agentPresence: ((connected: boolean) => void) | undefined;
   const transports = new Map<string, SSEServerTransport>();
+  /**
+   * The raw response behind each SSE session, so the shutdown announcement can be written as an SSE
+   * frame the proxy reads and the agent never sees. `SSEServerTransport.send` only speaks JSON-RPC,
+   * and this message is addressed to the proxy rather than to the client behind it.
+   */
+  const sseStreams = new Map<string, http.ServerResponse>();
   const token = options.token;
 
   // The agent control plane (MCP transport) and /status carry the same trust as the browser WS: a
@@ -86,7 +107,18 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
 
   const httpServer = http.createServer((req, res) => {
     const rawUrl = req.url ?? '/';
-    const url = new URL(rawUrl, 'http://localhost');
+    // Node's HTTP parser accepts request targets the WHATWG URL parser refuses (`//` among them), and
+    // a throw in a `request` listener is an uncaughtException — which the daemon answers by exiting,
+    // taking every agent and every browser session on this port with it, from whichever project. One
+    // malformed line on a loopback socket, and it lands BEFORE the authorization check below, so
+    // nothing had to be trusted to send it.
+    const url = parseRequestTarget(rawUrl);
+    if (null === url) {
+      log('http_bad_request_target', {});
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('bad request target');
+      return;
+    }
     const path = url.pathname;
 
     if (
@@ -177,9 +209,11 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
       const transport = new SSEServerTransport(MCP_MESSAGE_PATH, res);
       const sid = transport.sessionId;
       transports.set(sid, transport);
+      sseStreams.set(sid, res);
       if (1 === transports.size) agentPresence?.(true); // first agent attached
       res.on('close', () => {
         transports.delete(sid);
+        sseStreams.delete(sid);
         transport.close().catch(() => undefined);
         mcpServer.close().catch(() => undefined);
         log('mcp_client_disconnected', { sessionId: sid });
@@ -248,11 +282,24 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
     mcpFactory = factory;
   }
 
+  function announceShutdown(): void {
+    for (const [sid, stream] of sseStreams) {
+      try {
+        stream.write(`event: ${MCP_SHUTDOWN_EVENT}\ndata: {}\n\n`);
+      } catch {
+        // A stream we cannot write to is a proxy that already left. Announcing a shutdown must never
+        // be the reason a shutdown fails.
+        log('mcp_shutdown_announce_failed', { sessionId: sid });
+      }
+    }
+  }
+
   async function close(): Promise<void> {
     for (const transport of transports.values()) {
       await transport.close();
     }
     transports.clear();
+    sseStreams.clear();
     await new Promise<void>((resolve, reject) => {
       httpServer.close((err) => {
         // A server that never listened is already closed, and saying so is not an error worth
@@ -273,7 +320,15 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
     });
   }
 
-  return { httpServer, attachMcp, attachStatus, attachDrive, attachAgentPresence, close };
+  return {
+    httpServer,
+    attachMcp,
+    attachStatus,
+    attachDrive,
+    attachAgentPresence,
+    announceShutdown,
+    close,
+  };
 }
 
 /** Cap on a drive request body. A url is short; anything larger is not one. */
@@ -324,4 +379,19 @@ function urlFromDriveRequest(body: string): string | undefined {
   if (typeof parsed !== 'object' || null === parsed) return undefined;
   const url = (parsed as Record<string, unknown>)['url'];
   return 'string' === typeof url && url.length > 0 ? url : undefined;
+}
+
+/**
+ * The one URL parse on the daemon's request path, and the only place allowed to do it.
+ *
+ * `null` for anything the parser refuses, so the caller answers rather than throwing. Exported for
+ * nothing — it is here, next to its single caller, because a second copy of this parse elsewhere in
+ * the handler would reintroduce the crash the guard exists to remove.
+ */
+function parseRequestTarget(rawUrl: string): URL | null {
+  try {
+    return new URL(rawUrl, 'http://localhost');
+  } catch {
+    return null;
+  }
 }

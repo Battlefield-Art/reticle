@@ -687,6 +687,18 @@ export type InstrumentationStall = z.infer<typeof InstrumentationStallSchema>;
 export const OutageStage = {
   FIRST: 'first',
   BUDGET_SPENT: 'budget_spent',
+  /**
+   * The link came back on its own, and `attempts` says what it cost.
+   *
+   * Without it `first` is unfalsifiable. It is emitted at the moment of the drop, when the attempt
+   * counter is 1 by construction and the cap keeps any later drop from ever replacing it — so every
+   * event in the field carried the same stage and the same attempt count, and neither could carry
+   * another. That reads as "reconnection never advances past the first attempt" and it is really
+   * "this event is emitted before there is anything to say". `recovered` is the counterpart that
+   * makes the pair mean something: `first` with no `recovered` and no `budget_spent` is a session
+   * whose tools never came back.
+   */
+  RECOVERED: 'recovered',
 } as const;
 export type OutageStage = (typeof OutageStage)[keyof typeof OutageStage];
 
@@ -696,8 +708,17 @@ export type OutageStage = (typeof OutageStage)[keyof typeof OutageStage];
  * without a raw string reaching the wire, per the classifier rule.
  */
 export const OutageReason = {
-  /** The SSE stream ended cleanly — usually the daemon exiting. */
+  /** The SSE stream ended cleanly and nothing said why. */
   SSE_ENDED: 'sse_ended',
+  /**
+   * The daemon ANNOUNCED that it was retiring before it closed the stream.
+   *
+   * Not an outage the agent suffered, and separating it is the whole point: a scheduled shutdown and
+   * a daemon dying under a live client are the same clean stream end on this side of the socket, so
+   * the metric meant to say "the agent lost its tools" spent most of its volume counting the daemon
+   * going to sleep exactly as designed. Split out, `sse_ended` finally means what it says.
+   */
+  DAEMON_SHUTDOWN: 'daemon_shutdown',
   /** The stream errored. */
   SSE_ERROR: 'sse_error',
   /** The socket died under us with neither `end` nor `error` — daemon killed, network reset. */

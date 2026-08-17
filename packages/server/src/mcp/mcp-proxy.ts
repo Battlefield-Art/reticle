@@ -3,13 +3,10 @@ import { localInitializeResponse, isHandshakeLine } from './proxy-handshake.js';
 import { ToolCatalogCache } from './tool-catalog-cache.js';
 import { toolsChangedNotification } from './proxy-handshake.js';
 import * as net from 'node:net';
-import { appendFileSync, mkdirSync, renameSync, statSync, truncateSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import {
   LOOPBACK_HOST,
   MCP_SSE_PATH,
-  ReticleDir,
+  MCP_SHUTDOWN_EVENT,
   ReticleEnv,
   CONTRACT_FINGERPRINT,
 } from '@reticlehq/core';
@@ -23,9 +20,21 @@ import {
   OnDrop,
   OnRequest,
 } from './proxy-lifecycle.js';
+/**
+ * Re-exported so every existing caller (and every spec) keeps importing the proxy's log from the
+ * proxy. Where the code lives is a file-size decision; where it is imported from is an API.
+ */
+export {
+  accountProxyLogWrite,
+  proxyLog,
+  proxyLogPath,
+  PROXY_LOG_CHECK_BYTES,
+  recoverOversizedProxyLog,
+  setProxyLogPort,
+} from './proxy-log.js';
+import { proxyLog } from './proxy-log.js';
 import { log } from '../log.js';
-import { MAX_DAEMON_LOG_BYTES, rotateDaemonLog } from '../daemon/daemon.js';
-import { OutageStage, reportMcpOutage } from './mcp-outage.js';
+import { OutageReason, OutageStage, reportMcpOutage } from './mcp-outage.js';
 
 const DEFAULT_DAEMON_READY_TIMEOUT_MS = 10_000;
 /**
@@ -72,144 +81,6 @@ export function reconnectDelayMs(attempt: number): number {
 
 /** JSON-RPC id the proxy uses for its own replayed `initialize` — never one the client could send. */
 export const RECONNECT_INITIALIZE_ID = '__reticle_proxy_reinit';
-
-/**
- * Which port this proxy serves, for the log file name. Set once at startup.
- *
- * One file per port, matching `daemon-<port>.log`. A single shared file interleaved every proxy on
- * the machine into one stream, so the first question anyone asks of it — "what happened to MY
- * session?" — needed a filter before it could be answered.
- */
-let logPort: number | undefined;
-
-/**
- * How much the proxy may append between size checks.
- *
- * Statting the file on every line would be a syscall per log line on a process that logs from a
- * reconnect loop. Counting what we wrote costs nothing and is exact enough, because this process is
- * the only writer of its own log. Well under the cap, so the cap is a cap rather than a suggestion.
- */
-export const PROXY_LOG_CHECK_BYTES = 256 * 1024;
-
-/** Appended since the last real size check. Reset by every check, whatever the check decides. */
-let bytesSinceProxyLogCheck = 0;
-
-/**
- * Keep the proxy log under the same cap as the daemon log, without a stat per write.
- *
- * Returns the new "bytes since the last check" counter, so the accounting is testable without a
- * filesystem. Rotation itself is `rotateDaemonLog` — the proxy log had no cap at all while the
- * daemon log on the SAME machine stayed small, which is the whole of this defect.
- */
-export function accountProxyLogWrite(
-  bytesSinceCheck: number,
-  written: number,
-  path: string,
-  deps: { fileSize(p: string): number; renameFile(from: string, to: string): void },
-): number {
-  const total = bytesSinceCheck + written;
-  if (PROXY_LOG_CHECK_BYTES > total) return total;
-  rotateDaemonLog(path, deps);
-  return 0;
-}
-
-/**
- * Reclaim a proxy log that a previous process already let run away. Returns the bytes reclaimed.
- *
- * Reported from the field: one machine's `proxy-4400.log` reached a third of a 460GB disk and broke
- * builds, Docker and ordinary shell commands with ENOSPC. Nothing in Reticle degraded first, so the
- * failure surfaced as the operating system refusing to write files. Files like that exist on real
- * machines now, and the cap alone does not help them: the user should not have to find one with `du`.
- *
- * TRUNCATED IN PLACE, never renamed or unlinked. A rename moves the bytes without reclaiming a byte,
- * and a file that a running process still holds open keeps its blocks allocated after an unlink
- * until that handle closes — which is why the reporter recovered with `: > ~/.reticle/proxy-4400.log`
- * and why that is the operation to copy here.
- *
- * Best-effort, in the same spirit as `rotateDaemonLog`: refusing to start the MCP server over
- * housekeeping is strictly worse than a large file.
- */
-export function recoverOversizedProxyLog(
-  path: string,
-  deps: { fileSize(p: string): number; truncateFile(p: string): void },
-  max: number = MAX_DAEMON_LOG_BYTES,
-): number {
-  try {
-    const size = deps.fileSize(path);
-    if (max >= size) return 0;
-    deps.truncateFile(path);
-    return size;
-  } catch {
-    return 0;
-  }
-}
-
-/** The real filesystem behind the two rotation helpers. */
-const proxyLogFileOps = {
-  fileSize: (p: string): number => statSync(p).size,
-  renameFile: (from: string, to: string): void => renameSync(from, to),
-  truncateFile: (p: string): void => truncateSync(p, 0),
-};
-
-/** Name the proxy log after the port it serves. Called before anything can log. */
-export function setProxyLogPort(port: number): void {
-  logPort = port;
-  // The one moment we know a size check is worth its syscall, and the only place a file inherited
-  // from an older build can be brought back under control.
-  const reclaimed = recoverOversizedProxyLog(proxyLogPath(port), proxyLogFileOps);
-  if (0 < reclaimed) {
-    proxyLog('reticle_mcp_proxy_log_truncated', {
-      port,
-      reclaimedBytes: reclaimed,
-      note: 'the proxy log had grown past its cap and was truncated in place to reclaim the space',
-    });
-  }
-}
-
-/** The proxy's own log file, so a silent drop leaves a readable trace the agent can go read. */
-export function proxyLogPath(port: number | undefined = logPort): string {
-  const name = port === undefined ? 'mcp-proxy.log' : `proxy-${String(port)}.log`;
-  return join(homedir(), ReticleDir.ROOT, name);
-}
-
-/**
- * Log to stderr (which the agent host usually swallows) AND to ~/.reticle/proxy-<port>.log, which it
- * does not. A dropped MCP connection is invisible from the agent's side — no message, no exit code —
- * so the one thing that makes it diagnosable at all is a file somebody can read afterwards.
- *
- * EXPORTED because the crash handlers need it. `installProxyResilience` was wired to the bare stderr
- * logger, so the proxy's own uncaught exceptions and unhandled rejections — the exact events that
- * present to a human as "the MCP server disconnected" — were written to a stream the editor throws
- * away. The handler ran, the process kept serving, and the reason went nowhere. Reported as "the
- * proxy has no log file… when it dies the diagnostic dies with it", which was half right: the file
- * existed, and the one path that most needed it was not using it.
- */
-export function proxyLog(event: string, fields: Record<string, unknown> = {}): void {
-  log(event, fields);
-  try {
-    const dir = join(homedir(), ReticleDir.ROOT);
-    mkdirSync(dir, { recursive: true });
-    // WITH A TIMESTAMP. This file is the only record of an outage that survives the session, and
-    // without one it cannot answer the two questions anyone brings to it: when did this happen, and
-    // how often. A real 3,283-line log on a dev machine held a `gave_up` — the exact event that used
-    // to precede `process.exit(1)` and cost the human a manual /mcp reconnect — and it was
-    // impossible to tell whether it happened during that person's work or a test run hours earlier.
-    // Evidence you cannot place in time is an anecdote.
-    const path = proxyLogPath();
-    const line = `${JSON.stringify({ t: new Date().toISOString(), event, ...fields })}\n`;
-    appendFileSync(path, line, 'utf8');
-    // A single proxy process is long-lived and logs from a reconnect loop, so rotating only at
-    // startup would leave the growth this file is capable of entirely unchecked while it runs.
-    bytesSinceProxyLogCheck = accountProxyLogWrite(
-      bytesSinceProxyLogCheck,
-      Buffer.byteLength(line, 'utf8'),
-      path,
-      proxyLogFileOps,
-    );
-  } catch {
-    // Logging must never be the thing that kills the proxy.
-  }
-}
 
 interface JsonRpcLike {
   id?: unknown;
@@ -652,6 +523,10 @@ export function startMcpProxy(
     };
     let stopped = false;
     let attempts = 0;
+    /** The daemon announced a planned shutdown; the next drop is that, not a fault. */
+    let daemonRetiring = false;
+    /** Why the stream we are currently trying to replace went away — carried onto the recovery. */
+    let lastDropReason: string = OutageReason.OTHER;
     /**
      * When the proxy started, and how many times the first connect has been refused since.
      *
@@ -698,6 +573,10 @@ export function startMcpProxy(
         // headers, is what earns a fresh retry budget. Resetting on headers let a daemon that
         // accepts SSE and drops it spin the reconnect loop at the 250ms floor forever, never backing
         // off and never reaching the budget that puts the proxy dormant. Measured: 32 retries in 8s.
+        // Report the recovery BEFORE the counter is cleared: `attempts` is what coming back actually
+        // cost, and it is the only number that can falsify the drop event. See OutageStage.RECOVERED.
+        if (attempts > 0)
+          reportMcpOutage(OutageStage.RECOVERED, { reason: lastDropReason, attempts });
         attempts = 0;
         // The new session's McpServer has never seen the client's initialize — replay it first, then
         // flush whatever the client sent while we were reconnecting.
@@ -714,6 +593,16 @@ export function startMcpProxy(
         handshakeAnswered = true;
         return;
       }
+      // The daemon telling us it is retiring. Not forwarded: it is addressed to this proxy, and the
+      // client behind it has no use for a frame it cannot parse.
+      if (MCP_SHUTDOWN_EVENT === event) {
+        daemonRetiring = true;
+        proxyLog('reticle_mcp_proxy_daemon_retiring', {
+          port,
+          note: 'the daemon announced a planned shutdown; the drop that follows is not an outage',
+        });
+        return;
+      }
       if ('message' === event && !replay.shouldSuppressInbound(data)) {
         // Remember the tool catalog as it goes past: it is what makes a locally-answered handshake
         // useful rather than toolless. See tool-catalog-cache.
@@ -722,9 +611,15 @@ export function startMcpProxy(
       }
     }
 
-    function scheduleReconnect(reason: string, detail?: string): void {
+    function scheduleReconnect(rawReason: string, detail?: string): void {
       if (stopped) return;
       postUrl = null;
+      // A stream the daemon warned us about is a planned shutdown, not a fault. The socket looks
+      // identical either way from here, so this flag is the only thing that can tell them apart —
+      // and without it every scheduled retirement was counted as an outage the agent suffered.
+      const reason = daemonRetiring ? OutageReason.DAEMON_SHUTDOWN : rawReason;
+      daemonRetiring = false;
+      lastDropReason = reason;
       attempts++;
       // Everything the dead session owed is settled HERE, in the one place every drop funnels
       // through, and not in the response callback that first noticed the socket die. A reset emits

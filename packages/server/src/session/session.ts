@@ -273,7 +273,17 @@ export class Session {
         : seen;
     this.#observed.observe(attributed);
     this.#buffer.push(attributed, t, byteSize);
-    for (const listener of this.#listeners) listener(attributed);
+    // Each subscriber is independent, and this runs inside the websocket's `message` handler — a
+    // NON-async callback, so a sync throw here escapes every try/catch the tool call is wrapped in
+    // and becomes an uncaughtException, which the daemon answers by exiting. One observer's bug must
+    // not cost the fleet its daemon. Same rule the session-ready fan-out already follows.
+    for (const listener of this.#listeners) {
+      try {
+        listener(attributed);
+      } catch {
+        /* an event observer must never break the session it observes */
+      }
+    }
   }
 
   // Passthroughs to ObservedState, which owns the per-session facts that must SURVIVE buffer

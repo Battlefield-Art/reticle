@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { DRIVE_PATH, MCP_SSE_PATH, STATUS_PATH } from '@reticlehq/core';
+import { DRIVE_PATH, MCP_SHUTDOWN_EVENT, MCP_SSE_PATH, STATUS_PATH } from '@reticlehq/core';
 import { createSharedServer, type SharedServer } from './http-server.js';
 
 let shared: SharedServer | undefined;
@@ -280,5 +280,74 @@ describe('POST /drive', () => {
       host: 'evil.com',
     });
     expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * A daemon that goes quietly is indistinguishable from one that died.
+ *
+ * The proxy on the other end of this stream sees the same clean socket end either way, so a
+ * scheduled retirement and a crash under a live client were one row in the only metric that says
+ * whether the agent's tools stay up. The daemon is the only party that knows which it is, and this
+ * frame is it saying so. Nothing else in the product can supply the answer — which is why the
+ * absence of this write is not visible anywhere downstream.
+ */
+describe('announceShutdown', () => {
+  it('writes a shutdown frame to every open MCP stream before the sockets go', async () => {
+    shared = createSharedServer();
+    shared.attachMcp(fakeMcpServer);
+    const port = await listen(shared);
+
+    const frames: string[] = [];
+    const req = await new Promise<http.ClientRequest>((resolve) => {
+      const r = http.get({ host: '127.0.0.1', port, path: MCP_SSE_PATH, agent: false }, (res) => {
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => frames.push(chunk));
+        resolve(r);
+      });
+      r.on('error', () => undefined);
+    });
+    await tick();
+
+    shared.announceShutdown();
+
+    await vi.waitFor(() => expect(frames.join('')).toContain(`event: ${MCP_SHUTDOWN_EVENT}`));
+    req.destroy();
+  });
+
+  /** Nothing attached is the shutdown path of a start that failed. It must not throw on the way out. */
+  it('is a no-op when no agent is attached', () => {
+    shared = createSharedServer();
+    expect(() => shared?.announceShutdown()).not.toThrow();
+  });
+});
+
+/**
+ * A request target the URL parser refuses must not take the daemon down.
+ *
+ * `new URL(req.url, …)` sat at the top of the request handler, outside any try/catch, and Node's
+ * HTTP parser happily accepts targets the WHATWG parser rejects. A sync throw in a `request`
+ * listener is an uncaughtException, and the daemon's resilience handler answers those by exiting —
+ * correctly, because a process in an undefined state should not keep serving. So one malformed line
+ * on the socket ended the daemon, and with it every agent and every browser session attached to it,
+ * whichever project they belonged to.
+ *
+ * It is unauthenticated by construction: the parse happens before the token check it feeds.
+ */
+describe('a request target the URL parser cannot read', () => {
+  it('is answered, not fatal', async () => {
+    shared = createSharedServer();
+    const port = await listen(shared);
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, path: '//', method: 'GET' }, (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    expect(status).toBe(400);
+    // The proof the process survived: the very next request is served normally.
+    expect((await get(port, STATUS_PATH)).status).toBe(200);
   });
 });

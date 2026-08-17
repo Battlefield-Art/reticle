@@ -586,6 +586,12 @@ function handleDaemonInner(parsed: {
         // which is after everything below has run. Without it the exit line says `code: 0` and a
         // reader cannot tell a tidy stop from the bridge disappearing — see #123.
         recordExitReason(reason);
+        // Say so on the wire before anything closes. The proxy on the other end sees a clean stream
+        // end whether we retired on schedule or died under it, and it has no other way to tell —
+        // which is how a designed shutdown came to dominate the metric that means "the agent lost
+        // its tools". Told, the proxy classifies its own drop honestly. First, because the send has
+        // to reach a socket that is still open.
+        server.announceShutdown?.();
         // Awaited before the close/exit chain: `process.exit(0)` kills an in-flight POST, and this is
         // the one event carrying the whole session. A failed send resolves anyway (emit swallows its
         // own errors), so this can delay the exit by at most the send timeout, never prevent it.
