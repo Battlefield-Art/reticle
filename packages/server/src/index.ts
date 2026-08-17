@@ -48,6 +48,8 @@ import { BrowserPool } from './pool/browser-pool.js';
 import { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launcher.js';
 import { LeaseReaper } from './pool/lease-reaper.js';
 import { readJournalEnabled, readProjectId } from './cli/cli-port.js';
+import { hasConnectedBefore } from './session/connection-memory.js';
+import { reticleStateHome } from './daemon/daemon.js';
 import { makeJournalAttach } from './journal/attach-journal.js';
 import { makeSessionEnd } from './journal/session-end.js';
 import { AmbientStore } from './journal/ambient-store.js';
@@ -450,6 +452,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
     const server = createMcpServer(
       realInput !== undefined ? { ...deps, realInput } : deps,
       profile,
+      hasConnectedBefore(reticleStateHome(), port, activeProjectId),
     );
     // When the agent (the MCP client) disconnects cleanly, end every active session at once so the
     // HUD doesn't linger. (If the agent instead KILLS this process, the WS dies and the browser
@@ -558,7 +561,15 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   };
   const profile = resolveToolSurface(options.toolProfile);
   const effectiveDeps = realInput !== undefined ? { ...deps, realInput } : deps;
-  shared.attachMcp(() => createMcpServer(effectiveDeps, profile));
+  // Read per attach, not once: a project that gets wired while this daemon is alive should stop
+  // being told to wire itself on the next agent that connects.
+  shared.attachMcp(() =>
+    createMcpServer(
+      effectiveDeps,
+      profile,
+      hasConnectedBefore(reticleStateHome(), port, readProjectId(process.cwd())),
+    ),
+  );
   // `reticle drive <url>` when this daemon already owns the port: it asks HERE instead of trying to
   // bind a port we are holding, and gets the same pooled context an agent's reticle_lease returns —
   // through runTool, so it is counted and reported like any other call rather than being a second,

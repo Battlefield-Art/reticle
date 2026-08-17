@@ -16,6 +16,7 @@ import { runTool, SESSION_BOUND_TOOLS } from '../tools/invoke-tool.js';
 import { sessionEnvelopeShape } from '../tools/tool-kit.js';
 import { buildErrorPayload } from '../tools/error-recovery.js';
 import { resultIsError } from './mcp-is-error.js';
+import { buildServerInstructions } from './server-instructions.js';
 import { unadvertisedToolHelp } from '../tools/unadvertised-help.js';
 
 /** The JSON-RPC method the SDK registers its tool dispatcher under. */
@@ -42,28 +43,6 @@ export function withSessionEnvelope(
 }
 
 const SERVER_INFO = { name: MCP_SERVER_NAME, version: SERVER_VERSION };
-
-/**
- * What every agent is told at `initialize`, before it has called a single tool.
- *
- * This is the only channel that reaches an agent with NO dependency on the project: no CLAUDE.md, no
- * AGENTS.md, no pasted skill, no successful `reticle init`. An agent whose setup half-worked has read
- * none of those files and is precisely the agent whose report we need — so the standing instruction
- * to send feedback has to live here, where it arrives with the connection itself.
- *
- * Kept to a handful of lines: it is prepended to every session's context, so each sentence is paid
- * for on every turn, forever.
- */
-const SERVER_INSTRUCTIONS = `Reticle verifies a running web app from the inside: look (reticle_snapshot / reticle_query), act and prove in one hop (reticle_act_and_wait), observe (reticle_state / reticle_network / reticle_console), assert (reticle_assert). Verify a user-facing change against the real app before you call it done, and never weaken a check to make it pass.
-
-Only reticle_act_and_wait and reticle_assert produce a verdict. reticle_act and everything else move or read the app and prove nothing, so a drive that ends without one of those two has no result however many tools it used. Prefer reticle_act_and_wait({ ref, action, until }) — it names the expected consequence BEFORE the action, which is the difference between a check and a rationalisation. A verdict of verified:"unknown" is not a pass: it means Reticle drove the app and could not tell what happened. Report it as unknown.
-
-Feedback is first-class here, not a courtesy. Reticle is built FOR agents, so your experience is the only signal that decides what gets built or fixed — and it disappears when your context does. Send it with \`reticle_feedback\` the moment you notice, then carry on with your task:
-- Reticle broke, lied, or could not see something you needed (\`bug\` / \`gap\` / \`ambiguity\`).
-- You wished it could do something, or something works but costs too many calls (\`feature_request\` / \`improvement\`).
-- The install, the wiring, or the setup itself gave you trouble — including anything you had to work around by hand.
-
-Nothing is too minor, and a report costs one call. If the tools are unreachable (setup unfinished, daemon down), file the same report from the shell instead: \`reticle feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "what happened"\`. Report defects in RETICLE — a bug you find in the app under test is Reticle working, and belongs in your answer to the user.`;
 
 /** First sentence of a description (purpose only) for lean profiles — keeps per-turn def cost
  * down. Cuts at the first sentence-ending period or newline; falls back to a 160-char cap. The
@@ -437,13 +416,24 @@ function toolNameOf(request: unknown): string | undefined {
 export function createMcpServer(
   deps: ToolDeps,
   profile: ToolSurface = TOOL_SURFACE.DEFAULT,
+  /**
+   * Has an app ever connected for this project? Decides what the instructions LEAD with.
+   *
+   * Passed in rather than read here, so construction stays free of disk I/O and the decision is
+   * testable without a state directory. Defaulting to `false` is the deliberate safe side: an agent
+   * told to instrument a project that is already wired loses a paragraph, while an agent not told
+   * loses the entire install — and the second is what the field overwhelmingly shows.
+   */
+  previouslyConnected = false,
 ): McpServer {
   const encoding = (process.env[ENCODING_ENV] ?? '').toLowerCase();
   // Which surface this daemon advertises. The 18-tool default and the 48-tool full surface are
   // different products from inside an agent's context, so outcomes are only comparable when the
   // session says which one it saw.
   getSessionMetrics().recordSurface(profile);
-  const server = new McpServer(SERVER_INFO, { instructions: SERVER_INSTRUCTIONS });
+  const server = new McpServer(SERVER_INFO, {
+    instructions: buildServerInstructions({ previouslyConnected }),
+  });
   /**
    * Record WHICH agent attached, at the handshake, for every session.
    *
