@@ -393,6 +393,19 @@ export interface EvalResult {
    * not a defect in the user's app, and reporting it as one puts agent mistakes into the bug count.
    */
   inconclusive?: string;
+  /**
+   * No later event in this window can change this answer, so waiting out the rest of the budget
+   * buys nothing.
+   *
+   * Set ONLY where that is provable, which is rarer than it looks. "The toast never appeared" is not
+   * decided — it is only knowable when the budget ends, and ending early there would manufacture the
+   * false negative the budget exists to prevent. Exact cardinality IS decided once exceeded, because
+   * a window only accumulates matches and a count cannot come back down.
+   *
+   * A scheduling fact, never a verdict: `pass` already says what the answer is, and this only says
+   * that it is final.
+   */
+  decided?: boolean;
   evidence?: unknown;
   failureReason?: string;
   /**
@@ -605,6 +618,10 @@ export function evalNet(
       ? { pass: true, evidence: { matched: matches.length } }
       : {
           pass: false,
+          // Monotonic: more matches than asked for can never become exactly the number asked for.
+          // This is the double-submit — two writes 59ms apart — so the finding that matters most was
+          // also the one that took the caller's whole budget to report.
+          ...(matches.length > p.count ? { decided: true } : {}),
           failureReason: `expected ${String(p.count)} network call(s) matching ${JSON.stringify({ method: p.method, urlContains: p.urlContains, status: p.status })}, saw ${String(matches.length)}`,
           observed: `${String(matches.length)} matching network call(s)`,
           expected: `exactly ${String(p.count)} matching ${JSON.stringify({ method: p.method, urlContains: p.urlContains, status: p.status })}`,

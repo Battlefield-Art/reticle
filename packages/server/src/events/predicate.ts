@@ -440,6 +440,10 @@ export async function evaluatePredicate(
         return {
           pass: false,
           failureReason: failed.failureReason ?? 'a sub-predicate of allOf failed',
+          // A conjunction is decided as soon as ONE clause is: nothing the others do later can
+          // rescue it. This is what makes the early exit reach real calls, since an exact count is
+          // usually asserted alongside the UI change it is meant to accompany.
+          ...(true === failed.decided ? { decided: true } : {}),
           evidence: results,
         };
       }
@@ -593,6 +597,14 @@ export function waitForPredicate(
       void evaluatePredicate(session, predicate, since, false)
         .then((r) => {
           if (!r.pass) {
+            // Final already: stop rather than spend a budget that cannot change the answer. Only
+            // where the evaluator could PROVE it (see EvalResult.decided) — an ordinary miss keeps
+            // waiting, because "it has not happened yet" and "it will not happen" are the same
+            // reading until the budget ends.
+            if (true === r.decided) {
+              finish(r);
+              return;
+            }
             // A time-based failure knows when it could stop being one — re-check THEN rather than on
             // the next blind tick. Without this, every `settled` wait paid up to a full poll interval
             // of dead time after the quiet window had already closed: measured at 566–627ms across
