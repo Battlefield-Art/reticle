@@ -82,3 +82,31 @@ export function hasConnectedBefore(
   if (projectId === undefined) return known.length > 0;
   return known.includes(projectId);
 }
+
+/**
+ * Has an app connected before FOR THIS PROJECT — the question the first-move instructions ask.
+ *
+ * Separate from `hasConnectedBefore` because they are genuinely different questions and only one of
+ * them tolerates the untagged fallback. The no-session diagnosis wants "has this daemon ever served
+ * an app", and answering "no" there when it plainly has is the over-confident claim this file
+ * exists to remove. The first-move block claims something narrower and says so in its own first
+ * sentence: "no app has ever connected to Reticle IN THIS PROJECT".
+ *
+ * Deciding that narrower claim with the weaker question inverted it for exactly the population it
+ * was written for. An unwired project has no `.reticle.json`, so no projectId, so it fell into the
+ * untagged branch — which is true as soon as any app has ever connected on this port. On any
+ * machine where the default port has served anything at all, the guidance was suppressed and the
+ * agent was told the setup was done.
+ *
+ * So an absent projectId answers `false` here: a project with no Reticle identity has nothing
+ * recorded under another project's name that could be evidence about it. The cost of being wrong in
+ * this direction is one guidance block, read once at handshake, by a setup that is already working.
+ */
+export function hasProjectConnectedBefore(
+  stateDir: string,
+  port: number,
+  projectId: string | undefined,
+): boolean {
+  if (projectId === undefined) return false;
+  return hasConnectedBefore(stateDir, port, projectId);
+}

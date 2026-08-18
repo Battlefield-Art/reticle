@@ -48,7 +48,7 @@ import { BrowserPool } from './pool/browser-pool.js';
 import { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launcher.js';
 import { LeaseReaper } from './pool/lease-reaper.js';
 import { readJournalEnabled, readProjectId } from './cli/cli-port.js';
-import { hasConnectedBefore } from './session/connection-memory.js';
+import { hasProjectConnectedBefore } from './session/connection-memory.js';
 import { reticleStateHome } from './daemon/daemon.js';
 import { makeJournalAttach } from './journal/attach-journal.js';
 import { makeSessionEnd } from './journal/session-end.js';
@@ -452,7 +452,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
     const server = createMcpServer(
       realInput !== undefined ? { ...deps, realInput } : deps,
       profile,
-      hasConnectedBefore(reticleStateHome(), port, activeProjectId),
+      hasProjectConnectedBefore(reticleStateHome(), port, activeProjectId),
     );
     // When the agent (the MCP client) disconnects cleanly, end every active session at once so the
     // HUD doesn't linger. (If the agent instead KILLS this process, the WS dies and the browser
@@ -567,7 +567,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     createMcpServer(
       effectiveDeps,
       profile,
-      hasConnectedBefore(reticleStateHome(), port, readProjectId(process.cwd())),
+      hasProjectConnectedBefore(reticleStateHome(), port, readProjectId(process.cwd())),
     ),
   );
   // `reticle drive <url>` when this daemon already owns the port: it asks HERE instead of trying to
