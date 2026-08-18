@@ -152,7 +152,27 @@ A connected session is not a result. The user has installed something and seen n
 
 Tell the user to keep the tab visible. The HUD is on by default (glow border, animated cursor, narration per step) and watching you drive their own app is the demo.
 
-Then: `reticle_snapshot` to find the elements, `reticle_act_and_wait` for each step, `reticle_assert` for the effect, and `reticle_state` at the end. If `reticle_state` comes back empty or `hasCapabilities` is false, the generated capabilities file registered no store. Say so in one line and offer to finish it. Never report a clean install over an empty state read.
+Drive it in as few calls as you can. Every call is a full model turn, and in a client that asks the user to approve each one it is also a click — a flow driven one call at a time is how a person gives up before they ever see a verdict.
+
+1. `reticle_snapshot({ mode: "interactive" })` **once**, for the whole flow. Not once per step.
+2. `reticle_act_sequence` for the setup — every fill and every intermediate click in ONE call.
+3. `reticle_act_and_wait({ ref, action, until })` for the final step only. This is the call that produces the verdict, and `until` names the expected consequence before the action fires.
+4. `reticle_state()` once at the end.
+
+Four calls for a login, not fourteen. If `reticle_state` comes back empty or `hasCapabilities` is false, the generated capabilities file registered no store. Say so in one line and offer to finish it. Never report a clean install over an empty state read.
+
+**Then save what you just drove.** Two calls, and they are what make every future check a single call instead of a repeat of this one. Wrap the drive above in a recording:
+
+```
+reticle_run({ tool: "reticle_record", args: { action: "start", recordingName: "<flow>" } })
+   ... the four calls above ...
+reticle_run({ tool: "reticle_record", args: { action: "stop",  recordingName: "<flow>" } })
+reticle_run({ tool: "reticle_flow_save", args: { flowName: "<flow>" } })
+```
+
+`reticle_flow_save` returns `assertions.grade`. If it is not `asserted`, the flow only clicks — it will pass even when the feature is broken. Say that in one line rather than presenting it as a regression check.
+
+Tell the user plainly: that flow is now saved to `.reticle/flows/`, and re-verifying it after any future change is one call with no model in the loop.
 
 ## 6. Confirm the rule that makes this stick.
 
@@ -173,6 +193,40 @@ Stop here. Do not continue into VERIFY.
 # VERIFY
 
 **Only `reticle_act_and_wait` and `reticle_assert` produce a verdict.** Everything else (`act`, `snapshot`, `query`, `navigate`, `observe`, `network`, `console`) moves or reads the app and proves nothing. A drive that ends without one of those two has no result, however many tools it used.
+
+A verdict of `verified: "unknown"` is not a pass. It means Reticle drove the app and could not tell what happened. Report it as unknown. **Never weaken a check to make it pass.**
+
+## Take the cheapest path that answers the question
+
+Work down this list and stop at the first row that fits. Do not hand-drive a flow you could replay, and never pay one call per field.
+
+| The question | The call | Calls |
+| --- | --- | --- |
+| "Did my edit break anything?" | `reticle_run({ tool: "reticle_verify_change", args: { files: ["src/App.tsx"] } })` | 1 |
+| "Does this known journey still work?" | `reticle_run({ tool: "reticle_flow_replay", args: { flowName: "login" } })` | 1 |
+| "Does this new behaviour work?" | `reticle_act_sequence` for the setup, then ONE `reticle_act_and_wait` | 2 |
+| No MCP available at all | `npx @reticlehq/server verify <url>` in the shell | 1, no MCP |
+
+`reticle_verify_change` and `reticle_flow_replay` are **not on the advertised tool list** — they are reached through `reticle_run` exactly as written above. That is the supported call shape, not a workaround, and it is why you have to be told they exist at all.
+
+`reticle_verify_change` answers `unknown` when no saved flow covers the files you changed. That is the honest answer and not a failure — nothing ran, so nothing was proved. It is also the signal to record one. Never read it as a pass.
+
+## Record once, replay cheaply
+
+The first drive of a journey is expensive. The rest should not be. After you drive something worth keeping:
+
+```
+reticle_run({ tool: "reticle_record", args: { action: "start", recordingName: "checkout" } })
+   ... drive the flow ...
+reticle_run({ tool: "reticle_record", args: { action: "stop",  recordingName: "checkout" } })
+reticle_run({ tool: "reticle_flow_save", args: { flowName: "checkout" } })
+```
+
+From then on that journey re-verifies in one call, deterministically, and `reticle_verify_change` can start answering `yes` or `no` for the files it touches instead of `unknown`.
+
+Check `assertions.grade` on the save. Anything other than `asserted` means the flow only acts, so it will pass even if the feature breaks.
+
+## When you do have to drive by hand
 
 Five calls, and the last one is the only one that counts:
 
