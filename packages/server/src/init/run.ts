@@ -14,7 +14,7 @@ import { wasMcpRegistered } from './mcp-registered.js';
 import { pickAstroHost } from './astro-host.js';
 import { workspaceParents } from './workspace-apps.js';
 import { chooseWorkspaceApp } from './app-choice.js';
-import { isConnectStep } from './plan.js';
+import { isConnectStep } from './connect-steps.js';
 import { CLI, CURSOR_RULE_PATH, RETICLE_MD_PATH } from './agent-rules.js';
 import { CRA_ENV_PATH } from './cra.js';
 

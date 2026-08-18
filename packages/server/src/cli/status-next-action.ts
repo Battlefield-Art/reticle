@@ -21,6 +21,15 @@ export interface StatusFacts {
   sessionCount: number;
   /** Has an app for this project ever connected on this port? Durable, survives a daemon restart. */
   previouslyConnected: boolean;
+  /**
+   * Has `init` run in this project — i.e. is there a `.reticle.json` with a projectId?
+   *
+   * Was hardcoded `true` at the call below, which made the one branch that can say "run init"
+   * unreachable from `status` however unwired the project was. That is the commonest reason this
+   * command has nothing to report: registering the MCP server does not wire the app, and several
+   * paths do the first without the second.
+   */
+  initialized: boolean;
 }
 
 /**
@@ -31,6 +40,20 @@ export interface StatusFacts {
  */
 export function statusNextAction(facts: StatusFacts): string | undefined {
   if (facts.sessionCount > 0) return undefined;
+
+  // Ahead of everything else, because it dominates: an app that was never wired cannot connect, and
+  // no advice about dev servers or ports applies until it is. `previouslyConnected` overrides it —
+  // an app CAN be wired by the Vite or Babel plugin with no `.reticle.json` at all, so a project
+  // that has connected here before is wired whatever this file says, and sending it back to `init`
+  // would be the same wrong answer in the other direction.
+  if (!facts.initialized && !facts.previouslyConnected) {
+    return (
+      'no app has ever connected for this project, and there is no Reticle config here — so the ' +
+      'tools are registered and the app itself is not instrumented. Those are two different halves ' +
+      'of the install. Run `npx @reticlehq/server init` in the app directory, then start the dev ' +
+      'server and load the page.'
+    );
+  }
 
   if (!facts.running) {
     // `running: false` reads as "Reticle is broken", and it usually means the opposite: the daemon is
@@ -55,7 +78,7 @@ export function statusNextAction(facts: StatusFacts): string | undefined {
     // for this project has connected on this port", which is the fact that decides whether the wiring
     // is in question at all.
     everConnected: facts.previouslyConnected,
-    initialized: true,
+    initialized: facts.initialized,
     listening: [],
     dev: undefined,
     previouslyConnected: facts.previouslyConnected,

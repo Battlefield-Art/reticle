@@ -140,29 +140,6 @@ export function frameworkPackages(
 /** Exported so the init telemetry can tell an MCP-registration failure from a dependency install. */
 export const MCP_TARGET = 'global (claude user scope)';
 
-/**
- * Titles of the steps WITHOUT which no session ever appears.
- *
- * A ⚠ on one of these is not a warning, it is a guaranteed failure: nothing performs the manual step,
- * so the app will not connect and every Reticle tool will answer "no browser session connected".
- * Reported from a field sweep, where the ⚠ count and "did it connect" were treated as independent
- * signals and are not.
- */
-const CONNECT_STEP_TITLES: ReadonlySet<string> = new Set([
-  'Connect snippet',
-  'Connect snippet (CRA)',
-  'Connect snippet (Astro)',
-  'Connect snippet (Nuxt)',
-  'Reticle client hook',
-  'Reticle connect module',
-  'ReticleDev component',
-  'Vite plugin',
-]);
-
-/** True when this step is what makes the app dial the daemon. */
-export function isConnectStep(title: string): boolean {
-  return CONNECT_STEP_TITLES.has(title);
-}
 /** The step that runs the package manager — the other thing that commonly fails on a user's machine. */
 export const DEPS_TARGET = 'package.json';
 export const RETICLE_CONFIG_FILE = '.reticle.json';

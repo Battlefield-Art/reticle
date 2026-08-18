@@ -228,7 +228,10 @@ describe('runInit', () => {
   it('finds an app one directory down even when the root has no package.json', () => {
     const io = memoryIo({
       'frontend/package.json': JSON.stringify({ dependencies: { next: '16', react: '^19' } }),
-      'frontend/app/layout.tsx': 'export default function L({ children }) { return children; }\n',
+      'frontend/app/layout.tsx':
+        'export default function L({ children }) {\n' +
+        '  return (<html><body>{children}</body></html>);\n' +
+        '}\n',
     });
     const r = runInit(OPTS, io);
     expect(r.ok).toBe(true);
@@ -260,7 +263,10 @@ describe('runInit', () => {
   it('and names the REDIRECTED directory when the app is one level down', () => {
     const io = memoryIo({
       'frontend/package.json': JSON.stringify({ dependencies: { next: '16', react: '^19' } }),
-      'frontend/app/layout.tsx': 'export default function L({ children }) { return children; }\n',
+      'frontend/app/layout.tsx':
+        'export default function L({ children }) {\n' +
+        '  return (<html><body>{children}</body></html>);\n' +
+        '}\n',
     });
     runInit(OPTS, io);
     // Normalised for the reason this file's own harness is: the redirect builds the path with
@@ -278,7 +284,10 @@ describe('runInit', () => {
   it('honours --app when the root has no package.json', () => {
     const io = memoryIo({
       'frontend/package.json': JSON.stringify({ dependencies: { next: '16', react: '^19' } }),
-      'frontend/app/layout.tsx': 'export default function L({ children }) { return children; }\n',
+      'frontend/app/layout.tsx':
+        'export default function L({ children }) {\n' +
+        '  return (<html><body>{children}</body></html>);\n' +
+        '}\n',
       'backend/package.json': JSON.stringify({ dependencies: { express: '^4' } }),
     });
     const r = runInit({ ...OPTS, app: 'frontend' }, io);

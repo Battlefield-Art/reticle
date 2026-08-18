@@ -314,6 +314,7 @@ function withNextAction(facts: {
   running: boolean;
   sessionCount: number;
   previouslyConnected: boolean;
+  initialized: boolean;
 }): { nextAction?: string } {
   const next = statusNextAction(facts);
   return next === undefined ? {} : { nextAction: next };
@@ -322,11 +323,12 @@ function withNextAction(facts: {
 function handleStatus(port: number): void {
   const pid = readPid(port);
   // Durable, so it survives the daemon idling out — which is the state `status` is most often run in.
-  const previouslyConnected = hasConnectedBefore(
-    reticleStateHome(),
-    port,
-    readProjectId(process.cwd()),
-  );
+  const projectId = readProjectId(process.cwd());
+  const previouslyConnected = hasConnectedBefore(reticleStateHome(), port, projectId);
+  // Whether `init` has run HERE. Registering the MCP server does not wire the app, and more than one
+  // path does the first without the second — so this is the commonest reason `status` has nothing to
+  // report, and it was not among the facts this command could state.
+  const initialized = projectId !== undefined;
   if (null === pid || !isAlive(pid)) {
     // `running: false` on its own has been reported about a port that was demonstrably occupied,
     // because the pid file is not the port. Ask the port before answering.
@@ -340,7 +342,7 @@ function handleStatus(port: number): void {
         // `init` promises this command says why the app has not connected. Without it the answer was
         // `running: false` and nothing else, which reads as "Reticle is broken" for what is usually
         // just a daemon that has not been asked to do anything yet.
-        ...withNextAction({ running, sessionCount: 0, previouslyConnected }),
+        ...withNextAction({ running, sessionCount: 0, previouslyConnected, initialized }),
       });
     });
     return;
@@ -358,7 +360,7 @@ function handleStatus(port: number): void {
         running: true,
         pid,
         ...nudge,
-        ...withNextAction({ running: true, sessionCount: 0, previouslyConnected }),
+        ...withNextAction({ running: true, sessionCount: 0, previouslyConnected, initialized }),
       });
       return;
     }
@@ -368,7 +370,7 @@ function handleStatus(port: number): void {
     // answers pointing different ways, which is worse than one.
     const next =
       summary.why === undefined
-        ? withNextAction({ running: true, ...summary, previouslyConnected })
+        ? withNextAction({ running: true, ...summary, previouslyConnected, initialized })
         : {};
     log('reticle_status', { port, running: true, pid, ...summary, ...next, ...nudge });
   });
