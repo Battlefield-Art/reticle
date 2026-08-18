@@ -53,6 +53,7 @@ import { reticleStateHome } from './daemon/daemon.js';
 import { makeJournalAttach } from './journal/attach-journal.js';
 import { makeSessionEnd } from './journal/session-end.js';
 import { AmbientStore } from './journal/ambient-store.js';
+import { ensureWorkspaceGitignore } from './journal/workspace-gitignore.js';
 import { pruneSessions } from './journal/retention.js';
 import type {
   OwnedRealInputProvider,
@@ -334,7 +335,14 @@ function attachJournal(
   });
   // Teardown: flush the journal tail to disk + persist what this session learned.
   bridge.attachSessionEnd(makeSessionEnd(deps));
-  if (deps.enabled) void pruneSessions(deps.fs, deps.reticleRoot);
+  if (deps.enabled) {
+    void pruneSessions(deps.fs, deps.reticleRoot);
+    // Here rather than in `init`, because this is the moment we are actually about to write into
+    // somebody's repository — and the paths that reach it without ever running `init` (a plugin
+    // install, a hand-added client config) are exactly the ones that would otherwise leave an
+    // unexplained pile of untracked files behind. Best-effort and write-once; see the helper.
+    void ensureWorkspaceGitignore(deps.fs, deps.reticleRoot);
+  }
 }
 
 /**
