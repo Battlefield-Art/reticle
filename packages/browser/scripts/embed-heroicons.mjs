@@ -56,7 +56,7 @@ const solidBodies = {};
 for (const [key, id] of Object.entries(TOGGLE_SOLID_MAP)) {
   const entry = solidIcons[id];
   if (entry === undefined) throw new Error(`missing heroicon solid: ${id}`);
-  solidBodies[key] = entry.body;
+  solidBodies[key] = minifyOutlineBody(entry.body);
 }
 
 /** Drop attrs the HUD svg root supplies via CSS (smaller embedded SDK). */

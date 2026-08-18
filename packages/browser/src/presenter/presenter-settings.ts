@@ -242,7 +242,6 @@ export function applyPresenterSettings(root: HTMLElement, settings: PresenterSet
     dock.setAttribute(ACCENT_ATTR, settings.accentColorId);
   }
   root.style.setProperty('--reticle-mark-accent', accentColor(settings.accentColorId));
-  root.setAttribute(BLOCK_ATTR, settings.blockPageInteractions ? '1' : '0');
   if (settings.hideUntilRestart) {
     root.setAttribute(HIDDEN_UNTIL_RESTART_ATTR, '1');
   } else {
@@ -255,6 +254,18 @@ export function applyPresenterSettings(root: HTMLElement, settings: PresenterSet
   if (tally instanceof HTMLElement && !settings.showTally) {
     tally.setAttribute('hidden', '');
   }
+}
+
+/**
+ * Toggle the full-page blocker. Only active while annotate mode is live AND the user opted in -
+ * never on a collapsed FAB, so real hover/click on the host app still works.
+ */
+export function syncPageBlocker(
+  root: HTMLElement,
+  settings: PresenterSettings,
+  annotateLive: boolean,
+): void {
+  root.setAttribute(BLOCK_ATTR, settings.blockPageInteractions && annotateLive ? '1' : '0');
 }
 
 /** Blocker node - sits under Reticle UI, above the host page. */

@@ -22,7 +22,7 @@ export const HUD_CHROME_CSS = `
     radial-gradient(ellipse 120% 70% at 50% -18%,rgba(255,255,255,.07),transparent 52%),
     linear-gradient(180deg,rgba(255,255,255,.035) 0%,transparent 36%,rgba(0,0,0,.12) 100%);
 }
-.${HUD_SURFACE_CLASS} > *{position:relative;z-index:2;}`;
+.${HUD_SURFACE_CLASS} > *{position:relative;z-index:2;}` as string;
 
 /** Inset well for the activity log — sits inside the chat card. */
 export const HUD_LOG_WELL_CLASS = 'reticle-hud-log-well';
@@ -37,4 +37,4 @@ export const HUD_LOG_WELL_CSS = `
     linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.68) 100%);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 0 0 1px rgba(255,255,255,.06);
 }
-.${HUD_LOG_WELL_CLASS} > *{position:relative;z-index:1;}`;
+.${HUD_LOG_WELL_CLASS} > *{position:relative;z-index:1;}` as string;

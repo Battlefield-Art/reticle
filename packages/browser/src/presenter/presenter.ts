@@ -64,6 +64,7 @@ import {
   blockerHtml,
   getPresenterSettings,
   OutputDetail,
+  syncPageBlocker,
   type PresenterSettings,
 } from './presenter-settings.js';
 import { Annotator, type AnnotatorChrome } from '../review/annotator.js';
@@ -226,6 +227,7 @@ export class Presenter {
     this.#chip = root.querySelector<HTMLElement>('[data-reticle-chip]') ?? undefined;
     this.#tally = root.querySelector<HTMLElement>('[data-reticle-tally]') ?? undefined;
     this.#shell.mount(root);
+    syncPageBlocker(root, getPresenterSettings(), false);
     this.#glowCtl.setElements(this.#glow, this.#cursor);
     // The panel queries its refs, binds listeners, and paints the initial active state.
     this.#panel.mount(root, this.#glow);
@@ -252,6 +254,9 @@ export class Presenter {
   #syncAnnotator(): void {
     const live = SessionState.ACTIVE === this.#panel.state && !this.#shell.isCollapsed();
     this.#annotator?.toggle(live);
+    if (this.#root !== undefined) {
+      syncPageBlocker(this.#root, getPresenterSettings(), live);
+    }
   }
   destroy() {
     this.#glowCtl.teardown();
@@ -469,6 +474,10 @@ export class Presenter {
       this.#tally?.setAttribute('hidden', '');
     } else {
       this.#renderTally();
+    }
+    if (this.#root !== undefined) {
+      const live = SessionState.ACTIVE === this.#panel.state && !this.#shell.isCollapsed();
+      syncPageBlocker(this.#root, settings, live);
     }
   }
   /**

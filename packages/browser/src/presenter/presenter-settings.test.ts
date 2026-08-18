@@ -169,11 +169,14 @@ describe('presenter settings', () => {
     p.destroy();
   });
 
-  it('block page interactions enables the overlay blocker', () => {
+  it('block page interactions enables the overlay blocker only while annotate is live', () => {
     const p = new Presenter({ border: 'session' });
     p.mount();
     const overlay = document.querySelector('div[data-reticle-overlay]') as HTMLElement;
     const blocker = overlay.querySelector('[data-reticle-blocker]') as HTMLElement;
+    expect(overlay.getAttribute('data-reticle-block')).toBe('0');
+    p.sessionStart();
+    (document.querySelector('[data-reticle-fab]') as HTMLElement).click();
     expect(overlay.getAttribute('data-reticle-block')).toBe('1');
     expect(getComputedStyle(blocker).pointerEvents).toBe('auto');
     p.destroy();

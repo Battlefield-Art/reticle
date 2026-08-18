@@ -147,7 +147,7 @@ export const CONTROLS_CSS = `
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.16),0 0 12px rgba(255,255,255,.04);}
 [data-reticle-hud] .reticle-export-msg{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
   overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;}
-`;
+` as string;
 /** Swap pause/resume icon + accessible label without visible text clutter in the toolbar. */
 function paintPauseBtn(btn: HTMLButtonElement, paused: boolean): void {
   const iconName: HeroIconBodyKey = paused ? PresenterIcon.PLAY : PresenterIcon.PAUSE;

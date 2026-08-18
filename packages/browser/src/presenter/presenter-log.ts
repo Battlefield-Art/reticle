@@ -85,7 +85,7 @@ export const LOG_CSS = `
   padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
   border-radius:16px 16px 4px 16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.08);}
 [data-reticle-log-row][data-kind="human"] .reticle-log-text{color:var(--reticle-fg);font-size:12px;line-height:1.45;}
-`;
+` as string;
 
 /** Handle returned from logRow/Presenter.log so the caller can stamp the outcome glyph later. */
 export interface LogHandle {
