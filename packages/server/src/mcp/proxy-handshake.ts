@@ -52,7 +52,21 @@ export function isHandshakeLine(line: string): boolean {
   return 'initialize' === msg?.method || 'notifications/initialized' === msg?.method;
 }
 
-export function localInitializeResponse(line: string): string | null {
+export function localInitializeResponse(
+  line: string,
+  /**
+   * What the daemon would have advertised, so the client is not left with none.
+   *
+   * A client reads `instructions` ONCE, at initialize, and this response is sent precisely when no
+   * daemon is up to send its own — which is the first run of a fresh install. So the block telling
+   * someone that having these tools is not the same as being set up was permanently absent for the
+   * exact population it addresses, and the daemon's later correct instructions arrive at a client
+   * that will never read the field again.
+   *
+   * Empty means "nothing to say", and the field is then omitted rather than sent blank.
+   */
+  instructions = '',
+): string | null {
   const msg = parseLine(line);
   if (null === msg || msg.method !== 'initialize') return null;
   // A notification carries no id and expects no reply; answering one is a protocol error.
@@ -70,6 +84,7 @@ export function localInitializeResponse(line: string): string | null {
       // capability we then rely on is the difference between a fix and a message into the void.
       capabilities: { tools: { listChanged: true } },
       serverInfo: { name: MCP_SERVER_NAME, version: SERVER_VERSION },
+      ...('' === instructions ? {} : { instructions }),
     },
   });
 }

@@ -11,6 +11,10 @@ import {
   CONTRACT_FINGERPRINT,
 } from '@reticlehq/core';
 import { SERVER_VERSION } from '../version/server-version.js';
+import { buildServerInstructions } from './server-instructions.js';
+import { hasProjectConnectedBefore } from '../session/connection-memory.js';
+import { reticleStateHome } from '../daemon/daemon.js';
+import { readProjectId } from '../cli/cli-port.js';
 import { PEER_VERSION_PARAM, PEER_CONTRACT_PARAM } from '../version/peer-announce.js';
 import {
   onStreamDrop,
@@ -460,6 +464,28 @@ export function buildSessionUrl(rawData: string, port: number): string | null {
  * `/mcp` could. The daemon demonstrably stays up across these drops, so the stream ending is a
  * transport event, not a shutdown: reconnect to it and replay the handshake instead of dying.
  */
+/**
+ * The instructions this proxy should advertise when it answers the handshake itself.
+ *
+ * Same inputs the daemon uses, read from the same durable memory, so a client that happens to meet
+ * the proxy first is not told something different from one that meets the daemon first. Best-effort:
+ * an unreadable state home must never be the reason a handshake fails, so it degrades to the
+ * fresh-install wording rather than throwing.
+ */
+function proxyInstructions(port: number): string {
+  try {
+    return buildServerInstructions({
+      previouslyConnected: hasProjectConnectedBefore(
+        reticleStateHome(),
+        port,
+        readProjectId(process.cwd()),
+      ),
+    });
+  } catch {
+    return buildServerInstructions({ previouslyConnected: false });
+  }
+}
+
 export function startMcpProxy(
   port: number,
   /**
@@ -822,7 +848,9 @@ export function startMcpProxy(
      */
     const armLocalHandshake = (line: string): void => {
       if (handshakeAnswered) return;
-      const response = localInitializeResponse(line);
+      // Ask the same question the daemon would, from the same durable memory, so the client gets
+      // the same answer it would have got had a daemon been up to give it.
+      const response = localInitializeResponse(line, proxyInstructions(port));
       if (null === response) return;
       // Take the debt NOW, not when the timer fires.
       //

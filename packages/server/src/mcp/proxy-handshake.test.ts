@@ -29,10 +29,15 @@ interface InitResult {
     protocolVersion?: unknown;
     capabilities?: { tools?: unknown };
     serverInfo?: { name?: unknown };
+    instructions?: unknown;
   };
 }
-function answer(line: string): InitResult {
-  const parsed: unknown = JSON.parse(localInitializeResponse(line) ?? '{}');
+function answer(line: string, instructions?: string): InitResult {
+  const parsed: unknown = JSON.parse(
+    (instructions === undefined
+      ? localInitializeResponse(line)
+      : localInitializeResponse(line, instructions)) ?? '{}',
+  );
   return parsed as InitResult;
 }
 
@@ -60,5 +65,26 @@ describe('answering initialize without a daemon', () => {
     expect(localInitializeResponse('not json')).toBeNull();
     // A notification has no id, so there is nothing to answer.
     expect(localInitializeResponse('{"jsonrpc":"2.0","method":"initialize"}')).toBeNull();
+  });
+});
+
+/**
+ * The handshake the proxy answers itself carried no `instructions` at all.
+ *
+ * A client reads `instructions` ONCE, at initialize. The proxy answers locally precisely when no
+ * daemon is up yet — which is the first run, which is the population that has tools registered and
+ * an app that is not instrumented. So the one block that tells them "having these tools is not the
+ * same as being set up" was permanently absent for exactly them, and the daemon's later, correct
+ * instructions arrive at a client that will never look again.
+ */
+describe('the locally-answered handshake carries the guidance', () => {
+  const INIT = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
+
+  it('passes the instructions through to the client', () => {
+    expect(answer(INIT, 'DO THE THING FIRST').result?.instructions).toBe('DO THE THING FIRST');
+  });
+
+  it('omits the field rather than sending an empty one when there is nothing to say', () => {
+    expect(answer(INIT, '').result?.instructions).toBeUndefined();
   });
 });
