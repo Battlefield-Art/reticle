@@ -4,6 +4,7 @@ import {
   DANGEROUS_ACTION_CONFIRM_ARG,
   ElementState,
   isDangerousActionText,
+  NATIVE_INPUT_ARG,
   SettleReason,
 } from '@reticlehq/core';
 import { echoRef, refs } from '../dom/refs.js';
@@ -242,6 +243,18 @@ function alreadyAtCheckedState(el: HTMLElement, action: string): boolean {
   return isInput(el) && el.checked === (action === ActionType.CHECK);
 }
 
+/**
+ * What the destructive-action guard classifies: the ELEMENT, and nothing rendered around it.
+ *
+ * This used to end with `form?.textContent`, so the whole enclosing form's rendered text decided the
+ * verdict for every control inside it — a settings form with per-row "Remove" buttons made its own
+ * Save button read as destructive, intermittently, depending on whether the rows had rendered yet.
+ * The field report's workaround was `confirmDangerous: true` on every click, which deletes the guard
+ * outright: a guard that fires on everything is a guard that gets switched off.
+ *
+ * The form's `action` stays — that is a URL this element submits to, i.e. a property of what this
+ * click DOES, not of what happens to be on screen beside it.
+ */
 function dangerousActionContext(el: HTMLElement): string {
   const form = el.closest('form');
   return [
@@ -252,7 +265,6 @@ function dangerousActionContext(el: HTMLElement): string {
     el.getAttribute('aria-label') ?? '',
     el.getAttribute('href') ?? '',
     form?.getAttribute('action') ?? '',
-    form?.textContent ?? '',
   ].join(' ');
 }
 
@@ -352,6 +364,49 @@ const KNOWN_NAMED_KEYS: ReadonlySet<string> = new Set([
 function dragTargetRef(args: Record<string, unknown>): string {
   const named = asString(args['toRef']);
   return '' !== named ? named : asString(args['target']);
+}
+
+/** The keys `upload` actually reads, and the generic ones every action accepts. */
+const UPLOAD_ARG_KEYS: ReadonlySet<string> = new Set(['content', 'name', 'type']);
+const GENERIC_ACTION_ARG_KEYS: ReadonlySet<string> = new Set([
+  DANGEROUS_ACTION_CONFIRM_ARG,
+  NATIVE_INPUT_ARG,
+  'holdMs',
+]);
+
+/**
+ * An `upload` must have been told what to upload.
+ *
+ * The branch below defaults every field, so a call whose keys were all unrecognised — the field
+ * report sent `args.files` — manufactured a 17-byte `file.txt` reading "reticle test file", uploaded
+ * THAT, and returned ok:true. The server answered 200, the UI refreshed, and every signal the agent
+ * could read said its PDF had been processed. That is a manufactured green on the write path, the
+ * same shape `drag` refuses one branch below.
+ *
+ * Both halves matter. A call with no recognised key at all never described a file; a call that mixes
+ * one in with a dropped one (`{ path, name }`) is worse, because the right filename arrives attached
+ * to invented bytes. A name-only call keeps working: the placeholder body is documented and the
+ * caller that omitted `content` knows it did.
+ *
+ * The refusal names the keys upload reads so a caller that guessed can correct in one turn.
+ *
+ * Scoped to upload deliberately. Dropping an unrecognised key in silence is a property of EVERY
+ * action — `args` is `z.record(z.unknown())` at the wire boundary — but upload is the one where the
+ * dropped key is replaced with fabricated content. Refusing unknown keys everywhere needs a
+ * per-action arg schema in core and is a larger change than this release should carry.
+ */
+function assertUploadArgs(args: Record<string, unknown>): void {
+  const keys = Object.keys(args);
+  const dropped = keys.filter((k) => !UPLOAD_ARG_KEYS.has(k) && !GENERIC_ACTION_ARG_KEYS.has(k));
+  if (0 === dropped.length && keys.some((k) => UPLOAD_ARG_KEYS.has(k))) return;
+  const detail =
+    0 === dropped.length
+      ? 'no file was described'
+      : `upload does not read ${dropped.join(', ')}, so it would be dropped`;
+  throw new Error(
+    `upload needs the file described as args: { name, content?, type? } — ${detail}. ` +
+      'Reading a file from disk is not supported; pass its bytes as `content`.',
+  );
 }
 
 function assertActionAllowed(el: HTMLElement, action: string, args: Record<string, unknown>): void {
@@ -661,6 +716,7 @@ async function dispatchOther(
       if (!isInput(el) || el.type !== 'file') {
         throw new Error('upload target must be a <input type="file">');
       }
+      assertUploadArgs(args);
       const file = new File(
         [asString(args['content'], 'reticle test file')],
         asString(args['name'], 'file.txt'),
