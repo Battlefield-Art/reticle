@@ -80,18 +80,20 @@ whenever you change any user-facing behaviour.
 
 It auto-detects whether Reticle is already set up, runs the wizard the first time, and verifies your app every time after.
 
-**New in 2.8.0: install the published skill in one line.** On Claude Code the plugin is the shortest path of all, because it registers the MCP server and the skill in one step:
+**If you would rather run it yourself than paste it.** On Claude Code the plugin is the shortest path of all, because it registers the MCP server and the skill in one step:
 
 ```text
 /plugin marketplace add reticlehq/reticle
 /plugin install reticle@reticlehq
 ```
 
-On Cursor, Codex, Copilot and Gemini:
+Everywhere the skills CLI reaches — Cursor, Codex, Copilot, Gemini, Windsurf, OpenCode:
 
 ```bash
 npx skills add reticlehq/reticle
 ```
+
+Either way, **restart the client afterwards**. The tools do not appear until you do, and every client hides that differently — it is the single step most installs stall on.
 
 **Or via CLI** — auto-detects your framework, installs the kit + build plugin, and registers the MCP server for every agent in one shot:
 
