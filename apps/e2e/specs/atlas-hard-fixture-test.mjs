@@ -37,12 +37,33 @@ const chk = (l, o, d = '') => {
 // green specs red. The desktop specs already own their runtime for the same reason; this follows them.
 const tokenFile = join(homedir(), '.reticle', 'pairing-token');
 const token = existsSync(tokenFile) ? readFileSync(tokenFile, 'utf8').trim() : '';
+//
+// `detached` so this gets its OWN process group, and the teardown below can kill the group.
+//
+// Killing `atlas.pid` alone kills the `pnpm` WRAPPER and orphans the vite it spawned, which then
+// keeps :4320 for as long as the machine is up. That made the battery fail on its SECOND run and
+// every run after, in a way that pointed nowhere near the cause: the orphan still answers HTTP, so
+// this spec's readiness probe passes; `--strictPort` kills the NEW vite because the port is taken;
+// chromium then loads the ORPHAN'S page, whose SDK is dialing a bridge that no longer exists. The
+// reported symptom is "an atlas session never connected", with a healthy-looking app serving on the
+// port it names. `run.mjs` already kills the group for this exact reason — see its `detached` note.
 const atlas = spawn(
   'pnpm',
   ['--filter', '@reticlehq/atlas', 'exec', 'vite', '--port', '4320', '--strictPort'],
-  { env: { ...process.env, RETICLE_PORT: '4400', VITE_RETICLE_TOKEN: token }, stdio: 'ignore' },
+  {
+    env: { ...process.env, RETICLE_PORT: '4400', VITE_RETICLE_TOKEN: token },
+    stdio: 'ignore',
+    detached: true,
+  },
 );
-const stopAtlas = () => { try { atlas.kill('SIGKILL'); } catch { /* already gone */ } };
+const stopAtlas = () => {
+  // Negative pid targets the whole group. ESRCH only means everything is already gone.
+  try {
+    process.kill(-atlas.pid, 'SIGKILL');
+  } catch {
+    /* group already gone */
+  }
+};
 process.on('exit', stopAtlas);
 
 const server = await start({ port: 4400, mcp: false });
