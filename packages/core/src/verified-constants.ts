@@ -193,5 +193,19 @@ export const BlindSpotKind = {
    * is declared, and the verdict over it reports partial coverage.
    */
   VERDICTLESS_SEND: 'verdictless-send',
+  /**
+   * No SUBSCRIBABLE store is registered, so the app's own state is unobservable.
+   *
+   * Without it, "the store did not change" and "nothing was watching the store" are the same empty
+   * `stateDiffs` — and the first reading is a confident wrong answer. It is the common case, not an
+   * exotic one: `init` writes a capabilities file that registers nothing until someone edits it, and
+   * a store passed as a bare getter is readable but silent, so an app can hold state, change it on
+   * every click, and report an empty state channel forever with no error anywhere.
+   *
+   * BOUNDING, never impeaching (see `impeachesCapture`): what WAS observed — DOM, network, console,
+   * storage — is observed completely. Only the state channel is dark, and it lights up the moment a
+   * subscribable store registers, which is when the SDK emits this kind with count 0.
+   */
+  UNWATCHED_STATE: 'unwatched-state',
 } as const;
 export type BlindSpotKind = (typeof BlindSpotKind)[keyof typeof BlindSpotKind];

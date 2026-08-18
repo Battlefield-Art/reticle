@@ -38,6 +38,7 @@ import { buildDivergenceCapsule } from '../capsule/capsule.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import { buildHonestyBlock } from '../honesty/honesty.js';
 import {
+  BlindSpotKind,
   buildCoverageStatement,
   blindSpotsFromState,
   transportGapNote,
@@ -360,7 +361,7 @@ export const ACT_TOOLS: ToolDef[] = [
       summary: z
         .unknown()
         .describe(
-          'Bounded causal summary: net {total,errors,headline}, consoleErrors, statePathsChanged, storageKeysChanged, stateDiffs [{path,from,to}], storageDiffs [{key,from,to}], route, signals, layoutShift, longTasks — real before→after diffs (capped), not just readings. Every list is length-capped so the verdict can never be the field a client truncates; `elided` says which lists lost entries and how many.',
+          'Bounded causal summary: net {total,errors,headline}, consoleErrors, statePathsChanged, storageKeysChanged, stateDiffs [{path,from,to}], storageDiffs [{key,from,to}], route, signals, layoutShift, longTasks — real before→after diffs (capped), not just readings. THIS IS THE ANSWER TO "what did that click do": console, network, storage and state for this action are all here, so do NOT follow an act with reticle_console + reticle_network + reticle_state to find out — call them only to go deeper into something this block already pointed at. Every list is length-capped so the verdict can never be the field a client truncates; `elided` says which lists lost entries and how many. `stateUnwatched: true` means NO subscribable store is registered, so an empty stateDiffs means unwatched, NOT unchanged — no state conclusion is available until one is registered.',
         ),
       // Promoted out of `effect` on RED only — the file:line the failure came from, the first thing a
       // repair wants. Undeclared, it was stripped on the validating profile exactly like the structured
@@ -533,6 +534,11 @@ export const ACT_TOOLS: ToolDef[] = [
         // verdict didn't see everything — say so, never imply full coverage.
         const spots = blindSpotsFromState(session.blindSpots());
         const coverage = buildCoverageStatement(spots);
+        // Nothing subscribed ⇒ the state channel is dark, and the summary must say so rather than
+        // report an empty diff list that reads like a fact about the app. See CausalSummary.
+        const stateUnwatched = spots.some(
+          (s) => s.kind === BlindSpotKind.UNWATCHED_STATE && s.count > 0,
+        );
         // Only a spot that IMPEACHES the capture belongs in integrity — see impeachesCapture. A
         // structural boundary (virtualized rows, a cross-origin frame) is reported as coverage and
         // must not downgrade a verdict about what WAS observed.
@@ -658,7 +664,9 @@ export const ACT_TOOLS: ToolDef[] = [
             : { source: `${actedSource.file}:${String(actedSource.line)}` }),
           trace,
           ...(capsuleSaved === undefined ? {} : { capsuleSaved }),
-          summary: causalSummary(windowEvents),
+          // The window cannot say whether anything was WATCHING state — that is a level fact the
+          // session holds. Without it an empty `stateDiffs` reads as "the app changed nothing".
+          summary: causalSummary(windowEvents, { stateUnwatched }),
           // Cross-channel disagreement, reported WITH the action that caused it.
           //
           // This is the one finding here a human structurally cannot make — they watch one channel,
