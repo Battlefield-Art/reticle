@@ -483,23 +483,51 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
  * plugin's job — an app author should not have to know we write there.
  */
 describe('the daemon journal does not drive the dev server', () => {
-  const ignoredFrom = (config: Record<string, unknown>): string[] => {
+  const ignoredFrom = (config: Record<string, unknown>): (string | RegExp)[] => {
     const plugin = reticle() as unknown as {
       config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
     };
     const patch = plugin.config?.(config) ?? {};
-    const server = patch['server'] as { watch?: { ignored?: string[] } } | undefined;
+    const server = patch['server'] as { watch?: { ignored?: (string | RegExp)[] } } | undefined;
     return server?.watch?.ignored ?? [];
   };
 
+  /** Does this ignore list actually reject `path`, the way chokidar would? */
+  const rejects = (ignored: (string | RegExp)[], path: string): boolean =>
+    ignored.some((m) => m instanceof RegExp && m.test(path));
+
   it('excludes the journal directory from the watcher', () => {
-    expect(ignoredFrom({})).toContain(`**/${ReticleDir.ROOT}/**`);
+    const ignored = ignoredFrom({});
+    // The paths chokidar actually reports: relative from the watched root, either separator.
+    expect(rejects(ignored, `${ReticleDir.ROOT}/ambient.json`)).toBe(true);
+    expect(rejects(ignored, `src/${ReticleDir.ROOT}/sessions/abc/events.jsonl`)).toBe(true);
+    expect(rejects(ignored, `src\\${ReticleDir.ROOT}\\ambient.json`)).toBe(true);
+  });
+
+  /**
+   * A GLOB here is silently useless. chokidar dropped glob support in v4 and Vite 7+ ships v4/v5,
+   * where a double-star pattern naming the journal directory is accepted and matches nothing — so
+   * the fix would look present in the config, pass a `toContain` assertion, and change no behaviour
+   * at all. Measured, not assumed: against the chokidar this repo resolves, the glob form still let
+   * a write to the journal through. This is the assertion that catches a regression back to one.
+   */
+  it('uses a matcher chokidar still honours, not a glob', () => {
+    const ignored = ignoredFrom({});
+    expect(ignored.some((m) => m instanceof RegExp)).toBe(true);
+  });
+
+  it("does not swallow the app's own files", () => {
+    const ignored = ignoredFrom({});
+    expect(rejects(ignored, 'src/App.tsx')).toBe(false);
+    // Not a `.reticle` DIRECTORY — a file that merely starts the same way.
+    expect(rejects(ignored, 'src/reticle.config.ts')).toBe(false);
+    expect(rejects(ignored, `${ReticleDir.ROOT}x/thing.json`)).toBe(false);
   });
 
   it("keeps the app's own ignore patterns", () => {
     const ignored = ignoredFrom({ server: { watch: { ignored: ['**/fixtures/**'] } } });
     expect(ignored, "the app's own entries must survive").toContain('**/fixtures/**');
-    expect(ignored).toContain(`**/${ReticleDir.ROOT}/**`);
+    expect(rejects(ignored, `${ReticleDir.ROOT}/ambient.json`)).toBe(true);
   });
 });
 

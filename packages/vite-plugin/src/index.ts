@@ -211,7 +211,7 @@ export interface ReticleVitePlugin {
     };
     define?: Record<string, string>;
     root?: string;
-    server?: { watch?: { ignored?: string[] } };
+    server?: { watch?: { ignored?: (string | RegExp)[] } };
   }) => {
     optimizeDeps: {
       include: string[];
@@ -221,7 +221,7 @@ export interface ReticleVitePlugin {
       [optionsKey: string]: unknown;
     };
     define: Record<string, string>;
-    server: { watch: { ignored: string[] } };
+    server: { watch: { ignored: (string | RegExp)[] } };
   };
   /** Absent in desktop mode, where the plugin must also run for `vite build`. */
   apply?: 'serve';
@@ -522,6 +522,16 @@ export function connectModuleSource(
  * caller — keep it behind your own dev-only build target so an instrumented bundle can never reach
  * a release binary.
  */
+/**
+ * The daemon's journal directory, as a matcher every chokidar major honours.
+ *
+ * Exported so the one regression test can assert on the matcher itself rather than on a string that
+ * looked right and matched nothing.
+ */
+export const JOURNAL_IGNORE = new RegExp(
+  `(^|[\\\\/])${ReticleDir.ROOT.replace('.', '\\.')}([\\\\/]|$)`,
+);
+
 export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlugin {
   const sourceMapping = options.sourceMapping !== false;
   const inject = options.inject !== false;
@@ -643,7 +653,7 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       /** Vite's UserConfig root; undefined means the cwd. `configResolved` runs too late for this. */
       root?: string;
       /** The app's own watcher config; its `ignored` list is preserved, never replaced. */
-      server?: { watch?: { ignored?: string[] } };
+      server?: { watch?: { ignored?: (string | RegExp)[] } };
     }) {
       // Everything below asks what the APP has installed, so every lookup is rooted here and never
       // at the plugin's own location. Vite defaults an omitted root to the cwd; so do we.
@@ -664,11 +674,21 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
         // filled with connect/disconnect pairs that looked like a flapping SDK rather than a
         // watcher chasing its own tail.
         //
-        // Vite concatenates its own defaults onto whatever `ignored` it is given, and this appends
-        // to the app's list rather than replacing it, so nothing the app already excluded is lost.
+        // A RegExp, not a glob, and that is the whole difference between this working and not.
+        // chokidar dropped glob support in v4 — Vite 7+ ships v4/v5, where a pattern like
+        // `**/.reticle/**` is silently accepted and matches nothing. MEASURED against the chokidar
+        // this repo resolves: with the glob, a write to `.reticle/ambient.json` still fires; with
+        // this RegExp it does not, while a normal file still does. Vite's own defaults are globs and
+        // have the same problem, which is why it is not safe to copy their shape here.
+        //
+        // Anchored on `^` or a separator so it matches the directory and not a file that merely ends
+        // in those characters, and both separators are accepted because chokidar reports the path in
+        // the platform's own form.
+        //
+        // Appends to the app's list rather than replacing it, so nothing it already excluded is lost.
         server: {
           watch: {
-            ignored: [...(config.server?.watch?.ignored ?? []), `**/${ReticleDir.ROOT}/**`],
+            ignored: [...(config.server?.watch?.ignored ?? []), JOURNAL_IGNORE],
           },
         },
         // Expose the daemon's pairing token to hand-written connects in the same Vite app. The

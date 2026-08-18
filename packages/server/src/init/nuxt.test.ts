@@ -97,8 +97,14 @@ describe('the recipe', () => {
 describe('the journal does not drive the dev server', () => {
   const recipe = nuxtManual(undefined);
 
-  it('tells the app to keep the journal out of the watcher', () => {
-    expect(recipe).toContain(`'**/${ReticleDir.ROOT}/**'`);
+  it('tells the app to keep the journal out of the watcher, with a matcher that works', () => {
+    // The literal itself, not a description of it. A glob would read fine here and match nothing on
+    // the chokidar Vite 7+ ships.
+    const literal = /ignored:\s*\[\/(.+)\/\]/.exec(recipe);
+    if (literal?.[1] === undefined) throw new Error('the recipe emits no regex literal');
+    const matcher = new RegExp(literal[1]);
+    expect(matcher.test(`${ReticleDir.ROOT}/ambient.json`)).toBe(true);
+    expect(matcher.test('src/App.vue')).toBe(false);
   });
 
   it('says where that goes, so the step is followable', () => {

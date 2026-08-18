@@ -279,11 +279,29 @@ describe('the SDK is pre-declared so the first load is not lost to a dep-optimiz
  *
  * Astro does not load the Vite plugin, so the plugin's fix does not reach it.
  */
+/**
+ * Pull the regex literal out of the emitted config and use it as a real matcher. Asserting on the
+ * TEXT alone is how a dead ignore ships: a glob reads correctly, passes `toContain`, and matches
+ * nothing on the chokidar Vite 7+ actually uses.
+ */
+const emittedWatchMatcher = (code: string): RegExp => {
+  // Greedy on purpose: the pattern contains `/` inside a character class, so a lazy match stops
+  // inside it and produces an unterminated expression.
+  const literal = /ignored:\s*\[\/(.+)\/\]/.exec(code);
+  if (literal?.[1] === undefined) throw new Error(`no regex literal in: ${code}`);
+  return new RegExp(literal[1]);
+};
+
 describe('the daemon journal does not drive the dev server', () => {
   it('excludes the journal directory from the watcher', () => {
     const patch = patchAstroConfig(PLAIN_CONFIG);
     if (patch.kind !== PatchKind.APPLY) throw new Error('expected a patch');
-    expect(patch.code).toContain(`'**/${ReticleDir.ROOT}/**'`);
+    const matcher = emittedWatchMatcher(patch.code);
+    expect(matcher.test(`${ReticleDir.ROOT}/ambient.json`)).toBe(true);
+    expect(matcher.test(`src/${ReticleDir.ROOT}/sessions/a/events.jsonl`)).toBe(true);
+    // Not the journal — a file that merely starts the same way.
+    expect(matcher.test('src/App.tsx')).toBe(false);
+    expect(matcher.test(`${ReticleDir.ROOT}x/thing.json`)).toBe(false);
   });
 
   it('merges into a server block the app already has, rather than shadowing it', () => {
@@ -291,7 +309,7 @@ describe('the daemon journal does not drive the dev server', () => {
     const patch = patchAstroConfig(source);
     if (patch.kind !== PatchKind.APPLY) throw new Error('expected a patch');
     expect(patch.code).toContain('port: 4321');
-    expect(patch.code).toContain(`'**/${ReticleDir.ROOT}/**'`);
+    expect(emittedWatchMatcher(patch.code).test(`${ReticleDir.ROOT}/ambient.json`)).toBe(true);
     // A second `server:` key in the same object literal is not a merge — the last one wins.
     expect(patch.code.match(/server\s*:/g)?.length ?? 0).toBe(1);
   });

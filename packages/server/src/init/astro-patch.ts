@@ -48,8 +48,12 @@ const SDK_INCLUDE_LITERAL = `'@reticlehq/react'`;
  *
  * The Vite plugin sets the same ignore in its `config` hook. Astro is hand-patched and never loads
  * that plugin, so it needs its own.
+ *
+ * A RegExp, not a glob. chokidar dropped glob support in v4 and Vite 7+ ships v4/v5, where a
+ * double-star pattern is accepted and matches nothing — the ignore would be visibly present in the
+ * config and do nothing at all. Measured against the chokidar this repo resolves.
  */
-const WATCH_IGNORE_LITERAL = `'**/${ReticleDir.ROOT}/**'`;
+const WATCH_IGNORE_LITERAL = `/(^|[\\\\/])\\.${ReticleDir.ROOT.slice(1)}([\\\\/]|$)/`;
 /**
  * An `include:` the app already declared — ours joins that array instead of adding a second key.
  * Deliberately not anchored to a newline: `optimizeDeps: { include: ['x'] }` on one line is the

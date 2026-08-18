@@ -533,13 +533,15 @@ and no index.html to inject into. Wire it with a dev-only CLIENT plugin, which i
 
 4. Add this to nuxt.config, so the dev server does not watch Reticle's own journal:
 
-     vite: { server: { watch: { ignored: ['**/${ReticleDir.ROOT}/**'] } } }
+     vite: { server: { watch: { ignored: [/(^|[\\\\/])\\.${ReticleDir.ROOT.slice(1)}([\\\\/]|$)/] } } }
 
    Reticle journals every session into ${ReticleDir.ROOT}/ in your project root, rewriting one file
    in it continuously while a session is live. Nuxt's dev server watches that root, so without this
    it sees each write as a project file changing and full-reloads the page — which reconnects the
    SDK, which produces the next write. The loop runs several times a second and looks like anything
    except what it is: refs go stale, actions die mid-flight, and the session appears to flap.
+   It is a RegExp rather than a glob on purpose — chokidar dropped glob support in v4, so a
+   double-star pattern here is accepted and matches nothing.
 
 The package is @reticlehq/browser — the framework-neutral sensor. DOM, network, console, routing and
 source file:line all work in Vue. What you do not get is React component identity, which is the only
