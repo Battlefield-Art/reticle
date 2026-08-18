@@ -64,6 +64,20 @@ type SessionReadyHandler = (session: Session) => void;
 export const WS_CLOSE_REASON = {
   PROTOCOL_MISMATCH: 'protocol version mismatch — upgrade @reticlehq/browser',
   AUTH_FAILED: 'authentication failed — reload the page to pick up the current pairing token',
+  /**
+   * The pool of half-open handshakes was full, so this dial was turned away before it could say
+   * anything. Every other refusal here records why and this one did not — it closed the socket and
+   * returned — so an app that was running, instrumented and actively dialling looked exactly like an
+   * app nobody had started, and the diagnosis went hunting a stopped dev server.
+   *
+   * Names the cause and the fact that it is transient, because the remedy differs from every other
+   * refusal on this path: nothing about the app is wrong and retrying is the correct response.
+   */
+  HANDSHAKE_POOL_FULL:
+    'refused at the handshake pool — too many connections were mid-handshake on this daemon, so ' +
+    'this dial never got to identify itself. Nothing is wrong with the app; the pool drains on its ' +
+    'own and reloading the page reconnects. If it persists, something else on this machine is ' +
+    'opening sockets to this port.',
 } as const;
 
 /**
@@ -333,6 +347,11 @@ export class Bridge {
 
   #onConnection(socket: WebSocket): void {
     if (this.#pendingConnections >= this.#maxPendingConnections) {
+      // On the channel the no-session diagnosis reads, not only into the log. This refusal happens
+      // before any HELLO, so without it the dial leaves no trace at all — the same hole the origin
+      // gate had, and the same fix.
+      this.sessions.noteClosure(WS_CLOSE_REASON.HANDSHAKE_POOL_FULL, this.#clock());
+      log('bridge_handshake_pool_full', { pending: this.#pendingConnections });
       socket.close(...WS_CLOSE.TOO_MANY_HANDSHAKES);
       return;
     }
