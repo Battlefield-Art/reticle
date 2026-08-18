@@ -401,7 +401,11 @@ export async function evaluatePredicate(
     case PredicateKind.TEXT:
       return evalElement(
         session,
-        { text: predicate.contains },
+        // `scope` passes straight through: the text predicate has always been an element query
+        // with only `text` filled in, so scoping it needs the field, not a second code path.
+        undefined === predicate.scope
+          ? { text: predicate.contains }
+          : { text: predicate.contains, scope: predicate.scope },
         true === predicate.visible ? ElementState.VISIBLE : undefined,
         predicate.absent ?? false,
         diagnose,
