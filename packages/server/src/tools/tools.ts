@@ -169,10 +169,7 @@ const RAW_TOOLS: ToolDef[] = [
         .describe(
           'Elements whose value changed in place (same ref, different content) — not a structural add/remove.',
         ),
-      changedCount: z
-        .number()
-        .optional()
-        .describe('Number of elements in `changed`.'),
+      changedCount: z.number().optional().describe('Number of elements in `changed`.'),
       reason: z
         .string()
         .optional()
