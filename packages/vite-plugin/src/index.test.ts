@@ -467,6 +467,42 @@ describe('CJS deps the SDK needs are pre-bundled', () => {
   });
 });
 
+/**
+ * The daemon journals every session into `.reticle/` in the PROJECT root, writing `ambient.json`
+ * atomically as `ambient.json.tmp` + rename. That directory sits inside the tree Vite watches, and
+ * it is not in Vite's default ignore list — so each journal write looked to Vite like a project file
+ * changing, and Vite answered with a full page reload.
+ *
+ * That closes a loop with no exit: the page loads, the SDK connects and streams events, the daemon
+ * writes the journal, Vite force-reloads the page, the SDK reconnects and streams more events. It
+ * ran several times a second for as long as the dev server was up. Every ref went stale, every
+ * act_and_wait died mid-flight, and the session log filled with connect/disconnect pairs that read
+ * like a flapping SDK rather than a watcher feedback loop.
+ *
+ * The plugin is what puts Reticle in the app, so excluding Reticle's own state directory is the
+ * plugin's job — an app author should not have to know we write there.
+ */
+describe('the daemon journal does not drive the dev server', () => {
+  const ignoredFrom = (config: Record<string, unknown>): string[] => {
+    const plugin = reticle() as unknown as {
+      config?: (config: Record<string, unknown>) => Record<string, unknown> | undefined;
+    };
+    const patch = plugin.config?.(config) ?? {};
+    const server = patch['server'] as { watch?: { ignored?: string[] } } | undefined;
+    return server?.watch?.ignored ?? [];
+  };
+
+  it('excludes the journal directory from the watcher', () => {
+    expect(ignoredFrom({})).toContain(`**/${ReticleDir.ROOT}/**`);
+  });
+
+  it("keeps the app's own ignore patterns", () => {
+    const ignored = ignoredFrom({ server: { watch: { ignored: ['**/fixtures/**'] } } });
+    expect(ignored, "the app's own entries must survive").toContain('**/fixtures/**');
+    expect(ignored).toContain(`**/${ReticleDir.ROOT}/**`);
+  });
+});
+
 describe('svelte source stamping', () => {
   it('stamps host elements in a .svelte component', () => {
     const plugin = reticle();

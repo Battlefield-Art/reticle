@@ -211,6 +211,7 @@ export interface ReticleVitePlugin {
     };
     define?: Record<string, string>;
     root?: string;
+    server?: { watch?: { ignored?: string[] } };
   }) => {
     optimizeDeps: {
       include: string[];
@@ -220,6 +221,7 @@ export interface ReticleVitePlugin {
       [optionsKey: string]: unknown;
     };
     define: Record<string, string>;
+    server: { watch: { ignored: string[] } };
   };
   /** Absent in desktop mode, where the plugin must also run for `vite build`. */
   apply?: 'serve';
@@ -640,12 +642,35 @@ export function reticle(options: ReticleVitePluginOptions = {}): ReticleVitePlug
       define?: Record<string, string>;
       /** Vite's UserConfig root; undefined means the cwd. `configResolved` runs too late for this. */
       root?: string;
+      /** The app's own watcher config; its `ignored` list is preserved, never replaced. */
+      server?: { watch?: { ignored?: string[] } };
     }) {
       // Everything below asks what the APP has installed, so every lookup is rooted here and never
       // at the plugin's own location. Vite defaults an omitted root to the cwd; so do we.
       const appRoot = config.root ?? process.cwd();
       const optimizerKey = optimizerOptionsKey(viteMajor(appRoot));
       return {
+        // Keep the daemon's journal out of the dev server's watcher.
+        //
+        // The daemon writes `.reticle/` into the PROJECT root — session journals, and `ambient.json`
+        // rewritten atomically as `ambient.json.tmp` + rename on a live session. Vite watches the
+        // project root and does not ignore that directory, so every journal write read as a project
+        // file changing and Vite answered with a full page reload.
+        //
+        // That is a loop with no exit: page loads -> SDK connects and streams events -> daemon
+        // journals them -> Vite reloads the page -> SDK reconnects -> more events. It ran several
+        // times a second for as long as the dev server was up, and the damage was total but
+        // misattributed: every ref went stale, every act_and_wait died mid-flight, and the log
+        // filled with connect/disconnect pairs that looked like a flapping SDK rather than a
+        // watcher chasing its own tail.
+        //
+        // Vite concatenates its own defaults onto whatever `ignored` it is given, and this appends
+        // to the app's list rather than replacing it, so nothing the app already excluded is lost.
+        server: {
+          watch: {
+            ignored: [...(config.server?.watch?.ignored ?? []), `**/${ReticleDir.ROOT}/**`],
+          },
+        },
         // Expose the daemon's pairing token to hand-written connects in the same Vite app. The
         // plugin's own injected connect gets the token directly, but a connect the USER writes —
         // SvelteKit's client hook, a custom entry — had no way to reach a file only Node can read,
