@@ -249,8 +249,9 @@ if (import.meta.env.DEV) reticle.connect();
 
 **The CSP step is required and its failure is silent.** Tauri's default CSP blocks the bridge WebSocket before it opens, so the app runs perfectly and simply never connects.
 
+In `src-tauri/tauri.conf.json`:
+
 ```json
-// src-tauri/tauri.conf.json
 {
   "app": {
     "security": {
