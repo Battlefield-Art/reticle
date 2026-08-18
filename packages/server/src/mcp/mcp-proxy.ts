@@ -20,6 +20,13 @@ import {
   OnDrop,
   OnRequest,
 } from './proxy-lifecycle.js';
+import { describePresence, probePresence } from '../daemon/port-presence.js';
+/**
+ * The same `/status` probe `doctor`, `status` and `kill` ask with. Reused rather than re-written:
+ * the whole defect this import closes was the proxy answering a DIFFERENT question from every other
+ * surface, and a second copy of the probe is how that comes back.
+ */
+import { fetchStatus as fetchDaemonStatus } from '../cli/cli-launch.js';
 /**
  * Re-exported so every existing caller (and every spec) keeps importing the proxy's log from the
  * proxy. Where the code lives is a file-size decision; where it is imported from is an API.
@@ -476,6 +483,16 @@ export function startMcpProxy(
      * Dormant means the next thing the CLIENT asks for is what brings Reticle back.
      */
     let dormant = false;
+    /**
+     * Deliver the proxy's own answer to a queued `initialize`, now, for a stated reason.
+     *
+     * Set by `armLocalHandshake` while the client's handshake is unanswered, and cleared once it is.
+     * It exists because the 12-second timer down there is a timeout for a question the proxy could
+     * not answer — "is a daemon coming?" — and the drop path CAN answer it: a port a stranger holds
+     * will never serve SSE, however long anybody waits. Declared up here with the other closure
+     * state so the drop path can reach it without a temporal-dead-zone hazard.
+     */
+    let deliverHandshakeLocally: ((reason: string) => void) | undefined;
     const stdinQueue: string[] = [];
     /**
      * Fail anything still queued after QUEUE_WAIT_MS. Re-armed on every push and cleared on flush,
@@ -486,31 +503,40 @@ export function startMcpProxy(
       if (queueTimer !== undefined) clearTimeout(queueTimer);
       queueTimer = undefined;
     };
+    /**
+     * Answer everything queued, drop it, and go dormant.
+     *
+     * `reason` is what goes on the wire. The timer below passes the only thing a timeout can know —
+     * that nothing arrived — but a wake that FAILED knows something much better: exactly why it
+     * failed. Both used to end here after the same twenty seconds of silence, because only the timer
+     * could reach this code.
+     */
+    const expireQueue = (reason: string): void => {
+      clearQueueTimer();
+      if (stopped || 0 === stdinQueue.length) return;
+      // Drop what we could never send, and answer it, so the caller is never left guessing.
+      stdinQueue.splice(0);
+      for (const reply of streamLossReplies(pending, reason, queueExpiryNextStep(port))) {
+        emit(reply);
+      }
+      // The expiry is the proof that the reconnect we believed was in flight is not coming — a
+      // wedged port accepts the socket and never serves SSE, so `connect` neither resolves nor
+      // rejects and `dormant` would otherwise stay false forever. Going dormant is what makes the
+      // NEXT request re-probe the port instead of queueing behind a reconnect that will never
+      // land, and it is the only path by which a daemon started AFTER we gave up is ever found.
+      dormant = onQueueExpired() === OnDrop.DORMANT;
+      proxyLog('reticle_mcp_proxy_queue_expired', {
+        port,
+        dormant,
+        reason,
+        note: 'answered queued requests and went dormant; the next client request re-probes the port',
+      });
+    };
     const armQueueTimer = (): void => {
       if (queueTimer !== undefined) return; // the oldest entry owns the deadline
       queueTimer = setTimeout(() => {
         queueTimer = undefined;
-        if (stopped || 0 === stdinQueue.length) return;
-        // Drop what we could never send, and answer it, so the caller is never left guessing.
-        stdinQueue.splice(0);
-        for (const reply of streamLossReplies(
-          pending,
-          'no daemon could be reached',
-          queueExpiryNextStep(port),
-        )) {
-          emit(reply);
-        }
-        // The expiry is the proof that the reconnect we believed was in flight is not coming — a
-        // wedged port accepts the socket and never serves SSE, so `connect` neither resolves nor
-        // rejects and `dormant` would otherwise stay false forever. Going dormant is what makes the
-        // NEXT request re-probe the port instead of queueing behind a reconnect that will never
-        // land, and it is the only path by which a daemon started AFTER we gave up is ever found.
-        dormant = onQueueExpired() === OnDrop.DORMANT;
-        proxyLog('reticle_mcp_proxy_queue_expired', {
-          port,
-          dormant,
-          note: 'answered queued requests and went dormant; the next client request re-probes the port',
-        });
+        expireQueue('no daemon could be reached');
       }, QUEUE_WAIT_MS);
       queueTimer.unref();
     };
@@ -669,17 +695,25 @@ export function startMcpProxy(
         // shut itself down as idle would be respawned instantly, sit unused, shut down again, and
         // loop forever — measured at four processes in 200s before this. If nothing is listening the
         // proxy goes DORMANT and the next client request brings a daemon back (see the stdin reader).
-        void probeDaemon(port).then((listening) => {
-          if (onStreamDrop(listening) === OnDrop.REATTACH) {
-            connect(false);
-            return;
-          }
-          dormant = true;
-          proxyLog('reticle_mcp_proxy_dormant', {
-            port,
-            note: 'no daemon listening; will start one when the client next sends a request',
-          });
-        });
+        void probePresence(port, { tcpOpen: probeDaemon, status: fetchDaemonStatus }).then(
+          (presence) => {
+            if (onStreamDrop(presence) === OnDrop.REATTACH) {
+              connect(false);
+              return;
+            }
+            dormant = true;
+            // The sentence `doctor` has always been able to say, in the log the agent's own process
+            // writes. A FOREIGN holder used to be indistinguishable from a free port here, and the
+            // proxy spun against it instead of saying which one it was.
+            const sentence = describePresence(presence, port);
+            proxyLog('reticle_mcp_proxy_dormant', { port, presence, note: sentence });
+            // Nothing is coming that could answer the client's handshake through this port, and the
+            // proxy now knows that rather than merely suspecting it. Waiting out LOCAL_HANDSHAKE_MS
+            // would be waiting for information already in hand — and #125 measured what that costs:
+            // a client whose initialize budget is under ~12s loses Reticle for the whole session.
+            deliverHandshakeLocally?.(sentence);
+          },
+        );
       }, wait).unref();
     }
 
@@ -790,9 +824,23 @@ export function startMcpProxy(
       if (handshakeAnswered) return;
       const response = localInitializeResponse(line);
       if (null === response) return;
-      setTimeout(() => {
+      // Take the debt NOW, not when the timer fires.
+      //
+      // Three paths can answer this id — the daemon, the stream-loss drain, and the timer below —
+      // and `take` is the coordination between them. This was the one answerer that never claimed,
+      // so a drop before the timer fired paid the handshake a -32001 and the timer then paid it a
+      // result, under the same id. Both halves are fatal: a client that gets an error for
+      // `initialize` marks the whole MCP server failed, and one that survives that sees two
+      // responses for one request. Claiming it here says out loud what has always been true — the
+      // proxy owns this answer and will deliver it — so the drain stops owing it. If a session is
+      // established first, the `endpoint` handler sets `handshakeAnswered` before the queue is
+      // flushed, which disarms the timer and leaves the daemon's own reply the only one.
+      const claimed = parseJsonRpc(line);
+      if (claimed?.id !== undefined) pending.take(claimed.id);
+      deliverHandshakeLocally = (reason: string): void => {
         if (handshakeAnswered || postUrl !== null) return;
         handshakeAnswered = true;
+        deliverHandshakeLocally = undefined;
         // The catalog we are about to serve is ours, not the daemon's, so it has to be corrected
         // the moment a real one exists. See the endpoint handler.
         toolsAnnouncedLocally = true;
@@ -804,9 +852,13 @@ export function startMcpProxy(
           const queued = stdinQueue[i];
           if (queued !== undefined && isHandshakeLine(queued)) stdinQueue.splice(i, 1);
         }
-        proxyLog('reticle_mcp_local_handshake', { port, reason: 'daemon did not answer in time' });
+        proxyLog('reticle_mcp_local_handshake', { port, reason });
         emit(response);
-      }, LOCAL_HANDSHAKE_MS).unref();
+      };
+      setTimeout(
+        () => deliverHandshakeLocally?.('daemon did not answer in time'),
+        LOCAL_HANDSHAKE_MS,
+      ).unref();
     };
 
     let stdinBuffer = '';
@@ -851,10 +903,14 @@ export function startMcpProxy(
             .then(() => connect(false))
             .catch((err: unknown) => {
               dormant = true;
-              proxyLog('reticle_mcp_proxy_wake_failed', {
-                port,
-                error: err instanceof Error ? err.message : String(err),
-              });
+              const reason = err instanceof Error ? err.message : String(err);
+              proxyLog('reticle_mcp_proxy_wake_failed', { port, error: reason });
+              // The wake is the only thing that can start a daemon, so its failure IS the answer to
+              // everything it was woken for. It used to be logged and nothing else: the request sat
+              // out the full QUEUE_WAIT_MS and was then refused by a timer that could only say "no
+              // daemon could be reached" — twenty seconds later, and less true, than the sentence
+              // already in hand.
+              expireQueue(reason);
             });
         }
       }
