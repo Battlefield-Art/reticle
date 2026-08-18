@@ -148,3 +148,33 @@ describe('a successor that is no longer live', () => {
     await call;
   });
 });
+
+/**
+ * A command that TIMED OUT must not be re-issued, even though a successor exists.
+ *
+ * The rebinding catch fired on any rejection, so a plain timeout was read as "you were replaced,
+ * try again" — and against a page re-dialling in a loop that turned ONE snapshot into hundreds of
+ * commands on the wire, minutes of wall clock, and a final answer claiming the budget it had blown
+ * by an order of magnitude. Measured under a reconnect storm before this guard existed.
+ *
+ * The two failures mean opposite things. A rejection from the replacement says the transport died
+ * and the question was never asked — worth asking again. A timeout says the page WAS asked and did
+ * not answer in the budget the caller set, and asking again spends a budget that is already gone.
+ */
+describe('a timed-out command is not retried into a successor', () => {
+  it('reports the timeout instead of re-issuing', async () => {
+    const old = wire();
+    const next = wire();
+
+    // In flight FIRST, then replaced — which is the real sequence, and the only one that reaches the
+    // rebinding catch. Naming a successor before the call takes the pre-send path instead, where
+    // delegating is correct because nothing has been sent yet.
+    const call = old.session.command(ReticleCommand.SNAPSHOT, {}, 20);
+    expect(old.sent, 'it went out on the original wire').toHaveLength(1);
+    old.session.succeededBy(next.session);
+
+    // Nobody ever replies, so the only way out is the timeout.
+    await expect(call).rejects.toThrow(/timed out/);
+    expect(next.sent, 'a spent budget must not be spent again').toHaveLength(0);
+  });
+});

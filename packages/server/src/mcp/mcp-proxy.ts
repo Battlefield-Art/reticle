@@ -1,5 +1,10 @@
 import * as http from 'node:http';
-import { localInitializeResponse, isHandshakeLine } from './proxy-handshake.js';
+import {
+  localInitializeResponse,
+  isHandshakeLine,
+  drainLines,
+  MAX_STDIN_LINE_BYTES,
+} from './proxy-handshake.js';
 import { ToolCatalogCache } from './tool-catalog-cache.js';
 import { toolsChangedNotification } from './proxy-handshake.js';
 import * as net from 'node:net';
@@ -892,10 +897,17 @@ export function startMcpProxy(
     let stdinBuffer = '';
 
     process.stdin.on('data', (chunk: string) => {
-      stdinBuffer += chunk;
-      const lines = stdinBuffer.split('\n');
-      stdinBuffer = lines.pop() ?? '';
-      for (const line of lines) {
+      // Not `(buffer + chunk).split()` inline — that rescans everything held on every chunk, so one
+      // large line cost O(n²) in its own size and pinned the event loop for tens of seconds, during
+      // which every other tool call on this link hung with no response and no error. See drainLines.
+      const drained = drainLines(stdinBuffer, chunk);
+      stdinBuffer = drained.rest;
+      if (drained.overflowed) {
+        // Logged rather than answered: an unparsed line has no id to answer against, and inventing
+        // one would put a reply on the wire that no request is waiting for.
+        proxyLog('mcp_stdin_line_too_large', { limitBytes: MAX_STDIN_LINE_BYTES });
+      }
+      for (const line of drained.lines) {
         const trimmed = line.trim();
         if ('' === trimmed) continue;
         replay.observeOutbound(trimmed);

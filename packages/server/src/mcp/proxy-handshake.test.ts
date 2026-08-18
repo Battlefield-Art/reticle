@@ -21,7 +21,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { localInitializeResponse } from './proxy-handshake.js';
+import { localInitializeResponse, drainLines } from './proxy-handshake.js';
 
 interface InitResult {
   id?: unknown;
@@ -86,5 +86,66 @@ describe('the locally-answered handshake carries the guidance', () => {
 
   it('omits the field rather than sending an empty one when there is nothing to say', () => {
     expect(answer(INIT, '').result?.instructions).toBeUndefined();
+  });
+});
+
+/**
+ * One oversized line froze the entire MCP link.
+ *
+ * The reader appended each chunk and then split the WHOLE accumulated buffer, so a single large line
+ * cost O(n²) in its own size. Measured against the real proxy: ~8s for 32 MB, ~35s for 50 MB, event
+ * loop pinned throughout — so every other tool call on that link hung with no response and no error,
+ * which from the agent's side is the tool surface going away. There was also no cap at all, so the
+ * buffer grew to whatever was sent.
+ */
+describe('reading lines from stdin', () => {
+  it('returns nothing and keeps the partial line when no newline has arrived', () => {
+    const out = drainLines('', 'half a message');
+    expect(out.lines).toEqual([]);
+    expect(out.rest).toBe('half a message');
+    expect(out.overflowed).toBe(false);
+  });
+
+  it('splits only what is complete, carrying the remainder', () => {
+    const out = drainLines('{"a":1}\n{"b"', ':2}\n{"c"');
+    expect(out.lines).toEqual(['{"a":1}', '{"b":2}']);
+    expect(out.rest).toBe('{"c"');
+  });
+
+  it('joins a message split across chunks', () => {
+    const first = drainLines('', '{"jsonrpc"');
+    const second = drainLines(first.rest, ':"2.0"}\n');
+    expect(second.lines).toEqual(['{"jsonrpc":"2.0"}']);
+  });
+
+  it('drops a line past the cap instead of accumulating it forever', () => {
+    const out = drainLines('', 'x'.repeat(64), 32);
+    expect(out.overflowed).toBe(true);
+    expect(out.rest, 'the buffer must not keep growing').toBe('');
+    expect(out.lines).toEqual([]);
+  });
+
+  it('drops an oversized COMPLETED line but still delivers its neighbours', () => {
+    const out = drainLines('', `ok\n${'x'.repeat(64)}\nalso-ok\n`, 32);
+    expect(out.lines).toEqual(['ok', 'also-ok']);
+    expect(out.overflowed).toBe(true);
+  });
+
+  /**
+   * The property that matters is not "it is fast" — that is a statement about the machine. It is
+   * that a chunk carrying no newline does no work proportional to the buffer already held. Asserted
+   * structurally: the partial line is carried, and nothing is split.
+   */
+  it('does not rescan the accumulated buffer for a chunk that cannot complete a line', () => {
+    let buffer = '';
+    for (let i = 0; i < 200; i++) {
+      const out = drainLines(buffer, 'y'.repeat(1000));
+      expect(out.lines).toEqual([]);
+      buffer = out.rest;
+    }
+    expect(buffer.length).toBe(200_000);
+    const finished = drainLines(buffer, '\n');
+    expect(finished.lines).toHaveLength(1);
+    expect(finished.rest).toBe('');
   });
 });

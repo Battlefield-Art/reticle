@@ -113,3 +113,57 @@ export function toolsChangedNotification(catalogWasLocal: boolean): string | nul
   if (!catalogWasLocal) return null;
   return JSON.stringify({ jsonrpc: '2.0', method: TOOLS_CHANGED_NOTIFICATION });
 }
+
+/**
+ * The largest single JSON-RPC line the proxy will accumulate from a client.
+ *
+ * Generous — a tool call with a big argument payload is legitimate — but finite, because without a
+ * ceiling the buffer grows to whatever is sent and the process is one `cat bigfile` away from an
+ * out-of-memory exit that would take the agent's whole tool surface with it.
+ */
+export const MAX_STDIN_LINE_BYTES = 16 * 1024 * 1024;
+
+export interface DrainedLines {
+  /** Complete lines, in order. Empty when the chunk carried no newline. */
+  lines: string[];
+  /** The trailing partial line, carried into the next chunk. */
+  rest: string;
+  /** A single line exceeded the cap and was discarded rather than accumulated. */
+  overflowed: boolean;
+}
+
+/**
+ * Append a chunk and split off whatever complete lines it produced.
+ *
+ * The reason this is not `(buffer + chunk).split('\n')` inline: that re-scans the WHOLE accumulated
+ * buffer on every chunk, so a single large line costs O(n²) in the size of the line. Measured
+ * against the real proxy, a 32 MB line took ~8s and a 50 MB line ~35s — with the event loop pinned
+ * throughout, so every other tool call on that link was frozen with no response and no error. The
+ * client sees the whole MCP surface hang.
+ *
+ * A chunk with no newline in it cannot complete a line, so there is nothing to split and the cost is
+ * the concatenation alone. Only a chunk that actually carries a newline pays for a scan.
+ */
+export function drainLines(
+  buffer: string,
+  chunk: string,
+  maxLineBytes = MAX_STDIN_LINE_BYTES,
+): DrainedLines {
+  const next = buffer + chunk;
+  if (!chunk.includes('\n')) {
+    // Nothing can be complete yet. Cap here rather than on the split path: this is the branch an
+    // oversized line stays on, so it is the only one that can grow without bound.
+    if (next.length > maxLineBytes) return { lines: [], rest: '', overflowed: true };
+    return { lines: [], rest: next, overflowed: false };
+  }
+  const parts = next.split('\n');
+  const rest = parts.pop() ?? '';
+  // A completed line over the cap is dropped, not truncated: half a JSON-RPC message is not a
+  // message, and forwarding a prefix would be a parse error attributed to the client.
+  const overflowed = parts.some((line) => line.length > maxLineBytes);
+  return {
+    lines: overflowed ? parts.filter((line) => line.length <= maxLineBytes) : parts,
+    rest: rest.length > maxLineBytes ? '' : rest,
+    overflowed: overflowed || rest.length > maxLineBytes,
+  };
+}

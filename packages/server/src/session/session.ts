@@ -4,7 +4,7 @@ import { commandTimeoutMessage, type PageRuntime } from './command-timeout.js';
 import { readHealthEvent, type SessionHealth } from './session-health.js';
 
 export type { SessionHealth };
-import { PendingCommands } from './pending-commands.js';
+import { PendingCommands, CommandTimeoutError } from './pending-commands.js';
 import { span } from '../trace.js';
 import {
   AppRuntime,
@@ -546,7 +546,11 @@ export class Session {
         // The replacement landed while this command was on the wire, which is the reported case:
         // `reticle_navigate` reloads the page, the reload sends a fresh HELLO carrying the same id,
         // and the `reticle_snapshot` already in flight is rejected by the displaced session.
-        const next = this.#liveSuccessor();
+        // A TIMEOUT is not a replacement. The catch fired on any rejection, so a command that had
+        // simply not been answered in budget was read as "you were replaced, ask again" — and
+        // against a page re-dialling in a loop that turned one read into hundreds of commands on the
+        // wire, minutes of wall clock, and an answer still quoting the budget it had blown.
+        const next = error instanceof CommandTimeoutError ? undefined : this.#liveSuccessor();
         if (next === undefined || !REBINDABLE_COMMANDS.has(name)) throw error;
         // What is LEFT of the caller's budget, not a fresh copy of it. Re-issuing with the original
         // timeout means a caller who granted 8s can wait 16, and across a chain of replacements the
