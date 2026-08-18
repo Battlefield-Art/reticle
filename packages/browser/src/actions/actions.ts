@@ -219,7 +219,16 @@ const FILL_LIKE = new Set<string>([
 const isFillLike = (action: string): boolean => FILL_LIKE.has(action);
 
 /** Actions that resolve to a point and so benefit from off-viewport scroll + occlusion hit-test. */
-const CLICK_LIKE = new Set<string>([ActionType.CLICK, ActionType.DBLCLICK]);
+const CLICK_LIKE = new Set<string>([
+  ActionType.CLICK,
+  ActionType.DBLCLICK,
+  // check/uncheck activate through a real click, so they need everything a click needs: the point
+  // geometry, the off-viewport scroll, the occlusion hit-test, and the component/source attribution.
+  // Their absence here is why a `check` came back with no `component` while a `click` on the same
+  // element carried one — the tell the field report noticed and could not explain.
+  ActionType.CHECK,
+  ActionType.UNCHECK,
+]);
 
 /**
  * A check/uncheck whose requested state the element already reads as, so nothing will be dispatched.
@@ -349,6 +358,8 @@ function assertActionAllowed(el: HTMLElement, action: string, args: Record<strin
   const canTrigger =
     action === ActionType.CLICK ||
     action === ActionType.DBLCLICK ||
+    action === ActionType.CHECK ||
+    action === ActionType.UNCHECK ||
     action === ActionType.DRAG ||
     action === ActionType.SUBMIT ||
     // Read through the SAME resolver as the dispatch below. Reading a different argument here meant
@@ -601,29 +612,32 @@ async function dispatchOther(
           `cannot ${action} a disabled control — a real user could not, so neither will Reticle`,
         );
       }
+      // A radio is deselected by selecting another radio, never on its own. Refusing is the same
+      // rule as the disabled control above: a state no user could reach must not be forced.
+      if ('radio' === el.type && action === ActionType.UNCHECK) {
+        throw new Error(
+          'cannot uncheck a radio button — a real user could not; select another radio in the group',
+        );
+      }
       // Already there: touch nothing. `check` means "end up checked", not "toggle", so clicking here
-      // would flip it OFF and hand the app an event no user produced. Reported as
+      // would flip it OFF, and SETTING it would hand the app an `input`/`change` no user produced —
+      // enough to make an app that autosaves, logs or POSTs on change act on a no-op. Reported as
       // `effect.alreadyAtValue` — the same predicate, read again by executeAction — because "nothing
       // was dispatched" is not the same claim as "the app holds this value". See ActionEffect.
       if (alreadyAtCheckedState(el, action)) return false;
-      // `click()`, never `el.checked = …`. Assigning the property flips the pixel and tells no
-      // framework: React binds a checkbox's onChange to the CLICK event, and its value tracker
-      // dedups the change it would otherwise synthesise from a direct assignment — so a controlled
-      // `checked={state}` box never heard from us while the action reported success. `click()` is
-      // the one DOM call that runs the element's ACTIVATION BEHAVIOUR (the native toggle) as well
-      // as firing the event; `dispatchEvent` does not.
-      let prevented = false;
-      // On window, so it runs after every listener on the element itself whenever they were added.
-      const probe = (e: Event): void => {
-        prevented = e.defaultPrevented;
-      };
-      window.addEventListener('click', probe, { once: true, capture: false });
-      try {
-        el.click();
-      } finally {
-        window.removeEventListener('click', probe, false);
-      }
-      return prevented;
+      // A real click, never `el.checked = …`. Assigning the property flips the pixel and tells no
+      // framework: React binds a checkbox's onChange to the CLICK event, and its value tracker dedups
+      // the change it would otherwise synthesise from a direct assignment — so a controlled
+      // `checked={state}` box never heard from us while the action reported success.
+      //
+      // Dispatched rather than `el.click()` so cancellation is read off the event object itself. The
+      // old probe listened on `window`, which never runs when a handler calls `stopPropagation()`, so
+      // a cancelled activation was reported as a successful one. Activation behaviour runs either way
+      // — a synthetic click toggles the box, which `adversarial.check.test.ts` pins, because the
+      // comment this replaces asserted the opposite and was wrong.
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true });
+      const notPrevented = el.dispatchEvent(event);
+      return !notPrevented || event.defaultPrevented;
     }
     case ActionType.SUBMIT: {
       const form = isForm(el) ? el : el.closest('form');

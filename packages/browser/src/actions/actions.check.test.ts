@@ -112,4 +112,63 @@ describe('check/uncheck drive the control instead of assigning it', () => {
     // succeed silently — a state no user could reach, returned as a green.
     await expect(executeAction(refs.refFor(el), ActionType.CHECK, {})).rejects.toThrow(/disabled/);
   });
+
+  it('dispatches input and change so a controlled input hears the state change', async () => {
+    const el = box();
+    const events: string[] = [];
+    el.addEventListener('input', () => events.push('input'));
+    el.addEventListener('change', () => events.push('change'));
+
+    await executeAction(refs.refFor(el), ActionType.CHECK, {});
+
+    expect(events).toContain('input');
+    expect(events).toContain('change');
+    expect(el.checked).toBe(true);
+  });
+
+  it('dispatches exactly one input and one change per state change', async () => {
+    // A second dispatch alongside the activation behaviour would read as a double submit to the very
+    // contradiction hunter that grades the action.
+    const el = box();
+    let inputs = 0;
+    let changes = 0;
+    el.addEventListener('input', () => {
+      inputs++;
+    });
+    el.addEventListener('change', () => {
+      changes++;
+    });
+
+    await executeAction(refs.refFor(el), ActionType.CHECK, {});
+
+    expect(el.checked).toBe(true);
+    expect(inputs, 'must not double-dispatch input').toBe(1);
+    expect(changes, 'must not double-dispatch change').toBe(1);
+  });
+
+  it('reports prevention even when a handler calls stopPropagation', async () => {
+    // The old probe listened on `window`, which never runs once propagation stops — so a cancelled
+    // activation was reported as a successful one.
+    const el = box();
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    const out = (await executeAction(refs.refFor(el), ActionType.CHECK, {})) as {
+      effect?: { defaultPrevented?: boolean };
+    };
+    expect(out.effect?.defaultPrevented, 'cancelled activation must be reported').toBe(true);
+    expect(el.checked, 'a cancelled checkbox must not end up checked').toBe(false);
+  });
+
+  it('refuses to uncheck a radio button', async () => {
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.checked = true;
+    document.body.appendChild(radio);
+
+    await expect(executeAction(refs.refFor(radio), ActionType.UNCHECK, {})).rejects.toThrow(
+      /cannot uncheck a radio button/,
+    );
+  });
 });
