@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { ReticleDir } from '@reticlehq/core';
 import { detect, Framework, UiLibrary } from './detect.js';
 import { frameworkPackages } from './plan.js';
 import { nuxtManual, NUXT_PLUGIN_PATH } from './snippets.js';
@@ -84,5 +85,23 @@ describe('the recipe', () => {
 
   it('does not claim verified support it does not have', () => {
     expect(recipe).toContain('UNVERIFIED');
+  });
+});
+
+/**
+ * Nuxt owns its own Vite instance and never loads the Vite plugin, so the plugin's watcher ignore
+ * does not reach it — and the reload loop it prevents is not Nuxt-specific. The daemon journals
+ * into `.reticle/` in the project root, Nuxt's dev server watches that root, and every journal write
+ * comes back as a full page reload that reconnects the SDK and produces the next journal write.
+ */
+describe('the journal does not drive the dev server', () => {
+  const recipe = nuxtManual(undefined);
+
+  it('tells the app to keep the journal out of the watcher', () => {
+    expect(recipe).toContain(`'**/${ReticleDir.ROOT}/**'`);
+  });
+
+  it('says where that goes, so the step is followable', () => {
+    expect(recipe).toContain('nuxt.config');
   });
 });

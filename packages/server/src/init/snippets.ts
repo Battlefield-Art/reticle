@@ -3,7 +3,7 @@
  * so the runner never inlines free strings.
  */
 
-import { RETICLE_DEFAULT_PORT, bridgeWsUrl } from '@reticlehq/core';
+import { RETICLE_DEFAULT_PORT, ReticleDir, bridgeWsUrl } from '@reticlehq/core';
 import { UiLibrary } from './detect.js';
 import type { FoundStore } from './capabilities.js';
 import { SERVER_VERSION } from '../version/server-version.js';
@@ -530,6 +530,16 @@ and no index.html to inject into. Wire it with a dev-only CLIENT plugin, which i
    token. The flag alone is NOT sufficient off localhost. The token is the one in
    ~/.reticle/pairing-token. Without both, the SDK loads and then refuses, and the only sign is one
    line in the browser console.
+
+4. Add this to nuxt.config, so the dev server does not watch Reticle's own journal:
+
+     vite: { server: { watch: { ignored: ['**/${ReticleDir.ROOT}/**'] } } }
+
+   Reticle journals every session into ${ReticleDir.ROOT}/ in your project root, rewriting one file
+   in it continuously while a session is live. Nuxt's dev server watches that root, so without this
+   it sees each write as a project file changing and full-reloads the page — which reconnects the
+   SDK, which produces the next write. The loop runs several times a second and looks like anything
+   except what it is: refs go stale, actions die mid-flight, and the session appears to flap.
 
 The package is @reticlehq/browser — the framework-neutral sensor. DOM, network, console, routing and
 source file:line all work in Vue. What you do not get is React component identity, which is the only
