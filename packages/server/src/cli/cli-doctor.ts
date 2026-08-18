@@ -6,6 +6,8 @@ import { PortPresence, probePresence } from '../daemon/port-presence.js';
 import { probeDaemon } from '../mcp/mcp-proxy.js';
 import { fetchStatus } from './cli-launch.js';
 import { daemonLine, type DaemonIdentity } from './doctor-daemon-line.js';
+import { projectWiringLine } from './doctor-project-line.js';
+import { hasProjectConnectedBefore } from '../session/connection-memory.js';
 import { sessionsLine, type SessionsLine } from './doctor-sessions-line.js';
 import { captureLookup, describeForeignHolder, findPortHolder } from './port-holder.js';
 import { chromiumHint, probeChromium } from './chromium-hint.js';
@@ -13,7 +15,7 @@ import { SERVER_VERSION } from '../version/server-version.js';
 import { CONTRACT_FINGERPRINT } from '@reticlehq/core';
 import { diagnoseDesktop, isDesktopProject } from '../init/desktop-doctor.js';
 import { diagnoseWebCsp } from '../init/csp-doctor.js';
-import { diagnosePortMismatch, readProjectPort } from './cli-port.js';
+import { diagnosePortMismatch, readProjectId, readProjectPort } from './cli-port.js';
 
 /**
  * `reticle doctor` — collapse the ~6 independent first-run failure modes into one command. Checks the
@@ -89,6 +91,16 @@ export async function handleDoctor(port: number): Promise<void> {
   const projectPort = readProjectPort(process.cwd());
   const mismatch = diagnosePortMismatch(port, projectPort);
   if (mismatch !== undefined) line(`  port check   ✗ ${mismatch}`);
+  // The check this checklist was missing: is the APP wired, not just the tools. Everything above can
+  // be green in a project that has never been through `init`, and that combination is precisely the
+  // one `doctor` gets run to explain.
+  const projectId = readProjectId(process.cwd());
+  line(
+    projectWiringLine({
+      projectId,
+      previouslyConnected: hasProjectConnectedBefore(reticleStateHome(), port, projectId),
+    }),
+  );
   // Where to LOOK when something is wrong. The daemon has always written a structured log here and
   // nothing ever said so, so the first move in every investigation was reading source instead of
   // reading the log. `RETICLE_TRACE=1` turns the same stream into a per-stage trace — see
