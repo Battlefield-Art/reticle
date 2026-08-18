@@ -459,6 +459,10 @@ export class Bridge {
             byUrl: session.url,
             previousUrl: replaced.url,
           });
+          // Hand the displaced session its replacement BEFORE ending it, so a tool call still holding
+          // the old handle can finish against the live connection instead of returning an error whose
+          // only answer is to go and rediscover an id that has not changed. See Session.succeededBy.
+          replaced.succeededBy(session);
           replaced.disconnect(
             `session replaced by a newer connection claiming the same id (${session.id}) from ${session.url}`,
           );

@@ -53,6 +53,26 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 8000;
 /** Prefix on correlated command ids (c1, c2, …) — distinguishes them from mark ids. */
 const COMMAND_ID_PREFIX = 'c';
 
+/**
+ * Commands that may be re-issued against the connection that replaced this session.
+ *
+ * Reads only, and the boundary is the point. Re-reading a page costs nothing and answers the same
+ * question the caller asked. An act cannot be replayed: it may already have been dispatched in the
+ * page that went away, and performing it a second time behind the caller's back is a double submit
+ * nobody asked for. A replaced act still errors, and the caller's own retry — with the same id,
+ * which is still the right one — is the safe path.
+ */
+const REBINDABLE_COMMANDS: ReadonlySet<string> = new Set<string>([
+  ReticleCommand.SNAPSHOT,
+  ReticleCommand.QUERY,
+  ReticleCommand.MATCH,
+  ReticleCommand.INSPECT,
+  ReticleCommand.STATE_READ,
+  ReticleCommand.STORAGE_READ,
+  ReticleCommand.CAPABILITIES,
+  ReticleCommand.ANIMATIONS,
+]);
+
 /** Prefix on minted action ids (a1, a2, …) — the journal's action identity, independent of commands. */
 const ACTION_ID_PREFIX = 'a';
 
@@ -487,6 +507,11 @@ export class Session {
       const ref = args['ref'];
       if ('string' === typeof ref) this.recordActedRef(ref);
     }
+    // The page already re-dialled under this same id. Nothing has been sent yet, so handing the
+    // command to the live connection cannot perform anything twice — it is the call the agent would
+    // have made itself after a `reticle_sessions` round trip, minus the round trip.
+    const successor = this.#successor;
+    if (successor !== undefined) return successor.command(name, args, timeoutMs);
     const id = this.#pending.nextId(COMMAND_ID_PREFIX);
     const payload = JSON.stringify({
       kind: MessageKind.COMMAND,
@@ -516,7 +541,15 @@ export class Session {
         if (name === ReticleCommand.ACT) this.recordActedLabelFrom(result);
         return result;
       })
-      .finally(() => recordBrowserLatency(Date.now() - sentAt));
+      .finally(() => recordBrowserLatency(Date.now() - sentAt))
+      .catch((error: unknown) => {
+        // The replacement landed while this command was on the wire, which is the reported case:
+        // `reticle_navigate` reloads the page, the reload sends a fresh HELLO carrying the same id,
+        // and the `reticle_snapshot` already in flight is rejected by the displaced session.
+        const next = this.#successor;
+        if (next === undefined || !REBINDABLE_COMMANDS.has(name)) throw error;
+        return next.command(name, args, timeoutMs);
+      });
   }
 
   handleResult(result: CommandResult): void {
@@ -528,6 +561,23 @@ export class Session {
     this.#pending.rejectAll(reason);
     for (const listener of this.#disconnectListeners) listener();
     this.#disconnectListeners.clear();
+  }
+
+  /**
+   * The connection that took this session's id over, once one has.
+   *
+   * Set by the bridge at the moment it displaces this session, so the two facts a replaced handle
+   * needs — that it was replaced, and by whom — arrive together. Without it, every tool call holding
+   * this handle could only report "session replaced by a newer connection claiming the same id", and
+   * the caller's only recovery was `reticle_sessions` plus a retry: two round trips to rediscover an
+   * id the daemon was already holding, and which had not even changed.
+   */
+  #successor: Session | undefined;
+
+  succeededBy(next: Session): void {
+    // A session is never its own replacement; guarding here keeps `command` from recursing forever
+    // if a registry ever re-adds the same object.
+    if (next !== this) this.#successor = next;
   }
 
   /** End this transport without letting a stale socket remove its replacement session. */
