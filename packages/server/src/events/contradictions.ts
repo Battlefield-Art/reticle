@@ -318,7 +318,7 @@ export function findContradictions(
   // Needs body capture; silent without it, which is why the assert path also declares when bodies
   // were never recorded rather than letting an unread payload read as an empty one.
   found.push(...findBodyFailures(events));
-  found.push(...findEchoMismatches(events));
+  found.push(...findEchoMismatches(events, options.actionSince));
 
   // ── A money value written back at the wrong SCALE ───────────────────────────────────────────
   found.push(...findUnitMismatches(events, options.prior ?? []));
