@@ -435,7 +435,7 @@ export interface EvalResult {
   assertion?: string;
 }
 
-function str(value: unknown): string | undefined {
+export function str(value: unknown): string | undefined {
   return 'string' === typeof value ? value : undefined;
 }
 function num(value: unknown): number | undefined {
@@ -562,6 +562,29 @@ function describeCall(e: ReticleEvent): string {
   return status === undefined ? head : `${head} → ${String(status)}`;
 }
 
+/**
+ * How much of a response body a failure may quote. Enough to see the value that differed on the
+ * bodies this field is used against (a JSON answer), and not a whole payload in every verdict.
+ */
+const MAX_BODY_IN_FAILURE = 200;
+
+/** Enough of a body to see what differed, without paying for a whole payload in the verdict. */
+function clipBody(body: string): string {
+  return body.length <= MAX_BODY_IN_FAILURE ? body : `${body.slice(0, MAX_BODY_IN_FAILURE)}…`;
+}
+
+/**
+ * The filter as APPLIED, every field of it.
+ *
+ * The count failure used to print `{method, urlContains, status}` while `ok` and `bodyContains` were
+ * applied too, so the caller was shown a predicate it had not written and told nothing matched it.
+ * A printed filter that is narrower than the real one is worse than none: it is believed.
+ */
+function describeNetFilter(p: Extract<Predicate, { kind: typeof PredicateKind.NET }>): string {
+  const { kind: _kind, count: _count, since: _since, ...filter } = p;
+  return JSON.stringify(filter);
+}
+
 export function evalNet(
   events: ReticleEvent[],
   p: Extract<Predicate, { kind: typeof PredicateKind.NET }>,
@@ -576,6 +599,15 @@ export function evalNet(
    * because it is the same pass over the same events.
    */
   let matchedButUnrecorded = false;
+  /**
+   * The response body of a call that matched everything EXCEPT the body assertion, and HAD one.
+   *
+   * Reported by the first field user of `bodyContains`: a body mismatch was formatted as
+   * "expected 1 network call(s) matching {method, urlContains, status}, saw 0" — the body assertion
+   * was applied but not printed — so the verdict read "the request never fired" and sent them hunting
+   * a UI wiring bug that did not exist, when the defect was the value the server answered with.
+   */
+  let bodyMismatch: string | undefined;
   const matches = events.filter((e) => {
     if (e.type !== EventType.NET_REQUEST || e.t < since) return false;
     const d = e.data;
@@ -597,7 +629,10 @@ export function evalNet(
         matchedButUnrecorded = true;
         return false;
       }
-      if (!response.includes(p.bodyContains)) return false;
+      if (!response.includes(p.bodyContains)) {
+        bodyMismatch ??= response;
+        return false;
+      }
     }
     return true;
   });
@@ -607,6 +642,17 @@ export function evalNet(
       failureReason: `a call matched but its body was not recorded, so \`bodyContains\` could not be checked — enable it where the app calls connect(): reticle({ captureNetworkBodies: true })`,
       observed: 'a matching call with no recorded body',
       expected: `a body containing ${JSON.stringify(p.bodyContains)}`,
+      assertion: 'net.bodyContains',
+    };
+  }
+  if (bodyMismatch !== undefined && 0 === matches.length) {
+    // The call is there and its body is there; only the VALUE differs. Counting it as zero matches
+    // points at the wiring, which is the one place the defect is not.
+    return {
+      pass: false,
+      failureReason: `a call matching ${describeNetFilter(p)} was made and answered ${JSON.stringify(clipBody(bodyMismatch))}, which does not contain ${JSON.stringify(p.bodyContains)} — the request fired, the response value is what differed`,
+      observed: `response body ${JSON.stringify(clipBody(bodyMismatch))}`,
+      expected: `a response body containing ${JSON.stringify(p.bodyContains)}`,
       assertion: 'net.bodyContains',
     };
   }
@@ -622,9 +668,9 @@ export function evalNet(
           // This is the double-submit — two writes 59ms apart — so the finding that matters most was
           // also the one that took the caller's whole budget to report.
           ...(matches.length > p.count ? { decided: true } : {}),
-          failureReason: `expected ${String(p.count)} network call(s) matching ${JSON.stringify({ method: p.method, urlContains: p.urlContains, status: p.status })}, saw ${String(matches.length)}`,
+          failureReason: `expected ${String(p.count)} network call(s) matching ${describeNetFilter(p)}, saw ${String(matches.length)}`,
           observed: `${String(matches.length)} matching network call(s)`,
-          expected: `exactly ${String(p.count)} matching ${JSON.stringify({ method: p.method, urlContains: p.urlContains, status: p.status })}`,
+          expected: `exactly ${String(p.count)} matching ${describeNetFilter(p)}`,
           assertion: 'net.count',
         };
   }
@@ -643,49 +689,6 @@ export function evalNet(
         expected: `at least one call matching ${JSON.stringify(p)}`,
         assertion: 'net.present',
       };
-}
-
-export function evalRoute(
-  events: ReticleEvent[],
-  p: Extract<Predicate, { kind: typeof PredicateKind.ROUTE }>,
-): EvalResult {
-  const routes = events.filter((e) => e.type === EventType.ROUTE_CHANGE);
-  const last = routes.at(-1);
-  if (last === undefined) {
-    return {
-      pass: false,
-      failureReason: 'no route change observed',
-      observed: 'no route change in the window',
-      expected: `a route change to ${p.pathname ?? p.contains ?? 'any route'}`,
-      assertion: 'route.changed',
-    };
-  }
-  const pathname = str(last.data['pathname']) ?? str(last.data['to']) ?? '';
-  if (p.pathname !== undefined && pathname !== p.pathname) {
-    return {
-      pass: false,
-      failureReason: `route is '${pathname}', expected '${p.pathname}'`,
-      observed: `route '${pathname}'`,
-      expected: `route '${p.pathname}'`,
-      assertion: 'route.pathname',
-    };
-  }
-  // `contains` matches the WHOLE route — path + query + fragment — while `pathname` above stays an
-  // exact path match. A hash router keeps the entire route in the fragment, so matching pathname
-  // alone made `contains` unsatisfiable for every HashRouter app; that is the standard router for a
-  // packaged Electron/Tauri renderer, where an absolute pushState would rewrite the URL to a
-  // nonexistent file.
-  const fullRoute = `${pathname}${str(last.data['search']) ?? ''}${str(last.data['hash']) ?? ''}`;
-  if (p.contains !== undefined && !fullRoute.includes(p.contains)) {
-    return {
-      pass: false,
-      failureReason: `route '${fullRoute}' does not contain '${p.contains}'`,
-      observed: `route '${fullRoute}'`,
-      expected: `a route containing '${p.contains}'`,
-      assertion: 'route.contains',
-    };
-  }
-  return { pass: true, evidence: last.data };
 }
 
 /** The only console levels Reticle instruments (console.info/debug/trace are NOT patched). */

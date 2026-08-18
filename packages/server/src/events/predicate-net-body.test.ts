@@ -136,3 +136,54 @@ describe('composite aliases', () => {
     expect(parsed.predicates[0]?.contains).toBe('real');
   });
 });
+
+/**
+ * The count failure used to print a predicate with the body assertion removed.
+ *
+ * Reported by the first field user of `bodyContains`, against the same refund case this field was
+ * built for:
+ *
+ * > "net.count reporting 'expected 1 network call(s) matching {method:POST, urlContains:/api/refund},
+ * > saw 0' — but the call DID happen … The misleading 'saw 0' sent me looking for a request that never
+ * > fired — i.e. a UI wiring bug — when the real defect was the response amount."
+ *
+ * `bodyContains` and `ok` were filtered out of the PRINTED predicate while still being APPLIED by the
+ * filter, so a body mismatch read as "the request never fired": a false red pointing at the wiring
+ * instead of at the value that actually differed.
+ */
+describe('a body mismatch reports the body, not a count of zero', () => {
+  it('names the response value rather than claiming the call was never made', () => {
+    const r = evalNet([REFUND], {
+      kind: PredicateKind.NET,
+      method: 'POST',
+      urlContains: '/api/refund',
+      bodyContains: '1187.01',
+      count: 1,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.failureReason, 'the call fired; only its body differed').not.toContain('saw 0');
+    expect(r.failureReason).toContain('11.87');
+    expect(r.assertion).toBe('net.bodyContains');
+  });
+
+  it('the same on a presence assertion, where "no call matched" was equally wrong', () => {
+    const r = evalNet([REFUND], {
+      kind: PredicateKind.NET,
+      urlContains: '/api/refund',
+      bodyContains: '1187.01',
+    });
+    expect(r.assertion).toBe('net.bodyContains');
+    expect(r.observed).toContain('11.87');
+  });
+
+  it('a genuine count miss still prints the WHOLE predicate, body assertion included', () => {
+    const r = evalNet([REFUND], {
+      kind: PredicateKind.NET,
+      urlContains: '/api/refund',
+      bodyContains: '11.87',
+      count: 2,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.failureReason).toContain('bodyContains');
+  });
+});

@@ -14,11 +14,11 @@ import { describeTestidMiss } from './testid-near-miss.js';
 import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import type { ExpectedLink } from '../capsule/divergence.js';
 import { isAmbient, ambientKeyOf, type AmbientCounts } from '../journal/ambient.js';
+import { evalRoute } from './predicate-route.js';
 import {
   PredicateSchema,
   matchValue,
   evalNet,
-  evalRoute,
   evalConsole,
   evalAnimation,
   evalSignal,
@@ -40,6 +40,14 @@ export interface PredicateSession {
   onEvent(listener: (event: ReticleEvent) => void): () => void;
   /** Milliseconds since connect — the same clock that stamps event `t` (injected, testable). */
   elapsed(): number;
+  /**
+   * Where the app is RIGHT NOW — the session's live URL, kept current across SPA navigation.
+   *
+   * Read by the `route` predicate when the window holds no route change, which is the only way
+   * "did the session survive a reload?" can be answered at all. Optional: a fake session that never
+   * navigates simply omits it and route falls back to change-only, as before.
+   */
+  url?: string;
   /**
    * Learned per-ref ambient-churn counts (real-time regions that churn with no action driving them).
    * The settle oracle drops events on learned-ambient refs so a chat/ticker page can still go quiet.
@@ -409,7 +417,7 @@ export async function evaluatePredicate(
     case PredicateKind.NET:
       return evalNet(events, predicate);
     case PredicateKind.ROUTE:
-      return evalRoute(events, predicate);
+      return evalRoute(events, predicate, session.url);
     case PredicateKind.CONSOLE:
       return evalConsole(events, predicate);
     case PredicateKind.ANIMATION:
