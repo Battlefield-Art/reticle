@@ -236,11 +236,20 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           'Ordered list of { ref, action, args? } objects. Each step is equivalent to one reticle_act call; put confirmDangerous:true in a destructive step args object.',
         ),
+      timeout_ms: z
+        .number()
+        .optional()
+        .describe(
+          'Per-step timeout in milliseconds. Default: 8000. Each step gets this budget independently.',
+        ),
       ...sessionIdShape,
     },
     outputSchema: {
       since: z.number(),
       dispatched: z.boolean(),
+      completed: z.number(),
+      stalled_at: z.number().optional(),
+      steps: z.array(z.record(z.unknown())).optional(),
       result: z.unknown().optional(),
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
@@ -250,30 +259,79 @@ export const ACT_TOOLS: ToolDef[] = [
     },
     handler: async (deps, args) => {
       const session = deps.sessions.resolve(asString(args['sessionId']));
-      // Live-control: refuse to drive the page while the human has paused us (before any work).
       const paused = pausedShortCircuit(session);
       if (paused !== undefined) return paused;
       const since = session.elapsed();
       session.beginAction(ReticleTool.ACT_SEQUENCE, asRecord(args));
       try {
-        const result = await session.command(ReticleCommand.ACT_SEQUENCE, { steps: args['steps'] });
-        if (!result.ok) throw new Error(result.error ?? 'act_sequence failed');
-        // Marked only once the sequence ran: a refused sequence must leave no cursor behind for a
-        // later observe to judge. No single action and no in-target measurement here — per-step
-        // effects live in steps[] — so the effect is cleared rather than inherited from an earlier act.
-        session.lastAct.markActed(since, undefined, undefined);
-        if (deps.recordings.active().length > 0) {
-          deps.recordings.capture(compileSequenceStep(args, result.result));
+        const inputSteps = Array.isArray(args['steps']) ? args['steps'] : [];
+        const perStepTimeout = 'number' === typeof args['timeout_ms'] ? args['timeout_ms'] : 8000;
+        const stepResults: Record<string, unknown>[] = [];
+        let stalledAt: number | undefined;
+
+        for (let i = 0; i < inputSteps.length; i++) {
+          const step = asRecord(inputSteps[i]);
+          try {
+            const result = await session.command(
+              ReticleCommand.ACT,
+              { ref: step['ref'], action: step['action'], args: step['args'] ?? {} },
+              perStepTimeout,
+            );
+            if (!result.ok) {
+              stalledAt = i;
+              stepResults.push({
+                ref: step['ref'],
+                action: step['action'],
+                dispatched: false,
+                error: result.error ?? 'step failed',
+              });
+              break;
+            }
+            const r = asRecord(result.result);
+            const stepResult: Record<string, unknown> = {
+              ref: r['ref'] ?? step['ref'],
+              action: r['action'] ?? step['action'],
+              dispatched: r['dispatched'] ?? true,
+              settled: r['settled'] ?? null,
+              settleReason: r['settleReason'] ?? null,
+            };
+            if (r['testid'] !== undefined) stepResult['testid'] = r['testid'];
+            if (r['component'] !== undefined) stepResult['component'] = r['component'];
+            if (r['role'] !== undefined) stepResult['role'] = r['role'];
+            if (r['name'] !== undefined) stepResult['name'] = r['name'];
+            if (r['source'] !== undefined) stepResult['source'] = r['source'];
+            if (r['warning'] !== undefined) stepResult['warning'] = r['warning'];
+            stepResults.push(stepResult);
+          } catch (err: unknown) {
+            stalledAt = i;
+            stepResults.push({
+              ref: step['ref'],
+              action: step['action'],
+              dispatched: false,
+              error: err instanceof Error ? err.message : 'step timed out',
+            });
+            break;
+          }
         }
-        const r = asRecord(result.result); // per-step settle status lives in result.steps[]
+
+        const completed = stalledAt ?? inputSteps.length;
+        if (completed > 0) {
+          session.lastAct.markActed(since, undefined, undefined);
+        }
+        if (deps.recordings.active().length > 0 && stalledAt === undefined) {
+          deps.recordings.capture(
+            compileSequenceStep(args, { count: inputSteps.length, steps: stepResults }),
+          );
+        }
         return withControl(session, {
           since,
-          dispatched: r['count'] !== undefined,
-          result: leanActResult(result.result),
+          dispatched: completed > 0,
+          completed,
+          ...(stalledAt !== undefined ? { stalled_at: stalledAt } : {}),
+          steps: stepResults,
           ...healthEnvelope(session),
         });
       } finally {
-        // Per-step settle lives in steps[]; the sequence action records without a single settle bool.
         session.finishAction();
       }
     },
