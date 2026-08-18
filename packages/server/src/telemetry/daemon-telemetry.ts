@@ -133,6 +133,19 @@ export function installDaemonTelemetry(
       stopped ??= (async () => {
         clearInterval(flush);
         clearTimeout(firstFlush);
+        // Last chance to say that no app ever arrived. The periodic path cannot report an
+        // UNATTENDED stall at all — that daemon idle-exits at five minutes and the periodic
+        // threshold is ten — so without this the event only ever describes daemons with an agent
+        // attached, which is not the population it was built to measure. Self-limiting: if the
+        // interval already reported, this returns false and emits nothing.
+        reportInstrumentationStall(
+          {
+            initialized: readProjectId(cwd) !== undefined,
+            agentAttached: metrics.agentEverAttached,
+          },
+          now,
+          { atShutdown: true },
+        );
         // The rich one: the whole session in a single event — duration, the tool histogram, error
         // shapes, verifications, browser launches. This is what replaced the per-tool-call event.
         await getTelemetry().emit(TelemetryEventKind.DAEMON_STOPPED, {

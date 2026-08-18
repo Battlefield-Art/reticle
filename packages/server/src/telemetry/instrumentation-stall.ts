@@ -60,13 +60,26 @@ export interface StallFacts {
 export function reportInstrumentationStall(
   facts: StallFacts,
   now: () => number = () => Date.now(),
+  opts: { atShutdown?: boolean } = {},
 ): boolean {
   if (reported) return false;
   // An app arrived. Whatever this run was, it was not stalled.
   if (appEverConnected()) return false;
   if (daemonStartedAt === undefined) return false;
   const waited = now() - daemonStartedAt;
-  if (waited < STALL_AFTER_MS) return false;
+  // The threshold is a guard against crying stall seconds after boot. At SHUTDOWN there is nothing
+  // left to wait for: this daemon ran, no app ever connected, and it is now gone. That is a fact
+  // rather than an inference, and it does not become truer at ten minutes than at five.
+  //
+  // Skipping it here is what makes the event able to see anything at all. An UNATTENDED daemon
+  // idle-exits at DAEMON_IDLE_SHUTDOWN_MS (5 min), well short of STALL_AFTER_MS (10) — only an
+  // attached one gets the six-times grace that reaches the threshold. So on the periodic path alone
+  // `agentAttached` was forced to true on every row, and the bucket this event exists for —
+  // installed it, walked away, never wired the app — could not appear in the data at all.
+  //
+  // `msWaited` still carries the duration, so a consumer that wants to exclude short runs can do it
+  // on the data instead of being unable to see them.
+  if (true !== opts.atShutdown && waited < STALL_AFTER_MS) return false;
 
   reported = true;
   try {
