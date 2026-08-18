@@ -510,7 +510,7 @@ export class Session {
     // The page already re-dialled under this same id. Nothing has been sent yet, so handing the
     // command to the live connection cannot perform anything twice — it is the call the agent would
     // have made itself after a `reticle_sessions` round trip, minus the round trip.
-    const successor = this.#successor;
+    const successor = this.#liveSuccessor();
     if (successor !== undefined) return successor.command(name, args, timeoutMs);
     const id = this.#pending.nextId(COMMAND_ID_PREFIX);
     const payload = JSON.stringify({
@@ -546,9 +546,15 @@ export class Session {
         // The replacement landed while this command was on the wire, which is the reported case:
         // `reticle_navigate` reloads the page, the reload sends a fresh HELLO carrying the same id,
         // and the `reticle_snapshot` already in flight is rejected by the displaced session.
-        const next = this.#successor;
+        const next = this.#liveSuccessor();
         if (next === undefined || !REBINDABLE_COMMANDS.has(name)) throw error;
-        return next.command(name, args, timeoutMs);
+        // What is LEFT of the caller's budget, not a fresh copy of it. Re-issuing with the original
+        // timeout means a caller who granted 8s can wait 16, and across a chain of replacements the
+        // total is unbounded — a wait nobody asked for, on the path that exists to save a round trip.
+        // A budget already spent means there is nothing left to retry into, so the error stands.
+        const remaining = timeoutMs - (Date.now() - sentAt);
+        if (remaining <= 0) throw error;
+        return next.command(name, args, remaining);
       });
   }
 
@@ -578,6 +584,20 @@ export class Session {
     // A session is never its own replacement; guarding here keeps `command` from recursing forever
     // if a registry ever re-adds the same object.
     if (next !== this) this.#successor = next;
+  }
+
+  /**
+   * The replacement, but only while it can actually answer.
+   *
+   * A successor is recorded once and never cleared, so without this a session that was replaced an
+   * hour ago keeps handing commands to a socket that has since closed — and the caller pays the full
+   * timeout to learn it, turning an instant "session replaced" into a wait. The point of delegating
+   * was to save the caller a round trip; delegating to a dead socket costs them more than the error
+   * did.
+   */
+  #liveSuccessor(): Session | undefined {
+    const next = this.#successor;
+    return next !== undefined && next.#socket.readyState === WS_OPEN ? next : undefined;
   }
 
   /** End this transport without letting a stale socket remove its replacement session. */

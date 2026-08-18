@@ -29,11 +29,19 @@ const CONNECT_STEP_TITLES: ReadonlySet<string> = new Set([
   // whose shape `init` does not recognise leaves the component on disk and never rendered: the SDK
   // is in the project, nothing imports it, and `init` exited 0 over an app that could not connect.
   'Mount ReticleDev',
-  // CRA inlines only REACT_APP_*, so the token has to reach the browser through the env file. This
-  // step goes manual when no daemon has ever run and there is no token to inline — and without it
-  // the bridge refuses the connection, so the app boots, looks correct, and never pairs. It is
-  // APPLY in the ordinary case, so naming it here costs a working install nothing.
-  'Pairing token',
+  // NOT here, and the reason is worth keeping: 'Pairing token'.
+  //
+  // It is a genuine connect step — CRA inlines only REACT_APP_*, so without the token in the env
+  // file the bridge refuses every connection and the app boots, looks correct, and never pairs. But
+  // it goes MANUAL in exactly one situation: no daemon has ever run on this machine, so there is no
+  // token to inline. That is the FIRST CRA install on a fresh machine, i.e. the first-time user —
+  // and making that exit non-zero reports a broken install to the one person least able to tell
+  // that it is not.
+  //
+  // The real fix is for `init` to mint the token rather than only read it, which is what both the
+  // daemon and the Vite plugin already do. `runInit` is synchronous and the existing helpers are
+  // not, and `gate:install` scaffolds no CRA app, so that change would ship with no coverage of the
+  // path it changes. It is worth doing, and worth doing with a scaffold behind it.
   'Vite plugin',
 ]);
 

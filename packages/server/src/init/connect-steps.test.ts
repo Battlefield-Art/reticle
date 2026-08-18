@@ -30,12 +30,18 @@ describe('steps without which no session can ever appear', () => {
   });
 
   /**
-   * CRA inlines only `REACT_APP_*`, so the pairing token has to be written into the env file. When
-   * no daemon has ever run there is no token to inline and the step goes manual — and without it the
-   * bridge refuses the connection. The app boots, looks fine, and never pairs.
+   * The CRA pairing token is deliberately NOT counted, and this pins that rather than leaving it to
+   * be re-added by whoever notices it is missing.
+   *
+   * It genuinely decides whether the app can connect — CRA inlines only `REACT_APP_*`, so without
+   * the token the bridge refuses every connection. But the step goes manual in exactly one
+   * situation: no daemon has ever run on this machine, so there is no token to inline. That is the
+   * first install on a fresh machine, and failing it reports a broken install to the one person
+   * least equipped to tell that it is not. The fix is for `init` to mint the token instead of only
+   * reading it; until then, failing here costs more than it catches.
    */
-  it('counts the CRA pairing token, which the bridge refuses without', () => {
-    expect(isConnectStep('Pairing token')).toBe(true);
+  it('does not fail a first install over a token no daemon has minted yet', () => {
+    expect(isConnectStep('Pairing token')).toBe(false);
   });
 
   it('still counts every connect snippet', () => {

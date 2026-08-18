@@ -17,7 +17,7 @@ import { nextActionFor, renderNextAction } from './no-session-next-action.js';
 import type { NoSessionNextAction } from './no-session-next-action.js';
 import { readProjectFramework, readProjectId, readProjectPort } from '../cli/cli-port.js';
 import { discoverProjectConfigs } from '../cli/config-discovery.js';
-import { hasConnectedBefore, rememberConnected } from './connection-memory.js';
+import { hasProjectConnectedBefore, rememberConnected } from './connection-memory.js';
 import { reticleStateHome } from '../daemon/daemon.js';
 import type { SessionManager } from './session-manager.js';
 
@@ -108,11 +108,8 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
    * then soften a genuinely-unwired directory's diagnosis on the strength of an unrelated app. That
    * is the same over-confident claim this whole file exists to remove, pointing the other way.
    */
-  const connectedBefore = (): boolean => {
-    const projectId = readProjectId(directory);
-    if (projectId === undefined) return false;
-    return hasConnectedBefore(stateDir, options.port, projectId);
-  };
+  const connectedBefore = (): boolean =>
+    hasProjectConnectedBefore(stateDir, options.port, readProjectId(directory));
 
   // Every path that registers a session goes through SessionManager.add, so this is the one hook
   // that makes the bit durable. Recorded per port + projectId so a shared 4400 cannot make one

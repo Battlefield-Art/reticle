@@ -25,6 +25,18 @@ type ResolveConfig = (
   command: 'build' | 'serve',
 ) => Promise<{ plugins: readonly { name: string }[] }>;
 
+/**
+ * Shared with the sibling integration suite: a declared dependency that does not resolve must FAIL
+ * these tests rather than skip them. Returning early instead ran zero assertions and reported green
+ * over the boot path every user hits.
+ */
+function required<T>(value: T | undefined, what: string): T {
+  if (value === undefined) {
+    throw new Error(`${what} did not resolve — this suite cannot prove anything without it`);
+  }
+  return value;
+}
+
 let resolveConfig: ResolveConfig | undefined;
 let createServer: CreateServer | undefined;
 
@@ -56,9 +68,10 @@ beforeAll(async () => {
     };
     resolveConfig = vite.resolveConfig;
     createServer = vite.createServer;
-  } catch {
-    resolveConfig = undefined;
-    createServer = undefined;
+  } catch (error) {
+    // A declared dependency that will not import is a broken workspace, not a condition to skip on.
+    // Swallowing it made these tests run zero assertions and report green.
+    throw error instanceof Error ? error : new Error('vite did not resolve');
   }
 }, HOOK_TIMEOUT_MS);
 
@@ -68,8 +81,8 @@ function names(plugins: readonly { name: string }[]): string[] {
 
 describe('reticle() in the real Vite config resolution', () => {
   it('is included in the serve pipeline', async () => {
-    if (resolveConfig === undefined) return;
-    const resolved = await resolveConfig(
+    const resolve = required(resolveConfig, 'vite.resolveConfig');
+    const resolved = await resolve(
       { plugins: [reticle()], configFile: false, logLevel: 'silent' },
       'serve',
     );
@@ -77,8 +90,8 @@ describe('reticle() in the real Vite config resolution', () => {
   });
 
   it('is filtered out of the build pipeline (never ships to production)', async () => {
-    if (resolveConfig === undefined) return;
-    const resolved = await resolveConfig(
+    const resolve = required(resolveConfig, 'vite.resolveConfig');
+    const resolved = await resolve(
       { plugins: [reticle()], configFile: false, logLevel: 'silent' },
       'build',
     );
@@ -139,7 +152,7 @@ describe('the connect module picks up a token written after the dev server start
   }, HOOK_TIMEOUT_MS);
 
   it('serves the token on the next request, without a dev-server restart', async () => {
-    if (createServer === undefined) return;
+    const create = required(createServer, 'vite.createServer');
     const tokenDir = mkdtempSync(join(tmpdir(), 'reticle-token-'));
     const root = mkdtempSync(join(tmpdir(), 'reticle-app-'));
     dirs.push(tokenDir, root);
@@ -158,7 +171,7 @@ describe('the connect module picks up a token written after the dev server start
     );
     writeFileSync(join(root, 'src/main.js'), 'export const app = 1;\n');
 
-    const server = await createServer({
+    const server = await create({
       root,
       logLevel: 'silent',
       configFile: false,

@@ -101,6 +101,16 @@ export function hasConnectedBefore(
  * So an absent projectId answers `false` here: a project with no Reticle identity has nothing
  * recorded under another project's name that could be evidence about it. The cost of being wrong in
  * this direction is one guidance block, read once at handshake, by a setup that is already working.
+ *
+ * KNOWN LIMIT, and the reason it is accepted rather than worked around. The WRITE side records the
+ * id the SDK supplied, while the read side asks `.reticle.json` — and the Vite plugin derives an id
+ * without writing that file. So a project wired by hand with the plugin and no `init` records a real
+ * id on every connect and reads `undefined` here forever, and is told at each handshake that nothing
+ * has connected. Two things make that tolerable: the block's own advice is to run `init`, which
+ * writes the file and heals the detection, so it is actionable rather than merely wrong; and the
+ * alternative — answering from the port — is the leak this function exists to close, which is the
+ * larger error by a wide margin. `no-session-watch` had already made exactly this call for its own
+ * diagnosis, which is why it now shares this function instead of keeping a second copy of the rule.
  */
 export function hasProjectConnectedBefore(
   stateDir: string,

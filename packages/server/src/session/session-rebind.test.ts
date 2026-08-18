@@ -40,9 +40,13 @@ interface Wired {
   sent: string[];
 }
 
-function wire(): Wired {
+function wire(readyState = 1): Wired {
   const sent: string[] = [];
+  // `readyState: 1` is OPEN, and it is load-bearing rather than decoration: delegation to a
+  // successor is gated on its socket still being open, so a fake that omits it models a CLOSED
+  // connection and no rebinding can happen. A fake standing in for a live tab has to say it is live.
   const socket = {
+    readyState,
     send: (payload: string): void => {
       sent.push(payload);
     },
@@ -107,5 +111,40 @@ describe('a session replaced under the same id rebinds instead of erroring', () 
     const pending = old.session.command(ReticleCommand.SNAPSHOT);
     old.session.disconnect('session disconnected');
     await expect(pending).rejects.toThrow(/session disconnected/);
+  });
+});
+
+/**
+ * Delegating to a replacement that has itself gone away costs the caller MORE than the error did.
+ *
+ * A successor is recorded once and never cleared, so a session replaced long ago still holds a
+ * reference to one. Without a liveness check the command is handed to a closed socket and the caller
+ * waits out the whole timeout to learn what the "session replaced" error would have told them
+ * immediately — the opposite of the round trip this path exists to save.
+ */
+describe('a successor that is no longer live', () => {
+  it('is not delegated to — the error stands instead of a wait', async () => {
+    const old = wire();
+    const dead = wire(3); // 3 is CLOSED
+    old.session.succeededBy(dead.session);
+
+    const call = old.session.command(ReticleCommand.SNAPSHOT, {}, 50);
+    old.session.rejectAll('session replaced by a newer connection claiming the same id');
+
+    await expect(call).rejects.toThrow(/session replaced/);
+    expect(dead.sent, 'nothing should reach a closed socket').toHaveLength(0);
+  });
+
+  it('does not send a later command to it either', async () => {
+    const old = wire();
+    const dead = wire(3);
+    old.session.succeededBy(dead.session);
+
+    const call = old.session.command(ReticleCommand.SNAPSHOT, {}, 50);
+    // It went to the OLD session's own wire rather than the dead successor's.
+    expect(old.sent).toHaveLength(1);
+    expect(dead.sent).toHaveLength(0);
+    old.reply({ ok: true });
+    await call;
   });
 });

@@ -23,18 +23,27 @@ interface DevServerLike {
 }
 type CreateServer = (inline: Record<string, unknown>) => Promise<DevServerLike>;
 
+/**
+ * `vite` is a declared dependency of this package, so failing to import it is not a condition to
+ * tolerate — it is a broken workspace. Returning early on it instead made all four of these tests
+ * run ZERO assertions and report green, which is the worst shape a guard can take: the thing it
+ * protects (a clean dev boot, on every user's machine) would be unguarded and nothing would say so.
+ */
+function required<T>(value: T | undefined, what: string): T {
+  if (value === undefined) {
+    throw new Error(`${what} did not resolve — this suite cannot prove anything without it`);
+  }
+  return value;
+}
+
 let createServer: CreateServer | undefined;
 
 const HOOK_TIMEOUT_MS = 60_000;
 const CLOSE_BUDGET_MS = 5_000;
 
 beforeAll(async () => {
-  try {
-    const vite = (await import('vite')) as { createServer: CreateServer };
-    createServer = vite.createServer;
-  } catch {
-    createServer = undefined;
-  }
+  const vite = (await import('vite')) as { createServer: CreateServer };
+  createServer = vite.createServer;
 }, HOOK_TIMEOUT_MS);
 
 describe('vite 8 dev boot with the plugin produces no define warnings (#165)', () => {
@@ -107,7 +116,7 @@ describe('vite 8 dev boot with the plugin produces no define warnings (#165)', (
   }
 
   it('no "Invalid input options" warning for the define key', async () => {
-    if (createServer === undefined) return;
+    const create = required(createServer, 'vite.createServer');
 
     const root = makeMinimalApp();
     dirs.push(root);
@@ -121,7 +130,7 @@ describe('vite 8 dev boot with the plugin produces no define warnings (#165)', (
       warnings.push(args.map(String).join(' '));
     });
 
-    const server = await createServer({
+    const server = await create({
       root,
       configFile: false,
       server: { port: 0, host: '127.0.0.1' },
