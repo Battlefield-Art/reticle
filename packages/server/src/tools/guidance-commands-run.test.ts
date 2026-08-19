@@ -64,6 +64,17 @@ function invocations(): Found[] {
         // An interpolated command is assembled at runtime from values this guard cannot know, so
         // running it here would test the placeholder rather than the command.
         if (rest.includes('${') || '' === rest) continue;
+        // A USAGE TEMPLATE, not an invocation. `verify <url>` names the shape of the command for a
+        // reader to fill in; running it as written is supposed to fail, and reporting that as a
+        // broken instruction would make this guard argue with correct documentation. The docs guard
+        // draws the same line for the same reason.
+        if (
+          rest
+            .split(/\s+/)
+            .slice(0, 4)
+            .some((t) => t.startsWith('<'))
+        )
+          continue;
         // Trailing prose: the sentence usually continues after the command. Keep the leading tokens
         // that look like arguments and stop at the first that plainly is not.
         const argv: string[] = [];
@@ -86,6 +97,13 @@ describe('commands the product itself tells a user to run', () => {
    * A green over zero matches would mean the regex stopped matching, not that the guidance is sound
    * — and this whole file would then be decoration. The handshake block alone guarantees one.
    */
+  it('skips a usage template, which is meant to be filled in rather than run', () => {
+    // Pinned because the distinction is the one judgement this guard makes, and getting it wrong in
+    // either direction is bad: flagging a template argues with correct docs, and treating a real
+    // command as a template stops checking it.
+    expect(found.some((f) => f.raw.includes('<'))).toBe(false);
+  });
+
   it('found invocations to check', () => {
     expect(
       found.length,
