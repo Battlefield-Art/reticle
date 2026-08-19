@@ -532,7 +532,9 @@ async function dispatchOther(
 ): Promise<boolean> {
   switch (action) {
     case ActionType.DBLCLICK:
-      return !el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      return !asSyntheticInput(() =>
+        el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true })),
+      );
     case ActionType.HOVER: {
       const doc = el.ownerDocument;
       // Best-effort "previous" node for relatedTarget so React's enter/leave synthesis has a "from".
@@ -706,10 +708,16 @@ async function dispatchOther(
     case ActionType.PRESS: {
       const key = pressKey(args);
       const code = pressCode(args, key);
-      const down = el.dispatchEvent(
-        new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true }),
+      // Marked as ours like the click sequence: the annotator leaves annotate mode on Escape, so an
+      // agent pressing Escape would otherwise switch off a mode the person turned on.
+      const down = asSyntheticInput(() =>
+        el.dispatchEvent(
+          new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true }),
+        ),
       );
-      el.dispatchEvent(new KeyboardEvent('keyup', { key, code, bubbles: true }));
+      asSyntheticInput(() =>
+        el.dispatchEvent(new KeyboardEvent('keyup', { key, code, bubbles: true })),
+      );
       return !down;
     }
     case ActionType.SCROLL_INTO_VIEW:
