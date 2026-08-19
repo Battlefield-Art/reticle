@@ -18,6 +18,7 @@ import { RETICLE_URL_PARAM, RETICLE_DEFAULT_PORT } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import type { ToolDef, ToolDeps } from './tool-kit.js';
 import { asString } from './tools-helpers.js';
+import { chromiumHint } from '../cli/chromium-hint.js';
 
 /**
  * Everything the daemon already knows about why a leased tab might not have dialled in.
@@ -224,6 +225,17 @@ export const LEASE_ACQUIRE_TOOL: ToolDef = {
     const url = asString(args['url']);
     if (url === undefined || 0 === url.length)
       throw new Error('reticle_lease{action:"acquire"} requires a url');
+    // Preflight the browser before spending the round trip. Without it a missing Playwright Chromium
+    // only surfaces inside pool.acquire, where the launch failure is caught and reported as
+    // "could not open <url> — is the app running?" — sending the caller to debug an app that is
+    // fine. Say the real thing at the first refusal instead. The phrasing carries "Chromium is not
+    // installed" so error-recovery routes it to the NO_POOL fix (install + drive a human tab).
+    if (deps.browserProbe !== undefined) {
+      const probe = await deps.browserProbe();
+      if (!probe.exists) {
+        throw new Error(`Chromium is not installed for Playwright — ${chromiumHint(probe)}`);
+      }
+    }
     const projectId = asString(args['projectId']);
     const sessionId = newLeaseId();
     const navUrl = appendReticleParams(url, sessionId, projectId);
