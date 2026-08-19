@@ -120,6 +120,8 @@ describe('presenter settings', () => {
     p.mount();
     p.sessionStart();
     (document.querySelector('[data-reticle-fab]') as HTMLElement).click();
+    // The blocker serves annotate mode, which is now entered deliberately rather than by expanding.
+    (document.querySelector('[data-reticle-annotate-btn]') as HTMLElement).click();
     const overlay = document.querySelector('div[data-reticle-overlay]') as HTMLElement;
     expect(overlay.getAttribute('data-reticle-block')).toBe('1');
     document
@@ -177,6 +179,10 @@ describe('presenter settings', () => {
     expect(overlay.getAttribute('data-reticle-block')).toBe('0');
     p.sessionStart();
     (document.querySelector('[data-reticle-fab]') as HTMLElement).click();
+    // Annotate is a mode you enter now, not something expanding turns on, and the blocker exists to
+    // serve it — so it stays off until the mode is on.
+    expect(overlay.getAttribute('data-reticle-block'), 'no blocker before annotate').toBe('0');
+    (document.querySelector('[data-reticle-annotate-btn]') as HTMLElement).click();
     expect(overlay.getAttribute('data-reticle-block')).toBe('1');
     expect(getComputedStyle(blocker).pointerEvents).toBe('auto');
     p.destroy();

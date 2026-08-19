@@ -141,7 +141,7 @@ describe('presenter HUD shell', () => {
  * this asserts the half that was missing without asserting away the other two.
  */
 describe('the annotate toggle', () => {
-  it('is in the toolbar, pressed by default (the old behaviour on expand)', () => {
+  it('is in the toolbar and OFF until asked for', () => {
     document.body.innerHTML = '';
     const p = new Presenter({});
     p.mount();
@@ -149,7 +149,10 @@ describe('the annotate toggle', () => {
     click(document.querySelector('[data-reticle-fab]'));
     const btn = document.querySelector('[data-reticle-annotate-btn]');
     expect(btn, 'the control must exist in the toolbar').not.toBeNull();
-    expect(btn?.getAttribute('aria-pressed')).toBe('true');
+    expect(
+      btn?.getAttribute('aria-pressed'),
+      'annotate captures clicks, so it is entered deliberately rather than defaulted on',
+    ).toBe('false');
     p.destroy();
   });
 
@@ -161,11 +164,11 @@ describe('the annotate toggle', () => {
     click(document.querySelector('[data-reticle-fab]'));
     const btn = document.querySelector('[data-reticle-annotate-btn]');
     click(btn);
-    expect(btn?.getAttribute('aria-pressed')).toBe('false');
-    expect(btn?.getAttribute('data-active')).toBe('0');
-    click(btn);
     expect(btn?.getAttribute('aria-pressed')).toBe('true');
     expect(btn?.getAttribute('data-active')).toBe('1');
+    click(btn);
+    expect(btn?.getAttribute('aria-pressed')).toBe('false');
+    expect(btn?.getAttribute('data-active')).toBe('0');
     p.destroy();
   });
 

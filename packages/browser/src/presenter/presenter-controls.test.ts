@@ -338,6 +338,9 @@ describe('presenter-controls / live-control panel', () => {
     ann.mount();
     presenter.bindAnnotator(ann);
     click(q('[data-reticle-fab]'));
+    // Expanding no longer enters annotate mode on its own — it is a toolbar toggle now. The point of
+    // this test is what pause/end do to a LIVE annotator, so turn it on first.
+    click(q('[data-reticle-annotate-btn]'));
     expect(ann.active).toBe(true);
     click(pauseBtn());
     expect(ann.active).toBe(false);

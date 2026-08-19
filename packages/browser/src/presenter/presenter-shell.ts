@@ -64,8 +64,14 @@ export class HudShell {
    * Whether the USER wants to annotate. Distinct from whether annotation is currently possible,
    * which also needs a live session and an expanded HUD — this is the half the user controls, and
    * conflating the two is why there was no way to keep the HUD open without annotating.
+   *
+   * OFF until asked for. It began as `true` to preserve the old behaviour where expanding the HUD
+   * silently entered annotate mode, and that is exactly what made the toolbar icon look permanently
+   * lit: the toolbar is only visible while expanded, so an intent that defaults to on is on every
+   * time you can see it. Annotate mode also captures clicks, so defaulting it on means a click lands
+   * as a mark before anyone asked for one. It is a mode now, and modes are entered deliberately.
    */
-  #annotateOn = true;
+  #annotateOn = false;
   #callbacks: HudShellCallbacks;
   constructor(callbacks: HudShellCallbacks = {}) {
     this.#callbacks = callbacks;
@@ -108,7 +114,7 @@ export class HudShell {
           <span class="reticle-tb-sep" aria-hidden="true"></span>
           <div class="reticle-toolbar-chrome">
             <div class="reticle-tb-wrap">
-              <button type="button" ${ANNOTATE_BTN_ATTR} class="reticle-tb-btn reticle-tb-btn--toggle" title="${ANNOTATE_LABEL}" aria-label="${ANNOTATE_LABEL}" aria-pressed="true" data-active="1">${annotate}</button>
+              <button type="button" ${ANNOTATE_BTN_ATTR} class="reticle-tb-btn reticle-tb-btn--toggle" title="${ANNOTATE_LABEL}" aria-label="${ANNOTATE_LABEL}" aria-pressed="false" data-active="0">${annotate}</button>
               <span class="reticle-tb-tip">${ANNOTATE_LABEL}</span>
             </div>
             <div class="reticle-tb-wrap">
