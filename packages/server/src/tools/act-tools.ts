@@ -269,6 +269,9 @@ export const ACT_TOOLS: ToolDef[] = [
         const stepResults: Record<string, unknown>[] = [];
         let stalledAt: number | undefined;
 
+        // DIVERGENCE: live sends N individual ACT commands (for per-step timeout + progress);
+        // replay sends one batched ACT_SEQUENCE command (flows/replay.ts:294). A bug in either is
+        // invisible from the other — cover both when changing sequence semantics.
         for (let i = 0; i < inputSteps.length; i++) {
           const step = asRecord(inputSteps[i]);
           try {
