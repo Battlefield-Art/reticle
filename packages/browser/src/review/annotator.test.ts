@@ -470,3 +470,64 @@ describe('the popover opens on its element, not where the page used to be', () =
     ann.toggle(false);
   });
 });
+
+/**
+ * The shield annotate mode raises must not be the reason annotate mode does nothing.
+ *
+ * `blockPageInteractions` is on by default and puts a full-viewport `position:fixed; inset:0;
+ * pointer-events:auto` blocker over the page WHILE annotating. So every click while the mode is on
+ * lands on that blocker, the blocker is Reticle's own UI, and the handler discarded it as such. The
+ * mode was live, the cursor was a crosshair, and no click ever produced a mark.
+ *
+ * jsdom does no hit-testing, so every existing test clicks the element directly and passes — the
+ * failure only exists where there is a real compositor. `elementsFromPoint` is stubbed here to model
+ * the stack a browser would report: blocker on top, page element beneath.
+ */
+describe('a click on the page blocker still annotates what is under it', () => {
+  it('resolves the element beneath the blocker', () => {
+    const { ann } = setup();
+    const target = document.createElement('button');
+    target.textContent = 'Underneath';
+    document.body.appendChild(target);
+    const blocker = document.createElement('div');
+    blocker.setAttribute('data-reticle-blocker', '');
+    document.body.appendChild(blocker);
+    ann.toggle(true);
+
+    const original = document.elementsFromPoint;
+    document.elementsFromPoint = ((): Element[] => [blocker, target]) as typeof original;
+    try {
+      blocker.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }),
+      );
+      const pop = document.querySelector('[data-reticle-mark="pop"]');
+      expect(pop, 'a click through the blocker must open the note').not.toBeNull();
+      expect(pop?.textContent ?? '').toContain('Underneath');
+    } finally {
+      document.elementsFromPoint = original;
+      ann.toggle(false);
+    }
+  });
+
+  it('drops the click when only Reticle UI is under the pointer', () => {
+    const { ann } = setup();
+    const blocker = document.createElement('div');
+    blocker.setAttribute('data-reticle-blocker', '');
+    document.body.appendChild(blocker);
+    const hud = document.createElement('div');
+    hud.setAttribute('data-reticle-overlay', '');
+    document.body.appendChild(hud);
+    ann.toggle(true);
+    const original = document.elementsFromPoint;
+    document.elementsFromPoint = ((): Element[] => [blocker, hud]) as typeof original;
+    try {
+      blocker.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
+      );
+      expect(document.querySelector('[data-reticle-mark="pop"]')).toBeNull();
+    } finally {
+      document.elementsFromPoint = original;
+      ann.toggle(false);
+    }
+  });
+});

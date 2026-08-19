@@ -22,9 +22,29 @@ export function isReticleOverlay(el: Element): boolean {
   return el.closest(RETICLE_OVERLAY) !== null;
 }
 
-/** Walk ancestors: true iff any element in the chain carries a data-reticle* attribute (Reticle's own UI). */
+/**
+ * Walk ancestors: true iff any element in the chain carries a data-reticle* attribute (Reticle's own
+ * UI). The document scaffolding — `<html>` and `<body>` — is NOT part of that chain.
+ *
+ * Reticle marks the documentElement while annotate mode is live (`data-reticle-mark-active`, which
+ * drives the crosshair cursor), and `<html>` is an ancestor of everything. Walking into it therefore
+ * answered "yes, Reticle's own UI" for EVERY element on the page for as long as the mode was on.
+ *
+ * That is not cosmetic: `occlusion.ts` treats a yes here as "nothing to report" and returns null, so
+ * occlusion detection silently stopped working across the whole page while annotating — and an
+ * occluded control is a bug class Reticle advertises catching, which would have come back clean.
+ *
+ * Excluding the scaffolding costs nothing, because Reticle's own UI is always mounted INSIDE body:
+ * an overlay, a dock, a mark root. Nothing it owns IS `<html>` or `<body>`, so nothing it owns is
+ * missed by stopping there.
+ */
 export function isReticleUi(node: Element | null): boolean {
+  const scaffolding: readonly (Element | null)[] = [
+    node?.ownerDocument.documentElement ?? null,
+    node?.ownerDocument.body ?? null,
+  ];
   for (let n: Element | null = node; n !== null; n = n.parentElement) {
+    if (scaffolding.includes(n)) continue;
     for (const attr of Array.from(n.attributes)) {
       if (attr.name.startsWith('data-reticle')) return true;
     }

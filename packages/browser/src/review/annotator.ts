@@ -1,6 +1,6 @@
 import { isSyntheticInput } from '../actions/synthetic-input.js';
 import { EventType } from '@reticlehq/core';
-import { isReticleOverlay } from '../dom/dom-ignore.js';
+import { isReticleUi, isReticleOverlay } from '../dom/dom-ignore.js';
 import { resolveMarkAnchor, type MarkAnchor } from './mark-anchor.js';
 import { nativeSetTimeout, nativeClearTimeout } from '../timers/native-timers.js';
 import {
@@ -258,8 +258,16 @@ export class Annotator {
     // this, expanding the HUD silently disabled every `reticle_act` click while the action still
     // reported success — a false green in our own UI. See synthetic-input.ts.
     if (isSyntheticInput()) return;
-    const target = ev.target;
-    if (!(target instanceof Element)) return;
+    const raw = ev.target;
+    if (!(raw instanceof Element)) return;
+    // The page blocker is a full-viewport shield Reticle puts up WHILE annotating, so with it on
+    // every click lands on Reticle's own UI and was discarded as such — annotate mode looked
+    // completely dead, because the one thing standing between the user and the page is the thing
+    // annotate mode turns on. Resolve what is underneath instead of giving up on the click.
+    const target = raw.hasAttribute(BLOCKER_ATTR_NAME)
+      ? pageElementAt(ev.clientX, ev.clientY)
+      : raw;
+    if (target === undefined) return;
     if (isReticleOverlay(target)) return;
     if (true === this.#markersBtn?.contains(target)) return;
     if (true === this.#clearBtn?.contains(target)) return;
@@ -615,6 +623,26 @@ function isElementFixed(el: Element | undefined): boolean {
   if (el === undefined || 'undefined' === typeof getComputedStyle) return false;
   const pos = getComputedStyle(el).position;
   return 'fixed' === pos || 'sticky' === pos;
+}
+
+/** The blocker Reticle raises over the page while annotating; see the click handler. */
+const BLOCKER_ATTR_NAME = 'data-reticle-blocker';
+
+/**
+ * The topmost element of the HOST PAGE at a point, seeing past Reticle's own overlays.
+ *
+ * `elementsFromPoint` returns the whole stack topmost-first, so the page element is simply the first
+ * entry that is not ours. Returns undefined where the API is unavailable (jsdom) or nothing but
+ * Reticle UI is there, and the caller drops the click rather than guessing at a target.
+ */
+function pageElementAt(x: number, y: number): Element | undefined {
+  const from = document.elementsFromPoint.bind(document) as
+    ((cx: number, cy: number) => Element[]) | undefined;
+  if (from === undefined) return undefined;
+  for (const el of from(x, y)) {
+    if (!isReticleUi(el)) return el;
+  }
+  return undefined;
 }
 
 function clampPop(x: number, y: number): { left: number; top: number } {
