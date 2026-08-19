@@ -10,7 +10,7 @@
 | Of what it _structurally can_ catch | **86 / 86 (100%)** | 58 / 60 |
 | **False greens** (broken but reported OK) | **0** on its capability class | **26** it cannot catch + 2 it missed = **28** |
 | False positives (clean build flagged) | 0 | 0 |
-| Output bytes / bug | **4,132 B** | 7,906 B |
+| Output bytes / bug | **4,134 B** | 7,899 B |
 
 The 2 bugs Reticle "doesn't catch" are the 2 `false-positive-trap` cases — **not real bugs**; correctly flagging them would itself be a false positive, so 0/2 there is the right score.
 
