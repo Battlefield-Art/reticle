@@ -21,7 +21,7 @@
 
 import { DEV_SERVER_PORTS } from '../cli/cli-port.js';
 
-interface NoSessionFacts {
+export interface NoSessionFacts {
   /** Whether ANY session has connected to this daemon since it booted. */
   everConnected: boolean;
   /** Whether this project has been through `reticle init` (a .reticle.json / projectId is present). */
@@ -207,6 +207,25 @@ const RESTARTED_LEAD =
 const SCANNED_PORTS = [...DEV_SERVER_PORTS].join(', ');
 
 /**
+ * How to say "open the app" to an agent that may have no `reticle` binary.
+ *
+ * These strings are read by an AGENT that is already blocked, and they used to name a bare
+ * `reticle open <url>`. Reticle registers its MCP server as `npx @reticlehq/server mcp`, so the
+ * ordinary install puts NOTHING on PATH — the binary those messages assume is missing on most
+ * machines that ever read them.
+ *
+ * Reported from Windows, where a half-failed plugin install left the MCP server registered and all
+ * the tools advertised while no CLI existed on disk. The agent followed the remediation, found no
+ * `reticle`, tried `npx @reticlehq/reticle` (a package that does not exist and 404s), and had no
+ * path forward at all. The remedy has to be a command that works from a bare npm environment.
+ *
+ * Init-time messages keep the short form on purpose: there, the reader is already running the CLI.
+ */
+const OPEN_CMD = '`npx @reticlehq/server open <url>`';
+const OPEN_CMD_BARE = '`npx @reticlehq/server open`';
+const INIT_CMD = '`npx @reticlehq/server init`';
+
+/**
  * The one sentence that stops the scan lying about a server that is running.
  *
  * A port that accepted a connection and then said nothing is evidence FOR the app being up, not
@@ -235,7 +254,7 @@ function slowListenerClause(facts: NoSessionFacts): string {
  */
 const OPEN_THE_APP =
   'Reticle only ever sees a page that is LOADED, so the commonest cause by a distance is that no ' +
-  "browser has opened the app yet: run `reticle open <url>` with the app's own URL (or ask the " +
+  `browser has opened the app yet: run ${OPEN_CMD} with the app's own URL (or ask the ` +
   'human to open it).';
 
 /**
@@ -349,13 +368,13 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
         'that a lease you were using aged out; a lease is a headless context, not a human tab, and ' +
         'it takes its cookies with it (so an authenticated app needs signing in again). Re-acquire ' +
         'with reticle_lease {action:"acquire", url} and carry on. If you were driving a human tab ' +
-        `instead, it went away — reopen it or run \`reticle open\`. ${RETRY}`
+        `instead, it went away — reopen it or run ${OPEN_CMD_BARE}. ${RETRY}`
       );
     }
     return (
       'no browser session connected, but one WAS connected to this daemon earlier, so the wiring ' +
       'is correct. The tab was closed, navigated away, or hard-reloaded. Ask the human to reopen ' +
-      `the app (or run \`reticle open\`), or reload the tab. ${SELF_SERVE} ${RETRY}`
+      `the app (or run ${OPEN_CMD_BARE}), or reload the tab. ${SELF_SERVE} ${RETRY}`
     );
   }
 
@@ -407,9 +426,9 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
         'says so and you should ask rather than guess). Tell the human in one line that it is ' +
         'running. That scan is narrow ' +
         'though: a server on any other port is invisible to it, so if the app IS running, ask for ' +
-        'its URL rather than assuming it is down, and open it with `reticle open <url>`. ' +
+        `its URL rather than assuming it is down, and open it with ${OPEN_CMD}. ` +
         `(2) There is no \`.reticle.json\` in ${where}. That is the ` +
-        "file `reticle init` writes, so the app may carry no Reticle SDK — but check the app's " +
+        `file ${INIT_CMD} writes, so the app may carry no Reticle SDK — but check the app's ` +
         'OWN directory before re-running `init`: in a monorepo the daemon often runs at the root ' +
         'while the app lives in a subdirectory, and an app wired by the Vite or Babel plugin ' +
         `carries the SDK without that file at all.${searchedClause(facts)} ${RETRY}`
@@ -443,11 +462,11 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
     return (
       'no browser session connected, and this daemon has never seen one. ' +
       `What was actually checked: there is no \`.reticle.json\` in ${where}. That is the file ` +
-      '`reticle init` writes, so the app may carry no Reticle SDK — but it is not proof, and the ' +
+      `${INIT_CMD} writes, so the app may carry no Reticle SDK — but it is not proof, and the ` +
       'same absence is expected in a monorepo whose daemon runs at the root while the app lives in ' +
       "a subdirectory, or in an app wired by the Vite or Babel plugin. Check the app's OWN " +
-      'directory: if it has no config, run `reticle init` there and restart the dev server; if it ' +
-      'has one, the app is wired and simply has no page open — `reticle open <url>`. ' +
+      `directory: if it has no config, run ${INIT_CMD} there and restart the dev server; if it ` +
+      `has one, the app is wired and simply has no page open — ${OPEN_CMD}. ` +
       `${unattributedListeners(listening)}${searchedClause(facts)} ${RETRY}`
     );
   }

@@ -24,7 +24,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { diagnoseNoSession } from './no-session-diagnosis.js';
+import { diagnoseNoSession, type NoSessionFacts } from './no-session-diagnosis.js';
 
 describe('diagnoseNoSession', () => {
   it('a session was here and left — say so, and say what to do', () => {
@@ -47,7 +47,7 @@ describe('diagnoseNoSession', () => {
       port: 4400,
     });
     expect(msg).toContain('5173');
-    expect(msg).toContain('reticle init');
+    expect(msg).toContain('npx @reticlehq/server init');
     // The actionable half: the app is RUNNING, so "is your app running?" is the wrong question.
     expect(msg).toMatch(/not wired|never connected|no Reticle SDK/i);
   });
@@ -234,9 +234,9 @@ describe('the scan is reported as unattributed, and the browser comes first', ()
   });
 
   it('leads with the browser nobody opened, and names the command that fixes it', () => {
-    expect(wiredAndListening).toMatch(/reticle open/);
+    expect(wiredAndListening).toMatch(/npx @reticlehq\/server open/);
     // Before the port sentence: this is the commonest first-run state by a distance.
-    const open = wiredAndListening.indexOf('reticle open');
+    const open = wiredAndListening.indexOf('npx @reticlehq/server open');
     expect(open).toBeGreaterThanOrEqual(0);
     expect(open).toBeLessThan(wiredAndListening.indexOf('5173'));
   });
@@ -270,7 +270,7 @@ describe('the scan is reported as unattributed, and the browser comes first', ()
     expect(unwired).toContain('/repo/root');
   });
 
-  it('names `reticle open` for a wired project with nothing listening either', () => {
+  it('names the open command for a wired project with nothing listening either', () => {
     // The app may be on a port the scan never covers, which is exactly the reported case.
     const quiet = diagnoseNoSession({
       everConnected: false,
@@ -278,7 +278,7 @@ describe('the scan is reported as unattributed, and the browser comes first', ()
       listening: [],
       port: 4400,
     });
-    expect(quiet).toMatch(/reticle open/);
+    expect(quiet).toMatch(/npx @reticlehq\/server open/);
   });
 });
 
@@ -363,8 +363,8 @@ describe('an uninstrumented project with no server is told BOTH things at once',
     expect(uninstrumented).toMatch(/dev server|npm run dev/i);
   });
 
-  it('also names `reticle init`, so the second step is not a second round trip', () => {
-    expect(uninstrumented).toContain('reticle init');
+  it('also names the init command, so the second step is not a second round trip', () => {
+    expect(uninstrumented).toContain('npx @reticlehq/server init');
   });
 
   it('says the app carries no SDK — the reason starting a server alone will not help', () => {
@@ -380,7 +380,7 @@ describe('an uninstrumented project with no server is told BOTH things at once',
       listening: [],
       port: 4400,
     });
-    expect(wired).not.toContain('reticle init');
+    expect(wired).not.toContain('npx @reticlehq/server init');
     expect(wired).toMatch(/dev server|npm run dev/i);
   });
 });
@@ -463,5 +463,52 @@ describe('a port that answered nothing is not a port with nothing on it', () => 
   it('says nothing extra when no port answered at all', () => {
     const text = diagnoseNoSession({ ...base, slowListeners: [] });
     expect(text).not.toContain('ACCEPTED');
+  });
+});
+
+/**
+ * Never tell a blocked agent to run a binary that is probably not installed.
+ *
+ * Reticle registers its MCP server as `npx @reticlehq/server mcp`, so the ordinary install puts
+ * NOTHING named `reticle` on PATH. These messages are read by an agent that is already stuck, and
+ * they used to name a bare `reticle open <url>`.
+ *
+ * Reported from Windows, where a half-failed plugin install left the server registered and all the
+ * tools advertised while no CLI existed on disk: the agent followed the remediation, found no
+ * `reticle`, then tried `npx @reticlehq/reticle` — a package that does not exist and 404s — and was
+ * left with no path forward at all.
+ *
+ * Asserted over every branch rather than the one that was reported, because the next branch to grow
+ * a remedy is the one nobody will check.
+ */
+describe('remediation names a command that actually runs', () => {
+  const branches: NoSessionFacts[] = [
+    { everConnected: false, initialized: false, listening: [], port: 4400 },
+    { everConnected: false, initialized: true, listening: [], port: 4400 },
+    { everConnected: false, initialized: true, listening: [5173], port: 4400 },
+    { everConnected: true, initialized: true, listening: [5173], port: 4400 },
+    { everConnected: false, initialized: false, listening: [], port: 4400, slowListeners: [5000] },
+    { everConnected: true, initialized: true, listening: [], port: 4400, leaseExpired: true },
+  ];
+
+  it.each(branches.map((f, i) => [i, f] as const))(
+    'branch %i never tells the agent to run a bare `reticle` binary',
+    (_i, facts) => {
+      const text = diagnoseNoSession(facts);
+      expect(
+        text,
+        'a bare `reticle ...` assumes a global install that the npx-registered MCP never creates',
+      ).not.toMatch(/`reticle (open|init|serve|drive|doctor|status)\b/);
+    },
+  );
+
+  it('offers the npx form somewhere in the never-connected branch', () => {
+    const text = diagnoseNoSession({
+      everConnected: false,
+      initialized: true,
+      listening: [],
+      port: 4400,
+    });
+    expect(text).toContain('npx @reticlehq/server');
   });
 });
