@@ -339,9 +339,30 @@ export class Annotator {
     this.#pendingKey = mark.anchor;
     this.#pendingTarget = mark.target;
     this.#hideHighlight();
-    this.#mountPopover(mark.label, mark.clientX, mark.clientY, mark.note);
-    this.#dropPending(mark.clientX, mark.clientY);
+    // Where the element is NOW, not where it was when the mark was made. The popover is
+    // position:fixed, so it is placed in viewport coordinates, and the stored clientX/clientY are
+    // viewport coordinates from an earlier scroll position. Reopening a mark after scrolling put the
+    // note somewhere unrelated to the thing it annotates — further away the further you had scrolled.
+    const at = this.#currentPoint(mark);
+    this.#mountPopover(mark.label, at.x, at.y, mark.note);
+    this.#dropPending(at.x, at.y);
     this.#paintSelection();
+  }
+
+  /**
+   * The viewport point a mark's popover should open at.
+   *
+   * Prefers the element's live box, because that is what the note is ABOUT. Falls back to the stored
+   * coordinates only when the element is gone, where there is nothing better and the mark is already
+   * shown as stale.
+   */
+  #currentPoint(mark: StoredMark): { x: number; y: number } {
+    const el = mark.target;
+    if (el !== undefined && el.isConnected) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 || r.height > 0) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+    return { x: mark.clientX, y: mark.isFixed ? mark.clientY : mark.yDoc - window.scrollY };
   }
 
   #openPopover(el: Element, x: number, y: number): void {
@@ -549,7 +570,24 @@ export class Annotator {
       }
       mark.pin.style.top = `${String(mark.yDoc - window.scrollY)}px`;
     }
+    this.#repositionPopover();
     this.#paintSelection();
+  }
+
+  /**
+   * Keep an OPEN popover attached to its element while the page scrolls.
+   *
+   * The pins were repositioned here and the popover was not, so scrolling with a note open slid the
+   * note off its target and left it floating over unrelated content.
+   */
+  #repositionPopover(): void {
+    const pop = this.#pop;
+    const mark = this.#editing;
+    if (pop === undefined || mark === undefined) return;
+    const at = this.#currentPoint(mark);
+    const pos = clampPop(at.x, at.y);
+    pop.style.left = `${String(pos.left)}px`;
+    pop.style.top = `${String(pos.top)}px`;
   }
 
   #closePopover(): void {

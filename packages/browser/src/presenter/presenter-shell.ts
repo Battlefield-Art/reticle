@@ -226,8 +226,11 @@ export class HudShell {
     if (this.#fab !== undefined) this.#fab.setAttribute('aria-expanded', 'true');
     this.#callbacks.onExpand?.();
     // The chat IS the HUD's content: expanding to a toolbar with nothing above it made the agent's
-    // log something you had to know to go looking for. `openChat` re-enters `expand` only when
-    // collapsed, and MIN_ATTR is already cleared above, so this cannot recurse.
+    // log something you had to know to go looking for. Unconditional on purpose — the way to a bare
+    // toolbar is the chat's own minimise button, not a preference. `Auto-open chat` is a different
+    // question (should it appear with no click at all, at session start) and stays separate, because
+    // wiring expand to it made session start expand the HUD and the FAB never appeared.
+    // `openChat` re-enters `expand` only when collapsed, and MIN_ATTR is already cleared above.
     this.openChat();
     if (this.#dock !== undefined) scheduleSyncDockLayout(this.#dock, this.#root);
   }

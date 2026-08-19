@@ -384,3 +384,89 @@ describe("annotate mode does not swallow the agent's clicks", () => {
     ann.toggle(false);
   });
 });
+
+/**
+ * The note has to open ON the thing it annotates, at the time it is opened.
+ *
+ * The popover is `position:fixed`, so it is placed in VIEWPORT coordinates, while a mark stores the
+ * viewport coordinates of the click that created it. Those two agree exactly once — before the page
+ * scrolls. Reopening a mark after scrolling replayed the old numbers, so the note appeared further
+ * from its element the further you had scrolled, and an open note stayed where it was while the page
+ * moved under it, because scroll repositioned the pins and not the popover.
+ *
+ * Both paths now read the element's live box, and fall back to the stored point only when the
+ * element is gone — where there is nothing better and the mark is already shown as stale.
+ */
+describe('the popover opens on its element, not where the page used to be', () => {
+  const at = (el: HTMLElement, box: { left: number; top: number }): void => {
+    el.getBoundingClientRect = (): DOMRect =>
+      ({
+        left: box.left,
+        top: box.top,
+        width: 100,
+        height: 20,
+        right: box.left + 100,
+        bottom: box.top + 20,
+        x: box.left,
+        y: box.top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+  };
+  const popEl = (): HTMLElement | null =>
+    document.querySelector<HTMLElement>('[data-reticle-mark="pop"]');
+
+  it('reopens over the element after the page has scrolled', () => {
+    const { ann } = setup();
+    const target = document.createElement('button');
+    target.textContent = 'Press me';
+    document.body.appendChild(target);
+    at(target, { left: 500, top: 290 });
+    ann.toggle(true);
+
+    target.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 550, clientY: 300 }),
+    );
+    const ta = popEl()?.querySelector('textarea');
+    if (ta !== null && ta !== undefined) {
+      ta.value = 'a note';
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    popEl()?.querySelector<HTMLButtonElement>('button[data-send]')?.click();
+
+    // The page scrolls; the element is now higher up the viewport.
+    at(target, { left: 500, top: 90 });
+    target.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 550, clientY: 100 }),
+    );
+    const top = Number.parseFloat(popEl()?.style.top ?? 'NaN');
+    expect(top, 'the note must follow the element, not the old click').toBeLessThan(200);
+    ann.toggle(false);
+  });
+
+  it('keeps an open note on its element while the page scrolls under it', () => {
+    const { ann } = setup();
+    const target = document.createElement('button');
+    target.textContent = 'Press me';
+    document.body.appendChild(target);
+    at(target, { left: 500, top: 400 });
+    ann.toggle(true);
+    target.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 550, clientY: 410 }),
+    );
+    const ta2 = popEl()?.querySelector('textarea');
+    if (ta2 !== null && ta2 !== undefined) {
+      ta2.value = 'n';
+      ta2.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    popEl()?.querySelector<HTMLButtonElement>('button[data-send]')?.click();
+    target.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 550, clientY: 410 }),
+    );
+    const before = Number.parseFloat(popEl()?.style.top ?? 'NaN');
+    at(target, { left: 500, top: 120 });
+    window.dispatchEvent(new Event('scroll'));
+    const after = Number.parseFloat(popEl()?.style.top ?? 'NaN');
+    expect(after, 'the open note tracks the scroll').toBeLessThan(before);
+    ann.toggle(false);
+  });
+});

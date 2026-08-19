@@ -193,7 +193,8 @@ export function settingsPanelHtml(): string {
   const tallyHelp = 'Show the pass/fail score pill in the toolbar';
   const timestampsHelp = 'Show relative timestamps on each activity-log row';
   const compactHelp = 'Use a slightly narrower agent chat panel';
-  const autoChatHelp = 'Open the chat panel automatically when a session starts';
+  const autoChatHelp =
+    'Open the agent chat by itself when a session starts and when you expand the HUD. Off leaves the toolbar bare until you ask for the chat.';
   const motionHelp = 'Reduce HUD animations for accessibility';
   return `<div ${SETTINGS_PANEL_ATTR} class="reticle-settings ${HUD_SURFACE_CLASS}" role="dialog" aria-label="Reticle settings" aria-hidden="true">
     <div class="reticle-settings-inner">
