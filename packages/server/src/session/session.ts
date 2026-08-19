@@ -62,6 +62,15 @@ const COMMAND_ID_PREFIX = 'c';
  * nobody asked for. A replaced act still errors, and the caller's own retry — with the same id,
  * which is still the right one — is the safe path.
  */
+/**
+ * How far to walk a chain of replacements before giving up.
+ *
+ * Generous for the real case (a page reloading a handful of times while a call is in flight) and
+ * small enough that a cycle costs nothing. The number is a backstop, not a policy: a chain longer
+ * than this means something is re-dialling in a loop, and that is a different problem.
+ */
+const MAX_SUCCESSOR_HOPS = 32;
+
 const REBINDABLE_COMMANDS: ReadonlySet<string> = new Set<string>([
   ReticleCommand.SNAPSHOT,
   ReticleCommand.QUERY,
@@ -600,8 +609,19 @@ export class Session {
    * did.
    */
   #liveSuccessor(): Session | undefined {
-    const next = this.#successor;
-    return next !== undefined && next.#socket.readyState === WS_OPEN ? next : undefined;
+    // Walked, not just read one hop. Two replacements in quick succession — a page that reloads
+    // twice — leave a CHAIN, and the handle the caller holds points at a session that is itself
+    // already displaced. Stopping at the first dead link fails safe and also fails: the open page is
+    // one hop further on, and the caller gets back exactly the error this exists to remove.
+    //
+    // Bounded, because `succeededBy` refuses self-succession but nothing prevents a cycle, and an
+    // unbounded walk over one is a hang — which is worse than the error it was trying to avoid.
+    let next = this.#successor;
+    for (let hops = 0; next !== undefined && hops < MAX_SUCCESSOR_HOPS; hops += 1) {
+      if (next.#socket.readyState === WS_OPEN) return next;
+      next = next.#successor;
+    }
+    return undefined;
   }
 
   /** End this transport without letting a stale socket remove its replacement session. */

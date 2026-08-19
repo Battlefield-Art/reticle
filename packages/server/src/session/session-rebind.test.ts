@@ -178,3 +178,40 @@ describe('a timed-out command is not retried into a successor', () => {
     expect(next.sent, 'a spent budget must not be spent again').toHaveLength(0);
   });
 });
+
+/**
+ * Two replacements in quick succession — a page that reloads twice — leaves a CHAIN: the handle the
+ * caller holds points at a session that is itself already displaced.
+ *
+ * Stopping at the first dead link fails safe, and it also fails: the live page is one hop further on,
+ * and the caller gets the error the rebinding exists to remove. A double reload is not exotic, and it
+ * is precisely the shape the reports described.
+ *
+ * Walked rather than recursed, and bounded, because `succeededBy` refuses self-succession but nothing
+ * prevents a cycle — and an unbounded walk over a cycle is a hang, which is worse than the error.
+ */
+describe('a chain of replacements', () => {
+  it('finds the live session past a dead middle link', async () => {
+    const first = wire();
+    const middle = wire(3); // CLOSED — displaced in turn
+    const live = wire();
+    first.session.succeededBy(middle.session);
+    middle.session.succeededBy(live.session);
+
+    const call = first.session.command(ReticleCommand.SNAPSHOT, {}, 1000);
+    expect(live.sent, 'it should reach the page that is actually open').toHaveLength(1);
+    expect(first.sent, 'and not go out on the displaced wire').toHaveLength(0);
+    live.reply({ ok: true });
+    await call;
+  });
+
+  it('does not hang on a cycle', async () => {
+    const a = wire(3);
+    const b = wire(3);
+    a.session.succeededBy(b.session);
+    b.session.succeededBy(a.session);
+    // Both dead and pointing at each other: the walk must terminate and the call must still answer.
+    const call = a.session.command(ReticleCommand.SNAPSHOT, {}, 30);
+    await expect(call).rejects.toThrow();
+  });
+});
