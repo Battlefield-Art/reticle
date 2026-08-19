@@ -31,6 +31,27 @@ if [ ! -s "$TOKEN_FILE" ]; then
   chmod 600 "$TOKEN_FILE"
 fi
 
+# Wait for the ports to be FREE before binding them.
+#
+# The cleanup below kills the listeners, but a killed process does not release its port the instant
+# the shell returns: back-to-back battery runs raced the previous run's teardown and died on
+# `EADDRINUSE :::8787` during boot — a whole 8-minute run lost to the run before it, reported as an
+# api that "died during boot". Twice in one afternoon, on a green tree. Polling here is the fix
+# because the failure is timing, not state: nothing needs killing, only waiting for.
+echo "==> waiting for the battery's ports to be free"
+for port in 8787 4310 3100; do
+  for _ in $(seq 1 30); do
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN -t > /dev/null 2>&1 || break
+    sleep 1
+  done
+  if lsof -nP -iTCP:"$port" -sTCP:LISTEN -t > /dev/null 2>&1; then
+    echo "port $port is still held after 30s by:"
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN
+    echo "the battery would run against another process's app — refusing to start."
+    exit 1
+  fi
+done
+
 echo "==> starting api (:8787), bench-app (:4310), next-smoke (:3100)"
 REFLECT_MS=6000 node apps/api/server.mjs > /tmp/e2e-api.log 2>&1 &
 API=$!

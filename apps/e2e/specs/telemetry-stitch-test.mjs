@@ -176,13 +176,18 @@ await call('reticle_act_and_wait', {
   until: { kind: 'route', pathname: '/deployments' },
   timeout_ms: 5000,
 });
-await call('reticle_annotate', { flow: FLOW, kind: 'assert-signal', name: 'nav:changed' });
+const annotated = await call('reticle_annotate', { flow: FLOW, kind: 'assert-signal', name: 'nav:changed' });
+chk(
+  'the annotation attaches to the recorded step',
+  annotated?.ok === true && annotated?.target === 'step',
+  JSON.stringify(annotated ?? {}).slice(0, 200),
+);
 await call('reticle_record', { ...S, action: 'stop', recordingName: FLOW });
 const saved = await call('reticle_flow_save', { ...S, flowName: FLOW });
 chk(
   'the recorded flow grades as asserted',
   saved?.assertions?.grade === 'asserted',
-  JSON.stringify(saved?.assertions ?? saved).slice(0, 110),
+  JSON.stringify(saved?.assertions ?? saved).slice(0, 300),
 );
 const replay = await call('reticle_flow_replay', { ...S, flowName: FLOW });
 chk('and replays green', replay?.status === 'ok', `status=${replay?.status}`);
