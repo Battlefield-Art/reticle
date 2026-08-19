@@ -90,4 +90,26 @@ describe('text queries match across unicode normalisation forms', () => {
     document.body.innerHTML = `<button data-testid="${NFD}">x</button>`;
     expect(hits({ testid: NFC })).toBe(0);
   });
+
+  /**
+   * The deliberate limit, pinned so nobody widens it casually.
+   *
+   * NFC is a CANONICAL fold: it only unifies sequences that are the same character written
+   * differently. NFKC is a COMPATIBILITY fold, and it would also make `１` match `1`, `²` match `2`
+   * and a ligature match its letters — strings that are genuinely different text that happens to
+   * look related.
+   *
+   * That direction is the dangerous one. Failing to match text that is on screen is a false red and
+   * costs a wasted investigation; matching text that is NOT what was asked for is a false green, and
+   * this codebase does not buy those. So a fullwidth digit does not match an ASCII one, and the
+   * remedy for a CJK app is to query what the page actually renders.
+   *
+   * If this is ever revisited, the question to answer first is what a compatibility fold would make
+   * match that should not — not whether it would fix this case, which it obviously would.
+   */
+  it('does NOT apply a compatibility fold — fullwidth is different text, not a different form', () => {
+    document.body.innerHTML = `<button>Page \uFF11</button>`;
+    expect(hits({ text: 'Page 1' })).toBe(0);
+    expect(hits({ text: 'Page \uFF11' }), 'querying what the page renders still works').toBe(1);
+  });
 });
