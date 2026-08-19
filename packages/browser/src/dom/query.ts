@@ -5,6 +5,7 @@ import {
   queryAllByPlaceholderText,
   queryAllByTestId,
   queryAllByAltText,
+  getDefaultNormalizer,
 } from '@testing-library/dom';
 import {
   DATA_RETICLE_SOURCE_ATTR,
@@ -148,6 +149,37 @@ function queryByRoleAndName(
   );
 }
 
+/**
+ * The same text, written two legal ways, did not match itself.
+ *
+ * Unicode lets `café` be one code point (`é`) or two (`e` + a combining acute). They render
+ * identically, they are canonically equivalent, and JavaScript string comparison says they differ —
+ * so a query typed one way against a DOM holding the other found nothing. That is a false RED: the
+ * agent asserts text that is visibly on screen, is told it is absent, and reports a working app as
+ * broken.
+ *
+ * It cannot happen in English, which is why it survived here. It is ordinary in French, Vietnamese
+ * and Korean, and the decomposed form is what macOS filesystems, several IMEs and some databases
+ * hand back.
+ *
+ * Normalising both sides can only ADD matches: normalisation is idempotent and
+ * canonical-equivalence-preserving, so two strings equal before are equal after and nothing that
+ * matched can stop matching. That property is why this is safe to apply to the matching core.
+ *
+ * Applied only to queries over USER-VISIBLE text. A testid is an attribute the developer typed on
+ * both sides and a component name is an identifier; normalising those would change what an exact
+ * match means, for no case anyone has.
+ */
+const toNfc = (value: string): string => value.normalize('NFC');
+
+/**
+ * Testing Library's own normaliser — whitespace trimming and collapsing — with NFC on top.
+ *
+ * Composed rather than replaced: writing a normaliser from scratch here would silently drop their
+ * whitespace handling, which every existing match depends on.
+ */
+const TEXT_NORMALIZER = { normalizer: (text: string) => toNfc(getDefaultNormalizer()(text)) };
+
 /** Run the appropriate Testing-Library query against ONE root (light DOM or a shadow root). */
 function findIn(container: HTMLElement, query: ElementQuery): HTMLElement[] {
   const by = query.by;
@@ -159,15 +191,18 @@ function findIn(container: HTMLElement, query: ElementQuery): HTMLElement[] {
       case QueryBy.ROLE:
         return queryByRoleAndName(container, value, query.name);
       case QueryBy.TEXT:
-        return queryAllByText(container, value, { exact: false });
+        return queryAllByText(container, toNfc(value), { exact: false, ...TEXT_NORMALIZER });
       case QueryBy.LABEL:
-        return queryAllByLabelText(container, value, { exact: false });
+        return queryAllByLabelText(container, toNfc(value), { exact: false, ...TEXT_NORMALIZER });
       case QueryBy.PLACEHOLDER:
-        return queryAllByPlaceholderText(container, value, { exact: false });
+        return queryAllByPlaceholderText(container, toNfc(value), {
+          exact: false,
+          ...TEXT_NORMALIZER,
+        });
       case QueryBy.TESTID:
         return queryAllByTestId(container, value, { exact: true });
       case QueryBy.ALT:
-        return queryAllByAltText(container, value, { exact: false });
+        return queryAllByAltText(container, toNfc(value), { exact: false, ...TEXT_NORMALIZER });
       case QueryBy.COMPONENT:
         // value is the component name;.source (if present) still takes precedence inside.
         return findByComponent(container, { ...query, component: query.component ?? value });
@@ -195,15 +230,20 @@ function findIn(container: HTMLElement, query: ElementQuery): HTMLElement[] {
   if (query.role !== undefined) {
     return queryByRoleAndName(container, query.role, query.name);
   }
-  if (query.text !== undefined) return queryAllByText(container, query.text, { exact: false });
+  if (query.text !== undefined)
+    return queryAllByText(container, toNfc(query.text), { exact: false, ...TEXT_NORMALIZER });
   if (query.label !== undefined) {
-    return queryAllByLabelText(container, query.label, { exact: false });
+    return queryAllByLabelText(container, toNfc(query.label), { exact: false, ...TEXT_NORMALIZER });
   }
   if (query.placeholder !== undefined) {
-    return queryAllByPlaceholderText(container, query.placeholder, { exact: false });
+    return queryAllByPlaceholderText(container, toNfc(query.placeholder), {
+      exact: false,
+      ...TEXT_NORMALIZER,
+    });
   }
   if (query.testid !== undefined) return queryAllByTestId(container, query.testid, { exact: true });
-  if (query.alt !== undefined) return queryAllByAltText(container, query.alt, { exact: false });
+  if (query.alt !== undefined)
+    return queryAllByAltText(container, toNfc(query.alt), { exact: false, ...TEXT_NORMALIZER });
   return [];
 }
 
