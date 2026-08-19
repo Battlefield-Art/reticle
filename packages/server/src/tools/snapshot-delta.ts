@@ -81,6 +81,16 @@ function refOf(text: string): string | undefined {
   return REF_MARKER.exec(text)?.[0]?.trim();
 }
 
+/** Extract the role (first word after the bullet) from a snapshot line — the structural type that must match. */
+function roleOf(text: string): string {
+  return (
+    text
+      .trimStart()
+      .replace(/^-\s*/, '')
+      .split(/[\s"(]/)[0] ?? ''
+  );
+}
+
 function diffKeyed(prev: DeltaLine[], next: DeltaLine[]): { added: string[]; removed: string[] } {
   const bucket = (lines: DeltaLine[]): Map<string, string[]> => {
     const map = new Map<string, string[]>();
@@ -114,8 +124,9 @@ function diffKeyed(prev: DeltaLine[], next: DeltaLine[]): { added: string[]; rem
 }
 
 /**
- * Same ref in both added and removed = value change, not a structural arrival/departure.
- * Extract them from both lists and return the current (after) text for each.
+ * Same ref AND same role in both added and removed = value change, not a structural
+ * arrival/departure. Refs alone are not stable identities — they are re-minted on re-render — so a
+ * removed button and an added textbox sharing a ref must stay in their respective lists.
  */
 function extractChanged(
   added: string[],
@@ -125,10 +136,10 @@ function extractChanged(
   removed: string[];
   changed: string[];
 } {
-  const addedByRef = new Map<string, { idx: number; text: string }>();
+  const addedByRef = new Map<string, { idx: number; text: string; role: string }>();
   for (const [i, text] of added.entries()) {
     const ref = refOf(text);
-    if (ref !== undefined) addedByRef.set(ref, { idx: i, text });
+    if (ref !== undefined) addedByRef.set(ref, { idx: i, text, role: roleOf(text) });
   }
   const changedIndicesInAdded = new Set<number>();
   const changedIndicesInRemoved = new Set<number>();
@@ -137,7 +148,7 @@ function extractChanged(
     const ref = refOf(text);
     if (ref === undefined) continue;
     const match = addedByRef.get(ref);
-    if (match !== undefined) {
+    if (match !== undefined && match.role === roleOf(text)) {
       changed.push(match.text);
       changedIndicesInAdded.add(match.idx);
       changedIndicesInRemoved.add(i);

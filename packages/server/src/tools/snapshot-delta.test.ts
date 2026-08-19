@@ -225,6 +225,16 @@ describe('value changes surface as `changed`, not as remove+add of the same elem
     expect(d.delta.added).toEqual(['- alert "Results" (ref=e6)']);
     expect(d.delta.removed).toEqual([]);
   });
+
+  it('different roles sharing a re-minted ref stay as separate add/remove, not paired', () => {
+    const before = '- button "Delete" (ref=e1)\n- textbox "Name" (ref=e2)';
+    const after = '- textbox "Email" (ref=e1)\n- textbox "Name" (ref=e2)';
+    const d = snapshotDelta(before, after);
+    if (d.mode !== SnapshotDeltaMode.DELTA) throw new Error('expected delta');
+    expect(d.delta.changed).toEqual([]);
+    expect(d.delta.removed).toEqual(['- button "Delete" (ref=e1)']);
+    expect(d.delta.added).toEqual(['- textbox "Email" (ref=e1)']);
+  });
 });
 
 describe('full-tree fallback carries mode and reason', () => {
