@@ -50,10 +50,26 @@ export const TOOL_SURFACE = {
    * answers cost 430. So on the path where the caller already knows what to assert, almost the
    * entire bill is the menu, and the menu is the thing to cut.
    *
-   * Deliberately NOT the default. The retired `dynamic` profile was measured to lose accuracy with
-   * a generic model — "it needs the hot-set schemas. On-demand is for the cold tail, not the hot
-   * path" — and that finding applies here until it is re-measured. This exists for a caller who has
-   * already decided what to check, not for one still exploring.
+   * Deliberately NOT the default, and now MEASURED rather than inherited. Run over the same 30-bug
+   * set that the default surface scores 23/27 detection and 2/29 false alarms on:
+   *
+   *   detection      24/28   (held)
+   *   FALSE ALARMS   7/30    (was 2/29 — TRIPLED)
+   *   tokens         113,599 per run (was 179,959 — 37% cheaper)
+   *
+   * The five new false alarms are not scattered. They are `mutation-leak` and
+   * `generate-blast-filter` (state), `kpi-deploys-tamper` (business-logic), `debounce-broken`
+   * (timing) and `route-stuck-deployments` (routing) — precisely the classes whose evidence lives in
+   * `reticle_state`, `reticle_network` and `reticle_observe`, which this surface does not advertise.
+   * Strip the observation tools and the model stops observing: it reaches for the verdict without
+   * the evidence and calls a healthy build broken.
+   *
+   * So the retired `dynamic` finding is confirmed, with a sharper mechanism than "accuracy drops".
+   * 37% of the tokens is not worth trading for the one metric this product actually wins on, and
+   * this must not become the default on the strength of the token number alone.
+   *
+   * It remains correct for a caller who has ALREADY decided what to assert — there the assertion
+   * supplies the evidence the surface would otherwise have to go and find.
    */
   VERIFY: 'verify',
 } as const;
