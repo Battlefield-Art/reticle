@@ -46,6 +46,7 @@ import { BrowserPool } from './pool/browser-pool.js';
 import { playwrightLauncher, resolveMaxContexts } from './pool/playwright-launcher.js';
 import { LeaseReaper } from './pool/lease-reaper.js';
 import { readJournalEnabled, readProjectId } from './cli/cli-port.js';
+import { probeChromium } from './cli/chromium-hint.js';
 import { makeJournalAttach } from './journal/attach-journal.js';
 import { makeSessionEnd } from './journal/session-end.js';
 import { AmbientStore } from './journal/ambient-store.js';
@@ -433,6 +434,7 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
       reticleRoot,
       now,
       bridgePort: port,
+      browserProbe: probeChromium,
       // The daemon's OWN project, so a tool can tell "this session is mine" from "this session
       // belongs to a sibling app under the same daemon". contract_save refuses on the second.
       ...(activeProjectId === undefined ? {} : { projectId: activeProjectId }),
@@ -545,6 +547,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     reticleRoot,
     now,
     bridgePort: port,
+    browserProbe: probeChromium,
   };
   const profile = resolveToolSurface(options.toolProfile);
   const effectiveDeps = realInput !== undefined ? { ...deps, realInput } : deps;
