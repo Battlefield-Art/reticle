@@ -118,9 +118,7 @@ describe('scoping the text predicate', () => {
   });
 
   it('accepts `scope` with the `text` alias too', () => {
-    expect(
-      parsePredicate({ kind: PredicateKind.TEXT, text: 'Floor', scope: '#modal' }),
-    ).toEqual({
+    expect(parsePredicate({ kind: PredicateKind.TEXT, text: 'Floor', scope: '#modal' })).toEqual({
       kind: PredicateKind.TEXT,
       contains: 'Floor',
       scope: '#modal',
