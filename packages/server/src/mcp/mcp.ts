@@ -11,6 +11,7 @@ import {
   TOOL_SURFACE,
   type ToolSurface,
 } from '../tools/tool-surface.js';
+import { ReticleTool } from '../tools/tool-names.js';
 import { buildDynamicTools } from '../tools/dynamic-tools.js';
 import { runTool, SESSION_BOUND_TOOLS } from '../tools/invoke-tool.js';
 import { sessionEnvelopeShape } from '../tools/tool-kit.js';
@@ -263,7 +264,16 @@ export function advertisedConfig(
   // sentence and the agent would have nothing left to learn the surface from. Measured when it
   // happened: dynamic's tools/list fell 1,543 -> 849 bytes, which looks like a saving and is a
   // capability loss.
-  const terse = profile === TOOL_SURFACE.DEFAULT;
+  //
+  // The two meta-tools are exempt, on every surface. Their descriptions are not a description OF a
+  // capability, they ARE the capability: the only place an agent is ever told that the tools it can
+  // see are not all the tools there are, and how to reach the rest. Trimmed to a first sentence,
+  // `reticle_tools` advertises as "Discover Reticle tools on demand." — which names no way to list
+  // anything, so a well-behaved agent has no reason to call it and the entire cold tail goes dark.
+  // The comment above already caught this for the retired `dynamic` profile; `default` is now both
+  // the lean surface and the one carrying the meta-tools, so the exemption follows it.
+  const isMetaTool = tool.name === ReticleTool.TOOLS || tool.name === ReticleTool.RUN;
+  const terse = profile === TOOL_SURFACE.DEFAULT && !isMetaTool;
   // The first advertised tool carrying a predicate spells the grammar out; the rest point at it.
   const anchor = advertised.find((t) =>
     Object.values(t.inputSchema).some((schema) => isPredicateParam(schema)),
