@@ -83,6 +83,7 @@ const ORDER = [
   'tool-fuzz-test',
   'live-control-test',
   'real-world-tests',
+  'response-ignored-test',
   'multi-agent-lease-test',
   'atlas-hard-fixture-test',
   // Drives a real session and then checks that the EVENTS describe it — a different question from
