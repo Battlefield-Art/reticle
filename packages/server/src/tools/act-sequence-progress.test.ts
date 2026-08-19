@@ -102,7 +102,13 @@ interface SequenceResult {
   dispatched: boolean;
   completed: number;
   stalled_at?: number;
-  steps?: { ref?: string; action?: string; dispatched?: boolean; error?: string }[];
+  steps?: {
+    ref?: string;
+    action?: string;
+    dispatched?: boolean | null;
+    timedOut?: boolean;
+    error?: string;
+  }[];
 }
 
 describe('act_sequence per-step progress', () => {
@@ -161,7 +167,8 @@ describe('act_sequence per-step progress', () => {
     expect(result.stalled_at).toBe(2);
     expect(result.steps).toHaveLength(3);
     const stalled = result.steps?.[2];
-    expect(stalled?.dispatched).toBe(false);
+    expect(stalled?.dispatched).toBeNull();
+    expect(stalled?.timedOut).toBe(true);
     expect(stalled?.error).toContain('timed out');
   });
 
@@ -201,5 +208,29 @@ describe('act_sequence per-step progress', () => {
 
     expect(result.dispatched).toBe(false);
     expect(result.completed).toBe(0);
+  });
+
+  it('distinguishes "refused" (retry safe) from "timed out" (retry unsafe)', async () => {
+    const refused = fakeSession({ failAtStep: 0 });
+    const timedOut = fakeSession({ timeoutAtStep: 0 });
+    const refusedDeps = fakeDeps(refused);
+    const timedOutDeps = fakeDeps(timedOut);
+
+    const refusedResult = (await tool(ReticleTool.ACT_SEQUENCE).handler(refusedDeps, {
+      steps: [{ ref: 'e1', action: 'click' }],
+    })) as SequenceResult;
+
+    const timedOutResult = (await tool(ReticleTool.ACT_SEQUENCE).handler(timedOutDeps, {
+      steps: [{ ref: 'e1', action: 'click' }],
+    })) as SequenceResult;
+
+    const refusedStep = refusedResult.steps?.[0];
+    const timedOutStep = timedOutResult.steps?.[0];
+
+    expect(refusedStep?.dispatched).toBe(false);
+    expect(refusedStep?.timedOut).toBeUndefined();
+
+    expect(timedOutStep?.dispatched).toBeNull();
+    expect(timedOutStep?.timedOut).toBe(true);
   });
 });

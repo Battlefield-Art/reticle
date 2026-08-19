@@ -307,7 +307,8 @@ export const ACT_TOOLS: ToolDef[] = [
             stepResults.push({
               ref: step['ref'],
               action: step['action'],
-              dispatched: false,
+              dispatched: null,
+              timedOut: true,
               error: err instanceof Error ? err.message : 'step timed out',
             });
             break;
