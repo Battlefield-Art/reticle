@@ -243,6 +243,29 @@ function pressKey(args: Record<string, unknown>): string {
 }
 
 /**
+ * Modifier flags for a `press`, from `args.modifiers`: an array of Meta / Control / Shift / Alt
+ * (case-insensitive, with the usual aliases). Without them a Cmd+K / Ctrl+Shift shortcut receives a
+ * keydown with every modifier false, so the app's own `event.metaKey` check never matches and
+ * nothing observable happens -- a false negative Reticle reports as no error. (#393)
+ */
+function pressModifiers(args: Record<string, unknown>): {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+} {
+  const raw = args['modifiers'];
+  const names = Array.isArray(raw) ? raw.map((m) => asString(m).toLowerCase()) : [];
+  const has = (...aliases: string[]): boolean => aliases.some((a) => names.includes(a));
+  return {
+    metaKey: has('meta', 'cmd', 'command', 'super', 'win'),
+    ctrlKey: has('control', 'ctrl'),
+    shiftKey: has('shift'),
+    altKey: has('alt', 'option', 'opt'),
+  };
+}
+
+/**
  * The PHYSICAL key identity — `event.code` — derived from the logical key.
  *
  * A real browser always sends both, and a meaningful class of library reads only `code`, because it
@@ -604,10 +627,11 @@ async function dispatchOther(
     case ActionType.PRESS: {
       const key = pressKey(args);
       const code = pressCode(args, key);
+      const mods = pressModifiers(args);
       const down = el.dispatchEvent(
-        new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true }),
+        new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true, ...mods }),
       );
-      el.dispatchEvent(new KeyboardEvent('keyup', { key, code, bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key, code, bubbles: true, ...mods }));
       return !down;
     }
     case ActionType.SCROLL_INTO_VIEW:

@@ -411,7 +411,7 @@ A `state` assertion is graded as a **consequence** (a wrong element or stale ren
 | `select` | `{ value }` | `<select>` option |
 | `check` / `uncheck` | n/a | checkbox/radio |
 | `submit` | n/a | submits the element's `<form>` |
-| `press` | `{ key }` | keydown/up (default `Enter`) |
+| `press` | `{ key, modifiers? }` | keydown/up (default `Enter`); `modifiers`: an array of `Meta` / `Control` / `Shift` / `Alt` for Cmd+K-style shortcuts |
 | `scrollIntoView` | n/a |  |
 | `upload` | `{ name, content?, type? }` | sets a file on `<input type=file>` |
 | `drag` | `{ toRef }` | pointer-based drag (dnd-kit / rbd) + HTML5 DnD |
