@@ -492,6 +492,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Keep only the most recent N matching calls (older are dropped and counted in droppedOldest) — cuts tokens on a wide window. Defaults to 200 when omitted; pass a higher number for more, or scope with since/until.',
         ),
+      bodies: z
+        .boolean()
+        .optional()
+        .describe(
+          'Include request/response bodies (default true). Pass false for a body-free listing — method, url, status, timing only — for the common "did POST /x return 200?" read. Bodies dominate the payload, so this cuts the cheap case by a large factor.',
+        ),
       ...sessionIdShape,
     },
     outputSchema: {
@@ -519,6 +525,8 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const status = asNumber(args['status']);
       const ok = 'boolean' === typeof args['ok'] ? args['ok'] : undefined;
       const limit = asNumber(args['limit']);
+      // Default true keeps the current shape; `bodies: false` returns the body-free listing (#401).
+      const bodies = 'boolean' === typeof args['bodies'] ? args['bodies'] : true;
       const buffer = bufferEnvelope(session);
       // Completed calls + unresolved in-flight requests (a hung request shows as pending).
       const allNet = reconcileNet(
@@ -538,7 +546,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         matched,
         limit ?? DEFAULT_QUERY_LIMIT,
       );
-      const calls = budgeted.map(projectNetCall);
+      const calls = budgeted.map((e) => projectNetCall(e, bodies));
       // A zero-match FILTER already reports what did fire (netEmptyHint above). Zero calls at all
       // fell through as a bare `[]`, which is indistinguishable from an observer that is not
       // recording — and those need opposite responses. Say the look happened.
@@ -547,7 +555,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
           {
             calls,
             ...(droppedOldest > 0 ? { total: matched.length, droppedOldest } : {}),
-            ...bodiesNotCaptured(calls),
+            ...(bodies ? bodiesNotCaptured(calls) : {}),
             ...buffer,
           },
           'calls',

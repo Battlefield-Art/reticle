@@ -215,7 +215,7 @@ Compare what the API **returned** against what the page **renders**.
 
 Fast targeted lookups without a full timeline.
 
-- `reticle_network({ since?, method?, urlContains?, status? })` → `{ calls }`
+- `reticle_network({ since?, method?, urlContains?, status?, bodies? })` → `{ calls }`. Pass `bodies: false` for a body-free listing (method/url/status/timing only); bodies dominate the payload, so the common "did POST /x return 200?" read gets much cheaper.
 - `reticle_console({ level?, since? })` → `{ logs }`
 - `reticle_animations()` → running/recent animations.
 
