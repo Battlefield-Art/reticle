@@ -88,7 +88,7 @@ describe('a listener that is slow is not a listener that is absent', () => {
 
   it('probeDevServers still returns only ports serving a document', async () => {
     const { probeDevServers } = await import('./dev-server-probe.js');
-    const found = await probeDevServers([3000, 5000], (p) => Promise.resolve(p === 3000));
+    const found = await probeDevServers([3000, 5000], (p) => Promise.resolve(3000 === p));
     expect(found).toEqual([3000]);
   });
 });

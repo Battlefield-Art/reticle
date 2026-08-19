@@ -399,18 +399,17 @@ describe("annotate mode does not swallow the agent's clicks", () => {
  */
 describe('the popover opens on its element, not where the page used to be', () => {
   const at = (el: HTMLElement, box: { left: number; top: number }): void => {
-    el.getBoundingClientRect = (): DOMRect =>
-      ({
-        left: box.left,
-        top: box.top,
-        width: 100,
-        height: 20,
-        right: box.left + 100,
-        bottom: box.top + 20,
-        x: box.left,
-        y: box.top,
-        toJSON: () => ({}),
-      }) as DOMRect;
+    el.getBoundingClientRect = (): DOMRect => ({
+      left: box.left,
+      top: box.top,
+      width: 100,
+      height: 20,
+      right: box.left + 100,
+      bottom: box.top + 20,
+      x: box.left,
+      y: box.top,
+      toJSON: () => ({}),
+    });
   };
   const popEl = (): HTMLElement | null =>
     document.querySelector<HTMLElement>('[data-reticle-mark="pop"]');
@@ -494,8 +493,11 @@ describe('a click on the page blocker still annotates what is under it', () => {
     document.body.appendChild(blocker);
     ann.toggle(true);
 
-    const original = document.elementsFromPoint;
-    document.elementsFromPoint = ((): Element[] => [blocker, target]) as typeof original;
+    // jsdom does not implement elementsFromPoint at all, so this reads undefined and is restored
+    // as undefined. Reflect rather than a direct read: the method is never called off `document`
+    // here, and reading it plainly trips the unbound-method rule.
+    const original: unknown = Reflect.get(document, 'elementsFromPoint');
+    document.elementsFromPoint = (): Element[] => [blocker, target];
     try {
       blocker.dispatchEvent(
         new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }),
@@ -504,7 +506,7 @@ describe('a click on the page blocker still annotates what is under it', () => {
       expect(pop, 'a click through the blocker must open the note').not.toBeNull();
       expect(pop?.textContent ?? '').toContain('Underneath');
     } finally {
-      document.elementsFromPoint = original;
+      Reflect.set(document, 'elementsFromPoint', original);
       ann.toggle(false);
     }
   });
@@ -518,15 +520,18 @@ describe('a click on the page blocker still annotates what is under it', () => {
     hud.setAttribute('data-reticle-overlay', '');
     document.body.appendChild(hud);
     ann.toggle(true);
-    const original = document.elementsFromPoint;
-    document.elementsFromPoint = ((): Element[] => [blocker, hud]) as typeof original;
+    // jsdom does not implement elementsFromPoint at all, so this reads undefined and is restored
+    // as undefined. Reflect rather than a direct read: the method is never called off `document`
+    // here, and reading it plainly trips the unbound-method rule.
+    const original: unknown = Reflect.get(document, 'elementsFromPoint');
+    document.elementsFromPoint = (): Element[] => [blocker, hud];
     try {
       blocker.dispatchEvent(
         new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
       );
       expect(document.querySelector('[data-reticle-mark="pop"]')).toBeNull();
     } finally {
-      document.elementsFromPoint = original;
+      Reflect.set(document, 'elementsFromPoint', original);
       ann.toggle(false);
     }
   });
