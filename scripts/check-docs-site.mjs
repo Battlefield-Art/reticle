@@ -4,6 +4,13 @@
  * on any non-200. Derived from the navigation (not a filesystem walk) so it checks exactly what a
  * user can reach.
  *
+ * Also checks the .md variant of each page (the agent reading path — what llms.txt links to) and
+ * /llms.txt itself (the entry point for the whole agent path).
+ *
+ * Assumes the site returns a real 404 (not a 200 SPA shell) and answers HEAD. Both are true today
+ * but neither is guaranteed by anything we control — if the host changes routing, this gate
+ * silently stops catching broken pages.
+ *
  * Usage:
  *   node scripts/check-docs-site.mjs [--base https://docs.reticle.sh]
  */
@@ -52,7 +59,20 @@ if (allPages.length === 0) {
   process.exit(1);
 }
 
-console.log(`Checking ${allPages.length} pages against ${BASE_URL} ...\n`);
+// The .md variant of each page is the agent reading path (what llms.txt links to). It is served
+// by a different route, so a page can be fine and its .md broken — and the reader it breaks is
+// the one we care most about.
+const mdPages = allPages.map((page) => `${page}.md`);
+
+// /llms.txt is the entry point for the whole agent path — if it 404s, every other page being
+// green is beside the point.
+const entryPoints = ['llms.txt'];
+
+const allChecks = [...allPages, ...mdPages, ...entryPoints];
+
+console.log(
+  `Checking ${allPages.length} pages + ${mdPages.length} .md variants + ${entryPoints.length} entry point(s) against ${BASE_URL} ...\n`,
+);
 
 const failures = [];
 const CONCURRENCY = 5;
@@ -67,7 +87,7 @@ async function checkPage(page) {
       failures.push({ page, status: res.status });
       console.log(`  ✗ ${page} → ${res.status}`);
     } else {
-      process.stdout.write(`\r  checked ${checked}/${allPages.length}`);
+      process.stdout.write(`\r  checked ${checked}/${allChecks.length}`);
     }
   } catch (err) {
     checked++;
@@ -77,8 +97,8 @@ async function checkPage(page) {
 }
 
 async function run() {
-  for (let i = 0; i < allPages.length; i += CONCURRENCY) {
-    const batch = allPages.slice(i, i + CONCURRENCY);
+  for (let i = 0; i < allChecks.length; i += CONCURRENCY) {
+    const batch = allChecks.slice(i, i + CONCURRENCY);
     await Promise.all(batch.map(checkPage));
   }
   console.log('\n');
@@ -89,7 +109,7 @@ async function run() {
     }
     process.exit(1);
   }
-  console.log(`All ${allPages.length} pages returned 200.`);
+  console.log(`All ${allChecks.length} URLs returned 200.`);
 }
 
 run();
