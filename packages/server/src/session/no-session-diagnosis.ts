@@ -128,6 +128,23 @@ const RETRY = SELF_RECOVERING_MARKER;
  * Only offered when the app is known to carry the SDK: leasing an uninstrumented app just burns a
  * browser and comes back `ready:false`.
  */
+/**
+ * The no-shell path, for the branches where a BLIND lease would be wrong.
+ *
+ * A lease opens a URL, so offering one while nothing is listening is offering to open nothing —
+ * which is why these branches deliberately withheld it, and a test pins that. But withholding it
+ * left an agent with no CLI holding no path at all: reported from Windows, where the MCP server was
+ * registered and every tool advertised while no `reticle` binary existed on disk, so every remedy
+ * offered was a shell command that could not be run.
+ *
+ * The resolution is the ORDER, not the offer. Get the URL first — which these branches already tell
+ * the reader to do — and then the lease is the way to open it without a shell.
+ */
+const URL_THEN_LEASE =
+  'Once you have that URL, open it with reticle_lease {action:"acquire", url} rather than a shell ' +
+  'command — it needs no CLI on PATH (reach it with reticle_run {tool:"reticle_lease"} if it is ' +
+  'not advertised directly).';
+
 const SELF_SERVE =
   'You do not have to wait for the human: reticle_lease {action:"acquire", url} opens a browser ' +
   'Reticle drives itself, and returns a sessionId you can use immediately (reach it with ' +
@@ -398,7 +415,7 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
     return (
       'no browser session connected, and this daemon has never seen one. ' +
       `${configsElsewhereClause(facts)} ${unattributedListeners(listening)} ${OPEN_THE_APP} ` +
-      `${rankedCauses(facts)} ${RETRY}`
+      `${rankedCauses(facts)} ${SELF_SERVE} ${RETRY}`
     );
   }
 
@@ -431,7 +448,7 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
         `file ${INIT_CMD} writes, so the app may carry no Reticle SDK — but check the app's ` +
         'OWN directory before re-running `init`: in a monorepo the daemon often runs at the root ' +
         'while the app lives in a subdirectory, and an app wired by the Vite or Babel plugin ' +
-        `carries the SDK without that file at all.${searchedClause(facts)} ${RETRY}`
+        `carries the SDK without that file at all.${searchedClause(facts)} ${URL_THEN_LEASE} ${RETRY}`
       );
     }
     return (
@@ -451,7 +468,7 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
       // Deliberately NOT offering reticle_lease here, and a test pins that: a lease opens a URL, and
       // if nothing is listening there is nothing at any URL to open. Asking for the real one is the
       // only move that can recover the :7699 case.
-      'the app IS running, ask the human for its URL rather than assuming it is down. ' +
+      `the app IS running, ask the human for its URL rather than assuming it is down. ${URL_THEN_LEASE} ` +
       // Reachable only for a project that HAS been through `init` — the uninstrumented case is
       // answered above, leading with that certainty instead of behind this scan's guess.
       `${RETRY}`

@@ -131,14 +131,24 @@ describe('diagnoseNoSession', () => {
     expect(msg).not.toContain('reticle_lease');
   });
 
-  it('does NOT offer it when nothing is running — there is nothing to open', () => {
+  /**
+   * Refined rather than dropped: a BLIND lease is still wrong here, because a lease opens a URL and
+   * nothing is listening at any of them. What changed is that withholding it entirely left an agent
+   * with no CLI holding no path at all (reported from Windows, where every tool was advertised and
+   * no `reticle` binary existed). So the offer is now ordered behind getting the URL, which this
+   * branch already instructs, and never presented as something to try immediately.
+   */
+  it('does not offer a BLIND lease when nothing is running, but names it after the URL', () => {
     const msg = diagnoseNoSession({
       everConnected: false,
       initialized: true,
       listening: [],
       port: 4400,
     });
-    expect(msg).not.toContain('reticle_lease');
+    expect(msg, 'the lease must be conditioned on having a URL').toContain(
+      'Once you have that URL',
+    );
+    expect(msg.indexOf('ask the human for its URL')).toBeLessThan(msg.indexOf('reticle_lease'));
   });
 
   it('always ends with something the agent can DO', () => {
@@ -510,5 +520,46 @@ describe('remediation names a command that actually runs', () => {
       port: 4400,
     });
     expect(text).toContain('npx @reticlehq/server');
+  });
+});
+
+/**
+ * Every stuck branch must name the escape hatch that needs no shell.
+ *
+ * `reticle_lease {action:"acquire", url}` opens a browser Reticle drives itself and hands back a
+ * sessionId — the one recovery that works with no CLI, no human, and no dev server the agent can
+ * reach. It was named in three branches and missing from the two an agent that has NEVER connected
+ * actually lands on, which are precisely the branches where it is the only way out.
+ *
+ * Reported from Windows, where the MCP server was registered and all its tools advertised while no
+ * CLI existed on disk: every remedy offered was a shell command the agent could not run. Also from
+ * two reporters whose daemon was pinned to a different repo, who were told to restart it and had no
+ * in-session alternative.
+ *
+ * Asserted over every branch, because the value of an escape hatch is that it is there on the path
+ * you are actually on.
+ */
+describe('every branch offers the no-shell escape hatch', () => {
+  const branches: NoSessionFacts[] = [
+    { everConnected: false, initialized: false, listening: [], port: 4400 },
+    { everConnected: false, initialized: true, listening: [], port: 4400 },
+    { everConnected: false, initialized: true, listening: [5173], port: 4400 },
+    { everConnected: true, initialized: true, listening: [5173], port: 4400 },
+    { everConnected: true, initialized: true, listening: [], port: 4400, leaseExpired: true },
+    { everConnected: false, initialized: false, listening: [], port: 4400, slowListeners: [5000] },
+    {
+      everConnected: false,
+      initialized: false,
+      listening: [],
+      port: 4400,
+      configsElsewhere: [{ directory: '/other/repo', projectId: 'other' }],
+    },
+  ];
+
+  it.each(branches.map((f, i) => [i, f] as const))('branch %i names reticle_lease', (_i, facts) => {
+    expect(
+      diagnoseNoSession(facts),
+      'an agent with no shell and no session has no other way out of this branch',
+    ).toContain('reticle_lease');
   });
 });
