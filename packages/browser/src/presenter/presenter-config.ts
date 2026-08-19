@@ -1,4 +1,4 @@
-import { type ControlHandler } from './presenter-controls.js';
+import type { ControlHandler } from './presenter-controls.js';
 
 /**
  * Presenter tunables + option surface. Split out of presenter.ts so that file is just the controller
@@ -184,5 +184,5 @@ export const HUD_DRAG_THRESHOLD_PX = 4;
 export const HUD_DOCK_MARGIN_PX = 8;
 /** Interactive nodes inside the drag handle that must not start a drag (not the FAB itself). */
 export const HUD_DRAG_IGNORE_SEL =
-  '[data-reticle-pause], [data-reticle-markers-btn], [data-reticle-clear-marks], [data-reticle-end], [data-reticle-min-btn], [data-reticle-settings-btn], [data-reticle-settings-panel], [data-reticle-chat-panel], [data-reticle-chat-toggle], [data-reticle-workspace-btn], [data-reticle-workspace-menu], [data-reticle-copy], [data-reticle-export], [data-reticle-send], input, textarea, select, a, .reticle-head-ctl, [data-reticle-tally], .reticle-maxhint';
+  '[data-reticle-pause], [data-reticle-annotate-btn], [data-reticle-markers-btn], [data-reticle-clear-marks], [data-reticle-end], [data-reticle-min-btn], [data-reticle-settings-btn], [data-reticle-settings-panel], [data-reticle-chat-panel], [data-reticle-chat-toggle], [data-reticle-workspace-btn], [data-reticle-workspace-menu], [data-reticle-copy], [data-reticle-export], [data-reticle-send], input, textarea, select, a, .reticle-head-ctl, [data-reticle-tally], .reticle-maxhint';
 export const THROTTLED_ATTR = 'data-reticle-throttled';
