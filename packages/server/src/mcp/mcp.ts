@@ -12,6 +12,7 @@ import {
   type ToolSurface,
 } from '../tools/tool-surface.js';
 import { ReticleTool } from '../tools/tool-names.js';
+import { SHARED_PARAM_SHORT } from './shared-params.js';
 import { buildDynamicTools } from '../tools/dynamic-tools.js';
 import { runTool, SESSION_BOUND_TOOLS } from '../tools/invoke-tool.js';
 import { sessionEnvelopeShape } from '../tools/tool-kit.js';
@@ -175,6 +176,16 @@ function leanZodShape(shape: z.ZodRawShape, predicateAnchor?: string): z.ZodRawS
         .describe(hintSpent ? PREDICATE_KINDS : COMPACT_PREDICATE_DESCRIPTION);
       hintSpent = true;
       out[key] = schema.isOptional() ? compact.optional() : compact;
+      continue;
+    }
+    // Shared boilerplate is documented once in the initialize instructions instead of on every
+    // tool, every turn. `sessionId` alone was 2,076 bytes of identical text across 16 tools.
+    const shared = SHARED_PARAM_SHORT[key];
+    if (shared !== undefined) {
+      // `.describe` returns the same schema with new prose, so optionality carries over. Re-wrapping
+      // in `.optional()` would nest one inside another and change the parameter's TYPE, which is a
+      // thing this lean path is meant to do for predicates and nothing else.
+      out[key] = schema.describe(shared);
       continue;
     }
     const desc = schema.description;

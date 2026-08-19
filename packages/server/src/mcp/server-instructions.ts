@@ -1,3 +1,4 @@
+import { SHARED_PARAM_GUIDANCE } from './shared-params.js';
 /**
  * What every connected agent is told, before it has asked anything.
  *
@@ -57,8 +58,14 @@ export interface InstructionState {
 }
 
 /** The instructions this daemon should advertise, given what it knows about the project. */
+/**
+ * Instructions are sent ONCE at initialize; the tool surface is re-sent every turn. Measured on this
+ * server: 621 tokens here against 5,480 per turn there, so anything true of every tool belongs in
+ * this block rather than repeated across sixteen parameter descriptions. See shared-params.ts.
+ */
 export function buildServerInstructions(state: InstructionState): string {
-  return state.previouslyConnected
+  const base = state.previouslyConnected
     ? `${VERDICT_DISCIPLINE}\n\n${FEEDBACK_ASK}`
     : `${FIRST_MOVE}\n\n${VERDICT_DISCIPLINE}\n\n${FEEDBACK_ASK}`;
+  return `${base}\n\n${SHARED_PARAM_GUIDANCE}`;
 }

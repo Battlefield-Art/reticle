@@ -70,7 +70,11 @@ export const DEVTOOLS_MCP = 'chrome-devtools-mcp@1.7.0';
 /** The refusal Reticle returns when nothing is attached. Its presence means the cell measured NOTHING. */
 const NO_SESSION_MARKER = 'no browser session connected';
 
-export const TOOLS = ['playwright_mcp', 'devtools_mcp', 'reticle'];
+/** Arms to run. Narrow with BENCH_TOOLS when only one side changed — the others are unaffected. */
+export const TOOLS = (process.env.BENCH_TOOLS ?? 'playwright_mcp,devtools_mcp,reticle')
+  .split(',')
+  .map((t) => t.trim())
+  .filter(Boolean);
 
 // MCP server per tool. Reticle bakes the driven URL into --drive, so it is spawned per cell.
 function serverFor(toolKey, url) {
@@ -100,6 +104,10 @@ function serverFor(toolKey, url) {
     ],
     env: {
       RETICLE_PORT,
+      // Opt the Reticle arm onto the lean verify surface, to measure what a smaller advertised
+      // surface costs in DETECTION rather than only in tokens. The retired `dynamic` profile was
+      // removed on exactly this question and the answer has never been re-taken.
+      ...(process.env.BENCH_RETICLE_VERIFY === '1' ? { RETICLE_VERIFY_SURFACE: '1' } : {}),
       // The SHIPPED default surface, not the full 48. Advertising everything re-sends 48 schemas on
       // every turn and roughly tripled Reticle's input tokens against competitors running their own
       // defaults — a harness setting scoring as a property of the tool, and not what a user gets.
@@ -292,14 +300,26 @@ async function runCell(bug, toolKey, variant) {
   /** Did this cell answer only because the budget ran out? Reported, never silently blended in. */
   let forcedAtCap = false;
   try {
-    await client.start();
+    // The server's own `instructions` are part of what it advertises, and a real MCP client puts
+    // them in front of the model. This harness discarded them and sent only its own system prompt,
+    // so every number it has produced was measured with the server's guidance ABSENT — the verdict
+    // discipline, the hand-back protocol, the shared-argument vocabulary, none of it reached the
+    // model. Measuring a change that moves text INTO that block would have scored a deletion.
+    const init = await client.start();
+    const serverInstructions =
+      'string' === typeof init?.instructions && init.instructions.length > 0
+        ? init.instructions
+        : '';
     if (toolKey === 'reticle') await sleep(RETICLE_READY_MS); // driven browser load + SDK connect
     const tools = P.tools(await client.listTools());
     const task =
       `Verify: ${bug.intent}. Navigate to ${url} (log in with admin@reticle.dev / password if a ` +
       `login form appears — the fields are pre-filled). Use the tools to decide if this holds or is ` +
       `broken.${setupHint(bug)} End by calling ${VERDICT_NAME} with {holds:boolean, evidence:string}.`;
-    const messages = P.seed(task);
+    // Server instructions ride ahead of the task, the way a client would place them.
+    const messages = P.seed(
+      serverInstructions.length > 0 ? `${serverInstructions}\n\n---\n\n${task}` : task,
+    );
     let forced = false;
     for (turns = 0; turns < MAX_TURNS; turns++) {
       const resp = await P.send(messages, tools);

@@ -53,8 +53,15 @@ describe('buildServerInstructions', () => {
   it('stays short enough to be read in full, in both states', () => {
     // Every connected agent pays this in every session. A first move nobody finishes reading is
     // not a first move.
+    //
+    // Raised from 2,600 to admit the shared-argument vocabulary, and only that. The budget it buys
+    // back is real and one-sided: those three arguments were documented identically on sixteen
+    // tools, costing 1,367 bytes of the surface RE-SENT EVERY TURN, against 300-odd bytes here
+    // charged once. Anything added beyond that has to make the same argument — a paragraph that is
+    // not replacing per-turn repetition is just a longer preamble, and the reason for the cap is
+    // attention, not bytes.
     for (const previouslyConnected of [true, false]) {
-      expect(buildServerInstructions({ previouslyConnected }).length).toBeLessThan(2600);
+      expect(buildServerInstructions({ previouslyConnected }).length).toBeLessThan(2900);
     }
   });
 });
