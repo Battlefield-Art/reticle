@@ -22,9 +22,18 @@ import { ensureApp } from './run.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..', '..');
 // Provider-agnostic (OpenAI-compatible). DeepSeek: DEEPSEEK_API_KEY + BENCH_LLM_URL=https://api.deepseek.com/v1/chat/completions BENCH_LLM_MODEL=deepseek-chat.
-const KEY = process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? process.env.LLM_API_KEY;
+// Anthropic is checked first only because it is the key this repo actually carries; either provider
+// runs the identical loop. PROVIDER is derived from which key is present unless pinned explicitly.
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+const OPENAI_KEY =
+  process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? process.env.LLM_API_KEY;
+const PROVIDER =
+  process.env.BENCH_PROVIDER ?? (ANTHROPIC_KEY !== undefined ? 'anthropic' : 'openai');
+const KEY = PROVIDER === 'anthropic' ? ANTHROPIC_KEY : OPENAI_KEY;
 const LLM_URL = process.env.BENCH_LLM_URL ?? 'https://api.openai.com/v1/chat/completions';
-const MODEL = process.env.BENCH_LLM_MODEL ?? process.env.BENCH_OPENAI_MODEL ?? 'gpt-4o';
+const ANTHROPIC_URL = process.env.BENCH_ANTHROPIC_URL ?? 'https://api.anthropic.com/v1/messages';
+const DEFAULT_MODEL = PROVIDER === 'anthropic' ? 'claude-haiku-4-5-20251001' : 'gpt-4o';
+const MODEL = process.env.BENCH_LLM_MODEL ?? process.env.BENCH_OPENAI_MODEL ?? DEFAULT_MODEL;
 const MAX_TURNS = Number(process.env.BENCH_MAX_TURNS ?? 14);
 // MUST match apps/bench-app's baked-in default (its vite.config.ts reads RETICLE_PORT at dev-server
 // start). This said 4461 against the app's 4460 and silently invalidated every Reticle cell.
@@ -32,9 +41,10 @@ const RETICLE_PORT = process.env.BENCH_HH_RETICLE_PORT ?? '4460';
 const RETICLE_READY_MS = Number(process.env.BENCH_RETICLE_READY_MS ?? '3500');
 
 // Per-token pricing (USD). Defaults = gpt-4o; override per provider (deepseek-chat ≈ 0.27 in / 1.10 out).
+const DEFAULT_PRICE = PROVIDER === 'anthropic' ? { in: 1, out: 5 } : { in: 2.5, out: 10 };
 const PRICE = {
-  inputPerM: Number(process.env.BENCH_LLM_IN ?? 2.5),
-  outputPerM: Number(process.env.BENCH_LLM_OUT ?? 10),
+  inputPerM: Number(process.env.BENCH_LLM_IN ?? DEFAULT_PRICE.in),
+  outputPerM: Number(process.env.BENCH_LLM_OUT ?? DEFAULT_PRICE.out),
   per: 1_000_000,
 };
 const dollars = (inTok, outTok) =>
@@ -48,7 +58,7 @@ const argLimit = () => {
 
 if (!KEY) {
   console.log(
-    'NOT MEASURED (set OPENAI_API_KEY) — mcp-head-to-head needs a real gpt-4o agent loop.',
+    'NOT MEASURED (set ANTHROPIC_API_KEY or OPENAI_API_KEY) — mcp-head-to-head needs a real agent loop.',
   );
   process.exit(0);
 }
@@ -90,52 +100,156 @@ function serverFor(toolKey, url) {
     ],
     env: {
       RETICLE_PORT,
-      RETICLE_ADVERTISE_ALL_TOOLS: process.env.BENCH_RETICLE_ADVERTISE_ALL ?? '1',
+      // The SHIPPED default surface, not the full 48. Advertising everything re-sends 48 schemas on
+      // every turn and roughly tripled Reticle's input tokens against competitors running their own
+      // defaults — a harness setting scoring as a property of the tool, and not what a user gets.
+      RETICLE_ADVERTISE_ALL_TOOLS: process.env.BENCH_RETICLE_ADVERTISE_ALL ?? '0',
     },
   };
 }
 
 // Synthetic verdict tool injected into every tool list — the model MUST end by calling it.
-const VERDICT_TOOL = {
-  type: 'function',
-  function: {
-    name: 'report_verdict',
-    description:
-      'Call this once you have decided. holds=true if the property under test holds, false if it is broken. evidence: one sentence citing what you observed.',
-    parameters: {
-      type: 'object',
-      properties: {
-        holds: { type: 'boolean', description: 'true = property holds, false = broken' },
-        evidence: { type: 'string', description: 'one sentence of evidence' },
+/** The one decision every cell must end on, expressed once and formatted per provider. */
+const VERDICT_NAME = 'report_verdict';
+const VERDICT_DESC =
+  'Call this once you have decided. holds=true if the property under test holds, false if it is broken. evidence: one sentence citing what you observed.';
+const VERDICT_SCHEMA = {
+  type: 'object',
+  properties: {
+    holds: { type: 'boolean', description: 'true = property holds, false = broken' },
+    evidence: { type: 'string', description: 'one sentence of evidence' },
+  },
+  required: ['holds', 'evidence'],
+};
+
+const SYSTEM =
+  'You are a browser verification agent. Use the provided tools to look, act, and observe, then decide. ' +
+  `When you have enough evidence, call ${VERDICT_NAME} exactly once. Do not guess without observing.`;
+
+/**
+ * Two model providers, one loop.
+ *
+ * The harness was written against OpenAI chat/completions. Anthropic's Messages API differs in the
+ * tool schema key, where the system prompt lives, how the assistant turn is echoed back, and how tool
+ * results are returned (a user turn carrying tool_result blocks, not one message per call). Keeping
+ * both behind this shape means the measured loop, the turn cap and the forced-verdict rule stay
+ * IDENTICAL across providers, which is the only way a cross-provider number would mean anything.
+ */
+const PROVIDERS = {
+  openai: {
+    tools: (mcp) => [
+      ...mcp.map((t) => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: (t.description ?? '').slice(0, 1000),
+          parameters:
+            t.inputSchema && t.inputSchema.type === 'object'
+              ? t.inputSchema
+              : { type: 'object', properties: {} },
+        },
+      })),
+      {
+        type: 'function',
+        function: { name: VERDICT_NAME, description: VERDICT_DESC, parameters: VERDICT_SCHEMA },
       },
-      required: ['holds', 'evidence'],
+    ],
+    seed: (task) => [
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content: task },
+    ],
+    async send(messages, tools) {
+      const r = await fetch(LLM_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${KEY}` },
+        body: JSON.stringify({
+          model: MODEL,
+          messages,
+          tools,
+          tool_choice: 'auto',
+          max_tokens: 1024,
+        }),
+      });
+      if (!r.ok) throw new Error(`openai ${r.status}: ${(await r.text()).slice(0, 300)}`);
+      const j = await r.json();
+      const msg = j.choices?.[0]?.message ?? null;
+      const calls = (msg?.tool_calls ?? []).map((tc) => {
+        let args = {};
+        try {
+          args = JSON.parse(tc.function.arguments || '{}');
+        } catch {
+          /* malformed args count as empty, same as before */
+        }
+        return { id: tc.id, name: tc.function.name, args };
+      });
+      return {
+        inTok: j.usage?.prompt_tokens ?? 0,
+        outTok: j.usage?.completion_tokens ?? 0,
+        raw: msg,
+        calls,
+        ended: msg === null,
+      };
     },
+    pushAssistant: (messages, raw) => messages.push(raw),
+    pushResults: (messages, results) => {
+      for (const r of results)
+        messages.push({ role: 'tool', tool_call_id: r.id, content: r.content });
+    },
+    pushUser: (messages, text) => messages.push({ role: 'user', content: text }),
+  },
+
+  anthropic: {
+    tools: (mcp) => [
+      ...mcp.map((t) => ({
+        name: t.name,
+        description: (t.description ?? '').slice(0, 900),
+        input_schema:
+          t.inputSchema && t.inputSchema.type === 'object'
+            ? t.inputSchema
+            : { type: 'object', properties: {} },
+      })),
+      { name: VERDICT_NAME, description: VERDICT_DESC, input_schema: VERDICT_SCHEMA },
+    ],
+    seed: (task) => [{ role: 'user', content: task }],
+    async send(messages, tools) {
+      const r = await fetch(ANTHROPIC_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: SYSTEM, tools, messages }),
+      });
+      if (!r.ok) throw new Error(`anthropic ${r.status}: ${(await r.text()).slice(0, 300)}`);
+      const j = await r.json();
+      const content = Array.isArray(j.content) ? j.content : [];
+      return {
+        inTok: j.usage?.input_tokens ?? 0,
+        outTok: j.usage?.output_tokens ?? 0,
+        raw: content,
+        calls: content
+          .filter((c) => c.type === 'tool_use')
+          .map((c) => ({ id: c.id, name: c.name, args: c.input ?? {} })),
+        ended: content.length === 0,
+      };
+    },
+    pushAssistant: (messages, raw) => messages.push({ role: 'assistant', content: raw }),
+    // Anthropic requires EVERY tool_use in a turn to be answered in ONE following user turn.
+    pushResults: (messages, results) =>
+      messages.push({
+        role: 'user',
+        content: results.map((r) => ({
+          type: 'tool_result',
+          tool_use_id: r.id,
+          content: r.content,
+        })),
+      }),
+    pushUser: (messages, text) => messages.push({ role: 'user', content: text }),
   },
 };
 
-function mcpToolsToOpenAI(tools) {
-  return tools.map((t) => ({
-    type: 'function',
-    function: {
-      name: t.name,
-      description: (t.description ?? '').slice(0, 1000),
-      parameters:
-        t.inputSchema && t.inputSchema.type === 'object'
-          ? t.inputSchema
-          : { type: 'object', properties: {} },
-    },
-  }));
-}
-
-async function callOpenAI(messages, tools) {
-  const r = await fetch(LLM_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${KEY}` },
-    body: JSON.stringify({ model: MODEL, messages, tools, tool_choice: 'auto', max_tokens: 1024 }),
-  });
-  if (!r.ok) throw new Error(`openai ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  return r.json();
-}
+const P = PROVIDERS[PROVIDER];
 
 // Run one (bug, tool, variant) agent loop. Returns a fully-costed row.
 async function runCell(bug, toolKey, variant) {
@@ -154,71 +268,73 @@ async function runCell(bug, toolKey, variant) {
   try {
     await client.start();
     if (toolKey === 'reticle') await sleep(RETICLE_READY_MS); // driven browser load + SDK connect
-    const tools = [...mcpToolsToOpenAI(await client.listTools()), VERDICT_TOOL];
-    const messages = [
-      {
-        role: 'system',
-        content:
-          'You are a browser verification agent. Use the provided tools to look, act, and observe, then decide. When you have enough evidence, call report_verdict exactly once. Do not guess without observing.',
-      },
-      {
-        role: 'user',
-        content: `Verify: ${bug.intent}. Navigate to ${url} (log in with admin@reticle.dev / password if a login form appears — the fields are pre-filled). Use the tools to decide if this holds or is broken. End by calling report_verdict with {holds:boolean, evidence:string}.`,
-      },
-    ];
+    const tools = P.tools(await client.listTools());
+    const task =
+      `Verify: ${bug.intent}. Navigate to ${url} (log in with admin@reticle.dev / password if a ` +
+      `login form appears — the fields are pre-filled). Use the tools to decide if this holds or is ` +
+      `broken. End by calling ${VERDICT_NAME} with {holds:boolean, evidence:string}.`;
+    const messages = P.seed(task);
     let forced = false;
     for (turns = 0; turns < MAX_TURNS; turns++) {
-      const resp = await callOpenAI(messages, tools);
-      inTok += resp.usage?.prompt_tokens ?? 0;
-      outTok += resp.usage?.completion_tokens ?? 0;
-      const msg = resp.choices?.[0]?.message;
-      if (!msg) break;
-      messages.push(msg);
-      const calls = msg.tool_calls ?? [];
+      const resp = await P.send(messages, tools);
+      inTok += resp.inTok;
+      outTok += resp.outTok;
+      if (resp.ended) break;
+      P.pushAssistant(messages, resp.raw);
       // Model replied with prose instead of a tool call: if it never gave a verdict, force one
-      // (fair to both tools — otherwise a chatty turn scores as a non-detection).
-      if (calls.length === 0) {
+      // (fair to every tool — otherwise a chatty turn scores as a non-detection).
+      if (resp.calls.length === 0) {
         if (verdict === null && !forced) {
           forced = true;
-          messages.push({
-            role: 'user',
-            content:
-              'You did not call report_verdict. Based only on what you have already observed, call report_verdict NOW — holds:true if the property holds, holds:false if it is broken.',
-          });
+          P.pushUser(
+            messages,
+            `You did not call ${VERDICT_NAME}. Based only on what you have already observed, call ` +
+              `${VERDICT_NAME} NOW — holds:true if the property holds, holds:false if it is broken.`,
+          );
           continue;
         }
         break;
       }
+      // Every tool_use in a turn must be answered, including the verdict call, or Anthropic rejects
+      // the next request. So results are collected for ALL calls and flushed once, then we stop.
+      const results = [];
       let done = false;
-      for (const tc of calls) {
-        let args = {};
-        try {
-          args = JSON.parse(tc.function.arguments || '{}');
-        } catch {
-          /* */
-        }
-        if (tc.function.name === 'report_verdict') {
-          verdict = typeof args.holds === 'boolean' ? args.holds : null;
-          evidence = String(args.evidence ?? '').slice(0, 300);
-          messages.push({ role: 'tool', tool_call_id: tc.id, content: 'recorded' });
+      for (const tc of resp.calls) {
+        if (tc.name === VERDICT_NAME) {
+          verdict = typeof tc.args.holds === 'boolean' ? tc.args.holds : null;
+          evidence = String(tc.args.evidence ?? '').slice(0, 300);
+          results.push({ id: tc.id, content: 'recorded' });
           done = true;
           continue;
         }
         let content = '';
         try {
-          const out = await client.callTool(tc.function.name, args, 60000);
+          const out = await client.callTool(tc.name, tc.args, 60000);
           content = out.text.slice(0, 8000);
           if (!content.includes(NO_SESSION_MARKER)) observed = true;
         } catch (e) {
           content = `error: ${String(e).slice(0, 200)}`;
         }
-        messages.push({ role: 'tool', tool_call_id: tc.id, content });
+        results.push({ id: tc.id, content });
       }
+      P.pushResults(messages, results);
       if (done) break;
     }
     // detected = verdict correctly says broken on the buggy build.
-    const detected = variant === 'buggy' ? verdict === false : null;
-    const falsePositive = variant === 'clean' ? verdict === false : null;
+    //
+    // A cell that ran out of turns without ever calling report_verdict is NOT a result, and scoring
+    // it as one is silently biased: on a buggy build a null reads as "missed it" and counts against
+    // the tool, while the identical null on a clean build reads as "no false alarm" and counts for
+    // it. Same non-answer, opposite sign. Null stays null and is reported on its own line.
+    //
+    // A trap bug is not a bug. Its "buggy" build is a HEALTHY build that merely looks alarming (a
+    // timestamp that rewrites itself, an ambient animation), and the correct answer there is that the
+    // property holds. Scoring it as a detection would reward flagging a working app, so a trap's
+    // buggy variant is graded on the false-positive axis exactly like a clean build.
+    const isTrap = bug.trap === true;
+    const gradesAsClean = variant === 'clean' || isTrap;
+    const detected = !gradesAsClean && verdict !== null ? verdict === false : null;
+    const falsePositive = gradesAsClean && verdict !== null ? verdict === false : null;
     return {
       bug: bug.id,
       category: bug.category,
@@ -330,8 +446,9 @@ function aggregate(rows) {
     const clean = mine.filter((r) => r.variant === 'clean');
     const n = mine.length || 1;
     byTool[tool] = {
-      detectionRate: `${buggy.filter((r) => r.detected === true).length}/${buggy.length}`,
-      falsePositives: clean.filter((r) => r.false_positive === true).length,
+      detectionRate: `${buggy.filter((r) => r.detected === true).length}/${buggy.filter((r) => r.detected !== null).length}`,
+      falsePositives: `${clean.filter((r) => r.false_positive === true).length}/${clean.filter((r) => r.false_positive !== null).length}`,
+      noVerdict: mine.filter((r) => r.verdict_holds === null).length,
       voidRuns: mine.filter((r) => r.observed === false).length,
       avgTokens: Math.round(mine.reduce((a, r) => a + r.total_tokens, 0) / n),
       avgTurns: +(mine.reduce((a, r) => a + r.turns, 0) / n).toFixed(1),
@@ -364,12 +481,20 @@ function scorecard(agg, rows) {
   L.push(`|---|${cols.map(() => '--:').join('|')}|`);
   L.push(row('Detection rate (buggy)', (a) => a.detectionRate));
   L.push(row('False positives (clean)', (a) => a.falsePositives));
+  L.push(row('No verdict (hit turn cap)', (a) => a.noVerdict));
   L.push(row('Avg tokens / run', (a) => a.avgTokens.toLocaleString('en-US')));
   L.push(row('Avg turns / run', (a) => a.avgTurns));
   L.push(row('Avg latency / run', (a) => `${a.avgLatencyMs} ms`));
   L.push(row('Avg $ / run', (a) => `$${a.avgCostUsd}`));
   L.push(row('Total $', (a) => `$${a.totalCostUsd}`));
   L.push(row('Void runs (observed nothing)', (a) => a.voidRuns));
+  L.push('');
+  L.push(
+    'Rates are over cells that reached a verdict. A cell that burned every turn without deciding is ' +
+      'counted on its own line and excluded from both rates: scoring it would read as a miss on the ' +
+      'buggy build and as a clean pass on the clean one, which is the same non-answer with opposite ' +
+      'signs. A high count there is itself a cost of the tool.',
+  );
   L.push('');
   L.push(
     'A **void run** is a cell where every tool call was refused for want of a session. It is neither a ' +
