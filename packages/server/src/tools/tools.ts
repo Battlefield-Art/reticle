@@ -149,7 +149,14 @@ const RAW_TOOLS: ToolDef[] = [
         .string()
         .optional()
         .describe('Indented ARIA tree of every element on the page (or the scoped subtree).'),
-      status: z.object({ route: z.string(), title: z.string().optional() }).optional(),
+      status: z
+        .object({
+          route: z.string(),
+          title: z.string().optional(),
+          visibleDialogs: z.array(z.string()).optional(),
+          overlayHidingPage: z.string().optional(),
+        })
+        .optional(),
       mode: z
         .string()
         .optional()
