@@ -42,6 +42,20 @@ export const TOOL_SURFACE = {
   DEFAULT: 'default',
   /** Every tool advertised directly, WITH output schemas. A verification switch — see above. */
   ALL: 'all',
+  /**
+   * The smallest surface that can still produce a VERDICT. Not a profile — a cost switch.
+   *
+   * Measured on the wire: a verification that names its own target costs one `act_and_wait` call,
+   * and 5,480 of its 5,909 tokens are the advertised surface re-sent for that single turn. The
+   * answers cost 430. So on the path where the caller already knows what to assert, almost the
+   * entire bill is the menu, and the menu is the thing to cut.
+   *
+   * Deliberately NOT the default. The retired `dynamic` profile was measured to lose accuracy with
+   * a generic model — "it needs the hot-set schemas. On-demand is for the cold tail, not the hot
+   * path" — and that finding applies here until it is re-measured. This exists for a caller who has
+   * already decided what to check, not for one still exploring.
+   */
+  VERIFY: 'verify',
 } as const;
 export type ToolSurface = (typeof TOOL_SURFACE)[keyof typeof TOOL_SURFACE];
 
@@ -52,6 +66,9 @@ export type ToolSurface = (typeof TOOL_SURFACE)[keyof typeof TOOL_SURFACE];
  * users to shop among alternatives that did not meaningfully differ.
  */
 export const ADVERTISE_ALL_ENV = 'RETICLE_ADVERTISE_ALL_TOOLS';
+
+/** Opt into the smallest verdict-capable surface. Read by the DAEMON at startup, like the others. */
+export const VERIFY_SURFACE_ENV = 'RETICLE_VERIFY_SURFACE';
 
 /**
  * The retired setting, still read so nobody's shell profile breaks.
@@ -192,6 +209,13 @@ export const EXTENDED_TOOL_NAMES: ReadonlySet<string> = new Set([
   ReticleTool.CRAWL,
 ]);
 
+/**
+ * The verify surface: one acting tool that returns a verdict, plus the two meta-tools that reach
+ * everything else. `act_and_wait` can resolve its own target, so no query tool is needed to name an
+ * element — that round trip was half the token cost of a verification.
+ */
+export const VERIFY_TOOL_NAMES: ReadonlySet<string> = new Set([ReticleTool.ACT_AND_WAIT]);
+
 /** Is the truthy form of a boolean env var set? `1`, `true`, `yes` — anything else is off. */
 function envFlagOn(raw: string | undefined): boolean {
   if (raw === undefined) return false;
@@ -206,10 +230,12 @@ function envFlagOn(raw: string | undefined): boolean {
  * switch decides, and the retired setting is honoured last so an old shell profile still works.
  */
 export function resolveToolSurface(explicit?: string): ToolSurface {
+  if (explicit === TOOL_SURFACE.VERIFY) return TOOL_SURFACE.VERIFY;
   if (explicit === TOOL_SURFACE.ALL) return TOOL_SURFACE.ALL;
   if (explicit === TOOL_SURFACE.DEFAULT) return TOOL_SURFACE.DEFAULT;
   const retiredExplicit = explicit === undefined ? undefined : RETIRED_PROFILE_VALUES[explicit];
   if (retiredExplicit !== undefined) return retiredExplicit;
+  if (envFlagOn(process.env[VERIFY_SURFACE_ENV])) return TOOL_SURFACE.VERIFY;
   if (envFlagOn(process.env[ADVERTISE_ALL_ENV])) return TOOL_SURFACE.ALL;
   const retiredEnv = RETIRED_PROFILE_VALUES[process.env[TOOL_PROFILE_ENV] ?? ''];
   return retiredEnv ?? TOOL_SURFACE.DEFAULT;
@@ -262,6 +288,7 @@ export function describeToolSurface(active: ToolSurface, requested?: string): To
 export function filterTools(tools: ToolDef[], surface: ToolSurface): ToolDef[] {
   // CORE_TOOL_NAMES is what it always really was: the set advertised directly. It was never the
   // interesting thing about the `core` PROFILE, whose only distinction was a second name for this.
+  if (surface === TOOL_SURFACE.VERIFY) return tools.filter((t) => VERIFY_TOOL_NAMES.has(t.name));
   if (surface === TOOL_SURFACE.DEFAULT) return tools.filter((t) => CORE_TOOL_NAMES.has(t.name));
   // `all` is the extended surface, not the whole registry — the cap is a hard budget shared with
   // every other MCP server the user has connected. surface-sizes.test.ts enforces it.

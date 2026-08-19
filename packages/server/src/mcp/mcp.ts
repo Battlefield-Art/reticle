@@ -273,12 +273,18 @@ export function advertisedConfig(
   // The comment above already caught this for the retired `dynamic` profile; `default` is now both
   // the lean surface and the one carrying the meta-tools, so the exemption follows it.
   const isMetaTool = tool.name === ReticleTool.TOOLS || tool.name === ReticleTool.RUN;
-  const terse = profile === TOOL_SURFACE.DEFAULT && !isMetaTool;
+  // `verify` is lean for the same reason `default` is, and more so: it exists to make a verdict
+  // cheap, and it was serving FULL descriptions plus outputSchema because the check named only the
+  // default. That put 8,207 bytes on the wire for three tools.
+  const lean = profile === TOOL_SURFACE.DEFAULT || profile === TOOL_SURFACE.VERIFY;
+  const terse = lean && !isMetaTool;
   // The first advertised tool carrying a predicate spells the grammar out; the rest point at it.
   const anchor = advertised.find((t) =>
     Object.values(t.inputSchema).some((schema) => isPredicateParam(schema)),
   )?.name;
-  const outputSchema = terse ? undefined : withSessionEnvelope(tool.name, tool.outputSchema);
+  // Output schemas are dropped on every lean surface, meta-tools included: they are the single
+  // largest component and nothing on a lean surface validates against them.
+  const outputSchema = lean ? undefined : withSessionEnvelope(tool.name, tool.outputSchema);
   return {
     description: withExample(
       terse ? firstSentence(tool.description) : tool.description,

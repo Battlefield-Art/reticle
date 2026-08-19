@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { advertisedTools } from '../mcp/mcp.js';
 import { TOOLS } from './tools.js';
 import {
   CORE_TOOL_NAMES,
@@ -128,9 +129,36 @@ describe('tool profiles', () => {
  *
  * Every retired value still resolves, because they were a published env var.
  */
-describe('one surface, plus a verification switch', () => {
-  it('offers exactly two internal surfaces and no menu', () => {
-    expect(new Set(Object.values(TOOL_SURFACE))).toEqual(new Set(['default', 'all']));
+describe('one surface, plus two switches', () => {
+  /**
+   * The rule this pins is "no MENU", not "no more than two entries". Four profiles were retired
+   * because they were near-duplicates a user was invited to shop among, and nothing here may
+   * reintroduce that.
+   *
+   * `verify` is admitted on the same terms as `all`: named for what it does, never offered as a
+   * choice, and justified by a measurement rather than a taste. A verification that names its own
+   * target is one `act_and_wait` call, and 5,480 of its 5,909 tokens are the surface re-sent for
+   * that single turn — the answers cost 430. It is off by default precisely because the retired
+   * `dynamic` profile was measured to lose accuracy on a lean surface, and that finding stands
+   * until re-measured on the same 30-bug set.
+   *
+   * If that measurement fails, the entry comes out. An unmeasured third surface IS a menu.
+   */
+  it('offers exactly three internal surfaces, each a switch rather than a choice', () => {
+    expect(new Set(Object.values(TOOL_SURFACE))).toEqual(new Set(['default', 'all', 'verify']));
+  });
+
+  it('verify still reaches every other tool, or it is a trap rather than a saving', () => {
+    const names = new Set(advertisedTools(TOOL_SURFACE.VERIFY).map((t) => t.name));
+    expect(names).toContain('reticle_tools');
+    expect(names).toContain('reticle_run');
+  });
+
+  it('verify is the smallest surface, and is not reachable by accident', () => {
+    expect(advertisedTools(TOOL_SURFACE.VERIFY).length).toBeLessThan(
+      advertisedTools(TOOL_SURFACE.DEFAULT).length,
+    );
+    expect(resolveToolSurface(undefined), 'never the default').toBe(TOOL_SURFACE.DEFAULT);
   });
 
   it.each([['core'], ['standard'], ['hybrid'], ['dynamic']])(

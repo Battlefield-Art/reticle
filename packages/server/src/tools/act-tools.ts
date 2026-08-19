@@ -1,3 +1,6 @@
+import { normalizeQueryArgs } from './query-shape.js';
+import type { Session } from '../session/session.js';
+import { resolveTargetRef, type TargetResolution } from './resolve-target.js';
 /**
  * Action tools — reticle_act, reticle_act_sequence, reticle_act_and_wait. Split out of tools.ts to keep
  * that file under the line cap and assembled back into the tool list there via ...ACT_TOOLS; the
@@ -88,6 +91,43 @@ const ACTION_TYPE_VALUES = Object.values(ActionType);
 const ACTION_TYPE_LIST = ACTION_TYPE_VALUES.join(' | ');
 const actionTypeEnum = z.enum(ACTION_TYPE_VALUES as [string, ...string[]]);
 
+/**
+ * Resolve an action's element: an explicit `ref`, or a `target` query resolved in the SAME call.
+ *
+ * Requiring a ref meant every verification paid a `reticle_query` turn first just to learn one
+ * string, and the advertised tool surface is re-sent on every turn — measured on the wire, a
+ * two-turn verification spent 10,756 of 11,235 tokens on schema and 479 on the actual answers. The
+ * lookup still happens; it just stops costing a round trip through the model.
+ *
+ * `ref` wins when both are given, because it is the more specific instruction and silently
+ * preferring the query would act on something the caller did not name.
+ */
+async function resolveActTarget(
+  session: Session,
+  args: Record<string, unknown>,
+): Promise<TargetResolution> {
+  const ref = asString(args['ref']);
+  if (ref !== undefined && ref.length > 0) return { kind: 'ref', ref };
+  const target = args['target'];
+  if (target === undefined) {
+    return {
+      kind: 'error',
+      message:
+        'pass `ref` (from reticle_query/reticle_snapshot) or `target` (e.g. { testid } or { role, name }).',
+    };
+  }
+  const q = normalizeQueryArgs(asRecord(target));
+  const out = await session.command(ReticleCommand.QUERY, {
+    by: q['by'],
+    value: q['value'],
+    name: q['name'],
+    scope: q['scope'],
+  });
+  if (!out.ok) return { kind: 'error', message: out.error ?? 'target query failed' };
+  const elements = asRecord(out.result)['elements'];
+  return resolveTargetRef(Array.isArray(elements) ? elements : []);
+}
+
 export const ACT_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.ACT,
@@ -97,8 +137,15 @@ export const ACT_TOOLS: ToolDef[] = [
     inputSchema: {
       ref: z
         .string()
+        .optional()
         .describe(
-          `Element ref (e.g. 'e42') from reticle_snapshot/reticle_query — stable until the element leaves the DOM, so no re-snapshot between actions.`,
+          `Element ref (e.g. 'e42') from reticle_snapshot/reticle_query — stable until the element leaves the DOM, so no re-snapshot between actions. Give this OR \`target\`.`,
+        ),
+      target: z
+        .record(z.unknown())
+        .optional()
+        .describe(
+          'Find the element and act on it in ONE call, instead of a reticle_query round trip first: { testid } | { text } | { role, name } | { label }. Refuses if it matches more than one, rather than guessing.',
         ),
       action: actionTypeEnum.describe(`Action to perform: ${ACTION_TYPE_LIST}`),
       args: z
@@ -151,10 +198,15 @@ export const ACT_TOOLS: ToolDef[] = [
       const paused = pausedShortCircuit(session);
       if (paused !== undefined) return paused;
       refuseIfThrottled(session, args['refuseWhenThrottled']);
+      // Resolve `target` to a ref BEFORE the action window opens, so the lookup is not attributed to
+      // the act and cannot be mistaken for something the action caused.
+      const targetRef = await resolveActTarget(session, args);
+      if ('error' === targetRef.kind) throw new Error(targetRef.message);
+
       const since = session.elapsed();
       // The act cursor + effect are marked only once the action has actually DISPATCHED (below, on
       // each success path) — a refused act must leave nothing behind for the next observe to judge.
-      const ref = asString(args['ref']) ?? '';
+      const ref = targetRef.ref;
 
       // Open the journal's action-attribution window BEFORE dispatching, so it covers the native path
       // too. It used to open only on the synthetic path, and the native path returned above it — so a
@@ -186,7 +238,7 @@ export const ACT_TOOLS: ToolDef[] = [
         }
 
         const result = await session.command(ReticleCommand.ACT, {
-          ref: args['ref'],
+          ref: targetRef.ref,
           action: args['action'],
           args: args['args'] ?? {},
         });
@@ -301,8 +353,15 @@ export const ACT_TOOLS: ToolDef[] = [
     inputSchema: {
       ref: z
         .string()
+        .optional()
         .describe(
-          `Element ref (e.g. 'e42') from reticle_snapshot/reticle_query — stable until the element leaves the DOM, so no re-snapshot between actions.`,
+          `Element ref (e.g. 'e42') from reticle_snapshot/reticle_query — stable until the element leaves the DOM, so no re-snapshot between actions. Give this OR \`target\`.`,
+        ),
+      target: z
+        .record(z.unknown())
+        .optional()
+        .describe(
+          'Find the element and act on it in ONE call, instead of a reticle_query round trip first: { testid } | { text } | { role, name } | { label }. Refuses if it matches more than one, rather than guessing.',
         ),
       action: actionTypeEnum.describe(`Action to perform: ${ACTION_TYPE_LIST}`),
       args: z
@@ -436,6 +495,11 @@ export const ACT_TOOLS: ToolDef[] = [
       // argument and ignoring it told the agent its trusted click had happened. See act-danger.
       assertNativeInputSupported(asRecord(args['args']));
 
+      // Resolve `target` to a ref BEFORE the action window opens, so the lookup is not attributed to
+      // the act and cannot be mistaken for something the action caused.
+      const resolved = await resolveActTarget(session, args);
+      if ('error' === resolved.kind) throw new Error(resolved.message);
+
       const since = session.elapsed();
       // The cursor + effect are marked after the act dispatches (below) — a refused act leaves none.
       // The attribution window stays open across the settle wait below, so post-dispatch async events
@@ -452,7 +516,7 @@ export const ACT_TOOLS: ToolDef[] = [
           : false;
       try {
         const actResult = await session.command(ReticleCommand.ACT, {
-          ref: args['ref'],
+          ref: resolved.ref,
           action: args['action'],
           args: args['args'] ?? {},
         });

@@ -28,6 +28,10 @@ const EXPECTED_SIZE: Record<ToolSurface, number> = {
   [TOOL_SURFACE.DEFAULT]: 18,
   // The extended surface. NOT "everything" — see ADVERTISED_CAP.
   [TOOL_SURFACE.ALL]: 30,
+  // The smallest surface that can still return a verdict: one acting tool that resolves its own
+  // target, plus the two meta-tools that reach the rest. See tool-surface.ts for why it is not the
+  // default.
+  [TOOL_SURFACE.VERIFY]: 3,
 };
 
 /**

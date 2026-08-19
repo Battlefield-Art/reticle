@@ -251,7 +251,7 @@ const INIT_CMD = '`npx @reticlehq/server init`';
  */
 function slowListenerClause(facts: NoSessionFacts): string {
   const slow = facts.slowListeners ?? [];
-  if (slow.length === 0) return '';
+  if (0 === slow.length) return '';
   const ports = slow.join(', ');
   const subject = 1 === slow.length ? `Port ${ports} ACCEPTED` : `Ports ${ports} ACCEPTED`;
   return (
