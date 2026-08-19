@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { pathToFileURL } from 'node:url';
+import { openFailureNote } from './cli/open-note.js';
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { stateDirProblem } from './daemon/state-dir.js';
@@ -555,6 +556,7 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
       const connected = await waitForNewSession(port, sessions.length);
       log('reticle_open', {
         port,
+        ...(port === requestedPort ? {} : { requestedPort }),
         opened: decision.url,
         connected,
         ...(connected
@@ -567,16 +569,7 @@ function handleOpen(requestedPort: number, url: string | undefined): void {
               // about a browser THIS command never uses, so a missing Chromium reads as the
               // explanation for a session that is missing for an unrelated reason. Both misdirects
               // were reported from the field, each costing several calls of app-side wiring hunt.
-              note:
-                `the URL was handed to the system default browser (this command does not use ` +
-                `Reticle's own Chromium, so a chromium warning from \`reticle doctor\` is unrelated ` +
-                `to this). No Reticle session appeared. By far the likeliest cause is that the app ` +
-                `carries no Reticle SDK, or dials a port other than ${String(port)} — run ` +
-                `\`reticle init\` in the app's directory and restart its dev server. If the app IS ` +
-                `wired, give the page a moment and check the browser console: the SDK announces its ` +
-                `own connect failures there, including the one it refuses to make from a ` +
-                `non-localhost host, which needs BOTH allowNonLocalhost: true AND a pairing token ` +
-                `(~/.reticle/pairing-token) — the flag alone is not sufficient.`,
+              note: openFailureNote(port, requestedPort),
             }),
       });
     })
