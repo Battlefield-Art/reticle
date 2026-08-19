@@ -480,6 +480,15 @@ const RAW_TOOLS: ToolDef[] = [
        */
       source: z.string().optional(),
       /**
+       * Why `source` is missing, when it is.
+       *
+       * Distinguishes "this element has no stamp" from "nothing on this page has one, so the
+       * stamping loader is not running" — the second means `file:line` is unavailable for the
+       * whole session and the fix is a build-config change, which used to be discoverable only by
+       * reading the adapter's own source.
+       */
+      sourceUnavailable: z.string().optional(),
+      /**
        * Component identity from the framework adapter (@reticlehq/react).
        *
        * Declared to match what the handler actually returns. It previously declared
