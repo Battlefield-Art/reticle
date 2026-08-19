@@ -79,24 +79,46 @@ function names(plugins: readonly { name: string }[]): string[] {
   return plugins.map((p) => p.name);
 }
 
-describe('reticle() in the real Vite config resolution', () => {
-  it('is included in the serve pipeline', async () => {
-    const resolve = required(resolveConfig, 'vite.resolveConfig');
-    const resolved = await resolve(
-      { plugins: [reticle()], configFile: false, logLevel: 'silent' },
-      'serve',
-    );
-    expect(names(resolved.plugins)).toContain(RETICLE_VITE_PLUGIN_NAME);
-  });
+/**
+ * Booting a real Vite dev server — with the optimizer FORCED, which is what makes the warning
+ * reproducible at all — is not a 5-second operation on a loaded CI runner, and vitest's default is 5
+ * seconds. So this suite went red on Windows for the machine's reasons, on pull requests that do not
+ * touch this package at all, and the `gate` job aggregates it. A contributor whose docs change is
+ * blocked by a Vite boot timing out learns to re-run until green, which is how a real failure gets
+ * waved through.
+ *
+ * The invariant is "no warning is emitted", and no duration expresses that. A generous per-test
+ * budget cannot weaken it: a run that emits the warning fails at any budget, and one that does not is
+ * only ever slow. Same rule the repo already applies to its own timing assertions.
+ */
+const SERVER_BOOT_BUDGET_MS = 120_000;
 
-  it('is filtered out of the build pipeline (never ships to production)', async () => {
-    const resolve = required(resolveConfig, 'vite.resolveConfig');
-    const resolved = await resolve(
-      { plugins: [reticle()], configFile: false, logLevel: 'silent' },
-      'build',
-    );
-    expect(names(resolved.plugins)).not.toContain(RETICLE_VITE_PLUGIN_NAME);
-  });
+describe('reticle() in the real Vite config resolution', () => {
+  it(
+    'is included in the serve pipeline',
+    async () => {
+      const resolve = required(resolveConfig, 'vite.resolveConfig');
+      const resolved = await resolve(
+        { plugins: [reticle()], configFile: false, logLevel: 'silent' },
+        'serve',
+      );
+      expect(names(resolved.plugins)).toContain(RETICLE_VITE_PLUGIN_NAME);
+    },
+    SERVER_BOOT_BUDGET_MS,
+  );
+
+  it(
+    'is filtered out of the build pipeline (never ships to production)',
+    async () => {
+      const resolve = required(resolveConfig, 'vite.resolveConfig');
+      const resolved = await resolve(
+        { plugins: [reticle()], configFile: false, logLevel: 'silent' },
+        'build',
+      );
+      expect(names(resolved.plugins)).not.toContain(RETICLE_VITE_PLUGIN_NAME);
+    },
+    SERVER_BOOT_BUDGET_MS,
+  );
 });
 
 /**
@@ -151,45 +173,49 @@ describe('the connect module picks up a token written after the dev server start
     delete process.env[ReticleEnv.PAIRING_TOKEN_DIR];
   }, HOOK_TIMEOUT_MS);
 
-  it('serves the token on the next request, without a dev-server restart', async () => {
-    const create = required(createServer, 'vite.createServer');
-    const tokenDir = mkdtempSync(join(tmpdir(), 'reticle-token-'));
-    const root = mkdtempSync(join(tmpdir(), 'reticle-app-'));
-    dirs.push(tokenDir, root);
-    process.env[ReticleEnv.PAIRING_TOKEN_DIR] = tokenDir;
+  it(
+    'serves the token on the next request, without a dev-server restart',
+    async () => {
+      const create = required(createServer, 'vite.createServer');
+      const tokenDir = mkdtempSync(join(tmpdir(), 'reticle-token-'));
+      const root = mkdtempSync(join(tmpdir(), 'reticle-app-'));
+      dirs.push(tokenDir, root);
+      process.env[ReticleEnv.PAIRING_TOKEN_DIR] = tokenDir;
 
-    // A stand-in for the SDK: the import must RESOLVE, or Vite fails the module and re-runs `load`
-    // on every request — which hides the staleness the same way it hid it during investigation.
-    mkdirSync(join(root, 'src'), { recursive: true });
-    writeFileSync(
-      join(root, 'src/sdk.js'),
-      'export const reticle = { connect(){} };\nexport const install = () => {};\n',
-    );
-    writeFileSync(
-      join(root, 'index.html'),
-      '<html><body><script type="module" src="/src/main.js"></script></body></html>',
-    );
-    writeFileSync(join(root, 'src/main.js'), 'export const app = 1;\n');
+      // A stand-in for the SDK: the import must RESOLVE, or Vite fails the module and re-runs `load`
+      // on every request — which hides the staleness the same way it hid it during investigation.
+      mkdirSync(join(root, 'src'), { recursive: true });
+      writeFileSync(
+        join(root, 'src/sdk.js'),
+        'export const reticle = { connect(){} };\nexport const install = () => {};\n',
+      );
+      writeFileSync(
+        join(root, 'index.html'),
+        '<html><body><script type="module" src="/src/main.js"></script></body></html>',
+      );
+      writeFileSync(join(root, 'src/main.js'), 'export const app = 1;\n');
 
-    const server = await create({
-      root,
-      logLevel: 'silent',
-      configFile: false,
-      server: { port: 0, host: '127.0.0.1' },
-      resolve: { alias: { '@reticlehq/react': join(root, 'src/sdk.js') } },
-      plugins: [reticle()],
-    });
-    servers.push(server);
-    await server.listen();
-    const base = server.resolvedUrls?.local[0] ?? '';
-    const url = `${base.replace(/\/$/, '')}${RETICLE_CONNECT_MODULE}`;
+      const server = await create({
+        root,
+        logLevel: 'silent',
+        configFile: false,
+        server: { port: 0, host: '127.0.0.1' },
+        resolve: { alias: { '@reticlehq/react': join(root, 'src/sdk.js') } },
+        plugins: [reticle()],
+      });
+      servers.push(server);
+      await server.listen();
+      const base = server.resolvedUrls?.local[0] ?? '';
+      const url = `${base.replace(/\/$/, '')}${RETICLE_CONNECT_MODULE}`;
 
-    // Served BEFORE the daemon exists: no token, and nothing wrong with that.
-    expect(await (await fetch(url)).text()).not.toContain('tok_');
+      // Served BEFORE the daemon exists: no token, and nothing wrong with that.
+      expect(await (await fetch(url)).text()).not.toContain('tok_');
 
-    // The daemon starts and writes its pairing token. The page is reloaded — one more request.
-    writeFileSync(join(tokenDir, ReticleDir.PAIRING_TOKEN_FILE), 'tok_written_later');
+      // The daemon starts and writes its pairing token. The page is reloaded — one more request.
+      writeFileSync(join(tokenDir, ReticleDir.PAIRING_TOKEN_FILE), 'tok_written_later');
 
-    expect(await (await fetch(url)).text()).toContain('tok_written_later');
-  });
+      expect(await (await fetch(url)).text()).toContain('tok_written_later');
+    },
+    SERVER_BOOT_BUDGET_MS,
+  );
 });
