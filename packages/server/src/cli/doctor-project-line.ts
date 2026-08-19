@@ -16,6 +16,16 @@ export interface ProjectWiringFacts {
   projectId: string | undefined;
   /** Has an app for this project ever connected on this port? Durable across daemon restarts. */
   previouslyConnected: boolean;
+  /**
+   * Is there a `.reticle.json` on disk here at all?
+   *
+   * Separate from `projectId` because the two failures are different facts with the same symptom: an
+   * absent config and a corrupt one both read back as "no id". Saying "no .reticle.json here" about a
+   * file that is sitting right there sends somebody hunting a missing file when what they have is a
+   * broken one — and a corrupt config is itself worth naming, since it is how a project ends up
+   * pointed at the wrong daemon.
+   */
+  configPresent?: boolean;
 }
 
 /**
@@ -32,6 +42,13 @@ export function projectWiringLine(facts: ProjectWiringFacts): string {
   }
   if (facts.previouslyConnected) {
     return '  project      ✓ an app has connected here before, so it is wired (no .reticle.json — a build plugin can wire an app without one)';
+  }
+  if (true === facts.configPresent) {
+    return (
+      '  project      ✗ .reticle.json is here but carries no readable projectId — a corrupt or ' +
+      'hand-edited config reads the same as no config, and points this project at the default ' +
+      'daemon. Run `npx @reticlehq/server init` in the app directory to rewrite it'
+    );
   }
   return (
     '  project      ✗ no .reticle.json here and nothing has ever connected — the tools may be ' +

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ReticleEnv } from '@reticlehq/core';
 import { readPid, reticleStateHome } from '../daemon/daemon.js';
@@ -15,7 +15,12 @@ import { SERVER_VERSION } from '../version/server-version.js';
 import { CONTRACT_FINGERPRINT } from '@reticlehq/core';
 import { diagnoseDesktop, isDesktopProject } from '../init/desktop-doctor.js';
 import { diagnoseWebCsp } from '../init/csp-doctor.js';
-import { diagnosePortMismatch, readProjectId, readProjectPort } from './cli-port.js';
+import {
+  RETICLE_CONFIG_BASENAME,
+  diagnosePortMismatch,
+  readProjectId,
+  readProjectPort,
+} from './cli-port.js';
 
 /**
  * `reticle doctor` — collapse the ~6 independent first-run failure modes into one command. Checks the
@@ -99,6 +104,9 @@ export async function handleDoctor(port: number): Promise<void> {
     projectWiringLine({
       projectId,
       previouslyConnected: hasProjectConnectedBefore(reticleStateHome(), port, projectId),
+      // An absent config and a corrupt one both read back as "no id"; only this tells them apart,
+      // and telling somebody a file is missing while it sits in front of them is its own dead end.
+      configPresent: existsSync(join(process.cwd(), RETICLE_CONFIG_BASENAME)),
     }),
   );
   // Where to LOOK when something is wrong. The daemon has always written a structured log here and

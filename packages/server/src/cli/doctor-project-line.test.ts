@@ -49,3 +49,34 @@ describe('the doctor line about this project', () => {
     }
   });
 });
+
+/**
+ * A `.reticle.json` that is PRESENT but unreadable is not the same as one that is absent, and saying
+ * so matters more here than it looks. "No .reticle.json here" sends somebody hunting a missing file
+ * when what they have is a broken one — and the file being broken is itself the finding, since a
+ * corrupt config is how a project ends up talking to the wrong daemon.
+ *
+ * The remedy is the same command either way, which is exactly why the statement of fact has to carry
+ * its weight: it is the only part of the line that tells them what is actually true.
+ */
+describe('a config that is there but cannot be read', () => {
+  it('does not claim the file is missing', () => {
+    const line = projectWiringLine({
+      projectId: undefined,
+      previouslyConnected: false,
+      configPresent: true,
+    });
+    expect(line).not.toMatch(/no \.reticle\.json/i);
+    expect(line).toMatch(/projectId|corrupt|unreadable/i);
+    expect(line, 'the remedy is still init').toMatch(/init/);
+  });
+
+  it('still says missing when it really is missing', () => {
+    const line = projectWiringLine({
+      projectId: undefined,
+      previouslyConnected: false,
+      configPresent: false,
+    });
+    expect(line).toMatch(/no \.reticle\.json/i);
+  });
+});
