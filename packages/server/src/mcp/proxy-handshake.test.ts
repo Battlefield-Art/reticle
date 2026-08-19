@@ -125,6 +125,39 @@ describe('reading lines from stdin', () => {
     expect(out.lines).toEqual([]);
   });
 
+  /**
+   * Resync after a discard, which is the half that makes dropping safe.
+   *
+   * Dropping the buffer is not enough on its own: the REST of that same oversized line is still
+   * coming, and without a discarding state its tail arrives looking like a complete line. It then
+   * gets forwarded to the daemon as a JSON-RPC message — a fragment of something nobody sent,
+   * failing to parse, on a link where the client is waiting for answers to real requests. Worse than
+   * the oversized line itself, because the line was at least identifiable as one message.
+   */
+  it('swallows the REST of a discarded line instead of forwarding its tail', () => {
+    const first = drainLines('', 'x'.repeat(64), 32);
+    expect(first.overflowed).toBe(true);
+    expect(first.discarding, 'it must know it is mid-discard').toBe(true);
+
+    // The tail of that same line, then a real message behind it.
+    const second = drainLines(first.rest, `xxxx\n{"id":1}\n`, 32, first.discarding);
+    expect(second.lines, 'the tail is not a message').toEqual(['{"id":1}']);
+    expect(second.discarding).toBe(false);
+  });
+
+  it('stays in discard until a newline actually arrives', () => {
+    let state = drainLines('', 'y'.repeat(64), 32);
+    expect(state.discarding).toBe(true);
+    for (const chunk of ['y'.repeat(40), 'y'.repeat(40)]) {
+      state = drainLines(state.rest, chunk, 32, state.discarding);
+      expect(state.lines).toEqual([]);
+      expect(state.discarding, 'no newline yet, so still discarding').toBe(true);
+      expect(state.rest, 'and nothing is accumulating').toBe('');
+    }
+    const done = drainLines(state.rest, `\n{"ok":1}\n`, 32, state.discarding);
+    expect(done.lines).toEqual(['{"ok":1}']);
+  });
+
   it('drops an oversized COMPLETED line but still delivers its neighbours', () => {
     const out = drainLines('', `ok\n${'x'.repeat(64)}\nalso-ok\n`, 32);
     expect(out.lines).toEqual(['ok', 'also-ok']);

@@ -130,6 +130,15 @@ export interface DrainedLines {
   rest: string;
   /** A single line exceeded the cap and was discarded rather than accumulated. */
   overflowed: boolean;
+  /**
+   * Mid-discard: an oversized line was dropped and the REST of it is still arriving.
+   *
+   * Carried back in on the next call, and it is what makes dropping safe rather than merely tidy.
+   * Without it the tail of the discarded line arrives looking like a complete line and is forwarded
+   * as a JSON-RPC message — a fragment of something nobody sent, failing to parse, on a link where
+   * the client is waiting for answers to real requests.
+   */
+  discarding: boolean;
 }
 
 /**
@@ -148,22 +157,39 @@ export function drainLines(
   buffer: string,
   chunk: string,
   maxLineBytes = MAX_STDIN_LINE_BYTES,
+  discarding = false,
 ): DrainedLines {
+  // Finish discarding first. Everything up to and including the next newline belongs to the line
+  // that was already dropped, and only what follows it is a message again.
+  if (discarding) {
+    const cut = chunk.indexOf('\n');
+    if (-1 === cut) return { lines: [], rest: '', overflowed: true, discarding: true };
+    return {
+      ...drainLines('', chunk.slice(cut + 1), maxLineBytes),
+      overflowed: true,
+    };
+  }
   const next = buffer + chunk;
   if (!chunk.includes('\n')) {
     // Nothing can be complete yet. Cap here rather than on the split path: this is the branch an
-    // oversized line stays on, so it is the only one that can grow without bound.
-    if (next.length > maxLineBytes) return { lines: [], rest: '', overflowed: true };
-    return { lines: [], rest: next, overflowed: false };
+    // oversized line stays on, so it is the only one that can grow without bound. Dropping the
+    // buffer is half the job — the rest of that line is still coming, hence `discarding`.
+    if (next.length > maxLineBytes) {
+      return { lines: [], rest: '', overflowed: true, discarding: true };
+    }
+    return { lines: [], rest: next, overflowed: false, discarding: false };
   }
   const parts = next.split('\n');
   const rest = parts.pop() ?? '';
   // A completed line over the cap is dropped, not truncated: half a JSON-RPC message is not a
-  // message, and forwarding a prefix would be a parse error attributed to the client.
-  const overflowed = parts.some((line) => line.length > maxLineBytes);
+  // message, and forwarding a prefix would be a parse error attributed to the client. Its newline
+  // has already arrived, so there is nothing left to swallow for it.
+  const oversizedLine = parts.some((line) => line.length > maxLineBytes);
+  const restOversized = rest.length > maxLineBytes;
   return {
-    lines: overflowed ? parts.filter((line) => line.length <= maxLineBytes) : parts,
-    rest: rest.length > maxLineBytes ? '' : rest,
-    overflowed: overflowed || rest.length > maxLineBytes,
+    lines: oversizedLine ? parts.filter((line) => line.length <= maxLineBytes) : parts,
+    rest: restOversized ? '' : rest,
+    overflowed: oversizedLine || restOversized,
+    discarding: restOversized,
   };
 }

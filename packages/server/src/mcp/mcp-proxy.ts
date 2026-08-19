@@ -895,13 +895,17 @@ export function startMcpProxy(
     };
 
     let stdinBuffer = '';
+    let stdinDiscarding = false;
 
     process.stdin.on('data', (chunk: string) => {
       // Not `(buffer + chunk).split()` inline — that rescans everything held on every chunk, so one
       // large line cost O(n²) in its own size and pinned the event loop for tens of seconds, during
       // which every other tool call on this link hung with no response and no error. See drainLines.
-      const drained = drainLines(stdinBuffer, chunk);
+      const drained = drainLines(stdinBuffer, chunk, MAX_STDIN_LINE_BYTES, stdinDiscarding);
       stdinBuffer = drained.rest;
+      // Carried across chunks: an oversized line is dropped, and the REST of it is still arriving.
+      // Without this its tail reads as a complete line and gets forwarded as a message nobody sent.
+      stdinDiscarding = drained.discarding;
       if (drained.overflowed) {
         // Logged rather than answered: an unparsed line has no id to answer against, and inventing
         // one would put a reply on the wire that no request is waiting for.
