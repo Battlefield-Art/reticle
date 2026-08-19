@@ -4,13 +4,14 @@ import {
   TelemetryActor,
   TelemetryEventKind,
   TRANSPORT_LIMITS,
+  fingerprintFinding,
 } from '@reticlehq/core';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
 import { getTelemetry } from '../telemetry/telemetry.js';
 import { takeUpdateNudge } from '../update/update-nudge.js';
 import { takeVersionSkew } from '../version/version-nudge.js';
 import { noteToolCall } from '../daemon/daemon-usefulness.js';
-import { bugsInResult } from '../telemetry/bug-found.js';
+import { bugsInResult, routeOf } from '../telemetry/bug-found.js';
 import { noteToolServed, reportToolRefused } from '../telemetry/tool-refused.js';
 import { buildErrorPayload, refusalReasonFor } from './error-recovery.js';
 import { resultIsError } from '../mcp/mcp-is-error.js';
@@ -158,14 +159,20 @@ function reportBugsFound(toolName: string, result: Record<string, unknown>): voi
   const bugs = bugsInResult(toolName, result);
   if (0 === bugs.length) return;
   const metrics = getSessionMetrics();
+  const route = routeOf(result);
   for (const bug of bugs) {
     // `recordBug` answers whether this kind is new to the session, which is the only thing that
     // separates "another defect" from "the same defect again". Counting instances as defects is how
     // a published number inflates itself.
     const first = metrics.recordBug(bug.kind);
+    const identity =
+      route !== undefined
+        ? { kind: bug.kind, source: bug.source, route }
+        : { kind: bug.kind, source: bug.source };
+    const fingerprint = fingerprintFinding(identity);
     void getTelemetry().emit(TelemetryEventKind.BUG_FOUND, {
       actor: TelemetryActor.AGENT,
-      bug: { ...bug, repeat: !first },
+      bug: { ...bug, repeat: !first, fingerprint },
     });
   }
 }

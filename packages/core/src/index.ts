@@ -42,4 +42,5 @@ export * from './upgrade.js'; // self-update policy shared by the CLI
 export * from './telemetry.js';
 export * from './telemetry-session.js'; // the session/project rollup payloads
 export * from './telemetry-feedback.js'; // the two things a PERSON writes: feedback + a self-declared identity // anonymous adoption telemetry wire contract (DAU/WAU/MAU/installs)
-export { CONTRACT_FINGERPRINT, fingerprintOf } from './contract-fingerprint.js';
+export { CONTRACT_FINGERPRINT, fnv1a, fingerprintOf } from './contract-fingerprint.js';
+export { fingerprintFinding, type FindingIdentity } from './finding-fingerprint.js';
