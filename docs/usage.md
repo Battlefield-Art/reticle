@@ -91,7 +91,7 @@ List connected tabs. → `{ sessions: [{ sessionId, url, title, lastSeenMs, hidd
 A semantic, accessibility-tree view of the page.
 
 - **args:** `mode?: 'full' | 'interactive' | 'status'` (default `full`), `scope?` (CSS selector or ref), `diff?: boolean`, `sessionId?`.
-- **returns:** `{ tree, status: { route, title, visibleDialogs }, nodes, truncated, cost: { bytes, tokens } }`.
+- **returns:** `{ tree, status: { route, title, visibleDialogs, overlayHidingPage }, nodes, truncated, cost: { bytes, tokens } }`.
 - **`diff: true`** returns only what changed since your last snapshot of the same scope/mode: `{ mode: 'delta', delta: { added, removed, addedCount, removedCount } }` or `{ mode: 'unchanged' }` (no full tree). The first call (and any call after a route change) still returns the full tree. ~99% fewer tokens to re-look after an action; see [token-efficiency.md](token-efficiency.md).
 - **`cost`** is an estimated size of the result. Re-scope (`mode`/`scope`) before reading if large.
 
