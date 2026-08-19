@@ -51,3 +51,44 @@ describe('the probe asks both address families', () => {
     expect(ports).toEqual([3000, 8080]);
   });
 });
+
+/**
+ * A dev server that is RUNNING but slow to answer must not be reported as absent.
+ *
+ * The probe asks for a document and treats anything that does not arrive inside 400ms as nothing at
+ * all, which conflates two states that call for opposite next actions. That budget is right for Vite
+ * handing back a static index.html and wrong for any SSR framework compiling a route on the first
+ * request — Nuxt and Next routinely take seconds cold.
+ *
+ * Reported from the field on Nuxt 4: the dev server was serving 57KB of HTML on port 5000, the
+ * reporter proved it answered on 127.0.0.1, ::1 and localhost, and every Reticle diagnostic said
+ * "nothing is listening on the ports Reticle scans" and told them to start a server that was already
+ * running. A second `nuxt dev` would have hit the dev lock.
+ *
+ * The fix is a third state rather than a longer timeout, because a longer timeout would re-open the
+ * false positive this check exists to close: macOS AirPlay Receiver holds port 5000 on every Mac and
+ * ANSWERS, promptly, with 403 — so it is still rejected on content, not on speed. Something that
+ * accepts a connection and then says nothing is a listener we cannot classify, and saying so is
+ * honest where "nothing is there" is a lie.
+ */
+describe('a listener that is slow is not a listener that is absent', () => {
+  it('reports a port that connects but never answers as UNCLASSIFIED, not absent', async () => {
+    const { classifyPort, PortState } = await import('./dev-server-probe.js');
+    const state = await classifyPort(5000, () => Promise.resolve(PortState.CONNECTED_NO_ANSWER));
+    expect(state).toBe(PortState.CONNECTED_NO_ANSWER);
+    expect(state).not.toBe(PortState.CLOSED);
+  });
+
+  it('still rejects a thing that answers promptly with a refusal (the AirPlay case)', async () => {
+    const { classifyPort, PortState } = await import('./dev-server-probe.js');
+    expect(await classifyPort(5000, () => Promise.resolve(PortState.CLOSED))).toBe(
+      PortState.CLOSED,
+    );
+  });
+
+  it('probeDevServers still returns only ports serving a document', async () => {
+    const { probeDevServers } = await import('./dev-server-probe.js');
+    const found = await probeDevServers([3000, 5000], (p) => Promise.resolve(p === 3000));
+    expect(found).toEqual([3000]);
+  });
+});

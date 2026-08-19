@@ -28,6 +28,15 @@ interface NoSessionFacts {
   initialized: boolean;
   /** Localhost ports with something listening that looks like a dev server. */
   listening: readonly number[];
+  /**
+   * Ports that ACCEPTED a connection and then answered nothing inside the probe budget.
+   *
+   * Not dev servers as far as the probe knows, and absolutely not absent. An SSR framework
+   * compiling its first route lands here every time, and calling that "nothing is listening" told a
+   * reporter to start a Nuxt server that was already serving — advice that would have hit their dev
+   * lock. Named in the message so the reader can tell the two apart.
+   */
+  slowListeners?: readonly number[];
   /** The port this daemon is on — half of the mismatch the old message asked about. */
   port: number;
   /**
@@ -196,6 +205,25 @@ const RESTARTED_LEAD =
   'on a project that has demonstrably connected, and it can overwrite a working config.';
 
 const SCANNED_PORTS = [...DEV_SERVER_PORTS].join(', ');
+
+/**
+ * The one sentence that stops the scan lying about a server that is running.
+ *
+ * A port that accepted a connection and then said nothing is evidence FOR the app being up, not
+ * against it, and it has to be read before the "nothing is listening" sentence rather than after —
+ * the reader acts on the first claim.
+ */
+function slowListenerClause(facts: NoSessionFacts): string {
+  const slow = facts.slowListeners ?? [];
+  if (slow.length === 0) return '';
+  const ports = slow.join(', ');
+  const subject = 1 === slow.length ? `Port ${ports} ACCEPTED` : `Ports ${ports} ACCEPTED`;
+  return (
+    `${subject} a connection but did not answer in time, which is what a server-rendered dev ` +
+    'server compiling its first route looks like — so something IS running there and you should ' +
+    'open it rather than start it. Setting that aside: '
+  );
+}
 
 /**
  * The commonest first-run state there is, and until #320 the message named it nowhere.
@@ -373,7 +401,7 @@ export function diagnoseNoSession(facts: NoSessionFacts): string {
     if (!initialized) {
       return (
         'no browser session connected. Two things to weigh, and neither of them is proof. ' +
-        `(1) Nothing is listening on the ports Reticle scans (${SCANNED_PORTS}), so the dev server ` +
+        `(1) ${slowListenerClause(facts)}Nothing is listening on the ports Reticle scans (${SCANNED_PORTS}), so the dev server ` +
         'may not be running — START IT YOURSELF, in the background, using the command in ' +
         "`next_action` (it is read from this project's own scripts; if there is none, that field " +
         'says so and you should ask rather than guess). Tell the human in one line that it is ' +

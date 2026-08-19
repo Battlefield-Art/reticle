@@ -10,7 +10,7 @@
  * daemon that outlives the agent by hours has no business scanning ports it does not need.
  */
 
-import { probeDevServers } from './dev-server-probe.js';
+import { probeDevServers, probeDevServerStates } from './dev-server-probe.js';
 import { diagnoseNoSession } from './no-session-diagnosis.js';
 import { detectDevCommand } from './dev-command.js';
 import { nextActionFor, renderNextAction } from './no-session-next-action.js';
@@ -85,6 +85,15 @@ interface NoSessionWatchOptions {
 export function startNoSessionWatch(options: NoSessionWatchOptions): () => void {
   const probe = options.probe ?? (() => probeDevServers());
   let listening: readonly number[] = [];
+  /**
+   * Ports that accepted a connection and then answered nothing in time.
+   *
+   * Tracked beside `listening` rather than folded into it: they are not dev servers as far as the
+   * probe knows, so they must not be spent as proof the app is up, and they are not absent either,
+   * so the diagnosis must stop telling people to start a server that is already running. A custom
+   * `options.probe` returns only the serving set, so this stays empty for injected probes.
+   */
+  let slowListeners: readonly number[] = [];
   let running = false;
   /** Ports auto-attach has already spent its one attempt on. Bounded: never a loop, never a retry. */
   const attempted = new Set<number>();
@@ -153,7 +162,14 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
     // Nothing to diagnose while a session is live, and no reason to scan.
     if (running || options.sessions.count() > 0) return;
     running = true;
-    void probe()
+    void (
+      options.probe === undefined
+        ? probeDevServerStates().then((states) => {
+            slowListeners = states.slow;
+            return states.serving;
+          })
+        : probe()
+    )
       .then(async (ports) => {
         listening = ports;
         await autoAttach(ports);
@@ -195,6 +211,7 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
         // The boot value still counts: it is the one the daemon scoped its sessions with.
         initialized: isWired(),
         listening,
+        slowListeners,
         port: options.port,
         // The directory `initialized` was decided in. Named in the message because "there is no
         // `.reticle.json`" is a claim about ONE directory, and a reader standing somewhere else

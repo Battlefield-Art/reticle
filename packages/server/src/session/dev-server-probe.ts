@@ -14,8 +14,43 @@ import { request } from 'node:http';
 import { DEV_SERVER_PORTS } from '../cli/cli-port.js';
 import { looksLikeDevServer } from './looks-like-dev-server.js';
 
-/** Give up fast: an HTTP answer from localhost either lands quickly or nothing is there. */
+/**
+ * Give up fast, but do not call giving up an absence.
+ *
+ * This budget suits Vite handing back a static index.html. It does NOT suit an SSR framework
+ * compiling a route on the first request: Nuxt and Next routinely take seconds cold, and treating
+ * that as "nothing is there" told a reporter to start a dev server that was already serving 57KB of
+ * HTML — advice that would have hit their dev lock with a second `nuxt dev`.
+ *
+ * So the budget stays short and the TIMEOUT changed meaning instead. See PortState.
+ */
 const HTTP_PROBE_TIMEOUT_MS = 400;
+
+/**
+ * What the probe actually learned about a port. Three states, because two cannot express this.
+ *
+ * A bare TCP connect is not enough (macOS AirPlay Receiver holds 5000 on every Mac and would read as
+ * the user's dev server), and a document check alone is not enough either (a compiling SSR server
+ * reads as absent). The thing in between — accepted the connection, said nothing in time — is a
+ * listener we cannot classify, and reporting that honestly is the point.
+ */
+export const PortState = {
+  /** Nothing accepted a connection on either loopback family. */
+  CLOSED: 'closed',
+  /** Accepted a connection, then answered nothing within the budget. Something IS there. */
+  CONNECTED_NO_ANSWER: 'connected-no-answer',
+  /** Answered with a document: a dev server serving an app. */
+  SERVES_DOCUMENT: 'serves-document',
+} as const;
+export type PortState = (typeof PortState)[keyof typeof PortState];
+
+/** The probe's answer for one port, however it was obtained. */
+export function classifyPort(
+  port: number,
+  probe: (port: number) => Promise<PortState>,
+): Promise<PortState> {
+  return probe(port).catch(() => PortState.CLOSED);
+}
 /**
  * `localhost`, not `127.0.0.1` — so BOTH address families are tried.
  *
@@ -45,23 +80,36 @@ export const PROBE_HOSTS: readonly string[] = ['127.0.0.1', '::1'];
  * port 5000) as the user's dev server. See looks-like-dev-server for what it actually answers and
  * why "a socket accepted" is the wrong question.
  */
-function servesDocument(port: number, host: string): Promise<boolean> {
+function probeState(port: number, host: string): Promise<PortState> {
   return new Promise((resolve) => {
+    // Whether the SOCKET came up is tracked separately from whether a response did, because that is
+    // the whole difference between "nothing is there" and "something is there and still compiling".
+    let connected = false;
     const req = request(
       { host, port, path: '/', method: 'GET', timeout: HTTP_PROBE_TIMEOUT_MS },
       (res) => {
         const answer = looksLikeDevServer(res.statusCode ?? 0, res.headers['content-type']);
         res.resume(); // drain, so the socket closes rather than lingering
-        resolve(answer);
+        resolve(answer ? PortState.SERVES_DOCUMENT : PortState.CLOSED);
       },
     );
+    req.once('socket', (socket) => {
+      socket.once('connect', () => {
+        connected = true;
+      });
+    });
     req.once('timeout', () => {
       req.destroy();
-      resolve(false);
+      resolve(connected ? PortState.CONNECTED_NO_ANSWER : PortState.CLOSED);
     });
-    req.once('error', () => resolve(false));
+    req.once('error', () => resolve(PortState.CLOSED));
     req.end();
   });
+}
+
+/** Kept for callers that only need the yes/no. A slow listener is NOT a dev server, but it is not absent. */
+function servesDocument(port: number, host: string): Promise<boolean> {
+  return probeState(port, host).then((state) => state === PortState.SERVES_DOCUMENT);
 }
 
 /**
@@ -79,6 +127,48 @@ export async function anyFamilyServes(
     PROBE_HOSTS.map((host) => probe(port, host).catch(() => false)),
   );
   return answers.some((up) => up);
+}
+
+/**
+ * Every candidate port, split by what the probe could actually establish.
+ *
+ * `slow` is the set that accepted a connection and then said nothing inside the budget. Those ports
+ * are NOT dev servers as far as this check knows, and they are emphatically not absent — an SSR
+ * framework compiling its first route lands here every time. Reported separately so the diagnosis
+ * can stop telling people to start a server that is already running.
+ */
+export async function probeDevServerStates(
+  ports: readonly number[] = [...DEV_SERVER_PORTS],
+  probe: (port: number) => Promise<PortState> = (p) => anyFamilyState(p),
+): Promise<{ serving: number[]; slow: number[] }> {
+  const states = await Promise.all(
+    ports.map((p) => classifyPort(p, probe).then((state) => ({ port: p, state }))),
+  );
+  const pick = (want: PortState): number[] =>
+    states
+      .filter((s) => s.state === want)
+      .map((s) => s.port)
+      .sort((a, b) => a - b);
+  return { serving: pick(PortState.SERVES_DOCUMENT), slow: pick(PortState.CONNECTED_NO_ANSWER) };
+}
+
+/**
+ * The strongest state either loopback family reports.
+ *
+ * Serving a document beats a bare connection beats nothing, so a server bound to only one family is
+ * still seen at its best — the same "either, not both" rule `anyFamilyServes` follows, extended to
+ * three states.
+ */
+export async function anyFamilyState(
+  port: number,
+  probe: (port: number, host: string) => Promise<PortState> = probeState,
+): Promise<PortState> {
+  const answers = await Promise.all(
+    PROBE_HOSTS.map((host) => probe(port, host).catch(() => PortState.CLOSED)),
+  );
+  if (answers.includes(PortState.SERVES_DOCUMENT)) return PortState.SERVES_DOCUMENT;
+  if (answers.includes(PortState.CONNECTED_NO_ANSWER)) return PortState.CONNECTED_NO_ANSWER;
+  return PortState.CLOSED;
 }
 
 /** Every candidate port serving a document, in ascending order. Never rejects. */

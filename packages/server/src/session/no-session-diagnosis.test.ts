@@ -429,3 +429,39 @@ describe('a configured port that disagrees with the bound port is named, not hin
     expect(why).not.toContain('disagree');
   });
 });
+
+/**
+ * The scan must not call a running server absent.
+ *
+ * Reported from Nuxt 4 on port 5000: the dev server was serving 57KB of HTML, the reporter proved it
+ * answered on 127.0.0.1, ::1 and localhost, and every diagnostic said "nothing is listening on the
+ * ports Reticle scans" and told them to start it. A second `nuxt dev` would have hit the dev lock.
+ * The probe had accepted a connection and then given up waiting for the document, and that timeout
+ * was reported as an absence.
+ *
+ * Ordered on purpose: the reader acts on the first claim in the paragraph, so the evidence that the
+ * app IS up has to come before the sentence about nothing listening.
+ */
+describe('a port that answered nothing is not a port with nothing on it', () => {
+  const base = { everConnected: false, initialized: false, listening: [], port: 4400 };
+
+  it('says the port accepted a connection, and says it BEFORE "nothing is listening"', () => {
+    const text = diagnoseNoSession({ ...base, slowListeners: [5000] });
+    expect(text).toContain('5000');
+    expect(text.toLowerCase()).toContain('accepted');
+    expect(
+      text.indexOf('ACCEPTED'),
+      'the evidence the app is up must precede the claim that nothing is there',
+    ).toBeLessThan(text.indexOf('Nothing is listening'));
+  });
+
+  it('tells the reader to OPEN it rather than start it', () => {
+    const text = diagnoseNoSession({ ...base, slowListeners: [5000] });
+    expect(text.toLowerCase()).toMatch(/open it rather than start it/);
+  });
+
+  it('says nothing extra when no port answered at all', () => {
+    const text = diagnoseNoSession({ ...base, slowListeners: [] });
+    expect(text).not.toContain('ACCEPTED');
+  });
+});
