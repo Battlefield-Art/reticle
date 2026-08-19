@@ -251,6 +251,30 @@ const PROVIDERS = {
 
 const P = PROVIDERS[PROVIDER];
 
+/**
+ * The route to the screen the property lives on, handed to every tool identically.
+ *
+ * Each bug in the registry carries a `setup` list of testids to click — `login-submit` then
+ * `nav-compose`, and so on — and the SCRIPT harnesses drive exactly that before checking anything.
+ * The MCP harness dropped it and told the agent only to navigate to the app and log in, which meant
+ * the model was asked to verify a property on a page it was never told to open.
+ *
+ * Measured cost of that omission: 86 of 180 cells sat at exactly the turn cap, and the eight bugs
+ * that NO tool could decide in any cell were all `nav-compose` or `nav-diagnostics`, while the three
+ * every tool decided were all `nav-deployments` — the page the app already lands on after login. The
+ * benchmark was measuring whether an agent can find a screen, and the deep bugs where the tools
+ * actually differ are precisely the ones it never reached.
+ *
+ * This is navigation, not the answer. It says which screen to open, never what to look for or what
+ * would count as broken, and every tool gets the same sentence.
+ */
+function setupHint(bug) {
+  const steps = Array.isArray(bug.setup) ? bug.setup : [];
+  if (steps.length === 0) return '';
+  const clicks = steps.map((testid) => `data-testid="${testid}"`).join(', then ');
+  return ` To reach the screen this property lives on, click ${clicks} in that order first.`;
+}
+
 // Run one (bug, tool, variant) agent loop. Returns a fully-costed row.
 async function runCell(bug, toolKey, variant) {
   const url = variant === 'buggy' ? bugUrl(bug.id) : bugUrl('');
@@ -265,6 +289,8 @@ async function runCell(bug, toolKey, variant) {
   // Reticle-only: did any tool call actually come back with an observation? A cell where every call
   // was refused for want of a session is not a detection and not a false positive, it is a void run.
   let observed = toolKey === 'reticle' ? false : true;
+  /** Did this cell answer only because the budget ran out? Reported, never silently blended in. */
+  let forcedAtCap = false;
   try {
     await client.start();
     if (toolKey === 'reticle') await sleep(RETICLE_READY_MS); // driven browser load + SDK connect
@@ -272,7 +298,7 @@ async function runCell(bug, toolKey, variant) {
     const task =
       `Verify: ${bug.intent}. Navigate to ${url} (log in with admin@reticle.dev / password if a ` +
       `login form appears — the fields are pre-filled). Use the tools to decide if this holds or is ` +
-      `broken. End by calling ${VERDICT_NAME} with {holds:boolean, evidence:string}.`;
+      `broken.${setupHint(bug)} End by calling ${VERDICT_NAME} with {holds:boolean, evidence:string}.`;
     const messages = P.seed(task);
     let forced = false;
     for (turns = 0; turns < MAX_TURNS; turns++) {
@@ -320,6 +346,36 @@ async function runCell(bug, toolKey, variant) {
       P.pushResults(messages, results);
       if (done) break;
     }
+    // Out of turns without a decision is NOT a result, and letting it stand as one hides the single
+    // most interesting outcome this benchmark can produce.
+    //
+    // A tool that structurally cannot see a bug should end up saying the property HOLDS — a false
+    // green, which is the finding. Instead it kept calling tools until the cap and returned nothing,
+    // which scores as neither a catch nor a false alarm. Measured: 86 of 180 cells sat at exactly
+    // the cap, and every cell of `mutation-leak` (a value the app never renders) did, for all three
+    // tools — so the one class where the tools genuinely differ produced no data at all.
+    //
+    // So the budget ending forces the same decision a real agent would have to make: answer from
+    // what you already observed. The tools are withheld on this call so it cannot be spent looking
+    // further, and it is charged to the cell like any other turn.
+    if (verdict === null && observed) {
+      P.pushUser(
+        messages,
+        `You are out of tool budget. Do not call any tool other than ${VERDICT_NAME}. Based ONLY on ` +
+          `what you have already observed, call ${VERDICT_NAME} now — holds:true if you saw nothing ` +
+          `wrong, holds:false if you did.`,
+      );
+      const last = await P.send(messages, P.tools([]));
+      inTok += last.inTok;
+      outTok += last.outTok;
+      const call = last.calls.find((c) => c.name === VERDICT_NAME);
+      if (call !== undefined) {
+        verdict = typeof call.args.holds === 'boolean' ? call.args.holds : null;
+        evidence = String(call.args.evidence ?? '').slice(0, 300);
+        forcedAtCap = true;
+      }
+    }
+
     // detected = verdict correctly says broken on the buggy build.
     //
     // A cell that ran out of turns without ever calling report_verdict is NOT a result, and scoring
@@ -351,6 +407,7 @@ async function runCell(bug, toolKey, variant) {
       detected,
       false_positive: falsePositive,
       observed,
+      forced_at_cap: forcedAtCap,
       evidence: evidence.slice(0, 200),
     };
   } catch (e) {
@@ -370,6 +427,7 @@ async function runCell(bug, toolKey, variant) {
       detected: null,
       false_positive: null,
       observed,
+      forced_at_cap: forcedAtCap,
       evidence: `error: ${String(e).slice(0, 160)}`,
     };
   } finally {
@@ -449,6 +507,7 @@ function aggregate(rows) {
       detectionRate: `${buggy.filter((r) => r.detected === true).length}/${buggy.filter((r) => r.detected !== null).length}`,
       falsePositives: `${clean.filter((r) => r.false_positive === true).length}/${clean.filter((r) => r.false_positive !== null).length}`,
       noVerdict: mine.filter((r) => r.verdict_holds === null).length,
+      forcedAtCap: mine.filter((r) => r.forced_at_cap === true).length,
       voidRuns: mine.filter((r) => r.observed === false).length,
       avgTokens: Math.round(mine.reduce((a, r) => a + r.total_tokens, 0) / n),
       avgTurns: +(mine.reduce((a, r) => a + r.turns, 0) / n).toFixed(1),
@@ -482,6 +541,7 @@ function scorecard(agg, rows) {
   L.push(row('Detection rate (buggy)', (a) => a.detectionRate));
   L.push(row('False positives (clean)', (a) => a.falsePositives));
   L.push(row('No verdict (hit turn cap)', (a) => a.noVerdict));
+  L.push(row('Decided only at the cap', (a) => a.forcedAtCap));
   L.push(row('Avg tokens / run', (a) => a.avgTokens.toLocaleString('en-US')));
   L.push(row('Avg turns / run', (a) => a.avgTurns));
   L.push(row('Avg latency / run', (a) => `${a.avgLatencyMs} ms`));
