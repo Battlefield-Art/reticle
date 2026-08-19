@@ -22,7 +22,14 @@ import {
 } from '@reticlehq/core';
 import { isFrame, isHtmlElement } from './realm.js';
 import { capturedRootOf } from './shadow-registry.js';
-import { getAccessibleName, getRole, describe, getStates, isVisible } from './a11y.js';
+import {
+  getAccessibleName,
+  getRole,
+  describe,
+  getStates,
+  isInViewport,
+  isVisible,
+} from './a11y.js';
 import { isIgnored } from './dom-ignore.js';
 import { isSensitiveKey } from '../security/serialization.js';
 import { getCapabilities } from '../registry/capabilities.js';
@@ -384,6 +391,10 @@ function projectAttrs(el: Element, keys: readonly string[]): Record<string, stri
 }
 
 function inState(el: Element, state: ElementState, memo?: Map<Element, boolean>): boolean {
+  // inViewport is computed on demand rather than listed in getStates, so it stays assertable without
+  // adding a state to every element in every snapshot (it would bloat the wire and churn every
+  // describe). The predicate path is the only consumer that needs it. (#398)
+  if (ElementState.IN_VIEWPORT === state) return isInViewport(el, memo);
   return getStates(el, isVisible(el, memo)).includes(state);
 }
 

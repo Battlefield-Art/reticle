@@ -349,7 +349,8 @@ A **predicate** declares what should be true. `reticle_assert` / `reticle_wait_f
 // An element exists / is in a state
 { "kind": "element", "query": { "role": "dialog", "name": "Confirm" }, "state": "visible" }
 // query supports: role, name, text, label, placeholder, testid, alt, scope
-// state: visible | hidden | enabled | disabled | checked | expanded | focused | present
+// state: visible | hidden | enabled | disabled | checked | expanded | focused | present | inViewport
+// inViewport asserts the element is in the viewport NOW (not just in the DOM), so a scrollIntoView is gradeable
 // add "absent": true to assert it is NOT there (regression / removal)
 
 // Visible text: page-wide, or `scope` it to a subtree (CSS selector or ref) so a match
