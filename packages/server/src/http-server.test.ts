@@ -194,6 +194,55 @@ describe('POST /drive', () => {
     });
   }
 
+  /**
+   * The daemon opens whatever this route is handed, in a browser it owns, so the scheme is part of
+   * the request that has to be checked rather than part of the payload that gets passed through.
+   *
+   * The CORS defence above already keeps a WEB page off this route — a JSON content type forces a
+   * preflight nobody opts into — so the caller here is a local process, which is a much weaker
+   * threat. That is the reason this is a refusal and not an alarm. But `file:` reads the disk
+   * through a browser context we opened, `data:` is a page we did not fetch from anywhere, and
+   * `javascript:` is not a document at all. None of them is a thing `reticle drive` exists to do:
+   * it drives a running web app, and nothing in the product passes it anything but http(s).
+   */
+  it('refuses a scheme that is not http(s), naming what it got', async () => {
+    shared = createSharedServer();
+    const seen: string[] = [];
+    shared.attachDrive((url) => {
+      seen.push(url);
+      return Promise.resolve({ sessionId: 's1', ready: true });
+    });
+    const port = await listen(shared);
+
+    for (const url of [
+      'file:///etc/hosts',
+      'data:text/html,<h1>hi</h1>',
+      'javascript:void(0)',
+      'ftp://example.com/x',
+    ]) {
+      const res = await post(port, DRIVE_PATH, JSON.stringify({ url }));
+      expect(res.status, url).toBe(400);
+      expect(res.body.toLowerCase(), 'the answer names the scheme it refused').toContain('scheme');
+    }
+    expect(seen, 'nothing reached the browser').toEqual([]);
+  });
+
+  it('still accepts http and https', async () => {
+    shared = createSharedServer();
+    const seen: string[] = [];
+    shared.attachDrive((url) => {
+      seen.push(url);
+      return Promise.resolve({ sessionId: 's1', ready: true });
+    });
+    const port = await listen(shared);
+
+    for (const url of ['http://localhost:5173/', 'https://example.com/app']) {
+      const res = await post(port, DRIVE_PATH, JSON.stringify({ url }));
+      expect(res.status, url).toBe(200);
+    }
+    expect(seen).toEqual(['http://localhost:5173/', 'https://example.com/app']);
+  });
+
   it('hands the url to the attached provider and returns its session as JSON', async () => {
     shared = createSharedServer();
     const seen: string[] = [];

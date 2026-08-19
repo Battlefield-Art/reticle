@@ -170,6 +170,13 @@ export function createSharedServer(options: { token?: string } = {}): SharedServ
             res.end('drive requires a url');
             return;
           }
+          // Before the browser is asked for anything. See driveSchemeRefusal.
+          const refusal = driveSchemeRefusal(url);
+          if (refusal !== undefined) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            res.end(refusal);
+            return;
+          }
           // A refusal is an ANSWER. The caller is a foreground CLI waiting on this socket: a thrown
           // handler that took the response down with it would hang `reticle drive` on a request
           // that can never complete — the same shape of silence the raw EADDRINUSE bind had.
@@ -369,6 +376,45 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 }
 
 /** The `url` out of a drive request body, or undefined when there isn't a usable one. Pure. */
+/**
+ * The schemes the daemon will open in a browser it owns.
+ *
+ * `drive` exists to drive a running web app, and nothing in the product hands this route anything
+ * else — the desktop paths have their own runtimes and never come through here. So the allowlist
+ * costs nothing real and closes a class outright.
+ *
+ * Kept deliberately small. `file:` reads the disk through a browser context WE opened, `data:` is a
+ * page that came from nowhere, and `javascript:` is not a document at all. None of them is a thing
+ * anybody drives.
+ *
+ * Worth stating what this is NOT: the CORS defence on the route already keeps a web page off it,
+ * because a JSON content type forces a preflight nobody opts into. The caller reaching this check is
+ * a local process, which already has broader access than the check removes. It is hygiene about what
+ * the daemon will open on request, not a security boundary — and a refusal here should read as a
+ * refusal, not an alarm.
+ */
+const DRIVEABLE_SCHEMES: readonly string[] = ['http:', 'https:'];
+
+/** The scheme of `url`, or undefined when it is not a URL at all. */
+function schemeOf(url: string): string | undefined {
+  try {
+    return new URL(url).protocol;
+  } catch {
+    return undefined;
+  }
+}
+
+export function driveSchemeRefusal(url: string): string | undefined {
+  const scheme = schemeOf(url);
+  if (scheme !== undefined && DRIVEABLE_SCHEMES.includes(scheme)) return undefined;
+  // Names what it got, because the caller is a CLI printing this to somebody who typed the url and
+  // needs to see which part of it was the problem.
+  return (
+    `unsupported scheme ${scheme ?? '(unparseable url)'} — reticle drive opens a running web app, ` +
+    `so it accepts ${DRIVEABLE_SCHEMES.join(' and ')} only`
+  );
+}
+
 function urlFromDriveRequest(body: string): string | undefined {
   let parsed: unknown;
   try {
