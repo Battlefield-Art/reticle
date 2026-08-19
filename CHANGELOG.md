@@ -140,6 +140,46 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 - **`@reticlehq/server` — `reticle_scroll_to` said a row was not there when it had not looked.** Its default scrolls the DOCUMENT, and a virtualized list usually scrolls inside its own element, which is normally the reason it is virtualized. So the common call returned `found: false, exhausted: true` after a single scroll that moved nothing, and that reads as "the row does not exist" rather than "I scrolled the wrong thing". It now says which it is, and names `container` as the fix. Scoped so the note stays worth reading: a genuine exhaustion against a real scroll container, or a miss with a container already given, says nothing extra. Thanks to [@abidiahmedcom](https://github.com/abidiahmedcom).
 
+### Contributed
+
+Merged into this release from the community. Each was rebased onto the release branch and re-verified here — unit gates, and the full e2e battery for anything touching the tool surface or an observer.
+
+- **`@reticlehq/server` — the `text` predicate can be scoped to a subtree.** Page-wide is the wrong default when the same word appears in a background tab label and in the dialog that just opened: the predicate was satisfied BEFORE the action ran, so `act_and_wait` reported `already_true` for an action that did exactly the right thing. `scope` takes a CSS selector or a ref, and means what it already means on an element query. Thanks [@Osheun](https://github.com/Osheun) (#405), documented by [@everyai-com](https://github.com/everyai-com) (#411).
+
+- **`@reticlehq/server` — a named state assertion reads scoped, not whole.** The same argument, for the same reason, on the state predicate. Thanks [@everyai-com](https://github.com/everyai-com). (#418, #336)
+
+- **`@reticlehq/browser` — an `inViewport` element state, so a scroll is verifiable.** `visible` folds only aria-hidden/`[hidden]`/display/visibility/opacity, so it is already true for content below the fold — which made `scrollIntoView` ungradeable: the target satisfied `visible` and `present` before the scroll, and `act_and_wait` returned `already_true`. Computed on demand in the predicate path rather than listed in `getStates`, so it costs nothing on every element of every snapshot. Thanks [@everyai-com](https://github.com/everyai-com). (#415, #398)
+
+- **`@reticlehq/browser` — `press` sets modifier keys, so a `Cmd+K` shortcut is driveable.** A command palette bound to a modifier chord could not be opened at all. Thanks [@everyai-com](https://github.com/everyai-com). (#416, #393)
+
+- **`@reticlehq/browser` — a snapshot says when an overlay aria-hides the rest of the page.** A modal that sets `aria-hidden` on everything behind it made the whole page read as absent, and nothing said why. Thanks [@everyai-com](https://github.com/everyai-com). (#417, #397)
+
+- **`@reticlehq/server` — a recorded response body proves capture is on.** The honesty check that reports uncaptured bodies could not tell "capture is off" from "this body was not recorded", and warned on sessions that were capturing correctly. Thanks [@everyai-com](https://github.com/everyai-com). (#412, #394)
+
+- **`@reticlehq/server` — `annotate` and `flow_save` no longer disagree about a success-state.** `annotate` said "will succeed when …" for a success-state that `flow_save` then graded assertion-free, so a flow that only checks the console replays green through any regression. The contradiction is now named at the point the annotation is made, using the same consequence/presence classification every grader shares. Thanks [@everyai-com](https://github.com/everyai-com). (#413, #395)
+
+- **`@reticlehq/server` — `reticle_network` can list without bodies.** The listing is the common call and the bodies are the expensive half; paying for both on every look is the token cost this product spends most of its effort not incurring. Thanks [@everyai-com](https://github.com/everyai-com). (#408, #401)
+
+- **`@reticlehq/server` — the unadvertised-tool recovery names a call that reaches the tool, and the lease preflights the browser.** An agent handed only a hidden, throttled tab followed the embedded recovery text and each hop named something the next hop rejected — including driving its own browser "with `reticle_lease`", a tool the default surface does not advertise. And a missing Playwright Chromium only surfaced inside `pool.acquire`, where the launch failure was reported as "could not open <url> — is the app running?", sending the caller to debug an app that was fine. Thanks [@everyai-com](https://github.com/everyai-com). (#419, #400)
+
+- **`@reticlehq/browser` — `inspect` says why `component.source` is missing.** An absent source pointer and an absent build plugin looked identical, so the answer was to go looking in the wrong place. Thanks [@Osheun](https://github.com/Osheun). (#406)
+
+- **`@reticlehq/server` — a snapshot delta reports a value change as `changed`, not as a remove plus an add.** The pairing now requires the role to match, so two unrelated elements are never fused into one edit. Thanks [@DevChiniwala](https://github.com/DevChiniwala). (#360)
+
+- **`@reticlehq/server` — `act_sequence` reports per-step progress on a timeout, and tells a timeout from a refusal.** A sequence that ran out of budget said only that it had, so the steps that DID apply were invisible — and the two cases differ in whether a retry is safe. Thanks [@DevChiniwala](https://github.com/DevChiniwala). (#386, #374)
+
+- **`@reticlehq/core` — a finding carries a fingerprint, so the same defect can be recognised across sessions.** Thanks [@DevChiniwala](https://github.com/DevChiniwala). (#358)
+
+- **A docs-site gate — a post-deploy check for broken pages, including `.md` variants and `/llms.txt`.** Nothing in this repo could see docs.reticle.sh, where an unquoted colon in a `description` frontmatter silently 404s a page. Thanks [@DevChiniwala](https://github.com/DevChiniwala). (#387, #352)
+
+- **A real-world fixture and e2e gate for the response-ignored detector.** The detector was covered only by fixtures too easy to exercise it; this drives it against a server-backed write. Thanks [@Maqbool61](https://github.com/Maqbool61). (#356, #279)
+
+- **`@reticlehq/server` — an absence assertion that could not see where the element would be is `unknown`, not a pass.** A passing absence check over a region Reticle cannot observe — virtualized-unmounted rows, or a cross-origin iframe the query explicitly scoped into — kept `pass: true` while the DOM said nothing about the place that mattered. It now reports `verified: "unknown"` with `absence_blind_spot` and a sentence naming the unobservable region. Thanks [@tagadearpit](https://github.com/tagadearpit). (#343, #337)
+
+### Fixed on the release branch
+
+- **`@reticlehq/server` — the way out of an unadvertised tool named a retired switch.** The refusal for a real tool the surface does not advertise tells the agent the call that works and the switch that stops it being necessary. The switch it named was `RETICLE_TOOL_PROFILE=all`, and that variable is retired: its old values map to a surface and everything else — including the `all` this sentence told agents to set — resolves to the default. So an agent that followed the advice exactly got the default surface back and no explanation. It now names `RETICLE_ADVERTISE_ALL_TOOLS=1`, says the DAEMON reads it at startup (exporting it into an agent's environment while a daemon runs changes nothing — the observation that produced the original report), and no longer promises it advertises every tool, which capping the surface stopped being true. The unit test pinned the retired name, so it held the bug in place rather than catching it.
+
 ## [2.8.0] — 2026-08-15
 
 **It tells the truth about what it saw.** 2.7.0 was about getting connected. This one is about the two ways a verdict can lie once you are — by claiming something it did not observe, and by refusing to claim something it did. Every item below was found by driving Reticle against a running app rather than by a failing test, which is the honest description of how much a green gate is worth here.
