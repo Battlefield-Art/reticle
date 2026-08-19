@@ -139,6 +139,21 @@ for (const tool of advertised) {
   if (tool.inputSchema?.properties?.sessionId !== undefined) TAKES_SESSION.add(tool.name);
 }
 
+// The UNADVERTISED tools declare a sessionId too, and their schemas are not in `tools/list` — only
+// the catalog has them. Without this the sweep drove them unaddressed, and with the bench-app tab
+// plus a lease open, every one came back "multiple sessions connected": the sweep failing on the
+// harness rather than on the surface, and intermittently, depending on how many tabs happened to be
+// live. Ask the catalog for the whole registry and take sessionId from where it is actually written
+// down.
+const catalogList = await callRaw('reticle_tools', {});
+const allNames = (catalogList?.parsed?.tools ?? []).map((t) => t.name).filter(Boolean);
+if (0 < allNames.length) {
+  const catalog = await callRaw('reticle_tools', { names: allNames });
+  for (const tool of catalog?.parsed?.tools ?? []) {
+    if ((tool.params ?? []).some((p) => p.name === 'sessionId')) TAKES_SESSION.add(tool.name);
+  }
+}
+
 // The driven browser has to load the app and its SDK has to dial the bridge before anything is real.
 // bench-app self-assigns a per-tab id, so it is recognised by the URL it is serving from.
 const [driven] = await waitForSession(

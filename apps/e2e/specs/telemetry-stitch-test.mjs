@@ -93,17 +93,39 @@ const client = new McpStdioClient(
 );
 await client.start();
 
+/**
+ * The surface advertises 18 of 48 tools, so a name this spec drives may not be callable directly —
+ * `reticle_annotate` is one, and the refusal for it is a protocol error the helper used to hand
+ * back as data. Nothing checked it, so the annotation silently never happened and the flow three
+ * calls later graded assertion-free: a spec failing on the grade, three steps from the refusal that
+ * caused it. Retrying through `reticle_run` is not a workaround — it is the documented call for an
+ * unadvertised tool, and it is the hop the agent following this same loop has to make.
+ */
+const NOT_ADVERTISED = 'is not advertised under this tool profile';
+
+const rawCall = async (name, args) => {
+  const r = await client.request('tools/call', { name, arguments: args }, 60_000);
+  const text = (r?.content ?? []).map((c) => c.text ?? '').join('\n');
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
 const call = async (name, args = {}) => {
   try {
-    const r = await client.request('tools/call', { name, arguments: args }, 60_000);
-    const text = (r?.content ?? []).map((c) => c.text ?? '').join('\n');
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
+    return await rawCall(name, args);
   } catch (e) {
-    return { PROTO: String(e?.message ?? e) };
+    const message = String(e?.message ?? e);
+    if (message.includes(NOT_ADVERTISED)) {
+      try {
+        return await rawCall('reticle_run', { tool: name, args });
+      } catch (viaRun) {
+        return { PROTO: String(viaRun?.message ?? viaRun) };
+      }
+    }
+    return { PROTO: message };
   }
 };
 
