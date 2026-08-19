@@ -139,6 +139,16 @@ export const MARKERS_BTN_ATTR = 'data-reticle-markers-btn';
 export const CLEAR_MARKS_ATTR = 'data-reticle-clear-marks';
 /** Collapsed FAB annotation-count badge. */
 export const MARK_COUNT_ATTR = 'data-reticle-mark-count';
+/**
+ * Turn annotation on and off from the toolbar.
+ *
+ * Annotation used to be reachable only as a side effect of expanding the HUD, which meant there was
+ * no way to keep the HUD open and stop annotating, and nothing on screen said the mode existed at
+ * all. It is a mode the user chooses, so it gets a control they can see and press.
+ */
+export const ANNOTATE_BTN_ATTR = 'data-reticle-annotate-btn';
+/** Minimise the agent chat back to the toolbar, without collapsing the whole HUD. */
+export const CHAT_MIN_ATTR = 'data-reticle-chat-min';
 /** Settings gear is open - the card sits above the dock. */
 export const SETTINGS_ATTR = 'data-reticle-settings';
 export const SETTINGS_BTN_ATTR = 'data-reticle-settings-btn';

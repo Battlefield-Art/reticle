@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { EventType } from '@reticlehq/core';
 import { Annotator } from './annotator.js';
+import { asSyntheticInput } from '../actions/synthetic-input.js';
 
 interface Emitted {
   type: EventType;
@@ -322,5 +323,64 @@ describe('Annotator - human marks a mistake on the page', () => {
     expect(document.querySelector('[data-reticle-mark="pop"]')).not.toBeNull();
     expect(popover().classList.contains('reticle-mark-shake')).toBe(true);
     expect(emits).toHaveLength(0);
+  });
+});
+
+/**
+ * Annotation is a HUMAN gesture, so it must not eat the agent's clicks.
+ *
+ * The capture-phase handler preventDefault()s every click while annotate mode is live, and mode is
+ * live whenever the HUD is expanded. That includes clicks Reticle itself dispatched for
+ * `reticle_act`, so an agent driving an app with the HUD open had every click swallowed.
+ *
+ * Measured against this repo's own fixture, same app and same call on both sides: on the old HUD the
+ * Sign in button reported cursor `pointer` and produced `POST /api/login -> 200`; on the new one it
+ * reported `crosshair` and produced no network at all, while `reticle_act` still answered
+ * dispatched:true, settled:true. Reticle reporting success for an action the app never received is
+ * the exact failure this product exists to catch, occurring in its own UI.
+ *
+ * `isTrusted` is the distinction the platform already draws: false for anything dispatchEvent
+ * created, true for real user input. A real click still annotates; a synthesised one goes to the app.
+ */
+describe("annotate mode does not swallow the agent's clicks", () => {
+  it('lets a click Reticle dispatched through to the page', () => {
+    const { ann } = setup();
+    const target = document.createElement('button');
+    document.body.appendChild(target);
+    ann.toggle(true);
+    let received = 0;
+    target.addEventListener('click', () => (received += 1));
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    asSyntheticInput(() => target.dispatchEvent(ev));
+    expect(ev.defaultPrevented, 'the agent click must not be cancelled').toBe(false);
+    expect(received, 'the page must still receive it').toBe(1);
+    ann.toggle(false);
+  });
+
+  it('still captures an ordinary click for annotation', () => {
+    const { ann } = setup();
+    const target = document.createElement('button');
+    document.body.appendChild(target);
+    ann.toggle(true);
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    target.dispatchEvent(ev);
+    expect(ev.defaultPrevented, "a person's click is still captured").toBe(true);
+    ann.toggle(false);
+  });
+
+  it('clears the mark even if a listener throws, or annotation dies for the page lifetime', () => {
+    const { ann } = setup();
+    const target = document.createElement('button');
+    document.body.appendChild(target);
+    ann.toggle(true);
+    expect(() =>
+      asSyntheticInput(() => {
+        throw new Error('handler blew up');
+      }),
+    ).toThrow('handler blew up');
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    target.dispatchEvent(ev);
+    expect(ev.defaultPrevented, 'annotation must still work after a throw').toBe(true);
+    ann.toggle(false);
   });
 });

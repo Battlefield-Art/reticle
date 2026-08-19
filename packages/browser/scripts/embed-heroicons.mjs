@@ -36,10 +36,12 @@ const MAP = {
   trash: 'trash',
   help: 'question-mark-circle',
   'caret-right': 'chevron-right',
+  annotate: 'pencil-square',
 };
 
 /** Outline key → solid body for toolbar toggle buttons (filled when active). */
 const TOGGLE_SOLID_MAP = {
+  annotate: 'pencil-square',
   message: 'chat-bubble-left-ellipsis',
   view: 'eye',
   gear: 'cog-6-tooth',

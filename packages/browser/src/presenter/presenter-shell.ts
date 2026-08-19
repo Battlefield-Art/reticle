@@ -1,4 +1,6 @@
 import {
+  CHAT_MIN_ATTR,
+  ANNOTATE_BTN_ATTR,
   CHAT_ATTR,
   CHAT_TOGGLE_ATTR,
   CHAT_PANEL_ATTR,
@@ -27,6 +29,8 @@ import {
 } from './presenter-settings.js';
 const DRAG_HANDLE_CLASS = 'reticle-toolbar-drag';
 const TRANSITION_LOCK_MS = 120;
+const ANNOTATE_LABEL = 'Annotate';
+const CHAT_MIN_LABEL = 'Minimise chat';
 const SETTINGS_LABEL = 'Settings';
 const EXIT_LABEL = 'Exit';
 
@@ -34,6 +38,8 @@ export interface HudShellCallbacks {
   onChatOpen?: () => void;
   onChatClose?: () => void;
   onExpand?: () => void;
+  /** The user pressed the annotate toggle. `on` is the state they asked for. */
+  onAnnotateToggle?: (on: boolean) => void;
   onCollapse?: () => void;
   settings?: SettingsHost;
 }
@@ -53,6 +59,13 @@ export class HudShell {
   #layoutTeardown: (() => void) | undefined;
   #transitionLock = false;
   #suppressFabClick = false;
+  #annotateBtn: HTMLButtonElement | undefined;
+  /**
+   * Whether the USER wants to annotate. Distinct from whether annotation is currently possible,
+   * which also needs a live session and an expanded HUD — this is the half the user controls, and
+   * conflating the two is why there was no way to keep the HUD open without annotating.
+   */
+  #annotateOn = true;
   #callbacks: HudShellCallbacks;
   constructor(callbacks: HudShellCallbacks = {}) {
     this.#callbacks = callbacks;
@@ -72,10 +85,12 @@ export class HudShell {
     flowsHtml: string,
     footHtml: string,
   ): string {
+    const annotate = hiToggleIconHtml(PresenterIcon.ANNOTATE, PRESENTER_ICON_SIZE.TOOLBAR);
     const gear = hiToggleIconHtml(PresenterIcon.GEAR, PRESENTER_ICON_SIZE.TOOLBAR);
     const exit = hiIconHtml(PresenterIcon.REMOVE, PRESENTER_ICON_SIZE.TOOLBAR);
     return `<div ${DOCK_ATTR}>
       <div ${CHAT_PANEL_ATTR} class="reticle-chat-panel ${HUD_SURFACE_CLASS}" role="dialog" aria-label="Reticle agent chat" aria-hidden="true">
+        <button type="button" ${CHAT_MIN_ATTR} class="reticle-chat-min" title="${CHAT_MIN_LABEL}" aria-label="${CHAT_MIN_LABEL}">${hiIconHtml(PresenterIcon.CARET_DOWN, PRESENTER_ICON_SIZE.TOOLBAR)}</button>
         ${actStripHtml}
         <span class="reticle-tally" data-reticle-tally hidden></span>
         <span class="reticle-chip" data-reticle-chip></span>
@@ -93,6 +108,10 @@ export class HudShell {
           <span class="reticle-tb-sep" aria-hidden="true"></span>
           <div class="reticle-toolbar-chrome">
             <div class="reticle-tb-wrap">
+              <button type="button" ${ANNOTATE_BTN_ATTR} class="reticle-tb-btn reticle-tb-btn--toggle" title="${ANNOTATE_LABEL}" aria-label="${ANNOTATE_LABEL}" aria-pressed="true" data-active="1">${annotate}</button>
+              <span class="reticle-tb-tip">${ANNOTATE_LABEL}</span>
+            </div>
+            <div class="reticle-tb-wrap">
               <button type="button" ${SETTINGS_BTN_ATTR} class="reticle-tb-btn reticle-tb-btn--toggle" title="${SETTINGS_LABEL}" aria-label="${SETTINGS_LABEL}" aria-pressed="false" data-active="0">${gear}</button>
               <span class="reticle-tb-tip">${SETTINGS_LABEL}</span>
             </div>
@@ -105,6 +124,16 @@ export class HudShell {
       </div>
     </div>`;
   }
+  /** Does the user currently want to annotate? */
+  isAnnotateOn(): boolean {
+    return this.#annotateOn;
+  }
+  /** Set the toggle and reflect it on the button, without firing the callback. */
+  setAnnotateOn(on: boolean): void {
+    this.#annotateOn = on;
+    this.#annotateBtn?.setAttribute('aria-pressed', on ? 'true' : 'false');
+    this.#annotateBtn?.setAttribute('data-active', on ? '1' : '0');
+  }
   mount(root: HTMLElement): void {
     this.#root = root;
     this.#dock = root.querySelector<HTMLElement>(`[${DOCK_ATTR}]`) ?? undefined;
@@ -114,6 +143,20 @@ export class HudShell {
     this.#chatPanel = chatPanelEl instanceof HTMLElement ? chatPanelEl : undefined;
     const chatToggleEl = root.querySelector(`[${CHAT_TOGGLE_ATTR}]`);
     this.#chatToggle = chatToggleEl instanceof HTMLElement ? chatToggleEl : undefined;
+    const annotateEl = root.querySelector(`[${ANNOTATE_BTN_ATTR}]`);
+    this.#annotateBtn = annotateEl instanceof HTMLButtonElement ? annotateEl : undefined;
+    this.#annotateBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.setAnnotateOn(!this.#annotateOn);
+      this.#callbacks.onAnnotateToggle?.(this.#annotateOn);
+    });
+    const chatMinEl = root.querySelector(`[${CHAT_MIN_ATTR}]`);
+    chatMinEl?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.closeChat();
+    });
     const collapseEl = root.querySelector('[data-reticle-min-btn]');
     this.#collapseBtn = collapseEl instanceof HTMLButtonElement ? collapseEl : undefined;
     root.setAttribute(MIN_ATTR, '1');
@@ -182,6 +225,10 @@ export class HudShell {
     this.#root.setAttribute(MIN_ATTR, '0');
     if (this.#fab !== undefined) this.#fab.setAttribute('aria-expanded', 'true');
     this.#callbacks.onExpand?.();
+    // The chat IS the HUD's content: expanding to a toolbar with nothing above it made the agent's
+    // log something you had to know to go looking for. `openChat` re-enters `expand` only when
+    // collapsed, and MIN_ATTR is already cleared above, so this cannot recurse.
+    this.openChat();
     if (this.#dock !== undefined) scheduleSyncDockLayout(this.#dock, this.#root);
   }
   collapse(): void {

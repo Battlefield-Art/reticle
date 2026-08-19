@@ -7,6 +7,7 @@ import {
   NATIVE_INPUT_ARG,
   SettleReason,
 } from '@reticlehq/core';
+import { asSyntheticInput } from './synthetic-input.js';
 import { echoRef, refs } from '../dom/refs.js';
 import { assertEditable, assertNotRichText, setNativeValue } from './value-input.js';
 import { getAccessibleName, getRole, isVisible, getStates } from '../dom/a11y.js';
@@ -691,7 +692,9 @@ async function dispatchOther(
       // — a synthetic click toggles the box, which `adversarial.check.test.ts` pins, because the
       // comment this replaces asserted the opposite and was wrong.
       const event = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true });
-      const notPrevented = el.dispatchEvent(event);
+      // Marked as ours so the annotator's capture-phase listener lets it through: in annotate mode
+      // it cancels clicks to place a mark, which would otherwise swallow every action we dispatch.
+      const notPrevented = asSyntheticInput(() => el.dispatchEvent(event));
       return !notPrevented || event.defaultPrevented;
     }
     case ActionType.SUBMIT: {

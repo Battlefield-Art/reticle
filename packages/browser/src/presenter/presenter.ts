@@ -151,6 +151,7 @@ export class Presenter {
     this.#shell = new HudShell({
       onChatOpen: () => this.#shell.pulseFab(false),
       onExpand: () => this.#syncAnnotator(),
+      onAnnotateToggle: () => this.#syncAnnotator(),
       onCollapse: () => this.#syncAnnotator(),
       settings: {
         onBeforeOpen: () => {
@@ -252,7 +253,13 @@ export class Presenter {
   }
   /** Annotate only while the session is live and the HUD is expanded. Pause/End freeze the page. */
   #syncAnnotator(): void {
-    const live = SessionState.ACTIVE === this.#panel.state && !this.#shell.isCollapsed();
+    // Three things have to agree, and only the last is the user's: the session is live, the HUD is
+    // open, and they have not switched annotation off. It used to be the first two alone, so there
+    // was no way to keep the HUD open and stop annotating.
+    const live =
+      SessionState.ACTIVE === this.#panel.state &&
+      !this.#shell.isCollapsed() &&
+      this.#shell.isAnnotateOn();
     this.#annotator?.toggle(live);
     if (this.#root !== undefined) {
       syncPageBlocker(this.#root, getPresenterSettings(), live);

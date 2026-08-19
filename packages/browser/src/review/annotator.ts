@@ -1,3 +1,4 @@
+import { isSyntheticInput } from '../actions/synthetic-input.js';
 import { EventType } from '@reticlehq/core';
 import { isReticleOverlay } from '../dom/dom-ignore.js';
 import { resolveMarkAnchor, type MarkAnchor } from './mark-anchor.js';
@@ -253,6 +254,10 @@ export class Annotator {
 
   #handleClick(ev: MouseEvent): void {
     if (!this.#active) return;
+    // A click Reticle dispatched is the agent driving the app, not a person placing a mark. Without
+    // this, expanding the HUD silently disabled every `reticle_act` click while the action still
+    // reported success — a false green in our own UI. See synthetic-input.ts.
+    if (isSyntheticInput()) return;
     const target = ev.target;
     if (!(target instanceof Element)) return;
     if (isReticleOverlay(target)) return;

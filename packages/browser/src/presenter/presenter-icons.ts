@@ -24,6 +24,7 @@ export const PresenterIcon = {
   TRASH: 'trash',
   HELP: 'help',
   CARET_RIGHT: 'caret-right',
+  ANNOTATE: 'annotate',
 } as const;
 
 export type PresenterIconName = (typeof PresenterIcon)[keyof typeof PresenterIcon];

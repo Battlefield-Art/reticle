@@ -35,6 +35,13 @@ export const SHELL_CSS = `
   position:fixed;right:20px;bottom:20px;left:auto;
   z-index:2147483647;pointer-events:none;display:flex;flex-direction:column;align-items:flex-end;gap:8px;
   overflow:visible;max-width:calc(100vw - 24px);font-family:var(--reticle-font);-webkit-font-smoothing:antialiased;
+  /**
+   * ONE width for the dock and the chat above it. They were 420px and 320px, so the toolbar
+   * overhung the panel it belongs to and the pair read as two unrelated widgets.
+   */
+  --reticle-dock-w:380px;
+  /* The log is the reason the panel exists, so it gets the height rather than the chrome. */
+  --reticle-chat-h:560px;
   opacity:0;transform:translate3d(0,8px,0);transition:opacity var(--reticle-shell-fast),transform var(--reticle-shell-fast);}
 [${DOCK_ATTR}][data-dragged="1"]{left:var(--reticle-hud-x);top:var(--reticle-hud-y);bottom:auto;right:auto;transform:none;}
 [${DOCK_ATTR}][data-dragged="1"][data-on="1"]{transform:none;}
@@ -42,8 +49,8 @@ export const SHELL_CSS = `
 [${DOCK_ATTR}][data-on="0"]{opacity:0;pointer-events:none;}
 [${CHAT_PANEL}]{
   display:none;position:absolute;right:0;left:auto;bottom:calc(100% + 8px);top:auto;z-index:5;
-  box-sizing:border-box;width:320px;max-width:min(320px,calc(100vw - 16px));
-  max-height:min(var(--reticle-chat-max-h,420px),calc(100vh - 120px));
+  box-sizing:border-box;width:var(--reticle-dock-w);max-width:min(var(--reticle-dock-w),calc(100vw - 16px));
+  max-height:min(var(--reticle-chat-max-h,var(--reticle-chat-h)),calc(100vh - 120px));
   flex-direction:column;overflow:hidden;text-align:left;
   color:var(--reticle-fg);font-size:13px;line-height:1.5;
   border-radius:16px;
@@ -57,7 +64,16 @@ export const SHELL_CSS = `
   right:auto;left:0;}
 [${OVERLAY}][${CHAT_ATTR}="1"] [${CHAT_PANEL}]{
   display:flex;pointer-events:auto;}
-[${OVERLAY}][${COMPACT_CHAT_ATTR}="1"] [${CHAT_PANEL}]{width:288px;}
+/* Minimise the chat without collapsing the whole HUD — sits over the panel's top-right corner. */
+[${DOCK_ATTR}] .reticle-chat-min{
+  position:absolute;top:6px;right:6px;z-index:4;
+  width:26px;height:26px;padding:0;border:none;border-radius:50%;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:transparent;color:rgba(255,255,255,.6);line-height:0;}
+[${DOCK_ATTR}] .reticle-chat-min:hover{background:rgba(255,255,255,.07);color:var(--reticle-fg);}
+[${DOCK_ATTR}] .reticle-chat-min svg{display:block;fill:none;stroke:currentColor;stroke-width:1.5;
+  stroke-linecap:round;stroke-linejoin:round;}
+[${OVERLAY}][${COMPACT_CHAT_ATTR}="1"] [${CHAT_PANEL}]{width:min(var(--reticle-dock-w),320px);}
 [${OVERLAY}][${LOG_TIMESTAMPS_ATTR}="0"] [data-reticle-log-ts]{display:none;}
 [${OVERLAY}][${REDUCE_MOTION_ATTR}="1"] [${HUD}],
 [${OVERLAY}][${REDUCE_MOTION_ATTR}="1"] [${CHAT_PANEL}],
@@ -86,7 +102,7 @@ export const SHELL_CSS = `
 [${HUD}][data-on="0"]{opacity:0;transform:scale(.8);pointer-events:none;}
 [${HUD}][data-on="1"]{opacity:1;transform:scale(1);}
 [${OVERLAY}][${MIN_ATTR}="0"] [${HUD}]{
-  width:auto;height:44px;min-height:44px;max-height:44px;min-width:44px;max-width:min(100vw - 24px,420px);border-radius:24px;padding:4px 6px;}
+  width:auto;height:44px;min-height:44px;max-height:44px;min-width:44px;max-width:min(calc(100vw - 24px),var(--reticle-dock-w));border-radius:24px;padding:4px 6px;}
 [${HUD}] .reticle-fab{
   position:absolute;inset:0;z-index:2;display:inline-flex;align-items:center;justify-content:center;
   width:44px;height:44px;padding:0;margin:0;border:none;border-radius:22px;cursor:pointer;
@@ -149,8 +165,14 @@ export const SHELL_CSS = `
 [${HUD}] .reticle-hi-toggle .reticle-hi-icon--solid{opacity:0;}
 [${HUD}] .reticle-hi-toggle .reticle-hi-icon--solid svg{
   transform:scale(1.12);transform-origin:center;}
-[${HUD}] .reticle-tb-btn--toggle[data-active="1"] .reticle-hi-icon--outline{opacity:0;}
-[${HUD}] .reticle-tb-btn--toggle[data-active="1"] .reticle-hi-icon--solid{opacity:1;}
+/*
+ * Active toggles keep the OUTLINE icon. They used to swap to the solid heroicon, which is a filled
+ * glyph next to 1.5px strokes everywhere else, so the pressed button read as a heavier typeface
+ * rather than as a state. The state is already carried by accent colour and a background above,
+ * which is enough and does not change the icon's weight.
+ */
+[${HUD}] .reticle-tb-btn--toggle[data-active="1"] .reticle-hi-icon--outline{opacity:1;}
+[${HUD}] .reticle-tb-btn--toggle .reticle-hi-icon--solid{opacity:0;}
 [${HUD}] .reticle-tb-btn--toggle .reticle-hi-icon--solid svg{color:inherit;}
 [${HUD}] .reticle-tb-btn--primary[data-active="1"]{
   color:#fff;background:rgba(255,255,255,.14);}
