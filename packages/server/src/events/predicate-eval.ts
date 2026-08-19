@@ -20,7 +20,21 @@ export type Predicate =
       state?: ElementState;
       absent?: boolean;
     }
-  | { kind: typeof PredicateKind.TEXT; contains: string; visible?: boolean; absent?: boolean }
+  | {
+      kind: typeof PredicateKind.TEXT;
+      contains: string;
+      visible?: boolean;
+      absent?: boolean;
+      /**
+       * Restrict the match to a subtree, as a CSS selector or a ref — the same field, and the same
+       * meaning, as `scope` on an element query.
+       *
+       * Without it the match is page-wide, and a word that appears both in a background tab label
+       * and in the dialog that just opened satisfies the predicate BEFORE the action runs, so
+       * `act_and_wait` reports `already_true` for an action that did exactly the right thing.
+       */
+      scope?: string;
+    }
   | {
       kind: typeof PredicateKind.NET;
       method?: string;
@@ -266,6 +280,7 @@ function predicateUnion() {
         contains: z.string(),
         visible: z.boolean().optional(),
         absent: z.boolean().optional(),
+        scope: z.string().optional(),
       })
       .strict(),
     z
