@@ -145,7 +145,7 @@ Three things about that table are more important than the headline number.
 
 That is the whole claim, stated as narrowly as it deserves: Reticle sees inside the running app, so it catches the class of bug where the outside looks correct. Outside that class it ties, and it says so.
 
-Raw data: `bench/pw-vs-reticle/results.json`. Runner: `bench/pw-vs-reticle/run.mjs`. Scorecard: `bench/FALSE-GREEN-SCORECARD.md`.
+Bug registry: `bench/pw-vs-reticle/bugs.mjs`. Runner: `bench/pw-vs-reticle/run.mjs`, which regenerates `results.json` locally (run artifacts are not committed). Scorecard: `bench/FALSE-GREEN-SCORECARD.md`.
 
 ### 5b. The controlled toy app (the demo)
 

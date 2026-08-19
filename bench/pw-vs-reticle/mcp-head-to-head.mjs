@@ -26,7 +26,9 @@ const KEY = process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? proces
 const LLM_URL = process.env.BENCH_LLM_URL ?? 'https://api.openai.com/v1/chat/completions';
 const MODEL = process.env.BENCH_LLM_MODEL ?? process.env.BENCH_OPENAI_MODEL ?? 'gpt-4o';
 const MAX_TURNS = Number(process.env.BENCH_MAX_TURNS ?? 14);
-const RETICLE_PORT = process.env.BENCH_HH_RETICLE_PORT ?? '4461';
+// MUST match apps/bench-app's baked-in default (its vite.config.ts reads RETICLE_PORT at dev-server
+// start). This said 4461 against the app's 4460 and silently invalidated every Reticle cell.
+const RETICLE_PORT = process.env.BENCH_HH_RETICLE_PORT ?? '4460';
 const RETICLE_READY_MS = Number(process.env.BENCH_RETICLE_READY_MS ?? '3500');
 
 // Per-token pricing (USD). Defaults = gpt-4o; override per provider (deepseek-chat ≈ 0.27 in / 1.10 out).
@@ -51,12 +53,28 @@ if (!KEY) {
   process.exit(0);
 }
 
+/** Competitor versions are pinned so a run is reproducible; bump deliberately, never float. */
+export const PLAYWRIGHT_MCP = '@playwright/mcp@0.0.79';
+export const DEVTOOLS_MCP = 'chrome-devtools-mcp@1.7.0';
+
+/** The refusal Reticle returns when nothing is attached. Its presence means the cell measured NOTHING. */
+const NO_SESSION_MARKER = 'no browser session connected';
+
+export const TOOLS = ['playwright_mcp', 'devtools_mcp', 'reticle'];
+
 // MCP server per tool. Reticle bakes the driven URL into --drive, so it is spawned per cell.
 function serverFor(toolKey, url) {
   if (toolKey === 'playwright_mcp') {
     return {
       command: 'npx',
-      args: ['-y', '@playwright/mcp@0.0.76', '--headless', '--isolated'],
+      args: ['-y', PLAYWRIGHT_MCP, '--headless', '--isolated'],
+      env: {},
+    };
+  }
+  if (toolKey === 'devtools_mcp') {
+    return {
+      command: 'npx',
+      args: ['-y', DEVTOOLS_MCP, '--headless', '--isolated'],
       env: {},
     };
   }
@@ -130,6 +148,9 @@ async function runCell(bug, toolKey, variant) {
     turns = 0,
     verdict = null,
     evidence = '';
+  // Reticle-only: did any tool call actually come back with an observation? A cell where every call
+  // was refused for want of a session is not a detection and not a false positive, it is a void run.
+  let observed = toolKey === 'reticle' ? false : true;
   try {
     await client.start();
     if (toolKey === 'reticle') await sleep(RETICLE_READY_MS); // driven browser load + SDK connect
@@ -187,6 +208,7 @@ async function runCell(bug, toolKey, variant) {
         try {
           const out = await client.callTool(tc.function.name, args, 60000);
           content = out.text.slice(0, 8000);
+          if (!content.includes(NO_SESSION_MARKER)) observed = true;
         } catch (e) {
           content = `error: ${String(e).slice(0, 200)}`;
         }
@@ -212,6 +234,7 @@ async function runCell(bug, toolKey, variant) {
       verdict_holds: verdict,
       detected,
       false_positive: falsePositive,
+      observed,
       evidence: evidence.slice(0, 200),
     };
   } catch (e) {
@@ -230,6 +253,7 @@ async function runCell(bug, toolKey, variant) {
       verdict_holds: null,
       detected: null,
       false_positive: null,
+      observed,
       evidence: `error: ${String(e).slice(0, 160)}`,
     };
   } finally {
@@ -255,9 +279,52 @@ async function runCell(bug, toolKey, variant) {
   }
 }
 
+/**
+ * Refuse to measure a Reticle arm that cannot see the app.
+ *
+ * Without this the harness happily produces a full scorecard out of a daemon nothing ever connected
+ * to: the model, told to verify and shown nothing, answers "broken" every time, which scores as a
+ * perfect detection rate on the buggy builds and a wall of false positives on the clean ones. Both
+ * numbers are wrong and neither looks wrong. A benchmark that measured nothing has to go RED.
+ */
+async function preflightReticle(url) {
+  const cfg = serverFor('reticle', url);
+  const client = new McpStdioClient(cfg.command, cfg.args, cfg.env);
+  try {
+    await client.start();
+    await sleep(RETICLE_READY_MS);
+    // A refused tool REJECTS rather than returning text, so the marker has to be looked for in both.
+    const text = await client
+      .callTool('reticle_snapshot', {}, 60000)
+      .then((out) => out.text)
+      .catch((e) => String(e));
+    if (text.includes(NO_SESSION_MARKER)) {
+      throw new Error(
+        `PREFLIGHT FAILED: no app session on port ${RETICLE_PORT}.\n` +
+          `apps/bench-app bakes RETICLE_PORT in at dev-server start, so a bench-app already running ` +
+          `on a different port cannot be re-pointed by env alone. Kill it and re-run, or set ` +
+          `BENCH_HH_RETICLE_PORT to the port it was started with.\n` +
+          `Refusing to measure: every Reticle cell would score a verdict the model could not observe.`,
+      );
+    }
+  } finally {
+    await client.stop();
+    try {
+      const { execFileSync } = await import('node:child_process');
+      execFileSync(
+        'node',
+        [path.join(REPO, 'packages/server/dist/cli.js'), 'stop', '--port', RETICLE_PORT, '--quiet'],
+        { stdio: 'ignore' },
+      );
+    } catch {
+      /* */
+    }
+  }
+}
+
 function aggregate(rows) {
   const byTool = {};
-  for (const tool of ['playwright_mcp', 'reticle']) {
+  for (const tool of TOOLS) {
     const mine = rows.filter((r) => r.tool === tool);
     const buggy = mine.filter((r) => r.variant === 'buggy');
     const clean = mine.filter((r) => r.variant === 'clean');
@@ -265,6 +332,7 @@ function aggregate(rows) {
     byTool[tool] = {
       detectionRate: `${buggy.filter((r) => r.detected === true).length}/${buggy.length}`,
       falsePositives: clean.filter((r) => r.false_positive === true).length,
+      voidRuns: mine.filter((r) => r.observed === false).length,
       avgTokens: Math.round(mine.reduce((a, r) => a + r.total_tokens, 0) / n),
       avgTurns: +(mine.reduce((a, r) => a + r.turns, 0) / n).toFixed(1),
       avgLatencyMs: Math.round(mine.reduce((a, r) => a + r.latency_ms, 0) / n),
@@ -275,23 +343,39 @@ function aggregate(rows) {
   return byTool;
 }
 
-function scorecard(agg) {
-  const P = agg.playwright_mcp,
-    R = agg.reticle;
+function scorecard(agg, rows) {
+  const cols = TOOLS;
+  const name = {
+    playwright_mcp: `Playwright-MCP (${PLAYWRIGHT_MCP.split('@').pop()})`,
+    devtools_mcp: `DevTools-MCP (${DEVTOOLS_MCP.split('@').pop()})`,
+    reticle: 'Reticle-MCP',
+  };
+  const row = (label, f) => `| ${label} | ${cols.map((t) => f(agg[t])).join(' | ')} |`;
   const L = [];
-  L.push('# MCP head-to-head — gpt-4o agent loop (Playwright-MCP vs Reticle-MCP)\n');
+  L.push('# MCP head-to-head: Reticle vs Playwright-MCP vs Chrome-DevTools-MCP\n');
   L.push(
-    `Model: ${MODEL}. Each bug run on both the buggy and clean build, both tools. Cost at gpt-4o rates ($${PRICE.inputPerM}/1M in, $${PRICE.outputPerM}/1M out).\n`,
+    `A real \`${MODEL}\` agent loop drives each MCP server over the bug registry, on the buggy AND the ` +
+      `clean build of the same app. Every number below is the FULL cost the tool imposes on the model.\n`,
   );
-  L.push('| Metric | Playwright-MCP | Reticle-MCP |');
-  L.push('|---|--:|--:|');
-  L.push(`| Detection rate (buggy) | ${P.detectionRate} | ${R.detectionRate} |`);
-  L.push(`| False positives (clean) | ${P.falsePositives} | ${R.falsePositives} |`);
-  L.push(`| Avg tokens / run | ${P.avgTokens} | ${R.avgTokens} |`);
-  L.push(`| Avg turns / run | ${P.avgTurns} | ${R.avgTurns} |`);
-  L.push(`| Avg latency / run | ${P.avgLatencyMs} ms | ${R.avgLatencyMs} ms |`);
-  L.push(`| Avg $ / run | $${P.avgCostUsd} | $${R.avgCostUsd} |`);
-  L.push(`| Total $ | $${P.totalCostUsd} | $${R.totalCostUsd} |`);
+  L.push(
+    `Bugs: ${new Set(rows.map((r) => r.bug)).size}. Cells: ${rows.length}. Max turns: ${MAX_TURNS}.\n`,
+  );
+  L.push(`| Metric | ${cols.map((t) => name[t]).join(' | ')} |`);
+  L.push(`|---|${cols.map(() => '--:').join('|')}|`);
+  L.push(row('Detection rate (buggy)', (a) => a.detectionRate));
+  L.push(row('False positives (clean)', (a) => a.falsePositives));
+  L.push(row('Avg tokens / run', (a) => a.avgTokens.toLocaleString('en-US')));
+  L.push(row('Avg turns / run', (a) => a.avgTurns));
+  L.push(row('Avg latency / run', (a) => `${a.avgLatencyMs} ms`));
+  L.push(row('Avg $ / run', (a) => `$${a.avgCostUsd}`));
+  L.push(row('Total $', (a) => `$${a.totalCostUsd}`));
+  L.push(row('Void runs (observed nothing)', (a) => a.voidRuns));
+  L.push('');
+  L.push(
+    'A **void run** is a cell where every tool call was refused for want of a session. It is neither a ' +
+      'detection nor a false positive: the model was asked to verify and shown nothing. Any value other ' +
+      'than 0 invalidates that column, and the preflight check is there to stop a run before it happens.',
+  );
   return L.join('\n') + '\n';
 }
 
@@ -301,12 +385,14 @@ function scorecard(agg) {
     .map((s) => s.trim())
     .filter(Boolean);
   const bugs = _ids.length ? BUGS.filter((b) => _ids.includes(b.id)) : BUGS.slice(0, argLimit());
-  const procs = await ensureApp();
+  const procs = await ensureApp(RETICLE_PORT);
   await sleep(1000);
+  await preflightReticle(bugUrl(''));
+  console.log(`preflight ok — reticle sees the app on ${RETICLE_PORT}`);
   const rows = [];
   for (const bug of bugs) {
     for (const variant of ['buggy', 'clean']) {
-      for (const tool of ['playwright_mcp', 'reticle']) {
+      for (const tool of TOOLS) {
         const row = await runCell(bug, tool, variant);
         rows.push(row);
         console.log(
@@ -324,12 +410,28 @@ function scorecard(agg) {
       }
     }
   }
+  // A run where no cell ever reached a verdict (bad key, dead provider, every call erroring) still
+  // aggregates cleanly into a scorecard full of 0/N and $0.00, which reads as a measured result.
+  // Refuse to write one, for the same reason preflight refuses to start one.
+  if (rows.every((r) => r.verdict_holds === null)) {
+    console.error(
+      `REFUSING TO WRITE: all ${rows.length} cells ended without a verdict — nothing was measured.\n` +
+        `First evidence: ${rows[0]?.evidence ?? '(none)'}`,
+    );
+    process.exit(1);
+  }
+  const voids = rows.filter((r) => r.observed === false);
+  if (voids.length > 0) {
+    console.error(
+      `WARNING: ${voids.length} void cell(s) observed nothing; those columns are not a measurement.`,
+    );
+  }
   const agg = aggregate(rows);
   writeFileSync(
     path.join(__dirname, 'results-mcp.json'),
     JSON.stringify({ rows, agg, price: PRICE }, null, 2),
   );
-  const md = scorecard(agg);
+  const md = scorecard(agg, rows);
   writeFileSync(path.join(__dirname, 'SCORECARD-MCP.md'), md);
   console.log('\n' + md);
   console.table(agg);
