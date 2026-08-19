@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TOOLS } from './tools.js';
 import {
   CORE_TOOL_NAMES,
+  EXTENDED_TOOL_NAMES,
   TOOL_SURFACE,
   TOOL_PROFILE_ENV,
   ADVERTISE_ALL_ENV,
@@ -29,10 +30,26 @@ describe('tool profiles', () => {
     expect(names).toHaveLength(CORE_TOOL_NAMES.size);
   });
 
-  it('2: FULL filter returns every tool (the full surface, ≥35)', () => {
+  // `all` was the whole registry until the advertised count became a hard budget: editors cap tools
+  // across every connected MCP server (Cursor at 40), so a server advertising everything it owns can
+  // evict a user's other servers. It is now the extended surface, and the registry is deliberately
+  // larger than it. Everything omitted is still callable via `reticle_run`.
+  it('2: the ALL filter returns core plus the extended set, and is SMALLER than the registry', () => {
     const tools = filterTools(TOOLS, TOOL_SURFACE.ALL);
-    expect(tools).toHaveLength(TOOLS.length);
-    expect(TOOLS.length).toBeGreaterThanOrEqual(35);
+    const names = new Set(tools.map((t) => t.name));
+    expect(tools.length).toBeLessThan(TOOLS.length);
+    for (const name of CORE_TOOL_NAMES) expect(names.has(name), name).toBe(true);
+    for (const name of EXTENDED_TOOL_NAMES) expect(names.has(name), name).toBe(true);
+    expect(tools).toHaveLength(CORE_TOOL_NAMES.size + EXTENDED_TOOL_NAMES.size);
+  });
+
+  it('3: every EXTENDED_TOOL_NAMES entry actually exists in TOOLS (no dangling name)', () => {
+    const all = new Set(TOOLS.map((t) => t.name));
+    for (const name of EXTENDED_TOOL_NAMES) expect(all.has(name), name).toBe(true);
+  });
+
+  it('4: core and extended never overlap, or the count is a lie', () => {
+    for (const name of EXTENDED_TOOL_NAMES) expect(CORE_TOOL_NAMES.has(name), name).toBe(false);
   });
 
   it('3: every CORE_TOOL_NAMES entry actually exists in TOOLS (no dangling name)', () => {

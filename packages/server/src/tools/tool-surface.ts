@@ -150,25 +150,46 @@ export const CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   // deleting the instruction from the lease and the pause hint — deletes the handback protocol,
   // because there is nowhere else those two calls are ever named.
   ReticleTool.SESSION,
-  // CAPABILITIES is the highest orientation-per-token tool on the surface: one call returns the app's
-  // whole testable surface — its testids, signals, stores and named flows — and `{fromDisk:true}`
-  // returns the same from a checked-in contract with NO browser attached, so an agent with zero
-  // context starts oriented instead of exploring.
-  //
-  // Same argument as the four above, and it is the fifth time this file has made it: a tool an agent
-  // must already know about, and reach through reticle_run, is a tool that never gets called.
-  //
-  // The cost is real and is NOT the bargain #262 claimed. That issue argued the marginal cost sits
-  // "well below the 274-token average" because the input schema is small; measured, its description
-  // plus schema is closer to 325 tokens, which is above the average rather than below it. This is
-  // also a straight +1 rather than a swap: the tools that write-up proposed demoting (`project`,
-  // `domain`) were never in the default set to begin with.
-  //
-  // So it is a deliberate bet, taken with that correction on the table: that orientation replaces
-  // exploratory snapshots, which are among the most expensive calls an agent makes. The measurement
-  // that settles it is whether sessions calling this early take fewer and cheaper snapshots than
-  // those that do not. If that does not show up, this is the entry to revert.
+]);
+
+/**
+ * The extended surface: what `all` advertises BEYOND the default set.
+ *
+ * `all` used to mean "every tool in the registry", and that is no longer allowed to be true. Cursor
+ * enforces a limit of 40 tools across every connected MCP server COMBINED, so a server advertising
+ * 48 by itself can push a user's other servers out or be dropped wholesale. The budget is a count,
+ * so no amount of trimming parameter prose buys anything back — only advertising fewer names does.
+ *
+ * Everything omitted stays in the registry, stays catalogued by `reticle_tools`, and stays callable
+ * by name through `reticle_run { tool, args }`. The cost is one discovery hop on the cold tail, which
+ * is the same trade the default surface has always made, applied one level further out.
+ *
+ * What it costs that is NOT free: `all` is the only surface that carries `outputSchema`, which is
+ * what makes the MCP layer validate tool OUTPUT — the check that once caught `reticle_verify_change`
+ * returning a payload its own schema rejected. The tools left off this list no longer get that
+ * validation from the wire. That defect class is now uncovered for them, and it is written down here
+ * rather than discovered later.
+ *
+ * Chosen as the capabilities an agent plausibly reaches for once the verify loop is not enough:
+ * orientation, the record/replay flow loop, visual evidence, and the three fault-injection controls.
+ */
+export const EXTENDED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  // Demoted from the default set to make room under the cap. It was added as an explicit bet that
+  // orientation replaces exploratory snapshots, and the measurement that would have settled that
+  // bet was never run — so when the budget became a hard count, the unproven entry is the one that
+  // gives way. Still one `reticle_run` hop from any agent that wants it.
   ReticleTool.CAPABILITIES,
+  ReticleTool.FLOW_SAVE,
+  ReticleTool.FLOW_REPLAY,
+  ReticleTool.FLOW_VERIFY,
+  ReticleTool.RECORD,
+  ReticleTool.SCREENSHOT,
+  ReticleTool.VISUAL_DIFF,
+  ReticleTool.CLOCK,
+  ReticleTool.NETWORK_MOCK,
+  ReticleTool.STORAGE,
+  ReticleTool.VERIFY_CHANGE,
+  ReticleTool.CRAWL,
 ]);
 
 /** Is the truthy form of a boolean env var set? `1`, `true`, `yes` — anything else is off. */
@@ -242,5 +263,7 @@ export function filterTools(tools: ToolDef[], surface: ToolSurface): ToolDef[] {
   // CORE_TOOL_NAMES is what it always really was: the set advertised directly. It was never the
   // interesting thing about the `core` PROFILE, whose only distinction was a second name for this.
   if (surface === TOOL_SURFACE.DEFAULT) return tools.filter((t) => CORE_TOOL_NAMES.has(t.name));
-  return tools;
+  // `all` is the extended surface, not the whole registry — the cap is a hard budget shared with
+  // every other MCP server the user has connected. surface-sizes.test.ts enforces it.
+  return tools.filter((t) => CORE_TOOL_NAMES.has(t.name) || EXTENDED_TOOL_NAMES.has(t.name));
 }
