@@ -595,6 +595,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm --filter @reticlehq/e2e --fail-if-no-match exec playwright install --with-deps chromium
+      # The token proxy is a python package, and without it `countTokensProxy` returns null for every
+      # payload — so every token dimension reads "this pass measured nothing" and the gate fails
+      # having compared nothing. That is the honest failure it is designed to produce, and it fails
+      # for a missing dependency rather than a regression, which is a slow way to learn this.
+      - name: Install the token proxy the observation layer measures with
+        run: python3 -m pip install --user --quiet tiktoken
       - name: Measure (observation-cost + replay), so the gate has something real to grade
         run: pnpm bench:full
       - name: Benchmark gate (catch-rate floor, no false positives, efficiency and token bounds)
