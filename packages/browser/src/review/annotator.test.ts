@@ -111,7 +111,7 @@ describe('Annotator - human marks a mistake on the page', () => {
     const ann = new Annotator({
       emit: () => undefined,
       now: () => 0,
-      onMark: (note, label) => echoes.push({ note, label }),
+      onMark: (mark) => echoes.push({ note: mark.note, label: mark.label }),
     });
     ann.mount();
     current = ann;
@@ -534,5 +534,86 @@ describe('a click on the page blocker still annotates what is under it', () => {
       Reflect.set(document, 'elementsFromPoint', original);
       ann.toggle(false);
     }
+  });
+});
+
+/**
+ * The hover outline is how a person knows WHAT they are about to mark.
+ *
+ * `#handleClick` was taught to see past the page blocker; `#handleMove` was not, so with the shield
+ * up every mousemove reported the blocker as its target, the blocker is Reticle's own UI, and the
+ * outline was suppressed on every element. Annotate mode showed a crosshair over a page with no
+ * indication of what the crosshair was on.
+ */
+describe('the hover outline follows the element under the blocker', () => {
+  it('boxes the page element beneath the shield', async () => {
+    const { ann } = setup();
+    const target = document.createElement('button');
+    target.textContent = 'Underneath';
+    document.body.appendChild(target);
+    target.getBoundingClientRect = (): DOMRect =>
+      ({ left: 40, top: 60, width: 120, height: 30 }) as DOMRect;
+    const blocker = document.createElement('div');
+    blocker.setAttribute('data-reticle-blocker', '');
+    document.body.appendChild(blocker);
+    ann.toggle(true);
+    const original: unknown = Reflect.get(document, 'elementsFromPoint');
+    document.elementsFromPoint = (): Element[] => [blocker, target];
+    try {
+      blocker.dispatchEvent(
+        new MouseEvent('mousemove', { bubbles: true, clientX: 60, clientY: 70 }),
+      );
+      await new Promise((r) => setTimeout(r, 200));
+      const hi = document.querySelector<HTMLElement>('[data-reticle-mark="hi"]');
+      expect(hi?.getAttribute('data-on'), 'the outline must be shown').toBe('1');
+      expect(hi?.style.left).toBe('40px');
+      expect(
+        document.querySelector('[data-reticle-mark="hilabel"]')?.textContent,
+        'the label names the page element, not the shield',
+      ).toContain('Underneath');
+    } finally {
+      Reflect.set(document, 'elementsFromPoint', original);
+      ann.toggle(false);
+    }
+  });
+});
+
+/**
+ * A mark's log row has to name the mark.
+ *
+ * It read "generic: my feedback" - the anchor's fallback label and the note, nothing else. With
+ * three marks on a page there was no way to tell which row belonged to which pin: no number, no
+ * element, no source. The pin on the page is numbered, so the row carries the same number, and the
+ * source the anchor already resolved.
+ */
+describe('the mark handed to the HUD identifies itself', () => {
+  it('reports the pin number, the label and the source', () => {
+    const marks: { note: string; anchor: string; index: number; source?: string }[] = [];
+    const ann = new Annotator({
+      emit: () => {},
+      now: () => 0,
+      onMark: (mark) => marks.push(mark),
+    });
+    ann.mount();
+    current = ann;
+    const target = document.createElement('button');
+    target.setAttribute('data-testid', 'deploy-submit');
+    target.setAttribute('data-reticle-source', 'src/views/Deployments.tsx:104:8');
+    document.body.appendChild(target);
+    ann.toggle(true);
+    clickAt(target);
+    const ta = popover().querySelector('textarea');
+    if (null === ta) throw new Error('no textarea');
+    ta.value = 'button is dead';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    popover().querySelector<HTMLButtonElement>('button[data-send]')?.click();
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.index, 'the pin on the page is #1, so the row is #1').toBe(1);
+    expect(marks[0]?.anchor, 'the row names the element the agent will look up').toContain(
+      'deploy-submit',
+    );
+    expect(marks[0]?.source, 'the anchor already knows the file').toContain('Deployments.tsx');
+    expect(marks[0]?.note).toBe('button is dead');
+    ann.toggle(false);
   });
 });

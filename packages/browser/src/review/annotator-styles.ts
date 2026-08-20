@@ -1,3 +1,5 @@
+import { Z_OVERLAY } from '../presenter/presenter-styles.js';
+
 /** Markup + CSS for the in-page annotation HUD (markers, hover box, composer). */
 const MARK_ATTR = 'data-reticle-mark';
 const sel = (role: string): string => `[${MARK_ATTR}="${role}"]`;
@@ -7,8 +9,13 @@ export const MARK_SUBMIT = 'Add';
 export const MARK_CANCEL = 'Cancel';
 export const MARK_PENDING_GLYPH = '+';
 
-/** Below the presenter overlay stacking context so the HUD stays on top; above page content. */
-const Z_MARK = 2147483590;
+/**
+ * ABOVE the presenter overlay, because the overlay contains the page blocker annotate mode raises.
+ * One below it, the shield painted over the composer: every click on Cancel or Add landed on the
+ * blocker instead of the button, so the note could be neither saved nor dismissed. The root here is
+ * pointer-events:none, so only the marks and the composer sit above the HUD - not a new shield.
+ */
+const Z_MARK = Z_OVERLAY + 1;
 
 export const ANNOTATOR_CSS = `
 ${sel('root')}{position:fixed;inset:0;pointer-events:none;z-index:${String(Z_MARK)};}

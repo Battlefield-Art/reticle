@@ -96,3 +96,41 @@ describe('the page is not Reticle UI just because Reticle marked the document', 
     }
   });
 });
+
+/**
+ * A source stamp is on the APP's elements, not on Reticle's.
+ *
+ * The Vite and Babel plugins stamp `data-reticle-source` on every element the app renders, and the
+ * ancestor walk treated any `data-reticle*` attribute as "Reticle's own UI". So in a stamped app —
+ * which is every instrumented app — the answer was yes for essentially the whole page.
+ *
+ * Two things read this. `pageElementAt` (annotator) skipped every stamped element and marked the
+ * outermost UNSTAMPED ancestor instead, so a note taken through the annotate shield anchored to the
+ * app shell rather than the thing under the cursor. `occlusion.ts` returns "nothing to report" on a
+ * yes, so occlusion detection was off wherever the stamp reached.
+ */
+describe('a source-stamped app element is page content, not Reticle UI', () => {
+  it('does not treat data-reticle-source as Reticle UI', () => {
+    const el = document.createElement('button');
+    el.setAttribute('data-reticle-source', 'src/App.tsx:12:3');
+    document.body.appendChild(el);
+    try {
+      expect(isReticleUi(el), 'the app rendered this; Reticle only labelled it').toBe(false);
+    } finally {
+      el.remove();
+    }
+  });
+
+  it('does not treat a stamped ancestor as Reticle UI either', () => {
+    const host = document.createElement('div');
+    host.setAttribute('data-reticle-source', 'src/App.tsx:1:1');
+    const inner = document.createElement('span');
+    host.appendChild(inner);
+    document.body.appendChild(host);
+    try {
+      expect(isReticleUi(inner)).toBe(false);
+    } finally {
+      host.remove();
+    }
+  });
+});

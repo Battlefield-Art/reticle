@@ -22,10 +22,28 @@ const MARK_ATTR = 'data-reticle-mark';
 const ACTIVE_ATTR = 'data-reticle-mark-active';
 const sel = (role: string): string => `[${MARK_ATTR}="${role}"]`;
 
+/**
+ * What the HUD is told about a mark the moment it is placed.
+ *
+ * The row used to get the note and the anchor's label - "generic: my feedback" - which names
+ * neither the element nor which of several marks it is. The pin on the page is numbered, so the
+ * row carries the same number, plus the source the anchor already resolved.
+ */
+export interface MarkReport {
+  note: string;
+  /** The anchor the agent will look the element up by, e.g. `[data-testid="deploy-submit"]`. */
+  anchor: string;
+  label: string;
+  /** 1-based, matching the number drawn in the pin. */
+  index: number;
+  /** file:line, when the app is source-stamped. */
+  source?: string;
+}
+
 export interface AnnotatorDeps {
   emit: (type: EventType, data: Record<string, unknown>) => void;
   now: () => number;
-  onMark?: (note: string, label: string) => void;
+  onMark?: (mark: MarkReport) => void;
   shouldBlock?: () => boolean;
   onCountChange?: (count: number) => void;
 }
@@ -49,6 +67,7 @@ interface StoredMark {
   isFixed: boolean;
   pin: HTMLElement;
   target: Element | undefined;
+  source: string | undefined;
 }
 
 export class Annotator {
@@ -309,7 +328,14 @@ export class Annotator {
 
   #handleMove(ev: MouseEvent): void {
     if (this.#hi === undefined) return;
-    const target = ev.target;
+    const raw = ev.target;
+    // Same shield as in #handleClick: while annotating, a full-viewport blocker sits over the page,
+    // so EVERY mousemove reports it as the target. Resolving only there left the outline suppressed
+    // on every element - a crosshair with no indication of what it was on. See #handleClick.
+    const target =
+      raw instanceof Element && raw.hasAttribute(BLOCKER_ATTR_NAME)
+        ? pageElementAt(ev.clientX, ev.clientY)
+        : raw;
     const skip =
       !this.#active ||
       this.#pop !== undefined ||
@@ -464,7 +490,13 @@ export class Annotator {
         label: editing.label,
         route: editing.route,
       });
-      this.#onMark?.(note, editing.label);
+      this.#report(
+        note,
+        editing.anchor,
+        editing.label,
+        this.#marks.indexOf(editing) + 1,
+        editing.source,
+      );
       this.#closePopover();
       return;
     }
@@ -497,9 +529,22 @@ export class Annotator {
     };
     if (resolved.source !== undefined) data['source'] = resolved.source;
     this.#emit(EventType.HUMAN_MARK, data);
-    this.#onMark?.(note, resolved.label);
     this.#now();
     this.#dropPin(resolved, note, x, y);
+    this.#report(note, resolved.anchor, resolved.label, this.#marks.length, sourceLabel(resolved));
+  }
+
+  /** Hand the HUD everything it needs to name this mark in one row. */
+  #report(
+    note: string,
+    anchor: string,
+    label: string,
+    index: number,
+    source: string | undefined,
+  ): void {
+    const mark: MarkReport = { note, anchor, label, index };
+    if (source !== undefined) mark.source = source;
+    this.#onMark?.(mark);
   }
 
   #dropPending(x: number, y: number): void {
@@ -543,6 +588,7 @@ export class Annotator {
       isFixed,
       pin,
       target: this.#pendingTarget,
+      source: sourceLabel(resolved),
     };
     pin.addEventListener('click', (e) => {
       e.preventDefault();
@@ -609,6 +655,13 @@ export class Annotator {
     this.#editing = undefined;
     if (this.#selBox !== undefined) this.#selBox.hidden = true;
   }
+}
+
+/** "file:line" for a resolved anchor, when the app carries source stamps. */
+function sourceLabel(resolved: MarkAnchor): string | undefined {
+  return resolved.source === undefined
+    ? undefined
+    : `${resolved.source.file}:${String(resolved.source.line)}`;
 }
 
 function currentRoute(): string {

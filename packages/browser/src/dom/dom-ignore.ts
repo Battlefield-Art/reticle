@@ -4,7 +4,7 @@
  * presenter, so omitting its selector here leaked annotation chrome into every snapshot.
  */
 export const RETICLE_OVERLAY =
-  '[data-reticle-overlay],[data-reticle-cursor],[data-reticle-hud],[data-reticle-glow],[data-reticle-mark]';
+  '[data-reticle-overlay],[data-reticle-cursor],[data-reticle-hud],[data-reticle-glow],[data-reticle-mark],[data-reticle-blocker]';
 
 /** Known third-party dev overlays to keep out of snapshots (Agentation, Next dev UI). */
 const DEV_OVERLAYS =
@@ -23,33 +23,22 @@ export function isReticleOverlay(el: Element): boolean {
 }
 
 /**
- * Walk ancestors: true iff any element in the chain carries a data-reticle* attribute (Reticle's own
- * UI). The document scaffolding — `<html>` and `<body>` — is NOT part of that chain.
+ * True iff the element is part of Reticle's OWN UI - the presenter overlay, the HUD, the synthetic
+ * cursor, the glow, or the annotator's marks - or lives inside one of them.
  *
- * Reticle marks the documentElement while annotate mode is live (`data-reticle-mark-active`, which
- * drives the crosshair cursor), and `<html>` is an ancestor of everything. Walking into it therefore
- * answered "yes, Reticle's own UI" for EVERY element on the page for as long as the mode was on.
+ * The rule used to be "any ancestor carries a data-reticle* attribute", which is wrong twice over.
+ * `data-reticle-mark-active` sits on <html> while annotate mode is live, so the whole document
+ * answered yes; and `data-reticle-source` is stamped by the Vite/Babel plugins on every element the
+ * APP renders, so in an instrumented app - which is the only kind there is - most of the page
+ * answered yes too. Those attributes describe page content; they do not make it ours.
  *
- * That is not cosmetic: `occlusion.ts` treats a yes here as "nothing to report" and returns null, so
- * occlusion detection silently stopped working across the whole page while annotating — and an
- * occluded control is a bug class Reticle advertises catching, which would have come back clean.
- *
- * Excluding the scaffolding costs nothing, because Reticle's own UI is always mounted INSIDE body:
- * an overlay, a dock, a mark root. Nothing it owns IS `<html>` or `<body>`, so nothing it owns is
- * missed by stopping there.
+ * Two things read this and both failed silently. `pageElementAt` (annotator) skipped every stamped
+ * element and anchored the note to the outermost unstamped ancestor, i.e. the app shell instead of
+ * the control under the cursor. `occlusion.ts` reads a yes as "nothing to report", so occlusion
+ * detection - a bug class Reticle advertises catching - came back clean wherever the stamp reached.
  */
 export function isReticleUi(node: Element | null): boolean {
-  const scaffolding: readonly (Element | null)[] = [
-    node?.ownerDocument.documentElement ?? null,
-    node?.ownerDocument.body ?? null,
-  ];
-  for (let n: Element | null = node; n !== null; n = n.parentElement) {
-    if (scaffolding.includes(n)) continue;
-    for (const attr of Array.from(n.attributes)) {
-      if (attr.name.startsWith('data-reticle')) return true;
-    }
-  }
-  return false;
+  return node !== null && node.closest(RETICLE_OVERLAY) !== null;
 }
 
 /** True if the element should be excluded from snapshots/queries (Reticle overlay or dev overlay). */
