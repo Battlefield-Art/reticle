@@ -3,7 +3,7 @@
  * UI (`data-reticle-mark`) - never observed/snapshotted. The annotator mounts by DEFAULT with the
  * presenter, so omitting its selector here leaked annotation chrome into every snapshot.
  */
-export const RETICLE_OVERLAY =
+export const RETICLE_OVERLAY: string =
   '[data-reticle-overlay],[data-reticle-cursor],[data-reticle-hud],[data-reticle-glow],[data-reticle-mark],[data-reticle-blocker]';
 
 /** Known third-party dev overlays to keep out of snapshots (Agentation, Next dev UI). */

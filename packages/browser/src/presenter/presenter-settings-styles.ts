@@ -157,4 +157,4 @@ export const SETTINGS_CSS = `
   display:none;pointer-events:none;}
 [${'data-reticle-overlay'}][data-reticle-hidden="1"] [${DOCK_ATTR}],
 [${'data-reticle-overlay'}][data-reticle-hidden="1"] [${SETTINGS_PANEL_ATTR}]{display:none !important;}
-` as string;
+`;

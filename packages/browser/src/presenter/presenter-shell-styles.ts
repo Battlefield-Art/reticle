@@ -384,4 +384,4 @@ export const SHELL_CSS = `
 @media (max-width:480px){
   [${CHAT_PANEL}]{width:min(100vw - 24px,320px);max-height:min(360px,calc(100vh - 100px));}
   [${OVERLAY}][${MIN_ATTR}="0"] [${HUD}]{max-width:calc(100vw - 24px);}
-}` as string;
+}`;

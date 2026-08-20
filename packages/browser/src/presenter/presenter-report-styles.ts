@@ -101,4 +101,4 @@ export const REPORT_CSS = `
 [${REPORT_PANEL_ATTR}] .reticle-report-links a{
   color:var(--reticle-faint);font-size:10.5px;text-decoration:none;}
 [${REPORT_PANEL_ATTR}] .reticle-report-links a:hover{color:var(--reticle-fg);text-decoration:underline;}
-` as string;
+`;
