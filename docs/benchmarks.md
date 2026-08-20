@@ -129,7 +129,7 @@ Three things about that table are more important than the headline number.
 
 **Two of Reticle's three non-catches are not misses.** They are the registry's `false-positive-trap` cases, builds that look broken and are not: flagging them would itself be a false alarm, so 0 of 2 is the correct score and a tool that "caught" them would be worse. The third, `iframe-stale-data` (deep-dom), is a **genuine miss** and is counted as a false green above rather than explained away.
 
-**These figures were re-derived on the 2.9.0 branch and they moved.** The numbers first published here were recorded on 2026-07-24; 615 commits touched the harness, the fixture app, the SDK or the server before anybody re-ran it. Detection moved 86 → 85 and 60 → 59, and the per-bug output figure **inverted**: Reticle was published as the leaner of the two at 4,134 B against 7,899 B and measures 9,261 B against 5,849 B here. Reticle's own check being the more expensive one does not contradict the token-cost sections below — those measure an AGENT-driven look against MCP tools, which is a different question — but it does mean the earlier claim should not be repeated. Re-run `bench/pw-vs-reticle/run.mjs` before quoting any of this.
+**These figures were re-derived on the 2.9.0 branch and they moved.** The numbers first published here were recorded on 2026-07-24; 615 commits touched the harness, the fixture app, the SDK or the server before anybody re-ran it. Detection moved 86 → 85 and 60 → 59, and the per-bug output figure **inverted**: Reticle was published as the leaner of the two at 4,134 B against 7,899 B and measures 9,261 B against 5,849 B here. Reticle's own check being the more expensive one does not contradict the token-cost sections below. Those measure an AGENT-driven look against MCP tools, which is a different question. It does mean the earlier claim should not be repeated. Re-run `bench/pw-vs-reticle/run.mjs` before quoting any of this.
 
 **Reticle does not win everything, and the ties are the honest part.** On everything observable from outside the app the two are exactly level: console 6/6 against 6/6, network 8/8 against 8/8, storage 5/5 against 5/5, visual UI 16/16 against 16/16, plus routing, timing, paint and chart bugs. Any evaluate-capable tool matches Reticle on what the DOM, the network buffer or a screenshot can show.
 
@@ -143,7 +143,7 @@ Three things about that table are more important than the headline number.
 | net-status | 4/4 | 1/4 | a swallowed 4xx/5xx. The request failed, a catch block ate it, the UI rendered |
 | streams | 3/3 | 0/3 | an SSE or WebSocket frame anomaly a request-level view cannot see |
 | perf | 3/3 | 1/3 | layout shift, or a render storm where the DOM is identical |
-| deep-dom | 2/3 | 2/3 | a break deep in a subtree a snapshot elides — the one both now miss is `iframe-stale-data` |
+| deep-dom | 2/3 | 2/3 | a break deep in a subtree a snapshot elides. The one both now miss is `iframe-stale-data` |
 
 That is the whole claim, stated as narrowly as it deserves: Reticle sees inside the running app, so it catches the class of bug where the outside looks correct. Outside that class it ties, and it says so.
 
