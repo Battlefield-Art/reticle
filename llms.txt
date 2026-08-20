@@ -233,12 +233,23 @@ package that re-exports the others) ·
 
 ## Links
 
-- **Landing page / product:** https://reticle.sh
-- **Company website:** https://reticle.sh
+- **Marketing site / product:** https://reticle.sh
 - **GitHub (source):** https://github.com/reticlehq/reticle
+- **Bugs & feature requests:** https://github.com/reticlehq/reticle/issues
 - **npm (CLI + MCP server):** https://www.npmjs.com/package/@reticlehq/server
 - **Skill file (paste this URL to your agent):** https://raw.githubusercontent.com/reticlehq/reticle/main/SKILL.md
-- **Docs home:** https://github.com/reticlehq/reticle/tree/main/docs
+- **Docs site (start here):** https://docs.reticle.sh — a page per tool, per CLI command, per
+  package, with every command captured from a real run.
+  - Quickstart: https://docs.reticle.sh/quickstart · Every tool: https://docs.reticle.sh/tools-overview
+    · Every command: https://docs.reticle.sh/cli · Troubleshooting: https://docs.reticle.sh/troubleshooting
+    · Desktop apps: https://docs.reticle.sh/desktop
+- **Reading as an agent — fetch:** https://docs.reticle.sh/llms.txt lists every page, and appending
+  `.md` to any page URL returns its source with no site chrome — so you pull the one page you need
+  instead of a whole document. Details: https://docs.reticle.sh/for-agents
+- **Reading as an agent — connect:** https://docs.reticle.sh/mcp is an MCP server over the same docs,
+  with `search_reticle` to search and `query_docs_filesystem_reticle` to read. Add it like any MCP
+  server if you would rather search than fetch.
+- **Docs in the repo (markdown source):** https://github.com/reticlehq/reticle/tree/main/docs
   - Getting started: https://github.com/reticlehq/reticle/blob/main/docs/getting-started.md
   - Integration (Lovable / Emergent / Bolt): https://github.com/reticlehq/reticle/blob/main/docs/platform-integration.md
   - Enterprise: https://github.com/reticlehq/reticle/blob/main/docs/enterprise.md
@@ -247,8 +258,8 @@ package that re-exports the others) ·
 - **Benchmarks:** https://github.com/reticlehq/reticle/blob/main/bench/SCORECARD.md
 - **Changelog:** https://github.com/reticlehq/reticle/blob/main/CHANGELOG.md
 - **License:** https://github.com/reticlehq/reticle/blob/main/LICENSE
-- **Community — join the Discord:** https://discord.gg/BwAbzv9ZRz
-- **X / Twitter:** https://x.com/reticlehq
+- **Community — ask a question, claim work, see the roadmap:** https://discord.gg/BwAbzv9ZRz
+- **X / Twitter:** https://x.com/reticle_hq
 - **LinkedIn:** https://www.linkedin.com/company/reticlehq
 - **Contact / partnerships / OEM:** hey@reticle.sh
 
