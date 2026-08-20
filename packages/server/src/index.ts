@@ -113,6 +113,13 @@ export { crawl } from './crawl/crawl.js';
  * this product is judged on, and the one nobody dogfoods is the one that rots.
  */
 export { findContradictions } from './events/contradictions.js';
+/**
+ * The MCP server factory, so a consumer can serve the tool surface it composed.
+ *
+ * Without this the composition seam is unreachable from outside the package: a consumer can build the
+ * list and has nothing to hand it to.
+ */
+export { createMcpServer } from './mcp/mcp.js';
 export type { Contradiction, ContradictionOptions } from './events/contradictions.js';
 export {
   registerContradictionFold,
