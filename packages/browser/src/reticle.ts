@@ -376,7 +376,11 @@ export class Reticle {
       this.#annotator = new Annotator({
         emit,
         now: () => Date.now(),
-        onMark: (note, label) => presenter?.log(LOG_KIND.HUMAN, `🚩 ${label}: ${note}`),
+        onMark: (mark) =>
+          presenter?.log(
+            LOG_KIND.HUMAN,
+            `🚩 #${String(mark.index)} ${mark.anchor}${mark.source !== undefined ? ` · ${mark.source}` : ''} — ${mark.note}`,
+          ),
         shouldBlock: () => getPresenterSettings().blockPageInteractions,
       });
       this.#annotator.mount();
@@ -514,7 +518,11 @@ export class Reticle {
     // Bridge → browser presenter pushes (PRESENTER state echo / FLOWS replay list). The presenter owns
     // the parsing; here we only report whether a panel was mounted to apply it. setState-only, so a
     // PRESENTER echo of a HUMAN_CONTROL can't loop back into a re-emit.
-    if (command.name === ReticleCommand.PRESENTER || command.name === ReticleCommand.FLOWS) {
+    if (
+      command.name === ReticleCommand.PRESENTER ||
+      command.name === ReticleCommand.FLOWS ||
+      command.name === ReticleCommand.IMPACT
+    ) {
       this.#presenter?.handlePush(command);
       return { ok: true, result: { applied: this.#presenter !== undefined } };
     }

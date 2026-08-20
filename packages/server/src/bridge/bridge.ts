@@ -1,5 +1,6 @@
 import * as http from 'node:http';
 import { authFailureReason } from './auth-failure-reason.js';
+import { impactSnapshot, recordImpact } from '../impact/impact-recorder.js';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import {
@@ -215,6 +216,8 @@ export class Bridge {
    * authFailureReason.
    */
   readonly #servedProjects = new Set<string>();
+  /** Session ids already counted in the impact record - a reconnect is not a new session. */
+  readonly #countedSessions = new Set<string>();
   readonly #allowedOrigins: Set<string>;
   readonly #maxMessagesPerSecond: number;
   readonly #maxSessions: number;
@@ -466,6 +469,16 @@ export class Bridge {
         // Recorded on ACCEPTANCE, so it is evidence of what this daemon really serves.
         if (parsed.projectId !== undefined) this.#servedProjects.add(parsed.projectId);
         this.#onSessionCreate?.(session); // attach the durable journal before any events stream in
+        // A tab that has just connected has no impact record yet, so the report would read "nothing
+        // recorded" over a file with a month of history in it. Push what is already on disk as soon
+        // as there is somewhere to push it to; a session is also a thing that HAPPENED, so it counts.
+        // A reconnecting tab keeps its id, so counting every connect made a page reload look like
+        // a fresh session - the number climbed while nothing new happened.
+        if (!this.#countedSessions.has(session.id)) {
+          this.#countedSessions.add(session.id);
+          recordImpact({ sessions: 1 });
+        }
+        session.pushImpact(impactSnapshot, true);
         const replaced = this.sessions.add(session);
         if (replaced !== undefined) {
           // Name the newcomer. A field report had a live session vanish during `reticle_lease` and the

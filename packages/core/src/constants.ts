@@ -205,6 +205,13 @@ export const ReticleDir = {
   BASELINES_SUBDIR: 'baselines',
   /** cross-run memory — outcomes of past runs (the "did it behave like last time?" file). */
   PROJECT_FILE: 'project.json',
+  /**
+   * the user's own record of what Reticle has done for them — .reticle/impact.json.
+   *
+   * Local only, never uploaded, and deliberately NOT part of telemetry: telemetry answers our
+   * questions about the product; this answers the user's question about their own work.
+   */
+  IMPACT_FILE: 'impact.json',
   /** opt-in pixel baselines —.reticle/visual/<name>.png + <name>.diff.png. */
   VISUAL_SUBDIR: 'visual',
   /** verification-run artifacts —.reticle/runs/<runId>.json (the OEM/CI-consumable verdict). */
@@ -659,6 +666,12 @@ export const ReticleCommand = {
    * AGENT-driven pause/end keeps the presenter in sync. `args: { state, text? }`.
    */
   PRESENTER: 'presenter',
+  /**
+   * Bridge -> browser: the user's own impact record, so the HUD can show what Reticle has done for
+   * them without the page asking for it. `args: { snapshot: ImpactSnapshot }`. Local data on a
+   * local socket - it is the same file the report is stored in, not a fetch to us.
+   */
+  IMPACT: 'impact',
   /**
    * Ask the DESKTOP shell to photograph its own window and return `{ png: <base64> }`.
    *

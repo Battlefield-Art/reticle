@@ -1,9 +1,14 @@
 import type { WebSocket } from 'ws';
+import type { ImpactSnapshot } from '@reticlehq/core';
+import { recordImpact } from '../impact/impact-recorder.js';
 import { LastAct } from './last-act.js';
 import { commandTimeoutMessage, type PageRuntime } from './command-timeout.js';
 import { readHealthEvent, type SessionHealth } from './session-health.js';
 
 export type { SessionHealth };
+
+/** The HUD does not need 200 frames to watch a counter climb; the last state always lands. */
+const IMPACT_PUSH_DEBOUNCE_MS = 700;
 import { PendingCommands, CommandTimeoutError } from './pending-commands.js';
 import { span } from '../trace.js';
 import {
@@ -280,7 +285,12 @@ export class Session {
     if (event.type === EventType.HUMAN_MARK) {
       // A human pinned a mistake to an element. Narrow at the boundary; an invalid mark is ignored.
       const parsed = HumanMarkDataSchema.safeParse(event.data);
-      if (parsed.success) this.#review.add(parsed.data, this.elapsed());
+      if (parsed.success) {
+        this.#review.add(parsed.data, this.elapsed());
+        // The impact record's `marks` field existed and nothing ever wrote it: the report would
+        // have shown a permanent zero next to a page covered in pins.
+        recordImpact({ marks: 1 });
+      }
     }
     if (event.type === EventType.ROUTE_CHANGE) {
       // Keep the reported URL live across SPA navigation. The SDK already emits route.change on
@@ -626,6 +636,9 @@ export class Session {
 
   /** End this transport without letting a stale socket remove its replacement session. */
   disconnect(reason: string): void {
+    // "Longest run" means the longest SESSION, and it used to be fed a single tool call's duration
+    // - so the report's superlative was a number in milliseconds that never grew past a click.
+    recordImpact({}, { runMs: this.elapsed() });
     this.rejectAll(reason);
     try {
       this.#socket.close(1008, reason);
@@ -716,10 +729,36 @@ export class Session {
    * Push a lifecycle state to the panel with optional human-facing `text`. State changes still flow
    * through `setState`; an auto-ended session rides a `warn` tone so the panel can shout "agent stopped".
    */
+  /**
+   * Push the impact record to this tab's HUD.
+   *
+   * Debounced: the record changes on every tool call, and the panel does not need 200 frames to
+   * show a counter going up. The LAST state always lands, because the timer re-reads the store
+   * when it fires rather than capturing a snapshot when it was scheduled.
+   */
+  pushImpact(read: () => ImpactSnapshot | undefined, immediate = false): void {
+    if (immediate) {
+      // A tab that just connected has nothing to show yet, so its first record goes out at once -
+      // waiting a debounce here is a report that reads "nothing recorded" over a month of history.
+      const first = read();
+      if (first !== undefined) this.#post(ReticleCommand.IMPACT, { snapshot: first });
+      return;
+    }
+    if (this.#impactTimer !== undefined) return;
+    this.#impactTimer = setTimeout(() => {
+      this.#impactTimer = undefined;
+      const snapshot = read();
+      if (snapshot !== undefined) this.#post(ReticleCommand.IMPACT, { snapshot });
+    }, IMPACT_PUSH_DEBOUNCE_MS);
+    this.#impactTimer.unref?.();
+  }
+
   pushPresenter(state: SessionState, text?: string, tone?: PresenterTone): void {
     this.#post(ReticleCommand.PRESENTER, buildPresenterArgs(state, text, tone));
   }
   /** Fire-and-forget a narration row to the live panel (so a resolved mark shows "✓ fixed"). */
+  #impactTimer: ReturnType<typeof setTimeout> | undefined;
+
   pushNarration(text: string): void {
     this.#post(ReticleCommand.NARRATE, { text, level: 'info' });
   }

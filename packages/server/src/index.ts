@@ -23,6 +23,7 @@ import { resolveBridgeSecurityWithAutoToken } from './bridge/bridge-security.js'
 import { Bridge } from './bridge/bridge.js';
 import { BaselineStore } from './project/baselines.js';
 import { RecordingStore } from './flows/recordings.js';
+import { initImpact } from './impact/impact-recorder.js';
 import { FlowStore } from './flows/flows.js';
 import { buildFlowChips } from './flows/flow-scope.js';
 import { ProjectStore } from './project/project-store.js';
@@ -400,6 +401,10 @@ async function resolveRealInput(
 /** Start the Reticle bridge (browser WS endpoint) and, by default, the MCP stdio server. */
 export async function start(options: StartOptions = {}): Promise<RunningServer> {
   const port = options.port ?? RETICLE_DEFAULT_PORT;
+  // Open the user's impact record before anything can connect. Not inside the MCP branch: a daemon
+  // serving a browser with no agent attached still has a HUD to answer, and a report that reads
+  // "nothing recorded yet" over a month of history on disk is the worst version of this feature.
+  initImpact({ reticleRoot: options.reticleRoot ?? join(process.cwd(), ReticleDir.ROOT) });
   const security = await resolveBridgeSecurityWithAutoToken(options);
   const bridge = new Bridge({ port, ...security });
   // Server-authoritative liveness: a Node-side reaper (immune to browser throttling) ends sessions
@@ -495,6 +500,12 @@ export async function start(options: StartOptions = {}): Promise<RunningServer> 
  */
 export async function startDaemon(options: StartOptions = {}): Promise<RunningServer> {
   const port = options.port ?? RETICLE_DEFAULT_PORT;
+  // The SAME line as in `start`, because these are two entry points that each wire their own world
+  // and the daemon is the one that actually serves people. Wired only in `start`, the impact record
+  // was never opened in the process the HUD talks to: tool calls still recorded (the dispatch
+  // chokepoint opens it lazily), but a tab that connected before the first tool call was pushed
+  // nothing, so the report read "nothing recorded yet" over a file with history in it.
+  initImpact({ reticleRoot: options.reticleRoot ?? join(process.cwd(), ReticleDir.ROOT) });
 
   const security = await resolveBridgeSecurityWithAutoToken(options);
   const shared = createSharedServer(security.token === undefined ? {} : { token: security.token });
