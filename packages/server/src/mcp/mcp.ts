@@ -248,11 +248,26 @@ type ReticleRegisterTool = (
  * "Call reticle_tools { names: [...] } for its parameters" — leaving it out made our own advice a
  * dead end on the one surface that advertises everything.
  */
-export function advertisedTools(surface: ToolSurface): ToolDef[] {
+export function advertisedTools(
+  surface: ToolSurface,
+  /**
+   * The full table to advertise from. Defaults to what this package ships.
+   *
+   * A consumer embedding the engine passes its own composition — ours plus its own — so its tools
+   * reach the wire without editing the shipped array.
+   */
+  tools: readonly ToolDef[] = TOOLS,
+): ToolDef[] {
   // The catalog reports which surface is live and what chose it — the only way an agent can see that
   // a setting did not take (the daemon read the value it started with).
   const origin = describeToolSurface(surface);
-  return [...filterTools(TOOLS, surface), ...buildDynamicTools(TOOLS, origin)];
+  // The profile trims OUR table only. A tool this package does not ship was appended deliberately by
+  // whoever is embedding us, and our `CORE_TOOL_NAMES` was never going to contain its name — so
+  // filtering it would drop every consumer tool and look exactly like the feature not working.
+  const shipped = new Set(TOOLS.map((tool) => tool.name));
+  const ours = tools.filter((tool) => shipped.has(tool.name));
+  const theirs = tools.filter((tool) => !shipped.has(tool.name));
+  return [...filterTools([...ours], surface), ...theirs, ...buildDynamicTools([...tools], origin)];
 }
 
 /**
@@ -453,6 +468,15 @@ export function createMcpServer(
    * loses the entire install — and the second is what the field overwhelmingly shows.
    */
   previouslyConnected = false,
+  /**
+   * The full tool table this server serves. Defaults to what this package ships.
+   *
+   * Threaded rather than read from the module so a consumer can serve its own tools on one surface
+   * with ours. It reaches all three places that need the WHOLE table and not just the advertised
+   * slice: the profile filter, the `reticle_run` hatch, and the unadvertised-tool help — a consumer
+   * tool missing from either of the last two is a tool the agent is actively told does not exist.
+   */
+  tools: readonly ToolDef[] = TOOLS,
 ): McpServer {
   const encoding = (process.env[ENCODING_ENV] ?? '').toLowerCase();
   // Which surface this daemon advertises. The 18-tool default and the 48-tool full surface are
@@ -500,7 +524,7 @@ export function createMcpServer(
   // 11 tools were unreachable with no escape hatch — including reticle_annotate, which
   // reticle_flow_save's own description instructs the agent to call. `full` advertises everything
   // directly and needs no hatch.
-  const advertised = advertisedTools(profile);
+  const advertised = advertisedTools(profile, tools);
   installFriendlyArgErrors(
     server,
     new Map(
@@ -508,9 +532,9 @@ export function createMcpServer(
         .filter((tool) => tool.example !== undefined)
         .map((tool) => [tool.name, JSON.stringify(tool.example)]),
     ),
-    // Every tool in TOOLS, not just the advertised ones: reticle_run dispatches to the full table,
-    // so an unadvertised tool reached through the hatch must be just as strict.
-    new Map(TOOLS.map((tool) => [tool.name, new Set(Object.keys(tool.inputSchema))])),
+    // Every tool in the table, not just the advertised ones: reticle_run dispatches to the full
+    // table, so an unadvertised tool reached through the hatch must be just as strict.
+    new Map(tools.map((tool) => [tool.name, new Set(Object.keys(tool.inputSchema))])),
   );
   for (const tool of advertised) {
     // Output schemas are now the largest slice of the per-request tax (55.6% of the hybrid payload
@@ -575,7 +599,7 @@ export function createMcpServer(
   installUnadvertisedToolHelp(
     server,
     new Set(advertised.map((tool) => tool.name)),
-    new Set(TOOLS.map((tool) => tool.name)),
+    new Set(tools.map((tool) => tool.name)),
   );
   return server;
 }
