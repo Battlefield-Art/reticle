@@ -14,7 +14,10 @@
 
 import { RETICLE_NPM_PACKAGE } from '../version/server-version.js';
 
-export const MCP_SERVER_NAME = 'reticle';
+// The name is a wire identity and lives in the contract; re-exported here so the registration writers
+// below (and their tests) keep reading it from the module that USES it.
+export { MCP_SERVER_NAME } from '@reticlehq/core';
+import { MCP_SERVER_NAME } from '@reticlehq/core';
 
 /**
  * The registered command is STILL bare `npx` on every platform, deliberately.

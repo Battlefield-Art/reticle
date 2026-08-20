@@ -9,6 +9,17 @@ export const RETICLE_WS_PATH = '/reticle';
 export const MCP_SSE_PATH = '/mcp/sse';
 export const MCP_MESSAGE_PATH = '/mcp/message';
 /**
+ * The name this MCP server answers to — in its own `serverInfo` handshake, and in the registration
+ * an installer writes into an agent's config. Those must be the same string or the agent registers
+ * one server and talks to another.
+ *
+ * It lives here because it is an identity that crosses the wire, not an installer detail. It used to
+ * live in `init/`, which made the MCP handshake — squarely on the library path — reach into the
+ * install-time surface for a single string, and dragged that whole subtree along behind it for any
+ * consumer embedding the engine as a library.
+ */
+export const MCP_SERVER_NAME = 'reticle';
+/**
  * SSE event name the daemon writes to every open MCP stream immediately before it shuts itself down.
  *
  * A stream that simply ends looks identical from the proxy whether the daemon retired on schedule or
