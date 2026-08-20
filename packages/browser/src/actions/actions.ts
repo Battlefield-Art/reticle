@@ -7,6 +7,7 @@ import {
   NATIVE_INPUT_ARG,
   SettleReason,
 } from '@reticlehq/core';
+import { asSyntheticInput } from './synthetic-input.js';
 import { echoRef, refs } from '../dom/refs.js';
 import { assertEditable, assertNotRichText, setNativeValue } from './value-input.js';
 import { getAccessibleName, getRole, isVisible, getStates } from '../dom/a11y.js';
@@ -554,7 +555,9 @@ async function dispatchOther(
 ): Promise<boolean> {
   switch (action) {
     case ActionType.DBLCLICK:
-      return !el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      return !asSyntheticInput(() =>
+        el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true })),
+      );
     case ActionType.HOVER: {
       const doc = el.ownerDocument;
       // Best-effort "previous" node for relatedTarget so React's enter/leave synthesis has a "from".
@@ -714,7 +717,9 @@ async function dispatchOther(
       // — a synthetic click toggles the box, which `adversarial.check.test.ts` pins, because the
       // comment this replaces asserted the opposite and was wrong.
       const event = new MouseEvent('click', { bubbles: true, cancelable: true, composed: true });
-      const notPrevented = el.dispatchEvent(event);
+      // Marked as ours so the annotator's capture-phase listener lets it through: in annotate mode
+      // it cancels clicks to place a mark, which would otherwise swallow every action we dispatch.
+      const notPrevented = asSyntheticInput(() => el.dispatchEvent(event));
       return !notPrevented || event.defaultPrevented;
     }
     case ActionType.SUBMIT: {
@@ -727,10 +732,16 @@ async function dispatchOther(
       const key = pressKey(args);
       const code = pressCode(args, key);
       const mods = pressModifiers(args);
-      const down = el.dispatchEvent(
-        new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true, ...mods }),
+      // Marked as ours like the click sequence: the annotator leaves annotate mode on Escape, so an
+      // agent pressing Escape would otherwise switch off a mode the person turned on.
+      const down = asSyntheticInput(() =>
+        el.dispatchEvent(
+          new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true, ...mods }),
+        ),
       );
-      el.dispatchEvent(new KeyboardEvent('keyup', { key, code, bubbles: true, ...mods }));
+      asSyntheticInput(() =>
+        el.dispatchEvent(new KeyboardEvent('keyup', { key, code, bubbles: true, ...mods })),
+      );
       return !down;
     }
     case ActionType.SCROLL_INTO_VIEW:
