@@ -6,7 +6,7 @@ icon: chart-column
 
 Two different measurements, because there are two different questions.
 
-Against a **Playwright script** over an 88-bug registry, each tool running its own native check deterministically with no model in the loop, Reticle caught **86 of 88** and Playwright **60 of 88**, both with zero false alarms on the clean build. The gap is not spread evenly: it is 26 bugs Playwright **structurally cannot** see, and on everything observable from outside the app the two tie exactly. See Part 5a.
+Against a **Playwright script** over an 88-bug registry, each tool running its own native check deterministically with no model in the loop, Reticle caught **85 of 88** and Playwright **59 of 88**, both with zero false alarms on the clean build. The gap is not spread evenly: it is 26 bugs Playwright **structurally cannot** see, and on everything observable from outside the app the two tie exactly. See Part 5a.
 
 Against **Playwright MCP and Chrome DevTools MCP**, the agent-driven tools where cost per look matters, Reticle caught 10 of 10 injected regressions to Playwright MCP's 9 and DevTools' 8, averaging 815 tokens per look against 1,292 and 758. See Part 5b.
 
@@ -119,15 +119,17 @@ A tool "catches" a bug when its check correctly FAILS on the broken build **and*
 
 |                                        |     Reticle | Playwright script |
 | -------------------------------------- | ----------: | ----------------: |
-| Bugs caught                            | **86 / 88** |           60 / 88 |
-| Of what it can structurally catch      | **86 / 86** |           58 / 60 |
-| **False greens** (broken, reported OK) |       **0** |            **28** |
+| Bugs caught                            | **85 / 88** |           59 / 88 |
+| Of what it can structurally catch      | **85 / 86** |           57 / 60 |
+| **False greens** (broken, reported OK) |       **1** |            **29** |
 | False alarms on the clean build        |           0 |                 0 |
-| Output bytes per bug                   |   **4,134** |             7,899 |
+| Output bytes per bug                   |       9,261 |         **5,849** |
 
 Three things about that table are more important than the headline number.
 
-**The 2 Reticle "misses" are not misses.** They are the registry's two `false-positive-trap` cases, builds that look broken and are not. Flagging them would itself be a false alarm, so 0 of 2 is the correct score, and a tool that "caught" them would be worse.
+**Two of Reticle's three non-catches are not misses.** They are the registry's `false-positive-trap` cases, builds that look broken and are not: flagging them would itself be a false alarm, so 0 of 2 is the correct score and a tool that "caught" them would be worse. The third, `iframe-stale-data` (deep-dom), is a **genuine miss** and is counted as a false green above rather than explained away.
+
+**These figures were re-derived on the 2.9.0 branch and they moved.** The numbers first published here were recorded on 2026-07-24; 615 commits touched the harness, the fixture app, the SDK or the server before anybody re-ran it. Detection moved 86 → 85 and 60 → 59, and the per-bug output figure **inverted**: Reticle was published as the leaner of the two at 4,134 B against 7,899 B and measures 9,261 B against 5,849 B here. Reticle's own check being the more expensive one does not contradict the token-cost sections below — those measure an AGENT-driven look against MCP tools, which is a different question — but it does mean the earlier claim should not be repeated. Re-run `bench/pw-vs-reticle/run.mjs` before quoting any of this.
 
 **Reticle does not win everything, and the ties are the honest part.** On everything observable from outside the app the two are exactly level: console 6/6 against 6/6, network 8/8 against 8/8, storage 5/5 against 5/5, visual UI 16/16 against 16/16, plus routing, timing, paint and chart bugs. Any evaluate-capable tool matches Reticle on what the DOM, the network buffer or a screenshot can show.
 
@@ -139,9 +141,9 @@ Three things about that table are more important than the headline number.
 | business-logic | 6/6 | **0/6** | an action corrupts a field nothing renders. The record is wrong, the screen is fine |
 | signal | 4/4 | **0/4** | an event the app emits about itself (hydration done, error boundary caught) |
 | net-status | 4/4 | 1/4 | a swallowed 4xx/5xx. The request failed, a catch block ate it, the UI rendered |
-| streams | 3/3 | 1/3 | an SSE or WebSocket frame anomaly a request-level view cannot see |
+| streams | 3/3 | 0/3 | an SSE or WebSocket frame anomaly a request-level view cannot see |
 | perf | 3/3 | 1/3 | layout shift, or a render storm where the DOM is identical |
-| deep-dom | 3/3 | 2/3 | a break deep in a subtree a snapshot elides |
+| deep-dom | 2/3 | 2/3 | a break deep in a subtree a snapshot elides — the one both now miss is `iframe-stale-data` |
 
 That is the whole claim, stated as narrowly as it deserves: Reticle sees inside the running app, so it catches the class of bug where the outside looks correct. Outside that class it ties, and it says so.
 
