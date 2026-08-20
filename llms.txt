@@ -143,9 +143,22 @@ network cardinality, console, persistence-after-reload. Layer 2 (`registerStore`
 
 ## Benchmarks (measured, reproducible)
 
-Everything is produced by a committed harness (`bench/`), comparing Reticle to **Playwright MCP**
-and **Chrome DevTools MCP**. Tested two ways — a controlled toy app AND a real production app — with
-both results published, including where Reticle loses. Full from-scratch explainer: `docs/benchmarks.md`.
+Everything is produced by a committed harness (`bench/`). Two different opponents answering two
+different questions: a **Playwright script** with no model in the loop (what can each tool
+structurally SEE?), and **Playwright MCP** / **Chrome DevTools MCP** agent-driven (what does a look
+COST?). Tested on a controlled toy app AND a real production app, with both results published,
+including where Reticle loses. Full from-scratch explainer: `docs/benchmarks.md`.
+
+**88-bug head-to-head vs a Playwright script (the largest, least model-dependent measurement):**
+- **Bugs caught: Reticle 86/88 vs Playwright script 60/88**, both with **zero false alarms** on the
+  clean build. A catch requires the check to fail on the broken build AND pass on the clean one.
+- **False greens (broken, reported OK): Reticle 0 vs 28.** Output per bug: 4,134 B vs 7,899 B.
+- **The 2 Reticle "misses" are not misses** — they are the registry's two false-positive traps, builds
+  that look broken and are not, where 0 of 2 is the correct score.
+- **The ties are the honest part.** On everything observable from outside the app the two are exactly
+  level: console 6/6 vs 6/6, network 8/8 vs 8/8, storage 5/5 vs 5/5, visual UI 16/16 vs 16/16, plus
+  routing, timing and paint. The gap is one shape — the screen is right and the app is wrong: state
+  8/8 vs 0/8, business-logic 6/6 vs 0/6, signal 4/4 vs 0/4, net-status 4/4 vs 1/4.
 
 **Controlled toy app (10 injected regressions):**
 - **Verification Efficiency (bugs caught per 1k tokens, gated on catching them all): Reticle 12.27 vs
