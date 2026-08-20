@@ -154,6 +154,46 @@ export function isAbsenceDerived(kind: string): boolean {
 }
 
 /**
+ * How much authority a finding carries — the distinction above, said out loud on the finding itself.
+ *
+ * The rule already turns on this: an OBSERVED contradiction outranks a passing assertion and answers
+ * `no`, an ABSENCE_DERIVED one downgrades to `unknown`. But the findings all arrive looking alike, so
+ * an agent handed three of them cannot tell which one decided the verdict and which is a note about
+ * when Reticle stopped looking. Two facts of very different strength, reported in one voice.
+ */
+export const FindingTier = {
+  /**
+   * Positively observed evidence AGAINST the action: a request came back 500 while the UI advanced, a
+   * signal fired carrying data the DOM disagrees with, a written field echoed a different value.
+   * Something happened, and it is incompatible with the action having worked.
+   */
+  OBSERVED: 'observed',
+  /**
+   * Inferred from something NOT having happened yet, in a window whose end Reticle chose. It may
+   * become true a moment later. It is a statement about our timing at least as much as about the app.
+   */
+  ABSENCE_DERIVED: 'absence-derived',
+} as const;
+export type FindingTier = (typeof FindingTier)[keyof typeof FindingTier];
+
+/**
+ * The tier of a finding, DERIVED from its kind.
+ *
+ * Deliberately a lookup rather than a field an oracle sets. An oracle that stated its own tier would
+ * be grading its own homework, and the one thing every author of a new rule is sure of is that their
+ * finding is important. The kind decides, in one place, where the verdict rule already reads it.
+ *
+ * An unrecognised kind is OBSERVED, and that default is doing real work rather than being a fallback.
+ * A rule registered by a consumer emits kinds deliberately absent from this vocabulary — that is what
+ * keeps somebody's private finding names out of the free product — and those findings still have to
+ * be tierable. OBSERVED is the honest answer: an unknown kind has made no claim about a window whose
+ * end Reticle chose, so downgrading it would invent a caveat on its author's behalf.
+ */
+export function tierOfFinding(kind: string): FindingTier {
+  return isAbsenceDerived(kind) ? FindingTier.ABSENCE_DERIVED : FindingTier.OBSERVED;
+}
+
+/**
  * HTTP methods that CHANGE server state. Several contradiction rules are restricted to these on
  * purpose: a GET that fires without moving the UI is a prefetch, but a POST that does is a lost
  * write. Narrowing to writes is what keeps the rules from crying wolf on ordinary reads.
