@@ -11,6 +11,7 @@ import { findEchoMismatches } from './echo-mismatch.js';
 import { findUnitMismatches } from './unit-mismatch.js';
 import { asNumber, asString } from '../tools/tools-helpers.js';
 import { matchesDeclaredFailure, type DeclaredNetFailure } from './declared.js';
+import { runRegisteredFolds } from './contradiction-folds.js';
 
 /**
  * The contradiction hunter.
@@ -32,7 +33,16 @@ import { matchesDeclaredFailure, type DeclaredNetFailure } from './declared.js';
  */
 
 export interface Contradiction {
-  kind: ContradictionKind;
+  /**
+   * Typed `string`, not `ContradictionKind`, because the vocabulary is open at the EDGE.
+   *
+   * `ContradictionKind` enumerates what THIS package's rules emit, and every one of them is still
+   * checked against it — see `OwnContradiction`, which is what the folds below build. A rule
+   * registered by a consumer emits kinds this package has never heard of and must not have to add
+   * them here to be reportable: a shared enum is exactly how a consumer's private vocabulary ends up
+   * shipped in the free product by accident.
+   */
+  kind: string;
   /** What one channel asserted — the optimistic half. */
   claim: string;
   /** What the other channel asserted — the half that contradicts it. */
@@ -40,6 +50,14 @@ export interface Contradiction {
   /** Concrete evidence, so the agent can go straight to the call or the control. */
   detail: string;
 }
+
+/**
+ * A contradiction emitted by one of THIS package's rules — the kind is closed.
+ *
+ * Widening `Contradiction.kind` to `string` for the consumer seam would otherwise have made every
+ * emit site below accept a typo'd literal. This keeps them checked without closing the edge.
+ */
+export type OwnContradiction = Contradiction & { kind: ContradictionKind };
 
 interface NetCall {
   method: string;
@@ -305,7 +323,7 @@ export function findContradictions(
   allEvents: readonly ReticleEvent[],
   options: ContradictionOptions = {},
 ): Contradiction[] {
-  const found: Contradiction[] = [];
+  const found: OwnContradiction[] = [];
   const { app: events, ignored: ignoredDevTooling } = splitDevTooling(allEvents);
 
   const settled = events.filter((e) => e.type === EventType.NET_REQUEST).map(netCall);
@@ -506,5 +524,7 @@ export function findContradictions(
     }
   }
 
-  return found;
+  // Consumer rules run LAST and over the same app-only window, so a service embedding this engine
+  // adds to the verdict rather than forking the file that produces it.
+  return [...found, ...runRegisteredFolds(events, options)];
 }

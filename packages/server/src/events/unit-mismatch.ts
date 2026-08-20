@@ -1,5 +1,5 @@
 import { ContradictionKind, EventType, type ReticleEvent } from '@reticlehq/core';
-import type { Contradiction } from './contradictions.js';
+import type { OwnContradiction } from './contradictions.js';
 
 /**
  * The app sent a money value back in a DIFFERENT unit than the API gave it.
@@ -114,7 +114,7 @@ function scaleBetween(known: number, sent: number): number | undefined {
 export function findUnitMismatches(
   events: readonly ReticleEvent[],
   prior: readonly ReticleEvent[] = [],
-): Contradiction[] {
+): OwnContradiction[] {
   // What the API has told us about each entity so far, in the API's own units.
   const known = new Map<string, Map<string, number>>();
   for (const event of prior) {
@@ -122,7 +122,7 @@ export function findUnitMismatches(
     const body = parse(event.data['responseBody']);
     if (body !== undefined) moneyByEntity(body, known);
   }
-  const found: Contradiction[] = [];
+  const found: OwnContradiction[] = [];
   const seen = new Set<string>();
 
   for (const event of events) {

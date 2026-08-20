@@ -1,5 +1,5 @@
 import { ContradictionKind, EventType, type ReticleEvent } from '@reticlehq/core';
-import type { Contradiction } from './contradictions.js';
+import type { OwnContradiction } from './contradictions.js';
 
 /**
  * A request that returned 2xx and reported failure INSIDE its body.
@@ -79,8 +79,8 @@ const OK_MIN = 200;
 const OK_MAX = 300;
 
 /** Contradictions for 2xx responses whose bodies report failure. One per offending call. */
-export function findBodyFailures(events: readonly ReticleEvent[]): Contradiction[] {
-  const found: Contradiction[] = [];
+export function findBodyFailures(events: readonly ReticleEvent[]): OwnContradiction[] {
+  const found: OwnContradiction[] = [];
   for (const event of events) {
     if (event.type !== EventType.NET_REQUEST) continue;
     const status = event.data['status'];

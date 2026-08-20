@@ -1,5 +1,5 @@
 import { ContradictionKind, EventType, MUTATING_METHODS, type ReticleEvent } from '@reticlehq/core';
-import type { Contradiction } from './contradictions.js';
+import type { OwnContradiction } from './contradictions.js';
 
 /**
  * A write that returned OK and quietly did not apply part of what it was asked to.
@@ -109,8 +109,8 @@ const OK_MAX = 300;
 export function findEchoMismatches(
   events: readonly ReticleEvent[],
   actionSince?: number,
-): Contradiction[] {
-  const found: Contradiction[] = [];
+): OwnContradiction[] {
+  const found: OwnContradiction[] = [];
   for (const event of events) {
     if (event.type !== EventType.NET_REQUEST) continue;
     // `MUTATING_METHODS` is the one definition of "is this a write" in the codebase — the same list

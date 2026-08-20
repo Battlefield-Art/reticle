@@ -105,6 +105,20 @@ export { VisualStore } from './visual/visual-store.js';
 export { diffPng } from './visual/visual-diff.js';
 export type { VisualDiffResult, VisualRect, DiffOptions } from './visual/visual-diff.js';
 export { crawl } from './crawl/crawl.js';
+/**
+ * The contradiction pass, and the seam a consumer adds its own rules through.
+ *
+ * Exported because a service embedding this engine grades a recording the same way the tools do, and
+ * without these it would have to re-implement the fold — a second implementation of the one thing
+ * this product is judged on, and the one nobody dogfoods is the one that rots.
+ */
+export { findContradictions } from './events/contradictions.js';
+export type { Contradiction, ContradictionOptions } from './events/contradictions.js';
+export {
+  registerContradictionFold,
+  registeredContradictionFolds,
+} from './events/contradiction-folds.js';
+export type { ContradictionFold } from './events/contradiction-folds.js';
 export { MCP_SSE_PATH, MCP_MESSAGE_PATH } from '@reticlehq/core';
 export { BrowserPool, DEFAULT_LEASE_TTL_MS } from './pool/browser-pool.js';
 export type { Lease, Launcher, PooledBrowser } from './pool/browser-pool.js';

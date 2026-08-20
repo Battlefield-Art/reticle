@@ -1,5 +1,5 @@
 import { ContradictionKind, EventType, type ReticleEvent } from '@reticlehq/core';
-import type { Contradiction } from './contradictions.js';
+import type { OwnContradiction } from './contradictions.js';
 
 /**
  * Overlapping reads of one endpoint that settled in the WRONG ORDER.
@@ -125,7 +125,7 @@ function flights(events: readonly ReticleEvent[]): Flight[] {
 const MAX_FLIGHTS_PER_PATH = 60;
 
 /** The one contradiction, or none. Reported once per window — a race is a fact about the window. */
-export function findStaleResponses(events: readonly ReticleEvent[]): Contradiction[] {
+export function findStaleResponses(events: readonly ReticleEvent[]): OwnContradiction[] {
   // Grouped by path first: two reads of DIFFERENT endpoints can never race, and comparing them was
   // the bulk of the work on any real page, which talks to many endpoints at once.
   const byPath = new Map<string, Flight[]>();
@@ -144,7 +144,7 @@ export function findStaleResponses(events: readonly ReticleEvent[]): Contradicti
   return [];
 }
 
-function raceIn(reads: readonly Flight[]): Contradiction | undefined {
+function raceIn(reads: readonly Flight[]): OwnContradiction | undefined {
   for (const first of reads) {
     for (const second of reads) {
       if (first.id === second.id) continue;

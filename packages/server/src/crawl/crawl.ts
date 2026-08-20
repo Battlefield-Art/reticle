@@ -3,7 +3,6 @@ import {
   ActionType,
   CRAWL_DEFAULTS,
   CrawlAnomalyKind,
-  ContradictionKind,
   DANGEROUS_ACTION_CONFIRM_ARG,
   EventType,
   ReticleCommand,
@@ -45,8 +44,13 @@ export interface CrawlAnomaly {
    * disagreeing about the same click). The second kind is why an autonomous crawl is worth more
    * than a human clicking the same buttons: a person sees only the screen, so a UI that advanced
    * while its write failed looks like success to them and always will.
+   *
+   * `CrawlAnomalyKind` and `ContradictionKind` are what THIS package puts here, and both are still
+   * enforced at the emit sites below. The type is a plain string because a rule registered by a
+   * consumer contributes kinds this package has never heard of, and a closed union here would mean
+   * a consumer's private vocabulary had to ship in the free product to be reportable.
    */
-  kind: CrawlAnomalyKind | ContradictionKind;
+  kind: string;
   /** The control that triggered it. */
   ref: string;
   desc: string;
