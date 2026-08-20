@@ -18,7 +18,10 @@ import type { BrowserPool, Lease } from '../pool/browser-pool.js';
 function tool(name: string): (deps: ToolDeps, args: Record<string, unknown>) => Promise<unknown> {
   const def = LEASE_TOOLS.find((t) => t.name === name);
   if (def === undefined) throw new Error(`no lease tool ${name}`);
-  return def.handler;
+  // Called on its own def rather than detached. `handler` is declared method-style (see tool-kit.ts),
+  // so lifting the reference out drops the receiver — harmless for these handlers today, and exactly
+  // the kind of thing that stops being harmless without warning.
+  return (deps, args) => def.handler(deps, args);
 }
 
 /** A pool stub that records acquire calls and tracks active count. */

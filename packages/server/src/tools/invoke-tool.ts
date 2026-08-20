@@ -257,9 +257,9 @@ function firstOversizedArg(args: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
-export async function runTool(
-  tool: ToolDef,
-  deps: ToolDeps,
+export async function runTool<Ext>(
+  tool: ToolDef<Ext>,
+  deps: ToolDeps<Ext>,
   args: Record<string, unknown>,
 ): Promise<unknown> {
   // Both dispatch paths (MCP + programmatic) pass through here — the one place "which tool is mostly

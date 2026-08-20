@@ -18,7 +18,7 @@ import type { AnnotationStore } from '../flows/annotation-store.js';
 import type { BrowserPool } from '../pool/browser-pool.js';
 import type { ChromiumProbe } from '../cli/chromium-hint.js';
 
-export interface ToolDeps {
+export interface ToolDeps<Ext = unknown> {
   sessions: SessionManager;
   /** shared one-browser/N-context pool for headless leases. undefined ⇒ lease tools report unavailable. */
   pool?: BrowserPool;
@@ -61,9 +61,24 @@ export interface ToolDeps {
    * ToolDeps keeps working; absent falls back to the default port.
    */
   bridgePort?: number;
+  /**
+   * A consumer's OWN dependencies, carried through untouched.
+   *
+   * Nothing in this package reads it. It exists so a consumer embedding the engine can add tools of
+   * its own — answering out of a store this package has never heard of — without either widening the
+   * fields above with a stranger's vocabulary or forking to get a handle through.
+   *
+   * The type parameter, rather than `unknown`, is what keeps the seam typed: a consumer writes
+   * `ToolDef<TheirExt>` once and their handlers see their own type. Casting out of `unknown` in every
+   * handler is how a typed seam quietly becomes an untyped one.
+   *
+   * Optional, and defaulted to `unknown`, so every existing construction of this bag — and every test
+   * that builds one — is unchanged.
+   */
+  ext?: Ext;
 }
 
-export interface ToolDef {
+export interface ToolDef<Ext = unknown> {
   name: string;
   description: string;
   inputSchema: z.ZodRawShape;
@@ -89,7 +104,19 @@ export interface ToolDef {
    * example that does not validate is worse than none at all.
    */
   example?: Record<string, unknown>;
-  handler: (deps: ToolDeps, args: Record<string, unknown>) => Promise<unknown>;
+  /**
+   * Declared method-style, not as a property, and that is load-bearing rather than stylistic.
+   *
+   * Under `strictFunctionTypes` a property holding a function has CONTRAVARIANT parameters, so
+   * `ToolDef<TheirExt>` and `ToolDef<unknown>` become mutually unassignable and a consumer composing
+   * `[...TOOLS, ...theirTools]` needs a cast — as does every internal helper that then touches the
+   * array. Method-style parameters are checked bivariantly, which collapses all of that.
+   *
+   * The unsoundness bivariance admits is that a handler written against `ToolDeps<TheirExt>` could be
+   * handed a bag carrying no `ext` at all. That costs nothing here, because `ext` is optional by
+   * design: any handler reading it already has to survive `undefined`.
+   */
+  handler(deps: ToolDeps<Ext>, args: Record<string, unknown>): Promise<unknown>;
 }
 
 export const sessionIdShape = {
