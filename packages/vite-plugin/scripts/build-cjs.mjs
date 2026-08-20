@@ -20,6 +20,7 @@
  * multiply this artefact for nothing.
  */
 import { build } from 'esbuild';
+import { copyFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -53,3 +54,10 @@ if (result.warnings.length > 0) {
   for (const warning of result.warnings) console.error(warning.text);
   process.exit(1);
 }
+
+// The `require` condition needs its OWN types entry: with one top-level `types`, a CJS consumer
+// resolves declarations that Node interprets as ESM, so the types only work under a dynamic import
+// even though the package exports CommonJS (publint's `pkg.exports["."].types` error). The
+// declarations themselves are identical, so this is a copy rather than a second `tsc` pass.
+const dts = join(root, 'dist', 'index.d.ts');
+copyFileSync(dts, join(root, 'dist', 'index.d.cts'));

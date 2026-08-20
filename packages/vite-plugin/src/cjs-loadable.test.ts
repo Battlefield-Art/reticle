@@ -21,7 +21,7 @@ const PKG_ROOT = join(HERE, '..');
 
 describe('the published package can be loaded by a CommonJS Vite config', () => {
   const pkg = JSON.parse(readFileSync(join(PKG_ROOT, 'package.json'), 'utf8')) as {
-    exports: Record<string, Record<string, string>>;
+    exports: Record<string, Record<string, Record<string, string> | string>>;
     files: string[];
     scripts: Record<string, string>;
   };
@@ -33,10 +33,15 @@ describe('the published package can be loaded by a CommonJS Vite config', () => 
   });
 
   it('ships types for the require condition, so a CJS config is not untyped', () => {
-    const main = pkg.exports['.'];
-    // A `require` that resolves JS but no matching types silently degrades a TS config to `any`.
-    expect(main?.['require']).toMatch(/\.cjs$/);
-    expect(pkg.exports['.']?.['types']).toBeDefined();
+    // Types are declared PER CONDITION. One flat `types` alongside a `require` entry resolves
+    // declarations Node reads as ESM for a package that exports CommonJS, so the types only work
+    // under a dynamic import - publint fails the package for it, and a CJS config silently
+    // degrades to `any`.
+    const req = pkg.exports['.']?.['require'] as Record<string, string> | undefined;
+    const imp = pkg.exports['.']?.['import'] as Record<string, string> | undefined;
+    expect(req?.['default']).toMatch(/\.cjs$/);
+    expect(req?.['types']).toMatch(/\.d\.cts$/);
+    expect(imp?.['types']).toMatch(/\.d\.ts$/);
   });
 
   describe('the built artefact', () => {
@@ -44,7 +49,13 @@ describe('the published package can be loaded by a CommonJS Vite config', () => 
 
     beforeAll(() => {
       rmSync(cjsPath, { force: true });
-      execFileSync('pnpm', ['run', 'build:cjs'], { cwd: PKG_ROOT, stdio: 'pipe' });
+      // The build script directly, with the node that is already running, rather than through the
+      // package manager: on Windows `pnpm` is a `.cmd` shim and `execFileSync` cannot spawn one
+      // without a shell, so this suite failed there with ENOENT while passing everywhere else.
+      execFileSync(process.execPath, [join(PKG_ROOT, 'scripts', 'build-cjs.mjs')], {
+        cwd: PKG_ROOT,
+        stdio: 'pipe',
+      });
     }, 120_000);
 
     it('exists after a build', () => {
