@@ -1,4 +1,5 @@
 import { PresenterMode } from '@reticlehq/core';
+import { nativeSetTimeout } from '../timers/native-timers.js';
 import {
   PresenterIcon,
   PRESENTER_ICON_SIZE,
@@ -49,13 +50,22 @@ const RESULT_CLASS: Record<LogResult, string> = { pass: 'reticle-pass', fail: 'r
 
 export const DATA_RETICLE_LOG = 'data-reticle-log';
 const DATA_RETICLE_LOG_ROW = 'data-reticle-log-row';
-const DATA_RETICLE_LOG_TS = 'data-reticle-log-ts';
+/**
+ * The attribute on ONE log line's timestamp. Deliberately not `data-reticle-log-ts`: that name is
+ * the overlay-level SETTING (show timestamps y/n) and the overlay root carries it, so a bare
+ * `[data-reticle-log-ts]{opacity:.85}` here matched the overlay itself and made the entire HUD -
+ * chat panel included - 85% transparent, with the page legible straight through it.
+ */
+export const LOG_TIME_ATTR = 'data-reticle-log-time';
 const DATA_KIND = 'data-kind';
 const LOG_TEXT_CLASS = 'reticle-log-text';
 const LOG_RES_CLASS = 'reticle-res';
 const LOG_CHIP_CLASS = 'reticle-chip';
 
 const LOG_EMPTY_HINT = 'Agent activity will appear here';
+
+/** How long to keep re-pinning the feed after the panel opens, while rows render their real size. */
+const LOG_SETTLE_MS = 160;
 
 /** CSS for the log feed (injected with the rest of the presenter stylesheet; vars inherit from the card). */
 export const LOG_CSS = `
@@ -73,11 +83,22 @@ export const LOG_CSS = `
   padding:4px 2px;background:transparent;border:none;border-radius:0;
   content-visibility:auto;contain-intrinsic-size:auto 28px;}
 [data-reticle-log-row][data-kind="narration"]{padding:6px 2px;color:var(--reticle-muted);font-size:11px;font-style:italic;}
-[data-reticle-log] [data-reticle-log-row] .reticle-chip{display:inline-flex;align-items:center;gap:3px;
-  font-size:7.5px;font-weight:600;letter-spacing:.07em;padding:2px 6px;border-radius:999px;
-  color:var(--reticle-muted);background:rgba(255,255,255,.06);border:none;text-transform:uppercase;
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);}
-[data-reticle-log-ts]{flex:none;color:var(--reticle-faint);font-size:9px;font-variant-numeric:tabular-nums;padding-top:2px;min-width:2em;opacity:.85;}
+/**
+ * The kind marker is an ICON, not a pill.
+ *
+ * A row is "what the agent did"; wrapping READ / ACT in an uppercase capsule made the label louder
+ * than the action next to it, and forty of them down a panel read as a wall of badges. The icon
+ * carries the same distinction in the appearance colour and gets out of the way of the text.
+ */
+[data-reticle-log] [data-reticle-log-row] .reticle-chip{display:inline-flex;align-items:center;
+  flex:none;padding:0;border:none;background:none;box-shadow:none;border-radius:0;
+  color:var(--reticle-c-active);opacity:.85;line-height:0;padding-top:2px;}
+[data-reticle-log] [data-reticle-log-row] .reticle-chip svg{display:block;fill:none;stroke:currentColor;
+  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+[data-reticle-log] [data-reticle-log-row] .reticle-chip-label{
+  position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+[data-reticle-log] [data-reticle-log-row][data-kind="read"] .reticle-chip{opacity:.5;}
+[${LOG_TIME_ATTR}]{flex:none;color:var(--reticle-faint);font-size:9px;font-variant-numeric:tabular-nums;padding-top:2px;min-width:2em;opacity:.85;}
 [data-reticle-log] .reticle-log-text{flex:1;min-width:0;color:var(--reticle-muted);overflow-wrap:anywhere;word-break:break-word;}
 [data-reticle-log] .reticle-res{flex:none;font-size:7.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--reticle-bad);opacity:.75;padding-top:2px;}
 [data-reticle-log] .reticle-res.reticle-pass{display:none;}
@@ -86,6 +107,34 @@ export const LOG_CSS = `
   border-radius:16px 16px 4px 16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.08);}
 [data-reticle-log-row][data-kind="human"] .reticle-log-text{color:var(--reticle-fg);font-size:12px;line-height:1.45;}
 ` as string;
+
+/**
+ * Pin the feed to its newest row.
+ *
+ * Called on append AND when the chat is opened, because a hidden panel has no layout: rows added
+ * while it was minimised could not scroll it, so opening it showed the OLDEST row and the latest
+ * activity - the reason to open it - was somewhere below the fold.
+ */
+export function scrollLogToLatest(container: HTMLElement): void {
+  container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * Pin the feed to its newest row once the panel has actually laid out.
+ *
+ * A single frame is not enough on open: the rows carry `content-visibility:auto`, so their real
+ * heights arrive after the first paint and `scrollHeight` keeps growing under a scroll that has
+ * already happened - the feed landed a third of the way down instead of at the end. Two frames
+ * plus one settle pass costs nothing and lands on the last row.
+ */
+export function settleLogAtLatest(container: HTMLElement): void {
+  scrollLogToLatest(container);
+  requestAnimationFrame(() => {
+    scrollLogToLatest(container);
+    requestAnimationFrame(() => scrollLogToLatest(container));
+  });
+  nativeSetTimeout(() => scrollLogToLatest(container), LOG_SETTLE_MS);
+}
 
 /** Handle returned from logRow/Presenter.log so the caller can stamp the outcome glyph later. */
 export interface LogHandle {
@@ -134,7 +183,7 @@ export function appendLogRow(
   row.setAttribute(DATA_KIND, kind); // styles the human row as an accent chat bubble
 
   const tsEl = document.createElement('span');
-  tsEl.setAttribute(DATA_RETICLE_LOG_TS, '');
+  tsEl.setAttribute(LOG_TIME_ATTR, '');
   tsEl.textContent = ts;
 
   const rowNodes: Node[] = [];
@@ -170,7 +219,7 @@ export function appendLogRow(
   container.appendChild(row);
   while (container.childElementCount > logMax) container.firstElementChild?.remove();
   requestAnimationFrame(() => {
-    container.scrollTop = container.scrollHeight;
+    scrollLogToLatest(container);
   });
 
   return {

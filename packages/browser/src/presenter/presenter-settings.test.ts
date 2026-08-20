@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Presenter } from './presenter.js';
 import { SETTINGS_ATTR, SETTINGS_STORAGE_KEY } from './presenter-config.js';
 import { Annotator } from '../review/annotator.js';
+import { loadPresenterSettings } from './presenter-settings.js';
 
 afterEach(() => {
   document.querySelectorAll('[data-reticle-overlay]').forEach((e) => e.remove());
@@ -55,18 +56,21 @@ describe('presenter settings', () => {
     p.destroy();
   });
 
-  it('marker color swatches use a selected ring', () => {
+  // One theme, not four pickers: the chip sets the status colours AND the marker accent, because a
+  // marker in a colour unrelated to the session's own is just one more thing to decode.
+  it('a status theme sets the selected ring, the state colours and the marker accent', () => {
     const p = new Presenter({ border: 'session' });
     p.mount();
     const ann = new Annotator({ emit: () => {}, now: () => 0 });
     ann.mount();
     p.bindAnnotator(ann);
-    const cyan = document.querySelector('[data-accent="cyan"]') as HTMLElement;
-    cyan.click();
-    expect(cyan.getAttribute('data-on')).toBe('1');
-    expect(document.querySelector('[data-reticle-dock]')?.getAttribute('data-reticle-accent')).toBe(
-      'cyan',
-    );
+    const neon = document.querySelector('[data-reticle-theme="neon"]') as HTMLElement;
+    neon.click();
+    expect(neon.getAttribute('data-on')).toBe('1');
+    const overlay = document.querySelector<HTMLElement>('div[data-reticle-overlay]');
+    expect(overlay?.style.getPropertyValue('--reticle-c-active')).toBe('#06b6d4');
+    expect(overlay?.style.getPropertyValue('--reticle-c-idle')).toBe('#a855f7');
+    expect(overlay?.style.getPropertyValue('--reticle-c-ended')).toBe('#f43f5e');
     const root = document.querySelector<HTMLElement>('[data-reticle-mark="root"]');
     expect(root?.style.getPropertyValue('--reticle-mark-accent')).toBe('#06b6d4');
     p.destroy();
@@ -231,5 +235,25 @@ describe('presenter settings', () => {
     expect(overlay.getAttribute(SETTINGS_ATTR)).toBe('1');
     expect(overlay.getAttribute('data-reticle-chat')).toBeNull();
     p.destroy();
+  });
+});
+
+/**
+ * "Hide until restart" has to mean UNTIL RESTART.
+ *
+ * It was persisted like every other setting, so the reload that was supposed to bring the HUD back
+ * re-applied it instead. The HUD stayed gone - and with it the settings panel that turns it off, so
+ * the only way back was clearing localStorage by hand.
+ */
+describe('hide until restart', () => {
+  it('does not survive a reload', () => {
+    localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ hideUntilRestart: true, statusThemeId: 'signal' }),
+    );
+    expect(loadPresenterSettings().hideUntilRestart, 'a reload always brings the HUD back').toBe(
+      false,
+    );
+    localStorage.removeItem(SETTINGS_STORAGE_KEY);
   });
 });

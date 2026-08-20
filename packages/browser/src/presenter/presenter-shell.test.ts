@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Presenter } from './presenter.js';
+import { asSyntheticInput } from '../actions/synthetic-input.js';
+import { Annotator } from '../review/annotator.js';
+import { LOG_KIND } from './presenter-log.js';
 
 const click = (el: Element | null | undefined): void => {
   el?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -209,6 +212,145 @@ describe('the chat minimise button', () => {
     click(document.querySelector('[data-reticle-chat-min]'));
     expect(overlay?.getAttribute('data-reticle-chat'), 'chat is minimised').toBeNull();
     expect(overlay?.getAttribute('data-reticle-min'), 'the HUD stays open').toBe('0');
+    p.destroy();
+  });
+});
+
+/**
+ * A click on the page never dismisses the chat.
+ *
+ * Click-outside used to close it, and every actor got it wrong: Reticle's own clicks land on the
+ * page (synthetic in-page, or a genuine OS event when it drives through CDP, which no in-page
+ * marker can tell from a person's), a click in annotate mode is placing a mark, and a person
+ * clicking around their app while reading the log is not asking for the log to disappear.
+ */
+describe('the chat panel survives clicks on the page', () => {
+  it('stays open for synthetic, real and annotating clicks alike', () => {
+    document.body.innerHTML = '';
+    const p = new Presenter({});
+    p.mount();
+    const ann = new Annotator({ emit: () => {}, now: () => 0 });
+    ann.mount();
+    p.bindAnnotator(ann);
+    p.sessionStart();
+    click(document.querySelector('[data-reticle-fab]'));
+    const overlay = document.querySelector('div[data-reticle-overlay]');
+    expect(overlay?.getAttribute('data-reticle-chat'), 'chat opens with the HUD').toBe('1');
+    const pageBtn = document.createElement('button');
+    document.body.appendChild(pageBtn);
+    asSyntheticInput(() => {
+      pageBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    });
+    expect(overlay?.getAttribute('data-reticle-chat'), 'the agent acting in-page').toBe('1');
+    pageBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(overlay?.getAttribute('data-reticle-chat'), 'a real click, agent or person').toBe('1');
+    click(document.querySelector('[data-reticle-annotate-btn]'));
+    pageBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(overlay?.getAttribute('data-reticle-chat'), 'placing a mark').toBe('1');
+    ann.destroy();
+    p.destroy();
+  });
+
+  it('still closes on its own toggle and on Escape', () => {
+    document.body.innerHTML = '';
+    const p = new Presenter({});
+    p.mount();
+    p.sessionStart();
+    click(document.querySelector('[data-reticle-fab]'));
+    const overlay = document.querySelector('div[data-reticle-overlay]');
+    click(document.querySelector('[data-reticle-chat-toggle]'));
+    expect(overlay?.getAttribute('data-reticle-chat'), 'the toggle is a way out').toBeNull();
+    click(document.querySelector('[data-reticle-chat-toggle]'));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(overlay?.getAttribute('data-reticle-chat'), 'Escape is a way out').toBeNull();
+    p.destroy();
+  });
+});
+
+/**
+ * The minimised chat is a capsule, not a hole.
+ *
+ * Minimising used to leave the toolbar above empty space, so a minimised session looked exactly
+ * like no session at all. The capsule keeps the state dot and the last action visible, and is
+ * itself the way back into the panel.
+ */
+describe('the minimised chat capsule', () => {
+  it('appears when the chat is minimised and reopens it when clicked', () => {
+    document.body.innerHTML = '';
+    const p = new Presenter({});
+    p.mount();
+    p.sessionStart();
+    click(document.querySelector('[data-reticle-fab]'));
+    const overlay = document.querySelector('div[data-reticle-overlay]');
+    const pill = document.querySelector('[data-reticle-chat-pill]');
+    expect(pill, 'the capsule is part of the dock').not.toBeNull();
+    click(document.querySelector('[data-reticle-chat-min]'));
+    expect(overlay?.getAttribute('data-reticle-chat'), 'chat is minimised').toBeNull();
+    expect(overlay?.getAttribute('data-reticle-min'), 'the toolbar stays expanded').toBe('0');
+    click(pill);
+    expect(overlay?.getAttribute('data-reticle-chat'), 'the capsule reopens the chat').toBe('1');
+    p.destroy();
+  });
+
+  it('carries the last action text', () => {
+    document.body.innerHTML = '';
+    const p = new Presenter({});
+    p.mount();
+    p.sessionStart();
+    p.status('Clicking button "Deploy"');
+    expect(document.querySelector('[data-reticle-chat-pill-text]')?.textContent).toContain(
+      'Deploy',
+    );
+    p.destroy();
+  });
+});
+
+/**
+ * The status colour must reach everything that signals, not just the dot.
+ *
+ * The glow, the collapsed FAB's halo and the capsule all sit outside the activity strip, so the
+ * liveness the strip knows about is mirrored onto the overlay root for them to resolve against.
+ */
+describe('session state is published for the colour system', () => {
+  it('mirrors liveness onto the overlay root', () => {
+    document.body.innerHTML = '';
+    const p = new Presenter({});
+    p.mount();
+    p.sessionStart();
+    const overlay = document.querySelector('div[data-reticle-overlay]');
+    p.status('Clicking button "Deploy"');
+    expect(overlay?.getAttribute('data-reticle-live'), 'acting reads as active').toBe('active');
+    p.destroy();
+  });
+});
+
+/**
+ * Opening the chat shows the LATEST activity.
+ *
+ * The feed follows its newest row on append - but a closed panel has no layout, so rows logged
+ * while it was minimised could not move it. Opening it left the feed parked at the oldest row, and
+ * the thing you opened it to see was somewhere below the fold.
+ */
+describe('the activity feed opens at the newest row', () => {
+  it('scrolls to the bottom when the chat is opened', async () => {
+    document.body.innerHTML = '';
+    const p = new Presenter({});
+    p.mount();
+    p.sessionStart();
+    click(document.querySelector('[data-reticle-fab]'));
+    click(document.querySelector('[data-reticle-chat-min]'));
+    const log = document.querySelector<HTMLElement>('[data-reticle-log]');
+    if (null === log) throw new Error('no log');
+    for (let i = 0; i < 12; i += 1) p.log(LOG_KIND.ACT, `row ${String(i)}`);
+    // jsdom has no layout: model a feed taller than its box, and a scroll position stuck at the top.
+    Object.defineProperty(log, 'scrollHeight', { value: 900, configurable: true });
+    log.scrollTop = 0;
+    click(document.querySelector('[data-reticle-chat-toggle]'));
+    expect(log.scrollTop, 'the newest row is the one you came to see').toBe(900);
+    // and it keeps landing there while the rows render their real heights
+    Object.defineProperty(log, 'scrollHeight', { value: 1400, configurable: true });
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+    expect(log.scrollTop, 'a feed that grew after layout still ends at the bottom').toBe(1400);
     p.destroy();
   });
 });

@@ -10,6 +10,7 @@ export const PresenterIcon = {
   VIEW: 'view',
   POINTER: 'pointer',
   SEND: 'send',
+  CHART: 'chart',
   CARET_DOWN: 'caret-down',
   CHECK: 'check',
   REMOVE: 'remove',

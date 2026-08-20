@@ -4,7 +4,9 @@ export const HERO_ICON_BODIES = {
   view: '<g><path d="M15 12a3 3 0 1 1-6 0a3 3 0 0 1 6 0"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7s-8.268-2.943-9.542-7"/></g>',
   pointer:
     '<path d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225l.569-9.47l5.227 7.917l-3.286-.672ZM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59"/>',
-  send: '<path d="m12 19l9 2l-9-18l-9 18zm0 0v-8"/>',
+  send: '<path d="M6 12 3.269 3.126A59.768 59.768 0 0 1 21.485 12 59.77 59.77 0 0 1 3.27 20.876L5.999 12Zm0 0h7.5"/>',
+  chart:
+    '<path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2m0 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v10m-6 0a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2m0 0V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2"/>',
   'caret-down': '<path d="m19 9l-7 7l-7-7"/>',
   check: '<path d="m5 13l4 4L19 7"/>',
   remove: '<path d="m4.5 19.5l15-15m-15 0l15 15"/>',
@@ -29,6 +31,8 @@ export const HERO_ICON_BODIES = {
 export type HeroIconBodyKey = keyof typeof HERO_ICON_BODIES;
 /** Solid variants for toolbar toggles - shown when data-active="1". */
 export const HERO_ICON_SOLID_BODIES = {
+  chart:
+    '<path fill="currentColor" d="M2 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1zm6-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1zm6-3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z"/>',
   annotate:
     '<path fill="currentColor" fill-rule="evenodd" d="m5.433 13.916l1.262-3.154a4 4 0 0 1 .885-1.343L14.5 2.5a2.121 2.121 0 1 1 3 3l-6.92 6.919c-.383.383-.84.684-1.343.885l-3.154 1.262a.5.5 0 0 1-.65-.65ZM2.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H3.75A2.75 2.75 0 0 0 1 5.75v10.5A2.75 2.75 0 0 0 3.75 19h10.5A2.75 2.75 0 0 0 17 16.25V10a.75.75 0 0 0-1.5 0v6.25c0 .69-.56 1.25-1.25 1.25H3.75c-.69 0-1.25-.56-1.25-1.25V5.75Z" clip-rule="evenodd"/>',
   message:

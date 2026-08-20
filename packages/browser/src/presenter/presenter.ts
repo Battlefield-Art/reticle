@@ -24,6 +24,7 @@ import {
 } from './presenter-log.js';
 import { PRESENTER_CSS } from './presenter-styles.js';
 import { HudShell } from './presenter-shell.js';
+import { parseImpactSnapshot } from './presenter-report-copy.js';
 import {
   BorderMode,
   DEFAULT_BORDER_MODE,
@@ -41,6 +42,7 @@ import {
   GLOW_OFF,
   DATA_ON,
   THROTTLED_ATTR,
+  LIVENESS_ATTR,
   MARKERS_BTN_ATTR,
   CLEAR_MARKS_ATTR,
   MARK_COUNT_ATTR,
@@ -60,7 +62,7 @@ import {
   type ControlHandler,
 } from './presenter-controls.js';
 import {
-  accentColor,
+  statusTheme,
   blockerHtml,
   getPresenterSettings,
   OutputDetail,
@@ -89,6 +91,10 @@ export class Presenter {
   #hud: HTMLElement | undefined;
   #actLine: HTMLElement | undefined;
   #actStrip: HTMLElement | undefined;
+  /** Label inside the minimised-chat capsule; mirrors the act strip. */
+  #chatPillText: HTMLElement | undefined;
+  /** Age of the last action, shown in the capsule's own slot. */
+  #chatPillTime: HTMLElement | undefined;
   #chip: HTMLElement | undefined;
   /** Live verdict tally (✓N ✗M) in the header - the running testing score the human watches. */
   #tally: HTMLElement | undefined;
@@ -188,6 +194,11 @@ export class Presenter {
   handlePush(command: { name: string; args: Record<string, unknown> }): void {
     const a = command.args;
     if (command.name === ReticleCommand.FLOWS) return void this.#panel.setFlows(a['flows']);
+    if (command.name === ReticleCommand.IMPACT) {
+      const snapshot = parseImpactSnapshot(a['snapshot']);
+      if (snapshot !== undefined) this.#shell.report.setSnapshot(snapshot);
+      return;
+    }
     const state = a['state'];
     const tone = a['tone'];
     const text = 'string' === typeof a['text'] && a['text'].length > 0 ? a['text'] : undefined;
@@ -224,6 +235,10 @@ export class Presenter {
     this.#hud = root.querySelector<HTMLElement>('[data-reticle-hud]') ?? undefined;
     this.#actLine = root.querySelector<HTMLElement>('.reticle-act') ?? undefined;
     this.#actStrip = root.querySelector<HTMLElement>('.reticle-act-strip') ?? undefined;
+    this.#chatPillText =
+      root.querySelector<HTMLElement>('[data-reticle-chat-pill-text]') ?? undefined;
+    this.#chatPillTime =
+      root.querySelector<HTMLElement>('[data-reticle-chat-pill-time]') ?? undefined;
     this.#log = root.querySelector<HTMLElement>(`[${DATA_RETICLE_LOG}]`) ?? undefined;
     this.#chip = root.querySelector<HTMLElement>('[data-reticle-chip]') ?? undefined;
     this.#tally = root.querySelector<HTMLElement>('[data-reticle-tally]') ?? undefined;
@@ -248,18 +263,16 @@ export class Presenter {
     if (clear instanceof HTMLElement) chrome.clearBtn = clear;
     if (count instanceof HTMLElement) chrome.countEl = count;
     annotator.attachChrome(chrome);
-    annotator.setAccent(accentColor(getPresenterSettings().accentColorId));
+    annotator.setAccent(statusTheme(getPresenterSettings().statusThemeId).active);
     this.#syncAnnotator();
   }
-  /** Annotate only while the session is live and the HUD is expanded. Pause/End freeze the page. */
+  /** Annotate whenever the HUD is open and the person asked for it - agent or no agent. */
   #syncAnnotator(): void {
-    // Three things have to agree, and only the last is the user's: the session is live, the HUD is
-    // open, and they have not switched annotation off. It used to be the first two alone, so there
-    // was no way to keep the HUD open and stop annotating.
-    const live =
-      SessionState.ACTIVE === this.#panel.state &&
-      !this.#shell.isCollapsed() &&
-      this.#shell.isAnnotateOn();
+    // Two things have to agree, and both are the user's: the HUD is open, and annotate is switched
+    // on. Session state used to be a third, so the mode was refused the moment the agent
+    // disconnected - which is precisely when someone opens the HUD to record what they just saw.
+    // The button still lit up, so the refusal was invisible: no outline, no composer, no reason.
+    const live = !this.#shell.isCollapsed() && this.#shell.isAnnotateOn();
     this.#annotator?.toggle(live);
     if (this.#root !== undefined) {
       syncPageBlocker(this.#root, getPresenterSettings(), live);
@@ -385,14 +398,31 @@ export class Presenter {
   }
   status(text: string): void {
     this.markActivity();
+    if (this.#chatPillTime !== undefined) this.#chatPillTime.textContent = ACT_STRIP.NOW;
     this.#lastActionText = text;
     this.#paintActStrip(text, false);
   }
-  /** Sync act-strip text + the live/idle dot state. */
+  /**
+   * Sync act-strip text + the live/idle state.
+   *
+   * The liveness is mirrored onto the overlay root as well as the strip, because that is what the
+   * status COLOUR resolves against: the page glow, the collapsed FAB's halo and the minimised
+   * capsule all live outside the strip and still have to say whether the agent is working.
+   */
   #paintActStrip(text: string, idle: boolean): void {
     if (this.#actLine !== undefined) this.#actLine.textContent = text;
-    if (this.#actStrip !== undefined) {
-      this.#actStrip.setAttribute('data-liveness', idle ? 'idle' : 'active');
+    const liveness = idle ? 'idle' : 'active';
+    if (this.#actStrip !== undefined) this.#actStrip.setAttribute('data-liveness', liveness);
+    this.#root?.setAttribute(LIVENESS_ATTR, liveness);
+    if (this.#chatPillText !== undefined) {
+      // The capsule reads "logo | what the agent did | how long ago | expand", so it takes the
+      // ACTION, never the composed "idle · 12s since last action" line the strip shows: the age
+      // lives in its own slot next to it.
+      this.#chatPillText.textContent = idle
+        ? this.#lastActionText !== ''
+          ? this.#lastActionText
+          : ACT_STRIP.READY
+        : text;
     }
   }
   /**
@@ -420,6 +450,7 @@ export class Presenter {
     if (idleMs < this.#idleNoticeMs) return; // still active (or a brief think) - keep the action text
     const since = this.#lastActionText !== '' ? ACT_STRIP.SINCE_LAST : '';
     this.#paintActStrip(`${ACT_STRIP.IDLE_PREFIX}${humanDuration(idleMs)}${since}`, true);
+    if (this.#chatPillTime !== undefined) this.#chatPillTime.textContent = humanDuration(idleMs);
   }
   /** Auto-end after the idle window: stamp the end, drive the panel to ENDED, stop the heartbeat. */
   #endIdle(idleMs: number): void {
@@ -476,7 +507,7 @@ export class Presenter {
     this.#shell.collapse();
   }
   #onSettingsChange(settings: PresenterSettings): void {
-    this.#annotator?.setAccent(accentColor(settings.accentColorId));
+    this.#annotator?.setAccent(statusTheme(settings.statusThemeId).active);
     if (!settings.showTally) {
       this.#tally?.setAttribute('hidden', '');
     } else {

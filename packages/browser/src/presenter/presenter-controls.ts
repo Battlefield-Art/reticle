@@ -97,8 +97,10 @@ export const CONTROLS_CSS = `
 [data-reticle-chat-panel] .reticle-composer{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.03);
   border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:4px 4px 4px 14px;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .2s,box-shadow .2s,background .2s;}
-[data-reticle-chat-panel] .reticle-composer:focus-within{border-color:rgba(59,130,246,.5);background:rgba(255,255,255,.06);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 0 0 1px rgba(59,130,246,.5);}
+[data-reticle-chat-panel] .reticle-composer:focus-within{
+  border-color:color-mix(in srgb,var(--reticle-accent) 50%,transparent);background:rgba(255,255,255,.06);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 0 1px color-mix(in srgb,var(--reticle-accent) 50%,transparent);}
 [data-reticle-chat-panel] .reticle-msg{flex:1;min-width:0;pointer-events:auto;background:transparent;border:none;outline:none;resize:none;
   box-sizing:border-box;color:var(--reticle-fg);font-family:var(--reticle-font);font-size:12.5px;line-height:18px;
   height:28px;min-height:28px;max-height:${MSG_MAX_H}px;padding:5px 0;overflow-y:auto;
@@ -108,9 +110,12 @@ export const CONTROLS_CSS = `
 [data-reticle-chat-panel] .reticle-msg::placeholder{color:var(--reticle-faint);}
 [data-reticle-chat-panel] .reticle-msg:disabled{opacity:.5;}
 [data-reticle-chat-panel] .reticle-send{flex:none;width:28px;height:28px;padding:0;border-radius:50%;border:none;cursor:pointer;pointer-events:auto;
-  background:#3b82f6;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;
-  transition:background .15s,transform .1s,box-shadow .15s;box-shadow:0 1px 3px rgba(59,130,246,.3);}
-[data-reticle-chat-panel] .reticle-send:hover{background:#2563eb;box-shadow:0 2px 6px rgba(37,99,235,.4);}
+  background:var(--reticle-accent);color:#ffffff;display:inline-flex;align-items:center;justify-content:center;
+  transition:background .15s,transform .1s,box-shadow .15s;
+  box-shadow:0 1px 3px color-mix(in srgb,var(--reticle-accent) 30%,transparent);}
+[data-reticle-chat-panel] .reticle-send:hover{
+  background:color-mix(in srgb,var(--reticle-accent) 85%,#000);
+  box-shadow:0 2px 6px color-mix(in srgb,var(--reticle-accent) 40%,transparent);}
 [data-reticle-chat-panel] .reticle-send:active{transform:scale(.92);}
 [data-reticle-chat-panel] .reticle-send:disabled{background:#374151;color:#9ca3af;box-shadow:none;opacity:.5;cursor:default;}
 [data-reticle-chat-panel] .reticle-banner{display:none;flex:none;align-items:center;gap:8px;padding:10px 14px;color:var(--reticle-fg);
@@ -120,12 +125,16 @@ export const CONTROLS_CSS = `
   box-shadow:inset 0 0 0 2px rgba(255,255,255,.2);}
 [data-reticle-overlay][data-reticle-state="ended"] [data-reticle-glow][data-on="1"]{
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);}
-[data-reticle-overlay][data-reticle-tone="waiting"] [data-reticle-chat-panel]{--reticle-accent:#e5e5e5;--reticle-accent-soft:rgba(255,255,255,.08);}
+[data-reticle-overlay][data-reticle-tone="waiting"] [data-reticle-chat-panel]{
+  --reticle-accent:var(--reticle-state);
+  --reticle-accent-soft:color-mix(in srgb,var(--reticle-state) 18%,transparent);}
 [data-reticle-overlay][data-reticle-tone="waiting"] [data-reticle-banner]{font-weight:500;color:var(--reticle-fg);}
 [data-reticle-overlay][data-reticle-tone="waiting"] [data-reticle-glow][data-on="1"]{
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);}
 [data-reticle-overlay][data-reticle-tone="ask"] [data-reticle-chat-panel],
-[data-reticle-overlay][data-reticle-tone="warn"] [data-reticle-chat-panel]{--reticle-accent:#d4d4d4;--reticle-accent-soft:rgba(255,255,255,.06);}
+[data-reticle-overlay][data-reticle-tone="warn"] [data-reticle-chat-panel]{
+  --reticle-accent:var(--reticle-state);
+  --reticle-accent-soft:color-mix(in srgb,var(--reticle-state) 18%,transparent);}
 [data-reticle-overlay][data-reticle-tone="ask"] [data-reticle-banner],
 [data-reticle-overlay][data-reticle-tone="warn"] [data-reticle-banner]{font-weight:500;color:var(--reticle-fg);}
 [data-reticle-overlay][data-reticle-tone="ask"] [data-reticle-glow][data-on="1"],

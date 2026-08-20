@@ -33,13 +33,19 @@ function sources(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** The attribute a setting is stamped as, when it is applied that way rather than read directly. */
+/**
+ * The attribute - or CSS custom property - a setting is stamped as, when it is applied that way
+ * rather than read directly. A custom property counts for the same reason an attribute does: the
+ * settings module writes it, and something else has to consume it or the control does nothing.
+ */
 const ATTR_FOR_KEY: Readonly<Record<string, string>> = {
   hideUntilRestart: 'data-reticle-hidden',
   showTimestamps: 'data-reticle-log-ts',
   compactChat: 'data-reticle-compact-chat',
   reduceMotion: 'data-reticle-reduce-motion',
   accentColorId: 'data-reticle-accent',
+  statusThemeId: '--reticle-c-active',
+  ambientGlow: 'data-reticle-ambient-glow',
 };
 
 describe('every presenter setting is read by something', () => {

@@ -101,6 +101,7 @@ export const IDLE_NOTICE_MS = 4000;
 export const ACT_STRIP = {
   READY: 'Ready',
   IDLE_PREFIX: 'idle · ',
+  NOW: 'now',
   SINCE_LAST: ' since last action',
 } as const;
 /** Default session-idle-end: after this much quiet the session auto-ends (glow off, panel persists
@@ -149,6 +150,17 @@ export const MARK_COUNT_ATTR = 'data-reticle-mark-count';
 export const ANNOTATE_BTN_ATTR = 'data-reticle-annotate-btn';
 /** Minimise the agent chat back to the toolbar, without collapsing the whole HUD. */
 export const CHAT_MIN_ATTR = 'data-reticle-chat-min';
+/** Overlay flag: is the impact report on screen. */
+export const REPORT_ATTR = 'data-reticle-report';
+/** The report panel itself. */
+export const REPORT_PANEL_ATTR = 'data-reticle-report-panel';
+/** The report's close button. */
+export const REPORT_CLOSE_ATTR = 'data-reticle-report-close';
+/** The toolbar button that opens the report. */
+export const REPORT_BTN_ATTR = 'data-reticle-report-btn';
+
+/** The capsule that stands in for the chat while it is minimised - state dot + last action. */
+export const CHAT_PILL_ATTR = 'data-reticle-chat-pill';
 /** Settings gear is open - the card sits above the dock. */
 export const SETTINGS_ATTR = 'data-reticle-settings';
 export const SETTINGS_BTN_ATTR = 'data-reticle-settings-btn';
@@ -157,7 +169,10 @@ export const SETTINGS_CLOSE_ATTR = 'data-reticle-settings-close';
 export const SETTING_KEY_ATTR = 'data-reticle-setting';
 export const SETTINGS_STORAGE_KEY = 'reticle-presenter-settings';
 /** Accent swatch applied to the dock chrome. */
-export const ACCENT_ATTR = 'data-reticle-accent';
+/** Overlay flag: is the page-edge glow wanted at all (user setting). */
+export const AMBIENT_GLOW_ATTR = 'data-reticle-ambient-glow';
+/** Overlay mirror of the activity strip's liveness, so CSS can pick the ACTIVE status colour. */
+export const LIVENESS_ATTR = 'data-reticle-live';
 /** When 1, a transparent blocker captures page pointer events. */
 export const BLOCK_ATTR = 'data-reticle-block';
 /** When 1, the dock is hidden until the page reloads. */
@@ -165,7 +180,6 @@ export const HIDDEN_UNTIL_RESTART_ATTR = 'data-reticle-hidden';
 /** When 0, activity-log timestamps are hidden. */
 export const LOG_TIMESTAMPS_ATTR = 'data-reticle-log-ts';
 /** When 1, the chat panel uses a narrower width. */
-export const COMPACT_CHAT_ATTR = 'data-reticle-compact-chat';
 /** When 1, HUD motion is reduced for accessibility. */
 export const REDUCE_MOTION_ATTR = 'data-reticle-reduce-motion';
 /** Presenter settings card version label (browser package). */
@@ -184,5 +198,5 @@ export const HUD_DRAG_THRESHOLD_PX = 4;
 export const HUD_DOCK_MARGIN_PX = 8;
 /** Interactive nodes inside the drag handle that must not start a drag (not the FAB itself). */
 export const HUD_DRAG_IGNORE_SEL =
-  '[data-reticle-pause], [data-reticle-annotate-btn], [data-reticle-markers-btn], [data-reticle-clear-marks], [data-reticle-end], [data-reticle-min-btn], [data-reticle-settings-btn], [data-reticle-settings-panel], [data-reticle-chat-panel], [data-reticle-chat-toggle], [data-reticle-workspace-btn], [data-reticle-workspace-menu], [data-reticle-copy], [data-reticle-export], [data-reticle-send], input, textarea, select, a, .reticle-head-ctl, [data-reticle-tally], .reticle-maxhint';
+  '[data-reticle-pause], [data-reticle-annotate-btn], [data-reticle-markers-btn], [data-reticle-clear-marks], [data-reticle-end], [data-reticle-min-btn], [data-reticle-settings-btn], [data-reticle-settings-panel], [data-reticle-report-btn], [data-reticle-report-panel], [data-reticle-chat-panel], [data-reticle-chat-toggle], [data-reticle-workspace-btn], [data-reticle-workspace-menu], [data-reticle-copy], [data-reticle-export], [data-reticle-send], input, textarea, select, a, .reticle-head-ctl, [data-reticle-tally], .reticle-maxhint';
 export const THROTTLED_ATTR = 'data-reticle-throttled';

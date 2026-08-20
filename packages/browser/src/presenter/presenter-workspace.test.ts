@@ -41,3 +41,27 @@ describe('presenter workspace selector', () => {
     teardown();
   });
 });
+
+/**
+ * A chip that cannot name the workspace should not take the slot.
+ *
+ * With no injected repo root and no leased project id it rendered "This page" - a label that names
+ * no checkout and is equally true of every page in every app.
+ */
+describe('the workspace chip hides when it knows nothing', () => {
+  it('is hidden with no root and no project id, and shown once a root exists', () => {
+    document.body.innerHTML = `<div class="reticle-workspace-wrap"><button data-reticle-workspace-btn><span data-reticle-workspace-name></span></button></div>`;
+    const root = document.body;
+    paintWorkspace(root);
+    const wrap = document.querySelector('.reticle-workspace-wrap');
+    expect(wrap?.hasAttribute('hidden'), 'nothing to say, nothing shown').toBe(true);
+    (globalThis as Record<string, unknown>)[RETICLE_ROOT_GLOBAL] = '/Users/me/code/checkout';
+    try {
+      paintWorkspace(root);
+      expect(wrap?.hasAttribute('hidden'), 'a known checkout is worth a chip').toBe(false);
+      expect(document.querySelector('[data-reticle-workspace-name]')?.textContent).toBe('checkout');
+    } finally {
+      delete (globalThis as Record<string, unknown>)[RETICLE_ROOT_GLOBAL];
+    }
+  });
+});

@@ -332,23 +332,27 @@ describe('presenter-controls / live-control panel', () => {
     expect(snap.tree).not.toContain('reticle-brand-mini');
   });
 
-  it('pause and end stop page annotation while the HUD stays expanded', () => {
+  // Pause and End are instructions to the AGENT. Annotation is the person's own channel, so it
+  // outlives both - a note is most often written about what just happened, i.e. after the run
+  // stopped. Requiring an ACTIVE session here left the toggle lit with the annotator switched off.
+  it('pause and end leave page annotation alone while the HUD stays expanded', () => {
     const { presenter } = mount();
     const ann = new Annotator({ emit: () => {}, now: () => 0 });
     ann.mount();
     presenter.bindAnnotator(ann);
     click(q('[data-reticle-fab]'));
-    // Expanding no longer enters annotate mode on its own — it is a toolbar toggle now. The point of
-    // this test is what pause/end do to a LIVE annotator, so turn it on first.
+    // Expanding no longer enters annotate mode on its own — it is a toolbar toggle now.
     click(q('[data-reticle-annotate-btn]'));
     expect(ann.active).toBe(true);
     click(pauseBtn());
-    expect(ann.active).toBe(false);
+    expect(ann.active, 'pausing the agent does not take away the pen').toBe(true);
     expect(stateAttr()).toBe('paused');
     click(pauseBtn());
     expect(ann.active).toBe(true);
     click(endBtn());
-    expect(ann.active).toBe(false);
+    expect(ann.active, 'a note about the run outlives the run').toBe(true);
+    click(q('[data-reticle-annotate-btn]'));
+    expect(ann.active, 'the toggle is still the way out').toBe(false);
     ann.destroy();
   });
 

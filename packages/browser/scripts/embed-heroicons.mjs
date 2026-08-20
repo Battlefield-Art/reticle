@@ -22,6 +22,7 @@ const MAP = {
   view: 'eye',
   pointer: 'cursor-arrow-rays',
   send: 'paper-airplane',
+  chart: 'chart-bar',
   'caret-down': 'chevron-down',
   check: 'check',
   remove: 'x-mark',
@@ -41,14 +42,31 @@ const MAP = {
 
 /** Outline key → solid body for toolbar toggle buttons (filled when active). */
 const TOGGLE_SOLID_MAP = {
+  chart: 'chart-bar',
   annotate: 'pencil-square',
   message: 'chat-bubble-left-ellipsis',
   view: 'eye',
   gear: 'cog-6-tooth',
 };
 
+/**
+ * Bodies we spell out instead of taking from the pack.
+ *
+ * The installed @iconify-json/heroicons-outline is the v1 set, whose paper-airplane points straight
+ * up and reads as an arrow rather than a send button. This is the v2 outline paper-airplane - the
+ * tilted plane the HUD had before - from the same MIT icon family.
+ */
+const BODY_OVERRIDES = {
+  send: '<path d="M6 12 3.269 3.126A59.768 59.768 0 0 1 21.485 12 59.77 59.77 0 0 1 3.27 20.876L5.999 12Zm0 0h7.5"/>',
+};
+
 const bodies = {};
 for (const [key, id] of Object.entries(MAP)) {
+  const override = BODY_OVERRIDES[key];
+  if (override !== undefined) {
+    bodies[key] = override;
+    continue;
+  }
   const entry = icons[id];
   if (entry === undefined) throw new Error(`missing heroicon: ${id}`);
   bodies[key] = minifyOutlineBody(entry.body);

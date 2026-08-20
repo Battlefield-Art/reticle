@@ -5,11 +5,10 @@ import {
   SETTINGS_CLOSE_ATTR,
   SETTING_KEY_ATTR,
   SETTINGS_STORAGE_KEY,
-  ACCENT_ATTR,
+  AMBIENT_GLOW_ATTR,
   BLOCK_ATTR,
   HIDDEN_UNTIL_RESTART_ATTR,
   LOG_TIMESTAMPS_ATTR,
-  COMPACT_CHAT_ATTR,
   REDUCE_MOTION_ATTR,
   DOCK_ATTR,
   MCP_DOCS_URL,
@@ -30,28 +29,79 @@ export const OutputDetail = {
 } as const;
 export type OutputDetail = (typeof OutputDetail)[keyof typeof OutputDetail];
 
-/** Accent swatches for the HUD chrome. */
-export const AccentColorId = {
-  PURPLE: 'purple',
-  BLUE: 'blue',
-  CYAN: 'cyan',
-  GREEN: 'green',
-  YELLOW: 'yellow',
-  ORANGE: 'orange',
-  RED: 'red',
+/**
+ * Status themes: ONE choice, three colours.
+ *
+ * This was four separate pickers - a chrome accent plus a swatch row per state - which is 28
+ * decisions to land on a set that works together. A theme is a combination we have already checked
+ * reads as a progression (working -> waiting -> done) and against a dark app, so the choice is
+ * "which mood", not "which four hex values".
+ */
+export const StatusThemeId = {
+  SIGNAL: 'signal',
+  TRAFFIC: 'traffic',
+  MONO: 'mono',
+  NEON: 'neon',
+  EMBER: 'ember',
 } as const;
-export type AccentColorId = (typeof AccentColorId)[keyof typeof AccentColorId];
+export type StatusThemeId = (typeof StatusThemeId)[keyof typeof StatusThemeId];
+
+export interface StatusTheme {
+  id: StatusThemeId;
+  label: string;
+  active: string;
+  idle: string;
+  ended: string;
+}
+
+export const STATUS_THEMES: readonly StatusTheme[] = [
+  {
+    id: StatusThemeId.SIGNAL,
+    label: 'Signal',
+    active: '#3b82f6',
+    idle: '#eab308',
+    ended: '#ef4444',
+  },
+  {
+    id: StatusThemeId.TRAFFIC,
+    label: 'Traffic',
+    active: '#22c55e',
+    idle: '#eab308',
+    ended: '#ef4444',
+  },
+  { id: StatusThemeId.MONO, label: 'Mono', active: '#fafafa', idle: '#a3a3a3', ended: '#525252' },
+  { id: StatusThemeId.NEON, label: 'Neon', active: '#06b6d4', idle: '#a855f7', ended: '#f43f5e' },
+  { id: StatusThemeId.EMBER, label: 'Ember', active: '#f97316', idle: '#facc15', ended: '#7f1d1d' },
+];
+
+const FALLBACK_THEME: StatusTheme = {
+  id: StatusThemeId.SIGNAL,
+  label: 'Signal',
+  active: '#3b82f6',
+  idle: '#eab308',
+  ended: '#ef4444',
+};
+
+export function statusTheme(id: StatusThemeId): StatusTheme {
+  return STATUS_THEMES.find((t) => t.id === id) ?? FALLBACK_THEME;
+}
 
 export interface PresenterSettings {
   outputDetail: OutputDetail;
+  /**
+   * The colours the HUD signals session state with - the dot, the panel wash, the page glow, the
+   * FAB halo and the annotation marks all read from whichever one is current. One choice, because
+   * the three have to work as a set and against the user's own app.
+   */
+  statusThemeId: StatusThemeId;
+  /** The page-edge glow. Off leaves every other signal (dot, panel, FAB) in place. */
+  ambientGlow: boolean;
   reactComponents: boolean;
   hideUntilRestart: boolean;
-  accentColorId: AccentColorId;
   clearOnCopy: boolean;
   blockPageInteractions: boolean;
   showTally: boolean;
   showTimestamps: boolean;
-  compactChat: boolean;
   autoOpenChat: boolean;
   reduceMotion: boolean;
 }
@@ -62,26 +112,16 @@ const OUTPUT_DETAIL_OPTIONS: { value: OutputDetail; label: string }[] = [
   { value: OutputDetail.VERBOSE, label: 'Verbose' },
 ];
 
-const ACCENT_SWATCHES: { id: AccentColorId; color: string }[] = [
-  { id: AccentColorId.PURPLE, color: '#a855f7' },
-  { id: AccentColorId.BLUE, color: '#3b82f6' },
-  { id: AccentColorId.CYAN, color: '#06b6d4' },
-  { id: AccentColorId.GREEN, color: '#22c55e' },
-  { id: AccentColorId.YELLOW, color: '#eab308' },
-  { id: AccentColorId.ORANGE, color: '#f97316' },
-  { id: AccentColorId.RED, color: '#ef4444' },
-];
-
 const DEFAULT_SETTINGS: PresenterSettings = {
   outputDetail: OutputDetail.STANDARD,
+  statusThemeId: StatusThemeId.SIGNAL,
+  ambientGlow: true,
   reactComponents: false,
   hideUntilRestart: false,
-  accentColorId: AccentColorId.BLUE,
   clearOnCopy: false,
   blockPageInteractions: true,
   showTally: false,
   showTimestamps: true,
-  compactChat: false,
   autoOpenChat: false,
   reduceMotion: false,
 };
@@ -105,10 +145,16 @@ export function loadPresenterSettings(): PresenterSettings {
         ? o['outputDetail']
         : DEFAULT_SETTINGS.outputDetail,
       reactComponents: true === o['reactComponents'],
-      hideUntilRestart: true === o['hideUntilRestart'],
-      accentColorId: isAccentColorId(o['accentColorId'])
-        ? o['accentColorId']
-        : DEFAULT_SETTINGS.accentColorId,
+      // NOT read back from storage. "Until restart" has to mean until restart: persisted, it
+      // survived the reload that was supposed to undo it, and the only way back was clearing
+      // localStorage by hand - the HUD was simply gone, including the settings panel that turned
+      // it off. It is a this-page-only switch, so it lives only in memory.
+      hideUntilRestart: false,
+      statusThemeId: isStatusThemeId(o['statusThemeId'])
+        ? o['statusThemeId']
+        : DEFAULT_SETTINGS.statusThemeId,
+      ambientGlow:
+        'boolean' === typeof o['ambientGlow'] ? o['ambientGlow'] : DEFAULT_SETTINGS.ambientGlow,
       clearOnCopy: true === o['clearOnCopy'],
       blockPageInteractions:
         'boolean' === typeof o['blockPageInteractions']
@@ -119,8 +165,6 @@ export function loadPresenterSettings(): PresenterSettings {
         'boolean' === typeof o['showTimestamps']
           ? o['showTimestamps']
           : DEFAULT_SETTINGS.showTimestamps,
-      compactChat:
-        'boolean' === typeof o['compactChat'] ? o['compactChat'] : DEFAULT_SETTINGS.compactChat,
       autoOpenChat:
         'boolean' === typeof o['autoOpenChat'] ? o['autoOpenChat'] : DEFAULT_SETTINGS.autoOpenChat,
       reduceMotion:
@@ -135,12 +179,8 @@ function isOutputDetail(v: unknown): v is OutputDetail {
   return v === OutputDetail.MINIMAL || v === OutputDetail.STANDARD || v === OutputDetail.VERBOSE;
 }
 
-function isAccentColorId(v: unknown): v is AccentColorId {
-  return ACCENT_SWATCHES.some((s) => s.id === v);
-}
-
-export function accentColor(id: AccentColorId): string {
-  return ACCENT_SWATCHES.find((s) => s.id === id)?.color ?? '#3b82f6';
+function isStatusThemeId(v: unknown): v is StatusThemeId {
+  return STATUS_THEMES.some((t) => t.id === v);
 }
 
 function persistSettings(next: PresenterSettings): void {
@@ -192,10 +232,11 @@ export function settingsPanelHtml(): string {
   const hideHelp = 'Hide the Reticle HUD until you reload the page';
   const tallyHelp = 'Show the pass/fail score pill in the toolbar';
   const timestampsHelp = 'Show relative timestamps on each activity-log row';
-  const compactHelp = 'Use a slightly narrower agent chat panel';
   const autoChatHelp =
     'Open the agent chat by itself when a session starts and when you expand the HUD. Off leaves the toolbar bare until you ask for the chat.';
   const motionHelp = 'Reduce HUD animations for accessibility';
+  const glowHelp =
+    'Glow the page edges in the status colour while a session is live. Off keeps the HUD signals and leaves your app alone.';
   return `<div ${SETTINGS_PANEL_ATTR} class="reticle-settings ${HUD_SURFACE_CLASS}" role="dialog" aria-label="Reticle settings" aria-hidden="true">
     <div class="reticle-settings-inner">
       <div class="reticle-settings-head">
@@ -217,10 +258,10 @@ export function settingsPanelHtml(): string {
         ${settingsCheckRow('blockPageInteractions', 'Block page interactions', true)}
         ${settingsCheckRow('clearOnCopy', 'Clear on copy/send', false)}
         ${settingsToggleRow('hideUntilRestart', 'Hide Until Restart', hideHelp)}
-        ${settingsToggleRow('compactChat', 'Compact chat width', compactHelp)}
         ${settingsToggleRow('reduceMotion', 'Reduce motion', motionHelp)}
-        <div class="reticle-settings-section">Appearance</div>
-        <div class="reticle-settings-swatches" data-reticle-settings-swatches></div>
+        <div class="reticle-settings-section">Status theme</div>
+        ${settingsToggleRow('ambientGlow', 'Page glow', glowHelp)}
+        <div class="reticle-settings-themes" data-reticle-settings-themes></div>
       </div>
       <div class="reticle-settings-foot">
         <button type="button" class="reticle-settings-reset" data-reticle-settings-reset>Reset HUD position</button>
@@ -238,18 +279,19 @@ export interface SettingsHost {
 
 /** Apply persisted settings onto the overlay + dock. */
 export function applyPresenterSettings(root: HTMLElement, settings: PresenterSettings): void {
-  const dock = root.querySelector('[data-reticle-dock]');
-  if (dock instanceof HTMLElement) {
-    dock.setAttribute(ACCENT_ATTR, settings.accentColorId);
-  }
-  root.style.setProperty('--reticle-mark-accent', accentColor(settings.accentColorId));
+  const theme = statusTheme(settings.statusThemeId);
+  root.style.setProperty('--reticle-mark-accent', theme.active);
+  root.style.setProperty('--reticle-accent', theme.active);
+  root.style.setProperty('--reticle-c-active', theme.active);
+  root.style.setProperty('--reticle-c-idle', theme.idle);
+  root.style.setProperty('--reticle-c-ended', theme.ended);
+  root.setAttribute(AMBIENT_GLOW_ATTR, settings.ambientGlow ? '1' : '0');
   if (settings.hideUntilRestart) {
     root.setAttribute(HIDDEN_UNTIL_RESTART_ATTR, '1');
   } else {
     root.removeAttribute(HIDDEN_UNTIL_RESTART_ATTR);
   }
   root.setAttribute(LOG_TIMESTAMPS_ATTR, settings.showTimestamps ? '1' : '0');
-  root.setAttribute(COMPACT_CHAT_ATTR, settings.compactChat ? '1' : '0');
   root.setAttribute(REDUCE_MOTION_ATTR, settings.reduceMotion ? '1' : '0');
   const tally = root.querySelector('[data-reticle-tally]');
   if (tally instanceof HTMLElement && !settings.showTally) {
@@ -338,10 +380,10 @@ export class PresenterSettingsPanel {
           this.#update({ autoOpenChat: !activeSettings.autoOpenChat });
         } else if ('showTimestamps' === key) {
           this.#update({ showTimestamps: !activeSettings.showTimestamps });
-        } else if ('compactChat' === key) {
-          this.#update({ compactChat: !activeSettings.compactChat });
         } else if ('reduceMotion' === key) {
           this.#update({ reduceMotion: !activeSettings.reduceMotion });
+        } else if ('ambientGlow' === key) {
+          this.#update({ ambientGlow: !activeSettings.ambientGlow });
         }
       };
       toggle.addEventListener('click', (e) => {
@@ -393,7 +435,7 @@ export class PresenterSettingsPanel {
       e.stopPropagation();
       this.close();
     });
-    this.#buildSwatches();
+    this.#buildThemes();
     this.#syncUi();
     applyPresenterSettings(root, activeSettings);
     this.#host.onSettingsChange?.(activeSettings);
@@ -467,15 +509,15 @@ export class PresenterSettingsPanel {
     this.#paintToggle('showTally', s.showTally);
     this.#paintToggle('autoOpenChat', s.autoOpenChat);
     this.#paintToggle('showTimestamps', s.showTimestamps);
-    this.#paintToggle('compactChat', s.compactChat);
     this.#paintToggle('reduceMotion', s.reduceMotion);
+    this.#paintToggle('ambientGlow', s.ambientGlow);
     this.#paintCheck('clearOnCopy', s.clearOnCopy);
     this.#paintCheck('blockPageInteractions', s.blockPageInteractions);
-    for (const swatch of this.#panel?.querySelectorAll('[data-reticle-accent-swatch]') ?? []) {
-      if (swatch instanceof HTMLElement) {
-        swatch.setAttribute(
+    for (const chip of this.#panel?.querySelectorAll('[data-reticle-theme]') ?? []) {
+      if (chip instanceof HTMLElement) {
+        chip.setAttribute(
           'data-on',
-          swatch.getAttribute('data-accent') === s.accentColorId ? '1' : '0',
+          chip.getAttribute('data-reticle-theme') === s.statusThemeId ? '1' : '0',
         );
       }
     }
@@ -498,21 +540,31 @@ export class PresenterSettingsPanel {
     }
   }
 
-  #buildSwatches(): void {
-    const host = this.#panel?.querySelector('[data-reticle-settings-swatches]');
+  /** One row of themes: each chip shows the whole set - active, idle, ended - in order. */
+  #buildThemes(): void {
+    const host = this.#panel?.querySelector('[data-reticle-settings-themes]');
     if (null === host || undefined === host) return;
     host.replaceChildren(
-      ...ACCENT_SWATCHES.map((s) => {
+      ...STATUS_THEMES.map((t) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'reticle-settings-swatch';
-        btn.setAttribute('data-reticle-accent-swatch', '');
-        btn.setAttribute('data-accent', s.id);
-        btn.style.background = s.color;
-        btn.setAttribute('aria-label', `${s.id} accent`);
+        btn.className = 'reticle-settings-theme';
+        btn.setAttribute('data-reticle-theme', t.id);
+        btn.title = t.label;
+        btn.setAttribute('aria-label', `${t.label} status theme`);
+        for (const color of [t.active, t.idle, t.ended]) {
+          const band = document.createElement('span');
+          band.className = 'reticle-settings-theme-band';
+          band.style.background = color;
+          btn.appendChild(band);
+        }
+        const name = document.createElement('span');
+        name.className = 'reticle-settings-theme-name';
+        name.textContent = t.label;
+        btn.appendChild(name);
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          this.#update({ accentColorId: s.id });
+          this.#update({ statusThemeId: t.id });
         });
         return btn;
       }),

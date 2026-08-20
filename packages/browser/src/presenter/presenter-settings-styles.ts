@@ -1,7 +1,6 @@
 import {
   SETTINGS_PANEL_ATTR,
   SETTINGS_ATTR,
-  ACCENT_ATTR,
   DOCK_ATTR,
   DOCK_ALIGN_ATTR,
   SETTINGS_PLACEMENT_ATTR,
@@ -135,13 +134,23 @@ export const SETTINGS_CSS = `
 [${SETTINGS_PANEL_ATTR}] .reticle-settings-link:focus-visible{outline:2px solid rgba(59,130,246,.55);outline-offset:-2px;}
 [${'data-reticle-overlay'}][${SETTINGS_ATTR}="1"] [${'data-reticle-hud'}] .reticle-tb-tip{
   opacity:0;visibility:hidden;transition-delay:0s;}
-[${'data-reticle-dock'}][${ACCENT_ATTR}="purple"]{--reticle-accent:#a855f7;--reticle-accent-soft:rgba(168,85,247,.18);}
-[${'data-reticle-dock'}][${ACCENT_ATTR}="blue"]{--reticle-accent:#3b82f6;--reticle-accent-soft:rgba(59,130,246,.18);}
-[${'data-reticle-dock'}][${ACCENT_ATTR}="cyan"]{--reticle-accent:#06b6d4;--reticle-accent-soft:rgba(6,182,212,.18);}
-[${'data-reticle-dock'}][${ACCENT_ATTR}="green"]{--reticle-accent:#22c55e;--reticle-accent-soft:rgba(34,197,94,.18);}
-[${'data-reticle-dock'}][${ACCENT_ATTR}="yellow"]{--reticle-accent:#eab308;--reticle-accent-soft:rgba(234,179,8,.18);}
-[${'data-reticle-dock'}][${ACCENT_ATTR}="orange"]{--reticle-accent:#f97316;--reticle-accent-soft:rgba(249,115,22,.18);}
-[${'data-reticle-dock'}][${ACCENT_ATTR}="red"]{--reticle-accent:#ef4444;--reticle-accent-soft:rgba(239,68,68,.18);}
+/* The dock's accent IS the theme's active colour, published as --reticle-accent on the overlay by
+   applyPresenterSettings. It used to be a seventh independent picker with its own attribute. */
+[${'data-reticle-dock'}]{--reticle-accent-soft:color-mix(in srgb,var(--reticle-accent) 18%,transparent);}
+/* One chip per theme: three bands (active, idle, ended) over the theme's name. */
+[${SETTINGS_PANEL_ATTR}] .reticle-settings-themes{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:8px;padding:4px 14px 12px;}
+[${SETTINGS_PANEL_ATTR}] .reticle-settings-theme{
+  display:flex;flex-direction:column;align-items:stretch;gap:0;padding:0;overflow:hidden;
+  border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(255,255,255,.03);
+  cursor:pointer;transition:border-color .15s ease,background .15s ease;}
+[${SETTINGS_PANEL_ATTR}] .reticle-settings-theme:hover{background:rgba(255,255,255,.07);}
+[${SETTINGS_PANEL_ATTR}] .reticle-settings-theme[data-on="1"]{
+  border-color:#fff;background:rgba(255,255,255,.1);}
+[${SETTINGS_PANEL_ATTR}] .reticle-settings-theme-band{display:block;height:6px;}
+[${SETTINGS_PANEL_ATTR}] .reticle-settings-theme-band:first-of-type{height:10px;}
+[${SETTINGS_PANEL_ATTR}] .reticle-settings-theme-name{
+  display:block;padding:5px 6px 6px;color:rgba(255,255,255,.78);font-size:11px;text-align:center;}
 [${'data-reticle-blocker'}]{
   position:fixed;inset:0;z-index:1;background:rgba(0,0,0,.16);pointer-events:auto;}
 [${'data-reticle-overlay'}][data-reticle-block="0"] [${'data-reticle-blocker'}]{

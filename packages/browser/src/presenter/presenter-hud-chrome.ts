@@ -27,14 +27,22 @@ export const HUD_CHROME_CSS = `
 /** Inset well for the activity log — sits inside the chat card. */
 export const HUD_LOG_WELL_CLASS = 'reticle-hud-log-well';
 
+/**
+ * The activity feed sits ON the panel, not in a black box cut out of it.
+ *
+ * The inset well was a second surface inside a surface - two borders, two backgrounds - and it made
+ * the panel read as a container rather than as one card. It also grew and shrank with its content,
+ * so the panel resized on every row; the height is fixed now and the feed scrolls inside it.
+ */
 export const HUD_LOG_WELL_CSS = `
 .${HUD_LOG_WELL_CLASS}{
-  position:relative;flex:1;min-height:0;overflow:hidden;
+  /* A settled height, but still allowed to shrink: pinned with flex:none it pushed the composer
+     off the bottom of the panel the moment the rest of the content grew. */
+  /* A flex column, so the feed inside actually FILLS the height: as a plain block the log was only
+     as tall as its rows, which left the empty-state line floating near the top of an otherwise
+     empty panel instead of centred in it. */
+  position:relative;display:flex;flex-direction:column;
+  flex:1 1 auto;height:210px;min-height:96px;max-height:210px;overflow:hidden;
   contain:layout style paint;
-  margin:0 8px;border-radius:12px;
-  background:
-    radial-gradient(ellipse 90% 60% at 50% 0%,rgba(255,255,255,.028),transparent 55%),
-    linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.68) 100%);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 0 0 1px rgba(255,255,255,.06);
-}
+  margin:0 6px;border-radius:12px;background:transparent;}
 .${HUD_LOG_WELL_CLASS} > *{position:relative;z-index:1;}` as string;

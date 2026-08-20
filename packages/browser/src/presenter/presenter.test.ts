@@ -92,7 +92,7 @@ describe('presenter v2 activity log', () => {
     expect(rows[0]?.querySelector('.reticle-log-text')?.textContent).toBe('Looking at the page');
     expect(rows[0]?.querySelector('.reticle-chip-label')?.textContent).toBe('READ');
     expect(
-      (rows[0]?.querySelector('[data-reticle-log-ts]')?.textContent ?? '').length,
+      (rows[0]?.querySelector('[data-reticle-log-time]')?.textContent ?? '').length,
     ).toBeGreaterThan(0);
     p.destroy();
   });
@@ -225,7 +225,9 @@ describe('presenter v2 activity log', () => {
       p.mount();
       p.log('read', 'a');
       p.log('read', 'b');
-      const ts = logRows().map((r) => r.querySelector('[data-reticle-log-ts]')?.textContent ?? '');
+      const ts = logRows().map(
+        (r) => r.querySelector('[data-reticle-log-time]')?.textContent ?? '',
+      );
       // Patched wall clock is frozen at 42; injected clock advances >1s/row → rows must differ.
       expect(ts[0]).not.toBe(ts[1]);
       p.destroy();
@@ -243,7 +245,7 @@ describe('presenter v2 activity log', () => {
     p.mount();
     p.log('read', 'a');
     p.log('read', 'b');
-    const ts = logRows().map((r) => r.querySelector('[data-reticle-log-ts]')?.textContent ?? '');
+    const ts = logRows().map((r) => r.querySelector('[data-reticle-log-time]')?.textContent ?? '');
     expect(ts[0]).toBe('0s');
     expect(ts[1]).toBe('2s'); // 2400ms elapsed → "2s"
     p.destroy();
