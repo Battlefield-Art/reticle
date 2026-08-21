@@ -113,14 +113,21 @@ describe('UNKNOWN is a distinct answer, never folded into NO', () => {
     expect(v.because).toContain('capture truncated');
   });
 
-  it('is UNKNOWN when nothing was asserted at a real grade (a vacuous green)', () => {
-    const v = decideVerified({
+  it('is never a pass when nothing was asserted at a real grade (a vacuous green)', () => {
+    // The invariant this test has always been about: a green that could not have failed is not
+    // proof. It answers `no-fault` rather than `unknown` once the window settled — a different
+    // word for a different fact, and still not `yes`.
+    const settledWindow = decideVerified({
       pass: true,
       honesty: clean(HonestyGrade.NONE),
       settled: true,
     });
-    expect(v.verified).toBe(Verified.UNKNOWN);
-    expect(v.because).toMatch(/proves nothing/);
+    expect(settledWindow.verified).toBe(Verified.NO_FAULT);
+    expect(settledWindow.verified).not.toBe(Verified.YES);
+
+    const unsettledWindow = decideVerified({ pass: true, honesty: clean(HonestyGrade.NONE) });
+    expect(unsettledWindow.verified).toBe(Verified.UNKNOWN);
+    expect(unsettledWindow.because).toMatch(/proves nothing/);
   });
 
   it('is UNKNOWN when the page never settled', () => {
@@ -250,7 +257,8 @@ describe('precedence between competing faults', () => {
 
   it('treats an action that declared no consequence as ungraded, not as a pass', () => {
     const v = decideVerified({ honesty: clean(HonestyGrade.NONE), settled: true });
-    expect(v.verified).toBe(Verified.UNKNOWN);
+    expect(v.verified).not.toBe(Verified.YES);
+    expect(v.verified).toBe(Verified.NO_FAULT);
   });
 });
 
@@ -293,6 +301,35 @@ describe('a stale eviction from earlier in the session must not condemn later ac
  * member cannot compile, and a member without a clause fails here. Neither list is hand-maintained
  * against the other.
  */
+describe('nothing declared over a settled window is not the same as not having looked', () => {
+  /**
+   * Two very different facts used to share one answer.
+   *
+   * By the time this clause is reached, a failure, a contradiction, a dirty capture, a pending write
+   * and an unread one have all been ruled out. So when the window ALSO settled, the engine did not
+   * fail to see: it saw the whole window, ran every oracle, and found nothing wrong. Saying `unknown`
+   * there reports a clean look and an unproved claim in the same word as a look that never finished,
+   * and the two need opposite responses — "assert something" versus "look again with better
+   * coverage".
+   *
+   * It is never `yes`, so it cannot be mistaken for proof, and it is gated on the window having
+   * settled rather than on a caller's say-so — which is what stops it becoming the green-forever
+   * button an always-available "nothing was wrong" would be.
+   */
+  it('answers no-fault when the window settled and nothing was declared', () => {
+    const v = decideVerified({ honesty: clean(HonestyGrade.NONE), settled: true });
+    expect(v.verified).toBe(Verified.NO_FAULT);
+    expect(v.verifiedReason).toBe(VerifiedReason.NOTHING_DECLARED);
+    expect(v.verified).not.toBe(Verified.YES); // it is not proof, and must never read as proof
+  });
+
+  it('stays unknown when nothing was declared AND the window never settled', () => {
+    const v = decideVerified({ honesty: clean(HonestyGrade.NONE) });
+    expect(v.verified).toBe(Verified.UNKNOWN);
+    expect(v.verifiedReason).toBe(VerifiedReason.VACUOUS_GRADE);
+  });
+});
+
 describe('every verdict names the clause that decided it', () => {
   const branches: Record<VerifiedReason, VerifiedVerdictInput> = {
     [VerifiedReason.INCONCLUSIVE]: { pass: true, honesty: clean(), inconclusive: 'no store named' },
@@ -322,7 +359,12 @@ describe('every verdict names the clause that decided it', () => {
       honesty: dirty('capture truncated'),
       settled: true,
     },
-    [VerifiedReason.VACUOUS_GRADE]: { honesty: clean(HonestyGrade.NONE), settled: true },
+    // `settled` deliberately absent: with nothing declared AND a settled window the answer is
+    // NOTHING_DECLARED below, because the engine did not fail to see — it saw everything and found
+    // nothing wrong. VACUOUS_GRADE is now the case where both are true: nothing proved, and we
+    // stopped looking early.
+    [VerifiedReason.VACUOUS_GRADE]: { honesty: clean(HonestyGrade.NONE) },
+    [VerifiedReason.NOTHING_DECLARED]: { honesty: clean(HonestyGrade.NONE), settled: true },
     [VerifiedReason.OUTCOME_PENDING]: {
       pass: true,
       honesty: clean(),

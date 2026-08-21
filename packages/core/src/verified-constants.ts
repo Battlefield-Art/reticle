@@ -19,6 +19,20 @@ export const Verified = {
   NO: 'no',
   /** Not determinable from this evidence — vacuous grade, dirty capture, or never settled. */
   UNKNOWN: 'unknown',
+  /**
+   * The engine saw the whole window, ran every oracle, and found nothing wrong — but nothing was
+   * declared to prove, so this is not verification.
+   *
+   * Distinct from `unknown`, which used to carry both this and "I could not see". The two need
+   * opposite responses: this one says ASSERT SOMETHING, the other says LOOK AGAIN WITH BETTER
+   * COVERAGE, and collapsing them into one word sent people to fix the wrong thing.
+   *
+   * Two properties keep it honest, and both are enforced rather than documented: it requires a
+   * SETTLED window, so it cannot be earned by returning early, and it is never `yes`, so it cannot be
+   * mistaken for proof. Without the first it would be the green-forever button that an
+   * always-available "nothing was wrong" always becomes.
+   */
+  NO_FAULT: 'no-fault',
 } as const;
 export type Verified = (typeof Verified)[keyof typeof Verified];
 
@@ -63,8 +77,13 @@ export const VerifiedReason = {
   ALREADY_TRUE: 'already_true',
   /** The capture was not clean, so a green would only describe what happened to be observed. */
   UNCLEAN_CAPTURE: 'unclean_capture',
-  /** Nothing was asserted at a real grade — the assertion could not have failed. */
+  /**
+   * Nothing was asserted at a real grade — the assertion could not have failed — AND the window did
+   * not settle, so the engine cannot even say it looked at the whole thing.
+   */
   VACUOUS_GRADE: 'vacuous_grade',
+  /** Nothing was asserted at a real grade, but the window settled and no channel reported a problem. */
+  NOTHING_DECLARED: 'nothing_declared',
   /** A write answered 202 Accepted: the outcome does not exist yet. */
   OUTCOME_PENDING: 'outcome_pending',
   /** A 2xx whose body was never recorded, so the one channel that could disagree was closed. */

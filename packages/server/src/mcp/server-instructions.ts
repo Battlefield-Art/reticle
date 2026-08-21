@@ -23,7 +23,7 @@ import { SHARED_PARAM_GUIDANCE } from './shared-params.js';
 /** The tools, and the rule that only two of them decide anything. Constant across both states. */
 const VERDICT_DISCIPLINE = `Reticle verifies a running web app from the inside: look (reticle_snapshot / reticle_query), act and prove in one hop (reticle_act_and_wait), observe (reticle_state / reticle_network / reticle_console), assert (reticle_assert). Verify a user-facing change against the real app before you call it done, and never weaken a check to make it pass.
 
-Only reticle_act_and_wait and reticle_assert produce a verdict. reticle_act and everything else move or read the app and prove nothing, so a drive that ends without one of those two has no result however many tools it used. Prefer reticle_act_and_wait({ ref, action, until }) — it names the expected consequence BEFORE the action, which is the difference between a check and a rationalisation. A verdict of verified:"unknown" is not a pass: it means Reticle drove the app and could not tell what happened. Report it as unknown.`;
+Only reticle_act_and_wait and reticle_assert produce a verdict. reticle_act and everything else move or read the app and prove nothing, so a drive that ends without one of those two has no result however many tools it used. Prefer reticle_act_and_wait({ ref, action, until }) — it names the expected consequence BEFORE the action, which is the difference between a check and a rationalisation. Only verified:"yes" is a pass — "unknown" means Reticle could not tell what happened, "no-fault" means nothing was declared to prove. Report either as not proved.`;
 
 /**
  * The first move, for a project no app has ever connected to.

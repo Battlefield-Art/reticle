@@ -253,7 +253,24 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   // A vacuous green: nothing was actually proved. Grade NONE means no signal, no request, no state
   // change and no element was pinned — the assertion could not have failed, which makes passing it
   // evidence of nothing.
+  // Two different facts used to share this answer. Everything above has already ruled out a failure,
+  // a contradiction, a dirty capture, a pending write and an unread one — so when the window ALSO
+  // settled, the engine did not fail to see: it saw the whole window, ran every oracle, and found
+  // nothing wrong. That is `no-fault`, and telling it apart from "I could not see" is the difference
+  // between "assert something" and "look again with better coverage".
+  //
+  // Gated on `true === settled` rather than on a caller's say-so. A call that returned before the app
+  // stopped moving has not earned this, whatever it declared — which is what stops `no-fault` from
+  // becoming the green-forever button an always-available "nothing was wrong" would be.
   if (honesty.grade === HonestyGrade.NONE) {
+    if (true === settled) {
+      return {
+        verified: Verified.NO_FAULT,
+        verifiedReason: VerifiedReason.NOTHING_DECLARED,
+        because:
+          'the page settled and no channel reported a problem, but nothing was declared to prove — this is not verification. Assert a consequence the action CHANGES (a signal, a request, a route, or store state) to get one',
+      };
+    }
     return {
       verified: Verified.UNKNOWN,
       verifiedReason: VerifiedReason.VACUOUS_GRADE,

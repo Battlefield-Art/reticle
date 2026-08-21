@@ -51,7 +51,14 @@ const refusalsOfAPassingAssertion: Record<string, Parameters<typeof decideVerifi
     honesty: honesty(HonestyGrade.SIGNAL, false),
     settled: true,
   },
+  // `settled` deliberately absent: nothing declared over a window that DID settle is
+  // NOTHING_DECLARED below. VACUOUS_GRADE is the case where nothing was proved and the engine also
+  // cannot say it saw the whole window.
   [VerifiedReason.VACUOUS_GRADE]: {
+    pass: true,
+    honesty: honesty(HonestyGrade.NONE),
+  },
+  [VerifiedReason.NOTHING_DECLARED]: {
     pass: true,
     honesty: honesty(HonestyGrade.NONE),
     settled: true,
