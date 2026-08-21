@@ -12,6 +12,16 @@ const pending = (t: number, url: string, id = `r${String((seq += 1))}`, method =
   ({ type: EventType.NET_PENDING, t, data: { id, url, method } }) as unknown as ReticleEvent;
 const settled = (t: number, id: string) =>
   ({ type: EventType.NET_REQUEST, t, data: { id, status: 200 } }) as unknown as ReticleEvent;
+/**
+ * The app REACTING — something user-visible moving because a response landed.
+ *
+ * Stamped at the completion time rather than after it, deliberately: the app's handler runs on the
+ * microtask that resolves the fetch, so in real traffic the state write lands at or a millisecond
+ * BEFORE the completion event that caused it. A fixture that places the reaction strictly after the
+ * cause is not a recording of anything a browser does.
+ */
+const applied = (t: number) =>
+  ({ type: EventType.STATE_CHANGE, t, data: { store: 'list' } }) as unknown as ReticleEvent;
 
 describe('stale response detection', () => {
   it('reports overlapping reads of one endpoint that settled out of order', () => {
@@ -19,7 +29,8 @@ describe('stale response detection', () => {
       pending(0, '/api/shipments?status=all', 'a'),
       pending(60, '/api/shipments?status=held', 'b'),
       settled(150, 'b'), // the newer query answered first
-      settled(700, 'a'), // the superseded one landed last and overwrote it
+      settled(700, 'a'), // the superseded one landed last…
+      applied(700), // …and the app rendered it, which is what makes this a defect
     ];
     const found = findStaleResponses(events);
     expect(found).toHaveLength(1);
@@ -137,8 +148,53 @@ describe('parallel fan-out is not a race', () => {
       pending(5, '/api/list?status=held&page=2', 'b'),
       settled(100, 'b'),
       settled(900, 'a'),
+      applied(900),
     ]);
     expect(found).toHaveLength(1);
+  });
+
+  it('stays silent when the app IGNORED the superseded response', () => {
+    // The difference between a defect and a correctly-handled race, and the reason the rule needs to
+    // ask at all. An app that guards against out-of-order responses still RACES — two requests overlap
+    // and settle backwards exactly as below. What it does not do is act on the loser. Firing on both
+    // is worse than not having the rule: a detector that accuses correct code teaches people to
+    // ignore it, and it takes the true positives down with it.
+    expect(
+      findStaleResponses([
+        pending(0, '/api/shipments?status=all', 'a'),
+        pending(60, '/api/shipments?status=held', 'b'),
+        settled(150, 'b'),
+        settled(700, 'a'), // the loser landed last and the app did nothing with it
+      ]),
+    ).toEqual([]);
+  });
+
+  it('counts a reaction stamped a moment BEFORE the completion it followed', () => {
+    // Not a tolerance for sloppiness — a correction for which of the two is stamped first. The
+    // observer emits NET_REQUEST when its wrapper sees the fetch settle, and the app's own handler
+    // runs on that same microtask, so the state write routinely carries the EARLIER timestamp. A
+    // strictly-forward window cannot see the application at all, and the rule could then never fire on
+    // real traffic however plainly the app misbehaved — which is exactly what it did.
+    const found = findStaleResponses([
+      pending(0, '/api/shipments?status=all', 'a'),
+      pending(60, '/api/shipments?status=held', 'b'),
+      settled(150, 'b'),
+      settled(700, 'a'),
+      applied(699),
+    ]);
+    expect(found).toHaveLength(1);
+  });
+
+  it('ignores a reaction far enough after to be unrelated', () => {
+    expect(
+      findStaleResponses([
+        pending(0, '/api/shipments?status=all', 'a'),
+        pending(60, '/api/shipments?status=held', 'b'),
+        settled(150, 'b'),
+        settled(700, 'a'),
+        applied(9000), // seconds later: whatever moved the page, it was not this response
+      ]),
+    ).toEqual([]);
   });
 
   it('compares only within one endpoint — two different paths never race', () => {

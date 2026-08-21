@@ -125,6 +125,53 @@ function flights(events: readonly ReticleEvent[]): Flight[] {
 const MAX_FLIGHTS_PER_PATH = 60;
 
 /** The one contradiction, or none. Reported once per window — a race is a fact about the window. */
+/**
+ * How long after a superseded response lands we look for the app reacting to it.
+ *
+ * A handler runs on the microtask that resolves the fetch; the render follows within a frame or two.
+ * Beyond this the connection between the response and any change is speculation.
+ */
+const APPLY_WINDOW_MS = 500;
+
+/**
+ * How far BEFORE the completion stamp a reaction still counts as reacting to it.
+ *
+ * Not a fudge factor — a correction for which of the two is stamped first. `NET_REQUEST` is emitted
+ * when the observer's wrapper sees the fetch settle, and the app's own handler runs on the same
+ * microtask; in practice the app's state write, signal and DOM text land at or a millisecond BEFORE
+ * the completion event that caused them.
+ *
+ * So a strictly-forward window could not see the application at all, and the rule could never fire on
+ * real traffic however plainly the app misbehaved. Sixteen passing unit tests did not catch that,
+ * because synthetic events are written with the reaction placed after the cause.
+ */
+const APPLY_SLACK_MS = 100;
+
+/**
+ * Did the app REACT to this response — did anything user-visible move after it landed?
+ *
+ * The question the rule could not previously ask, and the difference between a defect and a
+ * correctly-handled race. An app that guards against superseded responses still RACES: two requests
+ * overlap and settle out of order exactly as before. What it does not do is act on the loser.
+ *
+ * Without this check the rule fires identically on both, which is worse than not having it: a
+ * detector that accuses correct code teaches people to ignore it, and it takes the true positives
+ * down with it.
+ */
+function appliedAfter(events: readonly ReticleEvent[], settledAt: number): boolean {
+  return events.some((event) => {
+    if (event.t < settledAt - APPLY_SLACK_MS || event.t > settledAt + APPLY_WINDOW_MS) return false;
+    return (
+      event.type === EventType.STATE_CHANGE ||
+      event.type === EventType.SIGNAL ||
+      event.type === EventType.DOM_TEXT ||
+      event.type === EventType.DOM_ADDED ||
+      event.type === EventType.DOM_REMOVED ||
+      event.type === EventType.DOM_ATTR
+    );
+  });
+}
+
 export function findStaleResponses(events: readonly ReticleEvent[]): OwnContradiction[] {
   // Grouped by path first: two reads of DIFFERENT endpoints can never race, and comparing them was
   // the bulk of the work on any real page, which talks to many endpoints at once.
@@ -138,13 +185,16 @@ export function findStaleResponses(events: readonly ReticleEvent[]): OwnContradi
   }
   for (const group of byPath.values()) {
     const reads = group.slice(-MAX_FLIGHTS_PER_PATH);
-    const found = raceIn(reads);
+    const found = raceIn(reads, events);
     if (found !== undefined) return [found];
   }
   return [];
 }
 
-function raceIn(reads: readonly Flight[]): OwnContradiction | undefined {
+function raceIn(
+  reads: readonly Flight[],
+  events: readonly ReticleEvent[],
+): OwnContradiction | undefined {
   for (const first of reads) {
     for (const second of reads) {
       if (first.id === second.id) continue;
@@ -154,6 +204,9 @@ function raceIn(reads: readonly Flight[]): OwnContradiction | undefined {
       if (queryOf(first.url) === queryOf(second.url)) continue; // a retry, not a superseding query
       // Parallel pagination is not a race — see differsOnlyByEnumeration.
       if (differsOnlyByEnumeration(queryOf(first.url), queryOf(second.url))) continue;
+      // The race happened. Whether it MATTERS is whether the app acted on the loser — an app that
+      // drops superseded responses races just as visibly and is not broken.
+      if (!appliedAfter(events, first.settledAt)) continue;
       return {
         kind: ContradictionKind.STALE_RESPONSE_APPLIED,
         claim: `both reads of ${pathOf(first.url)} returned successfully and the page settled`,
