@@ -186,6 +186,41 @@ async function countRevealed(
   return parseInteractive(tree).filter((i) => !known.has(i.ref !== '' ? i.ref : i.desc)).length;
 }
 
+/**
+ * The confirmation half of the dead-control rule. Kept separate so the rule above reads as one
+ * question, and so the second click gets its own window: reusing the first would let the first
+ * click's own (absent) activity decide the second, which is not a second sample at all.
+ *
+ * `true` means "silent both times" — the only state the anomaly is reported in. Anything that goes
+ * wrong here returns `false`: a confirmation that cannot run is not evidence, and the direction that
+ * costs a missed finding is better than the one that invents one.
+ */
+async function stillSilent(
+  session: CrawlSession,
+  item: { ref: string; desc: string },
+  settleMs: number,
+  opts: { confirmDangerous?: boolean },
+  sleep: CrawlSleep,
+): Promise<boolean> {
+  const since = session.elapsed();
+  session.beginAction?.(ReticleTool.CRAWL, { ref: item.ref, action: ActionType.CLICK });
+  try {
+    const again = await session.command(ReticleCommand.ACT, {
+      ref: item.ref,
+      action: ActionType.CLICK,
+      args: true === opts.confirmDangerous ? { [DANGEROUS_ACTION_CONFIRM_ARG]: true } : {},
+    });
+    await sleep(settleMs);
+    // A control that has GONE (the first click removed it) is not a dead control — it did something.
+    if (!again.ok || false === asRecord(again.result)['dispatched']) return false;
+    return !session.eventsSince(since).some(isActivity);
+  } catch {
+    return false;
+  } finally {
+    session.finishAction?.();
+  }
+}
+
 export async function crawl(
   session: CrawlSession,
   opts: CrawlOptions,
@@ -305,14 +340,27 @@ export async function crawl(
       !events.some(isActivity) &&
       !legitimatelyInert(item.desc)
     ) {
-      counts.deadControls += 1;
-      anomalies.push({
-        kind: CrawlAnomalyKind.DEAD_CONTROL,
-        ref: item.ref,
-        desc: item.desc,
-        detail: 'clicked but the app did nothing (no DOM/network/route/signal change)',
-        ...source,
-      });
+      // CONFIRM IT. One silent sample is a sample, not a fact, and this is the strongest claim the
+      // crawler makes — "your button does nothing" is the finding a reader acts on immediately.
+      //
+      // Measured on a fixture whose FIXED twin has a working primary CTA: the crawl reported it dead
+      // on 2 of 3 runs, always a control the drive had already clicked successfully moments earlier.
+      // A false positive in this tier is the most expensive kind there is — it is the tier a verdict
+      // is built from, and the twin column is the whole claim this product makes.
+      //
+      // A second click costs one round trip on the rare control that looked dead, and nothing at all
+      // on every control that did not. A genuinely dead control is silent twice; the flake is not.
+      if (await stillSilent(session, item, settleMs, opts, sleep)) {
+        counts.deadControls += 1;
+        anomalies.push({
+          kind: CrawlAnomalyKind.DEAD_CONTROL,
+          ref: item.ref,
+          desc: item.desc,
+          detail:
+            'clicked TWICE and the app did nothing either time (no DOM/network/route/signal change)',
+          ...source,
+        });
+      }
     }
   }
 

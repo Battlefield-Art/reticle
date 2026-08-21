@@ -120,6 +120,52 @@ describe('crawl — autonomous smart-monkey', () => {
     const r = await crawl(session, {}, noSleep);
     expect(r.counts.deadControls).toBe(1);
     expect(r.anomalies[0]?.kind).toBe(CrawlAnomalyKind.DEAD_CONTROL);
+    expect(r.anomalies[0]?.detail).toContain('TWICE');
+  });
+
+  it('4b: a control that is silent ONCE but alive on the retry is NOT dead', async () => {
+    // The confirmation half of the rule. "Your button does nothing" is the strongest claim the
+    // crawler makes and the one a reader acts on immediately, so one silent sample must not be
+    // enough. Measured on a fixture whose FIXED twin has a working primary CTA: the crawl called it
+    // dead on 2 of 3 runs, always a control the drive had already clicked successfully moments
+    // earlier. A false positive here is the most expensive kind there is — this tier is what a
+    // verdict is built from.
+    let clicks = 0;
+    const buffer: ReticleEvent[] = [];
+    let clock = 0;
+    const session: CrawlSession = {
+      elapsed: () => clock,
+      eventsSince: (since) => buffer.filter((e) => e.t > since),
+      command: (name, args = {}) => {
+        if (name === ReticleCommand.SNAPSHOT)
+          return Promise.resolve({
+            kind: 'command_result' as const,
+            id: 'c',
+            ok: true,
+            result: { tree: tree(['button "Flaky" (ref=e1)']), truncated: false },
+          });
+        if (name === ReticleCommand.ACT && 'e1' === args['ref']) {
+          clock += 1;
+          clicks += 1;
+          // Silent the first time, alive the second — a flake, not a dead control.
+          if (clicks > 1)
+            buffer.push({ t: clock, type: EventType.DOM_ADDED, sessionId: 's', data: {} });
+          return Promise.resolve({
+            kind: 'command_result' as const,
+            id: 'c',
+            ok: true,
+            result: { dispatched: true },
+          });
+        }
+        return Promise.resolve({ kind: 'command_result' as const, id: 'c', ok: true, result: {} });
+      },
+    };
+
+    const r = await crawl(session, {}, noSleep);
+
+    expect(clicks).toBe(2); // it actually took a second sample rather than trusting the first
+    expect(r.counts.deadControls).toBe(0);
+    expect(r.anomalies).toEqual([]);
   });
 
   it('5: a control that could not dispatch is NOT flagged dead', async () => {
