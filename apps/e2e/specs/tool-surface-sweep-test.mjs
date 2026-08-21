@@ -52,7 +52,11 @@ const RUN_TOOL = 'reticle_run';
  * floor of 40 here outlived that change by a whole release and failed the battery on the cap
  * working as designed.
  */
-const EXTENDED_SURFACE_SIZE = 30;
+// 28 since change/flows/affected/coverage/crawl merged into `reticle_verify` — three of those five
+// were advertised here, so one name stands where three did. Kept in step with
+// `surface-sizes.test.ts`, which asserts the same number in the fast gate; this is the check that it
+// is true over a REAL MCP connection rather than over an in-process list.
+const EXTENDED_SURFACE_SIZE = 28;
 
 const client = new McpStdioClient(
   'node',
