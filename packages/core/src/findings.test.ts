@@ -44,7 +44,7 @@ describe('tierOfFinding', () => {
     // OBSERVED is the honest default: an unrecognised kind has made no claim about a window Reticle
     // chose the end of, so downgrading it to "we may have looked too early" would be inventing a
     // caveat on its behalf.
-    expect(tierOfFinding('cloud-state-write-drift')).toBe(FindingTier.OBSERVED);
+    expect(tierOfFinding('some-downstream-rule-fired')).toBe(FindingTier.OBSERVED);
     expect(tierOfFinding('')).toBe(FindingTier.OBSERVED);
   });
 

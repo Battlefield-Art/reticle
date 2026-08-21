@@ -10,7 +10,7 @@ import { registerContradictionFold, registeredContradictionFolds } from './contr
  * IO. That is exactly the shape a service embedding this engine wants for rules of its own — and the
  * only thing standing between it and one was that `findContradictions` reads a fixed list of folds
  * written into the function body. Appending to that list means editing this file, which means a fork,
- * which means the consumer's paid rules and this package's free ones become one tree that has to be
+ * which means the consumer's rules and this package's own become one tree that has to be
  * merged forever.
  *
  * A registry rather than a parameter, because there are six call sites and none of them are reached
