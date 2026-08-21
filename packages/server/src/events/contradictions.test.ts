@@ -366,6 +366,40 @@ describe('failure misattributed — the server broke, the app blamed the user', 
     ]);
     expect(found.map((c) => c.kind)).not.toContain(ContradictionKind.SIGNAL_CONTRADICTED);
   });
+
+  /**
+   * An app that RETRACTED has not claimed success, whenever it fired the optimistic signal.
+   *
+   * The archetype of correct optimistic UI: announce immediately, meet a 500, then say so and roll
+   * back. Reporting SIGNAL_CONTRADICTED against that is the strongest accusation this file makes,
+   * levelled at code doing exactly the right thing — and on the fixture suite the FIXED twin produced
+   * the same finding as the build that swallowed the failure, which makes the finding worthless on
+   * the one suite that measures precision.
+   *
+   * Ordering cannot decide this. An optimistic UI legitimately fires its success signal BEFORE the
+   * response, so "the claim must follow the failure" would miss the real defect. What separates them
+   * is not when the app spoke, it is whether it took it back.
+   */
+  it('does not accuse an app that announced optimistically and then RETRACTED', () => {
+    const found = findContradictions([
+      ev(EventType.SIGNAL, { name: 'ack:requested' }),
+      failedCall(),
+      ev(EventType.SIGNAL, { name: 'ack:failed' }),
+      domChanged(),
+    ]);
+    expect(found.map((c) => c.kind)).not.toContain(ContradictionKind.SIGNAL_CONTRADICTED);
+  });
+
+  it('still accuses an app that announced success and never took it back', () => {
+    // The negative control for the rule above. Without this, "consult failureAcknowledged" could be
+    // widened until the rule never fires, and the suite would not notice.
+    const found = findContradictions([
+      ev(EventType.SIGNAL, { name: 'ack:saved' }),
+      failedCall(),
+      domChanged(),
+    ]);
+    expect(found.map((c) => c.kind)).toContain(ContradictionKind.SIGNAL_CONTRADICTED);
+  });
 });
 
 describe('one fact, one finding', () => {

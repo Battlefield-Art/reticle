@@ -436,7 +436,19 @@ export function findContradictions(
   // claimed success" about an app that plainly reported a failure is true in outline and wrong in
   // its reasoning, which is how a checker stops being believed.
   const successSignals = signals.filter((name) => !ACKNOWLEDGED.test(name));
-  if (failed.length > 0 && successSignals.length > 0) {
+  // An app that RETRACTED has not claimed success, whenever it fired the optimistic signal.
+  //
+  // The weaker UI rule below already consulted this and the sharper signal rule did not, so an app
+  // that announced "ack:requested", met a 500, and then correctly emitted "ack:failed" and rolled the
+  // row back was reported as explicitly asserting success — the strongest accusation this file makes,
+  // against code doing exactly the right thing. On a fixture suite the scenario's FIXED twin produced
+  // the same finding as the build that swallowed the failure, which makes the finding worthless on
+  // the one measurement that scores precision.
+  //
+  // Ordering cannot decide this: an optimistic UI legitimately fires its success signal BEFORE the
+  // response, so "the claim must follow the failure" would miss the real defect. What separates them
+  // is not when the app spoke, it is whether it took it back.
+  if (failed.length > 0 && successSignals.length > 0 && !failureAcknowledged(events)) {
     found.push({
       kind: ContradictionKind.SIGNAL_CONTRADICTED,
       claim: `the app fired ${successSignals.map((s) => `"${s}"`).join(', ')}`,
