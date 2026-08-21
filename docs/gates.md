@@ -31,7 +31,7 @@ Every gate below was executed end to end against `main` on **2026-08-12** (macOS
 | `pnpm matrix:compat --only cursor` | ✅ 4/4 | ~10s |
 | `pnpm bench` | ✅ 10/10 (**was failing before this sweep**, see below) | 279s |
 
-**`pnpm bench` was broken and nobody knew.** `suite-rre.mjs` recorded four flows that asserted no observable consequence and then demanded a `pass` verdict from `reticle_flow_verify`, which correctly grades an assertion-free suite `unverifiable`. The product got more honest about false greens; the benchmark measuring it did not follow, so the whole run aborted at script 9 of 10 and `replay-determinism` never ran at all. Each flow now carries a success oracle. This is the failure mode `bench/` is most exposed to: **nothing in CI runs it**, so it can only rot silently.
+**`pnpm bench` was broken and nobody knew.** `suite-rre.mjs` recorded four flows that asserted no observable consequence and then demanded a `pass` verdict from whole-suite replay, which correctly grades an assertion-free suite `unverifiable`. The product got more honest about false greens; the benchmark measuring it did not follow, so the whole run aborted at script 9 of 10 and `replay-determinism` never ran at all. Each flow now carries a success oracle. This is the failure mode `bench/` is most exposed to: **nothing in CI runs it**, so it can only rot silently.
 
 `pnpm gate:install` (~15 min) and the Windows / Rust jobs were **not** run in this sweep; they are CI-only or network-bound. They are green on `main` per the last CI run, which is a weaker claim than every row above, and is stated that way on purpose.
 

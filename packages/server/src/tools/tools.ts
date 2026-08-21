@@ -591,7 +591,7 @@ export const MERGE_PLANS: MergePlan[] = [
   {
     name: ReticleTool.FLOW,
     description:
-      'Saved-flow management: { action: "list" } names every saved flow, "load" reads+validates one by flowName, "delete" removes one. The hot verbs (flow_save, flow_replay, flow_verify, flow_heal) stay separate.',
+      'Saved-flow management: { action: "list" } names every saved flow, "load" reads+validates one by flowName, "delete" removes one. The hot verbs (flow_save, flow_replay, flow_heal) stay separate; whole-suite replay is reticle_verify { action: "flows" }.',
     members: {
       list: ReticleTool.FLOW_LIST,
       load: ReticleTool.FLOW_LOAD,
@@ -614,6 +614,22 @@ export const MERGE_PLANS: MergePlan[] = [
     // The handback the lease block orders on every session — the one call an agent MUST make, so it
     // is the one that must not need a schema lookup first.
     example: { action: 'yield', mode: 'waiting' },
+  },
+  {
+    name: ReticleTool.VERIFY,
+    description:
+      'What is proved, and what is not — by action. Start from a change: { action: "affected" } names which saved flows must re-verify for the files you edited (pass `files`, and/or `since` for a git ref), and "change" goes further and actually replays them, answering with one `verified` plus `because`. `unknown` there is the honest answer when NO saved flow covers the change: nothing ran, so nothing was proved, and it is never reported as green. Without a change to start from: "flows" replays every saved flow for one consolidated suite verdict (deterministic, no LLM per flow), and "coverage" lists the interactive controls you have and have NOT driven this session — an untouched list still holding the controls your change affects means you are not done. "crawl" is the no-script option: it drives every reachable control itself and reports single-channel faults (console errors, failed requests, dead controls) and CONTRADICTIONS, two channels disagreeing about the same click — the false greens a human cannot see, because a human watches the screen and the screen looks correct. DESTRUCTIVE: crawl really clicks, and may navigate or mutate state.',
+    members: {
+      change: ReticleTool.VERIFY_CHANGE,
+      flows: ReticleTool.FLOW_VERIFY,
+      affected: ReticleTool.AFFECTED,
+      coverage: ReticleTool.COVERAGE,
+      crawl: ReticleTool.CRAWL,
+    },
+    // No default action ON PURPOSE. The name implies no single member, and one of them really
+    // clicks: a fallthrough that guessed wrong would drive the app rather than read it. Every action
+    // is explicit, which for `crawl` is the whole safety story.
+    example: { action: 'change', files: ['src/App.tsx'] },
   },
   {
     name: ReticleTool.LEASE,

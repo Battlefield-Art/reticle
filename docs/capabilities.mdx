@@ -15,7 +15,7 @@ These work through the always-on SDK, in any connected session.
 ### Coverage: what you have not driven yet
 
 ```json
-{ "tool": "reticle_coverage" }
+{ "tool": "reticle_verify", "args": { "action": "coverage" } }
 ```
 
 ```json
@@ -90,7 +90,7 @@ Freeze the clock, advance it by exactly the interval, assert the consequence. No
 ### Crawl: click everything, report anomalies
 
 ```json
-{ "tool": "reticle_crawl", "args": { "maxSteps": 6 } }
+{ "tool": "reticle_verify", "args": { "action": "crawl", "maxSteps": 6 } }
 ```
 
 ```json
@@ -327,7 +327,7 @@ The loop closer, and the reason Reticle is not only an interactive tool.
 { "tool": "reticle_record", "args": { "action": "start", "recordingName": "ship-a-deploy" } }
 { "tool": "reticle_record", "args": { "action": "stop", "recordingName": "ship-a-deploy" } }
 { "tool": "reticle_flow_save", "args": { "flowName": "ship-a-deploy" } }
-{ "tool": "reticle_flow_verify" }
+{ "tool": "reticle_verify", "args": { "action": "flows" } }
 ```
 
 <Warning>
@@ -396,7 +396,7 @@ Nine hundred and fifty-three bytes for 445 recorded events. `timeline_omitted` h
 
 Reticle grades the flow as you save it, and tells you when you have just created a test that cannot fail. Take the warning seriously: an assertion-free flow replays green whatever the app does.
 
-A replay against a drifted app names what moved and where. This is `reticle_flow_verify` reporting the same flow after the app changed underneath it:
+A replay against a drifted app names what moved and where. This is `reticle_verify {action:"flows"}` reporting the same flow after the app changed underneath it:
 
 ```json
 {

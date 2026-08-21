@@ -75,7 +75,7 @@ chk('the default surface is the lean one, not the full list', names.size < 40, `
 // The premise of the skill's instructions. If these ever became advertised, the skill should stop
 // teaching the envelope — and this is the check that would say so instead of leaving it stale.
 for (const tool of [
-  'reticle_verify_change',
+  'reticle_verify',
   'reticle_flow_replay',
   'reticle_record',
   'reticle_flow_save',
@@ -132,7 +132,7 @@ chk(
   JSON.stringify(replayed).slice(0, 110),
 );
 
-const changed = await viaRun('reticle_verify_change', { files: ['src/App.tsx'] });
+const changed = await viaRun('reticle_verify', { action: 'change', files: ['src/App.tsx'] });
 chk(
   'reticle_run { reticle_verify_change, files }',
   !rejected(changed),

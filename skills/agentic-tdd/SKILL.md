@@ -53,7 +53,7 @@ A journey worth writing test-first is a journey worth re-running forever. Save i
 
 ```
 reticle_run({ tool: "reticle_flow_save", sessionId, args: { flowName: "deploy" } })
-reticle_run({ tool: "reticle_flow_verify", sessionId })   // every saved flow, no model per flow
+reticle_run({ tool: "reticle_verify", sessionId, args: { action: "flows" } })   // every saved flow, no model per flow
 ```
 
 That turns the red-green loop into a regression suite you never hand-wrote.

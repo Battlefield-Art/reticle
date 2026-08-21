@@ -285,7 +285,7 @@ export function portBusyMessage(port: number): string {
     `reticle verify needs port ${String(port)} — the port your app dials — and a Reticle daemon is ` +
     'already listening on it. It did not start a second one.\n\n' +
     '  • If you have the Reticle tools, ask the daemon that is already running instead: ' +
-    'reticle_run { tool: "reticle_verify_change", args: { files: ["..."] } }\n' +
+    'reticle_run { tool: "reticle_verify", args: { action: "change", files: ["..."] } }\n' +
     `  • Or stop it and re-run: npx @reticlehq/server stop --port ${String(port)}\n` +
     `  • Or run both on another port, if your app is configured for it: RETICLE_PORT=<port> ` +
     'npx @reticlehq/server verify <url>'

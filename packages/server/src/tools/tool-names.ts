@@ -48,6 +48,8 @@ export const ReticleTool = {
   AFFECTED: 'reticle_affected',
   COVERAGE: 'reticle_coverage',
   VERIFY_CHANGE: 'reticle_verify_change',
+  /** Merged: change/flows/affected/coverage/crawl — "what is proved, and what is not". */
+  VERIFY: 'reticle_verify',
   /** read cross-run history (.reticle/project.json) + diff-vs-last for a name. */
   PROJECT: 'reticle_project',
   /** explicitly record a run outcome (the manual companion to auto-recording). */

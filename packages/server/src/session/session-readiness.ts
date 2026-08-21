@@ -35,7 +35,7 @@ const DEFAULT_POLL_MS = 25;
 export const RETICLE_LOOP_GUIDE =
   'Reticle loop — LOOK: reticle_snapshot / reticle_query / reticle_inspect · ACT: reticle_act (or reticle_act_and_wait) · ' +
   'OBSERVE: reticle_observe / reticle_wait_for / reticle_network / reticle_console · ASSERT: reticle_assert over program ' +
-  'truth, not just the DOM · REGRESS: reticle_record{action:"start"} → reticle_replay, or reticle_flow_verify for the whole ' +
+  'truth, not just the DOM · REGRESS: reticle_record{action:"start"} → reticle_replay, or reticle_verify{action:"flows"} for the whole ' +
   'suite. The human can flag bugs from the panel — drain them with reticle_session{action:"review"} and resolve each once fixed. ' +
   'MANDATORY: the moment you stop driving — finishing your reply or waiting on the human — call reticle_session {action:"yield"} ' +
   '(mode:"waiting", or mode:"ask" with the question) so the panel shows your real state; reticle_session{action:"end"} ' +

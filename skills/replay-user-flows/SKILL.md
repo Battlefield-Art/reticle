@@ -53,7 +53,7 @@ On drift, `reticle_flow_heal` proposes the nearest-match rebind so flows do not 
 ## Re-verify the whole suite after any change
 
 ```
-reticle_run({ tool: "reticle_flow_verify", sessionId })
+reticle_run({ tool: "reticle_verify", sessionId, args: { action: "flows" } })
 // → { status, total, passed, failed, failures: [{ flow, verdict, whatChanged, whereInSource, nextAction }] }
 ```
 
@@ -64,7 +64,7 @@ One call, every saved flow, no model per flow. Only failures carry detail, so a 
 On a large suite, replaying everything after a one-file edit is waste. Hand it the diff instead:
 
 ```
-reticle_run({ tool: "reticle_verify_change", sessionId, args: { since: "HEAD~1" } })
+reticle_run({ tool: "reticle_verify", sessionId, args: { action: "change", since: "HEAD~1" } })
 ```
 
 It works out which saved flows cover the files you edited and replays only those. Give it a git ref or the file list. Use this in the inner loop and `flow_verify` before you ship: the narrow one is fast, the whole one is the guarantee.

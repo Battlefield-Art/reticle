@@ -57,7 +57,7 @@ On `unknown` / `unsettled`, re-assert rather than re-driving: `reticle_assert({ 
 ## 4. Check what you did not touch
 
 ```
-reticle_run({ tool: "reticle_coverage", sessionId })   // { total, exercised, untouched }
+reticle_run({ tool: "reticle_verify", sessionId, args: { action: "coverage" } })   // { total, exercised, untouched }
 ```
 
 If `untouched` still holds controls your change affects, the drive is unfinished. One call, and it is the cheapest guard against reporting a pass over the half you never opened.

@@ -178,18 +178,20 @@ for (const name of [
   'reticle_explore',
   'reticle_domain',
   'reticle_project',
-  'reticle_coverage',
   'reticle_console',
   'reticle_animations',
   'reticle_network',
   'reticle_state',
   'reticle_reconcile',
-  'reticle_affected',
   'reticle_run_export',
   'reticle_contract_save',
-  'reticle_verify_change',
 ]) {
   await record(name);
+}
+// Merged onto reticle_verify. Swept by ACTION so the sweep still covers each capability rather
+// than quietly dropping three of them when their names went away.
+for (const action of ['coverage', 'affected', 'change']) {
+  await record('reticle_verify', { action });
 }
 await record('reticle_storage', { area: 'local' });
 await record('reticle_observe', { window_ms: 1000 });
@@ -251,9 +253,9 @@ await record('reticle_replay', { recordingName: 'sweep', confirmDangerous: true 
 await record('reticle_flow_save', { flowName: 'sweep-flow' });
 await record('reticle_flow_save_recorded', { flowName: 'sweep-flow-recorded' });
 await record('reticle_flow_replay', { flowName: 'sweep-flow', confirmDangerous: true });
-await record('reticle_flow_verify', { names: ['sweep-flow'] });
+await record('reticle_verify', { action: 'flows', names: ['sweep-flow'] });
 await record('reticle_flow_heal', { flowName: 'sweep-flow' });
-await record('reticle_crawl', { maxSteps: 2, confirmDangerous: true });
+await record('reticle_verify', { action: 'crawl', maxSteps: 2, confirmDangerous: true });
 await record('reticle_session', { action: 'yield', mode: 'waiting' });
 
 // A deliberately STALE ref: click something that re-renders, then reuse the ref from before it.

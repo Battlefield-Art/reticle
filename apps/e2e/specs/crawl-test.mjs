@@ -26,7 +26,7 @@ await waitForSession(()=>server.bridge.sessions.list(), 'next-smoke');
 console.log('\n=== EXPLORE: reticle_crawl autonomously drives the app (real browser) ===');
 chk('app SDK connected', server.bridge.sessions.list().some(s=>s.sessionId==='next-smoke'));
 
-const report = await T('reticle_crawl', { maxSteps: 6, settleMs: 150 });
+const report = await T('reticle_verify', { action: 'crawl', maxSteps: 6, settleMs: 150 });
 chk('reticle_crawl discovered interactive controls', report.interactiveFound > 0, `found=${report.interactiveFound}`);
 chk('reticle_crawl clicked controls (bounded) and terminated', report.stepsRun > 0 && report.stepsRun <= 6, `steps=${report.stepsRun}`);
 chk('reticle_crawl returned a structured anomaly report', Array.isArray(report.anomalies) && typeof report.counts === 'object', JSON.stringify(report.counts));

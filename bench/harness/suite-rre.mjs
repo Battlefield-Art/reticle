@@ -91,7 +91,7 @@ async function verifySuite(names) {
   try {
     await a.login();
     await sleep(600);
-    const res = await a.c.callTool('reticle_flow_verify', { names });
+    const res = await a.c.callTool('reticle_verify', { action: 'flows', names });
     const text = res.text || '';
     let obj = {};
     try {

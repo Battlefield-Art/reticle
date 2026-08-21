@@ -62,15 +62,22 @@ const REF_MINTING_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.QUERY,
   ReticleTool.INSPECT,
   ReticleTool.EXPLORE,
-  ReticleTool.CRAWL,
+  // `crawl` mints refs for the controls it drives and `coverage` for the ones it reports untouched.
+  // Both are actions on the merged verify tool now.
+  ReticleTool.VERIFY,
 ]);
 
 export const SESSION_BOUND_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.SNAPSHOT,
   ReticleTool.QUERY,
   ReticleTool.INSPECT,
-  ReticleTool.COVERAGE,
-  ReticleTool.VERIFY_CHANGE,
+  // Merged change/flows/affected/coverage/crawl. Its members were SPLIT across bound and exempt —
+  // coverage/change/crawl bound, flow_verify exempt because it returns its own suite contract — and
+  // a merged tool has to be one or the other. Bound is the right side: `crawl` drives the app
+  // itself, so a throttled or event-dropping tab is exactly the condition its verdict depends on,
+  // and dropping the health disclosure there to protect a sibling's output shape would trade an
+  // honesty signal for a formatting preference.
+  ReticleTool.VERIFY,
   ReticleTool.ACT,
   ReticleTool.ACT_SEQUENCE,
   ReticleTool.ACT_AND_WAIT,
@@ -90,7 +97,6 @@ export const SESSION_BOUND_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.STATE,
   ReticleTool.STORAGE,
   ReticleTool.EXPLORE,
-  ReticleTool.CRAWL,
   ReticleTool.SCROLL_TO,
   ReticleTool.NAVIGATE,
 ]);
@@ -107,7 +113,6 @@ export const SESSION_EXEMPT_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.FLOW_SAVE, // sessionId only scopes the write to the app's flow subdir; disk-side
   ReticleTool.FLOW, // merged list/load/delete — sessionId only scopes the project; all disk-side
   ReticleTool.FLOW_REPLAY, // returns its own FlowReplayResult contract (+ auto-records a run)
-  ReticleTool.FLOW_VERIFY, // returns its own SuiteVerdict contract (replays the whole suite)
   ReticleTool.FLOW_SAVE_RECORDED, // reads the recording buffer, writes disk
   ReticleTool.FLOW_HEAL, // returns its own FlowHealResult contract
   ReticleTool.PROJECT, // reads .reticle/project.json

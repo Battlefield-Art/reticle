@@ -26,8 +26,11 @@ const EXPECTED_SIZE: Record<ToolSurface, number> = {
   // orientation replaces exploratory snapshots, the measurement that would settle that was never
   // run, and an unproven entry is the right one to give up when the budget is a hard count.
   [TOOL_SURFACE.DEFAULT]: 18,
-  // The extended surface. NOT "everything" — see ADVERTISED_CAP.
-  [TOOL_SURFACE.ALL]: 30,
+  // The extended surface. NOT "everything" — see ADVERTISED_CAP. 28 since change/flows/affected/
+  // coverage/crawl merged into `reticle_verify`: three of those five were advertised here, so one
+  // name now stands where three did. The freed budget is deliberately NOT spent — what to promote
+  // into it is a separate decision with its own measurement.
+  [TOOL_SURFACE.ALL]: 28,
   // The smallest surface that can still return a verdict: one acting tool that resolves its own
   // target, plus the two meta-tools that reach the rest. See tool-surface.ts for why it is not the
   // default.

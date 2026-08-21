@@ -24,7 +24,10 @@ import { verificationOf } from './verification-of.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import { BrowserMode, setBrowserMode, resetBrowserMode } from './browser-mode.js';
 
-const VERIFY = ReticleTool.FLOW_VERIFY;
+// Whole-suite replay is `reticle_verify { action: 'flows' }` since the merge, so the NAME telemetry
+// sees is the merged one. The shape check below is what keeps the metric honest either way: naming
+// the merged tool does not make every action a verification.
+const VERIFY = ReticleTool.VERIFY;
 const ASSERT = ReticleTool.ASSERT;
 
 describe('verificationOf', () => {

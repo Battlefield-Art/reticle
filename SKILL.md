@@ -202,14 +202,14 @@ Work down this list and stop at the first row that fits. Do not hand-drive a flo
 
 | The question | The call | Calls |
 | --- | --- | --- |
-| "Did my edit break anything?" | `reticle_run({ tool: "reticle_verify_change", args: { files: ["src/App.tsx"] } })` | 1 |
+| "Did my edit break anything?" | `reticle_run({ tool: "reticle_verify", args: { action: "change", files: ["src/App.tsx"] } })` | 1 |
 | "Does this known journey still work?" | `reticle_run({ tool: "reticle_flow_replay", args: { flowName: "login" } })` | 1 |
 | "Does this new behaviour work?" | `reticle_act_sequence` for the setup, then ONE `reticle_act_and_wait` | 2 |
 | No MCP available at all | `npx @reticlehq/server verify <url>` in the shell | 1, no MCP |
 
-`reticle_verify_change` and `reticle_flow_replay` are **not on the advertised tool list**: they are reached through `reticle_run` exactly as written above. That is the supported call shape, not a workaround, and it is why you have to be told they exist at all.
+`reticle_verify` and `reticle_flow_replay` are **not on the advertised tool list**: they are reached through `reticle_run` exactly as written above. That is the supported call shape, not a workaround, and it is why you have to be told they exist at all.
 
-`reticle_verify_change` answers `unknown` when no saved flow covers the files you changed. That is the honest answer and not a failure. Nothing ran, so nothing was proved. It is also the signal to record one. Never read it as a pass.
+`reticle_verify {action:"change"}` answers `unknown` when no saved flow covers the files you changed. That is the honest answer and not a failure. Nothing ran, so nothing was proved. It is also the signal to record one. Never read it as a pass.
 
 ## Record once, replay cheaply
 
@@ -222,7 +222,7 @@ reticle_run({ tool: "reticle_record", args: { action: "stop",  recordingName: "c
 reticle_run({ tool: "reticle_flow_save", args: { flowName: "checkout" } })
 ```
 
-From then on that journey re-verifies in one call, deterministically, and `reticle_verify_change` can start answering `yes` or `no` for the files it touches instead of `unknown`.
+From then on that journey re-verifies in one call, deterministically, and `reticle_verify {action:"change"}` can start answering `yes` or `no` for the files it touches instead of `unknown`.
 
 Check `assertions.grade` on the save. Anything other than `asserted` means the flow only acts, so it will pass even if the feature breaks.
 
@@ -247,7 +247,7 @@ A verdict of `verified: "unknown"` is not a pass. It means Reticle drove the app
 
 Then report what you drove, what it produced, and the `file:line` for anything broken.
 
-The surface is deliberately small: `default` 18, `all` 30. Editors budget tools across every MCP server you have connected (Cursor allows 40 in total), so the count is capped rather than allowed to grow. `reticle_tools` loads the argument grammar for the rest on demand, and `reticle_run` invokes any of them by name. Nothing is unreachable; the cold tail just costs one discovery hop.
+The surface is deliberately small: `default` 18, `all` 28. Editors budget tools across every MCP server you have connected (Cursor allows 40 in total), so the count is capped rather than allowed to grow. `reticle_tools` loads the argument grammar for the rest on demand, and `reticle_run` invokes any of them by name. Nothing is unreachable; the cold tail just costs one discovery hop.
 
 - Batching, regression suites, reading a verdict: `https://docs.reticle.sh/agent-cheatsheet.md`
 - Every predicate and action: `https://docs.reticle.sh/predicates.md`, `https://docs.reticle.sh/actions.md`

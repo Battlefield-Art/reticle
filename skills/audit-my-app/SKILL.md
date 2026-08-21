@@ -23,7 +23,7 @@ About 1 KB, and it is the app describing its own testable surface: every registe
 ## 2. Click everything
 
 ```
-reticle_run({ tool: "reticle_crawl", sessionId, args: { maxSteps: 25 } })
+reticle_run({ tool: "reticle_verify", sessionId, args: { action: "crawl", maxSteps: 25 } })
 ```
 
 ```json
@@ -54,7 +54,7 @@ The API returned ten rows, the table shows nine, nothing errored. Neither the ne
 ## 4. Find the parts nobody exercised
 
 ```
-reticle_run({ tool: "reticle_coverage", sessionId })   // { total, exercised, untouched }
+reticle_run({ tool: "reticle_verify", sessionId, args: { action: "coverage" } })   // { total, exercised, untouched }
 ```
 
 And if the project already has saved flows, ask whether they prove anything:

@@ -179,7 +179,7 @@ Confirm it explicitly when you mean it:
 ## "Did my change break anything else?"
 
 ```json
-{ "tool": "reticle_verify_change", "args": { "since": "HEAD~1" } }
+{ "tool": "reticle_verify", "args": { "action": "change", "since": "HEAD~1" } }
 ```
 
 Give it the files you edited, or a git ref. It works out which saved flows cover them and replays only those.
@@ -246,7 +246,7 @@ Under a driven browser the same call answers `{ "applied": true, "count": 1 }`. 
 Record it once, replay it forever:
 
 ```json
-{ "tool": "reticle_flow_verify", "args": { "names": ["docs-check"] } }
+{ "tool": "reticle_verify", "args": { "action": "flows", "names": ["docs-check"] } }
 ```
 
 Omit `names` to replay every saved flow. Either way you get one consolidated verdict, and only the failures carry detail:

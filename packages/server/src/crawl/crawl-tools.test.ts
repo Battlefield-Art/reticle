@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { TOOLS, type ToolDef, type ToolDeps } from '../tools/tools.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import { CAPPED_SNAPSHOT_NOTE, type CrawlReport } from './crawl.js';
+import { CRAWL_TOOLS } from './crawl-tools.js';
 import type { Session, SessionManager } from '../session/session.js';
 
 /** Scripted session: one interactive control whose click does nothing (a dead control). */
@@ -41,6 +42,15 @@ function tool(name: string) {
   return t;
 }
 
+/**
+ * Crawl through the surface an agent actually reaches it by.
+ *
+ * It is `reticle_verify { action: "crawl" }` since the merge, so driving the merged tool exercises
+ * the dispatch as well as the handler — strictly more than calling the member def directly did.
+ */
+const crawlAction = (deps: ToolDeps, args: Record<string, unknown>): Promise<unknown> =>
+  tool(ReticleTool.VERIFY).handler(deps, { ...args, action: 'crawl' });
+
 describe('reticle_crawl tool', () => {
   it('drives the resolved session and returns a structured anomaly report', async () => {
     const session = deadButtonSession();
@@ -50,7 +60,7 @@ describe('reticle_crawl tool', () => {
       project: { recordRoutes: () => Promise.resolve() },
     } as unknown as ToolDeps;
 
-    const r = (await tool(ReticleTool.CRAWL).handler(deps, { settleMs: 0 })) as CrawlReport;
+    const r = (await crawlAction(deps, { settleMs: 0 })) as CrawlReport;
     expect(r.interactiveFound).toBe(1);
     expect(r.stepsRun).toBe(1);
     expect(r.counts.deadControls).toBe(1);
@@ -97,7 +107,7 @@ describe('reticle_crawl tool', () => {
       project: { recordRoutes },
     } as unknown as ToolDeps;
 
-    const report = (await tool(ReticleTool.CRAWL).handler(deps, { settleMs: 0 })) as CrawlReport;
+    const report = (await crawlAction(deps, { settleMs: 0 })) as CrawlReport;
 
     expect(report.visited).toEqual(['link "Deployments"']);
     expect(recordRoutes).toHaveBeenCalledWith(['/', '/deployments']);
@@ -132,9 +142,18 @@ describe('the crawl output schema declares everything crawl returns', () => {
     coverageNote: CAPPED_SNAPSHOT_NOTE,
   };
 
+  /**
+   * Read the schema off crawl's OWN definition, not off the merged tool.
+   *
+   * A merged tool carries no `outputSchema` — its members return different shapes and one schema
+   * cannot describe them — so asking the merged def would assert nothing. The member def is
+   * unchanged and still declares what crawl returns; what the merge changed is whether that schema
+   * is ADVERTISED, not whether it is true. Keeping the guard here is what stops the merge from
+   * quietly turning a checked contract into an unchecked one.
+   */
   const tool = (): ToolDef => {
-    const found = TOOLS.find((t) => t.name === ReticleTool.CRAWL);
-    if (found === undefined) throw new Error('reticle_crawl is not on the surface');
+    const found = CRAWL_TOOLS.find((t) => t.name === ReticleTool.CRAWL);
+    if (found === undefined) throw new Error('the crawl tool definition is gone');
     return found;
   };
 

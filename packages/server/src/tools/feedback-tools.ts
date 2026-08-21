@@ -215,8 +215,11 @@ export const FEEDBACK_PROMPT = {
 export const VERIFICATION_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.ACT_AND_WAIT,
   ReticleTool.ASSERT,
-  ReticleTool.FLOW_VERIFY,
-  ReticleTool.VERIFY_CHANGE,
+  // Merged: `flow_verify` and `verify_change` are actions on this tool now. Naming the merged tool
+  // does NOT make every action a verification — `verificationOf` still requires the result to carry
+  // a `verified` or a pass/fail `status`, so `coverage` and `crawl` contribute nothing and cannot
+  // inflate the count.
+  ReticleTool.VERIFY,
   ReticleTool.RECONCILE,
 ]);
 

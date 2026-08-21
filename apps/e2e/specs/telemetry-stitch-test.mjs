@@ -180,7 +180,7 @@ chk(
 );
 
 // 3. The suite gate with nothing saved yet. An empty suite verified nothing and must not pass.
-const empty = await call('reticle_flow_verify', { ...S });
+const empty = await call('reticle_verify', { action: 'flows', ...S });
 chk(
   'a suite with no flows does NOT report pass',
   // `!== 'pass'` alone would also be satisfied by `undefined` — i.e. by the tool never answering.
@@ -213,7 +213,7 @@ chk(
 );
 const replay = await call('reticle_flow_replay', { ...S, flowName: FLOW });
 chk('and replays green', replay?.status === 'ok', `status=${replay?.status}`);
-const suite = await call('reticle_flow_verify', { ...S });
+const suite = await call('reticle_verify', { action: 'flows', ...S });
 chk(
   'and the suite now passes, with a flow in it',
   suite?.status === 'pass' && suite?.total >= 1,
@@ -249,7 +249,7 @@ chk(
   'the EMPTY suite did not emit a passing verification',
   !verifications.some(
     (e) =>
-      prop(e, 'verification_via') === 'reticle_flow_verify' &&
+      prop(e, 'verification_via') === 'reticle_verify' &&
       prop(e, 'verification_passed') === true &&
       prop(e, 'verification_durationMs') === 0,
   ),

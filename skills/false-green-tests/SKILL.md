@@ -48,8 +48,8 @@ A view rendering one value while the store holds another is a bug the render tre
 **5. Whole surfaces nobody exercised.**
 
 ```
-reticle_run({ tool: "reticle_crawl", sessionId })      // click sweep, returns anomalies
-reticle_run({ tool: "reticle_coverage", sessionId })   // { total, exercised, untouched }
+reticle_run({ tool: "reticle_verify", sessionId, args: { action: "crawl" } })      // click sweep, returns anomalies
+reticle_run({ tool: "reticle_verify", sessionId, args: { action: "coverage" } })   // { total, exercised, untouched }
 ```
 
 `crawl` exists because the obvious hand-rolled sweep (click each control, assert no console error) is itself shape 1.

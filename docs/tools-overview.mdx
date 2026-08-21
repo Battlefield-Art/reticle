@@ -75,7 +75,7 @@ Direct `reticle_network` and `reticle_console` stay advertised even though `reti
 ## Reaching the other 29
 
 ```json
-{ "tool": "reticle_flow_verify", "args": {} }
+{ "tool": "reticle_verify", "args": { "action": "flows" } }
 ```
 
 `reticle_run` takes a tool name and its arguments. `reticle_tools` lists what's available and returns the full argument grammar for any of them, so your agent can discover a tool mid-task without you having pre-loaded its schema.

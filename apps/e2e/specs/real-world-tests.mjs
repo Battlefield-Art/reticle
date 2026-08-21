@@ -61,7 +61,7 @@ chk('reticle_scroll_to reveals a virtualized row', before === 0 && found.found =
 // Autonomous crawl over the diagnostics controls.
 await T('reticle_act_and_wait', { ref: await refOf('testid', 'nav-diagnostics'), action: 'click', until: { kind: 'signal', name: 'nav:changed' }, timeout_ms: 3000 });
 await sleep(300);
-const crawl = await T('reticle_crawl', { maxSteps: 8, settleMs: 220 });
+const crawl = await T('reticle_verify', { action: 'crawl', maxSteps: 8, settleMs: 220 });
 chk('reticle_crawl drives the controls + reports', crawl.stepsRun > 0, `clicked=${crawl.stepsRun}, anomalies=${crawl.anomalies.length}`);
 
 // ── the VERDICT, end to end, in both directions ────────────────────────────────────────────────

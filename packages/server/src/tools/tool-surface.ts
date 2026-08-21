@@ -214,15 +214,14 @@ export const EXTENDED_TOOL_NAMES: ReadonlySet<string> = new Set([
   ReticleTool.CAPABILITIES,
   ReticleTool.FLOW_SAVE,
   ReticleTool.FLOW_REPLAY,
-  ReticleTool.FLOW_VERIFY,
   ReticleTool.RECORD,
   ReticleTool.SCREENSHOT,
   ReticleTool.VISUAL_DIFF,
   ReticleTool.CLOCK,
   ReticleTool.NETWORK_MOCK,
   ReticleTool.STORAGE,
-  ReticleTool.VERIFY_CHANGE,
-  ReticleTool.CRAWL,
+  // Merged change/flows/affected/coverage/crawl — one name where three of these used to sit.
+  ReticleTool.VERIFY,
 ]);
 
 /**

@@ -329,7 +329,7 @@ export const FLOW_TOOLS: ToolDef[] = [
         .object({ reason: z.string() })
         .optional()
         .describe(
-          'Set on an ok replay that cannot fail: the flow asserts no observable consequence, so it passes even when the feature is broken. Same reason reticle_flow_verify reports.',
+          'Set on an ok replay that cannot fail: the flow asserts no observable consequence, so it passes even when the feature is broken. Same reason reticle_verify{action:"flows"} reports.',
         ),
       decision: z
         .object({

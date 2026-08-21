@@ -18,21 +18,21 @@ Reticle ships 46 tools plus these two meta-tools. On the default profile your ag
 
 Returns every tool with a one-line summary. A sample of what lives in the cold tail:
 
-| Tool                    | What it does                                                           |
-| ----------------------- | ---------------------------------------------------------------------- |
-| `reticle_capabilities`  | The app's advertised testable surface, testids, signals, stores, flows |
-| `reticle_flow_verify`   | Replay every saved flow, return one consolidated suite verdict         |
-| `reticle_screenshot`    | Pixel screenshot of the driven page, saved as a visual baseline        |
-| `reticle_visual_diff`   | Perceptually diff the live page against that baseline                  |
-| `reticle_network_mock`  | Force a 500, go offline, or delay a response                           |
-| `reticle_viewport`      | Pin the viewport so screenshots are reproducible across machines       |
-| `reticle_crawl`         | Click every reachable control and report anomalies, with no script     |
-| `reticle_clock`         | Freeze time or fast-forward timers, toasts, debounces, auto-dismiss    |
-| `reticle_storage`       | localStorage, sessionStorage and readable cookies                      |
-| `reticle_coverage`      | Which controls you have driven this session, and which you have not    |
-| `reticle_verify_change` | Give it the files you edited; it replays the flows that cover them     |
-| `reticle_reconcile`     | Compare what the API returned against what the page actually renders   |
-| `reticle_scroll_to`     | Find a row in a virtualised list that has not rendered yet             |
+| Tool | What it does |
+| --- | --- |
+| `reticle_capabilities` | The app's advertised testable surface, testids, signals, stores, flows |
+| `reticle_verify` (`flows`) | Replay every saved flow, return one consolidated suite verdict |
+| `reticle_screenshot` | Pixel screenshot of the driven page, saved as a visual baseline |
+| `reticle_visual_diff` | Perceptually diff the live page against that baseline |
+| `reticle_network_mock` | Force a 500, go offline, or delay a response |
+| `reticle_viewport` | Pin the viewport so screenshots are reproducible across machines |
+| `reticle_verify` (`crawl`) | Click every reachable control and report anomalies, with no script |
+| `reticle_clock` | Freeze time or fast-forward timers, toasts, debounces, auto-dismiss |
+| `reticle_storage` | localStorage, sessionStorage and readable cookies |
+| `reticle_verify` (`coverage`) | Which controls you have driven this session, and which you have not |
+| `reticle_verify` (`change`) | Give it the files you edited; it replays the flows that cover them |
+| `reticle_reconcile` | Compare what the API returned against what the page actually renders |
+| `reticle_scroll_to` | Find a row in a virtualised list that has not rendered yet |
 
 The response also tells you which surface is active:
 

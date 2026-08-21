@@ -137,7 +137,7 @@ export const VERIFY_CHANGE_TOOLS: ToolDef[] = [
       const cursor = cursorBeforeReplay(deps, args);
 
       const verify = FLOW_TOOLS.find((tool) => tool.name === ReticleTool.FLOW_VERIFY);
-      if (verify === undefined) throw new Error('reticle_flow_verify is not registered');
+      if (verify === undefined) throw new Error('the whole-suite replay tool is not registered');
       const suite = asRecord(
         await verify.handler(deps, {
           names: affected,

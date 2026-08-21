@@ -64,7 +64,10 @@ async function reticleReplay() {
   const ready = Date.now();
   await a.login();
   const loggedIn = Date.now();
-  const res = await a.c.callTool('reticle_flow_verify', { names: FLOWS.map((f) => f.name) });
+  const res = await a.c.callTool('reticle_verify', {
+    action: 'flows',
+    names: FLOWS.map((f) => f.name),
+  });
   const done = Date.now();
   await a.stop();
   const text = res.text ?? '';

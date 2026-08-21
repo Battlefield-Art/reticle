@@ -84,8 +84,10 @@ describe('the one-shot human prompt', () => {
 
   it('covers the tools that actually end a verification', () => {
     expect(VERIFICATION_TOOLS.has(ReticleTool.ASSERT)).toBe(true);
-    expect(VERIFICATION_TOOLS.has(ReticleTool.FLOW_VERIFY)).toBe(true);
-    expect(VERIFICATION_TOOLS.has(ReticleTool.VERIFY_CHANGE)).toBe(true);
+    // Whole-suite replay and change verification are actions on the merged tool now, so the NAME
+    // that has to be covered is the merged one — the members are never dispatched by their own name.
+    expect(VERIFICATION_TOOLS.has(ReticleTool.VERIFY)).toBe(true);
+    expect(VERIFICATION_TOOLS.has(ReticleTool.ACT_AND_WAIT)).toBe(true);
   });
 });
 

@@ -115,17 +115,17 @@ This is the feedback a human reviewer used to give, made machine-actionable, so 
 
 ## Verify the whole suite in one call
 
-`reticle_flow_verify` replays **every** saved flow (or a named subset) deterministically, with no LLM per flow, and returns one consolidated verdict. This is the regression check to run after any change:
+`reticle_verify {action:"flows"}` replays **every** saved flow (or a named subset) deterministically, with no LLM per flow, and returns one consolidated verdict. This is the regression check to run after any change:
 
 ```jsonc
-reticle_flow_verify()
+reticle_verify({ action: "flows" })
 // → { status: "fail", total: 4, passed: 3, failed: 1,
 //     summary: "3/4 flows pass, 1 needs attention: ship-deploy",
 //     failures: [{ flow: "ship-deploy", verdict: "drift",
 //                  whatChanged: "...", whereInSource: "src/...:NN", nextAction: "..." }] }
 ```
 
-Passing flows are counted; only failures carry detail (token-cheap). Build → `reticle_flow_verify` → fix from each failure's `nextAction` → repeat: the autonomous regression loop.
+Passing flows are counted; only failures carry detail (token-cheap). Build → `reticle_verify {action:"flows"}` → fix from each failure's `nextAction` → repeat: the autonomous regression loop.
 
 ## Self-healing: the agent maintains the flow
 
@@ -165,7 +165,7 @@ With `apply: false` the flow file is **never modified**; you get the proposed di
 | `reticle_flow {action:"list"}` | `{}` | flows on disk |
 | `reticle_flow {action:"load"}` | `{ flowName }` | the flow JSON |
 | `reticle_flow_replay` | `{ flowName }` | `{ status, steps, decision? }` (decision on drift/fail) |
-| `reticle_flow_verify` | `{ names?, sessionId? }` | suite verdict `{ status, passed, failed, failures[] }` |
+| `reticle_verify {action:"flows"}` | `{ names?, sessionId? }` | suite verdict `{ status, passed, failed, failures[] }` |
 | `reticle_flow_heal` | `{ flowName, apply? }` | propose / apply nearest-match rebind |
 | `reticle_annotate` | `{ kind, … }` | compile a structured annotation into the flow |
 

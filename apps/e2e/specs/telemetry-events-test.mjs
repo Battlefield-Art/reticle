@@ -254,7 +254,7 @@ metrics.recordToolError('the browser pool is empty', 'reticle_lease');
 }
 
 // ── 3b. Bugs found — the outcome metric ──────────────────────────────────────
-const crawlTool = { name: 'reticle_crawl', description: '', inputSchema: {}, handler: async () => ({
+const crawlTool = { name: 'reticle_verify', description: '', inputSchema: {}, handler: async () => ({
   anomalies: [
     { kind: 'console-error', ref: 'e3', desc: 'button#checkout-SECRETMARKER threw' },
     { kind: 'ui-advanced-request-failed', ref: 'e4', detail: { url: 'https://acme.internal/orders' } },
