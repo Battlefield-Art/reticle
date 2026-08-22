@@ -40,7 +40,10 @@ npx skills add reticlehq/reticle -l             #    the published skills are al
 
 pnpm version 2.3.0 --no-git-tag-version         # 3. bump root…
 pnpm -r exec npm version 2.3.0 --no-git-tag-version   #    …and every workspace package, in lockstep
+sed -i '' '3s/^version = .*/version = "2.3.0"/' packages/tauri/Cargo.toml  # …and the ELEVENTH artifact
 ```
+
+**The Rust crate is the eleventh artifact and it is easy to forget**, which is not hypothetical: it sat at `0.1.0` from the day it was written until 2.11.0. `publish-crate.yml` publishes only when the version is ABSENT from crates.io, so every release found `0.1.0` already there, printed "nothing to do" and exited green — a silent no-op reporting success for months, while a desktop capture-path security fix sat undelivered and the docs told users to pin the build that had it. `crate-version-lockstep.test.ts` now fails the fast unit gate if this line is forgotten, so the `sed` above is belt to its braces rather than the only thing standing between a release and nothing.
 
 ### What the gates already prove about the docs, and what they do not
 

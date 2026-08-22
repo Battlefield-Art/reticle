@@ -8,9 +8,11 @@ icon: cubes
 Reticle is eleven packages, and most people install two. This page exists so you can tell which two, and so that the ones you skip stop looking mysterious.
 
 <Note>
-  The ten npm packages ship together at one version: whatever `npm view @reticlehq/core version`
-  says, every other `@reticlehq/*` package says too. The Rust crate `reticle-tauri` is versioned
-  **independently**. That is deliberate, not drift.
+  Everything ships together at one version: whatever `npm view @reticlehq/core version` says, every
+  other `@reticlehq/*` package says too, and so does the `reticle-tauri` crate on crates.io.
+
+It was versioned independently until 2.11.0, and that turned out to mean _stuck_: the crate sat at `0.1.0` from the day it was written, the publish job skipped it every release because that version already existed, and no Rust-side fix reached anybody. Lockstep costs one line in the bump script and cannot fail that way.
+
 </Note>
 
 ## Which ones do I need?
@@ -199,13 +201,13 @@ A lint rule makes the signal layer self-enforcing, which is the only way a conve
 
 ## reticle-tauri
 
-**The Rust crate**, on crates.io. Versioned independently of the npm packages.
+**The Rust crate**, on crates.io. Versioned in lockstep with the npm packages, so `2.11` here and `2.11` there mean the same release.
 
 **Why it exists:** Tauri IPC observation needs nothing on the Rust side; an `invoke('load_todos')` already reaches Reticle as `ipc://load_todos`. You only need this crate for screenshots and headless mode.
 
 ```toml
 [dependencies]
-reticle-tauri = "0.1"
+reticle-tauri = "2.11"
 ```
 
 <Warning>
