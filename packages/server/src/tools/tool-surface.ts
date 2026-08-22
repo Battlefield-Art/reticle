@@ -217,6 +217,10 @@ export const EXTENDED_TOOL_NAMES: ReadonlySet<string> = new Set([
   // New and unproven, so it does not take a default-surface slot under the cap. Same terms the
   // capabilities demotion set: reachable in one reticle_run hop by any agent that wants it.
   ReticleTool.INTENT,
+  // Same terms again, plus one argument specific to it: its caller is BY CONSTRUCTION an agent that
+  // just lost its context and is re-reading the tool list, so the discovery hop it costs is a call
+  // that caller was already going to make. See context-tools.ts for the full argument.
+  ReticleTool.CONTEXT,
   ReticleTool.RECORD,
   ReticleTool.SCREENSHOT,
   ReticleTool.VISUAL_DIFF,

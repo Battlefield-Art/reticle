@@ -50,6 +50,8 @@ export const ReticleTool = {
   VERIFY_CHANGE: 'reticle_verify_change',
   /** Merged: change/flows/affected/coverage/crawl — "what is proved, and what is not". */
   INTENT: 'reticle_intent',
+  /** what THIS run has established, proved, and not yet discharged — pulled when memory is gone. */
+  CONTEXT: 'reticle_context',
   VERIFY: 'reticle_verify',
   /** read cross-run history (.reticle/project.json) + diff-vs-last for a name. */
   PROJECT: 'reticle_project',

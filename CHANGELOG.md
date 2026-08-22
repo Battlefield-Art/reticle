@@ -6,6 +6,16 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Added
 
+- **`@reticlehq/core` + `@reticlehq/server` — `reticle_context`: what this run established, handed back when your own copy is gone.** A verification thread is multi-step, and the only thing holding it together is the agent's own context window. When that compacts, or the turn ends, or a sub-agent takes over, the thread goes with it and the work restarts: long runs of the same read-only call, an agent searching by exhaustion because it no longer remembers what it already saw.
+
+  Reticle's copy does not degrade at that moment, so `reticle_context` returns what the run OBSERVED (`established`, each with the `file:line` where one was reported), what a verdict already settled (`proven`), and what nothing has discharged (`remaining`, from the intent ledger). A forgotten proof is either re-proved, which is slow, or assumed, which is a false green, and both are the failure this exists to stop.
+
+  **Pulled, never pushed.** An earlier version rode along on every session-bound response and cost +136% on a verdict, because most of the time the agent still had the context and every call paid to duplicate what it knew. Nobody but the agent can tell when that stops being true, so the agent asks, once, at the moment it knows its memory is gone.
+
+  **It is a fold over the journal, never a second store.** `.reticle/sessions/<id>/` is already an append-only ledger of every action dispatched and every event observed; this reads it and writes nothing, so it cannot disagree with the ledger the way two counters eventually do. It supersedes rather than accumulates and is capped, so it shrinks. And every row carries the document and the edit round it was seen under: a fact from a replaced page, or from before your last source edit, is dropped rather than presented as current, because presenting it is exactly the false green this product exists to prevent.
+
+  On the extended surface rather than the default one. The default surface is a hard tool count shared with every other MCP server a user has connected, and this tool's claim is unmeasured. Its caller is also, by construction, an agent that has just lost its context and is re-reading the tool list, so the one `reticle_tools` hop it costs is a call that caller was already making.
+
 - **`@reticlehq/server` — a client that registers Reticle and never asks for the tools is now a state `status` can name.** Some MCP hosts register the server, start it, and then never send `tools/list` until the client is restarted. The agent has no Reticle tools, the user has a product that does nothing, and from our side that install is byte-identical to one somebody wired and abandoned: daemon idle, no sessions, nothing to report. Reported from the field, and the answer is always the same one nobody could have known to try.
 
   `reticle status` now carries `mcpClient`, and it distinguishes three states rather than two: nothing has ever started the MCP server on this port, a client started it and never listed the tools, or the client side is healthy. The middle one comes with the sentence that fixes it — restart your MCP client — and the healthy one comes with nothing at all, because advice printed beside a working install reads as though something is wrong.

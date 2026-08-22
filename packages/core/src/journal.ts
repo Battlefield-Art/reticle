@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TRANSPORT_LIMITS } from './constants.js';
+import { Verified } from './verified-constants.js';
 
 /**
  * The durable causal journal. Each session gets an append-only pair on disk:
@@ -39,3 +40,24 @@ export const JournalActionSchema = z.object({
   at: z.number().int().min(0),
 });
 export type JournalAction = z.infer<typeof JournalActionSchema>;
+
+/**
+ * The bounded verdict summary a verification tool writes into a journal action's `effect`.
+ *
+ * `effect` is deliberately open (`unknown`) and narrowed by its writer; this is that narrowing for
+ * the one writer whose record has to be READ back later. Without it a verdict lives only in the tool
+ * response, which is exactly the place that disappears when an agent compacts, so "what did this run
+ * already prove" would have no ledger to fold and the answer would be silently empty.
+ *
+ * Three fields and no more: the claim the verdict was about, how it came out, and where in the
+ * source it pointed. A transcript here would grow the journal without making the answer better.
+ */
+export const JournalVerdictEffectSchema = z.object({
+  /** What was claimed, in the caller's own words — the subject a later proof supersedes. */
+  claim: z.string().min(1).max(TRANSPORT_LIMITS.MAX_STRING_LENGTH),
+  /** The verdict, as the one field an agent reads. The enum, never a re-typed copy of it. */
+  verified: z.nativeEnum(Verified),
+  /** `file:line` for the element driven, when the page told us one. */
+  source: z.string().max(TRANSPORT_LIMITS.MAX_URL_LENGTH).optional(),
+});
+export type JournalVerdictEffect = z.infer<typeof JournalVerdictEffectSchema>;

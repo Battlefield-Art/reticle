@@ -14,6 +14,11 @@ export interface JournalSink {
 /** Read side of the durable journal — the fall-through source when the ring buffer has evicted. */
 export interface JournalReader {
   readEvents(): Promise<ReticleEvent[]>;
+  /**
+   * The action ledger. Optional because a test double is a partial reader, and nothing that only
+   * needs events should be forced to grow a second method to satisfy the type.
+   */
+  readActions?(): Promise<JournalAction[]>;
 }
 
 interface JournalRecorderOptions {

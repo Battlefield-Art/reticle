@@ -30,8 +30,10 @@ const EXPECTED_SIZE: Record<ToolSurface, number> = {
   // affected/coverage/crawl merged into `reticle_verify`; 29 now that `reticle_intent` joins it.
   // Intent lands here rather than in DEFAULT on the same terms the capabilities demotion set: it is
   // new and its claim is unmeasured, so it does not take a default-surface slot from a tool that has
-  // earned one. Still one `reticle_run` hop away for any agent that wants it.
-  [TOOL_SURFACE.ALL]: 29,
+  // earned one. Still one `reticle_run` hop away for any agent that wants it. 30 now that
+  // `reticle_context` joins it on exactly those terms, which puts the extended surface ON the cap:
+  // the next tool added here has to displace one, and that is the budget working as designed.
+  [TOOL_SURFACE.ALL]: 30,
   // The smallest surface that can still return a verdict: one acting tool that resolves its own
   // target, plus the two meta-tools that reach the rest. See tool-surface.ts for why it is not the
   // default.

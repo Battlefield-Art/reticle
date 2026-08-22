@@ -28,6 +28,7 @@ import {
   SessionState,
   type BrowserBrand,
   type CommandResult,
+  type JournalAction,
   type HelloMessage,
   type HumanControlData,
   type ReticleEvent,
@@ -460,6 +461,17 @@ export class Session {
   finishAction(effect?: unknown, settled?: boolean, settledInMs?: number): void {
     this.#activeActionId = undefined;
     this.#journal?.finishAction(effect, settled, settledInMs);
+  }
+
+  /**
+   * The durable action ledger for this session — the ledger the run context is folded out of.
+   *
+   * `[]` when nothing journals this session (journaling disabled, or an id that is not a safe path
+   * segment). An absent ledger reads as an empty run, never as a missing one: the fold simply has
+   * nothing to say, which is the honest answer.
+   */
+  async readJournalActions(): Promise<JournalAction[]> {
+    return (await this.#journalReader?.readActions?.()) ?? [];
   }
 
   /** Flush any buffered journal events to disk (call on session end). */

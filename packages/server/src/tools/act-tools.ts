@@ -19,6 +19,7 @@ import {
   Verified,
   VerifiedReason,
   PredicateKind,
+  type JournalVerdictEffect,
 } from '@reticlehq/core';
 import { assertNativeInputSupported } from './act-danger.js';
 import { leanActResult, mutatedWithin } from './act-view.js';
@@ -578,6 +579,10 @@ export const ACT_TOOLS: ToolDef[] = [
       // (the whole point of act_and_wait) attribute to this action. finishAction fires after the wait.
       session.beginAction(ReticleTool.ACT_AND_WAIT, asRecord(args));
       let settledOutcome: boolean | undefined;
+      // The verdict, written into the action record so a LATER turn can read what this one proved.
+      // A verdict that lives only in the response lives only in the agent's context window, which is
+      // exactly the copy a compaction destroys — see runs/run-context.ts.
+      let verdictEffect: JournalVerdictEffect | undefined;
       // Was the declared consequence ALREADY TRUE? Only asked for predicates that read live DOM
       // state — event-based ones are floored at this act's cursor and cannot be satisfied by the
       // past, so they need no pre-check and pay nothing. One extra query, on the path where a green
@@ -803,6 +808,11 @@ export const ACT_TOOLS: ToolDef[] = [
           routeChanged: actionSummary.route !== undefined,
           routeSignalFired: actionSummary.signals.some((name) => name.startsWith('route')),
         });
+        verdictEffect = {
+          claim: describeWaitTarget(until),
+          verified: decision.verified,
+          ...(actedSourceLabel === undefined ? {} : { source: actedSourceLabel }),
+        };
         // Recorded on the session, so a later "am I done?" can answer with what is STILL missing
         // rather than with everything that was ever missing. An empty list closes a gap, which is
         // why it is noted rather than skipped.
@@ -840,7 +850,7 @@ export const ACT_TOOLS: ToolDef[] = [
         });
       } finally {
         session.finishAction(
-          undefined,
+          verdictEffect,
           settledOutcome,
           true === settledOutcome ? session.elapsed() - since : undefined,
         );

@@ -38,6 +38,7 @@ export * from './browser-misdirect.js';
 export * from './daemon-registry.js'; // daemon discovery, used by the vite plugin + server
 export * from './project-registry.js'; // projectId -> directory, so a cross-repo daemon can still resolve
 export * from './intent.js'; // what a change was supposed to make true, captured while somebody knows
+export * from './run-context.js'; // what a run established, folded and capped, for the agent to pull back
 export * from './instrumentation-gap.js'; // what Reticle could not see, and the change that would let it
 export * from './security.js'; // sanitize/serialize helpers shared by browser + server
 export * from './redaction.js'; // isSensitiveKey / scrubKnownSecrets — the shared redaction rules

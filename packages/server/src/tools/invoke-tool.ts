@@ -116,6 +116,7 @@ export const SESSION_EXEMPT_TOOLS: ReadonlySet<string> = new Set([
   ReticleTool.FLOW_SAVE_RECORDED, // reads the recording buffer, writes disk
   ReticleTool.FLOW_HEAL, // returns its own FlowHealResult contract
   ReticleTool.INTENT, // reads/writes .reticle/intent.json; sessionId only picks the project
+  ReticleTool.CONTEXT, // folds the journal + intent ledger; must still answer when nothing is connected
   ReticleTool.PROJECT, // reads .reticle/project.json
   ReticleTool.RUN_EXPORT, // reads .reticle/runs/<id>.json (verification-run artifact)
   ReticleTool.SESSION, // merged lifecycle/human-channel family (tune/yield/end/resume/messages/review/narrate)
