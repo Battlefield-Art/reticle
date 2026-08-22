@@ -340,15 +340,28 @@ describe('shipped docs never name a tool a reader cannot call', () => {
    * `references/`, so a dead name in one of those files reaches someone with no way at all to check
    * it. Same rule, wider net.
    */
-  function skillFiles(dir: string = join(REPO, 'skills')): string[] {
+  function walkSkills(dir: string): string[] {
     if (!existsSync(dir)) return [];
     const out: string[] = [];
     for (const entry of readdirSync(dir)) {
       const full = join(dir, entry);
-      if (statSync(full).isDirectory()) out.push(...skillFiles(full));
+      if (statSync(full).isDirectory()) out.push(...walkSkills(full));
       else if (entry.endsWith('.md')) out.push(full);
     }
     return out;
+  }
+
+  /**
+   * Both published skill roots, which are two directories for two distribution channels.
+   *
+   * `skills/` is the skills-CLI package. `plugin/SKILL.md` is the single skill the Claude Code plugin
+   * ships, and it is the file a `/reticle` user reads first, so leaving it out of these checks would
+   * exempt the most-read guidance in the repo from every rule the rest of it follows.
+   */
+  function skillFiles(): string[] {
+    return [...walkSkills(join(REPO, 'skills')), join(REPO, 'plugin', 'SKILL.md')].filter(
+      existsSync,
+    );
   }
 
   it('finds docs to check', () => {

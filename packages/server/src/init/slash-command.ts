@@ -42,33 +42,49 @@ Call \`reticle_sessions\` first.
 **A session is listed?** Go to "Pick ONE flow".
 
 **No session?** Setup is not finished, and stopping to ask the user to run something is not an
-answer. Work these in order, and say which one you are on:
+answer. Every step below is yours to do without them. Work these in order, and say which one you are
+on, one line each:
 
-0. **Is anything serving the app at all?** If a dev server is already listening, use it and go to
-   step 1 — the cause is then almost always that the SDK never loaded in the page, not a missing
+0. **Is Reticle even wired into this project?** \`cat .reticle.json\`. If it is not there, this
+   project was never set up: run \`npx @reticlehq/server@latest init\`,
+   fix every \`⚠\` and \`ℹ\` it prints, and carry on. Do not ask first, and do not ask which
+   framework or port — both come out of the repo you are sitting in.
+
+1. **Is anything serving the app at all?** If a dev server is already listening, use it and go to
+   step 2 — the cause is then almost always that the SDK never loaded in the page, not a missing
    server, so do not tell the user to start one they are already running. If nothing is listening:
 
 ${DEV_SERVER_POLICY}
 
-Then, once something is serving the app:
+2. **Is a page open on it?** Do not ask the user to open a browser — open it:
 
-1. **Is the SDK actually in the app?** Read the app's entry file (\`src/main.tsx\`, \`app/layout.tsx\`,
+   \`\`\`bash
+   npx @reticlehq/server open <the url the dev server is serving>
+   \`\`\`
+
+   That reuses an already-connected tab or opens a new one, and waits for the page to register. On a
+   machine with no browser to open, take a tab Reticle owns instead:
+   \`reticle_run({ tool: "reticle_lease", args: { action: "acquire", url: "<the same url>" } })\`.
+
+Then, once something is serving the app and a page is on it:
+
+3. **Is the SDK actually in the app?** Read the app's entry file (\`src/main.tsx\`, \`app/layout.tsx\`,
    \`src/app.vue\`, whatever this project uses). You are looking for an \`import\` from
    \`@reticlehq/react\` or \`@reticlehq/browser\` and a \`connect()\` call, or the Reticle plugin in
    \`vite.config.*\`, or \`withReticle\` in \`next.config.*\`. **If it is not there, that is the bug.**
    Wire it in — see the framework snippets at https://docs.reticle.sh/instrumentation — then restart
    the dev server and re-check.
-2. **Is the connect guarded on \`hostname === 'localhost'\`?** If so, remove that guard. It is false on
+4. **Is the connect guarded on \`hostname === 'localhost'\`?** If so, remove that guard. It is false on
    any non-localhost dev host, and \`window\` does not exist during SSR, so the guard silently prevents
    the connect and logs nothing. Use the framework's dev flag instead (\`import.meta.env.DEV\`,
    \`process.env.NODE_ENV !== 'production'\`, \`import.meta.dev\`).
-3. **Is the dev server serving that entry?** Ask the user to open the app in a browser and check its
-   console for a line starting \`[Reticle]\`. That line, or its absence, tells you which side is at
+5. **Is the dev server serving that entry?** Look in \`reticle_console\`, or in the page you opened in
+   step 2, for a line starting \`[Reticle]\`. That line, or its absence, tells you which side is at
    fault. Reticle itself never starts a dev server — starting it is your job, under the guards above.
-4. **Do both sides agree on the port?** Run \`npx @reticlehq/server doctor\` and compare the daemon
+6. **Do both sides agree on the port?** Run \`npx @reticlehq/server doctor\` and compare the daemon
    port against the port the page dials.
 
-If you are still stuck after all four, file it: \`reticle_feedback\` with kind \`gap\`, saying what you
+If you are still stuck after all of those, file it: \`reticle_feedback\` with kind \`gap\`, saying what you
 checked and what you saw. Then tell the user exactly which step is blocked. Do not report the install
 as finished.
 
@@ -101,6 +117,13 @@ snapshot has proved nothing, however many tools it used.
   cannot back is not.
 
 Do not weaken or skip an assertion to make the run pass — that is a finding, not a fix.
+
+## If the user handed you a license key
+
+Append \`RETICLE_LICENSE_KEY=<key>\` to the project's \`.env\` (create it if absent), make sure \`.env\`
+is in \`.gitignore\`, and confirm with \`npx @reticlehq/server license\`. The CLI folds a project-local
+\`.env\` in on every invocation, so nothing else changes. Never echo the key back, and never put it in
+a commit, a comment, or a feedback report.
 
 ## Two things afterwards
 

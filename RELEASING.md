@@ -35,7 +35,7 @@ pnpm format:check                               # 2. the gates. FIRST: it is the
 pnpm lint && pnpm typecheck && pnpm test:unit   #    that `pnpm lint` does not run
 pnpm test:e2e                                   #    required for every release, not just tool changes
 pnpm lint:docs                                  #    every documented command still parses; see below
-claude plugin validate .                        #    the published Claude Code plugin still resolves
+claude plugin validate ./plugin                 #    the published Claude Code plugin still resolves
 npx skills add reticlehq/reticle -l             #    the published skills are all still discoverable
 
 pnpm version 2.3.0 --no-git-tag-version         # 3. bump root…

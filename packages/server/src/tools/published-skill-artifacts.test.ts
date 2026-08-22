@@ -32,6 +32,21 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..', '..', '..');
 const SKILLS = join(REPO, 'skills');
+/**
+ * The Claude Code plugin lives in its OWN root, `plugin/`, and not at the repo root.
+ *
+ * Plugin components are namespaced by plugin name, so every skill the plugin ships shows up as
+ * `/reticle:<skill>`. With the plugin rooted at the repo root it auto-discovered all twelve skills
+ * under `skills/`, and typing `/reticle` answered with a twelve-item menu instead of doing anything
+ * — the opposite of the one-command install the docs promise. `skills/` is the skills-CLI channel
+ * and nothing else; the plugin ships exactly one skill, its root `SKILL.md`.
+ */
+const PLUGIN_ROOT = join(REPO, 'plugin');
+/** Where each manifest actually lives now that the two roots differ. */
+const MANIFEST: Record<string, string> = {
+  'plugin.json': join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'),
+  'marketplace.json': join(REPO, '.claude-plugin', 'marketplace.json'),
+};
 
 /** `name:` and `description:` out of a SKILL.md's YAML frontmatter, or null when there is none. */
 function frontmatter(
@@ -179,7 +194,7 @@ describe('every reference a skill links to actually ships with it', () => {
 describe('the Claude Code plugin manifests are ones the loader can resolve', () => {
   const DIR = join(REPO, '.claude-plugin');
   const readJson = (file: string): Record<string, unknown> => {
-    const parsed: unknown = JSON.parse(readFileSync(join(DIR, file), 'utf8'));
+    const parsed: unknown = JSON.parse(readFileSync(MANIFEST[file] ?? join(DIR, file), 'utf8'));
     if ('object' !== typeof parsed || null === parsed) throw new Error(`${file} is not an object`);
     return parsed as Record<string, unknown>;
   };
@@ -220,10 +235,50 @@ describe('the Claude Code plugin manifests are ones the loader can resolve', () 
    * no skills, agents or hooks and installs perfectly.
    */
   it('keeps component directories out of .claude-plugin/', () => {
-    const stray = readdirSync(DIR).filter((e) => statSync(join(DIR, e)).isDirectory());
-    expect(stray, `.claude-plugin/ must hold manifests only, found: ${stray.join(', ')}`).toEqual(
-      [],
-    );
+    for (const dir of [DIR, join(PLUGIN_ROOT, '.claude-plugin')]) {
+      const stray = readdirSync(dir).filter((e) => statSync(join(dir, e)).isDirectory());
+      expect(stray, `${dir} must hold manifests only, found: ${stray.join(', ')}`).toEqual([]);
+    }
+  });
+
+  /**
+   * The whole reason `plugin/` exists as a separate root, pinned so a well-meaning tidy-up cannot
+   * merge it back. A plugin with a `skills/` directory ships one `/reticle:<name>` entry per skill;
+   * a plugin whose root holds a single `SKILL.md` and no `skills/` ships one command, `/reticle`.
+   * The twelve skills under the repo's own `skills/` are the skills-CLI channel and must stay out of
+   * the plugin's reach — they are not wrong, they are simply not what `/reticle` means.
+   */
+  it('ships exactly one skill, so /reticle is a command and not a menu', () => {
+    expect(
+      existsSync(join(PLUGIN_ROOT, 'SKILL.md')),
+      'the plugin root has no SKILL.md — with no skills/ either, the plugin ships no skill at all',
+    ).toBe(true);
+    expect(
+      existsSync(join(PLUGIN_ROOT, 'skills')),
+      'plugin/skills/ exists — every entry in it becomes a separate /reticle:<name>, which is the ' +
+        'menu this layout was split apart to remove. Publish extra skills under the repo-root ' +
+        'skills/ for the skills CLI instead.',
+    ).toBe(false);
+    const meta = frontmatter(join(PLUGIN_ROOT, 'SKILL.md'));
+    expect(
+      meta?.name,
+      'the plugin skill must be named for the plugin to be invokable as /reticle',
+    ).toBe('reticle');
+    expect(meta?.description, 'the plugin skill declares no description').toBeTruthy();
+  });
+
+  /**
+   * A marketplace source that no longer matches where `plugin.json` sits resolves to a plugin with
+   * no manifest, which installs as an empty shell rather than failing.
+   */
+  it('points the marketplace entry at the directory that holds plugin.json', () => {
+    const entries = readJson('marketplace.json')['plugins'];
+    const first = Array.isArray(entries) ? (entries[0] as Record<string, unknown>) : {};
+    const source = 'string' === typeof first['source'] ? first['source'] : '';
+    expect(
+      existsSync(join(REPO, source, '.claude-plugin', 'plugin.json')),
+      `marketplace source "${source}" has no .claude-plugin/plugin.json under it`,
+    ).toBe(true);
   });
 });
 
@@ -236,7 +291,7 @@ describe('the Claude Code plugin ships the version everything else ships', () =>
 
   for (const file of ['plugin.json', 'marketplace.json']) {
     it(`${file} is on the release version`, () => {
-      const text = readFileSync(join(REPO, '.claude-plugin', file), 'utf8');
+      const text = readFileSync(MANIFEST[file] ?? '', 'utf8');
       const versions = [...text.matchAll(/"version":\s*"([^"]+)"/g)].map((m) => m[1]);
       expect(versions.length, `${file} declares no version`).toBeGreaterThan(0);
       for (const version of versions) expect(version, `${file} is stale`).toBe(release);

@@ -598,7 +598,7 @@ function devServerRestart(framework: Framework): string {
  * So the reload is named FIRST, before the sentence that depends on it. Omitted entirely when this
  * run did not register MCP (`--no-mcp`), where it would be advice about something we did not do.
  */
-function restartHint(framework: Framework, mcpRegistered: boolean): string {
+export function restartHint(framework: Framework, mcpStatus: StepStatus | undefined): string {
   const dev = `${devServerRestart(framework)}.`;
   // NAME THE COMMAND THAT PROVES IT, not one that merely asks.
   //
@@ -613,7 +613,28 @@ function restartHint(framework: Framework, mcpRegistered: boolean): string {
   const prove =
     'Then run `npx @reticlehq/server status` — it confirms the app connected, or says exactly why ' +
     'it has not.';
-  if (!mcpRegistered) return `${dev} ${prove}`;
+  // Nothing registered this run (`--no-mcp`, or a client that needs a manual edit): a restart picks
+  // up nothing, so advice about one would be advice about something we did not do.
+  if (!wasMcpRegistered(mcpStatus)) return `${dev} ${prove}`;
+  // ALREADY: the tools are reachable RIGHT NOW, and this is the branch that used to lie.
+  //
+  // `wasMcpRegistered` is true for both APPLY and ALREADY, which is correct for the funnel field it
+  // was written for and wrong here, because the two cases have opposite answers to "must anybody
+  // restart". Every second project on a machine, and every Claude Code plugin install, took the
+  // APPLY text: "restart your agent — the tools only appear after that". An agent reads this AFTER
+  // whatever its skill file said, and it describes the output in front of it, so it wins. The agent
+  // stops with the project wired and nothing driven, which is the exact failure the install path
+  // exists to prevent, caused by the install path itself.
+  if (mcpStatus === StepStatus.ALREADY) {
+    return (
+      `${dev}\n` +
+      'The Reticle MCP server was already registered on this machine, so there is no restart to do ' +
+      'and the tools are available now.\n' +
+      `${prove}\n` +
+      'Once it shows a session, drive a flow — that is the install finished. Carry straight on; ' +
+      'nothing here is waiting on a human.'
+    );
+  }
   return (
     `${dev}\n` +
     'Then restart your agent so it picks up the new MCP server — restart Claude Code, reload the ' +
@@ -697,12 +718,7 @@ function report(
     );
     io.print('');
   }
-  io.print(
-    restartHint(
-      plan.framework,
-      wasMcpRegistered(resolvedStatus(plan, MCP_TARGET, failed, skipped)),
-    ),
-  );
+  io.print(restartHint(plan.framework, resolvedStatus(plan, MCP_TARGET, failed, skipped)));
   return { ok: !connectPending, applied, manual };
 }
 

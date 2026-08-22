@@ -54,13 +54,17 @@ Install it now, by whichever of these fits you:
 
   - Claude Code: /plugin marketplace add reticlehq/reticle
                  /plugin install reticle@reticlehq
-    One step. Registers the MCP server and the Reticle skill together.
+    Registers the MCP server and the /reticle skill together. Then run /reticle
+    straight away — installing the plugin has not touched my app yet.
   - Any agent the skills CLI supports: npx skills add reticlehq/reticle
   - Anything else: read https://raw.githubusercontent.com/reticlehq/reticle/main/SKILL.md
     and follow its SETUP steps exactly.
 
-Do not stop until you have driven one real flow in my app and produced a verdict —
-that, not a config file, is what "installed" means.
+Then keep going, in the same turn, without asking me anything: instrument the app,
+start the dev server if nothing is serving it, open it yourself, and drive one real
+flow. Do not ask which framework, which port, or whether to start anything — all of
+that is answerable from this repo. Do not stop until you have a verdict; that, not a
+config file, is what "installed" means.
 
 The docs are https://docs.reticle.sh and they are built for you to read, two ways:
 
