@@ -108,6 +108,47 @@ export class JournalRecorder {
     this.#chain = this.#chain.then(() => this.#sink.appendAction(action)).catch(() => undefined);
   }
 
+  /**
+   * Append one action record for a tool that PROVED something without driving the page.
+   *
+   * `reticle_assert` produces a verdict and moves nothing, so it must never open an attribution
+   * window: while one is open every observed event is stamped with that action's id, and stamping
+   * ambient traffic with an assertion's id would manufacture a causal link that does not exist —
+   * exactly what `EventAttribution.WINDOW` is carefully labelled to avoid claiming. So this writes
+   * the record and leaves `#active` precisely as it found it: an act window open across an assert
+   * keeps attributing to itself, which is the truth of what caused those events.
+   *
+   * `settled` is left unset for the same reason — nothing was dispatched, so there is no settle
+   * outcome to report, and the run fold skips actions that state none rather than inventing one.
+   *
+   * Ordering rides the same chain as `finishAction`: buffered events flush first, so a record is
+   * always persisted after the events that preceded it. Records land in the order verdicts were
+   * REACHED, so an assert taken mid-window is written before the act it interrupted.
+   */
+  recordAction(
+    actionId: string,
+    tool: string,
+    args: Record<string, unknown>,
+    effect?: unknown,
+  ): void {
+    const at = this.#now();
+    const action: JournalAction = {
+      v: JOURNAL_FILE_VERSION,
+      actionId,
+      tool,
+      args,
+      effect,
+      // No window was opened, so no event carries this id: `seqRange` is omitted rather than
+      // invented, because any range here would claim an attribution that never happened. `tRange` is
+      // required by the schema and the honest value is the instant the verdict was recorded — a span
+      // of zero, which is exactly how much time this action attributed events over.
+      tRange: { from: at, to: at },
+      at,
+    };
+    this.#enqueueFlush();
+    this.#chain = this.#chain.then(() => this.#sink.appendAction(action)).catch(() => undefined);
+  }
+
   /** Persist any buffered events now (call on session end). Awaits the write chain to settle. */
   async flush(): Promise<void> {
     this.#enqueueFlush();

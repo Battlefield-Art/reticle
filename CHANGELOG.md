@@ -6,6 +6,14 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Added
 
+- **`@reticlehq/server` — a `reticle_assert` verdict is now written to the journal, so a later turn can read what it proved.** `reticle_context` answers "what has this run already established" by folding the action ledger, and `reticle_assert` was not in it: it produced a verdict and journalled nothing, because it never opened an action at all. An agent that proved something with the tool most used for pure assertion, and then compacted, was told nothing had been proven — which leaves it to re-prove the claim, or to assume it. Assuming it is a false green, and preventing that is the whole reason the run context exists.
+
+  **Recorded without opening an attribution window.** While a window is open, every observed event is stamped with that action's id. An assertion drives nothing, so the events arriving during it are ambient, and stamping them would manufacture a causal link that never existed — the one claim `attribution: "window"` is carefully worded not to make. So the record is appended directly: an `act_and_wait` window open across an assert keeps attributing to itself, unchanged.
+
+  **No range is invented for a window that never existed.** The record carries no `seqRange`, because no event was attributed to it, and no settle outcome, because nothing was dispatched. Omitting both is the truthful answer, and the run fold already skips an action that states none rather than writing an empty one down as a fact.
+
+  The verdict itself is the same three fields `act_and_wait` writes — the claim, how it came out, and the `file:line` when one was known — so the journal holds one verdict shape rather than two, and everything that reads it needed no change.
+
 - **`@reticlehq/core` + `@reticlehq/server` — a verdict drawn over a change nothing declared now says so.** Declaring intent has been entirely opt-in and entirely invisible: `reticle_intent` exists, flows can carry a business intent, and nothing ever noticed that a code change landed and nobody said what it was for. A change with no declared intent can only be checked against itself, so a green means "nothing visibly broke" and gets read as "the change worked" — which is the definition of a false green, and the one absence no amount of instrumentation can close.
 
   Reticle already knows the moment. The edit epoch advances when the page applies a hot update, and the intent ledger already models what is still outstanding. So when a verdict is the first one taken since code changed, and the ledger holds nothing undischarged, `act_and_wait` and `reticle_assert` report an `undeclared-change` instrumentation gap — in the same block, on the same rule, with the same shape as every other gap: what is missing, what it cost this verdict, and the one call that closes it. `reticle_verify { action: "coverage" }` picks it up unchanged, because it reads the gap ledger.

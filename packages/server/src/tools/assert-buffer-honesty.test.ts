@@ -20,6 +20,7 @@ import type { Session, SessionManager } from '../session/session.js';
 function depsWithBuffer(dropped: number, lastActSource?: string): ToolDeps {
   const session: Partial<Session> = {
     id: 'demo',
+    recordAction: () => 'a1',
     lastAct: ((): LastAct => {
       const a = new LastAct();
       a.markSource(lastActSource);

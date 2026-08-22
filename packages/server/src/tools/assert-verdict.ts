@@ -3,7 +3,7 @@ import { gapsForAction } from '../honesty/instrumentation-gaps.js';
 import { noteSessionGaps } from '../honesty/gap-ledger.js';
 import { declaresState } from '../events/predicate-asks.js';
 import { isStateUnwatched } from '../honesty/blind-spots.js';
-import type { InstrumentationGap } from '@reticlehq/core';
+import type { InstrumentationGap, JournalVerdictEffect } from '@reticlehq/core';
 import type { Predicate } from '../events/predicate.js';
 import type { Session } from '../session/session.js';
 import { findContradictions, type Contradiction } from '../events/contradictions.js';
@@ -80,6 +80,12 @@ export async function assertVerdict(
   contradictions: Contradiction[];
   coverage: Record<string, unknown>;
   gaps: InstrumentationGap[];
+  /**
+   * The bounded verdict, in the SAME shape `act_and_wait` writes into its journal action — so the
+   * journal holds one verdict shape rather than two and the run fold that reads it needs no second
+   * case. Built here because this is the one place that holds the typed decision and the predicate.
+   */
+  verdictEffect: JournalVerdictEffect;
 }> {
   // Scope caveat, stated because it is a real limitation and not a bug: blind spots are tracked per
   // SESSION, not per assertion window, so a cross-origin iframe seen once marks every later verdict
@@ -180,10 +186,18 @@ export async function assertVerdict(
     routeSignalFired: false,
   });
   noteSessionGaps(session, gaps, session.currentEditEpoch);
+  // The source the act path would have written: an assertion drives nothing, so the file:line it can
+  // point at is the one the last act remembered — the same pointer this tool already reports on red.
+  const source = session.lastAct.source();
   return {
     decision: decision as unknown as Record<string, unknown>,
     contradictions,
     coverage,
     gaps,
+    verdictEffect: {
+      claim: describeWaitTarget(predicate),
+      verified: decision.verified,
+      ...(source === undefined ? {} : { source }),
+    },
   };
 }

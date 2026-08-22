@@ -22,6 +22,7 @@ import type { ReticleEvent } from '@reticlehq/core';
 function depsWith(events: ReticleEvent[]): ToolDeps {
   const session: Partial<Session> = {
     id: 'demo',
+    recordAction: () => 'a1',
     lastAct: new LastAct(),
     bufferHealth: () => ({ total: 12, dropped: 0 }),
     blindSpots: () => ({}),

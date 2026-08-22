@@ -47,6 +47,7 @@ function fakeSession(opts: { state?: SessionState; inbox?: string[] }): FakeSess
     id: 'demo',
     url: SESSION_URL,
     elapsed: () => 0,
+    recordAction: () => 'a1',
     lastAct: new LastAct(),
     beginAction: () => 'a1',
     finishAction: () => undefined,

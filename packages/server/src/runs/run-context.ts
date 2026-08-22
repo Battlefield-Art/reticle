@@ -131,10 +131,9 @@ export function establishedFromJournal(
 /**
  * What a verdict already settled, newest last.
  *
- * ponytail: `reticle_act_and_wait` is the only writer today, because it is the only verdict tool
- * that opens a journal action at all. `reticle_assert` proves things and journals nothing, so its
- * verdicts are absent here; giving it a record needs a journal append that does NOT open an
- * attribution window, which is a change to the recorder rather than to this fold.
+ * Both verdict tools write here. `reticle_act_and_wait` closes its attribution window with one;
+ * `reticle_assert` drives nothing, so it appends its record WITHOUT opening a window — same effect
+ * shape, so this fold reads one kind of verdict rather than two.
  */
 export function provenFromJournal(
   actions: readonly JournalAction[],

@@ -109,3 +109,67 @@ describe('JournalRecorder', () => {
     expect(sink.actions[0]?.seqRange).toBeUndefined();
   });
 });
+
+/**
+ * A verdict tool that drives nothing still has to leave a record, or a later turn is told nothing was
+ * proven and re-proves it — or, worse, assumes it. The constraint is that recording must not open an
+ * attribution window: an assertion causes no events, so stamping the ones that arrive during it would
+ * invent a causal link that never existed.
+ */
+describe('JournalRecorder.recordAction (a verdict with no window)', () => {
+  it('writes the action record with its effect', async () => {
+    const sink = fakeSink();
+    const rec = new JournalRecorder(sink, { now: () => 7, flushAt: 100 });
+    rec.recordAction('a4', 'reticle_assert', { predicate: {} }, { claim: 'the row is gone' });
+    await rec.flush();
+    const action = sink.actions[0];
+    expect(action?.actionId).toBe('a4');
+    expect(action?.tool).toBe('reticle_assert');
+    expect(action?.effect).toEqual({ claim: 'the row is gone' });
+    expect(action?.at).toBe(7);
+  });
+
+  it('omits seqRange and records an empty tRange — no window, so nothing was attributed', async () => {
+    const sink = fakeSink();
+    const rec = new JournalRecorder(sink, { now: () => 7, flushAt: 100 });
+    rec.recordAction('a4', 'reticle_assert', {}, {});
+    await rec.flush();
+    expect(sink.actions[0]?.seqRange).toBeUndefined();
+    expect(sink.actions[0]?.tRange).toEqual({ from: 7, to: 7 });
+    expect(sink.actions[0]?.settled).toBeUndefined();
+  });
+
+  it('does NOT open a window — a later event stays unattributed', () => {
+    const sink = fakeSink();
+    const rec = new JournalRecorder(sink, { now: () => 0, flushAt: 100 });
+    rec.recordAction('a4', 'reticle_assert', {}, {});
+    const after = rec.observe(evt(9));
+    expect(after.actionId).toBeUndefined();
+    expect(after.attribution).toBeUndefined();
+  });
+
+  it('leaves an in-flight action window untouched', async () => {
+    const sink = fakeSink();
+    const rec = new JournalRecorder(sink, { now: stepClock([10, 20, 42]), flushAt: 100 });
+    rec.beginAction('c1', 'reticle_act_and_wait', {});
+    const before = rec.observe(evt(3));
+    rec.recordAction('a2', 'reticle_assert', {}, {});
+    const after = rec.observe(evt(5));
+    rec.finishAction({ claim: 'the toast is visible' }, true);
+    await rec.flush();
+    expect(before.actionId).toBe('c1');
+    expect(after.actionId).toBe('c1');
+    expect(after.attribution).toBe(EventAttribution.WINDOW);
+    const window = sink.actions.find((a) => 'c1' === a.actionId);
+    expect(window?.seqRange).toEqual({ from: 3, to: 5 });
+  });
+
+  it('flushes buffered events before the record, so ordering holds', async () => {
+    const sink = fakeSink();
+    const rec = new JournalRecorder(sink, { now: () => 0, flushAt: 100 });
+    rec.observe(evt(0));
+    rec.recordAction('a1', 'reticle_assert', {}, {});
+    await rec.flush();
+    expect(sink.log).toEqual(['events:1', 'action:a1']);
+  });
+});

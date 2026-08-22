@@ -448,13 +448,27 @@ export class Session {
    * action id. Ids are minted independently of command correlation ids so the journal is self-contained.
    */
   beginAction(tool: string, args: Record<string, unknown>): string {
-    this.#actionSeq += 1;
-    const actionId = `${ACTION_ID_PREFIX}${String(this.#actionSeq)}`;
+    const actionId = this.#mintActionId();
     // Held here, not only in the journal: with the journal off every event was unattributed, and
     // pushEvent reads that as ambient churn the settle oracle then ignores. See action-attribution test.
     this.#activeActionId = actionId;
     this.#journal?.beginAction(actionId, tool, args);
     return actionId;
+  }
+
+  /**
+   * Record one action WITHOUT opening an attribution window — for a tool that returns a verdict but
+   * drives nothing, so no event it observes was caused by it. See `JournalRecorder.recordAction`.
+   */
+  recordAction(tool: string, args: Record<string, unknown>, effect?: unknown): string {
+    const actionId = this.#mintActionId();
+    this.#journal?.recordAction(actionId, tool, args, effect);
+    return actionId;
+  }
+
+  #mintActionId(): string {
+    this.#actionSeq += 1;
+    return `${ACTION_ID_PREFIX}${String(this.#actionSeq)}`;
   }
 
   /** Close the active action window, persisting its action record with the settle outcome. */

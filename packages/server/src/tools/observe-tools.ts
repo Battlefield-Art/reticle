@@ -46,7 +46,7 @@ import { isChangeUndeclared } from '../honesty/undeclared-change.js';
 import { openSessionIntents } from '../intent/open-intents.js';
 import { bodiesNotCaptured } from '../honesty/uncaptured-bodies.js';
 import { withControl } from '../session/control-envelope.js';
-import { asString, asNumber } from './tools-helpers.js';
+import { asString, asNumber, asRecord } from './tools-helpers.js';
 import { type ToolDef, sessionIdShape, commandOrThrow } from './tool-kit.js';
 
 /**
@@ -449,7 +449,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         { current: session.currentEditEpoch, atLastVerdict: session.gaps?.lastVerdictEditEpoch },
         () => openSessionIntents(deps, asString(args['sessionId'])),
       );
-      const { decision, contradictions, coverage, gaps } = await assertVerdict(
+      const { decision, contradictions, coverage, gaps, verdictEffect } = await assertVerdict(
         session,
         predicate,
         verdict.pass,
@@ -458,6 +458,11 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         verdict.observationLost,
         changeUndeclared,
       );
+      // Journal the verdict so a LATER turn can read what this one proved. A verdict that lives only
+      // in the response lives only in the agent's context window, which is the copy a compaction
+      // destroys — see runs/run-context.ts. Recorded WITHOUT an attribution window: this tool drives
+      // nothing, so no event it observed was caused by it.
+      session.recordAction(ReticleTool.ASSERT, asRecord(args), verdictEffect);
       return withControl(session, {
         ...decision,
         ...verdict,

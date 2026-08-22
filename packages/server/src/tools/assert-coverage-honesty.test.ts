@@ -28,6 +28,7 @@ function depsWithBlindSpots(blindSpots: Record<string, number>): ToolDeps {
   const session: Partial<Session> = {
     id: 'demo',
     bufferHealth: () => ({ total: 5, dropped: 0 }),
+    recordAction: () => 'a1',
     lastAct: new LastAct(),
     command: () =>
       Promise.resolve({
@@ -166,6 +167,7 @@ describe('reticle_assert carries the verdict, not just pass', () => {
     const session: Partial<Session> = {
       id: 'demo',
       bufferHealth: () => ({ total: 5, dropped: 0 }),
+      recordAction: () => 'a1',
       lastAct: new LastAct(),
       blindSpots: () => ({}),
       eventsSince: () => events,
