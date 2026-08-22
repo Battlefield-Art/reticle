@@ -4,6 +4,14 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@reticlehq/server` — a cloud call that stalls no longer hangs the tool call waiting on it.** Node's `fetch` has no default timeout: a connection that opens and then goes quiet never settles, and every cloud request in the server was awaited without one. The worst of them sat inside `reticle_flow_verify` on the `verify: 'server'` path, where a stalled hosted runner meant an MCP call that simply never returned — the failure mode this product treats as its worst, because an agent waiting on a tool has no way to notice, retry, or report. The same absence made every `reticle cloud …` subcommand able to sit at a blank terminal indefinitely.
+
+  Every cloud request now goes through one client with a bounded budget. It is one budget, not eight, because they are all small JSON exchanges against the same API — with the single exception of the hosted verification submit, which legitimately blocks while a real browser runs the suite and so carries its own longer, still-finite budget rather than dragging the common one up to fit.
+
+  **A timeout reads as a timeout.** A bare `AbortError` reaching a user or an agent is a riddle, so the abort is turned into a sentence that names the request, says the server accepted the connection and never answered, and points at the environment variable to check — ending with the fact that matters most to somebody blocked: verification works locally without cloud. Where the cloud was already best-effort, a timeout still degrades to local instead of failing the work.
+
 ### Removed
 
 - **`@reticlehq/browser` — two devDependencies nobody imported, one of them a native binary.** `sharp` had zero references anywhere in the package, and it is not in the root `onlyBuiltDependencies`, so its native build was skipped and the only thing it ever did was download a set of platform binaries on every clone and every CI job. `@types/jsdom` was the same kind of nothing: jsdom is consumed as the vitest _environment_, which needs no type package at all — `@reticlehq/react` has run the identical environment without it the whole time.

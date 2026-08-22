@@ -23,7 +23,7 @@ import { reportAndAccumulate } from '../journal/deviation-service.js';
 import { EnvelopeStore } from '../journal/envelope-store.js';
 import type { DeviationReport } from '../journal/deviation-report.js';
 import { homedir } from 'node:os';
-import { syncRunRecordToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
+import { cloudFetch, syncRunRecordToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
 import { resolveProjectCloud } from '../cloud/cloud-config.js';
 import { log } from '../log.js';
 import type { ToolDeps } from '../tools/tools.js';
@@ -94,7 +94,7 @@ async function recordReplayRun(
     { kind: RunKind.FLOW_REPLAY, name, status: runStatus, at: deps.now(), durationMs },
     projectId,
     cloud.config,
-    (url, init) => fetch(url, init),
+    cloudFetch,
   );
   if (result.outcome !== SyncOutcome.SYNCED) {
     log('cloud-run-record-sync-failed', { flow: name, status: result.status, error: result.error });

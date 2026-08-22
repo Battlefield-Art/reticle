@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { createNodeFileSystem } from '../project/fs-port.js';
 import { RunStore } from '../runs/run-store.js';
 import { resolveProjectCloud } from '../cloud/cloud-config.js';
-import { syncRunToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
+import { cloudFetch, syncRunToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
 
 const DEFAULT_URL = 'http://localhost:8890';
 const RETICLE_DIR = '.reticle';
@@ -110,7 +110,7 @@ const api = async (
     headers,
   };
   if (body !== undefined) init.body = JSON.stringify(body);
-  const res = await fetch(url, init);
+  const res = await cloudFetch(url, init);
   const text = await res.text();
   let json: unknown = null;
   if (text.length > 0) {
@@ -495,7 +495,7 @@ const cmdPush = async (): Promise<number> => {
   for (const id of ids) {
     const read = await store.read(id);
     if (!read.ok) continue;
-    const res = await syncRunToCloud(read.run, cloud.config, (u, init) => fetch(u, init));
+    const res = await syncRunToCloud(read.run, cloud.config, cloudFetch);
     if (res.outcome === SyncOutcome.SYNCED) pushed += 1;
     else if (res.outcome === SyncOutcome.FAILED) failed += 1;
   }

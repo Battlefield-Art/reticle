@@ -3,7 +3,11 @@ import { ProjectReadError, RunKind, RunStatus, type RunRecord } from '@reticlehq
 import { ReticleTool } from '../tools/tool-names.js';
 import { sessionIdShape } from '../tools/tool-kit.js';
 import { asNumber, asString } from '../tools/tools-helpers.js';
-import { fetchProjectRegressionFromCloud, resolveCloudConfig } from '../cloud/cloud-sync.js';
+import {
+  cloudFetch,
+  fetchProjectRegressionFromCloud,
+  resolveCloudConfig,
+} from '../cloud/cloud-sync.js';
 import type { ToolDef, ToolDeps } from '../tools/tools.js';
 import { RunStore } from '../runs/run-store.js';
 import {
@@ -63,9 +67,7 @@ async function cloudRegression(deps: ToolDeps, sessionId: string | undefined): P
   } catch {
     projectId = undefined;
   }
-  const report = await fetchProjectRegressionFromCloud(config, projectId, (url, init) =>
-    fetch(url, init),
-  );
+  const report = await fetchProjectRegressionFromCloud(config, projectId, cloudFetch);
   return report ?? undefined;
 }
 

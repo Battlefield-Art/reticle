@@ -12,7 +12,7 @@ import { recordSuiteFlakes } from './suite-flakes.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import { asNumber, asString } from '../tools/tools-helpers.js';
 import { log } from '../log.js';
-import { syncFlowToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
+import { cloudFetch, syncFlowToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
 import { mapWithConcurrency, resolveConcurrency } from './parallel-suite.js';
 import { acquireLeasedSession } from '../tools/lease-tools.js';
 import { homedir } from 'node:os';
@@ -48,9 +48,7 @@ async function syncSavedFlowToCloud(
   // Per-project cloud: sync a saved flow only when cloud is attached AND flow sync is enabled.
   const cloud = await resolveProjectCloud(deps.fs, deps.reticleRoot, homedir(), process.env);
   if (null === cloud.config || !cloud.policy.flows) return; // not attached / flows disabled → local only
-  const result = await syncFlowToCloud(flow, cloud.config, projectId, (url, init) =>
-    fetch(url, init),
-  );
+  const result = await syncFlowToCloud(flow, cloud.config, projectId, cloudFetch);
   if (result.outcome !== SyncOutcome.SYNCED) {
     log('cloud-flow-sync-failed', { flow: flow.name, status: result.status, error: result.error });
   }

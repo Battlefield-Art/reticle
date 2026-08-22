@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AnchorKind,
   FLOW_FILE_VERSION,
@@ -16,6 +16,7 @@ import {
 } from '@reticlehq/core';
 import {
   CloudEnv,
+  cloudFetch,
   fetchProjectRegressionFromCloud,
   resolveCloudConfig,
   SyncOutcome,
@@ -218,5 +219,60 @@ describe('fetchProjectRegressionFromCloud', () => {
     expect(
       await fetchProjectRegressionFromCloud({ url: 'https://c', apiKey: 'k' }, undefined, throwing),
     ).toBeNull();
+  });
+});
+
+/** A fetch that never settles on its own — it resolves only when its abort signal fires. */
+const stalledFetch = (_url: string, init: { signal?: AbortSignal }): Promise<Response> =>
+  new Promise((_resolve, reject) => {
+    const signal = init.signal;
+    if (signal === undefined) return;
+    signal.addEventListener('abort', () => {
+      reject(signal.reason instanceof Error ? signal.reason : new Error(String(signal.reason)));
+    });
+  });
+
+describe('cloudFetch', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('gives every cloud request an abort signal, so a stalled connection cannot hang forever', async () => {
+    const seen: { signal: AbortSignal | undefined } = { signal: undefined };
+    vi.stubGlobal('fetch', (_url: string, init: { signal?: AbortSignal }) => {
+      seen.signal = init.signal;
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    });
+    await cloudFetch('https://cloud.example/v1/flows', { method: 'GET', headers: {} });
+    expect(seen.signal).toBeInstanceOf(AbortSignal);
+    expect(seen.signal?.aborted).toBe(false);
+  });
+
+  it('rejects a stalled request instead of hanging on it', async () => {
+    vi.stubGlobal('fetch', stalledFetch);
+    await expect(
+      cloudFetch('https://cloud.example/v1/verifications', { method: 'GET', headers: {} }, 1),
+    ).rejects.toThrow();
+  });
+
+  it('reports a timeout as an actionable message rather than a bare AbortError', async () => {
+    vi.stubGlobal('fetch', stalledFetch);
+    const error: unknown = await cloudFetch(
+      'https://cloud.example/v1/runs',
+      { method: 'POST', headers: {}, body: '{}' },
+      1,
+    ).catch((e: unknown) => e);
+    const message = error instanceof Error ? error.message : String(error);
+    expect(message).toMatch(/timed out/);
+    expect(message).toContain('https://cloud.example/v1/runs');
+    expect(message).toContain(CloudEnv.URL);
+    expect(message).not.toMatch(/AbortError/);
+  });
+
+  it('leaves a failure that is not a timeout unchanged', async () => {
+    vi.stubGlobal('fetch', () => Promise.reject(new Error('getaddrinfo ENOTFOUND cloud.example')));
+    await expect(
+      cloudFetch('https://cloud.example/v1/runs', { method: 'GET', headers: {} }),
+    ).rejects.toThrow('getaddrinfo ENOTFOUND cloud.example');
   });
 });

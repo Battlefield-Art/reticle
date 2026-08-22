@@ -21,7 +21,7 @@ import { buildVerificationRun, type VerificationRunInput } from './build-verific
 import { mapReplayToFlowResult } from './replay-mapping.js';
 import { defaultRunId } from './runner-port.js';
 import { RunStore } from './run-store.js';
-import { syncRunToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
+import { cloudFetch, syncRunToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
 import { resolveProjectCloud } from '../cloud/cloud-config.js';
 import { log } from '../log.js';
 import type { ToolDeps } from '../tools/tools.js';
@@ -79,7 +79,7 @@ export async function persistAndSyncVerificationRun(
   // Per-project cloud: only push when THIS project has cloud attached AND its policy allows runs.
   const cloud = await resolveProjectCloud(deps.fs, deps.reticleRoot, homedir(), process.env);
   if (null === cloud.config || !cloud.policy.runs) return run.runId; // not attached / runs disabled → local only
-  const result = await syncRunToCloud(run, cloud.config, (url, init) => fetch(url, init));
+  const result = await syncRunToCloud(run, cloud.config, cloudFetch);
   if (result.outcome !== SyncOutcome.SYNCED) {
     log('cloud-run-sync-failed', { runId: run.runId, status: result.status, error: result.error });
   }

@@ -8,7 +8,13 @@
 import type { SuiteVerdict, SuiteFlowResult } from '@reticlehq/core';
 import type { ToolDeps } from '../tools/tools.js';
 import { VerifyMode, type ProjectCloud } from '../cloud/cloud-config.js';
-import { submitServerVerification, type ServerVerification } from '../cloud/cloud-sync.js';
+import {
+  CLOUD_VERIFY_TIMEOUT_MS,
+  cloudFetch,
+  submitServerVerification,
+  type ServerVerification,
+} from '../cloud/cloud-sync.js';
+import { log } from '../log.js';
 
 const PASS = 'pass';
 const UNVERIFIED = 'unverified';
@@ -46,10 +52,22 @@ export async function runServerVerify(
   }
   // The server hits the URL itself; with no URL (or a localhost one it can't reach) fall back to local.
   if (previewUrl === undefined || 0 === previewUrl.length) return null;
+  // The submit blocks while the hosted runner drives a real browser, so it gets the long budget — but a
+  // budget it must have: this is awaited inside the verify tool, and an unbounded wait here is an MCP
+  // call that never returns. A timeout is reported and then falls back to the local replay below.
   const report = await submitServerVerification(
     { previewUrl, flows, source: SOURCE },
     cloud.config,
-    (url, init) => fetch(url, init),
+    async (url, init) => {
+      try {
+        return await cloudFetch(url, init, CLOUD_VERIFY_TIMEOUT_MS);
+      } catch (error) {
+        log('cloud-server-verify-failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    },
   );
   if (null === report) return null;
   // The hosted runner said it couldn't actually verify (e.g. it's not enabled yet). Never surface that as

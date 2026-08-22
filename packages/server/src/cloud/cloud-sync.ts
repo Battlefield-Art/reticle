@@ -38,6 +38,46 @@ export function resolveCloudConfig(env: NodeJS.ProcessEnv): CloudConfig | null {
   return { url: url.replace(/\/+$/, ''), apiKey };
 }
 
+/**
+ * Budget for a cloud call. Node's `fetch` has NO default timeout, so a connection that opens and then
+ * stalls never settles — and the caller `await`s it forever. In `reticle_flow_verify` that is an MCP
+ * tool call that never returns, and in `reticle cloud …` a terminal that prints nothing.
+ *
+ * One shared budget covers every call here: they are all small JSON request/response pairs against the
+ * same API, so there is nothing to tune per site. The ONE exception is the hosted verification submit,
+ * which blocks while a real browser runs the suite server-side — a normal response there is minutes,
+ * not seconds, so it gets its own (still bounded) budget rather than dragging the common one up.
+ */
+export const CLOUD_FETCH_TIMEOUT_MS = 30_000;
+export const CLOUD_VERIFY_TIMEOUT_MS = 120_000;
+
+/** Names Node gives an abort: `AbortSignal.timeout` raises TimeoutError, an explicit abort AbortError. */
+const TIMEOUT_ERROR_NAMES: ReadonlySet<string> = new Set(['TimeoutError', 'AbortError']);
+
+/**
+ * The fetch every cloud call goes through. Adds the abort signal, and turns the abort into a message
+ * that says what happened and what to do — a bare `AbortError` reaching a user or an agent is a riddle,
+ * and the agent-facing half of this product is judged on whether its errors are actionable.
+ */
+export async function cloudFetch(
+  url: string,
+  init: { method: string; headers: Record<string, string>; body?: string },
+  timeoutMs: number = CLOUD_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    if (err instanceof Error && TIMEOUT_ERROR_NAMES.has(err.name)) {
+      throw new Error(
+        `Reticle Cloud request timed out after ${Math.round(timeoutMs / 1000)}s: ${init.method} ${url}. ` +
+          `The server accepted the connection but never answered. Check the network and ${CloudEnv.URL}, then retry — ` +
+          `verification works locally without cloud.`,
+      );
+    }
+    throw err;
+  }
+}
+
 export const SyncOutcome = {
   SYNCED: 'synced',
   SKIPPED: 'skipped',

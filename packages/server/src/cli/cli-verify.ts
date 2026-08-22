@@ -29,7 +29,12 @@ import { start, type RunningServer } from '../index.js';
 import { probePresence, PortPresence } from '../daemon/port-presence.js';
 import { probeDaemon } from '../mcp/mcp-proxy.js';
 import { fetchStatus } from './cli-launch.js';
-import { resolveCloudConfig, syncRunToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
+import {
+  cloudFetch,
+  resolveCloudConfig,
+  syncRunToCloud,
+  SyncOutcome,
+} from '../cloud/cloud-sync.js';
 import { ReticleRunner } from '../runs/reticle-runner.js';
 import { createRunnerPort } from '../runs/runner-port.js';
 import { RunStore } from '../runs/run-store.js';
@@ -133,7 +138,7 @@ export async function runVerify(args: VerifyArgs, ports: VerifyPorts): Promise<v
 async function pushRunToCloud(run: ReticleVerificationRun, ports: VerifyPorts): Promise<void> {
   const config = resolveCloudConfig(process.env);
   if (null === config) return;
-  const result = await syncRunToCloud(run, config, (url, init) => fetch(url, init));
+  const result = await syncRunToCloud(run, config, cloudFetch);
   if (result.outcome === SyncOutcome.SYNCED) {
     ports.out(`↑ run ${run.runId} recorded on the Reticle Cloud dashboard`);
   } else {
