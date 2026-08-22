@@ -22,7 +22,20 @@ import { buildServerInstructions } from './server-instructions.js';
 import { unadvertisedToolHelp } from '../tools/unadvertised-help.js';
 
 /** The JSON-RPC method the SDK registers its tool dispatcher under. */
-const CALL_TOOL_METHOD = 'tools/call';
+export const CALL_TOOL_METHOD = 'tools/call';
+
+/**
+ * What we say when an SDK internal these patches ride on is no longer there.
+ *
+ * LOG rather than THROW, deliberately. Both patches improve an ERROR MESSAGE; neither is load
+ * bearing for a single tool call, and a throw here runs at server construction, so a renamed
+ * internal in a minor SDK bump would take the whole MCP server down for every user rather than
+ * degrade one message. That trade is backwards. The place a shape change must fail is the gate —
+ * `sdk-private-shape.test.ts` asserts both shapes and reddens CI on the bump — and this line is the
+ * backstop for the one case the gate cannot see: a user whose installed SDK is not the one CI
+ * resolved. The old behaviour, a bare `return`, gave neither.
+ */
+const SDK_SHAPE_MISSING = 'sdk_internal_missing';
 import { log } from '../log.js';
 import { SERVER_VERSION } from '../version/server-version.js';
 import { setMcpClientNameHook } from '../telemetry/feedback-context.js';
@@ -354,7 +367,10 @@ export function installFriendlyArgErrors(
 ): void {
   const target = server as unknown as { validateToolInput?: InputValidator };
   const original = target.validateToolInput;
-  if (typeof original !== 'function') return;
+  if (typeof original !== 'function') {
+    log(SDK_SHAPE_MISSING, { internal: 'validateToolInput', lost: 'friendly argument errors' });
+    return;
+  }
   target.validateToolInput = async (tool, args, toolName) => {
     // An UNKNOWN key is the failure zod cannot catch, because object schemas are non-strict: the key
     // is silently dropped and the tool answers as if it had not been asked. Measured live —
@@ -438,7 +454,13 @@ function installUnadvertisedToolHelp(
   };
   const handlers = inner._requestHandlers;
   const original = handlers?.get(CALL_TOOL_METHOD);
-  if (handlers === undefined || original === undefined) return;
+  if (handlers === undefined || original === undefined) {
+    log(SDK_SHAPE_MISSING, {
+      internal: handlers === undefined ? '_requestHandlers' : CALL_TOOL_METHOD,
+      lost: 'unadvertised-tool help',
+    });
+    return;
+  }
   handlers.set(CALL_TOOL_METHOD, async (request: unknown, extra: unknown) => {
     const name = toolNameOf(request);
     const help = name === undefined ? undefined : unadvertisedToolHelp(name, advertised, known);
