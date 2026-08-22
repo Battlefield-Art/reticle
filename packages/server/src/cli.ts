@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { stateDirProblem } from './daemon/state-dir.js';
 import { statusNextAction } from './cli/status-next-action.js';
 import { hasConnectedBefore } from './session/connection-memory.js';
+import { attachStatusFields } from './mcp/attach-memory.js';
 import { reticleStateHome } from './daemon/daemon.js';
 import {
   handleWatch,
@@ -330,6 +331,10 @@ function handleStatus(port: number): void {
   // path does the first without the second — so this is the commonest reason `status` has nothing to
   // report, and it was not among the facts this command could state.
   const initialized = projectId !== undefined;
+  // The OTHER half of the install, and the half this command could not see. A host that registers
+  // Reticle and never lists its tools looks exactly like an abandoned install from here — same idle
+  // daemon, same zero sessions — and the user sees a tool that does nothing. See attach-memory.ts.
+  const client = attachStatusFields(reticleStateHome(), port);
   if (null === pid || !isAlive(pid)) {
     // `running: false` on its own has been reported about a port that was demonstrably occupied,
     // because the pid file is not the port. Ask the port before answering.
@@ -344,6 +349,7 @@ function handleStatus(port: number): void {
         // `running: false` and nothing else, which reads as "Reticle is broken" for what is usually
         // just a daemon that has not been asked to do anything yet.
         ...withNextAction({ running, sessionCount: 0, previouslyConnected, initialized }),
+        ...client,
       });
     });
     return;
@@ -362,6 +368,7 @@ function handleStatus(port: number): void {
         pid,
         ...nudge,
         ...withNextAction({ running: true, sessionCount: 0, previouslyConnected, initialized }),
+        ...client,
       });
       return;
     }
@@ -373,7 +380,7 @@ function handleStatus(port: number): void {
       summary.why === undefined
         ? withNextAction({ running: true, ...summary, previouslyConnected, initialized })
         : {};
-    log('reticle_status', { port, running: true, pid, ...summary, ...next, ...nudge });
+    log('reticle_status', { port, running: true, pid, ...summary, ...next, ...client, ...nudge });
   });
 }
 

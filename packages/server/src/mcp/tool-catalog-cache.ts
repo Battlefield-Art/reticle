@@ -33,6 +33,17 @@ function parse(line: string): JsonRpcLike | null {
   }
 }
 
+/**
+ * Is this client line a request for the tool list?
+ *
+ * Lives here because this module already owns the method name and the tolerant parse. The caller is
+ * the proxy's stdin reader, which records the arrival as the one observable fact behind `reticle
+ * status`'s "registered, never enumerated" state — see attach-memory.ts.
+ */
+export function isToolsListRequest(line: string): boolean {
+  return parse(line)?.method === LIST_METHOD;
+}
+
 export class ToolCatalogCache {
   #tools: unknown[] | undefined;
 

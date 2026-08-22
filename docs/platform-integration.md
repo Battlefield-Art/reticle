@@ -93,6 +93,23 @@ Live, clickable demo of each: `apps/vibe-builder-demo/` (set `BUG_MODE=…`). Pr
 
 ---
 
+## The minimal attach contract (for a harness or MCP host)
+
+Reticle is a stdio MCP server. A host that wires it correctly does four things, and each one is a step Reticle can see:
+
+1. **Spawn it.** `npx @reticlehq/server mcp`, over stdio, one process per host. That process is the proxy: it starts the local daemon on demand, reconnects on its own when the stream drops, and answers from cache while a daemon comes back.
+2. **Complete `initialize`.** Reticle answers the handshake itself when the daemon is slow, so a host that waits for a reply gets one either way.
+3. **Send `tools/list`, and send it again on `notifications/tools/list_changed`.** This is the step hosts skip. Registering a server is not the same as enumerating it: a host can register Reticle and never ask for the tool list until the client is restarted, and the model then has no Reticle tools at all while the install looks healthy from every other angle. Reticle declares `tools.listChanged` so a host that honours the notification recovers without a restart.
+4. **Call the tools.** `tools/call`, with the tool name and its arguments.
+
+`reticle status` reports how far a host has got. `mcpClient: "never-attached"` means no client has started the server on this port. `mcpClient: "never-enumerated"` means one started it and never asked for the tool list, which is the state a client restart fixes. `mcpClient: "enumerated"` means the client side is done, and anything still missing is the app rather than the host. The record is per port rather than per client, and it begins the first time a client starts a Reticle version that keeps it, so `status` says both of those out loud instead of naming a client it cannot see.
+
+### Hosts that cap the number of tools
+
+Some editors cap the total tool count across every MCP server, which is why Reticle advertises a small surface instead of everything it can do. Nothing is out of reach: `reticle_tools { names: [...] }` lists the tools and returns the full argument grammar for the ones you name, and `reticle_run { tool, args }` invokes any of them, advertised or not. A host that is short on tool slots pays for the advertised handful and still reaches the whole surface through that pair. See [`reticle_tools` and `reticle_run`](/tools-tools-and-run).
+
+---
+
 ## Exact steps per platform
 
 The shape is identical (in-app SDK in the template → verify in the sandbox → act on the verdict); the specifics differ by where each platform runs the preview.

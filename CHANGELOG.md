@@ -4,6 +4,16 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+### Added
+
+- **`@reticlehq/server` — a client that registers Reticle and never asks for the tools is now a state `status` can name.** Some MCP hosts register the server, start it, and then never send `tools/list` until the client is restarted. The agent has no Reticle tools, the user has a product that does nothing, and from our side that install is byte-identical to one somebody wired and abandoned: daemon idle, no sessions, nothing to report. Reported from the field, and the answer is always the same one nobody could have known to try.
+
+  `reticle status` now carries `mcpClient`, and it distinguishes three states rather than two: nothing has ever started the MCP server on this port, a client started it and never listed the tools, or the client side is healthy. The middle one comes with the sentence that fixes it — restart your MCP client — and the healthy one comes with nothing at all, because advice printed beside a working install reads as though something is wrong.
+
+  **Both bits are records of something that happened, not readings of a config file.** A registration entry proves somebody wrote a line of JSON; it does not prove any client ever read it, which is the whole question here. So the proxy records that it was started and that a `tools/list` arrived, durably per port, and the diagnosis says out loud what it cannot see: which client asked, and anything that happened before the record existed. An honest "here is what I can see, here is what to check" beats a confident wrong no.
+
+  The minimal attach contract a harness author has to meet is now written down in [`docs/platform-integration.md`](docs/platform-integration.md), including `reticle_tools` + `reticle_run` as the way a host with a tool-count cap still reaches the whole surface.
+
 ### Fixed
 
 - **`@reticlehq/server` — a cloud call that stalls no longer hangs the tool call waiting on it.** Node's `fetch` has no default timeout: a connection that opens and then goes quiet never settles, and every cloud request in the server was awaited without one. The worst of them sat inside `reticle_flow_verify` on the `verify: 'server'` path, where a stalled hosted runner meant an MCP call that simply never returned — the failure mode this product treats as its worst, because an agent waiting on a tool has no way to notice, retry, or report. The same absence made every `reticle cloud …` subcommand able to sit at a blank terminal indefinitely.

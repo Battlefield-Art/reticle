@@ -5,7 +5,8 @@ import {
   drainLines,
   MAX_STDIN_LINE_BYTES,
 } from './proxy-handshake.js';
-import { ToolCatalogCache } from './tool-catalog-cache.js';
+import { isToolsListRequest, ToolCatalogCache } from './tool-catalog-cache.js';
+import { rememberEnumerated, rememberProxyStarted } from './attach-memory.js';
 import { toolsChangedNotification } from './proxy-handshake.js';
 import {
   LOOPBACK_HOST,
@@ -405,6 +406,11 @@ export function startMcpProxy(
   ensureDaemon?: () => Promise<void>,
 ): Promise<never> {
   return new Promise<never>((_resolve, reject) => {
+    // A client just started us, which is the only honest evidence that Reticle is registered with
+    // one at all: a config entry proves somebody wrote JSON, not that a client ever read it. Paired
+    // with the `tools/list` record below, this is what lets `status` name the state in between
+    // "never registered" and "connected" — see attach-memory.ts.
+    rememberProxyStarted(reticleStateHome(), port);
     // Declared before the SSE handler that fills it: the handler is a closure created below but
     // invoked on the first daemon frame, and a `const` referenced before its declaration executes is
     // a runtime throw, not a type error.
@@ -820,6 +826,11 @@ export function startMcpProxy(
         if ('' === trimmed) continue;
         replay.observeOutbound(trimmed);
         pending.observeOutbound(trimmed);
+        // The ARRIVAL of the request, not the delivery of an answer: "this client asked for the tool
+        // list" is the fact `status` reports on, and a request that arrived and then failed is a
+        // different problem with its own diagnosis. Recording the answer instead would let a host
+        // that never asks look identical to one that asked and was refused.
+        if (isToolsListRequest(trimmed)) rememberEnumerated(reticleStateHome(), port);
         const action = onClientRequest(postUrl !== null, dormant);
         if (action === OnRequest.SEND && postUrl !== null) {
           forward(postUrl, trimmed);

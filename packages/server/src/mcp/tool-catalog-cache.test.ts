@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ToolCatalogCache } from './tool-catalog-cache.js';
+import { isToolsListRequest, ToolCatalogCache } from './tool-catalog-cache.js';
 
 const LIST_RESPONSE = JSON.stringify({
   jsonrpc: '2.0',
@@ -76,5 +76,13 @@ describe('the tool catalog the proxy has already seen', () => {
       cache.answer('{"jsonrpc":"2.0","id":1,"method":"tools/list"}') ?? '{}',
     );
     expect((parsed as { result?: { tools?: { name?: string }[] } }).result?.tools).toHaveLength(1);
+  });
+
+  it('recognises a tools/list request, so enumeration can be recorded when one arrives', () => {
+    // `reticle status` needs this fact: a client that starts Reticle and never lists its tools is a
+    // reportable state, and the request line is the only place enumeration is observable at all.
+    expect(isToolsListRequest('{"jsonrpc":"2.0","id":1,"method":"tools/list"}')).toBe(true);
+    expect(isToolsListRequest('{"jsonrpc":"2.0","id":1,"method":"tools/call"}')).toBe(false);
+    expect(isToolsListRequest('not json')).toBe(false);
   });
 });
