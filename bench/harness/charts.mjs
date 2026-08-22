@@ -5,7 +5,6 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 const OUT = 'bench/artifacts';
 mkdirSync(OUT, { recursive: true });
 const analysis = JSON.parse(readFileSync('bench/raw/analysis.json', 'utf8'));
-const rows = JSON.parse(readFileSync('bench/raw/observation-results.json', 'utf8'));
 
 const C = {
   bg: '#0d1117',

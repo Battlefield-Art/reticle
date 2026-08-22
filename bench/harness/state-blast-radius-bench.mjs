@@ -36,7 +36,7 @@ async function replayOnce(a) {
   const rep = await a.c.callTool('reticle_flow_replay', { flowName: FLOW });
   const obj = parse(rep.text);
   const successRow = Array.isArray(obj.steps)
-    ? obj.steps.find((s) => s && s.tool === 'success')
+    ? obj.steps.find((s) => s && 'success' === s.tool)
     : undefined;
   const drifted = Array.isArray(obj.steps) ? obj.steps.some((s) => s && s.drift) : false;
   return {
@@ -100,11 +100,11 @@ try {
   const regressed = await replayOnce(a);
 
   const detected =
-    baseline.status === 'ok' &&
-    baseline.successOk === true &&
+    'ok' === baseline.status &&
+    true === baseline.successOk &&
     regressed.status !== 'ok' &&
-    regressed.successOk === false &&
-    regressed.drifted === false;
+    false === regressed.successOk &&
+    false === regressed.drifted;
   result = {
     baseline_status: baselineStatus,
     annotate_compiled: parse(ann.text).compiled ?? null,

@@ -39,7 +39,7 @@ async function replayOnce(a, flow) {
   const m = measure(text);
   const drifted = Array.isArray(obj.steps) ? obj.steps.find((s) => s && s.drift) : undefined;
   const successRow = Array.isArray(obj.steps)
-    ? obj.steps.find((s) => s && s.tool === 'success')
+    ? obj.steps.find((s) => s && 'success' === s.tool)
     : undefined;
   return {
     status: obj.status ?? 'unknown',
@@ -85,10 +85,10 @@ async function detectFor(flow) {
     const regressed = await replayOnce(a, flow);
 
     const detected =
-      baseline.status === 'ok' &&
+      'ok' === baseline.status &&
       regressed.status !== 'ok' &&
-      regressed.drifted === false &&
-      regressed.successOk === false;
+      false === regressed.drifted &&
+      false === regressed.successOk;
     return {
       flow: flow.name,
       tap: `ship-${flow.rowId}`,

@@ -118,7 +118,7 @@ async function runCell(scenarioId, toolKey) {
     verdictText = '';
   try {
     await client.start();
-    if (toolKey === 'reticle') await new Promise((r) => setTimeout(r, 3500));
+    if ('reticle' === toolKey) await new Promise((r) => setTimeout(r, 3500));
     const tools = mcpToolsToAnthropic(await client.listTools());
     const system =
       'You are a verification agent with browser tools. Use them to complete the task, then end your final message with exactly "VERDICT: PASS" or "VERDICT: FAIL".';
@@ -128,13 +128,13 @@ async function runCell(scenarioId, toolKey) {
       inTok += resp.usage?.input_tokens ?? 0;
       outTok += resp.usage?.output_tokens ?? 0;
       messages.push({ role: 'assistant', content: resp.content });
-      const toolUses = resp.content.filter((c) => c.type === 'tool_use');
+      const toolUses = resp.content.filter((c) => 'tool_use' === c.type);
       const textParts = resp.content
-        .filter((c) => c.type === 'text')
+        .filter((c) => 'text' === c.type)
         .map((c) => c.text)
         .join('\n');
       if (textParts) verdictText += '\n' + textParts;
-      if (resp.stop_reason !== 'tool_use' || toolUses.length === 0) break;
+      if (resp.stop_reason !== 'tool_use' || 0 === toolUses.length) break;
       const results = [];
       for (const tu of toolUses) {
         try {
@@ -170,7 +170,7 @@ async function runCell(scenarioId, toolKey) {
       total_tokens: inTok + outTok,
       latency_ms: Date.now() - t0,
       turns,
-      verdict: said === null ? 'NO VERDICT' : said ? 'ISSUE DETECTED' : 'NO ISSUE FOUND',
+      verdict: null === said ? 'NO VERDICT' : said ? 'ISSUE DETECTED' : 'NO ISSUE FOUND',
       detected_issue: detected,
       expected_detect: sc.expectIssue,
       confidence: detected === sc.expectIssue ? 1 : 0,
@@ -186,7 +186,7 @@ async function runCell(scenarioId, toolKey) {
     };
   } finally {
     await client.stop();
-    if (toolKey === 'reticle') {
+    if ('reticle' === toolKey) {
       try {
         const { execFileSync } = await import('node:child_process');
         execFileSync(

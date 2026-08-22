@@ -46,13 +46,17 @@ const pct = (a, p) => {
   const s = [...a].sort((x, y) => x - y);
   return s[Math.min(s.length - 1, Math.ceil((p / 100) * s.length) - 1)];
 };
-const round = (x) => (x === null ? null : Math.round(x));
+const round = (x) => (null === x ? null : Math.round(x));
 
 const perTool = {};
 for (const tool of TOOLS) {
   const tr = measured.filter((r) => r.tool === tool);
-  const toks = tr.map((r) => r.tokens_o200k).filter((x) => x != null);
-  const lats = tr.map((r) => r.latency_ms).filter((x) => x != null);
+  // Spelled out rather than `!= null`. The loose form was the right INTENT — reject null and
+  // undefined, keep 0 — and tightening it to `!== null` alone would let an undefined cell into
+  // the average as NaN, which is the failure this file is least able to notice.
+  const present = (x) => x !== null && x !== undefined;
+  const toks = tr.map((r) => r.tokens_o200k).filter(present);
+  const lats = tr.map((r) => r.latency_ms).filter(present);
   // detection confusion vs expected_detect
   let tp = 0,
     tn = 0,
@@ -122,7 +126,7 @@ const out = {
   // was not run from a column that ran and scored nothing.
   tools_not_run: ALL_TOOLS.filter((t) => !TOOLS.includes(t)),
   not_measured: rows
-    .filter((r) => r.verdict === 'NOT MEASURED')
+    .filter((r) => 'NOT MEASURED' === r.verdict)
     .map((r) => `${r.scenario}/${r.tool}`),
   per_tool: perTool,
   per_scenario: perScenario,

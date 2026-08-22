@@ -40,7 +40,7 @@ async function replayOnce(a, flow) {
   const m = measure(text);
   const drifted = Array.isArray(obj.steps) ? obj.steps.find((s) => s && s.drift) : undefined;
   const successRow = Array.isArray(obj.steps)
-    ? obj.steps.find((s) => s && s.tool === 'success')
+    ? obj.steps.find((s) => s && 'success' === s.tool)
     : undefined;
   return {
     status: obj.status ?? 'unknown',
@@ -84,10 +84,10 @@ async function detectFor(flow) {
     // caught when: baseline ok; regressed NOT ok; regressed did NOT drift (element present) but the
     // success oracle failed — proving the catch came from the consequence, not from selector drift.
     const detected =
-      baseline.status === 'ok' &&
+      'ok' === baseline.status &&
       regressed.status !== 'ok' &&
-      regressed.drifted === false &&
-      regressed.successOk === false;
+      false === regressed.drifted &&
+      false === regressed.successOk;
     return {
       flow: flow.name,
       tap: flow.tap,

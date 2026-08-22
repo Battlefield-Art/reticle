@@ -95,8 +95,8 @@ const flakeRate = runs.length ? (runs.length - majority) / runs.length : null;
 // step's ok/anchor/drift). That must be identical across every run, or the suite is flaky. Token cost
 // is a SECONDARY metric: it is constant in steady state, but a slow run can add a few tokens of
 // settle/retry note, so it is reported (not gated) — verdict flake is the real failure mode.
-const verdictDeterministic = statuses.size === 1 && fingerprints.size === 1;
-const tokenConstant = tokenSet.size === 1;
+const verdictDeterministic = 1 === statuses.size && 1 === fingerprints.size;
+const tokenConstant = 1 === tokenSet.size;
 const summary = {
   dimension:
     'Replay determinism / flake rate (Layer C) — the regression-suite property that matters most',
@@ -118,6 +118,6 @@ const summary = {
 writeFileSync('bench/raw/replay-determinism.json', JSON.stringify(summary, null, 2));
 console.log(JSON.stringify(summary, null, 2));
 console.log(
-  `\n=== replay-determinism: verdict ${verdictDeterministic ? 'DETERMINISTIC' : 'NON-DETERMINISTIC'} over ${runs.length} runs | flake rate ${flakeRate === null ? 'n/a' : (flakeRate * 100).toFixed(0) + '%'} | token ${tokenConstant ? 'constant ' + tokens[0] : 'spread ' + tokenSpread} ===`,
+  `\n=== replay-determinism: verdict ${verdictDeterministic ? 'DETERMINISTIC' : 'NON-DETERMINISTIC'} over ${runs.length} runs | flake rate ${null === flakeRate ? 'n/a' : (flakeRate * 100).toFixed(0) + '%'} | token ${tokenConstant ? 'constant ' + tokens[0] : 'spread ' + tokenSpread} ===`,
 );
 process.exit(verdictDeterministic ? 0 : 1);

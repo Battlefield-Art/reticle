@@ -14,9 +14,10 @@
 //   - selector detection not full, or consequence detection not full (REPLAY)
 //   - per-run replay tokens rise > TOKEN_TOL vs the last row (REPLAY)
 import { readFileSync, existsSync } from 'node:fs';
-import { TOKEN_TOL, declaredBudgetOf, tokenVerdict } from './token-budget.mjs';
+import { declaredBudgetOf, tokenVerdict } from './token-budget.mjs';
 import { parityVerdict } from './playwright-parity.mjs';
 import { coverageVerdict } from './coverage-floor.mjs';
+import { provenanceVerdict } from './baseline-provenance.mjs';
 import { measuredRealRegressions } from './tool-coverage.mjs';
 
 const VE_TOL = 0.03; // VE may dip at most 3% vs last (noise) before it's a regression
@@ -64,12 +65,32 @@ function referenceRow() {
 function parseRate(rate) {
   if (typeof rate !== 'string') return null;
   const m = /^(\d+)\/(\d+)$/.exec(rate);
-  return m === null ? null : { detected: Number(m[1]), total: Number(m[2]) };
+  return null === m ? null : { detected: Number(m[1]), total: Number(m[2]) };
 }
 
 const failures = [];
 const scorecard = [];
 const prev = lastRow();
+
+/**
+ * Before any comparison: was the baseline measured by this instrument?
+ *
+ * Every dimension below compares a fresh number against `prev` and assumes both were produced the
+ * same way. The rows recorded before the integrity pass were not — their defects all read in our
+ * favour — so comparing against one inverts this gate rather than loosening it: an honest run reads
+ * as a regression, and a real regression hides in the slack the flattery left.
+ *
+ * Checked first and stated plainly, because the alternative is a run that reports pass or fail with
+ * equal confidence and no way to tell which one meant anything.
+ */
+const provenance = provenanceVerdict({ baseline: prev });
+if (!provenance.ok) {
+  failures.push(`baseline provenance: ${provenance.reason}`);
+  // Also said here, before anything else runs. The gate exits early when there are no fresh results,
+  // which is exactly the state somebody is in while deciding whether to spend an hour measuring —
+  // the most useful moment to learn the baseline needs replacing first, rather than after.
+  console.error(`\n⚠ baseline provenance: ${provenance.reason}\n`);
+}
 
 /**
  * Which dimensions were actually COMPARED against a baseline, and which had none to compare against.
@@ -103,7 +124,7 @@ const uncompared = [];
  * the outer `if (cost !== null)` already established that this pass was supposed to produce one.
  */
 const note = (dimension, baseline, fresh) => {
-  const missing = (v) => v === null || v === undefined;
+  const missing = (v) => null === v || v === undefined;
   if (missing(baseline) || missing(fresh)) {
     uncompared.push(dimension);
     if (!missing(baseline) && missing(fresh)) {
@@ -118,7 +139,7 @@ const note = (dimension, baseline, fresh) => {
 };
 // Only gate layers that ran THIS pass (a stale analysis.json must not be gated on a Layer-C pass).
 const manifest = readRaw('bench/raw/bench-run.json');
-const ranLayerA = manifest === null ? true : manifest.ranLayerA === true;
+const ranLayerA = null === manifest ? true : true === manifest.ranLayerA;
 
 // ---- OBSERVATION-COST pass (scripted observation, "Layer A") — only when freshly run this pass ----
 const analysis = ranLayerA ? readRaw('bench/raw/analysis.json') : null;
@@ -131,7 +152,7 @@ if (analysis !== null) {
     : null;
   const fp = reticle.false_positives ?? 0;
 
-  if (rcr === null || rcr < 1.0) failures.push(`RCR floor: reticle RCR=${rcr} (must be 1.0)`);
+  if (null === rcr || rcr < 1.0) failures.push(`RCR floor: reticle RCR=${rcr} (must be 1.0)`);
   if (fp > 0) failures.push(`false positives: reticle FP=${fp} (must be 0)`);
 
   // Every rate above is computed over the cells that SURVIVED, so a lost cell moves none of them.
@@ -177,7 +198,17 @@ if (analysis !== null) {
   // The same number against a fixed point, so accumulation cannot hide behind a moving baseline.
   const refRow = referenceRow();
   const refVe = refRow?.per_tool?.reticle?.ve ?? null;
-  if (refVe !== null && ve !== null) {
+  // The fixed point needs the same provenance the moving one does, and for a stronger reason: this
+  // comparison can FAIL the gate on its own, so a reference measured by the old instrument could
+  // fail an honest run outright, or absorb real drift and pass one that should not.
+  const refProvenance = provenanceVerdict({ baseline: refRow });
+  if (refVe !== null && ve !== null && !refProvenance.ok) {
+    scorecard.push([
+      `Observe · efficiency vs ${REFERENCE_VERSION}`,
+      '—',
+      'not comparable — reference predates the current harness',
+    ]);
+  } else if (refVe !== null && ve !== null) {
     const drift = ((ve - refVe) / refVe) * 100;
     scorecard.push([
       `Observe · efficiency vs ${REFERENCE_VERSION}`,
@@ -204,7 +235,7 @@ const lastC = prev?.layer_c ?? null;
 
 if (selector !== null) {
   const r = parseRate(selector.detection_rate);
-  if (r === null || r.detected < r.total) {
+  if (null === r || r.detected < r.total) {
     failures.push(`selector detection not full: ${selector.detection_rate}`);
   }
   const lastR = parseRate(lastC?.selector_detection);
@@ -216,7 +247,7 @@ if (selector !== null) {
 }
 if (consequence !== null) {
   const r = parseRate(consequence.detection_rate);
-  if (r === null || r.detected < r.total) {
+  if (null === r || r.detected < r.total) {
     failures.push(`consequence detection not full: ${consequence.detection_rate}`);
   }
   note('Replay · consequence', lastC?.consequence_detection, consequence);
@@ -229,7 +260,7 @@ if (consequence !== null) {
 const stateOracle = readRaw('bench/raw/replay-detect-state.json');
 if (stateOracle !== null) {
   const r = parseRate(stateOracle.detection_rate);
-  if (r === null || r.detected < r.total) {
+  if (null === r || r.detected < r.total) {
     failures.push(`state-oracle detection not full: ${stateOracle.detection_rate}`);
   }
   const lastR = parseRate(lastC?.state_detection);
@@ -262,7 +293,7 @@ for (const [metric, was, now] of scorecard) {
   console.log(`  ${String(metric).padEnd(22)} ${String(was).padEnd(14)} → ${now}`);
 }
 console.log('─'.repeat(56));
-if (analysis === null && cost === null && selector === null && consequence === null) {
+if (null === analysis && null === cost && null === selector && null === consequence) {
   console.error('✗ no fresh results found — run `node bench/harness/bench-all.mjs` first.');
   process.exit(1);
 }

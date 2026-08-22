@@ -258,7 +258,7 @@ export function verifyAnchors() {
   return broken;
 }
 
-if (process.argv[2] === '--verify-anchors') {
+if ('--verify-anchors' === process.argv[2]) {
   // A refusal is a message to a human, not a crash: print the sentence, not a stack trace.
   let broken;
   try {
@@ -275,10 +275,10 @@ if (process.argv[2] === '--verify-anchors') {
   );
   process.exit(0 === broken.length ? 0 : 1);
 }
-if (process.argv[2] === '--revert-all') {
+if ('--revert-all' === process.argv[2]) {
   revertAll();
   console.log('reverted all');
 }
-if (process.argv[2] === '--list') {
+if ('--list' === process.argv[2]) {
   console.log(listRegressions().join('\n'));
 }

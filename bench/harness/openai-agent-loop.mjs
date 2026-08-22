@@ -83,7 +83,7 @@ const TASKS = {
 function mcpToolsToOpenAI(tools) {
   return tools.map((t) => {
     const schema =
-      t.inputSchema && t.inputSchema.type === 'object'
+      t.inputSchema && 'object' === t.inputSchema.type
         ? t.inputSchema
         : { type: 'object', properties: {} };
     return {
@@ -119,7 +119,7 @@ async function runCell(scenarioId, toolKey) {
     verdictText = '';
   try {
     await client.start();
-    if (toolKey === 'reticle') await new Promise((r) => setTimeout(r, 3500));
+    if ('reticle' === toolKey) await new Promise((r) => setTimeout(r, 3500));
     const tools = mcpToolsToOpenAI(await client.listTools());
     const messages = [
       {
@@ -136,9 +136,9 @@ async function runCell(scenarioId, toolKey) {
       const msg = resp.choices?.[0]?.message;
       if (!msg) break;
       messages.push(msg);
-      if (typeof msg.content === 'string' && msg.content) verdictText += '\n' + msg.content;
+      if ('string' === typeof msg.content && msg.content) verdictText += '\n' + msg.content;
       const calls = msg.tool_calls ?? [];
-      if (calls.length === 0) break;
+      if (0 === calls.length) break;
       for (const tc of calls) {
         let args = {};
         try {
@@ -173,7 +173,7 @@ async function runCell(scenarioId, toolKey) {
       total_tokens: inTok + outTok,
       latency_ms: Date.now() - t0,
       turns,
-      verdict: said === null ? 'NO VERDICT' : said ? 'ISSUE DETECTED' : 'NO ISSUE FOUND',
+      verdict: null === said ? 'NO VERDICT' : said ? 'ISSUE DETECTED' : 'NO ISSUE FOUND',
       detected_issue: said,
       expected_detect: sc.expectIssue,
       confidence: said === sc.expectIssue ? 1 : 0,
@@ -190,7 +190,7 @@ async function runCell(scenarioId, toolKey) {
     };
   } finally {
     await client.stop();
-    if (toolKey === 'reticle') {
+    if ('reticle' === toolKey) {
       try {
         const { execFileSync } = await import('node:child_process');
         execFileSync(

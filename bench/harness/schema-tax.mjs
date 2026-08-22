@@ -90,7 +90,7 @@ const summary = {
   measured_at_utc: process.env.BENCH_STAMP ?? null,
   results,
   finding:
-    def && pw && typeof pw.schema_tokens === 'number'
+    def && pw && 'number' === typeof pw.schema_tokens
       ? `reticle default (hybrid) = ${def.schema_tokens} tok vs playwright_mcp = ${pw.schema_tokens} tok ` +
         `(ratio ${(def.schema_tokens / pw.schema_tokens).toFixed(2)}x). reticle dynamic = ` +
         `${results['reticle_dynamic']?.schema_tokens} tok.`

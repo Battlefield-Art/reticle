@@ -256,7 +256,7 @@ function normalize(s) {
     .replace(/uid=\S+/g, 'uid=U')
     .replace(/msgid=\d+/g, 'msgid=M')
     .replace(/reqid=\S+/g, 'reqid=Q')
-    .replace(/console-\d[\dT:.\-]*Z[^\s]*/g, 'console-LOG')
+    .replace(/console-\d[\dT:.-]*Z[^\s]*/g, 'console-LOG')
     .replace(/Console:\s*\d+\s*errors?,\s*\d+\s*warnings?/gi, 'Console:N')
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, 'UUID')
     .replace(/"(lastSeenMs|opened_at|t|bytes|tokens)":\s*\d+/g, '"$1":N')
@@ -266,9 +266,9 @@ function normalize(s) {
 
 function grade(sc, regr, baseline) {
   if (sc.skip) return { detected: null, detail: 'NOT MEASURED — see notes' };
-  if (sc.mode === 'present') return sc.rx.test(regr.obsText);
-  if (sc.mode === 'absent') return !sc.rx.test(regr.obsText);
-  if (sc.mode === 'baseline') {
+  if ('present' === sc.mode) return sc.rx.test(regr.obsText);
+  if ('absent' === sc.mode) return !sc.rx.test(regr.obsText);
+  if ('baseline' === sc.mode) {
     if (sc.count) {
       const b = (baseline.obsText.match(sc.count) ?? []).length;
       const a = (regr.obsText.match(sc.count) ?? []).length;
@@ -325,7 +325,7 @@ for (const sc of list) {
       await withCellTimeout(async () => {
         let baseline = null;
         // baseline scenarios: clean capture first
-        if (sc.mode === 'baseline') {
+        if ('baseline' === sc.mode) {
           const a0 = makeAdapter(tool, URL);
           openAdapter = a0;
           await a0.start();
@@ -356,8 +356,8 @@ for (const sc of list) {
         if (sc.regression) revert(sc.regression);
 
         const g = grade(sc, regr, baseline);
-        const detected = typeof g === 'object' ? g.detected : g;
-        const detail = typeof g === 'object' ? g.detail : '';
+        const detected = 'object' === typeof g ? g.detected : g;
+        const detail = 'object' === typeof g ? g.detail : '';
         const cycleTokens = regr.cycle.reduce((n, c) => n + (c.tokens_o200k ?? 0), 0);
         const cycleChars = regr.cycle.reduce((n, c) => n + (c.chars ?? 0), 0);
         const cycleBytes = regr.cycle.reduce((n, c) => n + (c.bytes ?? 0), 0);

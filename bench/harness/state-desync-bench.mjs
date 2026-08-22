@@ -24,8 +24,8 @@ function firstBalanced(text) {
   if (start < 0) return null;
   let depth = 0;
   for (let i = start; i < text.length; i++) {
-    if (text[i] === '{') depth += 1;
-    else if (text[i] === '}' && --depth === 0) return text.slice(start, i + 1);
+    if ('{' === text[i]) depth += 1;
+    else if ('}' === text[i] && 0 === --depth) return text.slice(start, i + 1);
   }
   return null;
 }
@@ -47,7 +47,7 @@ const digits = (s) => {
 // Count from a store value: a real array, a number, or a depth-capped marker "[Array(N)]".
 const countOf = (v) => {
   if (Array.isArray(v)) return v.length;
-  if (typeof v === 'number') return v;
+  if ('number' === typeof v) return v;
   const m = String(v ?? '').match(/Array\((\d+)\)/) ?? String(v ?? '').match(/(\d+)/);
   return m ? Number(m[1]) : null;
 };

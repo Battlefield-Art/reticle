@@ -65,7 +65,7 @@ const bugged = await (async () => {
   }
 })();
 
-const screenshotCaught = bugged.diff?.ok === true && bugged.diff?.matched === false;
+const screenshotCaught = true === bugged.diff?.ok && false === bugged.diff?.matched;
 const inspectSame = JSON.stringify(clean.signals) === JSON.stringify(bugged.signals);
 const summary = {
   dimension: 'Visual regression (paint-level) — the honest reverse case (screenshot wins)',

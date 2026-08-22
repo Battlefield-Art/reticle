@@ -49,7 +49,7 @@ function tally() {
     const side = entry[row.harness];
     if (side !== undefined) {
       side.n += 1;
-      if (row.caught === true) side.caught += 1;
+      if (true === row.caught) side.caught += 1;
     }
     byCategory.set(row.category, entry);
   }

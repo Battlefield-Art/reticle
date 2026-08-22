@@ -91,7 +91,7 @@ async function detectFor(flow) {
     const regressed = await replayOnce(a, flow);
 
     const detected =
-      baseline.status === 'ok' &&
+      'ok' === baseline.status &&
       regressed.status !== 'ok' &&
       regressed.driftAnchor === flow.breakId;
     return { flow: flow.name, breakId: flow.breakId, stepCount, baseline, regressed, detected };

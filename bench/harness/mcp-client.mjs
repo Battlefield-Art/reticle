@@ -26,7 +26,7 @@ export class McpStdioClient {
     this.proc = spawn(this.command, this.args, {
       env: { ...process.env, ...this.env },
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: process.platform === 'win32',
+      shell: 'win32' === process.platform,
     });
     this.proc.stdout.setEncoding('utf8');
     this.proc.stdout.on('data', (chunk) => this._onData(chunk));
@@ -52,7 +52,7 @@ export class McpStdioClient {
     while ((idx = this.buf.indexOf('\n')) >= 0) {
       const line = this.buf.slice(0, idx).trim();
       this.buf = this.buf.slice(idx + 1);
-      if (line.length === 0) continue;
+      if (0 === line.length) continue;
       let msg;
       try {
         msg = JSON.parse(line);
@@ -120,7 +120,7 @@ export class McpStdioClient {
     const t1 = process.hrtime.bigint();
     const latencyMs = Number(t1 - t0) / 1e6;
     const text = (result?.content ?? [])
-      .filter((c) => c.type === 'text')
+      .filter((c) => 'text' === c.type)
       .map((c) => c.text)
       .join('\n');
     // A protocol-level tool error (unknown/renamed tool) arrives as a SUCCESSFUL JSON-RPC result
@@ -129,7 +129,7 @@ export class McpStdioClient {
     // reticle_record_start/stop for an unknown number of commits after those were consolidated into
     // reticle_record{action}, recorded nothing, saved nothing, and still printed an RRE ratio over
     // the wreckage. Fail loudly instead: a benchmark that cannot call its tool has no number to give.
-    if (result?.isError === true) {
+    if (true === result?.isError) {
       throw new Error(`tool ${name} failed: ${text.slice(0, 300)}`);
     }
     return { result, latencyMs, text };
@@ -137,7 +137,7 @@ export class McpStdioClient {
 
   async stop() {
     try {
-      if (process.platform === 'win32' && this.proc?.pid) {
+      if ('win32' === process.platform && this.proc?.pid) {
         try {
           execFileSync('taskkill', ['/pid', String(this.proc.pid), '/T', '/F'], {
             stdio: 'ignore',

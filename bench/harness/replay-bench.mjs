@@ -75,7 +75,7 @@ for (const flow of FLOWS) {
   }
 }
 
-const measured = rows.filter((r) => typeof r.replay_tokens === 'number');
+const measured = rows.filter((r) => 'number' === typeof r.replay_tokens);
 const meanReplay = measured.length
   ? Math.round(measured.reduce((n, r) => n + r.replay_tokens, 0) / measured.length)
   : null;

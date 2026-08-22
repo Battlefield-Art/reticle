@@ -7,7 +7,7 @@
 // Brutal-honest: we also record each competitor's JS-authoring input cost, and mark any tool that
 // cannot surface a signal as a MISS — no flattering.
 import { writeFileSync } from 'node:fs';
-import { PlaywrightAdapter, DevtoolsAdapter, ReticleAdapter, NAV } from './adapters.mjs';
+import { PlaywrightAdapter, DevtoolsAdapter, ReticleAdapter } from './adapters.mjs';
 import { measure } from './tokenizer.mjs';
 
 const BASE = process.env.BENCH_URL ?? 'http://localhost:4312/';
@@ -26,15 +26,15 @@ const BUGS = [
     id: 'invisible',
     testid: 'new-deploy',
     view: 'deployments',
-    detect: (o) => Number.parseFloat(o.opacity ?? '1') === 0,
+    detect: (o) => 0 === Number.parseFloat(o.opacity ?? '1'),
   },
   {
     id: 'zero-size',
     testid: 'new-deploy',
     view: 'deployments',
-    detect: (o) => o.w === 0 || o.h === 0,
+    detect: (o) => 0 === o.w || 0 === o.h,
   },
-  { id: 'occluded', testid: 'new-deploy', view: 'deployments', detect: (o) => o.occluded === true },
+  { id: 'occluded', testid: 'new-deploy', view: 'deployments', detect: (o) => true === o.occluded },
   {
     id: 'color-regression',
     testid: 'new-deploy',
@@ -47,7 +47,7 @@ const BUGS = [
     id: 'theme-violation',
     testid: 'brand',
     view: null,
-    detect: (o) => o.offTheme === true,
+    detect: (o) => true === o.offTheme,
     competitorFn: themeFn('brand'),
   },
 ];
@@ -70,8 +70,8 @@ function firstBalanced(text) {
   if (start < 0) return null;
   let depth = 0;
   for (let i = start; i < text.length; i++) {
-    if (text[i] === '{') depth += 1;
-    else if (text[i] === '}' && --depth === 0) return text.slice(start, i + 1);
+    if ('{' === text[i]) depth += 1;
+    else if ('}' === text[i] && 0 === --depth) return text.slice(start, i + 1);
   }
   return null;
 }
@@ -80,7 +80,7 @@ function firstBalanced(text) {
 // "returned: ```json {json} ```", Reticle raw JSON. Prefer a fenced json block, else the first
 // balanced object — a greedy match would grab the trailing code and fail to parse.
 function parseJson(text) {
-  if (text === undefined || text === null) return {};
+  if (text === undefined || null === text) return {};
   const fence = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
   const candidate = fence !== null ? fence[1] : firstBalanced(text);
   try {
@@ -142,7 +142,7 @@ async function withTool(adapter, fn) {
 
 /** The bugged demo URL for a given bug id (empty id → the clean app, for baselines). */
 function buggedUrl(bugParam) {
-  return bugParam === '' ? BASE : `${BASE}${BASE.includes('?') ? '&' : '?'}reticle-bug=${bugParam}`;
+  return '' === bugParam ? BASE : `${BASE}${BASE.includes('?') ? '&' : '?'}reticle-bug=${bugParam}`;
 }
 
 // Land on the bug's view, logged in, WITH the bug applied. Fairness: every adapter is constructed
@@ -204,7 +204,7 @@ for (const bug of BUGS) {
 
 const summary = { layer: 'Visual (visually-broken-but-present UI bugs)', baseUrl: BASE, rows };
 writeFileSync('bench/raw/visual-bug-bench.json', JSON.stringify(summary, null, 2));
-const det = (t) => rows.filter((r) => r.tools[t]?.detected === true).length;
+const det = (t) => rows.filter((r) => true === r.tools[t]?.detected).length;
 console.log(
   `\n=== detection (of ${rows.length}): reticle ${det('reticle')} | playwright ${det('playwright')} | devtools ${det('devtools')} ===`,
 );

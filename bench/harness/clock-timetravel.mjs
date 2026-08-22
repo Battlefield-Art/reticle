@@ -71,7 +71,7 @@ async function run() {
       const s = await statusOfTop(a);
       const elapsed = monotonic() - t0;
       await a.c.callTool('reticle_clock', { reset: true });
-      return { live: s.value === 'live', status: s.value, wall_ms: elapsed, tokens: s.tokens };
+      return { live: 'live' === s.value, status: s.value, wall_ms: elapsed, tokens: s.tokens };
     } finally {
       await a.stop();
     }
@@ -92,7 +92,7 @@ async function run() {
       await sleep(TIMER_MS + 200);
       const s = await statusOfTop(a);
       const elapsed = monotonic() - t0;
-      return { live: s.value === 'live', status: s.value, wall_ms: elapsed };
+      return { live: 'live' === s.value, status: s.value, wall_ms: elapsed };
     } finally {
       await a.stop();
     }

@@ -102,7 +102,7 @@ const daemonPid = client.proc?.pid;
   // Refuse to measure an unattached daemon. A leak report over a daemon with no app is all zeros —
   // indistinguishable from a perfect result, which is the worst possible failure for this harness.
   const probe = JSON.parse((await client.callTool('reticle_sessions', {})).text ?? '{}');
-  if ((probe.sessions ?? []).length === 0) {
+  if (0 === (probe.sessions ?? []).length) {
     throw new Error(
       `no browser session on :${PORT} — the fixture's SDK dials a different port, so this would ` +
         'measure an idle daemon and report zeros as if they were clean.',
@@ -167,7 +167,7 @@ const leakedPorts = newPorts.filter((p) => p !== PORT);
 // session 7, then sat flat through five more sequential + sixteen concurrent sessions — and the
 // endpoint slope reported that as "3.6 MB/session", a false leak signal from the leak harness
 // itself. So the per-sample deltas classify the SHAPE, and only sustained growth reads as a leak.
-const seq = samples.filter((s) => s.phase === 'sequential' && typeof s.rss_mb === 'number');
+const seq = samples.filter((s) => 'sequential' === s.phase && 'number' === typeof s.rss_mb);
 const slopeMbPerSession =
   seq.length > 1 && seq[0] !== undefined && seq.at(-1) !== undefined
     ? Number(((seq.at(-1).rss_mb - seq[0].rss_mb) / (seq.length - 1)).toFixed(3))
@@ -179,7 +179,7 @@ const deltas = seq.slice(1).map((s, i) => s.rss_mb - seq[i].rss_mb);
 const growthSteps = deltas.filter((d) => d > NOISE_MB).length;
 const tailFlat = deltas.slice(-3).every((d) => d <= NOISE_MB);
 const growthShape =
-  growthSteps === 0
+  0 === growthSteps
     ? 'flat'
     : growthSteps <= 2 && tailFlat
       ? 'step-then-plateau'
@@ -195,7 +195,7 @@ const report = {
     slope_mb_per_session: slopeMbPerSession,
     growth_shape: growthShape,
     // The verdict a reader should trust: shape-based, immune to a one-time step inflating the slope.
-    leak_suspected: growthShape === 'sustained-growth',
+    leak_suspected: 'sustained-growth' === growthShape,
   },
   ports: {
     daemon_port_still_listening: newPorts.includes(PORT),

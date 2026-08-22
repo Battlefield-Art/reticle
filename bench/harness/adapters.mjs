@@ -180,7 +180,7 @@ export class DevtoolsAdapter {
 }
 
 // ---------- Reticle ----------
-function reticleRefForTestid(queryText, testid) {
+function reticleRefForTestid(queryText, _testid) {
   // reticle_query returns JSON with element descriptors carrying ref + testid.
   try {
     const j = JSON.parse(queryText);
@@ -596,19 +596,19 @@ for (const Cls of [
   PlaywrightCliAdapter,
 ]) {
   Cls.prototype.observe = function (kind) {
-    if (kind === 'console') return this.console();
-    if (kind === 'network') return this.network();
-    if (kind === 'networkAll') return this.networkAll ? this.networkAll() : this.network();
+    if ('console' === kind) return this.console();
+    if ('network' === kind) return this.network();
+    if ('networkAll' === kind) return this.networkAll ? this.networkAll() : this.network();
     return this.snapshot();
   };
 }
 
 export { NAV };
 export function makeAdapter(tool, url) {
-  if (tool === 'playwright') return new PlaywrightAdapter(url);
-  if (tool === 'devtools') return new DevtoolsAdapter(url);
-  if (tool === 'reticle') return new ReticleAdapter(url);
-  if (tool === 'agentbrowser') return new AgentBrowserAdapter(url);
-  if (tool === 'playwrightcli') return new PlaywrightCliAdapter(url);
+  if ('playwright' === tool) return new PlaywrightAdapter(url);
+  if ('devtools' === tool) return new DevtoolsAdapter(url);
+  if ('reticle' === tool) return new ReticleAdapter(url);
+  if ('agentbrowser' === tool) return new AgentBrowserAdapter(url);
+  if ('playwrightcli' === tool) return new PlaywrightCliAdapter(url);
   throw new Error(`unknown tool ${tool}`);
 }

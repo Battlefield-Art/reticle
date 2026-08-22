@@ -124,8 +124,8 @@ for (const tier of TIERS) {
 // Scaling factor per call, normal -> hard. This is the number that decides whether the fixture-scoped
 // claims generalise: ~1x means the cost is bounded by the transport, ~25x means it tracks the DOM.
 const scaling = {};
-const normal = results.find((r) => r.tier === 'normal');
-const hard = results.find((r) => r.tier === 'hard');
+const normal = results.find((r) => 'normal' === r.tier);
+const hard = results.find((r) => 'hard' === r.tier);
 if (normal?.calls && hard?.calls) {
   for (let i = 0; i < normal.calls.length; i++) {
     const a = normal.calls[i];

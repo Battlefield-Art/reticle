@@ -2,6 +2,7 @@
 // Usage: node bench/harness/record.mjs "<version-label>" "<note>"
 // version-label + note are the only free text; all numbers come from the raw result files.
 import { readFileSync, appendFileSync, existsSync } from 'node:fs';
+import { HARNESS_REVISION } from './baseline-provenance.mjs';
 import { execSync } from 'node:child_process';
 // Per-tool denominator = real-regression scenarios this tool actually MEASURED. A NOT MEASURED
 // scenario is excluded rather than counted as a miss; a tool with no cell at all is excluded for the
@@ -65,7 +66,7 @@ function layerCBlock() {
   const selector = readRaw('bench/raw/replay-detect.json');
   const consequence = readRaw('bench/raw/replay-detect-consequence.json');
   const stateOracle = readRaw('bench/raw/replay-detect-state.json');
-  if (cost === null && selector === null && consequence === null && stateOracle === null) {
+  if (null === cost && null === selector && null === consequence && null === stateOracle) {
     return null;
   }
   return {
@@ -109,9 +110,12 @@ const layerC = layerCBlock();
 const row = {
   version,
   note,
+  // Which instrument measured this. The gate refuses a baseline recorded by a different one, because
+  // comparing across harness revisions reports the change in the harness as a change in the product.
+  harness_revision: HARNESS_REVISION,
   date: new Date().toISOString().slice(0, 10),
   git_sha: sha,
-  layer: layerC === null ? 'A' : 'A+C',
+  layer: null === layerC ? 'A' : 'A+C',
   measured_cells: a.measured_cells,
   total_cells: a.total_cells,
   not_measured: a.not_measured,
