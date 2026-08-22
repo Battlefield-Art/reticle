@@ -59,6 +59,18 @@ app.post('/api/items', requireAuth, (req, res) => {
 app.get('/api/broken/404', (_req, res) => res.status(404).json({ error: 'not found' }));
 app.get('/api/broken/500', (_req, res) => res.status(500).json({ error: 'internal server error' }));
 
+// Never responds. The request stays in flight until the client gives up or navigates away, which is
+// what a hung backend looks like from the page: a spinner that never resolves and no status to read.
+//
+// This lived in bench/README.md as a snippet to paste in by hand, deliberately uncommitted — so the
+// benchmark's network-timeout scenario ran against an endpoint that did not exist and 404'd
+// instantly. Every tool then "detected" the timeout by matching the word in the request URL. The
+// fault has to be real for the detection to mean anything, and a fault kept out of the tree is a
+// fault nobody reproduces.
+app.get('/api/broken/timeout', (_req, _res) => {
+  /* intentionally never responds */
+});
+
 app.get('/api/broken/cors', (_req, res) => {
   // Strip the CORS header so a cross-origin browser fetch is blocked.
   res.removeHeader('Access-Control-Allow-Origin');

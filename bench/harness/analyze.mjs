@@ -3,6 +3,7 @@
 // winners. Pure arithmetic over measured rows — no synthetic data.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { toolsMeasured } from './tool-coverage.mjs';
 
 /**
  * Which commit produced these numbers.
@@ -26,7 +27,11 @@ function headSha() {
 }
 
 const rows = JSON.parse(readFileSync('bench/raw/observation-results.json', 'utf8'));
-const TOOLS = ['playwright', 'devtools', 'reticle', 'agentbrowser', 'playwrightcli'];
+// The columns this analysis KNOWS ABOUT, in report order. Which of them a run actually measured is
+// decided by BENCH_TOOLS, and iterating the full list regardless is how two tools that never ran
+// were recorded as having caught nothing across the whole grid. See tool-coverage.mjs.
+const ALL_TOOLS = ['playwright', 'devtools', 'reticle', 'agentbrowser', 'playwrightcli'];
+const TOOLS = toolsMeasured(rows, ALL_TOOLS);
 const measured = rows.filter((r) => r.verdict !== 'NOT MEASURED');
 
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
@@ -113,6 +118,9 @@ const out = {
   layer: 'A (observation cost)',
   total_cells: rows.length,
   measured_cells: measured.length,
+  // Named rather than silently omitted: a reader of this file should be able to tell a column that
+  // was not run from a column that ran and scored nothing.
+  tools_not_run: ALL_TOOLS.filter((t) => !TOOLS.includes(t)),
   not_measured: rows
     .filter((r) => r.verdict === 'NOT MEASURED')
     .map((r) => `${r.scenario}/${r.tool}`),

@@ -8,12 +8,16 @@
 //
 // Hard fails:
 //   - catch-rate < 1.0, or any false positive (OBSERVATION-COST — only when analysis.json is present)
+//   - measured coverage shrinks vs the last row (OBSERVATION-COST) — an undeclared lost cell leaves
+//     the denominator instead of counting as a miss, so every rate holds while the grid gets smaller
 //   - efficiency drops > VE_TOL vs the last row (OBSERVATION-COST)
 //   - selector detection not full, or consequence detection not full (REPLAY)
 //   - per-run replay tokens rise > TOKEN_TOL vs the last row (REPLAY)
 import { readFileSync, existsSync } from 'node:fs';
 import { TOKEN_TOL, declaredBudgetOf, tokenVerdict } from './token-budget.mjs';
 import { parityVerdict } from './playwright-parity.mjs';
+import { coverageVerdict } from './coverage-floor.mjs';
+import { measuredRealRegressions } from './tool-coverage.mjs';
 
 const VE_TOL = 0.03; // VE may dip at most 3% vs last (noise) before it's a regression
 
@@ -120,9 +124,7 @@ const ranLayerA = manifest === null ? true : manifest.ranLayerA === true;
 const analysis = ranLayerA ? readRaw('bench/raw/analysis.json') : null;
 if (analysis !== null) {
   const reticle = analysis.per_tool?.reticle ?? {};
-  const realRegressions = Object.values(analysis.per_scenario ?? {}).filter(
-    (s) => s.expected_detect === true && s.by_tool?.reticle?.verdict !== 'NOT MEASURED',
-  ).length;
+  const realRegressions = measuredRealRegressions(analysis.per_scenario, 'reticle');
   const rcr = realRegressions ? +(reticle.true_positives / realRegressions).toFixed(3) : null;
   const ve = reticle.avg_tokens_o200k
     ? +(reticle.true_positives / (reticle.avg_tokens_o200k / 1000)).toFixed(2)
@@ -131,6 +133,22 @@ if (analysis !== null) {
 
   if (rcr === null || rcr < 1.0) failures.push(`RCR floor: reticle RCR=${rcr} (must be 1.0)`);
   if (fp > 0) failures.push(`false positives: reticle FP=${fp} (must be 0)`);
+
+  // Every rate above is computed over the cells that SURVIVED, so a lost cell moves none of them.
+  // measured_cells and not_measured were recorded in every history row from the start; nothing ever
+  // compared them. See coverage-floor.mjs.
+  const coverage = coverageVerdict({
+    now: analysis,
+    last: prev,
+    declaredDrop: analysis.coverage?.dropped_because,
+  });
+  if (!coverage.ok) failures.push(coverage.reason);
+  note('Observe · cells measured', prev?.measured_cells, analysis.measured_cells);
+  scorecard.push([
+    'Observe · cells measured',
+    prev?.measured_cells ?? '—',
+    `${analysis.measured_cells ?? '—'}/${analysis.total_cells ?? '—'}`,
+  ]);
 
   // The claim the product is SOLD on, and until now the only one nothing defended: every other
   // dimension here compares us against ourselves, so none would notice the day we drift past

@@ -20,6 +20,7 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import * as PORTS from './ports.mjs';
 import { verifyAnchors } from './inject.mjs';
+import { measurementVerdict } from './pass-artifact.mjs';
 const FULL = process.argv.includes('--full');
 const NO_BOOT = process.argv.includes('--no-boot');
 // Ports live in one module — see the note there on why disagreeing about them silently
@@ -222,7 +223,12 @@ async function waitForPortFree(port, timeoutMs = 15000) {
  *
  * Both are the exact failure this project exists to catch, in the harness that measures it. So the
  * exit code is not the verdict — the artifact is. Verify the pass wrote a file DURING this run, and
- * that it measured at least one row.
+ * that the file records a measurement.
+ *
+ * Whether it measured anything lives in `pass-artifact.mjs`, shape-independently and unit-tested.
+ * The check used to be inline here and read `data.rows` — which four of the twelve passes write, so
+ * the other eight, including the most expensive one in the suite, were guarded by nothing but their
+ * exit code.
  */
 // Every pass writes bench/raw/<script-name>.json — except the two that predate that convention and
 // whose filenames analyze.mjs, the README and the artifacts all already refer to by their old names.
@@ -245,13 +251,8 @@ function verifyPassArtifact(scriptPath, startedAtMs) {
   } catch {
     return `wrote ${raw} but it is not valid JSON`;
   }
-  if (!Array.isArray(data.rows)) return null; // pass reports no per-row detail; exit code is all we have
-  const measured = data.rows.filter((row) => row !== null && row.error === undefined);
-  if (measured.length > 0) return null;
-  const firstError = data.rows.find((row) => row?.error !== undefined)?.error;
-  return data.rows.length === 0
-    ? `measured NOTHING — ${raw} has no rows`
-    : `measured NOTHING — all ${data.rows.length} row(s) errored, first: ${String(firstError).slice(0, 160)}`;
+  const verdict = measurementVerdict(data);
+  return verdict.ok ? null : verdict.reason;
 }
 
 function runScript(path) {

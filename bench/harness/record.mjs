@@ -3,6 +3,10 @@
 // version-label + note are the only free text; all numbers come from the raw result files.
 import { readFileSync, appendFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+// Per-tool denominator = real-regression scenarios this tool actually MEASURED. A NOT MEASURED
+// scenario is excluded rather than counted as a miss; a tool with no cell at all is excluded for the
+// stronger reason that there is nothing there to have measured. See tool-coverage.mjs.
+import { measuredRealRegressions } from './tool-coverage.mjs';
 
 const version = process.argv[2] ?? 'unlabeled';
 const note = process.argv[3] ?? '';
@@ -75,14 +79,6 @@ function layerCBlock() {
   };
 }
 
-// Per-tool denominator = real-regression scenarios (expected_detect true) that this tool
-// actually MEASURED (NOT MEASURED scenarios like cross-component are excluded, not counted as misses).
-function measuredRealRegressions(tool) {
-  return Object.values(a.per_scenario).filter(
-    (s) => s.expected_detect === true && s.by_tool?.[tool]?.verdict !== 'NOT MEASURED',
-  ).length;
-}
-
 let sha = 'nogit';
 try {
   sha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
@@ -92,7 +88,7 @@ try {
 
 const perTool = {};
 for (const [tool, v] of Object.entries(a.per_tool)) {
-  const realRegressions = measuredRealRegressions(tool);
+  const realRegressions = measuredRealRegressions(a.per_scenario, tool);
   const rcr = realRegressions ? +(v.true_positives / realRegressions).toFixed(3) : null;
   const ve = v.avg_tokens_o200k
     ? +(v.true_positives / (v.avg_tokens_o200k / 1000)).toFixed(2)
@@ -119,6 +115,7 @@ const row = {
   measured_cells: a.measured_cells,
   total_cells: a.total_cells,
   not_measured: a.not_measured,
+  ...(a.tools_not_run?.length > 0 ? { tools_not_run: a.tools_not_run } : {}),
   per_tool: perTool,
   ...(layerC !== null ? { layer_c: layerC } : {}),
 };

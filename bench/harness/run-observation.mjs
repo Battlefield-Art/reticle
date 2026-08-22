@@ -209,8 +209,16 @@ const SCENARIOS = [
       { wait: 1600 },
     ],
     mode: 'present',
-    rx: /timeout/i,
-    signal: 'in-flight request to /api/broken/timeout',
+    // Match the request's STATE, never its name. The endpoint is `/api/broken/timeout`, so the old
+    // `/timeout/i` was satisfied by the URL string in every tool's network listing — the observation
+    // could not fail. All three tools "detected" it at full confidence, in one of only ten
+    // real-regression scenarios, and the free true-positive inflated every column including ours.
+    //
+    // None of these words can appear in the URL, so a match means the tool reported a request it
+    // could see had not resolved. A tool whose network listing cannot express that now MISSES this
+    // scenario, which is the honest result: an agent reading that listing could not tell either.
+    rx: /\b(pending|in[-\s]?flight|unresolved|timed out|hung|no response)\b/i,
+    signal: 'request to /api/broken/timeout still unresolved (the endpoint never responds)',
   },
 
   {

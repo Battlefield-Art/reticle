@@ -8,6 +8,17 @@ Compares **Playwright MCP**, **Chrome DevTools MCP**, and **Reticle** across det
 
 **Start here: [`SCORECARD.md`](SCORECARD.md)** — the honest one-page standing across all layers (wins, ties, and caveats), and **read its freshness banner first**. Depth lives in: `METRIC.md` (chased metric: VE gate + RRE), `agent-loop-and-replay.md` (real agent loop + Layer C / RRE), `UI-BUG-BENCH.md` (UI/state bugs — visual = parity, state-desync = Reticle-only), and `METHODOLOGY.md` (full design: controls, scenarios, fairness). Run it with `pnpm bench` / `bench:full` / `bench:gate`.
 
+## `history.jsonl` predates these fixes — re-baseline before using it as a "before"
+
+Every row in `bench/history.jsonl` was produced by a harness with four integrity defects, and all four read in our favour:
+
+- the "measured NOTHING" guard only covered the four passes that write a `rows` array, so eight passes — including the most expensive one — could measure nothing and be ticked green;
+- a cell that timed out or threw left the denominator instead of counting as a miss, and nothing compared coverage against the baseline, so the catch-rate held at 1.0 while the grid shrank;
+- two tools that were never run were recorded as having scored zero across the whole grid, on a denominator one scenario LARGER than the tools that did run;
+- `network-timeout` graded on a regex the request URL itself satisfied, against an endpoint that did not exist — a free true positive for every tool in 1 of 10 real-regression scenarios.
+
+The rows are kept as a record of what was run. They are not a baseline. **Record a fresh row on `main` before the next before/after measurement**, and do not compare a post-fix run against a pre-fix row.
+
 ## What in here is live — every script, executed 2026-08-11
 
 `harness/` holds 39 files and only twelve are driven by a suite. The rest are **kept one-off studies**: each produced a number in a published scorecard, and deleting one would leave that claim with no reproduction. That is deliberate, and the cost is that "a file exists in `harness/`" told you nothing about whether it still ran.
@@ -90,28 +101,21 @@ To run the fixtures + harness scripts by hand instead (e.g. for the manual obser
 node apps/api/server.mjs &
 RETICLE_PORT=4460 pnpm --filter @reticlehq/bench-app exec vite --port 4312 --strictPort &
 
-# 2. (scenario 9 only) add the hanging endpoint to apps/api/server.mjs before /api/health,
-#    then restart the api. This is the ONLY source change the benchmark needs in the app:
-#
-#      app.get('/api/broken/timeout', (_req, _res) => { /* never responds */ });
-#
-#    (Left out of the committed tree on purpose; add it to reproduce network-timeout.)
-
-# 3. prove all three servers boot and list tools
+# 2. prove all three servers boot and list tools
 node bench/harness/probe.mjs
 
-# 4. Layer A — observation cost (no API key). ~12 min; spawns each tool's browser per cell.
+# 3. Layer A — observation cost (no API key). ~12 min; spawns each tool's browser per cell.
 node bench/harness/run-observation.mjs
 
-# 5. analysis + visuals
+# 4. analysis + visuals
 node bench/harness/analyze.mjs
 node bench/harness/charts.mjs
 node bench/harness/capture-screens.mjs
 
-# 6. Layer B — full agent loop (authoritative usage tokens). REQUIRES a key.
+# 5. Layer B — full agent loop (authoritative usage tokens). REQUIRES a key.
 ANTHROPIC_API_KEY=sk-... node bench/harness/claude-agent-loop.mjs
 
-# 7. Layer C — deterministic regression suite (no API key). Records each flow once, then replays it
+# 6. Layer C — deterministic regression suite (no API key). Records each flow once, then replays it
 #    with NO model and asserts a declared consequence. This is the RRE / regression story + the
 #    Reticle-only catches. Needs the demo (step 1) up; each harness self-drives its own reticle session.
 pnpm bench            # bench-all: replay-bench + replay-detect(+consequence/state) + suite-rre +
