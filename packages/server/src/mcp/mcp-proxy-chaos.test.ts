@@ -32,6 +32,16 @@ const SSE_HEADERS = { 'content-type': 'text/event-stream' } as const;
 const clientCall = (id: number): string =>
   `${JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/list' })}\n`;
 
+/**
+ * A REAL handshake, which the replay test cannot do without.
+ *
+ * `HandshakeReplay.replayLines()` returns nothing until it has observed an `initialize` going out.
+ * A client that only ever sends `tools/list` therefore triggers no replay at all, so a test that
+ * drops a stream mid-"replay" is not exercising one.
+ */
+const clientInitialize = (id: number): string =>
+  `${JSON.stringify({ jsonrpc: '2.0', id, method: 'initialize', params: {} })}\n`;
+
 const SETTLE_MS = 1_500;
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
 
@@ -41,6 +51,14 @@ interface FakeDaemon {
   posts: string[];
   /** Stream indexes where the endpoint frame is withheld (daemon accepting SSE but still booting). */
   withholdEndpoint: Set<number>;
+  /**
+   * Answer the proxy's replayed handshake, the way a real daemon does.
+   *
+   * Off by default so the other cases keep their existing traffic. The leak assertion in the replay
+   * case is meaningless without it: if nothing ever carries `RECONNECT_INITIALIZE_ID` back over the
+   * stream, "no replayed initialize reached stdout" is true no matter what the proxy does with it.
+   */
+  echoReplayedHandshake: { on: boolean };
   close: () => Promise<void>;
 }
 
@@ -48,6 +66,7 @@ function startFakeDaemon(): Promise<FakeDaemon> {
   const streams: http.ServerResponse[] = [];
   const posts: string[] = [];
   const withholdEndpoint = new Set<number>();
+  const echoReplayedHandshake = { on: false };
   const server = http.createServer((req, res) => {
     if ('GET' === req.method && (req.url ?? '').startsWith(STATUS_PATH)) {
       res
@@ -62,6 +81,18 @@ function startFakeDaemon(): Promise<FakeDaemon> {
       req.on('end', () => {
         posts.push(body);
         res.writeHead(202).end();
+        // The daemon answers the replayed initialize under the reserved id. Whether that answer
+        // reaches the client is the proxy's decision, and the whole point of the assertion below.
+        if (echoReplayedHandshake.on && body.includes(RECONNECT_INITIALIZE_ID)) {
+          const live = streams[streams.length - 1];
+          live?.write(
+            `event: message\ndata: ${JSON.stringify({
+              jsonrpc: '2.0',
+              id: RECONNECT_INITIALIZE_ID,
+              result: {},
+            })}\n\n`,
+          );
+        }
       });
       return;
     }
@@ -84,6 +115,7 @@ function startFakeDaemon(): Promise<FakeDaemon> {
         streams,
         posts,
         withholdEndpoint,
+        echoReplayedHandshake,
         close: () =>
           new Promise<void>((done) => {
             for (const stream of streams) stream.socket?.destroy();
@@ -220,12 +252,16 @@ describe('MCP proxy chaos — compound failure sequences', () => {
 
       // Stream 1 will die before answering the replayed initialize.
       daemon.withholdEndpoint.add(1);
+      // And the daemon answers the replay, so there is something that COULD leak.
+      daemon.echoReplayedHandshake.on = true;
 
       const stdin = driveProxy(daemon.port);
 
-      // Establish initial session (stream 0).
+      // A real handshake first: without one there is nothing to replay, and every assertion about
+      // the replay below would hold over a replay that never happened.
+      stdin.write(clientInitialize(0));
       stdin.write(clientCall(1));
-      await vi.waitFor(() => expect(daemon.posts.length).toBe(1));
+      await vi.waitFor(() => expect(daemon.posts.length).toBeGreaterThanOrEqual(1));
 
       // Drop stream 0 — triggers reconnect + handshake replay on stream 1.
       (daemon.streams[0]?.socket as Socket).resetAndDestroy();
@@ -245,7 +281,15 @@ describe('MCP proxy chaos — compound failure sequences', () => {
         expect(found).toBeDefined();
       });
 
-      // The replayed initialize must not leak to stdout.
+      // The replay must actually have HAPPENED, or the leak check below proves nothing.
+      const replayed = daemon.posts.filter((p) => p.includes(RECONNECT_INITIALIZE_ID));
+      expect(
+        replayed.length,
+        'no replayed initialize was ever posted — the leak assertion would be vacuous',
+      ).toBeGreaterThanOrEqual(1);
+
+      // The daemon answered it (echoReplayedHandshake), and the proxy must swallow that answer:
+      // a duplicate JSON-RPC id on the client's stdout is a protocol violation.
       const leaked = stdoutLines().filter((line) => line.includes(RECONNECT_INITIALIZE_ID));
       expect(leaked.length, 'replayed initialize must not leak to client').toBe(0);
     }, 20_000);
