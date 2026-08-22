@@ -8,9 +8,11 @@ import {
 } from './constants.js';
 import { HumanControlKind, MarkAnchorStrategy } from './session-constants.js';
 import { MAX_WIRE_REDACT_KEYS, MAX_WIRE_REDACT_KEY_LENGTH } from './redaction.js';
+import { DOCUMENT_ID_LENGTH } from './document-identity.js';
 
 const sessionIdSchema = z.string().min(1).max(TRANSPORT_LIMITS.MAX_SESSION_ID_LENGTH);
 const refSchema = z.string().max(TRANSPORT_LIMITS.MAX_REF_LENGTH);
+const documentIdSchema = z.string().min(1).max(DOCUMENT_ID_LENGTH);
 
 /**
  * Live-control: the narrowed payload of a HUMAN_CONTROL event. The server safeParses
@@ -74,6 +76,13 @@ export const ReticleEventSchema = z.object({
   actionId: refSchema.optional(),
   /** How `actionId` was derived. Present iff `actionId` is. */
   attribution: z.nativeEnum(EventAttribution).optional(),
+  /**
+   * The document this was observed under. Minted once per real document; a full navigation replaces
+   * both. Lets evidence from a superseded document be excluded rather than counted against an action
+   * taken now. Optional for back-compat with SDKs that predate it, which is why absence is read as
+   * "current" rather than "foreign" — see `isSameDocument`.
+   */
+  documentId: documentIdSchema.optional(),
   /** Event-type-specific payload. Kept open here; refined per observer at the edges. */
   data: z.record(z.unknown()).default({}),
 });

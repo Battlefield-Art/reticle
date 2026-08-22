@@ -17,6 +17,7 @@ import {
   RETICLE_ROOT_GLOBAL,
   RETICLE_SDK_VERSION_GLOBAL,
   CONTRACT_FINGERPRINT,
+  newDocumentId,
   type CommandMessage,
   type HelloMessage,
   type RedactionConfig,
@@ -189,6 +190,7 @@ export function buildEvent(args: {
   sessionId: string;
   data: Record<string, unknown>;
   ref?: string | undefined;
+  documentId?: string | undefined;
 }): ReticleEvent {
   return {
     t: args.t,
@@ -196,6 +198,11 @@ export function buildEvent(args: {
     type: args.type,
     sessionId: args.sessionId,
     ref: args.ref,
+    // Which document this was observed under, so the server can refuse evidence minted before a
+    // navigation replaced the page. Stamped HERE because it is the one place every event passes
+    // through: an observer added later would otherwise emit unstamped events, which read as
+    // "current" by design and would reintroduce the defect silently for one event type.
+    documentId: args.documentId,
     data: args.data,
   };
 }
@@ -210,6 +217,13 @@ export class Reticle {
   #teardowns: Teardown[] = [];
   #connected = false;
   #session = 'default';
+  /**
+   * Minted once, here, because this class is constructed once per document: a full navigation tears
+   * down the JavaScript context and builds a new one, so the id dies with the document it names. An
+   * SPA route change does not reconstruct it, which is correct — same context, same in-flight
+   * requests, same evidence.
+   */
+  readonly #documentId = newDocumentId(Math.random);
   #start = 0;
   #overlay: OverlayHandle | undefined;
   #presenter: Presenter | undefined;
@@ -450,6 +464,7 @@ export class Reticle {
       t: Math.round(performance.now() - this.#start),
       type,
       sessionId: this.#session,
+      documentId: this.#documentId,
       data,
       ref,
     });
