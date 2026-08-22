@@ -3,8 +3,10 @@ import {
   EventType,
   MUTATING_METHODS,
   isDevToolingUrl,
+  isSameDocument,
   type ReticleEvent,
 } from '@reticlehq/core';
+import { describeSuperseded } from './observed-in-window.js';
 import { findStaleResponses } from './stale-response.js';
 import { findBodyFailures } from './body-failures.js';
 import { findEchoMismatches } from './echo-mismatch.js';
@@ -285,6 +287,19 @@ export interface ContradictionOptions {
    * with no view.
    */
   renderProved?: boolean | undefined;
+  /**
+   * The document currently under observation, as the session derived it from its own event stream.
+   *
+   * Every rule below reasons about "the same window", and a window is scoped by time and by
+   * ring-buffer capacity and by nothing else — so it can still hold the traffic of a page a full
+   * navigation or a reload has already thrown away. Naming that traffic as the cause of an action
+   * taken now is true about the bytes and false about the world.
+   *
+   * Undefined means nobody could say which document is current (an SDK too old to stamp one, a caller
+   * with no session in hand), and the scoping then does nothing at all — `isSameDocument` treats
+   * absence as current on both sides, so the engine behaves exactly as it did before this existed.
+   */
+  currentDocumentId?: string | undefined;
 }
 
 /** Net-shaped events — the only ones that carry a URL a dev-tooling channel could occupy. */
@@ -324,7 +339,30 @@ export function findContradictions(
   options: ContradictionOptions = {},
 ): Contradiction[] {
   const found: OwnContradiction[] = [];
-  const { app: events, ignored: ignoredDevTooling } = splitDevTooling(allEvents);
+  const { app: allApp, ignored: ignoredDevTooling } = splitDevTooling(allEvents);
+
+  // ── Evidence belonging to a document that has since been replaced ───────────────────────────
+  // Scoped ONCE, here, for the same reason the dev-tooling split is: every rule below asks "what
+  // else was in this window", and answering that with a dead page's traffic is a defect in all of
+  // them rather than in whichever one reported it. Applied after the dev-tooling split so the count
+  // reported below is the app's own evidence and not the toolchain's noise.
+  const events = allApp.filter((e) => isSameDocument(e.documentId, options.currentDocumentId));
+  const superseded = allApp.length - events.length;
+  // An empty window was always allowed to mean "nothing happened"; that reading is only unsafe once
+  // supersession is what emptied it. Reported ALONE and before every rule below, because a window
+  // with nothing left in it is exactly the shape `action-had-no-effect` fires on — so without this
+  // the fix would have swapped a wrong citation for a wrong accusation.
+  if (superseded > 0 && 0 === events.length) {
+    return [
+      {
+        kind: ContradictionKind.EVIDENCE_SUPERSEDED,
+        claim: 'this window holds observations that could answer for the action',
+        counter: describeSuperseded('observations', superseded),
+        detail:
+          'a full navigation or a reload built a new document, and everything recorded here belongs to the old one — citing it would name requests, errors and state that no longer describe anything on screen',
+      },
+    ];
+  }
 
   const settled = events.filter((e) => e.type === EventType.NET_REQUEST).map(netCall);
 

@@ -109,6 +109,23 @@ export const ContradictionKind = {
    * working does not), so it is reported with that ceiling stated rather than tuned into silence.
    */
   ROUTE_RENDERED_NOTHING: 'route-rendered-nothing',
+  /**
+   * Everything this window held belongs to a document that has SINCE been replaced.
+   *
+   * Not a disagreement between channels; a disagreement between the evidence and the clock. A window
+   * is scoped by time and by ring-buffer capacity, so it can still hold the network calls, console
+   * errors and signals of a page that a full navigation or a reload has already thrown away. Citing
+   * one of those as the cause of an action taken now is true about the bytes and false about the
+   * world — reported from the field with a failing request that named a database row which no longer
+   * exists.
+   *
+   * Dropping that evidence is only half the fix. The other half is that its absence must not read as
+   * "nothing happened", which would trade a wrong citation for a wrong all-clear, and an all-clear is
+   * the more expensive of the two. This kind is what the engine says instead, and the distinction is
+   * the whole user-visible point: an agent told its evidence was superseded knows to re-drive, and an
+   * agent told the window was empty does not.
+   */
+  EVIDENCE_SUPERSEDED: 'evidence-superseded',
 } as const;
 export type ContradictionKind = (typeof ContradictionKind)[keyof typeof ContradictionKind];
 
@@ -146,6 +163,10 @@ export const ABSENCE_DERIVED_CONTRADICTIONS: ReadonlySet<ContradictionKind> = ne
   ContradictionKind.ROUTE_RENDERED_NOTHING,
   ContradictionKind.ACTION_HAD_NO_EFFECT,
   ContradictionKind.DUPLICATE_REQUEST,
+  // Absence in the strictest sense: the evidence that would have answered the question was thrown
+  // away with the document it belonged to. Nothing here says the app is wrong, so it must downgrade
+  // the verdict to UNKNOWN rather than assert NO — the same reasoning `unclean_capture` follows.
+  ContradictionKind.EVIDENCE_SUPERSEDED,
 ]);
 
 /** True when this kind was inferred from absence rather than positively observed. */

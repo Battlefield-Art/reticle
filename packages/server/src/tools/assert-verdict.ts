@@ -111,6 +111,7 @@ export async function assertVerdict(
   const declared = declaredExpectations(predicate);
   const contradictions = findContradictions(windowEvents, {
     prior,
+    currentDocumentId: session.currentDocumentId,
     expectedFailures: declared.netFailures,
     renderProved: pass && declared.rendersContent,
     ...(actCursor !== undefined && actCursor >= since ? { actionSince: actCursor } : {}),

@@ -26,6 +26,12 @@ export interface CrawlSession {
   elapsed(): number;
   eventsSince(cursor: number): ReticleEvent[];
   /**
+   * Which document is on screen now, so a finding is never drawn from a page the crawl has already
+   * navigated away from. Optional for the same reason `beginAction` is: a test fake supplies a
+   * minimal session, and its absence leaves the scoping inert rather than broken.
+   */
+  readonly currentDocumentId?: string | undefined;
+  /**
    * Attribution window around each click. Optional so a caller can supply a minimal session, but a real
    * session MUST provide it: without a window the click's own effects carry no actionId, and an
    * unattributed ref-bearing event is learned as ambient background churn. A crawl clicks up to 25
@@ -311,7 +317,11 @@ export async function crawl(
 
     // CONTRADICTIONS: the channels disagree about what this click did. Reported per control, so a
     // crawl of an unknown app surfaces its false greens without anyone knowing where to look.
-    for (const c of findContradictions(events)) {
+    // A crawl clicks controls that navigate, so its windows are the ones most likely to straddle a
+    // document boundary — and a finding here is reported against a specific control by name.
+    for (const c of findContradictions(events, {
+      currentDocumentId: session.currentDocumentId,
+    })) {
       counts.contradictions += 1;
       anomalies.push({
         kind: c.kind,

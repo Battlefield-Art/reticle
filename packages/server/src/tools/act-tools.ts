@@ -750,6 +750,7 @@ export const ACT_TOOLS: ToolDef[] = [
           // not evidence the destination rendered either — `alreadyTrue` decides that, once.
           renderProved: verdict.pass && !alreadyTrue && declared.rendersContent,
           ...session.lastAct.effect(),
+          currentDocumentId: session.currentDocumentId,
         });
         // The single field an agent reads. Everything below it is the evidence it was derived from;
         // this is the only one that has to be interpreted, and now it interprets itself.

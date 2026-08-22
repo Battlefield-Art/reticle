@@ -149,6 +149,21 @@ export class Session {
   #journalReader: JournalReader | undefined;
   /** What this session has learned by watching its own stream: ambient churn + blind-spot levels. */
   readonly #observed = new ObservedState();
+  /**
+   * Which document is on screen right now — the one the most recent stamped event was observed under.
+   *
+   * DERIVED, never announced. The SDK mints a document id once per real document and stamps it on
+   * every event, so the stream already carries the answer; asking the page for it separately would be
+   * a second source of truth that can disagree with the evidence it is supposed to scope. A full
+   * navigation or a reload builds a new document, mints a new id, and the first event carrying it
+   * moves this forward — which is exactly the moment the previous document's evidence stops being
+   * about the world. An SPA route change keeps the same document and so keeps the same id, which is
+   * correct rather than a limitation: same JavaScript context, same in-flight requests, same evidence.
+   *
+   * An UNSTAMPED event never clears this. An SDK older than the field stamps nothing, and letting one
+   * such event blank the current document would make every later comparison vacuous.
+   */
+  #documentId: string | undefined;
 
   constructor(hello: HelloMessage, socket: WebSocket, clock: Clock) {
     this.id = hello.sessionId;
@@ -260,8 +275,14 @@ export class Session {
     return this.#clock() - this.#startedAt;
   }
 
+  /** The document the most recent stamped event was observed under. See `#documentId`. */
+  get currentDocumentId(): string | undefined {
+    return this.#documentId;
+  }
+
   /** Re-stamp an incoming event with server-relative time, buffer it, and fan out. */
   pushEvent(event: ReticleEvent, byteSize?: number): void {
+    if (event.documentId !== undefined) this.#documentId = event.documentId;
     if (event.type === EventType.PAGE_HEALTH) {
       const r = readHealthEvent(event.data);
       this.applyHealth(

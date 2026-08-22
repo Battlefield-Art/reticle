@@ -20,3 +20,23 @@ export function describeObserved(noun: string, seen: readonly string[]): string 
   const rest = unique.length - shown.length;
   return `${noun} seen in this window: ${shown.join(', ')}${rest > 0 ? `, and ${String(rest)} more` : ''}`;
 }
+
+/**
+ * The third answer, and the one this file existed to make room for: things happened, and they belong
+ * to a document that has since been replaced.
+ *
+ * `describeObserved` already separates "nothing happened" from "things happened but not that one",
+ * because those need different fixes. A window whose evidence was discarded as superseded is a third
+ * case needing a third fix, and it is the one that reads most like the first: everything that could
+ * have answered the question is gone, so a bare "nothing happened in this window" is available and
+ * wrong. The remedy is in the sentence, because an agent that cannot act on a caveat learns to skip
+ * it — here the remedy is to drive the action again against the page now on screen.
+ */
+export function describeSuperseded(noun: string, count: number): string {
+  return (
+    `no ${noun} belong to the document currently on screen: ${String(count)} ${noun} were observed ` +
+    `and every one of them belongs to a document that has since been replaced (the page reloaded or ` +
+    `navigated). This says nothing about the app — the evidence went away with the page that produced ` +
+    `it. Re-drive the action against the page now on screen`
+  );
+}

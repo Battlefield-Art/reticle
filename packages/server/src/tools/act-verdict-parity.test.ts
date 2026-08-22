@@ -63,6 +63,19 @@ describe('act_and_wait and assert see the same evidence', () => {
   });
 
   /**
+   * Both verdict paths have to say which document is on screen, or the engine scopes nothing.
+   *
+   * The scoping is inert without it — `isSameDocument` reads an unknown current document as "counts
+   * as current", which is right for an older SDK and wrong for a caller that simply forgot. A path
+   * that stopped passing it would go on citing a replaced page's traffic with every gate green.
+   */
+  it('both paths tell the contradiction engine which document is on screen', () => {
+    for (const file of [act, assert]) {
+      expect(file).toMatch(/currentDocumentId: session\.currentDocumentId/);
+    }
+  });
+
+  /**
    * The caller's declaration has to reach the RULE, not only the detector.
    *
    * A satisfied `until` decides the verdict and settlement only corroborates it — but the rule

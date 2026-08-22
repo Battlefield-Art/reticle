@@ -231,10 +231,10 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       // never asked about.
       const actCursor = session.lastAct.cursor();
       const judgingTheAct = actCursor !== undefined && actCursor >= since;
-      const contradictions = findContradictions(
-        filtered,
-        judgingTheAct ? { ...session.lastAct.effect(), actionSince: actCursor } : {},
-      );
+      const contradictions = findContradictions(filtered, {
+        currentDocumentId: session.currentDocumentId,
+        ...(judgingTheAct ? { ...session.lastAct.effect(), actionSince: actCursor } : {}),
+      });
       // carry session health — a throttled tab means the observed timeline may be incomplete.
       return withControl(session, {
         ...report,
