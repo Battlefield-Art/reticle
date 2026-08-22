@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["packages/browser/src/**/*.ts"],
+  "globalDependencies": ["packages/browser/src/**/*.ts", "tsconfig.base.json", "eslint.config.mjs"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -24,6 +24,10 @@
     },
     "test:coverage": {
       "dependsOn": ["^build"]
+    },
+    "@reticlehq/core#test:unit": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/tauri/src/**"]
     },
     "@reticlehq/server#test:unit": {
       "dependsOn": ["^build"],
