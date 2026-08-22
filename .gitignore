@@ -43,7 +43,11 @@ assets/marketing/src/*.html
 !.env.example
 
 # Dependencies
-node_modules/
+# No trailing slash, deliberately. `node_modules/` matches DIRECTORIES only, and a package manager
+# that links a workspace's modules leaves a SYMLINK of that name, which is a file. Those were not
+# ignored, so `git add -A` committed them, and the branch then carried a file where CI needed a
+# directory: every job died at install with ENOTDIR before reaching the change.
+node_modules
 .pnpm-store/
 
 # Build output

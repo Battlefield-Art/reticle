@@ -13,7 +13,18 @@ afterEach(() => {
   document.querySelectorAll('[data-reticle-overlay]').forEach((e) => e.remove());
   document.body.innerHTML = '';
 });
-describe('presenter HUD shell', () => {
+/**
+ * Every test here mounts a full HUD into jsdom, which is slow, and on a loaded Windows runner it is
+ * slow enough to blow vitest's 5s default. The assertions are synchronous, so the timeout was never
+ * measuring the product — only the machine, and only when that machine was busy, which is to say
+ * only in CI.
+ *
+ * A bound, not a duration: nothing here asserts how long anything took, and raising the ceiling
+ * cannot mask a real failure because a broken expectation still fails immediately.
+ */
+const HUD_MOUNT_TIMEOUT_MS = 30_000;
+
+describe('presenter HUD shell', { timeout: HUD_MOUNT_TIMEOUT_MS }, () => {
   // Expanding now OPENS the chat rather than revealing a bare toolbar: the chat is the HUD's
   // content, and a toolbar with nothing above it made the agent's log something you had to know to
   // go looking for. The toggle still closes it, which the next assertion covers.
@@ -63,13 +74,17 @@ describe('presenter HUD shell', () => {
   it('shows edge sheen only on the expanded toolbar, not the collapsed FAB', () => {
     const p = new Presenter({});
     p.mount();
+    // `autoOpenChat` defaults ON, so a session now STARTS expanded with the chat open — the HUD's
+    // content is the point of the HUD. The sheen is still an expanded-only affordance, so this
+    // collapses first to reach the state it is about rather than assuming session start is it.
     p.sessionStart();
     const css = document.querySelector('style[data-reticle-overlay]')?.textContent ?? '';
     expect(css).toContain('[data-reticle-min="0"] [data-reticle-hud] .reticle-hud-deco');
     const deco = document.querySelector<HTMLElement>('.reticle-hud-deco');
     expect(deco).not.toBeNull();
-    const collapsed = getComputedStyle(deco as Element).visibility;
-    expect(collapsed).toBe('hidden');
+    expect(getComputedStyle(deco as Element).visibility).toBe('visible');
+    document.querySelector<HTMLElement>('[data-reticle-min-btn]')?.click();
+    expect(getComputedStyle(deco as Element).visibility).toBe('hidden');
     (document.querySelector('[data-reticle-fab]') as HTMLElement).click();
     expect(getComputedStyle(deco as Element).visibility).toBe('visible');
     p.destroy();
@@ -107,6 +122,9 @@ describe('presenter HUD shell', () => {
     const p = new Presenter({});
     p.mount();
     p.sessionStart();
+    // A session now starts EXPANDED (autoOpenChat defaults ON), so collapse to reach the FAB this
+    // test is about. The behaviour under test — a drag must not be read as a click — is unchanged.
+    document.querySelector<HTMLElement>('[data-reticle-min-btn]')?.click();
     const fab = document.querySelector('[data-reticle-fab]');
     const dock = document.querySelector('[data-reticle-dock]');
     expect(fab).not.toBeNull();

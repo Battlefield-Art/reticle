@@ -122,7 +122,15 @@ const DEFAULT_SETTINGS: PresenterSettings = {
   blockPageInteractions: true,
   showTally: false,
   showTimestamps: true,
-  autoOpenChat: false,
+  // ON by default: the chat IS the HUD's content, and shipping it off meant the default experience
+  // was a bare toolbar until somebody found the toggle. `expand()` has always opened the chat for
+  // the same reason; this is the other half — session start, with no click at all.
+  //
+  // Safe to default because `openChat()` expands a collapsed HUD, and session start is the one
+  // moment where that is what you want. A user who prefers the bare toolbar turns this off and it
+  // stays off: a stored `false` is honoured over the default, which is pinned in
+  // presenter-chat-default.test.ts so the product cannot change somebody's answer behind their back.
+  autoOpenChat: true,
   reduceMotion: false,
 };
 
@@ -233,7 +241,7 @@ export function settingsPanelHtml(): string {
   const tallyHelp = 'Show the pass/fail score pill in the toolbar';
   const timestampsHelp = 'Show relative timestamps on each activity-log row';
   const autoChatHelp =
-    'Open the agent chat by itself when a session starts and when you expand the HUD. Off leaves the toolbar bare until you ask for the chat.';
+    'On by default. Opens the agent chat by itself when a session starts and when you expand the HUD. Off leaves the toolbar bare until you ask for the chat.';
   const motionHelp = 'Reduce HUD animations for accessibility';
   const glowHelp =
     'Glow the page edges in the status colour while a session is live. Off keeps the HUD signals and leaves your app alone.';
