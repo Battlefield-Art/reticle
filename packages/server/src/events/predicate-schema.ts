@@ -66,6 +66,11 @@ export type Predicate =
       kind: typeof PredicateKind.SIGNAL;
       name?: string;
       dataMatches?: Record<string, unknown>;
+      /**
+       * Exact number of matching signals in the window — the same cardinality assertion `net`
+       * carries, on the channel the app itself speaks. Omit for presence (≥1).
+       */
+      count?: number;
       since?: number;
     }
   | { kind: typeof PredicateKind.STATE; store?: string; path: string; equals?: unknown }
@@ -353,6 +358,17 @@ function predicateUnion() {
         kind: z.literal(PredicateKind.SIGNAL),
         name: z.string().optional(),
         dataMatches: z.record(z.unknown()).optional(),
+        /**
+         * Exact number of matching signals since the action — presence becomes cardinality.
+         *
+         * The double-fire is the defect no state-only oracle can see: a handler wired twice fires
+         * the signal twice, the store ends up in the right shape either way, and a presence check
+         * is green on both. The wrong-name variant is the same blind spot from the other side — the
+         * intended signal fires once while a mistyped sibling fires alongside it, and only a count
+         * scoped to the matched name tells the two apart. Omit = presence (≥1); `0` asserts the
+         * signal never fired, which is a claim in its own right and NOT the same as omitting it.
+         */
+        count: z.number().int().nonnegative().optional(),
         since: z.number().optional(),
       })
       .strict(),

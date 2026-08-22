@@ -48,11 +48,20 @@ export function successToPredicate(
   const parts: Predicate[] = [];
 
   if (success.signal !== undefined) {
-    parts.push(
-      success.signalData !== undefined
-        ? { kind: PredicateKind.SIGNAL, name: success.signal, dataMatches: success.signalData }
-        : { kind: PredicateKind.SIGNAL, name: success.signal },
-    );
+    const signal: Extract<Predicate, { kind: typeof PredicateKind.SIGNAL }> = {
+      kind: PredicateKind.SIGNAL,
+      name: success.signal,
+    };
+    if (success.signalData !== undefined) signal.dataMatches = success.signalData;
+    if (success.signalCount !== undefined) {
+      signal.count = success.signalCount;
+      // Same post-settle reasoning as net.count: the success waiter is wait-until-true, so an exact
+      // count is transiently satisfied the instant the FIRST matching signal fires — before a
+      // double-fire's duplicate arrives. Gating on `settled` forces the count to be read only after
+      // the app goes quiet, by which point the duplicate IS counted and the over-count fails.
+      parts.push({ kind: PredicateKind.SETTLED });
+    }
+    parts.push(signal);
   }
 
   if (success.net !== undefined) {

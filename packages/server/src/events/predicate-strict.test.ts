@@ -54,6 +54,14 @@ describe('a predicate key that is not real is refused, never dropped', () => {
     ).toMatchObject({ kind: 'signal', name: 'order:placed', dataMatches: { id: 1 } });
   });
 
+  it('signal { count } survives the parse instead of being rejected as an unknown key', () => {
+    // The strict union drops nothing silently, so a field the evaluator reads has to be declared
+    // here too — otherwise the cardinality assertion never reaches it and the call returns nothing.
+    expect(PredicateSchema.parse({ kind: 'signal', name: 'order:placed', count: 1 })).toMatchObject(
+      { kind: 'signal', name: 'order:placed', count: 1 },
+    );
+  });
+
   /**
    * Reported from the field, and the reasoning behind the mistake is sound:
    *

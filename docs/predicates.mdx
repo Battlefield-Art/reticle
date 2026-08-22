@@ -115,6 +115,14 @@ A passing route verdict quotes the transition itself:
 
 The app emitted a named signal via `reticle.signal()`. `dataMatches` is shallow JSON matching, and `*` means "present, any value".
 
+`count` works here exactly as it does on `net`:
+
+```json
+{ "kind": "signal", "name": "order:placed", "count": 1 }
+```
+
+**Exactly once.** A handler wired twice fires the signal twice and leaves the store in the right shape either way, so every state-only check stays green. `count: 0` is a claim of its own (the signal never fired) and is not the same as leaving `count` out, which asserts presence.
+
 Nothing outranks this. A `200` proves the server was reachable; a rendered row proves React ran. A signal is the application itself saying the thing succeeded. See [instrumentation](/instrumentation) for how to emit them.
 
 ### state

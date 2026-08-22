@@ -14,6 +14,12 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
   The minimal attach contract a harness author has to meet is now written down in [`docs/platform-integration.md`](docs/platform-integration.md), including `reticle_tools` + `reticle_run` as the way a host with a tool-count cap still reaches the whole surface.
 
+- **`@reticlehq/core` + `@reticlehq/server` — a signal assertion can now say how many times, not just whether.** `{ kind: "signal", name: "order:placed", count: 1 }` asserts exact cardinality, the same field and the same semantics `net` has carried. It closes the one defect class no state-only oracle can reach: a handler wired twice fires the signal twice and leaves the store in exactly the right shape, so presence is green on both the working version and the broken one. The wrong-name variant is the same blind spot from the other side — the intended signal fires once beside a mistyped sibling — and only a count scoped to the matched name tells those apart.
+
+  **Omitting `count` still means presence**, unchanged for every existing caller, and `count: 0` is a claim of its own: the signal never fired. Collapsing those two onto each other would quietly turn "this must NOT fire" into "this must fire at least once", which is the failure the field exists to prevent.
+
+  One comparison, not two. `net` and `signal` now share the cardinality check, including the part that matters most in practice: an over-count is final the moment it is seen, because a window only accumulates and a count cannot come back down, so a double-fire is reported immediately instead of after the caller's whole budget. A recorded flow keeps the count as `signalCount`, gated on settle for the same reason net's is — a wait-until-true reader is satisfied by the first fire, before the duplicate arrives.
+
 ### Fixed
 
 - **`@reticlehq/browser` + `@reticlehq/server` — a page read that stopped early can no longer be reported as a page with nothing in it.** The snapshot walk stops at its node cap and returns a document-order prefix with `truncated: true`. That flag has always been honest and has never been actionable: it says the read stopped, not _where_, so nothing could finish it. A caller received half a page and drew a conclusion from it — and the conclusions that break this way are the negative ones. "No error is shown", "the row is gone", "nothing on screen disagrees" are claims about the whole page, and half a page cannot support one. The record that would have contradicted them may simply have been past the cut.

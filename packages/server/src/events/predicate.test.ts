@@ -448,6 +448,82 @@ describe('predicate engine', () => {
     expect(r.evidence).toMatchObject({ nearMiss: [{ label: '' }] });
   });
 
+  /**
+   * The defect class no state-only oracle can reach: the signal FIRED, so presence is green, but it
+   * fired the wrong NUMBER of times. The same cardinality assertion `net` already carries — a
+   * double-fired handler and a double-submitted request are one bug seen from two channels.
+   */
+  it('signal count: exactly-once passes on one fire, and a double-fire is caught', async () => {
+    const predicate = { kind: 'signal' as const, name: 'order:placed', count: 1 };
+    const once = new FakeSession([ev(EventType.SIGNAL, { name: 'order:placed', data: {} })]);
+    expect((await evaluatePredicate(once, predicate)).pass).toBe(true);
+
+    const twice = new FakeSession([
+      ev(EventType.SIGNAL, { name: 'order:placed', data: {} }),
+      ev(EventType.SIGNAL, { name: 'order:placed', data: {} }),
+    ]);
+    const r = await evaluatePredicate(twice, predicate);
+    expect(r.pass).toBe(false);
+    expect(r.assertion).toBe('signal.count');
+    expect(r.failureReason).toContain('2');
+    // Monotonic, exactly as on net: a window only accumulates, so an over-count is final.
+    expect(r.decided).toBe(true);
+  });
+
+  it('signal count: a fire under a different name is not counted', async () => {
+    // The wrong-name half of the defect class: the right signal fires once while a near-miss name
+    // fires alongside it. Counting both would report a double-fire that never happened.
+    const session = new FakeSession([
+      ev(EventType.SIGNAL, { name: 'order:placed', data: {} }),
+      ev(EventType.SIGNAL, { name: 'order:place', data: {} }),
+    ]);
+    expect(
+      (await evaluatePredicate(session, { kind: 'signal', name: 'order:placed', count: 1 })).pass,
+    ).toBe(true);
+  });
+
+  it('signal count omitted stays presence-only, so a double-fire still passes', async () => {
+    // The existing contract, pinned: adding the field must change nothing for callers who omit it.
+    const session = new FakeSession([
+      ev(EventType.SIGNAL, { name: 'order:placed', data: {} }),
+      ev(EventType.SIGNAL, { name: 'order:placed', data: {} }),
+    ]);
+    expect((await evaluatePredicate(session, { kind: 'signal', name: 'order:placed' })).pass).toBe(
+      true,
+    );
+  });
+
+  it('signal count: 0 asserts the signal never fired', async () => {
+    // `count: 0` is an assertion, not an omitted field — the two must not collapse onto each other,
+    // or "this handler must NOT fire" would silently become "it must fire at least once".
+    const quiet = new FakeSession([ev(EventType.SIGNAL, { name: 'other:thing', data: {} })]);
+    expect(
+      (await evaluatePredicate(quiet, { kind: 'signal', name: 'order:placed', count: 0 })).pass,
+    ).toBe(true);
+
+    const fired = new FakeSession([ev(EventType.SIGNAL, { name: 'order:placed', data: {} })]);
+    const r = await evaluatePredicate(fired, { kind: 'signal', name: 'order:placed', count: 0 });
+    expect(r.pass).toBe(false);
+    expect(r.assertion).toBe('signal.count');
+  });
+
+  it('signal count: dataMatches narrows what is counted', async () => {
+    const session = new FakeSession([
+      ev(EventType.SIGNAL, { name: 'save:done', data: { id: 'a' } }),
+      ev(EventType.SIGNAL, { name: 'save:done', data: { id: 'b' } }),
+    ]);
+    expect(
+      (
+        await evaluatePredicate(session, {
+          kind: 'signal',
+          name: 'save:done',
+          dataMatches: { id: 'a' },
+          count: 1,
+        })
+      ).pass,
+    ).toBe(true);
+  });
+
   it('element predicate reports a near-miss when the name is wrong', async () => {
     const session = new FakeSession([], (query) => {
       // Only a button named "Cancel" exists.

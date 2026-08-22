@@ -30,6 +30,16 @@ describe('predicateToExpect', () => {
     ).toEqual({ signal: 'deploy:shipped', signalData: { id: '*' } });
   });
 
+  it('carries a signal count, so a saved flow keeps the cardinality the agent asserted', () => {
+    // Dropping it would save a strictly WEAKER claim than the one made — presence where the agent
+    // said "exactly once" — and the replayed flow would then go green on the double-fire it exists
+    // to catch. Same reason net's count is carried.
+    expect(predicateToExpect({ kind: 'signal', name: 'order:placed', count: 1 })).toEqual({
+      signal: 'order:placed',
+      signalCount: 1,
+    });
+  });
+
   it('carries a net assertion including the count that catches double-submit', () => {
     expect(
       predicateToExpect({ kind: 'net', method: 'POST', urlContains: '/refund', count: 1 }),

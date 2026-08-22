@@ -69,6 +69,16 @@ describe('successToPredicate', () => {
     });
   });
 
+  it('signalCount gates on `settled` so a double-fire cannot pass on the first transient match', () => {
+    // Identical reasoning to net.count: a wait-until-true waiter sees exactly one fire the instant
+    // the FIRST one lands, and resolves before the duplicate arrives. The count is only true after
+    // the app goes quiet, so the settle gate is what makes the assertion mean what it says.
+    expect(successToPredicate({ signal: 'order:placed', signalCount: 1 }, NONE)).toEqual({
+      kind: 'allOf',
+      predicates: [{ kind: 'settled' }, { kind: 'signal', name: 'order:placed', count: 1 }],
+    });
+  });
+
   it('console.absent gates on `settled` (a clean-console assertion is post-settle)', () => {
     // Same post-settle reasoning as net.count: an absent assertion is satisfied at the first poll
     // (no error yet) before the action's error fires, so it must be read only after the page quiets.

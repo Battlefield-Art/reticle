@@ -223,6 +223,44 @@ function describeNetFilter(p: Extract<Predicate, { kind: typeof PredicateKind.NE
   return JSON.stringify(filter);
 }
 
+/** Same, for a signal: the matcher as applied, with the cardinality and the floor taken out. */
+function describeSignalFilter(
+  p: Extract<Predicate, { kind: typeof PredicateKind.SIGNAL }>,
+): string {
+  const { kind: _kind, count: _count, since: _since, ...filter } = p;
+  return JSON.stringify(filter);
+}
+
+/**
+ * Exact cardinality, once, for every channel that can count its matches.
+ *
+ * `net` and `signal` are the same assertion over different evidence — "this happened EXACTLY n
+ * times" — and the interesting half is the same on both: an over-count is `decided`, because a
+ * window only accumulates and a count cannot come back down, so waiting out the rest of the budget
+ * to report a double-fire buys nothing but latency.
+ *
+ * `noun` names the population in prose ("network call(s)", "signal(s)"), `filter` is the matcher as
+ * applied, and `assertion` is the oracle that judged it.
+ */
+function evalExactCount(args: {
+  matched: number;
+  want: number;
+  noun: string;
+  filter: string;
+  assertion: string;
+}): EvalResult {
+  const { matched, want, noun, filter, assertion } = args;
+  if (matched === want) return { pass: true, evidence: { matched } };
+  return {
+    pass: false,
+    ...(matched > want ? { decided: true } : {}),
+    failureReason: `expected ${String(want)} ${noun} matching ${filter}, saw ${String(matched)}`,
+    observed: `${String(matched)} matching ${noun}`,
+    expected: `exactly ${String(want)} matching ${filter}`,
+    assertion,
+  };
+}
+
 /**
  * URL suffixes only the DOCUMENT fetches, which the network observer therefore never records.
  *
@@ -435,26 +473,26 @@ export function evalNet(
   // useEffect-double-fire / retry-storm regression class, where the request DID fire (presence passes)
   // but fired the WRONG number of times. Without `count`, the matcher is presence-only (≥1).
   if (p.count !== undefined) {
-    return matches.length === p.count
-      ? { pass: true, evidence: { matched: matches.length } }
-      : 0 === matches.length && targetsUnobservedChannel(p) && !sawSubresources
-        ? {
-            pass: false,
-            failureReason: unobservedChannelReason(p),
-            inconclusive: unobservedChannelReason(p),
-            assertion: 'net.count',
-          }
-        : {
-            pass: false,
-            // Monotonic: more matches than asked for can never become exactly the number asked for.
-            // This is the double-submit — two writes 59ms apart — so the finding that matters most was
-            // also the one that took the caller's whole budget to report.
-            ...(matches.length > p.count ? { decided: true } : {}),
-            failureReason: `expected ${String(p.count)} network call(s) matching ${describeNetFilter(p)}, saw ${String(matches.length)}`,
-            observed: `${String(matches.length)} matching network call(s)`,
-            expected: `exactly ${String(p.count)} matching ${describeNetFilter(p)}`,
-            assertion: 'net.count',
-          };
+    if (
+      matches.length !== p.count &&
+      0 === matches.length &&
+      targetsUnobservedChannel(p) &&
+      !sawSubresources
+    ) {
+      return {
+        pass: false,
+        failureReason: unobservedChannelReason(p),
+        inconclusive: unobservedChannelReason(p),
+        assertion: 'net.count',
+      };
+    }
+    return evalExactCount({
+      matched: matches.length,
+      want: p.count,
+      noun: 'network call(s)',
+      filter: describeNetFilter(p),
+      assertion: 'net.count',
+    });
   }
   const hit = matches[0];
   if (hit === undefined && targetsUnobservedChannel(p) && !sawSubresources) {
@@ -620,7 +658,7 @@ export function evalSignal(
   events: ReticleEvent[],
   p: Extract<Predicate, { kind: typeof PredicateKind.SIGNAL }>,
 ): EvalResult {
-  const hit = events.find((e) => {
+  const isMatch = (e: ReticleEvent): boolean => {
     if (e.type !== EventType.SIGNAL) return false;
     if (p.name !== undefined && str(e.data['name']) !== p.name) return false;
     if (p.dataMatches !== undefined) {
@@ -628,7 +666,24 @@ export function evalSignal(
       if (!dataMatches(payload, p.dataMatches)) return false;
     }
     return true;
-  });
+  };
+
+  // `count` (exact) turns presence into a cardinality assertion, exactly as it does on `net`. The
+  // double-fire is invisible to every state-only oracle — a handler wired twice leaves the store in
+  // the right shape and fires the signal twice — and so is the wrong-name fire, where the intended
+  // signal fires once beside a mistyped sibling and a presence check cannot say which is which.
+  // Counting only what the MATCHER matched is what separates them. Omit = presence (≥1).
+  if (p.count !== undefined) {
+    return evalExactCount({
+      matched: events.filter(isMatch).length,
+      want: p.count,
+      noun: 'signal(s)',
+      filter: describeSignalFilter(p),
+      assertion: 'signal.count',
+    });
+  }
+
+  const hit = events.find(isMatch);
   if (hit !== undefined) return { pass: true, evidence: hit.data };
 
   // Near-miss: show signals that fired with the same name (so the agent sees the real data).

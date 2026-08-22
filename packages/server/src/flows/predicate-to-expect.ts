@@ -28,9 +28,10 @@ export function predicateToExpect(predicate: Predicate): FlowExpect | undefined 
   switch (predicate.kind) {
     case PredicateKind.SIGNAL: {
       if (predicate.name === undefined) return undefined;
-      return predicate.dataMatches === undefined
-        ? { signal: predicate.name }
-        : { signal: predicate.name, signalData: predicate.dataMatches };
+      const signal: FlowExpect = { signal: predicate.name };
+      if (predicate.dataMatches !== undefined) signal.signalData = predicate.dataMatches;
+      if (predicate.count !== undefined) signal.signalCount = predicate.count;
+      return signal;
     }
     case PredicateKind.NET: {
       const net: NonNullable<FlowExpect['net']> = {};

@@ -67,6 +67,14 @@ export const FlowExpectSchema = z.object({
    * bare `signal` still parses, and the on-disk version stays FLOW_FILE_VERSION 1.
    */
   signalData: z.record(z.unknown()).optional(),
+  /**
+   * Exact number of times the signal must have fired — the signal-side twin of `net.count`, and the
+   * only way a saved flow can keep a cardinality the agent actually asserted. Without it a
+   * `count: 1` drive would be recorded as bare presence, which is a strictly WEAKER claim than the
+   * one made: the replayed flow then goes green on the double-fire it was recorded to catch.
+   * Additive/optional — a flow file with a bare `signal` still parses, and FLOW_FILE_VERSION stays 1.
+   */
+  signalCount: z.number().int().nonnegative().optional(),
   net: z
     .object({
       method: z.string().optional(),
