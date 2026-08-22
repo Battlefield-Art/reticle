@@ -6,6 +6,7 @@ import { mergedNameRedirect, mergedNameMessage } from './merged-name-redirect.js
 import { ReticleTool } from './tool-names.js';
 import { TOOL_PROFILE_ENV, type ToolSurfaceOrigin } from './tool-surface.js';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
+import { isPredicateParam, predicateGrammar } from '../events/predicate-eval.js';
 
 /**
  * On-demand tool loading for MCP — the answer to the per-turn tool-definition tax.
@@ -59,6 +60,10 @@ function unknownParamsError(toolName: string, unknown: readonly string[]): strin
   return `unknown ${1 === unknown.length ? 'parameter' : 'parameters'} for ${toolName}: ${unknown.join(', ')} — NOT applied, so any result would be an answer to a different question`;
 }
 
+/** What to write instead — the one parameter reticle_tools declares, and the no-argument form. */
+const TOOLS_ARG_HINT =
+  'name the tools you want in `names`: reticle_tools { names: ["reticle_act_and_wait"] } — or call it with no arguments for the full catalog';
+
 /** The keys not declared by `shape`, in call order. */
 function unknownKeys(args: Record<string, unknown>, shape: object): string[] {
   const declared = new Set(Object.keys(shape));
@@ -88,17 +93,30 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
           },
         };
 
+  const toolsShape = {
+    names: z
+      .array(z.string())
+      .optional()
+      .describe('Tool names to load full params for. Omit to list all tools with summaries.'),
+  };
   const reticleTools: ToolDef = {
     name: ReticleTool.TOOLS,
     description:
       'Discover Reticle tools on demand. Call with no arguments to list every tool (name + one-line summary); call with names:["reticle_network", …] to load full descriptions and parameters for specific tools. Then invoke them with reticle_run. This avoids paying for every tool definition on every turn. To make a verification REUSABLE (record once, replay free forever), the flow workflow lives here: reticle_record{action:"start"} → act → reticle_flow_save → reticle_verify{action:"flows"} (and reticle_flow_heal on drift). Load those names when you want to save or re-run a flow.',
-    inputSchema: {
-      names: z
-        .array(z.string())
-        .optional()
-        .describe('Tool names to load full params for. Omit to list all tools with summaries.'),
-    },
+    inputSchema: toolsShape,
     handler: (_deps: ToolDeps, args: Record<string, unknown>) => {
+      // The discovery tool declared one parameter and checked none, so a call that misnamed it had
+      // the key dropped and came back with the WHOLE catalogue — a well-formed answer to a question
+      // nobody asked, and one the caller cannot tell from the answer it wanted. Same check and same
+      // wording as reticle_run's, because two spellings of one refusal is how one of them rots.
+      const stray = unknownKeys(args, toolsShape);
+      if (stray.length > 0) {
+        return Promise.resolve({
+          error: unknownParamsError(ReticleTool.TOOLS, stray),
+          params: paramInfo(toolsShape),
+          hint: TOOLS_ARG_HINT,
+        });
+      }
       const names = Array.isArray(args['names'])
         ? (args['names'] as unknown[]).filter((n): n is string => 'string' === typeof n)
         : undefined;
@@ -117,6 +135,12 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
           next: `All ${catalog.length} tools above are callable, advertised or not. Load full params with reticle_tools { names:[…] }, then call reticle_run { tool, args }.`,
         });
       }
+      // The grammar rides ONLY on a `names:[…]` reply that asked for a tool taking a predicate, so
+      // no turn pays for it in the catalog or in the advertised schema. The lean tool surface says
+      // "call reticle_tools for the full field grammar of a kind"; this is where that lands.
+      const carriesPredicate = names.some((n) =>
+        Object.values(byName.get(n)?.inputSchema ?? {}).some((schema) => isPredicateParam(schema)),
+      );
       return Promise.resolve({
         tools: names.map((n) => {
           const t = byName.get(n);
@@ -124,6 +148,7 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
             ? { name: n, error: 'unknown tool' }
             : { name: n, description: t.description, params: paramInfo(t.inputSchema) };
         }),
+        ...(carriesPredicate ? { predicateGrammar: predicateGrammar() } : {}),
       });
     },
   };

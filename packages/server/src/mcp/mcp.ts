@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { PredicateSchema } from '../events/predicate.js';
+import { isPredicateParam } from '../events/predicate-eval.js';
 import { isToonable, resultToToon, MCP_SERVER_NAME } from '@reticlehq/core';
 import { TOOLS, type ToolDeps } from '../tools/tools.js';
 import type { ToolDef } from '../tools/tools.js';
@@ -104,24 +104,6 @@ export function firstSentence(description: string): string {
  * Across the three tools that take a predicate that is 72% of the entire advertised input schema — a
  * cost re-sent on every request, forever, to describe a grammar most calls use one variant of.
  */
-/**
- * Is this parameter ACTUALLY the predicate union?
- *
- * This used to be a name check — `new Set(['predicate', 'until'])` — and `until` is overloaded on
- * this surface: the act/assert family means a predicate by it, while reticle_observe / _network /
- * _console mean a NUMBER, an upper cursor bound. So all three had their numeric parameter advertised
- * to the agent as `Predicate object: { kind, ...fields }`, typed as a record, under the DEFAULT
- * profile. An agent believing the schema passes an object, `asNumber` yields undefined, the bound is
- * silently dropped and the tool answers over the wrong window — a wrong answer wearing the shape of
- * an answer.
- *
- * Keying on the schema cannot make that mistake: a parameter is compacted because it IS a predicate.
- */
-function isPredicateParam(schema: z.ZodTypeAny): boolean {
-  const inner = schema instanceof z.ZodOptional ? (schema.unwrap() as z.ZodTypeAny) : schema;
-  return inner === PredicateSchema || inner === (PredicateSchema as z.ZodTypeAny).optional();
-}
-
 /**
  * What a lean profile advertises in place of the full predicate union.
  *
@@ -380,10 +362,16 @@ export function installFriendlyArgErrors(
     const unknown = unknownKeys(args, allowedKeys.get(toolName));
     if (unknown.length > 0) {
       const example = examples.get(toolName);
+      // What the tool DOES declare, in the same breath as what it does not. Naming only the bad key
+      // leaves the caller guessing again, and the next guess costs another round trip — which is the
+      // whole shape of the failure being fixed here. The list is already in hand, and for a tool
+      // with no example (the meta-tools) it is the only thing standing between a typo and a retry.
+      const declared = [...(allowedKeys.get(toolName) ?? [])].join(', ');
       throw new McpError(
         ErrorCode.InvalidParams,
         `Unknown ${1 === unknown.length ? 'parameter' : 'parameters'} for ${toolName}: ${unknown.join(', ')}. ` +
           `They were NOT applied — a result computed without them would look like an answer. ` +
+          (0 === declared.length ? '' : `${toolName} declares: ${declared}. `) +
           (example === undefined
             ? `Call reticle_tools { names: ["${toolName}"] } for its parameters.`
             : `A valid call looks like: ${toolName} ${example}`),
@@ -556,7 +544,18 @@ export function createMcpServer(
     ),
     // Every tool in the table, not just the advertised ones: reticle_run dispatches to the full
     // table, so an unadvertised tool reached through the hatch must be just as strict.
-    new Map(tools.map((tool) => [tool.name, new Set(Object.keys(tool.inputSchema))])),
+    //
+    // ...and the advertised list on top of it, because the two META-tools are not in the table — they
+    // are composed onto the surface — so they had no entry, and no entry means no declared keys means
+    // every key allowed. `reticle_tools` took a misnamed argument, dropped it, and answered with the
+    // whole catalogue: a well-formed answer to a question nobody asked, on the one tool whose entire
+    // job is telling an agent what the surface is.
+    new Map(
+      [...tools, ...advertised].map((tool) => [
+        tool.name,
+        new Set(Object.keys(tool.inputSchema)) as ReadonlySet<string>,
+      ]),
+    ),
   );
   for (const tool of advertised) {
     // Output schemas are now the largest slice of the per-request tax (55.6% of the hybrid payload

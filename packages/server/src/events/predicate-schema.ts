@@ -111,7 +111,23 @@ const PREDICATE_ALIASES: Readonly<Record<string, Readonly<Record<string, string>
   // things to prove at once, so failing it is expensive at the worst moment.
   [PredicateKind.ALL_OF]: { of: 'predicates' },
   [PredicateKind.ANY_OF]: { of: 'predicates' },
+  // `of` on `not` for the same reason it is accepted on the composites above — an agent that learned
+  // the spelling one line earlier applies it to the third composite, and `not` was the one that
+  // rejected it. The refusal did name `predicate`, but naming a field still costs the round trip
+  // that produced no verdict, and the guess is unambiguous: `not` has exactly one child.
+  [PredicateKind.NOT]: { of: 'predicate' },
 };
+
+/**
+ * The word half the assertion world spells `kind`.
+ *
+ * A discriminated union rejects `{ type: "text", ... }` with "Invalid discriminator value" on a field
+ * the caller never wrote, so the reply reads as being about `kind` — which is absent — and never
+ * says the word `type`. Observed on a live drive as the first rung of a ladder: one field name
+ * learned per rejected call, each costing a verdict. No predicate kind declares a `type` field, so
+ * lifting it is unambiguous, and an explicit `kind` still wins.
+ */
+const KIND_SPELLING = 'type';
 
 /**
  * Element-query fields an agent writes FLAT on an `element` predicate instead of nested under
@@ -236,10 +252,19 @@ export function describeResidual(element: ElementDescriptor, field: string): str
   return `${element.role} "${element.name}" ${field}=${JSON.stringify(reading)}`;
 }
 
+/** `type` read as the discriminator when — and only when — `kind` is absent. */
+function renameKindSpelling(obj: Record<string, unknown>): Record<string, unknown> {
+  if (obj['kind'] !== undefined || 'string' !== typeof obj[KIND_SPELLING]) return obj;
+  const out: Record<string, unknown> = { ...obj, kind: obj[KIND_SPELLING] };
+  delete out[KIND_SPELLING];
+  return out;
+}
+
 /** Rename known aliases before parse; an explicit canonical key always wins. */
 function applyPredicateAliases(input: unknown): unknown {
   if (typeof input !== 'object' || null === input || Array.isArray(input)) return input;
-  const obj = input as Record<string, unknown>;
+  const given = input as Record<string, unknown>;
+  const obj = renameKindSpelling(given);
   const kind = 'string' === typeof obj['kind'] ? obj['kind'] : '';
   const aliases = PREDICATE_ALIASES[kind];
   let out = obj;
@@ -415,6 +440,51 @@ export function predicateFieldsFor(kind: string): readonly string[] {
     }
   }
   return [];
+}
+
+/**
+ * Is this tool parameter ACTUALLY the predicate union?
+ *
+ * Not a name check. `until` is overloaded on this surface — the act/assert family means a predicate
+ * by it, while reticle_observe / _network / _console mean a NUMBER, an upper cursor bound — so any
+ * caller keying on the word would treat a numeric parameter as a predicate and describe it to the
+ * agent as an object. Keying on the schema cannot make that mistake.
+ *
+ * Lives beside the schema because two callers now ask the question: the lean tool surface, which
+ * compacts these parameters, and `reticle_tools`, which spells their grammar out on request. Two
+ * spellings of "is this a predicate" is one chance for the surface and the grammar to disagree.
+ */
+export function isPredicateParam(schema: z.ZodTypeAny): boolean {
+  const inner = schema instanceof z.ZodOptional ? (schema.unwrap() as z.ZodTypeAny) : schema;
+  return inner === PredicateSchema || inner === (PredicateSchema as z.ZodTypeAny).optional();
+}
+
+/**
+ * Every kind's fields, in one block an agent can write a predicate from.
+ *
+ * The tool surface advertises the KIND list and points at `reticle_tools` for the fields, because
+ * inlining the 12-variant recursive union in the declared JSON Schema costs thousands of characters
+ * per predicate parameter, re-sent every turn, to describe a grammar most calls use one variant of.
+ * That trade is right — but the pointer has to land somewhere, and it landed on a parameter
+ * description reading "same shape as reticle_assert". So the grammar was reachable from nothing, and
+ * an agent that could not find `route`'s fields fell back to a `text` check where a route check was
+ * meant: the weaker oracle, which is the expensive half of an undiscoverable grammar.
+ *
+ * Derived from the schema, like `predicateFieldsFor` and for the same reason: a hand-written grammar
+ * that drifts is worse than none, because the agent trusts it and retries into the same wall.
+ */
+export function predicateGrammar(): Readonly<Record<string, string>> {
+  const grammar: Record<string, string> = {};
+  for (const kind of Object.values(PredicateKind)) {
+    const nested = predicateNestedFieldsFor(kind);
+    grammar[kind] = predicateFieldsFor(kind)
+      .map((field) => {
+        const keys = nested[field];
+        return undefined === keys ? field : `${field} { ${keys.join(', ')} }`;
+      })
+      .join(', ');
+  }
+  return grammar;
 }
 
 /** Peel optional/nullable/default/effects wrappers off a field to reach the schema underneath. */

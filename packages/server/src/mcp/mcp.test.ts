@@ -439,6 +439,24 @@ describe('an unknown parameter is refused, never silently dropped', () => {
     expect(text(result)).not.toMatch(/Unknown parameter/i);
     await close();
   });
+
+  /**
+   * The meta-tools were the hole in this check. The allowed-key map was built from the tool TABLE,
+   * and the two meta-tools are not in the table — they are composed onto the advertised surface — so
+   * `reticle_tools` had no entry, no entry means no declared keys, and no declared keys means every
+   * key is allowed. A misnamed argument was dropped and the full catalogue came back.
+   */
+  it('refuses an unknown parameter on a meta-tool too, and names the declared one', async () => {
+    const { client, close } = await openServer();
+    const result = await client.callTool({
+      name: ReticleTool.TOOLS,
+      arguments: { tool: ReticleTool.ASSERT },
+    });
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain('tool');
+    expect(text(result), 'the reply must name what it does declare').toContain('names');
+    await close();
+  });
 });
 
 /**
