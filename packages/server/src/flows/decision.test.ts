@@ -308,3 +308,78 @@ describe('buildSuiteVerdict — a flow that cannot fail is not a pass', () => {
     expect(v.passed).toBe(1);
   });
 });
+
+describe('buildDecision — the business outcome first, the mechanism underneath', () => {
+  const CHECKIN = 'the trip badge reads "checked in" after the traveller checks in';
+
+  function broken(name: string): FlowReplayResult {
+    return {
+      name,
+      status: ReplayStatus.ERROR,
+      steps: [
+        {
+          step: 2,
+          tool: ReticleTool.ACT,
+          anchor: 'send-checkin',
+          ok: false,
+          error: 'flow.success not satisfied',
+        },
+      ],
+      error: { code: 'error', message: 'flow.success not satisfied' },
+    };
+  }
+
+  it('a failing flow names the business outcome that is no longer true, before the step', () => {
+    const d = buildDecision(broken('checkin'), flow({ intent: CHECKIN }));
+    expect(d.summary).toContain(CHECKIN);
+    expect(d.summary.indexOf(CHECKIN)).toBeLessThan(d.summary.indexOf('step 2'));
+    expect(d.whatChanged).toBe('flow.success not satisfied');
+  });
+
+  it('a drifting flow names the intent too — a locator miss still breaks an outcome', () => {
+    const result: FlowReplayResult = {
+      name: 'checkin',
+      status: ReplayStatus.DRIFT,
+      steps: [
+        {
+          step: 0,
+          tool: ReticleTool.ACT,
+          anchor: 'send-checkin',
+          ok: false,
+          drift: {
+            reasonKind: DriftReason.TESTID_NOT_FOUND,
+            reason: 'testid "send-checkin" not found',
+            anchor: 'send-checkin',
+            nearest: 'send-check-in',
+          },
+        },
+      ],
+    };
+    const d = buildDecision(result, flow({ intent: CHECKIN }));
+    expect(d.summary).toContain(CHECKIN);
+    expect(d.whatChanged).toBe('testid "send-checkin" not found');
+  });
+
+  it('quotes the ledger statement over the copy on the flow file, so an amendment wins', () => {
+    const d = buildDecision(broken('checkin'), flow({ intent: CHECKIN }), 'the badge reads paid');
+    expect(d.summary).toContain('the badge reads paid');
+    expect(d.summary).not.toContain(CHECKIN);
+  });
+
+  it('a flow with no intent says so plainly rather than deriving one from its steps', () => {
+    const d = buildDecision(broken('send-checkin'), flow());
+    expect(d.summary).toContain('no intent declared');
+    expect(d.summary).not.toContain('NO LONGER TRUE');
+  });
+
+  it('a passing flow with no intent says what its green does not cover', () => {
+    const result: FlowReplayResult = {
+      name: 'weak',
+      status: ReplayStatus.OK,
+      steps: [{ step: 0, tool: ReticleTool.ACT, anchor: 'btn', ok: true }],
+    };
+    const d = buildDecision(result, flow({ success: { signal: 'x:y' } }));
+    expect(d.verdict).toBe('pass');
+    expect(d.summary).toContain('no intent declared');
+  });
+});

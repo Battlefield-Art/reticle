@@ -43,21 +43,54 @@ function whereInSource(step: FlowStepResult, flow: FlowFile | undefined): string
   return source === undefined ? undefined : `${source.file}:${String(source.line)}`;
 }
 
-export function buildDecision(result: FlowReplayResult, flow?: FlowFile): ReplayDecision {
+/**
+ * The business outcome that stopped being true, said before the mechanism that broke it.
+ *
+ * Order is the point. The intent is what makes a failure legible — a human or an agent reading
+ * "step 3 assertion failed" has to reconstruct the stakes — and the mechanical detail underneath is
+ * what makes it actionable. Dropping either one costs something, so the summary carries both.
+ */
+const INTENT_BROKEN_PREFIX = 'NO LONGER TRUE: ';
+/**
+ * What a report says when nothing declared what the flow is for.
+ *
+ * Never an intent derived from step names: a guessed goal reads as the product owner's words and an
+ * agent will act on it. The same rule as the source pointer — absence stays honest.
+ */
+const NO_INTENT_ON_PASS =
+  'no intent declared, so this proves the steps ran, not what they were for — declare one with reticle_intent.';
+const NO_INTENT_ON_FAIL = 'no intent declared, so this names the mechanism, not the stakes.';
+
+/** `<intent> — <mechanical>`, or the mechanical sentence plus the honest absence. */
+function withIntent(mechanical: string, statement: string | undefined): string {
+  return statement === undefined
+    ? `${mechanical} — ${NO_INTENT_ON_FAIL}`
+    : `${INTENT_BROKEN_PREFIX}"${statement}" — ${mechanical}`;
+}
+
+/**
+ * @param intentStatement the ledger's current wording, when the flow is bound to an intent row.
+ * Falls back to the copy on the flow file, which is what a flow saved before the link carries.
+ */
+export function buildDecision(
+  result: FlowReplayResult,
+  flow?: FlowFile,
+  intentStatement?: string,
+): ReplayDecision {
   const { name, status, steps } = result;
+  const intentSaid = intentStatement ?? flow?.intent;
 
   if (status === ReplayStatus.OK) {
     // Green — but is it green-for-the-right-reason? A flow that asserts no consequence can pass while
     // broken, so the honest next action is to add one.
     const grade = flow !== undefined ? classifyFlowAssertions(flow) : undefined;
     const verifiesOutcome = true === grade?.hasConsequenceAssertion;
-    const intent = flow?.intent;
     return {
       verdict: 'pass',
       summary:
-        intent !== undefined
-          ? `"${name}" passed — intent "${intent}" ${verifiesOutcome ? 'verified' : 'NOT asserted'}.`
-          : `"${name}" passed (${steps.length} steps).`,
+        intentSaid !== undefined
+          ? `"${name}" passed — intent "${intentSaid}" ${verifiesOutcome ? 'verified' : 'NOT asserted'}.`
+          : `"${name}" passed (${steps.length} steps) — ${NO_INTENT_ON_PASS}`,
       nextAction: verifiesOutcome
         ? 'none — the flow held and its consequence was observed.'
         : 'add a consequence assertion (assert-signal / success-state) so this flow can fail when the feature breaks.',
@@ -77,7 +110,7 @@ export function buildDecision(result: FlowReplayResult, flow?: FlowFile): Replay
           : undefined;
     return {
       verdict: 'drift',
-      summary: `"${name}" drifted at step ${step.step} (${step.anchor}).`,
+      summary: withIntent(`"${name}" drifted at step ${step.step} (${step.anchor}).`, intentSaid),
       whatChanged: drift.reason,
       ...(where !== undefined ? { whereInSource: where } : {}),
       ...(fix !== undefined ? { suggestedFix: fix } : {}),
@@ -93,7 +126,10 @@ export function buildDecision(result: FlowReplayResult, flow?: FlowFile): Replay
   const isSuccessOracle = step?.tool === SUCCESS_STEP_TOOL;
   return {
     verdict: 'fail',
-    summary: `"${name}" failed${step !== undefined ? ` at step ${step.step} (${step.anchor})` : ''}.`,
+    summary: withIntent(
+      `"${name}" failed${step !== undefined ? ` at step ${step.step} (${step.anchor})` : ''}.`,
+      intentSaid,
+    ),
     whatChanged: message,
     ...(where !== undefined ? { whereInSource: where } : {}),
     nextAction: isSuccessOracle

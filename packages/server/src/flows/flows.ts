@@ -18,6 +18,8 @@ import type {
 import { ReticleTool } from '../tools/tool-names.js';
 import { asString, asRecord } from '../tools/tools-helpers.js';
 import { applyHealChanges } from './heal.js';
+import { linkFlowIntent } from './flow-intent.js';
+import { IntentStore } from '../intent/intent-store.js';
 import type { CompiledProgram, RecordedStep } from './recordings.js';
 import type { FileSystemPort } from '../project/fs-port.js';
 import { flowDir, flowPath, reticleDirPaths, isValidFlowName } from '../project/reticle-dir.js';
@@ -228,6 +230,17 @@ export class FlowStore {
   }
 
   /**
+   * Register the flow's business goal in the intent ledger and stamp the row's id onto the flow.
+   *
+   * Both save paths route through here — the compiled-recording one and the in-page recorder one —
+   * because a flow's goal must land in the ledger whichever way the flow arrived. A flow with no
+   * goal is returned untouched and nothing is written, so an older flow keeps its exact bytes.
+   */
+  #linkIntent(flow: FlowFile): Promise<FlowFile> {
+    return linkFlowIntent(new IntentStore(this.#fs, this.#root, this.#clock), flow);
+  }
+
+  /**
    * Convert a CompiledProgram (testid-normalized) into an anchored, on-disk flow + write it.
    * Optionally fold structured annotations (per-step expect, dynamic[], success) onto
    * the flow before writing. Omitting `annotations` reproduces the same bytes.
@@ -249,7 +262,7 @@ export class FlowStore {
       createdAt: this.#clock.now(),
       steps,
     };
-    const flow = withAnnotations(base, annotations);
+    const flow = await this.#linkIntent(withAnnotations(base, annotations));
     await this.#fs.mkdir(flowDir(this.#root, pid));
     await this.#fs.writeFile(flowPath(this.#root, program.name, pid), this.#serialize(flow));
     const degraded = flow.steps.filter((s) => true === s.degraded).length;
@@ -277,7 +290,7 @@ export class FlowStore {
     const stamped = pid === undefined ? flow : { ...flow, projectId: pid };
     const parsed = FlowFileSchema.safeParse(stamped);
     if (!parsed.success) return { ok: false, code: FlowErrorCode.PARSE_FAILED };
-    const valid = parsed.data;
+    const valid = await this.#linkIntent(parsed.data);
     await this.#fs.mkdir(flowDir(this.#root, pid));
     await this.#fs.writeFile(
       flowPath(this.#root, asFlowName(valid.name), pid),

@@ -7,7 +7,9 @@ import {
   asFlowName,
   ActionType,
   DANGEROUS_ACTION_CONFIRM_ARG,
+  EventType,
   FlowErrorCode,
+  IntentState,
   ReticleCommand,
   QueryBy,
   ReplayStatus,
@@ -15,7 +17,10 @@ import {
   RunStatus,
   type CommandResult,
   type FlowReplayResult,
+  type ReticleEvent,
 } from '@reticlehq/core';
+import { IntentStore } from '../intent/intent-store.js';
+import { FlowAssertionGrade } from './flow-classify.js';
 import { TOOLS, type ToolDeps } from '../tools/tools.js';
 import { buildSuiteVerdict } from './decision.js';
 import { ReticleTool } from '../tools/tool-names.js';
@@ -363,5 +368,101 @@ describe('reticle_flow_replay — a green that cannot go red (#341)', () => {
     // than trusted: a field the handler sets and the schema omits returns as nothing, silently.
     const schema = tool(ReticleTool.FLOW_REPLAY).outputSchema;
     expect(schema).toHaveProperty('unverifiable');
+  });
+});
+
+/**
+ * A replay reports in the language of the product, not only of the DOM.
+ *
+ * The intent ledger already models `declared → bound → proved` and records which verdict discharged
+ * an intent. A flow that carries one should therefore DISCHARGE it when it passes — otherwise the
+ * ledger stays open forever on something a suite proves on every run, and a failing flow reports a
+ * missing testid where the reader needed "checkout no longer works".
+ */
+describe('reticle_flow_replay — the business intent a flow discharges', () => {
+  let dir: string;
+  let root: string;
+  let fs: FileSystemPort;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'reticle-flow-intent-'));
+    root = join(dir, '.reticle');
+    fs = createNodeFileSystem();
+  });
+
+  afterEach(async () => {
+    await removeTempDir(dir);
+  });
+
+  const CHECKED_IN = 'the trip badge reads "checked in" after the traveller checks in';
+
+  function sessionEmitting(signal: string, options: ScriptedSessionOptions = {}): Partial<Session> {
+    const event: ReticleEvent = {
+      t: 1,
+      type: EventType.SIGNAL,
+      sessionId: 'demo',
+      data: { name: signal },
+    };
+    return {
+      ...scriptedSession((testid) => ({ elements: [{ ref: `e-${testid}` }] }), options),
+      eventsSince: () => [event],
+    };
+  }
+
+  async function save(name: string, annotations?: FlowAnnotations): Promise<void> {
+    const res = await new FlowStore(fs, root, clock).save(
+      program(name, [actStep('send-checkin')]),
+      annotations,
+    );
+    if (!res.ok) throw new Error(`save failed: ${res.code}`);
+  }
+
+  function withIntent(intent: string, signal: string): FlowAnnotations {
+    return { stepExpect: new Map(), dynamic: [], intent, success: { signal } };
+  }
+
+  it('a passing replay marks the intent proved with the verdict that did it', async () => {
+    await save('checkin', withIntent(CHECKED_IN, 'trip:checked-in'));
+    const deps = fakeDeps(fs, root, sessionEmitting('trip:checked-in'));
+
+    const res = (await tool(ReticleTool.FLOW_REPLAY).handler(deps, {
+      flowName: 'checkin',
+    })) as FlowReplayResult;
+    expect(res.status).toBe(ReplayStatus.OK);
+
+    const [intent] = await new IntentStore(fs, root, clock).read();
+    expect(intent?.statement).toBe(CHECKED_IN);
+    expect(intent?.state).toBe(IntentState.PROVED);
+    expect(intent?.provenBy?.verdictId).toContain('checkin');
+    expect(intent?.provenBy?.grade).toBe(FlowAssertionGrade.ASSERTED);
+  });
+
+  it('a failing replay names the business outcome that is no longer true, then the step', async () => {
+    await save('checkin', withIntent(CHECKED_IN, 'trip:checked-in'));
+    // The check-in button no longer does anything: the step fails, so the outcome never happens.
+    const deps = fakeDeps(fs, root, sessionEmitting('trip:checked-in', { actOk: false }));
+
+    const res = (await tool(ReticleTool.FLOW_REPLAY).handler(deps, {
+      flowName: 'checkin',
+    })) as FlowReplayResult;
+    expect(res.status).toBe(ReplayStatus.ERROR);
+    expect(res.decision?.summary).toContain(CHECKED_IN);
+    expect(res.decision?.whatChanged).toBeDefined();
+
+    // A failed replay must never discharge: the ledger stays open on an outcome nothing proved.
+    const [intent] = await new IntentStore(fs, root, clock).read();
+    expect(intent?.state).not.toBe(IntentState.PROVED);
+  });
+
+  it('an older flow file with no intent replays exactly as it does today', async () => {
+    await save('legacy');
+    const deps = fakeDeps(fs, root, sessionEmitting('irrelevant'));
+
+    const res = (await tool(ReticleTool.FLOW_REPLAY).handler(deps, {
+      flowName: 'legacy',
+    })) as FlowReplayResult;
+    expect(res.status).toBe(ReplayStatus.OK);
+    expect(res.steps).toHaveLength(1);
+    expect(await new IntentStore(fs, root, clock).read()).toEqual([]);
   });
 });

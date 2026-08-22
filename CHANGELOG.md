@@ -28,6 +28,14 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
   **Absence means unknown, never "no edits happened".** A page with no hot-update channel — Next, Electron, Tauri, a plain script tag, an older SDK — stamps nothing, nothing is labelled, and nothing behaves differently than before. Reticle does not watch files, read your repo, or know what your build does; it only records what the running page told it.
 
+- **`@reticlehq/core` + `@reticlehq/server` — a saved flow now carries the business intent it discharges, so a failure reports what stopped being true.** A replay reported in the language of the DOM: step 3 drifted, the success oracle did not fire, this testid is gone. All true, all actionable, and none of it says what the flow was FOR — so whoever read it had to reconstruct the stakes before they could judge whether to care. A regression suite whose failures need reconstructing is a suite people learn to skim.
+
+  A flow file gains one optional field, `intentId`, pointing at a row in the intent ledger that already exists — the one in `.reticle/intent.json` that models declared → bound → proved and records which verdict discharged what. **Not a second notion of intent.** The prose a recorder already captured is promoted into that ledger at save time and the flow keeps the id, so there is one vocabulary and one file a reviewer reads; a flow can also be pointed by hand at an intent somebody declared long before it, and prove that instead.
+
+  A failure now leads with the outcome and keeps the mechanism underneath it — the intent is what makes the report legible, the step and the file:line are what make it fixable, and dropping either one costs something. A passing replay discharges the intent it was bound to, stamped with the verdict that did it and with the flow's assertion grade, which is what makes a later weakening visible in review rather than invisible in a green suite. An intent is bound only when the flow asserts an observable consequence, so a flow that cannot go red can never prove anything.
+
+  **A flow with no declared intent says so, and nothing is derived from its step names.** A guessed goal reads as the product owner's words and an agent will act on them, which is strictly worse than the honest absence — the same rule the source pointer follows. Older flow files parse, replay, and report exactly as they did, and the on-disk flow version does not move.
+
 ### Fixed
 
 - **`@reticlehq/server` — an instrumentation gap told the agent an app was unverifiable and gave it nowhere to go.** A gap exists to be acted on: it names an absence in the app, the cost that absence imposed on the verdict just returned, and the one change that closes it. What it never carried was a location. The type declared an optional `file:line` and no producer had ever set one, so every gap went out with a `ref` and nothing else.

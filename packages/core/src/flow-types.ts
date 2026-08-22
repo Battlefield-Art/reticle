@@ -340,6 +340,20 @@ export const FlowFileSchema = z.object({
    */
   intent: z.string().optional(),
   /**
+   * The intent-ledger row this flow discharges — the id in `.reticle/intent.json`.
+   *
+   * `intent` above is the prose a recorder captured; this is the LINK to the ledger that already
+   * models declared → bound → proved and records which verdict discharged what. Without it there
+   * would be two ways to say what a change is for, which is the defect this codebase keeps paying
+   * for: a flow's goal and an intent's statement would drift apart with nothing to reconcile them.
+   *
+   * Set at save time from the flow's own prose, or written by hand to point a flow at an intent
+   * declared earlier via `reticle_intent` — a flow can prove something somebody else declared.
+   * Optional + back-compat: a flow without it replays exactly as before, and the on-disk version
+   * stays FLOW_FILE_VERSION 1.
+   */
+  intentId: z.string().optional(),
+  /**
    * The project the flow was recorded against (the connecting session's HELLO `projectId`), stamped at
    * save time. Scopes a flow to its app so a shared daemon's HUD lists only the current project's flows
    * instead of every project that ever saved to that daemon. Optional + back-compat: a flow with no

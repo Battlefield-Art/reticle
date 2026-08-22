@@ -15,6 +15,10 @@ import { asString } from '../tools/tools-helpers.js';
 import { replayFlow } from './flow-replay.js';
 import { assertSuccess, dynamicTestids, successLabel, SUCCESS_STEP_TOOL } from './flow-success.js';
 import { buildDecision, unverifiableReason } from './decision.js';
+import { classifyFlowAssertions } from './flow-classify.js';
+import { dischargeFlowIntent, flowIntentStatement, flowReplayVerdictId } from './flow-intent.js';
+import { IntentStore } from '../intent/intent-store.js';
+import { sessionRoot } from '../project/session-root.js';
 import { waitForPredicate } from '../events/predicate.js';
 import { computeSegments } from '../journal/rollups.js';
 import { AssertionTiersStore } from './assertion-tiers-store.js';
@@ -154,6 +158,13 @@ export async function replayNamedFlow(
       error: { code: loaded.code, message: flowErrorMessage(loaded.code) },
     };
   }
+  // What this flow is FOR, from the shared ledger — so a failure can report the business outcome
+  // that stopped being true before the step that stopped being green. Undefined when nothing
+  // declared one, which the decision then says plainly rather than inventing a goal from step names.
+  const intents = new IntentStore(deps.fs, sessionRoot(deps, asString(args['sessionId'])), {
+    now: deps.now,
+  });
+  const intentSaid = await flowIntentStatement(intents, loaded.value);
   const session = deps.sessions.resolve(asString(args['sessionId']));
   // Captured before replay: if the tab isn't on the flow's start page, a step-1 drift is a wrong-page
   // symptom, not a regression — surface that on the decision instead of a bare "a step no longer matches".
@@ -206,6 +217,18 @@ export async function replayNamedFlow(
       // Record what this flow COVERS so a later deletion can be scoped to the files that changed.
       toFlowSources([{ name, steps: loaded.value.steps }])[0]?.sources ?? [],
     );
+    // The ledger learns what this run proved. Only a flow that COULD have gone red discharges: an
+    // assertion-free flow is never bound, and `dischargeIntent` refuses an unbound intent, so the
+    // guard here is the cheap half of a rule the ledger already enforces. `grade` is what makes a
+    // later weakening visible — an intent re-proved by a weaker flow says so in the git diff.
+    if (unverifiableReason(loaded.value) === undefined) {
+      const provedAt = deps.now();
+      await dischargeFlowIntent(intents, loaded.value, {
+        verdictId: flowReplayVerdictId(name, provedAt),
+        grade: classifyFlowAssertions(loaded.value).grade,
+        at: provedAt,
+      });
+    }
   }
   // Push-default: the deviation report over this drive's segments, learned across runs. Best-effort.
   const deviation = await computeReplayDeviation(deps, session, replayFloor);
@@ -217,7 +240,7 @@ export async function replayNamedFlow(
       steps,
       error: { code: ReplayStatus.ERROR, message: failed.error ?? 'flow action failed' },
     };
-    errored.decision = buildDecision(errored, loaded.value);
+    errored.decision = buildDecision(errored, loaded.value, intentSaid);
     applyStartPathHint(errored, startPathHint);
     if (deviation !== undefined) errored.deviation = deviation;
     return errored;
@@ -229,7 +252,7 @@ export async function replayNamedFlow(
   // drift, and the sibling tools would then disagree about the same flow.
   const cannotFail = status === ReplayStatus.OK ? unverifiableReason(loaded.value) : undefined;
   if (cannotFail !== undefined) result.unverifiable = { reason: cannotFail };
-  if (status !== ReplayStatus.OK) result.decision = buildDecision(result, loaded.value);
+  if (status !== ReplayStatus.OK) result.decision = buildDecision(result, loaded.value, intentSaid);
   applyStartPathHint(result, startPathHint);
   if (deviation !== undefined) result.deviation = deviation;
   return result;
