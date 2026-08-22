@@ -6,6 +6,7 @@ import { salvageJson } from '../events/json-salvage.js';
 import { withControl } from '../session/control-envelope.js';
 import { asNumber, asString } from './tools-helpers.js';
 import { type ToolDef, sessionIdShape, commandOrThrow } from './tool-kit.js';
+import { readCompleteTree } from './complete-snapshot.js';
 
 /**
  * Does the screen agree with the data the app was given?
@@ -101,11 +102,28 @@ export const RECONCILE_TOOLS: ToolDef[] = [
         });
       }
 
-      const snapshot = await commandOrThrow(deps, session.id, ReticleCommand.SNAPSHOT, {
-        mode: SnapshotMode.FULL,
-      });
-      const tree = (snapshot as { tree?: unknown }).tree;
-      const mismatches: Mismatch[] = reconcile(bodies, 'string' === typeof tree ? tree : '');
+      // The whole page, INCLUDING whatever the snapshot's node cap cut off. A comparison against a
+      // prefix of the page can miss the row that disagrees and can invent one that does not — the
+      // value it was looking for may simply sit past the cut.
+      const page = await readCompleteTree((scope) =>
+        commandOrThrow(deps, session.id, ReticleCommand.SNAPSHOT, {
+          mode: SnapshotMode.FULL,
+          ...(scope === undefined ? {} : { scope, includeRoot: true }),
+        }),
+      );
+      const mismatches: Mismatch[] = reconcile(bodies, page.tree);
+      // ASYMMETRIC on purpose. A mismatch FOUND in a partial page is still found — one witness proves
+      // presence, and withholding it because the rest of the page was unread helps nobody. An EMPTY
+      // result is the universal claim "nothing anywhere disagrees", and a partial page cannot support
+      // it. So the positive keeps working and only the negative is refused.
+      if (0 === mismatches.length && !page.complete) {
+        throw new Error(
+          `the page could not be read completely — ${page.incompleteBecause ?? 'the snapshot was cut'}. ` +
+            'Nothing was found to disagree with the API, but that is not the same as nothing disagreeing: ' +
+            'the record that does could be in the part that was never read. Narrow the page (close overlays, ' +
+            'navigate to the view holding these records) and re-run.',
+        );
+      }
       // A truncated body is declared whether or not anything was found in it: "no mismatches" over a
       // partially-read payload is a weaker statement than over a whole one, and the difference is
       // exactly the kind of omission this layer exists to refuse.

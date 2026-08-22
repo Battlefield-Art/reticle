@@ -290,6 +290,9 @@ export function createCommandRegistry(): Map<string, CommandHandler> {
     buildSnapshot({
       scope: str(args['scope']),
       mode: (str(args['mode']) as SnapshotMode | undefined) ?? SnapshotMode.FULL,
+      // Only the completion re-read sets this: it re-reads a branch the truncated walk stopped
+      // BEFORE emitting, so that branch's own line has to come back with its descendants.
+      includeRoot: true === args['includeRoot'],
     }),
   );
   reg.set(ReticleCommand.QUERY, (args) => {

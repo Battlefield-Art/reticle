@@ -83,6 +83,19 @@ export interface SnapshotResult {
    * must not receive the entire page as if it were the modal.
    */
   scopeMissing?: boolean;
+  /**
+   * Refs of the subtree roots the walk never entered, present ONLY when `truncated`. This is the
+   * cut's own frontier: re-snapshot each with `{ scope: ref, includeRoot: true }` and the union is
+   * the whole tree. Without it `truncated` says only THAT the read stopped, never WHERE, so nobody
+   * could finish it — and a reader who does not finish it must not conclude anything is ABSENT.
+   */
+  unread?: string[];
+  /**
+   * True when the frontier itself did not fit in `MAX_UNREAD_BRANCHES`, so `unread` is a prefix of
+   * the branches that were cut. Completion is then impossible from this read, and the difference
+   * between "impossible" and "not attempted" is the whole point of saying so.
+   */
+  unreadOverflow?: true;
 }
 
 interface SnapshotOptions {
@@ -90,7 +103,24 @@ interface SnapshotOptions {
   mode?: SnapshotMode | undefined;
   maxNodes?: number | undefined;
   maxDepth?: number | undefined;
+  /**
+   * Emit the scope element's OWN line before its descendants. Off by default (a scoped snapshot has
+   * always been the subtree UNDER the scope); the completion re-read needs it, because the branch it
+   * is re-reading is exactly the node the truncated walk stopped before emitting.
+   */
+  includeRoot?: boolean | undefined;
 }
+
+/**
+ * Cap on how many cut branches one snapshot names.
+ *
+ * A hostile or merely huge DOM can cut thousands of siblings at once (a non-virtualized grid does it
+ * routinely), and a frontier that large is neither affordable to send nor useful to re-read one at a
+ * time. Fifty is well above what a real page's cut produces — the frontier is the branches at the
+ * node cap, not the nodes themselves — and small enough that the list stays a hint rather than a
+ * second snapshot. Past it the read declares `unreadOverflow` instead of quietly sending fewer.
+ */
+export const MAX_UNREAD_BRANCHES = 50;
 
 /** Cheap skips that need no computed style (tags, overlays, aria-hidden, [hidden]). */
 function skipEarly(el: Element): boolean {
@@ -158,6 +188,19 @@ interface WalkCtx {
   mode: SnapshotMode;
   maxNodes: number;
   maxDepth: number;
+  unread: string[];
+  unreadOverflow: boolean;
+}
+
+/** Record a cut branch on the frontier, declaring an overflow rather than shortening it silently. */
+function recordUnread(branches: readonly Element[], ctx: WalkCtx): void {
+  for (const branch of branches) {
+    if (ctx.unread.length >= MAX_UNREAD_BRANCHES) {
+      ctx.unreadOverflow = true;
+      return;
+    }
+    ctx.unread.push(refs.refFor(branch));
+  }
 }
 
 /**
@@ -187,45 +230,56 @@ function pierceChildren(parent: Element): Element[] {
   return out;
 }
 
+/** Emit one element (if it earns a line) and descend into it. Split out of `walk` so the completion
+ * re-read can start AT a branch root — the node the truncated walk stopped just before emitting. */
+function visit(child: Element, depth: number, ctx: WalkCtx, inLive: boolean): void {
+  if (skipEarly(child)) return;
+  // Resolve computed style ONCE per node (the dominant snapshot cost) and thread it into both the
+  // display-none skip and the layout signature — was two forced style resolutions per node.
+  const view = child.ownerDocument.defaultView;
+  const style = view !== null ? view.getComputedStyle(child) : null;
+  if (style !== null && 'none' === style.display) return;
+  const role = getRole(child);
+  const name = getAccessibleName(child);
+  const interactive = INTERACTIVE.has(role);
+  // Announcements are exempt from leanness, and so is everything inside one: a live region whose
+  // message sits in a child element would otherwise be included as a contentless `- generic`.
+  const announce = inLive || announces(child, role);
+  const lean = ctx.mode === SnapshotMode.INTERACTIVE && !announce;
+  // A generic, unnamed container's own text content — only consulted outside INTERACTIVE mode,
+  // so the actionable-only view stays lean while FULL/meaningful views see content regressions.
+  const text = !lean && 'generic' === role && 0 === name.length ? directText(child) : '';
+  // Layout signature for grid/flex containers — makes CLS/layout regressions visible.
+  const layout = lean ? '' : layoutSignature(style);
+  const meaningful =
+    interactive || role !== 'generic' || name.length > 0 || text.length > 0 || layout.length > 0;
+  const include = lean ? interactive : meaningful;
+  if (include) {
+    ctx.nodes += 1;
+    ctx.lines.push(
+      text.length > 0 && 0 === name.length && 0 === layout.length
+        ? formatTextLine(depth, text)
+        : formatLine(child, depth, role, name, layout),
+    );
+    walk(child, depth + 1, ctx, announce);
+  } else {
+    walk(child, depth, ctx, announce);
+  }
+}
+
 function walk(parent: Element, depth: number, ctx: WalkCtx, inLive = false): void {
   if (depth > ctx.maxDepth) return;
-  for (const child of pierceChildren(parent)) {
+  const children = pierceChildren(parent);
+  for (let index = 0; index < children.length; index += 1) {
     if (ctx.nodes >= ctx.maxNodes) {
       ctx.truncated = true;
+      // Everything from here on is unread, not absent. Naming the frontier is what makes the cut
+      // recoverable — see `unread` on SnapshotResult.
+      recordUnread(children.slice(index), ctx);
       return;
     }
-    if (skipEarly(child)) continue;
-    // Resolve computed style ONCE per node (the dominant snapshot cost) and thread it into both the
-    // display-none skip and the layout signature — was two forced style resolutions per node.
-    const view = child.ownerDocument.defaultView;
-    const style = view !== null ? view.getComputedStyle(child) : null;
-    if (style !== null && 'none' === style.display) continue;
-    const role = getRole(child);
-    const name = getAccessibleName(child);
-    const interactive = INTERACTIVE.has(role);
-    // Announcements are exempt from leanness, and so is everything inside one: a live region whose
-    // message sits in a child element would otherwise be included as a contentless `- generic`.
-    const announce = inLive || announces(child, role);
-    const lean = ctx.mode === SnapshotMode.INTERACTIVE && !announce;
-    // A generic, unnamed container's own text content — only consulted outside INTERACTIVE mode,
-    // so the actionable-only view stays lean while FULL/meaningful views see content regressions.
-    const text = !lean && 'generic' === role && 0 === name.length ? directText(child) : '';
-    // Layout signature for grid/flex containers — makes CLS/layout regressions visible.
-    const layout = lean ? '' : layoutSignature(style);
-    const meaningful =
-      interactive || role !== 'generic' || name.length > 0 || text.length > 0 || layout.length > 0;
-    const include = lean ? interactive : meaningful;
-    if (include) {
-      ctx.nodes += 1;
-      ctx.lines.push(
-        text.length > 0 && 0 === name.length && 0 === layout.length
-          ? formatTextLine(depth, text)
-          : formatLine(child, depth, role, name, layout),
-      );
-      walk(child, depth + 1, ctx, announce);
-    } else {
-      walk(child, depth, ctx, announce);
-    }
+    const child = children[index];
+    if (child !== undefined) visit(child, depth, ctx, inLive);
   }
 }
 
@@ -317,12 +371,17 @@ export function buildSnapshot(options: SnapshotOptions = {}): SnapshotResult {
     mode,
     maxNodes: options.maxNodes ?? 400,
     maxDepth: options.maxDepth ?? 20,
+    unread: [],
+    unreadOverflow: false,
   };
-  walk(root, 0, ctx);
+  if (true === options.includeRoot) visit(root, 0, ctx, false);
+  else walk(root, 0, ctx);
   return {
     tree: ctx.lines.join('\n'),
     status,
     nodes: ctx.nodes,
     truncated: ctx.truncated,
+    ...(ctx.unread.length > 0 ? { unread: ctx.unread } : {}),
+    ...(ctx.unreadOverflow ? { unreadOverflow: true as const } : {}),
   };
 }
