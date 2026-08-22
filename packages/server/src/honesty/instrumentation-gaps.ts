@@ -36,14 +36,15 @@ export interface ActionInstrumentationFacts {
   /** True when the outcome was positively PROVED rather than inferred. */
   proved?: boolean;
   /**
-   * Does Reticle know a `file:line` for what this verdict is about?
+   * The `file:line` of the element this verdict is about, when the build plugin stamped one.
    *
-   * A boolean rather than the source itself, deliberately: the act path holds a `{file, line}` and
-   * the assert path holds a formatted string it remembered from the last act. The gap does not care
-   * which — only whether the agent can be pointed at code — and taking the shape would make one of
-   * the two callers convert for no reason.
+   * Was a boolean, on the reasoning that the gap only needed to know WHETHER the agent could be
+   * pointed at code. That was true while the only gap reading it was the one that fires when the
+   * pointer is missing. It stopped being true the moment a gap wanted to CARRY the pointer: a gap is
+   * read back later, out of the ledger, by which time its `ref` is very likely dead, and a boolean
+   * cannot be turned back into a location. Both callers already hold this as a formatted string.
    */
-  sourceKnown: boolean;
+  source?: string | undefined;
   /** The ref that was driven, for the report. */
   ref?: string | undefined;
   /** Did the caller's predicate ask about registered state? */
@@ -65,7 +66,7 @@ export function gapsForAction(facts: ActionInstrumentationFacts): Instrumentatio
 
   // A red verdict names the control and cannot name the line that renders it. That is the round trip
   // the agent is about to spend, and the one a build plugin removes permanently.
-  if (!facts.pass && !facts.sourceKnown) {
+  if (!facts.pass && facts.source === undefined) {
     gaps.push(
       instrumentationGap(
         InstrumentationGapKind.NO_SOURCE_MAPPING,
@@ -76,7 +77,10 @@ export function gapsForAction(facts: ActionInstrumentationFacts): Instrumentatio
     );
   }
 
-  // Asked about state, and there is no state channel to answer from.
+  // Asked about state, and there is no state channel to answer from. Deliberately UNLOCATED: a store
+  // is registered once at app setup, nowhere near the control that was driven, and nothing in this
+  // window knows where that setup lives. Borrowing the acted line would send the agent to a file
+  // that cannot hold the fix — worse than no pointer, because it costs the trip as well.
   if (facts.stateAsked && facts.stateUnwatched) {
     gaps.push(
       instrumentationGap(
@@ -94,11 +98,20 @@ export function gapsForAction(facts: ActionInstrumentationFacts): Instrumentatio
         InstrumentationGapKind.NO_SIGNAL_ON_MUTATION,
         'the DOM changed and no signal fired for it',
         'the outcome had to be inferred from the DOM instead of read from the app asserting its own success, which is the strongest evidence available',
-        { ...(facts.ref === undefined ? {} : { ref: facts.ref }) },
+        // The one gap here that can be LOCATED. It is about the element that was driven, and that
+        // element is exactly what `source` describes — so the pointer is a fact, not a guess. It
+        // also outlives the `ref` beside it, which is what makes this gap still actionable when
+        // coverage reads it back long after the page has re-rendered.
+        {
+          ...(facts.ref === undefined ? {} : { ref: facts.ref }),
+          ...(facts.source === undefined ? {} : { source: facts.source }),
+        },
       ),
     );
   }
 
+  // Also unlocated, for the same reason: the remedy is a router adapter wired app-wide, not a line
+  // at the control that happened to trigger this navigation.
   if (facts.routeChanged && !facts.routeSignalFired) {
     gaps.push(
       instrumentationGap(

@@ -4,7 +4,7 @@ import { gapsForAction, type ActionInstrumentationFacts } from './instrumentatio
 
 const clean: ActionInstrumentationFacts = {
   pass: true,
-  sourceKnown: true,
+  source: 'src/Pay.tsx:42',
   stateAsked: false,
   stateUnwatched: false,
   domMutated: false,
@@ -28,11 +28,11 @@ describe('gapsForAction', () => {
    */
   describe('only fires when the absence changed the answer', () => {
     it('says nothing about a missing source mapping on a verdict that passed', () => {
-      expect(kinds({ pass: true, sourceKnown: false })).toEqual([]);
+      expect(kinds({ pass: true, source: undefined })).toEqual([]);
     });
 
     it('reports it on a verdict that did NOT pass, where the line is what the agent wants next', () => {
-      expect(kinds({ pass: false, sourceKnown: false })).toEqual([
+      expect(kinds({ pass: false, source: undefined })).toEqual([
         InstrumentationGapKind.NO_SOURCE_MAPPING,
       ]);
     });
@@ -78,7 +78,7 @@ describe('gapsForAction', () => {
   });
 
   it('carries the ref and the remedy, so the agent can act without another call', () => {
-    const [gap] = gapsForAction({ ...clean, pass: false, sourceKnown: false, ref: 'e12' });
+    const [gap] = gapsForAction({ ...clean, pass: false, source: undefined, ref: 'e12' });
     expect(gap?.ref).toBe('e12');
     expect(gap?.fix).toContain('plugin');
     expect(gap?.cost.length ?? 0).toBeGreaterThan(0);
@@ -88,7 +88,7 @@ describe('gapsForAction', () => {
     expect(
       kinds({
         pass: false,
-        sourceKnown: false,
+        source: undefined,
         domMutated: true,
         signalsFired: 0,
         routeChanged: true,
@@ -101,5 +101,56 @@ describe('gapsForAction', () => {
         InstrumentationGapKind.NO_SOURCE_MAPPING,
       ].sort(),
     );
+  });
+
+  /**
+   * The pointer the gap surface exists to hand over.
+   *
+   * A gap is read LATER — `reticle_verify { action: "coverage" }` is the "am I done?" call, by which
+   * time the `ref` it carries is very likely dead. `source` is a fact about the CODE and stays true
+   * while the ref rots, so a gap about a specific control has to carry it whenever it is known.
+   */
+  describe('points at the code, not only at a ref that will go stale', () => {
+    it('names the driven element file:line on a mutation nothing signalled', () => {
+      const [gap] = gapsForAction({
+        ...clean,
+        pass: false,
+        domMutated: true,
+        signalsFired: 0,
+        ref: 'e7',
+      });
+      expect(gap?.kind).toBe(InstrumentationGapKind.NO_SIGNAL_ON_MUTATION);
+      expect(gap?.source).toBe('src/Pay.tsx:42');
+    });
+
+    it('omits it rather than guessing when the element carries no source', () => {
+      const gaps = gapsForAction({
+        ...clean,
+        pass: false,
+        source: undefined,
+        domMutated: true,
+        signalsFired: 0,
+        ref: 'e7',
+      });
+      const silent = gaps.find((g) => InstrumentationGapKind.NO_SIGNAL_ON_MUTATION === g.kind);
+      expect(silent).toBeDefined();
+      expect(silent?.source).toBeUndefined();
+    });
+
+    /**
+     * The gaps that are NOT about the driven element must not borrow its line. A store is registered
+     * once at app setup and a router adapter is wired app-wide; neither lives where the click does,
+     * and a pointer that sends the agent to the wrong file costs it the trip AND leaves it further
+     * from the fix than no pointer at all.
+     */
+    it('does not attach the acted line to gaps that are not about the acted element', () => {
+      const [store] = gapsForAction({ ...clean, stateAsked: true, stateUnwatched: true });
+      expect(store?.kind).toBe(InstrumentationGapKind.NO_STORE_REGISTERED);
+      expect(store?.source).toBeUndefined();
+
+      const [route] = gapsForAction({ ...clean, pass: false, routeChanged: true });
+      expect(route?.kind).toBe(InstrumentationGapKind.NO_ROUTE_SIGNAL);
+      expect(route?.source).toBeUndefined();
+    });
   });
 });

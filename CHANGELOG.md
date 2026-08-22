@@ -30,6 +30,14 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Fixed
 
+- **`@reticlehq/server` — an instrumentation gap told the agent an app was unverifiable and gave it nowhere to go.** A gap exists to be acted on: it names an absence in the app, the cost that absence imposed on the verdict just returned, and the one change that closes it. What it never carried was a location. The type declared an optional `file:line` and no producer had ever set one, so every gap went out with a `ref` and nothing else.
+
+  A `ref` is a handle to a DOM node, and gaps are read late. `reticle_verify { action: "coverage" }` is the "am I done?" call, made long after the verdict that recorded the gap, by which time the page has re-rendered and the handle very likely resolves to nothing. So the surface aimed squarely at a build-and-verify loop was handing that loop a remedy with no address.
+
+  A gap about a control that changed the DOM and signalled nothing now carries the `file:line` of that control, taken from what the build plugin already stamped and the act path already had in hand. It survives into the coverage answer intact, which is the point: `source` is a fact about the code and stays true while the `ref` beside it rots.
+
+  **The other gaps stay unlocated, deliberately.** A store is registered once at app setup and a router adapter is wired app-wide; neither lives at the control that was driven, and lending them its line would send the agent to a file that cannot hold the fix — worse than silence, because it costs the trip as well. An absent pointer here means Reticle does not know, and it is not filled in with a guess.
+
 - **`@reticlehq/server` — the predicate grammar was reachable from nothing, and an agent that cannot find a grammar writes a weaker check.** A predicate parameter is advertised compactly on purpose: the union is recursive, and inlining it costs thousands of characters per parameter, re-sent every turn, to describe a grammar most calls use one variant of. The compact form carries the kind list and points at `reticle_tools` for the fields — but `reticle_tools` answered with the parameter's own prose, which for `reticle_act_and_wait { until }` reads "same shape as `reticle_assert`". So the one pointer the surface offered led to another pointer, and the fields of a kind could be learned only by guessing at them one rejected call at a time.
 
   **The cost that matters is not the round trips.** An agent that could not find `route`'s fields fell back to a `text` check where a route check was meant — a presence assertion standing in for a navigation assertion, which is precisely the false green this product exists to prevent. A grammar that is hard to discover pushes the caller toward the weakest oracle on the surface.

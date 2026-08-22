@@ -164,7 +164,7 @@ export async function assertVerdict(
   // state assertion against an app that registers no store.
   const gaps = gapsForAction({
     pass,
-    sourceKnown: session.lastAct.source() !== undefined,
+    source: session.lastAct.source(),
     stateAsked: declaresState(predicate),
     stateUnwatched: isStateUnwatched(spots),
     domMutated: false,

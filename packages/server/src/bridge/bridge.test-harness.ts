@@ -33,6 +33,8 @@ export class FakeBrowser {
   actHasTestid = true;
   /** Provenance the real browser captures alongside the anchor; undefined = app built without it. */
   actSource: { file: string; line: number } | undefined = undefined;
+  /** DOM mutations the browser counted inside the acted element; undefined = it counted none. */
+  actMutatedWithin: number | undefined = undefined;
   /** when false, ACT reports settled:false + settleReason:'timeout' (throttled-tab path). */
   actSettled = true;
   /** When false, QUERY by testid returns no match (testid not in current DOM at replay). */
@@ -115,7 +117,12 @@ export class FakeBrowser {
         dispatched: true,
         settled: this.actSettled,
         settleReason: this.actSettled ? null : 'timeout',
-        effect: { dispatched: true },
+        effect: {
+          dispatched: true,
+          ...(this.actMutatedWithin === undefined
+            ? {}
+            : { domMutatedWithin: this.actMutatedWithin }),
+        },
         ...(this.actHasTestid ? { testid: 'pay-btn' } : {}),
         ...(this.actSource === undefined ? {} : { source: this.actSource }),
       };

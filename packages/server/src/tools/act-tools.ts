@@ -646,9 +646,9 @@ export const ACT_TOOLS: ToolDef[] = [
         const actedSource = sourceOf(r['source']);
         // Remembered on the session so a LATER assertion can name a file even when its failure has no
         // element to point at — a signal that never fired, a request that was never made.
-        session.lastAct.markSource(
-          actedSource === undefined ? undefined : `${actedSource.file}:${String(actedSource.line)}`,
-        );
+        const actedSourceLabel =
+          actedSource === undefined ? undefined : `${actedSource.file}:${String(actedSource.line)}`;
+        session.lastAct.markSource(actedSourceLabel);
         const windowEvents = session.eventsSince(since);
         const trace = summarizeReaction(
           buildReactionReport(windowEvents, session.elapsed() - since),
@@ -794,7 +794,7 @@ export const ACT_TOOLS: ToolDef[] = [
         const gaps = gapsForAction({
           pass: verdict.pass,
           proved: decision.verifiedReason === VerifiedReason.PROVED,
-          sourceKnown: actedSource !== undefined,
+          source: actedSourceLabel,
           ref: asString(args['ref']),
           stateAsked: declaresState(until),
           stateUnwatched,
@@ -814,9 +814,7 @@ export const ACT_TOOLS: ToolDef[] = [
           // Promoted out of `effect` on red only. On green nobody needs it and it is noise; on red it
           // is the first thing the agent wants, and burying a file:line inside the effect block is
           // most of the way to not reporting it at all.
-          ...(verdict.pass || actedSource === undefined
-            ? {}
-            : { source: `${actedSource.file}:${String(actedSource.line)}` }),
+          ...(verdict.pass || actedSourceLabel === undefined ? {} : { source: actedSourceLabel }),
           trace,
           ...(capsuleSaved === undefined ? {} : { capsuleSaved }),
           // The window cannot say whether anything was WATCHING state — that is a level fact the
