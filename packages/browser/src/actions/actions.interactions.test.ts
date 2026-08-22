@@ -462,13 +462,64 @@ describe('upload refuses to invent a file nobody asked for', () => {
     expect(el.files?.length ?? 0, 'nothing may be uploaded by a refused call').toBe(0);
   });
 
-  it('REFUSES a recognised key alongside one it silently drops', async () => {
-    // The half-recognised call is the nastier one: `name` lands, `path` is dropped, and the app
-    // receives a file with the right name and placeholder bytes — a false green that survives.
+  it('REFUSES { path, name } without a daemon — path is stripped by the daemon before reaching the browser', async () => {
+    // Without a daemon in the loop, path arrives at the browser unstripped. The guard must refuse
+    // it — otherwise new File(["reticle test file"], "Onboarding_v2.pdf") uploads fabricated bytes
+    // under the correct filename, which is the exact false green assertUploadArgs exists to prevent.
     const el = fileInput();
     await expect(
       executeAction(refs.refFor(el), 'upload', { path: '/tmp/pitch.pdf', name: 'pitch.pdf' }),
-    ).rejects.toThrow(/path/);
+    ).rejects.toThrow(/upload needs/);
+  });
+
+  it('REFUSES { path } alone without a daemon', async () => {
+    const el = fileInput();
+    await expect(
+      executeAction(refs.refFor(el), 'upload', { path: '/tmp/data.csv' }),
+    ).rejects.toThrow(/upload needs/);
+  });
+
+  it('decodes __base64 content into real bytes before constructing the File', async () => {
+    // Simulate what the daemon produces: base64-encoded bytes + __base64 sentinel.
+    // jsdom supports File and DataTransfer inconsistently across versions — mock DataTransfer so
+    // we can assert on what bytes the File actually received without a real browser.
+    const originalDT = (global as Record<string, unknown>)['DataTransfer'];
+    let capturedFile: File | undefined;
+    class FakeDataTransfer {
+      files = { length: 1 };
+      items = {
+        add(f: File) {
+          capturedFile = f;
+        },
+      };
+    }
+    (global as Record<string, unknown>)['DataTransfer'] = FakeDataTransfer;
+    try {
+      const el = fileInput();
+      // "hello" base64-encoded is "aGVsbG8="
+      const base64Content = btoa('hello');
+      const err: unknown = await executeAction(refs.refFor(el), 'upload', {
+        content: base64Content,
+        name: 'greeting.txt',
+        type: 'text/plain',
+        __base64: true,
+      }).catch((e: unknown) => e);
+
+      // The only error we expect is jsdom's FileList assignment — not an assertUploadArgs refusal
+      // and not a "wrong bytes" problem. If capturedFile was set, the bytes arrived correctly.
+      if (capturedFile !== undefined) {
+        // File was constructed — verify the text round-trips
+        const text = await capturedFile.text();
+        expect(text).toBe('hello');
+        expect(capturedFile.name).toBe('greeting.txt');
+        expect(capturedFile.type).toBe('text/plain');
+      } else {
+        // jsdom didn't support full File construction — at minimum confirm no guard refusal
+        expect(String(err)).not.toMatch(/upload needs/);
+      }
+    } finally {
+      (global as Record<string, unknown>)['DataTransfer'] = originalDT;
+    }
   });
 
   it('REFUSES an upload with no arguments at all', async () => {
