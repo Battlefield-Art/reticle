@@ -4,7 +4,13 @@
  */
 import { resolveAnnotateTarget } from '../flows/annotate-target.js';
 import { z } from 'zod';
-import { EventType, ReticleCommand, REPLAY_PROGRAM_VERSION, SnapshotMode } from '@reticlehq/core';
+import {
+  EventType,
+  ReticleCommand,
+  REPLAY_PROGRAM_VERSION,
+  SnapshotMode,
+  StorageArea,
+} from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { proposeConsequences } from '../oracles/propose-consequences.js';
 import type { CompiledProgram } from '../flows/recordings.js';
@@ -583,7 +589,7 @@ export const READ_TOOLS: ToolDef[] = [
       'diagnosable.',
     inputSchema: {
       area: z
-        .enum(['local', 'session', 'cookies'])
+        .nativeEnum(StorageArea)
         .optional()
         .describe('Scope to one storage area. Omit to read all three.'),
       key: z

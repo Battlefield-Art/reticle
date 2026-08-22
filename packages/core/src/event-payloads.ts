@@ -42,7 +42,14 @@ export type StreamDirection = (typeof StreamDirection)[keyof typeof StreamDirect
 export const ScrollDirection = { UP: 'up', DOWN: 'down' } as const;
 export type ScrollDirection = (typeof ScrollDirection)[keyof typeof ScrollDirection];
 
-export const StorageArea = { LOCAL: 'local', SESSION: 'session', COOKIE: 'cookie' } as const;
+/**
+ * The three readable client-side storage areas.
+ *
+ * `cookies` is plural because that is what the storage tool accepts, what the browser returns and
+ * what the docs publish. This member read `cookie` for as long as it had no callers, which is
+ * exactly how long a name can disagree with every use of it for free.
+ */
+export const StorageArea = { LOCAL: 'local', SESSION: 'session', COOKIE: 'cookies' } as const;
 export type StorageArea = (typeof StorageArea)[keyof typeof StorageArea];
 
 const elementLabel = z.object({ role: z.string().optional(), name: z.string().optional() });

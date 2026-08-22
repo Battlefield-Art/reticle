@@ -12,6 +12,12 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
   **A timeout reads as a timeout.** A bare `AbortError` reaching a user or an agent is a riddle, so the abort is turned into a sentence that names the request, says the server accepted the connection and never answered, and points at the environment variable to check — ending with the fact that matters most to somebody blocked: verification works locally without cloud. Where the cloud was already best-effort, a timeout still degrades to local instead of failing the work.
 
+- **`@reticlehq/core` + `@reticlehq/server` + `@reticlehq/browser` — one name for one storage area.** Three files described the same three areas in three different vocabularies: core defined the enum and fed it to the `STORAGE_CHANGED` payload, the storage tool re-declared the same values as a fresh literal list, and the browser observer compared against a bare string two lines after using the enum correctly for its siblings. They did not agree, and the one that disagreed was the enum every other file was supposed to be reading from.
+
+  Nothing had broken yet, because the cookie member had no consumers at all — which is precisely what let it drift for free. The moment anything read it, Reticle would have minted an area its own tool refused, and an agent taking the value off the wire contract and handing it back to `reticle_storage` is the ordinary way to use these tools. Being told your input is invalid, by the system that just produced it, is not a failure an agent can diagnose.
+
+  The tool now builds its accepted areas from the contract instead of restating them, and the observer matches by the enum. The published spelling does not change: the outlier was the one with no callers.
+
 ### Removed
 
 - **`@reticlehq/browser` — two devDependencies nobody imported, one of them a native binary.** `sharp` had zero references anywhere in the package, and it is not in the root `onlyBuiltDependencies`, so its native build was skipped and the only thing it ever did was download a set of platform binaries on every clone and every CI job. `@types/jsdom` was the same kind of nothing: jsdom is consumed as the vitest _environment_, which needs no type package at all — `@reticlehq/react` has run the identical environment without it the whole time.

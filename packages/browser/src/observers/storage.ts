@@ -67,7 +67,7 @@ function readCookies(): Record<string, string> {
 export function readStorage(area?: string): StorageSnapshot | Record<string, string> {
   if (area === StorageArea.LOCAL) return readArea(safeArea(() => window.localStorage));
   if (area === StorageArea.SESSION) return readArea(safeArea(() => window.sessionStorage));
-  if ('cookies' === area) return readCookies();
+  if (StorageArea.COOKIE === area) return readCookies();
   return {
     local: readArea(safeArea(() => window.localStorage)),
     session: readArea(safeArea(() => window.sessionStorage)),
