@@ -69,6 +69,12 @@ export async function assertVerdict(
    * the app for a lost connection is no more honest on this route than on that one.
    */
   observationLost?: boolean,
+  /**
+   * Set when code changed since the last verdict with nothing declaring what it was for. Decided by
+   * `isChangeUndeclared` at the call site, which is the only place that can reach the intent ledger —
+   * this path takes a session and no `deps`.
+   */
+  changeUndeclared?: boolean,
 ): Promise<{
   decision: Record<string, unknown>;
   contradictions: Contradiction[];
@@ -164,6 +170,7 @@ export async function assertVerdict(
   // state assertion against an app that registers no store.
   const gaps = gapsForAction({
     pass,
+    ...(changeUndeclared === undefined ? {} : { changeUndeclared }),
     source: session.lastAct.source(),
     stateAsked: declaresState(predicate),
     stateUnwatched: isStateUnwatched(spots),
@@ -172,7 +179,7 @@ export async function assertVerdict(
     routeChanged: false,
     routeSignalFired: false,
   });
-  noteSessionGaps(session, gaps);
+  noteSessionGaps(session, gaps, session.currentEditEpoch);
   return {
     decision: decision as unknown as Record<string, unknown>,
     contradictions,

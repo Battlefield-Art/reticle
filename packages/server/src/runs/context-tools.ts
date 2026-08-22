@@ -1,10 +1,9 @@
 import { z } from 'zod';
-import { type Intent, type JournalAction, type ReticleEvent } from '@reticlehq/core';
+import { type JournalAction, type ReticleEvent } from '@reticlehq/core';
 import { runContextFor } from './run-context.js';
-import { IntentStore } from '../intent/intent-store.js';
+import { openSessionIntents } from '../intent/open-intents.js';
 import { ReticleTool } from '../tools/tool-names.js';
 import { sessionIdShape } from '../tools/tool-kit.js';
-import { sessionRoot } from '../project/session-root.js';
 import { asString } from '../tools/tools-helpers.js';
 import type { ToolDef, ToolDeps } from '../tools/tool-kit.js';
 
@@ -94,11 +93,6 @@ async function evidenceFor(
   }
 }
 
-/** The intent ledger, or nothing. A ledger that cannot be read reports nothing outstanding. */
-async function openIntentsFor(deps: ToolDeps, sessionId: string | undefined): Promise<Intent[]> {
-  return new IntentStore(deps.fs, sessionRoot(deps, sessionId), { now: deps.now }).open();
-}
-
 export const CONTEXT_TOOLS: ToolDef[] = [
   {
     name: ReticleTool.CONTEXT,
@@ -110,7 +104,7 @@ export const CONTEXT_TOOLS: ToolDef[] = [
     handler: async (deps: ToolDeps, args) => {
       const sessionId = asString(args['sessionId']);
       const evidence = await evidenceFor(deps, sessionId);
-      return runContextFor({ ...evidence, intents: await openIntentsFor(deps, sessionId) });
+      return runContextFor({ ...evidence, intents: await openSessionIntents(deps, sessionId) });
     },
   },
 ];

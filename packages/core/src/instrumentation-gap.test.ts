@@ -39,6 +39,17 @@ describe('instrumentation gaps', () => {
     expect(fixForGap(InstrumentationGapKind.UNDECLARED_CONTROL)).toContain('reticle.describe');
   });
 
+  /**
+   * The remedy for an undeclared change has to name the tool AND what to put in it. "Declare your
+   * intent" is an instruction an agent cannot follow; the tool name plus the shape of the statement
+   * is one it can.
+   */
+  it('names reticle_intent and what to declare in it', () => {
+    const fix = fixForGap(InstrumentationGapKind.UNDECLARED_CHANGE);
+    expect(fix).toContain('reticle_intent');
+    expect(fix).toContain('statement');
+  });
+
   it('omits source and ref rather than carrying empty ones', () => {
     const gap = instrumentationGap(InstrumentationGapKind.NO_ROUTE_SIGNAL, 'm', 'c');
     expect('source' in gap).toBe(false);

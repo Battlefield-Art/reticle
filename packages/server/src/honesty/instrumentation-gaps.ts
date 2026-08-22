@@ -59,6 +59,14 @@ export interface ActionInstrumentationFacts {
   routeChanged: boolean;
   /** Did anything signal that route change? */
   routeSignalFired: boolean;
+  /**
+   * Did a code change land since the last verdict with nothing declaring what it was for?
+   *
+   * Arrives already decided, because the decision needs the intent ledger and this stays pure. Its
+   * gate — and the reasoning that keeps it from becoming a nag — lives in `isChangeUndeclared`, and
+   * that is the only place allowed to answer it.
+   */
+  changeUndeclared?: boolean;
 }
 
 export function gapsForAction(facts: ActionInstrumentationFacts): InstrumentationGap[] {
@@ -118,6 +126,20 @@ export function gapsForAction(facts: ActionInstrumentationFacts): Instrumentatio
         InstrumentationGapKind.NO_ROUTE_SIGNAL,
         'the route changed and nothing signalled it',
         'route consequences cannot be asserted on this app, so a navigation can only be checked by what rendered afterwards',
+      ),
+    );
+  }
+
+  // The one gap here that is not about the app. Deliberately UNLOCATED and deliberately generic: the
+  // only honest thing to report is that the intent is absent. Naming the file that changed, or the
+  // control that was driven, would invite the reader to treat a guess as the declaration — and a
+  // guessed intent reads as the developer's own words, which is strictly worse than honest absence.
+  if (true === facts.changeUndeclared) {
+    gaps.push(
+      instrumentationGap(
+        InstrumentationGapKind.UNDECLARED_CHANGE,
+        'code changed since the last verdict and no intent says what the change was for',
+        'this verdict can only check the app against itself, so a green here means "nothing visibly broke" rather than "the change did what it was meant to"',
       ),
     );
   }

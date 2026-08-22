@@ -22,6 +22,39 @@ describe('gapsForAction', () => {
   });
 
   /**
+   * The gate itself lives in `isChangeUndeclared`, which is the only thing that may decide whether a
+   * change went undeclared. Here the fact arrives already decided, and the only question is whether
+   * the gap is emitted — and what it is allowed to say.
+   */
+  describe('a verdict drawn over a change nothing declared', () => {
+    it('reports it when the caller says the change went undeclared', () => {
+      expect(kinds({ changeUndeclared: true })).toEqual([InstrumentationGapKind.UNDECLARED_CHANGE]);
+    });
+
+    it('says nothing when it did not', () => {
+      expect(kinds({ changeUndeclared: false })).toEqual([]);
+    });
+
+    /**
+     * NEVER invent the intent. A guessed statement reads as the developer's own words and an agent
+     * will act on it, which is strictly worse than honest absence — so the gap may not carry the
+     * file, the line, or the ref it happened to be driving. The remedy asks; it does not answer.
+     */
+    it('names no file, line or ref, because nothing here knows what the change was for', () => {
+      const [gap] = gapsForAction({
+        ...clean,
+        pass: false,
+        source: 'src/Pay.tsx:42',
+        ref: 'e12',
+        changeUndeclared: true,
+      }).filter((g) => InstrumentationGapKind.UNDECLARED_CHANGE === g.kind);
+      expect(gap?.source).toBeUndefined();
+      expect(gap?.ref).toBeUndefined();
+      expect(gap?.fix).toContain('reticle_intent');
+    });
+  });
+
+  /**
    * THE rule, and the one most likely to erode. A gap is a finding only when the verdict came back
    * weaker BECAUSE of it. A gap nobody hit is a backlog, and a backlog reported as a finding is how
    * an agent learns to stop reading findings.

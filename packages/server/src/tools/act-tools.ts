@@ -30,6 +30,8 @@ import { causalSummary } from '../capsule/causal-summary.js';
 import { findContradictions } from '../events/contradictions.js';
 import { gapsForAction } from '../honesty/instrumentation-gaps.js';
 import { noteSessionGaps } from '../honesty/gap-ledger.js';
+import { isChangeUndeclared } from '../honesty/undeclared-change.js';
+import { openSessionIntents } from '../intent/open-intents.js';
 import { declaresState } from '../events/predicate-asks.js';
 import { isStateUnwatched } from '../honesty/blind-spots.js';
 import {
@@ -796,9 +798,19 @@ export const ACT_TOOLS: ToolDef[] = [
         // Computed once: the verdict block reports it, and the instrumentation gaps are a second
         // reading of the same evidence rather than a new observation.
         const actionSummary = causalSummary(windowEvents, { stateUnwatched });
+        // Read BEFORE the ledger is updated below: the question is whether code changed since the
+        // PREVIOUS verdict, and noting this one overwrites the answer.
+        const changeUndeclared = await isChangeUndeclared(
+          {
+            current: session.currentEditEpoch,
+            atLastVerdict: session.gaps?.lastVerdictEditEpoch,
+          },
+          () => openSessionIntents(deps, asString(args['sessionId'])),
+        );
         const gaps = gapsForAction({
           pass: verdict.pass,
           proved: decision.verifiedReason === VerifiedReason.PROVED,
+          changeUndeclared,
           source: actedSourceLabel,
           ref: asString(args['ref']),
           stateAsked: declaresState(until),
@@ -816,7 +828,7 @@ export const ACT_TOOLS: ToolDef[] = [
         // Recorded on the session, so a later "am I done?" can answer with what is STILL missing
         // rather than with everything that was ever missing. An empty list closes a gap, which is
         // why it is noted rather than skipped.
-        noteSessionGaps(session, gaps);
+        noteSessionGaps(session, gaps, session.currentEditEpoch);
         return withControl(session, {
           ...decision,
           effect: leanActResult(actResult.result),

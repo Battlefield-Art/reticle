@@ -42,6 +42,8 @@ import {
   PRESENCE_ONLY_ADVICE,
 } from './assert-grade.js';
 import { assertVerdict } from './assert-verdict.js';
+import { isChangeUndeclared } from '../honesty/undeclared-change.js';
+import { openSessionIntents } from '../intent/open-intents.js';
 import { bodiesNotCaptured } from '../honesty/uncaptured-bodies.js';
 import { withControl } from '../session/control-envelope.js';
 import { asString, asNumber } from './tools-helpers.js';
@@ -441,6 +443,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
           : assertsDerivedIpcStatus(predicate)
             ? { advice: DERIVED_IPC_STATUS_ADVICE }
             : {};
+      // Read BEFORE the verdict notes its own epoch on the ledger: the question is whether code
+      // changed since the PREVIOUS verdict.
+      const changeUndeclared = await isChangeUndeclared(
+        { current: session.currentEditEpoch, atLastVerdict: session.gaps?.lastVerdictEditEpoch },
+        () => openSessionIntents(deps, asString(args['sessionId'])),
+      );
       const { decision, contradictions, coverage, gaps } = await assertVerdict(
         session,
         predicate,
@@ -448,6 +456,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         since,
         verdict.inconclusive,
         verdict.observationLost,
+        changeUndeclared,
       );
       return withControl(session, {
         ...decision,
