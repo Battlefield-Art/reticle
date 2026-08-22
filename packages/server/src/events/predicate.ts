@@ -2,6 +2,7 @@ import {
   ElementState,
   PredicateKind,
   ReticleCommand,
+  isSameDocument,
   type CommandResult,
   type ElementQuery,
   type ReticleEvent,
@@ -15,6 +16,7 @@ import { predicateToExpectedLinks } from '../capsule/predicate-to-links.js';
 import type { ExpectedLink } from '../capsule/divergence.js';
 import { isAmbient, ambientKeyOf, type AmbientCounts } from '../journal/ambient.js';
 import { evalRoute } from './predicate-route.js';
+import { describeSuperseded } from './observed-in-window.js';
 import {
   PredicateSchema,
   matchValue,
@@ -48,6 +50,21 @@ export interface PredicateSession {
    * navigates simply omits it and route falls back to change-only, as before.
    */
   url?: string;
+  /**
+   * The document currently under observation, as the session derived it from its own event stream.
+   *
+   * Every oracle below that reads the window asks "what happened here", and a window is scoped by
+   * time and by ring-buffer capacity and by nothing else — so it can still hold the traffic, console
+   * output and signals of a page a full navigation or a reload has already thrown away. Answering a
+   * predicate with one of those is true about the bytes and false about the world, in whichever
+   * direction it lands: a stale event that satisfies the assertion is a false green, and one that
+   * refutes it is a false red.
+   *
+   * Optional, and undefined means nobody could say which document is current — `isSameDocument`
+   * treats absence as current on both sides, so the engine then behaves exactly as it did before this
+   * existed. Named to match `Session.currentDocumentId`, which is what supplies it in production.
+   */
+  currentDocumentId?: string | undefined;
   /**
    * Learned per-ref ambient-churn counts (real-time regions that churn with no action driving them).
    * The settle oracle drops events on learned-ambient refs so a chat/ticker page can still go quiet.
@@ -483,6 +500,25 @@ async function evalState(
   };
 }
 
+/**
+ * Oracles whose ONLY source of truth is the event window.
+ *
+ * Element, text and state read the page as it is right now, so supersession cannot reach them. Route
+ * is the deliberate omission: it has a second source — where the app is at this moment — and a
+ * reload is precisely the case it was given that fallback for, so emptying its window must not take
+ * the answer away.
+ */
+const WINDOW_ONLY_KINDS: ReadonlySet<Predicate['kind']> = new Set([
+  PredicateKind.NET,
+  PredicateKind.CONSOLE,
+  PredicateKind.ANIMATION,
+  PredicateKind.SIGNAL,
+  PredicateKind.SETTLED,
+]);
+
+/** Names the oracle that answered, in the same shape every other `assertion` here uses. */
+const SUPERSEDED_ASSERTION = 'window.evidence-superseded';
+
 /** The predicate's own event-time floor, if its kind carries one. */
 function predicateSince(predicate: Predicate): number {
   return 'since' in predicate && 'number' === typeof predicate.since ? predicate.since : 0;
@@ -502,7 +538,28 @@ export async function evaluatePredicate(
   // `since` from the act it just performed is scoping the assertion to that action's aftermath. It is
   // applied here, once, rather than in each eval: the floor means the same thing for every kind that
   // reads the event stream, and net/console re-applying it is a no-op.
-  const events = session.eventsSince(Math.max(since, predicateSince(predicate)));
+  const raw = session.eventsSince(Math.max(since, predicateSince(predicate)));
+  // Scoped ONCE, here, for the same reason the contradiction pass scopes at its own choke point:
+  // reasoning about a dead page's evidence is a defect in every oracle below rather than in whichever
+  // one happened to read it, and this is the single place they all take their window from.
+  const events = raw.filter((e) => isSameDocument(e.documentId, session.currentDocumentId));
+  const superseded = raw.length - events.length;
+  // An empty window was always allowed to mean "it did not happen"; that reading is only unsafe once
+  // supersession is what emptied it. Without this, dropping stale evidence would trade a wrong pass
+  // for a wrong FAILURE — and a failure names a component and sends an agent to fix working code.
+  // `inconclusive` is the established way to say "nothing was proven and nobody could have proven
+  // it", and `decideVerified` already reads it as UNKNOWN ahead of the failure clause.
+  if (superseded > 0 && 0 === events.length && WINDOW_ONLY_KINDS.has(predicate.kind)) {
+    const reason = describeSuperseded('observations', superseded);
+    return {
+      pass: false,
+      failureReason: reason,
+      inconclusive: reason,
+      observed: 'every observation in this window belongs to a document since replaced',
+      expected: `evidence recorded under the document now on screen for ${predicate.kind}`,
+      assertion: SUPERSEDED_ASSERTION,
+    };
+  }
   switch (predicate.kind) {
     case PredicateKind.ELEMENT:
       return evalElement(
