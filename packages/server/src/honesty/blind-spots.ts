@@ -187,3 +187,15 @@ export function transportGapNote(events: readonly ReticleEvent[]): string | unde
     ? undefined
     : `the browser dropped ${String(dropped)} event(s) in this window (transport queue overflow), so events that would have contradicted this may never have arrived`;
 }
+
+/**
+ * Is the state channel dark?
+ *
+ * Nothing subscribed means NO state change is observed, so an empty `stateDiffs` is a statement
+ * about Reticle rather than about the app. Derived here, once, because two callers now need it —
+ * the act path's causal summary and the instrumentation-gap surface — and a second spelling of this
+ * predicate would eventually disagree with the first about what "unwatched" means.
+ */
+export function isStateUnwatched(spots: readonly BlindSpot[]): boolean {
+  return spots.some((spot) => spot.kind === BlindSpotKind.UNWATCHED_STATE && spot.count > 0);
+}
