@@ -55,16 +55,16 @@
       "next@>=16.0.0 <16.2.11": "16.2.11",
       "body-parser@<1.20.6": "1.20.6",
       "body-parser@>=2.0.0 <2.3.0": "2.3.0",
-      "brace-expansion@<1.1.16": "1.1.16",
-      "brace-expansion@>=2.0.0 <2.1.2": "2.1.2",
-      "brace-expansion@>=3.0.0 <5.0.8": "5.0.8",
       "fast-uri@<3.1.5": "3.1.5",
       "js-yaml@>=4.0.0 <4.3.1": "4.3.1",
       "sharp@<0.35.0": "0.35.0",
       "svgo@>=4.0.0 <4.0.2": "4.0.2",
       "valibot@<=1.4.1": "1.4.2",
       "ip-address@<10.3.1": "10.3.1",
-      "electron@<43.3.0": "43.3.0"
+      "electron@<43.3.0": "43.3.0",
+      "brace-expansion@<1.1.18": "1.1.18",
+      "brace-expansion@>=2.0.0 <2.1.4": "2.1.4",
+      "brace-expansion@>=4.0.0 <5.0.9": "5.0.9"
     },
     "onlyBuiltDependencies": [
       "esbuild",
