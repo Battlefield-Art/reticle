@@ -17,6 +17,9 @@ import { fileURLToPath } from 'node:url';
  * package.json written by hand — and structurally invisible to every check we had.
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/** The `import.meta` the plugin PRINTS into the connect module, as opposed to any it reads itself. */
+const EMITTED_HOT_CONTEXT_READ = 'if (import.meta.hot) reticle.observeHotUpdates(import.meta.hot);';
 const PKG_ROOT = join(HERE, '..');
 
 describe('the published package can be loaded by a CommonJS Vite config', () => {
@@ -78,7 +81,12 @@ describe('the published package can be loaded by a CommonJS Vite config', () => 
     it('carries no live `import.meta`, which is empty under CJS', () => {
       // esbuild warns and substitutes an empty object rather than failing, so a build that still
       // reads `import.meta` compiles and then quietly loses whatever it was reading.
-      const built = readFileSync(cjsPath, 'utf8');
+      //
+      // One occurrence is legitimate and must be excused rather than banned: the connect module this
+      // plugin GENERATES reads `import.meta.hot` to hand Vite's hot-update channel to the SDK. That
+      // is app source printed as a string, served by Vite and evaluated in the browser — never a
+      // value this bundle reads — and it is the only way an app can observe a hot update at all.
+      const built = readFileSync(cjsPath, 'utf8').split(EMITTED_HOT_CONTEXT_READ).join('');
       expect(built).not.toMatch(/\bimport\.meta\b/);
     });
   });

@@ -164,6 +164,15 @@ export class Session {
    * such event blank the current document would make every later comparison vacuous.
    */
   #documentId: string | undefined;
+  /**
+   * The edit epoch of the most recent stamped event. DERIVED for the same reason `#documentId` is:
+   * the stream already carries it, and asking the page separately would be a second source of truth.
+   *
+   * A hot update advances it INSIDE the same document, which is the case `#documentId` structurally
+   * cannot see — no navigation, same page, replaced code. An unstamped event never clears it: most
+   * pages have no hot-update channel at all, so absence is "unknown", never "back to no edits".
+   */
+  #editEpoch: number | undefined;
 
   constructor(hello: HelloMessage, socket: WebSocket, clock: Clock) {
     this.id = hello.sessionId;
@@ -280,9 +289,15 @@ export class Session {
     return this.#documentId;
   }
 
+  /** The edit epoch the most recent stamped event was observed under. See `#editEpoch`. */
+  get currentEditEpoch(): number | undefined {
+    return this.#editEpoch;
+  }
+
   /** Re-stamp an incoming event with server-relative time, buffer it, and fan out. */
   pushEvent(event: ReticleEvent, byteSize?: number): void {
     if (event.documentId !== undefined) this.#documentId = event.documentId;
+    if (event.editEpoch !== undefined) this.#editEpoch = event.editEpoch;
     if (event.type === EventType.PAGE_HEALTH) {
       const r = readHealthEvent(event.data);
       this.applyHealth(

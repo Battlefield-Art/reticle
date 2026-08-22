@@ -31,6 +31,9 @@ export interface CrawlSession {
    * minimal session, and its absence leaves the scoping inert rather than broken.
    */
   readonly currentDocumentId?: string | undefined;
+  /** Which round of source edits is in force, so a finding drawn entirely from pre-edit evidence
+   *  says so. Optional for the same reason `currentDocumentId` is. */
+  readonly currentEditEpoch?: number | undefined;
   /**
    * Attribution window around each click. Optional so a caller can supply a minimal session, but a real
    * session MUST provide it: without a window the click's own effects carry no actionId, and an
@@ -321,6 +324,7 @@ export async function crawl(
     // document boundary — and a finding here is reported against a specific control by name.
     for (const c of findContradictions(events, {
       currentDocumentId: session.currentDocumentId,
+      currentEditEpoch: session.currentEditEpoch,
     })) {
       counts.contradictions += 1;
       anomalies.push({

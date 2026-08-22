@@ -126,6 +126,28 @@ export const ContradictionKind = {
    * agent told the window was empty does not.
    */
   EVIDENCE_SUPERSEDED: 'evidence-superseded',
+  /**
+   * Everything this window held was observed BEFORE the last source edit landed in the page.
+   *
+   * The sibling of `EVIDENCE_SUPERSEDED`, for the loop an agent actually runs: verify, edit source,
+   * verify again. A hot update replaces modules and re-renders inside the SAME document, so the
+   * document id — the only thing that could previously say "this evidence is about a page that is
+   * gone" — never moves, and observations of code the agent has already rewritten go on answering
+   * for it in silence.
+   *
+   * Reported rather than EXCLUDED, and the difference from the document case is deliberate. A
+   * navigation is total: it throws away the page, the refs, the in-flight requests and the state, so
+   * nothing recorded under it is still about the world. An edit is not. Most modules, most of the
+   * DOM, the whole network log and every console line survive a hot update, so most of what was
+   * observed a second before it is still true a second after. Dropping that window would empty
+   * verdicts that hold real findings, and an emptied window reads as "nothing happened" — the more
+   * expensive of the two wrong answers, and the one this family of checks exists to prevent.
+   *
+   * So the evidence stays and the caveat is said out loud: absence-derived, because nothing here
+   * claims the app is wrong. It downgrades a verdict to unknown, which is the honest reading of
+   * "you changed the code and then looked only at what happened before you did".
+   */
+  EVIDENCE_PREDATES_EDIT: 'evidence-predates-edit',
 } as const;
 export type ContradictionKind = (typeof ContradictionKind)[keyof typeof ContradictionKind];
 
@@ -167,6 +189,8 @@ export const ABSENCE_DERIVED_CONTRADICTIONS: ReadonlySet<ContradictionKind> = ne
   // away with the document it belonged to. Nothing here says the app is wrong, so it must downgrade
   // the verdict to UNKNOWN rather than assert NO — the same reasoning `unclean_capture` follows.
   ContradictionKind.EVIDENCE_SUPERSEDED,
+  // Nothing here says the app is wrong either — only that the window predates the edit under test.
+  ContradictionKind.EVIDENCE_PREDATES_EDIT,
 ]);
 
 /** True when this kind was inferred from absence rather than positively observed. */

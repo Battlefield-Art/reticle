@@ -233,6 +233,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const judgingTheAct = actCursor !== undefined && actCursor >= since;
       const contradictions = findContradictions(filtered, {
         currentDocumentId: session.currentDocumentId,
+        currentEditEpoch: session.currentEditEpoch,
         ...(judgingTheAct ? { ...session.lastAct.effect(), actionSince: actCursor } : {}),
       });
       // carry session health — a throttled tab means the observed timeline may be incomplete.

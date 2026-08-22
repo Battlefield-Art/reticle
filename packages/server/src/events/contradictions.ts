@@ -4,6 +4,7 @@ import {
   MUTATING_METHODS,
   isDevToolingUrl,
   isSameDocument,
+  isSameEditEpoch,
   type ReticleEvent,
 } from '@reticlehq/core';
 import { describeSuperseded } from './observed-in-window.js';
@@ -300,6 +301,18 @@ export interface ContradictionOptions {
    * absence as current on both sides, so the engine behaves exactly as it did before this existed.
    */
   currentDocumentId?: string | undefined;
+  /**
+   * The edit epoch currently in force, as the session derived it from its own event stream.
+   *
+   * The edit-shaped half of `currentDocumentId`. A hot update replaces modules and re-renders inside
+   * the SAME document, so the document id cannot see it and observations of code the agent has
+   * already rewritten go on answering for it in silence.
+   *
+   * Undefined means nobody could say (an SDK too old to stamp one, a page with no hot-update channel,
+   * a caller with no session in hand) and the scoping then does nothing at all — `isSameEditEpoch`
+   * treats absence as current on both sides.
+   */
+  currentEditEpoch?: number | undefined;
 }
 
 /** Net-shaped events — the only ones that carry a URL a dev-tooling channel could occupy. */
@@ -334,9 +347,48 @@ function splitDevTooling(events: readonly ReticleEvent[]): {
   return { app, ignored };
 }
 
+/**
+ * Cross-channel contradictions in this window, with the edit-epoch caveat attached when it applies.
+ *
+ * Cross-epoch evidence is LABELLED rather than excluded, which is the opposite of what the document
+ * scoping does, and the difference is the point. A navigation is total — it throws away the page,
+ * the refs, the in-flight requests and the state — so nothing recorded before it is still about the
+ * world, and dropping it is the only honest option. A hot update is not: most modules, most of the
+ * DOM, the whole network log and every console line survive one, so most of what was observed a
+ * second before an edit is still true a second after. Excluding it would empty windows that hold
+ * real findings, and an emptied window reads as "nothing happened" — which is the more expensive of
+ * the two wrong answers and the one this whole family of checks exists to prevent.
+ *
+ * So the findings stand and the caveat is said out loud, and only when it is unambiguous: EVERY
+ * observation in the window predates the edit. One post-edit observation and the agent is already
+ * looking at the code it wrote, so the label would be noise.
+ */
 export function findContradictions(
   allEvents: readonly ReticleEvent[],
   options: ContradictionOptions = {},
+): Contradiction[] {
+  const found = findWindowContradictions(allEvents, options);
+  const predates =
+    allEvents.length > 0 &&
+    allEvents.every((e) => !isSameEditEpoch(e.editEpoch, options.currentEditEpoch));
+  if (!predates) return found;
+  // Prepended, not appended: the caveat governs how everything under it should be read, and it has
+  // to survive the rules that return early with a single finding of their own.
+  return [
+    {
+      kind: ContradictionKind.EVIDENCE_PREDATES_EDIT,
+      claim: 'these observations describe the code as it is now',
+      counter: 'every one of them was recorded before the last hot update landed in the page',
+      detail:
+        'the source changed and the page re-rendered after this evidence was captured, so it describes code that has since been replaced — nothing here is necessarily wrong, but nothing here has seen the edit either. Drive the app again to verify the current code',
+    },
+    ...found,
+  ];
+}
+
+function findWindowContradictions(
+  allEvents: readonly ReticleEvent[],
+  options: ContradictionOptions,
 ): Contradiction[] {
   const found: OwnContradiction[] = [];
   const { app: allApp, ignored: ignoredDevTooling } = splitDevTooling(allEvents);

@@ -258,6 +258,7 @@ async function inspectAfterReplay(
     const session = deps.sessions.resolve(asString(args['sessionId']));
     const contradictions = findContradictions(session.eventsSince(cursor), {
       currentDocumentId: session.currentDocumentId,
+      currentEditEpoch: session.currentEditEpoch,
     }) as { kind: string }[];
     const snapshot = await session.command(ReticleCommand.SNAPSHOT, {
       mode: SnapshotMode.INTERACTIVE,

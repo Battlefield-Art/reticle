@@ -9,6 +9,7 @@ import {
 } from '@reticlehq/core';
 import { asSyntheticInput } from './synthetic-input.js';
 import { echoRef, refs } from '../dom/refs.js';
+import { editEpoch } from '../edit-epoch.js';
 import { assertEditable, assertNotRichText, setNativeValue } from './value-input.js';
 import { getAccessibleName, getRole, isVisible, getStates } from '../dom/a11y.js';
 import { elementHasHoverHandlers, identifyComponent } from '../registry/adapters.js';
@@ -120,7 +121,7 @@ function asString(value: unknown, fallback = ''): string {
 
 function requireElement(ref: string): HTMLElement {
   const el = refs.resolve(ref);
-  if (null === el) throw new Error(`ref '${echoRef(ref)}' no longer resolves to an element`);
+  if (null === el) throw new Error(editEpoch.staleRefMessage(ref));
   if (!isHtmlElement(el)) throw new Error(`ref '${echoRef(ref)}' is not an HTMLElement`);
   return el;
 }

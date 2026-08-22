@@ -89,6 +89,12 @@ export const RECOVERY = {
     'before it. Reticle refuses here rather than clicking whatever now occupies that slot. Call ' +
     'reticle_query again for a fresh ref and retry the action — and prefer reticle_act_and_wait ' +
     '{ until } when an action changes the page, so the next ref is taken after it settles.',
+  STALE_REF_AFTER_EDIT:
+    'That ref went stale because YOUR OWN EDIT landed: the dev server hot-updated the module named ' +
+    'in the message above and the framework re-rendered, so the node the ref pointed at was ' +
+    'replaced. Nothing is wrong with the app and nothing is wrong with Reticle — this is the ' +
+    'build-and-verify loop working. Call reticle_query for a fresh ref and drive again, and treat ' +
+    'anything you observed before the update as describing the previous version of the code.',
   INVALID_NAME:
     'That name is not a usable one. A flow, baseline or recording name must be a single safe path ' +
     'segment — letters, digits, dash and underscore only, starting with a letter or digit, at most ' +
@@ -187,6 +193,7 @@ const REASON_OF: Record<keyof typeof RECOVERY, RefusalReason> = {
   MISSING_BASELINE: RefusalReason.NO_MATCH,
   MISSING_RECORDING: RefusalReason.NO_MATCH,
   STALE_REF: RefusalReason.NO_MATCH,
+  STALE_REF_AFTER_EDIT: RefusalReason.NO_MATCH,
   NO_SUCH_OPTION: RefusalReason.NO_MATCH,
   FLOW_STEP_MISSING: RefusalReason.NO_MATCH,
   UNSUPPORTED_SURFACE: RefusalReason.UNSUPPORTED,
@@ -228,6 +235,9 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   },
   // The commonest post-action condition there is. Unmatched, it fell through to FEEDBACK_ASK and
   // told the agent a successful click's aftermath might be a bug in Reticle.
+  // Before the general rule: the edit-aware refusal contains the general one's substring too, and
+  // the first hit wins. "Your edit landed" is a next step; "the ref is stale" is a dead end.
+  { match: /the code changed underneath it/i, hint: RECOVERY.STALE_REF_AFTER_EDIT },
   { match: /no longer resolves to an element/i, hint: RECOVERY.STALE_REF },
   { match: /no <option> with value/i, hint: RECOVERY.NO_SUCH_OPTION },
   // Every guard in the browser's executeAction. These are Reticle-authored refusals of an invalid

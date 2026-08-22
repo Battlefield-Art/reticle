@@ -501,7 +501,13 @@ export function connectModuleSource(
   const sdk = installedSdk(options.root ?? process.cwd());
   const named = sdk.usesInstall ? 'reticle, install' : 'reticle';
   const call = sdk.usesInstall ? 'install();\n' : '';
-  const base = `import { ${named} } from '${sdk.specifier}';\n${call}reticle.connect(${args});\n`;
+  // The only place in a Vite app that can see hot updates. `import.meta.hot` exists per module and
+  // only for modules Vite serves through its own transform; the SDK is a dependency, pre-bundled by
+  // the optimizer, and gets no hot context however it is written — so the channel is handed to it
+  // from here and the SDK owns everything after that (including which events it cares about).
+  // Guarded, because a desktop build has no dev server and therefore no hot context at all.
+  const hot = `if (import.meta.hot) reticle.observeHotUpdates(import.meta.hot);\n`;
+  const base = `import { ${named} } from '${sdk.specifier}';\n${call}reticle.connect(${args});\n${hot}`;
   // AFTER connect: registerStore subscribes through the live SDK, and registering before there is a
   // session to report into drops the first diffs.
   return null === devModule ? base : `${base}import('${devModule}');\n`;

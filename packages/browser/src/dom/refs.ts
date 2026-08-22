@@ -21,6 +21,9 @@ export const MAX_TRACKED_REFS = 10000;
 /** Marks a ref that was too long to echo in full. */
 const REF_ELISION = '…';
 
+/** Every ref Reticle mints is this letter followed by its sequence number. */
+const REF_PREFIX = 'e';
+
 /**
  * A ref, made safe to interpolate into an error message.
  *
@@ -111,6 +114,15 @@ export class RefRegistry {
   /** The end of the block currently reserved. Minting past it claims the next one. */
   #reserved = 0;
   #mintsSinceSweep = 0;
+  /**
+   * The highest number handed out before the last hot update was applied, or 0 while none has been.
+   *
+   * A watermark rather than a per-ref stamp: the sequence never restarts within a document, so one
+   * number separates "minted before the code changed" from "minted after it" for every ref at once.
+   * The alternative — an epoch on every map entry — is bookkeeping paid on every mint for an answer
+   * needed only on the rare refusal.
+   */
+  #editedAtSeq = 0;
 
   /**
    * Storage is injected rather than read from the global for the same reason the clock is: it is an
@@ -163,6 +175,25 @@ export class RefRegistry {
     while (this.#fromRef.size > MAX_TRACKED_REFS) this.#evictOldest();
   }
 
+  /**
+   * A hot update just replaced modules in this document: every ref handed out so far was minted
+   * against the DOM the previous version of that code produced.
+   *
+   * Only the boundary is recorded. Nothing is evicted — a hot update is not a navigation, and most
+   * of the page survives one, so refs minted before it very often still resolve. This exists so the
+   * ones that DON'T can say why.
+   */
+  markEdited(): void {
+    this.#editedAtSeq = this.#seq;
+  }
+
+  /** Was this ref handed out before the last hot update? False while no update has been observed. */
+  mintedBeforeLastEdit(ref: string): boolean {
+    if (0 === this.#editedAtSeq || !ref.startsWith(REF_PREFIX)) return false;
+    const n = Number(ref.slice(REF_PREFIX.length));
+    return Number.isSafeInteger(n) && n > 0 && n <= this.#editedAtSeq;
+  }
+
   /** Get the existing ref for an element, or mint a new one. */
   refFor(el: Element): Ref {
     const existing = this.#toRef.get(el);
@@ -179,7 +210,7 @@ export class RefRegistry {
     }
     if (this.#seq >= this.#reserved) this.#reserve();
     this.#seq += 1;
-    const ref = asRef(`e${String(this.#seq)}`);
+    const ref = asRef(`${REF_PREFIX}${String(this.#seq)}`);
     this.#toRef.set(el, ref);
     this.#fromRef.set(ref, new WeakRef(el));
     // Keep bounded cheaply on every mint; run the full dead-entry sweep only periodically.

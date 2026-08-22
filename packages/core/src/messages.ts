@@ -9,6 +9,7 @@ import {
 import { HumanControlKind, MarkAnchorStrategy } from './session-constants.js';
 import { MAX_WIRE_REDACT_KEYS, MAX_WIRE_REDACT_KEY_LENGTH } from './redaction.js';
 import { DOCUMENT_ID_LENGTH } from './document-identity.js';
+import { NO_EDITS_OBSERVED } from './edit-epoch.js';
 
 const sessionIdSchema = z.string().min(1).max(TRANSPORT_LIMITS.MAX_SESSION_ID_LENGTH);
 const refSchema = z.string().max(TRANSPORT_LIMITS.MAX_REF_LENGTH);
@@ -83,6 +84,16 @@ export const ReticleEventSchema = z.object({
    * "current" rather than "foreign" — see `isSameDocument`.
    */
   documentId: documentIdSchema.optional(),
+  /**
+   * The round of source edits this was observed under — a counter the SDK advances once per applied
+   * hot update. A hot update replaces modules and re-renders INSIDE the same document, so
+   * `documentId` cannot see it; this is the edit-shaped half of the same question.
+   *
+   * Optional, and absent while nothing has hot-updated, which is why absence is read as "current"
+   * rather than "foreign" — see `isSameEditEpoch`. Most pages have no channel that could report an
+   * update at all, so a stamp of `NO_EDITS_OBSERVED` would be wire spent on the word "unknown".
+   */
+  editEpoch: z.number().int().min(NO_EDITS_OBSERVED).optional(),
   /** Event-type-specific payload. Kept open here; refined per observer at the edges. */
   data: z.record(z.unknown()).default({}),
 });

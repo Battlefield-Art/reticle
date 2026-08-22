@@ -18,12 +18,14 @@ import {
   RETICLE_SDK_VERSION_GLOBAL,
   CONTRACT_FINGERPRINT,
   newDocumentId,
+  NO_EDITS_OBSERVED,
   type CommandMessage,
   type HelloMessage,
   type RedactionConfig,
   type ReticleEvent,
 } from '@reticlehq/core';
 import { rememberSessionLabel } from './session-continuity.js';
+import { editEpoch } from './edit-epoch.js';
 import {
   createCommandRegistry,
   RELOAD_CACHE_BUST_PARAM,
@@ -191,6 +193,7 @@ export function buildEvent(args: {
   data: Record<string, unknown>;
   ref?: string | undefined;
   documentId?: string | undefined;
+  editEpoch?: number | undefined;
 }): ReticleEvent {
   return {
     t: args.t,
@@ -203,6 +206,10 @@ export function buildEvent(args: {
     // through: an observer added later would otherwise emit unstamped events, which read as
     // "current" by design and would reintroduce the defect silently for one event type.
     documentId: args.documentId,
+    // Which round of source edits this was observed under. Stamped HERE for exactly the reason
+    // documentId is, and omitted while nothing has hot-updated: absence already reads as "current"
+    // downstream, so `NO_EDITS_OBSERVED` on the wire would be bytes spent saying "unknown".
+    editEpoch: NO_EDITS_OBSERVED === args.editEpoch ? undefined : args.editEpoch,
     data: args.data,
   };
 }
@@ -439,6 +446,19 @@ export class Reticle {
     this.#presenter?.setState(SessionState.ENDED);
   }
 
+  /**
+   * Hand the SDK the page's hot-update channel, so a stale ref can say the code changed underneath it.
+   *
+   * `unknown` on purpose: the only caller that has one is the build integration, the shape it passes
+   * is Vite's `import.meta.hot`, and the SDK must not depend on Vite — it ships to Next, Electron,
+   * Tauri and plain pages. Anything that is not a subscribable channel is ignored, which is the
+   * normal case: with no channel the epoch stays at `NO_EDITS_OBSERVED`, meaning "no edits OBSERVED",
+   * never "no edits happened".
+   */
+  observeHotUpdates(hot: unknown): void {
+    editEpoch.observe(hot);
+  }
+
   disconnect(): void {
     if (!this.#connected) return;
     for (const teardown of this.#teardowns) teardown();
@@ -465,6 +485,7 @@ export class Reticle {
       type,
       sessionId: this.#session,
       documentId: this.#documentId,
+      editEpoch: editEpoch.current,
       data,
       ref,
     });

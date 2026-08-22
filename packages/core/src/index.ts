@@ -15,6 +15,7 @@ export * from './event-classification.js'; // CHURN_TYPES — shared eviction pr
 export * from './verified-constants.js'; // Verified — the one field an agent gates on
 export * from './session-constants.js';
 export * from './document-identity.js'; // which document an observation belongs to
+export * from './edit-epoch.js'; // which round of source edits an observation belongs to
 export * from './messages.js'; // ReticleEvent + the message schemas
 export * from './event-payloads.js'; // per-event payload schemas + wire vocab
 export * from './event-priority.js'; // which events survive the bridge rate cap
