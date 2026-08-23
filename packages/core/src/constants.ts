@@ -367,6 +367,12 @@ export const EventType = {
   STORAGE_CHANGE: 'storage.change',
   /** page-level visibility/focus health (distinct from element-level VISIBLE_*). */
   PAGE_HEALTH: 'page.health',
+  /**
+   * synthetic: the page called window.open, so the consequence of what was just clicked may live in
+   * another browsing context this one cannot observe (an OAuth popup is the archetype).
+   * `data: { href }` — the URL the page asked to open, when it named one.
+   */
+  CONTEXT_OPENED: 'context.opened',
   /** aggregated React commits over a throttle window (dev builds) — `data: { commits }`. Commit storms /
    * wasted re-renders show up here without a per-render flood. */
   RENDER_COMMIT: 'render.commit',
