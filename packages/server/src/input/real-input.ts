@@ -10,6 +10,7 @@
  * pay for it; the type-only import is elided by `tsc`, so the build stays green without it.
  */
 import type { Browser, Page } from 'playwright';
+import { chromiumLaunchOptions } from '../chromium-launch-options.js';
 import { gotoOptions } from '../pool/playwright-launcher.js';
 import { BrowserLaunchKind } from '@reticlehq/core';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
@@ -386,7 +387,7 @@ export interface LaunchedProviderOptions {
 const INJECT_CONNECT_WAIT_MS = 8_000;
 
 /** The only place the dynamic value import of Playwright lives for the launched (drive) path. */
-const launchedChromium: LaunchFn = async (headless) => {
+export const launchedChromium: LaunchFn = async (headless) => {
   let mod: typeof import('playwright');
   try {
     mod = await import('playwright');
@@ -395,7 +396,7 @@ const launchedChromium: LaunchFn = async (headless) => {
   }
   const settle = getSessionMetrics().recordConnectAttempt(BrowserLaunchKind.LAUNCHED);
   try {
-    const browser = await mod.chromium.launch({ headless });
+    const browser = await mod.chromium.launch(chromiumLaunchOptions(headless));
     settle();
     return browser;
   } catch (e) {
