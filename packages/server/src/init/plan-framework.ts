@@ -113,8 +113,21 @@ function capabilitiesStep(input: PlanInput): Step[] {
     testids.length > 0
       ? `${String(testids.length)} data-testid values`
       : 'no data-testid values yet';
-  // A store we found and wired IS a registration, so the "registers nothing" notice must not fire.
-  const nothingToRegister = 0 === testids.length && 0 === stores.length && 0 === wired.length;
+  // A store we found and WIRED is a registration, so the "registers nothing" notice must not fire.
+  // A store HINT is not: `stores` holds suggestions, written into the file as a commented line of
+  // the form `// import your store, then: registerStore(...)`. Counting a suggestion as a
+  // registration let the hint silence the notice whose entire job is to say "act on the hint".
+  //
+  // Measured against a real product UI (rowy — 70+ deps, jotai, a whole src/atoms tree): init
+  // detected jotai, offered one commented line, emitted NO notice, and wrote
+  // `registerCapabilities({ testids: [], signals: [], stores: [] })`. So `hasCapabilities` stayed
+  // false, `reticle_state` was empty forever, and the install gate reported "connected: 1,
+  // manual ⚠: none". Every check green, state observability zero.
+  //
+  // This is the common case rather than an edge one: a library whose registration needs an argument
+  // only reading the source supplies — jotai atoms, an XState actor, a TanStack queryClient — is
+  // exactly what init leaves commented.
+  const nothingToRegister = 0 === testids.length && 0 === wired.length;
   return [
     {
       title: CAPABILITIES_TITLE,
