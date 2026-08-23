@@ -89,8 +89,10 @@ export const YIELD_WITHOUT_SESSION_NOTE =
 /**
  * Actionable companion to THROTTLED_WARNING. Surfaced on act/assert results and
  * reticle_sessions rows when a tab is hidden/throttled and may be un-focusable/un-recoverable from
- * the in-page SDK + CDP path. Points at the `reticle drive` escape hatch (a guaranteed scriptable
- * context). Reticle cannot bring such a tab to front or recover it, so it names the limit instead.
+ * the in-page SDK + CDP path. Names the escape hatch the AGENT can take first (`reticle_lease`
+ * through `reticle_run`, since lease is not on the default surface) and leaves `reticle drive` as
+ * the human-side equivalent: an MCP-only agent has no shell, so a CLI sentence is advice it cannot
+ * follow. Reticle cannot bring such a tab to front or recover it, so it names the limit instead.
  */
 export const UNSCRIPTABLE_TAB_RECOMMENDATION =
-  'tab hidden/throttled and may be un-focusable from here; refocus it, or run `reticle drive <url>` for a guaranteed scriptable context';
+  'tab hidden/throttled and may be un-focusable from here; refocus it, or acquire a guaranteed scriptable context yourself with `reticle_run { tool: "reticle_lease", action: "acquire", url }` (a human can equivalently run `reticle drive <url>`)';

@@ -24,12 +24,22 @@ describe('recoveryFor — every known error carries an actionable next move', ()
     expect(recoveryFor("no connected session with id 'ghost'")).toBe(RECOVERY.UNKNOWN_SESSION);
   });
 
-  it('maps a throttled-tab refusal to the refocus / reticle drive escape hatch', () => {
+  it('maps a throttled-tab refusal to the refocus / escape-hatch recovery', () => {
     expect(
       recoveryFor(
         'refusing to act: tab throttled; timer/rAF/pointer gestures may silently no-op — refocus before driving',
       ),
     ).toBe(RECOVERY.THROTTLED);
+  });
+
+  it('THROTTLED names the in-protocol route first and leaves the CLI to the human (#521)', () => {
+    // Same defect COMMAND_TIMEOUT had: an MCP-only agent has no shell, so "run `reticle drive`"
+    // sent it nowhere. The agent's own route is `reticle_run { tool: "reticle_lease" }`; the CLI
+    // stays in the sentence as the human's equivalent.
+    expect(RECOVERY.THROTTLED).toContain('reticle_run { tool: "reticle_lease"');
+    expect(RECOVERY.THROTTLED.indexOf('reticle_run')).toBeLessThan(
+      RECOVERY.THROTTLED.indexOf('reticle drive'),
+    );
   });
 
   it('names reticle_lease through reticle_run, since it is unadvertised by default (#400)', () => {
