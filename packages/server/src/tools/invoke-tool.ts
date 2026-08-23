@@ -23,7 +23,11 @@ import { takeFeedbackPrompt } from './feedback-tools.js';
 import { takeFeedbackUndelivered } from '../telemetry/feedback-delivery.js';
 import type { Session } from '../session/session.js';
 import { noteRefsMinted, wrongTabRefusal } from '../session/ref-provenance.js';
-import { CAPTURED_TOOLS, noteCapturedCall } from '../honesty/feature-capture.js';
+import {
+  CAPTURED_TOOLS,
+  noteCapturedCall,
+  noteToolDispatched,
+} from '../honesty/feature-capture.js';
 import { span } from '../trace.js';
 import {
   deltaForToolResult,
@@ -339,7 +343,15 @@ export async function runTool<Ext>(
   // `reticle_context` is session-EXEMPT, so `session` above is undefined for it and it needs its own
   // lenient resolve. Failing that resolve is silent by design: a call made with nothing connected
   // has no per-session ledger to land in, and an instrument must never be why a tool call fails.
-  if (CAPTURED_TOOLS.has(tool.name)) {
+  //
+  // EVERY tool is counted here, not just the read set: which of the 70-odd names in the table an
+  // agent actually reaches for is the question a decision about cutting or consolidating the surface
+  // turns on, and it had no answer. `reticle_run` is the one exclusion, for the same reason
+  // `reportRefusal` and `bugsInResult` exclude it — its handler calls `runTool` on the real tool, so
+  // the inner call is already counted under the name that RAN, and counting the wrapper too would
+  // both double the total and hide the run-only tier behind a single wrapper name. That tier is
+  // precisely the one the decision hinges on. See honesty/tool-hit-rate.ts.
+  if (ReticleTool.RUN !== tool.name) {
     let target = session;
     if (target === undefined) {
       try {
@@ -349,11 +361,14 @@ export async function runTool<Ext>(
       }
     }
     if (target !== undefined) {
-      const subject = asString(args['ref']) ?? asString(args['target']);
-      noteCapturedCall(target, {
-        tool: tool.name,
-        ...(subject === undefined ? {} : { subject }),
-      });
+      noteToolDispatched(target, tool.name);
+      if (CAPTURED_TOOLS.has(tool.name)) {
+        const subject = asString(args['ref']) ?? asString(args['target']);
+        noteCapturedCall(target, {
+          tool: tool.name,
+          ...(subject === undefined ? {} : { subject }),
+        });
+      }
     }
   }
   // A ref that was handed out by a DIFFERENT tab, on a call that named no session. Refused here, at

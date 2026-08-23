@@ -28,7 +28,7 @@ import { PROJECT_TOOLS } from '../project/project-tools.js';
 import { RUN_TOOLS } from '../runs/run-tools.js';
 import { VISUAL_TOOLS } from '../visual/visual-tools.js';
 import { AFFECTED_TOOLS } from '../flows/affected-tools.js';
-import { COVERAGE_TOOLS } from './coverage-tools.js';
+import { buildCoverageTools } from './coverage-tools.js';
 import { VERIFY_CHANGE_TOOLS } from '../flows/verify-change-tools.js';
 import { CRAWL_TOOLS } from '../crawl/crawl-tools.js';
 import { SCROLL_TOOLS } from '../input/scroll-tools.js';
@@ -552,7 +552,9 @@ const RAW_TOOLS: ToolDef[] = [
   // reachable through reticle_run. See affected-tools.ts.
   ...AFFECTED_TOOLS,
   // reticle_coverage — which controls were driven vs never touched. Unadvertised; via reticle_run.
-  ...COVERAGE_TOOLS,
+  // The table is passed as a thunk so the coverage tool can report which of it was called without
+  // importing it back — see buildCoverageTools. Called from the handler, long after TOOLS exists.
+  ...buildCoverageTools(() => TOOLS.map((t) => t.name)),
   // reticle_verify_change — "did my change break anything" in one call. See verify-change-tools.ts.
   ...VERIFY_CHANGE_TOOLS,
   // Live-control: reticle_end_session / reticle_resume / reticle_messages. See live-control-tools.ts.
