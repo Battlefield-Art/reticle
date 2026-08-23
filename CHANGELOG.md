@@ -4,6 +4,24 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@reticlehq/server` — a modal that never opened was reported as `verified: "yes"` at the strongest evidence grade.** An app can emit its success signal from the value it was ASKED for rather than the one it committed. When it does, the signal fires, nothing else moves, and the verdict rested on the app's own claim — the exact false green this product exists to catch, arriving at `signal` grade, the highest we award.
+
+  The new `signal-without-consequence` finding fires only when the window is otherwise EMPTY: no DOM, no store, no route, no request, and only for a window attributed to an action. `reticle_assert` OBSERVES, so a quiet window it reads is an ordinary read and not a claim nothing backs. A failure-shaped signal is exempt, for the same reason `signal-contradicted` already exempts one: an app that announced `deploy:failed` is correctly reporting that nothing happened.
+
+  It is absence-derived, so it downgrades the verdict to `unknown` and never asserts `no`. A signal about genuinely non-visual state has nothing to corroborate it by construction; removing the false green is the whole job, and inventing a fault would be a second one. It also carries its own sentence rather than the generic contradiction prose, which said the window "closed before the app finished" and blamed a poll or a timer — false here, because nothing kept the page busy. Nothing happened at all, which is the finding.
+
+- **`@reticlehq/server` — a page that never went idle was graded a FAILED assertion.** Omitting `until` waits for the page to settle. Nobody declared a consequence, so a settle that times out means "the page was still busy when I stopped looking" — and the failure clause took that at face value, returning `verified: "no"` with `because: "the declared consequence did not hold"`, naming a consequence that does not exist.
+
+  Every app with polling, a live feed or push updates has that shape, so every one of them was being accused of a defect for being alive. It now grades `unknown` with a sentence that names the absence and asks for an `until`. A consequence that WAS declared and did not hold still fails, unchanged.
+
+- **`@reticlehq/core` — `deploy` and `publish` no longer count as destructive.** The guard exists to stop a money-moving or destructive control being driven by accident. A deploy is neither: nothing is destroyed, no money moves, and the thing it produces did not exist before. An ordinary "New deploy" button was being refused until the caller passed `confirmDangerous`, and a guard that costs a turn on a control it was never written to catch teaches agents to route around it — a habit that generalises to the buttons that do matter. Everything the guard is actually for is unchanged and pinned by test: delete, remove, destroy, terminate, revoke, refund, transfer, withdraw, place order, cancel subscription.
+
+- **`@reticlehq/server` — two refusals sent agents to the wrong place.** `target matched no element` was answered with "That call did not match the tool's schema — re-read that tool's parameters". The call matched perfectly; the selector missed, and this is the commonest refusal there is. It now says the call was valid, that nothing was acted on, and to take a snapshot. Separately, the destructive-control refusal said "retry with args.confirmDangerous=true", which reads as a top-level parameter and is not one — it now shows the object to send, `args: { confirmDangerous: true }`, and names a trigger word that is not destruction, so the refusal does not read as a malfunction.
+
+- **`@reticlehq/server` — `reticle demo` could not survive meeting an app it did not ship with.** It bound the bridge port unconditionally, so a daemon already there — the normal state once any MCP client has started one — produced a raw `node:net` stack as the first thing a new user ever saw. It now arbitrates the port exactly as `reticle drive` does, and answers a live daemon with the tools the user already has. It also skips disabled controls (it would have clicked an inert button and reported a perfectly true `no-fault` about it), pins one session for the whole run so a second tab cannot kill it mid-demo, counts only findings it can stand behind, and prints the verdict's reason beside the grade. Nothing reaches a first run as a stack trace.
+
 ### Added
 
 - **`@reticlehq/core` + `@reticlehq/server` — a flow saved with no intent now says so, and can be given one in the same call.** A saved flow is a regression test that runs for months. `intent` and `intentId` have both been optional on the flow file and nothing has ever asked for either, so a flow saved silently with neither replays for a long time and then reports "step 3 failed" rather than what stopped being true. The machinery to use an intent was already there; what was missing was anything that asked.
