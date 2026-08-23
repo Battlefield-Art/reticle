@@ -41,6 +41,9 @@
     "test:unit": "vitest run src --passWithNoTests",
     "prepack": "tsc -b && find dist -name \"*.test.*\" -delete && node ../../scripts/strip-maps.mjs dist"
   },
+  "dependencies": {
+    "@reticlehq/core": "workspace:*"
+  },
   "peerDependencies": {
     "@babel/core": "^7"
   },
