@@ -929,11 +929,18 @@ describe('the closing hint names the MCP reload before it tells you to ask the a
     runInit(OPTS, io);
     const out = io.lines.join('\n');
     const reload = out.search(/\/mcp|reload the window/i);
-    // The dependent instruction is now "ask your agent to drive a flow" — asking the agent for
-    // ANYTHING requires the reload, because it read its tool list before Reticle existed. The
-    // closing line used to end on "ask your agent: List Reticle sessions", a question whose failure
-    // is a dead end; it now ends on `reticle status`, which ANSWERS it and needs no reload at all.
-    const dependent = out.search(/ask your agent to drive/i);
+    // The dependent instruction is "drive one flow" — driving ANYTHING requires the reload,
+    // because the agent read its tool list before Reticle existed. The closing line used to end on
+    // "ask your agent: List Reticle sessions", a question whose failure is a dead end; it now ends
+    // on `reticle status`, which ANSWERS it, followed by the work itself.
+    //
+    // It says "drive one flow", not "ask your agent to drive one flow": the agent-driven install is
+    // the primary channel now, so the reader is usually the agent, and telling an agent to ask its
+    // agent is a hand-off to nobody.
+    // Matched on the FULL closing phrase: "drive one flow" alone also appears in the capabilities
+    // notice further up ("Prove it: drive one flow and check reticle_state..."), which would make
+    // this assert about the wrong line and pass or fail for the wrong reason.
+    const dependent = out.search(/drive one flow and report the verdict/i);
     expect(reload).toBeGreaterThan(-1);
     expect(dependent, 'the closing line must still hand off to the agent').toBeGreaterThan(-1);
     expect(reload, 'reload must come first').toBeLessThan(dependent);

@@ -103,6 +103,7 @@ export function restartHint(
     'up a new one). This is once per machine — Reticle is registered globally, so every later ' +
     'project starts with the tools already there.\n' +
     `${prove}\n` +
-    'Once it shows a session, ask your agent to drive a flow — that is the install finished.'
+    'Once it shows a session, drive one flow and report the verdict — that is the install ' +
+    'finished. Do it now; nothing here is waiting on a human.'
   );
 }
