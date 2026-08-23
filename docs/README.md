@@ -46,6 +46,7 @@ Everything here is published to [docs.reticle.sh](https://docs.reticle.sh) by `d
 | [best-practices.mdx](best-practices.mdx) | the habits that make a verdict worth trusting |
 | [skill-file.mdx](skill-file.mdx) | the paste-one-URL skill that teaches an agent Reticle |
 | [agent-cheatsheet.md](agent-cheatsheet.md) | the condensed version an agent keeps in context |
+| [reticle-manual.md](reticle-manual.md) | GENERATED: what each tool actually returned when it was called, per argument shape |
 | [for-agents.md](for-agents.md) | how to fetch these docs as Markdown or `llms.txt` |
 | [architecture.md](architecture.md) | how it works, and why it is built this way |
 | [platform-integration.md](platform-integration.md) | Vite, Next, Remix, Astro, plain HTML |
