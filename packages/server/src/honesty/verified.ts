@@ -262,7 +262,21 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   // Gated on `true === settled` rather than on a caller's say-so. A call that returned before the app
   // stopped moving has not earned this, whatever it declared — which is what stops `no-fault` from
   // becoming the green-forever button an always-available "nothing was wrong" would be.
-  if (honesty.grade === HonestyGrade.NONE) {
+  // Two ways to have proved nothing, and only one of them used to be caught. Grade NONE is the
+  // engine's own reading — no signal, no request, no state change, nothing pinned. An explicit
+  // `declaredConsequence: false` is the CALLER saying it asserted nothing, which `act_and_wait`
+  // reports whenever `until` is omitted (an omitted `until` becomes `{kind:"settled"}` — a
+  // sleep-replacement, not an assertion).
+  //
+  // Grading alone missed the second case, because a click that merely moves the DOM lifts the grade
+  // to PRESENCE and walks past this branch into a full green. Measured live: clicking a submit
+  // button, and an inert text input, with no `until` both returned `verified:"yes"` /
+  // `verifiedReason:"proved"`. The claim it printed — "assertion held at presence grade" — was true
+  // about a grade and false about an assertion, because there was no assertion.
+  //
+  // It compounds: `reticle_context` persists proven claims, so an undeclared green becomes
+  // established fact for the agent that re-enters after a compaction.
+  if (honesty.grade === HonestyGrade.NONE || false === inputs.declaredConsequence) {
     if (true === settled) {
       return {
         verified: Verified.NO_FAULT,
