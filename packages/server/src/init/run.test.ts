@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FEEDBACK_HINT, runInit, resolveLockfiles, type InitIo, type InitOptions } from './run.js';
+import { FEEDBACK_HINT } from './closing-hint.js';
+import { runInit, resolveLockfiles, type InitIo, type InitOptions } from './run.js';
 
 interface MemoryIo extends InitIo {
   written: Record<string, string>;
