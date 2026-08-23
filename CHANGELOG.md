@@ -86,6 +86,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
   **A flow with no declared intent says so, and nothing is derived from its step names.** A guessed goal reads as the product owner's words and an agent will act on them, which is strictly worse than the honest absence — the same rule the source pointer follows. Older flow files parse, replay, and report exactly as they did, and the on-disk flow version does not move.
 
+### Changed
+
+- **`@reticlehq/core` + `@reticlehq/server` — there is one `InstrumentationGapKind` vocabulary.** Honesty and `reticle_assert` spoke core (`no-signal-on-mutation`, `no-store-registered`). `reticle_domain` spoke a server-local copy (`missing-signal`, `unregistered-store`) of the same absences, so an agent that read both saw two names for one gap. Oracles now use the core kinds. `missing-testid` — the one kind only oracles emitted — is a core kind, so a later honesty emit cannot pick a third name.
+
 ### Fixed
 
 - **`@reticlehq/server` — a `reticle_assert` verdict reported a `file:line` that could point at completely unrelated code.** An assertion drives nothing, so the tool had no location of its own and used the one the PREVIOUS action remembered. Driven against a real Next.js app: an assert about the site navigation was journaled with the file and line of the button an earlier click had touched, and an assert that matched nothing on the page at all was journaled with that same line. The old value was, in both cases, a location this verdict had never looked at — it sent the agent to innocent code, and because it is persisted into the session journal and read back by `reticle_context`'s `proven`, the wrong pointer outlived the turn that produced it.
