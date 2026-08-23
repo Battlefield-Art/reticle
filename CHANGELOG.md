@@ -90,6 +90,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
   The journal record and the tool response are computed once and shared, so a verdict can no longer carry two different locations. `reticle_wait_for` gets the same rule; `reticle_act_and_wait` is unaffected, as it drove the element it names.
 
+- **`@reticlehq/browser`: a drag now announces the crossing with boundary events, so drag-to-select extends.** A drag dispatched a held-button `mousedown`, a stepped path of moves and a clean `mouseup`, but never `mouseover`/`mouseout`/`pointerover`/`pointerout` or their non-bubbling enter/leave pairs as the pointer crossed from one element to another. React synthesises `onMouseEnter` from delegated `mouseover`/`mouseout`, so the standard drag-to-select grid (anchor set on `onMouseDown`, extended on `onMouseEnter`, cleared by a window-level `mouseup`) never grew its selection: every cell stayed exactly as the initial press left it.
+
+  The crossing is now announced where it happens: out/leave on the source when the path first leaves its box, over/enter on the destination when it first arrives inside theirs, with `buttons` still held and `relatedTarget` naming the element on the other side of the boundary, matching what a real pointer emits. A free drag (no target) crosses no boundary and fires none.
+
 - **`@reticlehq/server` — an instrumentation gap told the agent an app was unverifiable and gave it nowhere to go.** A gap exists to be acted on: it names an absence in the app, the cost that absence imposed on the verdict just returned, and the one change that closes it. What it never carried was a location. The type declared an optional `file:line` and no producer had ever set one, so every gap went out with a `ref` and nothing else.
 
   A `ref` is a handle to a DOM node, and gaps are read late. `reticle_verify { action: "coverage" }` is the "am I done?" call, made long after the verdict that recorded the gap, by which time the page has re-rendered and the handle very likely resolves to nothing. So the surface aimed squarely at a build-and-verify loop was handing that loop a remedy with no address.
