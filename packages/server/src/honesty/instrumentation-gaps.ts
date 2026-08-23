@@ -51,6 +51,13 @@ export interface ActionInstrumentationFacts {
   stateAsked: boolean;
   /** True when the session has no store registered to read. */
   stateUnwatched: boolean;
+  /**
+   * Did the app declare any capabilities at all?
+   *
+   * Undefined means NOT KNOWN, and not-known must never become an accusation — callers that predate
+   * this field keep their behaviour rather than start reporting a gap they cannot substantiate.
+   */
+  hasCapabilities?: boolean | undefined;
   /** Did the DOM move in this action's window? */
   domMutated: boolean;
   /** How many app signals fired in the window. */
@@ -89,12 +96,30 @@ export function gapsForAction(facts: ActionInstrumentationFacts): Instrumentatio
   // is registered once at app setup, nowhere near the control that was driven, and nothing in this
   // window knows where that setup lives. Borrowing the acted line would send the agent to a file
   // that cannot hold the fix — worse than no pointer, because it costs the trip as well.
-  if (facts.stateAsked && facts.stateUnwatched) {
+  // An app that declared NOTHING is told once, without having to be asked.
+  //
+  // The rule below fires only when an assertion about state could not be answered, which is correct
+  // for that gap and leaves the common case silent: an app whose capabilities file registers
+  // nothing drives fine, produces verdicts, and never mentions being under-instrumented — unless
+  // the agent happens to ask about state, which an agent with no reason to suspect a problem will
+  // not do. The session has known the answer the whole time and no verdict ever consulted it.
+  //
+  // Reported as the same kind, because it is the same missing thing seen from the other side, and
+  // guarded so the two conditions cannot report it twice.
+  if (false === facts.hasCapabilities || (facts.stateAsked && facts.stateUnwatched)) {
+    // Same missing thing, two ways of meeting it — and the sentence has to say which. Describing an
+    // assertion about state to an agent that made no such assertion is a false explanation, and a
+    // gap nobody can act on is worse than no gap: it costs the trip and teaches the wrong lesson.
+    const declaredNothing = false === facts.hasCapabilities;
     gaps.push(
       instrumentationGap(
         InstrumentationGapKind.NO_STORE_REGISTERED,
-        'no store is registered, and this assertion was about state',
-        'the assertion could not be answered from the deterministic channel and had to fall back to what the DOM happens to show',
+        declaredNothing
+          ? 'this app declared no capabilities at all, so no state can be read from it'
+          : 'no store is registered, and this assertion was about state',
+        declaredNothing
+          ? 'every verdict here rests on what the DOM happens to show, and reticle_state will stay empty however many flows are driven'
+          : 'the assertion could not be answered from the deterministic channel and had to fall back to what the DOM happens to show',
       ),
     );
   }

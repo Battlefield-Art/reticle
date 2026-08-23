@@ -864,6 +864,8 @@ export const ACT_TOOLS: ToolDef[] = [
           ref: asString(args['ref']),
           stateAsked: declaresState(until),
           stateUnwatched,
+          // What the app DECLARED, so an under-instrumented one is told without having to be asked.
+          hasCapabilities: session.hasCapabilities,
           domMutated: (session.lastAct.effect().mutatedWithin ?? 0) > 0,
           signalsFired: actionSummary.signals.length,
           routeChanged: actionSummary.route !== undefined,

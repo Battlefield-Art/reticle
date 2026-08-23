@@ -187,6 +187,8 @@ export async function assertVerdict(
     source: session.lastAct.source(),
     stateAsked: declaresState(predicate),
     stateUnwatched: isStateUnwatched(spots),
+    // What the app DECLARED, so an under-instrumented one is told without having to be asked.
+    hasCapabilities: session.hasCapabilities,
     domMutated: false,
     signalsFired: 0,
     routeChanged: false,
