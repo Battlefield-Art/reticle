@@ -69,12 +69,23 @@ export function restartHint(
   // "Ask your agent: List Reticle sessions" asks a question whose failure is a dead end. `reticle
   // status` ANSWERS it: as of 2.7.0 it reports the session, or says why there is none — no app
   // running, an app running that never dialled us, a tab that closed — with the fix for each.
+  // The one thing that works BEFORE the restart, so it goes before it.
+  //
+  // Everything else here needs the MCP tools, and those do not exist until the client restarts —
+  // which is exactly where people stop. `demo` boots its own daemon and its own browser, drives one
+  // control and prints a verdict, so there is something to SEE at the end of `init` rather than
+  // another instruction. Deliberately not sold as verification: a blind click grades `no-fault`,
+  // correctly, and promising a pass would make Reticle wrong about itself in the first thing a new
+  // user reads.
+  const demo =
+    `See it work right now, without waiting for anything: \`${CLI} demo <your app url>\` — it opens ` +
+    'a browser, drives one control and reports what happened, from the inside.';
   const prove =
     'Then run `npx @reticlehq/server status` — it confirms the app connected, or says exactly why ' +
     'it has not.';
   // Nothing registered this run (`--no-mcp`, or a client that needs a manual edit): a restart picks
   // up nothing, so advice about one would be advice about something we did not do.
-  if (!wasMcpRegistered(mcpStatus)) return `${dev} ${prove}`;
+  if (!wasMcpRegistered(mcpStatus)) return `${dev}\n${demo}\n${prove}`;
   // ALREADY: the tools are reachable RIGHT NOW, and this is the branch that used to lie.
   //
   // `wasMcpRegistered` is true for both APPLY and ALREADY, which is correct for the funnel field it
@@ -87,6 +98,7 @@ export function restartHint(
   if (mcpStatus === StepStatus.ALREADY) {
     return (
       `${dev}\n` +
+      `${demo}\n` +
       'The Reticle MCP server was already registered on this machine, so there is no restart to do ' +
       'and the tools are available now.\n' +
       `${prove}\n` +
@@ -96,6 +108,7 @@ export function restartHint(
   }
   return (
     `${dev}\n` +
+    `${demo}\n` +
     'Then restart your agent so it picks up the new MCP server — restart Claude Code, reload the ' +
     'window in Cursor, or hit Start in `.vscode/mcp.json` in VS Code.\n' +
     'The tools only appear after that: your agent read its server list before Reticle existed, ' +
