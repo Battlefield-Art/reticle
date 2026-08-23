@@ -70,6 +70,8 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Fixed
 
+- **`@reticlehq/server` — a config discovered in another monorepo app no longer produces a contradictory `reticle init` action.** The no-session prose already treated a `.reticle.json` found outside the daemon's directory as positive evidence of a scope problem, but `next_action` did not receive that discovery and could simultaneously claim no config was found. Both halves now consume the same live scope facts, name the discovered directory and project ID, and recommend scoping the daemon to that app or acquiring its URL with `reticle_lease` instead of reinitializing a working install.
+
 - **`@reticlehq/server` — an instrumentation gap told the agent an app was unverifiable and gave it nowhere to go.** A gap exists to be acted on: it names an absence in the app, the cost that absence imposed on the verdict just returned, and the one change that closes it. What it never carried was a location. The type declared an optional `file:line` and no producer had ever set one, so every gap went out with a `ref` and nothing else.
 
   A `ref` is a handle to a DOM node, and gaps are read late. `reticle_verify { action: "coverage" }` is the "am I done?" call, made long after the verdict that recorded the gap, by which time the page has re-rendered and the handle very likely resolves to nothing. So the surface aimed squarely at a build-and-verify loop was handing that loop a remedy with no address.

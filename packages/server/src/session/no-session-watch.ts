@@ -12,6 +12,7 @@
 
 import { probeDevServers, probeDevServerStates } from './dev-server-probe.js';
 import { diagnoseNoSession } from './no-session-diagnosis.js';
+import type { NoSessionFacts } from './no-session-diagnosis.js';
 import { detectDevCommand } from './dev-command.js';
 import { nextActionFor, renderNextAction } from './no-session-next-action.js';
 import type { NoSessionNextAction } from './no-session-next-action.js';
@@ -107,6 +108,32 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
   // `initialized` comment below, which this shares.
   const isWired = (): boolean => options.initialized || readProjectId(directory) !== undefined;
 
+  type ProjectScopeFacts = Pick<
+    NoSessionFacts,
+    'initialized' | 'configsElsewhere' | 'searchedDirectories'
+  >;
+
+  /**
+   * Resolve the daemon's current project scope once for both halves of a sessions response.
+   *
+   * This remains a live read because `init` commonly writes the config after the daemon starts.
+   */
+  const projectScopeFacts = (): ProjectScopeFacts => {
+    const initialized = isWired();
+    if (initialized) return { initialized };
+    const discovery = discoverProjectConfigs(directory);
+    const elsewhere = discovery.found.filter((config) => config.directory !== directory);
+    return 0 === elsewhere.length
+      ? { initialized, searchedDirectories: discovery.searched }
+      : {
+          initialized,
+          configsElsewhere: elsewhere.map((config) => ({
+            directory: config.directory,
+            ...(config.projectId === undefined ? {} : { projectId: config.projectId }),
+          })),
+        };
+  };
+
   // Read at boot: the daemon's own identity does not change under it, and this is the key the
   // durable bit is stored under.
   const stateDir = options.stateDir ?? reticleStateHome();
@@ -187,10 +214,11 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
   const timer = setInterval(refresh, REFRESH_MS);
   timer.unref();
 
-  const nextAction = (): NoSessionNextAction =>
+  const nextAction = (scope: ProjectScopeFacts): NoSessionNextAction =>
     nextActionFor({
       everConnected: options.sessions.everConnected(),
-      initialized: isWired(),
+      initialized: scope.initialized,
+      ...(scope.configsElsewhere === undefined ? {} : { configsElsewhere: scope.configsElsewhere }),
       previouslyConnected: connectedBefore(),
       listening,
       // Read when asked, like everything else here: a `package.json` can gain a dev script, and a
@@ -198,10 +226,11 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
       dev: detectDevCommand(directory),
     });
 
-  options.sessions.setNoSessionNextAction(nextAction);
+  options.sessions.setNoSessionNextAction(() => nextAction(projectScopeFacts()));
 
-  options.sessions.setNoSessionHint(
-    () =>
+  options.sessions.setNoSessionHint(() => {
+    const scope = projectScopeFacts();
+    return (
       diagnoseNoSession({
         everConnected: options.sessions.everConnected(),
         // Read WHEN ASKED, for the same reason `projectPort` below is: `.reticle.json` is routinely
@@ -210,7 +239,7 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
         // saying the project had never been through `init` about a project whose config named its
         // framework and its projectId, and whose real problem was a dev server older than the plugin.
         // The boot value still counts: it is the one the daemon scoped its sessions with.
-        initialized: isWired(),
+        ...scope,
         listening,
         slowListeners,
         port: options.port,
@@ -218,23 +247,6 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
         // `.reticle.json`" is a claim about ONE directory, and a reader standing somewhere else
         // cannot tell whether it is a claim about their app at all.
         directory,
-        // Where the config actually is, when it is not here — and where we looked, when it is
-        // nowhere. Computed only on the branch that needs it: a wired daemon has its answer already,
-        // and a workspace scan on every hint would be a directory walk per tool refusal.
-        ...(isWired()
-          ? {}
-          : (() => {
-              const discovery = discoverProjectConfigs(directory);
-              const elsewhere = discovery.found.filter((c) => c.directory !== directory);
-              return 0 === elsewhere.length
-                ? { searchedDirectories: discovery.searched }
-                : {
-                    configsElsewhere: elsewhere.map((c) => ({
-                      directory: c.directory,
-                      ...(c.projectId === undefined ? {} : { projectId: c.projectId }),
-                    })),
-                  };
-            })()),
         // The one fact that outranks every absence below it, and the reason a fresh daemon stopped
         // claiming that an install which has demonstrably worked has never worked.
         previouslyConnected: connectedBefore(),
@@ -259,11 +271,12 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
           return configured === undefined ? {} : { projectPort: configured };
         })(),
       }) +
-      // Prose for the human, then the literal command for the agent. Appended rather than folded
-      // into the diagnosis so that file stays pure and its cases stay independently pinned.
-      ` ${renderNextAction(nextAction())}` +
-      (attachFailure ?? ''),
-  );
+      // Prose for the human, then the literal command for the agent. Both consume the same scope
+      // facts so a discovered workspace config cannot become an `init` recommendation below it.
+      ` ${renderNextAction(nextAction(scope))}` +
+      (attachFailure ?? '')
+    );
+  });
 
   return () => {
     clearInterval(timer);

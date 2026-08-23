@@ -32,6 +32,8 @@ interface NextActionFacts {
   initialized: boolean;
   listening: readonly number[];
   dev: DevCommand | undefined;
+  /** Configs found in other workspace directories: positive evidence of a scope mismatch. */
+  configsElsewhere?: readonly { directory: string; projectId?: string }[];
   /**
    * An app for this project has connected on this port before, from durable state.
    *
@@ -57,6 +59,32 @@ export function nextActionFor(facts: NextActionFacts): NoSessionNextAction {
         'a session was connected to this daemon earlier, so the wiring is correct — the tab was ' +
         'closed, reloaded, or the lease aged out. Reopen the app, or take one you own with ' +
         'reticle_lease {action:"acquire", url}.',
+    };
+  }
+
+  const configsElsewhere = facts.configsElsewhere ?? [];
+  if (!facts.initialized && configsElsewhere.length > 0) {
+    const named = configsElsewhere
+      .map((config) =>
+        config.projectId === undefined
+          ? config.directory
+          : `${config.directory} ('${config.projectId}')`,
+      )
+      .join(', ');
+    const projectIds = configsElsewhere.flatMap((config) =>
+      config.projectId === undefined ? [] : [config.projectId],
+    );
+    const leaseAlternative =
+      0 === projectIds.length
+        ? ''
+        : ' Alternatively, acquire the app URL explicitly with reticle_lease ' +
+          '{action:"acquire", url, projectId} using the matching projectId above.';
+    return {
+      action: NoSessionAction.OPEN_APP,
+      reason:
+        `a \`.reticle.json\` was found outside this daemon's directory: ${named}. This is a ` +
+        "scope problem, not an install problem. Restart the daemon from the app's directory (or " +
+        `point it there), then open the app.${leaseAlternative}`,
     };
   }
 
