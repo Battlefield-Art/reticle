@@ -87,6 +87,20 @@ const RAW_TOOLS: ToolDef[] = [
             pendingMarks: z.number().optional(),
             review_suggestion: z.string().optional(),
             recommendation: z.string().optional(),
+            // Attached by SessionManager.list() (#117): whether this tab ever dropped and came back,
+            // how often, and how long the last drop lasted. Undeclared here, a validating client
+            // stripped the outage history while the row still looked complete — a verdict over a
+            // window with a four-second blind gap read as trustworthy.
+            attachment: z
+              .object({
+                connectedSinceMs: z.number(),
+                outages: z.number(),
+                lastOutage: z.object({ startedMs: z.number(), durationMs: z.number() }).optional(),
+              })
+              .optional()
+              .describe(
+                'Present only when this tab has dropped and reconnected at least once: how long it has been attached in total, how many outages occurred, and when the last one started and how long it lasted. A verdict over this window spans a gap where nothing was observed.',
+              ),
           }),
         )
         .describe(
