@@ -21,7 +21,11 @@ import { guidanceBytes } from './guidance-share.mjs';
 const KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = process.env.BENCH_MODEL ?? 'claude-haiku-4-5-20251001';
 const URL = 'http://localhost:4312/';
-const MAX_TURNS = 12;
+// Raised from 12 after every unfinished cell in a five-scenario run turned out to be sitting exactly
+// on the old ceiling. These tasks log in, navigate, act and then read a channel; twelve turns did not
+// reach the answer for ANY of the three tools, so what looked like four scenarios' worth of detection
+// data was four scenarios' worth of the same budget running out.
+const MAX_TURNS = Number(process.env.BENCH_MAX_TURNS ?? 25);
 
 if (!KEY) {
   console.log(
@@ -167,6 +171,10 @@ async function runCell(scenarioId, toolKey) {
       }
       messages.push({ role: 'user', content: results });
     }
+    // A cell that ran out of budget is NOT a cell that failed to decide, and collapsing the two is
+    // how this harness reported a ceiling of its own as a property of the tools under test. Eight of
+    // twelve cells in one run read "NO VERDICT" and every one of them had simply been cut off.
+    const exhausted = turns >= MAX_TURNS;
     const said = /VERDICT:\s*FAIL/i.test(verdictText)
       ? true
       : /VERDICT:\s*PASS/i.test(verdictText)
@@ -193,10 +201,19 @@ async function runCell(scenarioId, toolKey) {
       guidance_share: 0 === resultBytes ? 0 : Number((guideBytes / resultBytes).toFixed(4)),
       latency_ms: Date.now() - t0,
       turns,
-      verdict: null === said ? 'NO VERDICT' : said ? 'ISSUE DETECTED' : 'NO ISSUE FOUND',
+      verdict:
+        null === said
+          ? exhausted
+            ? 'BUDGET EXHAUSTED'
+            : 'NO VERDICT'
+          : said
+            ? 'ISSUE DETECTED'
+            : 'NO ISSUE FOUND',
+      // Explicit, so a summary built from these rows cannot average a ceiling in with a result.
+      measured: null !== said,
       detected_issue: detected,
       expected_detect: sc.expectIssue,
-      confidence: detected === sc.expectIssue ? 1 : 0,
+      confidence: null === said ? null : detected === sc.expectIssue ? 1 : 0,
       notes: `model=${MODEL}; turns=${turns}; verdict_excerpt=${verdictText.trim().slice(-160)}`,
     };
   } catch (e) {
