@@ -78,10 +78,14 @@ const TASKS = {
     expectIssue: true,
     task: `Open ${URL}, log in (admin@reticle.dev / password), then click the "Compose" navigation item. Verify the Compose view actually renders (it has a prompt box and a Generate button). Report PASS if it renders, FAIL if navigation did nothing.`,
   },
+  // The control is labelled "New deploy". The task said "New deployment", which is the modal's
+  // heading, not the button — so all three tools spent their whole budget hunting a control that
+  // does not exist and the scenario scored three identical exhaustions. A benchmark task that names
+  // the wrong control measures the fixture's naming, not the tools.
   'missing-modal': {
     regression: 'missing-modal',
     expectIssue: true,
-    task: `Open ${URL}, log in (admin@reticle.dev / password), go to Deployments and click "New deployment". Verify the new-deployment modal opens. Report PASS if it opens, FAIL if no modal appears.`,
+    task: `Open ${URL}, log in (admin@reticle.dev / password), go to Deployments and click "New deploy". Verify the new-deployment modal opens. Report PASS if it opens, FAIL if no modal appears.`,
   },
   'no-regression-control': {
     regression: null,
