@@ -74,7 +74,9 @@ export const RECOVERY = {
     'That sessionId is not connected. Call reticle_sessions for the current ids and retry with a valid one.',
   THROTTLED:
     'The target tab is backgrounded/throttled, so actions may silently no-op. Ask the human to bring ' +
-    'the tab to the front, or run `reticle drive <url>` for a guaranteed scriptable context.',
+    'the tab to the front, or acquire a guaranteed scriptable context yourself with ' +
+    '`reticle_run { tool: "reticle_lease", action: "acquire", url }` (a human can equivalently run ' +
+    '`reticle drive <url>`).',
   MISSING_BASELINE:
     'That baseline does not exist yet. Call reticle_baseline { action: "list" } to see saved names, or ' +
     'reticle_baseline { action: "save", name } to capture one before diffing against it.',

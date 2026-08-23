@@ -9,6 +9,15 @@ describe('buildSessionRecommendation', () => {
     expect(rec).toContain('reticle drive');
   });
 
+  it('names the in-protocol escape hatch before the CLI one (#521)', () => {
+    // An MCP-only agent has no shell: `reticle drive` is a sentence for the human, while
+    // `reticle_run { tool: "reticle_lease" }` is the route the agent itself can take. The agent's
+    // option leads; the CLI follows as the human's equivalent.
+    const rec = UNSCRIPTABLE_TAB_RECOMMENDATION;
+    expect(rec).toContain('reticle_run { tool: "reticle_lease"');
+    expect(rec.indexOf('reticle_run')).toBeLessThan(rec.indexOf('reticle drive'));
+  });
+
   it('recommends when throttled even if not hidden', () => {
     expect(buildSessionRecommendation({ hidden: false, throttled: true, focused: true })).toBe(
       UNSCRIPTABLE_TAB_RECOMMENDATION,
@@ -34,6 +43,7 @@ describe('buildSessionRecommendation', () => {
   });
 
   it('the recommendation is the named UNSCRIPTABLE_TAB_RECOMMENDATION constant', () => {
+    expect(UNSCRIPTABLE_TAB_RECOMMENDATION).toContain('reticle_run { tool: "reticle_lease"');
     expect(UNSCRIPTABLE_TAB_RECOMMENDATION).toContain('reticle drive');
     expect(UNSCRIPTABLE_TAB_RECOMMENDATION).toContain('refocus');
   });
