@@ -76,6 +76,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Fixed
 
+- **`@reticlehq/server`: scroll-to-find turns around, so a row above a bottomed virtualized list is reachable.** A list that was already scrolled to its end keeps its earlier rows mounted above the viewport, and the search only ever walked downward: the first step reported "at end" and the answer came back `found:false / exhausted:true` for a row that was one page up. The bisection path had the same shape, since its refinement also assumed down, so an overshooting jump was unrecoverable too.
+
+  The walk now continues upward when the bottom is reached, and after a bisection jump it refines from wherever the jump landed in whichever direction the list still has. `exhausted` means what it should have meant all along: both directions are spent, not "the bottom is here". The budget is shared across both passes, so a call still costs at most `maxScrolls` steps.
+
 - **`@reticlehq/server` — an instrumentation gap told the agent an app was unverifiable and gave it nowhere to go.** A gap exists to be acted on: it names an absence in the app, the cost that absence imposed on the verdict just returned, and the one change that closes it. What it never carried was a location. The type declared an optional `file:line` and no producer had ever set one, so every gap went out with a `ref` and nothing else.
 
   A `ref` is a handle to a DOM node, and gaps are read late. `reticle_verify { action: "coverage" }` is the "am I done?" call, made long after the verdict that recorded the gap, by which time the page has re-rendered and the handle very likely resolves to nothing. So the surface aimed squarely at a build-and-verify loop was handing that loop a remedy with no address.
