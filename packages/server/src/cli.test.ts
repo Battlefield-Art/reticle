@@ -186,9 +186,6 @@ describe('parseCliArgs', () => {
       kind: 'verify',
       url: URL,
       headless: true,
-      // The resolved bridge port. `verify` used to drop it, so a project whose port lives in
-      // `.reticle.json` connected to 4400 and was told there was no session.
-      port: PORT,
     });
   });
 
@@ -198,7 +195,6 @@ describe('parseCliArgs', () => {
       url: URL,
       headless: false,
       timeoutMs: 5000,
-      port: PORT,
     });
   });
 
@@ -215,7 +211,6 @@ describe('parseCliArgs', () => {
       url: URL,
       headless: true,
       storageState: 'auth.json',
-      port: PORT,
     });
   });
 

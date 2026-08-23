@@ -218,15 +218,7 @@ export type CliResult =
       httpToken?: string;
     }
   | { kind: 'drive'; port: number; driveUrl: string; headless: boolean }
-  | {
-      kind: 'verify';
-      url: string;
-      headless: boolean;
-      timeoutMs?: number;
-      storageState?: string;
-      /** The resolved bridge port: --port / RETICLE_PORT / .reticle.json, same as every other command. */
-      port: number;
-    }
+  | { kind: 'verify'; url: string; headless: boolean; timeoutMs?: number; storageState?: string }
   | { kind: 'affected'; files: string[]; since?: string }
   | { kind: 'hunt'; dir: string }
   | { kind: 'capsules' }
@@ -663,11 +655,6 @@ export function parseCliArgs(
         kind: 'verify',
         url: r.url,
         headless: r.headless,
-        // The resolved port, which this branch used to drop on the floor: `handleVerify` declared
-        // `port?: number` and documented it as already resolved, and received undefined every run.
-        // A project whose port lives in `.reticle.json` therefore never connected and was told
-        // there was no session.
-        port: defaultPort,
         ...(r.timeoutMs !== undefined ? { timeoutMs: r.timeoutMs } : {}),
         ...(r.storageState !== undefined ? { storageState: r.storageState } : {}),
       };
