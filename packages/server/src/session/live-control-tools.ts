@@ -10,13 +10,13 @@ import {
 import { ReticleTool } from '../tools/tool-names.js';
 import { sessionIdShape } from '../tools/tool-kit.js';
 import { asNumber, asString } from '../tools/tools-helpers.js';
+import { MAX_WAIT_READY_MS, waitReadyMsSchema } from '../tools/numeric-bounds.js';
 import { waitForReady, RETICLE_LOOP_GUIDE } from './session-readiness.js';
 import { recoveryFor } from '../tools/error-recovery.js';
 import type { ToolDef } from '../tools/tools.js';
 
-/** Default + ceiling for the readiness wait — keep it short so a truly-missing app fails fast. */
+/** Default for the readiness wait — keep it short so a truly-missing app fails fast. */
 const WAIT_READY_DEFAULT_MS = 5000;
-const WAIT_READY_MAX_MS = 30000;
 
 /**
  * Is this a turn ending with nothing attached, rather than a call about a specific tab?
@@ -258,8 +258,7 @@ export const LIVE_CONTROL_TOOLS: ToolDef[] = [
       'soon as a session exists (no latency if one already does), or after `timeoutMs` with a ' +
       'recovery hint if none appears.',
     inputSchema: {
-      timeoutMs: z
-        .number()
+      timeoutMs: waitReadyMsSchema
         .optional()
         .describe('How long to wait for a session (ms). Default 5000, max 30000.'),
     },
@@ -271,7 +270,7 @@ export const LIVE_CONTROL_TOOLS: ToolDef[] = [
     },
     handler: async (deps, args) => {
       const requested = asNumber(args['timeoutMs']) ?? WAIT_READY_DEFAULT_MS;
-      const timeoutMs = Math.max(0, Math.min(requested, WAIT_READY_MAX_MS));
+      const timeoutMs = Math.max(0, Math.min(requested, MAX_WAIT_READY_MS));
       const ready = await waitForReady({
         count: () => deps.sessions.count(),
         timeoutMs,

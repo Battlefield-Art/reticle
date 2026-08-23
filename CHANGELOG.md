@@ -86,6 +86,12 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
   **A flow with no declared intent says so, and nothing is derived from its step names.** A guessed goal reads as the product owner's words and an agent will act on them, which is strictly worse than the honest absence — the same rule the source pointer follows. Older flow files parse, replay, and report exactly as they did, and the on-disk flow version does not move.
 
+### Changed
+
+- **`@reticlehq/server` — a numeric tool argument the code cannot honour is now refused, not silently dropped.** An unknown parameter is already refused with the strongest sentence on the surface: it was NOT applied, and a result computed without it would look like an answer. A _known_ parameter carrying a value the handler cannot honour is the same failure with better manners, and it used to pass. Measured live: `reticle_state { depth: -5 }` returned the full unscoped store, because `capDepth` treats a negative budget as "no cap". `reticle_network { limit: 1e9 }` was accepted against a ring buffer of 2000 events.
+
+  Each bound is a policy, not a blanket rule. `since: 0` is a real cursor. `timeout_ms: 0` on assert means evaluate now. `depth: 0` collapses a node to a size marker. `threshold` is a 0–1 ratio, so `.int()` would refuse 0.01. A lock over every advertised tool input fails if a new `z.number()` ships with no floor, or (except cursors) no ceiling, so the next silent ignore cannot accumulate the way this one did.
+
 ### Fixed
 
 - **`@reticlehq/server` — a `reticle_assert` verdict reported a `file:line` that could point at completely unrelated code.** An assertion drives nothing, so the tool had no location of its own and used the one the PREVIOUS action remembered. Driven against a real Next.js app: an assert about the site navigation was journaled with the file and line of the button an earlier click had touched, and an assert that matched nothing on the page at all was journaled with that same line. The old value was, in both cases, a location this verdict had never looked at — it sent the agent to innocent code, and because it is persisted into the session journal and read back by `reticle_context`'s `proven`, the wrong pointer outlived the turn that produced it.
