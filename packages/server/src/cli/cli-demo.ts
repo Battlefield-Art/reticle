@@ -83,57 +83,74 @@ export async function runDemo(deps: ToolDeps, ports: DemoPorts): Promise<boolean
     return false;
   }
 
-  ports.print(`  Driving "${target.name}" — watch the browser.`);
+  ports.print(`  Driving "${target.name}" and looking for problems — watch the browser.`);
+
   // No `until`, deliberately.
   //
-  // The first instinct here was to declare a consequence so the demo could show a green. There is
-  // none to declare: no consequence is true of an app nobody has read. Inventing one would either
-  // be trivially satisfiable — a green nobody earned — or fail on a healthy app and accuse it of a
-  // defect. Naming the consequence is the agent's job precisely because it needs to know the app.
-  //
-  // So the click is honest and the verdict is `no-fault`, and the report leads with what Reticle
-  // OBSERVED instead. That is the better demonstration anyway: it shows the machinery seeing the
-  // app from the inside, and then declining to call it verified. The declining is the product.
-  // Through `runTool`, not `.handler` directly. That is the one chokepoint where a call is counted
-  // and a result is enveloped; a demo that sidestepped it would be invisible to every measurement
-  // this project makes about which tools get used — and the demo is about to become the most-run
-  // path in the product.
+  // The first instinct was to declare a consequence so the demo could show a green. There is none
+  // to declare: no consequence is true of an app nobody has read. Inventing one would either be
+  // trivially satisfiable — a green nobody earned — or fail on a healthy app and accuse it of a
+  // defect. Naming the consequence is the agent's job precisely because it requires knowing the app.
   const result = (await runTool(tool(ReticleTool.ACT_AND_WAIT), deps, {
     ref: target.ref,
     action: 'click',
     timeout_ms: SETTLE_MS,
   })) as Record<string, unknown>;
 
-  // Narrowed rather than String()-ed. These come off an `unknown` record, and stringifying an
-  // object there yields "[object Object]" — which would print as a verdict and read like one.
-  // The whole demo is a claim about honesty; it must not be the thing that prints a fake value.
   const rawVerified = result['verified'];
-  const rawBecause = result['because'];
   const verified = 'string' === typeof rawVerified ? rawVerified : 'unknown';
-  const because = 'string' === typeof rawBecause ? rawBecause : '';
   const effect = result['effect'] as { source?: { file?: string; line?: number } } | undefined;
   const src = effect?.source;
   const where = src?.file === undefined ? '' : `  ${src.file}:${String(src.line ?? 0)}`;
-
-  // What it SAW, before what it concluded. A user watching their own app wants the observation
-  // first: it is the part that is impressive and the part a screenshot could never produce.
   const inner = (effect as { effect?: Record<string, unknown> } | undefined)?.effect;
   const mutated = inner?.['domMutatedWithin'];
-  const appeared = inner?.['appeared'];
+
   ports.print('');
   if ('number' === typeof mutated)
-    ports.print(`  the DOM changed ${String(mutated)}ms after the click`);
-  if ('string' === typeof appeared && '' !== appeared)
-    ports.print(`  what appeared: ${appeared.slice(0, 120)}`);
-  ports.print(`  verified: ${verified}${where}`);
-  if ('' !== because) ports.print(`  ${because}`);
+    ports.print(`  the DOM changed ${String(mutated)}ms after the click${where}`);
+
+  // THE POINT OF THE DEMO: what is wrong with this app.
+  //
+  // A verdict on one click is a capability demonstration. A finding is a REASON — the moment
+  // somebody understands why they would keep this installed. So the demo goes looking: the crawl
+  // drives every reachable control and reports single-channel faults and contradictions, and the
+  // console read catches what the DOM never shows.
+  const crawl = (await runTool(tool(ReticleTool.VERIFY), deps, {
+    action: 'crawl',
+  })) as Record<string, unknown>;
+  const anomalies = Array.isArray(crawl['anomalies'])
+    ? (crawl['anomalies'] as { kind?: unknown; desc?: unknown }[])
+    : [];
+  const consoleRead = (await runTool(tool(ReticleTool.CONSOLE), deps, {
+    level: 'error',
+  })) as Record<string, unknown>;
+  const errors = Array.isArray(consoleRead['entries']) ? consoleRead['entries'].length : 0;
+
+  const found = anomalies.length + errors;
   ports.print('');
-  // Deliberately says what it did NOT prove. A click with nothing declared grades `no-fault`, and
-  // presenting that as a success would be the exact false green this product exists to prevent.
+  if (0 === found) {
+    // An honest nothing. Saying "no problems" about an app we barely touched would be the same
+    // false confidence the verdicts refuse to give.
+    ports.print(
+      `  Nothing wrong in what it touched — ${String(controls.length)} control(s) seen, one driven, console clean.`,
+    );
+    ports.print(
+      '  That is a narrow check, not a clean bill of health. Drive a real flow for that.',
+    );
+  } else {
+    ports.print(`  Found ${String(found)} thing(s) worth looking at:`);
+    for (const a of anomalies.slice(0, 5)) {
+      const kind = 'string' === typeof a.kind ? a.kind : 'anomaly';
+      const desc = 'string' === typeof a.desc ? a.desc : '';
+      ports.print(`    · ${kind}${'' === desc ? '' : ` — ${desc}`}`);
+    }
+    if (0 !== errors) ports.print(`    · ${String(errors)} console error(s) your DOM never showed`);
+  }
+
+  ports.print('');
   ports.print(
-    'no-fault' === verified
-      ? '  That is Reticle being honest: the click landed, nothing was declared to prove, so nothing was proved. Name a consequence with `until` and it becomes a real verdict.'
-      : '  That is Reticle: it drove your app and reported what happened, from the inside.',
+    `  verdict on the click: ${verified}. That is Reticle: it drove your app from the inside, ` +
+      'and told you what it could and could not prove.',
   );
   return true;
 }

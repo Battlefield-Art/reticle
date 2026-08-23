@@ -27,16 +27,22 @@ export const FEEDBACK_HINT =
   `  ${CLI} feedback --agent --kind <bug|gap|ambiguity|feature_request|improvement> "what happened"   (agents)\n` +
   `  ${CLI} feedback "what worked, what didn't"   (humans)`;
 
-function devServerRestart(framework: Framework, devCommand?: string): string {
-  // The project's OWN command beats a framework guess. "Restart `vite`" is a thing nobody types;
-  // `pnpm dev` is the thing they actually run, and naming it is the difference between an
-  // instruction and a hint. Read straight out of package.json — see dev-script.ts.
-  if (devCommand !== undefined) return `Restart your dev server (\`${devCommand}\`)`;
-  if (framework === Framework.NEXT) return 'Restart `next dev`';
-  if (framework === Framework.VITE) return 'Restart `vite`';
-  if (framework === Framework.ASTRO) return 'Restart `astro dev`';
-  if (framework === Framework.SVELTEKIT) return 'Restart your dev server (`npm run dev`)';
-  return 'Reload your app on localhost';
+/**
+ * What to say about the dev server.
+ *
+ * Names the project's own script when `package.json` has a recognisable one, and otherwise says the
+ * THING rather than guessing the command.
+ *
+ * The guesses that used to live here — `vite`, `next dev`, `astro dev` — were wrong often enough to
+ * be worth deleting. Measured on a real app: rowy has no `dev` script at all, so "Restart `vite`"
+ * sent the reader to work out what was meant instead of starting a server. Nobody needs the guess:
+ * an agent reading this can open package.json, and a human already knows how they start their own
+ * app. A wrong command costs more than a missing one.
+ */
+function devServerRestart(_framework: Framework, devCommand?: string): string {
+  return devCommand === undefined
+    ? 'Restart your dev server'
+    : `Restart your dev server (\`${devCommand}\`)`;
 }
 
 /**
