@@ -76,7 +76,38 @@ function describeIssue(issue: z.ZodIssue): string {
  * Deliberately still THROWS: every call site already handles a throw, and turning this into a
  * result type would mean touching three handlers to gain nothing the message does not already say.
  */
+/**
+ * The placeholder `verify_next` puts in the `until` it suggests, sent back unchanged.
+ *
+ * The nudge hands the agent a ready-made `act_and_wait` call with `ref` and `action` filled in from
+ * the act that dispatched, and leaves the consequence blank on purpose: naming it is the one part
+ * only the agent can know, and guessing would be Reticle inventing the assertion.
+ *
+ * Sent verbatim it parses as a perfectly valid text predicate that simply never matches, so the
+ * verdict came back `verified:"no"` / "the declared consequence did not hold" — blaming the app for
+ * a placeholder the agent forgot to replace, and sending it to hunt a defect that does not exist.
+ * Measured on a live app before this guard: a confident, wrong, actionable-looking answer, which is
+ * the exact failure the rest of this file exists to avoid.
+ */
+const UNFILLED_PLACEHOLDER = /^<name the consequence/i;
+
+function placeholderValue(input: unknown): string | undefined {
+  if ('object' !== typeof input || null === input) return undefined;
+  const value = (input as Record<string, unknown>)['value'];
+  return 'string' === typeof value && UNFILLED_PLACEHOLDER.test(value) ? value : undefined;
+}
+
 export function parsePredicate(input: unknown): z.infer<typeof PredicateSchema> {
+  const unfilled = placeholderValue(input);
+  if (unfilled !== undefined) {
+    throw new Error(
+      `that predicate still carries the placeholder from verify_next ("${unfilled}"). Nothing ran, ` +
+        'and no verdict was produced — which is deliberate: as written it would have failed and ' +
+        'blamed the app for a value you had not filled in yet. Replace it with the consequence ' +
+        'this action actually causes, and prefer one the action CHANGES: a signal, a request, a ' +
+        'route, or store state. Text on screen that was already there proves nothing.',
+    );
+  }
   const parsed = PredicateSchema.safeParse(input);
   if (parsed.success) return parsed.data;
   const kind =

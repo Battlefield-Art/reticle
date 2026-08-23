@@ -31,7 +31,7 @@ Every row below is a call that was made against a running app and the answer tha
 | you call it with | you get back | bytes |
 | --- | --- | --- |
 | an argument the tool does not declare: `{"thisArgDoesNotExist":1}` | refused (names the fix) | 354 |
-| the documented call: `{"limit":5}` | ran | 1382 |
+| the documented call: `{"limit":5}` | ran | 1175 |
 | a number outside its range: `{"limit":-1}` | refused (names the fix) | 222 |
 
 ## reticle_console
@@ -60,10 +60,10 @@ Every row below is a call that was made against a running app and the answer tha
 
 | you call it with | you get back | bytes |
 | --- | --- | --- |
-| no expectation declared: `{"ref":"e1005","action":"click"}` | verified:no-fault | 1341 |
+| no expectation declared: `{"ref":"e1005","action":"click"}` | verified:no-fault | 1343 |
 | the documented call: `{"ref":"e1105","action":"click","until":{"kind":"text","value":"Invalid email or password"},"timeout_ms":6000}` | verified:yes | 1297 |
-| no expectation declared: `{"ref":"e1205","action":"click","until":{"kind":"settled"}}` | verified:no-fault | 1344 |
-| a value outside the allowed set: `{"ref":"e905","action":"click","until":[{"kind":"text","value":"x"}]}` | refused (names the fix) | 399 |
+| no expectation declared: `{"ref":"e1205","action":"click","until":{"kind":"settled"}}` | verified:no-fault | 1343 |
+| a value outside the allowed set: `{"ref":"e903","action":"click","until":[{"kind":"text","value":"x"}]}` | refused (names the fix) | 399 |
 | a ref that no longer resolves: `{"ref":"e999999","action":"click"}` | refused (names the fix) | 519 |
 
 - no `until`: this returned verified:"yes" before v2.12.0
@@ -78,10 +78,10 @@ Every row below is a call that was made against a running app and the answer tha
 
 | you call it with | you get back | bytes |
 | --- | --- | --- |
-| a required argument omitted: `{"ref":"e903"}` | refused (names the fix) | 192 |
-| a value outside the allowed set: `{"ref":"e903","action":"teleport"}` | refused (names the fix) | 415 |
-| an argument the tool does not declare: `{"ref":"e903","action":"fill","value":"x"}` | refused (names the fix) | 314 |
-| the documented call: `{"ref":"e903","action":"fill","args":{"value":"probe"}}` | refused (names the fix) | 516 |
+| a required argument omitted: `{"ref":"e901"}` | refused (names the fix) | 192 |
+| a value outside the allowed set: `{"ref":"e901","action":"teleport"}` | refused (names the fix) | 415 |
+| an argument the tool does not declare: `{"ref":"e901","action":"fill","value":"x"}` | refused (names the fix) | 314 |
+| the documented call: `{"ref":"e901","action":"fill","args":{"value":"probe"}}` | refused (names the fix) | 516 |
 
 - action arguments nest under `args`
 

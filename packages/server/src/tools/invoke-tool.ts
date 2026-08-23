@@ -1,4 +1,5 @@
 import { healthEnvelope } from '../session/session-health.js';
+import { verifyNextBaton } from './verify-next-baton.js';
 import {
   type BrowserBrand,
   TelemetryActor,
@@ -517,6 +518,17 @@ export async function runTool<Ext>(
   // the counter behind this already existed and was reported only to us. One-shot per abandoned
   // run, same discipline as the pool lease — a hint on every call is noise that gets tuned out.
   const unverified = getSessionMetrics().takeUnverifiedNudge();
-  if (unverified !== undefined) envelope[EnvelopeKey.VERIFY_NEXT] = unverified;
+  // Carry the CALL, not just the sentence. The prose has to be translated back into arguments, and
+  // that translation is where agents were already going wrong — `until` omitted, action arguments
+  // flat instead of nested under `args`. `ref` and `action` come from the act that actually
+  // dispatched, so the suggestion is about the element the agent touched. See verify-next-baton.
+  if (unverified !== undefined)
+    // `lastAct` read defensively: this envelope is built on EVERY tool call, so a session shape
+    // without it would turn a missing field into a crash on the whole surface rather than a missing
+    // suggestion. The baton degrades to prose, which is what it carried before.
+    envelope[EnvelopeKey.VERIFY_NEXT] = verifyNextBaton(
+      unverified,
+      resolved.lastAct?.effect() ?? {},
+    );
   return Object.keys(envelope).length > 0 ? { ...result, ...envelope } : result;
 }
