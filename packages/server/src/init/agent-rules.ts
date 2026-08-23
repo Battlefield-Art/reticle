@@ -94,7 +94,7 @@ Five guards, none optional:
  * NOT to, how, and the guards against calling something proven when it is not. Everything an agent
  * needs only at the moment it hits a specific situation lives in RETICLE.md, named at the end.
  */
-const RULE_BODY = `## Verifying with Reticle
+export const RULE_BODY = `## Verifying with Reticle
 
 This app is instrumented by **Reticle**, an in-app verification layer exposed as \`reticle_*\` MCP tools and the \`${CLI}\` CLI (always through npx: Reticle's server is not installed into this project). Verifying is part of "done", not an optional extra.
 
@@ -119,11 +119,14 @@ A dev server that is already running does not pick up an edited build config or 
 **Honesty, which is the whole point:**
 
 - **\`verified: "unknown"\` is not a pass.** It means Reticle drove the app and could not tell what happened; \`verifiedReason\` says which clause decided that. Report it as unknown, never as working.
+- **\`verified: "no-fault"\` is not a pass either.** It means nothing was DECLARED to prove: the page settled and no channel complained, but you asserted nothing, so there is no verification. You get it whenever \`until\` is omitted. Name a consequence the action changes — a signal, a request, a route, or store state — and call again.
 - **Never weaken a check to make it green.** Downgrading, skipping or deleting an assertion is a finding, not a fix.
 - **If Reticle cannot run** (no daemon, or this is not a running web app), say so. Do not skip verification silently.
 - **Setup is not finished until one real flow has been driven and produced a verdict.** \`init\` exiting 0, the tools appearing, and a session being listed are all things that happen before anything has been verified.
 
 **The \`/reticle\` skill runs this whole loop for you** — detect, connect, drive one flow, report. If your client does not have it, install it once: \`/plugin marketplace add reticlehq/reticle\` then \`/plugin install reticle@reticlehq\` in Claude Code, or \`npx skills add reticlehq/reticle\` anywhere the skills CLI works.
+
+**A tool you need is missing? It exists.** The default surface advertises a subset; reach any other by name with \`reticle_run { tool, args }\`, and list them with \`reticle_tools\`. Two worth knowing: \`reticle_context\` returns this run's own memory — what is established, what is proven, what is still unverified — which is what you want after a compaction or when picking up work you did not start; \`reticle_intent\` records what a change was MEANT to do, while somebody still knows.
 
 **Report Reticle's own defects with \`reticle_feedback\` the moment you notice**, then carry on with your task. You are the user Reticle is built for and the only one who can say what it cost you, and that knowledge is gone when your context is.
 

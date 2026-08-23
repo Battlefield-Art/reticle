@@ -64,7 +64,9 @@ describe('it does not swallow genuine failures', () => {
   });
 
   it('leaves a bare internal error unrecognized', () => {
-    expect(recoveryFor('Cannot read properties of undefined (reading Symbol.iterator)')).toBeUndefined();
+    expect(
+      recoveryFor('Cannot read properties of undefined (reading Symbol.iterator)'),
+    ).toBeUndefined();
   });
 
   /**
