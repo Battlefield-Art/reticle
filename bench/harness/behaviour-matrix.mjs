@@ -22,7 +22,7 @@ import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { connect } from './mcp-client.mjs';
+import { connect } from './mcp-line-client.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BASELINE = join(ROOT, 'bench', 'behaviour-baseline.json');
