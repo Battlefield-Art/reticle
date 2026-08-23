@@ -73,7 +73,7 @@ const RETICLE_NEXT_PLUGIN = '@reticlehq/next';
  * and nothing on either side names a version. Asking for the CLI's exact version makes the cache
  * irrelevant, and a skewed pair impossible to install by accident.
  */
-export function pinnedPackages(
+function pinnedPackages(
   packages: readonly string[],
   version: string | undefined,
 ): readonly string[] {
@@ -607,7 +607,7 @@ const AgentId = {
   CLAUDE: 'claude',
   CURSOR: 'cursor',
 } as const;
-export type AgentId = (typeof AgentId)[keyof typeof AgentId];
+type AgentId = (typeof AgentId)[keyof typeof AgentId];
 
 interface AgentIntegration {
   readonly id: AgentId;

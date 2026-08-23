@@ -93,7 +93,7 @@ export const WS_CLOSE_REASON = {
  * The origin is IN the message because it is the fix: it is either the alias to allow-list, or the
  * proof that the page is not being served from where the developer thinks it is.
  */
-export function originRejectedReason(origin: string | undefined): string {
+function originRejectedReason(origin: string | undefined): string {
   const named = origin === undefined || 0 === origin.length ? 'a page sending no Origin' : origin;
   return (
     `a browser dialled this daemon and was REFUSED at the origin gate: ${named} is not allowed. ` +

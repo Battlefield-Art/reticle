@@ -119,7 +119,7 @@ function importPathFor(storePath: string, fromDir: string): string {
 }
 
 /** Where the generated dev module lives, for Vite. Next passes its own. */
-export const DEFAULT_DEV_MODULE_DIR = 'src';
+const DEFAULT_DEV_MODULE_DIR = 'src';
 
 /**
  * Store instances declared in the app's own source, ready to import and register.

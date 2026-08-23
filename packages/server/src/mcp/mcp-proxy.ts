@@ -187,7 +187,7 @@ const TRANSPORT_LOSS_CODE = -32001;
  * `nextStep` is appended when the caller knows one. Without it this reply describes a condition and
  * stops there, which is all a first-run user got out of their first ever tool call.
  */
-export function transportLossReply(id: unknown, reason: string, nextStep?: string): string {
+function transportLossReply(id: unknown, reason: string, nextStep?: string): string {
   return JSON.stringify({
     jsonrpc: '2.0',
     id,

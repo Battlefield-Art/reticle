@@ -170,7 +170,7 @@ export function blindSpotsFromState(state: Readonly<Record<string, number>>): Bl
  * every real app, and a caveat that is always present is one nobody reads. TRANSPORT_OVERFLOW is the
  * honest "arbitrary events are gone" marker — it cannot say which.
  */
-export function droppedByTransport(events: readonly ReticleEvent[]): number {
+function droppedByTransport(events: readonly ReticleEvent[]): number {
   let dropped = 0;
   for (const e of events) {
     if (e.type !== EventType.TRANSPORT_OVERFLOW) continue;

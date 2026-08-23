@@ -118,6 +118,12 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
   **A flow with no declared intent says so, and nothing is derived from its step names.** A guessed goal reads as the product owner's words and an agent will act on them, which is strictly worse than the honest absence — the same rule the source pointer follows. Older flow files parse, replay, and report exactly as they did, and the on-disk flow version does not move.
 
+### Changed
+
+- **`@reticlehq/server` — drop `export` on symbols used only inside their own file.** An export nobody imports is noise that makes the module surface look larger than it is, and it defeats dead-code detection for everything else: a symbol exported for no reason can never be reported as unused. The compiler is the proof — if typecheck passes, the removal was safe.
+
+  Test seams stay exported: a symbol referenced only by its own `.test.ts` is a seam, not dead. So is a name the e2e battery imports from `dist` — typecheck cannot see those, which is how `reportVersionChange` got dropped and the telemetry-events spec died with "is not a function". Barrel re-exports stay too. `@reticlehq/core` has none of this class — every export is re-exported from the package barrel. Other packages are follow-ups.
+
 ### Fixed
 
 - **`@reticlehq/server` — `reticle verify` ignored the port in `.reticle.json`, and its docstring said the opposite.** `parseCliArgs` already folds `RETICLE_PORT` and the project config into `defaultPort`, but the verify result had no `port` field, so `handleVerify` fell back to 4400 every time. A project on any other port got `MSG_NO_SESSION` ("your app is not running") rather than "I looked at the wrong port". `--port` was also rejected as an unknown argument.

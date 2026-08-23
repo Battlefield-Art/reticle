@@ -404,7 +404,7 @@ function schemeOf(url: string): string | undefined {
   }
 }
 
-export function driveSchemeRefusal(url: string): string | undefined {
+function driveSchemeRefusal(url: string): string | undefined {
   const scheme = schemeOf(url);
   if (scheme !== undefined && DRIVEABLE_SCHEMES.includes(scheme)) return undefined;
   // Names what it got, because the caller is a CLI printing this to somebody who typed the url and

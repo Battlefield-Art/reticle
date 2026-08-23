@@ -91,7 +91,7 @@ export const CAPPED_SNAPSHOT_NOTE =
  * The same words as the capped-snapshot case on purpose — it is the same idea (interactiveFound is a
  * floor) reached by a different route, and a second vocabulary for it would just be more to learn.
  */
-export function revealedControlsNote(count: number): string {
+function revealedControlsNote(count: number): string {
   return (
     `the page changed as you clicked: ${String(count)} control(s) that did not exist when this crawl ` +
     'started were never visited — interactiveFound is a floor, not a total; re-run the crawl from ' +

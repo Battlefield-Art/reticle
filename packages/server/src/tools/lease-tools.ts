@@ -279,7 +279,7 @@ export const LEASE_ACQUIRE_TOOL: ToolDef = {
   },
 };
 
-export const LEASE_RELEASE_TOOL: ToolDef = {
+const LEASE_RELEASE_TOOL: ToolDef = {
   name: ReticleTool.LEASE_RELEASE,
   description:
     'Release a leased browser context by sessionId, closing it and freeing the pool slot for a queued acquire. Call this when a flow finishes so the pool stays within its concurrency cap.',
