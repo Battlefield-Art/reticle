@@ -159,3 +159,51 @@ describe('findEchoMismatches — the request has to be a write', () => {
     expect(found?.detail).not.toContain('before the action');
   });
 });
+
+describe('findEchoMismatches — the response has to be echo-shaped', () => {
+  /**
+   * A command bus POSTs `{"command":"chat.send","text":"..."}` and the server deliberately answers
+   * with the current viewer SNAPSHOT, not an echo of the request; the chat message itself arrives
+   * over WebSocket and renders (#506). Key names collected at any depth made one incidental shared
+   * key read as an attempted echo, and the act was reported as write-field-ignored over a write that
+   * fully applied. An echo restates what was sent; a snapshot that happens to share a key or two is
+   * not a restatement. So the diff only runs when a MAJORITY of the request's scalar keys appear in
+   * the response at all. That keeps every documented true positive (an envelope restates most of its
+   * fields) and trades the rare half-echoed write away, exactly like MAX_ECHO_KEYS does.
+   */
+  it('stays silent when the response shares none of the request keys', () => {
+    expect(
+      kinds(
+        write(
+          { command: 'chat.send', text: 'hello there' },
+          { viewer: { id: 'u1', name: 'Ada' }, rooms: [{ id: 'r1', title: 'general' }] },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('stays silent when only half the request keys reappear, under other names for their values', () => {
+    // One incidental "text" on an unrelated snapshot field must not read as the echo of the
+    // message's text while the operation discriminator is nowhere in the response.
+    expect(
+      kinds(write({ command: 'chat.send', text: 'hello' }, { text: 'draft autosave', ok: true })),
+    ).toEqual([]);
+  });
+
+  it('still grades an envelope restating most of what was sent', () => {
+    expect(
+      kinds(
+        write(
+          { density: 'compact', locale: 'fr', theme: 'dark' },
+          { ok: true, saved: { density: 'compact', locale: 'en', theme: 'dark' } },
+        ),
+      ),
+    ).toContain(ContradictionKind.WRITE_FIELD_IGNORED);
+  });
+
+  it('still grades a one-key write whose single key comes back different', () => {
+    expect(kinds(write({ qty: 5 }, { ok: true, saved: { qty: 3 } }))).toContain(
+      ContradictionKind.WRITE_FIELD_IGNORED,
+    );
+  });
+});

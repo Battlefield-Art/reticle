@@ -139,6 +139,18 @@ export function findEchoMismatches(
 
     const echoed = scalarsByKey(response);
     const asked = scalarsByKey(request);
+    // The response has to be ECHO-SHAPED before any key can contradict anything. An echo restates
+    // what was sent, so most of the request's scalar keys reappear somewhere in it; a snapshot that
+    // happens to share a key or two does not (#506: `{"command":"chat.send"}` answered with the
+    // viewer snapshot read one incidental shared key as an attempted echo of a write that fully
+    // applied). Requiring a strict majority of the request's keys to appear keeps every documented
+    // true positive — an envelope restates most of its fields — and deliberately trades the rare
+    // half-echoed write away, the same direction MAX_ECHO_KEYS already trades in.
+    let shared = 0;
+    for (const key of asked.keys()) {
+      if (echoed.has(key)) shared += 1;
+    }
+    if (shared * 2 <= asked.size) continue;
     const dropped: string[] = [];
     for (const [key, wanted] of asked) {
       // More than one requested value for a key (a before/after pair, a list of items) makes "what
