@@ -95,6 +95,23 @@ function capabilitiesTodo(path: string, stores: readonly string[]): string {
  * `__reticle_renders` — the state-truth read was unavailable on every app out of the box. Written
  * only when absent, because it is the one generated file a user is expected to EDIT.
  */
+/**
+ * Does the generated dev module actually REGISTER anything?
+ *
+ * Shared by the Vite and Next paths because it is one question about one generated call, and the
+ * two answered it differently for as long as only Vite asked: `capabilitiesStep` was called from
+ * `viteSteps` and nowhere else, so a Next app whose store can only be SUGGESTED wrote
+ * `registerCapabilities({ testids: [], stores: [] })`, registered nothing, and said nothing.
+ * Measured on a real Next + mobx app: five steps, every one a checkmark, no capabilities line.
+ *
+ * `wired` are stores init resolved and wrote a live `registerStore` call for. Hints are not
+ * registrations: they land in the file as a commented line, and counting one as a registration
+ * silences the notice whose whole purpose is to say "act on the hint".
+ */
+function registersNothing(testids: readonly string[], wired: readonly unknown[]): boolean {
+  return 0 === testids.length && 0 === wired.length;
+}
+
 function capabilitiesStep(input: PlanInput): Step[] {
   if (true === input.viteDevModuleExists) {
     return [
@@ -127,7 +144,7 @@ function capabilitiesStep(input: PlanInput): Step[] {
   // This is the common case rather than an edge one: a library whose registration needs an argument
   // only reading the source supplies — jotai atoms, an XState actor, a TanStack queryClient — is
   // exactly what init leaves commented.
-  const nothingToRegister = 0 === testids.length && 0 === wired.length;
+  const nothingToRegister = registersNothing(testids, wired);
   return [
     {
       title: CAPABILITIES_TITLE,
@@ -301,8 +318,24 @@ export function nextSteps(input: PlanInput): Step[] {
         ? patchPagesApp(layout.source, input.nextReticleDevImport)
         : patchRootLayout(layout.source);
 
+  // The same question the Vite path asks. Skipped when the module already exists: its contents are
+  // the user's, and re-nagging about a file we did not write is noise.
+  const nextTodo: Step[] =
+    true !== input.nextReticleDevExists &&
+    registersNothing(input.testids ?? [], input.nextFoundStores ?? [])
+      ? [
+          {
+            title: CAPABILITIES_TODO_TITLE,
+            target: devPath,
+            status: StepStatus.NOTICE,
+            detail: capabilitiesTodo(devPath, input.storeHints ?? []),
+          },
+        ]
+      : [];
+
   return [
     devFile,
+    ...nextTodo,
     patchStep(
       'Next config (withReticle)',
       configFile,
