@@ -78,6 +78,8 @@ const AFFECTED_COMMAND = 'affected';
 const HUNT_COMMAND = 'hunt';
 const CAPSULES_COMMAND = 'capsules';
 const GATE_COMMAND = 'gate';
+/** Hook mode: prose a human can read, and silence when there was simply nothing to check. */
+const HOOK_FLAG = '--hook';
 const WATCH_COMMAND = 'watch';
 const UPDATE_COMMAND = 'update';
 const ROLLBACK_COMMAND = 'rollback';
@@ -228,7 +230,7 @@ export type CliResult =
   | { kind: 'affected'; files: string[]; since?: string }
   | { kind: 'hunt'; dir: string }
   | { kind: 'capsules' }
-  | { kind: 'gate'; files: string[]; since?: string }
+  | { kind: 'gate'; files: string[]; since?: string; hook?: boolean }
   | { kind: 'watch'; url?: string }
   | { kind: 'update' }
   | { kind: 'rollback' }
@@ -684,9 +686,16 @@ export function parseCliArgs(
       return { kind: 'affected', files: t.files, ...(since === undefined ? {} : { since }) };
     }
     case GATE_COMMAND: {
-      const t = parseTargetArgs(rest);
+      // `--hook` is stripped before target parsing, which would reject it as an unknown flag.
+      const hook = rest.includes(HOOK_FLAG);
+      const t = parseTargetArgs(rest.filter((a) => a !== HOOK_FLAG));
       const since = t.since ?? implicitSince(t.files);
-      return { kind: 'gate', files: t.files, ...(since === undefined ? {} : { since }) };
+      return {
+        kind: 'gate',
+        files: t.files,
+        ...(since === undefined ? {} : { since }),
+        ...(hook ? { hook: true } : {}),
+      };
     }
     case WATCH_COMMAND: {
       // `reticle watch [url]` — on file save, report which saved flows must re-verify.

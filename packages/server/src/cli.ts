@@ -925,7 +925,7 @@ function main(): void {
       void handleHunt(parsed.dir);
       break;
     case 'gate':
-      void handleGate(parsed.files, parsed.since);
+      void handleGate(parsed.files, parsed.since, parsed.hook);
       break;
     case 'watch':
       handleWatch();
