@@ -141,11 +141,27 @@ async function runCell(scenarioId, toolKey) {
   // carries the contradiction, a plain read does not — and the rows recorded no way to tell.
   const toolCalls = [];
   try {
-    await client.start();
+    // Pass each server's OWN `instructions` through, exactly as a real MCP client does.
+    //
+    // The handshake returns them and this harness was throwing them away — for all three servers,
+    // so the unfairness is symmetric, but the CONSEQUENCE is not. A browser-driving server's
+    // instructions say little; Reticle's carry the rule that only two of its tools produce a
+    // verdict at all. Three runs were read as "the agent lives on the read path and never asks for
+    // a verdict" before anyone checked whether it had ever been told there was one — which would
+    // have been a product conclusion drawn from a harness defect, and a change made on top of it.
+    //
+    // Discarding them also makes the comparison less like the thing being sold: every real client
+    // (Claude Code, Cursor) receives them.
+    const init = await client.start();
     if ('reticle' === toolKey) await new Promise((r) => setTimeout(r, 3500));
     const tools = mcpToolsToAnthropic(await client.listTools());
+    const serverInstructions =
+      'string' === typeof init?.instructions && '' !== init.instructions
+        ? `\n\nThe tool server you are connected to provides these instructions:\n${init.instructions}`
+        : '';
     const system =
-      'You are a verification agent with browser tools. Use them to complete the task, then end your final message with exactly "VERDICT: PASS" or "VERDICT: FAIL".';
+      'You are a verification agent with browser tools. Use them to complete the task, then end your final message with exactly "VERDICT: PASS" or "VERDICT: FAIL".' +
+      serverInstructions;
     const messages = [{ role: 'user', content: sc.task }];
     for (turns = 0; turns < MAX_TURNS; turns++) {
       const resp = await callAnthropic(messages, tools, system);
@@ -200,6 +216,8 @@ async function runCell(scenarioId, toolKey) {
       token_input: inTok,
       token_output: outTok,
       total_tokens: inTok + outTok,
+      // Recorded so a run can never again be read as if the server had spoken when it had not.
+      server_instructions_bytes: Buffer.byteLength(serverInstructions, 'utf8'),
       // Exact byte counts, not a token estimate.
       //
       // `total_tokens` is Anthropic's authoritative number for the WHOLE conversation — system
