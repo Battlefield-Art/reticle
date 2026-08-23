@@ -303,7 +303,7 @@ export function handleVerify(parsed: {
   timeoutMs?: number;
   storageState?: string;
   /** Bridge port — parseCliArgs already resolves --port / RETICLE_PORT / .reticle.json into this. */
-  port?: number;
+  port: number;
 }): void {
   const now = (): number => Date.now();
   const reticleRoot = join(process.cwd(), ReticleDir.ROOT);

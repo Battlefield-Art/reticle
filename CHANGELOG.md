@@ -120,6 +120,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Fixed
 
+- **`@reticlehq/server` — `reticle verify` ignored the port in `.reticle.json`, and its docstring said the opposite.** `parseCliArgs` already folds `RETICLE_PORT` and the project config into `defaultPort`, but the verify result had no `port` field, so `handleVerify` fell back to 4400 every time. A project on any other port got `MSG_NO_SESSION` ("your app is not running") rather than "I looked at the wrong port". `--port` was also rejected as an unknown argument.
+
+  Verify now carries the resolved port, `--port` overrides it, and the docstring is finally true.
+
 - **`@reticlehq/server` — a `reticle_assert` verdict reported a `file:line` that could point at completely unrelated code.** An assertion drives nothing, so the tool had no location of its own and used the one the PREVIOUS action remembered. Driven against a real Next.js app: an assert about the site navigation was journaled with the file and line of the button an earlier click had touched, and an assert that matched nothing on the page at all was journaled with that same line. The old value was, in both cases, a location this verdict had never looked at — it sent the agent to innocent code, and because it is persisted into the session journal and read back by `reticle_context`'s `proven`, the wrong pointer outlived the turn that produced it.
 
   A verdict now points only where it actually looked. An `element`/`text` assertion reports the matched element's own `file:line` — the descriptor already carried it — and reports nothing when the matched elements carry no location or disagree about it. The one borrow that remains is the documented one, on a failure only: a `signal`/`net`/`state` assertion has no element to point at, and the handler that should have fired the missing signal lives with the control last driven, which is what the tool's output schema has always said the field means. Everywhere else the field is now OMITTED, because an absent pointer costs the agent nothing and a wrong one costs it the trip.
