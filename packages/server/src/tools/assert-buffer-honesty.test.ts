@@ -31,6 +31,7 @@ function depsWithBuffer(dropped: number, lastActSource?: string): ToolDeps {
     eventsSince: () => [],
     queryEvents: () => Promise.resolve([]),
     elapsed: () => 1000,
+    throttled: () => false,
     health: () => ({ lastSeenMs: 5, throttled: false, focused: true, hidden: false }),
     getState: () => SessionState.ACTIVE,
     drainInbox: () => [],

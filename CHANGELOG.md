@@ -76,6 +76,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Fixed
 
+- **`@reticlehq/server`: a predicate failure waited out on a throttled tab now says the tab was throttled.** A starved tab and a missing element read identically as a bare near-miss: after a hard reload a backgrounded tab can sit on its loading state forever (hydration starved, nothing painted), and `reticle_wait_for { text }` timing out there looks exactly like "the code did not render" — the one answer an agent cannot tell apart from "the tab was never allowed to run". The health envelope already rode alongside every result saying `throttled:true`, but nothing connected it to the verdict an agent actually gates on.
+
+  `reticle_assert` and `reticle_wait_for` now append the starvation fact to a failing verdict's own `failureReason`, with the remedy in the same sentence. The original diagnosis still leads, a pass is returned untouched, and on a healthy tab the failure says exactly what it always said.
+
 - **`@reticlehq/server` — an instrumentation gap told the agent an app was unverifiable and gave it nowhere to go.** A gap exists to be acted on: it names an absence in the app, the cost that absence imposed on the verdict just returned, and the one change that closes it. What it never carried was a location. The type declared an optional `file:line` and no producer had ever set one, so every gap went out with a `ref` and nothing else.
 
   A `ref` is a handle to a DOM node, and gaps are read late. `reticle_verify { action: "coverage" }` is the "am I done?" call, made long after the verdict that recorded the gap, by which time the page has re-rendered and the handle very likely resolves to nothing. So the surface aimed squarely at a build-and-verify loop was handing that loop a remedy with no address.
