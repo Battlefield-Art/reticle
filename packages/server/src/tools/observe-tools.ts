@@ -34,7 +34,11 @@ import {
   withSizeCost,
   DEFAULT_QUERY_LIMIT,
 } from '../session/output-budget.js';
-import { healthEnvelope, bufferEnvelope } from '../session/session-health.js';
+import {
+  annotateStarvedFailure,
+  healthEnvelope,
+  bufferEnvelope,
+} from '../session/session-health.js';
 import type { Session } from '../session/session.js';
 import type { Predicate } from '../events/predicate.js';
 import {
@@ -335,7 +339,10 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       // match reticle_assert — wrap with control + session health (throttle matters most while blocking)
       // and the buffer envelope, so a verdict reached over an evicted window says so.
       return withControl(session, {
-        ...verdict,
+        // #537's starved-wait note wraps the verdict (it RETURNS the verdict), so it stands where
+        // `...verdict` did. The source line is #533's `assertionSource`, which superseded
+        // `lastActSourceOnFailure` — an assert used to be blamed on the previous act's file:line.
+        ...annotateStarvedFailure(session, verdict),
         ...assertionSource(session, predicate, verdict),
         ...healthEnvelope(session),
         ...bufferEnvelope(session),
@@ -499,7 +506,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       session.recordAction(ReticleTool.ASSERT, asRecord(args), verdictEffect);
       return withControl(session, {
         ...decision,
-        ...verdict,
+        ...annotateStarvedFailure(session, verdict),
         ...(contradictions.length > 0 ? { contradictions } : {}),
         // What the app did not tell Reticle, on the same rule the act path uses.
         ...(gaps.length > 0 ? { instrumentationGaps: gaps } : {}),

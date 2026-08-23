@@ -74,6 +74,9 @@ function fakeSession(
     queryEvents: () => Promise.resolve(noEvents),
     elapsed: () => 1000,
     health: () => ({ lastSeenMs: 5, throttled: false, focused: true }),
+    // The starved-wait note asks the session directly, not through `health()`. Stubbed here
+    // because this file's subject is source attribution, not throttling.
+    throttled: () => false,
     getState: () => SessionState.ACTIVE,
     drainInbox: () => [],
   };
