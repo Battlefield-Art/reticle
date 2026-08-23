@@ -6,6 +6,16 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Added
 
+- **`@reticlehq/server` — an experimental `lean` tool surface, opt-in and under measurement.** Set `RETICLE_TOOL_PROFILE=lean` in the DAEMON's environment before it starts. It is not a recommendation and nothing changes for anyone who does not set it: `default` is untouched, and no tool was deleted.
+
+  It exists to split a finding the repo already has. The `verify` surface — one acting tool plus the two meta-tools — was measured over the same thirty-bug set as `default` and held detection while cutting the bill 37% and TRIPLING false alarms. The five new false alarms were not scattered: each one was a defect whose evidence lives in `reticle_state`, `reticle_network` or `reticle_observe`. Strip the observation tools and the model stops observing — it reaches for a verdict without evidence and calls a healthy build broken. So the saving and the loss came from two different cuts, and `lean` pays for only one of them.
+
+  It advertises look (`reticle_snapshot`, `reticle_query`), the four evidence tools (`reticle_state`, `reticle_network`, `reticle_console`, `reticle_observe`), both verdict tools (`reticle_act_and_wait`, `reticle_assert` — the second because `act_and_wait` requires an action and so cannot express a standing assertion), and the two meta-tools. Everything else stays in the registry, stays catalogued by `reticle_tools`, and stays callable by name through `reticle_run` — a name this surface drops still comes back with the call that works, never as "not found".
+
+  **The known ceiling is `reticle_feedback`.** It is not advertised here, and an unadvertised feedback channel collects little to nothing. That is tolerable only because this profile is opt-in and short-lived by construction; a surface that stops being an experiment gets feedback back before anything else.
+
+  Its membership is pinned by a test, because an experiment whose independent variable drifts mid-flight measures nothing — and so is `default`'s, because the control arm has to hold still too.
+
 - **`@reticlehq/server` — `reticle_verify { action: "coverage" }` now reports whether this session used `reticle_context` and `reticle_intent` at all.** Both features shipped with the same pre-registered disproof — _if agents never call it, cut it_ — and nothing recorded whether they were called, so the disproof could never be run. A feature whose disproof cannot be run is one nobody can kill, which is the same defect that kept the old push-based run context alive.
 
   The new `featureUse` block answers it locally, per session: how many times `reticle_context` was called and at which step, what the intent ledger holds, and the two costs of NOT using either — verdicts drawn while the ledger was empty, and read-only calls that re-fetched a fact the run had already established. It also carries a mechanical proxy for whether calling `reticle_context` changed anything: after each call, did the agent ACT, or did it re-read a subject the context had just supplied. That proxy is proximity in a call sequence and nothing more; what it cannot see is written down beside it.
