@@ -24,7 +24,7 @@ type VersionChangeDirection = (typeof VersionChangeDirection)[keyof typeof Versi
  * install and then `process.exit`, so there is no way to reach this through them in a test without
  * mocking the package manager and the process itself.
  */
-async function reportVersionChange(
+export async function reportVersionChange(
   from: string,
   to: string,
   direction: VersionChangeDirection,
