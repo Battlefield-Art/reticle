@@ -22,6 +22,13 @@ export const ContradictionKind = {
   SIGNAL_CONTRADICTED: 'signal-contradicted',
   /** A write succeeded on the server and nothing on the client moved — the response went nowhere. */
   RESPONSE_IGNORED: 'response-ignored',
+  /**
+   * A write succeeded on the server and nothing moved in THIS document — because the page opened
+   * another browsing context (an OAuth popup is the archetype) and the consequence lives there,
+   * where an in-page SDK cannot follow. Reported instead of response-ignored, which would read as
+   * "the client ignored the response" about a client that did no such thing.
+   */
+  CONSEQUENCE_ELSEWHERE: 'consequence-elsewhere',
   /** The same write fired more than once in one action — double-submit / retry storm. */
   DUPLICATE_REQUEST: 'duplicate-request',
   /**
@@ -182,6 +189,9 @@ export type ContradictionKind = (typeof ContradictionKind)[keyof typeof Contradi
 export const ABSENCE_DERIVED_CONTRADICTIONS: ReadonlySet<ContradictionKind> = new Set([
   ContradictionKind.REQUEST_NEVER_SETTLED,
   ContradictionKind.RESPONSE_IGNORED,
+  // The consequence is not missing, it is somewhere this document's SDK cannot look — a claim about
+  // the reach of the observation, never a positive fault in the app.
+  ContradictionKind.CONSEQUENCE_ELSEWHERE,
   ContradictionKind.ROUTE_RENDERED_NOTHING,
   ContradictionKind.ACTION_HAD_NO_EFFECT,
   ContradictionKind.DUPLICATE_REQUEST,

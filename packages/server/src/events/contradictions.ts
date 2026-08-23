@@ -560,12 +560,33 @@ function findWindowContradictions(
   if (!advanced) {
     const ignoredWrites = settled.filter((c) => true === c.ok && isMutating(c));
     if (ignoredWrites.length > 0) {
-      found.push({
-        kind: ContradictionKind.RESPONSE_IGNORED,
-        claim: `${String(ignoredWrites.length)} write(s) succeeded on the server`,
-        counter: 'nothing on the client changed — no DOM, store or route movement',
-        detail: ignoredWrites.map(describe).join('; '),
-      });
+      // ...unless THIS document handed the consequence to another browsing context. An OAuth sign-in
+      // posts, succeeds, and continues in a popup the in-page SDK cannot follow (#508): the original
+      // tab legitimately never changes, and response-ignored would accuse it of ignoring a response
+      // it handed off. The opened-context event flips the reading from "the client did nothing" to
+      // "the client went where we cannot look". Scoped like every rule here to the attribution floor
+      // (`options.actionSince`; the local below is declared later, for the window rules).
+      const contextFloor = options.actionSince;
+      const openedContext = events.some(
+        (e) =>
+          e.type === EventType.CONTEXT_OPENED && contextFloor !== undefined && e.t >= contextFloor,
+      );
+      found.push(
+        openedContext
+          ? {
+              kind: ContradictionKind.CONSEQUENCE_ELSEWHERE,
+              claim: `${String(ignoredWrites.length)} write(s) succeeded on the server`,
+              counter:
+                'this document never changed because the page opened another browsing context during this window (e.g. an OAuth popup), where the in-page SDK cannot observe the result',
+              detail: ignoredWrites.map(describe).join('; '),
+            }
+          : {
+              kind: ContradictionKind.RESPONSE_IGNORED,
+              claim: `${String(ignoredWrites.length)} write(s) succeeded on the server`,
+              counter: 'nothing on the client changed — no DOM, store or route movement',
+              detail: ignoredWrites.map(describe).join('; '),
+            },
+      );
     }
   }
 

@@ -599,3 +599,30 @@ describe('no-effect under ambient churn', () => {
     );
   });
 });
+
+describe('a consequence handed to another browsing context', () => {
+  /**
+   * #508: an OAuth sign-in posts, succeeds, and continues in a popup the in-page SDK cannot
+   * follow. The original tab legitimately never changes, so the window looks exactly like a lost
+   * write — but response-ignored accuses the client of ignoring a response it handed off. The
+   * context-opened event flips the reading.
+   */
+  it('reports consequence-elsewhere instead of response-ignored when a context opened', () => {
+    // Scoped to the attribution window like every rule here: act_and_wait passes its act cursor,
+    // so a popup another, older action opened cannot reclassify this one.
+    const found = findContradictions(
+      [
+        okCall('POST', '/api/auth/sign-in/social'),
+        ev(EventType.CONTEXT_OPENED, { href: 'https://accounts.google.com/o/oauth2' }),
+      ],
+      { actionSince: 0 },
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]?.kind).toBe(ContradictionKind.CONSEQUENCE_ELSEWHERE);
+    expect(found[0]?.counter).toContain('another browsing context');
+  });
+
+  it('keeps response-ignored when nothing opened', () => {
+    expect(kinds([okCall('POST', '/api/save')])).toEqual([ContradictionKind.RESPONSE_IGNORED]);
+  });
+});
