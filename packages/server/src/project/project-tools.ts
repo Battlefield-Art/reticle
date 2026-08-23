@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ProjectReadError, RunKind, RunStatus, type RunRecord } from '@reticlehq/core';
+import { ProjectReadError, RunStatus, type RunRecord } from '@reticlehq/core';
 import { ReticleTool } from '../tools/tool-names.js';
 import { sessionIdShape } from '../tools/tool-kit.js';
 import { asNumber, asString } from '../tools/tools-helpers.js';
@@ -181,36 +181,6 @@ export const PROJECT_TOOLS: ToolDef[] = [
         ...(pair !== undefined ? { diff: diffRuns(pair[0], pair[1]) } : {}),
         ...(runDiff === undefined ? {} : { runDiff }),
       });
-    },
-  },
-  {
-    name: ReticleTool.RUN_RECORD,
-    description:
-      'Explicitly record a run outcome into .reticle/project.json (the manual companion to the auto-record on reticle_flow_replay). Use it to log the result of an assertion sequence or a manual journey so future runs can diff against it. Returns { recorded:true, name, status }.',
-    inputSchema: {
-      name: z.string().describe('Run name for grouping in reticle_project history.'),
-      status: z.nativeEnum(RunStatus).describe('Outcome: pass | fail | drift | error'),
-      kind: z.nativeEnum(RunKind).optional(),
-      summary: z.string().optional().describe('One-line human summary of what this run covered.'),
-      ...sessionIdShape,
-    },
-    outputSchema: {
-      recorded: z.boolean(),
-      runName: z.string(),
-      status: z.string(),
-    },
-    handler: async (deps: ToolDeps, args) => {
-      const name = asString(args['name']) ?? '';
-      const status = args['status'] as RunStatus;
-      const kindArg = args['kind'];
-      const summary = asString(args['summary']);
-      await deps.project.recordRun({
-        kind: 'string' === typeof kindArg ? (kindArg as RunKind) : RunKind.MANUAL,
-        name,
-        status,
-        ...(summary !== undefined ? { summary } : {}),
-      });
-      return { recorded: true, runName: name, status };
     },
   },
 ];
