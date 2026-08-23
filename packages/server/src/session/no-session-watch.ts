@@ -22,6 +22,8 @@ import { hasProjectConnectedBefore, rememberConnected } from './connection-memor
 import { reticleStateHome } from '../daemon/daemon.js';
 import { stallUptime } from './stall-clock.js';
 import type { SessionManager } from './session-manager.js';
+import { probeDaemon } from '../mcp/mcp-proxy.js';
+import { findOccupiedSiblings } from '../cli/sibling-ports.js';
 
 /** Slow enough to be free, fast enough that a dev server started 15s ago is already reflected. */
 const REFRESH_MS = 15_000;
@@ -56,6 +58,14 @@ interface NoSessionWatchOptions {
   /** Where that was decided — this daemon's working directory unless a caller says otherwise. */
   directory?: string;
   probe?: () => Promise<number[]>;
+  /**
+   * Well-known Reticle ports other than ours that currently accept a connection.
+   *
+   * Remaining half of #261. Injected so tests can pin the observation without opening a socket.
+   * Production (no `probe` override) probes those ports itself. A test that injects `probe` and
+   * omits this is opting out: it owns the scan.
+   */
+  occupiedSiblings?: () => Promise<readonly number[]>;
   /**
    * How many pooled leases have aged out, if a pool exists. Injected as a reader rather than the
    * pool itself: the diagnosis needs one number, and taking the whole pool would tie the session
@@ -96,6 +106,7 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
    * `options.probe` returns only the serving set, so this stays empty for injected probes.
    */
   let slowListeners: readonly number[] = [];
+  let siblingListeners: readonly number[] = [];
   let running = false;
   /** Ports auto-attach has already spent its one attempt on. Bounded: never a loop, never a retry. */
   const attempted = new Set<number>();
@@ -200,6 +211,12 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
     )
       .then(async (ports) => {
         listening = ports;
+        siblingListeners =
+          options.occupiedSiblings !== undefined
+            ? await options.occupiedSiblings()
+            : options.probe === undefined
+              ? await findOccupiedSiblings(options.port, probeDaemon)
+              : [];
         await autoAttach(ports);
       })
       .catch(() => {
@@ -270,6 +287,7 @@ export function startNoSessionWatch(options: NoSessionWatchOptions): () => void 
           const configured = readProjectPort(directory);
           return configured === undefined ? {} : { projectPort: configured };
         })(),
+        ...(0 === siblingListeners.length ? {} : { siblingListeners }),
       }) +
       // Prose for the human, then the literal command for the agent. Both consume the same scope
       // facts so a discovered workspace config cannot become an `init` recommendation below it.
