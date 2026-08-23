@@ -133,6 +133,13 @@ async function runCell(scenarioId, toolKey) {
   // guidance-share.mjs, where every uncertainty is resolved against us on purpose.
   let resultBytes = 0,
     guideBytes = 0;
+  // WHICH tools the model chose, in order.
+  //
+  // Added after a run nobody could explain: Reticle's agent reported PASS on a modal that never
+  // opened, saying in its own words that the app's signal "doesn't negate" what the snapshot showed.
+  // Whether the engine's own guard even ran depends entirely on which calls it made — a verdict tool
+  // carries the contradiction, a plain read does not — and the rows recorded no way to tell.
+  const toolCalls = [];
   try {
     await client.start();
     if ('reticle' === toolKey) await new Promise((r) => setTimeout(r, 3500));
@@ -155,6 +162,7 @@ async function runCell(scenarioId, toolKey) {
       const results = [];
       for (const tu of toolUses) {
         try {
+          toolCalls.push(tu.name);
           const out = await client.callTool(tu.name, tu.input, 60000);
           const sent = out.text.slice(0, 8000);
           resultBytes += Buffer.byteLength(sent, 'utf8');
@@ -200,6 +208,7 @@ async function runCell(scenarioId, toolKey) {
       // put in front of the model, and what share of its tool payload that was. A reader can apply
       // that share themselves; the raw total stays the number to quote if they distrust the
       // adjustment, which is why it is reported unmodified beside it.
+      tool_calls: toolCalls,
       tool_result_bytes: resultBytes,
       guidance_bytes: guideBytes,
       guidance_share: 0 === resultBytes ? 0 : Number((guideBytes / resultBytes).toFixed(4)),
@@ -256,7 +265,12 @@ for (const s of scns) {
     inject(reg);
     await new Promise((r) => setTimeout(r, 500));
   }
-  for (const tool of ['playwright_mcp', 'chrome_devtools_mcp', 'reticle']) {
+  // One tool at a time when asked. Re-measuring competitors that were already measured spends real
+  // API budget to reproduce a number nobody doubts, and a three-tool pass is long enough that a
+  // diagnostic re-run of the ONE cell in question kept being cut off before it finished.
+  const only = (process.env.BENCH_ONLY_TOOLS ?? '').split(',').filter(Boolean);
+  const tools = 0 === only.length ? ['playwright_mcp', 'chrome_devtools_mcp', 'reticle'] : only;
+  for (const tool of tools) {
     const row = await runCell(s, tool);
     rows.push(row);
     console.log(
