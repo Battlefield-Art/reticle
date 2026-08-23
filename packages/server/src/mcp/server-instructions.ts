@@ -18,12 +18,22 @@ import { SHARED_PARAM_GUIDANCE } from './shared-params.js';
  * So the lead is state-dependent. A project that has never had an app connect is told the one thing
  * it needs; a project that has is not nagged about a step it already took. The verdict discipline
  * and the feedback ask are constant, because they matter in both states.
+ *
+ * The stopping rule is here for a measured reason. On a HEALTHY app in the competitor benchmark,
+ * this agent spent 22 turns and roughly 3.5x the cheapest competitor's tokens confirming that
+ * nothing was wrong — and it was not payload, which was the smallest of its five runs. It was
+ * turns: three navigations, four queries, a console read, a network read and an assert, on a page
+ * whose first verdict had already come back "yes" over a clean capture. Nothing anywhere told it
+ * when it was finished. Every other instruction here pushes toward MORE checking, which is right
+ * when something is broken and is the whole bill when nothing is.
  */
 
 /** The tools, and the rule that only two of them decide anything. Constant across both states. */
 const VERDICT_DISCIPLINE = `Reticle verifies a running web app from the inside: go (reticle_navigate), look (reticle_snapshot / reticle_query), act and prove in one hop (reticle_act_and_wait), observe (reticle_observe / reticle_state / reticle_network / reticle_console), assert (reticle_assert). Verify a user-facing change against the real app before you call it done, and never weaken a check to make it pass.
 
-Only reticle_act_and_wait and reticle_assert produce a verdict. reticle_act and everything else move or read the app and prove nothing, so a drive that ends without one of those two has no result however many tools it used. Prefer reticle_act_and_wait({ ref, action, until }) — it names the expected consequence BEFORE the action, which is the difference between a check and a rationalisation. Only verified:"yes" is a pass — "unknown" means Reticle could not tell what happened, "no-fault" means nothing was declared to prove. Report either as not proved.`;
+Only reticle_act_and_wait and reticle_assert produce a verdict. reticle_act and everything else move or read the app and prove nothing, so a drive that ends without one of those two has no result however many tools it used. Prefer reticle_act_and_wait({ ref, action, until }) — it names the expected consequence BEFORE the action, which is the difference between a check and a rationalisation. Only verified:"yes" is a pass — "unknown" means Reticle could not tell what happened, "no-fault" means nothing was declared to prove. Report either as not proved.
+
+A "yes" over a clean capture IS the answer — re-reading the page after one finds the same state. When every consequence you set out to check has one, stop.`;
 
 /**
  * The first move, for a project no app has ever connected to.

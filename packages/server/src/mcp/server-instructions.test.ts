@@ -89,8 +89,32 @@ describe('buildServerInstructions', () => {
     // triple the false alarms. Roughly 600 bytes charged once, to make several KB per turn
     // reachable, is the same trade with the numbers in the same direction. The first-run state,
     // where a longer preamble would do the most harm, is unchanged but for two tool names.
+    //
+    // Raised again to 3,350 for the stopping rule — one sentence, and the only one here that
+    // pushes toward LESS work. Every other line pushes toward more checking, which is right when
+    // something is broken and is the entire bill when nothing is. Measured in the competitor
+    // benchmark on a HEALTHY app: this agent spent 22 turns and roughly 3.5x the cheapest
+    // competitor's tokens confirming nothing was wrong, on a page whose FIRST verdict had already
+    // come back "yes" over a clean capture. It was not payload — that run had the smallest
+    // tool-result payload of its five. It was turns nobody had told it to stop taking.
     for (const previouslyConnected of [true, false]) {
-      expect(buildServerInstructions({ previouslyConnected }).length).toBeLessThan(3200);
+      expect(buildServerInstructions({ previouslyConnected }).length).toBeLessThan(3350);
+    }
+  });
+});
+
+describe('the one instruction that asks for less work', () => {
+  /**
+   * Everything else in this string pushes toward more checking. That is right when something is
+   * broken and it is the whole bill when nothing is: on a healthy app in the competitor benchmark,
+   * this agent spent 22 turns confirming that nothing was wrong, after its FIRST verdict had
+   * already come back "yes" over a clean capture.
+   */
+  it('tells the agent when it is finished, in both states', () => {
+    for (const previouslyConnected of [true, false]) {
+      const text = buildServerInstructions({ previouslyConnected });
+      expect(text).toMatch(/clean capture IS the answer/);
+      expect(text).toMatch(/stop\./);
     }
   });
 });
