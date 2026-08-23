@@ -25,6 +25,12 @@ const NODE_MODULES_GLOB = '**/node_modules/**';
 const PASS_WITH_NO_TESTS = '--passWithNoTests';
 const VITEST_RUN = 'run';
 const SPAWN_TIMEOUT_MS = 30_000;
+/**
+ * Drive the CLI with `node vitest.mjs`, not `pnpm exec`. On Windows `pnpm` is a `.cmd` shim;
+ * `spawnSync('pnpm', …)` without a shell returns `status: null` (ENOENT) and the assertion
+ * reads as the exclude failing. POSIX never saw it. `process.execPath` is the same binary on both.
+ */
+const VITEST_CLI = join(REPO, 'node_modules', 'vitest', 'vitest.mjs');
 
 const planted = join(REPO, CLAUDE_WORKTREES, PROBE_DIR);
 
@@ -41,11 +47,13 @@ describe('root vitest excludes agent worktrees', () => {
     );
 
     const result = spawnSync(
-      'pnpm',
-      ['exec', 'vitest', VITEST_RUN, PASS_WITH_NO_TESTS, CLAUDE_WORKTREES],
+      process.execPath,
+      [VITEST_CLI, VITEST_RUN, PASS_WITH_NO_TESTS, CLAUDE_WORKTREES],
       { cwd: REPO, encoding: 'utf8', timeout: SPAWN_TIMEOUT_MS },
     );
-    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    const spawnErr =
+      undefined === result.error ? '' : `${result.error.name}: ${result.error.message}`;
+    const output = `${spawnErr}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     expect(result.status, output).toBe(0);
     expect(output).not.toContain(PROBE_SENTINEL);
   });
