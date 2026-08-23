@@ -17,8 +17,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
-import { existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -41,6 +41,23 @@ describe('bench harnesses import files that exist', () => {
     for (const target of localImports(file)) {
       expect(existsSync(target), `${file} imports ${target}, which does not exist`).toBe(true);
     }
+  });
+});
+
+/**
+ * Every harness must also still PARSE.
+ *
+ * The import check catches a moved file; it does not catch a harness that stopped being valid
+ * JavaScript. Neither would be noticed otherwise: of the 21 harnesses outside `bench-all`, every
+ * one is referenced from documentation — they are a deliberate manual toolkit, not dead weight —
+ * and a manual tool is exactly the thing nobody runs until the day they need it and it is broken.
+ *
+ * `--check` parses without executing, which matters: these scripts spawn daemons, drive browsers
+ * and call paid APIs on import. Parsing is the most that can honestly be done in a unit gate.
+ */
+describe('bench harnesses are still valid JavaScript', () => {
+  it.each(harnesses)('%s parses', (file) => {
+    expect(() => execFileSync(process.execPath, ['--check', join(HERE, file)])).not.toThrow();
   });
 });
 
