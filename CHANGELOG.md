@@ -90,6 +90,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
   The journal record and the tool response are computed once and shared, so a verdict can no longer carry two different locations. `reticle_wait_for` gets the same rule; `reticle_act_and_wait` is unaffected, as it drove the element it names.
 
+- **`@reticlehq/server` — Windows `init` now prints the `cmd /c` MCP fallback even when `claude mcp add` succeeded.** The registered command is still bare `npx` on every platform. The `cmd /c` spawn is the one that PowerShell's execution policy does not gate, and it used to be printed only when the `claude` CLI was missing. The reported Windows install had `claude mcp add` succeed, zero `reticle_*` tools, and a daemon that never started — so the one paragraph that would have unblocked it never appeared.
+
+  `init` now prints that paragraph on every Windows run, as a NOTICE next to the registration, not as extra work. The majority-platform launch command is unchanged: defaulting it to `cmd /c` is still the riskier change, and this is the half that makes the fallback visible on the path that actually failed. The same text already lives in the no-agent manual step, and is not duplicated there.
+
 - **`@reticlehq/server` — an instrumentation gap told the agent an app was unverifiable and gave it nowhere to go.** A gap exists to be acted on: it names an absence in the app, the cost that absence imposed on the verdict just returned, and the one change that closes it. What it never carried was a location. The type declared an optional `file:line` and no producer had ever set one, so every gap went out with a `ref` and nothing else.
 
   A `ref` is a handle to a DOM node, and gaps are read late. `reticle_verify { action: "coverage" }` is the "am I done?" call, made long after the verdict that recorded the gap, by which time the page has re-rendered and the handle very likely resolves to nothing. So the surface aimed squarely at a build-and-verify loop was handing that loop a remedy with no address.
