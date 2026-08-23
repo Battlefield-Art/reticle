@@ -32,6 +32,11 @@ import { gapsForAction } from '../honesty/instrumentation-gaps.js';
 import { noteSessionGaps } from '../honesty/gap-ledger.js';
 import { isChangeUndeclared } from '../honesty/undeclared-change.js';
 import { openSessionIntents } from '../intent/open-intents.js';
+import {
+  dischargeInlineIntent,
+  inlineVerdictId,
+  linkInlineIntent,
+} from '../intent/inline-intent.js';
 import { declaresState } from '../events/predicate-asks.js';
 import { isStateUnwatched } from '../honesty/blind-spots.js';
 import {
@@ -71,7 +76,7 @@ import {
   PAUSED_NO_VERDICT,
 } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
-import { type ToolDef, sessionIdShape } from './tool-kit.js';
+import { type ToolDef, intentArg, sessionIdShape } from './tool-kit.js';
 import { asActionType, gradeOf } from './act-helpers.js';
 import { tryRealInput } from './real-input-attempt.js';
 
@@ -455,6 +460,7 @@ export const ACT_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe('Throw if the tab is throttled. Default: false.'),
+      intent: intentArg,
       ...sessionIdShape,
     },
     outputSchema: {
@@ -565,6 +571,15 @@ export const ACT_TOOLS: ToolDef[] = [
           ? parsePredicate(withUntil['until'])
           : ({ kind: PredicateKind.SETTLED } as const);
       const timeout = asNumber(args['timeout_ms']) ?? DEFAULT_ASSERT_TIMEOUT_MS;
+      // An intent declared here lands in the ledger BEFORE the verdict is drawn, which is what makes
+      // the undeclared-change gap silent on THIS verdict rather than the next one: it reads the
+      // ledger below and finds something open. The discharge comes after that read.
+      const intentId = await linkInlineIntent(
+        deps,
+        asString(args['sessionId']),
+        asString(args['intent']),
+        PredicateKind.SETTLED === until.kind ? undefined : until,
+      );
 
       // Before anything is driven: this path cannot honour a native-input request, and taking the
       // argument and ignoring it told the agent its trusted click had happened. See act-danger.
@@ -702,8 +717,11 @@ export const ACT_TOOLS: ToolDef[] = [
           ...(gapNote === undefined ? [] : [CaptureLoss.TRANSPORT_GAP]),
           ...(impeaching.note === undefined ? [] : [CaptureLoss.BLIND_SPOT]),
         ];
+        // Named because the discharge below records the same grade the verdict reports, rather than a
+        // second reading of the same evidence that could drift from it.
+        const grade = gradeOf(gradedLinks);
         const honesty = buildHonestyBlock({
-          grade: gradeOf(gradedLinks),
+          grade,
           attribution: 'window',
           // Did the buffer lose scarce evidence FROM THIS WINDOW — not "did it evict anything while
           // the action ran", which was the previous rule and which is true on essentially every live
@@ -816,6 +834,18 @@ export const ACT_TOOLS: ToolDef[] = [
           routeChanged: actionSummary.route !== undefined,
           routeSignalFired: actionSummary.signals.some((name) => name.startsWith('route')),
         });
+        // The verdict IS the proof attempt, so a green one discharges the intent it was drawn for.
+        // Only a green: a red proved nothing, and `dischargeIntent` refuses an unbound intent anyway,
+        // so a bare settle leaves it open rather than collecting a proof nothing earned. The id is
+        // checked here rather than only inside the helper so a caller that declared no intent touches
+        // nothing at all, not even the clock.
+        if (intentId !== undefined && Verified.YES === decision.verified) {
+          await dischargeInlineIntent(deps, asString(args['sessionId']), intentId, {
+            verdictId: inlineVerdictId(ReticleTool.ACT_AND_WAIT, deps.now()),
+            grade,
+            at: deps.now(),
+          });
+        }
         verdictEffect = {
           claim: describeWaitTarget(until),
           verified: decision.verified,

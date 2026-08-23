@@ -6,6 +6,16 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Added
 
+- **`@reticlehq/server` — `reticle_act_and_wait` and `reticle_assert` now take an optional `intent`, so declaring one costs nothing.** `reticle_intent` sits on the extended surface, which means an agent has to discover a tool it was not handed, decide to use it, and spend a round trip before it has driven anything. Every one of those is a place the declaration silently does not happen, and it mostly does not. The two tools that draw a verdict are in every agent's tool list already, so the cheapest place to say what a change was FOR is the call that is about to check it.
+
+  It is a shortcut into the EXISTING ledger, never a second one. The prose lands in `.reticle/intent.json` through the same store `reticle_intent { action: "declare" }` writes, in the same vocabulary, so a reviewer reads one git-checked file and cannot tell from the row which door an intent came in by. `flows/flow-intent.ts` already did this for a saved flow; this is the same link, made from the verdict instead.
+
+  **The verdict IS the proof attempt, and only a real one discharges.** The predicate about to be evaluated is bound as what would prove the intent, and a green verdict marks it proved and records itself as the proof. A red leaves it open, because it proved nothing. A wait that named no consequence — a bare settle — leaves it open too: the ledger's own rule refuses to discharge an unbound intent, so no proof is invented for a verdict that did not produce one.
+
+  **One field, carrying prose or an id.** Pass the id of an intent already in the ledger and this verdict answers to that row rather than restating it, so several verdicts can prove one statement and a binding somebody bound deliberately is left alone rather than quietly narrowed to whatever this call happened to assert. A second field would have doubled the cost of the idea to make one of its two readings marginally more explicit.
+
+  **The undeclared-change gap goes quiet on the SAME verdict, not the next one.** The intent is written before the verdict is drawn, so the check that asks whether anything is outstanding finds it, and the discharge happens after. An agent that did exactly the right thing is not told off for it, which is the fastest way to teach it to stop reading findings. Omit the argument and nothing changes at all: no ledger is read, no ledger is written, and the result is byte-identical to what it was.
+
 - **`@reticlehq/server` — `reticle_context` and `reticle_intent` are now named where an agent will actually read them.** Both sit on the extended surface, so neither appears in the tool list an agent is handed by default, and neither was mentioned in the MCP server instructions or the skill. Nothing an agent reads on connect said either tool existed. Two features can be perfectly built and still have an effect size of zero, because nobody can call what nobody has heard of.
 
   The instructions now carry two sentences saying what each is FOR — ask what this run established instead of re-snapshotting to rediscover it; declare what a change was meant to do so the verdict has something to check against other than itself — and `SKILL.md` carries the `reticle_run` call shape for both, beside the one it already documents for `reticle_verify`.

@@ -265,6 +265,14 @@ reticle_run({ tool: "reticle_context", args: {} })
 reticle_run({ tool: "reticle_intent", args: { action: "declare", intents: [{ id: "checkin", statement: "clicking Send check-in makes the badge read 'checked in'" }] } })
 ```
 
+Or say it on the verdict itself and skip the round trip. `reticle_act_and_wait` and `reticle_assert` both take an optional `intent`, writing the same ledger:
+
+```
+reticle_act_and_wait({ ref: "e42", action: "click", until: { kind: "signal", name: "checkin:sent" }, intent: "clicking Send check-in makes the badge read 'checked in'" })
+```
+
+The verdict that passes is the one that proves it. Already declared it? Pass the intent's **id** there instead of the prose, and several verdicts can answer to one statement.
+
 ## Record once, replay cheaply
 
 The first drive of a journey is expensive. The rest should not be. After you drive something worth keeping:
