@@ -102,6 +102,7 @@ issuer-*.json
 
 # Agent git worktrees (never track — they are live checkouts)
 .claude/worktrees/
+.cursor/worktrees/
 leads/
 
 # Playwright CLI benchmark disk artifacts (snapshots/console logs)
