@@ -6,6 +6,12 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Added
 
+- **`@reticlehq/server` — `reticle_verify { action: "coverage" }` now reports whether this session used `reticle_context` and `reticle_intent` at all.** Both features shipped with the same pre-registered disproof — _if agents never call it, cut it_ — and nothing recorded whether they were called, so the disproof could never be run. A feature whose disproof cannot be run is one nobody can kill, which is the same defect that kept the old push-based run context alive.
+
+  The new `featureUse` block answers it locally, per session: how many times `reticle_context` was called and at which step, what the intent ledger holds, and the two costs of NOT using either — verdicts drawn while the ledger was empty, and read-only calls that re-fetched a fact the run had already established. It also carries a mechanical proxy for whether calling `reticle_context` changed anything: after each call, did the agent ACT, or did it re-read a subject the context had just supplied. That proxy is proximity in a call sequence and nothing more; what it cannot see is written down beside it.
+
+  **Absent is never zero.** A session this daemon recorded nothing for reports `observed: false` and states no counts, because "we were not watching" and "it was not used" are different answers and only one of them is true. It is an instrument for deciding whether two features earn their place, not a judgement on how anybody drove.
+
 - **`@reticlehq/server` — `reticle_context` and `reticle_intent` are now named where an agent will actually read them.** Both sit on the extended surface, so neither appears in the tool list an agent is handed by default, and neither was mentioned in the MCP server instructions or the skill. Nothing an agent reads on connect said either tool existed. Two features can be perfectly built and still have an effect size of zero, because nobody can call what nobody has heard of.
 
   The instructions now carry two sentences saying what each is FOR — ask what this run established instead of re-snapshotting to rediscover it; declare what a change was meant to do so the verdict has something to check against other than itself — and `SKILL.md` carries the `reticle_run` call shape for both, beside the one it already documents for `reticle_verify`.

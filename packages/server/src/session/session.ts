@@ -3,6 +3,7 @@ import type { ImpactSnapshot } from '@reticlehq/core';
 import { recordImpact } from '../impact/impact-recorder.js';
 import { LastAct } from './last-act.js';
 import { GapLedger } from '../honesty/gap-ledger.js';
+import { CaptureLedger } from '../honesty/feature-capture.js';
 import { commandTimeoutMessage, type PageRuntime } from './command-timeout.js';
 import { readHealthEvent, type SessionHealth } from './session-health.js';
 
@@ -471,6 +472,16 @@ export class Session {
     return `${ACTION_ID_PREFIX}${String(this.#actionSeq)}`;
   }
 
+  /**
+   * How many actions this session has dispatched.
+   *
+   * The counter that mints journal action ids, not a second one — so it equals the journal's own
+   * length, and `reticle_context`'s `step`, whenever this session journals at all.
+   */
+  get actionCount(): number {
+    return this.#actionSeq;
+  }
+
   /** Close the active action window, persisting its action record with the settle outcome. */
   finishAction(effect?: unknown, settled?: boolean, settledInMs?: number): void {
     this.#activeActionId = undefined;
@@ -512,6 +523,11 @@ export class Session {
    * end of it.
    */
   readonly gaps = new GapLedger();
+  /**
+   * The read-only calls the journal does not keep, so "was `reticle_context` ever called" has
+   * something to fold. See honesty/feature-capture.ts — it is the only state that instrument adds.
+   */
+  readonly capture = new CaptureLedger();
 
   // ── Server-authoritative liveness (immune to browser-tab throttling) ──────────────
 
