@@ -76,6 +76,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Fixed
 
+- **`@reticlehq/server`: `write-field-ignored` no longer fires when the response is not an echo at all.** A command bus POSTs `{"command":"chat.send", ...}` and deliberately answers with the current viewer snapshot; the message itself arrives over WebSocket and renders. Collecting scalar values by key name at any depth made one key the two bodies happened to share read as an attempted echo of what was asked, so a write that fully applied was reported as half-applied.
+
+  The diff now runs only when the response is echo-shaped: a strict majority of the request's scalar keys must reappear somewhere in it. An envelope restating most of what was sent still grades exactly as before; a snapshot that shares an incidental key or two does not. Like every guard in this file, that trades the rare genuinely half-echoed write away rather than cry wolf.
+
 - **`@reticlehq/server` — an instrumentation gap told the agent an app was unverifiable and gave it nowhere to go.** A gap exists to be acted on: it names an absence in the app, the cost that absence imposed on the verdict just returned, and the one change that closes it. What it never carried was a location. The type declared an optional `file:line` and no producer had ever set one, so every gap went out with a `ref` and nothing else.
 
   A `ref` is a handle to a DOM node, and gaps are read late. `reticle_verify { action: "coverage" }` is the "am I done?" call, made long after the verdict that recorded the gap, by which time the page has re-rendered and the handle very likely resolves to nothing. So the surface aimed squarely at a build-and-verify loop was handing that loop a remedy with no address.
