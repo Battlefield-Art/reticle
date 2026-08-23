@@ -89,6 +89,18 @@ describe('act_and_wait and assert see the same evidence', () => {
     }
   });
 
+  /**
+   * An unread 2xx body is not a veto when the caller already proved the action on a channel the
+   * body does not own. Both verdict paths have to say so, or half the surface still answers
+   * `unknown` to a unique row the caller named and Reticle watched land.
+   */
+  it('both paths tell the rule when that declaration is independent of the response body', () => {
+    for (const file of [act, assert]) {
+      expect(file).toMatch(/declaresBodyIndependentChannel\(/);
+      expect(file).toMatch(/independentOfBody: true/);
+    }
+  });
+
   it('both paths name what kept the page busy when nothing was left in flight', () => {
     for (const file of [act, assert]) expect(file).toMatch(/repeated: repeatedRequestLabels\(/);
   });

@@ -46,7 +46,7 @@ import {
 } from './settle-in-flight.js';
 import { waitForReaction } from './react-grace.js';
 import { decideVerified } from '../honesty/verified.js';
-import { declaredExpectations } from '../events/declared.js';
+import { declaredExpectations, declaresBodyIndependentChannel } from '../events/declared.js';
 import { readsDomState } from '../honesty/already-true.js';
 import { describeWaitTarget } from '../honesty/unsettled.js';
 import { saveFailedAssertCapsule } from './act-capsule.js';
@@ -821,6 +821,9 @@ export const ACT_TOOLS: ToolDef[] = [
           // overriding it — see `declaredConsequence`. An explicit `{ kind: "settled" }` is not a
           // declaration about the app's behaviour, it IS the idle wait, so it does not count.
           declaredConsequence: until.kind !== PredicateKind.SETTLED,
+          // A body-independent declaration that held is a channel the unread payload does not own.
+          // Omit when false: a net-only `until` must still hit `outcome_unread`.
+          ...(declaresBodyIndependentChannel(until) ? { independentOfBody: true } : {}),
           ...(alreadyTrue ? { alreadyTrue } : {}),
           // An assertion nobody could evaluate must not be reported as one the app failed.
           ...(verdict.inconclusive === undefined ? {} : { inconclusive: verdict.inconclusive }),

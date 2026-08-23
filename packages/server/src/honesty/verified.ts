@@ -83,6 +83,21 @@ interface VerifiedInputs {
    */
   outcomeUnread?: readonly string[];
   /**
+   * The declared consequence that held does not depend on the response body — an exact string
+   * rendered, a store path, a signal. See `declaresBodyIndependentChannel`.
+   *
+   * The unread-body clause exists for the case where the body is the ONLY channel that could have
+   * contradicted the screen (a 200 with batch/GraphQL errors inside). When a body-independent
+   * declaration held, that is no longer true, and grading `unknown` costs a real verdict. The unread
+   * labels still ride out in `because`, the way absence-derived contradictions still ride out in
+   * `contradictions`.
+   *
+   * Narrow: it does not soften a 202, an observed contradiction, a dirty capture, or a net-only
+   * declaration. `declaredConsequence` alone is not enough — a `{ kind: "net", status: 200 }` is a
+   * declaration whose remaining channel IS the body.
+   */
+  independentOfBody?: boolean;
+  /**
    * What the wait was for and what the window held when it ended — read ONLY by the two clauses that
    * answer UNSETTLED, which is the commonest reason a verdict comes back `unknown` and was also the
    * least actionable. Optional: without it those clauses say exactly what they said before.
@@ -317,7 +332,15 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
   //
   // UNKNOWN, not NO: nothing is known to have failed. The remedy is in the sentence, because an
   // agent that cannot act on a caveat will learn to skip it.
-  if (outcomeUnread !== undefined && outcomeUnread.length > 0) {
+  //
+  // Skipped when the caller declared a consequence that does not depend on the body and it held.
+  // The clause was written for the body being the ONLY remaining channel; a unique row on screen, a
+  // store path, or a signal that held is a different channel, and grading unknown there cost a real
+  // verdict (a 201 plus the exact message text, agent went to enable capture instead of finishing).
+  // The unread write still rides out in `because`. A net-only declaration does not skip: then the
+  // body is still the remaining channel.
+  const unreadHeldIndependently = declaredHeld && true === inputs.independentOfBody;
+  if (outcomeUnread !== undefined && outcomeUnread.length > 0 && !unreadHeldIndependently) {
     return {
       verified: Verified.UNKNOWN,
       verifiedReason: VerifiedReason.OUTCOME_UNREAD,
@@ -360,12 +383,16 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
     false === settled
       ? ', though the page never went idle — this rests on the consequence you declared, not on the page going quiet'
       : '';
+  const unreadCaveat =
+    unreadHeldIndependently && outcomeUnread !== undefined && outcomeUnread.length > 0
+      ? `, though a write returned 2xx with a response body that was never recorded (${outcomeUnread.join('; ')}) — a 200 describes the transport, not the result`
+      : '';
   return {
     verified: Verified.YES,
     verifiedReason: VerifiedReason.PROVED,
     because:
       true === honesty.coverage?.partial
-        ? `assertion held at ${honesty.grade} grade with no channel disagreeing, but coverage was PARTIAL — see \`coverage\` for what went unobserved${notIdle}`
-        : `assertion held at ${honesty.grade} grade over a clean capture with no channel disagreeing${notIdle}`,
+        ? `assertion held at ${honesty.grade} grade with no channel disagreeing, but coverage was PARTIAL — see \`coverage\` for what went unobserved${notIdle}${unreadCaveat}`
+        : `assertion held at ${honesty.grade} grade over a clean capture with no channel disagreeing${notIdle}${unreadCaveat}`,
   };
 }
