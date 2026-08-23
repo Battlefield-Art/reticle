@@ -435,3 +435,38 @@ describe('an unread outcome names the write that decided the verdict', () => {
     ).toBe(Verified.YES);
   });
 });
+
+describe('a settle that never happened is not a failed assertion', () => {
+  /**
+   * Measured on the hard fixture: `reticle_act_and_wait` with NO `until` on a healthy pagination
+   * button returned `verified:"no"` because the page — which carries push updates and therefore
+   * never goes idle — did not settle inside the window. The sentence read "the declared consequence
+   * did not hold", naming a consequence the caller never declared.
+   *
+   * Every live app has this shape. Grading it NO accuses each of them of a defect for being alive,
+   * which is exactly the false NEGATIVE that ABSENCE_DERIVED_CONTRADICTIONS was written to prevent.
+   */
+  const settleTimedOut = {
+    pass: false,
+    declaredConsequence: false,
+    honesty: clean(HonestyGrade.PRESENCE),
+    settled: false,
+  } as VerifiedVerdictInput;
+
+  it('grades unknown, not no', () => {
+    expect(decideVerified(settleTimedOut).verified).toBe(Verified.UNKNOWN);
+  });
+
+  it('names the absence rather than a consequence nobody declared', () => {
+    const { verifiedReason, because } = decideVerified(settleTimedOut);
+    expect(verifiedReason).toBe(VerifiedReason.UNSETTLED);
+    expect(because).not.toMatch(/declared consequence did not hold/);
+    expect(because).toMatch(/until/);
+  });
+
+  it('still fails a consequence that WAS declared and did not hold', () => {
+    const declared = decideVerified({ ...settleTimedOut, declaredConsequence: true });
+    expect(declared.verified).toBe(Verified.NO);
+    expect(declared.verifiedReason).toBe(VerifiedReason.ASSERTION_FAILED);
+  });
+});

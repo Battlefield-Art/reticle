@@ -154,6 +154,26 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
     };
   }
 
+  // ABOVE the failure clause, for the third time and the same reason: absence is not evidence.
+  //
+  // Omitting `until` waits for the page to SETTLE. Nobody declared a consequence, so a settle that
+  // times out says "the page was still busy when I stopped looking" — the definition of an
+  // absence-derived finding. The failure clause below took it at face value and returned
+  // `verified: "no"` with `because: 'the declared consequence did not hold'`, naming a consequence
+  // that does not exist. Measured on the hard fixture, whose push updates mean it never goes idle:
+  // a healthy pagination click was graded NO. Any app with polling or a live feed gets accused of a
+  // defect for being alive, which is the false NEGATIVE the ABSENCE_DERIVED doctrine exists to stop.
+  if (false === pass && false === inputs.declaredConsequence) {
+    return {
+      verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.UNSETTLED,
+      because:
+        'no consequence was declared, so this only waited for the page to go idle and it never ' +
+        'did — that is a statement about when Reticle stopped looking, not about the app. Pass ' +
+        '`until` naming what the action should cause (a signal, a request, a route, or store state)',
+    };
+  }
+
   // A failed assertion is the most actionable fact there is; it leads — including over
   // `alreadyTrue`, because a condition that held before AND fails now is a real regression.
   if (false === pass) {
