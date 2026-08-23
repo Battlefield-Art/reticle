@@ -266,11 +266,25 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
   { match: /^unknown action '/i, hint: RECOVERY.BAD_ARGUMENTS },
   { match: /^unsupported query strategy '/i, hint: RECOVERY.BAD_ARGUMENTS },
   { match: /^\w+ requires a string `\w+`/i, hint: RECOVERY.BAD_ARGUMENTS },
-  // A message naming a `reticle_*` tool is one WE authored about our own API — an invalid call, not
-  // an unanticipated failure. Left unmatched it collected the feedback ask, which pushed agents to
-  // file reports about their own bad arguments. Kept LAST so a specific rule above always wins.
+  // A message naming a `reticle_*` tool or an `args.*` parameter is one WE authored about our own
+  // API — an invalid call, not an unanticipated failure. Left unmatched it collected the feedback
+  // ask, which pushed agents to file reports about their own bad arguments. Kept LAST so a specific
+  // rule above always wins.
+  //
+  // Keyed on the tool/parameter NAME rather than on a sentence shape. The previous form wanted
+  // `reticle_x { ... }` with braces AND requires/must/expected, which is one phrasing out of many;
+  // measured live, a drag refusal reading "pass a ref from reticle_snapshot or reticle_query as
+  // args.toRef" fell straight through and told the agent its own malformed call might be a Reticle
+  // defect worth a root-cause report. That is the FOURTH patch to this same default, after the
+  // executeAction guards, the destructive-action block, and two of the three spellings of
+  // "potentially destructive ... blocked" — each one added a phrasing instead of changing the key.
+  //
+  // A path is deliberately excluded: `@reticlehq/server/dist/...` in a stack trace is a crash we did
+  // NOT anticipate, and silencing the feedback ask there would lose the reports worth having. Hence
+  // a word boundary before `reticle_` and a required space-or-punctuation after the name, so a tool
+  // named in prose matches and a module path does not.
   {
-    match: /reticle_[a-z_]+\s*\{[^}]*\}.*\b(requires|must|expected)\b/i,
+    match: /(?:^|[\s'"`(])reticle_[a-z_]+(?![\w/.-])|(?:^|[\s'"`(])args\.[a-z][\w]*/i,
     hint: RECOVERY.BAD_ARGUMENTS,
   },
 ];
