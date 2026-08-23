@@ -135,11 +135,28 @@ function foldScoped<T extends ScopedEvidence>(
   currentEditEpoch: number | undefined,
 ): T[] {
   const current = (row: T): boolean => isCurrent(row, currentDocumentId, currentEditEpoch);
-  const superseded = new Set(incoming.map(keyOf));
+
+  // Supersede WITHIN the batch as well as against the prior set. `buildRunContext` folds against an
+  // empty prior set, so a rule that only ever applied to `existing` never applied at all there — and
+  // the envelope's whole contract is that `key` is the subject and re-observing it replaces rather
+  // than appends. A driven session showed the same ref twice and the same claim three times:
+  // duplicates in the one payload whose entire purpose is a cheap context restore.
+  //
+  // Last wins, because the newest reading is the true one. Insertion order is preserved from the
+  // LAST occurrence, so a re-observed subject moves to the recent end where the cap protects it.
+  const fresh = new Map<string, T>();
+  for (const row of incoming) {
+    if (!current(row)) continue;
+    const key = keyOf(row);
+    fresh.delete(key);
+    fresh.set(key, row);
+  }
+
+  const superseded = new Set(fresh.keys());
   const kept = existing.filter((row) => current(row) && !superseded.has(keyOf(row)));
   // Oldest first, so trimming from the front drops the least recent. `slice` on the tail keeps the
   // newest, which is the half a next step is most likely to need.
-  return [...kept, ...incoming.filter(current)].slice(-RUN_ESTABLISHED_CAP);
+  return [...kept, ...fresh.values()].slice(-RUN_ESTABLISHED_CAP);
 }
 
 /** Fold new observations into the established set. See `foldScoped`. */
