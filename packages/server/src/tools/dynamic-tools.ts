@@ -4,7 +4,7 @@ import { runTool } from './invoke-tool.js';
 import { buildErrorPayload } from './error-recovery.js';
 import { mergedNameRedirect, mergedNameMessage } from './merged-name-redirect.js';
 import { ReticleTool } from './tool-names.js';
-import { TOOL_PROFILE_ENV, type ToolSurfaceOrigin } from './tool-surface.js';
+import { ADVERTISE_ALL_ENV, type ToolSurfaceOrigin } from './tool-surface.js';
 import { getSessionMetrics } from '../telemetry/session-metrics.js';
 import { isPredicateParam, predicateGrammar } from '../events/predicate-eval.js';
 
@@ -89,7 +89,7 @@ export function buildDynamicTools(allTools: ToolDef[], profile?: ToolSurfaceOrig
             // advertises the whole registry any more, so BOTH meta-tools are on every surface and
             // reticle_run is always the way to the tail. The old wording would now send an agent
             // away from the only tool that can reach half the registry.
-            note: `The surface is read once at daemon startup: change ${TOOL_PROFILE_ENV} and restart the daemon, or it has no effect. No surface advertises every tool — the advertised count is capped because editors budget tools across all connected MCP servers. Every tool listed here is callable through reticle_run { tool, args } whether or not it is advertised.`,
+            note: `The surface is read once at daemon startup: set ${ADVERTISE_ALL_ENV}=1 and restart the daemon, or it has no effect. No surface advertises every tool: the advertised count is capped because editors budget tools across all connected MCP servers. Every tool listed here is callable through reticle_run { tool, args } whether or not it is advertised.`,
           },
         };
 

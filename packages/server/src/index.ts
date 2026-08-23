@@ -245,7 +245,10 @@ export interface StartOptions {
   pairingTokenDir?: string;
   /** injectable clock for contract.json's generatedAt stamp. Defaults to Date.now. */
   now?: () => number;
-  /** 'core' exposes the lean tool surface. Defaults to env RETICLE_TOOL_PROFILE, else 'full'. */
+  /**
+   * Retired profile name (`core`/`full`/…). Old values still map. The live switch is
+   * RETICLE_ADVERTISE_ALL_TOOLS=1; the default is the lean surface.
+   */
   toolProfile?: string;
   /** Start the OEM/CI verify HTTP endpoint alongside the daemon (`reticle serve --http`). */
   httpVerify?: boolean;
