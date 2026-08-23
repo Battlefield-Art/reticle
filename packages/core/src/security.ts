@@ -15,8 +15,24 @@
  * charge somebody's card — so this narrows the trigger without lowering money coverage. Both
  * directions are pinned in security.test.ts.
  */
+/**
+ * Labels that read as irreversible: something is destroyed, or money moves.
+ *
+ * `deploy` and `publish` were here and are not. The guard's contract — written at the top of
+ * act-danger.ts — is "a money-moving or destructive control", and a deploy is neither: nothing is
+ * destroyed, nothing is paid, and the thing it produces did not exist before. Consequential is a
+ * wider net than this list is allowed to be, or half the buttons in a dev tool sit behind a
+ * permission flag.
+ *
+ * Removed on measurement, not taste. Three benchmark runs against an app with a "New deploy" button
+ * lost their ENTIRE turn budget to the refusal. Improving its wording did not rescue the last one:
+ * the agent spent its remaining turns weighing a bug report about the block and looking for a
+ * webmcp workaround. A guard that costs a whole run on a control it was never written to catch is
+ * not protecting anybody — it is training agents to route around it, which is worse than not having
+ * it, because the routing-around generalises to the buttons that DO matter.
+ */
 const DANGEROUS_ACTION =
-  /\b(delete|remove|destroy|erase|drop|terminate|revoke|reset|logout|log out|sign out|close account|cancel subscription|purchase|buy|pay|payment|place order|confirm order|deploy|publish|send money|send funds|transfer|withdraw|refund)\b/i;
+  /\b(delete|remove|destroy|erase|drop|terminate|revoke|reset|logout|log out|sign out|close account|cancel subscription|purchase|buy|pay|payment|place order|confirm order|send money|send funds|transfer|withdraw|refund)\b/i;
 
 /** The hostnames that ARE loopback outright, with no parsing: the name, and IPv6 ::1 both ways. */
 const LOOPBACK_HOSTNAMES: readonly string[] = ['localhost', '::1', '0:0:0:0:0:0:0:1'];

@@ -71,3 +71,41 @@ describe('the destructive-action classifier does not tax ordinary verbs', () => 
     expect(isDangerousActionText(label)).toBe(true);
   });
 });
+
+describe('consequential is not the same as destructive', () => {
+  /**
+   * The guard's own contract, at the top of act-danger.ts: it exists to stop "a money-moving or
+   * destructive control". A deploy is neither — nothing is destroyed and no money moves. It is
+   * consequential and it is CREATIVE, and the list is not a list of consequential things or half
+   * the buttons in a dev tool would be on it.
+   *
+   * Measured, which is why this changed: three benchmark runs lost their whole budget to "New
+   * deploy" being refused. Improving the refusal's wording did not rescue the last of them — the
+   * agent spent its remaining turns weighing a bug report about the block and hunting a webmcp
+   * workaround. A guard that costs a run on a control it was never written to catch is not
+   * protecting anything; it is teaching agents to route around it.
+   */
+  it('does not block a deploy or a publish', () => {
+    expect(isDangerousActionText('New deploy')).toBe(false);
+    expect(isDangerousActionText('Deploy to production')).toBe(false);
+    expect(isDangerousActionText('Publish')).toBe(false);
+    expect(isDangerousActionText('publish-post')).toBe(false);
+  });
+
+  /** Everything the guard IS for stays exactly as it was. */
+  it('still blocks destruction and money', () => {
+    for (const label of [
+      'Delete account',
+      'Remove member',
+      'Revoke token',
+      'Terminate instance',
+      'Refund payment',
+      'Transfer funds',
+      'Withdraw',
+      'Place order',
+      'Cancel subscription',
+    ]) {
+      expect(isDangerousActionText(label)).toBe(true);
+    }
+  });
+});
