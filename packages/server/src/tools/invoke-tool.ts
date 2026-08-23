@@ -23,6 +23,7 @@ import { takeFeedbackPrompt } from './feedback-tools.js';
 import { takeFeedbackUndelivered } from '../telemetry/feedback-delivery.js';
 import type { Session } from '../session/session.js';
 import { noteRefsMinted, wrongTabRefusal } from '../session/ref-provenance.js';
+import { CAPTURED_TOOLS, noteCapturedCall } from '../honesty/feature-capture.js';
 import { span } from '../trace.js';
 import {
   deltaForToolResult,
@@ -328,6 +329,31 @@ export async function runTool<Ext>(
       session = deps.sessions.resolve(rawSessionId);
     } catch {
       session = undefined;
+    }
+  }
+  // The read-only calls the journal never keeps, recorded HERE because this is the one dispatch
+  // point every call routes through — a second recording site is a second thing to forget, and this
+  // instrument exists precisely because nothing was recorded before. Recorded before the handler
+  // runs: a read dispatches no action, so the counter reads the same either side.
+  //
+  // `reticle_context` is session-EXEMPT, so `session` above is undefined for it and it needs its own
+  // lenient resolve. Failing that resolve is silent by design: a call made with nothing connected
+  // has no per-session ledger to land in, and an instrument must never be why a tool call fails.
+  if (CAPTURED_TOOLS.has(tool.name)) {
+    let target = session;
+    if (target === undefined) {
+      try {
+        target = deps.sessions.resolve(rawSessionId);
+      } catch {
+        target = undefined;
+      }
+    }
+    if (target !== undefined) {
+      const subject = asString(args['ref']) ?? asString(args['target']);
+      noteCapturedCall(target, {
+        tool: tool.name,
+        ...(subject === undefined ? {} : { subject }),
+      });
     }
   }
   // A ref that was handed out by a DIFFERENT tab, on a call that named no session. Refused here, at

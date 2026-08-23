@@ -48,8 +48,13 @@ const Fact = {
   unsettled: (verb: string): string => `${verb} did not settle`,
 } as const;
 
-/** The SUBJECT a journal action was about: the ref it spent, else the target it resolved from. */
-function subjectOf(action: JournalAction): string | undefined {
+/**
+ * The SUBJECT a journal action was about: the ref it spent, else the target it resolved from.
+ *
+ * Exported so the feature-use instrument files a re-fetch under the same key this fold establishes
+ * it under. A second copy of this rule there would be a second definition of "the same subject".
+ */
+export function subjectOf(action: JournalAction): string | undefined {
   const ref = action.args['ref'];
   if ('string' === typeof ref && ref.length > 0) return ref;
   const target = action.args['target'];

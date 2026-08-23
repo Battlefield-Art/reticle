@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { coverageRegressed, observabilityOf } from '../honesty/observability.js';
+import { foldFeatureCapture } from '../honesty/feature-capture.js';
+import { allSessionIntents } from '../intent/open-intents.js';
 import { ReticleCommand, SnapshotMode } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import type { ToolDef, ToolDeps } from './tools.js';
@@ -93,6 +95,18 @@ export const COVERAGE_TOOLS: ToolDef[] = [
         .describe(
           'Of the controls you DROVE, how many Reticle could fully observe. `untouched` above is work left for you; this is work left in the APP, and driving more controls does not move it. `percent` is OMITTED when nothing was driven, because 0/0 is not 100%.',
         ),
+      featureUse: z
+        .object({
+          observed: z.boolean(),
+          truncated: z.boolean().optional(),
+          context: z.unknown().optional(),
+          intents: z.unknown().optional(),
+          missed: z.unknown().optional(),
+        })
+        .optional()
+        .describe(
+          'Whether this session used `reticle_context` and `reticle_intent` at all, and what it cost when it did not: `context` counts the calls and what followed each one, `intents` the ledger, `missed` the verdicts drawn against an empty ledger and the reads that re-fetched a fact already established. `observed:false` means nothing was recorded for this session — NOT that nothing was used. An instrument for deciding whether those two features earn their place; nothing here is a fault of yours.',
+        ),
       observabilityRegressed: z
         .object({ was: z.number(), now: z.number() })
         .optional()
@@ -124,6 +138,17 @@ export const COVERAGE_TOOLS: ToolDef[] = [
       // first without the second is how an agent finishes a pass believing it verified something the
       // app was never able to confirm.
       const gaps = session.gaps?.open() ?? [];
+      // Folded here rather than given a tool of its own: this is already the "am I done, and what is
+      // this verdict worth" read, and a number nobody has a reason to ask for separately is one
+      // nobody ever sees. It is a fold over the journal and the intent ledger plus the one thing
+      // neither records — see honesty/feature-capture.ts.
+      const featureUse = foldFeatureCapture({
+        calls: session.capture.calls(),
+        dropped: session.capture.dropped,
+        actions: await session.readJournalActions(),
+        intents: await allSessionIntents(deps, sessionId),
+        finalActions: session.actionCount,
+      });
       // The number, and the floor under it, together. A coverage figure that can only ever be
       // reported and never contradicted is one an agent learns to satisfy rather than to earn.
       const observability = observabilityOf(session.actedRefs(), gaps);
@@ -140,6 +165,7 @@ export const COVERAGE_TOOLS: ToolDef[] = [
         ...(gaps.length > 0 ? { instrumentationGaps: gaps, unproven: true } : {}),
         observability,
         ...(regressed === undefined ? {} : { observabilityRegressed: regressed }),
+        featureUse,
       };
     },
   },
