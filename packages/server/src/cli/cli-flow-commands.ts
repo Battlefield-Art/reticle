@@ -6,6 +6,7 @@
  * verification state, and none of them touch daemon lifecycle, which is what the rest of cli.ts does.
  */
 
+import { GateExit } from './gate-exit.js';
 import { readProjectId } from './cli-port.js';
 import { changedFilesSince } from '../flows/git-changed.js';
 import { join } from 'node:path';
@@ -216,9 +217,18 @@ export async function handleGate(files: string[], since: string | undefined): Pr
       ...(result.deleted.length > 0 ? { deletedCoverage: result.deleted } : {}),
       coverage: flowCoverage,
     });
-    if (!pass) process.exitCode = 1;
+    // Two non-zero codes, because two callers want opposite things from the same run. CI wants any
+    // problem to fail. A Stop hook wants to block a real regression and NOT block a project that
+    // has simply not recorded a flow yet — which is every project on its first day, and measured
+    // before this change as an exit 1 that would have blocked every stop. See GateExit.
+    if (!pass) {
+      process.exitCode =
+        result.pass && flowCoverage.outcome !== undefined
+          ? GateExit.NOTHING_TO_CHECK
+          : GateExit.FAIL;
+    }
   } catch (error) {
     log('reticle_gate_failed', { error: error instanceof Error ? error.message : String(error) });
-    process.exitCode = 1;
+    process.exitCode = GateExit.FAIL;
   }
 }
