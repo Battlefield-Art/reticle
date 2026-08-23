@@ -76,6 +76,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Fixed
 
+- **`@reticlehq/server`: a pooled lease no longer shares Chromium's throttling with its own background pages.** A pooled browser serves several lease contexts while only one page is ever the visible one, and for every other page Chromium throttles timers, suspends rAF and deprioritizes the renderer. That is exactly the state a session reports as `throttled: true`: timer- and WebSocket-driven DOM updates land seconds late, an assert times out on content that renders right after the timeout with no refetch, and the app gets blamed for being parked.
+
+  Both launch sites (`playwright-launcher` for the pool, `real-input` for `reticle drive`) now pass Chromium's documented opt-outs (`--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`, `--disable-renderer-backgrounding`) from one shared builder, so the two paths cannot drift apart. The switches change what Chromium is allowed to do to a page nobody is looking at; they do not change what Reticle reports about it, and whether a real pooled lease still reports `throttled: true` for some remaining reason is a question this fix raises but does not answer.
+
 - **`@reticlehq/server` — an instrumentation gap told the agent an app was unverifiable and gave it nowhere to go.** A gap exists to be acted on: it names an absence in the app, the cost that absence imposed on the verdict just returned, and the one change that closes it. What it never carried was a location. The type declared an optional `file:line` and no producer had ever set one, so every gap went out with a `ref` and nothing else.
 
   A `ref` is a handle to a DOM node, and gaps are read late. `reticle_verify { action: "coverage" }` is the "am I done?" call, made long after the verdict that recorded the gap, by which time the page has re-rendered and the handle very likely resolves to nothing. So the surface aimed squarely at a build-and-verify loop was handing that loop a remedy with no address.
