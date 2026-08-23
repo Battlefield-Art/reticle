@@ -366,7 +366,7 @@ function issueClause(issue: ZodIssueShape): string {
  * Conservative by construction: it only rewrites a JSON ARRAY whose every element carries both
  * `code` and `message`. A tool that legitimately returns JSON is left alone.
  */
-export function zodArrayAsSentence(message: string): string {
+function zodArrayAsSentence(message: string): string {
   const text = message.trim();
   if (!text.startsWith('[')) return message;
   let parsed: unknown;

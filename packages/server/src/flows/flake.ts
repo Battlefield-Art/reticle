@@ -22,7 +22,7 @@ export const FlakeFileSchema = z.object({
 });
 
 /** Minimum unchanged-code replays before flakiness can be judged (too few = noise). */
-export const DEFAULT_MIN_FLAKE_RUNS = 5;
+const DEFAULT_MIN_FLAKE_RUNS = 5;
 
 export function emptyRecord(): FlakeRecord {
   return { runs: 0, fails: 0 };

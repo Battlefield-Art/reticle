@@ -84,7 +84,7 @@ export type ToolSurface = (typeof TOOL_SURFACE)[keyof typeof TOOL_SURFACE];
 export const ADVERTISE_ALL_ENV = 'RETICLE_ADVERTISE_ALL_TOOLS';
 
 /** Opt into the smallest verdict-capable surface. Read by the DAEMON at startup, like the others. */
-export const VERIFY_SURFACE_ENV = 'RETICLE_VERIFY_SURFACE';
+const VERIFY_SURFACE_ENV = 'RETICLE_VERIFY_SURFACE';
 
 /**
  * The retired setting, still read so nobody's shell profile breaks.
@@ -236,7 +236,7 @@ export const EXTENDED_TOOL_NAMES: ReadonlySet<string> = new Set([
  * everything else. `act_and_wait` can resolve its own target, so no query tool is needed to name an
  * element — that round trip was half the token cost of a verification.
  */
-export const VERIFY_TOOL_NAMES: ReadonlySet<string> = new Set([ReticleTool.ACT_AND_WAIT]);
+const VERIFY_TOOL_NAMES: ReadonlySet<string> = new Set([ReticleTool.ACT_AND_WAIT]);
 
 /** Is the truthy form of a boolean env var set? `1`, `true`, `yes` — anything else is off. */
 function envFlagOn(raw: string | undefined): boolean {

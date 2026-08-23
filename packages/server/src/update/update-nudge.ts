@@ -30,7 +30,7 @@ import { creditNudge } from './nudge-credit.js';
  * story rests on. Numeric per segment, so 2.10.0 correctly beats 2.9.0 (string order does not), and
  * a bare release beats its own prerelease.
  */
-export function isNewerVersion(candidate: string, current: string): boolean {
+function isNewerVersion(candidate: string, current: string): boolean {
   const parse = (v: string): { parts: number[]; pre: boolean } => {
     const [core = '', ...rest] = v.split(/[-+]/);
     return { parts: core.split('.').map((n) => Number.parseInt(n, 10) || 0), pre: rest.length > 0 };

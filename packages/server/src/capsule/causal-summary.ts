@@ -5,7 +5,7 @@ import { EventType, PerfMetric, isDevToolingUrl, type ReticleEvent } from '@reti
  * app did in the act's window, as counts + a headline, not a raw event dump. Diffs come from the
  * storage/state events; attribution from. Pure composition over the attributed event window.
  */
-export interface StateDiff {
+interface StateDiff {
   path: string;
   from: unknown;
   to: unknown;
@@ -21,7 +21,7 @@ export interface StateDiff {
    */
   atMs: number;
 }
-export interface StorageDiff {
+interface StorageDiff {
   key: string;
   from?: unknown;
   to?: unknown;

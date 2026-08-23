@@ -38,7 +38,7 @@ export interface ImpactPaths {
  * `reticleRoot` is the project's own `.reticle` directory (what every other store here is handed);
  * the global scope always lives beside the daemon's own state in `~/.reticle`.
  */
-export function impactPaths(reticleRoot: string): ImpactPaths {
+function impactPaths(reticleRoot: string): ImpactPaths {
   return {
     project: join(reticleRoot, ReticleDir.IMPACT_FILE),
     global: join(homedir(), ReticleDir.ROOT, ReticleDir.IMPACT_FILE),

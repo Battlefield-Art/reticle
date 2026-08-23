@@ -30,7 +30,7 @@ export const FeatureFamily = {
   BUG_CAPSULES: 'bug_capsules',
   CROSS_RUN_HISTORY: 'cross_run_history',
 } as const;
-export type FeatureFamily = (typeof FeatureFamily)[keyof typeof FeatureFamily];
+type FeatureFamily = (typeof FeatureFamily)[keyof typeof FeatureFamily];
 
 const ALL_FAMILIES = Object.values(FeatureFamily);
 
@@ -51,7 +51,7 @@ const MAX_WALK_DEPTH = 8;
 const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
 
 /** Count source files, stopping at the cap (the cap itself lands in the largest bucket, correctly). */
-export function countSourceFiles(root: string, readDir: DirReader = defaultReadDir): number {
+function countSourceFiles(root: string, readDir: DirReader = defaultReadDir): number {
   let count = 0;
   const walk = (dir: string, depth: number): void => {
     if (depth > MAX_WALK_DEPTH || count >= MAX_FILES_SCANNED) return;

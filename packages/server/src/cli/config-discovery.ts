@@ -38,7 +38,7 @@ const CONVENTIONAL_WORKSPACES: readonly string[] = ['apps', 'packages'];
 /** How many entries of one workspace directory to stat. A backstop, not a policy. */
 const MAX_WORKSPACE_ENTRIES = 64;
 
-export interface FoundConfig {
+interface FoundConfig {
   /** Absolute path to the `.reticle.json`. */
   path: string;
   /** The directory it configures — what a reader needs in order to act. */

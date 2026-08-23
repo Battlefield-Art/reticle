@@ -86,6 +86,12 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
   **A flow with no declared intent says so, and nothing is derived from its step names.** A guessed goal reads as the product owner's words and an agent will act on them, which is strictly worse than the honest absence — the same rule the source pointer follows. Older flow files parse, replay, and report exactly as they did, and the on-disk flow version does not move.
 
+### Changed
+
+- **`@reticlehq/server` — drop `export` on symbols used only inside their own file.** An export nobody imports is noise that makes the module surface look larger than it is, and it defeats dead-code detection for everything else: a symbol exported for no reason can never be reported as unused. The compiler is the proof — if typecheck passes, the removal was safe.
+
+  Test seams stay exported: a symbol referenced only by its own `.test.ts` is a seam, not dead. Barrel re-exports stay too. `@reticlehq/core` has none of this class — every export is re-exported from the package barrel. Other packages are follow-ups.
+
 ### Fixed
 
 - **`@reticlehq/server` — a `reticle_assert` verdict reported a `file:line` that could point at completely unrelated code.** An assertion drives nothing, so the tool had no location of its own and used the one the PREVIOUS action remembered. Driven against a real Next.js app: an assert about the site navigation was journaled with the file and line of the button an earlier click had touched, and an assert that matched nothing on the page at all was journaled with that same line. The old value was, in both cases, a location this verdict had never looked at — it sent the agent to innocent code, and because it is persisted into the session journal and read back by `reticle_context`'s `proven`, the wrong pointer outlived the turn that produced it.

@@ -42,7 +42,7 @@ export function flowReplayVerdictId(flowName: string, at: number): string {
  * An explicit `intentId` wins, so a flow can discharge an intent that was declared before it existed.
  * Otherwise the flow's own prose implies one. A flow with neither has no intent, and says so.
  */
-export function intentIdOf(flow: FlowFile): string | undefined {
+function intentIdOf(flow: FlowFile): string | undefined {
   if (flow.intentId !== undefined) return flow.intentId;
   return flow.intent === undefined ? undefined : flowIntentId(flow.name);
 }

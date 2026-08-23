@@ -37,8 +37,8 @@ import { reportInitOutcome } from '../telemetry/init-telemetry.js';
  * has not restarted their dev server yet is not held hostage by a wait that cannot succeed — they
  * have not typed the command that would make it succeed, and the message tells them which one.
  */
-export const CONFIRM_WINDOW_MS = 12_000;
-export const CONFIRM_POLL_MS = 500;
+const CONFIRM_WINDOW_MS = 12_000;
+const CONFIRM_POLL_MS = 500;
 
 export interface ConfirmDeps {
   /** Session ids connected right now, or null when nothing is listening on the bridge port. */
@@ -140,7 +140,7 @@ export function confirmationMessage(confirmation: InitConfirmation, port: number
  * on the machine and "a session exists" is satisfied by somebody else's app, which is the false
  * green `confirmAppConnected` refuses by design.
  */
-export function unwatchedMessage(port: number): string {
+function unwatchedMessage(port: number): string {
   return (
     '  [ℹ] the files are written. An app CONNECTING is what finishes the install, and this run did ' +
     'not wait to see one.\n' +

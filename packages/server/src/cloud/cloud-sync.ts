@@ -48,7 +48,7 @@ export function resolveCloudConfig(env: NodeJS.ProcessEnv): CloudConfig | null {
  * which blocks while a real browser runs the suite server-side — a normal response there is minutes,
  * not seconds, so it gets its own (still bounded) budget rather than dragging the common one up.
  */
-export const CLOUD_FETCH_TIMEOUT_MS = 30_000;
+const CLOUD_FETCH_TIMEOUT_MS = 30_000;
 export const CLOUD_VERIFY_TIMEOUT_MS = 120_000;
 
 /** Names Node gives an abort: `AbortSignal.timeout` raises TimeoutError, an explicit abort AbortError. */

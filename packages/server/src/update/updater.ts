@@ -15,8 +15,7 @@ const VersionChangeDirection = {
   UPDATE: 'update',
   ROLLBACK: 'rollback',
 } as const;
-export type VersionChangeDirection =
-  (typeof VersionChangeDirection)[keyof typeof VersionChangeDirection];
+type VersionChangeDirection = (typeof VersionChangeDirection)[keyof typeof VersionChangeDirection];
 
 /**
  * Report a completed version move. Never throws — an install that worked must still be reported done.
@@ -25,7 +24,7 @@ export type VersionChangeDirection =
  * install and then `process.exit`, so there is no way to reach this through them in a test without
  * mocking the package manager and the process itself.
  */
-export async function reportVersionChange(
+async function reportVersionChange(
   from: string,
   to: string,
   direction: VersionChangeDirection,

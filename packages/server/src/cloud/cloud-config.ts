@@ -20,7 +20,7 @@ export const CLOUD_LINK_FILE = 'cloud.json';
 export const CREDENTIALS_FILE = 'credentials.json';
 
 /** What the daemon mirrors to the cloud for a project. Each surface is independently toggleable. */
-export interface SyncPolicy {
+interface SyncPolicy {
   /** Push verification-run artifacts to the dashboard Runs tab. */
   runs: boolean;
   /** Push per-flow project-memory outcomes (the regression history). */
