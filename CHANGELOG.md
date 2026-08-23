@@ -6,6 +6,14 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Added
 
+- **`@reticlehq/core` + `@reticlehq/server` — a flow saved with no intent now says so, and can be given one in the same call.** A saved flow is a regression test that runs for months. `intent` and `intentId` have both been optional on the flow file and nothing has ever asked for either, so a flow saved silently with neither replays for a long time and then reports "step 3 failed" rather than what stopped being true. The machinery to use an intent was already there; what was missing was anything that asked.
+
+  Every save path now returns an `intentGap` when nothing on disk says what the flow is for: what is missing, what it costs, and the one thing that closes it, in the same vocabulary as the `undeclared-change` gap, because it is the same finding one artifact later. Both `reticle_flow_save` and `reticle_flow_save_recorded` also take an optional `intent` now, so the answer goes in the call that raised the question instead of a second one. `save`, `saveFlow` and the recorded-flow path build their result through one helper, so they cannot drift into three different ways of saying it.
+
+  **It never invents one.** Not from the step names, not from the flow name, not from the assertions: a guessed goal reads as the author's own words and somebody will act on them, which is the rule that already governs the source pointer, the flow intent and the undeclared-change gap.
+
+  **It does not block the save, and it changes no bytes.** A flow saved without an intent is still far better than no flow, and a verification tool that refuses to record work is one people route around. The written file is byte-identical to what the same save produced before, and a flow that already carries prose or an `intentId` hears nothing at all.
+
 - **`@reticlehq/server` — `reticle_verify { action: "coverage" }` now reports whether this session used `reticle_context` and `reticle_intent` at all.** Both features shipped with the same pre-registered disproof — _if agents never call it, cut it_ — and nothing recorded whether they were called, so the disproof could never be run. A feature whose disproof cannot be run is one nobody can kill, which is the same defect that kept the old push-based run context alive.
 
   The new `featureUse` block answers it locally, per session: how many times `reticle_context` was called and at which step, what the intent ledger holds, and the two costs of NOT using either — verdicts drawn while the ledger was empty, and read-only calls that re-fetched a fact the run had already established. It also carries a mechanical proxy for whether calling `reticle_context` changed anything: after each call, did the agent ACT, or did it re-read a subject the context had just supplied. That proxy is proximity in a call sequence and nothing more; what it cannot see is written down beside it.
@@ -75,6 +83,12 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
   **A flow with no declared intent says so, and nothing is derived from its step names.** A guessed goal reads as the product owner's words and an agent will act on them, which is strictly worse than the honest absence — the same rule the source pointer follows. Older flow files parse, replay, and report exactly as they did, and the on-disk flow version does not move.
 
 ### Fixed
+
+- **`@reticlehq/server` — a `reticle_assert` verdict reported a `file:line` that could point at completely unrelated code.** An assertion drives nothing, so the tool had no location of its own and used the one the PREVIOUS action remembered. Driven against a real Next.js app: an assert about the site navigation was journaled with the file and line of the button an earlier click had touched, and an assert that matched nothing on the page at all was journaled with that same line. The old value was, in both cases, a location this verdict had never looked at — it sent the agent to innocent code, and because it is persisted into the session journal and read back by `reticle_context`'s `proven`, the wrong pointer outlived the turn that produced it.
+
+  A verdict now points only where it actually looked. An `element`/`text` assertion reports the matched element's own `file:line` — the descriptor already carried it — and reports nothing when the matched elements carry no location or disagree about it. The one borrow that remains is the documented one, on a failure only: a `signal`/`net`/`state` assertion has no element to point at, and the handler that should have fired the missing signal lives with the control last driven, which is what the tool's output schema has always said the field means. Everywhere else the field is now OMITTED, because an absent pointer costs the agent nothing and a wrong one costs it the trip.
+
+  The journal record and the tool response are computed once and shared, so a verdict can no longer carry two different locations. `reticle_wait_for` gets the same rule; `reticle_act_and_wait` is unaffected, as it drove the element it names.
 
 - **`@reticlehq/server` — an instrumentation gap told the agent an app was unverifiable and gave it nowhere to go.** A gap exists to be acted on: it names an absence in the app, the cost that absence imposed on the verdict just returned, and the one change that closes it. What it never carried was a location. The type declared an optional `file:line` and no producer had ever set one, so every gap went out with a `ref` and nothing else.
 
