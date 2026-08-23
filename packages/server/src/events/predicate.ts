@@ -2,12 +2,14 @@ import {
   ElementState,
   PredicateKind,
   ReticleCommand,
+  THROTTLED_STARVED_NOTE,
   isSameDocument,
   type CommandResult,
   type ElementQuery,
   type ReticleEvent,
   type MatchResult,
 } from '@reticlehq/core';
+
 import { log } from '../log.js';
 import { bindSpanContext } from '../trace.js';
 import { selectPath, capDepth } from '../session/state-select.js';
@@ -76,6 +78,11 @@ export interface PredicateSession {
    * this hook (e.g. tests that never disconnect) simply leaves in-flight predicates until timeout.
    */
   onDisconnect?(listener: () => void): () => void;
+  /**
+   * True when the tab is hidden or stale enough that the browser is throttling it.
+   * Optional: a fake that never throttles simply omits it.
+   */
+  throttled?(): boolean;
 }
 
 /**
@@ -524,7 +531,38 @@ function predicateSince(predicate: Predicate): number {
   return 'since' in predicate && 'number' === typeof predicate.since ? predicate.since : 0;
 }
 
+/**
+ * A miss on a throttled tab is not a missing render. The browser has starved the tab, so a
+ * timeout there may mean it never ran — which must not look like "the text is absent".
+ * `inconclusive` is how this engine already says "do not grade this as a product failure".
+ * Idempotent: a second pass that already carries the note is left alone, and a more specific
+ * `inconclusive` (unreadable locator, superseded window) is not overwritten.
+ */
+function annotateThrottledMiss(session: PredicateSession, result: EvalResult): EvalResult {
+  if (result.pass) return result;
+  if (true !== session.throttled?.()) return result;
+  const prior = result.failureReason;
+  if ('string' === typeof prior && prior.includes(THROTTLED_STARVED_NOTE)) return result;
+  return {
+    ...result,
+    failureReason: `${THROTTLED_STARVED_NOTE}. ${prior ?? 'timed out waiting for predicate'}`,
+    ...(undefined === result.inconclusive ? { inconclusive: THROTTLED_STARVED_NOTE } : {}),
+  };
+}
+
 export async function evaluatePredicate(
+  session: PredicateSession,
+  predicate: Predicate,
+  since = 0,
+  diagnose = true,
+): Promise<EvalResult> {
+  return annotateThrottledMiss(
+    session,
+    await evaluatePredicateRaw(session, predicate, since, diagnose),
+  );
+}
+
+async function evaluatePredicateRaw(
   session: PredicateSession,
   predicate: Predicate,
   since = 0,
@@ -882,11 +920,13 @@ export function waitForPredicate(
           // `{ pass, evidence, failureReason }` construction DISCARDED them on every timed-out wait and
           // assert. So the highest-value localization signal was computed and then thrown away exactly
           // on the failure path where it matters, no matter what the schema declared.
-          finish({
-            ...r,
-            pass: false,
-            failureReason: r.failureReason ?? 'timed out waiting for predicate',
-          });
+          finish(
+            annotateThrottledMiss(session, {
+              ...r,
+              pass: false,
+              failureReason: r.failureReason ?? 'timed out waiting for predicate',
+            }),
+          );
         })
         .catch((error: unknown) => {
           finish(failed(error));

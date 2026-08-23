@@ -284,6 +284,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'The tab disconnected mid-wait, so this was never observed — the verdict is UNKNOWN, not a failure of the app.',
         ),
+      inconclusive: z
+        .string()
+        .optional()
+        .describe(
+          'The wait could not be graded as a product failure — e.g. the tab is throttled and may never have rendered. The verdict is UNKNOWN, not "the UI is absent".',
+        ),
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
@@ -377,6 +383,12 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .optional()
         .describe(
           'The tab disconnected mid-wait, so this was never observed — the verdict is UNKNOWN, not a failure of the app.',
+        ),
+      inconclusive: z
+        .string()
+        .optional()
+        .describe(
+          'The assertion could not be graded as a product failure — e.g. the tab is throttled and may never have rendered. The verdict is UNKNOWN, not "the UI is absent".',
         ),
       advice: z
         .string()

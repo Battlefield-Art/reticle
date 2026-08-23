@@ -3,11 +3,13 @@ import {
   asRef,
   EventType,
   ReticleCommand,
+  THROTTLED_STARVED_NOTE,
   type CommandResult,
   type ElementQuery,
   type ReticleEvent,
   type MatchResult,
 } from '@reticlehq/core';
+
 import {
   evaluatePredicate,
   waitForPredicate,
@@ -611,6 +613,92 @@ describe('predicate engine', () => {
     expect(result.assertion).toBe('net.count');
     expect(result.observed).toContain('1 matching');
     expect(result.expected).toContain('99');
+  });
+});
+
+/**
+ * A throttled tab's starved reads must not look like a missing render.
+ *
+ * After a hard reload a backgrounded tab sits on "Loading" forever — the browser never lets the
+ * fetch/hydration run — and `waitForPredicate { kind: "text" }` times out as a near-miss. That
+ * sentence is identical to "the code did not render", so the agent "fixes" working code. The
+ * session already carries `throttled: true` on the health envelope; agents treat the near-miss
+ * prose as the verdict. `inconclusive` is the established way to stop that being graded as a
+ * product failure (see observationLost).
+ */
+describe('a throttled tab timeout is not a missing render', () => {
+  class ThrottledSession extends FakeSession {
+    throttled(): boolean {
+      return true;
+    }
+  }
+
+  it('a timed-out wait on a throttled tab says the tab never got to run, not that the text is absent', async () => {
+    const session = new ThrottledSession([]);
+    const result = await waitForPredicate(
+      session,
+      { kind: 'element', query: { text: 'Configuration' } },
+      80,
+    );
+    expect(result.pass).toBe(false);
+    expect(result.inconclusive).toBe(THROTTLED_STARVED_NOTE);
+    expect(result.failureReason).toContain(THROTTLED_STARVED_NOTE);
+    // The near-miss is kept: the note is a prefix, not a replacement.
+    expect(result.failureReason).not.toBe(THROTTLED_STARVED_NOTE);
+  });
+
+  it('keeps the structured near-miss beside the starved-tab note', async () => {
+    const session = new ThrottledSession(
+      [ev(EventType.NET_REQUEST, { url: '/api/x', status: 200 }, 10)],
+      undefined,
+      100,
+    );
+    const result = await waitForPredicate(
+      session,
+      { kind: 'net', urlContains: '/api/', count: 99 },
+      80,
+    );
+    expect(result.assertion).toBe('net.count');
+    expect(result.observed).toContain('1 matching');
+    expect(result.expected).toContain('99');
+    expect(result.inconclusive).toBe(THROTTLED_STARVED_NOTE);
+  });
+
+  it('a one-shot miss on a throttled tab is inconclusive, not a product failure', async () => {
+    const session = new ThrottledSession([]);
+    const result = await evaluatePredicate(session, {
+      kind: 'element',
+      query: { text: 'Configuration' },
+    });
+    expect(result.pass).toBe(false);
+    expect(result.inconclusive).toBe(THROTTLED_STARVED_NOTE);
+  });
+
+  it('a PASSING wait on a throttled tab is not annotated', async () => {
+    const session = new ThrottledSession([], () => ({
+      matched: true,
+      count: 1,
+      elements: [],
+    }));
+    const result = await waitForPredicate(
+      session,
+      { kind: 'element', query: { text: 'Configuration' } },
+      80,
+    );
+    expect(result.pass).toBe(true);
+    expect(result.inconclusive).toBeUndefined();
+  });
+
+  it('an unthrottled timeout still looks like a near-miss, not a starved tab', async () => {
+    const session = new FakeSession([]);
+    const result = await waitForPredicate(
+      session,
+      { kind: 'element', query: { text: 'Configuration' } },
+      80,
+    );
+    expect(result.pass).toBe(false);
+    expect(result.inconclusive).toBeUndefined();
+    expect(result.failureReason).not.toContain(THROTTLED_STARVED_NOTE);
   });
 });
 
