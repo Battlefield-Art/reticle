@@ -26,6 +26,7 @@
     "bench:full": "node bench/harness/bench-all.mjs --full",
     "bench:gate": "node bench/harness/gate.mjs",
     "bench:dashboard": "node bench/dashboard.mjs",
+    "bench:intent-effect": "node bench/harness/intent-effect.mjs",
     "publish": "pnpm build && pnpm -r publish --access public --no-git-checks",
     "publish:dry-run": "pnpm build && pnpm -r publish --access public --no-git-checks --dry-run",
     "test:integration": "vitest run --config vitest.integration.config.ts",

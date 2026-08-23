@@ -42,6 +42,7 @@ So they were all run. **Every script below passes.** The two defects that surfac
 | **Needs competitor MCPs + network** | `visual-bug-bench` | downloads `@playwright/mcp` + `chrome-devtools-mcp` via npx | ✅ parity 6/6/6 |
 | **Rendering / reporting** | `charts`, `make-readme-chart`, `../dashboard.mjs` | existing raws | ✅ |
 | **Not run in this sweep** | `run-observation` + `analyze` (~12 min, drives competitors), `claude-agent-loop` / `openai-agent-loop` (**needs an API key**), `capture-screens`, `visual-regression-bench` (needs `reticle drive`) | as noted | ⚠ unverified |
+| **Intent + context effect** | `intent-effect` (+ `intent-effect-metrics`, `intent-effect-verdict` — shared rule modules, unit-tested, imported by `gate`) | bench fixtures **already up** (it boots none) + an API key; see [`INTENT-EFFECT.md`](INTENT-EFFECT.md) | ✅ keyless path (reports NOT MEASURED, exits 1) |
 
 The subdirectories (`fix-loop/`, `honesty/`, `pw-vs-reticle/`, `diagnosis/`, `first-drive/`, `overhead/`, `parallel-suite/`, `oracle-guards/`, `e2e-loop/`, `desktop/`) are each a completed study with its own README and results file, and were **not** re-run here. Same rule: evidence for a published claim, run by hand, not a gate.
 

@@ -80,6 +80,34 @@ function layerCBlock() {
   };
 }
 
+/**
+ * The intent+context block — the headline false-green rate in each arm, so the gate can compare the
+ * ON arm against the last row rather than only against its own OFF arm.
+ *
+ * Null when the pass did not run, and null when it ran WITHOUT measuring: an unmeasured pass writes
+ * an artifact too, and recording its absent arms as a baseline would hand every later run a
+ * comparison against nothing that reads exactly like a comparison against something.
+ */
+function intentEffectBlock() {
+  const raw = readRaw('bench/raw/intent-effect.json');
+  if (null === raw || true !== raw.measured) return null;
+  return {
+    false_green_rate_off: raw.arms?.off?.false_green_rate ?? null,
+    false_green_rate_on: raw.arms?.on?.false_green_rate ?? null,
+    false_green_spread_off: raw.arms?.off?.false_green_spread ?? null,
+    false_green_spread_on: raw.arms?.on?.false_green_spread ?? null,
+    re_query_rate_off: raw.arms?.off?.re_query_rate ?? null,
+    re_query_rate_on: raw.arms?.on?.re_query_rate ?? null,
+    steps_to_correct_off: raw.arms?.off?.steps_to_correct_mean ?? null,
+    steps_to_correct_on: raw.arms?.on?.steps_to_correct_mean ?? null,
+    propagation_depth_off: raw.arms?.off?.propagation_depth_mean ?? null,
+    propagation_depth_on: raw.arms?.on?.propagation_depth_mean ?? null,
+    runs: raw.runs_requested ?? null,
+    model: raw.model ?? null,
+    outcome: raw.verdict?.outcome ?? null,
+  };
+}
+
 let sha = 'nogit';
 try {
   sha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
@@ -107,6 +135,7 @@ for (const [tool, v] of Object.entries(a.per_tool)) {
 }
 
 const layerC = layerCBlock();
+const intentEffect = intentEffectBlock();
 const row = {
   version,
   note,
@@ -122,6 +151,7 @@ const row = {
   ...(a.tools_not_run?.length > 0 ? { tools_not_run: a.tools_not_run } : {}),
   per_tool: perTool,
   ...(layerC !== null ? { layer_c: layerC } : {}),
+  ...(intentEffect !== null ? { intent_effect: intentEffect } : {}),
 };
 appendFileSync('bench/history.jsonl', JSON.stringify(row) + '\n');
 console.log(

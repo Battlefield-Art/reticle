@@ -17,6 +17,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { declaredBudgetOf, tokenVerdict } from './token-budget.mjs';
 import { parityVerdict } from './playwright-parity.mjs';
 import { coverageVerdict } from './coverage-floor.mjs';
+import { intentEffectVerdict } from './intent-effect-verdict.mjs';
 import { provenanceVerdict } from './baseline-provenance.mjs';
 import { measuredRealRegressions } from './tool-coverage.mjs';
 
@@ -286,6 +287,54 @@ if (cost !== null) {
   ]);
 }
 
+// ---- INTENT-EFFECT pass (real agent loop, intent + context on vs off) ----
+// Absent artifact = the pass was not run, which is an advisory skip like the observation pass: it is
+// a paid LLM loop and bench-all never runs it. A PRESENT artifact is gated, and gated hard — the one
+// result that must never pass quietly is the feature making verification WORSE.
+const intentEffect = readRaw('bench/raw/intent-effect.json');
+if (intentEffect !== null) {
+  const verdict = intentEffectVerdict({
+    off: intentEffect.arms?.off,
+    on: intentEffect.arms?.on,
+    runs: intentEffect.runs_requested,
+  });
+  if (!verdict.ok) {
+    // Named here rather than in the shared rule: a NOT MEASURED artifact left on disk by a keyless
+    // run would otherwise fail every later `pnpm bench:gate`, and the fix has to be visible at the
+    // moment somebody hits it. Deliberately a deletion and not a silent skip — the artifact IS the
+    // record that this pass was asked for and produced nothing.
+    const stale =
+      'not-measured' === verdict.outcome
+        ? ' If you are not measuring this pass, delete bench/raw/intent-effect.json rather than ' +
+          'leaving an artifact that says a pass ran and measured nothing.'
+        : '';
+    failures.push(`intent-effect (${verdict.outcome}): ${verdict.reason}${stale}`);
+  }
+  // A control run on a CLEAN app that scores a catch means the symptom regex is satisfied whether or
+  // not the defect is live — the network-timeout tautology, which shipped twice and flattered us both
+  // times. Every catch number in this pass is worthless if this is non-zero, so it gates.
+  const falseAlarms =
+    (intentEffect.control?.off?.false_alarm_runs ?? 0) +
+    (intentEffect.control?.on?.false_alarm_runs ?? 0);
+  if (falseAlarms > 0) {
+    failures.push(
+      `intent-effect grader is tautological: ${String(falseAlarms)} control run(s) on a CLEAN app ` +
+        'scored the defect as identified. The symptom regex matches regardless of ground truth, so ' +
+        'every catch it reports is free. Fix the regex before reading any number from this pass.',
+    );
+  }
+  note(
+    'Intent · false-green',
+    prev?.intent_effect?.false_green_rate_on,
+    intentEffect.arms?.on?.false_green_rate,
+  );
+  scorecard.push([
+    'Intent · false-green',
+    `${intentEffect.arms?.off?.false_green_rate ?? '—'} (off)`,
+    `${intentEffect.arms?.on?.false_green_rate ?? '—'} (on) — ${verdict.outcome}`,
+  ]);
+}
+
 // ---- Report ----
 console.log('\nBenchmark gate — fresh vs last baseline');
 console.log('─'.repeat(56));
@@ -293,7 +342,13 @@ for (const [metric, was, now] of scorecard) {
   console.log(`  ${String(metric).padEnd(22)} ${String(was).padEnd(14)} → ${now}`);
 }
 console.log('─'.repeat(56));
-if (null === analysis && null === cost && null === selector && null === consequence) {
+if (
+  null === analysis &&
+  null === cost &&
+  null === selector &&
+  null === consequence &&
+  null === intentEffect
+) {
   console.error('✗ no fresh results found — run `node bench/harness/bench-all.mjs` first.');
   process.exit(1);
 }
