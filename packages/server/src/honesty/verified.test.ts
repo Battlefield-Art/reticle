@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Verified, VerifiedReason } from '@reticlehq/core';
+import { Verified, VerifiedReason, ContradictionKind } from '@reticlehq/core';
 import { decideVerified } from './verified.js';
 
 type VerifiedVerdictInput = Parameters<typeof decideVerified>[0];
@@ -468,5 +468,37 @@ describe('a settle that never happened is not a failed assertion', () => {
     const declared = decideVerified({ ...settleTimedOut, declaredConsequence: true });
     expect(declared.verified).toBe(Verified.NO);
     expect(declared.verifiedReason).toBe(VerifiedReason.ASSERTION_FAILED);
+  });
+});
+
+describe('a signal nothing corroborated explains itself', () => {
+  /**
+   * The verdict was already right — UNKNOWN, not the `yes` it used to be. The SENTENCE was wrong:
+   * the generic contradiction prose says the window "closed before the app finished" and blames a
+   * poll or a timer for keeping the page busy. Nothing kept this page busy. Nothing happened at
+   * all, which is the whole finding, and an agent told to wait longer goes to the wrong place.
+   */
+  const signalOnly = {
+    pass: true,
+    declaredConsequence: true,
+    honesty: clean(HonestyGrade.SIGNAL),
+    settled: true,
+    contradictions: [{ kind: ContradictionKind.SIGNAL_WITHOUT_CONSEQUENCE }],
+  } as VerifiedVerdictInput;
+
+  it('still refuses to call it proved', () => {
+    expect(decideVerified(signalOnly).verified).toBe(Verified.UNKNOWN);
+  });
+
+  it('does not blame a busy page for a page that did nothing', () => {
+    const { because } = decideVerified(signalOnly);
+    expect(because).not.toMatch(/closed before the app finished/);
+    expect(because).not.toMatch(/poll|timer|animation/);
+  });
+
+  it('names the fact and where to look instead', () => {
+    const { because } = decideVerified(signalOnly);
+    expect(because).toMatch(/NOTHING else moved/);
+    expect(because).toMatch(/reticle_snapshot|reticle_state/);
   });
 });

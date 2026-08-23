@@ -590,6 +590,41 @@ function findWindowContradictions(
     }
   }
 
+  // ── The app announced a consequence and nothing else moved ─────────────────────────────────
+  // Scoped as tightly as the evidence allows, because this rule fires on the ABSENCE of everything
+  // else and that is the easiest way to build a false positive.
+  //
+  // Only when the window is otherwise EMPTY: no DOM, no store, no route (`!advanced`) and no request
+  // at all. A request means the app reached for something, and whether it settled, failed or was
+  // ignored belongs to three other rules — firing here too would report one fact twice.
+  //
+  // `successSignals` reuses the failure-shaped filter above: an app that announced `deploy:failed`
+  // is correctly reporting that nothing happened, and accusing it inverts the meaning of the one app
+  // doing this right.
+  //
+  // And only for a window attributed to an ACTION. `reticle_assert` OBSERVES — there is no click
+  // whose consequence should have corroborated anything, so an assert over a quiet window carrying
+  // one signal is an ordinary read, not a claim nothing backs. Without this the rule reddened eight
+  // existing tests that assert exactly that, which is the false-positive class this scoping exists
+  // to prevent.
+  if (
+    options.actionSince !== undefined &&
+    !advanced &&
+    0 === settled.length &&
+    successSignals.length > 0
+  ) {
+    found.push({
+      kind: ContradictionKind.SIGNAL_WITHOUT_CONSEQUENCE,
+      claim: `the app fired ${successSignals.map((s) => `"${s}"`).join(', ')}`,
+      counter:
+        'nothing else in the window moved — no DOM, no store, no route, no request — so the only ' +
+        'evidence that anything happened is the app saying so',
+      detail:
+        'a signal emitted from the value the app was ASKED for, rather than the one it committed, ' +
+        'reads identically to one that worked',
+    });
+  }
+
   // ── The same write fired more than once, inside ONE action's window ─────────────────────────
   // Attribution is the whole rule here, not a refinement of it: counting `method + url` over whatever
   // window the caller handed in turns two legitimate separate saves into a double submit. See

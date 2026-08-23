@@ -229,6 +229,29 @@ export function decideVerified(inputs: VerifiedInputs): VerifiedVerdict {
     inputs.unsettled !== undefined &&
     !openWrite &&
     contradictions.every((c) => c.kind === ContradictionKind.REQUEST_NEVER_SETTLED);
+  // `signal-without-consequence` gets its own sentence, because the generic one is FALSE for it.
+  //
+  // That sentence says the window "closed before the app finished" and then explains that a poll or
+  // a timer kept the page busy. Nothing kept this page busy — nothing happened at all, which is the
+  // entire finding. Measured on the bench fixture: the correct UNKNOWN arrived wearing an
+  // explanation that told the agent to wait longer or assert something else, when the fact to act on
+  // was that the app announced a consequence it did not deliver. A right verdict with a wrong reason
+  // sends an agent to the wrong place, which costs as much as the wrong verdict did.
+  const signalOnly =
+    contradictions.length > 0 &&
+    contradictions.every((c) => c.kind === ContradictionKind.SIGNAL_WITHOUT_CONSEQUENCE);
+  if (signalOnly) {
+    return {
+      verified: Verified.UNKNOWN,
+      verifiedReason: VerifiedReason.EVIDENCE_INCOMPLETE,
+      because:
+        'the app fired the signal you waited for and NOTHING else moved — no DOM, no store, no ' +
+        'route, no request — so the only evidence is the app saying so. A signal emitted from the ' +
+        'value the app was ASKED for, rather than the one it committed, looks exactly like this. ' +
+        'Check the consequence directly (reticle_snapshot for what rendered, reticle_state for what ' +
+        'the store holds) before trusting it',
+    };
+  }
   if (contradictions.length > 0 && !settlementOnly) {
     const kinds = contradictions.map((c) => c.kind).join(', ');
     return {

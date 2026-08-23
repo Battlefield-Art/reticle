@@ -626,3 +626,80 @@ describe('a consequence handed to another browsing context', () => {
     expect(kinds([okCall('POST', '/api/save')])).toEqual([ContradictionKind.RESPONSE_IGNORED]);
   });
 });
+
+describe('the app announced a consequence and nothing else moved', () => {
+  const signal = (name: string): ReticleEvent => ev(EventType.SIGNAL, { name });
+
+  /**
+   * Measured on the bench fixture with `missing-modal` injected, driven by hand through the MCP.
+   *
+   * The store commits `newDeployOpen: false` whatever it is asked for, while the signal is emitted
+   * from the ARGUMENT — so the app announces `modal:opened` and opens nothing. Reticle returned
+   * `verified: "yes"`, `verifiedReason: "proved"`, at `honesty.grade: "signal"`, our strongest
+   * evidence class. `reticle_snapshot { mode: "status" }` immediately after showed no such dialog.
+   *
+   * Every fact needed was already in the payload and nothing crossed them: the healthy run of the
+   * same click carries `stateDiffs: newDeployOpen false -> true`, and the broken one carries an
+   * empty `stateDiffs` and no DOM movement at all. An app whose signal reports the REQUESTED value
+   * rather than the COMMITTED one was getting a top-grade green for doing nothing.
+   */
+  /** Every case here is an ACTION's window — see the scoping test at the end of this block. */
+  const afterAction = (events: ReticleEvent[]): string[] =>
+    findContradictions(events, { actionSince: 0 }).map((c) => c.kind);
+
+  it('reports a signal that nothing corroborates', () => {
+    expect(afterAction([signal('modal:opened')])).toContain(
+      ContradictionKind.SIGNAL_WITHOUT_CONSEQUENCE,
+    );
+  });
+
+  /**
+   * The negative control, and the reason the rule is this narrow: the SAME click on the healthy
+   * build moves the store. One corroborating channel is enough — the claim is not "the signal must
+   * be visual", it is "the signal must not be the only thing that happened".
+   */
+  it('says nothing when any other channel moved', () => {
+    expect(afterAction([signal('modal:opened'), stateChanged()])).not.toContain(
+      ContradictionKind.SIGNAL_WITHOUT_CONSEQUENCE,
+    );
+    expect(afterAction([signal('modal:opened'), domChanged()])).not.toContain(
+      ContradictionKind.SIGNAL_WITHOUT_CONSEQUENCE,
+    );
+  });
+
+  /**
+   * A request in the window means the app reached for something, and whether that request settled,
+   * failed or was ignored is already three other rules' business. Firing here too would report one
+   * fact twice under different names.
+   */
+  it('leaves a window containing network traffic to the rules that own it', () => {
+    expect(afterAction([signal('save:done'), okCall()])).not.toContain(
+      ContradictionKind.SIGNAL_WITHOUT_CONSEQUENCE,
+    );
+    expect(afterAction([signal('save:done'), failedCall()])).not.toContain(
+      ContradictionKind.SIGNAL_WITHOUT_CONSEQUENCE,
+    );
+  });
+
+  /**
+   * A failure-shaped signal is the app correctly reporting that nothing happened. Accusing it of
+   * announcing a consequence it did not deliver inverts the meaning of the one app doing this right
+   * — the same reasoning that already guards SIGNAL_CONTRADICTED.
+   */
+  it('does not accuse an app that announced a FAILURE', () => {
+    expect(afterAction([signal('deploy:failed')])).not.toContain(
+      ContradictionKind.SIGNAL_WITHOUT_CONSEQUENCE,
+    );
+  });
+
+  /**
+   * `reticle_assert` OBSERVES. There is no click whose consequence should have corroborated
+   * anything, so a quiet window carrying one signal is an ordinary read — not a claim nothing backs.
+   * Unscoped, this rule reddened eight existing tests that assert exactly that.
+   */
+  it('stays silent on a window no action is attributed to', () => {
+    expect(kinds([signal('modal:opened')])).not.toContain(
+      ContradictionKind.SIGNAL_WITHOUT_CONSEQUENCE,
+    );
+  });
+});
