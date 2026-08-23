@@ -30,7 +30,15 @@ import type { OwnContradiction } from './contradictions.js';
  *  - values are compared NORMALISED (trimmed, case-folded, numbers as numbers), so `FR` vs `fr` and
  *    `1` vs `1.0` stay silent while `fr` vs `en` speaks;
  *  - if the key appears anywhere in the response carrying the requested value, it is treated as
- *    applied — an envelope that echoes both the old and the new value is not a dropped write.
+ *    applied — an envelope that echoes both the old and the new value is not a dropped write;
+ *  - the response must look like a restatement of the request before any key is compared. Reported
+ *    from the field: a command bus POSTed `{command:'chat.send', ...}` and the server answered with
+ *    the current viewer snapshot. The message arrived over the socket and rendered. `id` in the
+ *    snapshot meant the viewer, `id` in the request meant the message, and this kind fired. A
+ *    snapshot that shares a key name is not an echo. A discriminator the request carries that the
+ *    response does not, or a fat body that shares one coincidental key, is skipped. The existing
+ *    single-value / not-echoed-at-all guards still trade false negatives away — this narrows on
+ *    shape, not on value types.
  *
  * The residue after those filters is a field the caller set, the server echoed back, and the echoed
  * value is a genuinely different value. That is worth one line of an agent's attention.
@@ -100,6 +108,64 @@ const OK_MIN = 200;
 const OK_MAX = 300;
 
 /**
+ * Body keys that name the operation rather than a field being persisted. A command bus puts one of
+ * these on the request; a snapshot of the current viewer does not echo it. Their absence on the
+ * response is the cheapest honest signal that the body is not a restatement of the write.
+ */
+const EchoDiscriminator = {
+  COMMAND: 'command',
+  ACTION: 'action',
+  OP: 'op',
+  PROCEDURE: 'procedure',
+} as const;
+
+/**
+ * A response carrying this many times more scalar keys than the request, overlapping on fewer than
+ * `MIN_SHARED_KEYS`, is a snapshot that happened to reuse a name — not an echo of the write.
+ */
+const SNAPSHOT_KEY_RATIO = 3;
+const MIN_SHARED_KEYS = 2;
+
+/**
+ * True when the response looks like a restatement of the request, so overlapping key names can be
+ * read as an echo rather than a coincidence.
+ *
+ * Half the request's comparable keys must appear in the response. That keeps a partial echo
+ * (`{density, locale}` answered with only `locale`) in scope, and drops a three-field command whose
+ * snapshot shares one name. A request that names an operation the response does not repeat is not
+ * an echo at all, regardless of any other overlap.
+ */
+function responseRestatesRequest(
+  asked: Map<string, Set<string>>,
+  echoed: Map<string, Set<string>>,
+): boolean {
+  const comparable: string[] = [];
+  for (const [key, wanted] of asked) {
+    if (1 === wanted.size) comparable.push(key);
+  }
+  if (0 === comparable.length) return false;
+
+  let present = 0;
+  for (const key of comparable) {
+    if (echoed.has(key)) present += 1;
+  }
+
+  let requestHasDiscriminator = false;
+  let responseHasDiscriminator = false;
+  for (const key of Object.values(EchoDiscriminator)) {
+    if (asked.has(key)) requestHasDiscriminator = true;
+    if (echoed.has(key)) responseHasDiscriminator = true;
+  }
+  if (requestHasDiscriminator && !responseHasDiscriminator) return false;
+
+  if (echoed.size > comparable.length * SNAPSHOT_KEY_RATIO && present < MIN_SHARED_KEYS) {
+    return false;
+  }
+
+  return present * 2 >= comparable.length;
+}
+
+/**
  * Contradictions for writes whose response echoes a different value than the request asked for.
  *
  * `actionSince` is the attribution floor `findContradictions` already keeps — the event time the
@@ -139,6 +205,7 @@ export function findEchoMismatches(
 
     const echoed = scalarsByKey(response);
     const asked = scalarsByKey(request);
+    if (!responseRestatesRequest(asked, echoed)) continue;
     const dropped: string[] = [];
     for (const [key, wanted] of asked) {
       // More than one requested value for a key (a before/after pair, a list of items) makes "what

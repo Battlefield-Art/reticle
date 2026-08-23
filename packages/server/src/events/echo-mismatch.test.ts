@@ -159,3 +159,74 @@ describe('findEchoMismatches — the request has to be a write', () => {
     expect(found?.detail).not.toContain('before the action');
   });
 });
+
+describe('findEchoMismatches — the response has to look like an echo', () => {
+  /**
+   * Reported from the field: a command bus POSTed `{command:"chat.send", ...}` and the server
+   * answered with the current viewer snapshot. The chat message arrived over the socket and
+   * rendered. `write-field-ignored` fired because the snapshot happened to carry `id` under a
+   * different meaning. A snapshot that shares a key name is not an echo of the write.
+   */
+  it('stays silent when a command bus is answered with a viewer snapshot', () => {
+    expect(
+      kinds(
+        write(
+          { command: 'chat.send', id: 'msg-1', text: 'hello' },
+          {
+            id: 'user-1',
+            email: 'ada@example.com',
+            name: 'Ada',
+            unread: 3,
+            plan: 'pro',
+            status: 'ok',
+          },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('stays silent when the only overlap is one coincidental key on a fat snapshot', () => {
+    expect(
+      kinds(
+        write(
+          { title: 'Hello' },
+          {
+            id: 'user-1',
+            title: 'Dashboard',
+            email: 'ada@example.com',
+            name: 'Ada',
+            unread: 3,
+            plan: 'pro',
+            locale: 'en',
+            timezone: 'utc',
+          },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('still catches a nested echo of a real write', () => {
+    expect(
+      kinds(
+        write(
+          { density: 'compact', locale: 'fr' },
+          { ok: true, saved: { density: 'compact', locale: 'en' } },
+        ),
+      ),
+    ).toContain(ContradictionKind.WRITE_FIELD_IGNORED);
+  });
+
+  it('still catches a write that echoes only the field that was dropped', () => {
+    expect(
+      kinds(write({ density: 'compact', locale: 'fr' }, { ok: true, saved: { locale: 'en' } })),
+    ).toContain(ContradictionKind.WRITE_FIELD_IGNORED);
+  });
+
+  it('still catches a command-shaped write whose response restates the command', () => {
+    expect(
+      kinds(
+        write({ command: 'prefs.save', locale: 'fr' }, { command: 'prefs.save', locale: 'en' }),
+      ),
+    ).toContain(ContradictionKind.WRITE_FIELD_IGNORED);
+  });
+});
