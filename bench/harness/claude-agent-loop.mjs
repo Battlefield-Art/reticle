@@ -16,6 +16,7 @@ import { writeFileSync } from 'node:fs';
 import { McpStdioClient } from './mcp-client.mjs';
 import { inject, revert, revertAll } from './inject.mjs';
 import { RETICLE_PORT } from './ports.mjs';
+import { guidanceBytes } from './guidance-share.mjs';
 
 const KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = process.env.BENCH_MODEL ?? 'claude-haiku-4-5-20251001';
@@ -116,6 +117,14 @@ async function runCell(scenarioId, toolKey) {
     outTok = 0,
     turns = 0,
     verdictText = '';
+  // Measured here rather than argued about later.
+  //
+  // A competitor's browser tool never tells the agent what to instrument or what to call next, so
+  // counting those bytes against us compares the wrong thing. They are summed from the ACTUAL tool
+  // results this run fed the model — never estimated — and the classification lives in
+  // guidance-share.mjs, where every uncertainty is resolved against us on purpose.
+  let resultBytes = 0,
+    guideBytes = 0;
   try {
     await client.start();
     if ('reticle' === toolKey) await new Promise((r) => setTimeout(r, 3500));
@@ -139,10 +148,13 @@ async function runCell(scenarioId, toolKey) {
       for (const tu of toolUses) {
         try {
           const out = await client.callTool(tu.name, tu.input, 60000);
+          const sent = out.text.slice(0, 8000);
+          resultBytes += Buffer.byteLength(sent, 'utf8');
+          guideBytes += guidanceBytes(sent);
           results.push({
             type: 'tool_result',
             tool_use_id: tu.id,
-            content: out.text.slice(0, 8000),
+            content: sent,
           });
         } catch (e) {
           results.push({
@@ -168,6 +180,17 @@ async function runCell(scenarioId, toolKey) {
       token_input: inTok,
       token_output: outTok,
       total_tokens: inTok + outTok,
+      // Exact byte counts, not a token estimate.
+      //
+      // `total_tokens` is Anthropic's authoritative number for the WHOLE conversation — system
+      // prompt, tool schemas and assistant turns included — so no honest per-field token count can
+      // be carved out of it. What CAN be measured exactly is how many bytes of guidance this run
+      // put in front of the model, and what share of its tool payload that was. A reader can apply
+      // that share themselves; the raw total stays the number to quote if they distrust the
+      // adjustment, which is why it is reported unmodified beside it.
+      tool_result_bytes: resultBytes,
+      guidance_bytes: guideBytes,
+      guidance_share: 0 === resultBytes ? 0 : Number((guideBytes / resultBytes).toFixed(4)),
       latency_ms: Date.now() - t0,
       turns,
       verdict: null === said ? 'NO VERDICT' : said ? 'ISSUE DETECTED' : 'NO ISSUE FOUND',
