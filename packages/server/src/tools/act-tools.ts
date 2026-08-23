@@ -798,14 +798,10 @@ export const ACT_TOOLS: ToolDef[] = [
         // Computed once: the verdict block reports it, and the instrumentation gaps are a second
         // reading of the same evidence rather than a new observation.
         const actionSummary = causalSummary(windowEvents, { stateUnwatched });
-        // Read BEFORE the ledger is updated below: the question is whether code changed since the
-        // PREVIOUS verdict, and noting this one overwrites the answer.
-        const changeUndeclared = await isChangeUndeclared(
-          {
-            current: session.currentEditEpoch,
-            atLastVerdict: session.gaps?.lastVerdictEditEpoch,
-          },
-          () => openSessionIntents(deps, asString(args['sessionId'])),
+        // Asked of every verdict drawn after an observed edit, not once per edit — see
+        // isChangeUndeclared for why repeating it is disclosure rather than nagging.
+        const changeUndeclared = await isChangeUndeclared(session.currentEditEpoch, () =>
+          openSessionIntents(deps, asString(args['sessionId'])),
         );
         const gaps = gapsForAction({
           pass: verdict.pass,
@@ -828,7 +824,7 @@ export const ACT_TOOLS: ToolDef[] = [
         // Recorded on the session, so a later "am I done?" can answer with what is STILL missing
         // rather than with everything that was ever missing. An empty list closes a gap, which is
         // why it is noted rather than skipped.
-        noteSessionGaps(session, gaps, session.currentEditEpoch);
+        noteSessionGaps(session, gaps);
         return withControl(session, {
           ...decision,
           effect: leanActResult(actResult.result),

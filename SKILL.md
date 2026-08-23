@@ -249,6 +249,22 @@ Work down this list and stop at the first row that fits. Do not hand-drive a flo
 
 `reticle_verify {action:"change"}` answers `unknown` when no saved flow covers the files you changed. That is the honest answer and not a failure. Nothing ran, so nothing was proved. It is also the signal to record one. Never read it as a pass.
 
+## Two more you have to be told about
+
+Same story as `reticle_verify`: extended surface, so they are not in the tool list you were handed, and reached through `reticle_run`.
+
+**Context compacted, a turn starting, or a sub-agent taking over?** Ask what this run already established, instead of re-snapshotting to rediscover what you already knew:
+
+```
+reticle_run({ tool: "reticle_context", args: {} })
+```
+
+**About to change something?** Declare what the change is SUPPOSED to make true, in prose, while you still know. A verdict with nothing declared can only be checked against itself:
+
+```
+reticle_run({ tool: "reticle_intent", args: { action: "declare", intents: [{ id: "checkin", statement: "clicking Send check-in makes the badge read 'checked in'" }] } })
+```
+
 ## Record once, replay cheaply
 
 The first drive of a journey is expensive. The rest should not be. After you drive something worth keeping:

@@ -48,6 +48,17 @@ describe('buildServerInstructions', () => {
       expect(text).toContain('reticle_act_and_wait');
       expect(text).toContain('reticle_feedback');
     });
+
+    /**
+     * Both tools sit on the EXTENDED surface, so neither appears in the list an agent is handed by
+     * default. Named nowhere, they are built and unreachable — an agent connecting today cannot
+     * learn they exist, which makes their effect size zero whatever the engineering behind them.
+     * This is the only channel that reaches an agent that never read the skill file.
+     */
+    it('names the two tools an agent would otherwise never learn exist', () => {
+      expect(text).toContain('reticle_context');
+      expect(text).toContain('reticle_intent');
+    });
   });
 
   it('stays short enough to be read in full, in both states', () => {

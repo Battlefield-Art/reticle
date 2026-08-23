@@ -1,25 +1,35 @@
 import { NO_EDITS_OBSERVED } from '@reticlehq/core';
 
 /**
- * Did code change since the last verdict, with nothing saying what it was for?
+ * Is this verdict being drawn over code nobody said anything about?
  *
  * Declaring intent is opt-in, and nothing has ever noticed that a change landed and nobody said what
  * it was supposed to make true. That is the moment it matters: a change with no declared intent can
  * only be verified against itself, which is the definition of a false green.
  *
- * ## The whole gate lives here, on purpose
+ * ## Why this fires on EVERY verdict, not once per change
  *
- * Three separate conditions have to hold, and each of them is a place this could become a nag. Split
- * across the two verdict paths they would drift, and the first drift makes the finding fire on every
- * response — which is how a findings channel dies. So the paths pass facts in and read a boolean out.
+ * The house rule is that a gap nobody hit is a backlog, and a backlog reported as a finding is how
+ * an agent learns to stop reading findings. This clears that bar on the same test every other
+ * instrumentation gap clears it on: **did the absence make THIS verdict weaker?** An unwatched store
+ * weakens every state assertion made over it, not merely the first, so it is reported on every one.
+ * An undeclared change is the same shape — while nothing says what the edit was for, each verdict
+ * drawn after it is checked against nothing but itself, and that is true of the fifth one exactly as
+ * it was of the first. Reporting it once and then falling silent would leave four verdicts carrying
+ * a weakness they no longer disclose, which is the failure mode this whole surface exists to prevent.
+ *
+ * It is also not a backlog, because it is not a survey of the project: it is answered from what this
+ * session observed (an epoch that moved) about the verdict being returned right now, and it is
+ * closed by one call the agent can make immediately. A finding that stays open only because the
+ * agent has not made that call is a finding about the current verdict, not a chore.
+ *
+ * ## The silences, and why each one is required
  *
  *  - **An edit was actually OBSERVED.** The epoch degrades to `NO_EDITS_OBSERVED` outside Vite, and
  *    that means "no edits observed", never "no edits happened" — a finding built on an absence
  *    Reticle cannot see would be a fabrication.
- *  - **It moved since the last verdict.** One nudge per change, not one per verdict. An agent
- *    re-verifying five times after one edit has been told already.
  *  - **The ledger holds nothing undischarged.** An open intent IS the declaration; silence is the
- *    correct response to it.
+ *    correct response to it, and declaring one is what turns this off from the next verdict on.
  *
  * ## Why "covers the work" is answered as "anything open at all"
  *
@@ -33,24 +43,17 @@ import { NO_EDITS_OBSERVED } from '@reticlehq/core';
  * that is still outstanding? If it has, it is working to a stated purpose and this stays quiet.
  */
 
-export interface EditEpochWindow {
-  /** The epoch the session is under now. Undefined when the page never stamped one. */
-  current: number | undefined;
-  /** The epoch the previous verdict on this session was drawn under. Undefined before the first. */
-  atLastVerdict: number | undefined;
-}
-
 /**
- * `openIntents` is a thunk rather than a list because reading the ledger touches disk, and this
- * returns false without it in every ordinary case — the epoch condition is met at most once per hot
- * update, so a verdict on an unchanged epoch pays nothing.
+ * `openIntents` is a thunk rather than a list because reading the ledger touches disk, and the epoch
+ * check answers without it for every page that never reported a hot update — which is most of them.
+ * Once an edit HAS been observed the read happens per verdict, and that is the intended cost: the
+ * ledger is the only thing that can end it, so it has to be re-asked each time.
  */
 export async function isChangeUndeclared(
-  epoch: EditEpochWindow,
+  /** The epoch the session is under now. Undefined when the page never stamped one. */
+  currentEpoch: number | undefined,
   openIntents: () => Promise<readonly unknown[]>,
 ): Promise<boolean> {
-  const current = epoch.current;
-  if (undefined === current || NO_EDITS_OBSERVED === current) return false;
-  if (current === epoch.atLastVerdict) return false;
+  if (undefined === currentEpoch || NO_EDITS_OBSERVED === currentEpoch) return false;
   return 0 === (await openIntents()).length;
 }

@@ -19,29 +19,15 @@ import { dedupeGaps, type InstrumentationGap } from '@reticlehq/core';
  */
 export class GapLedger {
   #open: InstrumentationGap[] = [];
-  #verdictEpoch: number | undefined;
   #everSeen = new Set<string>();
 
   /**
    * Record what the verdict just reported. An empty list is a real observation — it is how a gap
    * gets closed — so it must not be ignored as "nothing to record".
    */
-  note(gaps: readonly InstrumentationGap[], editEpoch?: number): void {
+  note(gaps: readonly InstrumentationGap[]): void {
     this.#open = dedupeGaps(gaps);
-    this.#verdictEpoch = editEpoch;
     for (const gap of gaps) this.#everSeen.add(gap.kind);
-  }
-
-  /**
-   * The edit epoch the last verdict was drawn under, so the next one can tell whether code changed in
-   * between — see `isChangeUndeclared`.
-   *
-   * Kept here rather than on the session because it is a fact about VERDICTS, and this is already the
-   * session's memory of what its verdicts saw. Undefined before the first verdict, and undefined for
-   * a page with no hot-update channel; both mean "nothing observed", never "no edits happened".
-   */
-  get lastVerdictEditEpoch(): number | undefined {
-    return this.#verdictEpoch;
   }
 
   /** Gaps the most recent verdict still reported. The ones that are work right now. */
@@ -80,7 +66,6 @@ export class GapLedger {
 export function noteSessionGaps(
   session: { gaps?: GapLedger },
   gaps: readonly InstrumentationGap[],
-  editEpoch?: number,
 ): void {
-  session.gaps?.note(gaps, editEpoch);
+  session.gaps?.note(gaps);
 }

@@ -16,19 +16,6 @@ describe('GapLedger', () => {
     expect(ledger.everSeen).toEqual([]);
   });
 
-  /**
-   * The edit epoch the last verdict was drawn under, remembered so the NEXT verdict can tell whether
-   * code changed in between. Undefined until a verdict is taken and undefined for a page that has no
-   * hot-update channel, which is the honest answer in both cases: no verdict yet, nothing observed.
-   */
-  it('remembers the edit epoch the last verdict was drawn under', () => {
-    const ledger = new GapLedger();
-    expect(ledger.lastVerdictEditEpoch).toBeUndefined();
-
-    ledger.note([], 3);
-    expect(ledger.lastVerdictEditEpoch).toBe(3);
-  });
-
   it('holds what the last verdict reported', () => {
     const ledger = new GapLedger();
     ledger.note([SOURCE, STORE]);

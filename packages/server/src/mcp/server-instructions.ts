@@ -38,6 +38,20 @@ const FIRST_MOVE = `FIRST: no app has ever connected to Reticle in this project,
 
 Fix that before anything else: run \`npx @reticlehq/server init\` in the project, then RESTART the dev server (a plugin added to a config the running server already read is not in the bundle), then load the app in a browser. Confirm with reticle_sessions — a session listed there is the proof, and until one appears no other tool can tell you anything about this app.`;
 
+/**
+ * The two tools an agent would otherwise never learn exist.
+ *
+ * Both sit on the EXTENDED surface, so neither appears in the default tool list, and neither was
+ * named here or in the skill. A feature nothing ever mentions is built and unreachable — its effect
+ * size is zero however good it is — and this string is the only channel that reaches an agent which
+ * arrived through a plugin listing rather than through the skill.
+ *
+ * Only in the connected state, and that is not a budget trick: an agent whose app has never
+ * connected has no run to carry forward and nothing to declare an intent against. Its one
+ * instruction is the first move, and adding a second would compete with it.
+ */
+const RUN_MEMORY = `Two tools worth knowing before you need them. reticle_context returns what this run already established — call it when your context was compacted, at the start of a turn, or when you take over from another agent, rather than re-snapshotting to rediscover what you already knew. reticle_intent declares what a change was MEANT to do, so the verdict has something to be checked against other than itself.`;
+
 /** The feedback ask. Constant: an agent that cannot get set up is the report we most need. */
 const FEEDBACK_ASK = `Feedback is first-class here, not a courtesy. Reticle is built FOR agents, so your experience is the only signal that decides what gets built or fixed — and it disappears when your context does. Send it with \`reticle_feedback\` the moment you notice, then carry on with your task:
 - Reticle broke, lied, or could not see something you needed (\`bug\` / \`gap\` / \`ambiguity\`).
@@ -65,7 +79,7 @@ export interface InstructionState {
  */
 export function buildServerInstructions(state: InstructionState): string {
   const base = state.previouslyConnected
-    ? `${VERDICT_DISCIPLINE}\n\n${FEEDBACK_ASK}`
+    ? `${VERDICT_DISCIPLINE}\n\n${RUN_MEMORY}\n\n${FEEDBACK_ASK}`
     : `${FIRST_MOVE}\n\n${VERDICT_DISCIPLINE}\n\n${FEEDBACK_ASK}`;
   return `${base}\n\n${SHARED_PARAM_GUIDANCE}`;
 }

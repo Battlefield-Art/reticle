@@ -443,11 +443,10 @@ export const OBSERVE_TOOLS: ToolDef[] = [
           : assertsDerivedIpcStatus(predicate)
             ? { advice: DERIVED_IPC_STATUS_ADVICE }
             : {};
-      // Read BEFORE the verdict notes its own epoch on the ledger: the question is whether code
-      // changed since the PREVIOUS verdict.
-      const changeUndeclared = await isChangeUndeclared(
-        { current: session.currentEditEpoch, atLastVerdict: session.gaps?.lastVerdictEditEpoch },
-        () => openSessionIntents(deps, asString(args['sessionId'])),
+      // Asked of every verdict drawn after an observed edit, not once per edit — see
+      // isChangeUndeclared for why repeating it is disclosure rather than nagging.
+      const changeUndeclared = await isChangeUndeclared(session.currentEditEpoch, () =>
+        openSessionIntents(deps, asString(args['sessionId'])),
       );
       const { decision, contradictions, coverage, gaps, verdictEffect } = await assertVerdict(
         session,

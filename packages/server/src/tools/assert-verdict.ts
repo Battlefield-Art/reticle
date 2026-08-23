@@ -185,7 +185,7 @@ export async function assertVerdict(
     routeChanged: false,
     routeSignalFired: false,
   });
-  noteSessionGaps(session, gaps, session.currentEditEpoch);
+  noteSessionGaps(session, gaps);
   // The source the act path would have written: an assertion drives nothing, so the file:line it can
   // point at is the one the last act remembered — the same pointer this tool already reports on red.
   const source = session.lastAct.source();
