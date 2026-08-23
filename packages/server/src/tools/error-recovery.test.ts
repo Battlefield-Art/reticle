@@ -704,3 +704,30 @@ describe('a selector that missed is not a malformed call', () => {
     expect(recoveryFor(missed)).toBeDefined();
   });
 });
+
+describe('the destructive-control refusal names the argument it wants', () => {
+  /**
+   * A benchmark run spent its ENTIRE 25-turn budget here. The refusal said "retry with
+   * args.confirmDangerous=true"; the agent looked for a top-level parameter by that name, did not
+   * find one, and went back to re-read the tool list instead of retrying. The flag is documented —
+   * inside the `args` object's own description — so the dotted path was pointing at something that
+   * is not a parameter.
+   */
+  const blocked =
+    'potentially destructive native action blocked; retry with args.confirmDangerous=true';
+
+  it('shows the argument object rather than a dotted path', () => {
+    const hint = recoveryFor(blocked) ?? '';
+    expect(hint).toMatch(/args: \{ confirmDangerous: true \}/);
+    expect(hint).toMatch(/inside the `args` object/);
+  });
+
+  /**
+   * The classifier matches `deploy` and `publish`, so an ordinary "New deploy" button trips it.
+   * Listing only delete/remove/revoke made the refusal read as a malfunction on an app where
+   * nothing was being destroyed.
+   */
+  it('names a trigger word that is not destruction', () => {
+    expect(recoveryFor(blocked) ?? '').toMatch(/deploy|publish/);
+  });
+});

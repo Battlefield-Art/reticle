@@ -138,10 +138,25 @@ export const RECOVERY = {
     'telling you something: drive whatever ENABLES the field (open the editor, satisfy the ' +
     'precondition) and act again. If the field should have been editable, that is a bug in the app, ' +
     'not in Reticle.',
+  /**
+   * Written as the ARGUMENT OBJECT the caller has to send, not as a dotted path.
+   *
+   * Measured on a benchmark run that spent its entire budget here: the refusal said "retry with
+   * args.confirmDangerous=true", and the agent went looking for a parameter by that name, could not
+   * find one at the top level of the schema, and re-read the tool list rather than retrying. The
+   * flag IS documented — inside the `args` object's own description — so a dotted path pointing at
+   * something that is not a top-level parameter is the whole distance between a one-line retry and
+   * a lost budget.
+   *
+   * The classifier is also wider than "destructive": it matches `deploy` and `publish`, so an
+   * ordinary "New deploy" button trips it. Naming a real trigger word here keeps that from reading
+   * as a malfunction on an app where nothing is being deleted.
+   */
   CONFIRM_DANGEROUS:
-    'Reticle blocked a potentially destructive control (delete, remove, revoke…) on purpose. If you ' +
-    'mean it, retry the same action with args.confirmDangerous set to true. This is a deliberate ' +
-    'refusal, not a defect: there is nothing to report.',
+    'Reticle blocked a control whose label reads as consequential (delete, remove, revoke, deploy, ' +
+    'publish, pay…) on purpose. If you mean it, send the SAME call again with ' +
+    '`args: { confirmDangerous: true }` — it goes inside the `args` object, not beside it. This is ' +
+    'a deliberate refusal, not a defect: there is nothing to report.',
   UNSUPPORTED_SURFACE:
     'That surface is not supported yet, and Reticle refuses rather than pretending — a rich-text ' +
     'editor keeps its own document model, so writing to the DOM would look right and submit the old ' +
