@@ -14,6 +14,8 @@ export interface Control {
   ref: string;
   role: string;
   name: string;
+  /** The snapshot renders `[disabled]` after the ref. A disabled control cannot demonstrate anything. */
+  disabled: boolean;
 }
 
 /**
@@ -52,10 +54,17 @@ export function parseControls(payload: string): Control[] {
 }
 
 function parseTree(tree: string): Control[] {
-  return [...tree.matchAll(/-\s*(\w+)\s+"([^"]*)"\s*\(ref=(e\d+)\)/g)].map((m) => ({
+  // The trailing group captures the state suffix the snapshot appends after the ref — `[disabled]`,
+  // `[checked]`, `[value="on"]`. It was being discarded, so the demo could not tell a live button
+  // from a dead one. Measured on the hard fixture: its first button is `Hold selected [disabled]`,
+  // and the demo would have opened a browser, clicked something that cannot respond, and reported a
+  // truthful `no-fault` about a control the user never expected to work. That is a correct verdict
+  // and a ruinous first impression.
+  return [...tree.matchAll(/-\s*(\w+)\s+"([^"]*)"\s*\(ref=(e\d+)\)([^\n]*)/g)].map((m) => ({
     role: m[1] ?? '',
     name: m[2] ?? '',
     ref: m[3] ?? '',
+    disabled: (m[4] ?? '').includes('[disabled]'),
   }));
 }
 
@@ -70,7 +79,7 @@ export function pickControl(controls: readonly Control[]): Control | undefined {
   for (const role of DRIVABLE) {
     // First-seen order within a role: the DOM order is the reading order, and the first button on a
     // page is overwhelmingly the one the page is about.
-    const found = controls.find((c) => c.role === role && '' !== c.name);
+    const found = controls.find((c) => c.role === role && '' !== c.name && !c.disabled);
     if (found !== undefined) return found;
   }
   return undefined;
@@ -81,3 +90,25 @@ export const NOTHING_TO_DRIVE =
   'This app rendered no button or link Reticle could drive, so there is nothing to demonstrate ' +
   'yet — not a failure, just an empty first screen. Open a page with a control on it and run this ' +
   'again, or drive it yourself with the reticle_* tools.';
+
+/**
+ * A Reticle daemon already owns the port, so `demo` cannot open its own.
+ *
+ * `demo` binds the bridge port because the SDK in the page dials that port and nothing else. A
+ * daemon already there is not a failure state — it means the MCP client this user installed is
+ * ALREADY running, so the demonstration they came for is one tool call away and does not need this
+ * command at all. Binding a different port would produce a browser that never dials home; racing
+ * `reticle stop` is the race drive-attach.ts documents as unwinnable.
+ */
+export function demoDaemonAlreadyRunning(port: number, url: string): string {
+  return (
+    `Reticle is already running on :${String(port)} — which means the tools are live and you do ` +
+    `not need the demo.\n  Ask your agent to drive it: open ${url}, then reticle_snapshot to see ` +
+    'the page and reticle_act_and_wait to drive one control and get a verdict.'
+  );
+}
+
+/** Someone else's process holds the port: neither binding nor attaching can work. */
+export function demoForeignHolder(description: string): string {
+  return `${description} \`demo\` needs that port, because the SDK in your page dials it.`;
+}

@@ -20,12 +20,29 @@
  *     else. Watching Reticle be honest IS the demonstration.
  */
 
-import { ReticleEnv, RETICLE_DEFAULT_PORT } from '@reticlehq/core';
+import {
+  ReticleEnv,
+  RETICLE_DEFAULT_PORT,
+  ABSENCE_DERIVED_CONTRADICTIONS,
+  type ContradictionKind,
+} from '@reticlehq/core';
 import { start } from '../index.js';
 import { TOOLS } from '../tools/tools.js';
 import { runTool } from '../tools/invoke-tool.js';
 import { ReticleTool } from '../tools/tool-names.js';
-import { parseControls, pickControl, NOTHING_TO_DRIVE } from './demo-drive.js';
+import {
+  parseControls,
+  pickControl,
+  NOTHING_TO_DRIVE,
+  demoDaemonAlreadyRunning,
+  demoForeignHolder,
+} from './demo-drive.js';
+import { probePresence, describePresence } from '../daemon/port-presence.js';
+import { probeDaemon } from '../mcp/mcp-proxy.js';
+import { readPid } from '../daemon/daemon.js';
+import { fetchStatus } from './cli-launch.js';
+import { captureLookup, findPortHolder } from './port-holder.js';
+import { DriveMode, decideDriveMode } from './drive-attach.js';
 import { createNodeFileSystem } from '../project/fs-port.js';
 import { BaselineStore } from '../project/baselines.js';
 import { RecordingStore } from '../flows/recordings.js';
@@ -65,6 +82,15 @@ export interface DemoPorts {
  * every branch of it has to be true.
  */
 export async function runDemo(deps: ToolDeps, ports: DemoPorts): Promise<boolean> {
+  // Pin ONE session for the whole run.
+  //
+  // Measured: the demo opened its browser, drove a control, printed the DOM change — and then died
+  // on the crawl with `multiple sessions connected — pass sessionId to target one`, because a
+  // second tab dialled the bridge between the click and the crawl. Every unpinned call is a race
+  // whose loser is a stack trace, and this one lands AFTER the user has seen it working, which is
+  // the most expensive moment to break. The demo drives the tab it opened, so it names it.
+  const pinned = deps.sessions.list()[0];
+  const sessionId = pinned?.sessionId;
   // Retry the read rather than sleep a fixed amount.
   //
   // The session registers when the SDK dials, which is BEFORE the framework has painted anything.
@@ -74,7 +100,10 @@ export async function runDemo(deps: ToolDeps, ports: DemoPorts): Promise<boolean
   let controls: ReturnType<typeof parseControls> = [];
   for (let attempt = 0; attempt < FIRST_PAINT_ATTEMPTS && 0 === controls.length; attempt++) {
     if (0 !== attempt) await new Promise((r) => setTimeout(r, FIRST_PAINT_STEP_MS));
-    const snap = await runTool(tool(ReticleTool.SNAPSHOT), deps, { mode: 'interactive' });
+    const snap = await runTool(tool(ReticleTool.SNAPSHOT), deps, {
+      mode: 'interactive',
+      sessionId,
+    });
     controls = parseControls(text(snap));
   }
   const target = pickControl(controls);
@@ -95,6 +124,7 @@ export async function runDemo(deps: ToolDeps, ports: DemoPorts): Promise<boolean
     ref: target.ref,
     action: 'click',
     timeout_ms: SETTLE_MS,
+    sessionId,
   })) as Record<string, unknown>;
 
   const rawVerified = result['verified'];
@@ -117,16 +147,31 @@ export async function runDemo(deps: ToolDeps, ports: DemoPorts): Promise<boolean
   // console read catches what the DOM never shows.
   const crawl = (await runTool(tool(ReticleTool.VERIFY), deps, {
     action: 'crawl',
+    sessionId,
   })) as Record<string, unknown>;
   const anomalies = Array.isArray(crawl['anomalies'])
     ? (crawl['anomalies'] as { kind?: unknown; desc?: unknown }[])
     : [];
   const consoleRead = (await runTool(tool(ReticleTool.CONSOLE), deps, {
     level: 'error',
+    sessionId,
   })) as Record<string, unknown>;
   const errors = Array.isArray(consoleRead['entries']) ? consoleRead['entries'].length : 0;
 
-  const found = anomalies.length + errors;
+  // Separate what we can stand behind from what we merely did not see happen.
+  //
+  // The crawl on the hard fixture returned 24 anomalies and every one was `request-never-settled` —
+  // on radio buttons. Core already grades that class as absence-derived and downgrades a verdict to
+  // UNKNOWN rather than asserting NO, for the documented reason that every attribution of one to the
+  // app turned out to be a misattribution. Printing 24 of them as "things worth looking at" would
+  // make the first finding a new user ever reads the weakest one we produce, about controls that
+  // work. The same set is reused rather than re-listed, so a kind reclassified in core is
+  // reclassified here.
+  const confident = anomalies.filter(
+    (a) => !ABSENCE_DERIVED_CONTRADICTIONS.has(a.kind as ContradictionKind),
+  );
+  const weak = anomalies.length - confident.length;
+  const found = confident.length + errors;
   ports.print('');
   if (0 === found) {
     // An honest nothing. Saying "no problems" about an app we barely touched would be the same
@@ -139,19 +184,32 @@ export async function runDemo(deps: ToolDeps, ports: DemoPorts): Promise<boolean
     );
   } else {
     ports.print(`  Found ${String(found)} thing(s) worth looking at:`);
-    for (const a of anomalies.slice(0, 5)) {
+    for (const a of confident.slice(0, 5)) {
       const kind = 'string' === typeof a.kind ? a.kind : 'anomaly';
       const desc = 'string' === typeof a.desc ? a.desc : '';
       ports.print(`    · ${kind}${'' === desc ? '' : ` — ${desc}`}`);
     }
     if (0 !== errors) ports.print(`    · ${String(errors)} console error(s) your DOM never showed`);
   }
+  // Reported, never counted. Hiding them would be the other failure — an agent that wants to wait
+  // and re-check should know they exist.
+  if (0 !== weak)
+    ports.print(
+      `  (${String(weak)} more where a request had not finished when Reticle stopped looking — too weak to call a defect.)`,
+    );
 
   ports.print('');
+  // The reason, not just the letter grade.
+  //
+  // A bare `no` on a control the user watched work reads as Reticle being wrong about their app —
+  // and a bare `unknown` reads as Reticle being useless. The `because` is the whole difference, and
+  // it is the sentence that teaches what a verdict IS.
+  const because = result['because'];
   ports.print(
     `  verdict on the click: ${verified}. That is Reticle: it drove your app from the inside, ` +
       'and told you what it could and could not prove.',
   );
+  if ('string' === typeof because && '' !== because) ports.print(`  why: ${because}`);
   return true;
 }
 
@@ -166,6 +224,32 @@ export async function handleDemo(url: string, port: number | undefined): Promise
     Number.isFinite(envPort) && envPort > 0 ? envPort : (port ?? RETICLE_DEFAULT_PORT);
   const fs = createNodeFileSystem();
   const reticleRoot = `${process.cwd()}/.reticle`;
+
+  // Decide who owns the port BEFORE binding it.
+  //
+  // `demo` went straight to `start`, and the listen error surfaces on the server object long after
+  // `start` resolves — so a daemon on the port killed the FIRST thing a new user runs with a raw
+  // `node:net` stack. `drive` already solved exactly this; the arbitration is reused rather than
+  // re-derived. The answers differ only because `demo` cannot attach: the SDK in the page dials the
+  // bridge port and nothing else, so a demo on another port is a browser that never dials home.
+  const presence = await probePresence(resolved, { tcpOpen: probeDaemon, status: fetchStatus });
+  const mode = decideDriveMode(presence);
+  if (DriveMode.BIND !== mode) {
+    const reason =
+      DriveMode.ATTACH === mode
+        ? demoDaemonAlreadyRunning(resolved, url)
+        : demoForeignHolder(
+            describePresence(presence, resolved, {
+              ourPid: readPid(resolved),
+              holderPid: findPortHolder(resolved, captureLookup)?.pid,
+            }),
+          );
+    ports.fail(`  ${reason}`);
+    // A live daemon is not an error: the user has a working install and was told what to do with
+    // it. Only a stranger on the port leaves them stuck.
+    if (DriveMode.ATTACH !== mode) process.exitCode = 1;
+    return;
+  }
 
   ports.print(`  Opening ${url} …`);
   const running = await start({
@@ -205,6 +289,15 @@ export async function handleDemo(url: string, port: number | undefined): Promise
 
   try {
     await runDemo(deps, ports);
+  } catch (error: unknown) {
+    // A demonstration that ends in a Node stack trace has taught the user that Reticle is broken,
+    // whatever it proved a second earlier. Every failure gets a sentence and a way forward.
+    const detail = error instanceof Error ? error.message : String(error);
+    ports.fail(`  The demo could not finish: ${detail}`);
+    ports.fail(
+      '  That is a Reticle defect, not your app — report it with `reticle feedback --agent --kind bug "<what happened>"`.',
+    );
+    process.exitCode = 1;
   } finally {
     await running.close();
   }
