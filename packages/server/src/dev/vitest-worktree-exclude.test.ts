@@ -9,6 +9,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -25,12 +26,19 @@ const NODE_MODULES_GLOB = '**/node_modules/**';
 const PASS_WITH_NO_TESTS = '--passWithNoTests';
 const VITEST_RUN = 'run';
 const SPAWN_TIMEOUT_MS = 30_000;
+const VITEST_PACKAGE_JSON = 'vitest/package.json';
+const VITEST_BIN = 'vitest.mjs';
 /**
- * Drive the CLI with `node vitest.mjs`, not `pnpm exec`. On Windows `pnpm` is a `.cmd` shim;
- * `spawnSync('pnpm', …)` without a shell returns `status: null` (ENOENT) and the assertion
- * reads as the exclude failing. POSIX never saw it. `process.execPath` is the same binary on both.
+ * Drive the CLI with `node <resolved vitest.mjs>`, not `pnpm exec`. On Windows `pnpm` is a `.cmd`
+ * shim; `spawnSync('pnpm', …)` without a shell returns `status: null` (ENOENT) and the assertion
+ * reads as the exclude failing. POSIX never saw it. Resolve the binary through Node: a hardcoded
+ * path under the install tree is what the turbo-input guard treats as a repo-root read, and listing
+ * that tree as a cache input would bust the key on every install.
  */
-const VITEST_CLI = join(REPO, 'node_modules', 'vitest', 'vitest.mjs');
+const VITEST_CLI = join(
+  dirname(createRequire(import.meta.url).resolve(VITEST_PACKAGE_JSON)),
+  VITEST_BIN,
+);
 
 const planted = join(REPO, CLAUDE_WORKTREES, PROBE_DIR);
 
