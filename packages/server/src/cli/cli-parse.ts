@@ -77,6 +77,7 @@ const VERIFY_COMMAND = 'verify';
 const AFFECTED_COMMAND = 'affected';
 const HUNT_COMMAND = 'hunt';
 const CAPSULES_COMMAND = 'capsules';
+const DEMO_COMMAND = 'demo';
 const GATE_COMMAND = 'gate';
 /** Hook mode: prose a human can read, and silence when there was simply nothing to check. */
 const HOOK_FLAG = '--hook';
@@ -125,6 +126,7 @@ const KNOWN_COMMANDS: ReadonlySet<string> = new Set([
   AFFECTED_COMMAND,
   HUNT_COMMAND,
   CAPSULES_COMMAND,
+  DEMO_COMMAND,
   GATE_COMMAND,
   WATCH_COMMAND,
   UPDATE_COMMAND,
@@ -230,6 +232,7 @@ export type CliResult =
   | { kind: 'hunt'; dir: string }
   | { kind: 'capsules' }
   | { kind: 'gate'; files: string[]; since?: string; hook?: boolean }
+  | { kind: 'demo'; url: string; port: number }
   | { kind: 'watch'; url?: string }
   | { kind: 'update' }
   | { kind: 'rollback' }
@@ -695,6 +698,11 @@ export function parseCliArgs(
       const t = parseTargetArgs(rest);
       const since = t.since ?? implicitSince(t.files);
       return { kind: 'affected', files: t.files, ...(since === undefined ? {} : { since }) };
+    }
+    case DEMO_COMMAND: {
+      const url = rest[0];
+      if (url === undefined) return missingOperand(DEMO_COMMAND, 'a url');
+      return { kind: 'demo', url, port: defaultPort };
     }
     case GATE_COMMAND: {
       // `--hook` is stripped before target parsing, which would reject it as an unknown flag.
