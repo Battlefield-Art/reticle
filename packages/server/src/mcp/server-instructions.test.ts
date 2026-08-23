@@ -59,6 +59,16 @@ describe('buildServerInstructions', () => {
       expect(text).toContain('reticle_context');
       expect(text).toContain('reticle_intent');
     });
+
+    /**
+     * Naming them was half a fix. Neither is advertised, so a bare name sent an agent at a tool
+     * `tools/list` does not contain: it burns a call, gets "unknown tool", and learns that the
+     * instructions cannot be trusted — which is more expensive than never having been told.
+     */
+    it('gives both of them the reticle_run call that actually reaches them', () => {
+      expect(text).toContain('reticle_run({ tool: "reticle_context"');
+      expect(text).toContain('reticle_run({ tool: "reticle_intent"');
+    });
   });
 
   it('stays short enough to be read in full, in both states', () => {
@@ -71,8 +81,16 @@ describe('buildServerInstructions', () => {
     // charged once. Anything added beyond that has to make the same argument — a paragraph that is
     // not replacing per-turn repetition is just a longer preamble, and the reason for the cap is
     // attention, not bytes.
+    //
+    // Raised again to 3,200 for the reach-for block, which makes that argument in a second form.
+    // Four advertised tools (observe, wait_for, inspect, session) were re-sent in full on EVERY
+    // turn as part of the ~18 KB surface and explained nowhere, so the model had schemas it could
+    // use and no basis on which to choose — and the measured cost of that on observe alone was
+    // triple the false alarms. Roughly 600 bytes charged once, to make several KB per turn
+    // reachable, is the same trade with the numbers in the same direction. The first-run state,
+    // where a longer preamble would do the most harm, is unchanged but for two tool names.
     for (const previouslyConnected of [true, false]) {
-      expect(buildServerInstructions({ previouslyConnected }).length).toBeLessThan(2900);
+      expect(buildServerInstructions({ previouslyConnected }).length).toBeLessThan(3200);
     }
   });
 });

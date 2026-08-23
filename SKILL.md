@@ -286,7 +286,7 @@ Five calls, and the last one is the only one that counts:
 
 ```
 reticle_sessions()                                   // connected? if empty, read `why` — it names the fix
-reticle_capabilities({ sessionId })                  // the app's whole testable surface, ~1 KB
+reticle_run({ tool: "reticle_capabilities", args: { sessionId } })  // the app's whole testable surface, ~1 KB
 reticle_snapshot({ sessionId, mode: "interactive" }) // just the controls, with refs
 reticle_act_and_wait({ sessionId, ref, action: "click", until: { kind: "allOf", predicates: [
   { kind: "net",     urlContains: "/api/...", status: 200 },

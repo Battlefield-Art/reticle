@@ -21,7 +21,7 @@ import { SHARED_PARAM_GUIDANCE } from './shared-params.js';
  */
 
 /** The tools, and the rule that only two of them decide anything. Constant across both states. */
-const VERDICT_DISCIPLINE = `Reticle verifies a running web app from the inside: look (reticle_snapshot / reticle_query), act and prove in one hop (reticle_act_and_wait), observe (reticle_state / reticle_network / reticle_console), assert (reticle_assert). Verify a user-facing change against the real app before you call it done, and never weaken a check to make it pass.
+const VERDICT_DISCIPLINE = `Reticle verifies a running web app from the inside: go (reticle_navigate), look (reticle_snapshot / reticle_query), act and prove in one hop (reticle_act_and_wait), observe (reticle_observe / reticle_state / reticle_network / reticle_console), assert (reticle_assert). Verify a user-facing change against the real app before you call it done, and never weaken a check to make it pass.
 
 Only reticle_act_and_wait and reticle_assert produce a verdict. reticle_act and everything else move or read the app and prove nothing, so a drive that ends without one of those two has no result however many tools it used. Prefer reticle_act_and_wait({ ref, action, until }) — it names the expected consequence BEFORE the action, which is the difference between a check and a rationalisation. Only verified:"yes" is a pass — "unknown" means Reticle could not tell what happened, "no-fault" means nothing was declared to prove. Report either as not proved.`;
 
@@ -39,18 +39,27 @@ const FIRST_MOVE = `FIRST: no app has ever connected to Reticle in this project,
 Fix that before anything else: run \`npx @reticlehq/server init\` in the project, then RESTART the dev server (a plugin added to a config the running server already read is not in the bundle), then load the app in a browser. Confirm with reticle_sessions — a session listed there is the proof, and until one appears no other tool can tell you anything about this app.`;
 
 /**
- * The two tools an agent would otherwise never learn exist.
+ * When to reach for the tools that are advertised but never explained, and how to reach the two
+ * that are explained but not advertised. Both halves of the same defect.
  *
- * Both sit on the EXTENDED surface, so neither appears in the default tool list, and neither was
- * named here or in the skill. A feature nothing ever mentions is built and unreachable — its effect
- * size is zero however good it is — and this string is the only channel that reaches an agent which
- * arrived through a plugin listing rather than through the skill.
+ * An advertised tool arrives as a name and one line of description. That is enough to USE and not
+ * enough to CHOOSE, and `reticle_observe` is the case that proves it costs something: the
+ * measurement recorded on TOOL_SURFACE.VERIFY is that dropping the observation tools TRIPLED false
+ * alarms, because the model stops observing and reaches for the verdict without the evidence. So
+ * observe gets a reason, not a listing.
+ *
+ * The other direction: `reticle_context` and `reticle_intent` sit on the EXTENDED surface, so they
+ * are not in the list an agent is handed. Naming them without their call shape sent an agent at a
+ * tool it could not call, which is worse than silence — it teaches distrust of everything else
+ * here. They are now written the way the skill writes them, as the `reticle_run` call that works.
  *
  * Only in the connected state, and that is not a budget trick: an agent whose app has never
- * connected has no run to carry forward and nothing to declare an intent against. Its one
- * instruction is the first move, and adding a second would compete with it.
+ * connected has nothing to observe, no run to carry forward and nothing to declare an intent
+ * against. Its one instruction is the first move, and adding a second would compete with it.
  */
-const RUN_MEMORY = `Two tools worth knowing before you need them. reticle_context returns what this run already established — call it when your context was compacted, at the start of a turn, or when you take over from another agent, rather than re-snapshotting to rediscover what you already knew. reticle_intent declares what a change was MEANT to do, so the verdict has something to be checked against other than itself.`;
+const REACH_FOR = `reticle_observe is the evidence channel: everything the page did since a cursor, in one read. Take it BEFORE you call a build broken — measured, stripping the observation tools TRIPLED false alarms, because an agent that stops observing reaches for the verdict without the evidence. reticle_wait_for settles a page that is changing without you; reticle_inspect maps an element to its source file:line, which turns a finding into an edit; reticle_session {action:"yield"} hands the tab back to the human.
+
+Everything else is one hop: reticle_tools lists it, reticle_run calls it. Two to know early: reticle_run({ tool: "reticle_context", args: {} }) returns what this run already established, after a compaction or handover, and reticle_run({ tool: "reticle_intent", args: { action: "declare", ... } }) declares what a change was MEANT to do, so the verdict has something to check against other than itself.`;
 
 /** The feedback ask. Constant: an agent that cannot get set up is the report we most need. */
 const FEEDBACK_ASK = `Feedback is first-class here, not a courtesy. Reticle is built FOR agents, so your experience is the only signal that decides what gets built or fixed — and it disappears when your context does. Send it with \`reticle_feedback\` the moment you notice, then carry on with your task:
@@ -79,7 +88,7 @@ export interface InstructionState {
  */
 export function buildServerInstructions(state: InstructionState): string {
   const base = state.previouslyConnected
-    ? `${VERDICT_DISCIPLINE}\n\n${RUN_MEMORY}\n\n${FEEDBACK_ASK}`
+    ? `${VERDICT_DISCIPLINE}\n\n${REACH_FOR}\n\n${FEEDBACK_ASK}`
     : `${FIRST_MOVE}\n\n${VERDICT_DISCIPLINE}\n\n${FEEDBACK_ASK}`;
   return `${base}\n\n${SHARED_PARAM_GUIDANCE}`;
 }
