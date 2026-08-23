@@ -124,9 +124,11 @@ export async function scrollToFind(
 
   let downwardSpent = false;
   let everScrolled = false;
-  while (scrolls < max) {
-    const args = downwardSpent ? { ...baseArgs(), dy: -upStepPx(last) } : baseArgs();
-    const sr = await session.command(ReticleCommand.SCROLL, args);
+
+  // The downward pass. Spending its whole budget without reaching the end means rows may remain
+  // further down, so that answer is `exhausted:false` and the upward pass never runs.
+  for (let i = 0; i < max && !downwardSpent; i += 1) {
+    const sr = await session.command(ReticleCommand.SCROLL, baseArgs());
     scrolls += 1;
     const data = asRecord(sr.result);
     last = data;
@@ -135,15 +137,33 @@ export async function scrollToFind(
     const hit = await queryFirst(session, q);
     if (hit !== undefined) return { found: true, element: hit, scrolls, exhausted: false };
 
-    if (!downwardSpent) {
-      // Reached the bottom, or the container would not move downward — turn around before giving up.
-      if (true === data['atEnd'] || true !== data['scrolled']) downwardSpent = true;
-      continue;
-    }
-    // Already searching upward: the top refusing to move means both directions are spent.
+    // Reached the bottom, or the container would not move downward — turn around before giving up.
+    if (true === data['atEnd'] || true !== data['scrolled']) downwardSpent = true;
+  }
+
+  // If the downward pass spent its budget it never saw the end, so there is nothing to turn around
+  // for; report honestly rather than doubling a call whose caller asked for `max` steps.
+  if (!downwardSpent) {
+    return { found: false, scrolls, exhausted: false };
+  }
+
+  // The upward pass gets the caller's budget again, not what is left of it: a list at the bottom of
+  // 14k px needs ~90 scrolls to reach its end and ~90 more to get back, so sharing one budget would
+  // strand the search halfway and answer `exhausted:false` about a list both of whose ends are known.
+  for (let i = 0; i < max; i += 1) {
+    const sr = await session.command(ReticleCommand.SCROLL, { ...baseArgs(), dy: -upStepPx(last) });
+    scrolls += 1;
+    const data = asRecord(sr.result);
+    last = data;
+    if (true === data['scrolled']) everScrolled = true;
+
+    const hit = await queryFirst(session, q);
+    if (hit !== undefined) return { found: true, element: hit, scrolls, exhausted: false };
+
+    // The top refusing to move means both directions are spent.
     if (true !== data['scrolled']) {
       return { found: false, scrolls, exhausted: true, ...exhaustNote(q, data, !everScrolled) };
     }
   }
-  return { found: false, scrolls, exhausted: false }; // spent the budget; more list may exist
+  return { found: false, scrolls, exhausted: false }; // spent the upward budget; more may lie above
 }

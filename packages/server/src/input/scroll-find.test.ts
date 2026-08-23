@@ -121,6 +121,18 @@ describe('scrollToFind', () => {
     expect(r.exhausted).toBe(false);
   });
 
+  it('6b: the upward pass gets the caller budget again, not the remainder (#505)', async () => {
+    // Pinned by CI on the first cut: a 14k-px list needs ~90 scrolls down and ~90 back up, so
+    // sharing one 120 budget stranded the search mid-upward and answered exhausted:false about a
+    // list whose BOTH ends were seen. Each direction gets `max`; reaching the end costs 10 down,
+    // 10 back plus the one extra upward probe that observes the top refusing to move.
+    const { session } = fakeSession({ pages: 10, startPage: 0, targetPage: -1 });
+    const r = await scrollToFind(session, Q, { maxScrolls: 12 });
+    expect(r.found).toBe(false);
+    expect(r.exhausted).toBe(true);
+    expect(r.scrolls).toBe(21);
+  });
+
   it('7: forwards the container ref to every SCROLL command', async () => {
     const { session, scrollArgs } = fakeSession({ pages: 6, startPage: 0, targetPage: 2 });
     await scrollToFind(session, { ...Q, container: 'e9' }, { maxScrolls: 20 });
