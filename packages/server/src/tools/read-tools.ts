@@ -369,9 +369,11 @@ export const READ_TOOLS: ToolDef[] = [
         ),
       depth: z
         .number()
+        .int()
+        .positive()
         .optional()
         .describe(
-          'Collapse anything deeper than N levels to a size marker — avoids huge outputs for large stores.',
+          'Collapse anything deeper than N levels to a size marker — avoids huge outputs for large stores. A whole number of levels, 1 or more.',
         ),
       ...sessionIdShape,
     },
