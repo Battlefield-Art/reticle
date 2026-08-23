@@ -72,6 +72,41 @@ export function declaredExpectations(predicate: Predicate | undefined): Declared
 }
 
 /**
+ * Did the caller name a consequence that does not depend on the response body?
+ *
+ * The unread-body clause exists for the case where the body is the ONLY channel that could have
+ * contradicted the screen — a 200 with per-item failures inside, a GraphQL error that is also a
+ * 200. A declared string on screen, store path, or signal that held is a different channel, and
+ * grading `unknown` there costs a real verdict (measured: a 201 plus the unique row, unread body,
+ * agent went to enable capture instead of finishing the drive).
+ *
+ * Same conservatism as `declaredExpectations`: only the top level and `allOf`. An `anyOf` branch
+ * may never have held, and honouring it would skip the unread caveat on the strength of a net
+ * success that was the branch that actually matched.
+ */
+export function declaresBodyIndependentChannel(predicate: Predicate | undefined): boolean {
+  if (predicate === undefined) return false;
+
+  const walk = (p: Predicate): boolean => {
+    switch (p.kind) {
+      case PredicateKind.ALL_OF:
+        return p.predicates.some(walk);
+      case PredicateKind.TEXT:
+        return true !== p.absent;
+      case PredicateKind.SIGNAL:
+      case PredicateKind.STATE:
+        return true;
+      case PredicateKind.ELEMENT:
+        return true !== p.absent && (p.query.value !== undefined || p.query.text !== undefined);
+      default:
+        return false;
+    }
+  };
+
+  return walk(predicate);
+}
+
+/**
  * Does a call the window recorded match a failure the caller declared?
  *
  * Every field the caller named must agree — a declaration about `POST /api/login → 500` says nothing

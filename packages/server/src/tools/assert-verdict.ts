@@ -7,7 +7,7 @@ import type { InstrumentationGap, JournalVerdictEffect } from '@reticlehq/core';
 import type { Predicate } from '../events/predicate.js';
 import type { Session } from '../session/session.js';
 import { findContradictions, type Contradiction } from '../events/contradictions.js';
-import { declaredExpectations } from '../events/declared.js';
+import { declaredExpectations, declaresBodyIndependentChannel } from '../events/declared.js';
 import {
   blindSpotsFromState,
   buildCoverageStatement,
@@ -151,6 +151,7 @@ export async function assertVerdict(
     // not override it. A fix that lived on one half of the verdict surface would leave the other
     // half broken, and this is the tool agents call most.
     declaredConsequence: predicate.kind !== PredicateKind.SETTLED,
+    ...(declaresBodyIndependentChannel(predicate) ? { independentOfBody: true } : {}),
     ...(inconclusive === undefined ? {} : { inconclusive }),
     ...(true === observationLost ? { observationLost: true } : {}),
     ...(absenceBlindSpot === undefined ? {} : { absenceBlindSpot }),
