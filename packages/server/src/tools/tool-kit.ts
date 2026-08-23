@@ -134,6 +134,25 @@ export interface ToolDef<Ext = unknown> {
   handler(deps: ToolDeps<Ext>, args: Record<string, unknown>): Promise<unknown>;
 }
 
+/**
+ * The optional inline intent, on every tool that draws a verdict.
+ *
+ * One field, carrying either prose or the id of an intent already declared, because the surface is
+ * the scarce thing and a second field for the reference case would double the cost of the idea to
+ * make one of its two uses marginally more explicit. Told apart by the ledger — see
+ * `intent/inline-intent.ts`.
+ *
+ * The first sentence is what a lean surface advertises, so it carries both readings; the rest is for
+ * the profiles that send the whole description.
+ */
+export const intentArg = z
+  .string()
+  .optional()
+  .describe(
+    'What this change is meant to make true, in your own words, or the id of an intent you already declared. ' +
+      'Recorded in .reticle/intent.json, the same ledger reticle_intent writes, and marked proved by this verdict if it passes.',
+  );
+
 export const sessionIdShape = {
   sessionId: z
     .string()

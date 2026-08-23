@@ -10,6 +10,7 @@ import {
   ReticleCommand,
   DEFAULT_ASSERT_TIMEOUT_MS,
   PredicateKind,
+  Verified,
 } from '@reticlehq/core';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport } from '../events/reaction.js';
@@ -46,10 +47,16 @@ import { assertVerdict } from './assert-verdict.js';
 import { assertSource } from './assert-source.js';
 import { isChangeUndeclared } from '../honesty/undeclared-change.js';
 import { openSessionIntents } from '../intent/open-intents.js';
+import {
+  dischargeInlineIntent,
+  inlineVerdictId,
+  linkInlineIntent,
+} from '../intent/inline-intent.js';
 import { bodiesNotCaptured } from '../honesty/uncaptured-bodies.js';
 import { withControl } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord } from './tools-helpers.js';
-import { type ToolDef, sessionIdShape, commandOrThrow } from './tool-kit.js';
+import { type ToolDef, intentArg, sessionIdShape, commandOrThrow } from './tool-kit.js';
+import { gradeOfPredicate } from './assert-grade.js';
 
 /**
  * Evidence-completeness block: present on observe/network/console only when the ring buffer has
@@ -366,6 +373,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         .describe(
           'Cursor from a prior reticle_act — scopes the assertion to events after that act.',
         ),
+      intent: intentArg,
       ...sessionIdShape,
     },
     outputSchema: {
@@ -434,6 +442,14 @@ export const OBSERVE_TOOLS: ToolDef[] = [
       const timeout = asNumber(args['timeout_ms']) ?? 0;
       // Honesty: explicit since wins; else default to the last act's cursor; else the whole buffer.
       const since = asNumber(args['since']) ?? session.lastAct.cursor() ?? 0;
+      // Declared BEFORE the verdict, so the undeclared-change read below finds it open and stays
+      // quiet on THIS verdict rather than on the next one. Discharged after that read.
+      const intentId = await linkInlineIntent(
+        deps,
+        asString(args['sessionId']),
+        asString(args['intent']),
+        PredicateKind.SETTLED === predicate.kind ? undefined : predicate,
+      );
       const verdict =
         timeout > 0
           ? await waitForPredicate(session, predicate, timeout, since)
@@ -465,6 +481,17 @@ export const OBSERVE_TOOLS: ToolDef[] = [
         verdict.observationLost,
         changeUndeclared,
       );
+      // The assertion IS the proof attempt, so a green one discharges the intent it was drawn for. A
+      // red proved nothing, and an unbound intent refuses discharge anyway — see inline-intent.ts.
+      // The id is checked HERE rather than only inside the helper so a caller that declared no intent
+      // touches nothing at all, not even the clock.
+      if (intentId !== undefined && Verified.YES === decision['verified']) {
+        await dischargeInlineIntent(deps, asString(args['sessionId']), intentId, {
+          verdictId: inlineVerdictId(ReticleTool.ASSERT, deps.now()),
+          grade: gradeOfPredicate(predicate),
+          at: deps.now(),
+        });
+      }
       // Journal the verdict so a LATER turn can read what this one proved. A verdict that lives only
       // in the response lives only in the agent's context window, which is the copy a compaction
       // destroys — see runs/run-context.ts. Recorded WITHOUT an attribution window: this tool drives

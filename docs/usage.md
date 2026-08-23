@@ -183,7 +183,7 @@ The timeline + summary of what happened.
 
 Act, then wait for a predicate: the whole act→observe→assert loop in one hop.
 
-- **args:** `ref`, `action`, `args?`, `until: <predicate>`, `timeout_ms?` (default 4000; 0 = evaluate once), `refuseWhenThrottled?`, `sessionId?`.
+- **args:** `ref`, `action`, `args?`, `until: <predicate>`, `timeout_ms?` (default 4000; 0 = evaluate once), `refuseWhenThrottled?`, `intent?`, `sessionId?`.
 - **returns:** `{ effect, verdict, trace, session, warning? }`. `effect` is the action result (`{ ok, ref, action }`), `verdict` is `{ pass, evidence?, failureReason? }`, `trace` is the reaction report of everything the app did after the action, and `session` is the tab-health block `{ lastSeenMs, throttled, focused }` (with a `warning` when throttled). A failing `verdict` still returns `effect` + `trace` so you can see what _did_ happen. The predicate is automatically floored at this act's cursor, so it only matches events the action actually caused.
 
 ### `reticle_wait_for`
@@ -197,9 +197,10 @@ Block until a predicate holds (or time out). Looks both backward (recent buffer)
 
 Verify a predicate; optionally wait for it.
 
-- **args:** `predicate`, `timeout_ms?` (0 = evaluate once), `since?`, `sessionId?`.
+- **args:** `predicate`, `timeout_ms?` (0 = evaluate once), `since?`, `intent?`, `sessionId?`.
 - Same `since` default as `reticle_wait_for`: scoped to your last act so a stale buffered event can't fake a pass; override with an explicit `since`.
 - **returns:** `{ verified, because, pass, evidence, contradictions?, coverage?, failureReason?, session, warning? }`. On failure includes a **near-miss** (e.g. "found the dialog but not visible", or "no button named 'Submit'; saw: Cancel"). The `session` block `{ lastSeenMs, throttled, focused }` reports tab health on every assert; when throttled a `warning` is attached so you never assert against a tab that is silently no-oping.
+- **`intent` declares what the change was FOR, inline.** Pass a sentence in your own words and it lands in `.reticle/intent.json`, the same git-checked ledger `reticle_intent` writes, before the verdict is drawn; a green verdict then marks it proved and names itself as the proof. Pass the **id** of an intent you already declared instead, to point several verdicts at one statement rather than restating it. `reticle_act_and_wait` takes the same argument. Omit it and nothing is written.
 - **Read `verified`, not `pass`.** `pass` says the predicate held; `verified` says whether that means anything. It is `"no"` when a channel contradicts the assertion (a failed write under a green screen, a batch whose body reports per-item failures, a request still in flight), and `"unknown"` when the outcome could not be known yet: a `202 Accepted` that has not reconciled, or a write whose response body was never recorded. `because` names the deciding evidence in one sentence.
 
 ### `reticle_reconcile`
