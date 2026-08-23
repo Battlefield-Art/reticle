@@ -47,6 +47,18 @@ const RULE_BEGIN =
 const RULE_END = '<!-- reticle:end -->';
 
 /**
+ * Does this file already carry the managed block?
+ *
+ * Exported so callers cannot invent their own looser test. The begin marker carries explanatory
+ * text inside the comment, so a substring check for `reticle:begin` matches files that
+ * `mergeMarkedInstruction` would treat as having NO block — and the two disagreeing means a refresh
+ * silently appends a second copy instead of updating the first.
+ */
+export function hasManagedBlock(text: string): boolean {
+  return text.includes(RULE_BEGIN);
+}
+
+/**
  * How the agent must INVOKE the CLI.
  *
  * `reticle init` installs the SDK packages, never the server — so there is no `reticle` on the
