@@ -670,3 +670,37 @@ describe('an upstream validation sentence is still the caller to fix', () => {
     expect(JSON.stringify(payload)).toMatch(/defect in Reticle/i);
   });
 });
+
+describe('a selector that missed is not a malformed call', () => {
+  /**
+   * Measured live, driving the bench app: `target: { testid: "new-deploy" }` on a view that had not
+   * rendered yet returned "target matched no element … take a reticle_snapshot", and the recovery
+   * appended was *"That call did not match the tool's schema — re-read that tool's parameters"*.
+   *
+   * The call matched the schema perfectly. The element was not on the page. Sending an agent to
+   * re-read arguments that were already correct costs it a turn on the commonest refusal there is —
+   * and it was the catch-all rule that claimed it, because the error's OWN advice names
+   * `reticle_snapshot`, which is exactly what that rule keys on.
+   */
+  const missed =
+    'target matched no element. Nothing was acted on and no verdict is possible — widen the ' +
+    'query, or take a reticle_snapshot to see what is actually on the page.';
+
+  it('does not tell the caller its arguments were wrong', () => {
+    const hint = recoveryFor(missed);
+    expect(hint).toBeDefined();
+    expect(hint).not.toMatch(/did not match the tool's schema/);
+    expect(hint).not.toMatch(/re-read that tool's parameters/);
+  });
+
+  it('says the call was valid and nothing was acted on', () => {
+    const hint = recoveryFor(missed) ?? '';
+    expect(hint).toMatch(/valid/i);
+    expect(hint).toMatch(/nothing was.*acted on/i);
+  });
+
+  /** An unmatched message collects the feedback ask, which is how agents get pushed to report a miss. */
+  it('is still matched, so it never collects a defect report', () => {
+    expect(recoveryFor(missed)).toBeDefined();
+  });
+});

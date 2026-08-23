@@ -103,6 +103,19 @@ export const RECOVERY = {
     '64 characters. No slashes, no "..", no leading dot: the name becomes a filename under ' +
     '.reticle/, so anything that could escape that directory is refused. Retry with a slug like ' +
     '"checkout-happy-path". This is an invalid call, not a Reticle defect: there is nothing to report.',
+  /**
+   * The call was well-formed and the SELECTOR missed. Nothing about the arguments was wrong, so the
+   * BAD_ARGUMENTS answer ("re-read that tool's parameters") sends the reader to the one place that
+   * holds no answer — measured live on a `target: { testid }` that simply was not on the page yet.
+   *
+   * The error text already names the two moves that work, so this adds the fact the text cannot
+   * carry: which of them to reach for, and that nothing was acted on.
+   */
+  TARGET_MISSED:
+    'The call was valid — the selector matched nothing on the page RIGHT NOW, and nothing was ' +
+    'acted on. Take a reticle_snapshot to see what is actually there (a view may still be ' +
+    'rendering, or the control may be named differently), then retry with what it shows. This is ' +
+    'a miss, not a Reticle defect: there is nothing to report.',
   NO_SUCH_OPTION:
     'That <select> has no option with the value you asked for, and the message above lists the ones ' +
     'it does have. Reticle refuses rather than assigning it: an unmatched value deselects everything, ' +
@@ -197,6 +210,7 @@ const REASON_OF: Record<keyof typeof RECOVERY, RefusalReason> = {
   STALE_REF: RefusalReason.NO_MATCH,
   STALE_REF_AFTER_EDIT: RefusalReason.NO_MATCH,
   NO_SUCH_OPTION: RefusalReason.NO_MATCH,
+  TARGET_MISSED: RefusalReason.NO_MATCH,
   FLOW_STEP_MISSING: RefusalReason.NO_MATCH,
   UNSUPPORTED_SURFACE: RefusalReason.UNSUPPORTED,
   NOT_EDITABLE: RefusalReason.UNSUPPORTED,
@@ -264,6 +278,14 @@ const RULES: readonly { readonly match: RegExp; readonly hint: string }[] = [
     match: /no form to submit|upload target must be|is not an HTMLElement/i,
     hint: RECOVERY.WRONG_TARGET,
   },
+  // BEFORE the catch-all, which would otherwise claim this one.
+  //
+  // "target matched no element ... take a reticle_snapshot" names a `reticle_*` tool in its own
+  // advice, so the catch-all below matched it and answered "That call did not match the tool's
+  // schema". The call matched the schema perfectly; the element was not on the page. Sending an
+  // agent to re-read arguments that were already correct costs it a turn, and this is the commonest
+  // refusal there is.
+  { match: /target matched no element/i, hint: RECOVERY.TARGET_MISSED },
   // Authored by Reticle, about the caller's arguments: the message already names the valid answers.
   { match: /^unknown action '/i, hint: RECOVERY.BAD_ARGUMENTS },
   { match: /^unsupported query strategy '/i, hint: RECOVERY.BAD_ARGUMENTS },
