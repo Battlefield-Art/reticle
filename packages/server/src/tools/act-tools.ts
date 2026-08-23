@@ -63,6 +63,7 @@ import {
   provenExpectedLinks,
   PredicateSchema,
 } from '../events/predicate.js';
+import { awaitDocumentSuccessor } from '../session/session-successor.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
 import {
   pausedShortCircuit,
@@ -538,6 +539,12 @@ export const ACT_TOOLS: ToolDef[] = [
         .describe(
           'Cursor for this act — pass to reticle_observe/reticle_assert for the full timeline.',
         ),
+      sessionId: z
+        .string()
+        .optional()
+        .describe(
+          'The session that answered, when a full-document navigation replaced the one that was acted on. Absent when the original session survived.',
+        ),
       session: z
         .object({ lastSeenMs: z.number(), throttled: z.boolean(), focused: z.boolean() })
         .optional(),
@@ -545,7 +552,9 @@ export const ACT_TOOLS: ToolDef[] = [
       ...pausedOutputShape,
     },
     handler: async (deps, args) => {
-      const session = deps.sessions.resolve(asString(args['sessionId']));
+      let session = deps.sessions.resolve(asString(args['sessionId']));
+      const acted = session;
+      const actedSessionId = session.id;
       // Live-control: refuse to drive the page (no act, no predicate eval) while paused.
       //
       // A VERDICT rides out with the refusal. This is the one tool here that promises `verified`,
@@ -575,7 +584,8 @@ export const ACT_TOOLS: ToolDef[] = [
       const resolved = await resolveActTarget(session, args);
       if ('error' === resolved.kind) throw new Error(resolved.message);
 
-      const since = session.elapsed();
+      let since = session.elapsed();
+      const actedSince = since;
       // The cursor + effect are marked after the act dispatches (below) — a refused act leaves none.
       // The attribution window stays open across the settle wait below, so post-dispatch async events
       // (the whole point of act_and_wait) attribute to this action. finishAction fires after the wait.
@@ -611,10 +621,31 @@ export const ACT_TOOLS: ToolDef[] = [
 
         // Honesty: floor the predicate at this act's cursor so a stale buffered event can't satisfy it.
         const predicateStarted = session.elapsed();
-        const verdict =
+        let verdict =
           timeout > 0
             ? await waitForPredicate(session, until, timeout, since)
             : await evaluatePredicate(session, until, since);
+
+        // A full-document navigation tears the SDK down mid-wait. `navigate` already waits for the
+        // HELLO and returns the new id; this path used to grade `observation_lost` and leave the
+        // agent holding a dead id, so the next assert failed even though the new page had loaded.
+        // Follow the unique same-origin successor (the awaitArrival idea, without a known URL) and
+        // evaluate there. Two live tabs at that origin is still a guess — we do not follow then.
+        if (true === verdict.observationLost && timeout > 0) {
+          const remaining = timeout - (session.elapsed() - predicateStarted);
+          const next =
+            remaining > 0 ? await awaitDocumentSuccessor(deps.sessions, session, remaining) : null;
+          if (next !== null) {
+            // Compute leftover on the departed session before we point `session` at the successor —
+            // the new session's elapsed() starts at 0 and would refund the whole budget.
+            const leftover = timeout - (session.elapsed() - predicateStarted);
+            session = next;
+            since = 0;
+            if (leftover > 0) {
+              verdict = await waitForPredicate(session, until, leftover, since);
+            }
+          }
+        }
 
         // The predicate resolves the INSTANT it holds, which on an optimistically-navigating app is
         // while the write is still in flight — so the verdict was taken over a window the app had not
@@ -854,13 +885,14 @@ export const ACT_TOOLS: ToolDef[] = [
           honesty,
           ...(capsule === undefined ? {} : { capsule }),
           since,
+          ...(session.id === actedSessionId ? {} : { sessionId: session.id }),
           ...healthEnvelope(session),
         });
       } finally {
-        session.finishAction(
+        acted.finishAction(
           verdictEffect,
           settledOutcome,
-          true === settledOutcome ? session.elapsed() - since : undefined,
+          true === settledOutcome ? acted.elapsed() - actedSince : undefined,
         );
       }
     },

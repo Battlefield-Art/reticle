@@ -6,6 +6,7 @@ import {
 import { Session, type SessionInfo } from './session.js';
 import { AttachmentHistory } from './attachment-history.js';
 import type { NoSessionNextAction } from './no-session-next-action.js';
+import { pickDocumentSuccessor, type SessionIdentity } from './session-successor.js';
 
 /**
  * The agent's active project, used to scope auto-selection. `projectId` is the stable build-stamped
@@ -80,6 +81,15 @@ function scopeMissError(connected: Session[], scope?: ResolveScope): string {
 /** How many bridge-initiated closes to remember for diagnosis. */
 const MAX_REMEMBERED_CLOSURES = 5;
 
+/**
+ * How many recently-departed session ids to remember for successor rebind.
+ *
+ * A full-document navigation HELLO's back under a new id while the agent still holds the old one.
+ * The tombstone is how `resolve(oldId)` finds the unique same-origin successor instead of refusing.
+ * Bounded so a long-lived daemon cannot accumulate one record per tab forever.
+ */
+const MAX_TOMBSTONES = 32;
+
 export class SessionManager {
   readonly #sessions = new Map<string, Session>();
   /**
@@ -88,6 +98,13 @@ export class SessionManager {
    * Owned here because this is the one place that sees both halves — every add and every remove.
    */
   readonly #attachment = new AttachmentHistory();
+  /**
+   * Recently departed sessions, keyed by the id the agent still holds.
+   *
+   * Insertion order is LRU: the oldest is dropped when the cap is hit. A reconnect under the same
+   * id forgets its tombstone — the live session is the answer then.
+   */
+  readonly #tombstones = new Map<string, SessionIdentity>();
   /**
    * The active project's scope, set once from the daemon's .reticle.json. When a tool resolves a session
    * without passing its own scope, this is applied — so auto-selection is project-scoped by default
@@ -123,6 +140,7 @@ export class SessionManager {
     // that silently fails to register is a leak nothing would report.
     declareDrivenRedactionKeys(session.id, session.redactKeys);
     this.#attachment.attached(session.id);
+    this.#tombstones.delete(session.id);
     return previous;
   }
 
@@ -133,7 +151,39 @@ export class SessionManager {
     // Recorded, not forgotten: a session that comes back needs its gap measured, and a listing after
     // the reconnect is exactly where that matters.
     this.#attachment.detached(session.id);
+    this.#rememberTombstone(session);
     return this.#sessions.delete(session.id);
+  }
+
+  #rememberTombstone(session: Session): void {
+    const origin = originOf(session.url);
+    if (origin === undefined) return;
+    if (this.#tombstones.has(session.id)) this.#tombstones.delete(session.id);
+    this.#tombstones.set(session.id, {
+      id: session.id,
+      url: session.url,
+      ...(session.projectId === undefined ? {} : { projectId: session.projectId }),
+    });
+    while (this.#tombstones.size > MAX_TOMBSTONES) {
+      const oldest = this.#tombstones.keys().next().value;
+      if (oldest === undefined) break;
+      this.#tombstones.delete(oldest);
+    }
+  }
+
+  #successorOf(sessionId: string): Session | undefined {
+    const departed = this.#tombstones.get(sessionId);
+    if (departed === undefined) return undefined;
+    const picked = pickDocumentSuccessor(
+      this.all().map((s) => ({
+        id: s.id,
+        url: s.url,
+        ...(s.projectId === undefined ? {} : { projectId: s.projectId }),
+      })),
+      departed,
+    );
+    if (picked === undefined) return undefined;
+    return this.#sessions.get(picked.id);
   }
 
   get(sessionId: string): Session | undefined {
@@ -283,7 +333,7 @@ export class SessionManager {
 
   resolve(sessionId?: string, scope?: ResolveScope): Session {
     if (sessionId !== undefined) {
-      const found = this.#sessions.get(sessionId);
+      const found = this.#sessions.get(sessionId) ?? this.#successorOf(sessionId);
       if (found === undefined) {
         throw new Error(this.#unknownSessionError(sessionId));
       }
