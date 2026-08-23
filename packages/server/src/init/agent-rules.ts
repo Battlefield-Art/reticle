@@ -110,6 +110,16 @@ This app is instrumented by **Reticle**, an in-app verification layer exposed as
 - **Only \`reticle_act_and_wait\` and \`reticle_assert\` produce a verdict.** \`reticle_act\` and everything else move or read the app and prove nothing, so a session ending without one of those two has no result however many tools it used.
 - Covered flows: \`${CLI} gate\` reports which recorded flows the changed files affect and whether they still pass.
 
+**Setting Reticle up, or just restarted? You are mid-sequence — do not stop until a verdict exists.**
+The whole of it is: instrument the app → get a dev server running → open the app in a browser →
+drive one flow → report the verdict. Every step is yours to do, and none of them needs the user.
+The ONE legitimate pause is a client restart, because a client reads its server list at startup;
+when you come back, you are not finished, you are on the next step — resume it without being asked.
+Stopping anywhere else leaves an app that looks installed and can verify nothing, which is the
+single commonest way this goes wrong. \`/reticle\` carries the full recovery ladder when a step
+does not work; use it rather than guessing, and never report the install as finished without a
+verdict to point at.
+
 **Nothing connected? Get the app running.**
 
 ${DEV_SERVER_POLICY}
