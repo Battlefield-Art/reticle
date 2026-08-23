@@ -186,6 +186,7 @@ describe('parseCliArgs', () => {
       kind: 'verify',
       url: URL,
       headless: true,
+      port: PORT,
     });
   });
 
@@ -195,6 +196,28 @@ describe('parseCliArgs', () => {
       url: URL,
       headless: false,
       timeoutMs: 5000,
+      port: PORT,
+    });
+  });
+
+  it('verify keeps the resolved default port (RETICLE_PORT / .reticle.json)', () => {
+    // cli.ts already folds env + .reticle.json into parseCliArgs's defaultPort. Dropping port
+    // from the verify result made handleVerify fall back to 4400 anyway, so a project on any
+    // other port got MSG_NO_SESSION and a docstring that claimed the opposite.
+    expect(parseCliArgs(['verify', URL], 4410)).toEqual({
+      kind: 'verify',
+      url: URL,
+      headless: true,
+      port: 4410,
+    });
+  });
+
+  it('verify --port overrides the resolved default', () => {
+    expect(parseCliArgs(['verify', URL, '--port', '4411'], 4400)).toEqual({
+      kind: 'verify',
+      url: URL,
+      headless: true,
+      port: 4411,
     });
   });
 
@@ -211,6 +234,7 @@ describe('parseCliArgs', () => {
       url: URL,
       headless: true,
       storageState: 'auth.json',
+      port: PORT,
     });
   });
 

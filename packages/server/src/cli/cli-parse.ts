@@ -37,7 +37,7 @@ export const CLI_USAGE = `usage:  npx @reticlehq/server <command>   (or \`reticl
   reticle status [--port N]
   reticle doctor [--port N]                            (one command to diagnose setup: Chromium, daemon, port)
   reticle open  [url] [--port N]                        (show the app: reuse the connected tab, else open one)
-  reticle verify <url> [--headed] [--timeout N] [--storage-state <file>]  (one-shot: drive the URL, verify saved flows, exit 0=pass)
+  reticle verify <url> [--port N] [--headed] [--timeout N] [--storage-state <file>]  (one-shot: drive the URL, verify saved flows, exit 0=pass)
   reticle affected [--since <ref>] [file...]           (which saved flows must re-verify for the changed files)
   reticle gate [--since <ref>] [file...]               (exit non-zero unless passing artifacts cover the affected flows)
   reticle watch [url]                                  (on save, report which saved flows must re-verify)
@@ -216,7 +216,14 @@ export type CliResult =
       httpToken?: string;
     }
   | { kind: 'drive'; port: number; driveUrl: string; headless: boolean }
-  | { kind: 'verify'; url: string; headless: boolean; timeoutMs?: number; storageState?: string }
+  | {
+      kind: 'verify';
+      url: string;
+      headless: boolean;
+      port: number;
+      timeoutMs?: number;
+      storageState?: string;
+    }
   | { kind: 'affected'; files: string[]; since?: string }
   | { kind: 'hunt'; dir: string }
   | { kind: 'capsules' }
@@ -383,24 +390,39 @@ function parseDriveSuffix(args: string[], port: number, defaultHeadless: boolean
 }
 
 type VerifySuffix =
-  | { kind: 'ok'; url: string; headless: boolean; timeoutMs?: number; storageState?: string }
+  | {
+      kind: 'ok';
+      url: string;
+      headless: boolean;
+      port: number;
+      timeoutMs?: number;
+      storageState?: string;
+    }
   | { kind: 'error'; message: string };
 
 /**
- * Parse `verify <url> [--headed] [--timeout N] [--storage-state <file>]`. The first non-flag token is
- * the preview URL.
+ * Parse `verify <url> [--port N] [--headed] [--timeout N] [--storage-state <file>]`. The first
+ * non-flag token is the preview URL. `defaultPort` is already env + `.reticle.json` + 4400.
  */
-function parseVerifySuffix(args: string[]): VerifySuffix {
+function parseVerifySuffix(args: string[], defaultPort: number): VerifySuffix {
   let headless = true;
   let url: string | undefined;
   let timeoutMs: number | undefined;
   let storageState: string | undefined;
+  let port = defaultPort;
   let i = 0;
   while (i < args.length) {
     const arg = args[i];
     if (arg === undefined) break;
     if (arg === HEADED_FLAG) {
       headless = false;
+    } else if (arg === PORT_FLAG) {
+      i++;
+      const n = args[i];
+      if (n === undefined) return missingValue(PORT_FLAG);
+      const parsed = parseInt(n, 10);
+      if (isNaN(parsed)) return notANumber(PORT_FLAG, n);
+      port = parsed;
     } else if (arg === TIMEOUT_FLAG) {
       i++;
       const n = args[i];
@@ -427,6 +449,7 @@ function parseVerifySuffix(args: string[]): VerifySuffix {
     kind: 'ok',
     url,
     headless,
+    port,
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     ...(storageState !== undefined ? { storageState } : {}),
   };
@@ -647,12 +670,13 @@ export function parseCliArgs(
       };
     }
     case VERIFY_COMMAND: {
-      const r = parseVerifySuffix(rest);
+      const r = parseVerifySuffix(rest, defaultPort);
       if ('error' === r.kind) return r;
       return {
         kind: 'verify',
         url: r.url,
         headless: r.headless,
+        port: r.port,
         ...(r.timeoutMs !== undefined ? { timeoutMs: r.timeoutMs } : {}),
         ...(r.storageState !== undefined ? { storageState: r.storageState } : {}),
       };
