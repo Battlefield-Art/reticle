@@ -59,6 +59,22 @@ describe('nextActionFor', () => {
     expect(next.command).not.toContain('run dev');
   });
 
+  it('a config found in another app directory is a scope problem, never an init problem', () => {
+    const next = nextActionFor({
+      everConnected: false,
+      initialized: false,
+      listening: [5173],
+      dev: DEV,
+      configsElsewhere: [{ directory: '/repo/apps/client', projectId: 'client-1' }],
+    });
+    expect(next.action).toBe(NoSessionAction.OPEN_APP);
+    expect(next.command).not.toBe('reticle init');
+    expect(next.reason).toContain('/repo/apps/client');
+    expect(next.reason).toContain('client-1');
+    expect(next.reason).toMatch(/scope|directory/i);
+    expect(next.reason).toContain('reticle_lease');
+  });
+
   it('a wired app is listening: open it — never a second dev server', () => {
     const next = nextActionFor({
       everConnected: false,
