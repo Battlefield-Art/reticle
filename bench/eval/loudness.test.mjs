@@ -82,3 +82,32 @@ describe('every feature flag is measurable, and says what it should move', () =>
     expect(() => suppressEnv('not-a-feature')).toThrow(/no such feature flag/);
   });
 });
+
+describe('unmeasured features are visible, not forgotten', () => {
+  /**
+   * The whole reason this registry exists. `verify_next` shipped across releases described as "the
+   * largest known lever on whether a session produces a verdict at all" and was never measured —
+   * not because anyone decided against it, but because nothing tracked that it had not been.
+   *
+   * So every flag carries a `status`, and this test names the ones still owing a number. It does not
+   * fail on them: a feature can legitimately be unmeasured for a while. It fails when a flag has no
+   * status at all, because that is the state that hides the debt.
+   */
+  it('makes every feature state whether it has a number yet', () => {
+    for (const [id, f] of Object.entries(FEATURES)) {
+      expect(
+        f.status,
+        `${id} has no status — an unmeasured feature with no status is invisible`,
+      ).toBeTypeOf('string');
+    }
+  });
+
+  it('can list what is still owed, so the debt is queryable rather than remembered', () => {
+    const owing = Object.entries(FEATURES)
+      .filter(([, f]) => /^UNMEASURED/.test(f.status ?? ''))
+      .map(([id]) => id);
+    // Asserted as a known set: when one is measured this fails, and whoever measured it updates the
+    // list having just done the work.
+    expect(owing.sort()).toEqual(['context-after-compaction', 'flow-intent']);
+  });
+});

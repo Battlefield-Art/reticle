@@ -48,6 +48,29 @@ export const FEATURES = {
     status:
       'first run: works identical (4/5 both), 0 vs 3 unreported, 0 vs 1 false green, -20% turns',
   },
+  'flow-intent': {
+    // The gap that fires when a flow is saved with nothing saying what it is for. Suppressible only
+    // by not declaring — same shape as `intent-instruction`, one artifact later.
+    env: 'DV_NO_FLOW_INTENT',
+    what: 'the intentGap on a saved flow, and the prose a replay failure can quote months later',
+    hypothesis:
+      'no effect on whether a flow saves or replays; the difference should appear only when a saved flow later goes RED, which this suite does not yet reach',
+    measure: ['flow_saved', 'flow_intent_present'],
+    // Stated plainly rather than left blank: the harness saves no flows, so there is nothing to
+    // measure yet. A feature listed with `status: unmeasured` is a debt; a feature not listed at all
+    // is forgotten.
+    status: 'UNMEASURED — the do-and-verify suite never saves a flow, so the seam is untested',
+  },
+  'context-after-compaction': {
+    env: 'DV_NO_CONTEXT_HINT',
+    what: 'reticle_context returning what a run established, for an agent whose history was cut',
+    hypothesis:
+      'after a compaction the agent re-derives less: fewer snapshot/query calls before its next act, and a verdict still reached',
+    measure: ['callsAfterCut', 'reachedVerdict'],
+    // `bench/harness/long-horizon.mjs` performs a REAL cut of the message array at turn 2 and
+    // refuses to report if the cut never fired. It has never been run against this release.
+    status: 'UNMEASURED — harness exists (long-horizon.mjs, real compaction) and has not been run',
+  },
   'lean-surface': {
     env: 'RETICLE_TOOL_PROFILE',
     suppressValue: 'lean',
