@@ -1,5 +1,5 @@
 import { healthEnvelope } from '../session/session-health.js';
-import { verifyNextBaton } from './verify-next-baton.js';
+import { verifyNextBaton, SUPPRESS_VERIFY_NEXT_ENV } from './verify-next-baton.js';
 import {
   type BrowserBrand,
   TelemetryActor,
@@ -517,12 +517,24 @@ export async function runTool<Ext>(
   // verdict-less session in the field never called a verdict-producing tool ONCE;
   // the counter behind this already existed and was reported only to us. One-shot per abandoned
   // run, same discipline as the pool lease — a hint on every call is noise that gets tuned out.
+  // The A/B control, and the reason it exists as an env flag rather than a code edit.
+  //
+  // `verify_next` is described in this repo's own changelog as "the largest known lever on whether a
+  // session produces a verdict at all", and it has never been measured — it was once built, fired
+  // and silently dropped by schema-strict clients for a whole release, which is exactly what an
+  // unmeasured lever looks like from the inside. "The payload now arrives" and "the agent acts on
+  // it" are different claims and only the first was ever verified.
+  //
+  // Suppressing it for a control arm has to leave the ONLY difference being the baton: same build,
+  // same surface, same counters. So the nudge is still TAKEN (the counter still resets, so the
+  // one-shot cadence is identical) and only the envelope key is withheld.
+  const suppressBaton = '1' === process.env[SUPPRESS_VERIFY_NEXT_ENV];
   const unverified = getSessionMetrics().takeUnverifiedNudge();
   // Carry the CALL, not just the sentence. The prose has to be translated back into arguments, and
   // that translation is where agents were already going wrong — `until` omitted, action arguments
   // flat instead of nested under `args`. `ref` and `action` come from the act that actually
   // dispatched, so the suggestion is about the element the agent touched. See verify-next-baton.
-  if (unverified !== undefined)
+  if (unverified !== undefined && !suppressBaton)
     // `lastAct` read defensively: this envelope is built on EVERY tool call, so a session shape
     // without it would turn a missing field into a crash on the whole surface rather than a missing
     // suggestion. The baton degrades to prose, which is what it carried before.

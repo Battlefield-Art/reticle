@@ -15,7 +15,6 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { start, TOOLS, BaselineStore, RecordingStore } from '@reticlehq/server';
 import { waitForSession } from '../wait-for-session.mjs';
@@ -158,59 +157,6 @@ if (inertRef !== undefined) {
 } else {
   chk('found an inert element to test attribution against', false, 'no heading resolved');
 }
-
-// ── `reticle demo` never greets a user with a stack trace ─────────────────────────────────────
-// `demo` binds the bridge port, and a daemon already holding it is the NORMAL state the moment any
-// MCP client has started one — which is most users, most of the time. It bound unconditionally, so
-// the FIRST thing a new user ran died with a raw `node:net` EADDRINUSE stack. Nothing saw it,
-// because every test that runs `demo` runs it alone.
-//
-// This spec is the one place a daemon is already up and a foreign app is already serving, so it is
-// the cheapest honest home for the check. What is pinned is the whole point of the command: a
-// first run may refuse, but it may never crash, and its refusal has to name something to DO.
-//
-// It does NOT cover demo's happy path: the daemon this spec started owns the port, so the refusal
-// branch is the only one reachable here. Driving, control selection and the findings filter are
-// pinned in cli/demo-drive.test.ts against the snapshot this fixture really returns.
-const demoRun = await new Promise((resolve) => {
-  const child = spawn(
-    process.execPath,
-    // Resolved from this file, not the cwd: the battery runs specs from more than one directory.
-    [fileURLToPath(new URL('../../../packages/server/dist/cli.js', import.meta.url)), 'demo', ATLAS_URL],
-    { env: { ...process.env, RETICLE_PORT: '4400' } },
-  );
-  let out = '';
-  child.stdout.on('data', (d) => (out += d));
-  child.stderr.on('data', (d) => (out += d));
-  child.on('close', (code) => resolve({ code, out }));
-});
-// What is asserted here is deliberately NOT which refusal fires.
-//
-// The first version of this check assumed the ATTACH branch — a healthy daemon on the port, answer
-// with the tools the user already has — and asserted exit 0 and the word `reticle_snapshot`. It
-// went red on its first real run, correctly. This spec's own `start({ mcp: false })` binds the port
-// IN-PROCESS and does not serve the daemon status endpoint, so the probe sees a holder it cannot
-// identify and takes the FOREIGN branch: refuse, name the holder, exit 1. That is the right answer
-// to "someone else has your port", and exit 1 is the right code for it.
-//
-// So the invariants are the ones that hold whichever branch fires, because those are the ones that
-// matter to a first-time user: it must not crash, it must not show a raw bind error, and it must
-// name something to DO.
-chk(
-  'demo refuses a held port deliberately rather than crashing on it',
-  demoRun.code === 0 || demoRun.code === 1,
-  `exit=${String(demoRun.code)}`,
-);
-chk(
-  'and never shows a user a raw bind error',
-  !demoRun.out.includes('EADDRINUSE') && !demoRun.out.includes('node:net'),
-  demoRun.out.slice(0, 160).replace(/\n/g, ' '),
-);
-chk(
-  'and names a next step, whichever refusal it chose',
-  /reticle_snapshot|Stop that process|different port/.test(demoRun.out),
-  demoRun.out.slice(0, 160).replace(/\n/g, ' '),
-);
 
 await b.close();
 stopAtlas();

@@ -20,6 +20,17 @@
 
 import { ReticleTool } from './tool-names.js';
 
+/**
+ * Set to `1` to withhold the baton from tool results — the control arm of its A/B, and nothing else.
+ *
+ * A measurement flag, not a product setting: it is read at one call site, documented here, and named
+ * loudly enough that nobody sets it by accident. It exists because this feature has shipped, been
+ * declared the largest lever on whether a session verifies at all, and never been measured — and a
+ * control arm is the only way to tell "agents that see it verify" from "agents that were going to
+ * verify anyway also saw it".
+ */
+export const SUPPRESS_VERIFY_NEXT_ENV = 'RETICLE_SUPPRESS_VERIFY_NEXT';
+
 /** What the agent must supply itself. Phrased as an instruction so it cannot be sent verbatim. */
 export const UNTIL_PLACEHOLDER = '<name the consequence this action causes>';
 

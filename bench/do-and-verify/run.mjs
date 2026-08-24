@@ -305,6 +305,16 @@ export async function runCell(bugId, arm, opts = {}) {
     turns = 0,
     text = '';
   const toolCalls = [];
+  /**
+   * Did the baton fire, and did a verdict follow it?
+   *
+   * `verify_next` carries a ready-to-make verdict call when an agent has driven the page and asked
+   * for nothing. This repo's own changelog calls it the largest known lever on whether a session
+   * verifies at all, and nothing had ever measured it — it was once built, fired, and silently
+   * dropped by schema-strict clients for a whole release. "The payload arrives" and "the agent acts
+   * on it" are different claims; only the first was ever checked.
+   */
+  const batonTurns = [];
   try {
     let browserTools = [CLI_TOOL];
     let system = SYSTEM_BASE;
@@ -363,6 +373,9 @@ export async function runCell(bugId, arm, opts = {}) {
           if (FILE_TOOLS.some((t) => t.name === u.name)) out = runFileTool(u.name, u.input);
           else if (isCli) out = await runCli(String(u.input.args ?? ''));
           else out = (await client.callTool(u.name, u.input, 60_000)).text;
+          // Position, not a count: the question is causal — of the turns where the baton arrived,
+          // how many were followed by a verdict call.
+          if (String(out ?? '').includes('"verify_next"')) batonTurns.push(toolCalls.length - 1);
           results.push({
             type: 'tool_result',
             tool_use_id: u.id,
@@ -399,6 +412,12 @@ export async function runCell(bugId, arm, opts = {}) {
       total_tokens: inTok + outTok,
       latency_ms: Date.now() - t0,
       tool_calls: toolCalls,
+      baton_turns: batonTurns,
+      // The causal read, computed here so no downstream reader re-derives it: for each turn the
+      // baton arrived, was the NEXT tool call a verdict tool. A count alone cannot separate the
+      // lever from the coincidence — that is what the suppressed arm is for.
+      baton_followed: batonTurns.filter((i) => /act_and_wait|_assert/.test(toolCalls[i + 1] ?? ''))
+        .length,
       exhausted: turns >= (opts.maxTurns ?? MAX_TURNS),
       excerpt: text.trim().slice(-200),
       excerptFull: text,
