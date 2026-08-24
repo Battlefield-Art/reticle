@@ -140,6 +140,8 @@ A dev server that is already running does not pick up an edited build config or 
 
 **Finish \`src/reticle-dev.ts\` before you claim setup is done.** \`init\` writes it and cannot always fill it in: a store that needs an argument only reading the code supplies (Jotai atoms, an XState actor, a TanStack \`queryClient\`) is left as a commented \`registerStore\` line. A file that registers nothing looks exactly like a finished one, and \`reticle_state\` then returns empty forever — which is indistinguishable from an app that has nothing to report, so it reads as success. Uncomment the line, complete it, and prove it by driving one flow and seeing your keys come back. If \`init\` told you to restart your client, this is the job waiting for you on the other side of that restart.
 
+**Verify each feature as you finish it, not all of them at the end.** Asked for four, build one, drive it, get a verdict, then start the second. A red verdict after four builds has four suspects; after one it has none.
+
 **Capture what a change is FOR while you are building it, not afterwards.** \`reticle_intent\` records the business outcome a change is meant to produce, and the only moment anybody knows it is while the change is being made. Pass \`intent\` when you save a flow, so the saved flow carries the reason it exists. A flow without one replays for months and then reports "step 3 failed" instead of what stopped being true for a user.
 
 **Honesty, which is the whole point:**

@@ -86,6 +86,13 @@ const MAX_LISTED_BREAKING = 4;
  *
  * Bounded on purpose: this rides on a tool result every turn until it is delivered, so a long
  * changelog is a per-turn tax. The count of anything elided is stated rather than silently dropped.
+ *
+ * It also names what `update` does to the RULE FILES, which is the half nobody would guess. A new
+ * release changes what the always-loaded instructions should say — that is the whole reason
+ * `refreshAgentRules` exists — and an agent that reads "it restarts the daemon" has no reason to
+ * think its CLAUDE.md is now a release behind. Saying so costs one clause on a message that is
+ * delivered once per daemon, and it is the difference between a fleet that upgrades its rules and
+ * one that upgrades its binary and keeps last release's instructions forever.
  */
 export function buildNudge(
   latestVersion: string,
@@ -108,8 +115,10 @@ export function buildNudge(
         : `This release has BREAKING changes: ${listed.join('; ')}` +
           (0 < rest ? ` (+${String(rest)} more — see the changelog)` : '') +
           '. Read them before updating. ') +
-      `Tell the human, and run \`${UPDATE_COMMAND}\` if they agree — it restarts the daemon, ` +
-      'so do it between tasks rather than mid-verification. Continue your current task first.',
+      `Tell the human, and run \`${UPDATE_COMMAND}\` if they agree — it upgrades the packages, ` +
+      "refreshes the Reticle rules in this project's CLAUDE.md / AGENTS.md, and restarts the " +
+      'daemon, so do it between tasks rather than mid-verification. Continue your current task ' +
+      'first.',
   };
 }
 

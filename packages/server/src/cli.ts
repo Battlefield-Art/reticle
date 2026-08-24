@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { handleDemo } from './cli/cli-demo.js';
 import { pathToFileURL } from 'node:url';
 import { openFailureNote } from './cli/open-note.js';
 import { realpathSync } from 'node:fs';
@@ -912,9 +911,6 @@ function main(): void {
       break;
     case 'drive':
       handleDrive(parsed);
-      break;
-    case 'demo':
-      void handleDemo(parsed.url, parsed.port);
       break;
     case 'verify':
       handleVerify(parsed);

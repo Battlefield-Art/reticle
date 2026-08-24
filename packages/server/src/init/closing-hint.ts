@@ -77,15 +77,20 @@ export function restartHint(
   // running, an app running that never dialled us, a tab that closed — with the fix for each.
   // The one thing that works BEFORE the restart, so it goes before it.
   //
-  // Everything else here needs the MCP tools, and those do not exist until the client restarts —
-  // which is exactly where people stop. `demo` boots its own daemon and its own browser, drives one
-  // control and prints a verdict, so there is something to SEE at the end of `init` rather than
-  // another instruction. Deliberately not sold as verification: a blind click grades `no-fault`,
-  // correctly, and promising a pass would make Reticle wrong about itself in the first thing a new
-  // user reads.
+  // What comes after the restart, named as a JOB rather than as a capability.
+  //
+  // This used to point at a `reticle demo` command that opened its own browser and drove one
+  // control. It was cut: a demo command is a side show. The thing a user needs to see is THEIR app,
+  // instrumented in THEIR codebase, driven by THEIR agent through the tools they just installed —
+  // because that is the workflow they are deciding whether to adopt, and a bespoke demo path proves
+  // nothing about it.
+  //
+  // So the close hands the agent the sequence instead. It is deliberately one drive of one real
+  // flow ending in a verdict, because an install that ends in "the tools are available" is an
+  // install that ends in nothing.
   const demo =
-    `See it work right now, without waiting for anything: \`${CLI} demo <your app url>\` — it opens ` +
-    'a browser, drives one control and reports what happened, from the inside.';
+    'Then drive one real flow of your app end to end and report the verdict — that is the install ' +
+    "proving itself, and it is the agent's job, not a separate command.";
   const prove =
     'Then run `npx @reticlehq/server status` — it confirms the app connected, or says exactly why ' +
     'it has not.';
