@@ -74,6 +74,14 @@ export interface ActionInstrumentationFacts {
    * that is the only place allowed to answer it.
    */
   changeUndeclared?: boolean;
+  /**
+   * How many intents the ledger still holds undischarged. Undefined when nothing consulted it.
+   *
+   * A count rather than a boolean because the message names the number: "one thing still unproved"
+   * and "four things still unproved" are different situations for an agent deciding whether it is
+   * finished, and a bare flag makes them read the same.
+   */
+  openIntentCount?: number;
 }
 
 export function gapsForAction(facts: ActionInstrumentationFacts): InstrumentationGap[] {
@@ -165,6 +173,28 @@ export function gapsForAction(facts: ActionInstrumentationFacts): Instrumentatio
         InstrumentationGapKind.UNDECLARED_CHANGE,
         'code changed since the last verdict and no intent says what the change was for',
         'this verdict can only check the app against itself, so a green here means "nothing visibly broke" rather than "the change did what it was meant to"',
+      ),
+    );
+  }
+
+  // A green that does not settle what the run OWES.
+  //
+  // The mirror of `changeUndeclared` above, and the more expensive half: that fires when nothing was
+  // declared, this when something was and no verdict ever proved it. Measured on the bench fixture —
+  // an agent drew SEVEN green verdicts and reported FIXED on a form that still accepted a
+  // whitespace-only service, quoting its own patch as the evidence. Every verdict was honestly
+  // green; none of them was about the thing claimed, and nothing in the result said so.
+  //
+  // Only on a PASS: a failing verdict proved nothing and already says that, so adding this would be
+  // two sentences for one fact. It downgrades nothing either — the assertion did hold — it just
+  // names the debt on the result the agent is already reading, while it is deciding if it is done.
+  const owed = facts.openIntentCount ?? 0;
+  if (facts.pass && 0 < owed) {
+    gaps.push(
+      instrumentationGap(
+        InstrumentationGapKind.INTENT_UNDISCHARGED,
+        `this verdict passed, and ${String(owed)} declared intent(s) are still unproved`,
+        'a green settles what it asserted, not what the run set out to do — reporting done here rests on the change looking right rather than on anything having checked it',
       ),
     );
   }

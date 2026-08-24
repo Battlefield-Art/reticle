@@ -187,3 +187,62 @@ describe('gapsForAction', () => {
     });
   });
 });
+
+describe('a green verdict that leaves an intent undischarged', () => {
+  /**
+   * The gap this benchmark found, and it is the expensive one.
+   *
+   * Measured on the bench fixture: an agent fixed a form guard, drove the app, and called a verdict
+   * tool SEVEN times — every one green — then reported FIXED. The form still accepted a
+   * whitespace-only service. Its closing words quoted its own patch as the evidence: "`if
+   * (!service.trim()) return;` … This correctly validates the service name. VERDICT: FIXED".
+   *
+   * Seven verdicts about other things, and a conclusion read off the diff. `changeUndeclared`
+   * cannot see this: it fires when NOTHING was declared, and here something was — just never
+   * proved. The ledger already knows (`reticle_context` returns `remaining`), and no verdict
+   * consulted it.
+   *
+   * So a passing verdict with an intent still open has to say so. Not a failure — the assertion did
+   * hold — but a green that does not discharge what the run owes is not the same as done, and only
+   * the ledger can tell the difference.
+   */
+  it('says a green does not settle what the run still owes', () => {
+    const gaps = gapsForAction({
+      pass: true,
+      proved: true,
+      openIntentCount: 2,
+    } as Parameters<typeof gapsForAction>[0]);
+    const kinds = gaps.map((g) => g.kind);
+    expect(kinds).toContain(InstrumentationGapKind.INTENT_UNDISCHARGED);
+  });
+
+  it('names how many, so the agent knows what is left rather than that something is', () => {
+    const gap = gapsForAction({
+      pass: true,
+      proved: true,
+      openIntentCount: 2,
+    } as Parameters<typeof gapsForAction>[0]).find(
+      (g) => g.kind === InstrumentationGapKind.INTENT_UNDISCHARGED,
+    );
+    expect(gap?.missing).toMatch(/2/);
+  });
+
+  /** A red verdict proved nothing and already says so — piling this on top is noise. */
+  it('stays quiet on a FAILING verdict', () => {
+    const kinds = gapsForAction({
+      pass: false,
+      openIntentCount: 2,
+    } as Parameters<typeof gapsForAction>[0]).map((g) => g.kind);
+    expect(kinds).not.toContain(InstrumentationGapKind.INTENT_UNDISCHARGED);
+  });
+
+  /** Nothing owed, nothing to say. */
+  it('stays quiet when the ledger is settled', () => {
+    const kinds = gapsForAction({
+      pass: true,
+      proved: true,
+      openIntentCount: 0,
+    } as Parameters<typeof gapsForAction>[0]).map((g) => g.kind);
+    expect(kinds).not.toContain(InstrumentationGapKind.INTENT_UNDISCHARGED);
+  });
+});

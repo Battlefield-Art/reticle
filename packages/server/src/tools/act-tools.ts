@@ -853,8 +853,12 @@ export const ACT_TOOLS: ToolDef[] = [
         const actionSummary = causalSummary(windowEvents, { stateUnwatched });
         // Asked of every verdict drawn after an observed edit, not once per edit — see
         // isChangeUndeclared for why repeating it is disclosure rather than nagging.
+        // Read ONCE and used twice: `changeUndeclared` asks whether the ledger is empty, and the
+        // undischarged-intent gap asks how much it still holds. Two reads would be two chances for
+        // them to disagree about the same file.
+        const openIntents = await openSessionIntents(deps, asString(args['sessionId']));
         const changeUndeclared = await isChangeUndeclared(session.currentEditEpoch, () =>
-          openSessionIntents(deps, asString(args['sessionId'])),
+          Promise.resolve(openIntents),
         );
         const gaps = gapsForAction({
           pass: verdict.pass,
@@ -866,6 +870,8 @@ export const ACT_TOOLS: ToolDef[] = [
           stateUnwatched,
           // What the app DECLARED, so an under-instrumented one is told without having to be asked.
           hasCapabilities: session.hasCapabilities,
+          // What the run still owes. A green that leaves this above zero is not the same as done.
+          openIntentCount: openIntents.length,
           domMutated: (session.lastAct.effect().mutatedWithin ?? 0) > 0,
           signalsFired: actionSummary.signals.length,
           routeChanged: actionSummary.route !== undefined,
