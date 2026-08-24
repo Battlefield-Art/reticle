@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { buildDynamicTools } from './dynamic-tools.js';
 import { ReticleTool } from './tool-names.js';
-import { TOOL_SURFACE } from './tool-surface.js';
+import { ADVERTISE_ALL_ENV, TOOL_PROFILE_ENV, TOOL_SURFACE } from './tool-surface.js';
 import type { ToolDef, ToolDeps } from './tools.js';
 
 /**
@@ -77,6 +77,8 @@ describe('buildDynamicTools — the dynamic profile meta-tools', () => {
     expect(out.profile.active).toBe(TOOL_SURFACE.DEFAULT);
     expect(out.profile.source).toContain('RETICLE_ADVERTISE_ALL_TOOLS');
     expect(out.profile.note).toContain('restart');
+    expect(out.profile.note).toContain(ADVERTISE_ALL_ENV);
+    expect(out.profile.note).not.toContain(TOOL_PROFILE_ENV);
   });
 
   it('reticle_run on an unknown tool returns the available names (no invocation)', async () => {
