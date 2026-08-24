@@ -83,9 +83,15 @@ const readSession = async (): Promise<z.infer<typeof SessionSchema> | null> => {
 
 const baseUrl = (session: { url: string } | null): string => {
   const env = process.env['RETICLE_CLOUD_URL'];
-  return env !== undefined && env.length > 0
-    ? env.replace(/\/+$/, '')
-    : (session?.url ?? DEFAULT_URL);
+  if (env !== undefined && env.length > 0) return env.replace(/\/+$/, '');
+  if (null !== session && session.url.length > 0) return session.url;
+  // Falling back to the local dev default WITHOUT being told to: say so on stderr, so a fresh
+  // `reticle login` never silently dials localhost. Humans read the hint; agents parse stdout
+  // JSON and ignore stderr, so stdout stays machine-readable either way.
+  hint(
+    `no RETICLE_CLOUD_URL set — dialling the local dev default ${DEFAULT_URL} (set it for a real deployment)`,
+  );
+  return DEFAULT_URL;
 };
 
 /** Bearer for a command: an explicit api key (agent) wins, else the human login token. */
