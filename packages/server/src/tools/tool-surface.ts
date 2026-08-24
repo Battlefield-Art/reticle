@@ -292,6 +292,37 @@ const VERIFY_TOOL_NAMES: ReadonlySet<string> = new Set([ReticleTool.ACT_AND_WAIT
  * The lean surface: look, observe, act-with-a-verdict, assert. Pinned by lean-surface.test.ts,
  * because an experiment whose independent variable drifts mid-flight measures nothing. Every
  * inclusion and every exclusion is argued at TOOL_SURFACE.LEAN.
+ *
+ * ## MEASURED: it is cheaper and less correct. Do not promote it to the default.
+ *
+ * Run as its own arm of the fix-and-verify benchmark — same five bugs, same model, same budget, the
+ * full surface as its control:
+ *
+ * | | full surface | lean |
+ * |---|---|---|
+ * | bugs fixed | **5/5** | **3/5** |
+ * | FALSE GREENS | **0** | **1** |
+ *
+ * The false green is the finding, and it is the first this benchmark has ever produced. On
+ * `broken-form-validation` the lean agent finished in SIX turns and 62k tokens — the cheapest cell
+ * of the whole run, a fifth of what the full surface spent — edited the file, took one snapshot,
+ * and ended with a hypothetical walkthrough: "Enter spaces + valid name -> spaces are trimmed,
+ * valid part is used. VERDICT: FIXED". The submit button was still enabled for a whitespace-only
+ * service. It reasoned about what its own code would now do instead of driving it, which is exactly
+ * the failure this product exists to catch, produced by our own surface.
+ *
+ * The other loss has the same root from the other side. On `cross-component-regression` the agent
+ * called `reticle_tools` three times and `reticle_run` eight, saying "since Reticle isn't
+ * connecting, let me see what reticle_tools offers" — it spent the run hunting for capabilities
+ * this surface does not advertise instead of using them, and never fixed the bug.
+ *
+ * That is the same result the `verify` surface already recorded — dropping the observation tools
+ * TRIPLED false alarms — arriving from the other direction: strip the surface and the agent stops
+ * verifying, then claims anyway. The known ceiling written here was that `reticle_feedback` goes
+ * uncollected. This is a bigger one and it was not predicted.
+ *
+ * It stays opt-in and it stays measured. The one thing it genuinely bought — the ceiling-bound cell
+ * halved, 30 turns to 14 — is not worth a verdict that lies, because the product is the verdict.
  */
 export const LEAN_TOOL_NAMES: ReadonlySet<string> = new Set([
   ReticleTool.SNAPSHOT,

@@ -430,6 +430,14 @@ export async function runCell(bugId, arm, opts = {}) {
  */
 function restoreApp() {
   execFileSync('git', ['checkout', '--', 'apps/bench-app/src'], { cwd: ROOT, stdio: 'ignore' });
+  // `checkout` restores tracked files and leaves NEW ones. Agents create them: a lean run left
+  // `apps/bench-app/src/.reticle.json` behind, and the next cell would have started against an app
+  // carrying a stray config nobody put there — measuring the leftover. `-x` because the app's own
+  // .gitignore covers build output, and a cell must not inherit the previous cell's dist either.
+  execFileSync('git', ['clean', '-fdx', '--', 'apps/bench-app/src'], {
+    cwd: ROOT,
+    stdio: 'ignore',
+  });
 }
 
 /** Long-horizon entry: `node run.mjs --multi`. Every bug at once, per-arm, scored on the end state. */
