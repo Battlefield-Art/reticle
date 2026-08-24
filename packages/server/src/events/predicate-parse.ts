@@ -88,7 +88,7 @@ export function parsePredicate(input: unknown): z.infer<typeof PredicateSchema> 
   const issues = parsed.error.issues.slice(0, 3).map(describeIssue).join('; ');
   throw new Error(
     `that predicate did not parse (kind "${kind}"): ${issues}. Nothing ran — the predicate was ` +
-      `not evaluated, so no verdict was produced. ${accepted(kind)} ` +
+      `not evaluated, so no verdict was produced. ${accepted(kind, parsed.error.issues)} ` +
       `A valid ${kind} predicate looks like: ${exampleFor(kind)}`,
   );
 }
@@ -100,12 +100,26 @@ export function parsePredicate(input: unknown): z.infer<typeof PredicateSchema> 
  * round trip on the one call path that produces verdicts. Naming the accepted fields — or, when the
  * kind itself is the mistake, the accepted kinds — makes the retry informed instead.
  */
-function accepted(kind: string): string {
+function accepted(kind: string, issues: readonly z.ZodIssue[]): string {
   const fields = predicateFieldsFor(kind);
   if (0 < fields.length) {
     // A field whose value is an object is the one an agent cannot guess from its name alone, so
     // expand it in the same breath rather than making the shape a second round trip.
-    const nested = Object.entries(predicateNestedFieldsFor(kind))
+    //
+    // Only the field the rejection actually points at, though. Expanding every object-valued field
+    // of the kind makes the sentence longer the more the schema grows, and buries the one clause
+    // that answers the question asked — the same argument this file already makes for showing one
+    // example per kind instead of a generic one. `element` is the only kind with an object-valued
+    // field today, so the two agree except when the mistake is somewhere else entirely, which is
+    // the case pinned in the tests.
+    const all = predicateNestedFieldsFor(kind);
+    const blamed = new Set(
+      issues
+        .map((issue) => issue.path[0])
+        .filter((field): field is string => 'string' === typeof field),
+    );
+    const nested = Object.entries(all)
+      .filter(([field]) => blamed.has(field))
       .map(([field, keys]) => ` ${field} accepts: ${keys.join(', ')}.`)
       .join('');
     return `${kind} accepts: ${fields.join(', ')}.${nested}`;
