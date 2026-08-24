@@ -4,6 +4,8 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-08-24
+
 ### Fixed
 
 - **`@reticlehq/server` — a modal that never opened was reported as `verified: "yes"` at the strongest evidence grade.** An app can emit its success signal from the value it was ASKED for rather than the one it committed. When it does, the signal fires, nothing else moves, and the verdict rested on the app's own claim — the exact false green this product exists to catch, arriving at `signal` grade, the highest we award.
