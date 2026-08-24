@@ -448,7 +448,10 @@ export function installedSdk(
   try {
     const pkgPath = join(appRoot, 'package.json');
     if (existsSync(pkgPath)) {
-      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as Record<string, Record<string, string> | undefined>;
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as Record<
+        string,
+        Record<string, string> | undefined
+      >;
       const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
       if (deps[RETICLE_SENSOR] !== undefined && deps[RETICLE_PACKAGE] === undefined) {
         return { specifier: RETICLE_SENSOR, usesInstall: false };
