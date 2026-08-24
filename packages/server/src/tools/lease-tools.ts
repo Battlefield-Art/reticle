@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 import { leaseNotConnectedHint, type LeaseEvidence } from './lease-hint.js';
+import { probeSdkMarker } from './sdk-marker-probe.js';
 import { readProjectFramework, readProjectId } from '../cli/cli-port.js';
 import { hasConnectedBefore } from '../session/connection-memory.js';
 import { reticleStateHome } from '../daemon/daemon.js';
@@ -27,14 +28,23 @@ import { chromiumHint } from '../cli/chromium-hint.js';
  * printed a static differential over the top of it — telling one agent in `reticle_sessions` that
  * the wiring was proven correct and telling it seconds later that the port was probably wrong.
  */
-function leaseEvidence(deps: ToolDeps, port: number): LeaseEvidence {
+/**
+ * Async only for the marker probe, which is the piece that decides whether this app ships an SDK at
+ * all — the difference between the diagnosis a new user needs and four causes that all assume the
+ * install already happened. It is one localhost GET on a path that has already failed and is about
+ * to print a paragraph, and it can only ever add a sentence: the probe returns `undefined` on any
+ * doubt and the hint then says nothing about markers.
+ */
+async function leaseEvidence(deps: ToolDeps, port: number, url: string): Promise<LeaseEvidence> {
   const cwd = process.cwd();
   const projectId = readProjectId(cwd);
   const refusal = deps.sessions.lastClosure()?.reason;
   const framework = readProjectFramework(cwd);
+  const sdkMarker = await probeSdkMarker(url);
   return {
     ...(refusal === undefined ? {} : { refusal }),
     ...(framework === undefined ? {} : { framework }),
+    ...(sdkMarker === undefined ? {} : { sdkMarker }),
     previouslyConnected: hasConnectedBefore(reticleStateHome(), port, projectId),
     initialized: projectId !== undefined,
   };
@@ -267,17 +277,16 @@ export const LEASE_ACQUIRE_TOOL: ToolDef = {
       expiresInMs: pool.leaseTtlMs(),
       leased: pool.activeCount(),
       queued: pool.queuedCount(),
-      ...(ready
-        ? {}
-        : (() => {
-            const bridgePort = deps.bridgePort ?? RETICLE_DEFAULT_PORT;
-            return {
-              hint: leaseNotConnectedHint(url, bridgePort, leaseEvidence(deps, bridgePort)),
-            };
-          })()),
+      ...(ready ? {} : { hint: await notConnectedHint(deps, url) }),
     };
   },
 };
+
+/** The whole not-connected diagnosis, gathered and worded. Split out so the acquire path stays flat. */
+async function notConnectedHint(deps: ToolDeps, url: string): Promise<string> {
+  const bridgePort = deps.bridgePort ?? RETICLE_DEFAULT_PORT;
+  return leaseNotConnectedHint(url, bridgePort, await leaseEvidence(deps, bridgePort, url));
+}
 
 const LEASE_RELEASE_TOOL: ToolDef = {
   name: ReticleTool.LEASE_RELEASE,
