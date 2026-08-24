@@ -104,10 +104,23 @@ export function nextActionFor(facts: NextActionFacts): NoSessionNextAction {
       action: NoSessionAction.START_DEV_SERVER,
       command: dev.command,
       ...(dev.port === undefined ? {} : { port: dev.port }),
+      // "Probably", to match the branch above it and the paragraph beside it.
+      //
+      // The same fact was stated at two confidence levels by one function: no dev script said the
+      // app was "probably not running", and THIS branch — the one that hands over a command to run
+      // — asserted it flatly. That is the branch where being wrong costs something, because the
+      // agent then starts a SECOND dev server on a second port, which the guard below calls the
+      // exact confusion this probe exists to prevent.
+      //
+      // It also contradicted its own payload: the prose beside it says the scan is narrow, that a
+      // server on any other port is invisible to it, and that a running app should be checked for
+      // rather than assumed away. Measured on a machine with three dev servers up on ports the scan
+      // does not cover, it reported the app was not running.
       reason:
-        'nothing is listening on the ports Reticle scans, so the app is not running. This is the ' +
-        `project's own \`${dev.script}\` script — run it in the background, tell the human it is ` +
-        'running, then call reticle_sessions again.',
+        'nothing is listening on the ports Reticle scans, so the app is probably not running — ' +
+        'though that scan is narrow, so if it IS up on another port, ask for its URL instead of ' +
+        `starting a second one. This is the project's own \`${dev.script}\` script — run it in the ` +
+        'background, tell the human it is running, then call reticle_sessions again.',
     };
   }
 

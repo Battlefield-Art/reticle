@@ -140,3 +140,48 @@ describe('renderNextAction', () => {
     expect(line).toContain('no dev script');
   });
 });
+
+describe('the scan is narrow, and the reason must say so in both branches', () => {
+  /**
+   * The same function states the same fact at two confidence levels. The branch with no dev script
+   * says the app is "probably not running"; the branch that HANDS OVER A COMMAND says flatly that
+   * it "is not running" — and that is the branch where being wrong costs something, because the
+   * agent then starts a second dev server on a second port. The comment ten lines below calls that
+   * "the exact confusion the probe exists to prevent".
+   *
+   * It is also contradicted inside its own payload: the paragraph above it says the scan is narrow,
+   * that a server on any other port is invisible to it, and that the app being up should be checked
+   * rather than assumed. Measured on this machine, three dev servers were running on ports the scan
+   * does not cover while it reported the app was not running.
+   */
+  it('does not assert the app is down when the scan cannot see every port', () => {
+    const withScript = nextActionFor({
+      everConnected: false,
+      initialized: true,
+      listening: [],
+      dev: DEV,
+    });
+    expect(withScript.reason).not.toMatch(/so the app is not running/);
+    expect(withScript.reason).toMatch(/probably|may not/i);
+  });
+
+  it('still hands over the command, because starting it is usually right', () => {
+    const withScript = nextActionFor({
+      everConnected: false,
+      initialized: true,
+      listening: [],
+      dev: DEV,
+    });
+    expect(withScript.command).toBe('pnpm run dev');
+  });
+
+  it('names the other possibility, so a running app on an unscanned port is not started twice', () => {
+    const withScript = nextActionFor({
+      everConnected: false,
+      initialized: true,
+      listening: [],
+      dev: DEV,
+    });
+    expect(withScript.reason).toMatch(/URL|another port|different port/i);
+  });
+});
