@@ -30,8 +30,13 @@ describe('scanTestids', () => {
     expect(scanTestids([many.join(' ')]).length).toBe(MAX_TESTIDS);
   });
 
-  it('finds nothing in a file with no testids, rather than inventing one', () => {
-    expect(scanTestids(['<button>Pay</button>', 'const testid = "not-an-attribute";'])).toEqual([]);
+  it('finds a testid planted as a JS string, the form the install gate stamps', () => {
+    // apps/e2e/install-gate.mjs writes this exact line so an empty scaffold still registers
+    // something. If the scanner stops matching it, the gate's hasCapabilities check fails every
+    // scaffold for a reason that is the stamp, not the install.
+    expect(
+      scanTestids([`export const RETICLE_INSTALL_PROBE = 'data-testid="reticle-install-probe"';`]),
+    ).toEqual(['reticle-install-probe']);
   });
 });
 
