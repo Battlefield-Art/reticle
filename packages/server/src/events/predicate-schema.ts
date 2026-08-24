@@ -433,13 +433,24 @@ export const PredicateSchema = z.lazy(() =>
  * wall. Empty for a kind that is not in the union.
  */
 export function predicateFieldsFor(kind: string): readonly string[] {
+  const shape = shapeForKind(kind);
+  if (null === shape) return [];
+  return Object.keys(shape).filter((field) => 'kind' !== field);
+}
+
+/**
+ * The union option for `kind`, or null when the kind is not one.
+ *
+ * One place that walks the union, so the field list and the nested lookup cannot disagree about
+ * which option a kind resolves to — and so adding a third reader is a call rather than a fourth
+ * copy of the same loop.
+ */
+function shapeForKind(kind: string): z.ZodRawShape | null {
   for (const option of predicateUnion().options) {
     const literal = option.shape['kind'];
-    if (literal instanceof z.ZodLiteral && literal.value === kind) {
-      return Object.keys(option.shape).filter((field) => 'kind' !== field);
-    }
+    if (literal instanceof z.ZodLiteral && literal.value === kind) return option.shape;
   }
-  return [];
+  return null;
 }
 
 /**
@@ -487,6 +498,26 @@ export function predicateGrammar(): Readonly<Record<string, string>> {
   return grammar;
 }
 
+/**
+ * The keys of a field that is an object, once its wrappers are peeled. Empty for anything else.
+ *
+ * Exported so the wrapper handling is asserted against THIS function rather than through the
+ * rendered sentence. Reached only that way, a wrapper it fails to peel returns `[]`, the old
+ * message prints unchanged, and nothing reddens — a regression with no symptom.
+ *
+ * No top-level predicate field is currently declared behind a wrapper, so the real schema exercises
+ * none of these paths; that is exactly why they are worth a case each.
+ */
+export function nestedKeysOf(schema: z.ZodTypeAny | undefined): readonly string[] {
+  if (undefined === schema) return [];
+  const inner = unwrapSchema(schema);
+  // `instanceof z.ZodObject` narrows to ZodObject<any>, whose `.shape` is `any`. Name the shape
+  // type so the keys are read off something typed rather than laundering an `any` through
+  // Object.keys.
+  if (!(inner instanceof z.ZodObject)) return [];
+  return Object.keys((inner as z.ZodObject<z.ZodRawShape>).shape);
+}
+
 /** Peel optional/nullable/default/effects wrappers off a field to reach the schema underneath. */
 function unwrapSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
   let current = schema;
@@ -521,22 +552,13 @@ function unwrapSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
 export function predicateNestedFieldsFor(
   kind: string,
 ): Readonly<Record<string, readonly string[]>> {
-  for (const option of predicateUnion().options) {
-    const literal = option.shape['kind'];
-    if (!(literal instanceof z.ZodLiteral) || literal.value !== kind) continue;
-    const nested: Record<string, readonly string[]> = {};
-    for (const [field, schema] of Object.entries(option.shape)) {
-      if ('kind' === field) continue;
-      const inner = unwrapSchema(schema as z.ZodTypeAny);
-      // `instanceof z.ZodObject` narrows to ZodObject<any>, whose `.shape` is `any`. Name the shape
-      // type so the keys are read off something typed rather than laundering an `any` through
-      // Object.keys.
-      if (inner instanceof z.ZodObject) {
-        const shape = (inner as z.ZodObject<z.ZodRawShape>).shape;
-        nested[field] = Object.keys(shape);
-      }
-    }
-    return nested;
+  const shape = shapeForKind(kind);
+  if (null === shape) return {};
+  const nested: Record<string, readonly string[]> = {};
+  for (const [field, schema] of Object.entries(shape)) {
+    if ('kind' === field) continue;
+    const keys = nestedKeysOf(schema);
+    if (0 < keys.length) nested[field] = keys;
   }
-  return {};
+  return nested;
 }
