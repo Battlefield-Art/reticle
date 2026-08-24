@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LOUDNESS, Loudness, loudnessOf, byClass, ungraded } from './loudness.mjs';
 import { listRegressions } from '../harness/inject.mjs';
+import { FEATURES, suppressEnv } from './features.mjs';
 
 /**
  * The suite's shape is the finding, so it is asserted rather than assumed.
@@ -58,5 +59,26 @@ describe('the suite is honest about its own weakness', () => {
 
   it('never guesses a grade for an unknown scenario', () => {
     expect(loudnessOf('not-a-real-bug')).toBeUndefined();
+  });
+});
+
+describe('every feature flag is measurable, and says what it should move', () => {
+  /**
+   * A flag without a stated hypothesis produces a table nobody can read, because every direction
+   * looks like a win once the numbers are in front of you. `ab.mjs` prints the hypothesis BEFORE the
+   * run for the same reason — the cheapest possible pre-registration.
+   */
+  it('states what each feature should move, and how it is measured', () => {
+    for (const [id, f] of Object.entries(FEATURES)) {
+      expect(f.env, id).toBeTypeOf('string');
+      expect(f.hypothesis, id).toBeTypeOf('string');
+      expect(f.hypothesis.length, id).toBeGreaterThan(20);
+      expect(Array.isArray(f.measure), id).toBe(true);
+      expect(f.measure.length, id).toBeGreaterThan(0);
+    }
+  });
+
+  it('refuses an unknown feature rather than measuring nothing', () => {
+    expect(() => suppressEnv('not-a-feature')).toThrow(/no such feature flag/);
   });
 });

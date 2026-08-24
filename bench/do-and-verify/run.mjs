@@ -242,6 +242,21 @@ const SYSTEM_BASE =
   'End your final message with exactly "VERDICT: FIXED" if you have confirmed it works, or "VERDICT: NOT FIXED" otherwise.';
 
 /**
+ * The intent arm: the convention Reticle's own rules ask for, stated in the prompt.
+ *
+ * The manipulation is deliberately the INSTRUCTION, not the capability. Both arms can reach
+ * `reticle_intent` and both get the same MCP instructions, so what is being measured is whether
+ * being told to declare the goal changes what the agent does — which is the thing a project's
+ * CLAUDE.md can actually control. Removing the tool instead would measure a different product.
+ *
+ * `DV_NO_INTENT=1` is the control.
+ */
+const INTENT_INSTRUCTION =
+  ' Before you fix anything, state what the fix must make TRUE for a user, and pass it as `intent` ' +
+  'on the verdict call that checks it. A verdict that proves your stated intent discharges it; one ' +
+  'that does not leaves it owed.';
+
+/**
  * The long-horizon cell: every bug at once, one context, one budget.
  *
  * The single-bug cells could not separate the arms — all four fixed all three, and there were no
@@ -315,9 +330,45 @@ export async function runCell(bugId, arm, opts = {}) {
    * on it" are different claims; only the first was ever checked.
    */
   const batonTurns = [];
+  /** Calls that carried an `intent` argument — declaring, whether or not anything proved it. */
+  let intentCalls = 0;
+
+  /**
+   * How many intents the ledger records as PROVED.
+   *
+   * Read from disk rather than counted from calls, because only the engine can say an intent was
+   * discharged: it happens when a verdict's own predicate asserted the declared thing. An agent
+   * cannot claim it, which is exactly what makes it the aimed-verification signal.
+   */
+  const readDischarged = () => {
+    // The daemon resolves the ledger to the SESSION's project root, which is not necessarily this
+    // checkout — `sessionRoot()` falls back to the daemon's own directory only when it cannot name a
+    // project. Reading one fixed path would report 0 for a ledger written somewhere else, and 0 is
+    // indistinguishable from "the agent declared nothing".
+    //
+    // So both candidates are read and the larger taken: this is a measurement, and a measurement
+    // that silently misses its own data is worse than one that admits it cannot find it.
+    const candidates = [
+      join(ROOT, '.reticle', 'intent.json'),
+      join(APP_SRC, '..', '.reticle', 'intent.json'),
+    ];
+    let best = 0;
+    for (const path of candidates) {
+      try {
+        const led = JSON.parse(readFileSync(path, 'utf8'));
+        best = Math.max(
+          best,
+          Object.values(led.intents ?? {}).filter((i) => 'proved' === i.state).length,
+        );
+      } catch {
+        /* not this one */
+      }
+    }
+    return best;
+  };
   try {
     let browserTools = [CLI_TOOL];
-    let system = SYSTEM_BASE;
+    let system = '1' === process.env.DV_NO_INTENT ? SYSTEM_BASE : SYSTEM_BASE + INTENT_INSTRUCTION;
     if (!isCli) {
       const pre = SERVERS[arm].preStart;
       if (pre !== undefined) {
@@ -368,6 +419,11 @@ export async function runCell(bugId, arm, opts = {}) {
       const results = [];
       for (const u of uses) {
         toolCalls.push(u.name);
+        // Counted here, at the one place every tool call passes through. The first version of this
+        // line was never inserted and both arms reported `declared=0`, which reads exactly like an
+        // agent ignoring the instruction — an instrument that fails silently produces a confident
+        // wrong answer, which is the failure this whole benchmark exists to catch.
+        if (u.input?.intent !== undefined || 'reticle_intent' === u.name) intentCalls += 1;
         try {
           let out;
           if (FILE_TOOLS.some((t) => t.name === u.name)) out = runFileTool(u.name, u.input);
@@ -413,6 +469,15 @@ export async function runCell(bugId, arm, opts = {}) {
       latency_ms: Date.now() - t0,
       tool_calls: toolCalls,
       baton_turns: batonTurns,
+      // Did the agent declare a goal, and did a verdict ever settle it?
+      //
+      // `intent_declared` counts calls that carried one; `intent_discharged` reads the LEDGER,
+      // which only records `proved` when a verdict's predicate asserted the declared thing. That
+      // distinction is the whole point: counting verdict calls cannot tell aimed verification from
+      // busy verification — the false green this benchmark found drew SEVEN green verdicts and
+      // proved none of what it claimed. A discharge cannot be earned that way.
+      intent_declared: intentCalls,
+      intent_discharged: readDischarged(),
       // The causal read, computed here so no downstream reader re-derives it: for each turn the
       // baton arrived, was the NEXT tool call a verdict tool. A count alone cannot separate the
       // lever from the coincidence — that is what the suppressed arm is for.
@@ -447,6 +512,21 @@ export async function runCell(bugId, arm, opts = {}) {
  * elsewhere. Only git can put the tree back, and a cell that starts from another cell's leftovers
  * measures the leftovers.
  */
+/**
+ * Clear the intent ledger between cells.
+ *
+ * `readDischarged` reads the whole file, so a ledger carried over from the previous bug would count
+ * that bug's proofs as this one's. The same class of leak as the app leftovers below: a cell that
+ * starts from another cell's state measures the leftovers.
+ */
+function clearLedger() {
+  try {
+    execFileSync('rm', ['-f', join(ROOT, '.reticle', 'intent.json')], { stdio: 'ignore' });
+  } catch {
+    /* nothing to clear */
+  }
+}
+
 function restoreApp() {
   execFileSync('git', ['checkout', '--', 'apps/bench-app/src'], { cwd: ROOT, stdio: 'ignore' });
   // `checkout` restores tracked files and leaves NEW ones. Agents create them: a lean run left
@@ -467,6 +547,7 @@ async function mainMulti() {
   const rows = [];
   for (const arm of 0 === arms.length ? ARMS : arms) {
     restoreApp();
+    clearLedger();
     for (const b of bugs) inject(b);
     await new Promise((r) => setTimeout(r, 3000));
     const row = await runMultiCell(bugs, arm);
@@ -502,6 +583,7 @@ if (import.meta.url === `file://${process.argv[1]}` && process.argv.includes('--
   for (const bug of bugs) {
     for (const arm of 0 === arms.length ? ARMS : arms) {
       restoreApp();
+      clearLedger();
       inject(bug);
       await new Promise((r) => setTimeout(r, 2500));
       const row = await runCell(bug, arm);
