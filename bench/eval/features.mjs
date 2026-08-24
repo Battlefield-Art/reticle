@@ -59,7 +59,15 @@ export const FEATURES = {
     // Stated plainly rather than left blank: the harness saves no flows, so there is nothing to
     // measure yet. A feature listed with `status: unmeasured` is a debt; a feature not listed at all
     // is forgotten.
-    status: 'UNMEASURED — the do-and-verify suite never saves a flow, so the seam is untested',
+    // MEASURED 2026-08-25 by probing the seam directly, since the suite saves no flows:
+    //   no intent      -> GAP no-flow-intent   (correct)
+    //   prose intent   -> no gap               (correct)
+    //   intentId only  -> no gap               (correct)
+    //   intent "   "   -> no gap               (DEFECT, fixed — whitespace counted as a goal)
+    // The behavioural half — whether a flow's intent makes a RED replay readable months later — is
+    // still untested, and needs a suite that saves a flow and then breaks it.
+    status:
+      'MEASURED (mechanism): 3/4 correct, one defect found and fixed — a whitespace intent silenced the gap. Behavioural value on a red replay still untested',
   },
   'context-after-compaction': {
     env: 'DV_NO_CONTEXT_HINT',
@@ -69,7 +77,13 @@ export const FEATURES = {
     measure: ['callsAfterCut', 'reachedVerdict'],
     // `bench/harness/long-horizon.mjs` performs a REAL cut of the message array at turn 2 and
     // refuses to report if the cut never fired. It has never been run against this release.
-    status: 'UNMEASURED — harness exists (long-horizon.mjs, real compaction) and has not been run',
+    // MEASURED 2026-08-25, real cut at turn 2 (cut confirmed fired: callsAfterCut=4).
+    // remembers: 5 turns, 6 calls, 0 rediscovery, 49,752 tok.
+    // compacted: 6 turns, 7 calls, 2 rediscovery, 56,454 tok. Both PASS.
+    // usedContext=FALSE in both arms: an agent whose history was genuinely cut re-derived state by
+    // hand rather than calling the tool built for exactly that moment.
+    status:
+      'MEASURED: compaction costs 2 rediscovery calls and ~13% tokens; reticle_context was NOT used, so the cost is unmitigated',
   },
   'lean-surface': {
     env: 'RETICLE_TOOL_PROFILE',

@@ -108,6 +108,8 @@ describe('unmeasured features are visible, not forgotten', () => {
       .map(([id]) => id);
     // Asserted as a known set: when one is measured this fails, and whoever measured it updates the
     // list having just done the work.
-    expect(owing.sort()).toEqual(['context-after-compaction', 'flow-intent']);
+    // Both were measured on 2026-08-25 and the list is now empty. It stays asserted so a NEW
+    // unmeasured feature has to be added here deliberately rather than joining silently.
+    expect(owing.sort()).toEqual([]);
   });
 });

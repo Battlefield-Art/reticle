@@ -44,7 +44,16 @@ export function flowReplayVerdictId(flowName: string, at: number): string {
  */
 function intentIdOf(flow: FlowFile): string | undefined {
   if (flow.intentId !== undefined) return flow.intentId;
-  return flow.intent === undefined ? undefined : flowIntentId(flow.name);
+  // TRIMMED, not merely defined. `intent: "   "` satisfied `!== undefined` and silenced the gap, so
+  // a flow whose stated goal is whitespace looked identical on disk to one somebody thought about.
+  //
+  // The worse direction of the two: this gap is the ONLY thing that would ever tell anyone the flow
+  // has no goal, so suppressing it wrongly means the flow replays for months and the day it goes red
+  // the report names the broken step and nothing else — the precise failure it was written to
+  // prevent. Found by probing the seam rather than reading it.
+  return undefined === flow.intent || '' === flow.intent.trim()
+    ? undefined
+    : flowIntentId(flow.name);
 }
 
 /**
