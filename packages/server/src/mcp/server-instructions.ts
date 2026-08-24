@@ -26,6 +26,14 @@ import { SHARED_PARAM_GUIDANCE } from './shared-params.js';
  * whose first verdict had already come back "yes" over a clean capture. Nothing anywhere told it
  * when it was finished. Every other instruction here pushes toward MORE checking, which is right
  * when something is broken and is the whole bill when nothing is.
+ *
+ * The diagnose-from-source rule has the same provenance and a bigger number behind it. Measured on
+ * a fix-and-verify benchmark, split at the call that writes the fix: this agent spent 14 and 18
+ * calls BEFORE its first edit where chrome-devtools-mcp spent 8 and 9 — and the sequences say why.
+ * It drove the app to understand it (snapshot, act, wait_for, snapshot, act, act_and_wait) and only
+ * then opened a file, while the competitor read six files and then looked once. Per-turn cost was
+ * IDENTICAL on the hardest cell (22,575 against 22,466), so the whole gap was turns, and most of
+ * those turns were spent asking a browser a question that only source can answer.
  */
 
 /** The tools, and the rule that only two of them decide anything. Constant across both states. */
@@ -33,7 +41,9 @@ const VERDICT_DISCIPLINE = `Reticle verifies a running web app from the inside: 
 
 Only reticle_act_and_wait and reticle_assert produce a verdict. reticle_act and everything else move or read the app and prove nothing, so a drive that ends without one of those two has no result however many tools it used. Prefer reticle_act_and_wait({ ref, action, until }) — it names the expected consequence BEFORE the action, which is the difference between a check and a rationalisation. Only verified:"yes" is a pass — "unknown" means Reticle could not tell what happened, "no-fault" means nothing was declared to prove. Report either as not proved.
 
-A "yes" over a clean capture IS the answer — re-reading the page after one finds the same state. When every consequence you set out to check has one, stop.`;
+A "yes" over a clean capture IS the answer — re-reading the page after one finds the same state. When every consequence you set out to check has one, stop.
+
+DIAGNOSING a bug? Read the source first — Reticle proves what the app DOES, not why. Drive to CONFIRM a fix, not to find one.`;
 
 /**
  * The first move, for a project no app has ever connected to.

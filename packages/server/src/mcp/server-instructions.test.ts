@@ -97,8 +97,30 @@ describe('buildServerInstructions', () => {
     // competitor's tokens confirming nothing was wrong, on a page whose FIRST verdict had already
     // come back "yes" over a clean capture. It was not payload — that run had the smallest
     // tool-result payload of its five. It was turns nobody had told it to stop taking.
+    //
+    // Raised again to 3,500 for the diagnose-from-source rule, cut to one sentence to earn it.
+    //
+    // THIRD raise in one release, and the ratchet is the thing to watch: a cap that moves whenever
+    // something wants in is not a cap. It holds only because each raise has been paid for with a
+    // measurement, and because the two before it were checked afterwards — the stopping rule cut
+    // the healthy-app control from 275k to a 123k mean over three runs. If a future raise cannot
+    // show that, the right answer is to cut an older sentence instead of adding to the budget.
+    // Measured on a fix-and-verify benchmark, split at the call that writes the fix: this agent
+    // spent 14 and 18 calls BEFORE its first edit where a competitor spent 8 and 9, and per-turn
+    // cost was identical on the hardest cell — so the whole gap was turns spent asking a browser a
+    // question only source can answer. ~150 bytes charged once against turns charged every run.
     for (const previouslyConnected of [true, false]) {
-      expect(buildServerInstructions({ previouslyConnected }).length).toBeLessThan(3350);
+      expect(buildServerInstructions({ previouslyConnected }).length).toBeLessThan(3500);
+    }
+  });
+});
+
+describe('diagnosis starts in the source, not in the browser', () => {
+  it('says so in both states, and names the order', () => {
+    for (const previouslyConnected of [true, false]) {
+      const text = buildServerInstructions({ previouslyConnected });
+      expect(text).toMatch(/Read the source first/);
+      expect(text).toMatch(/CONFIRM a fix, not to find one/);
     }
   });
 });
