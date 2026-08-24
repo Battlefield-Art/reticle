@@ -150,6 +150,8 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Removed
 
+- **`@reticlehq/browser` — dead HUD artwork no longer ships in every user's page bundle.** The presenter still uses the mark and the FAB. A ~5.5KB wordmark SVG, its unused HTML wrappers, and a handful of aliases (`DockAlign`, a stale presenter UI version constant, `PAUSED_BADGE_LABEL`, `CONTROLS_HEAD_HTML`, `isDockDragged`) had no importers. The HUD still mounts.
+
 - **`@reticlehq/browser` — two devDependencies nobody imported, one of them a native binary.** `sharp` had zero references anywhere in the package, and it is not in the root `onlyBuiltDependencies`, so its native build was skipped and the only thing it ever did was download a set of platform binaries on every clone and every CI job. `@types/jsdom` was the same kind of nothing: jsdom is consumed as the vitest _environment_, which needs no type package at all — `@reticlehq/react` has run the identical environment without it the whole time.
 
   **The `sharp` security override in the root manifest stays.** It looks orphaned once the direct dependency goes and it is not: `next` and `astro` both pull `sharp` as an optional dependency in the fixtures under `apps/`, so the override is still the floor on a transitive install. Removing a version floor because the direct dependant left is how a patched transitive quietly slides back down.
