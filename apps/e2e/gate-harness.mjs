@@ -297,8 +297,25 @@ export const Attribution = {
   INCONCLUSIVE: 'inconclusive',
 };
 
-export function attributeOutcome({ connected, transportAliveThroughout }) {
-  if (connected) return { outcome: Attribution.PASS, because: 'a session connected' };
+/**
+ * Why a connected-but-empty session is a FAIL, not a PASS.
+ *
+ * The install gate used to treat "a session connected" as success. An app can connect with
+ * `registerCapabilities({ testids: [], signals: [], stores: [] })`, so `hasCapabilities` stays
+ * false and `reticle_state` has nothing to read. That is the end state the gate exists to catch:
+ * connected is not verifiable. Callers that do not pass `hasCapabilities` (the soak, which only
+ * asks whether the link stayed up) keep the old connected-is-enough meaning.
+ */
+const BECAUSE_SESSION_UNOBSERVABLE =
+  'a session connected but hasCapabilities is false, so the app cannot answer a state question';
+
+export function attributeOutcome({ connected, transportAliveThroughout, hasCapabilities }) {
+  if (connected) {
+    if (false === hasCapabilities) {
+      return { outcome: Attribution.FAIL, because: BECAUSE_SESSION_UNOBSERVABLE };
+    }
+    return { outcome: Attribution.PASS, because: 'a session connected' };
+  }
   if (!transportAliveThroughout) {
     return {
       outcome: Attribution.INCONCLUSIVE,
@@ -381,6 +398,28 @@ async function selfCheck() {
   assert.equal(
     attributeOutcome({ connected: false, transportAliveThroughout: true }).outcome,
     Attribution.FAIL,
+  );
+  assert.equal(
+    attributeOutcome({
+      connected: true,
+      transportAliveThroughout: true,
+      hasCapabilities: false,
+    }).outcome,
+    Attribution.FAIL,
+    'a session that connected with nothing to observe is a FAIL, not a pass',
+  );
+  assert.equal(
+    attributeOutcome({
+      connected: true,
+      transportAliveThroughout: true,
+      hasCapabilities: true,
+    }).outcome,
+    Attribution.PASS,
+  );
+  assert.equal(
+    attributeOutcome({ connected: true, transportAliveThroughout: true }).outcome,
+    Attribution.PASS,
+    'callers that do not ask about capabilities keep the connected-is-enough meaning',
   );
 
   client.kill('SIGKILL');

@@ -1,4 +1,5 @@
-// Tier 1: install Reticle into apps that have never seen it, and check a session actually appears.
+// Tier 1: install Reticle into apps that have never seen it, and check a session actually appears
+// AND can answer a state question (`hasCapabilities`). Connected is not verifiable.
 //
 // Every gate in this repo is blind to the install. `apps/bench-app`, `apps/next-smoke` and the rest
 // are ALREADY instrumented, so re-running `init` over one reports `·` (already wired) for every step
@@ -56,7 +57,15 @@ process.env.RETICLE_TELEMETRY = '0';
 // The telemetry line above already silences the events; this is belt and braces for anything that
 // re-enables them (a debug run recording to a local sink) and for the CLI's own CI-shaped defaults.
 process.env.CI = process.env.CI ?? 'true';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,15 +87,28 @@ const APP_PORT_BASE = Number(process.env.INSTALL_GATE_APP_PORT ?? '4820');
 /** Generous: a cold Next build is slow, and a timeout here reads as an install failure. */
 const BOOT_TIMEOUT_MS = 180_000;
 const CONNECT_TIMEOUT_MS = 45_000;
+/** After a session appears, how long to wait for `hasCapabilities` to flip true on reannounce. */
+const CAPABILITIES_WAIT_MS = 10_000;
 const KEEP = process.argv.includes('--keep');
+/**
+ * A `data-testid` the gate plants in every scaffold so `init` has something to register.
+ *
+ * Empty create-vite / create-next-app apps have none, so `init` writes
+ * `registerCapabilities({ testids: [], signals: [], stores: [] })` and `hasCapabilities` stays
+ * false. Requiring verifiability without this stamp would paint every scaffold red for a reason
+ * that is true of an empty app and uninformative. With it, a regression that writes empty arrays
+ * again fails the session check below.
+ */
+const INSTALL_PROBE_TESTID = 'reticle-install-probe';
+const INSTALL_PROBE_FILE = 'reticle-install-probe.ts';
 /**
  * Negative control: wire the app to a port the daemon is NOT on, so no session can appear, and
  * require the gate to FAIL.
  *
  * `check-boundaries.mjs --self-test` and `check-lossy-transforms.mjs --self-test` already run this
  * way in CI, for the reason this repo keeps rediscovering: a guard that has never failed is not a
- * guard. The session check is the one assertion that proves the install WORKS, so it is the one that
- * most needs to be shown capable of going red.
+ * guard. The session check (connected AND verifiable) is the assertion that proves the install
+ * WORKS, so it is the one that most needs to be shown capable of going red.
  */
 const SELF_TEST = process.argv.includes('--self-test');
 /** Re-record the baseline instead of asserting against it. The diff is then reviewed in the PR. */
@@ -376,6 +398,21 @@ async function sessionsOn(port) {
 }
 
 /**
+ * Plant a `data-testid` `init` will scan, so the generated capabilities file registers something.
+ *
+ * Written where the scan looks (under `src/` when that exists, otherwise the app root). Not imported
+ * by the app — the scanner reads source text, and `hasCapabilities` rides on `registerCapabilities`,
+ * not on the DOM.
+ */
+function stampInstallProbe(app) {
+  const dir = existsSync(join(app, 'src')) ? join(app, 'src') : app;
+  writeFileSync(
+    join(dir, INSTALL_PROBE_FILE),
+    `export const RETICLE_INSTALL_PROBE = 'data-testid="${INSTALL_PROBE_TESTID}"';\n`,
+  );
+}
+
+/**
  * The steps `init` reported, as `mark → title`.
  *
  * "Zero ⚠" is an absolute and it is not enough on its own. A step that silently changes mark — ✓ to
@@ -438,6 +475,7 @@ async function driveScaffold(scaffold, index) {
     // ── 1. a surface that has never seen Reticle ──────────────────────────────────────────────
     note('scaffolding…');
     run(scaffold.create[0], scaffold.create[1], workdir);
+    stampInstallProbe(app);
     // Seeded AFTER the create command, never before: `create-next-app` reads the surrounding
     // directory to pick a package manager, and a lockfile planted first would change what it builds.
     for (const [rel, content] of Object.entries(scaffold.seed ?? {})) {
@@ -514,6 +552,12 @@ async function driveScaffold(scaffold, index) {
       'init leaves ZERO manual steps',
       manualLines.length === 0,
       manualLines.length === 0 ? 'no ⚠' : manualLines.join(' | ').trim(),
+    );
+    const noticeLines = report.split('\n').filter((l) => l.includes('[ℹ]'));
+    note(
+      0 === noticeLines.length
+        ? 'no ℹ notices'
+        : `${String(noticeLines.length)} ℹ notice(s) — not a ⚠, but the app may still be unobservable`,
     );
 
     // The baseline diff. See stepsOf() for why "zero ⚠" cannot carry this on its own.
@@ -621,6 +665,10 @@ async function driveScaffold(scaffold, index) {
 
     // POLL. Steps 6 and 7 of the connection sequence race, and a gate that samples once sits outside
     // the product's own protection against it — see docs/system-map.md.
+    //
+    // Connected is not verifiable. `hasCapabilities` is announced in HELLO at connect() and
+    // re-announced when `registerCapabilities` runs after, so the first snapshot can be false even
+    // on a file that registers a testid. Wait for a session, then keep polling for capabilities.
     const connectDeadline = Date.now() + CONNECT_TIMEOUT_MS;
     let sessions = [];
     while (Date.now() < connectDeadline) {
@@ -628,11 +676,18 @@ async function driveScaffold(scaffold, index) {
       if (sessions.length > 0) break;
       await sleep(500);
     }
+    const capDeadline = Math.min(connectDeadline, Date.now() + CAPABILITIES_WAIT_MS);
+    while (Date.now() < capDeadline && !sessions.some((s) => true === s.hasCapabilities)) {
+      sessions = await sessionsOn(bridgePort);
+      await sleep(500);
+    }
 
     // ── 6. attribute honestly (harness rule 4) ─────────────────────────────────────────────────
     const { aliveThroughout } = transport.stop();
+    const verifiable = sessions.some((s) => true === s.hasCapabilities);
     const verdict = attributeOutcome({
       connected: sessions.length > 0,
+      hasCapabilities: verifiable,
       transportAliveThroughout: aliveThroughout,
     });
     if (verdict.outcome === Attribution.INCONCLUSIVE) {
@@ -642,7 +697,7 @@ async function driveScaffold(scaffold, index) {
       fail += 1;
     } else {
       chk(
-        'a session actually appears — the only step that proves the install works',
+        'a session appears and can answer a state question',
         verdict.outcome === Attribution.PASS,
         verdict.outcome === Attribution.PASS
           ? (sessions[0]?.url ?? '')
