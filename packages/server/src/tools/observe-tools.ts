@@ -353,7 +353,7 @@ export const OBSERVE_TOOLS: ToolDef[] = [
     name: ReticleTool.ASSERT,
     example: { predicate: { kind: PredicateKind.SIGNAL, name: 'todos:loaded' } },
     description:
-      'Evaluate a predicate (optionally waiting up to timeout_ms). Returns { pass, evidence, failureReason? }. The end of every verify loop. Prefer a { signal } or { net } consequence over { element }/{ text } presence — a passing presence-only assertion returns `advice` because a wrong/healed element can fake it. By default it only counts events since your last act, so a stale buffered signal can never fake a pass; pass `since` (an observe/act cursor) to set the window explicitly.',
+      'Evaluate a predicate (optionally waiting up to timeout_ms). Returns { pass, evidence, failureReason? }. The end of every verify loop. CHECKING SEVERAL THINGS? Put them in ONE call with { kind: "allOf", predicates: [...] } — it returns one verdict naming whichever member failed, and one call costs one round trip where N calls cost N. Prefer a { signal } or { net } consequence over { element }/{ text } presence — a passing presence-only assertion returns `advice` because a wrong/healed element can fake it. By default it only counts events since your last act, so a stale buffered signal can never fake a pass; pass `since` (an observe/act cursor) to set the window explicitly.',
     inputSchema: {
       predicate: PredicateSchema.optional().describe(
         // Every kind, each with the field that carries its argument. Five of the nine were
