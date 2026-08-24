@@ -141,6 +141,7 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 - **`@reticlehq/server` — drop `export` on symbols used only inside their own file.** An export nobody imports is noise that makes the module surface look larger than it is, and it defeats dead-code detection for everything else: a symbol exported for no reason can never be reported as unused. The compiler is the proof — if typecheck passes, the removal was safe.
 
   Test seams stay exported: a symbol referenced only by its own `.test.ts` is a seam, not dead. So is a name the e2e battery imports from `dist` — typecheck cannot see those, which is how `reportVersionChange` got dropped and the telemetry-events spec died with "is not a function". Barrel re-exports stay too. `@reticlehq/core` has none of this class — every export is re-exported from the package barrel. Other packages are follow-ups.
+- **`@reticlehq/core` + `@reticlehq/server` — there is one `InstrumentationGapKind` vocabulary.** Honesty and `reticle_assert` spoke core (`no-signal-on-mutation`, `no-store-registered`). `reticle_domain` spoke a server-local copy (`missing-signal`, `unregistered-store`) of the same absences, so an agent that read both saw two names for one gap. Oracles now use the core kinds. `missing-testid` — the one kind only oracles emitted — is a core kind, so a later honesty emit cannot pick a third name.
 
 ### Fixed
 
