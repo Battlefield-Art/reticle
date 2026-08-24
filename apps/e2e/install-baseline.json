@@ -11,7 +11,6 @@
     "✓ Install dependencies → package.json",
     "✓ Reticle config → .reticle.json",
     "✓ ReticleDev component → app/reticle-dev.tsx",
-    "ℹ AGENT: finish the capabilities file → app/reticle-dev.tsx",
     "✓ Next config (withReticle) → next.config.ts",
     "✓ Mount ReticleDev → app/layout.tsx"
   ],
@@ -20,7 +19,6 @@
     "✓ Install dependencies → package.json",
     "✓ Reticle config → .reticle.json",
     "✓ ReticleDev component → components/reticle-dev.tsx",
-    "ℹ AGENT: finish the capabilities file → components/reticle-dev.tsx",
     "✓ Next config (withReticle) → next.config.ts",
     "✓ Mount ReticleDev → pages/_app.tsx"
   ],
@@ -30,7 +28,6 @@
     "✓ Reticle config → .reticle.json",
     "✓ Reticle config (agent root) → <root>/.reticle.json",
     "✓ ReticleDev component → app/reticle-dev.tsx",
-    "ℹ AGENT: finish the capabilities file → app/reticle-dev.tsx",
     "✓ Next config (withReticle) → next.config.ts",
     "✓ Mount ReticleDev → app/layout.tsx"
   ],
