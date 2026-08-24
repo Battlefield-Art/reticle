@@ -19,14 +19,27 @@ import { describe, expect, it } from 'vitest';
 import { refreshAgentRules, RULE_FILES } from './refresh-rules.js';
 import { markedBlock } from './agent-rules.js';
 
-/** An in-memory instruction file set, so nothing here touches a real disk. */
+/**
+ * An in-memory instruction file set, so nothing here touches a real disk.
+ *
+ * The basename is taken on EITHER separator. The first version split on '/' alone, which is a
+ * POSIX assumption in a stub standing in for a filesystem: `refreshAgentRules` builds its paths
+ * with `join`, so on Windows it asks for `\app\CLAUDE.md`, the split returns the whole string,
+ * every lookup misses and the refresh reports that it found nothing to update.
+ *
+ * Green on macOS, red on the Windows CI job, and the failure looked exactly like the product being
+ * broken — three tests asserting the block was rewritten, all reporting it was not. The product was
+ * fine; the stub was lying about what a path is.
+ */
+const basename = (p: string) => p.split(/[\\/]/).pop() ?? '';
+
 function io(files: Record<string, string>) {
   const written: Record<string, string> = {};
   return {
     written,
-    read: (p: string) => files[p.split('/').pop() ?? ''] ?? null,
+    read: (p: string) => files[basename(p)] ?? null,
     write: (p: string, c: string) => {
-      written[p.split('/').pop() ?? ''] = c;
+      written[basename(p)] = c;
     },
   };
 }
