@@ -871,7 +871,18 @@ export const ACT_TOOLS: ToolDef[] = [
           // What the app DECLARED, so an under-instrumented one is told without having to be asked.
           hasCapabilities: session.hasCapabilities,
           // What the run still owes. A green that leaves this above zero is not the same as done.
-          openIntentCount: openIntents.length,
+          // MINUS the one this verdict is about to discharge.
+          //
+          // The discharge happens below, after the gaps are built, so a straight `openIntents.length`
+          // counts the intent this very call proves. Measured live on the first drive: an inline
+          // intent was declared, asserted and PROVED by the same verdict, and the result still said
+          // "1 declared intent(s) are still unproved" while the ledger recorded it `proved`. A gap
+          // that fires on the one path doing everything right is noise, and noise is what gets
+          // filtered out — taking the honest gaps with it.
+          openIntentCount: openIntents.filter(
+            (i) =>
+              !(intentId !== undefined && Verified.YES === decision.verified && i.id === intentId),
+          ).length,
           domMutated: (session.lastAct.effect().mutatedWithin ?? 0) > 0,
           signalsFired: actionSummary.signals.length,
           routeChanged: actionSummary.route !== undefined,
