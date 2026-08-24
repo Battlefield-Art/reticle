@@ -93,12 +93,26 @@ export function leaseNotConnectedHint(
   //    about at install time — while this hint never mentioned it.
   const nuxt = evidence.framework?.toLowerCase() === NUXT ? ` ${NUXT_FIRST}` : '';
 
-  // 3. Proven wiring. Blaming the port here is the self-contradiction this rewrite exists to end.
+  // 3. Proven PORT. Blaming the port here is the self-contradiction this rewrite exists to end —
+  //    but "the wiring is correct" was a second claim, and it was not proven at all.
+  //
+  //    `previouslyConnected` is scoped to project + port, never to the app. In a monorepo, or for
+  //    anyone adding a second app, the thing that connected yesterday is a DIFFERENT app. Measured:
+  //    an uninstrumented app driven in exactly that situation was told its wiring was correct, and
+  //    handed four causes — a dev-mode guard, a stale dev server, a missing peer dependency, a
+  //    non-localhost page — every one of which presupposes the SDK is already installed. It was
+  //    not. That is the commonest failure there is, and `reticle init` appeared nowhere in the
+  //    answer, because the only branch that mentions it is the one reached when nothing is known.
   if (true === evidence.previouslyConnected) {
+    const notThisApp =
+      true === evidence.sdkMarker
+        ? ''
+        : ' That may have been a DIFFERENT app, though: this one may carry no Reticle SDK at all, ' +
+          'in which case run `reticle init` in ITS directory first — every cause below assumes the ' +
+          'SDK is already installed.';
     return (
-      `${opening} An app for this project HAS connected on this port before, so the port and the ` +
-      `wiring are both correct — what is failing is the SDK reaching initialise on the page.${nuxt}` +
-      `${marker} ${REAL_CAUSES} ${RELEASE}`
+      `${opening} An app for this project HAS connected on this port before, so the port is ` +
+      `proven.${notThisApp}${nuxt}${marker} ${REAL_CAUSES} ${RELEASE}`
     );
   }
 
