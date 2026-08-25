@@ -8,6 +8,8 @@ import { statusNextAction } from './cli/status-next-action.js';
 import { hasConnectedBefore } from './session/connection-memory.js';
 import { attachStatusFields } from './mcp/attach-memory.js';
 import { reticleStateHome } from './daemon/daemon.js';
+import { handleMcp } from './cli/mcp-command.js';
+import { resolveDaemonForProject } from './daemon/daemon-resolve.js';
 import {
   handleWatch,
   handleCapsules,
@@ -42,16 +44,9 @@ import {
   presenceIsUsable,
   describePresence,
 } from './daemon/port-presence.js';
-import {
-  waitForDaemon,
-  startMcpProxy,
-  probeDaemon,
-  proxyLog,
-  setProxyLogPort,
-} from './mcp/mcp-proxy.js';
+import { waitForDaemon, probeDaemon } from './mcp/mcp-proxy.js';
 import {
   installDaemonResilience,
-  installProxyResilience,
   recordExitReason,
   DaemonExitReason,
 } from './daemon/daemon-resilience.js';
@@ -507,8 +502,19 @@ async function waitForNewSession(port: number, before: number): Promise<boolean>
 }
 
 function handleOpen(requestedPort: number, url: string | undefined): void {
+  // Our project's daemon first: `discoverDaemonPort` returns the LOWEST live daemon on the machine,
+  // whoever it belongs to, so on a machine running two projects `reticle open` could drive the other
+  // one's browser. It stays as the last resort for a caller with no project id, where any daemon is
+  // better than none and there is no identity to confuse.
+  const myProject = readProjectId(process.cwd());
   probeDaemon(requestedPort)
-    .then((here) => (here ? requestedPort : (discoverDaemonPort() ?? requestedPort)))
+    .then((here) =>
+      here
+        ? requestedPort
+        : (resolveDaemonForProject(myProject, reticleStateHome(), isAlive) ??
+          discoverDaemonPort() ??
+          requestedPort),
+    )
     .then(async (port) => {
       await ensureDaemon(port);
       const { sessions } = summarizeStatus(await fetchStatus(port));
@@ -707,112 +713,6 @@ function handleDaemonInner(parsed: {
     });
 }
 
-/**
- * MCP proxy mode: ensures the daemon is running, then bridges Claude Code's
- * stdin/stdout to the daemon's SSE endpoint. This is the recommended way to
- * configure Reticle in.mcp.json — users never need to manage the daemon manually.
- *
- * Pass --drive <url> to have the daemon launch its own Playwright browser at that
- * URL. The agent then has full autonomous control without relying on the user's browser.
- */
-function handleMcp(opts: {
-  port: number;
-  driveUrl?: string;
-  headless: boolean;
-  http: boolean;
-  httpPort?: number;
-  httpToken?: string;
-}): void {
-  const { port, driveUrl, headless, http, httpPort, httpToken } = opts;
-  // The proxy IS the MCP server the editor launched. Nothing respawns it, so an uncaught throw here
-  // is what a user experiences as "the MCP server disconnected — open /mcp and reconnect". Log it,
-  // report it, keep serving: the reconnect and dormant paths already know how to rebuild the only
-  // state this process has. See installProxyResilience for why its rule inverts the daemon's.
-  // The proxy's crash handlers must write to the proxy's LOG FILE, not just stderr. The editor
-  // swallows stderr, so wiring these to `log` meant a crash was handled and then unrecorded — the
-  // failure a user reports as "it disconnected" left nothing behind to read.
-  setProxyLogPort(port);
-  installProxyResilience(process, proxyLog);
-  /**
-   * Make sure a daemon is on the port, spawning one if not.
-   *
-   * Called on first start AND on every reconnect. The proxy used to only retry the socket, so a
-   * daemon that exited — crashed, `reticle stop`, or self-shut-down as idle — meant the retries hit
-   * a dead port until the budget ran out and the agent's MCP server exited with it. Reticle simply
-   * disappeared mid-session with nothing said. Respawning here makes the reconnect self-healing.
-   */
-  const ensure = async (): Promise<void> => {
-    // The same question every other surface asks. It used to be a bare TCP connect, so a stranger on
-    // the bridge port answered "a daemon is here" — the proxy connected, the stream ended, and each
-    // client request woke into the identical non-answer. Rejecting here is what puts the proxy
-    // dormant with a reason, instead of pretending the wake succeeded.
-    const presence = await probePresence(port, { tcpOpen: probeDaemon, status: fetchStatus });
-    if (presenceIsUsable(presence)) return;
-    if (PortPresence.FREE !== presence) throw new Error(describePresence(presence, port));
-    const scriptPath = process.argv[1];
-    if (scriptPath === undefined) {
-      log('reticle_mcp_no_script', {});
-      process.exit(1);
-    }
-    const daemonArgs = [DAEMON_INNER_COMMAND, PORT_FLAG, String(port)];
-    if (driveUrl !== undefined) {
-      daemonArgs.push(DRIVE_FLAG, driveUrl);
-      if (!headless) daemonArgs.push(HEADED_FLAG);
-    }
-    // Forward the HTTP-verify flags too (previously silently dropped for `reticle mcp`).
-    if (http) {
-      daemonArgs.push(HTTP_FLAG);
-      if (httpPort !== undefined) daemonArgs.push(HTTP_PORT_FLAG, String(httpPort));
-      if (httpToken !== undefined) daemonArgs.push(HTTP_TOKEN_FLAG, httpToken);
-    }
-    spawnDaemon(process.execPath, scriptPath, daemonArgs, port);
-    // Announce the daemon only once the PORT ACCEPTS. This line used to be written the instant the
-    // child was spawned, which on a Windows first bootstrap meant `reticle_mcp_daemon_started`
-    // followed about ten seconds later by `reticle_mcp_daemon_unavailable` and a first
-    // `reticle_sessions` that expired. A readiness signal that precedes readiness is worse than
-    // none: a client that believes it stops waiting for the thing that has not happened.
-    await waitForDaemon(port);
-    log('reticle_mcp_daemon_started', { port, ...(driveUrl !== undefined ? { driveUrl } : {}) });
-  };
-  // Start the proxy WHATEVER happened to the daemon.
-  //
-  // This used to exit(1) when `ensure` failed, which is the third way an MCP server disappears on a
-  // user: something else is holding the bridge port — a foreign daemon from another project, a
-  // half-dead process, a port a colleague's tool grabbed — the spawned daemon cannot bind, and the
-  // editor shows a server that failed to start. Nothing about that is unrecoverable: the proxy
-  // answers `initialize` itself, serves the cached catalog, and its wake path retries a daemon on
-  // every client request. Present-and-complaining beats absent, because absent needs a human.
-  // `void`: the chain handles its own failure and the process must not wait on it — the proxy is
-  // started from `finally` either way.
-  void ensure()
-    .catch((err: unknown) => {
-      log('reticle_mcp_daemon_unavailable', {
-        error: err instanceof Error ? err.message : String(err),
-        note: 'serving anyway — the next tool call will try to start a daemon again',
-      });
-    })
-    .finally(() => {
-      // Also `void`: the proxy runs for the life of the process and is never awaited by anyone.
-      //
-      // The `.catch` is load-bearing despite that. `startMcpProxy` rejects when its FIRST connect
-      // fails — which is precisely the case this block exists to tolerate, a daemon that is not
-      // there yet — and with nothing attached that reject became an unhandledRejection. Reported
-      // from a win32 user as a crash reading `connect ECONNREFUSED` with an EMPTY frame list,
-      // because the stack of a refused socket is entirely node internals and the privacy filter
-      // keeps only Reticle frames. So the one path we most want diagnosable arrived as an anonymous
-      // crash. The proxy itself is unaffected — it has already installed its stdin reader and goes
-      // on serving from cache, waking a daemon on the next request — which is exactly why this
-      // must be logged as the expected condition it is rather than reported as a defect.
-      void startMcpProxy(port, ensure).catch((err: unknown) => {
-        log('reticle_mcp_proxy_first_connect_failed', {
-          port,
-          error: err instanceof Error ? err.message : String(err),
-          note: 'serving from cache; the next client request will try to start a daemon',
-        });
-      });
-    });
-}
-
 function main(): void {
   // Before anything reads process.env — notably the telemetry gate and the bridge's security
   // options — fold in a project-local `.env`. Values already in the environment always win.
@@ -843,7 +743,19 @@ function main(): void {
   if (projectPort !== undefined && isLikelyDevServerPort(projectPort)) {
     process.stderr.write(`${devServerPortWarning(projectPort)}\n`);
   }
-  const defaultPort = envPort ?? projectPort ?? RETICLE_DEFAULT_PORT;
+  // Registry BEFORE the default, and after both explicit sources.
+  //
+  // This is the line that ends the split brain. Build plugins have always asked the registry which
+  // daemon serves this project; the CLI asked a number and then attached to whoever owned it. So
+  // every project on the machine funnelled into one daemon whose identity was whichever project won
+  // the race, and one kill on one well-known port was a machine-wide outage.
+  //
+  // An explicit port still wins, because a person who typed one is answering this question
+  // themselves. Below that, our OWN daemon wherever it is listening. Only then the default, which is
+  // now a starting preference rather than an assumption.
+  const myProjectId = readProjectId(process.cwd());
+  const myDaemonPort = resolveDaemonForProject(myProjectId, reticleStateHome(), isAlive);
+  const defaultPort = envPort ?? projectPort ?? myDaemonPort ?? RETICLE_DEFAULT_PORT;
   // Headed by default; hidden only where there is no display to be headed on. A run nobody can see
   // is a run nobody trusts, and every "did it actually do anything?" cost a human round-trip.
   const parsed = parseCliArgs(argv, defaultPort, process.env['CI'] !== undefined);
@@ -937,7 +849,7 @@ function main(): void {
       void handleRollback();
       break;
     case 'mcp':
-      handleMcp(parsed);
+      void handleMcp(parsed);
       break;
     case '_daemon':
       handleDaemonInner(parsed);
