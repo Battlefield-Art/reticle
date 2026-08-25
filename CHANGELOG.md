@@ -22,8 +22,6 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 - **`@reticlehq/server` — two refusals sent agents to the wrong place.** `target matched no element` was answered with "That call did not match the tool's schema — re-read that tool's parameters". The call matched perfectly; the selector missed, and this is the commonest refusal there is. It now says the call was valid, that nothing was acted on, and to take a snapshot. Separately, the destructive-control refusal said "retry with args.confirmDangerous=true", which reads as a top-level parameter and is not one — it now shows the object to send, `args: { confirmDangerous: true }`, and names a trigger word that is not destruction, so the refusal does not read as a malfunction.
 
-- **`@reticlehq/server` — `reticle demo` could not survive meeting an app it did not ship with.** It bound the bridge port unconditionally, so a daemon already there — the normal state once any MCP client has started one — produced a raw `node:net` stack as the first thing a new user ever saw. It now arbitrates the port exactly as `reticle drive` does, and answers a live daemon with the tools the user already has. It also skips disabled controls (it would have clicked an inert button and reported a perfectly true `no-fault` about it), pins one session for the whole run so a second tab cannot kill it mid-demo, counts only findings it can stand behind, and prints the verdict's reason beside the grade. Nothing reaches a first run as a stack trace.
-
 ### Added
 
 - **`@reticlehq/core` + `@reticlehq/server` — a flow saved with no intent now says so, and can be given one in the same call.** A saved flow is a regression test that runs for months. `intent` and `intentId` have both been optional on the flow file and nothing has ever asked for either, so a flow saved silently with neither replays for a long time and then reports "step 3 failed" rather than what stopped being true. The machinery to use an intent was already there; what was missing was anything that asked.
@@ -139,6 +137,22 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
   **A flow with no declared intent says so, and nothing is derived from its step names.** A guessed goal reads as the product owner's words and an agent will act on them, which is strictly worse than the honest absence — the same rule the source pointer follows. Older flow files parse, replay, and report exactly as they did, and the on-disk flow version does not move.
 
 ### Changed
+
+- **`@reticlehq/server` — a passing verdict now says what the run still owes.** The mirror of the `undeclared-change` gap, and the more expensive half. That one fires when NOTHING was declared; the new `intent-undischarged` fires when something WAS and no verdict ever settled it — which reads identically to done from inside the run, because every verdict the agent drew came back green.
+
+  Measured on the bench fixture: an agent fixed a form guard, drove the app, drew SEVEN green verdicts and reported FIXED. The form still accepted a whitespace-only service, and the closing words quoted its own patch as the evidence. No existing rule could see it — the change WAS declared, so `undeclared-change` stayed silent, and each individual verdict was honestly green. A green settles what it asserted, not what the run set out to do, and only the ledger knows the difference.
+
+  It downgrades nothing: the assertion held. It names the debt on the result the agent is already reading, at the moment it is deciding whether it is finished, and it names the COUNT — "one thing still unproved" and "four things still unproved" are different situations, and a bare flag makes them read the same. The intent being discharged by the verdict carrying it is excluded, so proving something never reports itself as owed.
+
+  It keys on whether the verdict PROVED something, not on whether the predicate scored true. A bare `{ settled }` wait scores true and comes back `no-fault`; keying on the predicate attached "this verdict passed" to a result whose own `because` says it is not verification. Found by driving the fixture over MCP after the rule had already shipped — every test for it passed `proved: true`, so the one shape where the two disagree was the shape nobody had written down.
+
+- **`@reticlehq/server` — the project rules `init` writes now carry a verify-as-you-build convention.** "Asked for four, build one, drive it, get a verdict, then start the second. A red verdict after four builds has four suspects; after one it has none." Verification that happens only at the end is the shape that produces the seven-green-verdicts run above: by then the agent is checking a finished pile rather than a change it still remembers making.
+
+- **`@reticlehq/server` — the update nudge now says that updating refreshes the project's rules.** A new version ships new conventions, and the rules block in a project's `CLAUDE.md` / `AGENTS.md` is written once at `init` and then goes stale silently — the agent keeps following the previous release's instructions with no way to know they moved. The nudge now states that `reticle update` refreshes that block along with the packages, and that it restarts the daemon, so it is a between-tasks action rather than a mid-verification one.
+
+- **`@reticlehq/server` — the `verify_next` nudge now carries the call instead of describing it.** Almost every verdict-less session in the field never called a verdict-producing tool once, and what the nudge carried was prose the agent had to translate back into a call — which is exactly where it was already going wrong: `until` omitted, arguments flat instead of nested under `args`, a predicate written as a bare array. It now carries `ref` and `action` taken from the act that actually dispatched, so the suggestion is about the element the agent really touched. `until` is left as a placeholder the agent must fill: naming the consequence is the one part nothing but Reticle's caller can know, and guessing it would be Reticle inventing the assertion. Emitted only when there is a real call to suggest.
+
+  **Measured, and the number is not good.** Over the fix-and-verify battery it arrived once in 118 tool calls and was followed zero times — inert on that workload, whatever it may be worth on the verdict-less sessions it was built for. `RETICLE_SUPPRESS_VERIFY_NEXT=1` withholds it, as the control arm of that A/B and nothing else. It ships because it costs nothing when it does not fire; it is recorded here as unproven rather than as a win.
 
 - **`@reticlehq/server` — drop `export` on symbols used only inside their own file.** An export nobody imports is noise that makes the module surface look larger than it is, and it defeats dead-code detection for everything else: a symbol exported for no reason can never be reported as unused. The compiler is the proof — if typecheck passes, the removal was safe.
 
@@ -259,6 +273,12 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
   A captured request body now joins the identity, so writes that differ in what they sent are no longer counted as repeats, and identical bodies still are. With body capture off (or a non-text body, which reports a type marker instead) there is nothing to compare and the URL alone stands, exactly as before; a window where only some calls carried bodies compares nothing rather than guess. The finding's `detail` still names `method url ×N`, so nothing downstream had to change.
 
 ### Removed
+
+- **`@reticlehq/server` — `reticle demo` is gone, and nothing replaces it.** It existed to give a new user something impressive to watch, and the way it did that was the problem: a scripted tour of an app we shipped, driven by a command, proving nothing about the user's own codebase. Somebody who ran it saw Reticle work and still had no instrumented app, which is the exact gap they installed us to close.
+
+  The moment it was built for is better served by the thing that was already there. The agent installs Reticle into the real project, drives one real flow of the real app, and reports the verdict — a headful browser, the user's own screen, their own bug. That is not a smaller version of the demo; it is the only version that is evidence. `init`'s closing hint now says so, and asks for it in the agent's words rather than as a command to copy.
+
+  Removing a command is a breaking change for anyone who scripted it. Nothing else did — it took no arguments, produced no artifact, and was never part of the tool surface.
 
 - **`@reticlehq/browser` — dead HUD artwork no longer ships in every user's page bundle.** The presenter still uses the mark and the FAB. A ~5.5KB wordmark SVG, its unused HTML wrappers, and a handful of aliases (`DockAlign`, a stale presenter UI version constant, `PAUSED_BADGE_LABEL`, `CONTROLS_HEAD_HTML`, `isDockDragged`) had no importers. The HUD still mounts.
 
