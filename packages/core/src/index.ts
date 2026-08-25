@@ -53,3 +53,4 @@ export * from './impact.js'; // the user's own record of what Reticle has done f
 export * from './impact-savings.js'; // the savings model - one file, so every claim is derivable there
 export { CONTRACT_FINGERPRINT, fnv1a, fingerprintOf } from './contract-fingerprint.js';
 export { fingerprintFinding, type FindingIdentity } from './finding-fingerprint.js';
+export * from './unreachable-notice.js'; // the page's unreachable warning, as a contract the daemon parses

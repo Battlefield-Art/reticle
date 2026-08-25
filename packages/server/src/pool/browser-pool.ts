@@ -11,11 +11,19 @@
  */
 
 /** The minimal page surface the pool drives. Real Playwright `Page` satisfies this. */
+import { unreachableUrlIn } from '@reticlehq/core';
+
 export interface PooledPage {
   goto(url: string, opts?: { timeoutMs?: number }): Promise<unknown>;
   close(): Promise<void>;
   /** Fires when THIS page's renderer crashes — lets the pool reclaim just this lease, not the fleet. */
   onCrash(handler: () => void): void;
+  /**
+   * Fires for each console message the page logs. OPTIONAL: a fake that does not implement it makes
+   * the pool record nothing, which is the correct degradation — an absent dial address must read as
+   * "the page said nothing", never as "the page dialled correctly".
+   */
+  onConsole?(handler: (text: string) => void): void;
 }
 
 /** An isolated browsing context (cookies/storage). Real Playwright `BrowserContext` satisfies this. */
@@ -68,6 +76,14 @@ interface ActiveLease {
   url: string;
   /** Last time an agent touched this lease (acquire or any tool call); drives orphan reclaim. */
   touchedAt: number;
+  /**
+   * The websocket address the page's SDK reported it could not reach, if it said so.
+   *
+   * One string, overwritten — not a buffer. The SDK retries and logs each failure, so accumulating
+   * them would grow without bound for exactly the app that is already misconfigured, and every entry
+   * after the first says the same thing.
+   */
+  dialFailureUrl?: string;
 }
 
 /**
@@ -215,6 +231,7 @@ export class BrowserPool {
     await this.#waitForSlot(opts.signal);
     const sessionId = opts.sessionId ?? this.#genId();
     let context: PooledContext | undefined;
+    let pending: string | undefined;
     try {
       const browser = await this.#ensureBrowser();
       context = await browser.newContext();
@@ -224,13 +241,29 @@ export class BrowserPool {
       page.onCrash(() => {
         void this.#release(sessionId);
       });
+      // Listen BEFORE goto: the SDK's connect attempt races the navigation's own resolution, and a
+      // listener attached afterwards misses the first failures — the only ones logged before the
+      // retry backoff stretches out.
+      page.onConsole?.((text) => {
+        const dialled = unreachableUrlIn(text);
+        if (dialled === undefined) return;
+        const active = this.#active.get(sessionId);
+        if (active !== undefined) active.dialFailureUrl = dialled;
+        else pending = dialled; // logged during goto, before the lease is registered below
+      });
       await page.goto(url, { timeoutMs: this.#navTimeout });
       // The browser can crash WHILE goto is resolving; #onCrash then clears #active and zeroes
       // #occupied. Registering the lease now would resurrect a dead entry against a crashed browser with
       // the slot count out of sync (drifting below #active.size, eventually exceeding the cap). If we're
       // no longer the live browser, bail — the catch below closes the context and returns the slot.
       if (this.#browser !== browser) throw new Error('browser crashed during navigation');
-      this.#active.set(sessionId, { context, page, url, touchedAt: this.#now() });
+      this.#active.set(sessionId, {
+        context,
+        page,
+        url,
+        touchedAt: this.#now(),
+        ...(pending === undefined ? {} : { dialFailureUrl: pending }),
+      });
       return {
         sessionId,
         url,
@@ -243,6 +276,15 @@ export class BrowserPool {
       this.#releaseSlot();
       throw err;
     }
+  }
+
+  /**
+   * The websocket address this lease's page reported it could not reach, if it reported one.
+   *
+   * Undefined means the page said nothing — never that it dialled the right place.
+   */
+  dialFailureUrl(sessionId: string): string | undefined {
+    return this.#active.get(sessionId)?.dialFailureUrl;
   }
 
   /** Close every context and the browser. Pending waiters are rejected (the pool is terminal now). */

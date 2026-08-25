@@ -49,6 +49,7 @@ function wrapBrowser(browser: Browser): PooledBrowser {
             goto: (url, opts) => page.goto(url, gotoOptions(opts?.timeoutMs)),
             close: () => page.close(),
             onCrash: (handler) => page.on('crash', handler),
+            onConsole: (handler) => page.on('console', (msg) => handler(msg.text())),
           };
         },
         close: () => context.close(),

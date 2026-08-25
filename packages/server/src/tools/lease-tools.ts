@@ -156,6 +156,11 @@ export async function acquireLeasedSession(
       url: string,
       opts: { sessionId: string },
     ) => Promise<{ sessionId: string; release: () => Promise<void> }>;
+    /**
+     * The address this lease's page said it could not reach. Optional so a test double need not
+     * implement it; the real pool always does.
+     */
+    dialFailureUrl?: (sessionId: string) => string | undefined;
     /** Optional so a test double need not implement it; the real pool always does. */
     alias?: (registeredId: string, leaseId: string) => void;
   },
@@ -277,15 +282,25 @@ export const LEASE_ACQUIRE_TOOL: ToolDef = {
       expiresInMs: pool.leaseTtlMs(),
       leased: pool.activeCount(),
       queued: pool.queuedCount(),
-      ...(ready ? {} : { hint: await notConnectedHint(deps, url) }),
+      ...(ready
+        ? {}
+        : { hint: await notConnectedHint(deps, url, pool.dialFailureUrl?.(lease.sessionId)) }),
     };
   },
 };
 
 /** The whole not-connected diagnosis, gathered and worded. Split out so the acquire path stays flat. */
-async function notConnectedHint(deps: ToolDeps, url: string): Promise<string> {
+async function notConnectedHint(
+  deps: ToolDeps,
+  url: string,
+  dialledUrl: string | undefined,
+): Promise<string> {
   const bridgePort = deps.bridgePort ?? RETICLE_DEFAULT_PORT;
-  return leaseNotConnectedHint(url, bridgePort, await leaseEvidence(deps, bridgePort, url));
+  const evidence = await leaseEvidence(deps, bridgePort, url);
+  return leaseNotConnectedHint(url, bridgePort, {
+    ...evidence,
+    ...(dialledUrl === undefined ? {} : { dialledUrl }),
+  });
 }
 
 const LEASE_RELEASE_TOOL: ToolDef = {
