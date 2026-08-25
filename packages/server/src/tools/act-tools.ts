@@ -79,7 +79,41 @@ import {
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
 import { type ToolDef, intentArg, sessionIdShape } from './tool-kit.js';
 import { asActionType, gradeOf } from './act-helpers.js';
-import { tryRealInput } from './real-input-attempt.js';
+import { tryRealInput, rewriteUploadArgs } from './real-input-attempt.js';
+
+/**
+ * Single dispatch point for every ACT and ACT_SEQUENCE command.
+ *
+ * This is the seam the reviewer asked for: instead of wiring rewriteUploadArgs at three separate
+ * call sites (reticle_act, reticle_act_and_wait, reticle_act_sequence) we intercept once here,
+ * which also covers flow-replay, crawl, and any future dispatch site that goes through this helper.
+ *
+ * captureAct is called AFTER this, so the flow-recording captures the pre-rewrite args (the path
+ * the agent actually wrote) rather than the base64 blob — replay would otherwise send 750 KiB of
+ * base64 to the browser as if it were an inline content call.
+ */
+async function actCommand(
+  deps: Parameters<typeof rewriteUploadArgs>[0],
+  session: {
+    command: (
+      name: string,
+      args: Record<string, unknown>,
+      timeout?: number,
+    ) => Promise<import('@reticlehq/core').CommandResult>;
+  },
+  actArgs: Record<string, unknown>,
+  timeoutMs?: number,
+): Promise<import('@reticlehq/core').CommandResult> {
+  const rewritten = await rewriteUploadArgs(
+    deps,
+    'string' === typeof actArgs['action'] ? actArgs['action'] : '',
+    asRecord(actArgs['args']),
+  );
+  const bridgeArgs: Record<string, unknown> = { ...actArgs, args: rewritten };
+  return timeoutMs !== undefined
+    ? session.command(ReticleCommand.ACT, bridgeArgs, timeoutMs)
+    : session.command(ReticleCommand.ACT, bridgeArgs);
+}
 
 /**
  * Narrow the wire's `action` to a real ActionType, or undefined.
@@ -165,7 +199,7 @@ export const ACT_TOOLS: ToolDef[] = [
         .record(z.unknown())
         .optional()
         .describe(
-          'Action-specific arguments: { value } for fill/select, { text } for type/press (the key NAME, e.g. Escape or Tab), { modifiers: ["Meta","Shift"] } for a press shortcut (Meta/Control/Shift/Alt — a Cmd+K), { toRef } for drag (the ref to drop ON — without it the drag lands nowhere), { native: true } to force a trusted native click, { holdMs: N } to keep the pointer DOWN for N ms (hold-to-confirm controls; effect.heldMs reports what was achieved), { confirmDangerous: true } to allow a potentially destructive control — a permission gate, NOT a duration.',
+          'Action-specific arguments: { value } for fill/select, { text } for type/press (the key NAME, e.g. Escape or Tab), { modifiers: ["Meta","Shift"] } for a press shortcut (Meta/Control/Shift/Alt — a Cmd+K), { toRef } for drag (the ref to drop ON — without it the drag lands nowhere), { native: true } to force a trusted native click, { holdMs: N } to keep the pointer DOWN for N ms (hold-to-confirm controls; effect.heldMs reports what was achieved), { confirmDangerous: true } to allow a potentially destructive control — a permission gate, NOT a duration. For upload: { path } is a path on disk (absolute or relative to the project root; the daemon reads the file and delivers real bytes to the file picker — this is the way to verify document-ingestion flows); or { name, content?, type? } to supply inline bytes directly.',
         ),
       refuseWhenThrottled: z
         .boolean()
@@ -250,7 +284,9 @@ export const ACT_TOOLS: ToolDef[] = [
           });
         }
 
-        const result = await session.command(ReticleCommand.ACT, {
+        // actCommand is the single interception point: it rewrites upload+path args to real bytes
+        // before any ACT command crosses the bridge, covering this call site and all others.
+        const result = await actCommand(deps, session, {
           ref: targetRef.ref,
           action: args['action'],
           args: args['args'] ?? {},
@@ -346,8 +382,9 @@ export const ACT_TOOLS: ToolDef[] = [
         for (let i = 0; i < inputSteps.length; i++) {
           const step = asRecord(inputSteps[i]);
           try {
-            const result = await session.command(
-              ReticleCommand.ACT,
+            const result = await actCommand(
+              deps,
+              session,
               { ref: step['ref'], action: step['action'], args: step['args'] ?? {} },
               perStepTimeout,
             );
@@ -443,7 +480,7 @@ export const ACT_TOOLS: ToolDef[] = [
         .record(z.unknown())
         .optional()
         .describe(
-          'Action-specific arguments: { value } for fill/select, { text } for type/press (the key NAME, e.g. Escape or Tab), { modifiers: ["Meta","Shift"] } for a press shortcut (Meta/Control/Shift/Alt), { toRef } for drag (the ref to drop ON — without it the drag lands nowhere), { confirmDangerous: true } for a potentially destructive control.',
+          'Action-specific arguments: { value } for fill/select, { text } for type/press (the key NAME, e.g. Escape or Tab), { modifiers: ["Meta","Shift"] } for a press shortcut (Meta/Control/Shift/Alt), { toRef } for drag (the ref to drop ON — without it the drag lands nowhere), { confirmDangerous: true } for a potentially destructive control. For upload: { path } is a path on disk (absolute or relative to project root; daemon reads real bytes) or { name, content?, type? } for inline bytes.',
         ),
       predicate: PredicateSchema.optional().describe(
         'Alias for `until` (the name reticle_assert / reticle_wait_for use).',
@@ -619,7 +656,8 @@ export const ACT_TOOLS: ToolDef[] = [
           ? (await evaluatePredicate(session, until, since, false)).pass
           : false;
       try {
-        const actResult = await session.command(ReticleCommand.ACT, {
+        // actCommand is the single interception point for upload+path rewrite.
+        const actResult = await actCommand(deps, session, {
           ref: resolved.ref,
           action: args['action'],
           args: args['args'] ?? {},

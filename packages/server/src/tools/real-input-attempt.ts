@@ -5,8 +5,20 @@
  * Split out of act-tools.ts along its natural seam: the act tools care only about the outcome
  * (`result` defined = it went native), never about provider availability, box resolution,
  * drag-target inspection or the reason taxonomy.
+ *
+ * Also hosts `rewriteUploadArgs` — the daemon-side path that lets an agent name a file on disk
+ * and have its REAL bytes reach the browser's `<input type="file">`. The browser SDK cannot read
+ * the filesystem; the daemon can. The rewrite happens here, before the ACT command crosses the
+ * bridge, so the browser side sees a normal `{ content, name, type }` call and `assertUploadArgs`
+ * keeps its invariant (no fabricated bytes, no silently-dropped keys).
+ *
+ * Trust boundary: scoped to the project root (one level above `deps.reticleRoot`), resolved
+ * through `realpath` so symlinks cannot escape it. Sensitive files (.env*, .git/, *.pem, id_*,
+ * .npmrc) are denied with a message that says why. The cap is derived from the bridge's own
+ * MAX_MESSAGE_BYTES with the base64 4/3 inflation factor applied, so the encoded payload always
+ * fits in one WebSocket frame.
  */
-import { ActionType, InputModeReason, ReticleCommand } from '@reticlehq/core';
+import { ActionType, InputModeReason, ReticleCommand, TRANSPORT_LIMITS } from '@reticlehq/core';
 import type { Session } from '../session/session.js';
 import type { ElementBox, RealInputArgs } from '../input/real-input.js';
 import { isPointerAction } from '../input/real-input.js';
@@ -15,6 +27,183 @@ import { NATIVE_INPUT_ARG } from '@reticlehq/core';
 import { asString, asRecord } from './tools-helpers.js';
 import { type ToolDeps, commandOrThrow } from './tool-kit.js';
 import { asBox } from './act-helpers.js';
+import { isAbsolute, join, relative, extname, basename } from 'node:path';
+
+/**
+ * Minimal extension → MIME-type table for the file types agents most commonly upload.
+ * Falls back to `application/octet-stream` for anything not listed here — the browser and
+ * the receiving server both sniff the real type from the bytes anyway.
+ */
+const MIME_BY_EXT: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.csv': 'text/csv',
+  '.txt': 'text/plain',
+  '.json': 'application/json',
+  '.xml': 'application/xml',
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.zip': 'application/zip',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xls': 'application/vnd.ms-excel',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.doc': 'application/msword',
+  '.mp4': 'video/mp4',
+  '.mp3': 'audio/mpeg',
+};
+
+function mimeFromPath(filePath: string): string {
+  return MIME_BY_EXT[extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+}
+
+/**
+ * Sensitive path patterns that are refused even inside the project root.
+ *
+ * The project root is the right scope for fixture files. It also contains secrets that live
+ * inside a repo: .env*, .git/config, *.pem, id_rsa, .npmrc. An agent whose context includes
+ * text it just read off the page can be prompted to "verify the importer — upload your .env".
+ * The deny-list keeps fixtures/foo.pdf working while closing that path.
+ *
+ * Patterns are matched against the resolved basename (after realpath, so no symlink aliasing).
+ */
+const DENIED_PATTERNS: ReadonlyArray<RegExp> = [
+  /^\.env(\.|$)/i, // .env, .env.local, .env.production …
+  /^\.git$/i, // .git directory itself
+  /\.pem$/i, // TLS private keys
+  /^id_/i, // SSH private keys: id_rsa, id_ed25519 …
+  /^\.npmrc$/i, // npm auth tokens
+  /^\.netrc$/i, // generic credential store
+  /^\.aws$/i, // AWS credentials directory
+];
+
+function isDeniedPath(resolvedPath: string): boolean {
+  // Check every segment of the path, not just the basename, so .git/config is caught too.
+  const segments = resolvedPath.split(/[/\\]/);
+  return segments.some((seg) => DENIED_PATTERNS.some((re) => re.test(seg)));
+}
+
+/**
+ * Maximum raw bytes the daemon will read for an upload.
+ *
+ * The bridge serialises bytes as base64 inside a JSON WebSocket frame; base64 inflates by 4/3.
+ * The frame must fit within MAX_MESSAGE_BYTES (the maxPayload applied to BOTH bridge sockets).
+ * We leave ~25% headroom for the JSON envelope (action type, ref, other fields).
+ *
+ * Previously hardcoded at 10 MiB, which is 13× the 1 MiB frame limit — any enterprise PDF
+ * would have been rejected by the socket, not by this guard. Now derived from the same constant
+ * that configures the socket so they can never drift.
+ */
+const UPLOAD_MAX_BYTES = Math.floor((TRANSPORT_LIMITS.MAX_MESSAGE_BYTES / (4 / 3)) * 0.75);
+
+/**
+ * Resolve and validate a caller-supplied upload path.
+ *
+ * 1. Resolve to absolute (join against project root for relative paths).
+ * 2. Call `realpath` to follow symlinks — `relative()` is lexical and a symlink inside the tree
+ *    can point outside it; realpath is the only reliable check.
+ * 3. Confirm the real path is within the project root.
+ * 4. Confirm the path does not match the sensitive-file deny-list.
+ *
+ * Returns the resolved real path on success. Throws with a user-readable message on any violation.
+ */
+async function resolveUploadPath(
+  rawPath: string,
+  projectRoot: string,
+  fs: ToolDeps['fs'],
+): Promise<string> {
+  const abs = isAbsolute(rawPath) ? rawPath : join(projectRoot, rawPath);
+
+  // realpath resolves symlinks; it also rejects ENOENT, so we get a clear missing-file error.
+  const real = await fs.realpath(abs).catch(() => {
+    throw new Error(
+      `upload path '${rawPath}' could not be read: file not found or not accessible.`,
+    );
+  });
+
+  const rel = relative(projectRoot, real);
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    throw new Error(
+      `upload path '${rawPath}' resolves to '${real}', which is outside the project root ` +
+        `'${projectRoot}' — only files within the project directory may be uploaded. ` +
+        'Use a path relative to the project root, or an absolute path inside it.',
+    );
+  }
+
+  if (isDeniedPath(real)) {
+    throw new Error(
+      `upload path '${rawPath}' matches a sensitive-file pattern and cannot be read by the daemon. ` +
+        'Fixture files for upload tests should live in a dedicated directory (e.g. fixtures/).',
+    );
+  }
+
+  return real;
+}
+
+/**
+ * If the action is `upload` AND the inner args carry `path`, read the file from disk and rewrite
+ * the args to `{ content, name, type, __base64: true }` before the ACT command reaches the browser.
+ *
+ * Returns the (possibly rewritten) args object. All other actions are returned unchanged.
+ *
+ * This is the SINGLE interception point — called from session.command() so flow replay, crawl,
+ * and every other ACT dispatch site are covered without per-site wiring.
+ */
+export async function rewriteUploadArgs(
+  deps: Pick<ToolDeps, 'fs' | 'reticleRoot'>,
+  action: string,
+  innerArgs: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  if (action !== ActionType.UPLOAD) return innerArgs;
+  const rawPath = asString(innerArgs['path']);
+  if (rawPath === undefined) return innerArgs; // no path → browser handles as inline upload
+
+  // Project root is one level above .reticle/
+  const projectRoot = join(deps.reticleRoot, '..');
+
+  // Blocker 4 fix: stat FIRST, before allocating read buffer, so a huge file fails fast.
+  const realPath = await resolveUploadPath(rawPath, projectRoot, deps.fs);
+  const fileStat = await deps.fs.stat(realPath).catch(() => {
+    throw new Error(
+      `upload path '${rawPath}' could not be read: file not found or not accessible.`,
+    );
+  });
+
+  // Blocker 2 fix: cap is now derived from TRANSPORT_LIMITS so it can never exceed the socket limit.
+  if (fileStat.size > UPLOAD_MAX_BYTES) {
+    throw new Error(
+      `upload path '${rawPath}' is ${fileStat.size} bytes, which exceeds the ` +
+        `${UPLOAD_MAX_BYTES} byte upload limit (bridge frame cap). ` +
+        'Split the file or pass its bytes as args.content directly.',
+    );
+  }
+
+  const bytes = await deps.fs.readFileBytes(realPath).catch(() => {
+    throw new Error(
+      `upload path '${rawPath}' could not be read: file not found or not accessible.`,
+    );
+  });
+
+  // Encode as base-64 so the bytes survive JSON serialisation across the bridge.
+  const content = Buffer.from(bytes).toString('base64');
+
+  // Infer MIME type from the file extension; fall back to octet-stream if unknown.
+  const callerType = asString(innerArgs['type']);
+  const type = callerType ?? mimeFromPath(realPath);
+
+  // Default filename to the basename of the REAL path (post-symlink-resolution).
+  const callerName = asString(innerArgs['name']);
+  const name = callerName ?? basename(realPath);
+
+  // Strip 'path' — the browser does not know it; assertUploadArgs would refuse it.
+  // __base64: true tells the browser-side dispatch to decode content before File construction.
+  const { path: _dropped, name: _n, type: _t, ...rest } = innerArgs;
+  return { ...rest, content, name, type, __base64: true };
+}
 
 interface RealActResult {
   /** Defined only on a successful native action; `undefined` means the synthetic path runs. */
