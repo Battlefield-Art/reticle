@@ -236,6 +236,23 @@ describe('a green verdict that leaves an intent undischarged', () => {
     expect(kinds).not.toContain(InstrumentationGapKind.INTENT_UNDISCHARGED);
   });
 
+  /**
+   * A bare `{ settled }` wait returns `no-fault`: the page went quiet and nothing was declared, so
+   * nothing was proved. The predicate still "passed", which is why keying on `pass` alone was wrong —
+   * driven on the bench fixture, a settle-only navigation produced the gap sentence "this verdict
+   * passed", about a verdict whose own `because` says it is not verification. The debt is real, but
+   * the agent is already being told it proved nothing, and a sentence that contradicts the verdict it
+   * is attached to teaches the reader to discount both.
+   */
+  it('stays quiet when the verdict proved nothing, however the predicate scored', () => {
+    const kinds = gapsForAction({
+      pass: true,
+      proved: false,
+      openIntentCount: 2,
+    } as Parameters<typeof gapsForAction>[0]).map((g) => g.kind);
+    expect(kinds).not.toContain(InstrumentationGapKind.INTENT_UNDISCHARGED);
+  });
+
   /** Nothing owed, nothing to say. */
   it('stays quiet when the ledger is settled', () => {
     const kinds = gapsForAction({

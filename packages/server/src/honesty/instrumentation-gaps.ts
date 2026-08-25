@@ -188,8 +188,11 @@ export function gapsForAction(facts: ActionInstrumentationFacts): Instrumentatio
   // Only on a PASS: a failing verdict proved nothing and already says that, so adding this would be
   // two sentences for one fact. It downgrades nothing either — the assertion did hold — it just
   // names the debt on the result the agent is already reading, while it is deciding if it is done.
+  // `proved`, not `pass`, because a bare `{ settled }` wait scores the predicate true while proving
+  // nothing — the verdict comes back `no-fault`, and keying on `pass` attached "this verdict passed"
+  // to a result whose own `because` says it is not verification.
   const owed = facts.openIntentCount ?? 0;
-  if (facts.pass && 0 < owed) {
+  if (facts.pass && true === facts.proved && 0 < owed) {
     gaps.push(
       instrumentationGap(
         InstrumentationGapKind.INTENT_UNDISCHARGED,
