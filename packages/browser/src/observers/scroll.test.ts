@@ -37,4 +37,15 @@ describe('installScroll — trailing edge captures the resting position', () => 
     // The resting position (500) must be reported — a leading-only throttle dropped it entirely.
     expect(positions().at(-1)?.data['y']).toBe(500);
   });
+
+  it('teardown removes the scroll listener', () => {
+    const events: Captured[] = [];
+    const td = installScroll((type, data) => events.push({ type, data }));
+    td();
+    events.length = 0;
+
+    setScrollY(200);
+    window.dispatchEvent(new Event('scroll'));
+    expect(events.filter((e) => e.type === EventType.SCROLL_POSITION)).toHaveLength(0);
+  });
 });
