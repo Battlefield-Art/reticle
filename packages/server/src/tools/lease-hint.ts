@@ -123,7 +123,7 @@ export function leaseNotConnectedHint(
   const dialled = dialledPort(evidence.dialledUrl);
   if (dialled !== undefined && dialled !== port) {
     return (
-      `${opening} The page dialled ${String(evidence.dialledUrl)} — port ${String(dialled)}, and ` +
+      `${opening} The page dialled ${String(evidence.dialledUrl)} (port ${String(dialled)}) and ` +
       `this daemon is on ${String(port)}, so the dial never reached it. Nothing about the app's ` +
       `wiring is in question. Either start the daemon on ${String(dialled)}, or point the app at ` +
       `${String(port)} — the app's port comes from its build config (\`.reticle.json\`, ` +

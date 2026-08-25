@@ -8,6 +8,16 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Fixed
 
+- **`@reticlehq/server` — a leased tab that dialled the wrong port was answered with four causes, none of them the right one.** The lease pool opens the app itself, which makes it the shortest path from install to a working session — and the one place a port mismatch is invisible. When the page dials a different port than the daemon that leased it, no dial arrives, so there is no refusal to record, every ranked cause falls through, and the agent gets a differential in which every entry presupposes the port is correct. Driven on the bench fixture: the app dialled 4460, the daemon was on 4400, and finding that by hand took a quarter of an hour.
+
+  Both halves of the answer already existed and neither could reach it alone. The page's unreachable warning names the address it tried and then deliberately declines to diagnose the daemon, because from inside a browser an absent daemon and an unreachable one are the same observation. The daemon knows its own port and cannot see a dial that never arrived. The pool owns that browser, so it now reads the address off the page's console and puts the two side by side:
+
+  > The page dialled `ws://localhost:4460/reticle` (port 4460) and this daemon is on 4400, so the dial never reached it. Nothing about the app's wiring is in question.
+
+  It leads the hint when the ports differ, outranking even a recorded refusal: a refusal proves a dial reached this daemon from SOME page, while this is a fact about the page in hand. It stays silent when the page dialled correctly, so it can never talk an agent out of a correctly-wired app.
+
+  That sentence is now a contract between two packages that must not import each other, so its prefix lives in `@reticlehq/core` and both sides are pinned by test — a reword would otherwise break the match with no type error, no failing test in either package, and no symptom except the hint quietly going back to guessing. The console hook is optional on the pool's page interface: a page that says nothing records nothing, which must read as "the page was silent" and never as "the page dialled correctly".
+
 - **`@reticlehq/server` — a modal that never opened was reported as `verified: "yes"` at the strongest evidence grade.** An app can emit its success signal from the value it was ASKED for rather than the one it committed. When it does, the signal fires, nothing else moves, and the verdict rested on the app's own claim — the exact false green this product exists to catch, arriving at `signal` grade, the highest we award.
 
   The new `signal-without-consequence` finding fires only when the window is otherwise EMPTY: no DOM, no store, no route, no request, and only for a window attributed to an action. `reticle_assert` OBSERVES, so a quiet window it reads is an ordinary read and not a claim nothing backs. A failure-shaped signal is exempt, for the same reason `signal-contradicted` already exempts one: an app that announced `deploy:failed` is correctly reporting that nothing happened.
