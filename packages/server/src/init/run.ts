@@ -476,6 +476,7 @@ function gatherPlanInput(options: InitOptions, io: InitIo, pkgRaw: string): Plan
     nextReticleDevPath: devLocation.path,
     nextReticleDevImport: devLocation.importSpecifier,
     nextReticleDevExists: io.exists(devLocation.path),
+    nextReticleDevSource: io.readFile(devLocation.path),
     svelteKitHooksExists: io.exists(SVELTEKIT_HOOKS),
     craEntry: craEntryOf(io),
     craEnv: io.readFile(CRA_ENV_PATH),

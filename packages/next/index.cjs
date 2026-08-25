@@ -12,6 +12,11 @@ const path = require('node:path');
 // deliberately has no ESM/TS dependency on core, so the two constants are mirrored here.
 const PAIRING_TOKEN_DIR_ENV = 'RETICLE_PAIRING_TOKEN_DIR';
 const PAIRING_TOKEN_FILE = 'pairing-token';
+const RETICLE_CONFIG_FILE = '.reticle.json';
+const RETICLE_HOME_DIR = '.reticle';
+// Mirrors core's daemonRegistryFileName: ~/.reticle/daemon-<port>.json.
+const DAEMON_ENTRY_PREFIX = 'daemon-';
+const DAEMON_ENTRY_SUFFIX = '.json';
 
 /**
  * Read the daemon's auto-provisioned pairing token (~/.reticle/pairing-token, or the
@@ -30,6 +35,87 @@ function readPairingToken() {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Find the live daemon serving THIS project and return its websocket URL.
+ *
+ * The Vite plugin has always done this (`discoverDaemonPort`), and core's `pickDaemonPort` documents
+ * the rule as shared by "both the vite and next plugins" — but this package never implemented the
+ * next half. The consequence was a frozen port: `reticle init` baked `url: 'ws://localhost:<port>'`
+ * into the generated ReticleDev component at install time, and the app dialled that forever. Move the
+ * daemon and a Next app silently dials a port nothing is listening on, with no error anywhere except
+ * a console warning in a browser nobody is watching.
+ *
+ * The rule is core's, mirrored rather than imported for the same reason the constants above are: this
+ * package is plain CJS tooling with no ESM/TS dependency on core. Kept deliberately identical:
+ *   1. drop dead daemons (crashed, or a stale entry left by a kill -9);
+ *   2. among the living, prefer a projectId match, lowest port on a tie;
+ *   3. return undefined when nothing matches, so the app falls back to the default port rather than
+ *      auto-connecting to a daemon serving a DIFFERENT project — a wrong connect is worse than an
+ *      honest default, because it reports another app's state as this one's.
+ *
+ * The projectId is READ from `.reticle.json` rather than re-derived. Re-deriving would duplicate
+ * core's slug + hash rule in a third place, and a drift there does not fail loudly: it silently
+ * matches no daemon, which is the exact bug this function exists to remove.
+ * @returns {string | undefined}
+ */
+/**
+ * Where Reticle keeps its per-user state: the pairing token AND the daemon registry.
+ *
+ * Honours the same RETICLE_PAIRING_TOKEN_DIR override the token reader uses, because it is the same
+ * directory. One override rather than two keeps a test (or a sandbox) from pointing the two halves at
+ * different places and getting a token from one daemon with the port of another.
+ */
+function reticleHomeDir() {
+  const override = process.env[PAIRING_TOKEN_DIR_ENV];
+  return override !== undefined && override.length > 0
+    ? override
+    : path.join(os.homedir(), RETICLE_HOME_DIR);
+}
+
+/** process.kill(pid, 0) throws iff the process is gone: the same liveness probe the daemon uses. */
+function defaultIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function discoverDaemonUrl(cwd = process.cwd(), home = reticleHomeDir(), alive = defaultIsAlive) {
+  let projectId;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(cwd, RETICLE_CONFIG_FILE), 'utf8'));
+    projectId = typeof parsed?.projectId === 'string' ? parsed.projectId : undefined;
+  } catch {
+    return undefined; // no .reticle.json: this project has not been through `reticle init`
+  }
+  if (projectId === undefined || projectId.length === 0) return undefined;
+  const dir = home;
+  let files;
+  try {
+    files = fs.readdirSync(dir);
+  } catch {
+    return undefined; // no ~/.reticle yet: no daemon has ever run here
+  }
+  const ports = [];
+  for (const file of files) {
+    if (!file.startsWith(DAEMON_ENTRY_PREFIX) || !file.endsWith(DAEMON_ENTRY_SUFFIX)) continue;
+    let entry;
+    try {
+      entry = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+    } catch {
+      continue; // a half-written or corrupt entry is not a daemon
+    }
+    if (entry?.projectId !== projectId) continue;
+    if (typeof entry.port !== 'number' || typeof entry.pid !== 'number') continue;
+    if (!alive(entry.pid)) continue;
+    ports.push(entry.port);
+  }
+  if (ports.length === 0) return undefined;
+  return `ws://localhost:${String(Math.min(...ports))}/reticle`;
 }
 
 /**
@@ -152,6 +238,7 @@ function withReticle(nextConfig = {}) {
 
   const userWebpack = nextConfig.webpack;
   const token = readPairingToken();
+  const daemonUrl = discoverDaemonUrl();
   return {
     ...nextConfig,
     ...(supportsTurbopackKey() ? { turbopack: turbopackConfig(nextConfig.turbopack) } : {}),
@@ -166,6 +253,10 @@ function withReticle(nextConfig = {}) {
       // Next 16 default — never runs the webpack branch, and a source pointer that only works on one
       // of the two bundlers is worse than one that works on neither.
       NEXT_PUBLIC_RETICLE_ROOT: process.cwd(),
+      // The daemon serving THIS project, discovered on every dev-server start rather than baked in
+      // at install time. Without it the generated connect keeps whatever port `init` happened to see,
+      // and a daemon that later moves is unreachable with no error the user ever sees.
+      ...(daemonUrl !== undefined ? { NEXT_PUBLIC_RETICLE_URL: daemonUrl } : {}),
       // So a version-skewed pair can name itself instead of surfacing as a bare -32000.
       NEXT_PUBLIC_RETICLE_SDK_VERSION: sdkPackageVersion(),
     },
@@ -183,4 +274,4 @@ function withReticle(nextConfig = {}) {
   };
 }
 
-module.exports = { withReticle, readPairingToken };
+module.exports = { withReticle, readPairingToken, discoverDaemonUrl };

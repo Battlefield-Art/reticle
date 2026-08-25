@@ -173,7 +173,10 @@ export function ReticleDev() {
       // the root makes source paths repo-relative instead of absolute.
       const token = process.env.NEXT_PUBLIC_RETICLE_TOKEN;
       const root = process.env.NEXT_PUBLIC_RETICLE_ROOT;
-      reticle.connect({ ${fields}...(token ? { token } : {}), ...(root ? { root } : {}) });
+      // withReticle() finds the daemon serving this project on every dev-server start. It wins over
+      // any port written into this file at install time, so moving the daemon needs no edit here.
+      const url = process.env.NEXT_PUBLIC_RETICLE_URL;
+      reticle.connect({ ${fields}...(url ? { url } : {}), ...(token ? { token } : {}), ...(root ? { root } : {}) });
 
       // ── Start with ONE flow. ──────────────────────────────────────────────────────────────────
       // Registering a store is the highest-value line here: it lets the agent check what the app

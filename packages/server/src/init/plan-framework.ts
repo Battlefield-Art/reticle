@@ -273,16 +273,48 @@ function patchStep(
  * skipped, so a Next user's app booted, connected to nothing, and said nothing about why. Both are
  * now patched by the same conservative rules the Vite config gets.
  */
+/** The env var withReticle sets from the discovered daemon, and the component must read. */
+const NEXT_DAEMON_URL_ENV = 'NEXT_PUBLIC_RETICLE_URL';
+
+/**
+ * The two-line edit that unfreezes an existing install's port.
+ *
+ * Stated as the edit rather than as a problem, because the reader is an agent that can apply it in
+ * one write and is otherwise going to ask what to do.
+ */
+const NEXT_DEV_FILE_STALE_DETAIL =
+  'predates daemon discovery, so it dials the port init saw when it ran. In this file add ' +
+  '`const url = process.env.NEXT_PUBLIC_RETICLE_URL;` and spread `...(url ? { url } : {})` into ' +
+  'reticle.connect(), after any url already there. Nothing else needs to change.';
+
 export function nextSteps(input: PlanInput): Step[] {
   const configFile = input.nextConfigFile ?? 'next.config.mjs';
   const devPath = input.nextReticleDevPath ?? NEXT_RETICLE_DEV_PATH;
+  // An install that predates daemon discovery has a component that never reads the discovered URL,
+  // so it keeps dialling whatever port `init` saw on the day it ran. Re-running `init` used to call
+  // that "file exists" and move on, which is why the defect survives an upgrade. Named as work.
+  //
+  // Never overwritten: this file is the one an app owner edits — registered stores, capabilities,
+  // their own signals. Rewriting it to fix two lines would take the rest with it. Undefined source
+  // means it was not read, and an unread file stays ALREADY rather than becoming invented work.
+  const devStale =
+    true === input.nextReticleDevExists &&
+    'string' === typeof input.nextReticleDevSource &&
+    !input.nextReticleDevSource.includes(NEXT_DAEMON_URL_ENV);
   const devFile: Step = input.nextReticleDevExists
-    ? {
-        title: 'ReticleDev component',
-        target: devPath,
-        status: StepStatus.ALREADY,
-        detail: 'file exists',
-      }
+    ? devStale
+      ? {
+          title: 'ReticleDev component',
+          target: devPath,
+          status: StepStatus.MANUAL,
+          detail: NEXT_DEV_FILE_STALE_DETAIL,
+        }
+      : {
+          title: 'ReticleDev component',
+          target: devPath,
+          status: StepStatus.ALREADY,
+          detail: 'file exists',
+        }
     : {
         title: 'ReticleDev component',
         target: devPath,

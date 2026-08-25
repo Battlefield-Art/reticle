@@ -248,6 +248,14 @@ export interface PlanInput {
   nextReticleDevImport?: string | undefined;
   /** Whether the ReticleDev component file already exists. */
   nextReticleDevExists: boolean;
+  /**
+   * The existing ReticleDev component's source, when there is one.
+   *
+   * Read so an install predating daemon discovery can be told apart from a current one. Undefined
+   * means NOT READ, and an unread file is reported as already-wired rather than as stale: inventing
+   * work from missing information is how a plan grows steps that can never be completed.
+   */
+  nextReticleDevSource?: string | null | undefined;
   /** `data-testid` values scanned from the app's source, for the generated capabilities block. */
   testids?: readonly string[] | undefined;
   /** Ready-to-uncomment `registerStore` lines for the state libraries the app actually depends on. */
