@@ -133,7 +133,6 @@ export const SETTINGS_PLACEMENT_ATTR = 'data-reticle-settings-placement';
 /** Horizontal alignment of dock-anchored panels (start = left, end = right). */
 export const DOCK_ALIGN_ATTR = 'data-reticle-dock-align';
 export const Placement = { ABOVE: 'above', BELOW: 'below' } as const;
-export const DockAlign = { START: 'start', END: 'end' } as const;
 /** Show/hide annotation markers. */
 export const MARKERS_BTN_ATTR = 'data-reticle-markers-btn';
 /** Clear every annotation on the page. */
@@ -182,8 +181,6 @@ export const LOG_TIMESTAMPS_ATTR = 'data-reticle-log-ts';
 /** When 1, the chat panel uses a narrower width. */
 /** When 1, HUD motion is reduced for accessibility. */
 export const REDUCE_MOTION_ATTR = 'data-reticle-reduce-motion';
-/** Presenter settings card version label (browser package). */
-export const PRESENTER_UI_VERSION = '2.7.0';
 /** Docs opened from the settings footer. */
 export const MCP_DOCS_URL =
   'https://github.com/reticlehq/reticle/blob/main/docs/getting-started.md';

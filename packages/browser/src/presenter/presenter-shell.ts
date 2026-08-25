@@ -11,7 +11,6 @@ import {
   DOCK_ATTR,
   FAB_ATTR,
   MIN_ATTR,
-  HUD_DRAGGED_ATTR,
   SETTINGS_ATTR,
   SETTINGS_BTN_ATTR,
 } from './presenter-config.js';
@@ -471,8 +470,4 @@ export class HudShell {
       this.collapse();
     }
   };
-}
-/** Whether the dock has been dragged off the default bottom-right position. */
-export function isDockDragged(dock: HTMLElement): boolean {
-  return '1' === dock.getAttribute(HUD_DRAGGED_ATTR);
 }
