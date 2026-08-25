@@ -8,6 +8,14 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ### Fixed
 
+- **`@reticlehq/core` + `@reticlehq/server` + `@reticlehq/next` — one host name for the bridge, everywhere.** `bridgeWsUrl` exists so "the wire string can never drift across the four call sites", in the words of its own doc, and three generators had drifted from it anyway. CRA emitted `ws://127.0.0.1:…` while every other stack emitted `ws://localhost:…`; the Astro discovery helper and the Next plugin each spelled the host out by hand. The same endpoint today, and a difference with no reason behind it is the kind that becomes a real one the first time somebody edits half of them.
+
+  The host is now a named constant, `RETICLE_CLIENT_HOST`, and is the default `bridgeWsUrl` builds from. CRA calls the generator, the Astro helper interpolates the constant into what it generates, and the Next plugin — plain CJS with no dependency on core, deliberately — mirrors the value and is pinned to core's by test, because a duplicated URL that drifts does not throw: it produces a silent no-connect that reads to a user as "Reticle is broken".
+
+  A test now scans every `init` generator for a hand-written `ws://<host>:` and fails on one, because a default argument is not a single source of truth if it can be bypassed by typing the value. `csp-check` and `desktop-doctor` are exempt and named as such: CSP advice has to allow whichever host the USER wrote. The guard was verified by reintroducing the old CRA string and watching all three assertions redden.
+
+  **The client host and the bind address stay different on purpose, and both are correct.** The daemon binds `127.0.0.1` so it can never be reached off-host; a client says `localhost`, the readable name every doc, log line and error message already uses. The gap between them was closed before this release by the IPv6 loopback alias, which serves `[::1]` as well — verified here by driving a real daemon and connecting over both families, plus `http://localhost`, all three of which answer.
+
 - **`@reticlehq/server` — every project on a machine shared one daemon, one identity and one blast radius.** The system answered "which daemon serves this project?" two incompatible ways. Build plugins asked the registry by projectId, which is what it was built for. The CLI and the MCP proxy asked a NUMBER — `envPort ?? projectPort ?? 4400` — and then attached to whatever owned it, whoever it belonged to.
 
   So a second project probing the default port found a healthy daemon and quietly joined it. Its registry entry still named the project that won the race, which made `pickDaemonPort` return nothing for everybody else, which sent them back to the default, where they found each other again. It worked by luck, and the luck ended the moment a daemon was anywhere but 4400 — exactly when discovery was supposed to help. Worse, one `kill` on one well-known port was a machine-wide outage for every agent at once.

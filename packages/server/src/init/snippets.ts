@@ -3,7 +3,13 @@
  * so the runner never inlines free strings.
  */
 
-import { RETICLE_DEFAULT_PORT, ReticleDir, bridgeWsUrl } from '@reticlehq/core';
+import {
+  RETICLE_DEFAULT_PORT,
+  ReticleDir,
+  bridgeWsUrl,
+  RETICLE_CLIENT_HOST,
+  RETICLE_WS_PATH,
+} from '@reticlehq/core';
 import { UiLibrary } from './detect.js';
 import type { FoundStore } from './capabilities.js';
 import { SERVER_VERSION } from '../version/server-version.js';
@@ -245,6 +251,10 @@ export function astroManual(
   // adopting a daemon serving another project would report its state as this app's, so the whole
   // block is omitted rather than made to guess.
   const canDiscover = projectId !== undefined && projectId.length > 0;
+  // Interpolated from core rather than typed into the template: this is the same wire string
+  // `bridgeWsUrl` builds, and a generator that spells it out by hand is exactly how the four call
+  // sites that constant exists to unify drifted apart in the first place.
+  const RETICLE_CLIENT_HOST_LITERAL = `ws://${RETICLE_CLIENT_HOST}:`;
   const urlHelper = canDiscover
     ? `
   // The live daemon serving THIS project, re-read on every \`astro dev\`. Same rule as the Vite and
@@ -262,7 +272,7 @@ export function astroManual(
         if (best === undefined || entry.port < best) best = entry.port;
       }
     } catch { return ''; }
-    return best === undefined ? '' : 'ws://localhost:' + best + '/reticle';
+    return best === undefined ? '' : '${RETICLE_CLIENT_HOST_LITERAL}' + best + '${RETICLE_WS_PATH}';
   }
 `
     : '';

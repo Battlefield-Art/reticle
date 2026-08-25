@@ -17,6 +17,12 @@ const RETICLE_HOME_DIR = '.reticle';
 // Mirrors core's daemonRegistryFileName: ~/.reticle/daemon-<port>.json.
 const DAEMON_ENTRY_PREFIX = 'daemon-';
 const DAEMON_ENTRY_SUFFIX = '.json';
+// Mirrors core's RETICLE_CLIENT_HOST / RETICLE_WS_PATH. This package is plain CJS tooling with no
+// ESM/TS dependency on core, so the values are duplicated here the way the constants above are — and
+// pinned to core's by test, because a URL that drifts produces a silent no-connect rather than an
+// error anybody sees.
+const RETICLE_CLIENT_HOST = 'localhost';
+const RETICLE_WS_PATH = '/reticle';
 
 /**
  * Read the daemon's auto-provisioned pairing token (~/.reticle/pairing-token, or the
@@ -115,7 +121,7 @@ function discoverDaemonUrl(cwd = process.cwd(), home = reticleHomeDir(), alive =
     ports.push(entry.port);
   }
   if (ports.length === 0) return undefined;
-  return `ws://localhost:${String(Math.min(...ports))}/reticle`;
+  return `ws://${RETICLE_CLIENT_HOST}:${String(Math.min(...ports))}${RETICLE_WS_PATH}`;
 }
 
 /**

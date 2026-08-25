@@ -207,3 +207,27 @@ describe('withReticle forwards the discovered daemon', () => {
     }
   });
 });
+
+/**
+ * This package is plain CJS with no dependency on core, so the wire values are duplicated here. A
+ * duplicate that drifts does not throw: it produces a URL nothing is listening on, which surfaces as
+ * a silent no-connect and reads to a user as "Reticle is broken". Pin them to core's.
+ */
+describe('the duplicated wire constants match core', () => {
+  it('builds the same bridge URL core does', async () => {
+    const { bridgeWsUrl } = await import('@reticlehq/core');
+    const home = mkdtempSync(join(tmpdir(), 'reticle-const-home-'));
+    const cwd = mkdtempSync(join(tmpdir(), 'reticle-const-proj-'));
+    try {
+      writeFileSync(join(cwd, '.reticle.json'), JSON.stringify({ projectId: 'p' }));
+      writeFileSync(
+        join(home, 'daemon-4400.json'),
+        JSON.stringify({ port: 4400, pid: process.pid, projectId: 'p' }),
+      );
+      expect(discoverDaemonUrl(cwd, home, () => true)).toBe(bridgeWsUrl(4400));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});

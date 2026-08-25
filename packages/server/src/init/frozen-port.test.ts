@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { astroManual } from './snippets.js';
+import { bridgeWsUrl } from '@reticlehq/core';
 import { craEnvPatch, craDevModuleFile, TOKEN_VAR, URL_VAR } from './cra.js';
 
 /**
@@ -75,7 +76,7 @@ describe('CRA carries the daemon URL through the channel it has', () => {
 
   it('has the module prefer the env URL over the port baked into it', () => {
     const mod = craDevModuleFile(4400, 'shop-abc123');
-    const baked = mod.indexOf("url: 'ws://127.0.0.1:4400/reticle'");
+    const baked = mod.indexOf(`url: '${bridgeWsUrl(4400)}'`);
     const fromEnv = mod.indexOf('...(url.length > 0 ? { url } : {})');
     expect(baked).toBeGreaterThan(-1);
     expect(fromEnv).toBeGreaterThan(baked);

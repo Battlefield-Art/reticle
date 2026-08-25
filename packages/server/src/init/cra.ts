@@ -13,6 +13,7 @@
  * mechanism and is gitignored by CRA's own template.
  */
 
+import { bridgeWsUrl } from '@reticlehq/core';
 import { CLI } from './agent-rules.js';
 
 /** The line added to `src/index.tsx`. Side-effect import: the module guards itself on NODE_ENV. */
@@ -107,7 +108,11 @@ export function craEnvPatch(existing: string | null, token: string, url?: string
 /** The dev-only connect module imported from `src/index.tsx`. */
 export function craDevModuleFile(port: number | undefined, projectId?: string): string {
   const fields: string[] = [];
-  if (port !== undefined) fields.push(`url: 'ws://127.0.0.1:${String(port)}/reticle'`);
+  // `bridgeWsUrl`, not a hand-written string. This was the only client URL in the product spelling
+  // the host as `127.0.0.1` while every other generator said `localhost` — same endpoint, but a
+  // difference with no reason behind it is the kind that becomes a real one after somebody edits half
+  // of it.
+  if (port !== undefined) fields.push(`url: '${bridgeWsUrl(port)}'`);
   if (projectId !== undefined && projectId.length > 0) fields.push(`projectId: '${projectId}'`);
   const inline = fields.length > 0 ? `${fields.join(', ')}, ` : '';
   return `// Dev-only: connect Reticle. Imported for its side effect from src/index.tsx.
