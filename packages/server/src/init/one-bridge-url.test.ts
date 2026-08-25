@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { bridgeWsUrl, RETICLE_CLIENT_HOST } from '@reticlehq/core';
 import { craDevModuleFile } from './cra.js';
 import { astroManual, nextReticleDevFile } from './snippets.js';
@@ -17,7 +18,11 @@ import { astroManual, nextReticleDevFile } from './snippets.js';
  * A default argument is not a single source of truth if it can be bypassed by typing the value, so
  * this scans the generators for a hand-written host instead of trusting that nobody will write one.
  */
-const GENERATOR_DIR = new URL('.', import.meta.url).pathname;
+// `fileURLToPath`, never `.pathname`. On Windows a file URL's pathname is `/D:/a/…`, and joining
+// that produced `D:\D:\a\…` — a scandir ENOENT that threw out of the test and took its whole vitest
+// worker with it, timing out unrelated suites that happened to share the process. The failure looked
+// like four broken tests in another file; it was one path separator.
+const GENERATOR_DIR = fileURLToPath(new URL('.', import.meta.url));
 
 /** Files that legitimately name both hosts: CSP advice must allow whatever the USER wrote. */
 const ALLOWED = new Set(['csp-check.ts', 'desktop-doctor.ts', 'one-bridge-url.test.ts']);
@@ -46,7 +51,15 @@ describe('every generated connect URL comes from bridgeWsUrl', () => {
    */
   it('no init generator hand-writes a bridge URL', () => {
     const offenders: string[] = [];
-    for (const file of readdirSync(GENERATOR_DIR)) {
+    // Read the directory as part of the ASSERTION rather than as a bare call. When this threw on
+    // Windows it escaped the test, killed the vitest worker, and timed out four unrelated suites that
+    // shared the process — so the report named another file entirely. A guard that cannot scan must
+    // say so as a failure, not as somebody else's timeout.
+    let files: string[] = [];
+    expect(() => {
+      files = readdirSync(GENERATOR_DIR);
+    }, `could not read ${GENERATOR_DIR}`).not.toThrow();
+    for (const file of files) {
       if (!file.endsWith('.ts') || file.endsWith('.test.ts') || ALLOWED.has(file)) continue;
       const path = join(GENERATOR_DIR, file);
       if (!statSync(path).isFile()) continue;
