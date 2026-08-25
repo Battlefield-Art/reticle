@@ -4,6 +4,7 @@
  * this one is the per-framework detail, and they grow for different reasons.
  */
 
+import { bridgeWsUrl } from '@reticlehq/core';
 import { patchViteConfig, VitePatchKind } from './vite-config.js';
 import { patchNextConfig, patchRootLayout, patchPagesApp } from './next-patch.js';
 import { patchAstroConfig, patchAstroLayout } from './astro-patch.js';
@@ -415,7 +416,13 @@ export function craSteps(input: PlanInput): Step[] {
     },
   ];
   const token = input.pairingToken ?? '';
-  const env = craEnvPatch(input.craEnv ?? null, token);
+  // The daemon that is live NOW, not the one baked into the module at first install. CRA has no
+  // build hook, so this is refreshed by re-running `init` rather than by starting the dev server.
+  const env = craEnvPatch(
+    input.craEnv ?? null,
+    token,
+    input.options.port === undefined ? undefined : bridgeWsUrl(input.options.port),
+  );
   if (env !== null) {
     steps.push({
       title: 'Pairing token',

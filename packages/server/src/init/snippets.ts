@@ -236,11 +236,47 @@ export function astroManual(
       : '';
   const id =
     projectId !== undefined && projectId.length > 0 ? `\n          projectId: '${projectId}',` : '';
+  // Astro owns its Vite instance, so it has a build-time channel of its own: the same `define` that
+  // already inlines the token can inline the daemon URL, resolved every time the config is read —
+  // that is, on every `astro dev`. The port above is written once at install time and goes stale the
+  // moment the daemon moves; this does not.
+  //
+  // Needs the projectId to know WHICH daemon is ours. Without one there is nothing to match on, and
+  // adopting a daemon serving another project would report its state as this app's, so the whole
+  // block is omitted rather than made to guess.
+  const canDiscover = projectId !== undefined && projectId.length > 0;
+  const urlHelper = canDiscover
+    ? `
+  // The live daemon serving THIS project, re-read on every \`astro dev\`. Same rule as the Vite and
+  // Next plugins: skip dead daemons, match on projectId, lowest port wins, '' when none matches.
+  function reticleUrl() {
+    const dir = process.env['RETICLE_PAIRING_TOKEN_DIR'] || join(homedir(), '.reticle');
+    let best;
+    try {
+      for (const file of readdirSync(dir)) {
+        if (!file.startsWith('daemon-') || !file.endsWith('.json')) continue;
+        let entry;
+        try { entry = JSON.parse(readFileSync(join(dir, file), 'utf8')); } catch { continue; }
+        if (entry.projectId !== '${projectId}') continue;
+        try { process.kill(entry.pid, 0); } catch { continue; }
+        if (best === undefined || entry.port < best) best = entry.port;
+      }
+    } catch { return ''; }
+    return best === undefined ? '' : 'ws://localhost:' + best + '/reticle';
+  }
+`
+    : '';
+  const urlDefine = canDiscover ? `\n        __RETICLE_URL__: JSON.stringify(reticleUrl()),` : '';
+  const urlRead = canDiscover
+    ? `\n      const url = typeof __RETICLE_URL__ !== 'undefined' ? __RETICLE_URL__ : '';`
+    : '';
+  // After the baked port, so the discovered one wins: later key in an object literal.
+  const urlSpread = canDiscover ? `\n          ...(url.length > 0 ? { url } : {}),` : '';
   return `Astro renders its own HTML, so the connect goes in a page <script> and the pairing token is inlined by the config.
 
 1. In astro.config.mjs — inline the daemon's token and raise the build target:
 
-  import { readFileSync } from 'node:fs';
+  import { readFileSync, readdirSync } from 'node:fs';
   import { homedir } from 'node:os';
   import { join } from 'node:path';
 
@@ -248,14 +284,14 @@ export function astroManual(
     const dir = process.env['RETICLE_PAIRING_TOKEN_DIR'] || join(homedir(), '.reticle');
     try { return readFileSync(join(dir, 'pairing-token'), 'utf8').trim(); } catch { return ''; }
   }
-
+${urlHelper}
   export default defineConfig({
     vite: {
       // Astro's default target down-levels the modern SDK bundle and fails on a destructuring transform.
       build: { target: 'es2022' },
       optimizeDeps: { esbuildOptions: { target: 'es2022' } },
       define: {
-        __RETICLE_TOKEN__: JSON.stringify(reticleToken()),
+        __RETICLE_TOKEN__: JSON.stringify(reticleToken()),${urlDefine}
         // Without this, source pointers come back as absolute paths from YOUR machine — useless in a
         // report. Every other framework gets it from its build plugin; Astro owns its Vite instance.
         __RETICLE_ROOT__: JSON.stringify(process.cwd()),
@@ -268,10 +304,10 @@ ${layoutHost(layoutPath)}
   <script>
     if (import.meta.env.DEV) {
       const token = typeof __RETICLE_TOKEN__ !== 'undefined' ? __RETICLE_TOKEN__ : '';
-      const root = typeof __RETICLE_ROOT__ !== 'undefined' ? __RETICLE_ROOT__ : '';
+      const root = typeof __RETICLE_ROOT__ !== 'undefined' ? __RETICLE_ROOT__ : '';${urlRead}
       const { reticle, install } = await import('@reticlehq/react');
       install();
-      reticle.connect({${id}${extra}
+      reticle.connect({${id}${extra}${urlSpread}
           ...(token.length > 0 ? { token } : {}),
           ...(root.length > 0 ? { root } : {}),
       });

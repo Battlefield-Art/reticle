@@ -20,6 +20,19 @@ export const CRA_DEV_MODULE_IMPORT = "import './reticle-dev';";
 export const CRA_DEV_MODULE_PATH = 'src/reticle-dev.ts';
 export const CRA_ENV_PATH = '.env.development.local';
 export const TOKEN_VAR = 'REACT_APP_RETICLE_TOKEN';
+/**
+ * The bridge URL, carried through the same channel as the token.
+ *
+ * CRA is the one supported stack with no build-time hook of ours: no plugin, no config wrapper, no
+ * `define`. Vite and Astro re-resolve the daemon every dev-server start and Next does it through
+ * `withReticle`; CRA has nowhere to run that code. So the URL goes where the token already goes, and
+ * is refreshed by the same `init` step that refreshes the token.
+ *
+ * That makes `reticle init` the heal rather than the dev server, which is weaker and is stated
+ * plainly in the step's own detail. It is still strictly better than a URL frozen into a source file
+ * the owner has to hand-edit, and `.env.development.local` is already the per-machine file.
+ */
+export const URL_VAR = 'REACT_APP_RETICLE_URL';
 
 /**
  * What the app itself says when the token is not there.
@@ -70,16 +83,25 @@ export function craImportPatch(source: string): string | null {
 }
 
 /** Set the token variable, or null when nothing needs to change. */
-export function craEnvPatch(existing: string | null, token: string): string | null {
+export function craEnvPatch(existing: string | null, token: string, url?: string): string | null {
   if ('' === token) return null;
-  const line = `${TOKEN_VAR}=${token}`;
-  if (null === existing || '' === existing.trim()) return `${line}\n`;
-  if (existing.includes(line)) return null;
-  // Replace rather than append: two assignments of one variable is a silent coin flip on which wins.
-  if (new RegExp(`^${TOKEN_VAR}=`, 'm').test(existing)) {
-    return existing.replace(new RegExp(`^${TOKEN_VAR}=.*$`, 'm'), line);
+  const pairs: readonly (readonly [string, string])[] = [
+    [TOKEN_VAR, token],
+    ...(url !== undefined && url.length > 0 ? [[URL_VAR, url] as const] : []),
+  ];
+  let next = null === existing || '' === existing.trim() ? '' : existing;
+  for (const [name, value] of pairs) {
+    const line = `${name}=${value}`;
+    if (next.includes(line)) continue;
+    // Replace rather than append: two assignments of one variable is a silent coin flip on which
+    // wins, and for the URL that coin decides which daemon the app talks to.
+    if (new RegExp(`^${name}=`, 'm').test(next)) {
+      next = next.replace(new RegExp(`^${name}=.*$`, 'm'), line);
+    } else {
+      next = `${'' === next || next.endsWith('\n') ? next : `${next}\n`}${line}\n`;
+    }
   }
-  return `${existing.endsWith('\n') ? existing : `${existing}\n`}${line}\n`;
+  return next === (existing ?? '') ? null : next;
 }
 
 /** The dev-only connect module imported from `src/index.tsx`. */
@@ -97,10 +119,14 @@ if (process.env.NODE_ENV === 'development') {
   void import('@reticlehq/react').then(({ reticle, install }) => {
     install();
     const token = process.env.${TOKEN_VAR} ?? '';
+    // Written by \`reticle init\` from the daemon that was live when it ran, and refreshed by
+    // re-running it. CRA gives us no hook to resolve this at dev-server start, so if the daemon
+    // moves, re-run \`reticle init\` rather than editing the url below.
+    const url = process.env.${URL_VAR} ?? '';
     // Loud on purpose: without this the only symptom is the bridge's generic auth failure.
     if (token.length === 0) console.error(${JSON.stringify(`[reticle] ${CRA_TOKEN_MISSING_NOTE}`)});
     // Still attempt it — a bridge running without a token pairs fine.
-    reticle.connect({ ${inline}...(token.length > 0 ? { token } : {}) });
+    reticle.connect({ ${inline}...(url.length > 0 ? { url } : {}), ...(token.length > 0 ? { token } : {}) });
   });
 }
 
