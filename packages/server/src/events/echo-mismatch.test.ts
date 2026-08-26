@@ -160,16 +160,79 @@ describe('findEchoMismatches — the request has to be a write', () => {
   });
 });
 
-describe('findEchoMismatches — the response has to be echo-shaped', () => {
+describe('findEchoMismatches — the response has to look like an echo', () => {
   /**
-   * A command bus POSTs `{"command":"chat.send","text":"..."}` and the server deliberately answers
-   * with the current viewer SNAPSHOT, not an echo of the request; the chat message itself arrives
-   * over WebSocket and renders (#506). Key names collected at any depth made one incidental shared
-   * key read as an attempted echo, and the act was reported as write-field-ignored over a write that
-   * fully applied. An echo restates what was sent; a snapshot that happens to share a key or two is
-   * not a restatement. So the diff only runs when a MAJORITY of the request's scalar keys appear in
-   * the response at all. That keeps every documented true positive (an envelope restates most of its
-   * fields) and trades the rare half-echoed write away, exactly like MAX_ECHO_KEYS does.
+   * Reported from the field: a command bus POSTed `{command:"chat.send", ...}` and the server
+   * answered with the current viewer snapshot. The chat message arrived over the socket and
+   * rendered. `write-field-ignored` fired because the snapshot happened to carry `id` under a
+   * different meaning. A snapshot that shares a key name is not an echo of the write.
+   */
+  it('stays silent when a command bus is answered with a viewer snapshot', () => {
+    expect(
+      kinds(
+        write(
+          { command: 'chat.send', id: 'msg-1', text: 'hello' },
+          {
+            id: 'user-1',
+            email: 'ada@example.com',
+            name: 'Ada',
+            unread: 3,
+            plan: 'pro',
+            status: 'ok',
+          },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('stays silent when the only overlap is one coincidental key on a fat snapshot', () => {
+    expect(
+      kinds(
+        write(
+          { title: 'Hello' },
+          {
+            id: 'user-1',
+            title: 'Dashboard',
+            email: 'ada@example.com',
+            name: 'Ada',
+            unread: 3,
+            plan: 'pro',
+            locale: 'en',
+            timezone: 'utc',
+          },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('still catches a nested echo of a real write', () => {
+    expect(
+      kinds(
+        write(
+          { density: 'compact', locale: 'fr' },
+          { ok: true, saved: { density: 'compact', locale: 'en' } },
+        ),
+      ),
+    ).toContain(ContradictionKind.WRITE_FIELD_IGNORED);
+  });
+
+  it('still catches a write that echoes only the field that was dropped', () => {
+    expect(
+      kinds(write({ density: 'compact', locale: 'fr' }, { ok: true, saved: { locale: 'en' } })),
+    ).toContain(ContradictionKind.WRITE_FIELD_IGNORED);
+  });
+
+  it('still catches a command-shaped write whose response restates the command', () => {
+    expect(
+      kinds(
+        write({ command: 'prefs.save', locale: 'fr' }, { command: 'prefs.save', locale: 'en' }),
+      ),
+    ).toContain(ContradictionKind.WRITE_FIELD_IGNORED);
+  });
+  /**
+   * The four cases main's own version of this guard was pinned by, kept verbatim so the rule that
+   * replaces it has to satisfy both. A guard swapped for a differently-shaped one is only an
+   * improvement if it still holds everything the old one held.
    */
   it('stays silent when the response shares none of the request keys', () => {
     expect(
