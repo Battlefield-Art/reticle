@@ -278,10 +278,36 @@ export async function runSyncCycle(deps: SyncDeps): Promise<SyncReport> {
     };
   } catch (error: unknown) {
     // A network that is down is not an error condition for a local-first tool; it is Tuesday.
-    const message = error instanceof Error ? error.message : String(error);
+    const message = describeTransportError(error, deps.config.url);
     deps.sink.writeState({ ...nextState, lastError: message });
     return { ...empty, error: message };
   }
+}
+
+/**
+ * Say WHICH host failed and WHY.
+ *
+ * Node's fetch rejects with the bare string "fetch failed" and hides the real reason — a refused
+ * connection, a bad hostname, an expired certificate — one level down in `cause`. A machine that
+ * has quietly stopped syncing shows that string in `reticle whoami`, and on its own it is
+ * indistinguishable from every other network problem, so the person reading it learns nothing and
+ * checks nothing. Naming the origin and the underlying code turns it into one thing to look at.
+ */
+function describeTransportError(error: unknown, url: string): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause: unknown = (error as { cause?: unknown }).cause;
+  if (!(cause instanceof Error)) return `${error.message} (${url})`;
+  const code = (cause as { code?: unknown }).code;
+  // The code and the message are each sometimes empty — an aggregate DNS failure carries a code and
+  // no text, a TLS failure the reverse. Joined only when both are there, so the line never trails
+  // off into a dangling separator.
+  const parts = ['string' === typeof code && code.length > 0 ? code : '', cause.message].filter(
+    (part) => part.length > 0,
+  );
+  const detail = parts.join(': ');
+  return 0 === detail.length
+    ? `${error.message} (${url})`
+    : `${error.message} — ${detail} (${url})`;
 }
 
 /** One line a human can read, for the CLI and the daemon log. */

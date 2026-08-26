@@ -274,6 +274,54 @@ describe('nothing local is harmed by a bad network', () => {
     expect(report.error).toContain('ECONNREFUSED');
   });
 
+  it('names the HOST that failed, not just that something did', async () => {
+    // "fetch failed" on its own is indistinguishable from every other network problem, so the
+    // person reading it in `reticle whoami` learns nothing and checks nothing.
+    const { report } = await cycle({ throwOn: '/v1/sync/status' });
+    expect(report.error).toContain('https://cloud.test');
+  });
+
+  it('unwraps the real reason Node hides in `cause`', async () => {
+    const s = server({});
+    const k = sink();
+    const wrapped = Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9999'), {
+        code: 'ECONNREFUSED',
+      }),
+    });
+    const report = await runSyncCycle({
+      config: { url: 'https://cloud.test', apiKey: 'rk_test' },
+      source: source(),
+      sink: k.sink,
+      state: {},
+      now: () => NOW,
+      request: () => Promise.reject(wrapped),
+    });
+    expect(report.error).toContain('fetch failed');
+    expect(report.error, 'the reason, not just the symptom').toContain('ECONNREFUSED');
+    expect(report.error).toContain('127.0.0.1:9999');
+    expect(s.calls).toEqual([]);
+  });
+
+  it('never trails off into a dangling separator when the cause has no text', async () => {
+    // A DNS failure carries a code and no message; a TLS failure the reverse. Both must read.
+    const k = sink();
+    const report = await runSyncCycle({
+      config: { url: 'https://cloud.test', apiKey: 'rk_test' },
+      source: source(),
+      sink: k.sink,
+      state: {},
+      now: () => NOW,
+      request: () =>
+        Promise.reject(
+          Object.assign(new TypeError('fetch failed'), {
+            cause: Object.assign(new Error(''), { code: 'ENOTFOUND' }),
+          }),
+        ),
+    });
+    expect(report.error).toBe('fetch failed — ENOTFOUND (https://cloud.test)');
+  });
+
   it('records WHY it is behind, so the next report can say more than “0 sent”', async () => {
     const { written } = await cycle({ statusCode: 401 });
     expect(written.state?.lastError).toContain('401');
