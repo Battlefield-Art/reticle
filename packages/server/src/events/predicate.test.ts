@@ -642,8 +642,9 @@ describe('a throttled tab timeout is not a missing render', () => {
     );
     expect(result.pass).toBe(false);
     expect(result.inconclusive).toBe(THROTTLED_STARVED_NOTE);
-    expect(result.failureReason).toContain(THROTTLED_STARVED_NOTE);
-    // The near-miss is kept: the note is a prefix, not a replacement.
+    // The near-miss is kept whole: this layer sets the FIELD an agent gates on, and the sentence
+    // is suffixed one layer up by annotateStarvedFailure so the concrete diagnosis still leads.
+    expect(result.failureReason).toBeTypeOf('string');
     expect(result.failureReason).not.toBe(THROTTLED_STARVED_NOTE);
   });
 
@@ -698,7 +699,6 @@ describe('a throttled tab timeout is not a missing render', () => {
     );
     expect(result.pass).toBe(false);
     expect(result.inconclusive).toBeUndefined();
-    expect(result.failureReason).not.toContain(THROTTLED_STARVED_NOTE);
   });
 });
 

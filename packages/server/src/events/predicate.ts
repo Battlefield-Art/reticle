@@ -532,22 +532,24 @@ function predicateSince(predicate: Predicate): number {
 }
 
 /**
- * A miss on a throttled tab is not a missing render. The browser has starved the tab, so a
- * timeout there may mean it never ran — which must not look like "the text is absent".
- * `inconclusive` is how this engine already says "do not grade this as a product failure".
- * Idempotent: a second pass that already carries the note is left alone, and a more specific
- * `inconclusive` (unreadable locator, superseded window) is not overwritten.
+ * A miss on a throttled tab is not a missing render. The browser has starved the tab, so a timeout
+ * there may mean it never ran — which must not look like "the text is absent".
+ *
+ * Sets `inconclusive` only. The PROSE is already handled one layer up by
+ * `annotateStarvedFailure` (session-health.ts), which suffixes the same fact onto the
+ * failureReason so the concrete diagnosis still leads; writing it here as well would put the
+ * sentence in every throttled failure twice. What was missing was never the sentence — it was the
+ * FIELD an agent gates on, so a starved wait graded `assertion-failed` and sent somebody to fix
+ * working code.
+ *
+ * Idempotent, and a more specific `inconclusive` (unreadable locator, superseded window) is never
+ * overwritten.
  */
 function annotateThrottledMiss(session: PredicateSession, result: EvalResult): EvalResult {
   if (result.pass) return result;
   if (true !== session.throttled?.()) return result;
-  const prior = result.failureReason;
-  if ('string' === typeof prior && prior.includes(THROTTLED_STARVED_NOTE)) return result;
-  return {
-    ...result,
-    failureReason: `${THROTTLED_STARVED_NOTE}. ${prior ?? 'timed out waiting for predicate'}`,
-    ...(undefined === result.inconclusive ? { inconclusive: THROTTLED_STARVED_NOTE } : {}),
-  };
+  if (result.inconclusive !== undefined) return result;
+  return { ...result, inconclusive: THROTTLED_STARVED_NOTE };
 }
 
 export async function evaluatePredicate(
