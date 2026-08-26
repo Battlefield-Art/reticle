@@ -10,6 +10,7 @@
  * guess, and a guess here would drive the wrong app.
  */
 
+import { RETICLE_URL_PARAM } from '@reticlehq/core';
 import type { Session } from './session.js';
 
 export interface SessionIdentity {
@@ -38,6 +39,39 @@ function originOf(url: string): string | undefined {
   }
 }
 
+/**
+ * The session a URL explicitly CLAIMS to be, via `__reticle_session`.
+ *
+ * A leased tab carries this marker so the pool can find the context it opened, and an app can set it
+ * deliberately so a battery addresses a known id. Either way it is a claim of identity, not a
+ * coincidence of origin — which is what makes it the right thing to gate succession on.
+ */
+function claimedSessionOf(url: string): string | undefined {
+  try {
+    return new URL(url).searchParams.get(RETICLE_URL_PARAM.SESSION) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether one session may inherit another's identity.
+ *
+ * Origin alone is not enough. A leased tab is an isolated context that an AGENT owns and no human
+ * can see; the developer's own tab at the same origin is a different trust and visibility domain
+ * entirely. Letting one succeed the other meant an expired lease silently redirected the next call
+ * into somebody's real browser tab — observed, twice, and reported as success.
+ *
+ * So a session that claims an explicit identity only ever succeeds to one claiming the SAME
+ * identity. A session that claims none is unaffected, which is the ordinary reload case this whole
+ * mechanism exists for.
+ */
+function mayInherit(departed: SessionIdentity, candidate: SessionIdentity): boolean {
+  const claimed = claimedSessionOf(departed.url);
+  if (claimed === undefined) return true;
+  return claimedSessionOf(candidate.url) === claimed;
+}
+
 function identityOf(session: Session): SessionIdentity {
   return {
     id: session.id,
@@ -64,7 +98,8 @@ export function pickDocumentSuccessor(
   const others = atOrigin.filter(
     (s) =>
       s.id !== departed.id &&
-      (departed.projectId === undefined || s.projectId === departed.projectId),
+      (departed.projectId === undefined || s.projectId === departed.projectId) &&
+      mayInherit(departed, s),
   );
   if (1 !== others.length) return undefined;
   return others[0];
