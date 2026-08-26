@@ -163,18 +163,33 @@ describe('cloud-cli verb contracts (#555)', () => {
     expect(session['url']).toBe(TEST_URL);
   });
 
-  it('login without RETICLE_CLOUD_URL says it is dialling the localhost default before dialling', async () => {
+  it('login without RETICLE_CLOUD_URL dials the hosted service, not the developer machine', async () => {
     responder = () => ({ status: 500, body: { error: { message: 'down' } } });
 
     const code = await runCloudCommand(['login']);
 
     expect(code).toBe(1);
     expect(requests).toHaveLength(1);
-    expect(requests[0]?.url).toBe('http://localhost:8890/v1/auth/device/start');
-    expect(stderrBuf).toContain('RETICLE_CLOUD_URL');
-    expect(stderrBuf).toContain('http://localhost:8890');
+    // The whole point: somebody who installed the package and typed `reticle login` reaches the
+    // product. A localhost default sent every real user at a port on their own machine that
+    // nothing is serving, and that failure reads as "the cloud is down" rather than "wrong host".
+    expect(requests[0]?.url).toBe('https://app.reticle.sh/v1/auth/device/start');
+    // ...and it does NOT nag about RETICLE_CLOUD_URL. Dialling the hosted service is now the
+    // CORRECT default, and warning about correct behaviour trains people to ignore the one
+    // channel that carries real problems. The variable stays in `reticle --help`.
+    expect(stderrBuf).not.toContain('RETICLE_CLOUD_URL');
     // The device flow never reached its browser-open step, so nothing spawned.
     expect(stderrBuf).not.toContain('Opening');
+  });
+
+  it('RETICLE_CLOUD_URL overrides the default — which is how this repo develops against localhost', async () => {
+    process.env['RETICLE_CLOUD_URL'] = 'http://localhost:8890';
+    responder = () => ({ status: 500, body: { error: { message: 'down' } } });
+
+    const code = await runCloudCommand(['login']);
+
+    expect(code).toBe(1);
+    expect(requests[0]?.url).toBe('http://localhost:8890/v1/auth/device/start');
   });
 
   it('logout clears the cached session file without touching the network', async () => {

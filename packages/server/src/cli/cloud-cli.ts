@@ -19,7 +19,19 @@ import { cloudFetch } from '../cloud/cloud-sync.js';
 import { describeSync, runSyncCycle } from '../cloud/sync-cycle.js';
 import { diskSink, diskSource, readCloudIssues, readCloudState } from '../cloud/sync-disk.js';
 
-const DEFAULT_URL = 'http://localhost:8890';
+/**
+ * Where `reticle login` dials when nothing says otherwise: the hosted service.
+ *
+ * This is the same origin as the dashboard — the API serves the built console — so there is one
+ * host for a user to know and one for us to configure.
+ *
+ * It used to be `http://localhost:8890`, which is correct for exactly one audience: whoever is
+ * developing the service itself. Every other user — the entire point of publishing the package —
+ * typed `reticle login` and got a connection refused against a port on their own machine, which
+ * reads as "the cloud is down", not "you are dialling the wrong host". Developing against a local
+ * API is now what needs saying out loud, via RETICLE_CLOUD_URL, because that is the rarer case.
+ */
+const DEFAULT_URL = 'https://app.reticle.sh';
 const RETICLE_DIR = '.reticle';
 const SESSION_FILE = 'session.json';
 const CREDENTIALS_FILE = 'credentials.json';
@@ -99,12 +111,10 @@ const baseUrl = (session: { url: string } | null): string => {
   const env = process.env['RETICLE_CLOUD_URL'];
   if (env !== undefined && env.length > 0) return env.replace(/\/+$/, '');
   if (null !== session && session.url.length > 0) return session.url;
-  // Falling back to the local dev default WITHOUT being told to: say so on stderr, so a fresh
-  // `reticle login` never silently dials localhost. Humans read the hint; agents parse stdout
-  // JSON and ignore stderr, so stdout stays machine-readable either way.
-  hint(
-    `no RETICLE_CLOUD_URL set — dialling the local dev default ${DEFAULT_URL} (set it for a real deployment)`,
-  );
+  // No hint here any more. This used to warn that it was falling back to localhost, which was worth
+  // saying because that default was wrong for everyone except us. The default is now the hosted
+  // service, so the fallback IS the intended path — and a warning printed on the correct path is
+  // how people learn to ignore stderr, which is where the real problems are written.
   return DEFAULT_URL;
 };
 
