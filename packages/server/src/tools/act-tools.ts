@@ -77,6 +77,7 @@ import {
   PAUSED_NO_VERDICT,
 } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
+import { runStepWithStaleRetry } from './act-sequence-retry.js';
 import { type ToolDef, intentArg, sessionIdShape } from './tool-kit.js';
 import { asActionType, gradeOf } from './act-helpers.js';
 import { tryRealInput, rewriteUploadArgs } from './real-input-attempt.js';
@@ -382,23 +383,31 @@ export const ACT_TOOLS: ToolDef[] = [
         for (let i = 0; i < inputSteps.length; i++) {
           const step = asRecord(inputSteps[i]);
           try {
-            const result = await actCommand(
-              deps,
+            // One retry when the ref went stale under a re-render — see act-sequence-retry.ts.
+            const outcome = await runStepWithStaleRetry(
+              () =>
+                actCommand(
+                  deps,
+                  session,
+                  { ref: step['ref'], action: step['action'], args: step['args'] ?? {} },
+                  perStepTimeout,
+                ),
               session,
-              { ref: step['ref'], action: step['action'], args: step['args'] ?? {} },
+              since,
               perStepTimeout,
             );
-            if (!result.ok) {
+            if (!outcome.ok) {
               stalledAt = i;
               stepResults.push({
                 ref: step['ref'],
                 action: step['action'],
                 dispatched: false,
-                error: result.error ?? 'step failed',
+                error: outcome.error ?? 'step failed',
               });
               break;
             }
-            const r = asRecord(result.result);
+            const result2 = outcome;
+            const r = asRecord(result2.result);
             const stepResult: Record<string, unknown> = {
               ref: r['ref'] ?? step['ref'],
               action: r['action'] ?? step['action'],

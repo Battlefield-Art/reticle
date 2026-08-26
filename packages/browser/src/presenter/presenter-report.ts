@@ -108,8 +108,35 @@ function esc(value: string): string {
  * lives. When the project is not linked to a workspace there is no link and no nagging — the free
  * tool is complete on its own.
  */
+/**
+ * Whether a dashboard link is safe to render as a clickable href.
+ *
+ * The url arrives from `.reticle/cloud.json` — a file in somebody's repository, which means it is
+ * INPUT. Escaping the quotes stops it breaking out of the attribute but does nothing about the
+ * SCHEME, so `javascript:...` produced a link that ran code inside the developer's own application,
+ * from a panel Reticle injected there. Only the two schemes a dashboard can actually live on are
+ * allowed; anything else renders no link at all, which is the same state as an unlinked project and
+ * therefore already a supported one.
+ */
+function isSafeDashboardUrl(raw: string): boolean {
+  try {
+    const scheme = new URL(raw).protocol;
+    return 'https:' === scheme || 'http:' === scheme;
+  } catch {
+    // Not a url at all. A relative path cannot address a dashboard on another origin, so there is
+    // nothing to render and nothing lost by refusing it.
+    return false;
+  }
+}
+
 function defects(scope: ImpactScope, dashboardUrl: string | undefined): string {
-  const list = scope.defects.slice(0, IMPACT_DEFECT_LIMIT);
+  /*
+   * Defaulted here as well as in the schema. Zod's default applies when a record is PARSED, and the
+   * snapshot reaching this panel is pushed straight from the daemon rather than round-tripped
+   * through the schema — so a record written by an older build arrives with no `defects` field at
+   * all and used to throw, taking the whole report down with it.
+   */
+  const list = (scope.defects ?? []).slice(0, IMPACT_DEFECT_LIMIT);
   if (0 === list.length) return '';
   const rows = list
     .map((d) => {
@@ -127,7 +154,7 @@ function defects(scope: ImpactScope, dashboardUrl: string | undefined): string {
   // Only claim there are more when there actually are — `counts.failed` is every defect ever, and
   // this list is the recent tail of it.
   const more =
-    dashboardUrl === undefined
+    dashboardUrl === undefined || !isSafeDashboardUrl(dashboardUrl)
       ? ''
       : `<a class="reticle-report-defects-more" href="${esc(dashboardUrl)}" target="_blank" rel="noreferrer noopener">${REPORT_TEXT.DEFECTS_MORE}${scope.counts.failed > list.length ? ` (${String(scope.counts.failed)})` : ''}</a>`;
   return `<div class="reticle-report-defects-wrap"><span class="reticle-report-section">${REPORT_TEXT.DEFECTS}</span><ul class="reticle-report-defects">${rows}</ul>${more}</div>`;
