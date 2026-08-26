@@ -137,15 +137,36 @@ describe('enforcedOnReplay', () => {
     });
   });
 
-  it('DROPS net and signal — graded as consequences, never evaluated on replay', () => {
-    expect(enforcedOnReplay({ net: { urlContains: '/api/save' } })).toBeUndefined();
-    expect(enforcedOnReplay({ signal: 'saved' })).toBeUndefined();
+  it('KEEPS net and signal — replay evaluates every kind of expect now', () => {
+    // These used to be dropped, correctly, because replay only checked element+state. It now
+    // compiles every remaining kind through successToPredicate, so discarding them made an
+    // agent-recorded flow assertion-free BY CONSTRUCTION — `until` is the agent saying what
+    // success means, and `net` is overwhelmingly what it says.
+    expect(enforcedOnReplay({ net: { urlContains: '/api/save' } })).toEqual({
+      net: { urlContains: '/api/save' },
+    });
+    expect(enforcedOnReplay({ signal: 'saved' })).toEqual({ signal: 'saved' });
+    expect(enforcedOnReplay({ console: { level: 'error', absent: true } })).toEqual({
+      console: { level: 'error', absent: true },
+    });
   });
 
-  it('keeps the enforced half of a mixed expectation', () => {
+  it('keeps a signal with the payload and count that qualify it', () => {
+    expect(
+      enforcedOnReplay({ signal: 'saved', signalData: { id: 1 }, signalCount: 1 }),
+    ).toStrictEqual({ signal: 'saved', signalData: { id: 1 }, signalCount: 1 });
+  });
+
+  it('keeps every enforceable part of a mixed expectation', () => {
     expect(enforcedOnReplay({ signal: 'saved', element: { testid: 'toast' } })).toEqual({
+      signal: 'saved',
       element: { testid: 'toast' },
     });
+  });
+
+  it('still drops what successToPredicate cannot compile — the rule never changed', () => {
+    // The filter exists so a flow never claims an assertion nothing evaluates. Only its SET moved.
+    expect(enforcedOnReplay({})).toBeUndefined();
   });
 
   it('drops an element expectation with no testid — replay resolves by testid alone', () => {

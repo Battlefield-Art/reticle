@@ -24,6 +24,16 @@ import { asString, asNumber, parseInteractive } from './tools-helpers.js';
 import { type ToolDef, sessionIdShape, commandOrThrow, snapshotTree } from './tool-kit.js';
 import { bufferEnvelope } from '../session/session-health.js';
 
+/** The route part of a session URL. A host belongs to the machine, not to the journey. */
+function pathnameOf(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * What record-stop says about a step that compiled to no anchor at all.
  *
@@ -164,7 +174,10 @@ export const READ_TOOLS: ToolDef[] = [
       const session = deps.sessions.resolve(asString(args['sessionId']));
       const name = asString(args['recordingName']) ?? 'default';
       const cursor = session.elapsed();
-      deps.recordings.start(name, cursor);
+      // Where the journey begins, so a saved flow can navigate here before step 1 instead of
+      // replaying from wherever the page happens to be. Pathname only: a host or port belongs to
+      // the machine that recorded it, not to the journey.
+      deps.recordings.start(name, cursor, pathnameOf(session.url));
       return Promise.resolve({ recordingName: name, since: cursor });
     },
   },
@@ -209,6 +222,7 @@ export const READ_TOOLS: ToolDef[] = [
         name,
         version: REPLAY_PROGRAM_VERSION,
         steps: rec.steps,
+        ...(rec.startPath === undefined ? {} : { startPath: rec.startPath }),
       };
       deps.recordings.saveCompiled(program);
       const unstable = rec.steps.filter((s) => !s.stable).length;

@@ -180,8 +180,22 @@ export const FLOW_TOOLS: ToolDef[] = [
       const name = asString(aliasParam(args, 'flowName', ['flow'])['flowName']) ?? '';
       const program = deps.recordings.getCompiled(name);
       if (program === undefined) {
+        /*
+         * Name what DOES exist.
+         *
+         * `flowName` here is the RECORDING's name, while every other flow tool reads it as the name
+         * to save AS — so recording `default` and saving as `sign-in` looks obviously right and
+         * answers "no compiled recording by that name". The old message then said "record one
+         * first", which is advice to repeat the step that just succeeded. Cost a real investigation
+         * before the names were compared.
+         */
+        const held = deps.recordings.compiled();
         return Promise.resolve({
-          error: flowErrorMessage(FlowErrorCode.NO_RECORDING),
+          error:
+            0 === held.length
+              ? flowErrorMessage(FlowErrorCode.NO_RECORDING)
+              : `no recording named '${name}'. This is the name the RECORDING was made under, not ` +
+                `the name to save it as — stopped and ready to save: ${held.map((n) => `'${n}'`).join(', ')}.`,
           code: FlowErrorCode.NO_RECORDING,
         });
       }

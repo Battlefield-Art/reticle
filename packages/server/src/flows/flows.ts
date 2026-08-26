@@ -286,6 +286,16 @@ export class FlowStore {
       ...(pid === undefined ? {} : { projectId: pid }),
       createdAt: this.#clock.now(),
       steps,
+      /*
+       * The route the journey started on, when the recording captured one.
+       *
+       * The in-page recorder has always written this; the agent's recording had nowhere to put it,
+       * so a flow an agent recorded replayed from wherever the tab happened to be. A first step
+       * whose whole consequence is "this navigation fetches" fetches nothing when replay already
+       * sits on the destination, and the flow then drifts for a reason that has nothing to do with
+       * the app. Observed doing exactly that.
+       */
+      ...(program.startPath === undefined ? {} : { startPath: program.startPath }),
     };
     const flow = await this.#linkIntent(withAnnotations(base, annotations));
     await this.#fs.mkdir(flowDir(this.#root, pid));
