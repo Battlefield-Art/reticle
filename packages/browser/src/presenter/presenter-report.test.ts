@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyImpactCounts, emptyImpactRecords, estimateImpactSavings } from '@reticlehq/core';
-import type { ImpactDefect, ImpactScope } from '@reticlehq/core';
-import { reportBodyHtml } from './presenter-report.js';
+import type { ImpactDefect, ImpactScope, ImpactSnapshot } from '@reticlehq/core';
+import { PresenterReport, reportBodyHtml, reportPanelHtml } from './presenter-report.js';
 import {
   buildLinkedInShareUrl,
   buildShareText,
@@ -339,5 +339,102 @@ describe('what broke', () => {
   it('renders nothing at all when nothing has broken', () => {
     const html = reportBodyHtml(scope({ calls: 5, passed: 5 }));
     expect(html).not.toContain('What broke');
+  });
+});
+
+/**
+ * The JOIN: a snapshot arriving from the daemon, through the real controller, into painted DOM.
+ *
+ * Every test above checks the render FUNCTION. This one mounts the panel the user actually opens,
+ * hands it the shape the daemon really pushes, and reads what ends up on screen — because a correct
+ * renderer wired to the wrong field paints nothing, and a function test cannot tell you that.
+ *
+ * It exists because this hop turned out to be the one an agent cannot drive: Reticle deliberately
+ * hides its own presenter chrome from the tool surface, so `reticle_query` cannot see the toolbar
+ * button and no verdict can be drawn against this panel. Mounted DOM is the strongest check left.
+ */
+describe('a snapshot from the daemon, painted', () => {
+  const mountPanel = (): { root: HTMLElement; report: PresenterReport } => {
+    const root = document.createElement('div');
+    root.innerHTML = reportPanelHtml();
+    document.body.appendChild(root);
+    const report = new PresenterReport();
+    report.mount(root);
+    return { root, report };
+  };
+
+  const snapshotWith = (defects: ImpactDefect[], dashboardUrl?: string): ImpactSnapshot => ({
+    schemaVersion: 1,
+    project: scope({ calls: 12, verdicts: 4, passed: 2, failed: 2 }, defects),
+    global: scope({ calls: 99, verdicts: 9, passed: 7, failed: 2 }, defects),
+    ...(dashboardUrl === undefined ? {} : { dashboardUrl }),
+  });
+
+  it('paints the defects the daemon sent into the open panel', () => {
+    const { root, report } = mountPanel();
+    report.setSnapshot(
+      snapshotWith([
+        { at: 1, title: 'Sign in', detail: "expected '/billing'", source: 'src/Login.tsx:81' },
+      ]),
+    );
+    report.open();
+    const body = root.querySelector('[data-reticle-report-body]')?.textContent ?? '';
+    expect(body).toContain('Sign in');
+    expect(body).toContain("expected '/billing'");
+    expect(body).toContain('src/Login.tsx:81');
+  });
+
+  it('renders the link as a real anchor pointing at the dashboard', () => {
+    const { root, report } = mountPanel();
+    report.setSnapshot(snapshotWith([{ at: 1, title: 'Sign in' }], 'https://console.test/issues'));
+    report.open();
+    const link = root.querySelector<HTMLAnchorElement>('.reticle-report-defects-more');
+    expect(link?.getAttribute('href')).toBe('https://console.test/issues');
+    // Opening someone else's origin from inside their app: both, or the new tab can reach back.
+    expect(link?.getAttribute('rel')).toContain('noopener');
+    expect(link?.getAttribute('target')).toBe('_blank');
+  });
+
+  it('paints no link at all when the project is not linked', () => {
+    const { root, report } = mountPanel();
+    report.setSnapshot(snapshotWith([{ at: 1, title: 'Sign in' }]));
+    report.open();
+    expect(root.querySelector('.reticle-report-defects-more')).toBeNull();
+  });
+
+  it('escapes app-derived text on the way into the live DOM, not just in the string', () => {
+    const { root, report } = mountPanel();
+    report.setSnapshot(snapshotWith([{ at: 1, title: '<img src=x onerror=alert(1)>' }]));
+    report.open();
+    // The payload must have landed as TEXT: no element created, and the characters still readable.
+    expect(root.querySelector('.reticle-report-defects img')).toBeNull();
+    expect(root.querySelector('.reticle-report-defect-title')?.textContent).toBe(
+      '<img src=x onerror=alert(1)>',
+    );
+  });
+
+  it('repaints in place when a later snapshot arrives while the panel is open', () => {
+    // The daemon pushes on every tool call, so a panel left open must follow the record rather than
+    // freeze on whatever it held when it was opened.
+    const { root, report } = mountPanel();
+    report.setSnapshot(snapshotWith([{ at: 1, title: 'first' }]));
+    report.open();
+    report.setSnapshot(
+      snapshotWith([
+        { at: 2, title: 'second' },
+        { at: 1, title: 'first' },
+      ]),
+    );
+    const body = root.querySelector('[data-reticle-report-body]')?.textContent ?? '';
+    expect(body).toContain('second');
+  });
+
+  it('switches to the machine-wide scope when the toggle is pressed', () => {
+    const { root, report } = mountPanel();
+    report.setSnapshot(snapshotWith([{ at: 1, title: 'Sign in' }]));
+    report.open();
+    root.querySelector<HTMLButtonElement>('[data-reticle-report-scope]')?.click();
+    const body = root.querySelector('[data-reticle-report-body]')?.textContent ?? '';
+    expect(body).toContain('Sign in');
   });
 });

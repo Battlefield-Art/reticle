@@ -214,7 +214,13 @@ describe('withReticle forwards the discovered daemon', () => {
  * a silent no-connect and reads to a user as "Reticle is broken". Pin them to core's.
  */
 describe('the duplicated wire constants match core', () => {
-  it('builds the same bridge URL core does', async () => {
+  /*
+   * A generous timeout, not the 5s default: this is the only test here that dynamically imports
+   * core's dist, and under `turbo test:unit` that import competes with every other package's
+   * compile. It resolves in ~20ms alone and blew 5s under parallel load — a statement about the
+   * machine, not about the constants, which is exactly the flake shape the house rules name.
+   */
+  it('builds the same bridge URL core does', { timeout: 30_000 }, async () => {
     const { bridgeWsUrl } = await import('@reticlehq/core');
     const home = mkdtempSync(join(tmpdir(), 'reticle-const-home-'));
     const cwd = mkdtempSync(join(tmpdir(), 'reticle-const-proj-'));
