@@ -201,8 +201,11 @@ describe('it says whether it is syncing at all', () => {
     const said = lines.filter((l) => l.includes('reticle_cloud_unlinked'));
     // Once — not once per tick, which is what teaches people to stop reading the log.
     expect(said).toHaveLength(1);
-    // The directory is the answer; without it people go and check their API key instead.
-    expect(String(said[0])).toContain(root);
+    // The directory is the answer; without it people go and check their API key instead. Read as
+    // JSON rather than as a substring: `log()` writes JSON, so a Windows path arrives with its
+    // separators escaped and never matches the raw string — which is a fact about the encoder, not
+    // about whether the line names the root.
+    expect((JSON.parse(String(said[0])) as { root?: string }).root).toBe(root);
     spy.mockRestore();
   });
 

@@ -8,7 +8,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { ReticleDir } from '@reticlehq/core';
 import { saveFeedbackLocally } from './feedback-local.js';
 
@@ -70,7 +70,9 @@ describe('a report that cannot be sent is written down', () => {
 
   it('uses a filesystem-safe name — a raw ISO timestamp is not one on every platform', () => {
     const saved = saveFeedbackLocally(cwd, { kind: 'gap' }, 'x', {}, NOW);
-    expect(saved?.path).not.toContain(':');
+    // The NAME, not the path: every Windows absolute path carries a drive-letter colon, so asserting
+    // over the whole path failed on the one platform this invariant exists for.
+    expect(basename(saved?.path ?? '')).not.toContain(':');
   });
 
   it('creates the directory when the workspace has never had one', () => {
