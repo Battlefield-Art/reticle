@@ -76,8 +76,8 @@ import {
   PAUSED_NO_VERDICT,
 } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
-import { runStepWithStaleRetry } from './act-sequence-retry.js';
-import { preflightAct } from './act-preflight.js';
+import { describeStepResult, runStepWithStaleRetry } from './act-sequence-retry.js';
+import { assertSequenceSteps, preflightAct } from './act-preflight.js';
 import { type ToolDef, intentArg, sessionIdShape } from './tool-kit.js';
 import { asActionType, gradeOf } from './act-helpers.js';
 import { tryRealInput, rewriteUploadArgs } from './real-input-attempt.js';
@@ -373,6 +373,7 @@ export const ACT_TOOLS: ToolDef[] = [
       session.beginAction(ReticleTool.ACT_SEQUENCE, asRecord(args));
       try {
         const inputSteps = Array.isArray(args['steps']) ? args['steps'] : [];
+        assertSequenceSteps(inputSteps);
         const perStepTimeout = 'number' === typeof args['timeout_ms'] ? args['timeout_ms'] : 8000;
         const stepResults: Record<string, unknown>[] = [];
         let stalledAt: number | undefined;
@@ -406,22 +407,7 @@ export const ACT_TOOLS: ToolDef[] = [
               });
               break;
             }
-            const result2 = outcome;
-            const r = asRecord(result2.result);
-            const stepResult: Record<string, unknown> = {
-              ref: r['ref'] ?? step['ref'],
-              action: r['action'] ?? step['action'],
-              dispatched: r['dispatched'] ?? true,
-              settled: r['settled'] ?? null,
-              settleReason: r['settleReason'] ?? null,
-            };
-            if (r['testid'] !== undefined) stepResult['testid'] = r['testid'];
-            if (r['component'] !== undefined) stepResult['component'] = r['component'];
-            if (r['role'] !== undefined) stepResult['role'] = r['role'];
-            if (r['name'] !== undefined) stepResult['name'] = r['name'];
-            if (r['source'] !== undefined) stepResult['source'] = r['source'];
-            if (r['warning'] !== undefined) stepResult['warning'] = r['warning'];
-            stepResults.push(stepResult);
+            stepResults.push(describeStepResult(step, asRecord(outcome.result)));
           } catch (err: unknown) {
             stalledAt = i;
             stepResults.push({

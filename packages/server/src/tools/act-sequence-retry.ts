@@ -1,5 +1,8 @@
 /**
- * What to do when a ref goes stale in the MIDDLE of a sequence.
+ * The two things a sequence step needs beyond a plain act: a retry when the ref goes stale under a
+ * re-render, and a result shaped for the per-step report.
+ *
+ * ── THE RETRY ─────────────────────────────────────────────────────────────────────────────────
  *
  * Refs are invalidated by a re-render, and `reticle_act_sequence` exists precisely because the
  * caller cannot re-snapshot between steps. So `fill -> fill -> submit` fails on step two the moment
@@ -53,4 +56,28 @@ export async function runStepWithStaleRetry(
   if (first.ok || !isStaleRefError(first.error)) return first;
   await waitForReaction(session, since, budgetMs, opts);
   return attempt();
+}
+
+/**
+ * One step's entry in the per-step report.
+ *
+ * Only the fields the underlying act actually produced. Copying them conditionally keeps a clean step
+ * from carrying a row of nulls that read as "we looked and found nothing" rather than "there was
+ * nothing to look for".
+ */
+export function describeStepResult(
+  step: Record<string, unknown>,
+  result: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    ref: result['ref'] ?? step['ref'],
+    action: result['action'] ?? step['action'],
+    dispatched: result['dispatched'] ?? true,
+    settled: result['settled'] ?? null,
+    settleReason: result['settleReason'] ?? null,
+  };
+  for (const key of ['testid', 'component', 'role', 'name', 'source', 'warning']) {
+    if (result[key] !== undefined) out[key] = result[key];
+  }
+  return out;
 }
