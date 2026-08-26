@@ -1,5 +1,7 @@
 /** Self-describing capability registry — the testable surface the app advertises. */
 
+import { isPresenterVisible } from '../dom/dom-ignore.js';
+
 export interface CapabilityFlow {
   name: string;
   steps: string[];
@@ -10,6 +12,15 @@ export interface Capabilities {
   signals: string[];
   stores: string[];
   flows: CapabilityFlow[];
+  /**
+   * True when Reticle's OWN presenter is visible to snapshots and queries.
+   *
+   * Present only when the hatch is open, and reported here rather than left implicit, because a
+   * verdict drawn against Reticle's own interface is not an ordinary verdict: an agent that can see
+   * the impact panel can also assert against it. Anybody reading a result should be able to tell
+   * which kind they are holding without going to look at a build config.
+   */
+  presenterExposed?: boolean;
 }
 
 /** What the host app passes to reticle.describe; all fields optional. */
@@ -76,6 +87,9 @@ export function getCapabilities(): Capabilities {
     signals: [...capabilities.signals],
     stores: [...capabilities.stores],
     flows: capabilities.flows.map((f) => ({ name: f.name, steps: [...f.steps] })),
+    // Only when open — an absent field is the ordinary case and should not cost a line in every
+    // capabilities payload ever sent.
+    ...(isPresenterVisible() ? { presenterExposed: true } : {}),
   };
 }
 

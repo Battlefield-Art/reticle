@@ -168,6 +168,20 @@ export interface ReticleVitePluginOptions {
    */
   captureNetworkBodies?: boolean;
   /**
+   * Make Reticle's OWN presenter visible to snapshots and queries. CONTRIBUTORS ONLY.
+   *
+   * Reachable here for the same reason `captureNetworkBodies` is: the plugin is the only `connect()`
+   * most apps ever have, so an SDK option the plugin cannot pass is an option that does not exist.
+   *
+   * The presenter is hidden from every tool by design — an agent that can drive Reticle's own
+   * interface can fabricate its own impact report. The cost is that a HUD change is the only kind of
+   * change Reticle cannot be used to check. This is the hatch for that one case, and the app reports
+   * it in its capabilities so a verdict drawn with it open is never mistaken for an ordinary one.
+   *
+   * Also settable as `VITE_RETICLE_EXPOSE_PRESENTER=1`.
+   */
+  exposePresenter?: boolean;
+  /**
    * Let Reticle run when the page or the bridge is not on localhost.
    *
    * Off by default: the SDK refuses outside localhost so a page on the open internet cannot be
@@ -388,6 +402,10 @@ function connectArgs(options: ReticleVitePluginOptions): string {
   // model with it.
   if (true === options.captureNetworkBodies || '1' === process.env['VITE_RETICLE_CAPTURE_BODIES']) {
     args['captureNetworkBodies'] = true;
+  }
+  // Same shape, same reason. Off unless asked for, in a config or for one session.
+  if (true === options.exposePresenter || '1' === process.env['VITE_RETICLE_EXPOSE_PRESENTER']) {
+    args['exposePresenter'] = true;
   }
   // Same shape, same reason: without it an app that cannot be served on localhost has no way to
   // reach the SDK option at all. The pairing token still applies — see the option's docstring.

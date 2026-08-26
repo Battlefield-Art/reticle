@@ -82,6 +82,15 @@ export interface ActionInstrumentationFacts {
    * finished, and a bare flag makes them read the same.
    */
   openIntentCount?: number;
+  /**
+   * How long the OLDEST open intent has been owed, in ms.
+   *
+   * A count alone cannot tell "you declared this a minute ago and have not proved it yet" from
+   * "this project has owed eighteen things since last week". Only the first is actionable on the
+   * result being read, and a number that is always large is a number people learn to skip — which
+   * is exactly how an honest gap gets filtered out along with the noise.
+   */
+  oldestOpenIntentAgeMs?: number;
 }
 
 export function gapsForAction(facts: ActionInstrumentationFacts): InstrumentationGap[] {
@@ -177,6 +186,22 @@ export function gapsForAction(facts: ActionInstrumentationFacts): Instrumentatio
     );
   }
 
+  /**
+   * Say how old the debt is, when it is old enough to change what the reader should do.
+   *
+   * The ledger is a PROJECT's, deliberately — "what does this still owe" outlives one session. But an
+   * intent declared minutes ago and one abandoned last week produce the same sentence, and the second
+   * one is not about the work in front of you. Naming the age separates them without weakening the
+   * gap, and without pretending a stale backlog is this verdict's fault.
+   */
+  const DAY_MS = 86_400_000;
+
+  function describeIntentAge(ageMs: number | undefined): string {
+    if (ageMs === undefined || ageMs < DAY_MS) return '';
+    const days = Math.floor(ageMs / DAY_MS);
+    return ` (the oldest for ${String(days)} day${1 === days ? '' : 's'} — a backlog this old is probably not what this run is about; retire them or prove them)`;
+  }
+
   // A green that does not settle what the run OWES.
   //
   // The mirror of `changeUndeclared` above, and the more expensive half: that fires when nothing was
@@ -196,7 +221,7 @@ export function gapsForAction(facts: ActionInstrumentationFacts): Instrumentatio
     gaps.push(
       instrumentationGap(
         InstrumentationGapKind.INTENT_UNDISCHARGED,
-        `this verdict passed, and ${String(owed)} declared intent(s) are still unproved`,
+        `this verdict passed, and ${String(owed)} declared intent(s) are still unproved${describeIntentAge(facts.oldestOpenIntentAgeMs)}`,
         'a green settles what it asserted, not what the run set out to do — reporting done here rests on the change looking right rather than on anything having checked it',
       ),
     );

@@ -37,6 +37,19 @@ export interface ReticleConnectOptions {
    */
   captureNetworkBodies?: boolean;
   /**
+   * Make Reticle's OWN presenter visible to snapshots and queries. CONTRIBUTORS ONLY.
+   *
+   * The presenter is hidden from every tool by design, for a good reason: an agent that can drive
+   * Reticle's own interface can fabricate its own impact report, and Reticle chrome in a snapshot is
+   * noise in every other app on earth.
+   *
+   * The cost of that rule is that a HUD change is the only kind of change Reticle cannot be used to
+   * check — the panel rendering it is invisible to everything that could look at it. This hatch
+   * exists for exactly that case: the app under test IS Reticle. It reports itself in the app's
+   * capabilities, so a verdict drawn with it open can never be mistaken for an ordinary one.
+   */
+  exposePresenter?: boolean;
+  /**
    * The project root, so source paths report repo-relative instead of absolute.
    *
    * React's `_debugSource.fileName` is absolute; the babel stamp is repo-relative. Build plugins that

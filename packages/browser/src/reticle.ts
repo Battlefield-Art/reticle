@@ -1,3 +1,4 @@
+import { setPresenterVisible } from './dom/dom-ignore.js';
 import {
   EventType,
   RETICLE_DEFAULT_PORT,
@@ -349,6 +350,10 @@ export class Reticle {
     // Capabilities registered AFTER connect (which is when they are registered, by design) must
     // reach the bridge, or an app that declared its whole testable surface reads as having none.
     setCapabilitiesListener(() => this.#transport?.reannounce());
+
+    // Contributors only, and reported in capabilities so a verdict drawn with it open is never
+    // mistaken for an ordinary one. See connect-options.ts.
+    setPresenterVisible(true === options.exposePresenter);
 
     const emit = this.#emit;
     this.#teardowns = installAllObservers(emit, {

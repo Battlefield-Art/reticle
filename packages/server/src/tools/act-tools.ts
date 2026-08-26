@@ -30,7 +30,7 @@ import { findContradictions } from '../events/contradictions.js';
 import { gapsForAction } from '../honesty/instrumentation-gaps.js';
 import { noteSessionGaps } from '../honesty/gap-ledger.js';
 import { isChangeUndeclared } from '../honesty/undeclared-change.js';
-import { openSessionIntents } from '../intent/open-intents.js';
+import { intentDebt, openSessionIntents } from '../intent/open-intents.js';
 import {
   dischargeInlineIntent,
   inlineVerdictId,
@@ -925,10 +925,11 @@ export const ACT_TOOLS: ToolDef[] = [
           // "1 declared intent(s) are still unproved" while the ledger recorded it `proved`. A gap
           // that fires on the one path doing everything right is noise, and noise is what gets
           // filtered out — taking the honest gaps with it.
-          openIntentCount: openIntents.filter(
-            (i) =>
-              !(intentId !== undefined && Verified.YES === decision.verified && i.id === intentId),
-          ).length,
+          ...intentDebt(
+            openIntents,
+            intentId !== undefined && Verified.YES === decision.verified ? intentId : undefined,
+            deps.now(),
+          ),
           domMutated: (session.lastAct.effect().mutatedWithin ?? 0) > 0,
           signalsFired: actionSummary.signals.length,
           routeChanged: actionSummary.route !== undefined,
