@@ -125,6 +125,23 @@ const bearer = (session: { token: string } | null): string | null => {
   return session?.token ?? null;
 };
 
+/**
+ * The cached session, but ONLY when it was issued by the host we are about to dial.
+ *
+ * `baseUrl` and `bearer` resolve independently, so without this the two can disagree: point
+ * RETICLE_CLOUD_URL at staging while holding a production login and the production bearer is handed
+ * to another host. One environment variable moves a credential across a trust boundary, and nothing
+ * on screen says it happened — the command simply works, or 401s, depending on the other end.
+ *
+ * Dropping the session rather than the URL is the safe direction. The caller then behaves exactly as
+ * it does for a user who never logged in — an error naming `reticle login` — which is true: they
+ * have not logged in to THIS host. A staging and a production login cannot both be held today
+ * (`session.json` is one file, one host); until they can, refusing is the honest answer and a
+ * wrong-host 401 is not.
+ */
+const sessionForHost = <T extends { url: string }>(session: T | null, url: string): T | null =>
+  null !== session && session.url.replace(/\/+$/, '') === url ? session : null;
+
 /** One `/v1` call. Throws a friendly Error on a non-2xx so the command surfaces it and exits 1. */
 const api = async (
   method: string,
@@ -373,11 +390,16 @@ const cmdWhoami = async (): Promise<number> => {
 
 /** `reticle project ls` / `reticle project create <name>` — key- or session-authed. */
 const cmdProject = async (argv: readonly string[]): Promise<number> => {
-  const session = await readSession();
+  const cached = await readSession();
+  const url = baseUrl(cached);
+  const session = sessionForHost(cached, url);
   const token = bearer(session);
-  const url = baseUrl(session);
   if (null === token) {
-    err('run `reticle login` first, or set RETICLE_CLOUD_KEY');
+    err(
+      null === session && null !== cached
+        ? `signed in to ${cached.url}, but this command targets ${url} — run \`reticle login\` against it, or set RETICLE_CLOUD_KEY`
+        : 'run `reticle login` first, or set RETICLE_CLOUD_KEY',
+    );
     return 2;
   }
   const sub = argv[0];
@@ -429,8 +451,10 @@ const cmdProject = async (argv: readonly string[]): Promise<number> => {
  */
 const cmdLink = async (argv: readonly string[]): Promise<number> => {
   const f = flags(argv);
-  const session = await readSession();
-  const url = baseUrl(session);
+  const cached = await readSession();
+  const url = baseUrl(cached);
+  // Same rule as every other authed verb: a session only counts for the host that issued it.
+  const session = sessionForHost(cached, url);
   const envKey = process.env['RETICLE_CLOUD_KEY'];
 
   let projectId: string;

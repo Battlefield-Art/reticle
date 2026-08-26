@@ -192,6 +192,31 @@ describe('cloud-cli verb contracts (#555)', () => {
     expect(requests[0]?.url).toBe('http://localhost:8890/v1/auth/device/start');
   });
 
+  it('never sends a cached session token to a host that session was not issued by', async () => {
+    // The staging/prod case, and the reason a single session file is not enough. `baseUrl` and
+    // `bearer` resolve independently: the URL can be redirected by RETICLE_CLOUD_URL while the
+    // token still comes from the cached session. Point a prod login at staging and the PROD
+    // bearer is handed to another host — a credential crossing a trust boundary because one
+    // environment variable moved, with nothing on screen to say it happened.
+    await writeHomeFile(
+      [SESSION_FILE],
+      '{"token":"prod-token","orgName":"Acme","url":"https://app.reticle.sh"}',
+    );
+    process.env['RETICLE_CLOUD_URL'] = 'https://staging.reticle.sh';
+    responder = () => ({ status: 200, body: { projects: [] } });
+
+    const code = await runCloudCommand(['project', 'ls']);
+
+    // It refuses before dialling at all, which is stronger than sending no token: the foreign host
+    // learns nothing, not even that this machine exists.
+    expect(requests, 'the staging host must not be contacted with a prod login').toHaveLength(0);
+    expect(code).toBe(2);
+    // And it says WHICH host it is signed in to versus which one the command targets — the two
+    // facts needed to fix it. "Run reticle login" alone would be baffling to somebody who just did.
+    expect(stderrBuf).toContain('https://app.reticle.sh');
+    expect(stderrBuf).toContain('https://staging.reticle.sh');
+  });
+
   it('logout clears the cached session file without touching the network', async () => {
     await writeHomeFile([SESSION_FILE], '{"token":"tok","orgName":"Acme","url":"http://c"}');
 
