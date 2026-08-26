@@ -51,6 +51,17 @@ export const THROTTLED_WARNING =
   'tab throttled; timer/rAF/pointer gestures may silently no-op; refocus before driving';
 
 /**
+ * Prefixed onto a wait/assert miss when the session is throttled. A background tab is starved by
+ * the browser, so a timeout there is not evidence the UI is absent — it may never have rendered.
+ * `inconclusive` on the verdict (this string) is what stops that miss being graded as a product
+ * failure. The CLI escape hatch is named second; an MCP-only agent has no shell.
+ */
+export const THROTTLED_STARVED_NOTE =
+  'this tab is throttled and has not rendered; a miss here is not evidence the UI is absent. ' +
+  'acquire a scriptable context with reticle_run { tool: "reticle_lease", action: "acquire", url } ' +
+  '(the human can run `reticle drive <url>` if they have a shell)';
+
+/**
  * Pushed to the panel when the last agent's MCP connection drops — the agent (any of
  * Codex/OpenCode/Claude/Hermes) has stopped or is waiting on you. Tells the human, who is
  * on the browser, that control is back on the terminal so a typed prompt isn't silently lost.

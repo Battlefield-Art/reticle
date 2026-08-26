@@ -509,6 +509,12 @@ export const ACT_TOOLS: ToolDef[] = [
           .describe(
             'The tab disconnected mid-wait, so this was never observed — the verdict is UNKNOWN, not a failure of the app.',
           ),
+        inconclusive: z
+          .string()
+          .optional()
+          .describe(
+            'The wait could not be graded as a product failure — e.g. the tab is throttled and may never have rendered. The verdict is UNKNOWN, not "the UI is absent".',
+          ),
         // The STRUCTURED cause — observed / expected / assertion — is what the repair literature ranks
         // above the prose failureReason (structured feedback beat narrative by 10.5pp) and above a bare
         // pointer. `verdict` is `await waitForPredicate(...)`, whose EvalResult carries these on a
