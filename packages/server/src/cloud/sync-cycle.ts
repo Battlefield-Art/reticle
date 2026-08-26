@@ -192,8 +192,21 @@ export async function runSyncCycle(deps: SyncDeps): Promise<SyncReport> {
       return { ...empty, error };
     }
     const held = isRecord(status.json) ? (status.json as StatusResponse) : {};
-    const known = new Set(held.knownRunIds ?? []);
-    const hashes = held.stateHashes ?? {};
+    /*
+     * Validated, not trusted. `new Set(someString)` builds a set of CHARACTERS, so a `knownRunIds`
+     * that arrived as a string made `known.has('a')` true and silently skipped any run whose id was
+     * one of those letters — the client deciding, on the server's malformed word, not to upload
+     * something the server does not have. Silent data loss is the one failure this protocol must
+     * not have, and an unreadable answer has to mean "it knows nothing", never "it knows this".
+     */
+    const known = new Set(
+      Array.isArray(held.knownRunIds)
+        ? held.knownRunIds.filter((id): id is string => 'string' === typeof id)
+        : [],
+    );
+    // Same rule for the hashes: only a string can equal a hash we computed, so anything else reads
+    // as "unknown" and the record is sent once. Re-sending costs a request; skipping costs the data.
+    const hashes = isRecord(held.stateHashes) ? held.stateHashes : {};
 
     // 2. SEND — only what the server does not already have.
     const unsent = deps.source.runs().filter((r) => !known.has(r.runId));
