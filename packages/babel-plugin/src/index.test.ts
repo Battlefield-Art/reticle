@@ -41,6 +41,9 @@ describe('reticle babel plugin', () => {
 
   it('is idempotent (does not double-stamp)', () => {
     const out = transform(`const x = <div ${SOURCE_ATTR}="existing">x</div>;`);
-    expect((out.match(/data-reticle-source/g) ?? []).length).toBe(1);
+    // Built from SOURCE_ATTR, not the literal. Hardcoded, this counts occurrences of a string the
+    // plugin no longer stamps the moment core renames the constant — so a legitimate rename reddens
+    // it while real plugin-core drift stays unasserted, which is the alarm pointing the wrong way.
+    expect((out.match(new RegExp(SOURCE_ATTR, 'g')) ?? []).length).toBe(1);
   });
 });
