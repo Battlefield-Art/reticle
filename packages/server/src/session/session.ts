@@ -689,8 +689,8 @@ export class Session {
   }
 
   /** Reject everything still in flight — used on disconnect. */
-  rejectAll(reason: string): void {
-    this.#pending.rejectAll(reason);
+  rejectAll(reason: string, replaced = false): void {
+    this.#pending.rejectAll(reason, replaced);
     for (const listener of this.#disconnectListeners) listener();
     this.#disconnectListeners.clear();
   }
@@ -738,11 +738,11 @@ export class Session {
   }
 
   /** End this transport without letting a stale socket remove its replacement session. */
-  disconnect(reason: string): void {
+  disconnect(reason: string, replaced = false): void {
     // "Longest run" means the longest SESSION, and it used to be fed a single tool call's duration
     // - so the report's superlative was a number in milliseconds that never grew past a click.
     recordImpact({}, { runMs: this.elapsed() });
-    this.rejectAll(reason);
+    this.rejectAll(reason, replaced);
     try {
       this.#socket.close(1008, reason);
     } catch {

@@ -497,6 +497,7 @@ export class Bridge {
           replaced.succeededBy(session);
           replaced.disconnect(
             `session replaced by a newer connection claiming the same id (${session.id}) from ${session.url}`,
+            true,
           );
         }
         // The daemon is the single judge of skew, and HELLO is where the page announces itself.

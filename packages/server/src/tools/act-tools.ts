@@ -67,7 +67,6 @@ import {
   provenExpectedLinks,
   PredicateSchema,
 } from '../events/predicate.js';
-import { awaitDocumentSuccessor } from '../session/session-successor.js';
 import { healthEnvelope, refuseIfThrottled } from '../session/session-health.js';
 import {
   pausedShortCircuit,
@@ -77,7 +76,8 @@ import {
 } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
 import { describeStepResult, runStepWithStaleRetry } from './act-sequence-retry.js';
-import { assertSequenceSteps, preflightAct } from './act-preflight.js';
+import { assertSequenceSteps, dispatchAct, preflightAct } from './act-preflight.js';
+import { followLostObservation } from './act-observation.js';
 import { type ToolDef, intentArg, sessionIdShape } from './tool-kit.js';
 import { asActionType, gradeOf } from './act-helpers.js';
 import { tryRealInput, rewriteUploadArgs } from './real-input-attempt.js';
@@ -651,49 +651,55 @@ export const ACT_TOOLS: ToolDef[] = [
           : false;
       try {
         // actCommand is the single interception point for upload+path rewrite.
-        const actResult = await actCommand(deps, session, {
-          ref: resolved.ref,
-          action: args['action'],
-          args: args['args'] ?? {},
-        });
-        if (!actResult.ok) throw new Error(actResult.error ?? 'act failed');
-        captureAct(deps.recordings, args, actResult.result);
-        // Dispatched — now this act owns the cursor and the effect. Marking its OWN measurement also
-        // stops the spread below from inheriting an earlier reticle_act's action and mutation count.
-        session.lastAct.markActed(
-          since,
-          asString(args['action']),
-          mutatedWithin(asRecord(actResult.result)),
-          asString(args['ref']),
+        //
+        // A replacement can land BETWEEN resolving the target and dispatching, and the tool used to
+        // throw that transport fact at the agent verbatim: no verdict at all, from the layer whose
+        // whole job is to answer in verdicts, worded as though the app were at fault. `dispatchAct`
+        // returns null instead (see act-preflight.ts for why a write is never re-sent), and the
+        // successor block below then asks whether the consequence held on the NEW document — a
+        // green if it did, an honest observation_lost if it did not.
+        const actResult = await dispatchAct(() =>
+          actCommand(deps, session, {
+            ref: resolved.ref,
+            action: args['action'],
+            args: args['args'] ?? {},
+          }),
         );
+        if (actResult !== null) {
+          if (!actResult.ok) throw new Error(actResult.error ?? 'act failed');
+          captureAct(deps.recordings, args, actResult.result);
+          // Dispatched — now this act owns the cursor and the effect. Marking its OWN measurement
+          // also stops the spread below from inheriting an earlier reticle_act's action and
+          // mutation count.
+          session.lastAct.markActed(
+            since,
+            asString(args['action']),
+            mutatedWithin(asRecord(actResult.result)),
+            asString(args['ref']),
+          );
+        }
 
         // Honesty: floor the predicate at this act's cursor so a stale buffered event can't satisfy it.
         const predicateStarted = session.elapsed();
         let verdict =
-          timeout > 0
-            ? await waitForPredicate(session, until, timeout, since)
-            : await evaluatePredicate(session, until, since);
+          null === actResult
+            ? { pass: false, observationLost: true }
+            : timeout > 0
+              ? await waitForPredicate(session, until, timeout, since)
+              : await evaluatePredicate(session, until, since);
 
-        // A full-document navigation tears the SDK down mid-wait. `navigate` already waits for the
-        // HELLO and returns the new id; this path used to grade `observation_lost` and leave the
-        // agent holding a dead id, so the next assert failed even though the new page had loaded.
-        // Follow the unique same-origin successor (the awaitArrival idea, without a known URL) and
-        // evaluate there. Two live tabs at that origin is still a guess — we do not follow then.
-        if (true === verdict.observationLost && timeout > 0) {
-          const remaining = timeout - (session.elapsed() - predicateStarted);
-          const next =
-            remaining > 0 ? await awaitDocumentSuccessor(deps.sessions, session, remaining) : null;
-          if (next !== null) {
-            // Compute leftover on the departed session before we point `session` at the successor —
-            // the new session's elapsed() starts at 0 and would refund the whole budget.
-            const leftover = timeout - (session.elapsed() - predicateStarted);
-            session = next;
-            since = 0;
-            if (leftover > 0) {
-              verdict = await waitForPredicate(session, until, leftover, since);
-            }
-          }
-        }
+        // The SDK may have gone away mid-act — see act-observation.ts.
+        const followed = await followLostObservation({
+          sessions: deps.sessions,
+          session,
+          verdict,
+          timeout,
+          predicateStarted,
+          reevaluate: (next, budget) => waitForPredicate(next, until, budget, 0),
+        });
+        if (followed.followed) since = 0;
+        session = followed.session;
+        verdict = followed.verdict;
 
         // The predicate resolves the INSTANT it holds, which on an optimistically-navigating app is
         // while the write is still in flight — so the verdict was taken over a window the app had not
@@ -725,7 +731,7 @@ export const ACT_TOOLS: ToolDef[] = [
           await waitForReaction(session, since, spent(), sleep);
         }
 
-        const r = asRecord(actResult.result);
+        const r = asRecord(actResult?.result);
         if ('boolean' === typeof r['settled']) settledOutcome = r['settled'];
         // Where the acted element is written. Captured at act time alongside the anchor, so it is
         // available even when the action unmounted its own target.
@@ -807,7 +813,8 @@ export const ACT_TOOLS: ToolDef[] = [
           capsule,
           links,
           args,
-          actResult,
+          // No dispatch result to capture when the transport was displaced mid-write.
+          actResult: actResult ?? {},
           ...(actedSource === undefined ? {} : { actedSource }),
         });
         // Pass the action: an EMPTY window then reads as "the target does not react" rather than as a
@@ -944,7 +951,9 @@ export const ACT_TOOLS: ToolDef[] = [
         noteSessionGaps(session, gaps);
         return withControl(session, {
           ...decision,
-          effect: leanActResult(actResult.result),
+          // An unobserved act has no effect to report, and inventing an empty one would read as
+          // "the page did nothing" — a claim about the app, from a call that never saw it.
+          ...(null === actResult ? {} : { effect: leanActResult(actResult.result) }),
           verdict,
           // Promoted out of `effect` on red only. On green nobody needs it and it is noise; on red it
           // is the first thing the agent wants, and burying a file:line inside the effect block is

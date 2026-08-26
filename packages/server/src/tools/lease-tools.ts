@@ -126,6 +126,37 @@ export function resolveLeasedSessionId(
   return sessions.all().find((s) => sessionParamOf(s.url) === leaseId)?.id;
 }
 
+/**
+ * Carry a claimed identity across a navigation.
+ *
+ * A LEASED tab is addressed by `__reticle_session` in its URL: that param is how the pool finds the
+ * context it opened, and — since succession was tightened — it is also the ONLY thing that lets the
+ * reconnecting document inherit the lease. `reticle_navigate` sent the caller's raw URL, so the very
+ * first navigation stripped the marker, the tab re-announced as an ordinary anonymous session, and
+ * the lease was orphaned: "no sessions are connected at all", with a browser window still open on
+ * screen. A leased browser that cannot survive being navigated is not a usable one.
+ *
+ * A tab that claims nothing is left exactly as it was — this must never bolt Reticle's params onto
+ * a human's own URL.
+ */
+export function carryReticleIdentity(fromUrl: string | undefined, toUrl: string): string {
+  const session = sessionParamOf(fromUrl);
+  if (session === undefined) return toUrl;
+  // Already addressed (a caller passing the stamped URL back) — appending would be a no-op at best.
+  if (sessionParamOf(toUrl) !== undefined) return toUrl;
+  const projectId = projectParamOf(fromUrl);
+  return appendReticleParams(toUrl, session, projectId);
+}
+
+function projectParamOf(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  try {
+    return new URL(url).searchParams.get(RETICLE_URL_PARAM.PROJECT) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function sessionParamOf(url: string | undefined): string | undefined {
   if (url === undefined) return undefined;
   try {

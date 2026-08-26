@@ -10,6 +10,7 @@
  * produce: it sends somebody to fix code that is not broken. "Nothing was acted on" is a far better
  * outcome than "unknown".
  */
+import { SessionReplacedError } from '../session/pending-commands.js';
 import { assertNativeInputSupported } from './act-danger.js';
 import { unevaluablePredicateReason } from '../events/predicate-precheck.js';
 
@@ -53,4 +54,26 @@ export function preflightAct(actArgs: Record<string, unknown>, until: unknown): 
   assertNativeInputSupported(actArgs);
   const unevaluable = unevaluablePredicateReason(until);
   if (unevaluable !== undefined) throw new Error(unevaluable);
+}
+
+/**
+ * Dispatch a write, or report that its outcome went unobserved.
+ *
+ * Returns null — never throws — when the transport was displaced by a newer connection claiming the
+ * same id. That happens on any full-document navigation the act itself causes: the page unloads,
+ * re-announces, and the write in flight is rejected by the handle that just died.
+ *
+ * The write is deliberately NOT re-sent. Re-asking a READ on the successor is free; re-sending a
+ * WRITE is not, because nothing can prove the first one did not reach the page — and a duplicated
+ * click on a button that charges a card is a far worse outcome than a verdict of "I could not see".
+ * Every other failure propagates unchanged: only a replacement is an observation problem, and
+ * treating a timeout or a refusal as one would launder a real failure into a shrug.
+ */
+export async function dispatchAct<T>(send: () => Promise<T>): Promise<T | null> {
+  try {
+    return await send();
+  } catch (error: unknown) {
+    if (error instanceof SessionReplacedError) return null;
+    throw error;
+  }
 }
