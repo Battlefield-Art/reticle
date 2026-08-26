@@ -9,6 +9,7 @@
  * holds to. Detection is entirely best-effort: an unreadable package.json or an SDK too old to report
  * its runtime yields `undefined`, never a throw and never a guess.
  */
+import { mcpClientIdentity, setMcpClientIdentityHook } from '../mcp/client-identity.js';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { AppRuntime, McpScope, PageDriver, type Feedback } from '@reticlehq/core';
@@ -172,30 +173,19 @@ function fileExists(path: string): boolean {
  * client's own claim about itself, while an env-var table is a guess that silently rots every time a
  * vendor renames a variable. Unset (a CLI run with no MCP peer) simply reports no client.
  */
-let clientNameHook: (() => { name?: string; version?: string } | undefined) | undefined;
-
+/** Kept as the telemetry-facing name; the mechanism itself lives in mcp/client-identity.ts. */
 export function setMcpClientNameHook(
   hook: () => { name?: string; version?: string } | undefined,
 ): void {
-  clientNameHook = hook;
+  setMcpClientIdentityHook(hook);
 }
 
-/**
- * The client's own name and version from its handshake.
- *
- * Note what is NOT here and cannot be: the MODEL. MCP's `clientInfo` carries a name, a title and a
- * version and has no concept of a model, so the transport genuinely cannot tell us. The agent
- * self-reports it on the feedback itself, which is the only mechanism available and a reliable one
- * given the report is already something the agent authored.
- */
 function detectClient(): { client?: string; clientVersion?: string } {
   try {
-    const info = clientNameHook?.();
-    const name = info?.name;
-    const version = info?.version;
+    const info = mcpClientIdentity();
     return {
-      ...(name !== undefined && name !== '' ? { client: name.slice(0, 64) } : {}),
-      ...(version !== undefined && version !== '' ? { clientVersion: version.slice(0, 32) } : {}),
+      ...(info.name === undefined ? {} : { client: info.name }),
+      ...(info.version === undefined ? {} : { clientVersion: info.version }),
     };
   } catch {
     return {};
