@@ -21,7 +21,6 @@ import {
   PredicateKind,
   type JournalVerdictEffect,
 } from '@reticlehq/core';
-import { assertNativeInputSupported } from './act-danger.js';
 import { leanActResult, mutatedWithin } from './act-view.js';
 import { ReticleTool } from './tool-names.js';
 import { buildReactionReport, summarizeReaction } from '../events/reaction.js';
@@ -78,6 +77,7 @@ import {
 } from '../session/control-envelope.js';
 import { asString, asNumber, asRecord, sourceOf } from './tools-helpers.js';
 import { runStepWithStaleRetry } from './act-sequence-retry.js';
+import { preflightAct } from './act-preflight.js';
 import { type ToolDef, intentArg, sessionIdShape } from './tool-kit.js';
 import { asActionType, gradeOf } from './act-helpers.js';
 import { tryRealInput, rewriteUploadArgs } from './real-input-attempt.js';
@@ -636,9 +636,8 @@ export const ACT_TOOLS: ToolDef[] = [
         PredicateKind.SETTLED === until.kind ? undefined : until,
       );
 
-      // Before anything is driven: this path cannot honour a native-input request, and taking the
-      // argument and ignoring it told the agent its trusted click had happened. See act-danger.
-      assertNativeInputSupported(asRecord(args['args']));
+      // Everything refusable without touching the page — see act-preflight.ts.
+      preflightAct(asRecord(args['args']), until);
 
       // Resolve `target` to a ref BEFORE the action window opens, so the lookup is not attributed to
       // the act and cannot be mistaken for something the action caused.
