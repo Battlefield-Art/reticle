@@ -127,7 +127,7 @@ export function installHealth(emit: Emit): Teardown {
   window.addEventListener('focus', () => report(HealthReason.FOCUS), { signal });
   window.addEventListener('blur', () => report(HealthReason.BLUR), { signal });
 
-  report(HealthReason.INITIAL);
+  report(HealthReason.INITIAL); // baseline so the server knows state before the first change
   const stopHeartbeat = nativeSetInterval(
     () => report(HealthReason.HEARTBEAT),
     SESSION_HEALTH.HEARTBEAT_MS,

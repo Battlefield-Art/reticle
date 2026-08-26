@@ -10,6 +10,8 @@ export function installAnimation(emit: Emit): Teardown {
 
   const onStart = (event: AnimationEvent): void => {
     const target = event.target;
+    // Skip Reticle's own HUD keyframes (reticle-pulse/reticle-shimmer/…) so observe/record never
+    // self-pollute the agent's view of the app (matches the DOM observer's overlay filter).
     if (target instanceof Element && !isReticleOverlay(target)) {
       emit(EventType.ANIM_START, { name: event.animationName }, refs.refFor(target));
     }

@@ -36,6 +36,7 @@ export function installFocus(emit: Emit): Teardown {
   };
 
   const onFocusOut = (event: FocusEvent): void => {
+    // Focus left with nothing gaining it → it dropped to the body (the regression case).
     if (event.relatedTarget !== null) return;
     const from = last;
     last = null;
