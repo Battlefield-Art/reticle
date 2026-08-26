@@ -15,7 +15,8 @@ import type { FileSystemPort } from '../project/fs-port.js';
 import { resolveCloudConfig, type CloudConfig } from './cloud-sync.js';
 
 /** `<reticleRoot>/cloud.json` — the project's cloud binding + sync policy (non-secret). */
-export const CLOUD_LINK_FILE = 'cloud.json';
+/** Re-exported so the existing importers keep working; the string itself lives in core. */
+export const CLOUD_LINK_FILE = ReticleDir.CLOUD_LINK_FILE;
 /** `~/.reticle/credentials.json` — the user's per-cloud-project API keys (the only secret). */
 export const CREDENTIALS_FILE = 'credentials.json';
 

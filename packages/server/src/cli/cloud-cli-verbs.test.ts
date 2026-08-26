@@ -210,6 +210,15 @@ describe('cloud-cli verb contracts (#555)', () => {
     expect(code).toBe(0);
     expect(lastJsonOutput()).toEqual({
       loggedInAs: 'Acme',
+      // The sync half of "what is my state". `neverSynced` is the distinction that matters out
+      // here: a machine that has never talked to the dashboard and one whose last attempt failed
+      // are both "behind", and only one of them is a problem.
+      sync: {
+        lastPushAt: null,
+        lastPullAt: null,
+        decisionsHeld: 0,
+        neverSynced: true,
+      },
       repo: {
         attached: true,
         projectId: 'proj_1',
@@ -218,7 +227,7 @@ describe('cloud-cli verb contracts (#555)', () => {
         verify: 'server',
       },
     });
-    expect(requests).toHaveLength(0);
+    expect(requests, 'whoami reads local files only').toHaveLength(0);
   });
 
   it('link with an explicit key resolves whoami and writes the binding + credential', async () => {
@@ -263,17 +272,34 @@ describe('cloud-cli verb contracts (#555)', () => {
     expect(requests).toHaveLength(0);
   });
 
-  it('push with env credentials reports zero local runs and dials nothing', async () => {
+  it('push runs a full sync cycle: asks first, sends nothing, still collects decisions', async () => {
+    /*
+     * `push` used to re-upload every local run artifact on every invocation and never look at what
+     * came the other way. It is now one cycle of the replication protocol, which changes the
+     * contract in two visible ways and both are the point:
+     *
+     *   • it ASKS before sending, so an unchanged repo sends no bundle at all;
+     *   • it PULLS even with nothing to push, because a quiet machine is exactly the one whose
+     *     dashboard somebody has been triaging on.
+     */
     process.env['RETICLE_CLOUD_URL'] = TEST_URL;
     process.env['RETICLE_CLOUD_KEY'] = TEST_KEY;
+    responder = () => ({ body: { knownRunIds: [], stateHashes: {}, triage: [], cursor: '0:' } });
 
     const code = await runCloudCommand(['push']);
 
     expect(code).toBe(0);
     const out = lastJsonOutput() as Record<string, unknown>;
-    expect(out['pushed']).toBe(0);
-    expect(out['total']).toBe(0);
-    expect(requests).toHaveLength(0);
+    expect(out['ok']).toBe(true);
+    expect(out['sent']).toEqual({ runs: 0, flows: 0, records: [] });
+    expect(out['pulled']).toBe(0);
+
+    const paths = requests.map((r) => r.url.replace(TEST_URL, ''));
+    expect(paths, 'asked and collected; sent no bundle').toEqual([
+      '/v1/sync/status',
+      '/v1/sync/pull',
+    ]);
+    expect(requests.every((r) => r.authorization === `Bearer ${TEST_KEY}`)).toBe(true);
   });
 
   it('runs lists the linked project runs with the key as bearer', async () => {

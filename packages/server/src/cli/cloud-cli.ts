@@ -14,15 +14,16 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { createNodeFileSystem } from '../project/fs-port.js';
-import { RunStore } from '../runs/run-store.js';
-import { resolveProjectCloud } from '../cloud/cloud-config.js';
-import { cloudFetch, syncRunToCloud, SyncOutcome } from '../cloud/cloud-sync.js';
+import { CLOUD_LINK_FILE, resolveProjectCloud } from '../cloud/cloud-config.js';
+import { cloudFetch } from '../cloud/cloud-sync.js';
+import { describeSync, runSyncCycle } from '../cloud/sync-cycle.js';
+import { diskSink, diskSource, readCloudIssues, readCloudState } from '../cloud/sync-disk.js';
 
 const DEFAULT_URL = 'http://localhost:8890';
 const RETICLE_DIR = '.reticle';
 const SESSION_FILE = 'session.json';
 const CREDENTIALS_FILE = 'credentials.json';
-const CLOUD_LINK_FILE = 'cloud.json';
+
 const DEFAULT_PROJECT_ID = 'default';
 
 const CLOUD_COMMANDS: ReadonlySet<string> = new Set([
@@ -33,6 +34,7 @@ const CLOUD_COMMANDS: ReadonlySet<string> = new Set([
   'project',
   'config',
   'push',
+  'sync',
   'runs',
   'regression',
   'share',
@@ -41,6 +43,18 @@ export const isCloudCommand = (cmd: string | undefined): boolean =>
   cmd !== undefined && CLOUD_COMMANDS.has(cmd);
 
 const home = (): string => join(homedir(), RETICLE_DIR);
+/** `reticle sync --watch` — keep cycling instead of exiting. */
+const WATCH_FLAG = '--watch';
+
+/**
+ * How often `--watch` cycles.
+ *
+ * A minute is chosen against what a cycle COSTS, not against how fresh anybody needs the dashboard:
+ * an unchanged session sends one small GET and nothing else, so a minute is cheap enough that nobody
+ * turns it off — and a sync people turn off is the only kind that actually loses data.
+ */
+const DEFAULT_SYNC_INTERVAL_MS = 60_000;
+
 const err = (msg: string): void => {
   process.stderr.write(`reticle: ${msg}\n`);
 };
@@ -308,8 +322,25 @@ const cmdWhoami = async (): Promise<number> => {
     homedir(),
     process.env,
   );
+  /*
+   * The sync half of "what is my state". Without it the honest answer to "why does the dashboard
+   * look old?" was to go and read a JSON file — and the two failure modes a person actually hits
+   * (nothing has synced yet, and the last attempt errored) looked identical from out here.
+   */
+  const reticleRoot = join(process.cwd(), RETICLE_DIR);
+  const state = readCloudState(reticleRoot);
+  const decisions = Object.keys(readCloudIssues(reticleRoot).triage).length;
   emit({
     loggedInAs: session?.orgName ?? null,
+    sync: {
+      lastPushAt: state.lastPushAt ?? null,
+      lastPullAt: state.lastPullAt ?? null,
+      /** Present only when the machine is behind BECAUSE something failed, which is the useful case. */
+      ...(state.lastError === undefined ? {} : { lastError: state.lastError }),
+      /** Decisions collected from the dashboard and readable locally. */
+      decisionsHeld: decisions,
+      neverSynced: state.lastPullAt === undefined,
+    },
     repo: {
       attached: cloud.config !== null,
       projectId: cloud.projectId,
@@ -481,8 +512,17 @@ const cmdConfig = async (argv: readonly string[]): Promise<number> => {
   return 0;
 };
 
-/** `reticle push` — best-effort push of local run artifacts to the linked project (honors sync policy). */
-const cmdPush = async (): Promise<number> => {
+/**
+ * `reticle sync [--watch]` — one full cycle: send the difference, collect what came back.
+ *
+ * This replaced a `push` that re-uploaded every run artifact on every invocation. That was fine with
+ * three runs and absurd with three hundred, and it only ever went one way — so a bug somebody
+ * resolved on the dashboard stayed open on the laptop forever.
+ *
+ * The sync POLICY is applied here rather than inside the protocol: a project that has turned runs or
+ * flows off simply presents a source with nothing in it, and the cycle does not need to know why.
+ */
+const cmdSync = async (argv: readonly string[]): Promise<number> => {
   const fs = createNodeFileSystem();
   const reticleRoot = join(process.cwd(), RETICLE_DIR);
   const cloud = await resolveProjectCloud(fs, reticleRoot, homedir(), process.env);
@@ -490,25 +530,58 @@ const cmdPush = async (): Promise<number> => {
     err('cloud not attached here — run `reticle link` (or set RETICLE_CLOUD_URL/KEY)');
     return 1;
   }
-  if (!cloud.policy.runs) {
-    emit({ pushed: 0, skipped: 'sync.runs is off for this project (reticle config --runs on)' });
-    return 0;
+  const config = cloud.config;
+  const full = diskSource(reticleRoot);
+  const source = {
+    runs: (): ReturnType<typeof full.runs> => (cloud.policy.runs ? full.runs() : []),
+    flows: (): readonly unknown[] => (cloud.policy.flows ? full.flows() : []),
+    // `memory` is the project's cross-run history and the derived records that summarise it.
+    derived: (kind: Parameters<typeof full.derived>[0]): unknown =>
+      cloud.policy.memory ? full.derived(kind) : undefined,
+  };
+
+  const once = async (): Promise<number> => {
+    const report = await runSyncCycle({
+      config,
+      source,
+      sink: diskSink(reticleRoot),
+      state: readCloudState(reticleRoot),
+      now: () => Date.now(),
+      request: async (url, init) => {
+        const res = await fetch(url, init);
+        return { status: res.status, text: await res.text() };
+      },
+    });
+    emit({
+      ok: report.ok,
+      project: cloud.projectId,
+      sent: {
+        runs: report.runsSent,
+        flows: report.flowsSent,
+        records: report.derivedSent,
+        ...(report.runsRejected.length > 0 ? { rejected: report.runsRejected } : {}),
+      },
+      pulled: report.pulled,
+      ...(report.morePending ? { morePending: true } : {}),
+      ...(report.error === undefined ? {} : { error: report.error }),
+    });
+    hint(describeSync(report));
+    return report.ok ? 0 : 1;
+  };
+
+  const watch = argv.includes(WATCH_FLAG);
+  if (!watch) return once();
+
+  const everyMs = Number(process.env['RETICLE_SYNC_INTERVAL_MS'] ?? DEFAULT_SYNC_INTERVAL_MS);
+  hint(`watching ${reticleRoot} — syncing every ${String(Math.round(everyMs / 1000))}s`);
+  for (;;) {
+    await once();
+    await sleep(everyMs);
   }
-  const store = new RunStore(fs, reticleRoot);
-  const ids = await store.list();
-  let pushed = 0;
-  let failed = 0;
-  for (const id of ids) {
-    const read = await store.read(id);
-    if (!read.ok) continue;
-    const res = await syncRunToCloud(read.run, cloud.config, cloudFetch);
-    if (res.outcome === SyncOutcome.SYNCED) pushed += 1;
-    else if (res.outcome === SyncOutcome.FAILED) failed += 1;
-  }
-  emit({ pushed, failed, total: ids.length, project: cloud.projectId });
-  if (pushed > 0) hint(`pushed ✓ see them in the dashboard Runs tab (${cloud.config.url})`);
-  return 0;
 };
+
+/** `reticle push` — the name people already type. One cycle, same as `reticle sync`. */
+const cmdPush = async (): Promise<number> => cmdSync([]);
 
 /** Resolve THIS repo's linked cloud (url + project-scoped key). Throws a friendly error if not attached. */
 const repoCloud = async (): Promise<{ url: string; apiKey: string }> => {
@@ -571,6 +644,8 @@ export const runCloudCommand = async (argv: readonly string[]): Promise<number> 
         return await cmdConfig(rest);
       case 'push':
         return await cmdPush();
+      case 'sync':
+        return await cmdSync(rest);
       case 'runs':
         return await cmdRuns();
       case 'regression':

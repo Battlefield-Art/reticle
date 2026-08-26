@@ -261,6 +261,24 @@ export const ReticleDir = {
   AMBIENT_FILE: 'ambient.json',
   /** per-flow flake ledger — replay outcomes that decide intermittent-failure quarantine. */
   FLAKE_FILE: 'flake.json',
+  /**
+   * the project's cloud binding — .reticle/cloud.json, written by `reticle link`. Git-checked and
+   * non-secret: the project id, the API origin, and where its dashboard lives. The KEY lives in
+   * ~/.reticle/credentials.json instead, because that one must never reach a repository.
+   */
+  CLOUD_LINK_FILE: 'cloud.json',
+  /**
+   * local sync bookkeeping — .reticle/cloud-state.json. The pull cursor, when each half last ran,
+   * and the last error. NOT git-checked: it describes this machine's conversation with the server,
+   * and committing one machine's cursor would make every other machine skip what it had not seen.
+   */
+  CLOUD_STATE_FILE: 'cloud-state.json',
+  /**
+   * triage decisions pulled BACK from the dashboard — .reticle/issues.json. What a human said about
+   * a defect ("resolved", "not a bug"), so the HUD stops showing it and the next run does not
+   * re-report it as though nobody had looked.
+   */
+  ISSUES_FILE: 'issues.json',
   /** Per-flow assertion tiers recorded on each PASSING replay — the gate's anti-downgrade baseline. */
   TIERS_FILE: 'assertion-tiers.json',
   /**

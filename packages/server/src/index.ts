@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { resolveProjectCloud } from './cloud/cloud-config.js';
+import { startSyncDaemon } from './cloud/sync-daemon.js';
 import { PROJECT_REGISTRY_FILE, emptyProjectRegistry, parseProjectRegistry } from '@reticlehq/core';
 import { discoverProjectConfigs, type ConfigDiscovery } from './cli/config-discovery.js';
 import {
@@ -622,6 +624,18 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   const pool = createBrowserPool(options.headless ?? true);
   const leaseReaper = new LeaseReaper(pool);
   leaseReaper.start();
+  /*
+   * Automatic cloud sync, for the session nobody thinks about.
+   *
+   * The daemon outlives every individual tool call and is already running for the whole session, so
+   * it is the only place "keep the dashboard current while work is happening" costs nobody an extra
+   * process to remember. Safe for an UNLINKED project: it resolves the link on every tick and does
+   * nothing until one exists, so `reticle link` takes effect without a restart.
+   */
+  const cloudSync = startSyncDaemon({
+    reticleRoot,
+    cloud: () => resolveProjectCloud(fs, reticleRoot, homedir(), process.env),
+  });
   // Scope auto-selection to the active project (from .reticle.json) so a stray tab from another app is
   // never picked when the agent omits a sessionId. Explicit per-call scope/sessionId still overrides.
   // Scope + the no-session diagnosis: "no browser session connected" is the error that ends most
@@ -769,6 +783,7 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
       const vh = verifyHttp;
       if (vh !== undefined) await new Promise<void>((resolve) => vh.server.close(() => resolve()));
       leaseReaper.stop();
+      cloudSync.stop();
       await loopbackAlias.close?.();
       await pool.shutdown();
       await owned?.dispose();

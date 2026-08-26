@@ -1,0 +1,348 @@
+/**
+ * The replication protocol, driven against a scripted server.
+ *
+ * The properties worth locking are all about NOT COSTING ANYTHING and NOT LOSING ANYTHING: a quiet
+ * machine must send nothing, a machine that has been offline must catch up without re-sending its
+ * history, and no failure anywhere in the cycle may touch the local record — which is the only copy
+ * that was ever authoritative.
+ */
+import { describe, expect, it } from 'vitest';
+import {
+  describeSync,
+  runSyncCycle,
+  type CloudSyncState,
+  type PulledIssues,
+  type SyncSource,
+} from './sync-cycle.js';
+import { hashPayload } from './sync-hash.js';
+
+const NOW = 1_700_000_000_000;
+
+const IMPACT = { counts: { calls: 3, failed: 1 }, days: [] };
+
+/** A scripted server: hand it the bodies to answer with, read back what it was asked. */
+function server(script: {
+  status?: unknown;
+  statusCode?: number;
+  sync?: unknown;
+  syncCode?: number;
+  pull?: unknown;
+  pullCode?: number;
+  throwOn?: string;
+}) {
+  const calls: Array<{ url: string; method: string; body?: unknown }> = [];
+  // Not `async`: a scripted server answers instantly, and a promise returned by hand keeps the
+  // signature honest without a lint suppression. A synchronous throw still lands in the cycle's
+  // try/catch, which is the path the offline test exercises.
+  const request = (
+    url: string,
+    init: { method: string; body?: string },
+  ): Promise<{ status: number; text: string }> => {
+    calls.push({
+      url,
+      method: init.method,
+      ...(init.body === undefined ? {} : { body: JSON.parse(init.body) }),
+    });
+    if (script.throwOn !== undefined && url.includes(script.throwOn)) {
+      throw new Error('ECONNREFUSED');
+    }
+    if (url.includes('/v1/sync/status')) {
+      return Promise.resolve({
+        status: script.statusCode ?? 200,
+        text: JSON.stringify(script.status ?? {}),
+      });
+    }
+    if (url.includes('/v1/sync/pull')) {
+      return Promise.resolve({
+        status: script.pullCode ?? 200,
+        text: JSON.stringify(script.pull ?? { triage: [] }),
+      });
+    }
+    return Promise.resolve({
+      status: script.syncCode ?? 200,
+      text: JSON.stringify(script.sync ?? {}),
+    });
+  };
+
+  return { request, calls };
+}
+
+function source(over: Partial<SyncSource> = {}): SyncSource {
+  return {
+    runs: () => [],
+    flows: () => [],
+    derived: () => undefined,
+    ...over,
+  };
+}
+
+/** Captures what the cycle wrote, so a test can assert the machine's own bookkeeping. */
+function sink() {
+  const written: { issues?: PulledIssues; state?: CloudSyncState } = {};
+  return {
+    written,
+    sink: {
+      writeIssues: (i: PulledIssues): void => {
+        written.issues = i;
+      },
+      writeState: (s: CloudSyncState): void => {
+        written.state = s;
+      },
+    },
+  };
+}
+
+const cycle = async (
+  script: Parameters<typeof server>[0],
+  src: SyncSource = source(),
+  state: CloudSyncState = {},
+) => {
+  const s = server(script);
+  const k = sink();
+  const report = await runSyncCycle({
+    config: { url: 'https://cloud.test', apiKey: 'rk_test' },
+    source: src,
+    sink: k.sink,
+    state,
+    now: () => NOW,
+    request: s.request,
+  });
+  return { report, calls: s.calls, written: k.written };
+};
+
+describe('a quiet machine costs nothing', () => {
+  it('sends no bundle at all when the server already has everything', async () => {
+    const { report, calls } = await cycle(
+      { status: { knownRunIds: ['a'], stateHashes: { impact: hashPayload(IMPACT) } } },
+      source({
+        runs: () => [{ runId: 'a', payload: { runId: 'a' } }],
+        derived: (kind) => ('impact' === kind ? IMPACT : undefined),
+      }),
+    );
+    expect(report.ok).toBe(true);
+    expect(report.runsSent).toBe(0);
+    expect(report.derivedSent).toEqual([]);
+    expect(calls.some((c) => 'POST' === c.method)).toBe(false);
+  });
+
+  it('still PULLS when there is nothing to push — the quiet machine is the one being triaged on', async () => {
+    const { calls } = await cycle({ status: {} });
+    expect(calls.some((c) => c.url.includes('/v1/sync/pull'))).toBe(true);
+  });
+
+  it('says so in words a human can read', async () => {
+    const { report } = await cycle({ status: {} });
+    expect(describeSync(report)).toBe('nothing to send');
+  });
+});
+
+describe('it sends only the difference', () => {
+  it('skips runs the server names and sends the rest', async () => {
+    const { report, calls } = await cycle(
+      { status: { knownRunIds: ['old'] }, sync: { runs: { accepted: 1, rejected: [] } } },
+      source({
+        runs: () => [
+          { runId: 'old', payload: { runId: 'old' } },
+          { runId: 'new', payload: { runId: 'new' } },
+        ],
+      }),
+    );
+    const post = calls.find((c) => 'POST' === c.method);
+    expect((post?.body as { runs: Array<{ runId: string }> }).runs).toEqual([{ runId: 'new' }]);
+    expect(report.runsSent).toBe(1);
+  });
+
+  it('skips a derived record whose hash has not moved', async () => {
+    const { report } = await cycle(
+      { status: { stateHashes: { impact: hashPayload(IMPACT), flake: null } } },
+      source({ derived: (kind) => ('impact' === kind ? IMPACT : undefined) }),
+    );
+    expect(report.derivedSent).toEqual([]);
+  });
+
+  it('sends it the moment the record actually changes', async () => {
+    const { report } = await cycle(
+      { status: { stateHashes: { impact: hashPayload(IMPACT) } } },
+      source({ derived: (kind) => ('impact' === kind ? { ...IMPACT, changed: true } : undefined) }),
+    );
+    expect(report.derivedSent).toEqual(['impact']);
+  });
+
+  it('sends a record the server has never seen', async () => {
+    const { report } = await cycle(
+      { status: { stateHashes: { impact: null } } },
+      source({ derived: (kind) => ('impact' === kind ? IMPACT : undefined) }),
+    );
+    expect(report.derivedSent).toEqual(['impact']);
+  });
+
+  it('does not pay a round trip for flows alone when nothing else moved', async () => {
+    // Flows ride along; they are not worth waking the network for on their own.
+    const { calls } = await cycle(
+      { status: { knownRunIds: [] } },
+      source({ flows: () => [{ name: 'sign-in' }] }),
+    );
+    expect(calls.some((c) => 'POST' === c.method)).toBe(false);
+  });
+
+  it('carries the flows once something else IS moving', async () => {
+    const { calls } = await cycle(
+      { status: {}, sync: { runs: { accepted: 1 } } },
+      source({
+        runs: () => [{ runId: 'r', payload: { runId: 'r' } }],
+        flows: () => [{ name: 'sign-in' }],
+      }),
+    );
+    const post = calls.find((c) => 'POST' === c.method);
+    expect((post?.body as { flows: unknown[] }).flows).toEqual([{ name: 'sign-in' }]);
+  });
+});
+
+describe('decisions come back and are applied', () => {
+  const pull = {
+    triage: [
+      {
+        fingerprint: 'fp1',
+        status: 'resolved',
+        flowName: 'checkout',
+        title: 'Flow "checkout": never settles',
+        at: 5,
+      },
+    ],
+    cursor: '5:fp1',
+    more: false,
+  };
+
+  it('writes what a human decided, keyed by fingerprint', async () => {
+    const { report, written } = await cycle({ status: {}, pull });
+    expect(report.pulled).toBe(1);
+    expect(written.issues?.triage['fp1']).toEqual({
+      status: 'resolved',
+      flowName: 'checkout',
+      title: 'Flow "checkout": never settles',
+      at: 5,
+    });
+  });
+
+  it('keeps the flow name, which is the only id both sides already share', async () => {
+    // A fingerprint is the server's join key and means nothing locally; the flow name is what lets
+    // the HUD stop showing a defect somebody resolved.
+    const { written } = await cycle({ status: {}, pull });
+    expect(written.issues?.triage['fp1']?.flowName).toBe('checkout');
+  });
+
+  it('stores the cursor so the next cycle asks for less', async () => {
+    const { written } = await cycle({ status: {}, pull });
+    expect(written.state?.cursor).toBe('5:fp1');
+  });
+
+  it('sends the stored cursor back verbatim', async () => {
+    const { calls } = await cycle({ status: {} }, source(), { cursor: '9:fpX' });
+    expect(calls.find((c) => c.url.includes('/pull'))?.url).toContain(
+      `since=${encodeURIComponent('9:fpX')}`,
+    );
+  });
+
+  it('asks from the beginning when it has no cursor', async () => {
+    const { calls } = await cycle({ status: {} });
+    expect(calls.find((c) => c.url.includes('/pull'))?.url).not.toContain('since=');
+  });
+
+  it('writes no issues file at all when nothing was decided', async () => {
+    const { written } = await cycle({ status: {} });
+    expect(written.issues).toBeUndefined();
+  });
+
+  it('reports a full page so the caller can drain it now rather than in an hour', async () => {
+    const { report } = await cycle({ status: {}, pull: { ...pull, more: true } });
+    expect(report.morePending).toBe(true);
+    expect(describeSync(report)).toContain('more waiting');
+  });
+});
+
+describe('nothing local is harmed by a bad network', () => {
+  it('reports a refused status door instead of throwing', async () => {
+    const { report } = await cycle({ statusCode: 503 });
+    expect(report.ok).toBe(false);
+    expect(report.error).toContain('503');
+    expect(describeSync(report)).toContain('sync failed');
+  });
+
+  it('survives a connection that never opens', async () => {
+    const { report } = await cycle({ throwOn: '/v1/sync/status' });
+    expect(report.ok).toBe(false);
+    expect(report.error).toContain('ECONNREFUSED');
+  });
+
+  it('records WHY it is behind, so the next report can say more than “0 sent”', async () => {
+    const { written } = await cycle({ statusCode: 401 });
+    expect(written.state?.lastError).toContain('401');
+  });
+
+  it('clears the error once a cycle completes', async () => {
+    const { written } = await cycle({ status: {} }, source(), { lastError: 'earlier failure' });
+    expect(written.state?.lastError).toBeUndefined();
+  });
+
+  it('does not advance the cursor when the pull failed', async () => {
+    const { written } = await cycle({ status: {}, pullCode: 500 }, source(), { cursor: 'keep-me' });
+    expect(written.state?.cursor).toBe('keep-me');
+  });
+
+  it('still reports what the PUSH achieved when only the pull failed', async () => {
+    const { report } = await cycle(
+      { status: {}, sync: { runs: { accepted: 2 } }, pullCode: 500 },
+      source({
+        runs: () => [
+          { runId: 'a', payload: {} },
+          { runId: 'b', payload: {} },
+        ],
+      }),
+    );
+    expect(report.runsSent).toBe(2);
+    expect(report.error).toContain('500');
+  });
+
+  it('surfaces a rejected artifact rather than leaving it silently stuck', async () => {
+    const { report } = await cycle(
+      {
+        status: {},
+        sync: { runs: { accepted: 1, rejected: [{ index: 1, reason: 'schema' }] } },
+      },
+      source({
+        runs: () => [
+          { runId: 'good', payload: {} },
+          { runId: 'bad', payload: {} },
+        ],
+      }),
+    );
+    expect(report.runsRejected).toEqual([{ index: 1, reason: 'schema' }]);
+    expect(describeSync(report)).toContain('1 rejected');
+  });
+});
+
+describe('the request itself', () => {
+  it('authenticates every call with the project key', async () => {
+    const s = server({ status: {} });
+    await runSyncCycle({
+      config: { url: 'https://cloud.test', apiKey: 'rk_secret' },
+      source: source(),
+      sink: sink().sink,
+      state: {},
+      now: () => NOW,
+      request: async (url, init) => {
+        expect(init.headers['authorization']).toBe('Bearer rk_secret');
+        return s.request(url, init);
+      },
+    });
+  });
+
+  it('stamps when each half last ran, for a human asking why the dashboard looks old', async () => {
+    const { written } = await cycle(
+      { status: {}, sync: { runs: { accepted: 1 } } },
+      source({ runs: () => [{ runId: 'r', payload: {} }] }),
+    );
+    expect(written.state?.lastPushAt).toBe(NOW);
+    expect(written.state?.lastPullAt).toBe(NOW);
+  });
+});
