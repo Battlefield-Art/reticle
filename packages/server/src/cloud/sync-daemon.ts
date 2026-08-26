@@ -32,6 +32,16 @@ export const DAEMON_SYNC_INTERVAL_MS = 60_000;
 /** Given to the first cycle so a freshly-started daemon does not race the session that woke it. */
 const FIRST_CYCLE_DELAY_MS = 5_000;
 
+/**
+ * How long a nudge waits before cycling.
+ *
+ * Long enough to COALESCE — a battery that writes six runs in a second must cause one cycle, not
+ * six — and short enough that finishing a verification and looking at the dashboard feels like one
+ * action. Not zero: a run artifact is renamed into place and the sibling records it implies are
+ * written just after, so cycling on the very first byte would ship a bundle that is missing them.
+ */
+const NUDGE_DELAY_MS = 1_500;
+
 export interface SyncDaemonDeps {
   reticleRoot: string;
   /** Resolved per tick, not once: a repo linked while the daemon is alive starts syncing itself. */
@@ -48,6 +58,17 @@ export interface SyncDaemonDeps {
 export interface SyncDaemon {
   /** Run one cycle now, whatever the timer is doing. Returns undefined when not linked. */
   syncNow: () => Promise<SyncReport | undefined>;
+  /**
+   * Something worth shipping just landed — cycle soon rather than at the next tick.
+   *
+   * A verification RUN is the artifact people wait on, and making them wait up to a full interval
+   * for it is the difference between a dashboard that reflects the work and one that lags it. The
+   * counters keep the timer: they are a rolling aggregate, and a write per tool call to move a
+   * number nobody is watching that second is exactly the cost the interval exists to avoid.
+   *
+   * Coalescing, never additive: many nudges in a burst collapse into one cycle.
+   */
+  nudge: () => void;
   stop: () => void;
 }
 
@@ -72,6 +93,19 @@ export function startSyncDaemon(deps: SyncDaemonDeps): SyncDaemon {
   let running = false;
   /** The last error already reported. Repeats are swallowed so an offline laptop stays quiet. */
   let reportedError: string | undefined;
+  /**
+   * Whether the last cycle found a link — undefined until the first one has looked.
+   *
+   * An unlinked project used to sync nothing and say nothing, which is indistinguishable from a
+   * working sync until somebody notices the dashboard is hours behind. Observed for real: the
+   * daemon was started from a sibling repo that had never been linked, so every call for an entire
+   * session was recorded into THAT repo's ledger and pushed nowhere, and the first evidence was a
+   * stale number on a dashboard nobody had reason to distrust.
+   *
+   * Announced on the FIRST cycle and on every change after it, so `reticle link` mid-session says
+   * so too. Once per transition, never per tick — a line every minute is a line people stop reading.
+   */
+  let wasLinked: boolean | undefined;
 
   const cycle = async (): Promise<SyncReport | undefined> => {
     // Overlap guard: a slow cycle must not have a second one started on top of it, or two bundles
@@ -80,6 +114,22 @@ export function startSyncDaemon(deps: SyncDaemonDeps): SyncDaemon {
     running = true;
     try {
       const cloud = await deps.cloud();
+      const linked = null !== cloud.config;
+      if (linked !== wasLinked) {
+        wasLinked = linked;
+        if (linked)
+          log('reticle_cloud_linked', {
+            projectId: cloud.projectId,
+            root: deps.reticleRoot,
+          });
+        // Names the ROOT, because the answer is almost always "the daemon is not where you think it
+        // is" — and a message that omits the directory sends people to check their key instead.
+        else
+          log('reticle_cloud_unlinked', {
+            root: deps.reticleRoot,
+            fix: 'run `reticle link` in this directory, or start the daemon in the linked one — nothing is being synced from here',
+          });
+      }
       if (null === cloud.config) return undefined;
       const full = diskSource(deps.reticleRoot);
       const report = await runSyncCycle({
@@ -126,6 +176,9 @@ export function startSyncDaemon(deps: SyncDaemonDeps): SyncDaemon {
 
   const schedule = (delay: number): void => {
     if (stopped) return;
+    // Replace, never stack. `nudge` and the interval both schedule, and leaving the old timer armed
+    // would let every nudge add a permanent extra cycle per minute for the life of the process.
+    if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(() => {
       void cycle().finally(() => schedule(intervalMs));
     }, delay);
@@ -137,6 +190,11 @@ export function startSyncDaemon(deps: SyncDaemonDeps): SyncDaemon {
 
   return {
     syncNow: cycle,
+    nudge: (): void => {
+      // A cycle already in flight will not pick this up, so the nudge is still scheduled behind it
+      // rather than dropped — otherwise the run that arrived during a slow cycle waits a full tick.
+      schedule(NUDGE_DELAY_MS);
+    },
     stop: (): void => {
       stopped = true;
       if (timer !== undefined) clearTimeout(timer);

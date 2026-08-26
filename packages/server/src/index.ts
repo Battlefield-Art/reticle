@@ -663,6 +663,8 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
     now,
     bridgePort: port,
     browserProbe: probeChromium,
+    // A finished verification should not sit behind a one-minute timer — see ToolDeps.onRunPersisted.
+    onRunPersisted: (): void => cloudSync.nudge(),
   };
   const profile = resolveToolSurface(options.toolProfile);
   const effectiveDeps = realInput !== undefined ? { ...deps, realInput } : deps;
@@ -686,7 +688,9 @@ export async function startDaemon(options: StartOptions = {}): Promise<RunningSe
   // persisted via RunStore. Localhost-bound + token-guarded. Off unless `reticle serve --http`.
   let verifyHttp: { server: Server; port: number } | undefined;
   if (true === options.httpVerify) {
-    const runStore = new RunStore(fs, reticleRoot);
+    // Wakes cloud sync when the HTTP verify server persists a run — that path does not push
+    // inline the way the MCP one does, so without this its runs waited for the timer.
+    const runStore = new RunStore(fs, reticleRoot, { onWrote: () => cloudSync.nudge() });
     const runner = new ReticleRunner(createRunnerPort(effectiveDeps));
     const token = options.httpVerifyToken ?? process.env[ReticleEnv.VERIFY_TOKEN] ?? '';
     verifyHttp = await startVerifyServer(

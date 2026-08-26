@@ -83,5 +83,9 @@ export async function persistAndSyncVerificationRun(
   if (result.outcome !== SyncOutcome.SYNCED) {
     log('cloud-run-sync-failed', { runId: run.runId, status: result.status, error: result.error });
   }
+  // The run is up; its CONTEXT is not. Nudged rather than pushed inline, so the counters and flows
+  // ride the ordinary cycle (with its cursor and its overlap guard) instead of growing a second,
+  // subtly different upload path here.
+  deps.onRunPersisted?.();
   return run.runId;
 }

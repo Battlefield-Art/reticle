@@ -178,3 +178,109 @@ describe('syncNow', () => {
     d.stop();
   });
 });
+
+/**
+ * The two silences that cost a whole session: a daemon syncing nothing without saying so, and a
+ * finished verification waiting a full interval to appear.
+ */
+describe('it says whether it is syncing at all', () => {
+  it('announces an UNLINKED root once, naming the directory', async () => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown): boolean => {
+      lines.push(String(chunk));
+      return true;
+    });
+    const d = startSyncDaemon({
+      reticleRoot: root,
+      cloud: () => Promise.resolve(UNLINKED),
+      request: counting().request,
+      intervalMs: 1000,
+    });
+    await vi.advanceTimersByTimeAsync(20_000);
+    d.stop();
+    const said = lines.filter((l) => l.includes('reticle_cloud_unlinked'));
+    // Once — not once per tick, which is what teaches people to stop reading the log.
+    expect(said).toHaveLength(1);
+    // The directory is the answer; without it people go and check their API key instead.
+    expect(String(said[0])).toContain(root);
+    spy.mockRestore();
+  });
+
+  it('announces when a link APPEARS mid-session, so `reticle link` needs no restart', async () => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown): boolean => {
+      lines.push(String(chunk));
+      return true;
+    });
+    let linked = false;
+    const d = startSyncDaemon({
+      reticleRoot: root,
+      cloud: () => Promise.resolve(linked ? LINKED : UNLINKED),
+      request: counting().request,
+      intervalMs: 1000,
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(lines.filter((l) => l.includes('reticle_cloud_unlinked'))).toHaveLength(1);
+    linked = true;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(lines.filter((l) => l.includes('reticle_cloud_linked'))).toHaveLength(1);
+    d.stop();
+    spy.mockRestore();
+  });
+});
+
+describe('nudge', () => {
+  it('cycles well before the next tick would have', async () => {
+    const server = counting();
+    const d = startSyncDaemon({
+      reticleRoot: root,
+      cloud: () => Promise.resolve(LINKED),
+      request: server.request,
+      intervalMs: 600_000,
+    });
+    await vi.advanceTimersByTimeAsync(6_000); // the first cycle
+    const afterFirst = server.count();
+    d.nudge();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(server.count()).toBeGreaterThan(afterFirst);
+    d.stop();
+  });
+
+  it('COALESCES a burst into one cycle — six runs must not mean six uploads', async () => {
+    const server = counting();
+    const d = startSyncDaemon({
+      reticleRoot: root,
+      cloud: () => Promise.resolve(LINKED),
+      request: server.request,
+      intervalMs: 600_000,
+    });
+    await vi.advanceTimersByTimeAsync(6_000);
+    const afterFirst = server.count();
+    for (let i = 0; i < 6; i += 1) d.nudge();
+    await vi.advanceTimersByTimeAsync(3_000);
+    // One cycle's worth of requests, not six.
+    const perCycle = afterFirst;
+    expect(server.count() - afterFirst).toBeLessThanOrEqual(perCycle);
+    d.stop();
+  });
+
+  it('does not leave an extra timer armed for the life of the process', async () => {
+    const server = counting();
+    const d = startSyncDaemon({
+      reticleRoot: root,
+      cloud: () => Promise.resolve(LINKED),
+      request: server.request,
+      intervalMs: 1_000,
+    });
+    await vi.advanceTimersByTimeAsync(6_000);
+    d.nudge();
+    await vi.advanceTimersByTimeAsync(3_000);
+    const settled = server.count();
+    await vi.advanceTimersByTimeAsync(10_000); // ten more intervals
+    const perTick = (server.count() - settled) / 10;
+    d.stop();
+    // A stacked timer would double this. One cycle per interval is the whole claim.
+    expect(perTick).toBeLessThanOrEqual(counting().count() + 3);
+    d.stop();
+  });
+});

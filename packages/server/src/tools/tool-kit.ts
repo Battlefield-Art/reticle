@@ -59,6 +59,18 @@ export interface ToolDeps<Ext = unknown> {
    */
   artifactRootFor?: (projectId: string | undefined) => ArtifactRoot;
   /**
+   * A verification run just landed — wake cloud sync instead of waiting for its next tick.
+   *
+   * The run itself is pushed immediately on this path, but everything AROUND it — the impact
+   * counters, the flows it exercised, flake and intent — moves only on the timer. That is what
+   * produced a dashboard showing a fresh run beside stale numbers, which reads as a sync bug and is
+   * really just two different clocks. Waking the loop here makes the run and its context arrive
+   * together.
+   *
+   * Optional: absent ⇒ the timer alone, which is exactly today's behaviour.
+   */
+  onRunPersisted?: () => void;
+  /**
    * This daemon's OWN project id, derived from the directory it was started in.
    *
    * Optional because a daemon above an uninitialised directory has none, and because every existing

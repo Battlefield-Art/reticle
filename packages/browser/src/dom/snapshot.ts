@@ -3,7 +3,7 @@ import { capturedRootOf } from './shadow-registry.js';
 import { isFrame } from './realm.js';
 import { getAccessibleName, getRole, getStates, getValue, isVisible } from './a11y.js';
 import { refs } from './refs.js';
-import { isIgnored } from './dom-ignore.js';
+import { isIgnored, isReticleOverlay } from './dom-ignore.js';
 
 const INTERACTIVE = new Set([
   'button',
@@ -283,10 +283,21 @@ function walk(parent: Element, depth: number, ctx: WalkCtx, inLive = false): voi
   }
 }
 
+/**
+ * The APP's open dialogs. Reticle's own panels are excluded, always.
+ *
+ * The HUD's chat and report panels carry `role="dialog"` because that is the correct role for what
+ * they are — but they are OUR surface, not the application's. Once the presenter became visible to
+ * the tool surface (so that Reticle can be used to check its own HUD), every snapshot of every page
+ * started reporting `visibleDialogs: ["Reticle agent chat"]`, telling the agent a modal was up when
+ * the app had none. An agent that believes a dialog is open dismisses it before doing anything else,
+ * which is a wasted action at best and a dismissed REAL dialog at worst.
+ */
 function collectDialogs(root: ParentNode): string[] {
   const nodes = root.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]');
   const names: string[] = [];
   for (const node of nodes) {
+    if (isReticleOverlay(node)) continue;
     if (isVisible(node)) names.push(getAccessibleName(node) || '(unnamed dialog)');
   }
   return names;
@@ -317,6 +328,10 @@ function overlayHidingPage(root: ParentNode): string | undefined {
   );
   let modal: Element | undefined;
   for (const d of dialogs) {
+    // Never OUR overlay. Reticle's HUD must not be able to explain the app's absence with itself:
+    // that turns "the page did not render" into "an overlay is covering it", which sends the reader
+    // to dismiss a panel that was never the problem.
+    if (isReticleOverlay(d)) continue;
     if (isVisible(d)) {
       modal = d;
       break;
