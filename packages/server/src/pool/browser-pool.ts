@@ -24,6 +24,13 @@ export interface PooledPage {
    * "the page said nothing", never as "the page dialled correctly".
    */
   onConsole?(handler: (text: string) => void): void;
+  /**
+   * Capture the page as a PNG. OPTIONAL, like `onConsole`: a fake that does not implement it makes
+   * the pool report "no provider", which is the correct degradation — an absent screenshotter must
+   * read as "this context cannot be captured", never as a blank image that a visual diff would then
+   * compare against and pass.
+   */
+  screenshot?(opts?: { fullPage?: boolean }): Promise<Uint8Array>;
 }
 
 /** An isolated browsing context (cookies/storage). Real Playwright `BrowserContext` satisfies this. */
@@ -195,6 +202,32 @@ export class BrowserPool {
    * Reclaim leases untouched for longer than the TTL — a hung/crashed agent never holds a slot
    * forever. Returns the released sessionIds. This is the fault-tolerance backstop for the pool.
    */
+  /**
+   * Capture a leased page, or undefined when this session is not a lease or cannot be captured.
+   *
+   * A lease IS a real browser page, so the pixels were always available — the visual tools simply had
+   * no route to them and answered "no provider" for every context an agent can actually get. That
+   * made visual regression impossible on exactly the isolated contexts the pool exists to hand out.
+   *
+   * Touches the lease like any other tool call, so capturing keeps it alive rather than letting the
+   * reaper take it out from under a diff.
+   */
+  async screenshotLease(
+    sessionId: string,
+    opts: { fullPage?: boolean } = {},
+  ): Promise<Uint8Array | undefined> {
+    const lease = this.#active.get(sessionId);
+    if (lease === undefined || lease.page.screenshot === undefined) return undefined;
+    this.touch(sessionId);
+    try {
+      return await lease.page.screenshot(opts);
+    } catch {
+      // A capture that fails is not a broken lease. Report "could not capture" and leave the lease
+      // usable — the alternative is losing a working context to one bad frame.
+      return undefined;
+    }
+  }
+
   async sweepExpired(): Promise<string[]> {
     const now = this.#now();
     const expired = [...this.#active.entries()]

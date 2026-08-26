@@ -180,6 +180,19 @@ async function capture(
   const desktop = await desktopCapture(deps, sessionId, true === args['fullPage']);
   if (desktop.png !== undefined) return { png: desktop.png };
   if (desktop.reason !== undefined) return { reason: desktop.reason };
+
+  /*
+   * A LEASED page is a real browser page, so the pixels were always there — the visual tools simply
+   * had no route to them. Without this, `reticle_screenshot` answered "no provider" for every context
+   * an agent can actually acquire, which made visual regression impossible on exactly the isolated
+   * contexts the pool exists to hand out. Tried last: a CDP provider, when there is one, is driving
+   * the page the caller means, and a lease is the fallback rather than a competitor.
+   */
+  const leased =
+    sessionId === undefined
+      ? undefined
+      : await deps.pool?.screenshotLease(sessionId, { fullPage: true === args['fullPage'] });
+  if (leased !== undefined) return { png: leased };
   return {
     reason: provider === undefined ? VisualReason.NO_PROVIDER : VisualReason.CAPTURE_FAILED,
   };
