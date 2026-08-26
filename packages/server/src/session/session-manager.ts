@@ -135,6 +135,11 @@ export class SessionManager {
     this.#recordConnection?.(session.projectId);
     const previous = this.#sessions.get(session.id);
     this.#sessions.set(session.id, session);
+    // Who can SEE this session's HUD feed. Wired here because `add` is the one method every path
+    // that registers a session goes through, and read lazily so a tab that opens later still counts.
+    // Optional-call for the same reason `pushImpact` is one at the dispatch chokepoint: a test
+    // double is a partial Session, and wiring a courtesy channel must never break registration.
+    session.setViewers?.(() => this.#viewersFor(session));
     // Publish what this app declared sensitive to the driven-path rule. Here rather than in the
     // bridge because EVERY path that registers a session goes through this method, and a declaration
     // that silently fails to register is a leak nothing would report.
@@ -142,6 +147,19 @@ export class SessionManager {
     this.#attachment.attached(session.id);
     this.#tombstones.delete(session.id);
     return previous;
+  }
+
+  /**
+   * The other tabs of the same app as `driven`.
+   *
+   * Scoped the same way auto-selection is: by the stable projectId when the driven tab stamped one,
+   * else by origin. A drive session is frequently a headless pooled context (see Session.#viewers),
+   * so without this the human's own tab is the one place the report never reaches.
+   */
+  #viewersFor(driven: Session): Session[] {
+    const scope: ResolveScope =
+      driven.projectId === undefined ? { url: driven.url } : { projectId: driven.projectId };
+    return scopeSessions([...this.#sessions.values()], scope).filter((s) => s !== driven);
   }
 
   remove(session: Session): boolean {

@@ -11,6 +11,22 @@ export type { SessionHealth };
 
 /** The HUD does not need 200 frames to watch a counter climb; the last state always lands. */
 const IMPACT_PUSH_DEBOUNCE_MS = 700;
+
+/**
+ * How a mirrored row is introduced on a tab that is only WATCHING.
+ *
+ * The row happened somewhere else, and a HUD that prints it unlabelled tells the reader their own
+ * tab was driven. Naming the session is also the handle they need to address it.
+ */
+function mirroredNarration(sessionId: string, text: string): string {
+  return `${sessionId} \u2192 ${text}`;
+}
+
+/** The pushes that are a REPORT of what happened, and so are worth showing to a watching tab. */
+const MIRRORED_COMMANDS: ReadonlySet<string> = new Set<string>([
+  ReticleCommand.NARRATE,
+  ReticleCommand.IMPACT,
+]);
 import { PendingCommands, CommandTimeoutError } from './pending-commands.js';
 import { span } from '../trace.js';
 import {
@@ -869,8 +885,48 @@ export class Session {
     return `Session ${this.id} has been open for ${String(minutes)} minutes. If your task is complete, call reticle_session{action:"end"} now.`;
   }
 
-  /** Fire-and-forget command send — NOT registered in #pending (no correlated result expected). */
+  /**
+   * The tabs that should SEE what this session is told, supplied by the SessionManager.
+   *
+   * `reticle drive` attaches to the running daemon and is handed a pooled HEADLESS context, so the
+   * whole HUD feed — the narration, the counters, the bug that was just raised — went to a browser
+   * with nobody in front of it, while the developer's own tab showed nothing. The feed is now a
+   * per-project broadcast: the driven tab is still the only one DRIVEN, and any other tab of the
+   * same app is a viewer.
+   */
+  #viewers: (() => Session[]) | undefined;
+
+  /** Wired by SessionManager.add, the one place every session registers. */
+  setViewers(read: () => Session[]): void {
+    this.#viewers = read;
+  }
+
+  /**
+   * Fire-and-forget command send — NOT registered in #pending (no correlated result expected).
+   *
+   * Mirrored to this project's other tabs, for the two commands that are a REPORT of what happened
+   * (narration, impact). PRESENTER is deliberately not among them: it is the glow and the lifecycle
+   * that say "the agent is driving THIS tab", and a viewer that showed it would be claiming
+   * something untrue about itself.
+   */
   #post(name: string, args: Record<string, unknown>): void {
+    this.#send(name, args);
+    if (!MIRRORED_COMMANDS.has(name)) return;
+    for (const viewer of this.#viewers?.() ?? []) {
+      if (viewer === this) continue;
+      // Straight to the raw send, so a mirrored row is never mirrored again.
+      viewer.#send(name, name === ReticleCommand.NARRATE ? this.#labelled(args) : args);
+    }
+  }
+
+  /** A narration row re-addressed to a tab that is watching rather than being driven. */
+  #labelled(args: Record<string, unknown>): Record<string, unknown> {
+    const text = args['text'];
+    if ('string' !== typeof text) return args;
+    return { ...args, text: mirroredNarration(this.id, text) };
+  }
+
+  #send(name: string, args: Record<string, unknown>): void {
     if (this.#socket.readyState !== WS_OPEN) return;
     // Shares the same counter as tracked commands, so a fire-and-forget id can never collide with
     // one that IS awaiting a reply.
