@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyImpactCounts, emptyImpactRecords, estimateImpactSavings } from '@reticlehq/core';
-import type { ImpactScope } from '@reticlehq/core';
+import type { ImpactDefect, ImpactScope } from '@reticlehq/core';
 import { reportBodyHtml } from './presenter-report.js';
 import {
   buildLinkedInShareUrl,
@@ -10,7 +10,10 @@ import {
   compactNumber,
 } from './presenter-report-copy.js';
 
-function scope(over: Partial<ReturnType<typeof emptyImpactCounts>> = {}): ImpactScope {
+function scope(
+  over: Partial<ReturnType<typeof emptyImpactCounts>> = {},
+  defects: ImpactDefect[] = [],
+): ImpactScope {
   const counts = { ...emptyImpactCounts(), ...over };
   return {
     counts,
@@ -18,8 +21,15 @@ function scope(over: Partial<ReturnType<typeof emptyImpactCounts>> = {}): Impact
     records: { ...emptyImpactRecords(), longestRunMs: 92_000 },
     savings: estimateImpactSavings(counts),
     since: 0,
+    defects,
   };
 }
+
+const defect = (over: Partial<ImpactDefect> = {}): ImpactDefect => ({
+  at: 1,
+  title: 'Sign In',
+  ...over,
+});
 
 describe('the impact report', () => {
   it('leads with defects caught and shows unknowns rather than hiding them', () => {
@@ -266,5 +276,68 @@ describe('paused and ended keep the status colour', () => {
     expect(SHELL_CSS, 'the accent follows the state colour').toContain(
       '--reticle-accent:var(--reticle-state)',
     );
+  });
+});
+
+/**
+ * The short list of what broke.
+ *
+ * The hero number says HOW MANY; this says WHICH ONES, which is the difference between a statistic
+ * and something a person can act on. The link is the only place the free tool points at the paid
+ * one, so it must appear exactly when there IS one and never nag when there is not.
+ */
+describe('what broke', () => {
+  it('names the defects, not just how many there were', () => {
+    const html = reportBodyHtml(scope({ calls: 5, failed: 1 }, [defect({ title: 'Sign In' })]));
+    expect(html).toContain('Sign In');
+    expect(html).toContain('What broke');
+  });
+
+  it('shows the reason and the source line beside the name', () => {
+    const html = reportBodyHtml(
+      scope({ calls: 5, failed: 1 }, [
+        defect({ detail: 'the route never changed', source: 'src/login.tsx:42' }),
+      ]),
+    );
+    expect(html).toContain('the route never changed');
+    expect(html).toContain('src/login.tsx:42');
+  });
+
+  it('escapes text that came from the app under test', () => {
+    // The title is an element's accessible name — the CONTENT of somebody else's page, rendered
+    // into this panel's innerHTML. It is the first app-derived string the report has ever shown.
+    const html = reportBodyHtml(
+      scope({ calls: 5, failed: 1 }, [defect({ title: '<img src=x onerror=alert(1)>' })]),
+    );
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;img src=x');
+  });
+
+  it('shows NO link when the project is not linked to a workspace', () => {
+    // The free tool is complete on its own. An unlinked project gets its list and no advertisement.
+    const html = reportBodyHtml(scope({ calls: 5, failed: 1 }, [defect()]));
+    expect(html).not.toContain('dashboard');
+  });
+
+  it('links to the dashboard when there is one', () => {
+    const html = reportBodyHtml(
+      scope({ calls: 5, failed: 1 }, [defect()]),
+      'https://console.test/issues?project=web',
+    );
+    expect(html).toContain('https://console.test/issues?project=web');
+    expect(html).toContain('Manage all of them on the dashboard');
+  });
+
+  it('counts the rest only when there IS a rest — 3 shown of 3 is not "and more"', () => {
+    const three = [defect({ title: 'a' }), defect({ title: 'b' }), defect({ title: 'c' })];
+    const exact = reportBodyHtml(scope({ calls: 9, failed: 3 }, three), 'https://console.test/i');
+    expect(exact).not.toContain('(3)');
+    const more = reportBodyHtml(scope({ calls: 9, failed: 40 }, three), 'https://console.test/i');
+    expect(more).toContain('(40)');
+  });
+
+  it('renders nothing at all when nothing has broken', () => {
+    const html = reportBodyHtml(scope({ calls: 5, passed: 5 }));
+    expect(html).not.toContain('What broke');
   });
 });

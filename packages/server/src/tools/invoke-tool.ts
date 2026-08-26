@@ -31,6 +31,7 @@ import {
 } from '../honesty/feature-capture.js';
 import { span } from '../trace.js';
 import {
+  defectForToolResult,
   deltaForToolResult,
   impactSnapshot,
   initImpact,
@@ -441,7 +442,11 @@ export async function runTool<Ext>(
   // The user's own record of what Reticle did for them. Same chokepoint as everything else that
   // counts, for the same reason: a second recording site is a second thing to forget. Separate
   // store from telemetry - this one never leaves the machine.
-  recordImpact(deltaForToolResult(raw, Date.now() - startedAt, resultIsError(raw)));
+  const finishedAt = Date.now();
+  const defect = defectForToolResult(raw, finishedAt);
+  recordImpact(deltaForToolResult(raw, finishedAt - startedAt, resultIsError(raw)), {
+    ...(defect === undefined ? {} : { defect }),
+  });
   // ...and the tab being driven is told, so the report is live rather than a thing you reload.
   // Optional-call, not optional-chain-on-the-object: a test double is a partial Session, and a
   // courtesy push must never be the reason a tool call throws.

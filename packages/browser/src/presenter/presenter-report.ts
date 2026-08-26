@@ -1,4 +1,4 @@
-import type { ImpactScope, ImpactSnapshot } from '@reticlehq/core';
+import { IMPACT_DEFECT_LIMIT, type ImpactScope, type ImpactSnapshot } from '@reticlehq/core';
 import { PresenterIcon, PRESENTER_ICON_SIZE, hiIconHtml } from './presenter-icons.js';
 import { HUD_SURFACE_CLASS } from './presenter-hud-chrome.js';
 import { REPORT_PANEL_ATTR, REPORT_ATTR, REPORT_CLOSE_ATTR } from './presenter-config.js';
@@ -83,7 +83,57 @@ function chart(scope: ImpactScope): string {
   return `<div class="reticle-report-chart-wrap"><span class="reticle-report-section">${REPORT_TEXT.CHART}</span><div class="reticle-report-chart">${bars}</div></div>`;
 }
 
-export function reportBodyHtml(scope: ImpactScope): string {
+/**
+ * Escape text that came from the app under test.
+ *
+ * A defect title is an element's accessible name or a verdict's failure reason — both of which are
+ * ultimately the CONTENT of somebody else's page, and this panel builds its DOM from an HTML string.
+ * Everything else the report renders is a number or a date; this is the first app-derived text to
+ * reach it, so the escaping arrives with it.
+ */
+function esc(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * The short list of what is currently broken.
+ *
+ * The hero number already says HOW MANY defects Reticle caught; this says WHICH ONES, which is the
+ * difference between a statistic and something a person can act on. Deliberately short: a panel in
+ * the corner of somebody's app is not a triage queue, and the link at the bottom is where the queue
+ * lives. When the project is not linked to a workspace there is no link and no nagging — the free
+ * tool is complete on its own.
+ */
+function defects(scope: ImpactScope, dashboardUrl: string | undefined): string {
+  const list = scope.defects.slice(0, IMPACT_DEFECT_LIMIT);
+  if (0 === list.length) return '';
+  const rows = list
+    .map((d) => {
+      const detail =
+        d.detail === undefined
+          ? ''
+          : `<span class="reticle-report-defect-detail">${esc(d.detail)}</span>`;
+      const source =
+        d.source === undefined
+          ? ''
+          : `<span class="reticle-report-defect-source">${esc(d.source)}</span>`;
+      return `<li class="reticle-report-defect"><span class="reticle-report-defect-title">${esc(d.title)}</span>${detail}${source}</li>`;
+    })
+    .join('');
+  // Only claim there are more when there actually are — `counts.failed` is every defect ever, and
+  // this list is the recent tail of it.
+  const more =
+    dashboardUrl === undefined
+      ? ''
+      : `<a class="reticle-report-defects-more" href="${esc(dashboardUrl)}" target="_blank" rel="noreferrer noopener">${REPORT_TEXT.DEFECTS_MORE}${scope.counts.failed > list.length ? ` (${String(scope.counts.failed)})` : ''}</a>`;
+  return `<div class="reticle-report-defects-wrap"><span class="reticle-report-section">${REPORT_TEXT.DEFECTS}</span><ul class="reticle-report-defects">${rows}</ul>${more}</div>`;
+}
+
+export function reportBodyHtml(scope: ImpactScope, dashboardUrl?: string): string {
   const c = scope.counts;
   if (0 === c.calls) return `<p class="reticle-report-empty">${REPORT_TEXT.EMPTY}</p>`;
   const streak =
@@ -114,7 +164,7 @@ export function reportBodyHtml(scope: ImpactScope): string {
       scope.savings.minutes.basis,
     ),
   ].join('');
-  return `${streak}${hero}${verdicts}<div class="reticle-report-grid">${cards}</div>${chart(scope)}`;
+  return `${streak}${hero}${verdicts}<div class="reticle-report-grid">${cards}</div>${defects(scope, dashboardUrl)}${chart(scope)}`;
 }
 
 export interface ReportHost {
@@ -229,7 +279,7 @@ export class PresenterReport {
     this.#body.innerHTML =
       scope === undefined
         ? `<p class="reticle-report-empty">${REPORT_TEXT.EMPTY}</p>`
-        : reportBodyHtml(scope);
+        : reportBodyHtml(scope, this.#snapshot?.dashboardUrl);
   }
 
   #openShare(url: string): void {

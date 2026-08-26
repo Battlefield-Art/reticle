@@ -1,4 +1,9 @@
-import { Verified, type ImpactCounts, type ImpactSnapshot } from '@reticlehq/core';
+import {
+  Verified,
+  type ImpactCounts,
+  type ImpactDefect,
+  type ImpactSnapshot,
+} from '@reticlehq/core';
 import { estimateTokens } from '../session/output-budget.js';
 import { ImpactStore, type ImpactFoldMeta } from './impact-store.js';
 
@@ -82,6 +87,42 @@ export function deltaForToolResult(
     delta.unknown = 1;
   }
   return delta;
+}
+
+/**
+ * What one FAILED verdict was, in a line.
+ *
+ * Only a verified:"no" produces one. That is the same rule the counters follow and the same rule
+ * the product states to agents: an "unknown" is not a defect, it is Reticle admitting it could not
+ * tell — recording those here would fill the user's short list with the tool's own blind spots.
+ *
+ * Everything is read from the result the tool already returned, so this costs nothing extra and
+ * cannot disagree with the verdict it describes.
+ */
+export function defectForToolResult(raw: unknown, at: number): ImpactDefect | undefined {
+  if (!isRecord(raw) || raw['verified'] !== Verified.NO) return undefined;
+
+  const effect = isRecord(raw['effect']) ? raw['effect'] : undefined;
+  const verdict = isRecord(raw['verdict']) ? raw['verdict'] : undefined;
+  const named = text(effect?.['name']) ?? text(effect?.['testid']) ?? text(effect?.['component']);
+  const why = text(verdict?.['failureReason']) ?? text(raw['because']);
+
+  const defect: ImpactDefect = {
+    at,
+    // The control that was acted on, when the result names one — "Sign In did not sign in" is a
+    // sentence somebody can act on; "a verdict failed" is not.
+    title: named === undefined ? (why ?? 'a declared consequence did not hold') : named,
+  };
+  if (named !== undefined && why !== undefined) defect.detail = why;
+  const source = text(raw['source']);
+  if (source !== undefined) defect.source = source;
+  return defect;
+}
+
+function text(value: unknown): string | undefined {
+  if ('string' !== typeof value) return undefined;
+  const trimmed = value.trim();
+  return 0 === trimmed.length ? undefined : trimmed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -149,7 +149,15 @@ const api = async (
 
 const LoginSchema = z.object({ token: z.string(), org: z.object({ name: z.string() }) });
 const KeySchema = z.object({ projectId: z.string(), projectName: z.string(), key: z.string() });
-const WhoamiSchema = z.object({ projectId: z.string(), projectName: z.string() });
+const WhoamiSchema = z.object({
+  projectId: z.string(),
+  projectName: z.string(),
+  /**
+   * Where this project's dashboard lives. Optional because an older cloud does not send it, and a
+   * CLI that refused to link against one would break the thing it is supposed to connect.
+   */
+  dashboardUrl: z.string().optional(),
+});
 const CreatedProjectSchema = z.object({ projectId: z.string(), name: z.string() });
 const ProjectsListSchema = z.object({
   projects: z.array(z.object({ projectId: z.string(), name: z.string() })),
@@ -418,10 +426,21 @@ const cmdLink = async (argv: readonly string[]): Promise<number> => {
   let projectId: string;
   let projectName: string;
   let key: string;
+  /*
+   * Where this project's dashboard lives. Asked of the cloud rather than derived from `url`: the API
+   * origin and the console origin are different hosts in every deployment that is not a laptop, so a
+   * link the CLI guessed would be wrong exactly where it matters.
+   */
+  let dashboardUrl: string | undefined;
+  // Tracked separately from the value: an OLDER cloud answers whoami without a dashboardUrl, and
+  // keying the fallback off the value would ask the same question twice every time.
+  let askedWhoami = false;
   if (envKey !== undefined && envKey.length > 0) {
     const who = WhoamiSchema.parse(await api('GET', `${url}/v1/cloud/whoami`, envKey));
     projectId = who.projectId;
     projectName = who.projectName;
+    dashboardUrl = who.dashboardUrl;
+    askedWhoami = true;
     key = envKey;
   } else if (session !== null) {
     // --project accepts a slug id OR a display name; default when omitted. Resolve to the canonical id.
@@ -450,10 +469,23 @@ const cmdLink = async (argv: readonly string[]): Promise<number> => {
   const prev = await readJson(linkPath);
   const prevObj =
     'object' === typeof prev && prev !== null ? (prev as Record<string, unknown>) : {};
+  // The minted-key path has not asked yet. Best-effort: a link that works is worth more than a link
+  // that also has a link in it, and an older cloud simply does not send one.
+  if (!askedWhoami) {
+    try {
+      dashboardUrl = WhoamiSchema.parse(
+        await api('GET', `${url}/v1/cloud/whoami`, key),
+      ).dashboardUrl;
+    } catch {
+      // Older cloud, or a transient failure. The HUD shows its list without a link.
+    }
+  }
+
   const cloudJson = {
     projectId,
     projectName,
     url,
+    ...(dashboardUrl === undefined ? {} : { dashboardUrl }),
     sync: prevObj['sync'] ?? { runs: true, memory: true, flows: true },
     verify: prevObj['verify'] ?? 'local',
   };
