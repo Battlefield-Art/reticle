@@ -4,6 +4,10 @@ All notable changes to the **`@reticlehq/*`** packages are documented here (each
 
 ## [Unreleased]
 
+### Added
+
+- **`@reticlehq/core` + `@reticlehq/server` — socket-level MCP POST failures are now a session count.** `ENOBUFS`, `EMFILE`, `EADDRNOTAVAIL` and `ECONNREFUSED` before any bytes were sent never produced `tool_refused` (the handler never ran) and never produced `mcp_connection_lost` (the SSE stream was fine), so a keep-alive retry that saved the call was indistinguishable from one that never fired. `postSocketFailures` and `postRetriesSaved` ride the existing session summary, omitted when zero, and the proxy awaits the flush before exit.
+
 ### Fixed
 
 - **`@reticlehq/browser` + `@reticlehq/server` — `urlContains` matches the request the app made, not the redacted display URL.** Path redaction rewrites the segment after `token`/`verify`/… when it is ≥ 12 characters, including ordinary public REST paths (`/auth/token/refresh-context`, `/verify/CERT_INFY_10`). The predicate then ran against the rewritten string and reported "the request did not happen". The observer now keeps the raw URL for the grader only; `url` stays redacted in every agent-facing projection. An older SDK with no raw copy gets the miss named as redaction rather than absence. Closes [#613](https://github.com/reticlehq/reticle/issues/613).
